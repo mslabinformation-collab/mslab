@@ -214,6 +214,21 @@ test.describe("a visitor", () => {
       await expectComingSoon(page);
     }
   });
+
+  test("Montonio's webhook goes through: a POST is answered by the app (400 for a token it cannot verify), not the gate, and is never redirected (phase 2b)", async ({ request }) => {
+    const res = await request.post("/api/payments/notify", { data: { orderToken: "not-a-token" }, maxRedirects: 0 });
+    expect(res.status()).toBe(400);
+    expect(res.status() >= 300 && res.status() < 400).toBe(false);
+    expect(res.headers()["location"]).toBeUndefined();
+    expect(await res.json()).toEqual({ ok: false });
+    // the webhook is that one address: POST only (Next.js answers the rest 405), and the rest of /api/payments stays behind the gate
+    expect((await request.get("/api/payments/notify", { maxRedirects: 0 })).status()).toBe(405);
+    for (const path of ["/api/payments/return", "/api/payments/notify/"]) {
+      const gated = await request.post(path, { data: { orderToken: "not-a-token" }, maxRedirects: 0 });
+      expect(gated.status(), path).toBe(404);
+      expect(await gated.json(), path).toEqual({ ok: false, error: "not_found" });
+    }
+  });
 });
 
 /** The preview cookie in this browser, as the server would set it. */

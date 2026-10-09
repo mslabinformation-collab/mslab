@@ -1,11 +1,11 @@
 import { and, asc, count, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
-import type { Db, Q } from "../client";
+import type { Db, Q, Tx } from "../client";
 import { campaign, courseAccess, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, registrations, requests, settings, subscribers } from "../schema";
 import type { Campaign, Course, CourseImage, CourseSession, FaqItem, GalleryItem, HeroSlide, Page, PopupKind, Post, PracticePackage, Registration, Request as RequestRow, Subscriber } from "../schema";
 import { pageInfo, PAGE_SIZE, type PageInfo } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
 import type { I18n } from "@/i18n/field";
-import { takesSeat } from "./seats";
+import { hasFreeSeat, takesSeat } from "./seats";
 
 // Admin (write) queries. Callers must already have checked the admin session; nothing here does authorization.
 
@@ -363,6 +363,44 @@ export async function recordRegistrationPayment(db: Db, id: number, paidCents: n
     const [row] = await tx.update(registrations).set({ paidCents, status }).where(eq(registrations.id, id)).returning();
     return row ?? null;
   });
+}
+
+/** What an online payment did to a registration (server/payments/settle.ts). `full`: paid, but kept unconfirmed for want of a seat (D2). */
+export type RegistrationPaid = { registration: Registration; course: Course; session: CourseSession | null; wasConfirmed: boolean; full: boolean };
+
+/**
+ * An online payment of `cents` arrived for a registration (phase 2b, spec 6.2.2): `paidCents` becomes the current value + `cents` — an
+ * absolute value written under the row's lock (FOR UPDATE), as recordRegistrationPayment writes Maria's — and the status follows the same
+ * rule (confirmed from 50 %). One exception (D2): a registration that is not confirmed yet stays awaiting_prepayment when its session has
+ * no free seat for it, counting the others' seats, confirmed or held, but not her own row (her hold may have ended): `full` says so. A
+ * confirmed registration, or one kept for want of a seat, has no hold any more. Runs in the caller's transaction; null: the row is gone.
+ */
+export async function addRegistrationPayment(tx: Tx, registrationId: number, cents: number, now: Date): Promise<RegistrationPaid | null> {
+  const [current] = await tx
+    .select({ registration: registrations, course: courses, session: courseSessions })
+    .from(registrations)
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id))
+    .where(eq(registrations.id, registrationId))
+    .for("update", { of: registrations });
+  if (!current) return null;
+  const { registration: r, course, session } = current;
+  const paidCents = r.paidCents + cents;
+  const total = registrationPrice(course, r.kind);
+  let status = total == null ? r.status : registrationStatusAfterPayment({ status: r.status, paidCents }, total);
+  const wasConfirmed = r.status === "confirmed";
+  let full = false;
+  if (!wasConfirmed && status === "confirmed" && session && !(await hasFreeSeat(tx, session, now, r.id))) {
+    status = r.status;
+    full = true;
+  }
+  const endHold = full || status === "confirmed";
+  const [row] = await tx
+    .update(registrations)
+    .set({ paidCents, status, ...(endHold ? { seatHoldUntil: null } : {}) })
+    .where(eq(registrations.id, registrationId))
+    .returning();
+  return { registration: row, course, session, wasConfirmed, full };
 }
 
 /** Requests newest first, optionally of one kind. `openFirst`: not handled ones before handled ones (the inbox). */

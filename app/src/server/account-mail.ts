@@ -15,6 +15,7 @@ import type { Mail } from "./notify";
 // The confirmation e-mails to a visitor who registered or sent a request (registrationConfirmationMail,
 // requestConfirmationMail) are the same card again: what was received, the next step and one button, "Ava minu konto" or,
 // when the visitor ticked "Loo mulle kohe konto", the live login code with "Logi sisse" in its place.
+// After an online payment (phase 2b) the same card says what was paid (registrationPaidMail) or that an e-course is open (ecourseOpenMail).
 
 /**
  * The link in the login e-mail: it signs in the device that opens it (api/konto verify). `pageLocale` is the language of
@@ -367,6 +368,49 @@ export function registrationConfirmationMail(input: RegistrationConfirmationInpu
     box: { title, lines: sessionLines(input.session, input.locale) },
     sections,
     login: input.login,
+  });
+}
+
+export type RegistrationPaidInput = {
+  siteUrl: string;
+  email: string;
+  name: string;
+  locale: Locale;
+  course: I18n;
+  session: SessionInfo | null;
+  /** This payment, cents. */
+  paidCents: number;
+  /** What is left to pay on the registration after it (its price − its paidCents), cents. */
+  restCents: number;
+  /** The registration is confirmed now. */
+  confirmed: boolean;
+  /** Paid, but the course was full: the place stayed unconfirmed (D2). */
+  full: boolean;
+};
+
+/**
+ * The mail after an online payment of a registration (phase 2b, spec 6.2.4): "Koht on kinnitatud — {title}" when the place is confirmed now,
+ * else "Makse on kätte saadud — {title}"; the course with its date and place, what was paid, and what is left ("Ülejäänud {amount} tasud
+ * koolituspäeval või Minu koolitused lehel.") or "Kogu summa on tasutud."; a place left unconfirmed says why. One button: "Ava minu konto".
+ * settle.ts never sends it to a sample address and does not count it in the daily caps (it follows a real payment).
+ */
+export function registrationPaidMail(input: RegistrationPaidInput): Mail {
+  const m = getDict(input.locale).payment.mail;
+  const title = pick(input.course, input.locale);
+  const sections: Section[] = [{ fields: [[m.paid, formatEUR(input.paidCents, input.locale)]] }];
+  if (input.full) sections.push({ text: m.full });
+  else if (!input.confirmed) sections.push({ text: m.notConfirmed });
+  else sections.push({ text: input.restCents > 0 ? fill(m.rest, { amount: formatEUR(input.restCents, input.locale) }) : m.allPaid });
+  return confirmationMail({
+    email: input.email,
+    name: input.name,
+    locale: input.locale,
+    siteUrl: input.siteUrl,
+    subject: oneLine(fill(input.confirmed ? m.subjectConfirmed : m.subjectReceived, { title })),
+    lead: input.confirmed ? m.leadConfirmed : m.leadReceived,
+    box: { title, lines: input.session ? sessionLines(input.session, input.locale) : [] },
+    sections,
+    login: null,
   });
 }
 

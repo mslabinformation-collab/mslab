@@ -1,6 +1,11 @@
 // Plain-text summaries of public submissions for Maria: the e-mail (subject + text) and a short Telegram line.
 // They are written in Estonian for Maria and never shown to visitors, so they are not in the site dictionaries.
 
+import type { PaymentKind } from "@/db/schema";
+import { formatEUR } from "@/domain/money";
+import { paymentMethodLabel } from "@/domain/payments";
+import { formatDate } from "@/i18n/format";
+
 export type Summary = { subject: string; text: string; short: string };
 
 /** label, value, and whether the value goes on its own lines below the label (free text). */
@@ -169,5 +174,123 @@ export function changeRequestSummary(
       "Registreeringut ei ole muudetud. Võta õpilasega ühendust ja muuda registreering vajadusel adminis.",
     ),
     short: `${title}\n${info ? sessionShort(info) : r.course}\n${contactLine(r)}${r.message ? `\n${r.message.slice(0, 280)}` : ""}`,
+  };
+}
+
+// ---------- payments (phase 2b, spec 6.2.5, 7.3, 7.4) ----------
+// Maria's texts carry no English Montonio code (the owner's decision of 09.10): the way of paying is domain/payments.ts paymentMethodLabel, a
+// refund and a void are told in words, and the money that has arrived is "Laekunud summa" (the payer's own mail says "Tasutud").
+
+const PAYMENT_KIND: Record<PaymentKind, string> = { prepayment: "Ettemaks", balance: "Ülejäänud", ecourse: "E-koolitus" };
+
+/** What a payment was for: "Kulmumeistri baaskoolitus, 14.11.2026" (a registration's session day), or the e-course's title alone. */
+const paidFor = (course: string, startsAt: Date | null): string => (startsAt ? `${course}, ${formatDate(startsAt, "et")}` : course);
+
+/** A paid payment, for Maria's notice. `outcome`: what it did (settle.ts). `restCents`: left to pay on the registration afterwards. */
+export type PaymentNotice = {
+  kind: PaymentKind;
+  name: string;
+  email: string;
+  amountCents: number;
+  course: string;
+  startsAt: Date | null;
+  /** Montonio's code of the way of paying and the bank's name: shown as Maria's word (paymentMethodLabel). */
+  method: string;
+  bank: string;
+  reference: string;
+  providerUuid: string | null;
+  outcome: "confirmed" | "received" | "full" | "opened" | "notOpened";
+  restCents?: number;
+};
+
+/** "Uus makse: {nimi}, {mis}, {summa}" (spec 9), or "Makse laekus, aga koolitus on täis: …" when the course was full (D2). */
+export function paymentSummary(p: PaymentNotice, adminUrl: string): Summary {
+  const amount = formatEUR(p.amountCents, "et");
+  const what = paidFor(p.course, p.startsAt);
+  const subject = `${p.outcome === "full" ? "Makse laekus, aga koolitus on täis" : "Uus makse"}: ${p.name}, ${what}, ${amount}`;
+  const rest = p.restCents ?? 0;
+  const notes: Record<PaymentNotice["outcome"], string> = {
+    confirmed: rest > 0 ? `Registreering on kinnitatud. Ülejäänud ${formatEUR(rest, "et")} tasub ta koolituspäeval või Minu koolitustes.` : "Registreering on kinnitatud ja täielikult tasutud.",
+    received: "Makse on registreeringule kirja pandud.",
+    full: "Koolitus on täis: koht jäi kinnitamata, makse on registreeringule kirja pandud. Võta õpilasega ühendust (Registreerimised).",
+    opened: "E-koolitus on avatud.",
+    notOpened: "E-koolitust ei avatud: koolitust ei leitud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.",
+  };
+  return {
+    subject,
+    text: body(
+      subject,
+      [
+        ["Makse", PAYMENT_KIND[p.kind]],
+        ["Summa", amount],
+        ["Koolitus", what],
+        ["Maksja", p.name],
+        ["E-post", p.email],
+        ["Makseviis", paymentMethodLabel(p.method, p.bank)],
+        ["Viide", p.reference],
+        ["Montonio", p.providerUuid ?? undefined],
+      ],
+      adminUrl,
+      notes[p.outcome],
+    ),
+    short: subject,
+  };
+}
+
+/** A payment Maria must look at in Montonio's own dashboard (spec 7.3, 7.4, 8). `paidCents` and `currency`: what Montonio said. */
+export type PaymentAlert = {
+  alert: "held" | "voided" | "refunded";
+  kind: PaymentKind;
+  name: string;
+  email: string;
+  amountCents: number;
+  course: string;
+  startsAt: Date | null;
+  reference: string;
+  providerUuid: string | null;
+  /** Montonio's status (upper case); only told apart as PARTIALLY_REFUNDED and the rest, and never shown. */
+  rawStatus: string;
+  paidCents: number | null;
+  currency: string | null;
+};
+
+/** A number of cents as a plain amount ("125,50"), for a currency other than the euro. */
+const plainAmount = (cents: number): string => formatEUR(cents, "et").replace(/ €$/, "");
+
+/** What Montonio said was paid: "1 €", "125,50 PLN", and what is missing: "summa puudub", "valuuta puudub". The euro is written once. */
+function montonioSaid(cents: number | null, currency: string | null): string {
+  const parts: string[] = [];
+  if (cents === null) parts.push(currency && currency !== "EUR" ? `summa puudub, ${currency}` : "summa puudub");
+  else if (currency === "EUR") parts.push(formatEUR(cents, "et"));
+  else parts.push(currency ? `${plainAmount(cents)} ${currency}` : plainAmount(cents));
+  if (currency === null) parts.push("valuuta puudub");
+  return parts.join(", ");
+}
+
+/** "Kontrolli Montonios: {nimi}, {mis}, {summa}": nothing was changed by itself; Maria decides. */
+export function paymentAlertSummary(a: PaymentAlert, adminUrl: string): Summary {
+  const subject = `Kontrolli Montonios: ${a.name}, ${paidFor(a.course, a.startsAt)}, ${formatEUR(a.amountCents, "et")}`;
+  const refund = a.rawStatus.toUpperCase() === "PARTIALLY_REFUNDED" ? "osaliselt tagastatud" : "tagastatud";
+  const notes = {
+    held: `Montonio ütleb makstud, aga summa või valuuta ei klapi (Montonio: ${montonioSaid(a.paidCents, a.currency)}). Midagi ei kinnitatud ega avatud: makse on lehel Maksed "Ootel kontrollil".`,
+    voided: "Pank tühistas juba laekunud makse. Kinnitus ja ligipääs jäid alles: otsusta, kas need tühistada (Registreerimised, Õpilased).",
+    refunded: `Montonio teatab tagastusest (${refund}). Laekunud summa, registreering ja ligipääs jäid muutmata: muuda neid adminis, kui vaja.`,
+  } as const;
+  return {
+    subject,
+    text: body(
+      subject,
+      [
+        ["Makse", PAYMENT_KIND[a.kind]],
+        ["Summa", formatEUR(a.amountCents, "et")],
+        ["Maksja", a.name],
+        ["E-post", a.email],
+        ["Viide", a.reference],
+        ["Montonio", a.providerUuid ?? undefined],
+      ],
+      adminUrl,
+      notes[a.alert],
+    ),
+    short: subject,
   };
 }

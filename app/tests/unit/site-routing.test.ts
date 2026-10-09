@@ -98,6 +98,8 @@ describe("routeSitePath", () => {
     expect(routeSitePath("//evil.example", new URLSearchParams())).toEqual({ kind: "redirect", path: "/evil.example" });
     expect(route("/guide/")).toEqual({ kind: "hub" });
     expect(route("/api/feedback")).toEqual({ kind: "api" });
+    // Montonio's webhook is answered at its own path, with or without a trailing slash: a POST is never redirected (phase 2b, spec 10)
+    for (const p of ["/api/payments/notify", "/api/payments/notify/"]) expect(route(p), p).toEqual({ kind: "api" });
     for (const p of ["/admin", "/admin/koolitused", "/media/img/a.jpg", "/_next/static/x.js", "/robots.txt", "/seed/a.jpg", "/og.jpg", "/favicon.ico", "/icon.svg"]) expect(route(p), p).toEqual({ kind: "other" });
   });
 

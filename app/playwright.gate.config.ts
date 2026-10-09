@@ -7,7 +7,8 @@ import { GATE_PORT, GATE_PREVIEW_SECRET, GATE_URL } from "./tests/e2e/gate";
 // (tests/e2e/gate.ts) with SITE_GATE=1, a made-up PREVIEW_SECRET and the local settings; never a server that is already
 // running (it would not have the gate). No global setup: it reads the local database, and writes only one newsletter
 // sign-up and one admin sign-in of the placeholder addresses, which the spec deletes again. The mail and Telegram keys
-// are blanked (blank counts as not set): nothing is sent.
+// are blanked (blank counts as not set): nothing is sent. Payments are on with the e2e run's made-up Montonio keys (no fake server is
+// started: the gate tests never create an order).
 
 process.env.E2E_SITE_GATE = "1"; // tests/e2e/gate.ts gateRun(): gate.spec.ts runs (it skips in the main run)
 process.env.E2E_BASE_URL = GATE_URL; // tests/e2e/target.ts and fixtures.ts: a local server, not the dev server
@@ -37,6 +38,7 @@ export default defineConfig({
       PREVIEW_SECRET: GATE_PREVIEW_SECRET,
       RESEND_API_KEY: "",
       TELEGRAM_BOT_TOKEN: "",
+      PAYMENT_MOCK_IN_PRODUCTION: "1", // payments on (the fake Montonio's keys of LOCAL_ENV): the payment routes answer as the app's, not 404
     },
   },
 });

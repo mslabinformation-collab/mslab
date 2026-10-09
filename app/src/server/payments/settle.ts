@@ -1,0 +1,264 @@
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import type { Db } from "@/db/client";
+import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admin";
+import { failPayment, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
+import { payments, type Payment } from "@/db/schema";
+import { isSampleAddress } from "@/domain/email";
+import { registrationPrice } from "@/domain/registration";
+import { pick } from "@/i18n/field";
+import { registrationPaidMail } from "../account-mail";
+import type { PublicChange } from "../cache-targets";
+import { logFailure, logNote } from "../log";
+import { paymentAlertSummary, paymentSummary, type PaymentNotice } from "../messages";
+import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env } from "../notify";
+import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken } from "./montonio";
+
+// The one door of every paid path (phase 2b, spec 6.2, 7.3, 7.4; Rempire's settle/apply/token-guard, ported). The webhook and the return
+// (routes.ts) bring an order token, the daily check (check.ts) Montonio's own answer; all of them end in settlePayment:
+// - PAID with the row's exact amount in EUR moves the row pending|failed → paid in ONE conditional UPDATE (paid_at null: a payment voided
+//   after paid never comes back). Only the winner of that update does the once-only work, in the same transaction: the amount is added to
+//   the registration (db/queries/admin.ts addRegistrationPayment: confirmed from 50 %, unless the course is full, D2). After it: the seats
+//   are revalidated, and the payer's mail and Maria's notice go out after the response. Every other caller finds the row paid and does nothing.
+// - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
+// - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
+//   nothing; a VOIDED (the bank took a paid payment back) is stored as failed with its paid_at and alerts Maria, who decides.
+// - refunded: stored and alerted; paidCents, the status and access stay (Maria refunds in Montonio's dashboard and adjusts in the admin).
+// - pending: nothing.
+// The row a caller holds may be old (the webhook, the return and the daily check run at the same moment): every change is a conditional UPDATE
+// that names the status it expects, and what loses is answered with the row as the database has it.
+// A token in doubt — another accessKey or none, a uuid that is not the row's, or expired beyond the tolerance — is confirmed with
+// GET /orders/:uuid about the order the token names (the row's own when it names none), and Montonio's answer is used; no answer:
+// "unconfirmed" (the webhook's 503: Montonio retries). That order may be one the row has since replaced: a retry while the attempt is open
+// re-sends its merchantReference (start.ts) and Montonio may answer a new uuid, which the row then carries. A replaced order moves the row
+// only with money (paid, and the row takes that order's uuid), never with its end: the row follows its newer order.
+// These mails follow real payments only: they are not counted in the daily caps, and a sample address is never mailed. Logs carry the payment
+// id and its status only: no address, no token, no key.
+
+export type SettleDeps = {
+  db: Db;
+  /** The settings and the KV store (Telegram's chat id), for the mails and Maria's notice. */
+  env: Env;
+  now: Date;
+  /** The base of the links in the mails: SITE_URL for the webhook and the daily check, the request's own origin for the return. */
+  siteUrl: string;
+  /** Runs work after the response: the mails and Maria's notice (next/server after(); collected and awaited in the tests). */
+  later: (task: () => Promise<unknown>) => void;
+  /** Told when a payment changed the seats, so the calendar and the course page render again (server/public-cache.ts). */
+  changed?: (change: PublicChange) => Promise<void> | void;
+  montonio: Montonio;
+};
+
+/** What Montonio says about a payment: from a token, or from GET /orders/:uuid (factsOf). */
+export type Facts = { uuid: string; status: MontonioStatus; rawStatus: string; amountCents: number | null; currency: string | null; method: string; bank: string };
+
+/** unknown: no row has this reference (logged, the webhook's 200); unconfirmed: in doubt and Montonio did not answer (the webhook's 503). */
+export type SettleResult = { kind: "unknown" } | { kind: "unconfirmed"; payment: Payment } | { kind: "done"; payment: Payment };
+
+/** GET /orders/:uuid's answer as facts. The bank's name is only in a token: `bank` keeps the one a token gave. */
+export const factsOf = (s: OrderSnapshot, bank = ""): Facts => ({ uuid: s.uuid, status: s.status, rawStatus: s.rawStatus, amountCents: s.amountCents, currency: s.currency, method: s.method, bank });
+
+/** The once-only work's outcome: the paid row, and what it did to its registration. */
+type Won = { payment: Payment; registration: RegistrationPaid | null };
+
+/** The door of an order token (the webhook, the return). */
+export async function settleToken(deps: SettleDeps, token: OrderToken): Promise<SettleResult> {
+  const row = await paymentByReference(deps.db, token.reference);
+  if (!row) {
+    logNote("[payments] an order token for an unknown reference: nothing to settle");
+    return { kind: "unknown" };
+  }
+  const facts: Facts = { uuid: token.uuid, status: token.status, rawStatus: token.rawStatus, amountCents: token.amountCents, currency: token.currency, method: token.method, bank: token.bank };
+  const doubt = token.accessKey !== deps.montonio.accessKey || (row.providerUuid !== null && token.uuid !== row.providerUuid) || token.expired;
+  // a pending token moves nothing, so there is nothing to ask about
+  if (!doubt || token.status === "pending") return { kind: "done", payment: await settlePayment(deps, row, facts) };
+  // the order the token names (it may be one this row has replaced since: start.ts re-sends an open attempt); none named: the row's own
+  const snapshot = await deps.montonio.fetchOrder(token.uuid || row.providerUuid || "");
+  if (!snapshot) {
+    logNote(`[payments] payment ${row.id}: a token in doubt, and Montonio did not answer`);
+    return { kind: "unconfirmed", payment: row };
+  }
+  if (snapshot.reference !== row.reference) {
+    logNote(`[payments] payment ${row.id}: Montonio's order is not this payment's; nothing changes`);
+    return { kind: "done", payment: row };
+  }
+  // an order the row has replaced counts only with its money: its end (ABANDONED, …) is not the end of the row's newer order
+  if (row.providerUuid !== null && snapshot.uuid !== row.providerUuid && snapshot.status !== "paid") {
+    logNote(`[payments] payment ${row.id}: an order it has replaced says ${snapshot.status}; nothing changes`);
+    return { kind: "done", payment: row };
+  }
+  return { kind: "done", payment: await settlePayment(deps, row, factsOf(snapshot, token.bank)) };
+}
+
+/** The door itself: `facts` applied to `row` (see the top of the file). Answers the row as it is afterwards. */
+export async function settlePayment(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
+  switch (facts.status) {
+    case "paid":
+      return paid(deps, row, facts);
+    case "failed":
+      return failed(deps, row, facts);
+    case "refunded":
+      return refunded(deps, row, facts);
+    default:
+      return row;
+  }
+}
+
+/** The row as the database has it now (after a conditional update another caller won). */
+const current = async (deps: SettleDeps, row: Payment): Promise<Payment> => (await paymentByReference(deps.db, row.reference)) ?? row;
+
+/**
+ * What a settlement writes besides the status: the uuid of the order that was paid (it differs from the row's only when a retry had replaced
+ * that order: settleToken), and the way of paying and the bank when `facts` has them (a daily check's answer has no bank: the row keeps the
+ * one a token gave).
+ */
+const detailsOf = (facts: Facts) => ({
+  providerUuid: sql`coalesce(nullif(${facts.uuid}, ''), ${payments.providerUuid})`,
+  method: sql`coalesce(nullif(${facts.method}, ''), ${payments.method})`,
+  bank: sql`coalesce(nullif(${facts.bank}, ''), ${payments.bank})`,
+});
+
+/** Tells the public pages the seats changed. A failure here never undoes a payment or loses its mails: it is logged and the pages catch up. */
+async function seatsChanged(deps: SettleDeps, course: string): Promise<void> {
+  try {
+    await deps.changed?.({ kind: "seats", course });
+  } catch (e) {
+    logFailure("[payments] revalidating the seats failed", e);
+  }
+}
+
+async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
+  // an amount that could not be read (null) is no amount: it never equals the row's, and never reads as zero
+  if (facts.amountCents !== row.amountCents || facts.currency !== "EUR") return held(deps, row, facts);
+  const won = await deps.db.transaction(async (tx): Promise<Won | null> => {
+    const [payment] = await tx
+      .update(payments)
+      .set({ status: "paid", paidAt: deps.now, updatedAt: deps.now, ...detailsOf(facts) })
+      .where(and(eq(payments.id, row.id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt)))
+      .returning();
+    if (!payment) return null;
+    // (an e-course's payment opens the course instead: Task 7)
+    const registration = payment.kind !== "ecourse" && payment.registrationId !== null ? await addRegistrationPayment(tx, payment.registrationId, payment.amountCents, deps.now) : null;
+    return { payment, registration };
+  });
+  if (!won) return current(deps, row);
+  console.info(`[payments] payment ${won.payment.id}: paid`);
+  // queued before anything that could fail after the commit: the payment is paid for good, and this is the only time its mails are sent
+  deps.later(async () => {
+    if (won.registration) await mailRegistrationPaid(deps, won.payment, won.registration);
+    await tellMaria(deps, won.payment, outcomeOf(won));
+  });
+  if (won.registration) await seatsChanged(deps, won.registration.course.slug);
+  return won.payment;
+}
+
+/** What the payment did, for Maria's notice. */
+function outcomeOf(won: Won): Pick<PaymentNotice, "outcome" | "restCents"> {
+  const r = won.registration;
+  if (!r) return { outcome: "received" };
+  if (r.full) return { outcome: "full" };
+  if (r.registration.status !== "confirmed") return { outcome: "received" };
+  const total = registrationPrice(r.course, r.registration.kind);
+  return { outcome: "confirmed", restCents: total === null ? 0 : Math.max(0, total - r.registration.paidCents) };
+}
+
+async function held(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
+  const [payment] = await deps.db
+    .update(payments)
+    .set({ status: "held", updatedAt: deps.now, ...detailsOf(facts) })
+    .where(and(eq(payments.id, row.id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt)))
+    .returning();
+  if (!payment) return current(deps, row);
+  alert(deps, payment, "held", facts);
+  return payment;
+}
+
+async function failed(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
+  // the row in hand may be old: a pending one is failed by a conditional UPDATE, and whoever lost finds the row as it is now
+  if (row.status !== "paid") {
+    const done = await failPayment(deps.db, row.id, deps.now);
+    if (done) {
+      console.info(`[payments] payment ${row.id}: failed`);
+      if (done.released) {
+        const ctx = await contextOf(deps, row.id);
+        if (ctx.course) await seatsChanged(deps, ctx.course.slug);
+      }
+      return done.payment;
+    }
+  }
+  const now = row.status === "paid" ? row : await current(deps, row);
+  if (now.status !== "paid" || facts.rawStatus !== "VOIDED") return now; // paid is a floor: only the bank taking the payment back moves it
+  const [voided] = await deps.db.update(payments).set({ status: "failed", updatedAt: deps.now }).where(and(eq(payments.id, row.id), eq(payments.status, "paid"))).returning();
+  if (!voided) return current(deps, row);
+  alert(deps, voided, "voided", facts);
+  return voided;
+}
+
+async function refunded(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
+  const [payment] = await deps.db.update(payments).set({ status: "refunded", updatedAt: deps.now }).where(and(eq(payments.id, row.id), ne(payments.status, "refunded"))).returning();
+  if (!payment) return current(deps, row);
+  alert(deps, payment, "refunded", facts);
+  return payment;
+}
+
+/** What a payment was for. A failure to read it must not lose Maria's notice: she gets it without the course. */
+async function contextOf(deps: SettleDeps, paymentId: number): Promise<PaymentContext> {
+  try {
+    return await paymentContext(deps.db, paymentId);
+  } catch (e) {
+    logFailure(`[payments] payment ${paymentId}: its course could not be read`, e);
+    return { course: null, session: null, payToken: null };
+  }
+}
+
+/** The course's Estonian title for Maria ("—" when the course is gone). */
+const courseName = (ctx: PaymentContext): string => (ctx.course ? pick(ctx.course.title, "et") : "—");
+
+/** Maria's "Kontrolli Montonios", after the response. */
+function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded", facts: Facts): void {
+  logNote(`[payments] payment ${p.id}: ${kind}, Maria is alerted`);
+  deps.later(async () => {
+    const ctx = await contextOf(deps, p.id);
+    const s = paymentAlertSummary(
+      { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
+      adminUrl(deps.siteUrl),
+    );
+    await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+  });
+}
+
+/** Maria's "Uus makse: …" (mail and Telegram). */
+async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNotice, "outcome" | "restCents">): Promise<void> {
+  const ctx = await contextOf(deps, p.id);
+  const s = paymentSummary(
+    { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx), startsAt: ctx.session?.startsAt ?? null, method: p.method, bank: p.bank, reference: p.reference, providerUuid: p.providerUuid, ...outcome },
+    adminUrl(deps.siteUrl),
+  );
+  const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+  console.info(`[payments] payment ${p.id}: Maria notified by e-mail: ${r.mail}, Telegram: ${r.telegram}`);
+}
+
+/** The payer's mail after a paid registration: never to a sample address, not counted in the daily caps (it follows a real payment). */
+async function mailRegistrationPaid(deps: SettleDeps, p: Payment, r: RegistrationPaid): Promise<void> {
+  if (isSampleAddress(p.email) || !mailConfigured(deps.env)) return;
+  try {
+    const total = registrationPrice(r.course, r.registration.kind);
+    const sent = await sendMail(
+      deps.env,
+      registrationPaidMail({
+        siteUrl: deps.siteUrl,
+        email: p.email,
+        name: p.name,
+        locale: p.locale,
+        course: r.course.title,
+        session: r.session ? { startsAt: r.session.startsAt, city: r.session.city, venue: r.session.venue } : null,
+        paidCents: p.amountCents,
+        restCents: total === null ? 0 : Math.max(0, total - r.registration.paidCents),
+        confirmed: r.registration.status === "confirmed",
+        full: r.full,
+      }),
+    );
+    console.info(`[payments] payment ${p.id}: the payer's mail sent: ${sent}`);
+  } catch (e) {
+    logFailure(`[payments] payment ${p.id}: the payer's mail failed`, e);
+  }
+}
