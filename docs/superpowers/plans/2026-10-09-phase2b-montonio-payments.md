@@ -6,7 +6,7 @@
 
 **Architecture:**
 - **Data.** One additive migration `0006_phase2b_payments.sql`: a `payments` table (one row per attempt, `merchantReference` = `MSLAB-M{id}`), `registrations.seat_hold_until` and `registrations.pay_token` (filled for existing rows by the column's own default). One SQL expression (`db/queries/seats.ts takesSeat`) is the only seat count: confirmed, or unpaid with a hold that has not ended.
-- **Montonio.** `server/payments/jwt.ts` (HS256 on `node:crypto`), `montonio.ts` (create, fetch, verify, the status map, euro↔cent), `start.ts` (every way a payment starts), `settle.ts` (`settlePayment`, the one door every paid path goes through: webhook, return, daily check), `routes.ts` (the webhook and the return without Next.js). A test-only fake Montonio server (`tests/e2e/fake-montonio.ts`) answers the real client in the e2e run; the app reaches it only with `PAYMENT_PROVIDER=mock`, never on Vercel, never silently.
+- **Montonio.** `server/payments/jwt.ts` (HS256 on `node:crypto`), `montonio.ts` (create, fetch, verify, the status map, euro↔cent), `start.ts` (every way a payment starts; a start while the same attempt is still open re-sends it instead of making a second order), `settle.ts` (`settlePayment`, the one door every paid path goes through: webhook, return, daily check), `routes.ts` (the webhook and the return without Next.js). A test-only fake Montonio server (`tests/e2e/fake-montonio.ts`) answers the real client in the e2e run; the app reaches it only with `PAYMENT_PROVIDER=mock`, never on Vercel, never silently.
 - **Pages.** `/maksa/<pay_token>` is a standalone HTML page (GET shows, a same-origin POST starts) like the unsubscribe page. `/makse` is a static page that reads its result from the fragment. Minu koolitused gets "Maksa {summa}" through `POST /api/konto/maksa`. The cart gets a purchase form when payments are on.
 - **Admin.** "Maksed" after "Registreerimised", the payments under "Tasutud" in a registration's drawer and a "Maksed" list in the Õpilased drawer. Estonian only.
 
@@ -32,7 +32,8 @@
 ### Payments (spec 4, 6, 7)
 
 - **Payments are optional: no keys means today's behaviour.** `paymentsConfigured()` is true only with both `MONTONIO_ACCESS_KEY` and `MONTONIO_SECRET_KEY` (a blank value counts as not set). Without it the "Maksa" buttons are hidden, the registration answer and the mail are today's, the cart keeps the purchase-interest form, no seat is held, and `/api/payments/*` answer 404.
-- **`merchantReference` is `MSLAB-M{id}`** (the payment row's id; `domain/payments.ts orderReference`). Every payment attempt is a new row and so a new reference; a changed amount is a new row.
+- **`merchantReference` is `MSLAB-M{id}`** (the payment row's id; `domain/payments.ts orderReference`). Every new payment attempt is a new row and so a new reference; a changed amount is a new row.
+- **No second order while one is open (the double-payment rule, pre-flight fix).** A start ("Proovi uuesti", "Maksa" on the card, the `/maksa` button, the cart's "Maksa" again) for the same registration and kind — or the same e-course and address — with the same amount, while a `pending` row exists whose order is younger than Montonio's 30-minute window (`updated_at`: the row's insert or its last re-send), **re-sends that row**: `POST /orders` again with the same `merchantReference`, which overwrites the unpaid order at Montonio and answers a new `paymentUrl`. The row takes Montonio's uuid of it (`provider_uuid`, a new one replacing the old) and its window starts again. Only without such a row, or with another amount, is a new row (and reference) made. A token of the replaced order is confirmed with Montonio (spec 7.4, `settle.ts settleToken`): its PAID counts, its failure does not end the row.
 - **Amounts are cents internally and euros only at the Montonio edge** (`toEuros` when an order is created, `toCents` when a token or an order is read).
 - **`payment.method` is `paymentInitiation` with no `preferredProvider`**, `methodOptions.paymentDescription` = `MS LAB <reference>`, and **we never send `paymentReference`**.
 - **One door:** every paid path (the webhook, the return, the daily check) ends in `settlePayment` (`server/payments/settle.ts`). Only the winner of the conditional `pending → paid` UPDATE does the once-only work. **`paid` is a floor**: a later `failed`/`ABANDONED` never undoes it; a `VOIDED` after `paid` is stored as `failed` and alerts Maria; `refunded` only updates the row and alerts Maria.
@@ -66,7 +67,7 @@
 - **Sample addresses (`@example.test`, and the e2e run's `e2e-…@example.com`, `e2e-client-…@example.test`) are never mailed**: the payer mails skip `isSampleAddress`, and the e2e servers have no `RESEND_API_KEY`.
 - **No secrets anywhere**: no key, token, webhook secret or database URL in code, docs, tests or commit messages. The e2e run's Montonio keys are made-up test values in `tests/e2e/montonio-values.ts`; the unit tests' are made-up strings.
 - **No address, token, key or `pay_token` in a log line.** Log lines carry the payment id and its status only (`logFailure` / `logNote` / `console.info` with fixed text). Montonio's own error text may be logged (it names no person).
-- **Never commit `.env*`.** Montonio's sandbox keys live only in the git-ignored `app/.env.local` as `MONTONIO_ENV` / `MONTONIO_ACCESS_KEY` / `MONTONIO_SECRET_KEY`. On Vercel they are plain variables by the owner's choice (`docs/deploy.md` §2), never in the repository.
+- **Never commit `.env*`** (the one exception is the tracked placeholder file `app/.env.example`, which gets the variables' names as comments, no values: Task 2). Montonio's sandbox keys live only in the git-ignored `app/.env.local` as `MONTONIO_ENV` / `MONTONIO_ACCESS_KEY` / `MONTONIO_SECRET_KEY`. On Vercel they are plain variables by the owner's choice (`docs/deploy.md` §2), never in the repository.
 
 ### The database
 
@@ -158,7 +159,7 @@ Spec sections 5 and 5.3 (D2). Columns, a table and one shared seat expression; n
 - Modify (the counts' readers): `app/src/app/[locale]/(site)/koolitused/[slug]/page.tsx`, `app/src/app/[locale]/(site)/koolituskalender/page.tsx`, `app/src/app/admin/(panel)/kalender/page.tsx`, `app/src/app/admin/(panel)/page.tsx`
 - Modify (the 0007 texts): `app/drizzle/0003_lessons.sql` (comment line only), `app/tests/db/migration-0003.test.ts` (comment), `docs/launch-checklist.md` §8, `docs/superpowers/plans/2026-10-05-phase3a-lessons-video.md`
 - Test: `app/tests/db/migration-0006.test.ts` (new), `app/tests/db/seats.test.ts` (new), `app/tests/unit/domain.test.ts` (extend)
-- Update: `app/tests/db/queries.test.ts`, `app/tests/db/demo-data.test.ts` (`.confirmed` → `.taken`)
+- Update: `app/tests/db/queries.test.ts`, `app/tests/db/demo-data.test.ts`, `app/tests/db/seed.test.ts` (`.confirmed` → `.taken`)
 
 **Interfaces:**
 - Produces, from `src/db/schema.ts`:
@@ -570,8 +571,9 @@ async function sessionWithSeats(db: Db, id: number, now: Date): Promise<(CourseS
   5. **The tests that read the old name.**
      - `tests/db/queries.test.ts`: the three `.confirmed` of sessions (`c?.sessions[0].confirmed`, `list[0].confirmed`, `list[1].confirmed`) become `.taken`; the test titles "counts only confirmed registrations per session" → "counts the seats taken per session (confirmed; live holds since phase 2b)" and "… with course and confirmed count" → "… with course and seats taken".
      - `tests/db/demo-data.test.ts`: `seatState(s, s.confirmed)` → `seatState(s, s.taken)`.
+     - `tests/db/seed.test.ts` (the seed's upcoming sessions): `expect(sessions.every((s) => s.confirmed === 0)).toBe(true);` → `expect(sessions.every((s) => s.taken === 0)).toBe(true);` (with `.confirmed` gone the old line compares `undefined` and fails).
 
-- [ ] **Step 11: Run** `npx vitest run tests/unit/domain.test.ts tests/db/seats.test.ts tests/db/queries.test.ts tests/db/demo-data.test.ts tests/db/admin-content.test.ts tests/db/actions.test.ts` — expect PASS.
+- [ ] **Step 11: Run** `npx vitest run tests/unit/domain.test.ts tests/db/seats.test.ts tests/db/queries.test.ts tests/db/demo-data.test.ts tests/db/seed.test.ts tests/db/admin-content.test.ts tests/db/actions.test.ts` — expect PASS.
 
 - [ ] **Step 12: Migration 0007 everywhere the texts said 0006** (the drop of `courses.modules`).
   - **`app/drizzle/0003_lessons.sql`.** In the data step's comment, `(migration 0006 drops it after the 3a deploy)` → `(migration 0007 drops it after the 3a deploy)`. The comment only: drizzle's migrator compares the journal's time stamps, not the file's text.
@@ -606,7 +608,7 @@ Spec sections 4, 7.1, 7.2, 7.3 and 12 (unit, docs payloads, the mock). Nothing c
 - **The mock is a fake Montonio server, not a second provider class.** `PAYMENT_PROVIDER=mock` only points the real client at `MONTONIO_FAKE_URL` (the e2e run's `tests/e2e/fake-montonio.ts`, like the fake Bunny), so the e2e run exercises the real signing, the real order request and the real token check. It is refused on Vercel, refused in a production build without `PAYMENT_MOCK_IN_PRODUCTION=1`, and any other `PAYMENT_PROVIDER` value turns payments off: there is no silent fallback to it (Rempire's audit C1).
 
 **Files:**
-- Modify: `app/src/server/env.ts`
+- Modify: `app/src/server/env.ts`, `app/.env.example` (the six names as comments: `tests/unit/env.test.ts` ".env.example documents every variable serverEnv() reads")
 - Create: `app/src/server/payments/jwt.ts`, `app/src/server/payments/montonio.ts`
 - Create: `app/tests/e2e/montonio-values.ts`, `app/tests/e2e/fake-montonio.ts`
 - Modify: `app/tests/e2e/server.ts`, `app/tests/local-secrets.ts`, `app/tests/e2e/prod-build.ts`
@@ -828,6 +830,23 @@ describe("paymentsEnv (phase 2b)", () => {
 });
 ```
 
+  5. **`app/.env.example`.** The existing test ".env.example documents every variable serverEnv() reads, the optional ones as comments" (`tests/unit/env.test.ts`) reads `Object.keys(serverEnv({}, false))`, which now holds the six names: without them in the example it fails. After the `# PREVIEW_SECRET=` line, append (comments only, no value: the example stays a complete production configuration without payments):
+
+```
+# Online payments (phase 2b, docs/deploy.md section 11): Maria's Montonio store. Both keys or none: without them there are no online
+# payments and the site behaves as before. MONTONIO_ENV: only the exact "live" is Montonio's production, anything else its sandbox.
+# For trying payments under `next dev`, the SANDBOX keys go in .env.local (git-ignored); the e2e run overrides them with its fake's.
+# The secret key is sensitive: Vercel or .env.local only, never in a tracked file
+# MONTONIO_ENV=
+# MONTONIO_ACCESS_KEY=
+# MONTONIO_SECRET_KEY=
+# the e2e run's fake Montonio (tests/local-secrets.ts and tests/e2e/prod-build.ts set them for the servers it starts): "mock" points the
+# payments at MONTONIO_FAKE_URL; refused on Vercel, and in a production build without PAYMENT_MOCK_IN_PRODUCTION=1. Never on Vercel
+# PAYMENT_PROVIDER=
+# MONTONIO_FAKE_URL=
+# PAYMENT_MOCK_IN_PRODUCTION=
+```
+
 - [ ] **Step 6: Write the failing client tests** `tests/unit/montonio.test.ts`:
 
 ```ts
@@ -892,9 +911,9 @@ describe("the status map (spec 7.3) and euro↔cent", () => {
     for (const s of ["REFUNDED", "PARTIALLY_REFUNDED"]) expect(mapMontonioStatus(s), s).toBe("refunded");
   });
 
-  test("cents ↔ euros: a number or GET /orders' string; anything else is no amount", () => {
-    expect([toCents(175), toCents(175.5), toCents(99.99), toCents("100.00"), toCents("0.10"), toCents(0)]).toEqual([17500, 17550, 9999, 10000, 10, 0]);
-    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY, "", "1,50", "abc", "1.234", null, undefined, {}]) expect(toCents(bad), String(bad)).toBeNull();
+  test("cents ↔ euros: a number or GET /orders' string; anything else is no amount, a third decimal included (exact in cents, spec 7.4)", () => {
+    expect([toCents(175), toCents(175.5), toCents(99.99), toCents(175.01), toCents("100.00"), toCents("0.10"), toCents(0)]).toEqual([17500, 17550, 9999, 17501, 10000, 10, 0]);
+    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY, "", "1,50", "abc", "1.234", 175.504, 174.999, 0.001, null, undefined, {}]) expect(toCents(bad), String(bad)).toBeNull();
     expect([toEuros(17500), toEuros(17550), toEuros(9999), toEuros(1)]).toEqual([175, 175.5, 99.99, 0.01]);
   });
 });
@@ -1052,10 +1071,16 @@ export function mapMontonioStatus(raw: unknown): MontonioStatus {
   }
 }
 
-/** Euros as Montonio writes them — a number (99.99) or, in GET /orders, a string ("100.00") — in cents; null when it is no amount. */
+/**
+ * Euros as Montonio writes them — a number (99.99) or, in GET /orders, a string ("100.00") — in cents; null when it is no amount. Exact: a
+ * number with a third decimal (175.504) is no amount either, never rounded into one that would pass the check (spec 7.4: exact in cents).
+ */
 export function toCents(euros: unknown): number | null {
   const n = typeof euros === "number" ? euros : typeof euros === "string" && /^\d+(\.\d{1,2})?$/.test(euros.trim()) ? Number(euros) : Number.NaN;
-  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
+  if (!Number.isFinite(n) || n < 0) return null;
+  const cents = Math.round(n * 100);
+  // 99.99 * 100 is 9998.999…: a float's own error is far below a millionth of a cent; a third decimal is not
+  return Math.abs(n * 100 - cents) < 1e-6 ? cents : null;
 }
 
 /** Cents as the euros Montonio takes: a number with at most two decimals (17550 → 175.5). */
@@ -1746,7 +1771,7 @@ test("it refuses what Montonio refuses (another store's key) and what spec 4 for
 - [ ] **Step 14: Commit.**
 
 ```bash
-git add app/src/server/env.ts app/src/server/payments app/tests/e2e/montonio-values.ts app/tests/e2e/fake-montonio.ts app/tests/e2e/server.ts app/tests/local-secrets.ts app/tests/e2e/prod-build.ts app/tests/unit
+git add app/src/server/env.ts app/.env.example app/src/server/payments app/tests/e2e/montonio-values.ts app/tests/e2e/fake-montonio.ts app/tests/e2e/server.ts app/tests/local-secrets.ts app/tests/e2e/prod-build.ts app/tests/unit
 git commit -m "feat(payments): Montonio client — HS256, orders, the order token, the status map; the e2e run's fake Montonio (test-only mock)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -1765,7 +1790,7 @@ Spec sections 6.2 (registrations; the e-course's part is Task 7), 6.2.4–6.2.6,
 - **refunded** → `refunded` and an alert; `paidCents`, the status and access stay.
 - **pending** → nothing.
 
-**A token in doubt** (another `accessKey` or none, a `uuid` that is not the row's, or expired beyond the tolerance) is confirmed with `GET /orders/:uuid` and Montonio's answer is used (Rempire's `token-guard`, without its journal); no answer → `unconfirmed` → the webhook answers 503 and Montonio retries.
+**A token in doubt** (another `accessKey` or none, a `uuid` that is not the row's, or expired beyond the tolerance) is confirmed with `GET /orders/:uuid` about **the order the token names** (the row's own order when the token names none), and Montonio's answer is used (Rempire's `token-guard`, without its journal); no answer → `unconfirmed` → the webhook answers 503 and Montonio retries. **An order the row has since replaced** (Task 4: a retry while the attempt is open re-sends the same `merchantReference`, and Montonio may answer a new uuid, which the row then carries) moves the row only with money: its PAID settles it (the amount checked, and the row then carries that order's uuid, the one Maria finds in Montonio), its ABANDONED or any other failure changes nothing (the row follows its newer order; its hold stays). This is the pre-flight's double-payment fix, read against spec 7.4: "accept tokens for either uuid", confirmed with Montonio.
 
 **Releasing a hold on a failure** (resolved here, not in the spec's words): D2's hold is "30 minutes from Registreeru, then freed". A payment that has definitely failed (ABANDONED, or an order Montonio refused) frees it at once: the seat is not held for a payment that cannot come any more.
 
@@ -2721,13 +2746,32 @@ describe("a token in doubt is asked about (spec 7.4)", () => {
     expect(await settleToken(deps, token)).toMatchObject({ kind: "done", payment: { status: "paid", bank: "Swedbank" } });
   });
 
-  test("a token with another uuid, or none: Montonio is asked about the row's own order; its ABANDONED fails the payment", async () => {
+  test("a token of another order: that order is asked about, and one of another reference changes nothing; a token naming no order: the row's own is asked about, and its ABANDONED fails the payment", async () => {
     const m = stubMontonio();
     const p = await pendingPayment(db, await registrationOn(db, await contactCourse(db)));
+    m.state.snapshots.set("someone-elses-uuid", snapshot("someone-elses-uuid", "MSLAB-M999", "PAID"));
     m.state.snapshots.set(p.providerUuid!, snapshot(p.providerUuid!, p.reference, "ABANDONED"));
     const { deps } = settleDeps(db, m.montonio, NOW);
-    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { uuid: "someone-elses-uuid" })))).toMatchObject({ payment: { status: "failed" } });
-    expect(m.state.gets).toEqual([p.providerUuid]);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { uuid: "someone-elses-uuid" })))).toMatchObject({ kind: "done", payment: { status: "pending" } });
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { uuid: undefined })))).toMatchObject({ kind: "done", payment: { status: "failed" } });
+    expect(m.state.gets).toEqual(["someone-elses-uuid", p.providerUuid]);
+  });
+
+  test("an order the payment has since replaced (a retry re-sent its reference, Task 4): its ABANDONED changes nothing, the hold stays; its PAID settles it under that order's uuid", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { seatHoldUntil: new Date(NOW.getTime() + 10 * MIN) });
+    const p = await pendingPayment(db, r); // its first order: p.providerUuid
+    await db.update(payments).set({ providerUuid: "uuid-resent" }).where(eq(payments.id, p.id)); // the retry's re-sent order
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    m.state.snapshots.set(p.providerUuid!, snapshot(p.providerUuid!, p.reference, "ABANDONED"));
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { paymentStatus: "ABANDONED" })))).toMatchObject({ kind: "done", payment: { status: "pending", providerUuid: "uuid-resent" } });
+    expect((await registration(r.id)).seatHoldUntil).not.toBeNull();
+    // paid at the first order's bank page in the moment before the retry replaced it: the money counts, once
+    m.state.snapshots.set(p.providerUuid!, snapshot(p.providerUuid!, p.reference, "PAID"));
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)))).toMatchObject({ kind: "done", payment: { status: "paid", providerUuid: p.providerUuid } });
+    expect(m.state.gets).toEqual([p.providerUuid, p.providerUuid]);
+    await flush();
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 17500]);
   });
 
   test("a token expired beyond the tolerance (a late retry) is asked about; an order of another reference changes nothing", async () => {
@@ -2787,7 +2831,10 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken } from "./mont
 // - refunded: stored and alerted; paidCents, the status and access stay (Maria refunds in Montonio's dashboard and adjusts in the admin).
 // - pending: nothing.
 // A token in doubt — another accessKey or none, a uuid that is not the row's, or expired beyond the tolerance — is confirmed with
-// GET /orders/:uuid about the row's own order, and Montonio's answer is used; no answer: "unconfirmed" (the webhook's 503: Montonio retries).
+// GET /orders/:uuid about the order the token names (the row's own when it names none), and Montonio's answer is used; no answer:
+// "unconfirmed" (the webhook's 503: Montonio retries). That order may be one the row has since replaced: a retry while the attempt is open
+// re-sends its merchantReference (start.ts) and Montonio may answer a new uuid, which the row then carries. A replaced order moves the row
+// only with money (paid, and the row takes that order's uuid), never with its end: the row follows its newer order.
 // These mails follow real payments only: they are not counted in the daily caps, and a sample address is never mailed. Logs carry the payment
 // id and its status only.
 
@@ -2828,13 +2875,19 @@ export async function settleToken(deps: SettleDeps, token: OrderToken): Promise<
   const doubt = token.accessKey !== deps.montonio.accessKey || (row.providerUuid !== null && token.uuid !== row.providerUuid) || token.expired;
   // a pending token moves nothing, so there is nothing to ask about
   if (!doubt || token.status === "pending") return { kind: "done", payment: await settlePayment(deps, row, facts) };
-  const snapshot = await deps.montonio.fetchOrder(row.providerUuid ?? token.uuid);
+  // the order the token names (it may be one this row has replaced since: start.ts re-sends an open attempt); none named: the row's own
+  const snapshot = await deps.montonio.fetchOrder(token.uuid || row.providerUuid || "");
   if (!snapshot) {
     logNote(`[payments] payment ${row.id}: a token in doubt, and Montonio did not answer`);
     return { kind: "unconfirmed", payment: row };
   }
   if (snapshot.reference !== row.reference) {
     logNote(`[payments] payment ${row.id}: Montonio's order is not this payment's; nothing changes`);
+    return { kind: "done", payment: row };
+  }
+  // an order the row has replaced counts only with its money: its end (ABANDONED, …) is not the end of the row's newer order
+  if (row.providerUuid !== null && snapshot.uuid !== row.providerUuid && snapshot.status !== "paid") {
+    logNote(`[payments] payment ${row.id}: an order it has replaced says ${snapshot.status}; nothing changes`);
     return { kind: "done", payment: row };
   }
   return { kind: "done", payment: await settlePayment(deps, row, factsOf(snapshot, token.bank)) };
@@ -2860,9 +2913,10 @@ const current = async (deps: SettleDeps, row: Payment): Promise<Payment> => (awa
 async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
   if (facts.amountCents !== row.amountCents || facts.currency !== "EUR") return held(deps, row, facts);
   const won = await deps.db.transaction(async (tx): Promise<Won | null> => {
+    // the uuid of the order that was paid (it differs from the row's only when a retry had replaced that order: settleToken)
     const [payment] = await tx
       .update(payments)
-      .set({ status: "paid", paidAt: deps.now, updatedAt: deps.now, providerUuid: sql`coalesce(${payments.providerUuid}, ${facts.uuid || null})`, method: facts.method, bank: facts.bank })
+      .set({ status: "paid", paidAt: deps.now, updatedAt: deps.now, providerUuid: sql`coalesce(${facts.uuid || null}, ${payments.providerUuid})`, method: facts.method, bank: facts.bank })
       .where(and(eq(payments.id, row.id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt)))
       .returning();
     if (!payment) return null;
@@ -2893,7 +2947,7 @@ function outcomeOf(won: Won): Pick<PaymentNotice, "outcome" | "restCents"> {
 async function held(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
   const [payment] = await deps.db
     .update(payments)
-    .set({ status: "held", updatedAt: deps.now, providerUuid: sql`coalesce(${payments.providerUuid}, ${facts.uuid || null})`, method: facts.method, bank: facts.bank })
+    .set({ status: "held", updatedAt: deps.now, providerUuid: sql`coalesce(${facts.uuid || null}, ${payments.providerUuid})`, method: facts.method, bank: facts.bank })
     .where(and(eq(payments.id, row.id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt)))
     .returning();
   if (!payment) return current(deps, row);
@@ -3215,6 +3269,8 @@ Spec sections 6.1 (D1, D2, D6) and 7.2. `handleRegistration` runs as today and t
 
 **The one-button rule in the mail.** The confirmation mail had one button, "Ava minu konto". With "Maksa {summa}" as the pay section's button, "Ava minu konto" becomes a small text link under it (one primary button). A mail that carries a login code keeps its code and "Logi sisse" as today: that block is the login's own (see the owner's questions).
 
+**A retry re-sends an open attempt, never a second order (the pre-flight's double-payment fix; Global Constraints).** `startRegistrationPayment` first looks for the live attempt of what is due: a `pending` row of the same registration and kind with the same amount, whose order is younger than Montonio's 30-minute window (`updated_at` is its insert or its last re-send). When there is one, it is re-sent: its window starts again (`updated_at` = now, and a prepayment's hold is refreshed as for a new one), `POST /orders` goes out again with the same `merchantReference` (Montonio overwrites the unpaid order and answers a new `paymentUrl`), and the row takes the uuid Montonio answers (a token of the replaced order is Task 3's doubt case). A re-send is no new attempt: it is not counted in `STARTS_PER_HOUR` (the per-IP limit of the page and the API still counts it). Only without a live attempt, or for another amount or kind, is a new row made. When the re-send fails, the row fails as a new one would (`failPayment`; a late PAID of it still settles: paid is reachable from failed). Task 7 does the same for an e-course: the same course and address.
+
 **Rule of the amount due (`domain/payments.ts amountDue`, spec 6.3).** Not confirmed: `prepaymentDue − paidCents`, while the session has not begun. Confirmed: `price − paidCents` (the rest), until the training day (the start of its day in Tallinn, D5: paying on the day is Maria's, by hand). Cancelled, a cancelled session, no price or no session (an individual registration, §11): nothing.
 
 **Files:**
@@ -3226,13 +3282,14 @@ Spec sections 6.1 (D1, D2, D6) and 7.2. `handleRegistration` runs as today and t
 - E2E: `app/tests/e2e/fixtures.ts` (the payment rows of the test addresses), `app/tests/e2e/course.spec.ts`, `app/tests/e2e/cache.spec.ts`
 
 **Interfaces:**
-- Consumes: `holdUntil` (Task 1); `hasFreeSeat` (Task 1); `insertPayment`, `attachOrder`, `failPayment` (Task 3); `Montonio`, `MontonioError` (Task 2); `payment.pay`, `payment.transfer` (Task 3's dictionary).
+- Consumes: `holdUntil`, `SEAT_HOLD_MS` (Task 1); `hasFreeSeat` (Task 1); `insertPayment`, `attachOrder`, `failPayment` (Task 3); `Montonio`, `MontonioError` (Task 2); `payment.pay`, `payment.transfer` (Task 3's dictionary).
 - Produces, from `src/domain/payments.ts`: `type DueInput = { status: RegStatus; paymentChoice: "full" | "half"; priceCents: number | null; paidCents: number; startsAt: Date | null; sessionCancelled: boolean }`; `type Due = { kind: "prepayment" | "balance"; cents: number } | { kind: "none" }`; `amountDue(r: DueInput, now: Date): Due`.
 - Produces, from `src/server/payments/start.ts`:
   - `type StartDeps = { db: Db; now: Date; siteUrl: string; montonio: Montonio | null }`;
   - `type StartResult = { kind: "started"; paymentUrl: string } | { kind: "off" } | { kind: "failed" } | { kind: "nothing" } | { kind: "full" } | { kind: "rate" } | { kind: "notFound" }`;
   - `STARTS_PER_HOUR = 5`; `paymentUrls(siteUrl: string): { returnUrl: string; notificationUrl: string }`;
-  - `startRegistrationPayment(deps: StartDeps, target: { registrationId: number; clientId?: number } | { payToken: string }): Promise<StartResult>`.
+  - `startRegistrationPayment(deps: StartDeps, target: { registrationId: number; clientId?: number } | { payToken: string }): Promise<StartResult>`;
+  - private to the file (Task 7 uses them): `liveAttempt(q: Q, of: { registrationId: number; kind: "prepayment" | "balance" } | { courseId: number; email: string }, amountCents: number, now: Date): Promise<Payment | null>` and `order(deps, payment, again = false)` (`again`: a re-send of a live attempt).
 - Produces, from `src/server/submit.ts`: `ActionResult = { ok: true; paymentUrl?: string } | { ok: false; errors: Record<string, string> }`; `Deps.montonio?: Montonio | null`.
 - Produces, from `src/server/account-mail.ts`: `payLinkUrl(siteUrl: string, payToken: string): string`; `RegistrationConfirmationInput.payLink?: string | null`.
 - Produces, from `src/lib/navigate.ts`: `navigate(url: string): void` (a full page load to Montonio's page; the DOM tests mock it).
@@ -3613,14 +3670,46 @@ describe("startRegistrationPayment's checks", () => {
     expect((await db.select().from(registrations).where(eq(registrations.id, confirmed.id)))[0].seatHoldUntil).toBeNull();
   });
 
-  test(`at most ${STARTS_PER_HOUR} starts a registration an hour; an hour later again`, async () => {
+  test(`at most ${STARTS_PER_HOUR} new attempts a registration an hour; an hour later again`, async () => {
     const m = stubMontonio();
     const r = await registrationOn(db, await contactCourse(db));
-    for (let i = 0; i < STARTS_PER_HOUR; i++) expect(await start(m.montonio, { payToken: r.payToken })).toMatchObject({ kind: "started" });
+    // each attempt ends unpaid before the next (Montonio's ABANDONED), so the next start is a new attempt, not a re-send of an open one
+    const abandon = () => db.update(payments).set({ status: "failed" }).where(eq(payments.status, "pending"));
+    for (let i = 0; i < STARTS_PER_HOUR; i++) {
+      expect(await start(m.montonio, { payToken: r.payToken })).toMatchObject({ kind: "started" });
+      await abandon();
+    }
     expect(await start(m.montonio, { payToken: r.payToken })).toEqual({ kind: "rate" });
     expect(await start(m.montonio, { payToken: r.payToken }, new Date(NOW.getTime() + 61 * MIN))).toMatchObject({ kind: "started" });
-    // every start is a new order with a new reference
+    // every new attempt is a new order with a new reference
     expect(new Set(m.state.orders.map((o) => o.merchantReference)).size).toBe(STARTS_PER_HOUR + 1);
+  });
+
+  test("a retry while the attempt is open re-sends it — the same row and reference, Montonio's new uuid, the hold refreshed — never a second order to pay; after its window, or for another amount, a new attempt (the double-payment fix)", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db));
+    const ordered = () => db.select().from(payments).orderBy(payments.id);
+    expect(await start(m.montonio, { payToken: r.payToken })).toMatchObject({ kind: "started" });
+    const [first] = await ordered();
+    // "Proovi uuesti" 20 minutes on, the first order still open: re-sent, not doubled (and not counted as a new attempt)
+    const later = new Date(NOW.getTime() + 20 * MIN);
+    for (let i = 0; i < STARTS_PER_HOUR + 1; i++) expect(await start(m.montonio, { payToken: r.payToken }, later)).toMatchObject({ kind: "started" });
+    const [again, ...none] = await ordered();
+    expect(none).toEqual([]);
+    expect([again.id, again.reference, again.status, again.updatedAt]).toEqual([first.id, first.reference, "pending", later]);
+    expect(again.providerUuid).not.toBe(first.providerUuid); // the stub answers every POST with a new uuid: the row follows the newest
+    expect(new Set(m.state.orders.map((o) => o.merchantReference))).toEqual(new Set([first.reference]));
+    expect((await reg()).seatHoldUntil).toEqual(new Date(later.getTime() + 30 * MIN));
+    // 31 minutes after the last re-send its window is over: a new attempt with a new reference
+    expect(await start(m.montonio, { payToken: r.payToken }, new Date(later.getTime() + 31 * MIN))).toMatchObject({ kind: "started" });
+    // another amount (Maria recorded a transfer meanwhile): a new attempt too, even with an open one
+    await db.update(registrations).set({ paidCents: 5000 }).where(eq(registrations.id, r.id));
+    expect(await start(m.montonio, { payToken: r.payToken }, new Date(later.getTime() + 32 * MIN))).toMatchObject({ kind: "started" });
+    expect((await ordered()).map((p) => [p.reference, p.amountCents])).toEqual([
+      [first.reference, 17500],
+      [`MSLAB-M${first.id + 1}`, 17500],
+      [`MSLAB-M${first.id + 2}`, 12500],
+    ]);
   });
 });
 ```
@@ -3630,20 +3719,23 @@ describe("startRegistrationPayment's checks", () => {
 - [ ] **Step 11: Write `src/server/payments/start.ts`:**
 
 ```ts
-import { and, count, eq, gt } from "drizzle-orm";
-import type { Db } from "@/db/client";
+import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
+import type { Db, Q } from "@/db/client";
 import { attachOrder, failPayment, insertPayment } from "@/db/queries/payments";
 import { hasFreeSeat } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
 import { amountDue } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
-import { holdUntil } from "@/domain/sessions";
+import { holdUntil, SEAT_HOLD_MS } from "@/domain/sessions";
 import { logNote } from "../log";
 import { MontonioError, type Montonio } from "./montonio";
 
-// Every way an online payment starts (phase 2b, spec 6.1, 6.3, 6.4): a pending payment row (a new MSLAB-M<id> each time), then Montonio's
-// order outside any transaction (a 15 s call must not hold a row lock), then the page to send the payer to. When Montonio says no or cannot
-// be reached, the row is failed and a prepayment's hold ends (db/queries/payments.ts failPayment): nothing breaks, the registration stands.
+// Every way an online payment starts (phase 2b, spec 6.1, 6.3, 6.4): a pending payment row (a new MSLAB-M<id> for each new attempt), then
+// Montonio's order outside any transaction (a 15 s call must not hold a row lock), then the page to send the payer to. When Montonio says no
+// or cannot be reached, the row is failed and a prepayment's hold ends (db/queries/payments.ts failPayment): nothing breaks, the registration
+// stands. A start while the same attempt is still open (the same registration and kind, or the same e-course and address, the same amount,
+// its order inside Montonio's 30-minute window) re-sends that attempt instead of making a second order (the double-payment rule): POST /orders
+// with the same merchantReference overwrites the unpaid order at Montonio (spec 4), so the payer never has two orders open to pay.
 
 export type StartDeps = { db: Db; now: Date; siteUrl: string; montonio: Montonio | null };
 
@@ -3661,7 +3753,10 @@ export type StartResult =
   | { kind: "rate" }
   | { kind: "notFound" };
 
-/** Payment starts of one registration per hour (spec 10): each one is an order at Montonio and, for a prepayment, a seat hold. */
+/**
+ * New payment attempts of one registration per hour (spec 10): each one is an order at Montonio and, for a prepayment, a seat hold. A re-send
+ * of the open attempt is not a new one (no new row, no second order): the per-IP limit of the /maksa page and the account API counts it.
+ */
 export const STARTS_PER_HOUR = 5;
 
 /** Montonio's way back: the return (Task 6) and the webhook, on the site's address. */
@@ -3670,12 +3765,42 @@ export function paymentUrls(siteUrl: string): { returnUrl: string; notificationU
   return { returnUrl: `${base}/api/payments/return`, notificationUrl: `${base}/api/payments/notify` };
 }
 
-/** Montonio's order for a stored pending row; the row fails (and its hold ends) when there is none. */
-async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment): Promise<StartResult> {
+/**
+ * The open attempt of what is being paid now (the double-payment rule): the newest `pending` row of the same registration and kind — or the
+ * same e-course and address — with this amount, whose order is still inside Montonio's 30-minute window (SEAT_HOLD_MS; `updated_at` is the
+ * row's insert or its last re-send: nothing else touches a pending row). null: there is none, and the start is a new attempt.
+ */
+async function liveAttempt(
+  q: Q,
+  of: { registrationId: number; kind: "prepayment" | "balance" } | { courseId: number; email: string },
+  amountCents: number,
+  now: Date,
+): Promise<Payment | null> {
+  const which =
+    "registrationId" in of
+      ? and(eq(payments.registrationId, of.registrationId), eq(payments.kind, of.kind))
+      : and(eq(payments.kind, "ecourse"), isNull(payments.registrationId), eq(payments.courseId, of.courseId), eq(payments.email, of.email));
+  const [row] = await q
+    .select()
+    .from(payments)
+    .where(and(which, eq(payments.status, "pending"), eq(payments.amountCents, amountCents), gt(payments.updatedAt, new Date(now.getTime() - SEAT_HOLD_MS))))
+    .orderBy(desc(payments.id))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Montonio's order for a stored pending row; the row fails (and its hold ends) when there is none. `again`: the row is an open attempt sent
+ * again (same reference): Montonio overwrites the unpaid order and may answer a new uuid, which the row takes (only while it is pending; a
+ * token of the replaced order is settle.ts's doubt case).
+ */
+async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment, again = false): Promise<StartResult> {
   try {
     const created = await deps.montonio.createOrder({ reference: payment.reference, amountCents: payment.amountCents, locale: payment.locale, ...paymentUrls(deps.siteUrl) });
-    await attachOrder(deps.db, payment.id, created.uuid, deps.now);
-    console.info(`[payments] payment ${payment.id}: started`);
+    if (again)
+      await deps.db.update(payments).set({ providerUuid: created.uuid, updatedAt: deps.now }).where(and(eq(payments.id, payment.id), eq(payments.status, "pending")));
+    else await attachOrder(deps.db, payment.id, created.uuid, deps.now);
+    console.info(`[payments] payment ${payment.id}: ${again ? "sent again" : "started"}`);
     return { kind: "started", paymentUrl: created.paymentUrl };
   } catch (e) {
     logNote(`[payments] payment ${payment.id}: no order (${e instanceof MontonioError ? `${e.code}${e.detail ? `: ${e.detail}` : ""}` : "error"})`);
@@ -3687,7 +3812,8 @@ async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment)
 /**
  * Starts the online payment of a registration (spec 6.1 "Registreeru", 6.3 /maksa and Minu koolitused): what is due now (domain/payments.ts
  * amountDue: the prepayment, or the rest after it), checked under the registration's lock. A prepayment needs a free seat — the others'
- * seats counted, confirmed or held, hers not — and holds it for 30 minutes from now (D2); the rest needs none and holds nothing. `target`:
+ * seats counted, confirmed or held, hers not — and holds it for 30 minutes from now (D2); the rest needs none and holds nothing. The open
+ * attempt of the same amount, when there is one, is sent again instead of a new one (liveAttempt; not counted in STARTS_PER_HOUR). `target`:
  * the registration (with `clientId`: only when it is that client's) or its "Maksa" token.
  */
 export async function startRegistrationPayment(deps: StartDeps, target: { registrationId: number; clientId?: number } | { payToken: string }): Promise<StartResult> {
@@ -3697,7 +3823,7 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
     "payToken" in target
       ? eq(registrations.payToken, target.payToken)
       : and(eq(registrations.id, target.registrationId), target.clientId === undefined ? undefined : eq(registrations.clientId, target.clientId));
-  const ready = await deps.db.transaction(async (tx): Promise<StartResult | { kind: "ready"; payment: Payment }> => {
+  const ready = await deps.db.transaction(async (tx): Promise<StartResult | { kind: "ready"; payment: Payment; again: boolean }> => {
     const [row] = await tx
       .select({ registration: registrations, course: courses, session: courseSessions })
       .from(registrations)
@@ -3712,24 +3838,33 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
       deps.now,
     );
     if (due.kind === "none") return { kind: "nothing" };
-    const [{ n }] = await tx
-      .select({ n: count() })
-      .from(payments)
-      .where(and(eq(payments.registrationId, r.id), gt(payments.createdAt, new Date(deps.now.getTime() - 60 * 60_000))));
-    if (Number(n) >= STARTS_PER_HOUR) return { kind: "rate" };
+    // the open attempt of this amount is sent again, not doubled; it is no new attempt, so it is not counted here
+    const live = await liveAttempt(tx, { registrationId: r.id, kind: due.kind }, due.cents, deps.now);
+    if (!live) {
+      const [{ n }] = await tx
+        .select({ n: count() })
+        .from(payments)
+        .where(and(eq(payments.registrationId, r.id), gt(payments.createdAt, new Date(deps.now.getTime() - 60 * 60_000))));
+      if (Number(n) >= STARTS_PER_HOUR) return { kind: "rate" };
+    }
     if (due.kind === "prepayment") {
       if (session && !(await hasFreeSeat(tx, session, deps.now, r.id))) return { kind: "full" };
       await tx.update(registrations).set({ seatHoldUntil: holdUntil(deps.now) }).where(eq(registrations.id, r.id));
+    }
+    if (live) {
+      // its window starts again now (and a start at the same moment, waiting for this row lock, finds it open)
+      await tx.update(payments).set({ updatedAt: deps.now }).where(eq(payments.id, live.id));
+      return { kind: "ready", payment: { ...live, updatedAt: deps.now }, again: true };
     }
     const payment = await insertPayment(
       tx,
       { kind: due.kind, registrationId: r.id, courseId: course.id, clientId: r.clientId, email: r.email, name: r.name, locale: r.locale === "ru" ? "ru" : "et", amountCents: due.cents },
       deps.now,
     );
-    return { kind: "ready", payment };
+    return { kind: "ready", payment, again: false };
   });
   if (ready.kind !== "ready") return ready;
-  return order({ ...deps, montonio }, ready.payment);
+  return order({ ...deps, montonio }, ready.payment, ready.again);
 }
 ```
 
@@ -3993,7 +4128,9 @@ describe("POST: the button", () => {
   test("cross-site: 403, nothing started", async () => {
     const m = stubMontonio();
     const r = await registrationOn(db, await contactCourse(db));
-    for (const headers of [{ origin: "https://elsewhere.example" }, { origin: "null" }, { origin: "https://elsewhere.example", "sec-fetch-site": "same-origin" }])
+    // (typed: the literals' union has an optional "sec-fetch-site" that tsc will not pass as Record<string, string>)
+    const crossSite: Record<string, string>[] = [{ origin: "https://elsewhere.example" }, { origin: "null" }, { origin: "https://elsewhere.example", "sec-fetch-site": "same-origin" }];
+    for (const headers of crossSite)
       expect((await handlePayPage(post(r.payToken, headers), r.payToken, deps(m.montonio))).status, JSON.stringify(headers)).toBe(403);
     expect(await db.select().from(payments)).toEqual([]);
   });
@@ -4033,7 +4170,11 @@ describe("POST: the button", () => {
     const limited = await handlePayPage(post(sixth.payToken), sixth.payToken, deps(m.montonio, { kv }));
     expect(limited.status).toBe(429);
     expect(await text(limited)).toContain("Liiga palju katseid. Proovi mõne minuti pärast.");
-    for (let i = 0; i < STARTS_PER_HOUR; i++) await handlePayPage(post(sixth.payToken), sixth.payToken, deps(m.montonio, { ip: `198.51.100.${i}` }));
+    // five new attempts of one registration, each ended unpaid (Montonio's ABANDONED) before the next: an open one would only be re-sent (Task 4)
+    for (let i = 0; i < STARTS_PER_HOUR; i++) {
+      expect((await handlePayPage(post(sixth.payToken), sixth.payToken, deps(m.montonio, { ip: `198.51.100.${i}` }))).status).toBe(303);
+      await db.update(payments).set({ status: "failed" }).where(eq(payments.registrationId, sixth.id));
+    }
     expect((await handlePayPage(post(sixth.payToken), sixth.payToken, deps(m.montonio, { ip: "198.51.100.99" }))).status).toBe(429);
   });
 
@@ -5144,7 +5285,7 @@ test("'Maksa 175 €' goes to the bank; paid there, the place is confirmed and '
 - [ ] **Step 14: Run everything.**
   - `npx vitest run` — all green.
   - `npx tsc --noEmit`, then `npx eslint .`.
-  - `npx playwright test pay-page account-dashboard account-readonly headers` and `E2E_PROD_BUILD=1 npx playwright test pay-page account-dashboard`.
+  - `npx playwright test pay-page account-dashboard admin-clients headers` (`admin-clients`: the admin's read-only "view as the student", which renders the same cards without `payOnline`; there is no `account-readonly` e2e spec, only the unit test of step 12) and `E2E_PROD_BUILD=1 npx playwright test pay-page account-dashboard`.
   - `npx playwright test -c playwright.gate.config.ts`.
 
 - [ ] **Step 15: Commit.**
@@ -5163,7 +5304,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 Spec section 6.5 (and 10: the return and `/makse` stay behind the gate). Montonio's `returnUrl` is `/api/payments/return?order-token=…`. The route verifies the token, runs `settleToken` (racing the webhook is safe: Task 3's door) and answers 303 to `/{locale}/makse#tulemus=<makstud|pooleli|katkestatud>&liik=<registreering|ekoolitus>[&maksa=<pay_token>][&kursus=<slug>]`. The fragment never reaches a server or a cache; `/makse` is static and reads it in the browser. A token that fails verification: `/makse#tulemus=katkestatud`, never an error page.
 
 **Two readings made binding here:**
-- **"Proovi uuesti" on "pooleli" too.** Montonio returns with `PENDING` when the payer presses "cancel" at the bank (the order is still open until its window ends; Rempire's acceptance run landed exactly there with nothing to press). So the retry is offered on `katkestatud` and on a `pooleli` whose row is still `pending`; never on a `held` one (the money is at Montonio: a retry could charge her twice). For a registration the retry is `/maksa/<pay_token>`, for an e-course the cart.
+- **"Proovi uuesti" on "pooleli" too.** Montonio returns with `PENDING` when the payer presses "cancel" at the bank (the order is still open until its window ends; Rempire's acceptance run landed exactly there with nothing to press). So the retry is offered on `katkestatud` and on a `pooleli` whose row is still `pending`; never on a `held` one (the money is at Montonio: a retry could charge her twice). For a registration the retry is `/maksa/<pay_token>`, for an e-course the cart. A retry of a `pending` row inside its 30-minute window re-sends that same order (Task 4, the double-payment rule): it can never leave her two orders to pay.
 - **`kursus=<slug>` for an e-course** (the spec names only `maksa`): the page needs the course for "Ava e-koolitus" after a paid purchase and for the cart's retry. It is in the fragment only when one of the two is shown.
 
 **Files:**
@@ -5657,7 +5798,7 @@ Spec sections 6.4 (D3, D4), 6.2.3 and 6.2.4 (the e-course's mail).
 - E2E: `app/tests/e2e/course.spec.ts` (the cart), `app/tests/e2e/forms.spec.ts` (the rate-limit test moves to the contact form: the cart's interest form is gone while payments are on)
 
 **Interfaces:**
-- Consumes: `insertPayment` (Task 3); `order`'s pattern and `StartDeps`, `StartResult` (Task 4); `settlePayment`'s `paid` (Task 3); `navigate` (Task 4); `payment.pay`, `payment.starting`, `payment.mail.*` (Task 3); `addClient`, `grantAccess` (`server/admin-clients.ts`), `defaultExpiryDate` (`domain/client-access.ts`), `issueClientLogin` (`server/client-auth.ts`).
+- Consumes: `insertPayment` (Task 3); `order` (with `again`), `liveAttempt`, `StartDeps`, `StartResult` (Task 4, the same file); `settlePayment`'s `paid` (Task 3); `navigate` (Task 4); `payment.pay`, `payment.starting`, `payment.mail.*` (Task 3); `addClient`, `grantAccess` (`server/admin-clients.ts`), `defaultExpiryDate` (`domain/client-access.ts`), `issueClientLogin` (`server/client-auth.ts`).
 - Produces, from `src/server/forms.ts`: `ecoursePurchaseSchema`; `parseEcoursePurchase(fd: FormData): Parsed<{ course: string; name: string; email: string; terms: "on"; wantsNewsletter: boolean; locale: "et" | "ru" }>`.
 - Produces, from `src/server/submit.ts`: `FormName` gains `"ecourse"`; `handleEcoursePurchase(deps: Deps, formData: FormData): Promise<ActionResult>`; `subscribeLater` is exported: `subscribeLater(deps: Deps, form: FormName, wish: { email: string; locale: "et" | "ru" }): Promise<void>`.
 - Produces, from `src/server/actions/public.ts`: `buyEcourse(formData: FormData): Promise<ActionResult>`.
@@ -5769,6 +5910,18 @@ describe("the purchase (before the payment)", () => {
     expect(await handleEcoursePurchase(formDeps(m.montonio), form())).toEqual({ ok: false, errors: { form: "unavailable" } });
     expect((await db.select().from(payments)).map((p) => p.status)).toEqual(["failed"]);
   });
+
+  test("'Maksa' again while the purchase's order is open re-sends it: one row, one reference, the latest name and box; another address is another purchase (the double-payment fix)", async () => {
+    const m = stubMontonio();
+    expect(await handleEcoursePurchase(formDeps(m.montonio), form())).toMatchObject({ ok: true });
+    expect(await handleEcoursePurchase(formDeps(m.montonio), form({ name: "Kati Kask", newsletter: "on" }))).toMatchObject({ ok: true });
+    const [p, ...none] = await db.select().from(payments);
+    expect(none).toEqual([]);
+    expect(p).toMatchObject({ status: "pending", name: "Kati Kask", newsletter: true, amountCents: 19000 });
+    expect(m.state.orders.map((o) => o.merchantReference)).toEqual([p.reference, p.reference]);
+    expect(await handleEcoursePurchase(formDeps(m.montonio), form({ email: "mari@example.com" }))).toMatchObject({ ok: true });
+    expect(await db.select().from(payments)).toHaveLength(2);
+  });
 });
 
 describe("paid", () => {
@@ -5856,6 +6009,8 @@ export const parseEcoursePurchase = (fd: FormData) =>
 /**
  * Starts an e-course purchase (spec 6.4): a pending `ecourse` row of the course's price, with the payer as entered and her newsletter wish
  * (acted on when it is paid), and Montonio's order. No account and no access before the payment: an abandoned purchase leaves only this row.
+ * The same purchase pressed again while its order is open (the same course, address and price: liveAttempt) is sent again with the latest
+ * name, language and newsletter box, never a second order (the double-payment rule).
  */
 export async function startEcoursePayment(
   deps: StartDeps,
@@ -5863,6 +6018,12 @@ export async function startEcoursePayment(
 ): Promise<StartResult> {
   const montonio = deps.montonio;
   if (!montonio) return { kind: "off" };
+  const live = await liveAttempt(deps.db, { courseId: input.courseId, email: input.email }, input.amountCents, deps.now);
+  if (live) {
+    const fresh = { name: input.name, locale: input.locale, newsletter: input.newsletter, updatedAt: deps.now };
+    await deps.db.update(payments).set(fresh).where(and(eq(payments.id, live.id), eq(payments.status, "pending")));
+    return order({ ...deps, montonio }, { ...live, ...fresh }, true);
+  }
   const payment = await insertPayment(
     deps.db,
     { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email: input.email, name: input.name, locale: input.locale, amountCents: input.amountCents, newsletter: input.newsletter },
@@ -6128,7 +6289,8 @@ afterEach(async () => {
 
 test("the markup: a POST form with name, e-mail, the terms box and its link, the newsletter box (unticked), the course, the honeypot and 'Maksa 190 €'", () => {
   const html = renderToStaticMarkup(createElement(EcoursePurchase, props));
-  expect(html).toMatch(/<form\b[^>]*method="post"[^>]*data-ecourse-form/);
+  // either order of the two attributes (React 19 writes a form's `method` after the others)
+  expect(html).toMatch(/<form\b(?=[^>]*\bmethod="post")(?=[^>]*\bdata-ecourse-form="")[^>]*>/);
   for (const part of ['name="name"', 'name="email"', 'name="terms"', 'name="newsletter"', 'name="course" value="kulmumeistri-e-koolitus"', 'name="locale" value="et"', 'name="website"', 'href="/tingimused"', "Maksa 190 €"])
     expect(html).toContain(part);
   expect(html).not.toMatch(/name="newsletter"[^>]*checked/);
@@ -6693,7 +6855,7 @@ export async function checkPendingPayments(deps: SettleDeps, until: number, cloc
 - [ ] **Step 5: Run** `npx vitest run tests/db/payments-check.test.ts` — expect PASS.
 
 - [ ] **Step 6: The cron.**
-  1. **`tests/db/cron-sweep.test.ts`.** After `const NO_VIDEOS = …`, add `const NO_PAYMENTS = { paymentsChecked: 0, paymentsSettled: 0, paymentsExpired: 0, paymentsLeft: 0 };` and add `...NO_PAYMENTS` to every expected `{ ok: true, … ...NO_VIDEOS }` answer (four places). In `beforeEach`, add `for (const name of ["MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER"]) vi.stubEnv(name, "");` (no payments unless a test says so). Append inside `describe("GET /api/cron/sweep", …)`:
+  1. **`tests/db/cron-sweep.test.ts`.** After `const NO_VIDEOS = …`, add `const NO_PAYMENTS = { paymentsChecked: 0, paymentsSettled: 0, paymentsExpired: 0, paymentsLeft: 0 };` and add `...NO_PAYMENTS` to **every** expected answer compared with `toEqual` — nine of them today: the six that end in `...NO_VIDEOS` (the first two tests, twice each, and the last two tests) and the three that spell the video counts out (`uploads: 1, …`, `processingReady: 1, processingFailed: 1, …`, `uploads: 2, … videosLeft: 2`). The one `toMatchObject({ ok: true, uploads: 20, videosLeft: 2 })` stays as it is. (`grep -n "toEqual({ ok: true" tests/db/cron-sweep.test.ts` lists them; every one must end with the payment counts, or it fails on the four new fields.) In `beforeEach`, add `for (const name of ["MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER"]) vi.stubEnv(name, "");` (no payments unless a test says so). Append inside `describe("GET /api/cron/sweep", …)`:
 
 ```ts
   test("with payments set up the same call runs the daily check: a pending payment of 14 days is failed and counted (phase 2b)", async () => {
@@ -6714,10 +6876,13 @@ export async function checkPendingPayments(deps: SettleDeps, until: number, cloc
      - After `sweepVideos`, add:
 
 ```ts
-/** The payments' part (phase 2b, server/payments/check.ts): nothing without online payments. Mails of a payment it settles go after the response. */
-async function sweepPayments(db: Db, now: Date, until: number): Promise<PaymentSweep> {
+/**
+ * The payments' part (phase 2b, server/payments/check.ts): null without online payments (then no log line: the existing tests count the
+ * sweep's log lines, and a line of zeros would only be noise). Mails of a payment it settles go after the response.
+ */
+async function sweepPayments(db: Db, now: Date, until: number): Promise<PaymentSweep | null> {
   const montonio = paymentProvider();
-  if (!montonio) return NO_PAYMENT_SWEEP;
+  if (!montonio) return null;
   const env = { ...serverEnv(), KV: serverKv() };
   return checkPendingPayments(
     { db, env, now, siteUrl: env.SITE_URL, later: (task) => after(() => task().catch((e) => logFailure("[payments] background task failed", e))), changed: revalidatePublic, montonio },
@@ -6726,13 +6891,18 @@ async function sweepPayments(db: Db, now: Date, until: number): Promise<PaymentS
 }
 ```
 
-     - In `GET`, the `Promise.all` becomes `const [deleted, accounts, videos, paid] = await Promise.all([sweepExpired(db, now), sweepClientRows(db, now), sweepVideos(db, bunnyConfig(), now, until), sweepPayments(db, now, until)]);`; after the video log lines add:
+     - In `GET`, the `Promise.all` becomes `const [deleted, accounts, videos, checked] = await Promise.all([sweepExpired(db, now), sweepClientRows(db, now), sweepVideos(db, bunnyConfig(), now, until), sweepPayments(db, now, until)]);`; after the video log lines add:
 
 ```ts
-    console.info(
-      `[cron] sweep: payments ${paid.checked} checked at Montonio, ${paid.settled} settled, ${paid.unanswered} not answered, ${paid.expired} failed as stale, ${paid.left} left for the next run, ${paid.holdsEnded} seat holds ended`,
-    );
-    if (paid.outOfTime) console.info(`[cron] sweep: no new payment asked about after ${SWEEP_DEADLINE_MS / 1000} s`);
+    // the payments' line only with online payments set up: without them the existing log lines are all there is (tests/db/cron-sweep.test.ts
+    // counts them: toHaveBeenCalledTimes(1), the exact list of two), and the answer's payment counts are zeros
+    if (checked) {
+      console.info(
+        `[cron] sweep: payments ${checked.checked} checked at Montonio, ${checked.settled} settled, ${checked.unanswered} not answered, ${checked.expired} failed as stale, ${checked.left} left for the next run, ${checked.holdsEnded} seat holds ended`,
+      );
+      if (checked.outOfTime) console.info(`[cron] sweep: no new payment asked about after ${SWEEP_DEADLINE_MS / 1000} s`);
+    }
+    const paid = checked ?? NO_PAYMENT_SWEEP;
 ```
 
      - The answer gains the payment counts: `return json(200, { ok: true, deleted, ...accounts, uploads: videos.uploads, processingReady: videos.processingReady, processingFailed: videos.processingFailed, videosLeft: videos.left, paymentsChecked: paid.checked, paymentsSettled: paid.settled, paymentsExpired: paid.expired, paymentsLeft: paid.left });`
@@ -6765,7 +6935,7 @@ Spec section 8 (D7). Estonian only. Read-only: Maria refunds in Montonio's own d
 **Files:**
 - Modify: `app/src/domain/payments.ts` (`needsCheck`), `app/src/db/queries/payments.ts` (the lists), `app/src/i18n/dict/admin.ts`, `app/src/components/admin/sections.ts`, `app/src/components/admin/AdminIcon.tsx`, `app/src/app/admin/(panel)/registreerimised/page.tsx`, `registrations.module.css`, `app/src/server/admin-clients.ts`, `app/src/components/admin/ClientDrawer.tsx`
 - Create: `app/src/app/admin/(panel)/maksed/page.tsx`, `payments.module.css`, `app/src/components/admin/PaymentLines.tsx`, `PaymentLines.module.css`
-- Test: `app/tests/db/payments-admin.test.ts` (new); `app/tests/unit/admin.test.ts`, `app/tests/unit/admin-guards.test.ts`, `app/tests/e2e/admin-inbox.spec.ts` (the menu)
+- Test: `app/tests/db/payments-admin.test.ts` (new); `app/tests/unit/admin.test.ts`, `app/tests/unit/admin-guards.test.ts`, `app/tests/e2e/admin-inbox.spec.ts` (the menu); `app/tests/unit/colour-tokens.test.ts` (the two new CSS files)
 
 **Interfaces:**
 - Consumes: `payments`, `Payment`, `PaymentStatus`, `PaymentKind` (Task 1); `paged`, `Paged` (`db/queries/admin.ts`), `PAGE_SIZE` (`domain/paging.ts`).
@@ -6846,7 +7016,8 @@ test("'Kontrolli Montonios': held, and failed after it was paid (voided); not a 
   2. **`tests/unit/admin.test.ts`.** In "the sections in Maria's order …", insert `"Maksed",` after `"Registreerimised",`.
   3. **`tests/unit/admin-guards.test.ts`.** In the first test's page list, add `"maksed"` after `"registreerimised"`.
   4. **`tests/e2e/admin-inbox.spec.ts`.** In `MENU`, insert `"Maksed"` after `"Registreerimised"`.
-  5. Run `npx vitest run tests/db/payments-admin.test.ts tests/unit/admin.test.ts` — FAIL.
+  5. **`tests/unit/colour-tokens.test.ts`.** The list holds the admin's own CSS files too (ClientDrawer, list-table, registrations, clients); after `"src/app/admin/(panel)/opilased/[id]/vaade/view.module.css",` add `// the admin's Maksed (phase 2b)` and `"src/components/admin/PaymentLines.module.css",`, `"src/app/admin/(panel)/maksed/payments.module.css",` (both use the tokens only: `var(--muted-2)`, `var(--bad)` in a `color-mix`, `var(--font-mono)`).
+  6. Run `npx vitest run tests/db/payments-admin.test.ts tests/unit/admin.test.ts` — FAIL.
 
 - [ ] **Step 2: The rule and the lists.**
   1. **`src/domain/payments.ts`.** Add `import type { PaymentStatus } from "@/db/schema";` and append:
@@ -7533,7 +7704,7 @@ Students pay through Maria's Montonio store (phase 2b, spec `docs/superpowers/sp
 
 1. **Keys.** Partner System → Stores → (the store) → API Keys: the access key and the secret key, separately for the sandbox and for production. Set `MONTONIO_ENV`, `MONTONIO_ACCESS_KEY` and `MONTONIO_SECRET_KEY` in Production as plain variables (`vercel env add <NAME> production --no-sensitive --force`; the CLI asks for the value, it is never typed into a file), then redeploy. `vercel env ls production` lists the names without values.
 2. **Nothing to set in Montonio for the way back.** Every order carries its own `returnUrl` (`/api/payments/return`) and `notificationUrl` (`/api/payments/notify`) on the address the payment was started from (mslab.ee, or SITE_URL). The webhook must reach the app while the coming-soon gate is on: `/api/payments/notify` always goes through it, and so does `/maksa/<token>` (the mail's "Maksa" link); the return and `/makse` are behind the gate like the rest of the site (admins with the preview cookie).
-3. **What the app sends.** `payment.method` `paymentInitiation` with no preferred bank, `paymentDescription` `MS LAB MSLAB-M<id>`, never a `paymentReference`; every attempt is a new order with a new `merchantReference` (`MSLAB-M<id>`, the row of the `payments` table). Montonio's payment window is its default 30 minutes, and an unpaid group registration holds its seat as long (`SEAT_HOLD_MS` in `app/src/domain/sessions.ts`): if the window is ever changed in the store, change the hold too.
+3. **What the app sends.** `payment.method` `paymentInitiation` with no preferred bank, `paymentDescription` `MS LAB MSLAB-M<id>`, never a `paymentReference`; every new attempt is a new order with a new `merchantReference` (`MSLAB-M<id>`, the row of the `payments` table). Pressing "Maksa" / "Proovi uuesti" again while that attempt's order is open (30 minutes from its last sending) sends the same order again under the same reference: Montonio replaces the unpaid order, so a payer never has two orders to pay. Montonio's payment window is its default 30 minutes, and an unpaid group registration holds its seat as long (`SEAT_HOLD_MS` in `app/src/domain/sessions.ts`): if the window is ever changed in the store, change the hold too.
 4. **What the app trusts.** Only an order token signed with the store's secret key (HS256). A token for another store, for another order, or one older than its 10 minutes (a late retry) is confirmed with `GET /orders/:uuid` before anything changes; a paid amount or currency that is not the payment's makes it `held` ("Ootel kontrollil" in Maksed) and Maria gets "Kontrolli Montonios". A payment the bank voids after it was paid, and every refund, also alert Maria and change nothing by themselves.
 5. **Refunds** are made in Montonio's own dashboard (Orders → the order → Refund). The app then marks the payment "Tagastatud" from Montonio's notice; Maria adjusts or cancels the registration (or ends the e-course access) in the admin herself.
 6. **The sandbox.** The sandbox's bank links work with its test banks; the test card is `4111 1111 1111 1111`, 03/30, CVC 737. A paid or failed bank flow cannot be produced automatically: it is a check by hand (the go-live, `docs/launch-checklist.md` section 10).
@@ -7554,7 +7725,7 @@ Students pay through Maria's Montonio store (phase 2b, spec `docs/superpowers/sp
 - [ ] Native-speaker check of the Russian texts phase 2b added: `payment.pay`, `payment.payRest`, `payment.transfer`, `payment.starting`, `payment.page.*`, `payment.result.*` (`openCourse` included), `payment.mail.*` (the subjects, `leadConfirmed` … `access`).
 - [ ] Maria's "Ettemaksu juhised" in Seaded: the bank transfer stays the second way under "Maksa" (D6); she records those payments by hand as before.
 - [ ] Accepted: a cached calendar can show "Täis" for up to 30 minutes after an unpaid hold ends (the registration form checks live; a payment, a registration or the daily sweep revalidates).
-- [ ] Accepted: "Proovi uuesti" is offered on "pooleli" too, because Montonio answers a cancel at the bank with PENDING. If the bank still confirms the first attempt later, both are paid: Maria refunds one in Montonio (Maksed shows both).
+- [ ] Accepted: "Proovi uuesti" is offered on "pooleli" too, because Montonio answers a cancel at the bank with PENDING. The retry sends the same order again (the same reference) while it is open, and Montonio replaces the unpaid one, so the first cannot be paid as well; only after its 30 minutes is a retry a new order. Watch Maksed for a registration with two paid prepayments in the first weeks all the same (Maria refunds one in Montonio).
 - [ ] Watch Maksed → "Ootel kontrollil" and the "Kontrolli Montonios" mails for the first weeks.
 - [ ] e2e: a dev server started by hand is reused by Playwright and would talk to the sandbox of `app/.env.local` instead of the fake Montonio: stop it before a run.
 ```
@@ -7642,7 +7813,7 @@ The ledger is `.superpowers/sdd/2026-10-09-phase2b-montonio-payments/progress.md
 | 2 D6 the bank transfer as the second way | 4 (the mail), 5 (the page, the card's "Vaata juhiseid") |
 | 2 D7 mail + Telegram, "Maksed", the row, the drawer | 3 (`paymentSummary` via `notifyMaria`), 9 |
 | 3 building blocks reused | 1 (seat counters), 3 (`recordRegistrationPayment`'s rule in `addRegistrationPayment`), 7 (`addClient`, `grantAccess`) |
-| 4 Montonio facts (URLs, JWT, order, webhook, return, GET, sandbox) | 2 (+ docs-payload tests), 11 (runbook) |
+| 4 Montonio facts (URLs, JWT, order, webhook, return, GET, sandbox) | 2 (+ docs-payload tests), 11 (runbook); the reference: a new one per new attempt, and an open attempt re-sent under its own (4, 7: the pre-flight's double-payment fix, using spec 4's "reusing it on an unpaid order overwrites that order"; 3: a token of the replaced order) |
 | 5 (0006; the 0006→0007 rename) | 1 |
 | 5.1 `payments` | 1 (table), 3 (`insertPayment`: the reference in the same transaction) |
 | 5.2 `seat_hold_until`, `pay_token` | 1 |
@@ -7671,4 +7842,4 @@ Searched the plan for "TBD", "TODO", "implement later", "similar to", "as today"
 
 ### Type and name consistency
 
-Checked across tasks: `takesSeat` / `seatsTaken` / `hasFreeSeat` / `holdsSeat` / `holdUntil` / `SEAT_HOLD_MS` (1); `SessionWithSeats.taken`, `AdminSessionRow.taken` (1); `paymentsEnv`, `montonioConfig`, `paymentsConfigured`, `paymentProvider`, `montonioClient`, `Montonio`, `OrderToken`, `OrderSnapshot`, `MontonioError`, `JwtError` (2); `orderReference`, `insertPayment`, `paymentByReference`, `attachOrder`, `releaseHold`, `failPayment`, `paymentContext`, `addRegistrationPayment(tx: Tx, …)`, `settleToken`, `settlePayment`, `factsOf`, `SettleDeps`, `handleNotify`, `PaymentRouteDeps` (3, used by 4–8); `amountDue`, `startRegistrationPayment`, `StartResult` (`started | off | failed | nothing | full | rate | notFound`), `STARTS_PER_HOUR`, `payLinkUrl`, `navigate` (4, used by 5 and 7); `PAY_STARTS_PER_IP`, `crossSiteFormPost`, `handlePayPage`, `Dashboard.payOnline`, `CoursesTexts.online` (named `online` because the dashboard's own `payment` holds PrepaymentInfo's labels) (5); `resultFragment` / `parseResultFragment` / `returnTarget` / `handleReturn` (6); `handleEcoursePurchase`, `buyEcourse`, `startEcoursePayment`, `grantPurchase`, `ecourseOpenMail`, the exported `subscribeLater` (7); `checkPendingPayments`, `NO_PAYMENT_SWEEP` (8); `needsCheck`, `pagePayments`, `listPaymentsOf`, `PaymentRow`, `PAYMENT_TONE` (9). The settlement's `Won` gains `grant` in Task 7, which replaces the two lines of Task 3 that build it. The e2e helpers `storedPayments` / `storedHold` (4) and `storedPayToken` (5) are defined before the specs that use them.
+Checked across tasks: `takesSeat` / `seatsTaken` / `hasFreeSeat` / `holdsSeat` / `holdUntil` / `SEAT_HOLD_MS` (1); `SessionWithSeats.taken`, `AdminSessionRow.taken` (1); `paymentsEnv`, `montonioConfig`, `paymentsConfigured`, `paymentProvider`, `montonioClient`, `Montonio`, `OrderToken`, `OrderSnapshot`, `MontonioError`, `JwtError` (2); `orderReference`, `insertPayment`, `paymentByReference`, `attachOrder`, `releaseHold`, `failPayment`, `paymentContext`, `addRegistrationPayment(tx: Tx, …)`, `settleToken`, `settlePayment`, `factsOf`, `SettleDeps`, `handleNotify`, `PaymentRouteDeps` (3, used by 4–8); `amountDue`, `startRegistrationPayment`, `StartResult` (`started | off | failed | nothing | full | rate | notFound`), `STARTS_PER_HOUR`, `payLinkUrl`, `navigate` (4, used by 5 and 7); `liveAttempt` and `order(…, again)` (4, private to `start.ts`, used by 7's `startEcoursePayment`: the re-send of an open attempt); `PAY_STARTS_PER_IP`, `crossSiteFormPost`, `handlePayPage`, `Dashboard.payOnline`, `CoursesTexts.online` (named `online` because the dashboard's own `payment` holds PrepaymentInfo's labels) (5); `resultFragment` / `parseResultFragment` / `returnTarget` / `handleReturn` (6); `handleEcoursePurchase`, `buyEcourse`, `startEcoursePayment`, `grantPurchase`, `ecourseOpenMail`, the exported `subscribeLater` (7); `checkPendingPayments`, `NO_PAYMENT_SWEEP` (8); `needsCheck`, `pagePayments`, `listPaymentsOf`, `PaymentRow`, `PAYMENT_TONE` (9). The settlement's `Won` gains `grant` in Task 7, which replaces the two lines of Task 3 that build it. The e2e helpers `storedPayments` / `storedHold` (4) and `storedPayToken` (5) are defined before the specs that use them.
