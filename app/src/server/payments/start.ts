@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { Db, Q } from "@/db/client";
 import { attachOrder, failPayment, insertPayment } from "@/db/queries/payments";
 import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
@@ -17,7 +17,8 @@ import { MontonioError, type Montonio } from "./montonio";
 // with the same merchantReference overwrites the unpaid order at Montonio (spec 4), so the payer never has two orders open to pay.
 // The locks are the one order of every payment path (db/queries/seats.ts): the session, then the registration (lockForPayment, taken first),
 // then the payment row. Nothing is held across Montonio's call: the transaction commits first, and only then are the order made and the row
-// given its uuid (attachOrder) or failed (failPayment, which takes the registration's lock in its own transaction).
+// given its uuid (attachOrder) or failed (failPayment, which takes the registration's lock in its own transaction). An e-course purchase has
+// no registration to lock: startEcoursePayment serialises the presses of one course and address with an advisory lock (the payment row only).
 
 export type StartDeps = { db: Db; now: Date; siteUrl: string; montonio: Montonio | null };
 
@@ -168,5 +169,38 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
     return { kind: "ready", payment, again: false };
   });
   if (ready.kind !== "ready") return ready;
+  return order({ ...deps, montonio }, ready.payment, ready.again);
+}
+
+/**
+ * Starts an e-course purchase (spec 6.4): a pending `ecourse` row of the course's price, with the payer as entered and her newsletter wish
+ * (acted on when it is paid), and Montonio's order. No account and no access before the payment: an abandoned purchase leaves only this row.
+ * The same purchase pressed again while its order is open (the same course, address and price: liveAttempt) is sent again with the latest
+ * name, language and newsletter box, never a second order (the double-payment rule). A registration has its own row to lock for that; a
+ * purchase has none, so the look for the open attempt and the insert of a new one run under an advisory lock of this course and address
+ * (taken in a transaction of its own that ends before Montonio is called): two presses at the same moment find one row, not two.
+ */
+export async function startEcoursePayment(
+  deps: StartDeps,
+  input: { courseId: number; amountCents: number; email: string; name: string; locale: "et" | "ru"; newsletter: boolean },
+): Promise<StartResult> {
+  const montonio = deps.montonio;
+  if (!montonio) return { kind: "off" };
+  const ready = await deps.db.transaction(async (tx): Promise<{ payment: Payment; again: boolean }> => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ecourse-buy:${input.courseId}:${input.email}`}))`);
+    const live = await liveAttempt(tx, { courseId: input.courseId, email: input.email }, input.amountCents, deps.now);
+    if (live) {
+      // its window starts again now, and what she typed this time replaces what she typed before
+      const fresh = { name: input.name, locale: input.locale, newsletter: input.newsletter, updatedAt: deps.now };
+      await tx.update(payments).set(fresh).where(and(eq(payments.id, live.id), eq(payments.status, "pending")));
+      return { payment: { ...live, ...fresh }, again: true };
+    }
+    const payment = await insertPayment(
+      tx,
+      { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email: input.email, name: input.name, locale: input.locale, amountCents: input.amountCents, newsletter: input.newsletter },
+      deps.now,
+    );
+    return { payment, again: false };
+  });
   return order({ ...deps, montonio }, ready.payment, ready.again);
 }

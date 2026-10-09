@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { nextStep, type ContactCard } from "@/domain/account-cards";
 import { getDict } from "@/i18n/locales";
 import { fill } from "@/i18n/format";
-import { accountLink, esc, passwordChangedMail, payLinkUrl, registrationConfirmationMail, requestConfirmationMail, verifyLink, welcomeMail, type RegistrationConfirmationInput } from "@/server/account-mail";
+import { accountLink, ecourseOpenMail, esc, loginMail, passwordChangedMail, payLinkUrl, registrationConfirmationMail, requestConfirmationMail, verifyLink, welcomeMail, type EcourseOpenInput, type RegistrationConfirmationInput } from "@/server/account-mail";
 
 // The confirmation e-mails to a visitor who registered or sent a request (phase 2a Task 10): the texts in Estonian and
 // Russian, with and without the prepayment instructions, with and without a login code, escaping, the "Ava minu konto"
@@ -495,5 +495,64 @@ describe("registration confirmation with online payments (phase 2b)", () => {
 
   test("without payments (no payLink) the mail is today's", () => {
     expect(registrationConfirmationMail(registration({ payLink: null }))).toEqual(registrationConfirmationMail(registration()));
+  });
+});
+
+describe("ecourseOpenMail: 'E-koolitus on avatud' (phase 2b, spec 6.2.4)", () => {
+  const input = (over: Partial<EcourseOpenInput> = {}): EcourseOpenInput => ({
+    siteUrl: BASE,
+    email: EMAIL,
+    name: "Kati Tamm",
+    locale: "et",
+    course: { et: "Kulmumeistri e-koolitus", ru: "Онлайн-курс бровиста" },
+    expiresAt: new Date("2027-04-09T20:59:59.999Z"),
+    login: { token: TOKEN, code: "123456" },
+    ...over,
+  });
+  const IGNORE = { et: getDict("et").account.mail.ignore, ru: getDict("ru").account.mail.ignore };
+
+  test("subject, lead, the course with 'Ligipääs kuni …', the code large and one button, Logi sisse, that opens the login link", () => {
+    const mail = ecourseOpenMail(input());
+    expect([mail.to, mail.subject]).toEqual([EMAIL, "E-koolitus on avatud — Kulmumeistri e-koolitus"]);
+    for (const line of ["Tere, Kati!", "Makse on kätte saadud. E-koolitus on sinu jaoks avatud.", "Kulmumeistri e-koolitus", "Ligipääs kuni 09.04.2027.", "123456", "Logi sisse:", verifyLink(BASE, TOKEN), "Kood ja link kehtivad 30 minutit."])
+      expect(mail.text).toContain(line);
+    expect(buttons(mail.html!)).toBe(1);
+    expect(mail.html).toContain(`href="${esc(verifyLink(BASE, TOKEN))}"`);
+  });
+
+  test("it never tells the buyer to delete it: the 'Kui sa ei palunud sisselogimist' line is left out, in both languages, in text and HTML", () => {
+    for (const locale of ["et", "ru"] as const) {
+      const mail = ecourseOpenMail(input({ locale }));
+      expect(mail.text, locale).not.toContain(IGNORE[locale]);
+      expect(mail.html, locale).not.toContain(IGNORE[locale]);
+      expect(mail.text, locale).toContain(getDict(locale).account.mail.valid);
+      expect(mail.text, locale).toContain("123456");
+    }
+    // the login mail itself, and the other confirmations that carry a code, keep the line
+    expect(loginMail(BASE, EMAIL, TOKEN, "123456", "et").text).toContain(IGNORE.et);
+    expect(registrationConfirmationMail(registration({ login: { token: TOKEN, code: "123456" } })).text).toContain(IGNORE.et);
+  });
+
+  test("without a live login (the address has its 3 already): 'Ava minu konto', no code", () => {
+    const mail = ecourseOpenMail(input({ login: null }));
+    expect(mail.text).toContain("Ava minu konto:");
+    expect(mail.text).toContain(accountLink(BASE, EMAIL));
+    expect(mail.text).not.toContain("123456");
+    expect(mail.text).toContain("Ligipääs kuni 09.04.2027.");
+    expect(buttons(mail.html!)).toBe(1);
+  });
+
+  test("Russian: the subject, the lead and the access line; the date is the Estonian day", () => {
+    const mail = ecourseOpenMail(input({ locale: "ru" }));
+    expect(mail.subject).toBe("Онлайн-курс открыт — Онлайн-курс бровиста");
+    expect(mail.text).toContain("Платёж получен. Онлайн-курс для вас открыт.");
+    expect(mail.text).toContain("Доступ до 09.04.2027.");
+    expect(mail.text).toContain(verifyLink(BASE, TOKEN, "ru"));
+  });
+
+  test("a title with a line break stays one line in the subject; nothing the title holds opens a tag in the HTML", () => {
+    const mail = ecourseOpenMail(input({ course: { et: "Kulmu\n<b>e-koolitus</b>" } }));
+    expect(mail.subject).toBe("E-koolitus on avatud — Kulmu <b>e-koolitus</b>");
+    expect(mail.html).not.toContain("<b>e-koolitus</b>");
   });
 });

@@ -183,8 +183,11 @@ export function changeRequestSummary(
 
 const PAYMENT_KIND: Record<PaymentKind, string> = { prepayment: "Ettemaks", balance: "Ülejäänud", ecourse: "E-koolitus" };
 
-/** What a payment was for: "Kulmumeistri baaskoolitus, 14.11.2026" (a registration's session day), or the e-course's title alone. */
-const paidFor = (course: string, startsAt: Date | null): string => (startsAt ? `${course}, ${formatDate(startsAt, "et")}` : course);
+/**
+ * What a payment was for, the {mis} of "Uus makse: {nimi}, {mis}, {summa}": "Kulmumeistri baaskoolitus, 14.11.2026" (a registration's session
+ * day), or "Kulmumeistri e-koolitus (e-koolitus)" for an e-course (the owner's form of 10.10: the title, then what it is).
+ */
+const paidFor = (kind: PaymentKind, course: string, startsAt: Date | null): string => (kind === "ecourse" ? `${course} (e-koolitus)` : startsAt ? `${course}, ${formatDate(startsAt, "et")}` : course);
 
 /** A paid payment, for Maria's notice. `outcome`: what it did (settle.ts). `restCents`: left to pay on the registration afterwards. */
 export type PaymentNotice = {
@@ -201,21 +204,29 @@ export type PaymentNotice = {
   providerUuid: string | null;
   outcome: "confirmed" | "received" | "full" | "opened" | "notOpened";
   restCents?: number;
+  /** An e-course that was opened: the last moment of her access. */
+  until?: Date | null;
 };
 
-/** "Uus makse: {nimi}, {mis}, {summa}" (spec 9), or "Makse laekus, aga koolitus on täis: …" when the course was full (D2). */
+/**
+ * "Uus makse: {nimi}, {mis}, {summa}" (spec 9), or "Makse laekus, aga koolitus on täis: …" when the course was full (D2). An e-course payment
+ * has two outcomes only, opened ("E-koolitus on avatud kuni {date}.") or not (Task 3's text): no registration wording reaches it, whatever
+ * the outcome it is given.
+ */
 export function paymentSummary(p: PaymentNotice, adminUrl: string): Summary {
   const amount = formatEUR(p.amountCents, "et");
-  const what = paidFor(p.course, p.startsAt);
-  const subject = `${p.outcome === "full" ? "Makse laekus, aga koolitus on täis" : "Uus makse"}: ${p.name}, ${what}, ${amount}`;
+  const ecourse = p.kind === "ecourse";
+  const what = paidFor(p.kind, p.course, p.startsAt);
+  const subject = `${!ecourse && p.outcome === "full" ? "Makse laekus, aga koolitus on täis" : "Uus makse"}: ${p.name}, ${what}, ${amount}`;
   const rest = p.restCents ?? 0;
   const notes: Record<PaymentNotice["outcome"], string> = {
     confirmed: rest > 0 ? `Registreering on kinnitatud. Ülejäänud ${formatEUR(rest, "et")} tasub ta koolituspäeval või Minu koolitustes.` : "Registreering on kinnitatud ja täielikult tasutud.",
     received: "Makse on registreeringule kirja pandud.",
     full: "Koolitus on täis: koht jäi kinnitamata, makse on registreeringule kirja pandud. Võta õpilasega ühendust (Registreerimised).",
-    opened: "E-koolitus on avatud.",
+    opened: p.until ? `E-koolitus on avatud kuni ${formatDate(p.until, "et")}.` : "E-koolitus on avatud.",
     notOpened: "E-koolitust ei avatud: koolitust ei leitud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.",
   };
+  const note = ecourse ? notes[p.outcome === "opened" ? "opened" : "notOpened"] : notes[p.outcome];
   return {
     subject,
     text: body(
@@ -223,7 +234,7 @@ export function paymentSummary(p: PaymentNotice, adminUrl: string): Summary {
       [
         ["Makse", PAYMENT_KIND[p.kind]],
         ["Summa", amount],
-        ["Koolitus", what],
+        ["Koolitus", ecourse ? p.course : what],
         ["Maksja", p.name],
         ["E-post", p.email],
         ["Makseviis", paymentMethodLabel(p.method, p.bank)],
@@ -231,7 +242,7 @@ export function paymentSummary(p: PaymentNotice, adminUrl: string): Summary {
         ["Montonio", p.providerUuid ?? undefined],
       ],
       adminUrl,
-      notes[p.outcome],
+      note,
     ),
     short: subject,
   };
@@ -275,14 +286,25 @@ function montonioSaid(cents: number | null, currency: string | null): string {
  * "Topeltmakse: …" (the money of the second is not counted anywhere: she refunds one of the two in Montonio).
  */
 export function paymentAlertSummary(a: PaymentAlert, adminUrl: string): Summary {
-  const subject = `${a.alert === "double" ? "Topeltmakse" : "Kontrolli Montonios"}: ${a.name}, ${paidFor(a.course, a.startsAt)}, ${formatEUR(a.amountCents, "et")}`;
+  const subject = `${a.alert === "double" ? "Topeltmakse" : "Kontrolli Montonios"}: ${a.name}, ${paidFor(a.kind, a.course, a.startsAt)}, ${formatEUR(a.amountCents, "et")}`;
   const refund = a.rawStatus.toUpperCase() === "PARTIALLY_REFUNDED" ? "osaliselt tagastatud" : "tagastatud";
-  const notes = {
-    held: `Montonio ütleb makstud, aga summa või valuuta ei klapi (Montonio: ${montonioSaid(a.paidCents, a.currency)}). Midagi ei kinnitatud ega avatud: makse on lehel Maksed "Ootel kontrollil".`,
-    voided: "Pank tühistas juba laekunud makse. Kinnitus ja ligipääs jäid alles: otsusta, kas need tühistada (Registreerimised, Õpilased).",
-    refunded: `Montonio teatab tagastusest (${refund}). Laekunud summa, registreering ja ligipääs jäid muutmata: muuda neid adminis, kui vaja.`,
-    double: "Sama makse eest laekus teine tasumine (teine Montonio tellimus). Tagasta üks neist Montonio halduses.",
-  } as const;
+  const said = montonioSaid(a.paidCents, a.currency);
+  const double = "Sama makse eest laekus teine tasumine (teine Montonio tellimus). Tagasta üks neist Montonio halduses.";
+  // a registration has a place and a confirmation to decide about; an e-course only its access
+  const notes =
+    a.kind === "ecourse"
+      ? ({
+          held: `Montonio ütleb makstud, aga summa või valuuta ei klapi (Montonio: ${said}). Midagi ei avatud: makse on lehel Maksed "Ootel kontrollil".`,
+          voided: "Pank tühistas juba laekunud makse. Ligipääs jäi alles: otsusta, kas lõpetada see (Õpilased).",
+          refunded: `Montonio teatab tagastusest (${refund}). Laekunud summa ja ligipääs jäid muutmata: muuda ligipääsu adminis (Õpilased), kui vaja.`,
+          double,
+        } as const)
+      : ({
+          held: `Montonio ütleb makstud, aga summa või valuuta ei klapi (Montonio: ${said}). Midagi ei kinnitatud ega avatud: makse on lehel Maksed "Ootel kontrollil".`,
+          voided: "Pank tühistas juba laekunud makse. Kinnitus ja ligipääs jäid alles: otsusta, kas need tühistada (Registreerimised, Õpilased).",
+          refunded: `Montonio teatab tagastusest (${refund}). Laekunud summa, registreering ja ligipääs jäid muutmata: muuda neid adminis, kui vaja.`,
+          double,
+        } as const);
   return {
     subject,
     text: body(

@@ -5,6 +5,12 @@ import { Cart, cartMetadata } from "../cart";
 
 type Props = { params: Promise<{ locale: string; kursus: string }> };
 
+/**
+ * The purchase form's server action (buyEcourse) runs under this page's limits, and it calls Montonio (15 s) after the database work: 30 s, as
+ * every route that calls Montonio (global constraint). The page itself stays static: this is a limit, not a dynamic API.
+ */
+export const maxDuration = 30;
+
 /** Rendered on the first visit and cached, like every public page (app/[locale]/layout.tsx). */
 export function generateStaticParams(): { kursus: string }[] {
   return [];

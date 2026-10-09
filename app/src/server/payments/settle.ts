@@ -7,20 +7,25 @@ import { payments, type Payment } from "@/db/schema";
 import { isSampleAddress } from "@/domain/email";
 import { registrationPrice } from "@/domain/registration";
 import { pick } from "@/i18n/field";
-import { registrationPaidMail } from "../account-mail";
+import { ecourseOpenMail, registrationPaidMail } from "../account-mail";
 import type { PublicChange } from "../cache-targets";
+import { issueClientLogin } from "../client-auth";
 import { logFailure, logNote } from "../log";
 import { paymentAlertSummary, paymentSummary, type PaymentNotice } from "../messages";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env } from "../notify";
 import { releaseSlot, reserveSlot } from "../ratelimit";
+import { subscribeLater } from "../submit";
+import { grantPurchase, type Grant } from "./grant";
 import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken } from "./montonio";
 
 // The one door of every paid path (phase 2b, spec 6.2, 7.3, 7.4; Rempire's settle/apply/token-guard, ported). The webhook and the return
 // (routes.ts) bring an order token, the daily check (check.ts) Montonio's own answer; all of them end in settlePayment:
 // - PAID with the row's exact amount in EUR moves the row pending|failed → paid in ONE conditional UPDATE (paid_at null: a payment voided
 //   after paid never comes back). Only the winner of that update does the once-only work, in the same transaction: the amount is added to
-//   the registration (db/queries/admin.ts addRegistrationPayment: confirmed from 50 %, unless the course is full, D2). After it: the seats
-//   are revalidated, and the payer's mail and Maria's notice go out after the response. Every other caller finds the row paid and does nothing.
+//   the registration (db/queries/admin.ts addRegistrationPayment: confirmed from 50 %, unless the course is full, D2), or, for an e-course, its
+//   client is found or created and the course opened (grant.ts). After it: the seats are revalidated, and the payer's mail and Maria's notice
+//   go out after the response (an e-course's with a login code, and the newsletter sign-up when it was ticked). Every other caller finds the row
+//   paid and does nothing.
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
 // - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
 //   nothing; a VOIDED (the bank took a paid payment back) is stored as failed with its paid_at and alerts Maria, who decides.
@@ -62,8 +67,8 @@ export type SettleResult = { kind: "unknown" } | { kind: "unconfirmed"; payment:
 /** GET /orders/:uuid's answer as facts. The bank's name is only in a token: `bank` keeps the one a token gave. */
 export const factsOf = (s: OrderSnapshot, bank = ""): Facts => ({ uuid: s.uuid, status: s.status, rawStatus: s.rawStatus, amountCents: s.amountCents, currency: s.currency, method: s.method, bank });
 
-/** The once-only work's outcome: the paid row, and what it did to its registration. */
-type Won = { payment: Payment; registration: RegistrationPaid | null };
+/** The once-only work's outcome: the paid row, and what it did to its registration, or the e-course it opened (phase 2b Task 7). */
+type Won = { payment: Payment; registration: RegistrationPaid | null; grant: Grant | null };
 
 /** The door of an order token (the webhook, the return). */
 export async function settleToken(deps: SettleDeps, token: OrderToken): Promise<SettleResult> {
@@ -156,23 +161,33 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
       .where(and(eq(payments.id, row.id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt)))
       .returning();
     if (!payment) return null;
-    // (an e-course's payment opens the course instead: Task 7)
     const registration = payment.kind !== "ecourse" && payment.registrationId !== null ? await addRegistrationPayment(tx, payment.registrationId, payment.amountCents, deps.now) : null;
-    return { payment, registration };
+    // an e-course's payment opens the course instead, in this same transaction: only the winner of the update above gets here
+    const grant = payment.kind === "ecourse" ? await grantPurchase(tx, payment, deps.now) : null;
+    return { payment: grant ? { ...payment, clientId: grant.clientId } : payment, registration, grant };
   });
   if (!won) return lost(deps, row, facts);
   console.info(`[payments] payment ${won.payment.id}: paid`);
   // queued before anything that could fail after the commit: the payment is paid for good, and this is the only time its mails are sent
   deps.later(async () => {
     if (won.registration) await mailRegistrationPaid(deps, won.payment, won.registration);
-    await tellMaria(deps, won.payment, outcomeOf(won));
+    if (won.grant) await mailEcourseOpen(deps, won.payment, won.grant);
+    try {
+      await tellMaria(deps, won.payment, outcomeOf(won));
+    } finally {
+      // the cart's "Soovin MS LABi uudiseid ja pakkumisi": the one-step sign-up, acted on now that it is paid (spec 6.2.3); it never throws,
+      // and a failing notice to Maria does not skip it
+      if (won.payment.kind === "ecourse" && won.payment.newsletter)
+        await subscribeLater({ db: deps.db, env: deps.env, ip: null, siteUrl: deps.siteUrl, now: deps.now, later: deps.later }, "ecourse", { email: won.payment.email, locale: won.payment.locale });
+    }
   });
   if (won.registration) await seatsChanged(deps, won.registration.course.slug);
   return won.payment;
 }
 
-/** What the payment did, for Maria's notice. */
-function outcomeOf(won: Won): Pick<PaymentNotice, "outcome" | "restCents"> {
+/** What the payment did, for Maria's notice. An e-course's is told in its own words (messages.ts): opened until a day, or not opened. */
+function outcomeOf(won: Won): Pick<PaymentNotice, "outcome" | "restCents" | "until"> {
+  if (won.payment.kind === "ecourse") return won.grant ? { outcome: "opened", until: won.grant.expiresAt } : { outcome: "notOpened" };
   const r = won.registration;
   if (!r) return { outcome: "received" };
   if (r.full) return { outcome: "full" };
@@ -289,7 +304,7 @@ function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded
 }
 
 /** Maria's "Uus makse: …" (mail and Telegram). */
-async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNotice, "outcome" | "restCents">): Promise<void> {
+async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNotice, "outcome" | "restCents" | "until">): Promise<void> {
   const ctx = await contextOf(deps, p.id);
   const s = paymentSummary(
     { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx), startsAt: ctx.session?.startsAt ?? null, method: p.method, bank: p.bank, reference: p.reference, providerUuid: p.providerUuid, ...outcome },
@@ -297,6 +312,22 @@ async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNoti
   );
   const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
   console.info(`[payments] payment ${p.id}: Maria notified by e-mail: ${r.mail}, Telegram: ${r.telegram}`);
+}
+
+/**
+ * "E-koolitus on avatud — …" with a live login (spec 6.2.4), after the response: never to a sample address, not counted in the daily caps (it
+ * follows a real payment). The login is a normal client login (client-auth.ts issueClientLogin), made only now and sent only in this mail; an
+ * address that has its 3 live logins already gets the mail without a code ("Ava minu konto"). Nothing here signs anyone in.
+ */
+async function mailEcourseOpen(deps: SettleDeps, p: Payment, g: Grant): Promise<void> {
+  if (isSampleAddress(p.email) || !mailConfigured(deps.env)) return;
+  try {
+    const login = await issueClientLogin(deps.db, p.email, deps.now);
+    const sent = await sendMail(deps.env, ecourseOpenMail({ siteUrl: deps.siteUrl, email: p.email, name: p.name, locale: p.locale, course: g.courseTitle, expiresAt: g.expiresAt, login }));
+    console.info(`[payments] payment ${p.id}: the e-course mail sent: ${sent}`);
+  } catch (e) {
+    logFailure(`[payments] payment ${p.id}: the e-course mail failed`, e);
+  }
 }
 
 /** The payer's mail after a paid registration: never to a sample address, not counted in the daily caps (it follows a real payment). */

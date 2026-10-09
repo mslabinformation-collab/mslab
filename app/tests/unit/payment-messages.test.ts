@@ -43,12 +43,25 @@ describe("Maria's notice of a payment", () => {
     const full = note({ outcome: "full" });
     expect(full.subject).toBe("Makse laekus, aga koolitus on täis: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €");
     expect(full.text).toContain("Koolitus on täis: koht jäi kinnitamata");
-    const ecourse = note({ kind: "ecourse", course: "Kulmumeistri e-koolitus", startsAt: null, outcome: "opened", amountCents: 19000 });
-    expect(ecourse.subject).toBe("Uus makse: Kati Tamm, Kulmumeistri e-koolitus, 190 €");
+    const ecourse = note({ kind: "ecourse", course: "Kulmumeistri e-koolitus", startsAt: null, outcome: "opened", amountCents: 19000, until: new Date("2027-04-09T20:59:59.999Z") });
+    expect(ecourse.subject).toBe("Uus makse: Kati Tamm, Kulmumeistri e-koolitus (e-koolitus), 190 €");
+    expect(ecourse.short).toBe(ecourse.subject);
     expect(ecourse.text).toContain("Makse: E-koolitus");
-    expect(ecourse.text).toContain("E-koolitus on avatud.");
+    expect(ecourse.text).toContain("Koolitus: Kulmumeistri e-koolitus\n");
+    expect(ecourse.text).toContain("E-koolitus on avatud kuni 09.04.2027.");
+    expect(note({ kind: "ecourse", outcome: "opened", startsAt: null }).text).toContain("E-koolitus on avatud.");
     expect(note({ kind: "ecourse", outcome: "notOpened" }).text).toContain("E-koolitust ei avatud: koolitust ei leitud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.");
     expect(note({ kind: "ecourse", outcome: "notOpened" }).text).not.toContain("kursust");
+  });
+
+  test("an e-course payment never reads like a registration: no seat, no confirmation, no training day, whatever the outcome it is given", () => {
+    for (const outcome of ["opened", "notOpened", "confirmed", "received", "full"] as const) {
+      const s = paymentSummary({ ...NOTICE, kind: "ecourse", course: "Kulmumeistri e-koolitus", startsAt: null, outcome, restCents: 17500 }, ADMIN);
+      const text = `${s.subject}\n${s.text}`;
+      expect(text, outcome).not.toMatch(/registree|kinnita|koolituspäev|Minu koolitus|on täis|koht/i);
+      expect(s.subject, outcome).toBe("Uus makse: Kati Tamm, Kulmumeistri e-koolitus (e-koolitus), 175 €");
+      expect(text, outcome).toMatch(outcome === "opened" ? /E-koolitus on avatud\./ : /E-koolitust ei avatud/);
+    }
   });
 
   test("the way of paying is Maria's word, never Montonio's code", () => {
@@ -89,6 +102,20 @@ describe("Maria's alerts: 'Kontrolli Montonios'", () => {
       "Montonio teatab tagastusest (osaliselt tagastatud). Laekunud summa, registreering ja ligipääs jäid muutmata: muuda neid adminis, kui vaja.",
     );
     expect(alert({ alert: "refunded", rawStatus: "REFUNDED" }).text).toContain("Montonio teatab tagastusest (tagastatud). Laekunud summa,");
+  });
+
+  test("an e-course's alerts say what happened to the access, not to a seat", () => {
+    const e = (over: Partial<PaymentAlert>) => alert({ kind: "ecourse", course: "Kulmumeistri e-koolitus", startsAt: null, amountCents: 19000, ...over });
+    expect(e({}).subject).toBe("Kontrolli Montonios: Kati Tamm, Kulmumeistri e-koolitus (e-koolitus), 190 €");
+    expect(e({}).text).toContain("Makse: E-koolitus");
+    expect(e({}).text).toContain("Midagi ei avatud: makse on lehel Maksed \"Ootel kontrollil\".");
+    expect(e({ alert: "voided", rawStatus: "VOIDED" }).text).toContain("Pank tühistas juba laekunud makse. Ligipääs jäi alles: otsusta, kas lõpetada see (Õpilased).");
+    expect(e({ alert: "refunded", rawStatus: "REFUNDED" }).text).toContain("Montonio teatab tagastusest (tagastatud). Laekunud summa ja ligipääs jäid muutmata: muuda ligipääsu adminis (Õpilased), kui vaja.");
+    expect(e({ alert: "double", otherUuid: "uuid-8" }).subject).toBe("Topeltmakse: Kati Tamm, Kulmumeistri e-koolitus (e-koolitus), 190 €");
+    for (const kind of ["held", "voided", "refunded", "double"] as const) {
+      const s = e({ alert: kind, otherUuid: "uuid-8", rawStatus: "REFUNDED" });
+      expect(`${s.subject}\n${s.text}`, kind).not.toMatch(/registree|kinnita|Kinnitus|koolituspäev|on täis/i);
+    }
   });
 
   test("'Topeltmakse': a second order paid for the same payment; both order ids, and what to do", () => {

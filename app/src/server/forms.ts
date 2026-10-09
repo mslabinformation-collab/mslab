@@ -81,6 +81,9 @@ export const contactSchema = z.object({ name: line(MAX.name), email, message: te
 /** E-learning cart before payment exists (P9): "let me know" e-mail. Stored as a contact request. */
 export const purchaseInterestSchema = z.object({ course: slug, email, locale, wantsNewsletter: flag });
 
+/** The e-course cart's purchase (phase 2b, spec 6.4, D3): name, e-mail, the terms box (required) and the newsletter box (unticked). */
+export const ecoursePurchaseSchema = z.object({ course: slug, name: line(MAX.name), email, terms, wantsNewsletter: flag, locale });
+
 export const practiceSchema = z.object({
   package: z.string().trim().regex(/^[A-Za-z0-9_-]{1,20}$/),
   name: line(MAX.name),
@@ -163,6 +166,10 @@ export const parseIndividual = (fd: FormData) =>
 /** Cart "let me know". Fields: course (slug), email, newsletter ("Soovin MS LABi uudiseid ja pakkumisi", phase 2c), locale. */
 export const parsePurchaseInterest = (fd: FormData) =>
   parseForm(purchaseInterestSchema, fd, { ...same("course", "email", "locale"), wantsNewsletter: "newsletter" }, slugPlacement);
+
+/** The e-course purchase (phase 2b). Fields: course (slug), name, email, terms, newsletter ("Soovin MS LABi uudiseid ja pakkumisi"), locale. */
+export const parseEcoursePurchase = (fd: FormData) =>
+  parseForm(ecoursePurchaseSchema, fd, { ...same("course", "name", "email", "terms", "locale"), wantsNewsletter: "newsletter" }, slugPlacement);
 
 /** Practice request. Fields: package, name, email, phone, course (optional), times, locale. */
 export const parsePractice = (fd: FormData) => parseForm(practiceSchema, fd, same("package", "name", "email", "phone", "course", "times", "locale"));

@@ -12,6 +12,7 @@ import { clientIp } from "../ratelimit";
 import { linkBase, requestOrigin } from "../site";
 import {
   handleContact,
+  handleEcoursePurchase,
   handleIndividual,
   handlePractice,
   handlePurchaseInterest,
@@ -84,6 +85,15 @@ export async function submitIndividual(formData: FormData): Promise<ActionResult
 /** E-learning cart before payment opens (P9): request of kind `contact` { course, intent: "purchase", email }. */
 export async function submitPurchaseInterest(formData: FormData): Promise<ActionResult> {
   return run("interest", handlePurchaseInterest, formData);
+}
+
+/**
+ * The e-course cart's purchase (phase 2b): `{ ok: true, paymentUrl }` (the cart sends the browser there), or form "unavailable" (no payments,
+ * Montonio down: the cart shows its interest form). The price is the course's own, never a field. Fields: course (slug), name, email, terms,
+ * newsletter, locale, website (honeypot).
+ */
+export async function buyEcourse(formData: FormData): Promise<ActionResult> {
+  return run("ecourse", handleEcoursePurchase, formData);
 }
 
 /** Practice request (/praktika#taotlus): request of kind `practice`. Fields: package, name, email, phone, course, times. */

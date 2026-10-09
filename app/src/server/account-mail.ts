@@ -220,6 +220,11 @@ type Confirmation = {
   box: { title: string; lines: string[] };
   sections: Section[];
   login: LoginCode | null;
+  /**
+   * The login follows a purchase she has just paid for (ecourseOpenMail): the mail leaves out "Kui sa ei palunud sisselogimist, võid selle kirja
+   * kustutada.", which could make a buyer delete her access mail. Every other mail with a code keeps it.
+   */
+  afterPurchase?: boolean;
 };
 
 /** The first line of the e-mail: "Tere, Kati!", or just "Tere!" when the name has no word. */
@@ -250,7 +255,7 @@ function confirmationText(c: Confirmation, greeting: string, mail: MailTexts, li
     else if ("button" in section) lines.push(`${section.button.label}: ${section.button.href}`, "");
     else lines.push(...section.fields.map(([label, value]) => `${label}: ${value}`), "");
   }
-  if (c.login) lines.push(mail.codeIntro, "", c.login.code, "", `${mail.button}:`, links.main, "", mail.valid, mail.ignore, "", mail.confirm.codeHere, links.code, "");
+  if (c.login) lines.push(mail.codeIntro, "", c.login.code, "", `${mail.button}:`, links.main, "", mail.valid, ...(c.afterPurchase ? [] : [mail.ignore]), "", mail.confirm.codeHere, links.code, "");
   else lines.push(`${mail.confirm.open}:`, links.main, "");
   lines.push(mail.signature);
   return lines.join("\n");
@@ -296,7 +301,7 @@ function confirmationHtml(c: Confirmation, greeting: string, mail: MailTexts, li
       buttonRow(links.main, mail.button),
       linkRow(links.main),
       row(`padding:24px 28px 0;${textStyle(14)}`, esc(mail.valid)),
-      row(`padding:4px 28px 0;${textStyle(14)}`, esc(mail.ignore)),
+      ...(c.afterPurchase ? [] : [row(`padding:4px 28px 0;${textStyle(14)}`, esc(mail.ignore))]),
       row(`padding:12px 28px 0;${textStyle(14)}`, `${esc(mail.confirm.codeHere)} <a href="${esc(links.code)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.codeLink)}</a>`),
     );
   else if (payButton) rows.push(row(`padding:20px 28px 0;text-align:center;${textStyle(14)}`, `<a href="${esc(links.main)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.open)}</a>`));
@@ -425,6 +430,41 @@ export function registrationPaidMail(input: RegistrationPaidInput): Mail {
     box: { title, lines: input.session ? sessionLines(input.session, input.locale) : [] },
     sections,
     login: null,
+  });
+}
+
+export type EcourseOpenInput = {
+  siteUrl: string;
+  email: string;
+  name: string;
+  locale: Locale;
+  course: I18n;
+  /** The access's last moment (server/payments/grant.ts). */
+  expiresAt: Date;
+  /** A live login for the address (client-auth.ts issueClientLogin), or null when it has its 3 already: then "Ava minu konto". */
+  login: LoginCode | null;
+};
+
+/**
+ * The mail after a paid e-course purchase (phase 2b, spec 6.2.4): "E-koolitus on avatud — {title}", the course with "Ligipääs kuni {date}.",
+ * and the login: the code large and "Logi sisse" (verifyLink, like the code login), which opens Minu koolitused with the course on it. It leaves
+ * out the login mail's "Kui sa ei palunud sisselogimist, võid selle kirja kustutada.": the buyer has just paid, and that line could make her
+ * delete her access. settle.ts never sends it to a sample address and does not count it in the daily caps (it follows a real payment).
+ */
+export function ecourseOpenMail(input: EcourseOpenInput): Mail {
+  const m = getDict(input.locale).payment.mail;
+  const title = pick(input.course, input.locale);
+  return confirmationMail({
+    email: input.email,
+    name: input.name,
+    locale: input.locale,
+    siteUrl: input.siteUrl,
+    subject: oneLine(fill(m.subjectEcourse, { title })),
+    lead: m.leadEcourse,
+    box: { title, lines: [fill(m.access, { date: formatDate(input.expiresAt, input.locale) })] },
+    sections: [],
+    login: input.login,
+    afterPurchase: true,
   });
 }
 

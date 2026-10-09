@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
-import { LOCAL_FIXTURES, storedHold, storedPayments, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
+import { clientEmail, insertClient, signInAsClient, storedAccess, storedClient } from "./account";
+import { LOCAL_FIXTURES, removeClientRows, storedHold, storedPayments, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
 import { E2E_MONTONIO } from "./montonio-values";
 
 // Course pages (Task 8): Maria's P1–P16. The first two tests are the brief's tests, verbatim except:
@@ -200,7 +201,7 @@ test.describe("contact page", () => {
     await page.goto("/koolitused/kulmumeistri-baaskoolitus");
     await expect(page.locator("[data-register-form]")).toHaveAttribute("method", "post");
     await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
-    await expect(page.locator("[data-interest-form]")).toHaveAttribute("method", "post");
+    await expect(page.locator("[data-ecourse-form]")).toHaveAttribute("method", "post");
   });
 
   test("cancelled sessions are shown but cannot be picked", async ({ page }) => {
@@ -443,25 +444,85 @@ test.describe("both types", () => {
 });
 
 test.describe("cart (/ostukorv)", () => {
-  test("summarises the e-course, says payment opens soon, takes an e-mail (P9)", async ({ page }, info) => {
+  test("summarises the e-course; the purchase form — name, e-mail, the terms, the newsletter box — and 'Maksa 190 €' goes to the bank (phase 2b, D3)", async ({ page }, info) => {
     submitsForms();
-    const addr = testEmail("interest", info.project.name);
+    const addr = testEmail("buy", info.project.name);
     await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
     await expect(page.getByRole("heading", { name: "Kulmumeistri e-koolitus" })).toBeVisible();
     await expect(page.locator("[data-cart-summary]")).toContainText("190 €");
-    await expect(page.getByText(/Makse lisandub peagi — saad koolituse osta niipea, kui makse on avatud\. Jäta oma e-post, anname teada\./)).toBeVisible();
-    const form = page.locator("[data-interest-form]");
-    await form.getByRole("button").click(); // empty: focus goes to the e-mail field with its error
-    await expect(form.getByLabel("E-post")).toBeFocused();
-    await expect(form.getByLabel("E-post")).toHaveAttribute("aria-invalid", "true");
+    const form = page.locator("[data-ecourse-form]");
+    await form.getByRole("button", { name: "Maksa 190 €" }).click(); // empty: the focus on the name, with its error
+    await expect(form.getByLabel("Nimi")).toBeFocused();
+    await expect(form.getByLabel("Nimi")).toHaveAttribute("aria-invalid", "true");
+    await form.getByLabel("Nimi").fill("Test Ostja");
     await form.getByLabel("E-post").fill(addr);
-    await expect(form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi")).not.toBeChecked(); // phase 2c: the newsletter consent, unticked
-    await form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi").check();
-    await form.getByRole("button").click();
-    await expect(page.getByText("Aitäh! Anname teada, kui makse on avatud.")).toBeVisible();
-    if (LOCAL_FIXTURES) {
-      expect(await storedRequests(addr)).toEqual([{ kind: "contact", payload: { course: "kulmumeistri-e-koolitus", intent: "purchase", email: addr, locale: "et" } }]);
-      await expect.poll(() => storedSubscriber(addr)).toMatchObject({ email: addr, confirmed: true }); // one step: subscribed at once
+    await expect(form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi")).not.toBeChecked();
+    await form.getByLabel(/tingimustega/).check();
+    await form.getByRole("button", { name: "Maksa 190 €" }).click();
+    await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
+    await page.getByRole("button", { name: "Katkesta" }).click();
+    await page.waitForURL(/\/makse#tulemus=katkestatud&liik=ekoolitus&kursus=kulmumeistri-e-koolitus/);
+    await expect(page.getByRole("link", { name: "Proovi uuesti" })).toHaveAttribute("href", "/ostukorv?kursus=kulmumeistri-e-koolitus");
+    if (LOCAL_FIXTURES) expect(await storedPayments(addr)).toEqual([{ kind: "ecourse", status: "failed", amountCents: 19000 }]);
+  });
+
+  test("the cart does not show the 'payment opens soon' text while payments are on, and the RU cart has the same form", async ({ page }) => {
+    await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
+    await expect(page.getByText(/Makse lisandub peagi/)).toHaveCount(0);
+    await expect(page.locator("[data-interest-form]")).toHaveCount(0);
+    await page.goto("/ru/ostukorv?kursus=kulmumeistri-e-koolitus");
+    const form = page.locator("[data-ecourse-form]");
+    await expect(form.getByLabel("Имя")).toBeVisible();
+    await expect(form.getByRole("button", { name: "Оплатить 190 €" })).toBeVisible();
+    await expect(form.locator("input[name='locale']")).toHaveValue("ru");
+  });
+
+  test("paid at the bank: the course opens for the buyer (by payment), and she lands on 'Makse õnnestus.' (phase 2b)", async ({ page }, info) => {
+    submitsForms();
+    test.skip(!LOCAL_FIXTURES, "reads the local database");
+    const addr = clientEmail("buy", info.project.name); // a sample address: never mailed; its rows are removed with the account tests'
+    try {
+      await removeClientRows(addr);
+      await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
+      const form = page.locator("[data-ecourse-form]");
+      await form.getByLabel("Nimi").fill("Test Ostja");
+      await form.getByLabel("E-post").fill(addr);
+      await form.getByLabel(/tingimustega/).check();
+      await form.getByRole("button", { name: "Maksa 190 €" }).click();
+      await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
+      await expect(page.locator("[data-fake-order]")).toContainText("190.00 EUR");
+      await page.getByRole("button", { name: "Makstud" }).click();
+      await page.waitForURL(/\/makse#tulemus=makstud&liik=ekoolitus&kursus=kulmumeistri-e-koolitus/);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse õnnestus.");
+      await expect(page.getByText("Saatsime sulle e-postiga sisselogimislingi.")).toBeVisible();
+      await expect(page.getByRole("link", { name: "Ava e-koolitus" })).toHaveAttribute("href", "/konto/kursus/kulmumeistri-e-koolitus");
+      expect(await storedPayments(addr)).toEqual([{ kind: "ecourse", status: "paid", amountCents: 19000 }]);
+      expect(await storedClient(addr)).toMatchObject({ name: "Test Ostja", locale: "et" });
+      expect(await storedAccess(addr, "kulmumeistri-e-koolitus")).toMatchObject({ grantedBy: "payment", revoked: false });
+      // no session was made by buying: the course is behind her login link, which only the mail carries
+      expect((await page.context().cookies()).some((c) => c.name === "__Host-mslab_client")).toBe(false);
+    } finally {
+      await removeClientRows(addr);
+    }
+  });
+
+  test("a signed-in browser has her name and e-mail filled in by the browser, not by the page", async ({ page, request }, info) => {
+    test.skip(!LOCAL_FIXTURES, "signs in through the local database");
+    const addr = clientEmail("cartme", info.project.name);
+    try {
+      await removeClientRows(addr);
+      await insertClient(addr, { name: "Kati Tamm" });
+      const anonymous = await (await request.get("/ostukorv?kursus=kulmumeistri-e-koolitus")).text();
+      expect(anonymous).not.toContain("Kati Tamm"); // (the page every visitor is given)
+      await signInAsClient(page, addr);
+      await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
+      const form = page.locator("[data-ecourse-form]");
+      await expect(form.getByLabel("Nimi")).toHaveValue("Kati Tamm");
+      await expect(form.getByLabel("E-post")).toHaveValue(addr);
+      await form.getByLabel("Nimi").fill("Kati T."); // what she types is hers
+      await expect(form.getByLabel("Nimi")).toHaveValue("Kati T.");
+    } finally {
+      await removeClientRows(addr);
     }
   });
 

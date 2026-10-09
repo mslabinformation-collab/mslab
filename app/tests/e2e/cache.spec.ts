@@ -192,6 +192,30 @@ test("/makse is one cached static page for everyone: no Set-Cookie, no result, n
   }
 });
 
+// The e-course cart (phase 2b): one cached static page per course and language with the purchase form in it, for everyone. Whoever is signed
+// in, the page is the same copy with no Set-Cookie, and nothing personal is in its HTML: her name and e-mail are filled in by the browser from
+// /api/konto/me (components/site/EcoursePurchase.tsx).
+test("the e-course cart is one cached static page for everyone, with the purchase form and no name or e-mail in it (phase 2b)", async ({ request }) => {
+  const signedIn = { cookie: `__Host-mslab_client=${"e2e".repeat(15)}; mslab_in=1` };
+  for (const [path, button] of [["/ostukorv?kursus=kulmumeistri-e-koolitus", "Maksa 190 €"], ["/ru/ostukorv?kursus=kulmumeistri-e-koolitus", "Оплатить 190 €"]] as const) {
+    const plain = await settledText(request, path);
+    for (const [who, headers] of [["no cookie", {}], ["signed-in cookies", signedIn]] as const) {
+      const res = await fromCache(request, path, { headers });
+      expect(res.status(), `${path} (${who})`).toBe(200);
+      expect(res.headers()["x-nextjs-cache"], `${path} (${who})`).toBe("HIT");
+      expect(res.headers()["cache-control"], `${path} (${who}): for a CDN only`).toMatch(CDN_ONLY);
+      expect(res.headers()["set-cookie"], `${path} (${who})`).toBeUndefined();
+      expect(await res.text(), `${path} (${who}): the same copy`).toBe(plain);
+    }
+    expect(plain, path).toContain('data-ecourse-form=""');
+    expect(plain, path).toContain(button);
+    expect(plain, path).not.toContain("data-interest-form");
+    // the fields are empty in the HTML (the server knows no one); the price is the course's, in no field
+    expect(plain, path).not.toMatch(/name="(name|email)"[^>]*value="[^"]/);
+    expect(plain, path).not.toMatch(/name="(price|amount)/);
+  }
+});
+
 // Next.js stores the address of the request that renders a page (path and query) in the page it caches, and the next visitor is sent
 // that copy; no rewrite changes it. The account's pages take parameters (viga, korda, an e-mail address): they travel in the fragment,
 // which no server sees, and the middleware answers a request that has a query, whatever its method (a mail scanner's HEAD, a stray

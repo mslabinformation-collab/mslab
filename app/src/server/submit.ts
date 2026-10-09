@@ -13,6 +13,7 @@ import { pick } from "@/i18n/field";
 import {
   isSpam,
   parseContact,
+  parseEcoursePurchase,
   parseGroupRegistration,
   parseIndividual,
   parsePractice,
@@ -36,7 +37,7 @@ import { CONFIRMATION_MAIL_DAILY_CAP, LOGIN_MAIL_DAILY_CAP, accountOf, fillClien
 import { logFailure, logNote } from "./log";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env, type Mail } from "./notify";
 import type { Montonio } from "./payments/montonio";
-import { startRegistrationPayment } from "./payments/start";
+import { startEcoursePayment, startRegistrationPayment } from "./payments/start";
 import { RATE_LIMIT, RATE_WINDOW_SEC, rateKey, rateLimit } from "./ratelimit";
 import type { PublicChange } from "./cache-targets";
 import { sendWelcome } from "./newsletter";
@@ -50,7 +51,7 @@ import { upcomingFrom } from "@/domain/calendar";
 // → storage → notifications after the response. Storage is the contract; a failed e-mail or Telegram ping is logged
 // and never fails the request.
 
-/** `paymentUrl` (phase 2b): a group registration's prepayment has started; the form sends the browser there. */
+/** `paymentUrl` (phase 2b): a group registration's prepayment, or an e-course purchase, has started; the form sends the browser there. */
 export type ActionResult = { ok: true; paymentUrl?: string } | { ok: false; errors: Record<string, string> };
 
 export type Deps = {
@@ -72,7 +73,7 @@ export type Deps = {
   montonio?: Montonio | null;
 };
 
-export type FormName = "contact" | "subscribe" | "register" | "individual" | "interest" | "practice" | "waitlist";
+export type FormName = "contact" | "subscribe" | "register" | "individual" | "interest" | "ecourse" | "practice" | "waitlist";
 
 const OK: ActionResult = { ok: true };
 const fail = (errors: Record<string, string>): ActionResult => ({ ok: false, errors });
@@ -462,6 +463,30 @@ export function handlePurchaseInterest(deps: Deps, formData: FormData): Promise<
   });
 }
 
+/**
+ * The e-course cart's "Maksa {hind}" (phase 2b, spec 6.4): the forms' pipeline (honeypot, validation, 5 per 10 minutes per IP), a published
+ * e-course with a price, then a payment row (`ecourse`; its time is the terms box's acceptance) and Montonio's order: `{ ok: true, paymentUrl }`.
+ * The price is the course's own, read here: the browser sends none. Nothing else before the payment: no account, no access, no newsletter, no
+ * mail (server/payments/settle.ts does that when it is paid). Without payments, or when Montonio says no: form "unavailable", and the cart
+ * shows its purchase-interest form instead.
+ */
+export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<ActionResult> {
+  return submission(deps, "ecourse", formData, parseEcoursePurchase, async ({ course: slug, name, email, locale, wantsNewsletter, terms: _terms }) => {
+    void _terms;
+    const [course] = await deps.db
+      .select()
+      .from(courses)
+      .where(and(eq(courses.slug, slug), eq(courses.published, true), eq(courses.type, "e_learning")))
+      .limit(1);
+    if (!course || course.price == null || course.price <= 0) return { result: fail({ form: "invalid" }) };
+    const started = await startEcoursePayment(
+      { db: deps.db, now: deps.now, siteUrl: deps.siteUrl, montonio: deps.montonio ?? null },
+      { courseId: course.id, amountCents: course.price, email, name, locale, newsletter: wantsNewsletter },
+    );
+    return { result: started.kind === "started" ? { ok: true, paymentUrl: started.paymentUrl } : fail({ form: "unavailable" }) };
+  });
+}
+
 /** Practice request (/praktika): Maria agrees the time afterwards; nothing is booked. */
 export function handlePractice(deps: Deps, formData: FormData): Promise<ActionResult> {
   return submission(deps, "practice", formData, parsePractice, async (data) => {
@@ -584,9 +609,9 @@ async function welcomeLater(deps: Deps, form: FormName, due: WelcomeDue): Promis
 /**
  * "Soovin MS LABi uudiseid ja pakkumisi" ticked on a registration form (phase 2c): the newsletter's own sign-up (subscribeAddress, then
  * its welcome mail with all the guards) after the answer. Never throws: the registration is stored whatever happens here, and a failure is
- * logged without the address.
+ * logged without the address. settle.ts calls it too, when a paid e-course purchase had the box ticked (phase 2b).
  */
-async function subscribeLater(deps: Deps, form: FormName, wish: { email: string; locale: "et" | "ru" }): Promise<void> {
+export async function subscribeLater(deps: Deps, form: FormName, wish: { email: string; locale: "et" | "ru" }): Promise<void> {
   try {
     const due = await subscribeAddress(deps, form, wish.email, wish.locale);
     if (due) await welcomeLater(deps, form, due);

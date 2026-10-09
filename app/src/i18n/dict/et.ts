@@ -400,6 +400,8 @@ export const et = {
     transfer: "või tasu pangaülekandega",
     // the button while the payment page is being opened
     starting: "Avan makse…",
+    // the e-course cart when Montonio did not open the payment: the line above the purchase-interest form (owner's wording, 09.10)
+    cartDown: "Makse ei avanenud. Jäta oma e-post, anname teada.",
     // the page behind the mail's "Maksa" link (/maksa/<token>)
     page: {
       heading: "Koolituse eest tasumine",

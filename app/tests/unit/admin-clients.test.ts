@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { accessState, addMonths, defaultExpiryDate, endOfDayTallinn, grantExpiry, tallinnToday } from "@/domain/client-access";
+import { accessState, addMonths, defaultExpiryDate, endOfDayTallinn, grantExpiry, purchaseExpiryDate, tallinnToday } from "@/domain/client-access";
 import { containsPattern, parseSearch } from "@/domain/paging";
 import { compactIban, groupIban } from "@/domain/account-cards";
 import { isIban, normalizeIban, prepaymentDraft } from "@/domain/site-editor";
@@ -31,6 +31,20 @@ describe("e-course access dates (Estonian calendar days)", () => {
     expect(defaultExpiryDate(now, null)).toBe("2027-10-04");
     expect(defaultExpiryDate(now, 0)).toBe("2027-10-04");
     expect(defaultExpiryDate(new Date("2026-10-04T21:30:00Z"), 1)).toBe("2026-11-05");
+  });
+
+  test("a purchase gives today + the months, but never shortens access she has: the later of the two days; a revoked access counts as none (phase 2b)", () => {
+    const now = new Date("2026-10-09T10:00:00Z");
+    const open = (expiresAt: string, revokedAt: Date | null = null) => ({ expiresAt: new Date(expiresAt), revokedAt });
+    expect(purchaseExpiryDate(now, 6, null)).toBe("2027-04-09");
+    expect(purchaseExpiryDate(now, 6, open("2026-12-01T21:59:59.999Z"))).toBe("2027-04-09"); // earlier than the new end: the new one
+    expect(purchaseExpiryDate(now, 6, open("2027-12-01T21:59:59.999Z"))).toBe("2027-12-01"); // later: kept
+    expect(purchaseExpiryDate(now, 6, open("2027-04-09T20:59:59.999Z"))).toBe("2027-04-09"); // the same day
+    expect(purchaseExpiryDate(now, 6, open("2026-01-01T21:59:59.999Z"))).toBe("2027-04-09"); // run out
+    expect(purchaseExpiryDate(now, 6, open("2027-12-01T21:59:59.999Z", new Date("2026-09-01T10:00:00Z")))).toBe("2027-04-09"); // ended by an admin
+    expect(purchaseExpiryDate(now, null, open("2027-06-01T20:59:59.999Z"))).toBe("2027-10-09"); // 12 months without any
+    // the day is the Estonian one: the last moment of a winter day is 21:59 UTC
+    expect(purchaseExpiryDate(now, 1, open("2026-12-31T21:59:59.999Z"))).toBe("2026-12-31");
   });
 
   test("stored as the end of that day in Tallinn (summer and winter time)", () => {
