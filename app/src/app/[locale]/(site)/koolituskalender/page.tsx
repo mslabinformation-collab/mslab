@@ -44,8 +44,8 @@ export default async function CalendarPage({ params }: Props) {
   const c = d.calendar;
   const word = { open: c.stateOpen, few: c.stateFew, full: c.stateFull, cancelled: c.stateCancelled };
   const rows: CalendarRowData[] = sessions.map((s) => {
-    const state = seatState(s, s.confirmed);
-    const left = seatsLeft(s.capacity, s.confirmed);
+    const state = seatState(s, s.taken);
+    const left = seatsLeft(s.capacity, s.taken);
     const course = to(`/koolitused/${s.course.slug}`);
     return {
       id: s.id,

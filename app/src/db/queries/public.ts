@@ -1,14 +1,16 @@
-import { and, asc, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, ne } from "drizzle-orm";
 import { TERMS_PAGE_KEY } from "@/domain/course-terms";
 import type { I18n } from "@/i18n/field";
 import type { Db, Q } from "../client";
-import { campaign, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, pages, posts, practicePackages, registrations, settings } from "../schema";
+import { campaign, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, pages, posts, practicePackages, settings } from "../schema";
 import type { Campaign, Course, CourseImage, CourseSession, FaqItem, GalleryItem, HeroSlide, Page, Post, PracticePackage } from "../schema";
+import { seatsTaken } from "./seats";
 
 // Public (read-only) queries. Every function takes the Db as its first argument and never creates one itself.
 
 export type CourseWithImages = Course & { images: CourseImage[] };
-export type SessionWithSeats = CourseSession & { confirmed: number };
+/** A session with the seats taken now (confirmed and live holds, db/queries/seats.ts). */
+export type SessionWithSeats = CourseSession & { taken: number };
 export type CourseDetail = CourseWithImages & { sessions: SessionWithSeats[]; moduleTitles: I18n[] };
 export type UpcomingSession = SessionWithSeats & { course: Course };
 export type HomeData = {
@@ -27,20 +29,6 @@ export type HomeData = {
 const HOME_POSTS_LIMIT = 8;
 
 const imageOrder = [asc(courseImages.sort), asc(courseImages.id)];
-
-/** Confirmed registrations per session id (`count(*) filter (where status = 'confirmed')`). Sessions without any are absent from the map. */
-async function confirmedBySession(db: Db, sessionIds: number[]): Promise<Map<number, number>> {
-  if (sessionIds.length === 0) return new Map();
-  const rows = await db
-    .select({
-      sessionId: registrations.courseSessionId,
-      confirmed: sql<number>`count(*) filter (where ${registrations.status} = 'confirmed')`.mapWith(Number),
-    })
-    .from(registrations)
-    .where(inArray(registrations.courseSessionId, sessionIds))
-    .groupBy(registrations.courseSessionId);
-  return new Map(rows.flatMap((r) => (r.sessionId == null ? [] : [[r.sessionId, r.confirmed] as const])));
-}
 
 /** The published courses in the catalogue's order; `only.slugs` keeps just those courses (the account's favourites). */
 export async function listPublishedCourses(db: Db, only?: { slugs: string[] }): Promise<CourseWithImages[]> {
@@ -82,8 +70,8 @@ export async function getCourseBySlug(
     },
   });
   if (!course) return null;
-  const [counts, moduleTitles] = await Promise.all([confirmedBySession(db, course.sessions.map((s) => s.id)), listModuleTitles(db, course.id)]);
-  return { ...course, moduleTitles, sessions: course.sessions.map((s) => ({ ...s, confirmed: counts.get(s.id) ?? 0 })) };
+  const [counts, moduleTitles] = await Promise.all([seatsTaken(db, course.sessions.map((s) => s.id)), listModuleTitles(db, course.id)]);
+  return { ...course, moduleTitles, sessions: course.sessions.map((s) => ({ ...s, taken: counts.get(s.id) ?? 0 })) };
 }
 
 /**
@@ -99,8 +87,8 @@ export async function listUpcomingSessions(db: Db, fromDate: Date, only?: { slug
     .innerJoin(courses, eq(courseSessions.courseId, courses.id))
     .where(and(eq(courses.published, true), eq(courses.type, "contact"), gte(courseSessions.startsAt, fromDate), only ? inArray(courses.slug, only.slugs) : undefined))
     .orderBy(asc(courseSessions.startsAt), asc(courseSessions.id));
-  const counts = await confirmedBySession(db, rows.map((r) => r.session.id));
-  return rows.map((r) => ({ ...r.session, course: r.course, confirmed: counts.get(r.session.id) ?? 0 }));
+  const counts = await seatsTaken(db, rows.map((r) => r.session.id));
+  return rows.map((r) => ({ ...r.session, course: r.course, taken: counts.get(r.session.id) ?? 0 }));
 }
 
 export async function getPracticePackages(db: Db): Promise<PracticePackage[]> {

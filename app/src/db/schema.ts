@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { pgTable, serial, text, integer, boolean, jsonb, timestamp, pgEnum, uniqueIndex, index, primaryKey, customType, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, boolean, jsonb, timestamp, pgEnum, uniqueIndex, index, primaryKey, customType, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { I18n } from "@/i18n/field";
 
 export const courseType = pgEnum("course_type", ["e_learning", "contact"]);
@@ -9,6 +9,10 @@ export const regKind = pgEnum("registration_kind", ["group", "individual"]);
 export const payChoice = pgEnum("payment_choice", ["full", "half"]);
 export const sessionStatus = pgEnum("session_status", ["scheduled", "cancelled"]);
 export const requestKind = pgEnum("request_kind", ["contact", "individual", "practice", "waitlist", "change_request"]);
+/** An online payment (phase 2b): a registration's prepayment, its rest after the prepayment, or an e-course purchase. */
+export const payKind = pgEnum("payment_kind", ["prepayment", "balance", "ecourse"]);
+/** pending: started; paid; failed (ended unpaid, or voided by the bank after paid); refunded; held: paid, but the amount or currency did not match. */
+export const payStatus = pgEnum("payment_status", ["pending", "paid", "failed", "refunded", "held"]);
 
 /** A badge's text: Estonian, and Russian when Maria gave one (the RU pages fall back to the Estonian text). */
 export type BadgeLabel = { et: string; ru?: string };
@@ -27,7 +31,7 @@ export const courses = pgTable("courses", {
   body: jsonb("body").$type<I18n>().notNull(),
   outcomes: jsonb("outcomes").$type<I18n[]>().notNull().default([]),
   includes: jsonb("includes").$type<I18n[]>().notNull().default([]),
-  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0006 drops it after the 3a deploy (code first).
+  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0007 drops it after the 3a deploy (code first).
   modules: jsonb("modules").$type<I18n[]>().notNull().default([]),
   language: text("language").notNull().default("ET"),        // "ET" | "RU" | "ET / RU"
   price: integer("price"),                                     // e-learning, cents
@@ -80,10 +84,24 @@ export const registrations = pgTable("registrations", {
   paidCents: integer("paid_cents").notNull().default(0),
   note: text("note").notNull().default(""),
   clientId: integer("client_id").references((): AnyPgColumn => clients.id, { onDelete: "set null" }),
+  /**
+   * The seat hold of an unpaid registration (phase 2b, D2): until this moment an `awaiting_prepayment` registration takes a seat
+   * (db/queries/seats.ts takesSeat). Set to now + 30 minutes when its prepayment starts (server/payments/start.ts); null without one.
+   */
+  seatHoldUntil: timestamp("seat_hold_until", { withTimezone: true }),
+  /**
+   * The "Maksa" link's token (phase 2b, /maksa/<payToken>): 32 random bytes in base64url (server/token.ts newToken). A row written
+   * without one (the migration's existing rows, the e2e fixtures' SQL) gets one from the default: two gen_random_uuid()s, 244 random bits,
+   * in the same 43-character shape. It reveals nothing and is never logged.
+   */
+  payToken: text("pay_token")
+    .notNull()
+    .default(sql`translate(encode(decode(replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), 'hex'), 'base64'), '+/=', '-_')`),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("registrations_client").on(t.clientId),
   index("registrations_email_lower").on(sql`lower(${t.email})`),
+  uniqueIndex("registrations_pay_token").on(t.payToken),
 ]);
 
 export const requests = pgTable("requests", {
@@ -218,6 +236,48 @@ export const clientFavourites = pgTable("client_favourites", {
 
 export const mailQuota = pgTable("mail_quota", { day: text("day").primaryKey(), sent: integer("sent").notNull().default(0) });
 
+// ---------- phase 2b: online payments (Montonio) ----------
+
+/**
+ * One online payment attempt (phase 2b, spec 5.1). `reference` is Montonio's merchantReference, `MSLAB-M<id>` (domain/payments.ts
+ * orderReference), written in the insert's own transaction (db/queries/payments.ts insertPayment): every attempt is a new order.
+ * `email` and `name` are the payer's as entered, kept for the books when the account or the registration is deleted (the links are set
+ * null). `held`: Montonio said paid, but the amount or the currency did not match (server/payments/settle.ts). `paidAt` stays set when
+ * the bank voids a paid payment (status failed), which the admin shows as "Kontrolli Montonios".
+ */
+export const payments = pgTable(
+  "payments",
+  {
+    id: serial("id").primaryKey(),
+    reference: text("reference").notNull(),
+    kind: payKind("kind").notNull(),
+    registrationId: integer("registration_id").references(() => registrations.id, { onDelete: "set null" }),
+    courseId: integer("course_id").references(() => courses.id, { onDelete: "set null" }),
+    clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    locale: text("locale").$type<"et" | "ru">().notNull().default("et"),
+    amountCents: integer("amount_cents").notNull(),
+    status: payStatus("status").notNull().default("pending"),
+    providerUuid: text("provider_uuid"),
+    method: text("method").notNull().default(""),
+    bank: text("bank").notNull().default(""),
+    /** E-course: "Soovin MS LABi uudiseid ja pakkumisi" was ticked in the cart; acted on when paid. */
+    newsletter: boolean("newsletter").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("payments_reference").on(t.reference),
+    uniqueIndex("payments_provider_uuid").on(t.providerUuid),
+    index("payments_registration").on(t.registrationId),
+    index("payments_client").on(t.clientId),
+    index("payments_status_created").on(t.status, t.createdAt),
+    check("payments_amount_positive", sql`${t.amountCents} > 0`),
+  ],
+);
+
 // ---------- phase 3a: modules, lessons, files, progress ----------
 
 /** A module of a course (an e-course's module, a contact course's programme item), in `position` order (1…n). */
@@ -348,3 +408,6 @@ export type CourseModule = typeof courseModules.$inferSelect;
 export type Lesson = typeof lessons.$inferSelect;
 export type LessonFile = typeof lessonFiles.$inferSelect;
 export type LessonProgressRow = typeof lessonProgress.$inferSelect;
+export type Payment = typeof payments.$inferSelect;
+export type PaymentKind = Payment["kind"];
+export type PaymentStatus = Payment["status"];

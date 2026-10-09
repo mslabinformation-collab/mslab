@@ -127,8 +127,8 @@ export default async function CoursePage({ params }: Props) {
   // Contact: participation kinds with a price (P12, P13) and the upcoming sessions with their seat state.
   const stateWord = { open: d.calendar.stateOpen, few: d.calendar.stateFew, full: d.calendar.stateFull, cancelled: d.calendar.stateCancelled };
   const sessions: SessionOption[] = course.sessions.map((s) => {
-    const state = seatState(s, s.confirmed);
-    const left = seatsLeft(s.capacity, s.confirmed);
+    const state = seatState(s, s.taken);
+    const left = seatsLeft(s.capacity, s.taken);
     return {
       id: s.id,
       date: formatDate(s.startsAt, locale),

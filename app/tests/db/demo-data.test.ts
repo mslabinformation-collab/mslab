@@ -29,7 +29,7 @@ const totals = async () => ({ registrations: await total(registrations), request
 
 async function seatStates() {
   const rows = await listUpcomingSessions(db, NOW);
-  return new Map(rows.map((s) => [`${s.course.slug} ${s.id}`, seatState(s, s.confirmed)]));
+  return new Map(rows.map((s) => [`${s.course.slug} ${s.id}`, seatState(s, s.taken)]));
 }
 
 describe("sample data", () => {

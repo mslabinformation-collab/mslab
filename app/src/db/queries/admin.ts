@@ -5,6 +5,7 @@ import type { Campaign, Course, CourseImage, CourseSession, FaqItem, GalleryItem
 import { pageInfo, PAGE_SIZE, type PageInfo } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
 import type { I18n } from "@/i18n/field";
+import { takesSeat } from "./seats";
 
 // Admin (write) queries. Callers must already have checked the admin session; nothing here does authorization.
 
@@ -166,6 +167,8 @@ export type AdminSessionRow = CourseSession & {
   /** Registrations by status (cancelled ones are not counted). */
   confirmed: number;
   awaiting: number;
+  /** Seats taken now: the confirmed ones and the live holds of unpaid ones (phase 2b, db/queries/seats.ts). What "vabu" counts against. */
+  taken: number;
   /** Open waitlist requests for this session. */
   waitlist: number;
 };
@@ -175,7 +178,7 @@ export type AdminSessionRow = CourseSession & {
  * `upcoming`: starting from `from`, soonest first; otherwise the ones before `from`, latest first. `{ ids }`: those
  * sessions, wherever they are in time (the drawer of a session opened from either list).
  */
-export async function listAdminSessions(db: Db, opts: { from: Date; upcoming: boolean } | { ids: number[] }): Promise<AdminSessionRow[]> {
+export async function listAdminSessions(db: Db, opts: { from: Date; upcoming: boolean } | { ids: number[] }, now: Date = new Date()): Promise<AdminSessionRow[]> {
   if ("ids" in opts && opts.ids.length === 0) return [];
   const where = "ids" in opts ? inArray(courseSessions.id, opts.ids) : opts.upcoming ? gte(courseSessions.startsAt, opts.from) : lt(courseSessions.startsAt, opts.from);
   const newestFirst = "upcoming" in opts && !opts.upcoming;
@@ -193,6 +196,7 @@ export async function listAdminSessions(db: Db, opts: { from: Date; upcoming: bo
         sessionId: registrations.courseSessionId,
         confirmed: sql<number>`count(*) filter (where ${registrations.status} = 'confirmed')`.mapWith(Number),
         awaiting: sql<number>`count(*) filter (where ${registrations.status} = 'awaiting_prepayment')`.mapWith(Number),
+        taken: sql<number>`count(*) filter (where ${takesSeat(now)})`.mapWith(Number),
       })
       .from(registrations)
       .where(inArray(registrations.courseSessionId, ids))
@@ -210,6 +214,7 @@ export async function listAdminSessions(db: Db, opts: { from: Date; upcoming: bo
     course: r.course,
     confirmed: reg.get(r.session.id)?.confirmed ?? 0,
     awaiting: reg.get(r.session.id)?.awaiting ?? 0,
+    taken: reg.get(r.session.id)?.taken ?? 0,
     waitlist: wait.get(r.session.id) ?? 0,
   }));
 }

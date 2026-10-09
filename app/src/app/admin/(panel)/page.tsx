@@ -114,7 +114,7 @@ export default async function Overview() {
                         <td className={ui.nowrap}>{formatDate(s.startsAt, "et")}</td>
                         <td>{s.city}</td>
                         <td>
-                          {seatsLeft(s.capacity, s.confirmed)} / {s.capacity}
+                          {seatsLeft(s.capacity, s.taken)} / {s.capacity}
                         </td>
                       </tr>
                     ))}

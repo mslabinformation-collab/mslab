@@ -1,6 +1,7 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { readSetting } from "@/db/queries/public";
+import { seatsTaken } from "@/db/queries/seats";
 import { courses, courseSessions, practicePackages, registrations, requests, subscribers } from "@/db/schema";
 import type { Course, CourseSession, Registration } from "@/db/schema";
 import { PREPAYMENT_KEY, parsePrepayment } from "@/domain/account-cards";
@@ -245,7 +246,8 @@ export async function runSubmission(
 // ---------- registrations ----------
 
 /** Stores a contact-course registration. The status is always `awaiting_prepayment` (a place is confirmed only
- *  after at least 50% prepayment, P15) and nothing has been paid. An address with an account is linked to it at once
+ *  after at least 50% prepayment, P15) and nothing has been paid. Its "Maksa" token is a fresh newToken() (phase 2b).
+ *  An address with an account is linked to it at once
  *  (client-auth.ts accountOf), and the account's empty name and phone are filled from it, in the same transaction. */
 export async function createRegistration(db: Db, input: RegistrationInput): Promise<Registration> {
   const email = normalizeEmail(input.email);
@@ -268,6 +270,7 @@ export async function createRegistration(db: Db, input: RegistrationInput): Prom
         locale: input.locale,
         status: "awaiting_prepayment",
         paidCents: 0,
+        payToken: newToken(),
       })
       .returning();
     if (row.clientId !== null) await fillClientContact(tx, row.clientId, [{ name: row.name, phone: row.phone, at: row.createdAt }]);
@@ -285,15 +288,11 @@ async function contactCourse(db: Db, slug: string): Promise<Course | null> {
   return row ?? null;
 }
 
-/** A session with its confirmed registrations, counted now (the page the visitor saw may be out of date). */
-async function sessionWithSeats(db: Db, id: number): Promise<(CourseSession & { confirmed: number }) | null> {
+/** A session with the seats taken at `now` (confirmed and live holds, db/queries/seats.ts), counted now: the page the visitor saw may be out of date. */
+async function sessionWithSeats(db: Db, id: number, now: Date): Promise<(CourseSession & { taken: number }) | null> {
   const [session] = await db.select().from(courseSessions).where(eq(courseSessions.id, id)).limit(1);
   if (!session) return null;
-  const [{ confirmed }] = await db
-    .select({ confirmed: sql<number>`count(*)`.mapWith(Number) })
-    .from(registrations)
-    .where(and(eq(registrations.courseSessionId, id), eq(registrations.status, "confirmed")));
-  return { ...session, confirmed };
+  return { ...session, taken: (await seatsTaken(db, [id], now)).get(id) ?? 0 };
 }
 
 /** Group registration for one session of a contact course (P12–P16). */
@@ -302,12 +301,12 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
     void _terms;
     const course = await contactCourse(deps.db, slug);
     if (!course || course.priceGroup == null) return { result: fail({ form: "invalid" }) };
-    const session = await sessionWithSeats(deps.db, courseSessionId);
+    const session = await sessionWithSeats(deps.db, courseSessionId, deps.now);
     // Another course's session, a cancelled one or one that has begun cannot be booked (upcomingFrom: the same
     // "upcoming" as the calendar and the course page, so they offer exactly the dates that can be booked).
     if (!session || session.courseId !== course.id || session.status !== "scheduled" || session.startsAt < upcomingFrom(deps.now))
       return { result: fail({ session: "unavailable" }) };
-    if (seatState(session, session.confirmed) === "full") return { result: fail({ session: "full" }) };
+    if (seatState(session, session.taken) === "full") return { result: fail({ session: "full" }) };
 
     const registration = await createRegistration(deps.db, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "" });
     await deps.changed?.({ kind: "seats", course: course.slug });

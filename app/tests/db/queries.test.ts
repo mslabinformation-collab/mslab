@@ -78,10 +78,10 @@ describe("public queries", () => {
     expect(list[1].images.map((i) => i.key)).toEqual(["/seed/one.jpg", "/seed/two.jpg"]);
   });
 
-  test("getCourseBySlug counts only confirmed registrations per session", async () => {
+  test("getCourseBySlug counts the seats taken per session (confirmed; live holds since phase 2b)", async () => {
     const c = await getCourseBySlug(db, "pub");
     expect(c?.sessions).toHaveLength(1);
-    expect(c?.sessions[0].confirmed).toBe(2);
+    expect(c?.sessions[0].taken).toBe(2);
     expect(c?.sessions[0].capacity).toBe(4);
     expect(c?.images).toEqual([]);
   });
@@ -100,7 +100,7 @@ describe("public queries", () => {
     expect(later?.sessions.map((s) => s.city)).toEqual(["Pärnu"]);
   });
 
-  test("listUpcomingSessions returns upcoming sessions of published courses with course and confirmed count", async () => {
+  test("listUpcomingSessions returns upcoming sessions of published courses with course and seats taken", async () => {
     const [draftSession] = await db.insert(courseSessions).values({ courseId: draft.id, startsAt: new Date("2026-11-15T08:00:00Z"), city: "Tartu" }).returning();
     await db.insert(courseSessions).values({ courseId: pub.id, startsAt: new Date("2026-09-01T08:00:00Z"), city: "Past" });
     await db.insert(courseSessions).values({ courseId: pub.id, startsAt: new Date("2026-12-01T08:00:00Z"), city: "Tallinn", status: "cancelled" });
@@ -109,9 +109,9 @@ describe("public queries", () => {
     expect(list.map((s) => s.city)).toEqual(["Pärnu", "Tallinn"]);
     expect(list.some((s) => s.id === draftSession.id)).toBe(false);
     expect(list[0].course.slug).toBe("pub");
-    expect(list[0].confirmed).toBe(2);
+    expect(list[0].taken).toBe(2);
     expect(list[1].status).toBe("cancelled");
-    expect(list[1].confirmed).toBe(0);
+    expect(list[1].taken).toBe(0);
   });
 
   test("simple content getters return published rows only and null when missing", async () => {

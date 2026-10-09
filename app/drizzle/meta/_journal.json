@@ -43,6 +43,13 @@
       "when": 1791455968157,
       "tag": "0005_phase2c",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791566073080,
+      "tag": "0006_phase2b_payments",
+      "breakpoints": true
     }
   ]
 }
