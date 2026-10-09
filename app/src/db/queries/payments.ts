@@ -71,6 +71,21 @@ export async function releaseHold(q: Q, registrationId: number, exceptPaymentId:
 }
 
 /**
+ * releaseHold for a caller that holds no lock (server/submit.ts, after a start that left no attempt): a small transaction of its own that takes
+ * the registration's lock first, then runs the conditional UPDATE. Without the lock the UPDATE's "no other payment is pending" test reads the
+ * database as it was when the statement began, while the row it changes is read as it is after a concurrent start has committed (a /maksa
+ * page and the dashboard, or two tabs, can start one registration at once): the start's new hold would be cleared though its payment is
+ * pending. Behind the lock the statement begins after that start has committed, and sees its payment. The registration's lock alone is a
+ * subset of the order (db/queries/seats.ts) and freeing a seat cannot overbook; failPayment does the same. True when a live hold was ended.
+ */
+export async function releaseHoldLocked(db: Db, registrationId: number, now: Date): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    await lockRegistration(tx, registrationId);
+    return releaseHold(tx, registrationId, 0, now);
+  });
+}
+
+/**
  * A pending payment that will not be paid (its order was refused, or Montonio said ABANDONED/FAILED): `failed`, and a prepayment's hold ends
  * (releaseHold), in one transaction. Null when it was not pending (paid is a floor: settle.ts). The lock order of every payment path
  * (db/queries/seats.ts): the registration is locked before the payment row is written, as a re-send of the same payment locks it. Freeing a

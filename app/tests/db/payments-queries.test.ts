@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, test } from "vitest";
 import type { Db } from "@/db/client";
-import { attachOrder, failPayment, insertPayment, paymentByReference, paymentContext, releaseHold } from "@/db/queries/payments";
+import { attachOrder, failPayment, insertPayment, paymentByReference, paymentContext, releaseHold, releaseHoldLocked } from "@/db/queries/payments";
 import { courses, payments, registrations } from "@/db/schema";
 import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
@@ -91,6 +91,30 @@ describe("releaseHold", () => {
     expect(await releaseHold(db, r.id, first.id, NOW)).toBe(false);
     await db.update(payments).set({ status: "failed" }).where(eq(payments.id, second.id));
     expect(await releaseHold(db, r.id, first.id, NOW)).toBe(true);
+  });
+});
+
+describe("releaseHoldLocked (the release of a caller that holds no lock)", () => {
+  const hold = (offsetMin: number) => new Date(NOW.getTime() + offsetMin * MIN);
+
+  test("the same rule as releaseHold, in a transaction of its own: a live hold of an unpaid registration ends, another pending payment keeps it", async () => {
+    const c = await contactCourse(db);
+    const free = await registrationOn(db, c, { seatHoldUntil: hold(10) });
+    expect(await releaseHoldLocked(db, free.id, NOW)).toBe(true);
+    expect((await registration(free.id)).seatHoldUntil).toBeNull();
+    const busy = await registrationOn(db, c, { email: "teine@example.com", seatHoldUntil: hold(10) });
+    await pendingPayment(db, busy);
+    expect(await releaseHoldLocked(db, busy.id, NOW)).toBe(false);
+    expect((await registration(busy.id)).seatHoldUntil).toEqual(hold(10));
+  });
+
+  test("nothing to end: a hold that has ended, no hold, a confirmed registration, a registration that does not exist", async () => {
+    const c = await contactCourse(db);
+    for (const over of [{ seatHoldUntil: hold(-1) }, { seatHoldUntil: null }, { status: "confirmed" as const, seatHoldUntil: hold(10) }]) {
+      const r = await registrationOn(db, c, { email: `x${Math.random()}@example.com`, ...over });
+      expect(await releaseHoldLocked(db, r.id, NOW), JSON.stringify(over)).toBe(false);
+    }
+    expect(await releaseHoldLocked(db, 999_999, NOW)).toBe(false);
   });
 });
 

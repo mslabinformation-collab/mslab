@@ -402,4 +402,24 @@ describe("one lock order: course_sessions → registrations → payments", () =>
     expect(lock, lines(queries)).toBeLessThan(count);
     expect(count, lines(queries)).toBeLessThan(insert);
   });
+
+  // The release of the hold a registration was stored with (a start that left no attempt) used to be one unlocked UPDATE whose "no payment of
+  // it is pending" test could run on an older snapshot than the row it then changes: a start of the same registration from /maksa or the
+  // dashboard (phase 2b, Task 5), committing meanwhile, had its new hold cleared. It now takes the registration's lock first, in a
+  // transaction of its own, and only then runs the conditional UPDATE, which reads the committed state.
+  test("the release after a start that left no attempt: the registration's lock first (its own small transaction), then the conditional update, nothing in between", async () => {
+    const { db: ldb, queries } = await loggedDb();
+    const m = stubMontonio();
+    const c = await contactCourse(ldb);
+    // Maria records the prepayment between the registration's commit and the start: "nothing", so the hold stored with the registration must be released
+    const { d } = deps(m.montonio, { db: onStart(ldb, async () => void (await ldb.update(registrations).set({ paidCents: 17500 }))) });
+    queries.length = 0;
+    expect(await handleRegistration(d, form(c.session.id))).toEqual({ ok: true });
+    const release = queries.findIndex((q) => /^update "registrations" [\s\S]*not exists/.test(q));
+    expect(release, lines(queries)).toBeGreaterThan(-1);
+    const lock = queries.slice(0, release).map((q, i) => (REGISTRATION_LOCK.test(q) ? i : -1)).filter((i) => i >= 0).pop() ?? -1;
+    expect(lock, lines(queries)).toBeGreaterThan(-1);
+    expect(release - lock, lines(queries)).toBe(1);
+    expect((await ldb.select().from(registrations))[0].seatHoldUntil).toBeNull();
+  });
 });
