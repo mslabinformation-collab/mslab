@@ -147,6 +147,8 @@ test("'Maksa 175 €' goes to the bank; paid there, the place is confirmed and '
   await c.getByRole("button", { name: "Maksa 175 €" }).click();
   await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
   await page.getByRole("button", { name: "Makstud" }).click();
+  await page.waitForURL(/\/makse#tulemus=makstud&liik=registreering/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse õnnestus. Saatsime sulle kinnituse e-postiga.");
   await expect.poll(() => storedPayments(f.email)).toEqual([{ kind: "prepayment", status: "paid", amountCents: 17500 }]);
   await page.goto("/konto");
   await expect(c.locator("[data-next-step]")).toHaveText("Koht on kinnitatud. Ülejäänud 175 € tasud koolituspäeval.");

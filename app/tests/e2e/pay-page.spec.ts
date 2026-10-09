@@ -29,6 +29,8 @@ test("/maksa/<token>: the page at 390, 834 and 1440 (no overflow, a 44 px button
     await page.getByRole("button", { name: "Maksa 175 €" }).click();
     await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
     await page.getByRole("button", { name: "Katkesta" }).click();
+    await page.waitForURL(/\/makse#tulemus=katkestatud/);
+    await expect(page.getByRole("link", { name: "Proovi uuesti" })).toHaveAttribute("href", `/maksa/${token}`);
     await expect.poll(() => storedPayments(email)).toEqual([{ kind: "prepayment", status: "failed", amountCents: 17500 }]);
   } finally {
     await removeClientRows(email);

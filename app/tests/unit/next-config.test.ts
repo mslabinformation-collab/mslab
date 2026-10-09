@@ -101,6 +101,15 @@ describe("next.config.ts headers()", () => {
     expect(valueFor(rules, "/maksa/abc", "cache-control")).toBe("no-store");
     expect(valueFor(rules, "/maksa/abc", "x-robots-tag")).toBe("noindex, nofollow");
     for (const path of ["/maksa", "/maksa/abc/x", "/makse"]) expect(valueFor(rules, path, "referrer-policy"), path).toBe("strict-origin-when-cross-origin");
+    // the bank's way back: the signed order token is in the address, so it is never sent on as a Referer, and the answer is never cached
+    expect(valueFor(rules, "/api/payments/return", "referrer-policy")).toBe("no-referrer");
+    expect(valueFor(rules, "/api/payments/return", "cache-control")).toBe("no-store");
+    expect(valueFor(rules, "/api/payments/return", "x-robots-tag")).toBe("noindex, nofollow");
+    // ...and nothing else around it: the webhook, the rest of /api/payments and the result page keep the site's defaults
+    for (const path of ["/api/payments/notify", "/api/payments", "/api/payments/returnx", "/api/payments/return/x", "/makse", "/ru/makse"]) {
+      expect(valueFor(rules, path, "referrer-policy"), path).toBe("strict-origin-when-cross-origin");
+      expect(valueFor(rules, path, "cache-control"), path).toBeUndefined();
+    }
   });
 
   test("the e2e page cache only when the e2e run's production build asks for it (E2E_PAGE_CACHE)", async () => {

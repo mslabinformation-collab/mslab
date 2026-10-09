@@ -167,6 +167,31 @@ test("the account's pages come from the cache with no Set-Cookie, for a signed-i
   expect(me.headers()["x-nextjs-cache"]).toBeUndefined();
 });
 
+// The payment's result page (phase 2b): the bank's way back lands on /makse#tulemus=…, and the result is in the fragment, which no server or
+// cache sees. So /makse is one static copy for every visitor, cached like the other public pages, whoever is signed in and whatever query it
+// is asked with, and its HTML shows no result, no retry link and no pay token: the browser fills those in after the page has loaded.
+test("/makse is one cached static page for everyone: no Set-Cookie, no result, no retry link and nothing of the query in it (phase 2b)", async ({ request }) => {
+  const signedIn = { cookie: `__Host-mslab_client=${"e2e".repeat(15)}; mslab_in=1` };
+  const probe = "probe-order-token-0123456789";
+  for (const path of ["/makse", "/ru/makse"]) {
+    for (const [who, headers] of [["no cookie", {}], ["signed-in cookies", signedIn]] as const) {
+      const res = await fromCache(request, path, { headers });
+      expect(res.status(), `${path} (${who})`).toBe(200);
+      expect(res.headers()["x-nextjs-cache"], `${path} (${who})`).toBe("HIT");
+      expect(res.headers()["cache-control"], `${path} (${who}): for a CDN only`).toMatch(CDN_ONLY);
+      expect(res.headers()["set-cookie"], `${path} (${who})`).toBeUndefined();
+      const html = await res.text();
+      expect(html, `${path} (${who})`).toContain('data-payment-result=""'); // the page with no result: the title and Minu koolitused
+      expect(html, `${path} (${who})`).not.toContain("data-payment-retry");
+      expect(html, `${path} (${who})`).not.toMatch(/href="\/maksa\//);
+    }
+    // an address with a query is the same cached copy, and the query is nowhere in it
+    const withQuery = await settledText(request, `${path}?order-token=${probe}&tulemus=makstud`);
+    expect(withQuery, `${path} with a query`).not.toContain(probe);
+    expect(withQuery, `${path} with a query`).toContain('data-payment-result=""');
+  }
+});
+
 // Next.js stores the address of the request that renders a page (path and query) in the page it caches, and the next visitor is sent
 // that copy; no rewrite changes it. The account's pages take parameters (viga, korda, an e-mail address): they travel in the fragment,
 // which no server sees, and the middleware answers a request that has a query, whatever its method (a mail scanner's HEAD, a stray

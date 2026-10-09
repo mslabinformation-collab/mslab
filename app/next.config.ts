@@ -63,6 +63,9 @@ const nextConfig: NextConfig = {
       { source: "/api/auth/verify", headers: [{ key: "Referrer-Policy", value: "no-referrer" }] },
       // the client login link: its token is in the address, so it is never sent on as a Referer
       { source: "/api/konto/verify", headers: [{ key: "Referrer-Policy", value: "no-referrer" }] },
+      // the bank's way back (api/payments/return, phase 2b): the signed order token is in the address, so it is never sent on as a Referer; the
+      // answer (a 303 to /makse) is never kept. Only this address: the webhook and the rest of /api/payments keep the site's defaults.
+      { source: "/api/payments/return", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "Cache-Control", value: "no-store" }] },
       // the unsubscribe page (api/newsletter/loobu): same-origin, so nothing goes to another site and its own form's POST keeps its Origin.
       // It must NEVER be no-referrer: a form posted from a document with that policy carries `Origin: null`, which the route's cross-site
       // check refuses, and the button would always answer 403. (The link's token is in the address, but the page has no link or resource that

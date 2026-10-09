@@ -19,6 +19,9 @@ describe("routeSitePath", () => {
     expect(route("/ru/praktika?pakett=MAXI")).toEqual({ kind: "page", page: "/ru/praktika", rewritten: false });
     expect(route("/ostukorv?kursus=x")).toEqual({ kind: "page", page: "/et/ostukorv/x", rewritten: true });
     expect(route("/ru/ostukorv?kursus=x")).toEqual({ kind: "page", page: "/ru/ostukorv/x", rewritten: true });
+    // the page the bank sends the payer back to (phase 2b): a static page of its own; its result is in the fragment, which no server sees
+    expect(route("/makse")).toEqual({ kind: "page", page: "/et/makse", rewritten: true });
+    expect(route("/ru/makse")).toEqual({ kind: "page", page: "/ru/makse", rewritten: false });
     // an address without a page of its own: its locale's one 404 page (round 2 item 21)
     expect(route("/olematu")).toEqual({ kind: "page", page: "/et/leidmata", rewritten: true });
     expect(route("/ru/olematu")).toEqual({ kind: "page", page: "/ru/leidmata", rewritten: true });
@@ -35,7 +38,7 @@ describe("routeSitePath", () => {
     };
     walk(root, "");
     expect(pages.sort()).toEqual(
-      ["", "/[...rest]", "/kontakt", "/konto", "/konto/andmed", "/konto/kursus/[slug]", "/konto/kursus/[slug]/[lesson]", "/konto/lemmikud", "/konto/sisene", "/koolitaja", "/koolitused", "/koolitused/[slug]", "/koolituskalender", "/ostukorv", "/ostukorv/[kursus]", "/praktika", "/privaatsus", "/tingimused", "/uudised", "/uudised/[slug]"].sort(),
+      ["", "/[...rest]", "/kontakt", "/konto", "/konto/andmed", "/konto/kursus/[slug]", "/konto/kursus/[slug]/[lesson]", "/konto/lemmikud", "/konto/sisene", "/koolitaja", "/koolitused", "/koolitused/[slug]", "/koolituskalender", "/makse", "/ostukorv", "/ostukorv/[kursus]", "/praktika", "/privaatsus", "/tingimused", "/uudised", "/uudised/[slug]"].sort(),
     );
     for (const p of pages.filter((x) => !x.includes("["))) expect(isKnownPage(`/et${p}`), p).toBe(true);
     for (const p of ["/koolitused/x", "/uudised/y-2", "/ostukorv/whatever"]) expect(isKnownPage(`/ru${p}`), p).toBe(true);
@@ -74,7 +77,7 @@ describe("routeSitePath", () => {
 
   test("only the account's shells answer a query with a redirect: not the public pages, the cart, an unknown address under /konto", () => {
     for (const p of ["/konto", "/ru/konto", "/konto/sisene", "/ru/konto/sisene", "/konto/lemmikud", "/konto/andmed", "/konto/kursus/x", "/ru/konto/kursus/x", "/konto/kursus/x/1", "/ru/konto/kursus/x/1"]) expect(route(p + "?a=1"), p).toMatchObject({ kind: "shellRedirect" });
-    for (const p of ["/", "/ru", "/koolitused", "/koolitused/x?sessioon=1", "/kontakt", "/ru/kontakt", "/ostukorv?kursus=x", "/konto/x/y", "/konto/kursus", "/kontoo", "/konto/kursus/x/0", "/konto/kursus/x/1/y"])
+    for (const p of ["/", "/ru", "/koolitused", "/koolitused/x?sessioon=1", "/kontakt", "/ru/kontakt", "/makse", "/ru/makse", "/ostukorv?kursus=x", "/konto/x/y", "/konto/kursus", "/kontoo", "/konto/kursus/x/0", "/konto/kursus/x/1/y"])
       expect(route(p.includes("?") ? p : p + "?a=1"), p).not.toMatchObject({ kind: "shellRedirect" });
   });
 

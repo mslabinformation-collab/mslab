@@ -1,10 +1,12 @@
+import { paymentContext } from "@/db/queries/payments";
+import { resultFragment, type PaymentOutcome, type ResultView } from "@/domain/payments";
 import { logFailure, logNote } from "../log";
 import { JwtError } from "./jwt";
 import type { Montonio, OrderToken } from "./montonio";
 import { settleToken, type SettleDeps } from "./settle";
 
-// Montonio's two ways back to the app (phase 2b, spec 6.5, 7.4), without Next.js: app/api/payments/notify/route.ts (and, from Task 6,
-// return/route.ts) build the dependencies; the tests call these with PGlite and a stubbed Montonio. Without payments both are 404.
+// Montonio's two ways back to the app (phase 2b, spec 6.5, 7.4), without Next.js: app/api/payments/notify/route.ts and
+// return/route.ts build the dependencies; the tests call these with PGlite and a stubbed Montonio. Without payments both are 404.
 
 export type PaymentRouteDeps = Omit<SettleDeps, "montonio"> & { montonio: Montonio | null };
 
@@ -75,5 +77,66 @@ export async function handleNotify(request: Request, deps: PaymentRouteDeps): Pr
   } catch (e) {
     logFailure("[payments] webhook: not settled", e);
     return json(503, { ok: false });
+  }
+}
+
+/** Where the return sends the payer: /makse (Estonian) or /ru/makse, the result in the fragment (spec 6.5: no server or cache sees it). */
+export const returnTarget = (locale: "et" | "ru", view: ResultView): string => `${locale === "ru" ? "/ru" : ""}/makse#${resultFragment(view)}`;
+
+const NOTHING: Omit<ResultView, "outcome"> = { kind: null, payToken: null, course: null };
+
+/**
+ * A 303 to `target` (a path of ours, built by returnTarget) on this request's own origin: the payer's browser is already there, and nothing in
+ * the address can change where it goes. Never cached, and the token in this request's address is passed on as no Referer.
+ */
+const seeOther = (request: Request, target: string): Response =>
+  new Response(null, { status: 303, headers: { location: new URL(target, new URL(request.url).origin).toString(), "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+
+/** The return when nothing could be read or settled (the settings, the database): the payer lands on /makse as "pooleli", never on an error page. */
+export const returnPending = (request: Request): Response => seeOther(request, returnTarget("et", { outcome: "pooleli", ...NOTHING }));
+
+/**
+ * GET /api/payments/return?order-token=… — Montonio sends the payer back here, paid or not (also after a cancel at the bank). The token is
+ * verified and settled through the one door (settle.ts; the webhook may come before, after or never). Then a 303 to /makse of the payment's
+ * language: makstud (paid); pooleli (pending, held, or a token in doubt that Montonio could not confirm); katkestatud (failed or refunded).
+ * "Proovi uuesti" is offered (`maksa`, or an e-course's `kursus`) on katkestatud and on a pooleli whose row is still pending — Montonio
+ * answers a cancel at the bank with PENDING — never on a held one (the money is at Montonio: a second payment could charge her twice). A
+ * token that cannot be verified, an unknown reference: katkestatud with nothing more; a database failure: pooleli. Never an error page.
+ * 404 without payments. The fragment holds the outcome, the kind, the pay token and the slug: no address, no Montonio uuid, no amount.
+ */
+export async function handleReturn(request: Request, deps: PaymentRouteDeps): Promise<Response> {
+  const montonio = deps.montonio;
+  if (!montonio) return json(404, { ok: false });
+  const params = new URL(request.url).searchParams;
+  // the documented name is `order-token`; the snake_case twin is taken too (some of Montonio's plugins send it)
+  const raw = params.get("order-token") ?? params.get("order_token") ?? "";
+  let token: OrderToken;
+  try {
+    token = montonio.verifyOrderToken(raw);
+  } catch (e) {
+    logNote(`[payments] return: a token that cannot be verified (${e instanceof JwtError ? e.code : "error"})`);
+    return seeOther(request, returnTarget("et", { outcome: "katkestatud", ...NOTHING }));
+  }
+  try {
+    const result = await settleToken({ ...deps, montonio }, token);
+    if (result.kind === "unknown") return seeOther(request, returnTarget("et", { outcome: "katkestatud", ...NOTHING }));
+    const p = result.payment;
+    const outcome: PaymentOutcome =
+      result.kind === "unconfirmed" ? "pooleli" : p.status === "paid" ? "makstud" : p.status === "pending" || p.status === "held" ? "pooleli" : "katkestatud";
+    const retry = outcome === "katkestatud" || (result.kind === "done" && p.status === "pending");
+    const ecourse = p.kind === "ecourse";
+    const ctx = await paymentContext(deps.db, p.id);
+    return seeOther(
+      request,
+      returnTarget(p.locale, {
+        outcome,
+        kind: ecourse ? "ekoolitus" : "registreering",
+        payToken: !ecourse && retry ? ctx.payToken : null,
+        course: ecourse && (outcome === "makstud" || retry) ? (ctx.course?.slug ?? null) : null,
+      }),
+    );
+  } catch (e) {
+    logFailure("[payments] return: not settled", e);
+    return returnPending(request);
   }
 }

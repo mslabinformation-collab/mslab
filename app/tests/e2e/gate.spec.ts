@@ -225,6 +225,20 @@ test.describe("a visitor", () => {
     }
   });
 
+  test("the bank's way back and the result page are the site's: gated for a visitor (phase 2b)", async ({ page, request }) => {
+    const res = await request.get("/api/payments/return?order-token=x", { maxRedirects: 0 });
+    expect(res.status()).toBe(404);
+    expect(await res.json()).toEqual({ ok: false, error: "not_found" });
+    expect((await page.goto("/makse"))?.status()).toBe(200);
+    await expectComingSoon(page);
+    expect((await page.goto("/ru/makse"))?.status()).toBe(200);
+    await expectComingSoon(page, HEADING_RU);
+    // the payer arriving from the bank (a navigation, the token in the address) sees the coming-soon page too, never the redirect to /makse
+    await page.goto("/api/payments/return?order-token=x");
+    expect(page.url()).toContain("/api/payments/return?order-token=x");
+    await expectComingSoon(page);
+  });
+
   test("Montonio's webhook goes through: a POST is answered by the app (400 for a token it cannot verify), not the gate, and is never redirected (phase 2b)", async ({ request }) => {
     const res = await request.post("/api/payments/notify", { data: { orderToken: "not-a-token" }, maxRedirects: 0 });
     expect(res.status()).toBe(400);
@@ -260,6 +274,17 @@ test.describe("an admin", () => {
     await expect(page.locator("[data-coming-soon]")).toHaveCount(0);
     // what the gate shows is no page of the site
     for (const path of ["/tulekul", "/tulekul/et", "/tulekul/ru"]) expect((await page.goto(path))?.status(), path).toBe(404);
+  });
+
+  test("with the preview cookie the bank's way back works: /makse shows the result of its fragment, the return lands on it (phase 2b)", async ({ page, context }) => {
+    await setPreview(context, await signPreview(GATE_PREVIEW_SECRET));
+    await page.goto("/makse#tulemus=katkestatud");
+    await expect(page.locator("[data-coming-soon]")).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse jäi tegemata.");
+    // a token that cannot be verified lands on the same page, never an error
+    await page.goto("/api/payments/return?order-token=x");
+    await page.waitForURL(/\/makse#tulemus=katkestatud$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse jäi tegemata.");
   });
 
   test("sign-in sets the preview cookie; 'Vaata kodulehte' gives it again; logout clears it", async ({ page, context }, info) => {

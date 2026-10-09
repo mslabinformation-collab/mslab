@@ -33,6 +33,10 @@ test("contact course group registration: the prepayment starts at once at the ba
   await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
   await expect(page.locator("[data-fake-order]")).toContainText("175.00 EUR");
   await page.getByRole("button", { name: "Katkesta" }).click();
+  // the bank sends her back: the return settles the token and lands on the static /makse page with the result in the fragment
+  await page.waitForURL(/\/makse#tulemus=katkestatud&liik=registreering&maksa=/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse jäi tegemata.");
+  await expect(page.getByRole("link", { name: "Proovi uuesti" })).toHaveAttribute("href", /^\/maksa\/[A-Za-z0-9_-]{43}$/);
   if (LOCAL_FIXTURES) {
     expect(await storedRegistrations(addr)).toEqual([
       { kind: "group", status: "awaiting_prepayment", paidCents: 0, paymentChoice: "half", wantsModelHelp: true, locale: "et", course: "kulmumeistri-baaskoolitus", sessionId: session },

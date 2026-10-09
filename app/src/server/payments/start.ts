@@ -44,7 +44,7 @@ export const STARTS_PER_HOUR = 5;
 /** Payment starts per visitor IP in RATE_WINDOW_SEC (10 minutes), as the forms (spec 10): the /maksa page and POST /api/konto/maksa share the counter. */
 export const PAY_STARTS_PER_IP = 5;
 
-/** Montonio's way back: the return (Task 6) and the webhook, on the site's address. */
+/** Montonio's way back: the return (api/payments/return, to the /makse page) and the webhook, on the site's address. */
 export function paymentUrls(siteUrl: string): { returnUrl: string; notificationUrl: string } {
   const base = siteUrl.replace(/\/+$/, "");
   return { returnUrl: `${base}/api/payments/return`, notificationUrl: `${base}/api/payments/notify` };

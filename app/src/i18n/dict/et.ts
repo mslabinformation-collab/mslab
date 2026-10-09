@@ -410,6 +410,9 @@ export const et = {
     result: {
       title: "Makse",
       paid: "Makse õnnestus. Saatsime sulle kinnituse e-postiga.",
+      // an e-course's purchase (owner's wording, 09.10): a buyer who is not signed in learns where her login is
+      paidEcourse: "Makse õnnestus.",
+      paidEcourseText: "Saatsime sulle e-postiga sisselogimislingi.",
       pending: "Makse on pooleli. Kui pank selle kinnitab, saadame sulle kinnituse.",
       cancelled: "Makse jäi tegemata.",
       retry: "Proovi uuesti",

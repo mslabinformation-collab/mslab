@@ -64,3 +64,40 @@ export function amountDue(r: DueInput, now: Date): Due {
   const cents = r.priceCents - r.paidCents;
   return cents > 0 && now < startOfDayTallinn(r.startsAt) ? { kind: "balance", cents } : NONE;
 }
+
+/** What the bank's way back says (spec 6.5): paid, still pending, or not paid. */
+export type PaymentOutcome = "makstud" | "pooleli" | "katkestatud";
+
+/**
+ * What /makse shows: the outcome, what was paid for, and the way on — the registration's "Maksa" token for "Proovi uuesti", or the e-course's
+ * slug ("Ava e-koolitus" after a purchase, the cart for a retry). null where there is none. Nothing else is ever in it: no address, no
+ * Montonio uuid, no amount (the fragment is only the payer's browser's, but it stays in its history).
+ */
+export type ResultView = { outcome: PaymentOutcome; kind: "registreering" | "ekoolitus" | null; payToken: string | null; course: string | null };
+
+/** /makse's fragment: tulemus, liik, and maksa or kursus when they are given. */
+export function resultFragment(v: ResultView): string {
+  const q = new URLSearchParams({ tulemus: v.outcome });
+  if (v.kind) q.set("liik", v.kind);
+  if (v.payToken) q.set("maksa", v.payToken);
+  if (v.course) q.set("kursus", v.course);
+  return q.toString();
+}
+
+const OUTCOMES: readonly string[] = ["makstud", "pooleli", "katkestatud"];
+
+/** /makse's fragment read back, or null when it carries no result. A value that cannot be ours (not a token, not a slug) is dropped. */
+export function parseResultFragment(hash: string): ResultView | null {
+  const q = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
+  const outcome = q.get("tulemus");
+  if (!outcome || !OUTCOMES.includes(outcome)) return null;
+  const kind = q.get("liik");
+  const token = q.get("maksa");
+  const course = q.get("kursus");
+  return {
+    outcome: outcome as PaymentOutcome,
+    kind: kind === "registreering" || kind === "ekoolitus" ? kind : null,
+    payToken: token && /^[A-Za-z0-9_-]{20,100}$/.test(token) ? token : null,
+    course: course && course.length <= 120 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(course) ? course : null,
+  };
+}

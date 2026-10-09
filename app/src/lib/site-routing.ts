@@ -51,11 +51,12 @@ const ACCOUNT_SHELL = /^\/(et|ru)\/konto(\/|$)/;
 
 /**
  * The pages of app/[locale]/(site) without their locale (tests/unit/site-routing.test.ts checks them against the app),
- * with the client account's shells (/konto…, phase 2a: the login page, favourites and my details). The pages with a slug or an
+ * with the client account's shells (/konto…, phase 2a: the login page, favourites and my details) and the payment's result page (/makse,
+ * phase 2b: where the bank sends the payer back; its result is in the fragment). The pages with a slug or an
  * id are the patterns below: a course, a news item, an e-course in the account and (phase 3a) one lesson of it, a course's cart.
  */
 const STATIC_PAGES = new Set([
-  "", "/kontakt", "/konto", "/konto/andmed", "/konto/lemmikud", "/konto/sisene", "/koolitaja", "/koolitused", "/koolituskalender", "/ostukorv",
+  "", "/kontakt", "/konto", "/konto/andmed", "/konto/lemmikud", "/konto/sisene", "/koolitaja", "/koolitused", "/koolituskalender", "/makse", "/ostukorv",
   "/praktika", "/privaatsus", "/tingimused", "/uudised",
 ]);
 /** Pages with a slug of ours (lowercase letters, digits, dashes), an e-course in the account too; the cart takes whatever ?kursus= says (its own 404). */
