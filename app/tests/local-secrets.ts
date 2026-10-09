@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { E2E_BUNNY } from "./e2e/bunny-values";
+import { E2E_MONTONIO } from "./e2e/montonio-values";
 
 // The settings of local development and the tests, read from .env.example: placeholders, never a real address (the real
 // ones are Environment Variables of the Vercel project). The Playwright configs hand them to the server they start
@@ -26,6 +27,8 @@ for (const key of ["DATABASE_URL", "SITE_URL", "ADMIN_EMAILS", "ADMIN_NAMES", "M
  * (server/env.ts counts a blank one as not set), so the server keeps uploads in its local folder whatever a .env.local
  * says; global-setup also refuses to run when one is set anywhere (FORBIDDEN_SETTINGS). The Bunny settings point at the
  * fake Bunny on this machine (tests/e2e/fake-bunny.ts, BUNNY_FAKE_URL) with made-up keys, never the real library.
+ * The payments go to the fake Montonio on this machine (tests/e2e/fake-montonio.ts, PAYMENT_PROVIDER=mock) with made-up keys: these win
+ * over the sandbox keys of your own .env.local, so a run never reaches the real sandbox.
  */
 export const LOCAL_ENV = {
   DATABASE_URL: vars.DATABASE_URL,
@@ -43,6 +46,11 @@ export const LOCAL_ENV = {
   BUNNY_TOKEN_KEY: E2E_BUNNY.tokenKey,
   BUNNY_WEBHOOK_SECRET: E2E_BUNNY.webhookSecret,
   BUNNY_FAKE_URL: E2E_BUNNY.url,
+  MONTONIO_ENV: "sandbox",
+  MONTONIO_ACCESS_KEY: E2E_MONTONIO.accessKey,
+  MONTONIO_SECRET_KEY: E2E_MONTONIO.secretKey,
+  PAYMENT_PROVIDER: "mock",
+  MONTONIO_FAKE_URL: E2E_MONTONIO.url,
 };
 
 /**

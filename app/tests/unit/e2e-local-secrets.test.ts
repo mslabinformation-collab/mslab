@@ -1,7 +1,10 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { bunnyConfig } from "@/server/bunny";
-import { serverEnv } from "@/server/env";
+import { paymentsEnv, serverEnv } from "@/server/env";
+import { montonioConfig } from "@/server/payments/montonio";
 import { E2E_BUNNY } from "../e2e/bunny-values";
+import { E2E_MONTONIO } from "../e2e/montonio-values";
+import { PROD_ENV } from "../e2e/prod-build";
 import { FORBIDDEN_SETTINGS, forbiddenSettingError, LOCAL_ENV, parseEnvFile } from "../local-secrets";
 
 // What an e2e run refuses to start with (tests/e2e/global-setup.ts reads these files and the environment): anything that
@@ -81,5 +84,46 @@ describe("the dev server's environment (LOCAL_ENV)", () => {
   test("the fake's port is 3998 unless E2E_BUNNY_PORT names another", () => {
     if (!process.env.E2E_BUNNY_PORT) expect(LOCAL_ENV.BUNNY_FAKE_URL).toBe("http://localhost:3998");
     expect(E2E_BUNNY.port).toBe(process.env.E2E_BUNNY_PORT ? Number(process.env.E2E_BUNNY_PORT) : 3998);
+  });
+
+  test("the payments go to the fake Montonio on this machine, never the sandbox; the production build needs its explicit flag (phase 2b)", () => {
+    expect(montonioConfig(paymentsEnv(LOCAL_ENV), { production: false, onVercel: false })).toEqual({
+      accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: E2E_MONTONIO.url, live: false, mock: true,
+    });
+    expect(montonioConfig(paymentsEnv(LOCAL_ENV), { production: true, onVercel: false })).toBeNull();
+    expect(montonioConfig(paymentsEnv({ ...LOCAL_ENV, ...PROD_ENV }), { production: true, onVercel: false })).toMatchObject({ mock: true, baseUrl: E2E_MONTONIO.url });
+    if (!process.env.E2E_MONTONIO_PORT) expect(LOCAL_ENV.MONTONIO_FAKE_URL).toBe("http://localhost:3997");
+  });
+
+  test("the run's Montonio settings win over a .env.local's real sandbox keys: all five are set, with the fake's made-up values (phase 2b)", () => {
+    expect(LOCAL_ENV).toMatchObject({
+      MONTONIO_ENV: "sandbox", MONTONIO_ACCESS_KEY: E2E_MONTONIO.accessKey, MONTONIO_SECRET_KEY: E2E_MONTONIO.secretKey, PAYMENT_PROVIDER: "mock", MONTONIO_FAKE_URL: E2E_MONTONIO.url,
+    });
+    // the made-up keys say so, and are no real store's: the sandbox would answer 401 STORE_NOT_FOUND to them
+    expect([E2E_MONTONIO.accessKey, E2E_MONTONIO.secretKey].every((k) => k.startsWith("e2e-"))).toBe(true);
+    expect(PROD_ENV).toMatchObject({ PAYMENT_MOCK_IN_PRODUCTION: "1" });
+    expect(LOCAL_ENV).not.toHaveProperty("PAYMENT_MOCK_IN_PRODUCTION"); // only the production build's switches carry it
+  });
+
+  test("the fake's port is 3997 unless E2E_MONTONIO_PORT names another, and a bad one stops the run", async () => {
+    expect(E2E_MONTONIO.port).toBe(process.env.E2E_MONTONIO_PORT ? Number(process.env.E2E_MONTONIO_PORT) : 3997);
+    const original = process.env.E2E_MONTONIO_PORT;
+    try {
+      for (const [value, port] of [[undefined, 3997], ["", 3997], ["  ", 3997], ["4100", 4100]] as const) {
+        if (value === undefined) delete process.env.E2E_MONTONIO_PORT;
+        else process.env.E2E_MONTONIO_PORT = value;
+        vi.resetModules();
+        expect((await import("../e2e/montonio-values")).E2E_MONTONIO.port, String(value)).toBe(port);
+      }
+      for (const bad of ["80", "1023", "65536", "3997.5", "abc", "-1"]) {
+        process.env.E2E_MONTONIO_PORT = bad;
+        vi.resetModules();
+        await expect(import("../e2e/montonio-values"), bad).rejects.toThrow(/E2E_MONTONIO_PORT must be a port number from 1024 to 65535/);
+      }
+    } finally {
+      if (original === undefined) delete process.env.E2E_MONTONIO_PORT;
+      else process.env.E2E_MONTONIO_PORT = original;
+      vi.resetModules();
+    }
   });
 });

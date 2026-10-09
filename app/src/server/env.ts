@@ -45,6 +45,15 @@ export type ServerEnv = {
   SITE_GATE?: string;
   /** The key of the admins' preview cookie (lib/preview-cookie.ts). Unset with the gate on: nobody gets past the gate. */
   PREVIEW_SECRET?: string;
+  /** Montonio (phase 2b, docs/deploy.md section 2): only the exact "live" is production; anything else is the sandbox. */
+  MONTONIO_ENV?: string;
+  /** The Montonio store's access key and secret key, per store and environment. Both, or no online payments. */
+  MONTONIO_ACCESS_KEY?: string;
+  MONTONIO_SECRET_KEY?: string;
+  /** "mock": the e2e run's fake Montonio at MONTONIO_FAKE_URL (tests/e2e/fake-montonio.ts). Refused on Vercel; in a production build only with PAYMENT_MOCK_IN_PRODUCTION=1. */
+  PAYMENT_PROVIDER?: string;
+  MONTONIO_FAKE_URL?: string;
+  PAYMENT_MOCK_IN_PRODUCTION?: string;
 };
 
 type Source = Record<string, string | undefined>;
@@ -99,6 +108,12 @@ const OPTIONAL = [
   "BUNNY_FAKE_URL",
   "SITE_GATE",
   "PREVIEW_SECRET",
+  "MONTONIO_ENV",
+  "MONTONIO_ACCESS_KEY",
+  "MONTONIO_SECRET_KEY",
+  "PAYMENT_PROVIDER",
+  "MONTONIO_FAKE_URL",
+  "PAYMENT_MOCK_IN_PRODUCTION",
 ] as const;
 
 /**
@@ -133,4 +148,21 @@ export function serverEnv(source: Source = process.env, production: boolean = pr
  */
 export function gateEnv(source: Source = process.env): Pick<ServerEnv, "SITE_GATE" | "PREVIEW_SECRET"> {
   return { SITE_GATE: source.SITE_GATE?.trim() || undefined, PREVIEW_SECRET: previewKey(source.PREVIEW_SECRET) };
+}
+
+/** The payment settings (server/payments/montonio.ts montonioConfig). */
+export type PaymentsEnv = Partial<
+  Pick<ServerEnv, "MONTONIO_ENV" | "MONTONIO_ACCESS_KEY" | "MONTONIO_SECRET_KEY" | "PAYMENT_PROVIDER" | "MONTONIO_FAKE_URL" | "PAYMENT_MOCK_IN_PRODUCTION">
+>;
+
+const PAYMENT_NAMES = ["MONTONIO_ENV", "MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER", "MONTONIO_FAKE_URL", "PAYMENT_MOCK_IN_PRODUCTION"] as const;
+
+/**
+ * The payment settings alone, trimmed, blank as not set (phase 2b). Not serverEnv(): the static cart page reads them while it renders, and a
+ * build or a render must not depend on the six required variables for that.
+ */
+export function paymentsEnv(source: Source = process.env): PaymentsEnv {
+  const out: PaymentsEnv = {};
+  for (const name of PAYMENT_NAMES) out[name] = source[name]?.trim() || undefined;
+  return out;
 }
