@@ -87,8 +87,8 @@ const CSS = [
 
 /**
  * The page. `online`: payments are on (the button). With something due: the amount, a notice line when a POST left one, "Maksa {summa}" /
- * "Maksa ülejäänud {summa}" (not when the session is full), and the bank transfer's rows — under "või tasu pangaülekandega" when the button
- * is there. Nothing due, or an unknown token: "Selle registreeringu eest pole praegu midagi tasuda." Every value is escaped.
+ * "Maksa ülejäänud {summa}", and the bank transfer's rows — under "või tasu pangaülekandega" when the button is there. Neither the button
+ * nor the rows when the session is full (the "full" notice). Nothing due, or an unknown token: "Selle registreeringu eest pole praegu midagi tasuda." Every value is escaped.
  */
 export function payPage(view: PayView | null, opts: { online: boolean; notice?: PayNotice }): string {
   const locale: Locale = view?.locale ?? "et";
@@ -114,7 +114,8 @@ export function payPage(view: PayView | null, opts: { online: boolean; notice?: 
     parts.push(`<p class="amount">${esc(labels.amount)}: ${esc(amount)}</p>`);
     const button = opts.online && opts.notice !== "full";
     if (button) parts.push(`<form method="post" action="/maksa/${esc(view.token)}"><button type="submit">${esc(fill(due.kind === "balance" ? t.payRest : t.pay, { amount }))}</button></form>`);
-    if (view.transfer) {
+    // (a full session: no button and no bank rows either; a transfer would pay for a place that is gone)
+    if (view.transfer && opts.notice !== "full") {
       const pay = view.transfer;
       const rows = ([
         [labels.receiver, pay.receiver],

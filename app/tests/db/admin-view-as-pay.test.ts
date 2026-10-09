@@ -1,0 +1,75 @@
+import { isValidElement, type ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { Db } from "@/db/client";
+import { clients } from "@/db/schema";
+import { contactCourse, registrationOn, TEST_MONTONIO } from "./payments-fixtures";
+import { makeTestDb } from "./helpers";
+
+// Maria's "Vaata tema vaadet" (app/admin/(panel)/opilased/[id]/vaade/page.tsx): the student's own "Minu koolitused" as she sees it. With online
+// payments on the student's cards offer "Maksa" (Dashboard.payOnline, set by the account API); Maria's copy must show the same cards, with the
+// buttons inert (readOnly), and without payments it stays what it was. The page is an async server component: it is called here and the
+// element tree it returns is searched for the CoursesTab that gets the dashboard.
+
+const state = vi.hoisted(() => ({ db: null as unknown }));
+vi.mock("@/db/client", () => ({ getDb: () => state.db }));
+vi.mock("@/server/auth", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/server/auth")>()), requireAdmin: async () => "maria@example.test" }));
+
+import ViewAsPage from "@/app/admin/(panel)/opilased/[id]/vaade/page";
+
+let db: Db;
+beforeEach(async () => {
+  db = await makeTestDb();
+  state.db = db;
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+/** The first element of the tree (depth first) whose props have `data`: the CoursesTab. */
+function findData(node: ReactNode): { data: Record<string, unknown>; readOnly: unknown } | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findData(child);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!isValidElement(node)) return null;
+  const props = node.props as { data?: Record<string, unknown>; readOnly?: unknown; children?: ReactNode };
+  if (props.data && "cards" in props.data) return { data: props.data, readOnly: props.readOnly };
+  return findData(props.children);
+}
+
+async function viewOf(clientId: number) {
+  const tree = await ViewAsPage({ params: Promise.resolve({ id: String(clientId) }) });
+  const found = findData(tree);
+  expect(found, "the CoursesTab with the dashboard").not.toBeNull();
+  return found!;
+}
+
+describe("the admin's view of a student's cards", () => {
+  async function student() {
+    const [client] = await db.insert(clients).values({ email: "kati@example.test", name: "Kati Tamm" }).returning();
+    await registrationOn(db, await contactCourse(db), { clientId: client.id, email: client.email });
+    return client;
+  }
+
+  test("with online payments on (the keys are set) Maria's copy of the cards says payOnline, as the student's does, and stays read-only", async () => {
+    vi.stubEnv("MONTONIO_ACCESS_KEY", TEST_MONTONIO.accessKey);
+    vi.stubEnv("MONTONIO_SECRET_KEY", TEST_MONTONIO.secretKey);
+    vi.stubEnv("MONTONIO_ENV", "sandbox");
+    const view = await viewOf((await student()).id);
+    expect(view.data.payOnline).toBe(true);
+    expect(view.readOnly).toBe(true);
+  });
+
+  test("without the keys it is what it was: no payOnline", async () => {
+    vi.stubEnv("MONTONIO_ACCESS_KEY", "");
+    vi.stubEnv("MONTONIO_SECRET_KEY", "");
+    const view = await viewOf((await student()).id);
+    expect("payOnline" in view.data).toBe(false);
+    expect(view.readOnly).toBe(true);
+  });
+});

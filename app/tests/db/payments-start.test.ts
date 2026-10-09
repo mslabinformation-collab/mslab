@@ -63,6 +63,43 @@ function onStart(real: Db, hook: () => Promise<void>): Db {
   });
 }
 
+/**
+ * `real` with every top-level `transaction` recorded: for each one, the names of the executor methods the callback called on its
+ * transaction object (`execute`, `select`, `update`, `insert`, `delete`), in order. A statement that runs on the pool instead of on the
+ * transaction is not in any list.
+ */
+function recordTransactions(real: Db): { db: Db; transactions: string[][] } {
+  const transactions: string[][] = [];
+  const METHODS = new Set(["execute", "select", "update", "insert", "delete"]);
+  const db = new Proxy(real, {
+    get(target, prop) {
+      const value: unknown = Reflect.get(target, prop, target);
+      if (prop !== "transaction") return typeof value === "function" ? value.bind(target) : value;
+      return (callback: (tx: unknown) => Promise<unknown>, ...rest: unknown[]) =>
+        (value as (...a: unknown[]) => Promise<unknown>).call(
+          target,
+          (tx: object) => {
+            const calls: string[] = [];
+            transactions.push(calls);
+            const recording = new Proxy(tx, {
+              get(inner, name) {
+                const member: unknown = Reflect.get(inner, name, inner);
+                if (typeof member !== "function") return member;
+                return (...args: unknown[]) => {
+                  if (typeof name === "string" && METHODS.has(name)) calls.push(name);
+                  return (member as (...a: unknown[]) => unknown).apply(inner, args);
+                };
+              },
+            });
+            return callback(recording);
+          },
+          ...rest,
+        );
+    },
+  });
+  return { db, transactions };
+}
+
 describe("Registreeru with payments", () => {
   test("the hold for 30 minutes, a pending row MSLAB-M<id> of 175 €, Montonio's order for it, and the payment page in the answer", async () => {
     const m = stubMontonio();
@@ -420,6 +457,22 @@ describe("one lock order: course_sessions → registrations → payments", () =>
     const lock = queries.slice(0, release).map((q, i) => (REGISTRATION_LOCK.test(q) ? i : -1)).filter((i) => i >= 0).pop() ?? -1;
     expect(lock, lines(queries)).toBeGreaterThan(-1);
     expect(release - lock, lines(queries)).toBe(1);
+    expect((await ldb.select().from(registrations))[0].seatHoldUntil).toBeNull();
+  });
+
+  // The SQL log cannot tell a lock and an update that share a transaction from two statements on the pool, one after the other: a lock that
+  // is let go at once protects nothing. So the executors are recorded: the release must be a transaction of its own whose only statements are
+  // the registration's lock and then the conditional update, both run on that transaction.
+  test("the release's lock and its conditional update run on one transaction of their own (the lock is held until the update is done)", async () => {
+    const { db: ldb } = await loggedDb();
+    const m = stubMontonio();
+    const c = await contactCourse(ldb);
+    const recorded = recordTransactions(ldb);
+    const { d } = deps(m.montonio, { db: onStart(recorded.db, async () => void (await ldb.update(registrations).set({ paidCents: 17500 }))) });
+    expect(await handleRegistration(d, form(c.session.id))).toEqual({ ok: true });
+    // 1: the registration's (session lock, count, insert), 2: the payment start (answers "nothing"), 3: the release
+    expect(recorded.transactions).toHaveLength(3);
+    expect(recorded.transactions[2]).toEqual(["execute", "update"]);
     expect((await ldb.select().from(registrations))[0].seatHoldUntil).toBeNull();
   });
 });

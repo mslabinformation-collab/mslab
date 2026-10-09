@@ -143,6 +143,76 @@ describe("with online payments", () => {
   });
 });
 
+describe("a start the server refuses because the card is out of date (fix round 1)", () => {
+  // The cards as the signed-in client's own page loads them (GET /api/konto): a refusal that says the card is out of date loads them again,
+  // quietly (the page stays, no skeleton), as the change request's dialog does; the refusals that say nothing about the card keep it.
+  const stale = dashboard([contact(7, { status: "cancelled" })]);
+  const setup = (refusal: Response, second: Response) => {
+    const gets = [json(200, dashboard([contact(7)])), second];
+    fetchMock.mockImplementation(async (input) => (String(input) === "/api/konto" ? (gets.shift() ?? json(200, stale)) : refusal));
+  };
+  const open = async () => {
+    await act(async () => root.render(createElement(CoursesTab, { locale: "et", t, now: NOW })));
+    await settle();
+  };
+  const gets = () => fetchMock.mock.calls.filter(([input]) => String(input) === "/api/konto").length;
+
+  test.each([
+    ["401 (signed out, or another device signed in)", json(401, { ok: false, reason: "none" })],
+    ["404 (the registration is gone, or no longer hers)", json(404, { ok: false, error: "registration" })],
+    ["409 nothing (paid meanwhile, or called off)", json(409, { ok: false, error: "nothing" })],
+  ])("%s: the cards are loaded again quietly, and the card shows what is true now", async (_name, refusal) => {
+    setup(refusal, json(200, stale));
+    await open();
+    expect(gets()).toBe(1);
+    await click($("[data-card-action='pay-online']"));
+    expect(gets()).toBe(2); // the quiet reload
+    expect($("[data-card-skeleton]")).toBeNull(); // quiet: the page stays
+    expect($("[data-card='registration-7'] [data-next-step]")?.textContent).toBe("Registreering on tühistatud.");
+    expect($("[data-card-action='pay-online']")).toBeNull();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    // the focus is on the card the student was dealing with
+    expect(document.activeElement).toBe($("[data-card='registration-7'] h2"));
+  });
+
+  test("a 401 or 404 leaves no line behind; 'nothing' keeps its own true sentence under the reloaded card", async () => {
+    setup(json(404, { ok: false, error: "registration" }), json(200, stale));
+    await open();
+    await click($("[data-card-action='pay-online']"));
+    expect($("[data-card-pay-error]")).toBeNull();
+    fetchMock.mockReset();
+    setup(json(409, { ok: false, error: "nothing" }), json(200, stale));
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await open();
+    await click($("[data-card-action='pay-online']"));
+    expect($("[data-card-pay-error]")?.textContent).toBe("Selle registreeringu eest pole praegu midagi tasuda.");
+  });
+
+  test("when the reload gets no answer, the page is left as it was and the card says 'Midagi läks valesti', its button ready", async () => {
+    setup(json(404, { ok: false, error: "registration" }), json(500, { ok: false }));
+    await open();
+    await click($("[data-card-action='pay-online']"));
+    expect(gets()).toBe(2);
+    expect($("[data-card='registration-7'] [data-card-action='pay-online']")?.textContent).toBe("Maksa 175 €");
+    expect($("[data-card-pay-error]")?.textContent).toBe("Midagi läks valesti. Proovi uuesti.");
+  });
+
+  test.each([
+    ["503 (Montonio does not answer)", json(503, { ok: false, error: "unavailable" }), "Midagi läks valesti. Proovi uuesti."],
+    ["429 (too many starts)", json(429, { ok: false, error: "rate" }), "Liiga palju katseid. Proovi mõne minuti pärast."],
+    ["409 full (the session has filled)", json(409, { ok: false, error: "full" }), "See koolitus on täis. Võta ühendust Mariaga."],
+    ["500", json(500, { ok: false, error: "server" }), "Midagi läks valesti. Proovi uuesti."],
+  ])("%s: the card is not loaded again; its button stays, with the line", async (_name, refusal, line) => {
+    setup(refusal, json(200, stale));
+    await open();
+    await click($("[data-card-action='pay-online']"));
+    expect(gets()).toBe(1);
+    expect($("[data-card-action='pay-online']")?.textContent).toBe("Maksa 175 €");
+    expect($("[data-card-pay-error]")?.textContent).toBe(line);
+  });
+});
+
 test("without online payments the cards are today's: 'Vaata juhiseid' is the one button; no 'Maksa'", async () => {
   await render(dashboard([contact(7), contact(8, { status: "confirmed", paidCents: 17500 })], { payOnline: undefined }));
   expect($$("[data-card-action]").map((b) => [b.getAttribute("data-card-action"), b.textContent])).toEqual([["pay", "Vaata juhiseid"], ["change", "Tühista või muuda aega"]]);

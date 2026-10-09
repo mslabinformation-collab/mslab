@@ -34,7 +34,8 @@ describe("GET: the page, and nothing else", () => {
     const m = stubMontonio();
     await db.insert(settings).values({ key: "prepayment", value: PAY });
     const r = await registrationOn(db, await contactCourse(db));
-    const res = await handlePayPage(get(r.payToken), r.payToken, deps(m.montonio));
+    const kv = fakeKv();
+    const res = await handlePayPage(get(r.payToken), r.payToken, deps(m.montonio, { kv }));
     expect([res.status, res.headers.get("cache-control"), res.headers.get("content-type")]).toEqual([200, "no-store", "text/html; charset=utf-8"]);
     const html = await text(res);
     for (const part of ["<h1>Koolituse eest tasumine</h1>", "Kulmumeistri baaskoolitus", "14.11.2026 · 10:00, Pärnu, MS LAB stuudio", "Summa: 175 €", "Maksa 175 €", "või tasu pangaülekandega", "EE38 2200 2210 2014 5685", `MSLAB-${r.id}`, '<meta name="robots" content="noindex">'])
@@ -44,6 +45,7 @@ describe("GET: the page, and nothing else", () => {
     expect(await db.select().from(payments)).toEqual([]);
     expect((await db.select().from(registrations).where(eq(registrations.id, r.id)))[0].seatHoldUntil).toBeNull();
     expect(m.state.orders).toEqual([]);
+    expect(kv.store.size).toBe(0); // opening the link counts against no rate limit: only a start does
   });
 
   test("a confirmed registration with a rest: 'Maksa ülejäänud 175 €'; nothing due, cancelled or an unknown token: the one sentence, no button", async () => {
@@ -116,6 +118,27 @@ describe("POST: the button", () => {
     expect(res.status).toBe(409);
     expect(html).toContain("See koolitus on täis. Võta ühendust Mariaga.");
     expect(html).not.toContain("<form");
+  });
+
+  test("the session is full: no button and no bank rows either (the transfer would pay for a place that is gone); other notices keep the transfer", async () => {
+    const m = stubMontonio();
+    await db.insert(settings).values({ key: "prepayment", value: PAY });
+    const c = await contactCourse(db, { capacity: 1 });
+    await registrationOn(db, c, { email: "teine@example.com", status: "confirmed", paidCents: 35000 });
+    const r = await registrationOn(db, c);
+    const html = await text(await handlePayPage(post(r.payToken), r.payToken, deps(m.montonio)));
+    expect(html).toContain("See koolitus on täis. Võta ühendust Mariaga.");
+    for (const gone of ["<form", "<dl", "data-pay-transfer", "EE38", "või tasu pangaülekandega", `MSLAB-${r.id}`]) expect(html, gone).not.toContain(gone);
+    // the course and the date stay: the page says which course is full
+    expect(html).toContain("Kulmumeistri baaskoolitus");
+    // the other notices leave the payment as it is: too many starts, Montonio not answering
+    m.state.down = true;
+    const failed = await text(await handlePayPage(post(r.payToken), r.payToken, deps(m.montonio, { kv: fakeKv({ "rl:pay:203.0.113.9": "5" }) })));
+    expect(failed).toContain("Liiga palju katseid. Proovi mõne minuti pärast.");
+    expect(failed).toContain("EE38 2200 2210 2014 5685");
+    const view = await loadPayView(db, r.payToken, NOW);
+    for (const notice of ["failed", "rate"] as const) expect(payPage(view, { online: true, notice }), notice).toContain("EE38 2200 2210 2014 5685");
+    expect(payPage(view, { online: true, notice: "full" })).not.toContain("EE38");
   });
 
   test("Montonio down: 503 and 'Midagi läks valesti'; the row is failed, no hold stays", async () => {

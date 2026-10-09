@@ -15,6 +15,7 @@ import { parseRowId } from "@/lib/row-id";
 import { clientLabel } from "@/server/admin-clients";
 import { requireAdmin } from "@/server/auth";
 import { loadDashboard } from "@/server/client-data";
+import { paymentsConfigured } from "@/server/payments/montonio";
 import view from "./view.module.css";
 
 // An admin page: rendered for every visit (the student's data, never a shared cache) and only for a signed-in admin.
@@ -26,7 +27,8 @@ type Props = { params: Promise<{ id: string }> };
 /**
  * "Vaata tema vaadet" (spec 7): the student's own "Minu koolitused", as she sees it — her cards, in her language, with the
  * dashboard loader of her account (/api/konto) — rendered here on the server with every button and link aria-disabled and
- * doing nothing (AccountShell / CoursesTab readOnly). Nothing of her account is touched: no session is read, made or ended,
+ * doing nothing (AccountShell / CoursesTab readOnly); with online payments on (phase 2b) the cards are the ones she sees, "Maksa {summa}"
+ * included. Nothing of her account is touched: no session is read, made or ended,
  * nothing is sent, and the favourites copy of this browser is never written (that happens only in the account's own loader).
  * A student who does not exist: 404.
  */
@@ -36,8 +38,10 @@ export default async function ViewAsPage({ params }: Props) {
   if (id === null) notFound();
   const db = getDb();
   const now = new Date();
-  const [data, label] = await Promise.all([loadDashboard(db, id, now), clientLabel(db, id)]);
-  if (!data || !label) notFound();
+  const [loaded, label] = await Promise.all([loadDashboard(db, id, now), clientLabel(db, id)]);
+  if (!loaded || !label) notFound();
+  // With online payments on the student's cards offer "Maksa" (the account API sets payOnline); Maria sees the same cards (the buttons are inert)
+  const data = paymentsConfigured() ? { ...loaded, payOnline: true } : loaded;
   const locale = data.client.locale;
   const d = getDict(locale);
   const t = adminEt.viewAs;

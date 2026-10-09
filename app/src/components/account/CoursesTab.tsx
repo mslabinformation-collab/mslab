@@ -131,6 +131,15 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
     }
   };
 
+  // A pay start the server refused as out of date (401, 404, nothing to pay): the cards are loaded again behind the page, like a refused
+  // change request, with the focus on the card the student was dealing with. Not in the admin's view (no reload there).
+  const reloadForCard = reload
+    ? (card: ContactCard) => {
+        focusAfterReload.current = { key: cardKey(card), until: Date.now() + FOCUS_WAIT_MS };
+        return reload({ quiet: true });
+      }
+    : undefined;
+
   const name = firstName(data.client.name);
   const resume = resumeOf(data);
   // The chips show only while they can change what is seen; without them (the cards changed under a chosen chip, e.g.
@@ -205,6 +214,7 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
                   sent={isSent(sent, card)}
                   focusSent={card.kind === "contact" && justSent === card.registrationId}
                   onChangeRequest={openDialog}
+                  onStale={reloadForCard}
                 />
               </li>
             ))}

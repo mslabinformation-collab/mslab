@@ -35,6 +35,11 @@ export type CardProps = {
   onChangeRequest(card: ContactCard, opener: HTMLElement): void;
   /** Online payments are on (phase 2b, Dashboard.payOnline): the pay steps get "Maksa {summa}" / "Maksa ülejäänud {summa}". */
   payOnline?: boolean;
+  /**
+   * The server refused a pay start because this card is out of date (a 401, a 404 or "nothing to pay"): the cards are loaded again behind
+   * the page (CoursesView's quiet reload). Answers whether the server answered the new load; absent (the admin's view): nothing to load.
+   */
+  onStale?(card: ContactCard): Promise<boolean>;
 };
 
 /** A ref that focuses its element once, when it appears (stable, so a later render does not focus it again). */
@@ -60,12 +65,14 @@ function onlineDue(card: AccountCard, now: Date): Due {
  * - changeRequest → "Tühista või muuda aega" opens the dialog (after sending: "Saadetud. Maria võtab sinuga ühendust."); with online
  *   payments a confirmed card with a rest has "Maksa ülejäänud {summa}" as its main button and the change request as the text button;
  * - openCourse → "Ava koolitus" → /konto/kursus/{slug}.
- * "Maksa" posts /api/konto/maksa and the page goes on to Montonio; a refusal says why under the button. If the browser comes back to this
- * page from its back-forward cache (the payer pressed Back), the button is ready again.
+ * "Maksa" posts /api/konto/maksa and the page goes on to Montonio; a refusal says why under the button. A refusal that says the card is
+ * out of date (a 401, a 404, or "nothing to pay") also loads the cards again quietly (`onStale`), so the card shows what is true now: the
+ * line is left for "nothing" (its sentence is true after the reload too) and for a reload that got no answer, and not for a 401 or a 404.
+ * If the browser comes back to this page from its back-forward cache (the payer pressed Back), the button is ready again.
  * An open e-course with lessons shows '{done} / {total}' with the e-course page's bar, or 'Läbitud ✓' (phase 2c).
  * `readOnly`: the buttons are there but aria-disabled, and do nothing.
  */
-export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false }: CardProps) {
+export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale }: CardProps) {
   const step = nextStep(card, now, pay, locale, payOnline);
   const [open, setOpen] = useState(false);
   const [paying, setPaying] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
@@ -87,14 +94,18 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
     return () => window.removeEventListener("pageshow", restored);
   }, []);
 
-  async function payNow(registrationId: number) {
+  async function payNow(card: ContactCard) {
     if (readOnly || paying.busy) return;
     setPaying({ busy: true, error: null });
-    const answer = await sendJson("/api/konto/maksa", { registrationId });
+    const answer = await sendJson("/api/konto/maksa", { registrationId: card.registrationId });
     const url = answer.data.paymentUrl;
     if (isDone(answer) && isPageUrl(url)) return navigate(url);
-    const error = answer.data.error === "full" ? t.online.full : answer.data.error === "nothing" ? t.online.nothing : answer.status === 429 ? t.online.rate : t.online.failed;
-    setPaying({ busy: false, error });
+    const nothing = answer.data.error === "nothing";
+    const error = answer.data.error === "full" ? t.online.full : nothing ? t.online.nothing : answer.status === 429 ? t.online.rate : t.online.failed;
+    // signed out or replaced (401), gone or not hers (404), nothing due (409): the card is out of date; load the cards again, quietly
+    const outOfDate = answer.status === 401 || answer.status === 404 || nothing;
+    const reloaded = outOfDate && onStale ? await onStale(card) : false;
+    setPaying({ busy: false, error: reloaded && !nothing ? null : error });
   }
 
   const payButton =
@@ -103,7 +114,7 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
         type="button"
         className={`${ui.btn} ${styles.action}`}
         aria-disabled={readOnly || paying.busy || undefined}
-        onClick={() => void payNow(card.registrationId)}
+        onClick={() => void payNow(card)}
         data-card-action="pay-online"
       >
         {paying.busy ? t.online.starting : fill(online.kind === "balance" ? t.online.payRest : t.online.pay, { amount: formatEUR(online.cents, locale) })}
