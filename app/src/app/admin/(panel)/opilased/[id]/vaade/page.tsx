@@ -15,7 +15,7 @@ import { parseRowId } from "@/lib/row-id";
 import { clientLabel } from "@/server/admin-clients";
 import { requireAdmin } from "@/server/auth";
 import { loadDashboard } from "@/server/client-data";
-import { paymentsConfigured } from "@/server/payments/montonio";
+import { paymentProvider } from "@/server/payments/montonio";
 import view from "./view.module.css";
 
 // An admin page: rendered for every visit (the student's data, never a shared cache) and only for a signed-in admin.
@@ -40,8 +40,9 @@ export default async function ViewAsPage({ params }: Props) {
   const now = new Date();
   const [loaded, label] = await Promise.all([loadDashboard(db, id, now), clientLabel(db, id)]);
   if (!loaded || !label) notFound();
-  // With online payments on the student's cards offer "Maksa" (the account API sets payOnline); Maria sees the same cards (the buttons are inert)
-  const data = paymentsConfigured() ? { ...loaded, payOnline: true } : loaded;
+  // With online payments on the student's cards offer "Maksa": the account API sets payOnline when it has a provider (account-api.ts deps.montonio,
+  // which is paymentProvider()); Maria's copy asks the same, so the two can never differ. The buttons are inert.
+  const data = paymentProvider() !== null ? { ...loaded, payOnline: true } : loaded;
   const locale = data.client.locale;
   const d = getDict(locale);
   const t = adminEt.viewAs;

@@ -76,7 +76,7 @@ describe("GET: the page, and nothing else", () => {
 
   test("payPage escapes what it shows", () => {
     const html = payPage(
-      { token: "tok", locale: "et", registrationId: 1, course: { et: '<b>"Kulmud"</b>' }, session: null, due: { kind: "prepayment", cents: 100 }, transfer: null },
+      { token: "tok", locale: "et", registrationId: 1, course: { et: '<b>"Kulmud"</b>' }, session: null, due: { kind: "prepayment", cents: 100 }, full: false, transfer: null },
       { online: true },
     );
     expect(html).toContain("&lt;b&gt;&quot;Kulmud&quot;&lt;/b&gt;");
@@ -124,14 +124,19 @@ describe("POST: the button", () => {
     const m = stubMontonio();
     await db.insert(settings).values({ key: "prepayment", value: PAY });
     const c = await contactCourse(db, { capacity: 1 });
-    await registrationOn(db, c, { email: "teine@example.com", status: "confirmed", paidCents: 35000 });
+    const other = await registrationOn(db, c, { email: "teine@example.com", status: "confirmed", paidCents: 35000 });
     const r = await registrationOn(db, c);
     const html = await text(await handlePayPage(post(r.payToken), r.payToken, deps(m.montonio)));
     expect(html).toContain("See koolitus on täis. Võta ühendust Mariaga.");
     for (const gone of ["<form", "<dl", "data-pay-transfer", "EE38", "või tasu pangaülekandega", `MSLAB-${r.id}`]) expect(html, gone).not.toContain(gone);
     // the course and the date stay: the page says which course is full
     expect(html).toContain("Kulmumeistri baaskoolitus");
-    // the other notices leave the payment as it is: too many starts, Montonio not answering
+    // a full session is said whichever way the page is reached, even when the POST was refused for another reason (nothing can be paid)
+    const busy = await text(await handlePayPage(post(r.payToken), r.payToken, deps(m.montonio, { kv: fakeKv({ "rl:pay:203.0.113.9": "5" }) })));
+    expect(busy).toContain("See koolitus on täis");
+    expect(busy).not.toContain("EE38");
+    // a seat is free: the other notices leave the payment as it is — too many starts, Montonio not answering
+    await db.update(registrations).set({ status: "cancelled" }).where(eq(registrations.id, other.id));
     m.state.down = true;
     const failed = await text(await handlePayPage(post(r.payToken), r.payToken, deps(m.montonio, { kv: fakeKv({ "rl:pay:203.0.113.9": "5" }) })));
     expect(failed).toContain("Liiga palju katseid. Proovi mõne minuti pärast.");
@@ -139,6 +144,49 @@ describe("POST: the button", () => {
     const view = await loadPayView(db, r.payToken, NOW);
     for (const notice of ["failed", "rate"] as const) expect(payPage(view, { online: true, notice }), notice).toContain("EE38 2200 2210 2014 5685");
     expect(payPage(view, { online: true, notice: "full" })).not.toContain("EE38");
+  });
+
+  test("the session is full: GET says so too (200), as the POST does — no button, no bank rows; the course and date stay", async () => {
+    const m = stubMontonio();
+    await db.insert(settings).values({ key: "prepayment", value: PAY });
+    const c = await contactCourse(db, { capacity: 1 });
+    await registrationOn(db, c, { email: "teine@example.com", status: "confirmed", paidCents: 35000 });
+    const r = await registrationOn(db, c);
+    const res = await handlePayPage(get(r.payToken), r.payToken, deps(m.montonio));
+    const html = await text(res);
+    expect(res.status).toBe(200);
+    expect(html).toContain("See koolitus on täis. Võta ühendust Mariaga.");
+    for (const gone of ["<form", "<dl", "data-pay-transfer", "EE38", "või tasu pangaülekandega", `MSLAB-${r.id}`, "Maksa 175 €"]) expect(html, gone).not.toContain(gone);
+    for (const stays of ["Kulmumeistri baaskoolitus", "14.11.2026 · 10:00, Pärnu, MS LAB stuudio"]) expect(html, stays).toContain(stays);
+    expect(await db.select().from(payments)).toEqual([]); // and a GET still changes nothing
+    // without payments the transfer is hidden as well: it would pay for a place that is gone
+    expect(await text(await handlePayPage(get(r.payToken), r.payToken, deps(null)))).not.toContain("EE38");
+  });
+
+  test("full is decided on the seats of the others: her own running hold keeps her place, a seat that frees up opens the page again, and a confirmed registration's rest is never full", async () => {
+    const m = stubMontonio();
+    await db.insert(settings).values({ key: "prepayment", value: PAY });
+    const c = await contactCourse(db, { capacity: 1 });
+    const other = await registrationOn(db, c, { email: "teine@example.com", status: "confirmed", paidCents: 35000 });
+    const r = await registrationOn(db, c);
+    const page = async (token: string) => text(await handlePayPage(get(token), token, deps(m.montonio)));
+    expect(await page(r.payToken)).toContain("See koolitus on täis");
+    expect((await loadPayView(db, r.payToken, NOW))?.full).toBe(true);
+    // the other one is cancelled: the seat is free, the page is the payer's again
+    await db.update(registrations).set({ status: "cancelled" }).where(eq(registrations.id, other.id));
+    const open = await page(r.payToken);
+    expect(open).toContain("Maksa 175 €");
+    expect(open).not.toContain("See koolitus on täis");
+    // her own hold, running, is not in her way (the start leaves it out too)
+    await db.update(registrations).set({ seatHoldUntil: new Date(NOW.getTime() + 10 * 60_000) }).where(eq(registrations.id, r.id));
+    expect(await page(r.payToken)).toContain("Maksa 175 €");
+    // a confirmed registration paying its rest holds its place already: never full, even when the session is over-booked
+    const rest = await registrationOn(db, c, { email: "kolmas@example.com", status: "confirmed", paidCents: 17500 });
+    await db.update(registrations).set({ status: "confirmed", paidCents: 35000 }).where(eq(registrations.id, other.id));
+    const restPage = await page(rest.payToken);
+    expect(restPage).toContain("Maksa ülejäänud 175 €");
+    expect(restPage).not.toContain("See koolitus on täis");
+    expect((await loadPayView(db, rest.payToken, NOW))?.full).toBe(false);
   });
 
   test("Montonio down: 503 and 'Midagi läks valesti'; the row is failed, no hold stays", async () => {
@@ -318,6 +366,7 @@ describe("what the page may and may not do (phase 2b, the review's list)", () =>
         course: { et: evil },
         session: { startsAt: new Date("2026-11-14T08:00:00Z"), city: evil, venue: "'<>&" },
         due: { kind: "balance", cents: 17500 },
+        full: false,
         transfer: { receiver: evil, iban: `EE38"><script>`, bank: evil, referencePrefix: evil },
       },
       { online: true },

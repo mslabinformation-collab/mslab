@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { readSetting } from "@/db/queries/public";
+import { hasFreeSeat } from "@/db/queries/seats";
 import { courses, courseSessions, registrations } from "@/db/schema";
 import { groupIban, hasPrepayment, parsePrepayment, paymentReference, PREPAYMENT_KEY, type PrepaymentInfo } from "@/domain/account-cards";
 import { formatEUR } from "@/domain/money";
@@ -22,7 +23,11 @@ import { isTokenShape } from "./token";
 // Standalone HTML built here, as the unsubscribe page is (server/unsubscribe-page.ts): no React, no script, no external resource, the site's
 // colour tokens, its fonts only named. The page's language is the registration's. The token is never logged.
 
-/** What the page shows: the registration's course and session, what is due now, and the bank transfer when Maria's instructions can be followed. */
+/**
+ * What the page shows: the registration's course and session, what is due now, and the bank transfer when Maria's instructions can be followed.
+ * `full`: an unconfirmed registration's session has no free seat for her (the start's own check, hers left out): the page says so, with no button
+ * and no transfer, as the POST does.
+ */
 export type PayView = {
   token: string;
   locale: Locale;
@@ -30,6 +35,7 @@ export type PayView = {
   course: I18n;
   session: { startsAt: Date; city: string; venue: string } | null;
   due: Due;
+  full: boolean;
   transfer: PrepaymentInfo | null;
 };
 
@@ -46,16 +52,20 @@ export async function loadPayView(db: Db, token: string, now: Date): Promise<Pay
   if (!row) return null;
   const { registration: r, course, session } = row;
   const pay = parsePrepayment(await readSetting(db, PREPAYMENT_KEY));
+  const due = amountDue(
+    { status: r.status, paymentChoice: r.paymentChoice, priceCents: registrationPrice(course, r.kind), paidCents: r.paidCents, startsAt: session?.startsAt ?? null, sessionCancelled: session?.status === "cancelled" },
+    now,
+  );
+  // only a prepayment can be refused for a seat (start.ts): a confirmed registration paying its rest holds its place already
+  const full = due.kind === "prepayment" && session !== null && !(await hasFreeSeat(db, session, now, r.id));
   return {
     token,
     locale: r.locale === "ru" ? "ru" : "et",
     registrationId: r.id,
     course: course.title,
     session: session ? { startsAt: session.startsAt, city: session.city, venue: session.venue } : null,
-    due: amountDue(
-      { status: r.status, paymentChoice: r.paymentChoice, priceCents: registrationPrice(course, r.kind), paidCents: r.paidCents, startsAt: session?.startsAt ?? null, sessionCancelled: session?.status === "cancelled" },
-      now,
-    ),
+    due,
+    full,
     transfer: hasPrepayment(pay) ? pay : null,
   };
 }
@@ -88,7 +98,7 @@ const CSS = [
 /**
  * The page. `online`: payments are on (the button). With something due: the amount, a notice line when a POST left one, "Maksa {summa}" /
  * "Maksa ülejäänud {summa}", and the bank transfer's rows — under "või tasu pangaülekandega" when the button is there. Neither the button
- * nor the rows when the session is full (the "full" notice). Nothing due, or an unknown token: "Selle registreeringu eest pole praegu midagi tasuda." Every value is escaped.
+ * nor the rows when the session is full (the "full" notice: `view.full`, or what a POST found). Nothing due, or an unknown token: "Selle registreeringu eest pole praegu midagi tasuda." Every value is escaped.
  */
 export function payPage(view: PayView | null, opts: { online: boolean; notice?: PayNotice }): string {
   const locale: Locale = view?.locale ?? "et";
@@ -104,18 +114,20 @@ export function payPage(view: PayView | null, opts: { online: boolean; notice?: 
       parts.push(`<p class="when">${esc(when)}</p>`);
     }
   }
-  const notice = opts.notice === "full" ? t.page.full : opts.notice === "rate" ? d.forms.errorTooMany : opts.notice === "failed" ? d.forms.errorGeneric : null;
-  if (notice) parts.push(`<p class="notice" role="alert" data-pay-notice="${opts.notice}">${esc(notice)}</p>`);
+  // a full session is said whichever way the page was reached (GET, or a POST that was refused for another reason): nothing can be paid
+  const kind: PayNotice | undefined = view?.full ? "full" : opts.notice;
+  const notice = kind === "full" ? t.page.full : kind === "rate" ? d.forms.errorTooMany : kind === "failed" ? d.forms.errorGeneric : null;
+  if (notice) parts.push(`<p class="notice" role="alert" data-pay-notice="${kind}">${esc(notice)}</p>`);
   const due = view && view.due.kind !== "none" ? view.due : null;
   if (!view || !due) {
     if (!notice) parts.push(`<p data-pay-nothing="">${esc(t.page.nothing)}</p>`);
   } else {
     const amount = formatEUR(due.cents, locale);
     parts.push(`<p class="amount">${esc(labels.amount)}: ${esc(amount)}</p>`);
-    const button = opts.online && opts.notice !== "full";
+    const button = opts.online && kind !== "full";
     if (button) parts.push(`<form method="post" action="/maksa/${esc(view.token)}"><button type="submit">${esc(fill(due.kind === "balance" ? t.payRest : t.pay, { amount }))}</button></form>`);
     // (a full session: no button and no bank rows either; a transfer would pay for a place that is gone)
-    if (view.transfer && opts.notice !== "full") {
+    if (view.transfer && kind !== "full") {
       const pay = view.transfer;
       const rows = ([
         [labels.receiver, pay.receiver],

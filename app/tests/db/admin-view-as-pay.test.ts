@@ -14,7 +14,13 @@ const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/server/auth")>()), requireAdmin: async () => "maria@example.test" }));
 
+vi.mock("@/server/payments/montonio", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/server/payments/montonio")>();
+  return { ...actual, paymentProvider: vi.fn(actual.paymentProvider) };
+});
+
 import ViewAsPage from "@/app/admin/(panel)/opilased/[id]/vaade/page";
+import { paymentProvider } from "@/server/payments/montonio";
 
 let db: Db;
 beforeEach(async () => {
@@ -71,5 +77,30 @@ describe("the admin's view of a student's cards", () => {
     const view = await viewOf((await student()).id);
     expect("payOnline" in view.data).toBe(false);
     expect(view.readOnly).toBe(true);
+  });
+
+  test("the flag is the student's own: payOnline when paymentProvider() is there (the account API's deps.montonio), whatever the settings say on their own", async () => {
+    const student1 = await student();
+    // the provider the account API would use is none: no "Maksa" for her, so none in Maria's copy either (the keys alone do not decide)
+    vi.stubEnv("MONTONIO_ACCESS_KEY", TEST_MONTONIO.accessKey);
+    vi.stubEnv("MONTONIO_SECRET_KEY", TEST_MONTONIO.secretKey);
+    vi.mocked(paymentProvider).mockReturnValueOnce(null);
+    expect("payOnline" in (await viewOf(student1.id)).data).toBe(false);
+    // and the other way round: the provider is there, so her cards say "Maksa"
+    vi.stubEnv("MONTONIO_ACCESS_KEY", "");
+    vi.stubEnv("MONTONIO_SECRET_KEY", "");
+    vi.mocked(paymentProvider).mockReturnValueOnce({} as NonNullable<ReturnType<typeof paymentProvider>>);
+    expect((await viewOf(student1.id)).data.payOnline).toBe(true);
+  });
+
+  test("the mock bank (PAYMENT_PROVIDER=mock on this machine) is a provider like any: payOnline; a remote fake address turns payments off for her and for Maria", async () => {
+    const student1 = await student();
+    vi.stubEnv("MONTONIO_ACCESS_KEY", TEST_MONTONIO.accessKey);
+    vi.stubEnv("MONTONIO_SECRET_KEY", TEST_MONTONIO.secretKey);
+    vi.stubEnv("PAYMENT_PROVIDER", "mock");
+    vi.stubEnv("MONTONIO_FAKE_URL", "http://127.0.0.1:4999");
+    expect((await viewOf(student1.id)).data.payOnline).toBe(true);
+    vi.stubEnv("MONTONIO_FAKE_URL", "https://elsewhere.example");
+    expect("payOnline" in (await viewOf(student1.id)).data).toBe(false);
   });
 });
