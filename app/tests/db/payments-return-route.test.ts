@@ -54,7 +54,7 @@ test("a signed order token pays the payment and sends the payer to /makse; the m
   const r = await registrationOn(db, await contactCourse(db));
   const p = await pendingPayment(db, r);
   const res = await route.GET(get(orderToken(p)));
-  expect(answer(res)).toEqual([303, `${ORIGIN}/makse#tulemus=makstud&liik=registreering`, "no-store", "no-referrer"]);
+  expect(answer(res)).toEqual([303, `/makse#tulemus=makstud&liik=registreering`, "no-store", "no-referrer"]);
   expect((await db.select().from(payments).where(eq(payments.id, p.id)))[0].status).toBe("paid");
   expect((await db.select().from(registrations).where(eq(registrations.id, r.id)))[0]).toMatchObject({ status: "confirmed", paidCents: 17500 });
   expect(m.mails()).toEqual([]); // nothing before the response is out
@@ -66,11 +66,11 @@ test("a signed order token pays the payment and sends the payer to /makse; the m
   expect(m.mails()[0].text).toContain("https://mslab.ee/konto/sisene#email=");
 });
 
-test("a Host that is not one of ours never reaches a mail link: they use SITE_URL; the payer's page is on the origin her browser is already at", async () => {
+test("a Host that is not one of ours never reaches a mail link: they use SITE_URL; the redirect is a path, so her browser stays on the origin it is already at", async () => {
   const m = stubMontonio();
   const p = await pendingPayment(db, await registrationOn(db, await contactCourse(db)));
   const res = await route.GET(get(orderToken(p), "https://elsewhere.example"));
-  expect(res.headers.get("location")).toBe("https://elsewhere.example/makse#tulemus=makstud&liik=registreering");
+  expect(res.headers.get("location")).toBe("/makse#tulemus=makstud&liik=registreering"); // a path only: no host value in the redirect
   for (const task of state.later.splice(0)) await task();
   expect(m.mails()[0].text).toContain("https://mslab.ee/konto/sisene#email=");
   expect(m.mails().map((x) => x.text).join("\n")).not.toContain("elsewhere.example");
@@ -80,7 +80,7 @@ test("a token of another secret: 303 to /makse#tulemus=katkestatud, nothing paid
   stubMontonio();
   const p = await pendingPayment(db, await registrationOn(db, await contactCourse(db)));
   const res = await route.GET(get(orderToken(p, {}, { secret: "another-secret-0123456789abcdef" })));
-  expect(answer(res)).toEqual([303, `${ORIGIN}/makse#tulemus=katkestatud`, "no-store", "no-referrer"]);
+  expect(answer(res)).toEqual([303, `/makse#tulemus=katkestatud`, "no-store", "no-referrer"]);
   expect((await db.select().from(payments))[0].status).toBe("pending");
 });
 
@@ -97,7 +97,7 @@ test("the database cannot be reached: the payer still lands on /makse as pooleli
   state.db = { select: () => { throw Object.assign(new Error("connect ECONNREFUSED kati@example.com"), { code: "ECONNREFUSED" }); } };
   stubMontonio();
   const res = await route.GET(get(orderToken({ reference: "MSLAB-M1", amountCents: 100, providerUuid: "u" })));
-  expect(answer(res)).toEqual([303, `${ORIGIN}/makse#tulemus=pooleli`, "no-store", "no-referrer"]);
+  expect(answer(res)).toEqual([303, `/makse#tulemus=pooleli`, "no-store", "no-referrer"]);
   expect(log.mock.calls.flat().join("\n")).not.toContain("kati@example.com");
 });
 
@@ -105,5 +105,5 @@ test("a setting that cannot be read (no DATABASE_URL in production) is the same 
   vi.stubEnv("NODE_ENV", "production");
   vi.stubEnv("DATABASE_URL", "");
   const res = await route.GET(get("x"));
-  expect(answer(res)).toEqual([303, `${ORIGIN}/makse#tulemus=pooleli`, "no-store", "no-referrer"]);
+  expect(answer(res)).toEqual([303, `/makse#tulemus=pooleli`, "no-store", "no-referrer"]);
 });

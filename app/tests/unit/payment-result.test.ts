@@ -38,8 +38,10 @@ describe("the fragment", () => {
   test("a token or slug of the wrong shape or length is dropped, not shortened or escaped", () => {
     for (const bad of ["a".repeat(19), "a".repeat(101), "a b".padEnd(30, "c"), "é".repeat(30), `${"a".repeat(30)}/..`, `${"a".repeat(30)}?x=1`])
       expect(parseResultFragment(`#tulemus=katkestatud&liik=registreering&maksa=${encodeURIComponent(bad)}`)?.payToken, bad).toBeNull();
-    for (const bad of ["-x", "x-", "x--y", "X", "x_y", "x/y", "x?y", "../x", "a".repeat(121)])
+    for (const bad of ["-x", "x-", "x--y", "X", "x_y", "x/y", "x?y", "../x", "a".repeat(81), "a".repeat(121)])
       expect(parseResultFragment(`#tulemus=katkestatud&liik=ekoolitus&kursus=${encodeURIComponent(bad)}`)?.course, bad).toBeNull();
+    // the slug rule is the admin's own (lib/slug.ts isSlug): the longest slug it stores still comes through
+    expect(parseResultFragment(`#tulemus=katkestatud&liik=ekoolitus&kursus=${"a".repeat(80)}`)?.course).toBe("a".repeat(80));
   });
 });
 

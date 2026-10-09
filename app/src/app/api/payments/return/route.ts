@@ -32,6 +32,6 @@ export async function GET(request: Request): Promise<Response> {
     });
   } catch (e) {
     logFailure("[payments] return failed", e);
-    return returnPending(request);
+    return returnPending();
   }
 }

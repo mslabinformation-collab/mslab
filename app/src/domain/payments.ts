@@ -1,6 +1,7 @@
 // Online payments' pure rules (phase 2b): the reference Montonio knows a payment by, what a registration can pay now, and Maria's word for
 // how it was paid. No database, no React.
 
+import { isSlug } from "@/lib/slug";
 import { startOfDayTallinn, upcomingFrom } from "./calendar";
 import { prepaymentDue, type RegStatus } from "./registration";
 
@@ -98,6 +99,6 @@ export function parseResultFragment(hash: string): ResultView | null {
     outcome: outcome as PaymentOutcome,
     kind: kind === "registreering" || kind === "ekoolitus" ? kind : null,
     payToken: token && /^[A-Za-z0-9_-]{20,100}$/.test(token) ? token : null,
-    course: course && course.length <= 120 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(course) ? course : null,
+    course: course && isSlug(course) ? course : null,
   };
 }
