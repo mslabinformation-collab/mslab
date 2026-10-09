@@ -1,5 +1,5 @@
 import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
-import type { Db, Q } from "@/db/client";
+import type { Db, Q, Tx } from "@/db/client";
 import { attachOrder, failPayment, insertPayment } from "@/db/queries/payments";
 import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
@@ -173,12 +173,28 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
 }
 
 /**
+ * The class of the e-course purchase's advisory lock: the first int of a two-int key (`pg_advisory_xact_lock(int, int)`), whose key space is
+ * separate from the one-bigint keys that client-auth.ts lockAddress ("client-login:<address>") and server/auth.ts ("login-token:<address>")
+ * take with `hashtext(…)`. A hash collision of a purchase's key with an address's cannot make a purchase wait for a login, or the reverse.
+ * Any other two-int lock of the app must use another class.
+ */
+export const ECOURSE_BUY_LOCK_CLASS = 2_011_001;
+
+/**
+ * Serialises the presses of one purchase (one course and address) until the caller's transaction ends: the look for the open attempt and the
+ * insert of a new one are then one step for every press at the same moment. Re-entrant within a transaction.
+ */
+export async function lockEcoursePurchase(tx: Tx, courseId: number, email: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(${ECOURSE_BUY_LOCK_CLASS}::int, hashtext(${`${courseId}:${email}`}))`);
+}
+
+/**
  * Starts an e-course purchase (spec 6.4): a pending `ecourse` row of the course's price, with the payer as entered and her newsletter wish
  * (acted on when it is paid), and Montonio's order. No account and no access before the payment: an abandoned purchase leaves only this row.
  * The same purchase pressed again while its order is open (the same course, address and price: liveAttempt) is sent again with the latest
  * name, language and newsletter box, never a second order (the double-payment rule). A registration has its own row to lock for that; a
  * purchase has none, so the look for the open attempt and the insert of a new one run under an advisory lock of this course and address
- * (taken in a transaction of its own that ends before Montonio is called): two presses at the same moment find one row, not two.
+ * (lockEcoursePurchase, in a transaction of its own that ends before Montonio is called): two presses at the same moment find one row, not two.
  */
 export async function startEcoursePayment(
   deps: StartDeps,
@@ -187,7 +203,7 @@ export async function startEcoursePayment(
   const montonio = deps.montonio;
   if (!montonio) return { kind: "off" };
   const ready = await deps.db.transaction(async (tx): Promise<{ payment: Payment; again: boolean }> => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ecourse-buy:${input.courseId}:${input.email}`}))`);
+    await lockEcoursePurchase(tx, input.courseId, input.email);
     const live = await liveAttempt(tx, { courseId: input.courseId, email: input.email }, input.amountCents, deps.now);
     if (live) {
       // its window starts again now, and what she typed this time replaces what she typed before

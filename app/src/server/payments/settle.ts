@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
-import type { Db } from "@/db/client";
+import type { Db, Tx } from "@/db/client";
 import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admin";
 import { failPayment, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
@@ -23,7 +23,8 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken } from "./mont
 // - PAID with the row's exact amount in EUR moves the row pending|failed → paid in ONE conditional UPDATE (paid_at null: a payment voided
 //   after paid never comes back). Only the winner of that update does the once-only work, in the same transaction: the amount is added to
 //   the registration (db/queries/admin.ts addRegistrationPayment: confirmed from 50 %, unless the course is full, D2), or, for an e-course, its
-//   client is found or created and the course opened (grant.ts). After it: the seats are revalidated, and the payer's mail and Maria's notice
+//   client is found or created and the course opened (grant.ts, in a savepoint: a grant that throws is rolled back alone, the row stays paid
+//   and Maria is told at once that nothing was opened; openCourse also says why this order of locks cannot deadlock). After it: the seats are revalidated, and the payer's mail and Maria's notice
 //   go out after the response (an e-course's with a login code, and the newsletter sign-up when it was ticked). Every other caller finds the row
 //   paid and does nothing.
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
@@ -163,7 +164,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     if (!payment) return null;
     const registration = payment.kind !== "ecourse" && payment.registrationId !== null ? await addRegistrationPayment(tx, payment.registrationId, payment.amountCents, deps.now) : null;
     // an e-course's payment opens the course instead, in this same transaction: only the winner of the update above gets here
-    const grant = payment.kind === "ecourse" ? await grantPurchase(tx, payment, deps.now) : null;
+    const grant = payment.kind === "ecourse" ? await openCourse(tx, payment, deps.now) : null;
     return { payment: grant ? { ...payment, clientId: grant.clientId } : payment, registration, grant };
   });
   if (!won) return lost(deps, row, facts);
@@ -183,6 +184,32 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
   });
   if (won.registration) await seatsChanged(deps, won.registration.course.slug);
   return won.payment;
+}
+
+/**
+ * The grant of a paid e-course purchase (grant.ts), in a savepoint of the paid transaction. If it throws, only the grant is rolled back (a
+ * client it had made with it): the payment stays paid, which is the truth (the money is at Montonio), and the outcome is "not opened", so Maria
+ * is told at once to open the course by hand or refund, instead of the whole payment staying pending with nobody told while the webhook retries.
+ * The log has the class and the code only.
+ *
+ * The locks of this path (the e-course has no session and no registration): its payment row (the conditional UPDATE above), then the address
+ * lock (addClient: client-auth.ts lockAddress), then the rows linked to the address: registrations, requests, subscribers, the client and her
+ * course_access. That is not the order of db/queries/seats.ts, and cannot make a cycle with it: (1) the payment rows are disjoint. A
+ * registration's payment paths (start, settle, failPayment, the daily check) lock the session, the registration and a payment row of kind
+ * prepayment or balance, never an e-course payment row, and an e-course payment row is written only by the e-course's own start (which holds
+ * its advisory lock and that row, nothing else) and settlement. (2) No writer that holds the address lock waits for an e-course payment row
+ * in flight: the logins, addClient, the password and the newsletter take the address lock and write tokens, clients, sessions and the linked
+ * records, not payments; the deletion of an account (client-data.ts deleteClient) is the one exception, and the payments its ON DELETE SET
+ * NULL reaches are rows already linked to the client, which an e-course payment in flight never is (the grant writes its client_id, after the
+ * address lock). So whoever waits on a row this path holds holds neither the address lock nor a row this path waits for.
+ */
+async function openCourse(tx: Tx, payment: Payment, now: Date): Promise<Grant | null> {
+  try {
+    return await (tx as unknown as Db).transaction((savepoint) => grantPurchase(savepoint, payment, now));
+  } catch (e) {
+    logFailure(`[payments] payment ${payment.id}: the course could not be opened`, e);
+    return null;
+  }
 }
 
 /** What the payment did, for Maria's notice. An e-course's is told in its own words (messages.ts): opened until a day, or not opened. */
@@ -245,8 +272,8 @@ async function contextOf(deps: SettleDeps, paymentId: number): Promise<PaymentCo
   }
 }
 
-/** The course's Estonian title for Maria ("—" when the course is gone). */
-const courseName = (ctx: PaymentContext): string => (ctx.course ? pick(ctx.course.title, "et") : "—");
+/** The course's Estonian title for Maria. Gone: "—" for a registration's course, "" for an e-course's (messages.ts then writes "E-koolitus" alone). */
+const courseName = (ctx: PaymentContext, kind: Payment["kind"]): string => (ctx.course ? pick(ctx.course.title, "et") : kind === "ecourse" ? "" : "—");
 
 /** How long a second order's "Topeltmakse" is remembered (Montonio retries a webhook for 48 hours; a payer can reload the return for as long). */
 const DOUBLE_ALERT_TTL_SECONDS = 14 * 24 * 3600;
@@ -292,7 +319,7 @@ function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded
     try {
       const ctx = await contextOf(deps, p.id);
       const s = paymentAlertSummary(
-        { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" ? facts.uuid : null, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
+        { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" ? facts.uuid : null, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
         adminUrl(deps.siteUrl),
       );
       const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
@@ -307,7 +334,7 @@ function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded
 async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNotice, "outcome" | "restCents" | "until">): Promise<void> {
   const ctx = await contextOf(deps, p.id);
   const s = paymentSummary(
-    { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx), startsAt: ctx.session?.startsAt ?? null, method: p.method, bank: p.bank, reference: p.reference, providerUuid: p.providerUuid, ...outcome },
+    { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, method: p.method, bank: p.bank, reference: p.reference, providerUuid: p.providerUuid, ...outcome },
     adminUrl(deps.siteUrl),
   );
   const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });

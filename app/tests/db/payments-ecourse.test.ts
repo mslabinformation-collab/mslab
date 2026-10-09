@@ -1,13 +1,14 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { clientLoginTokens, clients, clientSessions, courseAccess, courses, payments, registrations, subscribers } from "@/db/schema";
 import { formatDate } from "@/i18n/format";
 import type { PublicChange } from "@/server/cache-targets";
-import { issueClientLogin, redeemClientCode, redeemClientLink } from "@/server/client-auth";
+import * as adminClients from "@/server/admin-clients";
+import { issueClientLogin, lockAddress, redeemClientCode, redeemClientLink } from "@/server/client-auth";
 import type { Env } from "@/server/notify";
 import { settleToken } from "@/server/payments/settle";
-import { startEcoursePayment } from "@/server/payments/start";
+import { ECOURSE_BUY_LOCK_CLASS, lockEcoursePurchase, startEcoursePayment } from "@/server/payments/start";
 import { handleEcoursePurchase, type Deps } from "@/server/submit";
 import { fakeKv } from "../fakes";
 import { contactCourse, orderToken, registrationOn, settleDeps, SITE, stubMontonio } from "./payments-fixtures";
@@ -56,6 +57,9 @@ async function buyAndPay(m: ReturnType<typeof stubMontonio>, over: Record<string
   await s.flush();
   return { p, ...s };
 }
+
+/** The rows of an `execute` (PGlite answers { rows }, postgres-js the array itself). */
+const rowsOf = <T,>(result: unknown): T[] => (Array.isArray(result) ? (result as T[]) : (result as { rows: T[] }).rows);
 
 /** The rows a purchase must not leave before (or without) a payment. */
 const accountRows = async () => [await db.select().from(clients), await db.select().from(courseAccess), await db.select().from(subscribers), await db.select().from(clientLoginTokens), await db.select().from(clientSessions)];
@@ -139,7 +143,7 @@ describe("the purchase (before the payment)", () => {
 
   test("the open order is the same course, address, price and Montonio's 30 minutes: a changed price, an older order or a failed one is a new purchase", async () => {
     const m = stubMontonio();
-    const start = (now: Date) => startEcoursePayment({ db, now, siteUrl: SITE, montonio: m.montonio }, { courseId: ecourseId, amountCents: 19000, email: "kati@example.com", name: "Kati Tamm", locale: "et", newsletter: false });
+    const start = (now: Date, email = "kati@example.com") => startEcoursePayment({ db, now, siteUrl: SITE, montonio: m.montonio }, { courseId: ecourseId, amountCents: 19000, email, name: "Kati Tamm", locale: "et", newsletter: false });
     expect(await start(NOW)).toMatchObject({ kind: "started" });
     expect(await start(new Date(NOW.getTime() + 29 * MIN))).toMatchObject({ kind: "started" }); // the window starts again at each re-send
     expect(await db.select().from(payments)).toHaveLength(1);
@@ -148,7 +152,39 @@ describe("the purchase (before the payment)", () => {
     const price = await startEcoursePayment({ db, now: NOW, siteUrl: SITE, montonio: m.montonio }, { courseId: ecourseId, amountCents: 20000, email: "kati@example.com", name: "Kati Tamm", locale: "et", newsletter: false });
     expect(price).toMatchObject({ kind: "started" });
     expect((await db.select().from(payments)).map((p) => p.amountCents)).toEqual([19000, 19000, 20000]);
+    // a failed one: Montonio is down, the row fails, and the next press makes a new row with a new reference (a failed row is never re-sent)
+    m.state.down = true;
+    expect(await start(NOW, "mari@example.com")).toEqual({ kind: "failed" });
+    m.state.down = false;
+    expect(await start(NOW, "mari@example.com")).toMatchObject({ kind: "started" });
+    const mari = (await db.select().from(payments)).filter((p) => p.email === "mari@example.com");
+    expect(mari.map((p) => p.status)).toEqual(["failed", "pending"]);
+    expect(new Set(mari.map((p) => p.reference)).size).toBe(2);
+    expect(m.state.orders.at(-1)?.merchantReference).toBe(mari[1].reference);
     expect(await startEcoursePayment({ db, now: NOW, siteUrl: SITE, montonio: null }, { courseId: ecourseId, amountCents: 19000, email: "kati@example.com", name: "K", locale: "et", newsletter: false })).toEqual({ kind: "off" });
+  });
+});
+
+describe("the purchase's lock", () => {
+  test("a two-int advisory key in a class of its own: it never shares the single-key space of the logins' address lock (and the admin's login-token lock)", async () => {
+    const held = await db.transaction(async (tx) => {
+      await lockAddress(tx as unknown as Db, "kati@example.com");
+      await lockEcoursePurchase(tx, ecourseId, "kati@example.com");
+      await lockEcoursePurchase(tx, ecourseId, "kati@example.com"); // taken again in the same transaction: no wait, no second lock of another kind
+      const rows = await tx.execute(sql`select classid::int as "classId", objsubid::int as "sub" from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() order by objsubid`);
+      return rowsOf<{ classId: number; sub: number }>(rows);
+    });
+    // objsubid 1: a one-bigint key (the address lock); 2: a pair of ints, the class first (ours)
+    expect(held.map((l) => l.sub)).toEqual([1, 2]);
+    expect(held[1].classId).toBe(ECOURSE_BUY_LOCK_CLASS);
+    expect(Number.isInteger(ECOURSE_BUY_LOCK_CLASS)).toBe(true);
+  });
+
+  test("the lock is released with the transaction: nothing is held across Montonio's call", async () => {
+    const m = stubMontonio();
+    expect(await handleEcoursePurchase(formDeps(m.montonio), form())).toMatchObject({ ok: true });
+    const rows = await db.execute(sql`select count(*)::int as n from pg_locks where locktype = 'advisory'`);
+    expect(rowsOf<{ n: number }>(rows)[0].n).toBe(0);
   });
 });
 
@@ -327,6 +363,35 @@ describe("paid", () => {
     expect(m.mails().filter((x) => x.to === "maria@example.test")).toHaveLength(1);
   });
 
+  test("the grant is the winner's alone: replaying the PAID token (the webhook's retries, a reloaded return) leaves an access that was changed since exactly as it is", async () => {
+    const m = stubMontonio();
+    expect(await handleEcoursePurchase(formDeps(m.montonio), form())).toMatchObject({ ok: true });
+    const [p] = await db.select().from(payments);
+    const s = settleDeps(db, m.montonio, NOW);
+    const token = m.montonio.verifyOrderToken(orderToken(p));
+    await settleToken(s.deps, token); // the winner
+    await s.flush();
+    const [paid] = await db.select().from(payments);
+    const replay = async () => {
+      await Promise.all([settleToken(s.deps, token), settleToken(s.deps, token), settleToken(s.deps, token)]);
+      await s.flush();
+    };
+    // an admin takes the access over: her own name on it and another end date; a grant by the replays would write "payment" and 09.04.2027 back
+    await db.update(courseAccess).set({ grantedBy: "admin@example.test", expiresAt: new Date("2031-01-01T21:59:59.999Z") });
+    const changed = await db.select().from(courseAccess);
+    await replay();
+    expect(await db.select().from(courseAccess)).toEqual(changed);
+    // and an access she ended stays ended: a replayed payment does not open it again
+    await db.update(courseAccess).set({ revokedAt: new Date("2026-10-09T11:00:00Z") });
+    const revoked = await db.select().from(courseAccess);
+    await replay();
+    expect(await db.select().from(courseAccess)).toEqual(revoked);
+    expect(await db.select().from(payments)).toEqual([paid]);
+    expect(await db.select().from(clients)).toHaveLength(1);
+    expect(await db.select().from(clientLoginTokens)).toHaveLength(1);
+    expect(m.mails().map((x) => x.to)).toEqual(["kati@example.com", "maria@example.test"]); // nothing more went out
+  });
+
   test("a failed payment opens nothing; one that is paid later (the bank was slow) opens it then", async () => {
     const m = stubMontonio();
     expect(await handleEcoursePurchase(formDeps(m.montonio), form({ newsletter: "on" }))).toMatchObject({ ok: true });
@@ -382,8 +447,37 @@ describe("paid", () => {
     await s.flush();
     expect(await db.select().from(clients)).toEqual([]);
     expect(m.mails().map((x) => x.to)).toEqual(["maria@example.test"]);
-    expect(m.mails()[0].text).toContain("E-koolitust ei avatud");
-    expect(m.mails()[0].text).not.toMatch(/registreeringule/);
+    // the course is gone, so is its title: the subject says what it can, never a dash in brackets
+    expect(m.mails()[0].subject).toBe("Uus makse: Kati Tamm, E-koolitus, 190 €");
+    expect(m.mails()[0].text).toContain("E-koolitust ei avatud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.");
+    expect(m.mails()[0].text).not.toMatch(/registreeringule|ei leitud|—|\(e-koolitus\)/);
+  });
+
+  test("a grant that throws: the payment is still paid, nothing is opened (what the grant had written is rolled back with it), and Maria is told at once to open it by hand", async () => {
+    const m = stubMontonio();
+    expect(await handleEcoursePurchase(formDeps(m.montonio), form())).toMatchObject({ ok: true });
+    const [p] = await db.select().from(payments);
+    // the client is made first and the access second: a throw at the access leaves the client to be rolled back
+    vi.spyOn(adminClients, "grantAccess").mockRejectedValue(Object.assign(new Error("boom for kati@example.com"), { code: "XX000" }));
+    const s = settleDeps(db, m.montonio, NOW);
+    const token = m.montonio.verifyOrderToken(orderToken(p));
+    expect(await settleToken(s.deps, token)).toMatchObject({ kind: "done", payment: { status: "paid", clientId: null } });
+    await s.flush();
+    expect((await db.select().from(payments))[0]).toMatchObject({ status: "paid", clientId: null });
+    expect(await accountRows()).toEqual([[], [], [], [], []]);
+    const [maria, ...none] = m.mails();
+    expect(none).toEqual([]);
+    expect([maria.to, maria.subject]).toEqual(["maria@example.test", "Uus makse: Kati Tamm, Kulmumeistri e-koolitus (e-koolitus), 190 €"]);
+    expect(maria.text).toContain("E-koolitust ei avatud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.");
+    // the log has the class and the code, never the message (it can hold an address)
+    const logged = vi.mocked(console.error).mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+    expect(logged).toContain("Error (code XX000)");
+    expect(logged).not.toMatch(/boom|kati@example\.com/);
+    // the payment is paid for good: the webhook's retry does not open anything or tell Maria again
+    await settleToken(s.deps, token);
+    await s.flush();
+    expect(m.mails()).toHaveLength(1);
+    expect(await accountRows()).toEqual([[], [], [], [], []]);
   });
 
   test("a course that is no e-course any more: paid, nothing opened, no client made", async () => {
@@ -397,6 +491,7 @@ describe("paid", () => {
     expect((await db.select().from(payments))[0]).toMatchObject({ status: "paid", clientId: null });
     expect(await db.select().from(courseAccess)).toEqual([]);
     expect(await db.select().from(clients)).toEqual([]);
-    expect(m.mails()[0].text).toContain("E-koolitust ei avatud");
+    expect(m.mails()[0].subject).toBe("Uus makse: Kati Tamm, Kulmumeistri e-koolitus (e-koolitus), 190 €"); // the course is still there, with its title
+    expect(m.mails()[0].text).toContain("E-koolitust ei avatud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.");
   });
 });

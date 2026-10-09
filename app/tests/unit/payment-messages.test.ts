@@ -50,8 +50,18 @@ describe("Maria's notice of a payment", () => {
     expect(ecourse.text).toContain("Koolitus: Kulmumeistri e-koolitus\n");
     expect(ecourse.text).toContain("E-koolitus on avatud kuni 09.04.2027.");
     expect(note({ kind: "ecourse", outcome: "opened", startsAt: null }).text).toContain("E-koolitus on avatud.");
-    expect(note({ kind: "ecourse", outcome: "notOpened" }).text).toContain("E-koolitust ei avatud: koolitust ei leitud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.");
-    expect(note({ kind: "ecourse", outcome: "notOpened" }).text).not.toContain("kursust");
+    // not opened: one neutral sentence for every reason (the course is gone or is no e-course any more, the grant was refused or failed)
+    expect(note({ kind: "ecourse", outcome: "notOpened" }).text).toContain("E-koolitust ei avatud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.");
+    expect(note({ kind: "ecourse", outcome: "notOpened" }).text).not.toMatch(/kursust|ei leitud/);
+  });
+
+  test("an e-course whose course is gone has no title to show: 'E-koolitus' alone, never a dash in brackets, and no empty 'Koolitus' row", () => {
+    const gone = paymentSummary({ ...NOTICE, kind: "ecourse", course: "", startsAt: null, outcome: "notOpened", amountCents: 19000 }, ADMIN);
+    expect(gone.subject).toBe("Uus makse: Kati Tamm, E-koolitus, 190 €");
+    expect(gone.short).toBe(gone.subject);
+    expect(gone.text).not.toMatch(/—|\(e-koolitus\)|^Koolitus:/m);
+    expect(gone.text).toContain("Makse: E-koolitus");
+    expect(gone.text).toContain("E-koolitust ei avatud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.");
   });
 
   test("an e-course payment never reads like a registration: no seat, no confirmation, no training day, whatever the outcome it is given", () => {
@@ -107,6 +117,7 @@ describe("Maria's alerts: 'Kontrolli Montonios'", () => {
   test("an e-course's alerts say what happened to the access, not to a seat", () => {
     const e = (over: Partial<PaymentAlert>) => alert({ kind: "ecourse", course: "Kulmumeistri e-koolitus", startsAt: null, amountCents: 19000, ...over });
     expect(e({}).subject).toBe("Kontrolli Montonios: Kati Tamm, Kulmumeistri e-koolitus (e-koolitus), 190 €");
+    expect(e({ course: "" }).subject).toBe("Kontrolli Montonios: Kati Tamm, E-koolitus, 190 €"); // the course is gone
     expect(e({}).text).toContain("Makse: E-koolitus");
     expect(e({}).text).toContain("Midagi ei avatud: makse on lehel Maksed \"Ootel kontrollil\".");
     expect(e({ alert: "voided", rawStatus: "VOIDED" }).text).toContain("Pank tühistas juba laekunud makse. Ligipääs jäi alles: otsusta, kas lõpetada see (Õpilased).");

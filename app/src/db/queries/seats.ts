@@ -38,6 +38,18 @@ export async function hasFreeSeat(q: Q, session: { id: number; capacity: number 
 // after it would deadlock with a re-send of the same payment. And the seats of a session are counted under the session's lock, so that two
 // late payers, or a late payer and a new registration, cannot both be given the last seat. A path takes the locks it needs, in this order:
 // a subset is safe (freeing a seat, failPayment, needs the registration's lock only: it cannot overbook).
+//
+// An e-course purchase (phase 2b) has no session and no registration, and its paid transaction takes another order: its payment row, then the
+// address lock (client-auth.ts lockAddress, through addClient), then the rows linked to the address (registrations, requests, subscribers,
+// the client, course_access). That cannot close a cycle with the order above, because the two sets of paths share no lock they wait for:
+// - the payment rows are disjoint. The registration paths above lock a payment row of kind prepayment or balance (registration_id set);
+//   an e-course payment row (kind ecourse, registration_id null) is written only by the e-course's own start (its advisory lock, server/
+//   payments/start.ts lockEcoursePurchase, and that row) and its settlement;
+// - no writer that holds the address lock waits for an e-course payment row in flight. The logins, addClient, the password and the
+//   newsletter write tokens, clients, sessions and the linked records, not payments. The one exception, the deletion of an account
+//   (client-data.ts deleteClient), reaches payments through ON DELETE SET NULL, and only those already linked to the client: an e-course
+//   payment in flight has no client_id until its own grant writes it, after the address lock.
+// So whoever waits on a row the e-course path holds holds neither the address lock nor a row the e-course path waits for (settle.ts openCourse).
 
 /** Locks the registration (FOR UPDATE) until the caller's transaction ends. A registration that does not exist locks nothing. */
 export async function lockRegistration(tx: Tx, registrationId: number): Promise<void> {

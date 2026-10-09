@@ -185,9 +185,11 @@ const PAYMENT_KIND: Record<PaymentKind, string> = { prepayment: "Ettemaks", bala
 
 /**
  * What a payment was for, the {mis} of "Uus makse: {nimi}, {mis}, {summa}": "Kulmumeistri baaskoolitus, 14.11.2026" (a registration's session
- * day), or "Kulmumeistri e-koolitus (e-koolitus)" for an e-course (the owner's form of 10.10: the title, then what it is).
+ * day), or "Kulmumeistri e-koolitus (e-koolitus)" for an e-course (the owner's form of 10.10: the title, then what it is). An e-course whose
+ * course is gone has no title (`course` is ""): "E-koolitus" alone, never a dash in brackets.
  */
-const paidFor = (kind: PaymentKind, course: string, startsAt: Date | null): string => (kind === "ecourse" ? `${course} (e-koolitus)` : startsAt ? `${course}, ${formatDate(startsAt, "et")}` : course);
+const paidFor = (kind: PaymentKind, course: string, startsAt: Date | null): string =>
+  kind === "ecourse" ? (course ? `${course} (e-koolitus)` : "E-koolitus") : startsAt ? `${course}, ${formatDate(startsAt, "et")}` : course;
 
 /** A paid payment, for Maria's notice. `outcome`: what it did (settle.ts). `restCents`: left to pay on the registration afterwards. */
 export type PaymentNotice = {
@@ -195,6 +197,7 @@ export type PaymentNotice = {
   name: string;
   email: string;
   amountCents: number;
+  /** The course's Estonian title; "—" for a registration's course that is gone, "" for an e-course's (paidFor). */
   course: string;
   startsAt: Date | null;
   /** Montonio's code of the way of paying and the bank's name: shown as Maria's word (paymentMethodLabel). */
@@ -224,7 +227,8 @@ export function paymentSummary(p: PaymentNotice, adminUrl: string): Summary {
     received: "Makse on registreeringule kirja pandud.",
     full: "Koolitus on täis: koht jäi kinnitamata, makse on registreeringule kirja pandud. Võta õpilasega ühendust (Registreerimised).",
     opened: p.until ? `E-koolitus on avatud kuni ${formatDate(p.until, "et")}.` : "E-koolitus on avatud.",
-    notOpened: "E-koolitust ei avatud: koolitust ei leitud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.",
+    // one sentence for every reason (the course is gone or is no e-course any more, the grant was refused or failed): the payment is paid
+    notOpened: "E-koolitust ei avatud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.",
   };
   const note = ecourse ? notes[p.outcome === "opened" ? "opened" : "notOpened"] : notes[p.outcome];
   return {
