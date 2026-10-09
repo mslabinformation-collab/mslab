@@ -5,6 +5,7 @@ import { startTransition, useActionState, useEffect, useId, useRef, useState } f
 import { hasPickableSession, initialSession } from "@/domain/catalogue";
 import type { SeatState } from "@/domain/sessions";
 import type { Locale } from "@/i18n/locales";
+import { navigate } from "@/lib/navigate";
 import { useUrlQuery } from "@/lib/url-query";
 import { registerContact, submitIndividual } from "@/server/actions/public";
 import { Icon } from "./Icon";
@@ -79,8 +80,9 @@ const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "me
  * each with its own price (P12, P13).
  * - Group: pick one of the upcoming sessions (full and cancelled ones are shown but cannot be picked), then the form with
  *   payment 100% now or 50% + 50% (P14). The form never confirms a place: it is confirmed after at least 50% prepayment
- *   (P15), said under the button. With no session to pick, the form is replaced by "new dates soon" and, when the course
- *   has an individual price, a way to ask for the individual course instead.
+ *   (P15), said under the button. With online payments the browser goes on to the prepayment's page (phase 2b). With no
+ *   session to pick, the form is replaced by "new dates soon" and, when the course has an individual price, a way to ask
+ *   for the individual course instead.
  * - Individual: a request with the preferred period or date; Maria agrees the time and the payment afterwards, so there
  *   is no payment choice and no prepayment line.
  * Both: help finding models (P11), create an account (P16), the newsletter consent and the optional message (phase 2c), terms.
@@ -124,7 +126,11 @@ export function ContactRegister({
     const k: Kind = formData.get("kind") === "individual" ? "individual" : "group";
     try {
       const result = k === "individual" ? await submitIndividual(formData) : await registerContact(formData);
-      if (result.ok) return { status: "sent", kind: k };
+      if (result.ok) {
+        // phase 2b (spec 6.1): the prepayment's page at Montonio (the bank or the card is chosen there); the answer shows meanwhile
+        if (k === "group" && result.paymentUrl) navigate(result.paymentUrl);
+        return { status: "sent", kind: k };
+      }
       const errors: Errors = {};
       let rejected: number | undefined;
       for (const [f, code] of Object.entries(result.errors)) {

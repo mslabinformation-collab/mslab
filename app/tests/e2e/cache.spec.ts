@@ -1,6 +1,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { SEED_ECOURSE_SLUG } from "./account";
 import { testEmail } from "./fixtures";
+import { E2E_MONTONIO } from "./montonio-values";
 import { revalidateLocalPages } from "./prod-build";
 import { PROD_BUILD } from "./target";
 import { submitsForms, test, expect } from "./test";
@@ -267,8 +268,9 @@ test("a registration makes the course page and the calendar render again (seat c
   // that no other test running meanwhile can be the one that renders them.
   const next = await Promise.all(checked.map((path) => request.get(path)));
   expect(next.map((res) => res.headers()["x-nextjs-cache"]), checked.join(", ")).toEqual(checked.map(() => "MISS"));
-  await expect(page.getByText(/koht kinnitub pärast ettemaksu/)).toBeVisible();
+  await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
   for (const path of checked) expect((await fromCache(request, path)).headers()["x-nextjs-cache"], path).toBe("HIT");
+  await page.getByRole("button", { name: "Katkesta" }).click(); // ends the hold (the webhook), after the cache checks: it revalidates the pages again
 });
 
 test("a cart for a course that does not exist is a 404 that says the cart is empty", async ({ request }) => {

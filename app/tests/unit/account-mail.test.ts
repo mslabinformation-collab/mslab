@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { nextStep, type ContactCard } from "@/domain/account-cards";
 import { getDict } from "@/i18n/locales";
 import { fill } from "@/i18n/format";
-import { accountLink, esc, passwordChangedMail, registrationConfirmationMail, requestConfirmationMail, verifyLink, welcomeMail, type RegistrationConfirmationInput } from "@/server/account-mail";
+import { accountLink, esc, passwordChangedMail, payLinkUrl, registrationConfirmationMail, requestConfirmationMail, verifyLink, welcomeMail, type RegistrationConfirmationInput } from "@/server/account-mail";
 
 // The confirmation e-mails to a visitor who registered or sent a request (phase 2a Task 10): the texts in Estonian and
 // Russian, with and without the prepayment instructions, with and without a login code, escaping, the "Ava minu konto"
@@ -454,5 +454,46 @@ describe("the password changed mail (phase 2c)", () => {
     const mail = passwordChangedMail("kati@example.test", "ru", "info@mslab.ee");
     expect(mail.subject).toBe("Пароль кабинета MS LAB изменён");
     expect(mail.text).toContain("Если это были не вы, сразу напишите Марии: info@mslab.ee");
+  });
+});
+
+describe("registration confirmation with online payments (phase 2b)", () => {
+  const LINK = `${BASE}/maksa/${TOKEN}`;
+  test("payLinkUrl: the registration's own page, /maksa/<pay_token>", () => {
+    expect(payLinkUrl(`${BASE}/`, TOKEN)).toBe(LINK);
+  });
+
+  test("'Maksa 195 €' is the one button, then 'või tasu pangaülekandega' and the transfer rows; 'Ava minu konto' becomes a text link", () => {
+    const mail = registrationConfirmationMail(registration({ payLink: LINK }));
+    expect(mail.text).toContain(["Koha kinnitamiseks tasu ettemaks 195 €.", "", `Maksa 195 €: ${LINK}`, "", "või tasu pangaülekandega", "", "Saaja: MS LAB Koolituskeskus OÜ"].join("\n"));
+    expect(mail.text).toContain("Selgitus: MSLAB-42");
+    expect(mail.text).toContain("Ava minu konto:");
+    expect(buttons(mail.html!)).toBe(1);
+    expect(mail.html).toContain(`href="${esc(LINK)}"`);
+    expect(mail.html).toMatch(/<a href="[^"]*konto\/sisene#email=[^"]*" style="color:#222222;text-decoration:underline;">Ava minu konto<\/a>/);
+  });
+
+  test("without the transfer instructions: the button alone (no 'Maria saadab sulle arve'); paid enough: today's mail", () => {
+    const noIban = registrationConfirmationMail(registration({ payLink: LINK, prepayment: null }));
+    expect(noIban.text).toContain(`Maksa 195 €: ${LINK}`);
+    expect(noIban.text).not.toContain("või tasu pangaülekandega");
+    expect(noIban.text).not.toContain(getDict("et").account.next.invoice);
+    expect(registrationConfirmationMail(registration({ payLink: LINK, priceCents: null })).text).not.toContain("Maksa");
+  });
+
+  test("with a login code the code block stays as it is (its own 'Logi sisse')", () => {
+    const mail = registrationConfirmationMail(registration({ payLink: LINK, login: { token: TOKEN, code: "123456" } }));
+    expect(buttons(mail.html!)).toBe(2);
+    expect(mail.text).toContain("123456");
+  });
+
+  test("Russian", () => {
+    const mail = registrationConfirmationMail(registration({ locale: "ru", payLink: LINK }));
+    expect(mail.text).toContain(`Оплатить 195 €: ${LINK}`);
+    expect(mail.text).toContain("или оплатите банковским переводом");
+  });
+
+  test("without payments (no payLink) the mail is today's", () => {
+    expect(registrationConfirmationMail(registration({ payLink: null }))).toEqual(registrationConfirmationMail(registration()));
   });
 });

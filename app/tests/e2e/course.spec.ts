@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
-import { LOCAL_FIXTURES, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
+import { LOCAL_FIXTURES, storedHold, storedPayments, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
+import { E2E_MONTONIO } from "./montonio-values";
 
 // Course pages (Task 8): Maria's P1–P16. The first two tests are the brief's tests, verbatim except:
 // - getByLabel("E-post") also matches the footer newsletter's "Sinu e-post", so it is `exact`;
@@ -18,7 +19,7 @@ test("e-learning course page", async ({ page }) => {
   await expect(page.getByText("Sulle võiksid huvi pakkuda")).toBeVisible();
   await page.locator("[data-gallery-main]").click(); await expect(page.getByRole("dialog")).toBeVisible(); await page.keyboard.press("Escape");
 });
-test("contact course group registration stays awaiting prepayment", async ({ page }, info) => {
+test("contact course group registration: the prepayment starts at once at the bank; cancelled there, the registration stays awaiting and the seat is free again (phase 2b)", async ({ page }, info) => {
   submitsForms();
   const addr = testEmail("register", info.project.name);
   await page.goto("/koolitused/kulmumeistri-baaskoolitus");
@@ -29,11 +30,16 @@ test("contact course group registration stays awaiting prepayment", async ({ pag
   await page.getByRole("radio", { name: /50%/ }).check(); await page.getByLabel(/modellide leidmisel/).check(); await page.getByLabel(/tingimustega/).check();
   const session = Number(await page.locator("[data-session][aria-checked='true']").getAttribute("data-session"));
   await page.getByRole("button", { name: "Registreeru" }).click();
-  await expect(page.getByText(/koht kinnitub pärast ettemaksu/)).toBeVisible();
-  if (LOCAL_FIXTURES)
+  await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
+  await expect(page.locator("[data-fake-order]")).toContainText("175.00 EUR");
+  await page.getByRole("button", { name: "Katkesta" }).click();
+  if (LOCAL_FIXTURES) {
     expect(await storedRegistrations(addr)).toEqual([
       { kind: "group", status: "awaiting_prepayment", paidCents: 0, paymentChoice: "half", wantsModelHelp: true, locale: "et", course: "kulmumeistri-baaskoolitus", sessionId: session },
     ]);
+    await expect.poll(() => storedPayments(addr)).toEqual([{ kind: "prepayment", status: "failed", amountCents: 17500 }]);
+    expect(await storedHold(addr)).toBe(false);
+  }
 });
 test("the newsletter consent ticked on a group registration: a subscriber follows, confirmed at once (one step, 09.10); the message is the group's too (phase 2c)", async ({ page }, info) => {
   test.skip(!LOCAL_FIXTURES, "reads the local database");
@@ -47,8 +53,10 @@ test("the newsletter consent ticked on a group registration: a subscriber follow
   await page.getByLabel("Soovin MS LABi uudiseid ja pakkumisi").check();
   await page.getByLabel(/Sõnum/).fill("Kood E2E");
   await page.getByRole("button", { name: "Registreeru" }).click();
-  await expect(page.getByText(/koht kinnitub pärast ettemaksu/)).toBeVisible();
+  await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
   await expect.poll(() => storedSubscriber(addr)).toMatchObject({ email: addr, confirmed: true });
+  await page.getByRole("button", { name: "Katkesta" }).click();
+  await expect.poll(() => storedHold(addr)).toBe(false);
 });
 
 const noErrors = (page: Page) => {

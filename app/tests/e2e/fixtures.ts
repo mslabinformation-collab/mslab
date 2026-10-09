@@ -161,10 +161,12 @@ export async function removeFormRows(): Promise<number> {
     await sql`delete from registrations where email like ${TEST_EMAIL_PATTERN}`;
     await sql`delete from requests where payload->>'email' like ${TEST_EMAIL_PATTERN}`;
     await sql`delete from subscribers where email like ${TEST_EMAIL_PATTERN}`;
+    await sql`delete from payments where email like ${TEST_EMAIL_PATTERN}`;
     const [{ n }] = await sql<{ n: number }[]>`
       select (select count(*) from registrations where email like ${TEST_EMAIL_PATTERN})
            + (select count(*) from requests where payload->>'email' like ${TEST_EMAIL_PATTERN})
-           + (select count(*) from subscribers where email like ${TEST_EMAIL_PATTERN})::int as n`;
+           + (select count(*) from subscribers where email like ${TEST_EMAIL_PATTERN})
+           + (select count(*) from payments where email like ${TEST_EMAIL_PATTERN})::int as n`;
     return Number(n);
   } finally {
     await sql.end();
@@ -204,6 +206,27 @@ export async function storedSubscriber(email: string): Promise<StoredSubscriber 
   try {
     const [row] = await sql<StoredSubscriber[]>`select email, locale, confirmed_at is not null as confirmed, token from subscribers where email = ${email}`;
     return row ?? null;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** The online payments of one test address (phase 2b), oldest first. */
+export async function storedPayments(email: string): Promise<{ kind: string; status: string; amountCents: number }[]> {
+  const sql = connect(false);
+  try {
+    return await sql<{ kind: string; status: string; amountCents: number }[]>`select kind, status, amount_cents as "amountCents" from payments where email = ${email} order by id`;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Does a registration of this test address hold a seat right now (a live seat_hold_until, phase 2b)? */
+export async function storedHold(email: string): Promise<boolean> {
+  const sql = connect(false);
+  try {
+    const [{ held }] = await sql<{ held: boolean }[]>`select exists (select 1 from registrations where email = ${email} and seat_hold_until > now()) as held`;
+    return held;
   } finally {
     await sql.end();
   }
@@ -300,10 +323,12 @@ export async function removeClientRows(email?: string): Promise<number> {
     await sql`delete from client_login_tokens where email like ${match}`;
     await sql`delete from subscribers where email like ${match}`; // "Saada mulle uudiskirja" in Minu andmed
     await sql`delete from clients where email like ${match}`; // on delete cascade: sessions, favourites, access, terms
+    await sql`delete from payments where email like ${match}`; // the online payments of the test address (phase 2b)
     const [{ n }] = await sql<{ n: number }[]>`
       select (select count(*) from client_login_tokens where email like ${match})
            + (select count(*) from subscribers where email like ${match})
            + (select count(*) from clients where email like ${match})
+           + (select count(*) from payments where email like ${match})
            + (select count(*) from registrations where email like ${match})
            + (select count(*) from requests where payload->>'email' like ${match})
            + (select count(*) from courses where slug like ${courses})::int as n`;

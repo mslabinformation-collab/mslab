@@ -45,6 +45,14 @@ export async function lockRegistration(tx: Tx, registrationId: number): Promise<
 }
 
 /**
+ * Locks one session row (FOR UPDATE) until the caller's transaction ends. A new registration has no row to lock yet, so server/submit.ts
+ * handleRegistration locks its session alone, counts the seats under that lock and inserts the registration (the first lock of the order).
+ */
+export async function lockSession(tx: Tx, sessionId: number): Promise<void> {
+  await tx.execute(sql`select 1 from course_sessions where id = ${sessionId} for update`);
+}
+
+/**
  * The locks a payment of a registration needs before it writes anything (settle.ts paid; Tasks 4 and 8 call it first too): the registration's
  * session, then the registration. A registration with no session (an individual course) or none at all locks what there is. Runs in the
  * caller's transaction.

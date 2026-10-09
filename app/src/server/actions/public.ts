@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { serverEnv } from "../env";
 import { serverKv } from "../kv";
 import { logFailure } from "../log";
+import { paymentProvider } from "../payments/montonio";
 import { revalidatePublic } from "../public-cache";
 import { clientIp } from "../ratelimit";
 import { linkBase, requestOrigin } from "../site";
@@ -25,7 +26,7 @@ import {
 
 // Public form actions. Every export of a "use server" file is callable from the browser, so only the actions live
 // here; validation, rate limiting, storage and notifications are in ../submit.ts (tested without Next.js).
-// Result: { ok: true } | { ok: false; errors: Record<field, code> } — codes in ../forms.ts; form "rate" when rate
+// Result: { ok: true, paymentUrl? } | { ok: false; errors: Record<field, code> } — codes in ../forms.ts; form "rate" when rate
 // limited, form "server" when storage failed.
 
 async function run(form: FormName, handler: (deps: Deps, formData: FormData) => Promise<ActionResult>, formData: FormData): Promise<ActionResult> {
@@ -46,6 +47,8 @@ async function run(form: FormName, handler: (deps: Deps, formData: FormData) => 
         // a registration or waitlist entry: the calendar and the course page show the session's seats. They are
         // revalidated before the answer, so the very next request shows the new count (server/public-cache.ts).
         changed: revalidatePublic,
+        // online payments (phase 2b): null without the keys, and the forms are today's
+        montonio: paymentProvider(),
       };
     },
     handler,
@@ -66,7 +69,8 @@ export async function subscribe(formData: FormData): Promise<ActionResult> {
 /**
  * Contact course, group: registration for one session, stored as `awaiting_prepayment` (P15). Fields: course (slug),
  * session (id), name, email, phone, payment (full|half), modelHelp, account, terms ("on"), locale, website.
- * Extra errors: session "full" / "unavailable" when the date can no longer be booked.
+ * Extra errors: session "full" / "unavailable" when the date can no longer be booked. With online payments the answer is
+ * `{ ok: true, paymentUrl }`: the prepayment has started (phase 2b).
  */
 export async function registerContact(formData: FormData): Promise<ActionResult> {
   return run("register", handleRegistration, formData);

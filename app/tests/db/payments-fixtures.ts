@@ -1,4 +1,8 @@
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
 import type { Db } from "@/db/client";
+import * as schema from "@/db/schema";
 import { attachOrder, insertPayment } from "@/db/queries/payments";
 import { courses, courseSessions, registrations, type Course, type CourseSession, type Payment, type Registration } from "@/db/schema";
 import type { PublicChange } from "@/server/cache-targets";
@@ -119,4 +123,12 @@ export async function pendingPayment(
   if (uuid === null) return row;
   await attachOrder(db, row.id, uuid, now);
   return { ...row, providerUuid: uuid };
+}
+
+/** A fresh database whose every statement is kept in `queries` (drizzle's logger), to read the order of the locks and writes from. */
+export async function loggedDb(): Promise<{ db: Db; queries: string[] }> {
+  const queries: string[] = [];
+  const logged = drizzle(new PGlite(), { schema, logger: { logQuery: (query: string) => void queries.push(query) } }) as unknown as Db;
+  await migrate(logged as Parameters<typeof migrate>[0], { migrationsFolder: "./drizzle" });
+  return { db: logged, queries };
 }

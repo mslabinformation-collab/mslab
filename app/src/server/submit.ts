@@ -1,7 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
-import type { Db } from "@/db/client";
+import type { Db, Q } from "@/db/client";
 import { readSetting } from "@/db/queries/public";
-import { seatsTaken } from "@/db/queries/seats";
+import { lockSession, seatsTaken } from "@/db/queries/seats";
 import { courses, courseSessions, practicePackages, registrations, requests, subscribers } from "@/db/schema";
 import type { Course, CourseSession, Registration } from "@/db/schema";
 import { PREPAYMENT_KEY, parsePrepayment } from "@/domain/account-cards";
@@ -30,10 +30,12 @@ import {
   waitlistSummary,
   type Summary,
 } from "./messages";
-import { registrationConfirmationMail, requestConfirmationMail, type LoginCode } from "./account-mail";
+import { payLinkUrl, registrationConfirmationMail, requestConfirmationMail, type LoginCode } from "./account-mail";
 import { CONFIRMATION_MAIL_DAILY_CAP, LOGIN_MAIL_DAILY_CAP, accountOf, fillClientContact, issueClientLogin, reserveLoginMail } from "./client-auth";
 import { logFailure, logNote } from "./log";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env, type Mail } from "./notify";
+import type { Montonio } from "./payments/montonio";
+import { startRegistrationPayment } from "./payments/start";
 import { RATE_LIMIT, RATE_WINDOW_SEC, rateKey, rateLimit } from "./ratelimit";
 import type { PublicChange } from "./cache-targets";
 import { sendWelcome } from "./newsletter";
@@ -47,7 +49,8 @@ import { upcomingFrom } from "@/domain/calendar";
 // → storage → notifications after the response. Storage is the contract; a failed e-mail or Telegram ping is logged
 // and never fails the request.
 
-export type ActionResult = { ok: true } | { ok: false; errors: Record<string, string> };
+/** `paymentUrl` (phase 2b): a group registration's prepayment has started; the form sends the browser there. */
+export type ActionResult = { ok: true; paymentUrl?: string } | { ok: false; errors: Record<string, string> };
 
 export type Deps = {
   db: Db;
@@ -64,6 +67,8 @@ export type Deps = {
    * renders those pages again (revalidatePath(); public-cache.ts).
    */
   changed?: (change: PublicChange) => Promise<void> | void;
+  /** Online payments (phase 2b, server/payments/montonio.ts paymentProvider); absent or null: the forms of today. */
+  montonio?: Montonio | null;
 };
 
 export type FormName = "contact" | "subscribe" | "register" | "individual" | "interest" | "practice" | "waitlist";
@@ -248,10 +253,12 @@ export async function runSubmission(
 /** Stores a contact-course registration. The status is always `awaiting_prepayment` (a place is confirmed only
  *  after at least 50% prepayment, P15) and nothing has been paid. Its "Maksa" token is a fresh newToken() (phase 2b).
  *  An address with an account is linked to it at once
- *  (client-auth.ts accountOf), and the account's empty name and phone are filled from it, in the same transaction. */
-export async function createRegistration(db: Db, input: RegistrationInput): Promise<Registration> {
+ *  (client-auth.ts accountOf), and the account's empty name and phone are filled from it, in the same transaction. A caller
+ *  that counts seats first (handleRegistration) passes its own transaction. */
+export async function createRegistration(q: Q, input: RegistrationInput): Promise<Registration> {
   const email = normalizeEmail(input.email);
-  return db.transaction(async (tx) => {
+  // (inside the caller's transaction, when `q` is one, this is a savepoint of it)
+  return (q as Db).transaction(async (tx) => {
     const [row] = await tx
       .insert(registrations)
       .values({
@@ -289,26 +296,47 @@ async function contactCourse(db: Db, slug: string): Promise<Course | null> {
 }
 
 /** A session with the seats taken at `now` (confirmed and live holds, db/queries/seats.ts), counted now: the page the visitor saw may be out of date. */
-async function sessionWithSeats(db: Db, id: number, now: Date): Promise<(CourseSession & { taken: number }) | null> {
+async function sessionWithSeats(db: Q, id: number, now: Date): Promise<(CourseSession & { taken: number }) | null> {
   const [session] = await db.select().from(courseSessions).where(eq(courseSessions.id, id)).limit(1);
   if (!session) return null;
   return { ...session, taken: (await seatsTaken(db, [id], now)).get(id) ?? 0 };
 }
 
-/** Group registration for one session of a contact course (P12–P16). */
+/**
+ * Group registration for one session of a contact course (P12–P16). With online payments (phase 2b) the prepayment starts at once and the
+ * answer carries its page (`paymentUrl`).
+ */
 export function handleRegistration(deps: Deps, formData: FormData): Promise<ActionResult> {
   return submission(deps, "register", formData, parseGroupRegistration, async ({ course: slug, courseSessionId, terms: _terms, wantsNewsletter, ...data }) => {
     void _terms;
     const course = await contactCourse(deps.db, slug);
     if (!course || course.priceGroup == null) return { result: fail({ form: "invalid" }) };
-    const session = await sessionWithSeats(deps.db, courseSessionId, deps.now);
-    // Another course's session, a cancelled one or one that has begun cannot be booked (upcomingFrom: the same
-    // "upcoming" as the calendar and the course page, so they offer exactly the dates that can be booked).
-    if (!session || session.courseId !== course.id || session.status !== "scheduled" || session.startsAt < upcomingFrom(deps.now))
-      return { result: fail({ session: "unavailable" }) };
-    if (seatState(session, session.taken) === "full") return { result: fail({ session: "full" }) };
-
-    const registration = await createRegistration(deps.db, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "" });
+    // One transaction under the session's lock (the first lock of the order course_sessions → registrations → payments, db/queries/seats.ts):
+    // the full check and the insert see the same seats as a payment that starts or settles meanwhile, which takes the same lock.
+    const stored = await deps.db.transaction(async (tx) => {
+      await lockSession(tx, courseSessionId);
+      const session = await sessionWithSeats(tx, courseSessionId, deps.now);
+      // Another course's session, a cancelled one or one that has begun cannot be booked (upcomingFrom: the same
+      // "upcoming" as the calendar and the course page, so they offer exactly the dates that can be booked).
+      if (!session || session.courseId !== course.id || session.status !== "scheduled" || session.startsAt < upcomingFrom(deps.now)) return { status: "refused" as const, result: fail({ session: "unavailable" }) };
+      if (seatState(session, session.taken) === "full") return { status: "refused" as const, result: fail({ session: "full" }) };
+      const registration = await createRegistration(tx, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "" });
+      return { status: "stored" as const, session, registration };
+    });
+    if (stored.status === "refused") return { result: stored.result };
+    const { session, registration } = stored;
+    // Phase 2b (spec 6.1): the prepayment starts at once — a 30-minute hold, a payment row, Montonio's order. Without payments, or when it does
+    // not start, the registration stands and the answer is today's ("Maksa" is offered later, in the mail and Minu koolitused). A failure here
+    // never fails the stored registration: it is logged and the answer is today's.
+    let paymentUrl: string | undefined;
+    if (deps.montonio) {
+      try {
+        const started = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, montonio: deps.montonio }, { registrationId: registration.id });
+        if (started.kind === "started") paymentUrl = started.paymentUrl;
+      } catch (e) {
+        logFailure("[forms] register: the payment did not start", e);
+      }
+    }
     await deps.changed?.({ kind: "seats", course: course.slug });
     const summary = registrationSummary(
       { ...data, course: pick(course.title, "et"), startsAt: session.startsAt, city: session.city, venue: session.venue },
@@ -331,11 +359,12 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
             paymentChoice: data.paymentChoice,
             priceCents: registrationPrice(course, "group"),
             prepayment,
+            payLink: deps.montonio ? payLinkUrl(deps.siteUrl, registration.payToken) : null,
             login,
           });
       },
     };
-    return { result: OK, notify: { ...summary, replyTo: data.email }, confirm, subscribe: wantsNewsletter ? { email: data.email, locale: data.locale } : undefined };
+    return { result: paymentUrl ? { ok: true, paymentUrl } : OK, notify: { ...summary, replyTo: data.email }, confirm, subscribe: wantsNewsletter ? { email: data.email, locale: data.locale } : undefined };
   });
 }
 
