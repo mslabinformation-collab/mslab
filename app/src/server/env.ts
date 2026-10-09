@@ -50,7 +50,10 @@ export type ServerEnv = {
   /** The Montonio store's access key and secret key, per store and environment. Both, or no online payments. */
   MONTONIO_ACCESS_KEY?: string;
   MONTONIO_SECRET_KEY?: string;
-  /** "mock": the e2e run's fake Montonio at MONTONIO_FAKE_URL (tests/e2e/fake-montonio.ts). Refused on Vercel; in a production build only with PAYMENT_MOCK_IN_PRODUCTION=1. */
+  /**
+   * "mock": the e2e run's fake Montonio at MONTONIO_FAKE_URL (tests/e2e/fake-montonio.ts). Refused on Vercel; in a production build only with
+   * PAYMENT_MOCK_IN_PRODUCTION=1. MONTONIO_FAKE_URL must be plain http on localhost, 127.0.0.1 or [::1]: any other address turns payments off.
+   */
   PAYMENT_PROVIDER?: string;
   MONTONIO_FAKE_URL?: string;
   PAYMENT_MOCK_IN_PRODUCTION?: string;

@@ -34,7 +34,8 @@ export function signHs256(payload: Claims, secret: string, opts: { expiresInSeco
 }
 
 /**
- * The claims of a token signed with `secret`, and whether it is past its `exp` by more than `toleranceSec` (default 60). Throws a JwtError
+ * The claims of a token signed with `secret`, and whether it is past its `exp` by more than `toleranceSec` (default 60), or has an `exp`
+ * that is not a number (no `exp` at all never expires). Throws a JwtError
  * for anything that cannot be trusted: not three parts, a header or payload that is no JSON ("malformed"), an algorithm other than HS256
  * ("alg"), a signature that does not match ("signature"), a payload that is not an object ("payload").
  */
@@ -63,6 +64,7 @@ export function verifyHs256<T extends Claims = Claims>(token: string, secret: st
   }
   if (typeof claims !== "object" || claims === null || Array.isArray(claims)) throw new JwtError("payload");
   const exp = (claims as Claims).exp;
-  const expired = typeof exp === "number" && (opts.nowSec ?? nowSeconds()) > exp + (opts.toleranceSec ?? 60);
+  // an exp that is there but is no number ("9999999999", null, an array) cannot be held against the clock: it is not taken as still open
+  const expired = exp !== undefined && (typeof exp !== "number" || (opts.nowSec ?? nowSeconds()) > exp + (opts.toleranceSec ?? 60));
   return { claims: claims as T, expired };
 }

@@ -110,6 +110,19 @@ describe("signHs256 and verifyHs256", () => {
     expect(verifyHs256(signHs256({ a: 1 }, SECRET, { nowSec: 0 }), SECRET).expired).toBe(false);
   });
 
+  test("an exp that is not a number cannot be taken as 'still open': it counts as expired, and the claims are still returned", () => {
+    // a numeric string would otherwise be skipped by a typeof check and read as a token that never expires
+    for (const exp of ["1", "9999999999", "", null, true, false, [], [NOW + 600], {}, { exp: NOW }]) {
+      const token = signed({ alg: "HS256", typ: "JWT" }, { paymentStatus: "PAID", exp });
+      expect(verifyHs256(token, SECRET, { nowSec: NOW }), JSON.stringify(exp)).toEqual({ claims: { paymentStatus: "PAID", exp }, expired: true });
+    }
+    // numbers keep their rule: an exp in the future is open, past exp + tolerance is expired, and no exp at all is open
+    const open = signed({ alg: "HS256", typ: "JWT" }, { paymentStatus: "PAID", exp: NOW + 600 });
+    expect(verifyHs256(open, SECRET, { nowSec: NOW }).expired).toBe(false);
+    expect(verifyHs256(open, SECRET, { nowSec: NOW + 600 + 61 }).expired).toBe(true);
+    expect(verifyHs256(signed({ alg: "HS256", typ: "JWT" }, { paymentStatus: "PAID" }), SECRET, { nowSec: NOW }).expired).toBe(false);
+  });
+
   test("an old token is still checked: expired does not skip the signature or the algorithm", () => {
     const old = { nowSec: NOW + 10_000 };
     const token = signHs256({ paymentStatus: "PAID" }, SECRET, { expiresInSeconds: 600, nowSec: NOW });

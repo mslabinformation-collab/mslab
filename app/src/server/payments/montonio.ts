@@ -14,7 +14,9 @@ import { JwtError, signHs256, verifyHs256 } from "./jwt";
 //   order; GET /orders/:uuid answers what Montonio itself believes (its grandTotal is a string there).
 // Without both keys there are no online payments (paymentsConfigured). PAYMENT_PROVIDER=mock points this same client at the e2e run's fake
 // Montonio (tests/e2e/fake-montonio.ts) and is refused on Vercel and, without PAYMENT_MOCK_IN_PRODUCTION=1, in a production build: the mock
-// is never a fallback. Logs carry no key, no token and no address; Montonio's own error text is kept (it names no person).
+// is never a fallback. The fake's address must be plain http on this machine (localhost, 127.0.0.1, [::1]), in every runtime that allows
+// the mock at all. Logs carry no key, no token and no address; Montonio's own error text is kept (it names no person), with any token in
+// it replaced.
 
 export const LIVE_BASE = "https://stargate.montonio.com/api";
 export const SANDBOX_BASE = "https://sandbox-stargate.montonio.com/api";
@@ -34,7 +36,8 @@ export type MontonioStatus = "paid" | "pending" | "failed" | "refunded";
  * are refunded. settle.ts keeps paid as a floor.
  */
 export function mapMontonioStatus(raw: unknown): MontonioStatus {
-  switch (String(raw ?? "").trim().toUpperCase()) {
+  // only a string is a status: String(["PAID"]) or an object's toString() must not read as one
+  switch ((typeof raw === "string" ? raw : "").trim().toUpperCase()) {
     case "PAID":
       return "paid";
     case "ABANDONED":
@@ -58,6 +61,8 @@ export function toCents(euros: unknown): number | null {
   const n = typeof euros === "number" ? euros : typeof euros === "string" && /^\d+(\.\d{1,2})?$/.test(euros.trim()) ? Number(euros) : Number.NaN;
   if (!Number.isFinite(n) || n < 0) return null;
   const cents = Math.round(n * 100);
+  // past the safe integers a count of cents is no longer exact, and could not be compared with what was asked
+  if (!Number.isSafeInteger(cents)) return null;
   // 99.99 * 100 is 9998.999…: a float's own error is far below a millionth of a cent; a third decimal is not
   return Math.abs(n * 100 - cents) < 1e-6 ? cents : null;
 }
@@ -72,6 +77,20 @@ export const currentRuntime = (): Runtime => ({ production: process.env.NODE_ENV
 
 export type MontonioConfig = { accessKey: string; secretKey: string; baseUrl: string; live: boolean; mock: boolean };
 
+/** The names of this machine: the only places the fake Montonio is ever reached, whatever MONTONIO_FAKE_URL says. */
+const LOCAL_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** `value` parsed, when it is plain http on this machine (localhost, 127.0.0.1 or [::1]) with no user name or password in it; else null. */
+function localHttpUrl(value: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  return url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname) && !url.username && !url.password ? url : null;
+}
+
 /** "payments are off" is noted once per instance, not on every request. */
 let notedOff = false;
 function off(why: string): null {
@@ -85,7 +104,9 @@ function off(why: string): null {
 /**
  * The store and the address, or null: no online payments. Both keys are needed (a blank one counts as not set: paymentsEnv). MONTONIO_ENV
  * "live" (exactly) is production, anything else the sandbox. PAYMENT_PROVIDER unset or "montonio" is Montonio; "mock" is the fake at
- * MONTONIO_FAKE_URL, refused on Vercel and in a production build without PAYMENT_MOCK_IN_PRODUCTION=1; any other value turns payments off.
+ * MONTONIO_FAKE_URL, refused on Vercel and in a production build without PAYMENT_MOCK_IN_PRODUCTION=1, and only when that address is plain
+ * http on localhost, 127.0.0.1 or [::1] (a remote, https, credentialed or junk address turns payments off, it is never used); any other
+ * PAYMENT_PROVIDER value turns payments off. MONTONIO_FAKE_URL is not looked at unless PAYMENT_PROVIDER is "mock".
  */
 export function montonioConfig(env: PaymentsEnv = paymentsEnv(), runtime: Runtime = currentRuntime()): MontonioConfig | null {
   const accessKey = env.MONTONIO_ACCESS_KEY;
@@ -100,7 +121,10 @@ export function montonioConfig(env: PaymentsEnv = paymentsEnv(), runtime: Runtim
   if (runtime.onVercel) return off("PAYMENT_PROVIDER=mock is refused on Vercel");
   if (runtime.production && env.PAYMENT_MOCK_IN_PRODUCTION !== "1") return off("PAYMENT_PROVIDER=mock is refused in a production build without PAYMENT_MOCK_IN_PRODUCTION=1");
   if (!env.MONTONIO_FAKE_URL) return off("PAYMENT_PROVIDER=mock needs MONTONIO_FAKE_URL");
-  return { accessKey, secretKey, baseUrl: env.MONTONIO_FAKE_URL.replace(/\/+$/, ""), live: false, mock: true };
+  // in every runtime the mock is allowed in, a dev machine and a flagged production build alike: the fake is on this machine or it is not used
+  const fake = localHttpUrl(env.MONTONIO_FAKE_URL);
+  if (!fake) return off("MONTONIO_FAKE_URL must be plain http on localhost, 127.0.0.1 or [::1]");
+  return { accessKey, secretKey, baseUrl: `${fake.origin}${fake.pathname.replace(/\/+$/, "")}`, live: false, mock: true };
 }
 
 /** Are online payments on (spec 7.2)? Without them the "Maksa" buttons are hidden, the cart keeps its interest form and /api/payments/* are 404. */
@@ -118,10 +142,13 @@ export class MontonioError extends Error {
   }
 }
 
+/** Three base64url parts joined by dots, the first starting like a JSON header: a JSON Web Token (an empty signature is still one). */
+const JWT_SHAPE = /eyJ[\w-]+\.[\w-]+\.[\w-]*/g;
+
 /**
  * What Montonio said when it refused: the HTTP status and its own message, one short line ("HTTP 401 · STORE_NOT_FOUND - double check your
  * access key"). Its error bodies are not of one shape, so the usual keys are tried and the raw text is the fallback (Rempire's lesson: a bare
- * code hid the reason for weeks).
+ * code hid the reason for weeks). Anything that looks like a token in it is replaced with "[jwt]".
  */
 export function montonioErrorText(status: number, body: string): string {
   const raw = String(body ?? "").trim();
@@ -145,6 +172,9 @@ export function montonioErrorText(status: number, body: string): string {
     }
   }
   if (!message) message = raw;
+  // a gateway can echo the request back, token and all: a token is never kept or logged. It goes out before the text is cut to length (a
+  // cut first would leave a readable piece of it), and the text is capped before the scan so that a body of "eyJeyJ…" cannot make it slow
+  message = message.slice(0, 2000).replace(JWT_SHAPE, "[jwt]");
   return `HTTP ${status}${message ? ` · ${message.slice(0, 300)}` : ""}`;
 }
 
@@ -234,8 +264,8 @@ export function montonioClient(config: MontonioConfig, fetchImpl: typeof fetch =
       }
       const uuid = text(body.uuid);
       const paymentUrl = text(body.paymentUrl);
-      // the payer is sent there: https only (the e2e run's fake answers on plain http on this machine)
-      const fine = paymentUrl.startsWith("https://") || (config.mock && paymentUrl.startsWith("http://"));
+      // the payer is sent there: https only (the e2e run's fake answers on plain http, on this machine, and a mock config takes that only)
+      const fine = paymentUrl.startsWith("https://") || (config.mock && localHttpUrl(paymentUrl) !== null);
       if (!uuid || !fine) throw new MontonioError("create", "bad_response");
       return { uuid, paymentUrl };
     },
