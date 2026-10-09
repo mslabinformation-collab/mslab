@@ -101,6 +101,17 @@ describe("Maria's alerts: 'Kontrolli Montonios'", () => {
     expect(alert({ alert: "double", otherUuid: null }).text.match(/Montonio: /g)).toHaveLength(1); // no second id to name
   });
 
+  test("'Topeltmakse' names what the second order paid, in the held alert's words; the row's own amount stays in 'Summa'", () => {
+    const double = (over: Partial<PaymentAlert>) => alert({ alert: "double", otherUuid: "uuid-8", ...over }).text;
+    expect(double({ paidCents: 100, currency: "EUR" })).toContain("Summa: 175 €\n");
+    expect(double({ paidCents: 100, currency: "EUR" })).toContain("Teine tasumine: 1 €\n");
+    expect(double({ paidCents: 17500, currency: "EUR" })).toContain("Teine tasumine: 175 €\n");
+    expect(double({ paidCents: 12550, currency: "PLN" })).toContain("Teine tasumine: 125,50 PLN\n");
+    expect(double({ paidCents: null, currency: "EUR" })).toContain("Teine tasumine: summa puudub\n");
+    // only the double alert has it: the held one says it in its sentence, the voided and refunded ones are about the row's own money
+    for (const kind of ["held", "voided", "refunded"] as const) expect(alert({ alert: kind }).text).not.toContain("Teine tasumine");
+  });
+
   test("the amount Montonio named: euros without a doubled currency, another currency by its code, a missing one said so", () => {
     const held = (over: Partial<PaymentAlert>) => alert(over).text;
     expect(held({ paidCents: 100, currency: "EUR" })).toContain("(Montonio: 1 €)");

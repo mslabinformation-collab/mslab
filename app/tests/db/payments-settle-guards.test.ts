@@ -278,6 +278,68 @@ describe("a second paid order for one payment: the money is not lost, Maria is t
     expect(m.mails().map((x) => x.subject)).toEqual(["Koht on kinnitatud — Kulmumeistri baaskoolitus", "Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €"]);
   });
 
+  test("the same second order told again — the payer reloads the return, the webhook comes again — is one 'Topeltmakse', recorded for 14 days", async () => {
+    const { m, p, deps, flush, kv } = await paidOnItsLiveOrder();
+    m.state.snapshots.set(p.providerUuid!, paidSnapshot(p.providerUuid!, p.reference));
+    for (let i = 0; i < 3; i++) await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    await flush();
+    expect(m.mails().filter((x) => x.subject.startsWith("Topeltmakse"))).toHaveLength(1);
+    expect(m.pings().filter((x) => x.startsWith("Topeltmakse"))).toHaveLength(1);
+    expect([...kv.store.keys()].filter((k) => k.startsWith("pay:double:"))).toEqual([`pay:double:${p.id}:${p.providerUuid}`]);
+    expect(kv.ttl.get(`pay:double:${p.id}:${p.providerUuid}`)).toBe(14 * 24 * 3600);
+    // a third order is a new alert; the second still is not
+    m.state.snapshots.set("uuid-third", paidSnapshot("uuid-third", p.reference));
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken({ ...p, providerUuid: "uuid-third" })));
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    await flush();
+    expect(m.mails().filter((x) => x.subject.startsWith("Topeltmakse"))).toHaveLength(2);
+  });
+
+  test("two reloads at the same moment: one alert (the record is taken in one step)", async () => {
+    const { m, p, deps, flush } = await paidOnItsLiveOrder();
+    m.state.snapshots.set(p.providerUuid!, paidSnapshot(p.providerUuid!, p.reference));
+    await Promise.all([1, 2, 3].map(() => settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)))));
+    await flush();
+    expect(m.mails().filter((x) => x.subject.startsWith("Topeltmakse"))).toHaveLength(1);
+  });
+
+  test("an alert that reached no one is not recorded: the next reload tells Maria; and a store that fails never loses the alert", async () => {
+    const { m, p, deps, flush, kv } = await paidOnItsLiveOrder();
+    m.state.snapshots.set(p.providerUuid!, paidSnapshot(p.providerUuid!, p.reference));
+    const { RESEND_API_KEY, TELEGRAM_BOT_TOKEN } = deps.env;
+    deps.env.RESEND_API_KEY = undefined;
+    deps.env.TELEGRAM_BOT_TOKEN = undefined;
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    await flush();
+    expect(m.mails().filter((x) => x.subject.startsWith("Topeltmakse"))).toHaveLength(0);
+    deps.env.RESEND_API_KEY = RESEND_API_KEY;
+    deps.env.TELEGRAM_BOT_TOKEN = TELEGRAM_BOT_TOKEN;
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    await flush();
+    expect(m.mails().filter((x) => x.subject.startsWith("Topeltmakse"))).toHaveLength(1);
+    // the store failing: a repeat is better than a lost alert
+    deps.env.KV = { ...kv, reserve: async () => { throw new Error("kv down"); } };
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    await flush();
+    expect(m.mails().filter((x) => x.subject.startsWith("Topeltmakse"))).toHaveLength(2);
+  });
+
+  test("the alert shows what the second order paid, not the row's amount: 1 € here, 175 € in the row", async () => {
+    const { m, p, deps, flush } = await paidOnItsLiveOrder();
+    m.state.snapshots.set(p.providerUuid!, paidSnapshot(p.providerUuid!, p.reference, "1.00"));
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    // and from a trusted token (Montonio's own key, the row's order told again as a second one)
+    await settlePayment(deps, await payment(p.id), facts(p, { uuid: "uuid-from-token", amountCents: 12550, currency: "PLN" }));
+    await flush();
+    const alerts = m.mails().filter((x) => x.subject.startsWith("Topeltmakse"));
+    expect(alerts).toHaveLength(2);
+    expect(alerts[0].subject).toBe("Topeltmakse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €");
+    expect(alerts[0].text).toContain("Teine tasumine: 1 €");
+    expect(alerts[0].text).toContain("Summa: 175 €");
+    expect(alerts[1].text).toContain("Teine tasumine: 125,50 PLN");
+  });
+
   test("a second order paid with another amount is told the same way; a payment voided after paid and then paid again on another order too", async () => {
     const { m, p, deps, flush } = await paidOnItsLiveOrder();
     expect((await settlePayment(deps, await payment(p.id), facts(p, { uuid: "uuid-other", amountCents: 100 }))).status).toBe("paid");

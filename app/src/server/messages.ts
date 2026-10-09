@@ -237,7 +237,7 @@ export function paymentSummary(p: PaymentNotice, adminUrl: string): Summary {
   };
 }
 
-/** A payment Maria must look at in Montonio's own dashboard (spec 7.3, 7.4, 8). `paidCents` and `currency`: what Montonio said. */
+/** A payment Maria must look at in Montonio's own dashboard (spec 7.3, 7.4, 8). `paidCents` and `currency`: what Montonio said (of the second order, for "double"). */
 export type PaymentAlert = {
   /** held: the amount did not match; voided, refunded: the bank took it back; double: a second order of the same payment was paid too. */
   alert: "held" | "voided" | "refunded" | "double";
@@ -290,6 +290,8 @@ export function paymentAlertSummary(a: PaymentAlert, adminUrl: string): Summary 
       [
         ["Makse", PAYMENT_KIND[a.kind]],
         ["Summa", formatEUR(a.amountCents, "et")],
+        // the second order's own money as Montonio named it (the "Summa" above is what the payment was for)
+        ["Teine tasumine", a.alert === "double" ? montonioSaid(a.paidCents, a.currency) : undefined],
         ["Maksja", a.name],
         ["E-post", a.email],
         ["Viide", a.reference],

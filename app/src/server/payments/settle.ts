@@ -12,6 +12,7 @@ import type { PublicChange } from "../cache-targets";
 import { logFailure, logNote } from "../log";
 import { paymentAlertSummary, paymentSummary, type PaymentNotice } from "../messages";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env } from "../notify";
+import { releaseSlot, reserveSlot } from "../ratelimit";
 import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken } from "./montonio";
 
 // The one door of every paid path (phase 2b, spec 6.2, 7.3, 7.4; Rempire's settle/apply/token-guard, ported). The webhook and the return
@@ -32,6 +33,9 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken } from "./mont
 // "unconfirmed" (the webhook's 503: Montonio retries). That order may be one the row has since replaced: a retry while the attempt is open
 // re-sends its merchantReference (start.ts) and Montonio may answer a new uuid, which the row then carries. A replaced order moves the row
 // only with money (paid, and the row takes that order's uuid), never with its end: the row follows its newer order.
+// A second order's "Topeltmakse" is sent once: the return's signed token can be reloaded and the webhook retried for 48 hours, and each of them
+// brings the same paid second order here again. The order's uuid is recorded in the KV when the alert is taken (pay:double:<payment>:<uuid>, 14
+// days) and an alert that reached no one gives its record back, so the next call tells Maria.
 // These mails follow real payments only: they are not counted in the daily caps, and a sample address is never mailed. Logs carry the payment
 // id and its status only: no address, no token, no key.
 
@@ -229,16 +233,58 @@ async function contextOf(deps: SettleDeps, paymentId: number): Promise<PaymentCo
 /** The course's Estonian title for Maria ("—" when the course is gone). */
 const courseName = (ctx: PaymentContext): string => (ctx.course ? pick(ctx.course.title, "et") : "—");
 
-/** Maria's "Kontrolli Montonios", after the response. */
+/** How long a second order's "Topeltmakse" is remembered (Montonio retries a webhook for 48 hours; a payer can reload the return for as long). */
+const DOUBLE_ALERT_TTL_SECONDS = 14 * 24 * 3600;
+
+/** The KV record that Maria was told about this second order of this payment. */
+const doubleAlertKey = (paymentId: number, uuid: string): string => `pay:double:${paymentId}:${uuid}`;
+
+/**
+ * Takes the record of a second order's alert in one step (two calls at the same moment cannot both take it). A store that fails answers
+ * true: a repeated alert is better than a lost one.
+ */
+async function takeDoubleAlert(deps: SettleDeps, key: string): Promise<boolean> {
+  try {
+    return await reserveSlot(deps.env.KV, key, 1, DOUBLE_ALERT_TTL_SECONDS);
+  } catch (e) {
+    logFailure("[payments] the record of a second order's alert could not be taken", e);
+    return true;
+  }
+}
+
+/** Gives the record back when the alert reached no one, so the next call tells Maria. */
+async function releaseDoubleAlert(deps: SettleDeps, key: string): Promise<void> {
+  try {
+    await releaseSlot(deps.env.KV, key, DOUBLE_ALERT_TTL_SECONDS);
+  } catch (e) {
+    logFailure("[payments] the record of a second order's alert could not be given back", e);
+  }
+}
+
+/**
+ * Maria's "Kontrolli Montonios", after the response. "Topeltmakse" goes out once per second order (its uuid is recorded: see the top of the
+ * file); `facts` is what that order paid, and the alert says so.
+ */
 function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded" | "double", facts: Facts): void {
   logNote(`[payments] payment ${p.id}: ${kind}, Maria is alerted`);
   deps.later(async () => {
-    const ctx = await contextOf(deps, p.id);
-    const s = paymentAlertSummary(
-      { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" ? facts.uuid : null, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
-      adminUrl(deps.siteUrl),
-    );
-    await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+    const record = kind === "double" ? doubleAlertKey(p.id, facts.uuid) : null;
+    if (record && !(await takeDoubleAlert(deps, record))) {
+      logNote(`[payments] payment ${p.id}: Maria was told about this second order before`);
+      return;
+    }
+    let told = false;
+    try {
+      const ctx = await contextOf(deps, p.id);
+      const s = paymentAlertSummary(
+        { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" ? facts.uuid : null, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
+        adminUrl(deps.siteUrl),
+      );
+      const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+      told = r.mail || r.telegram;
+    } finally {
+      if (record && !told) await releaseDoubleAlert(deps, record);
+    }
   });
 }
 

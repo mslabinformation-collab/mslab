@@ -76,17 +76,18 @@ export function stubMontonio() {
 
 /**
  * The settlement's dependencies on `db` at `now`, Resend and Telegram set up. `flush()` runs the work after the response, one task after the
- * other in the order it was queued (so the mails' order is fixed); `changes`: the revalidations.
+ * other in the order it was queued (so the mails' order is fixed); `changes`: the revalidations; `kv`: the store behind `deps.env.KV`.
  */
 export function settleDeps(db: Db, montonio: SettleDeps["montonio"], now: Date) {
   const tasks: (() => Promise<unknown>)[] = [];
   const changes: PublicChange[] = [];
-  const env: Env = { KV: fakeKv({ "tg:chat": "42" }), MAIL_FROM: "MS LAB <info@send.example>", MARIA_EMAIL: "maria@example.test", SITE_URL: SITE, RESEND_API_KEY: "re_test", TELEGRAM_BOT_TOKEN: "123:abc" };
+  const kv = fakeKv({ "tg:chat": "42" });
+  const env: Env = { KV: kv, MAIL_FROM: "MS LAB <info@send.example>", MARIA_EMAIL: "maria@example.test", SITE_URL: SITE, RESEND_API_KEY: "re_test", TELEGRAM_BOT_TOKEN: "123:abc" };
   const deps: SettleDeps = { db, env, now, siteUrl: SITE, later: (task) => void tasks.push(task), changed: (change) => void changes.push(change), montonio };
   const flush = async () => {
     for (let task = tasks.shift(); task; task = tasks.shift()) await task();
   };
-  return { deps, changes, flush };
+  return { deps, changes, flush, kv };
 }
 
 /** A published contact course, Kulmumeistri baaskoolitus (350 €), with one session of `capacity` (4) on 14.11.2026 at 10:00 in Pärnu. */
