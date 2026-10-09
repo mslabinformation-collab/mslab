@@ -232,6 +232,17 @@ export async function storedHold(email: string): Promise<boolean> {
   }
 }
 
+/** A registration's "Maksa" token (phase 2b): the mail's /maksa/<token> link. */
+export async function storedPayToken(registrationId: number): Promise<string> {
+  const sql = connect(false);
+  try {
+    const [row] = await sql<{ token: string }[]>`select pay_token as token from registrations where id = ${registrationId}`;
+    return row.token;
+  } finally {
+    await sql.end();
+  }
+}
+
 // ---------- admin sign-in rows ----------
 // Signing in needs an allow-listed address, so these tests sign in as the real admins on the LOCAL dev database (nothing is
 // e-mailed: there is no RESEND_API_KEY, and the request answer carries a devLink). Each test deletes exactly the token and

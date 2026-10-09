@@ -101,10 +101,11 @@ describe("routeSitePath", () => {
     // Montonio's webhook is answered at its own path, with or without a trailing slash: a POST is never redirected (phase 2b, spec 10)
     for (const p of ["/api/payments/notify", "/api/payments/notify/"]) expect(route(p), p).toEqual({ kind: "api" });
     for (const p of ["/admin", "/admin/koolitused", "/media/img/a.jpg", "/_next/static/x.js", "/robots.txt", "/seed/a.jpg", "/og.jpg", "/favicon.ico", "/icon.svg"]) expect(route(p), p).toEqual({ kind: "other" });
+    expect(route("/maksa/AbC_d-0123456789012345678901234567890")).toEqual({ kind: "other" }); // the pay page (phase 2b): a route handler, served as it is
   });
 
   test("names that only begin like admin, media or a static file are unknown addresses: the cached 404 page (final review M1)", () => {
-    for (const p of ["/admin.php", "/administrator", "/adminer.php", "/media.php", "/mediakit", "/_nextx", "/favicon.png", "/favicon.ico.bak", "/icon.svgz", "/robots.txt.bak"])
+    for (const p of ["/admin.php", "/administrator", "/adminer.php", "/media.php", "/mediakit", "/_nextx", "/favicon.png", "/favicon.ico.bak", "/icon.svgz", "/robots.txt.bak", "/maksa", "/maksax/a", "/maksa/a/b"])
       expect(route(p), p).toEqual({ kind: "page", page: "/et/leidmata", rewritten: true });
     expect(route("/ru/admin.php")).toEqual({ kind: "page", page: "/ru/leidmata", rewritten: true });
   });

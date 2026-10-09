@@ -35,6 +35,7 @@ const THROUGH = [
   "/api/cron/sweep",
   "/api/bunny/webhook",
   "/api/payments/notify", // Montonio's webhook (phase 2b)
+  "/maksa/AbC_d-0123456789012345678901234567890", // the mail's Maksa link (phase 2b)
   "/api/newsletter/confirm",
   "/api/newsletter/loobu", // the unsubscribe link of the welcome mail (one-step newsletter, 09.10)
   "/_next/static/chunks/main.js",
@@ -105,6 +106,12 @@ const GATED = [
   "/api/payments/notifyx",
   "/api/payments/notify/x",
   "/api/payments/return",
+  // the pay page is one segment after /maksa: the bare path, anything deeper, look-alikes, a locale in front and an encoded way out stay gated (phase 2b)
+  "/maksa",
+  "/maksa/a/b",
+  "/maksax/a",
+  "/ru/maksa/a",
+  "/maksa/..%2fkonto",
   "/api/newsletterx",
   "/_nextx/a",
   "/_next",
@@ -265,7 +272,7 @@ describe("gateDecision", () => {
   test("the method never opens the gate (a server action is a POST to the page's own address) and never closes it", async () => {
     for (const method of METHODS) {
       for (const path of ["/", "/konto/sisene", "/ru/kontakt", "/api/konto/request", "/api/feedback"]) expect(await kind(path, ON, undefined, method), `${method} ${path}`).toBe("gate");
-      for (const path of ["/admin/login", "/api/auth/logout", "/api/admin/upload", "/api/bunny/webhook", "/api/payments/notify", "/api/newsletter/confirm", "/api/newsletter/loobu"])
+      for (const path of ["/admin/login", "/api/auth/logout", "/api/admin/upload", "/api/bunny/webhook", "/api/payments/notify", "/api/newsletter/confirm", "/api/newsletter/loobu", "/maksa/AbC_d-0123456789012345678901234567890"])
         expect(await kind(path, ON, undefined, method), `${method} ${path}`).toBe("pass");
     }
   });

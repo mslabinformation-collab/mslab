@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
-import { isCrossSite } from "@/server/auth";
+import { crossSiteFormPost } from "@/server/auth";
 import { serverKv } from "@/server/kv";
 import { logFailure } from "@/server/log";
 import { subscriberLocale, unsubscribeByToken } from "@/server/newsletter";
@@ -35,18 +35,8 @@ export async function GET(request: Request): Promise<Response> {
   });
 }
 
-/**
- * Is this POST from another site? isCrossSite (the Origin header), except that `Origin: null` with `Sec-Fetch-Site: same-origin` is this site's
- * own page: the browser sends that pair when the page's referrer policy is strict, and only a browser can say it (the header is forbidden to
- * scripts). A named foreign site is cross-site whatever Sec-Fetch-Site says.
- */
-function crossSitePost(request: Request): boolean {
-  if (request.headers.get("origin") === "null" && request.headers.get("sec-fetch-site") === "same-origin") return false;
-  return isCrossSite(request);
-}
-
 export async function POST(request: Request): Promise<Response> {
-  if (crossSitePost(request)) return Response.json({ ok: false, error: "forbidden" }, { status: 403, headers: { "cache-control": "no-store" } });
+  if (crossSiteFormPost(request)) return Response.json({ ok: false, error: "forbidden" }, { status: 403, headers: { "cache-control": "no-store" } });
   let token = "";
   try {
     const field = (await request.formData()).get("t");

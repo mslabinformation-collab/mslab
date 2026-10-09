@@ -571,7 +571,7 @@ test("a change request in Päringud: the course and its date as the heading, the
   expect(await noOverflow(page)).toBe(true);
 });
 
-test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid card shows it in groups of four; cleared, Maria sends an invoice", async ({ page, context, browser, visitorIp }, info) => {
+test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid card shows it in groups of four; cleared, only 'Maksa' is left on the card (online payments are on, phase 2b)", async ({ page, context, browser, visitorIp }, info) => {
   // The prepayment instructions are one shared setting (the dashboard tests use it too): the runs take turns.
   info.setTimeout(info.timeout + LOCK_WAIT_MS);
   const release = await holdLocalLock("e2e-prepayment-setting");
@@ -583,7 +583,9 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
     const student = await studentBrowser(browser, email, visitorIp);
     try {
       const unpaid = card(student.page, `registration-${f.registrations.awaiting}`);
-      await expect(unpaid.locator("[data-next-step]")).toHaveText("Maria saadab sulle arve ettemaksu tasumiseks.");
+      // no instructions yet: with online payments (the e2e server has the fake Montonio) the card still says what is due, and "Maksa 175 €" is its only button
+      await expect(unpaid.locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 175 €.");
+      await expect(unpaid.locator("button, a")).toHaveText(["Maksa 175 €"]);
 
       await signInAsAdmin(page, context, visitorIp, created);
       page.on("dialog", (dialog) => void dialog.accept());
@@ -607,6 +609,7 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
 
       await student.page.reload();
       await expect(unpaid.locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 175 €.");
+      await expect(unpaid.locator("button, a")).toHaveText(["Maksa 175 €", "Vaata juhiseid"]); // the transfer is the text button under "Maksa"
       await unpaid.getByRole("button", { name: "Vaata juhiseid" }).click();
       const panel = unpaid.locator("[data-prepayment]");
       await expect(panel.locator("[data-pay-row]")).toHaveText([
@@ -617,13 +620,13 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
         new RegExp(`^Selgitus\\s*MSLAB-${f.registrations.awaiting}\\s*Kopeeri`),
       ]);
 
-      // all four emptied: no instructions, the invoice sentence and nothing to press
+      // all four emptied: no instructions, so no "Vaata juhiseid"; "Maksa 175 €" is all that is left to press
       for (const name of ["Saaja", "IBAN", "Pank", "Selgituse algus"]) await box.getByRole("textbox", { name, exact: true }).fill("");
       await page.getByRole("button", { name: "Salvesta", exact: true }).click();
       await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
       await student.page.reload();
-      await expect(unpaid.locator("[data-next-step]")).toHaveText("Maria saadab sulle arve ettemaksu tasumiseks.");
-      await expect(unpaid.locator("button, a")).toHaveCount(0);
+      await expect(unpaid.locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 175 €.");
+      await expect(unpaid.locator("button, a")).toHaveText(["Maksa 175 €"]);
     } finally {
       await student.close();
     }

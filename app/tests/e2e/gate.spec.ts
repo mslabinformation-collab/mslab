@@ -89,6 +89,16 @@ test.describe("a visitor", () => {
     }
   });
 
+  test("the mail's Maksa link goes through: /maksa/<token> is the app's page (an unknown token: nothing to pay), and its button refuses a cross-site POST (phase 2b)", async ({ page, request }) => {
+    const path = "/maksa/unknown-token-00000000000000000000000000000000";
+    const res = await page.goto(path);
+    expect(res?.status()).toBe(200);
+    expect(res?.headers()["referrer-policy"]).toBe("same-origin");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Koolituse eest tasumine");
+    await expect(page.getByText("Selle registreeringu eest pole praegu midagi tasuda.")).toBeVisible();
+    expect((await request.post(path, { headers: { origin: "https://elsewhere.example" }, maxRedirects: 0 })).status()).toBe(403);
+  });
+
   test("the page: logo, heading, one line, the sign-up with its line (no privacy link here); no horizontal overflow, 44px targets", async ({ page }) => {
     await page.goto("/koolitused");
     await expect(page.getByRole("img", { name: "MS LAB" })).toBeVisible();

@@ -2,8 +2,9 @@ import type { Locator, Page } from "@playwright/test";
 import { formatDate, formatTime } from "../../src/i18n/format";
 import { clientEmail, insertAccountFixtures, setPrepayment, signInAsClient, storedChangeRequests, takeTerms, TEST_PREPAYMENT, type AccountCardKind } from "./account";
 import { signInAsAdmin, type CreatedRows } from "./admin-login";
-import { holdLocalLock, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows, snapshotRows } from "./fixtures";
+import { holdLocalLock, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows, snapshotRows, storedPayments } from "./fixtures";
 import { insertLessonCourse, markDone, removeLessonFile } from "./lessons";
+import { E2E_MONTONIO } from "./montonio-values";
 import { submitsForms, test, expect } from "./test";
 import { scrollLeft, swipe } from "./touch";
 
@@ -39,7 +40,7 @@ async function signedInWith(page: Page, label: string, project: string, opts: { 
   return { email, ...f };
 }
 
-test("every card says what to do next, with at most one button; the prepayment instructions open in place; without them Maria sends an invoice", async ({ page, context }, info) => {
+test("every card says what to do next, with at most one main button; the prepayment instructions open in place; without them the card still says what is due", async ({ page, context }, info) => {
   submitsForms();
   // The prepayment instructions are one shared setting: the desktop and phone runs of this test take turns.
   info.setTimeout(info.timeout + LOCK_WAIT_MS); // the wait for the shared setting is not taken from the test's own time
@@ -54,22 +55,23 @@ test("every card says what to do next, with at most one button; the prepayment i
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tere, Kati!");
     await expect(page.getByText("Siin on sinu koolitused.", { exact: true })).toBeVisible();
 
-    const expected: [string, string, string, string | null][] = [
-      // card, tag, sentence, the one button
-      [`registration-${reg.awaiting}`, "Kontaktõpe", "Koha kinnitamiseks tasu ettemaks 175 €.", "Vaata juhiseid"],
-      [`registration-${reg.confirmed}`, "Kontaktõpe", "Koht on kinnitatud.", "Tühista või muuda aega"],
-      [`registration-${reg.cancelled}`, "Kontaktõpe", "Registreering on tühistatud.", null],
-      [`request-${f.requests.practice}`, "Päring", "Päring on saadetud. Maria vastab peagi.", null],
-      [`request-${f.requests.waitlist}`, "Ootenimekiri", "Oled ootenimekirjas. Anname teada, kui koht vabaneb.", null],
-      [`course-${f.ecourse.slug}`, "E-õpe", `Ligipääs kuni ${formatDate(f.ecourse.expiresAt!, "et")}.`, "Ava koolitus"],
+    const expected: [string, string, string, string[]][] = [
+      // card, tag, sentence, its buttons (the first is the one main button; with online payments an unpaid card has "Vaata juhiseid" as a text button under it)
+      [`registration-${reg.awaiting}`, "Kontaktõpe", "Koha kinnitamiseks tasu ettemaks 175 €.", ["Maksa 175 €", "Vaata juhiseid"]],
+      [`registration-${reg.confirmed}`, "Kontaktõpe", "Koht on kinnitatud.", ["Tühista või muuda aega"]],
+      [`registration-${reg.cancelled}`, "Kontaktõpe", "Registreering on tühistatud.", []],
+      [`request-${f.requests.practice}`, "Päring", "Päring on saadetud. Maria vastab peagi.", []],
+      [`request-${f.requests.waitlist}`, "Ootenimekiri", "Oled ootenimekirjas. Anname teada, kui koht vabaneb.", []],
+      [`course-${f.ecourse.slug}`, "E-õpe", `Ligipääs kuni ${formatDate(f.ecourse.expiresAt!, "et")}.`, ["Ava koolitus"]],
     ];
     await expect(page.locator("[data-card]")).toHaveCount(expected.length);
-    for (const [key, tag, sentence, button] of expected) {
+    for (const [key, tag, sentence, buttons] of expected) {
       const c = card(page, key);
       await expect(c, key).toContainText(tag);
       await expect(c.locator("[data-next-step]"), key).toHaveText(sentence);
-      if (button) await expect(actions(c), key).toHaveText([button]);
+      if (buttons.length) await expect(actions(c), key).toHaveText(buttons);
       else await expect(actions(c), key).toHaveCount(0);
+      await expect(c.locator("[data-card-action]"), key).toHaveCount(buttons.length ? 1 : 0); // one main button at most
     }
     // the dated session line (the sentences do not repeat it), the practice request's times, the e-course link
     await expect(card(page, `registration-${reg.awaiting}`)).toContainText(`${formatDate(start, "et")} · ${formatTime(start, "et")}`);
@@ -127,15 +129,36 @@ test("every card says what to do next, with at most one button; the prepayment i
     await awaiting.getByRole("button", { name: "Peida juhised" }).click();
     await expect(panel).toHaveCount(0);
 
-    // no instructions stored: Maria sends an invoice, and there is nothing to press
+    // no instructions stored: with online payments the card still says what is due, and "Maksa 175 €" is its one button (phase 2b)
     await setPrepayment(null);
     await page.reload();
-    await expect(card(page, `registration-${reg.awaiting}`).locator("[data-next-step]")).toHaveText("Maria saadab sulle arve ettemaksu tasumiseks.");
-    await expect(actions(card(page, `registration-${reg.awaiting}`))).toHaveCount(0);
+    await expect(card(page, `registration-${reg.awaiting}`).locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 175 €.");
+    await expect(actions(card(page, `registration-${reg.awaiting}`))).toHaveText(["Maksa 175 €"]);
   } finally {
     await restore();
     await release();
   }
+});
+
+test("'Maksa 175 €' goes to the bank; paid there, the place is confirmed and 'Maksa ülejäänud 175 €' offers the rest (phase 2b)", async ({ page }, info) => {
+  submitsForms();
+  const f = await signedInWith(page, "pay", info.project.name, { cards: ["awaiting"] });
+  const c = card(page, `registration-${f.registrations.awaiting}`);
+  await c.getByRole("button", { name: "Maksa 175 €" }).click();
+  await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
+  await page.getByRole("button", { name: "Makstud" }).click();
+  await expect.poll(() => storedPayments(f.email)).toEqual([{ kind: "prepayment", status: "paid", amountCents: 17500 }]);
+  await page.goto("/konto");
+  await expect(c.locator("[data-next-step]")).toHaveText("Koht on kinnitatud. Ülejäänud 175 € tasud koolituspäeval.");
+  await expect(actions(c)).toHaveText(["Maksa ülejäänud 175 €", "Tühista või muuda aega"]);
+  await expect(c.locator("[data-card-action]")).toHaveCount(1);
+  await c.getByRole("button", { name: "Maksa ülejäänud 175 €" }).click();
+  await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
+  await page.getByRole("button", { name: "Katkesta" }).click();
+  await expect.poll(() => storedPayments(f.email)).toEqual([
+    { kind: "prepayment", status: "paid", amountCents: 17500 },
+    { kind: "balance", status: "failed", amountCents: 17500 },
+  ]);
 });
 
 test("without the clipboard, Kopeeri selects the text and says so", async ({ page }, info) => {

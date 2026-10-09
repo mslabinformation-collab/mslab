@@ -8,7 +8,7 @@ import { LOGIN_MARK } from "@/lib/account-marks";
 import { parseRowId } from "@/lib/row-id";
 import { deletionMail, loginMail, passwordChangedMail, verifyLink } from "./account-mail";
 import {
-  LIMITS, parseChangeRequest, parseDeletion, parseFavourite, parseMerge, parseNewsletter, parsePassword, parseProfile, parseProgress, parseSlug, parseTerms,
+  LIMITS, parseChangeRequest, parseDeletion, parseFavourite, parseMerge, parseNewsletter, parsePassword, parsePayStart, parseProfile, parseProgress, parseSlug, parseTerms,
 } from "./account-input";
 import { isCrossSite } from "./auth";
 import type { BunnyConfig } from "./bunny";
@@ -28,6 +28,8 @@ import type { FileStore } from "./media";
 import { changeRequestSummary } from "./messages";
 import { clientNewsletter, sendWelcome } from "./newsletter";
 import { adminUrl, notifyMaria, sendMail, type Env } from "./notify";
+import type { Montonio } from "./payments/montonio";
+import { PAY_STARTS_PER_IP, startRegistrationPayment } from "./payments/start";
 import { isPrefetch } from "./prefetch";
 import { belowLimit, clientIp, countFailure, rateKey, rateLimit, releaseSlot, reserveSlot, windowKey } from "./ratelimit";
 import { sha256 } from "./token";
@@ -48,7 +50,7 @@ import { sha256 } from "./token";
 // GET /kursus/:slug/:lesson one lesson (an open one with a signed video URL; 403 terms or locked), POST …/:lesson/progress how far a video has
 // been watched, POST …/:lesson/tehtud "Märgi tehtuks" for a text lesson, GET …/:lesson/fail/:file a lesson file, GET /lemmikud the
 // favourites as course cards, POST /lemmikud and /lemmikud/merge favourites, PATCH /andmed the profile, POST /uudiskiri the newsletter, POST /muutmine a request to cancel or
-// move a registration (Maria is told after the response), POST /tingimused the e-course terms, POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
+// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), POST /tingimused the e-course terms, POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
 // Each one starts with requireClient and answers through clientResponse (a renewed session's cookies reach the browser); the
 // client is always the session's, never a value from the request. A body that is not what the endpoint expects is 400
 // { ok: false, error: "<field>" } (account-input.ts), a record that is not the client's is 404.
@@ -68,6 +70,8 @@ export type AccountDeps = {
   files?: FileStore | null;
   /** Bunny Stream (bunny.ts bunnyConfig()); absent or null: a lesson's video is "soon" ("Video lisandub peagi"). */
   bunny?: BunnyConfig | null;
+  /** Online payments (phase 2b, payments/montonio.ts paymentProvider); absent or null: no "Maksa" on the cards, and POST /maksa is 503. */
+  montonio?: Montonio | null;
 };
 
 const SESSION_MAX_AGE = CLIENT_SESSION_TTL_MS / 1000;
@@ -431,7 +435,8 @@ async function dashboard(request: Request, deps: AccountDeps): Promise<Response>
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const data = await loadDashboard(deps.db, session.clientId, deps.now);
-  return data ? clientResponse(session, data) : unauthorized("none"); // the client was deleted since the session was checked
+  // the client was deleted since the session was checked; with online payments the cards offer "Maksa" (phase 2b)
+  return data ? clientResponse(session, deps.montonio ? { ...data, payOnline: true } : data) : unauthorized("none");
 }
 
 /** GET /kursus/:slug: the e-course page's data (`EcourseView`), or 404 without active access (or for a slug that cannot be one). */
@@ -630,6 +635,38 @@ async function changeRequest(request: Request, deps: AccountDeps): Promise<Respo
 }
 
 /**
+ * POST /maksa `{ registrationId }` (phase 2b, spec 6.3): starts the online payment of one of the client's own registrations — the prepayment
+ * still due, or the rest after it — with the /maksa page's checks (server/payments/start.ts). 200 `{ ok: true, paymentUrl }` (the card sends
+ * the browser there); 404 `{ error: "registration" }` (not hers, or none); 409 `{ error: "nothing" }` (nothing to pay now) or `"full"` (no
+ * free seat, D2); 429 `{ error: "rate" }` (5 starts from this IP in 10 minutes, shared with the /maksa page, or 5 of this registration in an
+ * hour); 503 `{ error: "unavailable" }` without online payments or when Montonio says no. A throw is the router's 500.
+ */
+async function payRegistration(request: Request, deps: AccountDeps): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const input = parsePayStart(await readObject(request));
+  if (!input.ok) return badInput(session, input.error);
+  if (!(await withinRateLimit(request, deps, "pay", PAY_STARTS_PER_IP))) {
+    logNote("[account] payment starts rate limited");
+    return clientResponse(session, { ok: false, error: "rate" }, 429);
+  }
+  const result = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, montonio: deps.montonio ?? null }, { registrationId: input.data.registrationId, clientId: session.clientId });
+  switch (result.kind) {
+    case "started":
+      return clientResponse(session, { ok: true, paymentUrl: result.paymentUrl });
+    case "notFound":
+      return clientResponse(session, { ok: false, error: "registration" }, 404);
+    case "nothing":
+    case "full":
+      return clientResponse(session, { ok: false, error: result.kind }, 409);
+    case "rate":
+      return clientResponse(session, { ok: false, error: "rate" }, 429);
+    default:
+      return clientResponse(session, { ok: false, error: "unavailable" }, 503);
+  }
+}
+
+/**
  * POST /tingimused `{ slug, version }`: the client accepts the e-course terms, the version the page showed (`terms.version` of the e-course view).
  * 404 `{ error: "slug" }` without active access to that course; 409 `{ error: "version" }` when the terms have changed since the page was loaded
  * (nothing is stored: the page loads the course again and shows the new text).
@@ -679,6 +716,7 @@ async function dataRoute(request: Request, path: string, deps: AccountDeps): Pro
     case "POST /parool": return setPassword(request, deps);
     case "DELETE /parool": return removePassword(request, deps);
     case "POST /muutmine": return changeRequest(request, deps);
+    case "POST /maksa": return payRegistration(request, deps);
     case "POST /tingimused": return terms(request, deps);
     case "POST /kustuta": return deleteAccount(request, deps);
   }

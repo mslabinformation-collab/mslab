@@ -196,7 +196,7 @@ describe("the data endpoints without a session", () => {
     ["GET", "/kursus/kulmude-lami/1"], ["POST", "/kursus/kulmude-lami/1/progress", { watchedSec: 5 }], ["POST", "/kursus/kulmude-lami/1/tehtud", {}], ["GET", "/kursus/kulmude-lami/1/fail/2"],
     ["POST", "/lemmikud", { slug: "kulmude-lami", on: true }], ["POST", "/lemmikud/merge", { slugs: ["kulmude-lami"] }],
     ["PATCH", "/andmed", { name: "Kati", phone: "", locale: "et" }], ["POST", "/uudiskiri", { on: true }],
-    ["POST", "/muutmine", { registrationId: 1, kind: "cancel", message: "" }], ["POST", "/tingimused", { slug: "veebikursus" }],
+    ["POST", "/muutmine", { registrationId: 1, kind: "cancel", message: "" }], ["POST", "/maksa", { registrationId: 1 }], ["POST", "/tingimused", { slug: "veebikursus" }],
     ["POST", "/kustuta", { confirm: true }], ["POST", "/kustuta", "not json"],
     ["POST", "/parool", { password: "pikk-parool-2026" }], ["DELETE", "/parool"],
   ];

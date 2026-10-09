@@ -68,6 +68,10 @@ const nextConfig: NextConfig = {
       // check refuses, and the button would always answer 403. (The link's token is in the address, but the page has no link or resource that
       // leaves the site.)
       { source: "/api/newsletter/loobu", headers: [{ key: "Referrer-Policy", value: "same-origin" }] },
+      // the pay page of the "Maksa" link (/maksa/<token>, phase 2b: server/pay-page.ts): never cached, and same-origin for the same reason as the
+      // unsubscribe page — its button's POST must keep its Origin (never no-referrer: `Origin: null` is refused as cross-site). The page has no
+      // link or resource that leaves the site, so the token in its address goes nowhere.
+      { source: "/maksa/:token", headers: [{ key: "Referrer-Policy", value: "same-origin" }, { key: "Cache-Control", value: "no-store" }] },
       // a lesson file: the 302 to R2 (server/account-api.ts fileAnswer) must not pass the lesson's address on as a Referer
       { source: "/api/konto/kursus/:slug/:lesson/fail/:file", headers: [{ key: "Referrer-Policy", value: "no-referrer" }] },
     ];

@@ -162,6 +162,13 @@ describe("nextStep: one sentence and at most one button for every state of a car
     expect(nextStep(ecourse({ expiresAt: NOW.toISOString() }), NOW, PAY)).toEqual(ended); // until, not including, the moment
     expect(nextStep(ecourse({ revoked: true }), NOW, PAY)).toEqual(ended);
   });
+
+  test("with online payments (phase 2b) an unpaid card is 'pay' even without the transfer instructions; without them, and offline, Maria's invoice", () => {
+    const unpaid = contact({ paymentChoice: "half" });
+    expect(nextStep(unpaid, NOW, null).key).toBe("invoice");
+    expect(nextStep(unpaid, NOW, null, "et", true)).toEqual({ key: "pay", vars: { amount: "175 €" }, action: { kind: "pay", registrationId: 7 } });
+    expect(nextStep(unpaid, NOW, PAY, "et", true).key).toBe("pay");
+  });
 });
 
 describe("nextStep formats the vars for the locale it is given", () => {

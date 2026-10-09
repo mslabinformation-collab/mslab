@@ -95,6 +95,14 @@ describe("next.config.ts headers()", () => {
       expect(valueFor(rules, path, "referrer-policy"), path).toBe("strict-origin-when-cross-origin");
   });
 
+  test("the pay page's button POST keeps its Origin: /maksa/<token> is same-origin, never no-referrer; nothing else changes (phase 2b)", async () => {
+    const rules = (await (await config()).headers!()) as Rule[];
+    expect(valueFor(rules, "/maksa/abc", "referrer-policy")).toBe("same-origin");
+    expect(valueFor(rules, "/maksa/abc", "cache-control")).toBe("no-store");
+    expect(valueFor(rules, "/maksa/abc", "x-robots-tag")).toBe("noindex, nofollow");
+    for (const path of ["/maksa", "/maksa/abc/x", "/makse"]) expect(valueFor(rules, path, "referrer-policy"), path).toBe("strict-origin-when-cross-origin");
+  });
+
   test("the e2e page cache only when the e2e run's production build asks for it (E2E_PAGE_CACHE)", async () => {
     expect((await config({ E2E_PAGE_CACHE: undefined, VERCEL: undefined })).cacheHandler).toBeUndefined();
     expect((await config({ E2E_PAGE_CACHE: "/tmp/stale", VERCEL: undefined })).cacheHandler).toMatch(/tests[\\/]e2e[\\/]page-cache\.cjs$/);
