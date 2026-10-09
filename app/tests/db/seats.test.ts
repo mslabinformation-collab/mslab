@@ -46,6 +46,7 @@ test("seatsTaken counts confirmed and live holds; an ended hold, no hold and can
       reg(c.id, s.id, "c", "awaiting_prepayment", new Date(now.getTime() - MIN)),
       reg(c.id, s.id, "d", "awaiting_prepayment"),
       reg(c.id, s.id, "e", "cancelled", new Date(now.getTime() + 10 * MIN)),
+      reg(c.id, s.id, "f", "awaiting_prepayment", now), // the hold ends at this very moment
     ])
     .returning();
   expect((await seatsTaken(db, [s.id], now)).get(s.id)).toBe(2);
@@ -53,6 +54,11 @@ test("seatsTaken counts confirmed and live holds; an ended hold, no hold and can
   expect(rows.filter((r) => holdsSeat(r, now)).map((r) => r.name)).toEqual(["a", "b"]);
   // 11 minutes later b's hold has ended too
   expect((await seatsTaken(db, [s.id], new Date(now.getTime() + 11 * MIN))).get(s.id)).toBe(1);
+  // the end of a hold is exclusive, as in holdsSeat: f (hold = now) is not counted at `now`, and is one millisecond before it
+  expect(rows.find((r) => r.name === "f")!.seatHoldUntil).toEqual(now);
+  expect((await seatsTaken(db, [s.id], new Date(now.getTime() - 1))).get(s.id)).toBe(3);
+  expect(holdsSeat(rows[5], new Date(now.getTime() - 1))).toBe(true);
+  expect(holdsSeat(rows[5], now)).toBe(false);
   expect((await seatsTaken(db, [s.id], now, { except: rows[1].id })).get(s.id)).toBe(1);
   expect(await seatsTaken(db, [], now)).toEqual(new Map());
   expect(await hasFreeSeat(db, s, now)).toBe(true);

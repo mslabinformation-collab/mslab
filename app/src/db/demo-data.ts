@@ -1,5 +1,6 @@
 import { and, count, eq, gte, like, lt, sql } from "drizzle-orm";
 import type { Db, Q } from "./client";
+import { takesSeat } from "./queries/seats";
 import { courseSessions, courses, registrations, requests, subscribers } from "./schema";
 import { addDays } from "./seed-dates";
 import { tallinnInstant } from "../domain/calendar";
@@ -15,9 +16,11 @@ import { newToken } from "../server/token";
 // phone numbers +372 5000 00xx. The e-mail address is the removal key (SAMPLE_EMAIL): removeDemo() deletes exactly the
 // rows with such an address (registrations, requests incl. the waitlist, subscribers) and nothing else.
 //
-// Sessions are found by course slug and Estonian date, never by id. Seat states count confirmed registrations only
-// (domain/sessions.ts). The plan makes one session full and leaves one with two places ("few seats"). Its unconfirmed
-// and cancelled registrations go on a third session, whose state does not change. applyDemo() inserts only what is
+// Sessions are found by course slug and Estonian date, never by id. Seat states count the seats taken (confirmed
+// registrations and live holds of unpaid ones, db/queries/seats.ts takesSeat; phase 2b). The samples never hold a seat
+// unless they are confirmed, so what they add is their confirmed ones (samplesConfirmed). The plan makes one session full
+// and leaves one with two places ("few seats"). Its unconfirmed and cancelled registrations go on a third session, whose
+// state does not change. applyDemo() inserts only what is
 // missing (by e-mail address), in one transaction, so running it twice adds nothing.
 
 /** The removal key: an address ending in ".naidis@example.test" (a LIKE pattern; stored addresses are lowercase). */
@@ -165,10 +168,10 @@ type ResolvedSession = {
   status: "scheduled" | "cancelled";
   /** the group price the payments are measured against */
   price: number | null;
-  /** confirmed registrations now, samples included */
-  confirmed: number;
-  /** confirmed registrations that are not samples */
-  realConfirmed: number;
+  /** seats taken now (confirmed and live holds), samples included */
+  taken: number;
+  /** seats taken now by registrations that are not samples */
+  realTaken: number;
 };
 type Resolved = { full: ResolvedSession; few: ResolvedSession; other: ResolvedSession; individual: { slug: string; id: number }[]; interest: string };
 
@@ -203,7 +206,7 @@ function sampleStatus(r: RegistrationSample, price: number) {
 /** How many of a slot's sample registrations are confirmed (at `price`). */
 const samplesConfirmed = (slot: Slot, price: number) => SAMPLE_REGISTRATIONS.filter((r) => r.slot === slot && sampleStatus(r, price) === "confirmed").length;
 
-async function resolveSession(db: Q, pick: SessionPick, problems: string[]): Promise<ResolvedSession | null> {
+async function resolveSession(db: Q, pick: SessionPick, problems: string[], now: Date): Promise<ResolvedSession | null> {
   const from = tallinnInstant(pick.date, "00:00");
   const to = tallinnInstant(addDays(pick.date, 1), "00:00");
   if (!from || !to) {
@@ -223,7 +226,7 @@ async function resolveSession(db: Q, pick: SessionPick, problems: string[]): Pro
   const [{ all, samples }] = await db
     .select({ all: count(), samples: sql<number>`count(*) filter (where ${registrations.email} like ${SAMPLE_EMAIL})`.mapWith(Number) })
     .from(registrations)
-    .where(and(eq(registrations.courseSessionId, session.id), eq(registrations.status, "confirmed")));
+    .where(and(eq(registrations.courseSessionId, session.id), takesSeat(now)));
   return {
     id: session.id,
     course: course.slug,
@@ -232,8 +235,8 @@ async function resolveSession(db: Q, pick: SessionPick, problems: string[]): Pro
     startsAt: session.startsAt,
     status: session.status,
     price: registrationPrice(course, "group"),
-    confirmed: all,
-    realConfirmed: all - samples,
+    taken: all,
+    realTaken: all - samples,
   };
 }
 
@@ -254,9 +257,9 @@ async function present(db: Q) {
 /** Everything applyDemo needs, read in one go: the sessions, what is already there and the report. */
 async function inspect(db: Q, plan: DemoPlan, now: Date) {
   const problems: string[] = [];
-  const full = await resolveSession(db, plan.full, problems);
-  const few = await resolveSession(db, plan.few, problems);
-  const other = await resolveSession(db, plan.other, problems);
+  const full = await resolveSession(db, plan.full, problems, now);
+  const few = await resolveSession(db, plan.few, problems, now);
+  const other = await resolveSession(db, plan.other, problems, now);
   const sessions: DemoReport["sessions"] = {};
   for (const [slot, s] of [["full", full], ["few", few], ["other", other]] as const) {
     if (!s) continue;
@@ -265,10 +268,10 @@ async function inspect(db: Q, plan: DemoPlan, now: Date) {
       problems.push(`${slot}: ${s.course} has no group price`);
       continue;
     }
-    const after = s.realConfirmed + samplesConfirmed(slot, s.price);
+    const after = s.realTaken + samplesConfirmed(slot, s.price); // the samples take a seat only when confirmed
     const state = { status: s.status, capacity: s.capacity };
-    sessions[slot] = { course: s.course, date: plan[slot].date, capacity: s.capacity, before: seatState(state, s.confirmed), after: seatState(state, after) };
-    if (slot === "full" && after !== s.capacity) problems.push(`full: ${s.course} would have ${after} confirmed of ${s.capacity} places`);
+    sessions[slot] = { course: s.course, date: plan[slot].date, capacity: s.capacity, before: seatState(state, s.taken), after: seatState(state, after) };
+    if (slot === "full" && after !== s.capacity) problems.push(`full: ${s.course} would have ${after} seats taken of ${s.capacity} places`);
     if (slot === "few" && (s.capacity - after < 1 || s.capacity - after > 2)) problems.push(`few: ${s.course} would have ${s.capacity - after} places left (1 or 2 expected)`);
     if (slot === "other" && after > s.capacity) problems.push(`other: ${s.course} would be over capacity`);
   }
