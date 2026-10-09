@@ -371,9 +371,12 @@ export type RegistrationPaid = { registration: Registration; course: Course; ses
 /**
  * An online payment of `cents` arrived for a registration (phase 2b, spec 6.2.2): `paidCents` becomes the current value + `cents` — an
  * absolute value written under the row's lock (FOR UPDATE), as recordRegistrationPayment writes Maria's — and the status follows the same
- * rule (confirmed from 50 %). One exception (D2): a registration that is not confirmed yet stays awaiting_prepayment when its session has
+ * rule (confirmed from 50 %), but a payment never takes a confirmed place back: Maria may have confirmed it by hand with less paid. One
+ * exception (D2): a registration that is not confirmed yet stays awaiting_prepayment when its session has
  * no free seat for it, counting the others' seats, confirmed or held, but not her own row (her hold may have ended): `full` says so. A
  * confirmed registration, or one kept for want of a seat, has no hold any more. Runs in the caller's transaction; null: the row is gone.
+ * The caller has taken lockForPayment (db/queries/seats.ts: the session, then the registration) before anything else, so that the seats
+ * counted here are counted under the session's lock; the FOR UPDATE below is then a lock it already has.
  */
 export async function addRegistrationPayment(tx: Tx, registrationId: number, cents: number, now: Date): Promise<RegistrationPaid | null> {
   const [current] = await tx
@@ -387,8 +390,8 @@ export async function addRegistrationPayment(tx: Tx, registrationId: number, cen
   const { registration: r, course, session } = current;
   const paidCents = r.paidCents + cents;
   const total = registrationPrice(course, r.kind);
-  let status = total == null ? r.status : registrationStatusAfterPayment({ status: r.status, paidCents }, total);
   const wasConfirmed = r.status === "confirmed";
+  let status = wasConfirmed || total == null ? r.status : registrationStatusAfterPayment({ status: r.status, paidCents }, total);
   let full = false;
   if (!wasConfirmed && status === "confirmed" && session && !(await hasFreeSeat(tx, session, now, r.id))) {
     status = r.status;

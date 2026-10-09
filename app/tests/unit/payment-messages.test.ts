@@ -91,6 +91,16 @@ describe("Maria's alerts: 'Kontrolli Montonios'", () => {
     expect(alert({ alert: "refunded", rawStatus: "REFUNDED" }).text).toContain("Montonio teatab tagastusest (tagastatud). Laekunud summa,");
   });
 
+  test("'Topeltmakse': a second order paid for the same payment; both order ids, and what to do", () => {
+    const double = alert({ alert: "double", rawStatus: "PAID", paidCents: 17500, currency: "EUR", otherUuid: "uuid-8" });
+    expect(double.subject).toBe("Topeltmakse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €");
+    expect(double.short).toBe(double.subject);
+    expect(double.text).toContain("Sama makse eest laekus teine tasumine (teine Montonio tellimus). Tagasta üks neist Montonio halduses.");
+    expect(double.text).toContain("Montonio: uuid-7\nMontonio: uuid-8");
+    for (const line of ["Makse: Ettemaks", "Summa: 175 €", "Maksja: Kati Tamm", "E-post: kati@example.test", "Viide: MSLAB-M7", "Admin: https://mslab.example/admin"]) expect(double.text).toContain(line);
+    expect(alert({ alert: "double", otherUuid: null }).text.match(/Montonio: /g)).toHaveLength(1); // no second id to name
+  });
+
   test("the amount Montonio named: euros without a doubled currency, another currency by its code, a missing one said so", () => {
     const held = (over: Partial<PaymentAlert>) => alert(over).text;
     expect(held({ paidCents: 100, currency: "EUR" })).toContain("(Montonio: 1 €)");
@@ -107,6 +117,7 @@ describe("Maria's alerts: 'Kontrolli Montonios'", () => {
       alert({ alert: "voided", rawStatus: "VOIDED" }),
       alert({ alert: "refunded", rawStatus: "PARTIALLY_REFUNDED" }),
       alert({ alert: "refunded", rawStatus: "REFUNDED" }),
+      alert({ alert: "double", otherUuid: "uuid-8" }),
       paymentSummary(NOTICE, ADMIN),
       paymentSummary({ ...NOTICE, kind: "ecourse", outcome: "notOpened", method: "cardPayments" }, ADMIN),
     ].map((s) => `${s.subject}\n${s.text}\n${s.short}`);

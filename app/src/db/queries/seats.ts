@@ -1,5 +1,5 @@
 import { and, inArray, ne, sql, type SQL } from "drizzle-orm";
-import type { Q } from "../client";
+import type { Q, Tx } from "../client";
 import { registrations } from "../schema";
 
 // The one seat count (phase 2b, spec 5.3, D2): a registration takes a seat when it is confirmed, or when it is awaiting its prepayment and
@@ -30,4 +30,26 @@ export async function seatsTaken(q: Q, sessionIds: number[], now: Date = new Dat
 export async function hasFreeSeat(q: Q, session: { id: number; capacity: number }, now: Date, except?: number): Promise<boolean> {
   const taken = (await seatsTaken(q, [session.id], now, { except })).get(session.id) ?? 0;
   return taken < session.capacity;
+}
+
+// ---------- the lock order of every payment path ----------
+// course_sessions → registrations → payments, always in this order and never the other way. The start of a payment (server/payments/start.ts)
+// locks the session, then the registration, then writes the payment row; a settlement that took the payment row first and the registration
+// after it would deadlock with a re-send of the same payment. And the seats of a session are counted under the session's lock, so that two
+// late payers, or a late payer and a new registration, cannot both be given the last seat. A path takes the locks it needs, in this order:
+// a subset is safe (freeing a seat, failPayment, needs the registration's lock only: it cannot overbook).
+
+/** Locks the registration (FOR UPDATE) until the caller's transaction ends. A registration that does not exist locks nothing. */
+export async function lockRegistration(tx: Tx, registrationId: number): Promise<void> {
+  await tx.execute(sql`select 1 from registrations where id = ${registrationId} for update`);
+}
+
+/**
+ * The locks a payment of a registration needs before it writes anything (settle.ts paid; Tasks 4 and 8 call it first too): the registration's
+ * session, then the registration. A registration with no session (an individual course) or none at all locks what there is. Runs in the
+ * caller's transaction.
+ */
+export async function lockForPayment(tx: Tx, registrationId: number): Promise<void> {
+  await tx.execute(sql`select 1 from course_sessions where id = (select course_session_id from registrations where id = ${registrationId}) for update`);
+  await lockRegistration(tx, registrationId);
 }

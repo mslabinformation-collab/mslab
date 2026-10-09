@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admin";
 import { failPayment, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
+import { lockForPayment } from "@/db/queries/seats";
 import { payments, type Payment } from "@/db/schema";
 import { isSampleAddress } from "@/domain/email";
 import { registrationPrice } from "@/domain/registration";
@@ -107,6 +108,18 @@ export async function settlePayment(deps: SettleDeps, row: Payment, facts: Facts
 const current = async (deps: SettleDeps, row: Payment): Promise<Payment> => (await paymentByReference(deps.db, row.reference)) ?? row;
 
 /**
+ * A paid or held update that was not won: the row as the database has it. If that row took money before, under another order than the one
+ * that is told now (the replaced order and the live one of a re-sent payment were both paid), this order's money arrived unrecorded: it is not
+ * counted twice and the row is not changed, but Maria is told ("Topeltmakse") and refunds one of them in Montonio. A fact with no order id
+ * says nothing about another order.
+ */
+async function lost(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
+  const latest = await current(deps, row);
+  if (latest.paidAt !== null && latest.providerUuid !== null && facts.uuid !== "" && facts.uuid !== latest.providerUuid) alert(deps, latest, "double", facts);
+  return latest;
+}
+
+/**
  * What a settlement writes besides the status: the uuid of the order that was paid (it differs from the row's only when a retry had replaced
  * that order: settleToken), and the way of paying and the bank when `facts` has them (a daily check's answer has no bank: the row keeps the
  * one a token gave).
@@ -130,6 +143,9 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
   // an amount that could not be read (null) is no amount: it never equals the row's, and never reads as zero
   if (facts.amountCents !== row.amountCents || facts.currency !== "EUR") return held(deps, row, facts);
   const won = await deps.db.transaction(async (tx): Promise<Won | null> => {
+    // the lock order of every payment path, course_sessions → registrations → payments (db/queries/seats.ts): the locks come first, whatever the
+    // conditional UPDATE then finds. (An e-course's payment has no registration.)
+    if (row.kind !== "ecourse" && row.registrationId !== null) await lockForPayment(tx, row.registrationId);
     const [payment] = await tx
       .update(payments)
       .set({ status: "paid", paidAt: deps.now, updatedAt: deps.now, ...detailsOf(facts) })
@@ -140,7 +156,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     const registration = payment.kind !== "ecourse" && payment.registrationId !== null ? await addRegistrationPayment(tx, payment.registrationId, payment.amountCents, deps.now) : null;
     return { payment, registration };
   });
-  if (!won) return current(deps, row);
+  if (!won) return lost(deps, row, facts);
   console.info(`[payments] payment ${won.payment.id}: paid`);
   // queued before anything that could fail after the commit: the payment is paid for good, and this is the only time its mails are sent
   deps.later(async () => {
@@ -167,7 +183,7 @@ async function held(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     .set({ status: "held", updatedAt: deps.now, ...detailsOf(facts) })
     .where(and(eq(payments.id, row.id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt)))
     .returning();
-  if (!payment) return current(deps, row);
+  if (!payment) return lost(deps, row, facts);
   alert(deps, payment, "held", facts);
   return payment;
 }
@@ -185,8 +201,8 @@ async function failed(deps: SettleDeps, row: Payment, facts: Facts): Promise<Pay
       return done.payment;
     }
   }
-  const now = row.status === "paid" ? row : await current(deps, row);
-  if (now.status !== "paid" || facts.rawStatus !== "VOIDED") return now; // paid is a floor: only the bank taking the payment back moves it
+  const latest = row.status === "paid" ? row : await current(deps, row);
+  if (latest.status !== "paid" || facts.rawStatus !== "VOIDED") return latest; // paid is a floor: only the bank taking the payment back moves it
   const [voided] = await deps.db.update(payments).set({ status: "failed", updatedAt: deps.now }).where(and(eq(payments.id, row.id), eq(payments.status, "paid"))).returning();
   if (!voided) return current(deps, row);
   alert(deps, voided, "voided", facts);
@@ -214,12 +230,12 @@ async function contextOf(deps: SettleDeps, paymentId: number): Promise<PaymentCo
 const courseName = (ctx: PaymentContext): string => (ctx.course ? pick(ctx.course.title, "et") : "—");
 
 /** Maria's "Kontrolli Montonios", after the response. */
-function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded", facts: Facts): void {
+function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded" | "double", facts: Facts): void {
   logNote(`[payments] payment ${p.id}: ${kind}, Maria is alerted`);
   deps.later(async () => {
     const ctx = await contextOf(deps, p.id);
     const s = paymentAlertSummary(
-      { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
+      { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" ? facts.uuid : null, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
       adminUrl(deps.siteUrl),
     );
     await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });

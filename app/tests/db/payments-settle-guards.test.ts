@@ -5,6 +5,8 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import * as schema from "@/db/schema";
+import { attachOrder, insertPayment } from "@/db/queries/payments";
+import { lockForPayment } from "@/db/queries/seats";
 import { mailQuota, payments, registrations, type Payment } from "@/db/schema";
 import { settlePayment, settleToken, type Facts } from "@/server/payments/settle";
 import { contactCourse, orderToken, pendingPayment, registrationOn, settleDeps, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
@@ -231,6 +233,71 @@ describe("once-only: only the winner of pending → paid does the work", () => {
   });
 });
 
+describe("a second paid order for one payment: the money is not lost, Maria is told (the replaced order and the live one both paid)", () => {
+  const paidSnapshot = (uuid: string, reference: string, grandTotal = "175.00") => ({ uuid, paymentStatus: "PAID", merchantReference: reference, grandTotal, currency: "EUR", paymentMethodType: "paymentInitiation" });
+
+  /** A payment whose live order ("uuid-live", which a re-send gave it) was paid first. The first order is `p.providerUuid`. */
+  async function paidOnItsLiveOrder() {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db));
+    const p = await pendingPayment(db, r);
+    await db.update(payments).set({ providerUuid: "uuid-live" }).where(eq(payments.id, p.id));
+    const live = { ...p, providerUuid: "uuid-live" };
+    const harness = settleDeps(db, m.montonio, NOW);
+    await settleToken(harness.deps, m.montonio.verifyOrderToken(orderToken(live)));
+    return { m, r, p, live, ...harness };
+  }
+
+  test("the replaced order is paid too: the row stays as it is, 200, and Maria gets 'Topeltmakse' with both order ids", async () => {
+    const { m, r, p, deps, flush } = await paidOnItsLiveOrder();
+    m.state.snapshots.set(p.providerUuid!, paidSnapshot(p.providerUuid!, p.reference));
+    const before = await payment(p.id);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)))).toMatchObject({ kind: "done", payment: { status: "paid", providerUuid: "uuid-live", paidAt: NOW } });
+    await flush();
+    expect(await payment(p.id)).toEqual(before); // nothing in the row changed
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 17500]); // and the money is not counted twice
+    expect(m.mails().map((x) => x.subject)).toEqual([
+      "Koht on kinnitatud — Kulmumeistri baaskoolitus",
+      "Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €",
+      "Topeltmakse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €",
+    ]);
+    const alert = m.mails()[2];
+    expect(alert.to).toBe("maria@example.test");
+    expect(alert.text).toContain("Sama makse eest laekus teine tasumine (teine Montonio tellimus). Tagasta üks neist Montonio halduses.");
+    expect(alert.text).toContain("Montonio: uuid-live");
+    expect(alert.text).toContain(`Montonio: ${p.providerUuid}`);
+    expect(m.pings().at(-1)).toContain("Topeltmakse: Kati Tamm");
+  });
+
+  test("the same order told twice (the webhook again, the return, the daily check) is no second payment: no alert", async () => {
+    const { m, live, deps, flush } = await paidOnItsLiveOrder();
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(live)));
+    await settlePayment(deps, live, facts(live, { uuid: "uuid-live" }));
+    await settlePayment(deps, await payment(live.id), facts(live, { uuid: "" })); // a fact without an order id says nothing about another order
+    await flush();
+    expect(m.mails().map((x) => x.subject)).toEqual(["Koht on kinnitatud — Kulmumeistri baaskoolitus", "Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €"]);
+  });
+
+  test("a second order paid with another amount is told the same way; a payment voided after paid and then paid again on another order too", async () => {
+    const { m, p, deps, flush } = await paidOnItsLiveOrder();
+    expect((await settlePayment(deps, await payment(p.id), facts(p, { uuid: "uuid-other", amountCents: 100 }))).status).toBe("paid");
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken({ ...p, providerUuid: "uuid-live" }, { paymentStatus: "VOIDED" })));
+    expect((await settlePayment(deps, await payment(p.id), facts(p, { uuid: "uuid-third" }))).status).toBe("failed");
+    await flush();
+    expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Koht on kinnitatud — Kulmumeistri baaskoolitus", "Uus makse", "Topeltmakse", "Kontrolli Montonios", "Topeltmakse"]);
+  });
+
+  test("a second payment of a payment that never was paid is not 'double': a held row stays held and tells nothing new", async () => {
+    const m = stubMontonio();
+    const p = await pendingPayment(db, await registrationOn(db, await contactCourse(db)));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { grandTotal: 1 })));
+    await settlePayment(deps, await payment(p.id), facts(p, { uuid: "uuid-other" }));
+    await flush();
+    expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Kontrolli Montonios"]);
+  });
+});
+
 describe("a registration's payment: one transaction, under the row's lock", () => {
   test("the payment and the registration are written together: when the registration cannot be, the payment stays pending and nothing is sent", async () => {
     const m = stubMontonio();
@@ -252,15 +319,35 @@ describe("a registration's payment: one transaction, under the row's lock", () =
   });
 
   test("the registration is read FOR UPDATE, as recordRegistrationPayment reads it", async () => {
-    const queries: string[] = [];
-    const logged = drizzle(new PGlite(), { schema, logger: { logQuery: (query: string) => void queries.push(query) } }) as unknown as Db;
-    await migrate(logged as Parameters<typeof migrate>[0], { migrationsFolder: "./drizzle" });
+    const { db: logged, queries } = await loggedDb();
     const m = stubMontonio();
     const p = await pendingPayment(logged, await registrationOn(logged, await contactCourse(logged)));
     const { deps } = settleDeps(logged, m.montonio, NOW);
     queries.length = 0;
     await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
     expect(queries.filter((q) => /from "registrations"/.test(q) && /for update of "registrations"/i.test(q))).toHaveLength(1);
+  });
+
+  test("Maria's confirmation is never taken back by a payment: confirmed by hand, then a small payment arrives, the place stays confirmed", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c, { status: "confirmed", paidCents: 0 }); // Maria confirmed it by hand, nothing paid yet
+    const p = await pendingPayment(db, r, { kind: "balance", amountCents: 5000 }); // 50 € of 350 €: far under half
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    await flush();
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 5000]);
+    expect(m.mails()[0].subject).toBe("Koht on kinnitatud — Kulmumeistri baaskoolitus");
+    expect(m.mails()[1].text).toContain("Registreering on kinnitatud. Ülejäänud 300 € tasub ta koolituspäeval või Minu koolitustes.");
+  });
+
+  test("a payment under half on an unconfirmed registration still confirms nothing", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db));
+    const p = await pendingPayment(db, r, { kind: "balance", amountCents: 5000 });
+    const { deps } = settleDeps(db, m.montonio, NOW);
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["awaiting_prepayment", 5000]);
   });
 
   test("a late payment on a full course keeps the place unconfirmed, still revalidates the seats, and tells Maria and the payer so", async () => {
@@ -310,6 +397,82 @@ describe("a registration's payment: one transaction, under the row's lock", () =
     await flush();
     expect(m.mails()[0].subject).toBe("Место подтверждено — Базовый курс бровиста");
     expect(m.mails()[1].subject).toBe("Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €"); // Maria's texts are Estonian
+  });
+});
+
+describe("one lock order for every payment path: course_sessions → registrations → payments", () => {
+  // The start of a payment (Task 4) locks the session, then the registration, then writes the payment row; a settlement that took the
+  // payment row first and the registration after would deadlock with it, and one that counted the seats under the registration's lock alone
+  // could confirm two payers for the last seat. The SQL each path sends is logged, and the order of the locks is read from the log.
+  const at = (queries: string[], pattern: RegExp) => queries.findIndex((q) => pattern.test(q));
+  const SESSION_LOCK = /^select 1 from course_sessions where id = \(select course_session_id from registrations where id = \$1\) for update$/;
+  const REGISTRATION_LOCK = /^select 1 from registrations where id = \$1 for update$/;
+  const PAYMENT_UPDATE = /^update "payments"/;
+
+  test("PAID: the session is locked, then the registration, and only then is the payment row written", async () => {
+    const { db: logged, queries } = await loggedDb();
+    const m = stubMontonio();
+    const p = await pendingPayment(logged, await registrationOn(logged, await contactCourse(logged)));
+    const { deps } = settleDeps(logged, m.montonio, NOW);
+    queries.length = 0;
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    const [session, registrationLock, payment] = [at(queries, SESSION_LOCK), at(queries, REGISTRATION_LOCK), at(queries, PAYMENT_UPDATE)];
+    expect([session, registrationLock, payment].every((i) => i >= 0), JSON.stringify(queries.map((q) => q.slice(0, 60)))).toBe(true);
+    expect(session).toBeLessThan(registrationLock);
+    expect(registrationLock).toBeLessThan(payment);
+    // the seats are counted after the locks, never before
+    expect(at(queries, /count\(\*\)/)).toBeGreaterThan(registrationLock);
+  });
+
+  test("a failed prepayment: the registration is locked before the payment row is written (a session lock is not needed to free a seat)", async () => {
+    const { db: logged, queries } = await loggedDb();
+    const m = stubMontonio();
+    const r = await registrationOn(logged, await contactCourse(logged), { seatHoldUntil: new Date(NOW.getTime() + 10 * MIN) });
+    const p = await pendingPayment(logged, r);
+    const { deps } = settleDeps(logged, m.montonio, NOW);
+    queries.length = 0;
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { paymentStatus: "ABANDONED" })));
+    expect(at(queries, REGISTRATION_LOCK)).toBeGreaterThanOrEqual(0);
+    expect(at(queries, REGISTRATION_LOCK)).toBeLessThan(at(queries, PAYMENT_UPDATE));
+    expect(at(queries, SESSION_LOCK)).toBe(-1);
+  });
+
+  test("the e-course's payment, which has no registration, takes no registration or session lock", async () => {
+    const { db: logged, queries } = await loggedDb();
+    const m = stubMontonio();
+    const c = await contactCourse(logged);
+    const e = await insertPayment(logged, { kind: "ecourse", registrationId: null, courseId: c.course.id, clientId: null, email: "ostja@example.com", name: "Ostja", locale: "et", amountCents: 19000 }, NOW);
+    await attachOrder(logged, e.id, "uuid-e", NOW);
+    const { deps } = settleDeps(logged, m.montonio, NOW);
+    queries.length = 0;
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken({ ...e, providerUuid: "uuid-e" })));
+    expect(at(queries, PAYMENT_UPDATE)).toBeGreaterThanOrEqual(0);
+    expect(at(queries, SESSION_LOCK)).toBe(-1);
+    expect(at(queries, REGISTRATION_LOCK)).toBe(-1);
+  });
+
+  test("lockForPayment: a registration with a session locks both, one without a session (or none at all) locks what there is and never fails", async () => {
+    const { db: logged, queries } = await loggedDb();
+    const c = await contactCourse(logged);
+    const withSession = await registrationOn(logged, c);
+    const without = await registrationOn(logged, c, { email: "yksi@example.com", courseSessionId: null });
+    for (const id of [withSession.id, without.id, 99999]) {
+      queries.length = 0;
+      await logged.transaction(async (tx) => {
+        await lockForPayment(tx, id);
+      });
+      expect(queries.filter((q) => SESSION_LOCK.test(q) || REGISTRATION_LOCK.test(q)).map((q) => (SESSION_LOCK.test(q) ? "session" : "registration"))).toEqual(["session", "registration"]);
+    }
+  });
+
+  test("a registration with no session is settled all the same (an individual course)", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c, { courseSessionId: null });
+    const p = await pendingPayment(db, r);
+    const { deps } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)))).toMatchObject({ payment: { status: "paid" } });
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 17500]);
   });
 });
 
@@ -395,3 +558,11 @@ describe("mail, revalidation and logs", () => {
     for (const secret of secrets) expect(log, secret.slice(0, 12)).not.toContain(secret);
   });
 });
+
+/** A fresh database whose every statement is kept in `queries` (drizzle's logger), to read the order of the locks and writes from. */
+async function loggedDb(): Promise<{ db: Db; queries: string[] }> {
+  const queries: string[] = [];
+  const logged = drizzle(new PGlite(), { schema, logger: { logQuery: (query: string) => void queries.push(query) } }) as unknown as Db;
+  await migrate(logged as Parameters<typeof migrate>[0], { migrationsFolder: "./drizzle" });
+  return { db: logged, queries };
+}

@@ -5,6 +5,7 @@ import type { I18n } from "@/i18n/field";
 import type { Db, Q } from "../client";
 import * as schema from "../schema";
 import { courses, courseSessions, payments, registrations, type Payment, type PaymentKind } from "../schema";
+import { lockRegistration } from "./seats";
 
 // The payments table (phase 2b, spec 5.1): one row per online payment attempt. The rows are written here and by server/payments/settle.ts
 // (the status changes, each a conditional UPDATE). Nothing here logs.
@@ -71,10 +72,15 @@ export async function releaseHold(q: Q, registrationId: number, exceptPaymentId:
 
 /**
  * A pending payment that will not be paid (its order was refused, or Montonio said ABANDONED/FAILED): `failed`, and a prepayment's hold ends
- * (releaseHold), in one transaction. Null when it was not pending (paid is a floor: settle.ts).
+ * (releaseHold), in one transaction. Null when it was not pending (paid is a floor: settle.ts). The lock order of every payment path
+ * (db/queries/seats.ts): the registration is locked before the payment row is written, as a re-send of the same payment locks it. Freeing a
+ * seat cannot overbook, so the session is not locked (a subset of the locks, in the same order, is safe).
  */
 export async function failPayment(db: Db, id: number, now: Date): Promise<{ payment: Payment; released: boolean } | null> {
   return db.transaction(async (tx) => {
+    // (read without a lock: kind and registration never change, and the conditional UPDATE below decides)
+    const [known] = await tx.select({ registrationId: payments.registrationId }).from(payments).where(eq(payments.id, id)).limit(1);
+    if (known?.registrationId != null) await lockRegistration(tx, known.registrationId);
     const [payment] = await tx.update(payments).set({ status: "failed", updatedAt: now }).where(and(eq(payments.id, id), eq(payments.status, "pending"))).returning();
     if (!payment) return null;
     const released = payment.kind === "prepayment" && payment.registrationId !== null ? await releaseHold(tx, payment.registrationId, payment.id, now) : false;

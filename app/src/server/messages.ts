@@ -239,7 +239,8 @@ export function paymentSummary(p: PaymentNotice, adminUrl: string): Summary {
 
 /** A payment Maria must look at in Montonio's own dashboard (spec 7.3, 7.4, 8). `paidCents` and `currency`: what Montonio said. */
 export type PaymentAlert = {
-  alert: "held" | "voided" | "refunded";
+  /** held: the amount did not match; voided, refunded: the bank took it back; double: a second order of the same payment was paid too. */
+  alert: "held" | "voided" | "refunded" | "double";
   kind: PaymentKind;
   name: string;
   email: string;
@@ -248,6 +249,8 @@ export type PaymentAlert = {
   startsAt: Date | null;
   reference: string;
   providerUuid: string | null;
+  /** double: the uuid of the second order that was paid (the payment's own is `providerUuid`). */
+  otherUuid?: string | null;
   /** Montonio's status (upper case); only told apart as PARTIALLY_REFUNDED and the rest, and never shown. */
   rawStatus: string;
   paidCents: number | null;
@@ -267,14 +270,18 @@ function montonioSaid(cents: number | null, currency: string | null): string {
   return parts.join(", ");
 }
 
-/** "Kontrolli Montonios: {nimi}, {mis}, {summa}": nothing was changed by itself; Maria decides. */
+/**
+ * "Kontrolli Montonios: {nimi}, {mis}, {summa}": nothing was changed by itself; Maria decides. A second paid order of one payment is
+ * "Topeltmakse: …" (the money of the second is not counted anywhere: she refunds one of the two in Montonio).
+ */
 export function paymentAlertSummary(a: PaymentAlert, adminUrl: string): Summary {
-  const subject = `Kontrolli Montonios: ${a.name}, ${paidFor(a.course, a.startsAt)}, ${formatEUR(a.amountCents, "et")}`;
+  const subject = `${a.alert === "double" ? "Topeltmakse" : "Kontrolli Montonios"}: ${a.name}, ${paidFor(a.course, a.startsAt)}, ${formatEUR(a.amountCents, "et")}`;
   const refund = a.rawStatus.toUpperCase() === "PARTIALLY_REFUNDED" ? "osaliselt tagastatud" : "tagastatud";
   const notes = {
     held: `Montonio ütleb makstud, aga summa või valuuta ei klapi (Montonio: ${montonioSaid(a.paidCents, a.currency)}). Midagi ei kinnitatud ega avatud: makse on lehel Maksed "Ootel kontrollil".`,
     voided: "Pank tühistas juba laekunud makse. Kinnitus ja ligipääs jäid alles: otsusta, kas need tühistada (Registreerimised, Õpilased).",
     refunded: `Montonio teatab tagastusest (${refund}). Laekunud summa, registreering ja ligipääs jäid muutmata: muuda neid adminis, kui vaja.`,
+    double: "Sama makse eest laekus teine tasumine (teine Montonio tellimus). Tagasta üks neist Montonio halduses.",
   } as const;
   return {
     subject,
@@ -287,6 +294,7 @@ export function paymentAlertSummary(a: PaymentAlert, adminUrl: string): Summary 
         ["E-post", a.email],
         ["Viide", a.reference],
         ["Montonio", a.providerUuid ?? undefined],
+        ["Montonio", a.alert === "double" ? (a.otherUuid ?? undefined) : undefined],
       ],
       adminUrl,
       notes[a.alert],
