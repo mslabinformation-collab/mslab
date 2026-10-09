@@ -1,5 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db, Q } from "@/db/client";
+import { releaseHold } from "@/db/queries/payments";
 import { readSetting } from "@/db/queries/public";
 import { lockSession, seatsTaken } from "@/db/queries/seats";
 import { courses, courseSessions, practicePackages, registrations, requests, subscribers } from "@/db/schema";
@@ -7,7 +8,7 @@ import type { Course, CourseSession, Registration } from "@/db/schema";
 import { PREPAYMENT_KEY, parsePrepayment } from "@/domain/account-cards";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import { registrationPrice } from "@/domain/registration";
-import { seatState } from "@/domain/sessions";
+import { holdUntil, seatState } from "@/domain/sessions";
 import { pick } from "@/i18n/field";
 import {
   isSpam,
@@ -250,12 +251,18 @@ export async function runSubmission(
 
 // ---------- registrations ----------
 
+/**
+ * A registration to store: the form's fields, and (phase 2b) the end of the seat hold it starts with. `seatHoldUntil` is written in the
+ * insert, so a registration that is stored under the session's lock already holds its seat when the lock is let go.
+ */
+export type NewRegistration = RegistrationInput & { seatHoldUntil?: Date | null };
+
 /** Stores a contact-course registration. The status is always `awaiting_prepayment` (a place is confirmed only
  *  after at least 50% prepayment, P15) and nothing has been paid. Its "Maksa" token is a fresh newToken() (phase 2b).
  *  An address with an account is linked to it at once
  *  (client-auth.ts accountOf), and the account's empty name and phone are filled from it, in the same transaction. A caller
  *  that counts seats first (handleRegistration) passes its own transaction. */
-export async function createRegistration(q: Q, input: RegistrationInput): Promise<Registration> {
+export async function createRegistration(q: Q, input: NewRegistration): Promise<Registration> {
   const email = normalizeEmail(input.email);
   // (inside the caller's transaction, when `q` is one, this is a savepoint of it)
   return (q as Db).transaction(async (tx) => {
@@ -277,6 +284,7 @@ export async function createRegistration(q: Q, input: RegistrationInput): Promis
         locale: input.locale,
         status: "awaiting_prepayment",
         paidCents: 0,
+        seatHoldUntil: input.seatHoldUntil ?? null,
         payToken: newToken(),
       })
       .returning();
@@ -293,6 +301,21 @@ async function contactCourse(db: Db, slug: string): Promise<Course | null> {
     .where(and(eq(courses.slug, slug), eq(courses.published, true), eq(courses.type, "contact")))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * Ends the seat hold a registration was stored with (phase 2b) when the payment start left no attempt to keep it: the start said "full",
+ * "nothing", "rate" or "notFound", or it threw. One conditional UPDATE of the registration (db/queries/payments.ts releaseHold: only while
+ * it is unpaid and no payment of it is still pending), after the start's commit and holding no other lock, so it is within the lock order.
+ * A failed order needs none: failPayment ends the hold with the row. Never throws: the registration is stored, and the hold ends by itself
+ * after its 30 minutes.
+ */
+async function releaseStoredHold(deps: Deps, registrationId: number): Promise<void> {
+  try {
+    await releaseHold(deps.db, registrationId, 0, deps.now);
+  } catch (e) {
+    logFailure("[forms] register: the seat hold was not released", e);
+  }
 }
 
 /** A session with the seats taken at `now` (confirmed and live holds, db/queries/seats.ts), counted now: the page the visitor saw may be out of date. */
@@ -312,7 +335,9 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
     const course = await contactCourse(deps.db, slug);
     if (!course || course.priceGroup == null) return { result: fail({ form: "invalid" }) };
     // One transaction under the session's lock (the first lock of the order course_sessions → registrations → payments, db/queries/seats.ts):
-    // the full check and the insert see the same seats as a payment that starts or settles meanwhile, which takes the same lock.
+    // the full check and the insert see the same seats as a payment that starts or settles meanwhile, which takes the same lock. With online
+    // payments the registration is stored already holding its seat (30 minutes): whoever is queued on the lock behind it then counts that seat,
+    // and "full" is told to the one who really finds none, instead of a second registration being stored for a seat that is held.
     const stored = await deps.db.transaction(async (tx) => {
       await lockSession(tx, courseSessionId);
       const session = await sessionWithSeats(tx, courseSessionId, deps.now);
@@ -320,22 +345,28 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
       // "upcoming" as the calendar and the course page, so they offer exactly the dates that can be booked).
       if (!session || session.courseId !== course.id || session.status !== "scheduled" || session.startsAt < upcomingFrom(deps.now)) return { status: "refused" as const, result: fail({ session: "unavailable" }) };
       if (seatState(session, session.taken) === "full") return { status: "refused" as const, result: fail({ session: "full" }) };
-      const registration = await createRegistration(tx, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "" });
+      const seatHoldUntil = deps.montonio ? holdUntil(deps.now) : null;
+      const registration = await createRegistration(tx, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "", seatHoldUntil });
       return { status: "stored" as const, session, registration };
     });
     if (stored.status === "refused") return { result: stored.result };
     const { session, registration } = stored;
-    // Phase 2b (spec 6.1): the prepayment starts at once — a 30-minute hold, a payment row, Montonio's order. Without payments, or when it does
-    // not start, the registration stands and the answer is today's ("Maksa" is offered later, in the mail and Minu koolitused). A failure here
-    // never fails the stored registration: it is logged and the answer is today's.
+    // Phase 2b (spec 6.1): the prepayment starts at once — the seat is held already (stored with the registration), then a payment row and
+    // Montonio's order. Without payments, or when it does not start, the registration stands and the answer is today's ("Maksa" is offered
+    // later, in the mail and Minu koolitused). A failure here never fails the stored registration: it is logged and the answer is today's.
+    // The hold is kept only by a live attempt: when the start leaves none (it said full / nothing / rate / notFound, or it threw), it ends
+    // here; a failed order has ended it already (failPayment).
     let paymentUrl: string | undefined;
     if (deps.montonio) {
+      let attempt = false;
       try {
         const started = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, montonio: deps.montonio }, { registrationId: registration.id });
         if (started.kind === "started") paymentUrl = started.paymentUrl;
+        attempt = started.kind === "started" || started.kind === "failed";
       } catch (e) {
         logFailure("[forms] register: the payment did not start", e);
       }
+      if (!attempt) await releaseStoredHold(deps, registration.id);
     }
     await deps.changed?.({ kind: "seats", course: course.slug });
     const summary = registrationSummary(

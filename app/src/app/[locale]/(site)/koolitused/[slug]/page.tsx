@@ -44,6 +44,12 @@ type Props = { params: Promise<{ locale: string; slug: string }> };
  */
 export const revalidate = 300;
 
+/**
+ * The registration form's server action runs under this page's limits, and since phase 2b it calls Montonio (15 s) after the database work:
+ * 30 s, as every route that calls Montonio (global constraint).
+ */
+export const maxDuration = 30;
+
 /** Rendered on the first visit and cached, like every public page (app/[locale]/layout.tsx). */
 export function generateStaticParams(): { slug: string }[] {
   return [];

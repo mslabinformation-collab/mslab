@@ -43,6 +43,26 @@ const form = (sessionId: number, over: Record<string, string> = {}) => {
 const rows = () => db.select().from(payments);
 const reg = async () => (await db.select().from(registrations))[0];
 
+/**
+ * `real` with a hook on its 2nd `transaction` call: handleRegistration's own transaction is the 1st, the payment start's the 2nd. The hook runs
+ * first and may throw (the start then really throws: nothing inside the start catches a failing transaction) or change the database (the
+ * start then meets a changed world).
+ */
+function onStart(real: Db, hook: () => Promise<void>): Db {
+  let calls = 0;
+  return new Proxy(real, {
+    get(target, prop) {
+      const value: unknown = Reflect.get(target, prop, target);
+      if (prop === "transaction")
+        return async (...args: unknown[]) => {
+          if (++calls === 2) await hook();
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
 describe("Registreeru with payments", () => {
   test("the hold for 30 minutes, a pending row MSLAB-M<id> of 175 €, Montonio's order for it, and the payment page in the answer", async () => {
     const m = stubMontonio();
@@ -95,7 +115,7 @@ describe("Registreeru with payments", () => {
     expect(m.mails().find((x) => x.to === "teine@example.com")!.text).not.toContain("Maksa");
   });
 
-  test("a start that throws never fails the stored registration: today's answer", async () => {
+  test("an unexpected error from Montonio's client is caught inside the start: today's answer, the row failed, no hold", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
     const broken: Montonio = { ...m.montonio, createOrder: () => Promise.reject(new TypeError("boom")) };
@@ -103,6 +123,66 @@ describe("Registreeru with payments", () => {
     expect(await handleRegistration(d, form(c.session.id))).toEqual({ ok: true });
     expect(await db.select().from(registrations)).toHaveLength(1);
     expect((await rows()).map((p) => p.status)).toEqual(["failed"]);
+    expect((await reg()).seatHoldUntil).toBeNull();
+  });
+
+  test("the start itself throws (its database fails): the registration stands, the answer is today's, it is logged with logFailure, and the hold written with the registration is released", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const { d } = deps(m.montonio, { db: onStart(db, () => Promise.reject(new Error("db down"))) });
+    expect(await handleRegistration(d, form(c.session.id))).toEqual({ ok: true });
+    const logged = vi.mocked(console.error).mock.calls.map((args) => args.map(String).join(" "));
+    expect(logged).toEqual(["[forms] register: the payment did not start: Error"]); // the class only, never the message
+    expect(await db.select().from(registrations)).toHaveLength(1);
+    expect(await rows()).toEqual([]);
+    expect(m.state.orders).toEqual([]);
+    expect((await reg()).seatHoldUntil).toBeNull();
+  });
+
+  test.each(["full", "nothing"] as const)("the start says %s: the registration stands with today's answer, the hold written with it is released, no order is made", async (outcome) => {
+    const m = stubMontonio();
+    const c = await contactCourse(db, { capacity: 1 });
+    // what changes between the registration's commit and the start: a confirmed registration takes the seat, or Maria records the prepayment
+    const meanwhile = async () => {
+      if (outcome === "full") await db.insert(registrations).values({ courseId: c.course.id, courseSessionId: c.session.id, kind: "group", name: "Maria", email: "kinnitatud@example.com", phone: "1", paymentChoice: "full", status: "confirmed", paidCents: 35000 });
+      else await db.update(registrations).set({ paidCents: 17500 }).where(eq(registrations.courseSessionId, c.session.id));
+    };
+    const { d } = deps(m.montonio, { db: onStart(db, meanwhile) });
+    expect(await handleRegistration(d, form(c.session.id))).toEqual({ ok: true });
+    expect(await rows()).toEqual([]);
+    expect(m.state.orders).toEqual([]);
+    const [mine] = await db.select().from(registrations).where(eq(registrations.email, "kati@example.com"));
+    expect(mine.seatHoldUntil).toBeNull();
+  });
+
+  test("two registrations at the same moment for the last seat: one gets the payment page, the other 'full', and nothing is stored for it (the hold is written with the registration, under the session lock)", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db, { capacity: 1 });
+    const { d } = deps(m.montonio, { mail: true });
+    const results = await Promise.all([
+      handleRegistration(d, form(c.session.id, { email: "esimene@example.com" })),
+      handleRegistration(d, form(c.session.id, { email: "teine@example.com" })),
+    ]);
+    expect(results.filter((r) => r.ok && r.paymentUrl !== undefined)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, errors: { session: "full" } }]);
+    const stored = await db.select().from(registrations);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].seatHoldUntil).toEqual(new Date(NOW.getTime() + 30 * MIN));
+    expect((await rows()).map((p) => [p.registrationId, p.status])).toEqual([[stored[0].id, "pending"]]);
+    expect(m.state.orders).toHaveLength(1);
+  });
+
+  test("the registration is stored holding the seat already when its start begins (so one queued behind it counts it); without payments nothing holds", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    let atStart: Date | null | undefined;
+    const { d } = deps(m.montonio, { db: onStart(db, async () => void (atStart = (await reg()).seatHoldUntil)) });
+    await handleRegistration(d, form(c.session.id));
+    expect(atStart).toEqual(new Date(NOW.getTime() + 30 * MIN));
+    await db.delete(payments);
+    await db.delete(registrations);
+    await handleRegistration(deps(null).d, form(c.session.id, { email: "teine@example.com" }));
+    expect((await reg()).seatHoldUntil).toBeNull();
   });
 });
 
