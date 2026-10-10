@@ -468,21 +468,25 @@ test.describe("signed in", () => {
   });
 
   test("newsletter: 50 subscribers a page, Järgmine / Eelmine, an out-of-range ?leht= shows the last page", async ({ page, context, visitorIp }, info) => {
+    // The desktop and phone projects run side by side and both put their 55 subscribers into this one table, and every other admin test adds two:
+    // how many pages there are is whatever the whole table makes of it at the moment a page is read. So no page count is carried from one page
+    // view to the next (it once was, and "Lehekülg 2 / 3" followed a first page that had said "/ 2"); each view is checked against itself: 50 on
+    // the first page, a second page that says "2 / N", and the page the address 9999 lands on is the last one, "N / N".
     await fixtures(info.project.name, { extraSubscribers: 55 });
     await signIn(page, context, visitorIp);
     await page.goto("/admin/uudiskiri");
     const pager = page.locator("[data-pager]");
     await expect(pager).toContainText(/Lehekülg 1 \/ \d+/);
-    const pages = Number((await pager.textContent())!.match(/Lehekülg 1 \/ (\d+)/)![1]);
-    expect(pages).toBeGreaterThanOrEqual(2);
+    expect(Number((await pager.textContent())!.match(/Lehekülg 1 \/ (\d+)/)![1])).toBeGreaterThanOrEqual(2); // (our 55 alone are more than a page)
     await expect(page.locator("[data-subscriber]")).toHaveCount(50);
     await expect(pager.getByRole("link", { name: /Eelmine/ })).toHaveCount(0);
     await pager.getByRole("link", { name: /Järgmine/ }).click();
     await expect(page).toHaveURL(/\/admin\/uudiskiri\?leht=2$/);
-    await expect(pager).toContainText(`Lehekülg 2 / ${pages}`);
+    await expect(pager).toContainText(/Lehekülg 2 \/ \d+/);
     await expect(pager.getByRole("link", { name: /Eelmine/ })).toHaveAttribute("href", "/admin/uudiskiri");
     await page.goto("/admin/uudiskiri?leht=9999");
-    await expect(pager).toContainText(`Lehekülg ${pages} / ${pages}`);
+    await expect(pager).toContainText(/Lehekülg (\d+) \/ \1(?!\d)/); // the last page: N / N
+    expect(Number((await pager.textContent())!.match(/Lehekülg (\d+) \/ \1(?!\d)/)![1])).toBeGreaterThanOrEqual(2);
     await expect(pager.getByRole("link", { name: /Järgmine/ })).toHaveCount(0);
     expect(await noOverflow(page)).toBe(true);
   });
