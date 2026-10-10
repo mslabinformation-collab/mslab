@@ -23,11 +23,13 @@ async function answer(request: Request, ctx: Ctx): Promise<Response> {
   const { token } = await ctx.params;
   try {
     const h = request.headers;
+    const siteUrl = serverEnv().SITE_URL;
     return await handlePayPage(request, token, {
       db: getDb(),
       kv: serverKv(),
       now: new Date(),
-      siteUrl: linkBase(hostOrigin(h), serverEnv().SITE_URL),
+      siteUrl: linkBase(hostOrigin(h), siteUrl),
+      notifyBase: siteUrl,
       montonio: paymentProvider(),
       // without x-forwarded-for (never on Vercel) `next dev` uses one local bucket
       ip: clientIp(h) ?? (process.env.NODE_ENV === "development" ? "local" : null),

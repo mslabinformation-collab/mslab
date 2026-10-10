@@ -650,7 +650,7 @@ async function payRegistration(request: Request, deps: AccountDeps): Promise<Res
     logNote("[account] payment starts rate limited");
     return clientResponse(session, { ok: false, error: "rate" }, 429);
   }
-  const result = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, montonio: deps.montonio ?? null }, { registrationId: input.data.registrationId, clientId: session.clientId });
+  const result = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio ?? null }, { registrationId: input.data.registrationId, clientId: session.clientId });
   switch (result.kind) {
     case "started":
       return clientResponse(session, { ok: true, paymentUrl: result.paymentUrl });

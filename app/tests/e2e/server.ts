@@ -6,6 +6,14 @@ import { PROD_ENV } from "./prod-build";
 import { LOCAL_URL, PROD_BUILD, PROD_PORT, PROD_URL, TARGET } from "./target";
 
 /**
+ * On top of LOCAL_ENV for `next dev`: its own address as the site's (SITE_URL), as the production build has its own (prod-build.ts
+ * PROD_ENV). Montonio's webhook is always sent to SITE_URL (server/payments/start.ts StartDeps.notifyBase, never the request's origin), and
+ * the fake Montonio posts it only to this machine: with the public SITE_URL of .env.example, the "bank confirms later" webhook of the e2e run
+ * would never reach the dev server.
+ */
+export const DEV_ENV = { SITE_URL: LOCAL_URL };
+
+/**
  * The server both Playwright configs start (tests/e2e/target.ts):
  * - E2E_PROD_BUILD=1: a fresh production build of the working tree, `next build && next start` on PROD_URL, with the
  *   local settings and the production build's switches (prod-build.ts). Never a server that is already running: it
@@ -25,5 +33,5 @@ export function e2eWebServer(): PlaywrightTestConfig["webServer"] {
   if (PROD_BUILD)
     return [{ command: `npm run build && npm run start -- --port ${PROD_PORT}`, url: PROD_URL, reuseExistingServer: false, timeout: 600_000, env: { ...LOCAL_ENV, ...PROD_ENV } }, bunny, montonio];
   if (TARGET) return undefined;
-  return [{ command: "npm run dev", url: LOCAL_URL, reuseExistingServer: !process.env.CI, timeout: 180_000, env: LOCAL_ENV }, bunny, montonio];
+  return [{ command: "npm run dev", url: LOCAL_URL, reuseExistingServer: !process.env.CI, timeout: 180_000, env: { ...LOCAL_ENV, ...DEV_ENV } }, bunny, montonio];
 }

@@ -22,7 +22,19 @@ import { MontonioError, type Montonio } from "./montonio";
 // given its uuid (attachOrder) or failed (failPayment, which takes the registration's lock in its own transaction). An e-course purchase has
 // no registration to lock: startEcoursePayment serialises the presses of one course and address with an advisory lock (the payment row only).
 
-export type StartDeps = { db: Db; now: Date; siteUrl: string; montonio: Montonio | null };
+export type StartDeps = {
+  db: Db;
+  now: Date;
+  /** The base of the payer's way back (the returnUrl): this request's own origin when it is one of ours (server/site.ts linkBase), else SITE_URL. */
+  siteUrl: string;
+  /**
+   * SITE_URL as configured: the base of Montonio's webhook (the notificationUrl), never a request's Origin or Host. Montonio calls it from
+   * outside, for up to 48 hours: an allow-listed origin of the moment (the local dev server, a deployment's own Vercel address) may not be
+   * reachable then, or not be the production app at all.
+   */
+  notifyBase: string;
+  montonio: Montonio | null;
+};
 
 /**
  * started: send the payer to `paymentUrl`. off: no online payments. failed: Montonio said no or did not answer. nothing: nothing to pay now
@@ -47,10 +59,13 @@ export const STARTS_PER_HOUR = 5;
 /** Payment starts per visitor IP in RATE_WINDOW_SEC (10 minutes), as the forms (spec 10): the /maksa page and POST /api/konto/maksa share the counter. */
 export const PAY_STARTS_PER_IP = 5;
 
-/** Montonio's way back: the return (api/payments/return, to the /makse page) and the webhook, on the site's address. */
-export function paymentUrls(siteUrl: string): { returnUrl: string; notificationUrl: string } {
-  const base = siteUrl.replace(/\/+$/, "");
-  return { returnUrl: `${base}/api/payments/return`, notificationUrl: `${base}/api/payments/notify` };
+/**
+ * Montonio's way back: the return (api/payments/return, to the /makse page) on `returnBase`, the address the payer started from when it is one
+ * of ours; the webhook (api/payments/notify) always on `notifyBase`, SITE_URL (StartDeps).
+ */
+export function paymentUrls(returnBase: string, notifyBase: string): { returnUrl: string; notificationUrl: string } {
+  const trim = (url: string) => url.replace(/\/+$/, "");
+  return { returnUrl: `${trim(returnBase)}/api/payments/return`, notificationUrl: `${trim(notifyBase)}/api/payments/notify` };
 }
 
 /**
@@ -93,7 +108,7 @@ async function liveAttempt(
 async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment, again = false): Promise<StartResult> {
   let created: { uuid: string; paymentUrl: string };
   try {
-    created = await deps.montonio.createOrder({ reference: payment.reference, amountCents: payment.amountCents, locale: payment.locale, ...paymentUrls(deps.siteUrl) });
+    created = await deps.montonio.createOrder({ reference: payment.reference, amountCents: payment.amountCents, locale: payment.locale, ...paymentUrls(deps.siteUrl, deps.notifyBase) });
   } catch (e) {
     logNote(`[payments] payment ${payment.id}: no order${again ? " for the re-send, the payment stays pending" : ""} (${e instanceof MontonioError ? `${e.code}${e.detail ? `: ${e.detail}` : ""}` : "error"})`);
     // after the start's commit: failPayment locks the registration in a transaction of its own

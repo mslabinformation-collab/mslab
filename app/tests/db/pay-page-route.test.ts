@@ -78,6 +78,15 @@ test("POST from this site: 303 to Montonio's page; Montonio's way back is SITE_U
   expect((await db.select().from(registrations).where(eq(registrations.id, r.id)))[0].seatHoldUntil).not.toBeNull();
 });
 
+test("POST on an allow-listed host that is not SITE_URL (the local dev server, http://localhost:3000): the return comes back to that host, Montonio's webhook always goes to SITE_URL", async () => {
+  const m = stubMontonio();
+  const r = await registrationOn(db, await contactCourse(db));
+  const local = "http://localhost:3000";
+  const res = await route.POST(new Request(`${local}/maksa/${r.payToken}`, { method: "POST", headers: { origin: local, host: "localhost:3000" } }), ctx(r.payToken));
+  expect(res.status).toBe(303);
+  expect(m.state.orders).toEqual([expect.objectContaining({ returnUrl: `${local}/api/payments/return`, notificationUrl: `${ORIGIN}/api/payments/notify` })]);
+});
+
 test("POST from another site: 403, nothing started", async () => {
   stubMontonio();
   const r = await registrationOn(db, await contactCourse(db));

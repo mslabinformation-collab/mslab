@@ -146,13 +146,13 @@ describe("the purchase (before the payment)", () => {
 
   test("the open order is the same course, address, price and Montonio's 30 minutes: a changed price, an older order or a failed one is a new purchase", async () => {
     const m = stubMontonio();
-    const start = (now: Date, email = "kati@example.com") => startEcoursePayment({ db, now, siteUrl: SITE, montonio: m.montonio }, { courseId: ecourseId, amountCents: 19000, email, name: "Kati Tamm", locale: "et", newsletter: false });
+    const start = (now: Date, email = "kati@example.com") => startEcoursePayment({ db, now, siteUrl: SITE, notifyBase: SITE, montonio: m.montonio }, { courseId: ecourseId, amountCents: 19000, email, name: "Kati Tamm", locale: "et", newsletter: false });
     expect(await start(NOW)).toMatchObject({ kind: "started" });
     expect(await start(new Date(NOW.getTime() + 29 * MIN))).toMatchObject({ kind: "started" }); // the window starts again at each re-send
     expect(await db.select().from(payments)).toHaveLength(1);
     expect(await start(new Date(NOW.getTime() + 29 * MIN + 31 * MIN))).toMatchObject({ kind: "started" }); // 31 minutes after the last one
     expect(await db.select().from(payments)).toHaveLength(2);
-    const price = await startEcoursePayment({ db, now: NOW, siteUrl: SITE, montonio: m.montonio }, { courseId: ecourseId, amountCents: 20000, email: "kati@example.com", name: "Kati Tamm", locale: "et", newsletter: false });
+    const price = await startEcoursePayment({ db, now: NOW, siteUrl: SITE, notifyBase: SITE, montonio: m.montonio }, { courseId: ecourseId, amountCents: 20000, email: "kati@example.com", name: "Kati Tamm", locale: "et", newsletter: false });
     expect(price).toMatchObject({ kind: "started" });
     expect((await db.select().from(payments)).map((p) => p.amountCents)).toEqual([19000, 19000, 20000]);
     // a failed one: Montonio is down, the row fails, and the next press makes a new row with a new reference (a failed row is never re-sent)
@@ -164,7 +164,7 @@ describe("the purchase (before the payment)", () => {
     expect(mari.map((p) => p.status)).toEqual(["failed", "pending"]);
     expect(new Set(mari.map((p) => p.reference)).size).toBe(2);
     expect(m.state.orders.at(-1)?.merchantReference).toBe(mari[1].reference);
-    expect(await startEcoursePayment({ db, now: NOW, siteUrl: SITE, montonio: null }, { courseId: ecourseId, amountCents: 19000, email: "kati@example.com", name: "K", locale: "et", newsletter: false })).toEqual({ kind: "off" });
+    expect(await startEcoursePayment({ db, now: NOW, siteUrl: SITE, notifyBase: SITE, montonio: null }, { courseId: ecourseId, amountCents: 19000, email: "kati@example.com", name: "K", locale: "et", newsletter: false })).toEqual({ kind: "off" });
   });
 });
 
@@ -249,10 +249,10 @@ describe("an e-course paid a moment ago is not charged again", () => {
     const m = stubMontonio();
     await buyAndPay(m);
     const input = { courseId: ecourseId, amountCents: 19000, email: "kati@example.com", name: "Kati Tamm", locale: "et" as const, newsletter: false };
-    const start = (minutes: number) => startEcoursePayment({ db, now: new Date(NOW.getTime() + minutes * MIN), siteUrl: SITE, montonio: m.montonio }, input);
+    const start = (minutes: number) => startEcoursePayment({ db, now: new Date(NOW.getTime() + minutes * MIN), siteUrl: SITE, notifyBase: SITE, montonio: m.montonio }, input);
     expect(await start(10)).toEqual({ kind: "alreadyPaid" });
     expect(await start(31)).toMatchObject({ kind: "started" });
-    expect(await startEcoursePayment({ db, now: NOW, siteUrl: SITE, montonio: null }, input)).toEqual({ kind: "off" });
+    expect(await startEcoursePayment({ db, now: NOW, siteUrl: SITE, notifyBase: SITE, montonio: null }, input)).toEqual({ kind: "off" });
   });
 });
 

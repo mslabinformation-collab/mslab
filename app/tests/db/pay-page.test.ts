@@ -24,7 +24,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const deps = (montonio: PayPageDeps["montonio"], over: Partial<PayPageDeps> = {}): PayPageDeps => ({ db, kv: fakeKv(), now: NOW, siteUrl: SITE, montonio, ip: "203.0.113.9", ...over });
+const deps = (montonio: PayPageDeps["montonio"], over: Partial<PayPageDeps> = {}): PayPageDeps => ({ db, kv: fakeKv(), now: NOW, siteUrl: SITE, notifyBase: SITE, montonio, ip: "203.0.113.9", ...over });
 const get = (token: string) => new Request(`${SITE}/maksa/${token}`);
 const post = (token: string, headers: Record<string, string> = { origin: SITE }) => new Request(`${SITE}/maksa/${token}`, { method: "POST", headers });
 const text = async (res: Response) => res.text();

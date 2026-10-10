@@ -63,6 +63,14 @@ test("her own unpaid registration: 200 with Montonio's page; a pending prepaymen
   expect((await db.select().from(registrations).where(eq(registrations.id, r.id)))[0].seatHoldUntil).not.toBeNull();
 });
 
+test("a card's 'Maksa' on an allow-listed host that is not SITE_URL (the local dev server): the return comes back to that host, Montonio's webhook always goes to SITE_URL", async () => {
+  const m = stubMontonio();
+  const { client, cookie } = await signedIn();
+  const r = await registrationOn(db, await contactCourse(db), { clientId: client.id });
+  expect((await call({ ...deps(m.montonio), siteUrl: "http://localhost:3000" }, cookie, { registrationId: r.id })).status).toBe(200);
+  expect(m.state.orders).toEqual([expect.objectContaining({ returnUrl: "http://localhost:3000/api/payments/return", notificationUrl: `${SITE}/api/payments/notify` })]);
+});
+
 test("the rest of a confirmed one; not hers 404; paid in full or full 409; no payments 503; no body 400; cross-site 403", async () => {
   const m = stubMontonio();
   const { client, cookie } = await signedIn();

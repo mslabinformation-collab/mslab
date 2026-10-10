@@ -363,7 +363,7 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
     if (deps.montonio) {
       let attempt = false;
       try {
-        const started = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, montonio: deps.montonio }, { registrationId: registration.id });
+        const started = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio }, { registrationId: registration.id });
         if (started.kind === "started") paymentUrl = started.paymentUrl;
         attempt = started.kind === "started" || started.kind === "failed";
       } catch (e) {
@@ -481,7 +481,7 @@ export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<A
       .limit(1);
     if (!course || course.price == null || course.price <= 0) return { result: fail({ form: "invalid" }) };
     const started = await startEcoursePayment(
-      { db: deps.db, now: deps.now, siteUrl: deps.siteUrl, montonio: deps.montonio ?? null },
+      { db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio ?? null },
       { courseId: course.id, amountCents: course.price, email, name, locale, newsletter: wantsNewsletter },
     );
     if (started.kind === "alreadyPaid") return { result: fail({ form: "alreadyPaid" }) };

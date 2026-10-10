@@ -6,6 +6,7 @@ import type { PublicChange } from "@/server/cache-targets";
 import type { Env } from "@/server/notify";
 import { MontonioError, type Montonio } from "@/server/payments/montonio";
 import { paymentUrls, startEcoursePayment, startRegistrationPayment, STARTS_PER_HOUR } from "@/server/payments/start";
+import { linkBase, requestOrigin } from "@/server/site";
 import { handleRegistration, type Deps } from "@/server/submit";
 import { fakeKv } from "../fakes";
 import { contactCourse, loggedDb, registrationOn, SITE, stubMontonio } from "./payments-fixtures";
@@ -113,6 +114,17 @@ describe("Registreeru with payments", () => {
     expect([p.registrationId, r.seatHoldUntil]).toEqual([r.id, new Date(NOW.getTime() + 30 * MIN)]);
     expect(m.state.orders).toEqual([expect.objectContaining({ merchantReference: p.reference, grandTotal: 175, locale: "ru", returnUrl: `${SITE}/api/payments/return`, notificationUrl: `${SITE}/api/payments/notify` })]);
     expect(changes).toEqual([{ kind: "seats", course: "kulmumeistri-baaskoolitus" }]);
+  });
+
+  test("a form posted with Origin: http://localhost:3000 (allow-listed) while SITE_URL is the public site: the return comes back to that origin, Montonio's webhook always goes to SITE_URL", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const { d } = deps(m.montonio);
+    // what the form action builds for that request: linkBase(requestOrigin(headers), SITE_URL) (server/actions/public.ts)
+    const origin = linkBase(requestOrigin(new Headers({ origin: "http://localhost:3000", host: "mslab.example" })), SITE);
+    expect(origin).toBe("http://localhost:3000");
+    expect(await handleRegistration({ ...d, siteUrl: origin }, form(c.session.id))).toMatchObject({ ok: true, paymentUrl: expect.any(String) });
+    expect(m.state.orders).toEqual([expect.objectContaining({ returnUrl: "http://localhost:3000/api/payments/return", notificationUrl: `${SITE}/api/payments/notify` })]);
   });
 
   test("Montonio down: the registration is stored, today's answer; the row is failed and holds nothing", async () => {
@@ -224,7 +236,7 @@ describe("Registreeru with payments", () => {
 });
 
 describe("startRegistrationPayment's checks", () => {
-  const start = (montonio: Deps["montonio"], target: Parameters<typeof startRegistrationPayment>[1], now = NOW) => startRegistrationPayment({ db, now, siteUrl: SITE, montonio: montonio ?? null }, target);
+  const start = (montonio: Deps["montonio"], target: Parameters<typeof startRegistrationPayment>[1], now = NOW) => startRegistrationPayment({ db, now, siteUrl: SITE, notifyBase: SITE, montonio: montonio ?? null }, target);
 
   test("off without Montonio; notFound for another client's registration or an unknown token; nothing when enough is paid or it is cancelled", async () => {
     const m = stubMontonio();
@@ -308,12 +320,13 @@ describe("startRegistrationPayment's checks", () => {
       { kind: "started", paymentUrl: expect.stringMatching(/^https:\/\/sandbox-stargate\.montonio\.com\/0{8}-0000-4000-8000-0{11}2$/) },
     ]);
     expect((await rows())[0].providerUuid).toBe("00000000-0000-4000-8000-000000000002"); // the row follows the newest order
-    expect(paymentUrls("https://mslab.example/")).toEqual({ returnUrl: "https://mslab.example/api/payments/return", notificationUrl: "https://mslab.example/api/payments/notify" });
+    expect(paymentUrls("https://mslab.example/", "https://mslab.example/")).toEqual({ returnUrl: "https://mslab.example/api/payments/return", notificationUrl: "https://mslab.example/api/payments/notify" });
+    expect(paymentUrls("http://localhost:3000", "https://mslab.example")).toEqual({ returnUrl: "http://localhost:3000/api/payments/return", notificationUrl: "https://mslab.example/api/payments/notify" });
   });
 });
 
 describe("a failed start and a failed re-send", () => {
-  const start = (montonio: Montonio, target: { registrationId: number }, now = NOW) => startRegistrationPayment({ db, now, siteUrl: SITE, montonio }, target);
+  const start = (montonio: Montonio, target: { registrationId: number }, now = NOW) => startRegistrationPayment({ db, now, siteUrl: SITE, notifyBase: SITE, montonio }, target);
 
   test("Montonio says no at the first call: failed, the row is failed and the hold is gone; the next try is a new attempt", async () => {
     const m = stubMontonio();
@@ -358,7 +371,7 @@ describe("a failed start and a failed re-send", () => {
       .values({ slug: "kulmumeistri-e-koolitus", type: "e_learning", level: "basic", title: { et: "Kulmumeistri e-koolitus" }, summary: { et: "" }, body: { et: "" }, published: true, price: 19000, accessMonths: 6 })
       .returning();
     const buy = (montonio: Montonio, now: Date) =>
-      startEcoursePayment({ db, now, siteUrl: SITE, montonio }, { courseId: course.id, amountCents: 19000, email: "ostja@example.com", name: "Kati Tamm", locale: "et", newsletter: false });
+      startEcoursePayment({ db, now, siteUrl: SITE, notifyBase: SITE, montonio }, { courseId: course.id, amountCents: 19000, email: "ostja@example.com", name: "Kati Tamm", locale: "et", newsletter: false });
     expect(await buy(m.montonio, NOW)).toMatchObject({ kind: "started" });
     const [open] = await rows();
     m.state.down = true;
@@ -404,7 +417,7 @@ describe("no lock is held while Montonio is called", () => {
         return m.montonio.createOrder(order);
       },
     };
-    const go = (now: Date) => startRegistrationPayment({ db, now, siteUrl: SITE, montonio: probing }, { registrationId: r.id });
+    const go = (now: Date) => startRegistrationPayment({ db, now, siteUrl: SITE, notifyBase: SITE, montonio: probing }, { registrationId: r.id });
     await go(NOW);
     await go(new Date(NOW.getTime() + MIN));
     expect(probes).toEqual(["free", "free"]);
@@ -427,7 +440,7 @@ describe("one lock order: course_sessions → registrations → payments", () =>
     const { db: ldb, queries } = await loggedDb();
     const m = stubMontonio();
     const r = await registrationOn(ldb, await contactCourse(ldb));
-    const go = (now: Date) => startRegistrationPayment({ db: ldb, now, siteUrl: SITE, montonio: m.montonio }, { payToken: r.payToken });
+    const go = (now: Date) => startRegistrationPayment({ db: ldb, now, siteUrl: SITE, notifyBase: SITE, montonio: m.montonio }, { payToken: r.payToken });
     return { ldb, queries, go };
   }
 

@@ -153,8 +153,10 @@ export type PayPageDeps = {
   /** The rate limits' store (Postgres kv_entries). */
   kv: TextKv;
   now: Date;
-  /** The base of Montonio's way back (the return, the webhook): this request's own origin when it is one of ours, else SITE_URL. */
+  /** The base of the payer's way back (the return): this request's own origin when it is one of ours, else SITE_URL. */
   siteUrl: string;
+  /** SITE_URL: the base of Montonio's webhook, never this request's origin (payments/start.ts StartDeps). */
+  notifyBase: string;
   montonio: Montonio | null;
   /** The visitor's address (the per-IP limit); null: not limited (never on Vercel). */
   ip: string | null;
@@ -198,7 +200,7 @@ export async function handlePayPage(request: Request, token: string, deps: PayPa
   }
   let result: StartResult;
   try {
-    result = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, montonio: deps.montonio }, { payToken: token });
+    result = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.notifyBase, montonio: deps.montonio }, { payToken: token });
   } catch (e) {
     logFailure("[payments] pay page: the payment did not start", e);
     result = { kind: "failed" };
