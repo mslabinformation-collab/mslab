@@ -1,8 +1,9 @@
-import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
 import { attachOrder, failPayment, insertPayment } from "@/db/queries/payments";
 import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
+import { normalizeEmail } from "@/domain/email";
 import { amountDue } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
 import { holdUntil, SEAT_HOLD_MS } from "@/domain/sessions";
@@ -189,22 +190,57 @@ export async function lockEcoursePurchase(tx: Tx, courseId: number, email: strin
 }
 
 /**
+ * How long after an e-course was paid the same address cannot start another payment for it (Dim's decision of 10.10): Back from the bank
+ * brings the cart back with "Maksa" ready, and a press then would charge her a second time. After this time a deliberate second purchase works
+ * as before (its payment renews the access: domain/client-access.ts purchaseExpiryDate).
+ */
+export const ECOURSE_REPAY_WINDOW_MS = 30 * 60_000;
+
+/** What an e-course start can answer: StartResult's, and `alreadyPaid` (the address paid this course in the last ECOURSE_REPAY_WINDOW_MS). */
+export type EcourseStartResult = StartResult | { kind: "alreadyPaid" };
+
+/**
+ * Did this address pay this e-course in the last ECOURSE_REPAY_WINDOW_MS? A `paid` row counts from its paid_at, a `held` one (the money is at
+ * Montonio, Maria is checking) from the moment it was held; a pending, failed or refunded one does not. `email` is normalised already.
+ */
+async function paidRecently(q: Q, courseId: number, email: string, now: Date): Promise<boolean> {
+  const since = new Date(now.getTime() - ECOURSE_REPAY_WINDOW_MS);
+  const [row] = await q
+    .select({ id: payments.id })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.kind, "ecourse"),
+        eq(payments.courseId, courseId),
+        sql`lower(${payments.email}) = ${email}`,
+        or(and(eq(payments.status, "paid"), gt(payments.paidAt, since)), and(eq(payments.status, "held"), gt(payments.updatedAt, since))),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
  * Starts an e-course purchase (spec 6.4): a pending `ecourse` row of the course's price, with the payer as entered and her newsletter wish
  * (acted on when it is paid), and Montonio's order. No account and no access before the payment: an abandoned purchase leaves only this row.
  * The same purchase pressed again while its order is open (the same course, address and price: liveAttempt) is sent again with the latest
  * name, language and newsletter box, never a second order (the double-payment rule). A registration has its own row to lock for that; a
  * purchase has none, so the look for the open attempt and the insert of a new one run under an advisory lock of this course and address
  * (lockEcoursePurchase, in a transaction of its own that ends before Montonio is called): two presses at the same moment find one row, not two.
+ * Under the same lock, before any of that: an address that paid this course in the last 30 minutes (paidRecently) starts nothing — `alreadyPaid`,
+ * no row and no call to Montonio. It tells her only that, never an amount or a name.
  */
 export async function startEcoursePayment(
   deps: StartDeps,
   input: { courseId: number; amountCents: number; email: string; name: string; locale: "et" | "ru"; newsletter: boolean },
-): Promise<StartResult> {
+): Promise<EcourseStartResult> {
   const montonio = deps.montonio;
   if (!montonio) return { kind: "off" };
-  const ready = await deps.db.transaction(async (tx): Promise<{ payment: Payment; again: boolean }> => {
-    await lockEcoursePurchase(tx, input.courseId, input.email);
-    const live = await liveAttempt(tx, { courseId: input.courseId, email: input.email }, input.amountCents, deps.now);
+  const email = normalizeEmail(input.email);
+  const ready = await deps.db.transaction(async (tx): Promise<{ payment: Payment; again: boolean } | { alreadyPaid: true }> => {
+    await lockEcoursePurchase(tx, input.courseId, email);
+    if (await paidRecently(tx, input.courseId, email, deps.now)) return { alreadyPaid: true };
+    const live = await liveAttempt(tx, { courseId: input.courseId, email }, input.amountCents, deps.now);
     if (live) {
       // its window starts again now, and what she typed this time replaces what she typed before
       const fresh = { name: input.name, locale: input.locale, newsletter: input.newsletter, updatedAt: deps.now };
@@ -213,10 +249,11 @@ export async function startEcoursePayment(
     }
     const payment = await insertPayment(
       tx,
-      { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email: input.email, name: input.name, locale: input.locale, amountCents: input.amountCents, newsletter: input.newsletter },
+      { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email, name: input.name, locale: input.locale, amountCents: input.amountCents, newsletter: input.newsletter },
       deps.now,
     );
     return { payment, again: false };
   });
+  if ("alreadyPaid" in ready) return { kind: "alreadyPaid" };
   return order({ ...deps, montonio }, ready.payment, ready.again);
 }

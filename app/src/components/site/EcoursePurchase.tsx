@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useId, useState } from "react";
+import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
 import type { Locale } from "@/i18n/locales";
 import { hintIn } from "@/lib/account-cookies";
 import { navigate } from "@/lib/navigate";
@@ -20,6 +20,8 @@ export type EcoursePurchaseTexts = {
   submit: string;
   /** The button while the payment page is being opened: "Avan makse…" */
   starting: string;
+  /** In place of the form when this address paid the course in the last 30 minutes: "Makse on juba tehtud — vaata oma e-posti." */
+  alreadyPaid: string;
   errorRequired: string;
   errorEmail: string;
   errorTooMany: string;
@@ -28,7 +30,7 @@ export type EcoursePurchaseTexts = {
 
 type Field = "name" | "email" | "terms" | "form";
 type Errors = Partial<Record<Field, string>>;
-type State = { status: "idle" } | { status: "unavailable" } | { status: "error"; errors: Errors };
+type State = { status: "idle" } | { status: "unavailable" } | { status: "alreadyPaid" } | { status: "error"; errors: Errors };
 
 /** Where the focus goes after a failed submit: the first of these with an error, in page order. */
 const ORDER: Field[] = ["name", "email", "terms"];
@@ -43,7 +45,9 @@ const isPageUrl = (url: unknown): url is string => typeof url === "string" && /^
  * e-mail from /api/konto/me here, in the browser, never over what was typed; nothing personal is in the page the server renders.
  * When payments are not available after all (form "unavailable": Montonio down), `fallback` takes the form's place: the cart's
  * purchase-interest form, so nothing is lost. After a failed submit the focus goes to the first field with an error. "Avan makse…" stays while
- * the browser leaves for Montonio; if Back brings the page from the back-forward cache, the button is ready again.
+ * the browser leaves for Montonio; if Back brings the page from the back-forward cache, the button is ready again, and pressing it after the
+ * payment was made (form "alreadyPaid": this address paid the course in the last 30 minutes, Dim's decision of 10.10) shows "Makse on juba tehtud"
+ * in the form's place instead of charging again. It says that and nothing else; a reload brings the form back once the 30 minutes are over.
  */
 export function EcoursePurchase({ course, locale, t, fallback }: { course: string; locale: Locale; t: EcoursePurchaseTexts; fallback: React.ReactNode }) {
   const id = useId();
@@ -51,6 +55,7 @@ export function EcoursePurchase({ course, locale, t, fallback }: { course: strin
   const [agreed, setAgreed] = useState(false);
   const [newsletter, setNewsletter] = useState(false);
   const [away, setAway] = useState(false);
+  const paidRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!hintIn(document.cookie)) return;
@@ -86,6 +91,7 @@ export function EcoursePurchase({ course, locale, t, fallback }: { course: strin
         return { status: "idle" };
       }
       if (result.errors.form === "unavailable") return { status: "unavailable" };
+      if (result.errors.form === "alreadyPaid") return { status: "alreadyPaid" };
       const errors: Errors = {};
       for (const [f, code] of Object.entries(result.errors)) {
         if (f === "form") errors.form = code === "rate" ? t.errorTooMany : t.errorGeneric;
@@ -100,12 +106,22 @@ export function EcoursePurchase({ course, locale, t, fallback }: { course: strin
   }, { status: "idle" });
 
   useEffect(() => {
+    if (state.status === "alreadyPaid") paidRef.current?.focus();
     if (state.status !== "error") return;
     const first = ORDER.find((f) => state.errors[f]);
     document.getElementById(first ? `${id}-${first}` : `${id}-form-error`)?.focus();
   }, [state, id]);
 
   if (state.status === "unavailable") return <>{fallback}</>;
+  if (state.status === "alreadyPaid")
+    return (
+      <div ref={paidRef} className={styles.sent} role="status" tabIndex={-1}>
+        <span className={styles.tick} aria-hidden="true">
+          <Icon name="check" size={16} />
+        </span>
+        <p>{t.alreadyPaid}</p>
+      </div>
+    );
   const errors: Errors = state.status === "error" ? state.errors : {};
   const busy = pending || away;
   const described = (f: Field) => ({ "aria-invalid": errors[f] ? true : undefined, "aria-describedby": errors[f] ? `${id}-${f}-error` : undefined });

@@ -26,6 +26,7 @@ const t: EcoursePurchaseTexts = {
   newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
   submit: "Maksa 190 €",
   starting: "Avan makse…",
+  alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
   errorRequired: "See väli on kohustuslik.",
   errorEmail: "Sisesta korrektne e-posti aadress.",
   errorTooMany: "Liiga palju katseid. Proovi mõne minuti pärast.",
@@ -126,6 +127,40 @@ test("a payment page that is no web page is never navigated to: the interest for
   await submit();
   expect(mocks.navigate).not.toHaveBeenCalled();
   expect($("[data-fallback]")).not.toBeNull();
+});
+
+test("paid a moment ago ('alreadyPaid'): the line takes the form's place, and nothing else — not the interest form, no amount, no name; nothing is navigated to", async () => {
+  mocks.buyEcourse.mockResolvedValueOnce({ ok: false, errors: { form: "alreadyPaid" } });
+  await act(async () => root.render(createElement(EcoursePurchase, props)));
+  await type("input[name='name']", "Kati Tamm");
+  await type("input[name='email']", "kati@example.test");
+  await act(async () => $<HTMLInputElement>("input[name='terms']")!.click());
+  await submit();
+  const line = $("[role='status']")!;
+  expect(line.textContent).toBe("Makse on juba tehtud — vaata oma e-posti.");
+  expect(document.activeElement).toBe(line);
+  expect($("[data-ecourse-form]")).toBeNull();
+  expect($("[data-fallback]")).toBeNull();
+  expect(container.textContent).toBe("Makse on juba tehtud — vaata oma e-posti.");
+  expect(container.textContent).not.toMatch(/Kati|kati@|€/);
+  expect(mocks.navigate).not.toHaveBeenCalled();
+});
+
+test("the payer presses Back from the bank (the page comes from the back-forward cache) and 'Maksa' again: the line, not a second payment", async () => {
+  mocks.buyEcourse.mockResolvedValueOnce({ ok: true, paymentUrl: "https://sandbox-stargate.montonio.com/pay-1" });
+  await act(async () => root.render(createElement(EcoursePurchase, props)));
+  await type("input[name='name']", "Kati Tamm");
+  await type("input[name='email']", "kati@example.test");
+  await act(async () => $<HTMLInputElement>("input[name='terms']")!.click());
+  await submit();
+  expect(mocks.navigate).toHaveBeenCalledTimes(1);
+  await act(async () => void window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true })));
+  expect($("button[type='submit']")!.textContent).toBe("Maksa 190 €");
+  mocks.buyEcourse.mockResolvedValueOnce({ ok: false, errors: { form: "alreadyPaid" } });
+  await submit();
+  expect($("[role='status']")!.textContent).toBe("Makse on juba tehtud — vaata oma e-posti.");
+  expect($("[data-ecourse-form]")).toBeNull();
+  expect(mocks.navigate).toHaveBeenCalledTimes(1);
 });
 
 test("errors: the first field with one takes the focus; 'unavailable' shows the purchase-interest form instead", async () => {

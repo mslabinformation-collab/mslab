@@ -122,6 +122,7 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
                 newsletterConsent: d.forms.newsletterConsent,
                 submit: fill(d.payment.pay, { amount: price }),
                 starting: d.payment.starting,
+                alreadyPaid: d.payment.alreadyPaid,
                 errorRequired: d.forms.errorRequired,
                 errorEmail: d.forms.errorEmail,
                 errorTooMany: d.forms.errorTooMany,

@@ -468,7 +468,8 @@ export function handlePurchaseInterest(deps: Deps, formData: FormData): Promise<
  * e-course with a price, then a payment row (`ecourse`; its time is the terms box's acceptance) and Montonio's order: `{ ok: true, paymentUrl }`.
  * The price is the course's own, read here: the browser sends none. Nothing else before the payment: no account, no access, no newsletter, no
  * mail (server/payments/settle.ts does that when it is paid). Without payments, or when Montonio says no: form "unavailable", and the cart
- * shows its purchase-interest form instead.
+ * shows its purchase-interest form instead. An address that paid this course in the last 30 minutes starts nothing: form "alreadyPaid" (the
+ * cart says "Makse on juba tehtud — vaata oma e-posti."; Back from the bank would otherwise charge a second time).
  */
 export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<ActionResult> {
   return submission(deps, "ecourse", formData, parseEcoursePurchase, async ({ course: slug, name, email, locale, wantsNewsletter, terms: _terms }) => {
@@ -483,6 +484,7 @@ export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<A
       { db: deps.db, now: deps.now, siteUrl: deps.siteUrl, montonio: deps.montonio ?? null },
       { courseId: course.id, amountCents: course.price, email, name, locale, newsletter: wantsNewsletter },
     );
+    if (started.kind === "alreadyPaid") return { result: fail({ form: "alreadyPaid" }) };
     return { result: started.kind === "started" ? { ok: true, paymentUrl: started.paymentUrl } : fail({ form: "unavailable" }) };
   });
 }

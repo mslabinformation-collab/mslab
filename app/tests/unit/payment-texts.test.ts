@@ -37,6 +37,18 @@ describe("spec 9, verbatim", () => {
   });
 });
 
+describe("the e-course cart's own lines (owner's wording: 09.10, and 10.10 for the paid-a-moment-ago line)", () => {
+  test("Estonian", () => {
+    expect(et.payment.cartDown).toBe("Makse ei avanenud. Jäta oma e-post, anname teada.");
+    expect(et.payment.alreadyPaid).toBe("Makse on juba tehtud — vaata oma e-posti.");
+  });
+
+  test("Russian", () => {
+    expect(ru.payment.cartDown).toBe("Оплата не открылась. Оставьте свой e-mail, и мы сообщим.");
+    expect(ru.payment.alreadyPaid).toBe("Оплата уже прошла — проверьте свою почту.");
+  });
+});
+
 describe("Russian typography in every payment string", () => {
   const strings = (value: unknown, path: string): [string, string][] =>
     typeof value === "string" ? [[path, value]] : Object.entries(value as Record<string, unknown>).flatMap(([k, v]) => strings(v, `${path}.${k}`));

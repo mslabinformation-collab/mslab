@@ -48,11 +48,14 @@ const form = (over: Record<string, string> = {}) => {
   return fd;
 };
 
-/** Buys the e-course as `email` and settles its PAID token; the settlement's deps (flush, the mails). */
-async function buyAndPay(m: ReturnType<typeof stubMontonio>, over: Record<string, string> = {}) {
-  expect(await handleEcoursePurchase(formDeps(m.montonio), form(over))).toMatchObject({ ok: true });
+/**
+ * Buys the e-course as `over.email` and settles its PAID token, both at `at` (NOW); the settlement's deps (flush, the mails). The same address
+ * cannot buy the same course twice within 30 minutes (alreadyPaid), so a test that buys again passes a later `at`.
+ */
+async function buyAndPay(m: ReturnType<typeof stubMontonio>, over: Record<string, string> = {}, at: Date = NOW) {
+  expect(await handleEcoursePurchase(formDeps(m.montonio, { now: at }), form(over))).toMatchObject({ ok: true });
   const [p] = await db.select().from(payments).orderBy(desc(payments.id)).limit(1);
-  const s = settleDeps(db, m.montonio, NOW);
+  const s = settleDeps(db, m.montonio, at);
   await settleToken(s.deps, m.montonio.verifyOrderToken(orderToken(p)));
   await s.flush();
   return { p, ...s };
@@ -165,6 +168,94 @@ describe("the purchase (before the payment)", () => {
   });
 });
 
+// Dim's decision of 10.10: after paying, Back from the bank re-arms "Maksa", and the paid row no longer matches the open attempt (liveAttempt), so a
+// second press would charge a second time. An address that has a paid (or held) payment for this course in the last 30 minutes starts nothing.
+describe("an e-course paid a moment ago is not charged again", () => {
+  const press = (m: ReturnType<typeof stubMontonio>, minutes: number, over: Record<string, string> = {}) =>
+    handleEcoursePurchase(formDeps(m.montonio, { now: new Date(NOW.getTime() + minutes * MIN) }), form(over));
+  const ALREADY = { ok: false, errors: { form: "alreadyPaid" } };
+
+  test("paid 10 minutes ago: 'alreadyPaid', no new row and no Montonio order, and the answer reveals nothing but that; the last minute of the 30 still counts", async () => {
+    const m = stubMontonio();
+    await buyAndPay(m);
+    const before = { rows: await db.select().from(payments), orders: m.state.orders.length };
+    expect(await press(m, 10)).toEqual(ALREADY);
+    expect(await press(m, 29)).toEqual(ALREADY);
+    expect(await press(m, 10, { email: " KATI@Example.com ", name: "Someone Else" })).toEqual(ALREADY); // the same address, however it is written
+    expect(await db.select().from(payments)).toEqual(before.rows);
+    expect(m.state.orders).toHaveLength(before.orders);
+  });
+
+  test("30 minutes after the payment, or later: a deliberate second purchase is a new one, and its payment renews the access as before", async () => {
+    const m = stubMontonio();
+    await buyAndPay(m);
+    expect(await press(m, 30)).toMatchObject({ ok: true, paymentUrl: expect.stringContaining("https://") });
+    expect(await db.select().from(payments)).toHaveLength(2);
+    expect(m.state.orders).toHaveLength(2);
+    const [, second] = await db.select().from(payments).orderBy(payments.id);
+    const later = new Date(NOW.getTime() + 31 * MIN);
+    const s = settleDeps(db, m.montonio, later);
+    await settleToken(s.deps, m.montonio.verifyOrderToken(orderToken(second)));
+    await s.flush();
+    const [access, ...none] = await db.select().from(courseAccess);
+    expect(none).toEqual([]);
+    expect([access.grantedBy, access.grantedAt, formatDate(access.expiresAt, "et")]).toEqual(["payment", later, "09.04.2027"]);
+    // and that one, just paid, blocks the next press in its turn
+    expect(await handleEcoursePurchase(formDeps(m.montonio, { now: new Date(later.getTime() + 5 * MIN) }), form())).toEqual(ALREADY);
+  });
+
+  test("another course, or another address: a new purchase", async () => {
+    const m = stubMontonio();
+    await buyAndPay(m);
+    await db.insert(courses).values({ slug: "teine-e-koolitus", type: "e_learning", level: "basic", title: { et: "Teine" }, summary: { et: "" }, body: { et: "" }, published: true, price: 9000 });
+    expect(await press(m, 10, { course: "teine-e-koolitus" })).toMatchObject({ ok: true });
+    expect(await press(m, 10, { email: "mari@example.com" })).toMatchObject({ ok: true });
+    expect((await db.select().from(payments).orderBy(payments.id)).map((p) => [p.email, p.courseId === ecourseId, p.status])).toEqual([
+      ["kati@example.com", true, "paid"],
+      ["kati@example.com", false, "pending"],
+      ["mari@example.com", true, "pending"],
+    ]);
+  });
+
+  test("a held payment (the money is at Montonio) counts from the moment it was held; a failed or refunded one does not", async () => {
+    const m = stubMontonio();
+    expect(await handleEcoursePurchase(formDeps(m.montonio), form())).toMatchObject({ ok: true });
+    const [p] = await db.select().from(payments);
+    const s = settleDeps(db, m.montonio, NOW);
+    await settleToken(s.deps, m.montonio.verifyOrderToken(orderToken(p, { grandTotal: 1 })));
+    expect((await db.select().from(payments))[0].status).toBe("held");
+    expect(await press(m, 10)).toEqual(ALREADY);
+    expect(await press(m, 31)).toMatchObject({ ok: true });
+    // not these: a failed one is a new purchase, and she may buy again what was refunded
+    for (const [email, status] of [["failed@example.com", "ABANDONED"], ["refunded@example.com", "REFUNDED"]] as const) {
+      expect(await handleEcoursePurchase(formDeps(m.montonio), form({ email }))).toMatchObject({ ok: true });
+      const [row] = await db.select().from(payments).where(eq(payments.email, email));
+      if (status === "REFUNDED") await settleToken(s.deps, m.montonio.verifyOrderToken(orderToken(row))); // paid first
+      await settleToken(s.deps, m.montonio.verifyOrderToken(orderToken(row, { paymentStatus: status })));
+      expect((await db.select().from(payments).where(eq(payments.email, email)))[0].status).toBe(status === "REFUNDED" ? "refunded" : "failed");
+      expect(await press(m, 10, { email }), email).toMatchObject({ ok: true });
+    }
+  });
+
+  test("the check comes before Montonio: with Montonio down the answer is still 'alreadyPaid', and no failed row is made", async () => {
+    const m = stubMontonio();
+    await buyAndPay(m);
+    m.state.down = true;
+    expect(await press(m, 10)).toEqual(ALREADY);
+    expect((await db.select().from(payments)).map((p) => p.status)).toEqual(["paid"]);
+  });
+
+  test("startEcoursePayment answers it as a kind of its own; without payments it is still 'off'", async () => {
+    const m = stubMontonio();
+    await buyAndPay(m);
+    const input = { courseId: ecourseId, amountCents: 19000, email: "kati@example.com", name: "Kati Tamm", locale: "et" as const, newsletter: false };
+    const start = (minutes: number) => startEcoursePayment({ db, now: new Date(NOW.getTime() + minutes * MIN), siteUrl: SITE, montonio: m.montonio }, input);
+    expect(await start(10)).toEqual({ kind: "alreadyPaid" });
+    expect(await start(31)).toMatchObject({ kind: "started" });
+    expect(await startEcoursePayment({ db, now: NOW, siteUrl: SITE, montonio: null }, input)).toEqual({ kind: "off" });
+  });
+});
+
 describe("the purchase's lock", () => {
   test("a two-int advisory key in a class of its own: it never shares the single-key space of the logins' address lock (and the admin's login-token lock)", async () => {
     const held = await db.transaction(async (tx) => {
@@ -244,7 +335,7 @@ describe("paid", () => {
     const [access] = await db.select().from(courseAccess);
     expect([formatDate(access.expiresAt, "et"), access.revokedAt]).toEqual(["09.04.2027", null]);
     await db.update(courseAccess).set({ expiresAt: new Date("2026-01-01T21:59:59.999Z"), grantedBy: "admin@example.test" });
-    await buyAndPay(m);
+    await buyAndPay(m, {}, new Date(NOW.getTime() + 31 * MIN)); // (not within 30 minutes of the first: that press would be 'alreadyPaid')
     expect(formatDate((await db.select().from(courseAccess))[0].expiresAt, "et")).toBe("09.04.2027");
   });
 

@@ -89,7 +89,8 @@ export async function submitPurchaseInterest(formData: FormData): Promise<Action
 
 /**
  * The e-course cart's purchase (phase 2b): `{ ok: true, paymentUrl }` (the cart sends the browser there), or form "unavailable" (no payments,
- * Montonio down: the cart shows its interest form). The price is the course's own, never a field. Fields: course (slug), name, email, terms,
+ * Montonio down: the cart shows its interest form), or form "alreadyPaid" (this address paid the course in the last 30 minutes: the cart says so
+ * and starts nothing). The price is the course's own, never a field. Fields: course (slug), name, email, terms,
  * newsletter, locale, website (honeypot).
  */
 export async function buyEcourse(formData: FormData): Promise<ActionResult> {

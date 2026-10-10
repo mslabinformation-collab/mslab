@@ -402,6 +402,8 @@ export const et = {
     starting: "Avan makse…",
     // the e-course cart when Montonio did not open the payment: the line above the purchase-interest form (owner's wording, 09.10)
     cartDown: "Makse ei avanenud. Jäta oma e-post, anname teada.",
+    // the e-course cart when this address paid the course in the last 30 minutes (Dim's decision of 10.10): in place of the form
+    alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
     // the page behind the mail's "Maksa" link (/maksa/<token>)
     page: {
       heading: "Koolituse eest tasumine",
