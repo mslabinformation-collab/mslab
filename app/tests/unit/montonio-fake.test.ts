@@ -199,3 +199,20 @@ test("the test hook mints the token Montonio would sign for an order without set
   expect((await fetch(`${base}/_fake/token/${order.uuid}`)).status).toBe(400); // a status is needed
   expect((await fetch(`${base}/_fake/token/no-such-order?status=PAID`)).status).toBe(404);
 });
+
+test("the refund hook refunds an order as Montonio does (GET /orders says REFUNDED, or PARTIALLY_REFUNDED for a part) and answers the refund token Montonio would send, sending nothing itself", async () => {
+  const sink = await webhookSink();
+  const base = await listen(createFakeMontonio());
+  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true });
+  const order = await client.createOrder({ reference: "MSLAB-M32", amountCents: 17500, locale: "et", returnUrl: "https://mslab.example/r", notificationUrl: sink.url });
+  const part = await fetch(`${base}/_fake/refund/${order.uuid}`, { method: "POST", body: JSON.stringify({ amount: 50 }) });
+  expect(part.status).toBe(200);
+  const { refundToken: partial } = (await part.json()) as { refundToken: string };
+  expect(client.verifyRefundToken(partial)).toMatchObject({ orderUuid: order.uuid, rawStatus: "SUCCESSFUL", accessKey: E2E_MONTONIO.accessKey, expired: false });
+  expect(await client.fetchOrder(order.uuid)).toMatchObject({ status: "refunded", rawStatus: "PARTIALLY_REFUNDED" });
+  const full = await fetch(`${base}/_fake/refund/${order.uuid}`, { method: "POST", body: "{}" });
+  expect(client.verifyRefundToken(((await full.json()) as { refundToken: string }).refundToken)).toMatchObject({ orderUuid: order.uuid });
+  expect(await client.fetchOrder(order.uuid)).toMatchObject({ status: "refunded", rawStatus: "REFUNDED" });
+  expect(sink.hooks).toEqual([]); // the test posts the token itself
+  expect((await fetch(`${base}/_fake/refund/no-such-order`, { method: "POST", body: "{}" })).status).toBe(404);
+});

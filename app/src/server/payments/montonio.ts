@@ -11,7 +11,10 @@ import { JwtError, signHs256, verifyHs256 } from "./jwt";
 //   (D4), and methodOptions.paymentDescription "MS LAB <reference>". We never send paymentReference: banks check it strictly and a bad one
 //   fails the payment. The window is Montonio's default 30 minutes (domain/sessions.ts SEAT_HOLD_MS holds the seat as long);
 // - the webhook (POST notificationUrl { orderToken }) and the return (returnUrl?order-token=…) carry the same signed order token, in any
-//   order; GET /orders/:uuid answers what Montonio itself believes (its grandTotal is a string there).
+//   order; GET /orders/:uuid answers what Montonio itself believes (its grandTotal is a string there);
+// - a refund's status change is a webhook of its own to the same notificationUrl, { refundToken }: a JWT signed the same way, whose claims
+//   are refundUuid, refundStatus, refundStatusDescription, accessKey, refundAmount, orderUuid (valid 7 days; docs.montonio.com, Stargate
+//   refunds guide and webhooks guide, checked 10.10.2026). The order's own paymentStatus then reads REFUNDED or PARTIALLY_REFUNDED.
 // Without both keys there are no online payments (paymentsConfigured). PAYMENT_PROVIDER=mock points this same client at the e2e run's fake
 // Montonio (tests/e2e/fake-montonio.ts) and is refused on Vercel and, without PAYMENT_MOCK_IN_PRODUCTION=1, in a production build: the mock
 // is never a fallback. The fake's address must be plain http on this machine (localhost, 127.0.0.1, [::1]), in every runtime that allows
@@ -198,6 +201,13 @@ export type OrderToken = {
 /** What GET /orders/:uuid says about an order. */
 export type OrderSnapshot = { uuid: string; reference: string; status: MontonioStatus; rawStatus: string; amountCents: number | null; currency: string | null; method: string };
 
+/**
+ * A refund notice's token (the webhook's `{ refundToken }`, sent to the order's notificationUrl when a refund's status changes; Montonio's
+ * refunds guide): the order it is about (`orderUuid`), the refund's own id and status (PENDING, PROCESSING, SUCCESSFUL, REJECTED, CANCELED).
+ * Its `refundAmount` is not read: what the order is now is asked with GET /orders/:uuid (settle.ts settleRefund), never taken from here.
+ */
+export type RefundToken = { orderUuid: string; refundUuid: string; accessKey: string | null; rawStatus: string; expired: boolean };
+
 export type Montonio = {
   /** The store's access key: an order token must name it (settle.ts). */
   readonly accessKey: string;
@@ -207,6 +217,8 @@ export type Montonio = {
   fetchOrder(uuid: string): Promise<OrderSnapshot | null>;
   /** The facts of an order token. Throws a JwtError when it cannot be trusted (the webhook's 400). */
   verifyOrderToken(token: string): OrderToken;
+  /** The facts of a refund notice's token, verified as an order token is. Throws a JwtError when it cannot be trusted (the webhook's 400). */
+  verifyRefundToken(token: string): RefundToken;
 };
 
 const text = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -314,6 +326,14 @@ export function montonioClient(config: MontonioConfig, fetchImpl: typeof fetch =
         bank: text(claims.paymentProviderName),
         expired,
       };
+    },
+
+    verifyRefundToken(token) {
+      // the same check as an order token's: HS256 only (any other alg is refused before the signature is looked at), constant-time compare
+      const { claims, expired } = verifyHs256<Record<string, unknown>>(token, config.secretKey, { toleranceSec: CLOCK_TOLERANCE_SEC, nowSec: nowSec() });
+      const orderUuid = text(claims.orderUuid);
+      if (!orderUuid) throw new JwtError("payload");
+      return { orderUuid, refundUuid: text(claims.refundUuid), accessKey: text(claims.accessKey) || null, rawStatus: text(claims.refundStatus).toUpperCase(), expired };
     },
   };
 }

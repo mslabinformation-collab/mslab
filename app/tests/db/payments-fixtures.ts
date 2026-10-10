@@ -41,6 +41,18 @@ export function orderToken(payment: Pick<Payment, "reference" | "amountCents" | 
 }
 
 /**
+ * A refund notice's token as Montonio signs it (the refunds guide's decoded payload: refundUuid, refundStatus, refundStatusDescription,
+ * accessKey, refundAmount, orderUuid; valid for 7 days) for the order `orderUuid`: SUCCESSFUL, 175 €; `over` replaces fields.
+ */
+export function refundToken(orderUuid: string, over: Record<string, unknown> = {}, opts: { secret?: string; nowSec?: number } = {}): string {
+  return signHs256(
+    { refundUuid: "refund-0001", refundStatus: "SUCCESSFUL", refundStatusDescription: null, accessKey: TEST_MONTONIO.accessKey, refundAmount: 175, orderUuid, ...over },
+    opts.secret ?? TEST_MONTONIO.secretKey,
+    { expiresInSeconds: 7 * 86_400, nowSec: opts.nowSec },
+  );
+}
+
+/**
  * Montonio, Resend and Telegram behind one stubbed fetch. POST /orders checks the order token and answers a new uuid and a paymentUrl (a 503
  * while `state.down`), and keeps the token's claims in `state.orders`; GET /orders/<uuid> answers `state.snapshots.get(uuid)` (none: a 503, "no
  * answer") and keeps the uuid in `state.gets`. `mails()`: the Resend calls' bodies; `pings()`: the Telegram texts.

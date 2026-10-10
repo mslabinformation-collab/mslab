@@ -159,6 +159,30 @@ test("pending at the bank: 'Makse on pooleli'; the bank confirms later (Montonio
   expect(await storedRegistrations(email)).toEqual([expect.objectContaining({ status: "confirmed", paidCents: 17500 })]);
 });
 
+test("a refund in Montonio's Partner System: its refund notice ({ refundToken }) is asked about at Montonio and marks the paid payment refunded; a forged one is 400", async ({ page }, info) => {
+  const email = await fresh("refund", info);
+  const f = await insertAccountFixtures(email, { cards: ["awaiting"] });
+  await page.goto(`/maksa/${await storedPayToken(f.registrations.awaiting!)}`);
+  await page.getByRole("button", { name: "Maksa 175 €" }).click();
+  await atBank(page, "Makstud");
+  await page.waitForURL(/\/makse#tulemus=makstud/);
+  await expect.poll(() => storedPayments(email)).toEqual([{ kind: "prepayment", status: "paid", amountCents: 17500 }]);
+  const order = await fakeOrder(await onlyReference(email));
+  // Maria refunds in the Partner System: the order reads REFUNDED at Montonio, and the refund notice is what Montonio would send
+  const refunded = await fetch(`${E2E_MONTONIO.url}/_fake/refund/${order.uuid}`, { method: "POST", body: "{}" });
+  expect(refunded.status).toBe(200);
+  const { refundToken } = (await refunded.json()) as { refundToken: string };
+  const hook = new URL("/api/payments/notify", APP);
+  const send = (body: unknown) => fetch(hook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const [head, claims] = refundToken.split(".");
+  expect((await send({ refundToken: `${head}.${claims}.forged` })).status).toBe(400);
+  expect(await storedPayments(email)).toEqual([{ kind: "prepayment", status: "paid", amountCents: 17500 }]);
+  expect((await send({ refundToken })).status).toBe(200);
+  expect(await storedPayments(email)).toEqual([{ kind: "prepayment", status: "refunded", amountCents: 17500 }]);
+  expect((await send({ refundToken })).status).toBe(200); // Montonio's retry: still 200, nothing new
+  expect(await storedRegistrations(email)).toEqual([expect.objectContaining({ status: "confirmed", paidCents: 17500 })]); // Maria adjusts it herself
+});
+
 test("an e-course bought from the cart: paid → 'Ava e-koolitus'; the access is hers, opened by the payment, and her card offers it (spec 6.4)", async ({ page }, info) => {
   const email = await fresh("ecourse", info);
   await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");

@@ -19,7 +19,9 @@ import { E2E_MONTONIO } from "./montonio-values";
 //   siteUrl is the public site's when a run is started by hand; a test must never post to it).
 // - For the tests: GET /_fake/orders/<reference> (the order, or 404); POST /_fake/settle/<uuid> { status } (the bank decides later: the
 //   status and the webhook, without the browser); GET /_fake/token/<uuid>?status=PAID (the token Montonio would sign for the order with
-//   that status, nothing settled and no webhook: for a test that sends a webhook itself, twice at once); GET /health.
+//   that status, nothing settled and no webhook: for a test that sends a webhook itself, twice at once); POST /_fake/refund/<uuid>
+//   { amount? } (Maria refunds in the Partner System: the order becomes REFUNDED, or PARTIALLY_REFUNDED for less than its total, and the
+//   answer is { refundToken }, the refund notice Montonio would send, which is NOT sent: the test posts it); GET /health.
 // Run: npx tsx tests/e2e/fake-montonio.ts (Playwright starts it: tests/e2e/server.ts), on E2E_MONTONIO.port. The keys are E2E_MONTONIO's.
 
 type Order = { uuid: string; reference: string; grandTotal: number; currency: string; locale: string; returnUrl: string; notificationUrl: string; status: string };
@@ -70,6 +72,17 @@ const orderToken = (o: Order, keys: Keys) =>
     },
     keys.secretKey,
     { expiresInSeconds: 600 },
+  );
+
+/**
+ * The refund notice's token Montonio signs (its refunds guide's decoded payload: refundUuid, refundStatus, refundStatusDescription, accessKey,
+ * refundAmount, orderUuid; valid for 7 days), for a refund of `amount` euros of the order that went through.
+ */
+const refundToken = (o: Order, keys: Keys, amount: number) =>
+  signHs256(
+    { refundUuid: randomUUID(), refundStatus: "SUCCESSFUL", refundStatusDescription: null, accessKey: keys.accessKey, refundAmount: amount, orderUuid: o.uuid },
+    keys.secretKey,
+    { expiresInSeconds: 7 * 86_400 },
   );
 
 /** The names of this machine: the only places the fake posts a webhook to. */
@@ -198,6 +211,20 @@ export function createFakeMontonio(keys: Keys = { accessKey: E2E_MONTONIO.access
       if (!o) return send(res, 404, { message: "no order" });
       if (!status) return send(res, 400, { message: "status needed" });
       return send(res, 200, { orderToken: orderToken({ ...o, status }, keys) });
+    }
+    const refund = /^\/_fake\/refund\/([^/]+)$/.exec(path);
+    if (refund && req.method === "POST") {
+      const o = orders.get(refund[1]);
+      if (!o) return send(res, 404, { message: "no order" });
+      let amount: unknown;
+      try {
+        amount = (JSON.parse((await read(req)) || "{}") as { amount?: unknown }).amount;
+      } catch {
+        amount = undefined;
+      }
+      const part = typeof amount === "number" && amount > 0 && amount < o.grandTotal;
+      o.status = part ? "PARTIALLY_REFUNDED" : "REFUNDED";
+      return send(res, 200, { refundToken: refundToken(o, keys, part ? (amount as number) : o.grandTotal) });
     }
     const later = /^\/_fake\/settle\/([^/]+)$/.exec(path);
     if (later && req.method === "POST") {

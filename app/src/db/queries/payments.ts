@@ -47,6 +47,13 @@ export async function paymentByReference(q: Q, reference: string): Promise<Payme
   return row ?? null;
 }
 
+/** The payment whose order at Montonio is `providerUuid` (its latest: a re-send may have replaced it, start.ts), or null. */
+export async function paymentByProviderUuid(q: Q, providerUuid: string): Promise<Payment | null> {
+  if (!providerUuid) return null;
+  const [row] = await q.select().from(payments).where(eq(payments.providerUuid, providerUuid)).limit(1);
+  return row ?? null;
+}
+
 /** Montonio's uuid of a payment's order, once it is created (never replacing one the row has). */
 export async function attachOrder(db: Db, id: number, providerUuid: string, now: Date): Promise<void> {
   await db.update(payments).set({ providerUuid, updatedAt: now }).where(and(eq(payments.id, id), isNull(payments.providerUuid)));

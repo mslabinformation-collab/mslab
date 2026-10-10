@@ -2,8 +2,8 @@ import { paymentContext } from "@/db/queries/payments";
 import { resultFragment, type PaymentOutcome, type ResultView } from "@/domain/payments";
 import { logFailure, logNote } from "../log";
 import { JwtError } from "./jwt";
-import type { Montonio, OrderToken } from "./montonio";
-import { settleToken, type SettleDeps } from "./settle";
+import type { Montonio, OrderToken, RefundToken } from "./montonio";
+import { settleRefund, settleToken, type SettleDeps } from "./settle";
 
 // Montonio's two ways back to the app (phase 2b, spec 6.5, 7.4), without Next.js: app/api/payments/notify/route.ts and
 // return/route.ts build the dependencies; the tests call these with PGlite and a stubbed Montonio. Without payments both are 404.
@@ -40,30 +40,55 @@ async function readBounded(request: Request): Promise<string | null> {
   return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
-/** The body's `orderToken` and whether it is a refund webhook ({ refundToken }); null for a body over the limit or not JSON. */
-async function readNotification(request: Request): Promise<{ orderToken: string; refund: boolean } | null> {
+/** The body's `orderToken` and `refundToken` ("" when it has none, or one that is no string); null for a body over the limit or not JSON. */
+async function readNotification(request: Request): Promise<{ orderToken: string; refundToken: string } | null> {
   try {
     const raw = await readBounded(request);
     if (raw === null) return null;
     const body = JSON.parse(raw) as { orderToken?: unknown; refundToken?: unknown } | null;
-    return { orderToken: typeof body?.orderToken === "string" ? body.orderToken : "", refund: typeof body?.refundToken === "string" };
+    const field = (v: unknown) => (typeof v === "string" ? v : "");
+    return { orderToken: field(body?.orderToken), refundToken: field(body?.refundToken) };
   } catch {
     return null;
   }
 }
 
 /**
- * POST /api/payments/notify `{ orderToken }`: Montonio's webhook, sent on every status change and retried 13 times over 48 hours unless the
- * answer is 200/201. 400 only for a token that cannot be verified (or a body that is none, or over the limit); 200 for everything understood
- * — a settled payment, one settled before, an unknown reference (logged), a refund webhook ({ refundToken }: REFUNDED also comes as the
- * order's own status, so it is not read); 503 when the database fails or a token in doubt cannot be confirmed with Montonio. No token, no
- * address is logged. 404 without payments. Never a redirect.
+ * Montonio's refund notice `{ refundToken }` (its refunds guide: sent to the order's notificationUrl when a refund's status changes). The
+ * token is verified as an order token is (HS256 only, the store's secret): one that cannot be is a 400. Then settle.ts settleRefund: the
+ * payment of that order, Montonio's GET /orders/:uuid through the one door (REFUNDED, PARTIALLY_REFUNDED: refunded, Maria alerted). 200 for
+ * a payment settled, or an order no payment has (logged with no id); 503 when Montonio does not answer or the database fails, so Montonio
+ * sends the notice again.
+ */
+async function handleRefund(refundToken: string, deps: PaymentRouteDeps & { montonio: Montonio }): Promise<Response> {
+  let token: RefundToken;
+  try {
+    token = deps.montonio.verifyRefundToken(refundToken);
+  } catch (e) {
+    logNote(`[payments] webhook: a refund token that cannot be verified (${e instanceof JwtError ? e.code : "error"})`);
+    return json(400, { ok: false });
+  }
+  try {
+    const result = await settleRefund(deps, token);
+    return result.kind === "unconfirmed" ? json(503, { ok: false }) : json(200, { ok: true });
+  } catch (e) {
+    logFailure("[payments] webhook: the refund notice was not settled", e);
+    return json(503, { ok: false });
+  }
+}
+
+/**
+ * POST /api/payments/notify: Montonio's webhook, `{ orderToken }` on every status change of an order and `{ refundToken }` on every status
+ * change of a refund (handleRefund), retried over 48 hours unless the answer is 200/201. 400 only for a token that cannot be verified (or a
+ * body that is none, or over the limit); 200 for everything understood — a settled payment, one settled before, an unknown reference or order
+ * (logged); 503 when the database fails, or a token in doubt or a refund notice cannot be confirmed with Montonio. No token, no address is
+ * logged. 404 without payments. Never a redirect.
  */
 export async function handleNotify(request: Request, deps: PaymentRouteDeps): Promise<Response> {
   const montonio = deps.montonio;
   if (!montonio) return json(404, { ok: false });
   const body = await readNotification(request);
-  if (body?.refund && !body.orderToken) return json(200, { ok: true });
+  if (body?.refundToken && !body.orderToken) return handleRefund(body.refundToken, { ...deps, montonio });
   let token: OrderToken;
   try {
     token = montonio.verifyOrderToken(body?.orderToken ?? "");

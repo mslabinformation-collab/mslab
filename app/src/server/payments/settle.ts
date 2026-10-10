@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { Db, Tx } from "@/db/client";
 import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admin";
-import { failPayment, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
+import { failPayment, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
 import { payments, type Payment } from "@/db/schema";
 import { isSampleAddress } from "@/domain/email";
@@ -16,10 +16,11 @@ import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env } from "../no
 import { releaseSlot, reserveSlot } from "../ratelimit";
 import { subscribeLater } from "../submit";
 import { grantPurchase, type Grant } from "./grant";
-import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken } from "./montonio";
+import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken } from "./montonio";
 
 // The one door of every paid path (phase 2b, spec 6.2, 7.3, 7.4; Rempire's settle/apply/token-guard, ported). The webhook and the return
-// (routes.ts) bring an order token, the daily check (check.ts) Montonio's own answer; all of them end in settlePayment:
+// (routes.ts) bring an order token, the daily check (check.ts) and a refund notice (settleRefund) Montonio's own answer; all of them end in
+// settlePayment:
 // - PAID with the row's exact amount in EUR moves the row pending|failed → paid in ONE conditional UPDATE (paid_at null: a payment voided
 //   after paid never comes back). Only the winner of that update does the once-only work, in the same transaction: the amount is added to
 //   the registration (db/queries/admin.ts addRegistrationPayment: confirmed from 50 %, unless the course is full, D2), or, for an e-course, its
@@ -100,6 +101,32 @@ export async function settleToken(deps: SettleDeps, token: OrderToken): Promise<
     return { kind: "done", payment: row };
   }
   return { kind: "done", payment: await settlePayment(deps, row, factsOf(snapshot, token.bank)) };
+}
+
+/**
+ * The door of a refund notice (the webhook's `{ refundToken }`, routes.ts). The token says which order a refund is about, and nothing in it
+ * is trusted for the status (its refundStatus and refundAmount are the refund's, not the order's): the payment whose order that is
+ * (provider_uuid) is found, Montonio is asked (GET /orders/:uuid), and its answer goes through settlePayment like the daily check's.
+ * REFUNDED or PARTIALLY_REFUNDED then make the payment refunded, with Maria's alert (once: refunded() is a conditional UPDATE); a refund that
+ * is still pending, or was rejected, leaves the order PAID, which changes nothing. No payment has that order (a second order Maria refunds
+ * after a "Topeltmakse" is no payment's): unknown, logged with no id. Montonio does not answer: unconfirmed (the webhook's 503, retried).
+ */
+export async function settleRefund(deps: SettleDeps, token: RefundToken): Promise<SettleResult> {
+  const row = await paymentByProviderUuid(deps.db, token.orderUuid);
+  if (!row) {
+    logNote("[payments] a refund notice for an unknown order: nothing to settle");
+    return { kind: "unknown" };
+  }
+  const snapshot = await deps.montonio.fetchOrder(token.orderUuid);
+  if (!snapshot) {
+    logNote(`[payments] payment ${row.id}: a refund notice, and Montonio did not answer`);
+    return { kind: "unconfirmed", payment: row };
+  }
+  if (snapshot.reference !== row.reference) {
+    logNote(`[payments] payment ${row.id}: Montonio's order is not this payment's; nothing changes`);
+    return { kind: "done", payment: row };
+  }
+  return { kind: "done", payment: await settlePayment(deps, row, factsOf(snapshot)) };
 }
 
 /** The door itself: `facts` applied to `row` (see the top of the file). Answers the row as it is afterwards. */

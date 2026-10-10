@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { payments, registrations } from "@/db/schema";
-import { contactCourse, orderToken, pendingPayment, registrationOn, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
+import { contactCourse, orderToken, pendingPayment, refundToken, registrationOn, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
 // app/api/payments/notify/route.ts, the Next.js side of Montonio's webhook: POST only, the dependencies built from the settings and the
@@ -64,6 +64,25 @@ test("a signed order token pays the payment; the payer's mail and Maria's notice
     ["maria@example.test", "Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €"],
   ]);
   expect(m.mails()[0].text).toContain("https://mslab.example/konto/sisene#email=");
+});
+
+test("Montonio's refund notice ({ refundToken }): Montonio is asked, REFUNDED marks the payment refunded, Maria's alert follows after the response; a bad one is 400, an unknown order 200, Montonio down 503", async () => {
+  const m = stubMontonio();
+  const p = await pendingPayment(db, await registrationOn(db, await contactCourse(db)));
+  await db.update(payments).set({ status: "paid", paidAt: new Date() }).where(eq(payments.id, p.id));
+  const status = async () => (await db.select().from(payments).where(eq(payments.id, p.id)))[0].status;
+  // Montonio not answering the GET first (no snapshot yet): 503, Montonio sends the notice again
+  expect((await route.POST(post({ refundToken: refundToken(p.providerUuid!) }))).status).toBe(503);
+  m.state.snapshots.set(p.providerUuid!, { uuid: p.providerUuid, paymentStatus: "REFUNDED", merchantReference: p.reference, grandTotal: "175.00", currency: "EUR", paymentMethodType: "paymentInitiation" });
+  expect((await route.POST(post({ refundToken: refundToken(p.providerUuid!, {}, { secret: "another-secret-0123456789abcdef" }) }))).status).toBe(400);
+  expect((await route.POST(post({ refundToken: refundToken("00000000-dead-4000-8000-000000000000") }))).status).toBe(200);
+  expect(await status()).toBe("paid");
+  const res = await route.POST(post({ refundToken: refundToken(p.providerUuid!) }));
+  expect([res.status, await res.json()]).toEqual([200, { ok: true }]);
+  expect(await status()).toBe("refunded");
+  expect(m.mails()).toEqual([]); // nothing before the response is out
+  for (const task of state.later.splice(0)) await task();
+  expect(m.mails().map((x) => [x.to, x.subject])).toEqual([["maria@example.test", "Kontrolli Montonios: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €"]]);
 });
 
 test("a token of another secret: 400; the unusable body is never paid", async () => {

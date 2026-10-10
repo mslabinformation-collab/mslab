@@ -414,3 +414,29 @@ describe("verifyOrderToken", () => {
     expect([at(issued + 600 + 60), at(issued + 600 + 61)]).toEqual([false, true]);
   });
 });
+
+describe("verifyRefundToken (Montonio's refund webhook, { refundToken }: docs.montonio.com, Stargate refunds guide)", () => {
+  const token = (claims: Record<string, unknown>, secret = CONFIG.secretKey, nowSec?: number) =>
+    signHs256({ refundUuid: "refund-1", refundStatus: "SUCCESSFUL", refundStatusDescription: null, accessKey: "test-access-key", refundAmount: 33.09, orderUuid: "uuid-1", ...claims }, secret, { expiresInSeconds: 7 * 86_400, nowSec });
+
+  test("what the token says, read: the order it is about, the refund's own id and status; the amount is not read (Montonio's GET /orders is the source)", () => {
+    const client = montonioClient(CONFIG);
+    expect(client.verifyRefundToken(token({}))).toEqual({ orderUuid: "uuid-1", refundUuid: "refund-1", accessKey: "test-access-key", rawStatus: "SUCCESSFUL", expired: false });
+    expect(client.verifyRefundToken(token({ accessKey: undefined, refundStatus: "rejected", refundUuid: 7 }))).toMatchObject({ accessKey: null, rawStatus: "REJECTED", refundUuid: "" });
+    const old = token({}, CONFIG.secretKey, Math.floor(Date.now() / 1000) - 8 * 86_400);
+    expect(client.verifyRefundToken(old)).toMatchObject({ orderUuid: "uuid-1", expired: true });
+  });
+
+  test("verified as an order token is: HS256 only, the signature with the store's secret; no orderUuid is no refund notice", () => {
+    const client = montonioClient(CONFIG);
+    expect(() => client.verifyRefundToken(token({}, "another-secret-0123456789abcdef"))).toThrow(/jwt signature/);
+    expect(() => client.verifyRefundToken(token({ orderUuid: "" }))).toThrow(/jwt payload/);
+    expect(() => client.verifyRefundToken(token({ orderUuid: 42 }))).toThrow(/jwt payload/);
+    const good = token({});
+    const none = `${Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url")}.${good.split(".")[1]}.`;
+    const rs = `${Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url")}.${good.split(".")[1]}.${good.split(".")[2]}`;
+    const [h, , s] = good.split(".");
+    const forged = `${h}.${Buffer.from(JSON.stringify({ orderUuid: "uuid-2", refundStatus: "SUCCESSFUL" })).toString("base64url")}.${s}`;
+    for (const bad of [none, rs, forged, "", "garbage", "a.b.c"]) expect(() => client.verifyRefundToken(bad), bad).toThrow(/jwt/);
+  });
+});
