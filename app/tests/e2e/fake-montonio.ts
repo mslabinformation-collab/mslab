@@ -15,6 +15,8 @@ import { E2E_MONTONIO } from "./montonio-values";
 // - The bank: GET /pay/<uuid> is a page with three buttons, "Makstud" (PAID), "Pooleli" (PENDING) and "Katkesta" (ABANDONED). The form posts
 //   back here: a status other than PENDING is sent to the app's notificationUrl as Montonio's webhook ({ orderToken }, signed for 10 minutes)
 //   and awaited, then the browser gets a 303 to returnUrl?order-token=<the same token>.
+// - The webhook goes only to this machine: a notificationUrl whose host is not localhost, 127.0.0.1 or [::1] is logged and skipped (the app's
+//   siteUrl is the public site's when a run is started by hand; a test must never post to it).
 // - For the tests: GET /_fake/orders/<reference> (the order, or 404); POST /_fake/settle/<uuid> { status } (the bank decides later: the
 //   status and the webhook, without the browser); GET /health.
 // Run: npx tsx tests/e2e/fake-montonio.ts (Playwright starts it: tests/e2e/server.ts), on E2E_MONTONIO.port. The keys are E2E_MONTONIO's.
@@ -69,8 +71,37 @@ const orderToken = (o: Order, keys: Keys) =>
     { expiresInSeconds: 600 },
   );
 
-/** Montonio's webhook: POST { orderToken } to the order's notificationUrl, awaited; a failure is only noted (Montonio would retry). */
+/** The names of this machine: the only places the fake posts a webhook to. */
+const LOCAL_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** Is `value` an http(s) address on this machine (localhost, 127.0.0.1 or [::1]) with no user name or password in it? Junk is not. */
+export function isLocalUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && LOCAL_HOSTS.has(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+/** The host of an address for the log (never the whole address: a path can carry a secret); "?" for junk. */
+const hostOf = (value: string): string => {
+  try {
+    return new URL(value).hostname || "?";
+  } catch {
+    return "?";
+  }
+};
+
+/**
+ * Montonio's webhook: POST { orderToken } to the order's notificationUrl, awaited; a failure is only noted (Montonio would retry). Only to
+ * this machine: any other host (the public site's, when the app was started with its SITE_URL) is logged and skipped, never posted to.
+ */
 async function notify(o: Order, keys: Keys): Promise<void> {
+  if (!isLocalUrl(o.notificationUrl)) {
+    console.error(`[fake-montonio] the webhook of ${o.reference} was not sent: its notificationUrl is not on this machine (host ${hostOf(o.notificationUrl)})`);
+    return;
+  }
   try {
     await fetch(o.notificationUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ orderToken: orderToken(o, keys) }), redirect: "manual", signal: AbortSignal.timeout(15_000) });
   } catch {

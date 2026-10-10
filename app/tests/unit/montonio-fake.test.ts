@@ -1,9 +1,9 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { signHs256 } from "@/server/payments/jwt";
 import { montonioClient, type MontonioConfig } from "@/server/payments/montonio";
-import { createFakeMontonio } from "../e2e/fake-montonio";
+import { createFakeMontonio, isLocalUrl } from "../e2e/fake-montonio";
 import { E2E_MONTONIO } from "../e2e/montonio-values";
 
 // The e2e run's fake Montonio (tests/e2e/fake-montonio.ts) answers the app's real client: an order, the bank's "Makstud", the webhook it
@@ -147,4 +147,41 @@ test("GET /orders wants Montonio's Bearer token and knows its orders only; the b
   const page = await (await fetch(order.paymentUrl)).text();
   expect(page).not.toContain("<script>");
   expect((await fetch(`${base}/no-such-route`)).status).toBe(404);
+});
+
+test("the webhook goes only to this machine: a notificationUrl anywhere else is logged and skipped, and the bank still sends the browser back (Task 10)", async () => {
+  const base = await listen(createFakeMontonio());
+  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true });
+  const elsewhere = ["https://shop.example/api/payments/notify", "http://localhost.evil.example/n", "http://127.0.0.1.evil.example/n", "http://localhost@evil.example/n", "not a url"];
+  const real = globalThis.fetch;
+  const asked: string[] = [];
+  const spy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+    asked.push(String(input instanceof Request ? input.url : input));
+    return real(input, init);
+  });
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    for (const [i, notificationUrl] of elsewhere.entries()) {
+      const order = await client.createOrder({ reference: `MSLAB-M2${i}`, amountCents: 1000, locale: "et", returnUrl: "https://mslab.example/r", notificationUrl });
+      const paid = await fetch(order.paymentUrl, { method: "POST", body: new URLSearchParams({ status: "PAID" }), redirect: "manual" });
+      expect(paid.status, notificationUrl).toBe(303);
+      expect(new URL(paid.headers.get("location")!).origin, notificationUrl).toBe("https://mslab.example");
+    }
+    // a later settle by the test hook is a webhook too
+    const later = await client.createOrder({ reference: "MSLAB-M30", amountCents: 1000, locale: "et", returnUrl: "https://mslab.example/r", notificationUrl: elsewhere[0] });
+    expect((await fetch(`${base}/_fake/settle/${later.uuid}`, { method: "POST", body: JSON.stringify({ status: "PAID" }) })).status).toBe(200);
+    expect(asked.filter((url) => !url.startsWith(base))).toEqual([]); // not one request left this machine
+    const noted = logged.mock.calls.map((c) => String(c[0])).filter((line) => line.includes("[fake-montonio]") && line.includes("not sent"));
+    expect(noted).toHaveLength(elsewhere.length + 1);
+    expect(noted.join("\n")).not.toContain("shop.example/api"); // the host is named, not the whole address
+  } finally {
+    spy.mockRestore();
+    logged.mockRestore();
+  }
+});
+
+test("isLocalUrl: localhost, 127.0.0.1 and [::1] (any port, http or https) are this machine; a name that only starts or ends like it, credentials and junk are not", () => {
+  for (const url of ["http://localhost:3000/api/payments/notify", "http://LOCALHOST/n", "http://127.0.0.1:3100/n", "http://[::1]:3000/n", "https://localhost/n"]) expect(isLocalUrl(url), url).toBe(true);
+  for (const url of ["https://shop.example/n", "http://localhost.evil.example/n", "http://evil.example/localhost", "http://localhost@evil.example/n", "http://user:pw@localhost/n", "http://0.0.0.0/n", "ftp://localhost/n", "localhost:3000", "", "not a url"])
+    expect(isLocalUrl(url), url).toBe(false);
 });
