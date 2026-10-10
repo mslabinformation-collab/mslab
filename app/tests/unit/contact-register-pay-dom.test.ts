@@ -110,7 +110,7 @@ test("a group registration with no payment page (payments off) goes nowhere", as
   expect(mocks.navigate).not.toHaveBeenCalled();
 });
 
-test("an individual request never leaves the page, whatever the answer carries; a refused registration neither", async () => {
+test("an individual request never leaves the page, whatever the answer carries", async () => {
   mocks.submitIndividual.mockResolvedValue({ ok: true, paymentUrl: "https://pay.example/orders/abc" });
   await act(async () => {
     const radio = $<HTMLInputElement>("input[name='kind'][value='individual']")!;
