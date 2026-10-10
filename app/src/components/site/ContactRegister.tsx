@@ -69,8 +69,11 @@ export type ContactRegisterTexts = {
 
 type Field = "session" | "name" | "email" | "phone" | "period" | "message" | "payment" | "terms" | "form";
 type Errors = Partial<Record<Field, string>>;
-/** `rejected`: the date the server turned down (filled up or cancelled meanwhile); its error stays while it is picked. */
-type State = { status: "idle" } | { status: "sent"; kind: Kind } | { status: "error"; kind: Kind; errors: Errors; rejected?: number };
+/**
+ * `rejected`: the date the server turned down (filled up or cancelled meanwhile); its error stays while it is picked.
+ * `paymentUrl` (sent, group): the prepayment's page at Montonio, where the browser goes once this state is on the page (see the effect below).
+ */
+type State = { status: "idle" } | { status: "sent"; kind: Kind; paymentUrl?: string } | { status: "error"; kind: Kind; errors: Errors; rejected?: number };
 
 /** Where focus goes after a failed submit: the first of these with an error, in page order. */
 const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "message", "payment", "terms"];
@@ -127,9 +130,10 @@ export function ContactRegister({
     try {
       const result = k === "individual" ? await submitIndividual(formData) : await registerContact(formData);
       if (result.ok) {
-        // phase 2b (spec 6.1): the prepayment's page at Montonio (the bank or the card is chosen there); the answer shows meanwhile
-        if (k === "group" && result.paymentUrl) navigate(result.paymentUrl);
-        return { status: "sent", kind: k };
+        // phase 2b (spec 6.1): the prepayment's page at Montonio (the bank or the card is chosen there); the answer shows meanwhile. The
+        // browser leaves from the effect below, not here: the action's answer carries the revalidated course page (the seats changed), which
+        // Next streams after this result, and leaving at once cut it off mid-stream ("The destination stream closed early" in the server's log).
+        return { status: "sent", kind: k, paymentUrl: k === "group" && result.paymentUrl ? result.paymentUrl : undefined };
       }
       const errors: Errors = {};
       let rejected: number | undefined;
@@ -151,10 +155,12 @@ export function ContactRegister({
     }
   }, { status: "idle" });
 
-  // Land keyboard and screen-reader users on the confirmation, or on the first field that needs fixing.
+  // Land keyboard and screen-reader users on the confirmation, or on the first field that needs fixing. A registration that has a payment page
+  // goes on to it from here: the state is on the page, so the action's whole answer (with the revalidated page) has been received.
   useEffect(() => {
     if (state.status === "sent") {
       sentRef.current?.focus();
+      if (state.paymentUrl) navigate(state.paymentUrl);
       return;
     }
     if (state.status !== "error") return;
