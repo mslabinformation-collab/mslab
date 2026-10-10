@@ -24,7 +24,8 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken } from "./mont
 //   after paid never comes back). Only the winner of that update does the once-only work, in the same transaction: the amount is added to
 //   the registration (db/queries/admin.ts addRegistrationPayment: confirmed from 50 %, unless the course is full, D2), or, for an e-course, its
 //   client is found or created and the course opened (grant.ts, in a savepoint: a grant that throws is rolled back alone, the row stays paid
-//   and Maria is told at once that nothing was opened; openCourse also says why this order of locks cannot deadlock). After it: the seats are revalidated, and the payer's mail and Maria's notice
+//   and Maria is told at once that nothing was opened, unless the error is a transient database one, which rolls everything back and leaves
+//   the row pending for the next call; openCourse also says why this order of locks cannot deadlock). After it: the seats are revalidated, and the payer's mail and Maria's notice
 //   go out after the response (an e-course's with a login code, and the newsletter sign-up when it was ticked). Every other caller finds the row
 //   paid and does nothing.
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
@@ -190,7 +191,9 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
  * The grant of a paid e-course purchase (grant.ts), in a savepoint of the paid transaction. If it throws, only the grant is rolled back (a
  * client it had made with it): the payment stays paid, which is the truth (the money is at Montonio), and the outcome is "not opened", so Maria
  * is told at once to open the course by hand or refund, instead of the whole payment staying pending with nobody told while the webhook retries.
- * The log has the class and the code only.
+ * The one exception is a transient database error (a serialization failure, a deadlock, a lock not available, a statement timeout, a
+ * connection error: isTransient): that is no verdict on the course, so it is thrown on, the whole paid transaction rolls back and the payment
+ * stays pending until Montonio's retry, the return or the daily check settles it again. The log has the class and the code only.
  *
  * The locks of this path (the e-course has no session and no registration): its payment row (the conditional UPDATE above), then the address
  * lock (addClient: client-auth.ts lockAddress), then the rows linked to the address: registrations, requests, subscribers, the client and her
@@ -207,9 +210,25 @@ async function openCourse(tx: Tx, payment: Payment, now: Date): Promise<Grant | 
   try {
     return await (tx as unknown as Db).transaction((savepoint) => grantPurchase(savepoint, payment, now));
   } catch (e) {
+    // a transient database error says nothing about the course: it is thrown on, the whole paid transaction rolls back and the payment stays
+    // pending (nobody is told), to be settled by Montonio's retry, the return or the daily check; only any other error is "not opened"
+    if (isTransient(e)) throw e;
     logFailure(`[payments] payment ${payment.id}: the course could not be opened`, e);
     return null;
   }
+}
+
+/** The SQLSTATEs of errors that pass by themselves: a serialization failure, a deadlock, a lock not available, a statement timeout. (Class 08, a connection, is added in isTransient.) */
+const TRANSIENT_SQLSTATES: ReadonlySet<string> = new Set(["40001", "40P01", "55P03", "57014"]);
+
+/** Is this SQLSTATE one of a transient failure (see TRANSIENT_SQLSTATES), or of class 08 (connection exception)? */
+const transientCode = (code: unknown): boolean => typeof code === "string" && (TRANSIENT_SQLSTATES.has(code) || (code.length === 5 && code.startsWith("08")));
+
+/** A database error that a retry can get past. The SQLSTATE is on the error itself, or on its `cause` when drizzle wrapped the driver's error. */
+function isTransient(e: unknown): boolean {
+  if (typeof e !== "object" || e === null) return false;
+  const { code, cause } = e as { code?: unknown; cause?: unknown };
+  return transientCode(code) || (typeof cause === "object" && cause !== null && transientCode((cause as { code?: unknown }).code));
 }
 
 /** What the payment did, for Maria's notice. An e-course's is told in its own words (messages.ts): opened until a day, or not opened. */

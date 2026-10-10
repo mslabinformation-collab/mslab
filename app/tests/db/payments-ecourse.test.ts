@@ -571,6 +571,62 @@ describe("paid", () => {
     expect(await accountRows()).toEqual([[], [], [], [], []]);
   });
 
+  // A transient database error in the grant is not "the course could not be opened": the whole paid transaction rolls back, the payment stays
+  // pending with nobody told, and Montonio's retry, the return or the daily check settles it again (settle.ts openCourse).
+  describe("a grant that fails for a transient reason", () => {
+    const transient = (code: string, wrapped = false) => {
+      const inner = Object.assign(new Error("boom for kati@example.com"), { code });
+      return wrapped ? Object.assign(new Error("Failed query: select … kati@example.com"), { cause: inner }) : inner;
+    };
+
+    test.each([
+      ["serialization failure", "40001"],
+      ["deadlock", "40P01"],
+      ["lock not available", "55P03"],
+      ["statement timeout", "57014"],
+      ["a connection error", "08006"],
+      ["another connection error", "08003"],
+    ])("%s (%s): nothing is written, the payment stays pending, nobody is told; the retry pays and opens it", async (_name, code) => {
+      const m = stubMontonio();
+      for (const wrapped of [false, true]) {
+        expect(await handleEcoursePurchase(formDeps(m.montonio), form({ email: wrapped ? "teine@example.com" : "kati@example.com" }))).toMatchObject({ ok: true });
+        const [p] = await db.select().from(payments).where(eq(payments.email, wrapped ? "teine@example.com" : "kati@example.com"));
+        const before = await accountRows();
+        const mailed = m.mails().length;
+        const grant = vi.spyOn(adminClients, "grantAccess").mockRejectedValueOnce(transient(code, wrapped)); // (drizzle wraps the driver's error: the code is on `cause`)
+        const s = settleDeps(db, m.montonio, NOW);
+        const token = m.montonio.verifyOrderToken(orderToken(p));
+        await expect(settleToken(s.deps, token)).rejects.toThrow();
+        await s.flush();
+        expect(await db.select().from(payments).where(eq(payments.id, p.id))).toMatchObject([{ status: "pending", paidAt: null, clientId: null }]);
+        expect(await accountRows()).toEqual(before); // the client the grant had made is rolled back with the payment
+        expect(m.mails()).toHaveLength(mailed);
+        // the retry (the webhook is retried, the return or the daily check comes): the grant works now, and the payment is settled for good
+        expect(await settleToken(s.deps, token)).toMatchObject({ kind: "done", payment: { status: "paid" } });
+        await s.flush();
+        expect((await db.select().from(courseAccess)).length).toBe(wrapped ? 2 : 1);
+        expect(grant).toHaveBeenCalledTimes(2);
+        grant.mockRestore();
+      }
+    });
+
+    test("any other code, or none, is still 'not opened': paid, and Maria is told at once", async () => {
+      const m = stubMontonio();
+      for (const code of ["23505", "42P01", "XX000", "40", "0A000", "P0001", undefined]) {
+        const email = `ostja-${String(code).toLowerCase()}@example.com`;
+        expect(await handleEcoursePurchase(formDeps(m.montonio), form({ email }))).toMatchObject({ ok: true });
+        const [p] = await db.select().from(payments).where(eq(payments.email, email));
+        vi.spyOn(adminClients, "grantAccess").mockRejectedValueOnce(code === undefined ? new Error("plain") : transient(code));
+        const mailed = m.mails().length;
+        const s = settleDeps(db, m.montonio, NOW);
+        expect(await settleToken(s.deps, m.montonio.verifyOrderToken(orderToken(p)))).toMatchObject({ kind: "done", payment: { status: "paid", clientId: null } });
+        await s.flush();
+        expect(m.mails().slice(mailed).map((x) => x.to), String(code)).toEqual(["maria@example.test"]);
+        expect(m.mails()[mailed].text, String(code)).toContain("E-koolitust ei avatud.");
+      }
+    });
+  });
+
   test("a course that is no e-course any more: paid, nothing opened, no client made", async () => {
     const m = stubMontonio();
     expect(await handleEcoursePurchase(formDeps(m.montonio), form())).toMatchObject({ ok: true });
