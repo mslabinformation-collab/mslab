@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { orderReference } from "@/domain/payments";
 import type { I18n } from "@/i18n/field";
@@ -124,4 +124,73 @@ export async function paymentContext(q: Q, paymentId: number): Promise<PaymentCo
     session: row?.startsAt ? { startsAt: row.startsAt, city: row.city ?? "", venue: row.venue ?? "" } : null,
     payToken: row?.payToken ?? null,
   };
+}
+
+/** The daily check asks about a pending payment once Montonio's 30-minute window is surely over, and gives up on it after 14 days (spec 6.6). */
+export const CHECK_AFTER_MS = 45 * 60_000;
+export const GIVE_UP_MS = 14 * 86_400_000;
+
+/** The pending payments the daily check asks Montonio about: with an order, older than 45 minutes and younger than 14 days; oldest first. */
+export async function pendingToCheck(db: Db, now: Date, limit: number): Promise<Payment[]> {
+  return db
+    .select()
+    .from(payments)
+    .where(
+      and(
+        eq(payments.status, "pending"),
+        isNotNull(payments.providerUuid),
+        lte(payments.createdAt, new Date(now.getTime() - CHECK_AFTER_MS)),
+        gt(payments.createdAt, new Date(now.getTime() - GIVE_UP_MS)),
+      ),
+    )
+    .orderBy(asc(payments.createdAt), asc(payments.id))
+    .limit(limit);
+}
+
+/**
+ * What the daily check does to the pending payments that will not be paid any more: 14 days old, or 45 minutes old without an order (its
+ * creation broke off: there is nothing to ask about). Each becomes failed through failPayment, one transaction a row, oldest first, at most
+ * `limit` a run (the rest wait for the next): a prepayment's failure ends its seat hold, and failPayment takes the registration's lock
+ * before it writes the payment row, as every payment path does (the order course_sessions → registrations → payments, db/queries/seats.ts).
+ * One bulk UPDATE would write the payment rows with no registration lock at all. That also frees a hold that such a row was keeping for a
+ * later, failed attempt of the same registration (releaseHold counts every pending row). No lock is held after the call.
+ * `failed`: rows failed (one that was paid or failed meanwhile is left as it is and not counted); `released`: holds ended with them (the
+ * seats are free again); `left`: at least this many stale rows wait for the next run.
+ */
+export async function expireStalePending(db: Db, now: Date, limit: number): Promise<{ failed: number; released: number; left: number }> {
+  const stale = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.status, "pending"),
+        or(lte(payments.createdAt, new Date(now.getTime() - GIVE_UP_MS)), and(isNull(payments.providerUuid), lte(payments.createdAt, new Date(now.getTime() - CHECK_AFTER_MS)))),
+      ),
+    )
+    .orderBy(asc(payments.createdAt), asc(payments.id))
+    .limit(limit + 1);
+  let failed = 0;
+  let released = 0;
+  for (const { id } of stale.slice(0, limit)) {
+    const done = await failPayment(db, id, now);
+    if (!done) continue;
+    failed++;
+    if (done.released) released++;
+  }
+  return { failed, released, left: Math.max(0, stale.length - limit) };
+}
+
+/** How many unpaid registrations' holds ended between `since` and `now` (cached pages may still count them as taken). */
+export async function holdsEnded(db: Db, since: Date, now: Date): Promise<number> {
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(registrations)
+    .where(
+      and(
+        eq(registrations.status, "awaiting_prepayment"),
+        sql`${registrations.seatHoldUntil} > ${since.toISOString()}::timestamptz`,
+        sql`${registrations.seatHoldUntil} <= ${now.toISOString()}::timestamptz`,
+      ),
+    );
+  return Number(n);
 }
