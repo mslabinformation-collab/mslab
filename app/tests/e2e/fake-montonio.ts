@@ -18,7 +18,8 @@ import { E2E_MONTONIO } from "./montonio-values";
 // - The webhook goes only to this machine: a notificationUrl whose host is not localhost, 127.0.0.1 or [::1] is logged and skipped (the app's
 //   siteUrl is the public site's when a run is started by hand; a test must never post to it).
 // - For the tests: GET /_fake/orders/<reference> (the order, or 404); POST /_fake/settle/<uuid> { status } (the bank decides later: the
-//   status and the webhook, without the browser); GET /health.
+//   status and the webhook, without the browser); GET /_fake/token/<uuid>?status=PAID (the token Montonio would sign for the order with
+//   that status, nothing settled and no webhook: for a test that sends a webhook itself, twice at once); GET /health.
 // Run: npx tsx tests/e2e/fake-montonio.ts (Playwright starts it: tests/e2e/server.ts), on E2E_MONTONIO.port. The keys are E2E_MONTONIO's.
 
 type Order = { uuid: string; reference: string; grandTotal: number; currency: string; locale: string; returnUrl: string; notificationUrl: string; status: string };
@@ -189,6 +190,14 @@ export function createFakeMontonio(keys: Keys = { accessKey: E2E_MONTONIO.access
     if (find && req.method === "GET") {
       const o = byReference(decodeURIComponent(find[1]));
       return o ? send(res, 200, o) : send(res, 404, { message: "no order" });
+    }
+    const mint = /^\/_fake\/token\/([^/]+)$/.exec(path);
+    if (mint && req.method === "GET") {
+      const o = orders.get(mint[1]);
+      const status = url.searchParams.get("status");
+      if (!o) return send(res, 404, { message: "no order" });
+      if (!status) return send(res, 400, { message: "status needed" });
+      return send(res, 200, { orderToken: orderToken({ ...o, status }, keys) });
     }
     const later = /^\/_fake\/settle\/([^/]+)$/.exec(path);
     if (later && req.method === "POST") {

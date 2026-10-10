@@ -185,3 +185,16 @@ test("isLocalUrl: localhost, 127.0.0.1 and [::1] (any port, http or https) are t
   for (const url of ["https://shop.example/n", "http://localhost.evil.example/n", "http://evil.example/localhost", "http://localhost@evil.example/n", "http://user:pw@localhost/n", "http://0.0.0.0/n", "ftp://localhost/n", "localhost:3000", "", "not a url"])
     expect(isLocalUrl(url), url).toBe(false);
 });
+
+test("the test hook mints the token Montonio would sign for an order without settling it: the app's client reads it, the order stays as it is", async () => {
+  const base = await listen(createFakeMontonio());
+  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true });
+  const order = await client.createOrder({ reference: "MSLAB-M31", amountCents: 17500, locale: "et", returnUrl: "https://mslab.example/r", notificationUrl: "http://127.0.0.1:1/n" });
+  const minted = await fetch(`${base}/_fake/token/${order.uuid}?status=PAID`);
+  expect(minted.status).toBe(200);
+  const { orderToken } = (await minted.json()) as { orderToken: string };
+  expect(client.verifyOrderToken(orderToken)).toMatchObject({ uuid: order.uuid, reference: "MSLAB-M31", status: "paid", amountCents: 17500, currency: "EUR", bank: "Testpank", method: "paymentInitiation", expired: false });
+  expect((await client.fetchOrder(order.uuid))?.status).toBe("pending"); // nothing was settled
+  expect((await fetch(`${base}/_fake/token/${order.uuid}`)).status).toBe(400); // a status is needed
+  expect((await fetch(`${base}/_fake/token/no-such-order?status=PAID`)).status).toBe(404);
+});
