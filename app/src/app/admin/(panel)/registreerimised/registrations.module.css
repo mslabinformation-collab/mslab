@@ -58,6 +58,13 @@
   margin-top: 8px;
 }
 
+/* the online payments under "Laekunud" (phase 2b) */
+.online {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .dl,
 .moneyList {
   display: grid;

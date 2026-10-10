@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@/db/client";
 import { listRegistrations, paged, type Paged, type RegistrationRow } from "@/db/queries/admin";
+import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
 import { clients, courseAccess, courses, lessonProgress, practicePackages, registrations, requests, termsAcceptances } from "@/db/schema";
 import { accessState, defaultExpiryDate, grantExpiry, type AccessState } from "@/domain/client-access";
 import { isEmail, normalizeEmail } from "@/domain/email";
@@ -104,11 +105,13 @@ export type ClientDetail = {
   terms: { courseTitle: I18n; version: string; acceptedAt: Date }[];
   /** Her address's newsletter (phase 2c): confirmed, waiting for its confirmation, or none. */
   newsletter: NewsletterState;
+  /** Her online payments (phase 2b), newest first. */
+  payments: PaymentRow[];
 };
 
 /** Everything the student's drawer shows, or null when there is no such student. Newest first in every list. */
 export async function clientDetail(db: Db, id: number, now: Date = new Date()): Promise<ClientDetail | null> {
-  const [[client], regs, reqs, access, terms] = await Promise.all([
+  const [[client], regs, reqs, access, terms, payments] = await Promise.all([
     db
       .select({ id: clients.id, email: clients.email, name: NAME, ownName: clients.name, phone: clients.phone, locale: clients.locale, createdAt: clients.createdAt })
       .from(clients)
@@ -137,6 +140,7 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
       .innerJoin(courses, eq(termsAcceptances.courseId, courses.id))
       .where(eq(termsAcceptances.clientId, id))
       .orderBy(desc(termsAcceptances.acceptedAt)),
+    listPaymentsOf(db, { clientId: id }),
   ]);
   if (!client) return null;
   const newsletter = await newsletterState(db, client.email);
@@ -157,6 +161,7 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
     }),
     terms,
     newsletter,
+    payments,
   };
 }
 

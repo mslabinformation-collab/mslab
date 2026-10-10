@@ -99,6 +99,7 @@ export const adminEt = {
     courses: "Koolitused",
     calendar: "Kalender",
     registrations: "Registreerimised",
+    payments: "Maksed",
     clients: "Õpilased",
     requests: "Päringud",
     practice: "Praktika",
@@ -168,7 +169,6 @@ export const adminEt = {
     statusLabel: "Staatus",
     statusAll: "Kõik staatused",
     status: { awaiting_prepayment: "Ootab ettemaksu", confirmed: "Kinnitatud", cancelled: "Tühistatud" },
-    eNote: "E-õppe ostud lisanduvad koos maksetega.",
     empty: "Registreerimisi veel pole.",
     emptyFiltered: "Selle valikuga registreerimisi pole.",
     count: "Registreerimisi: {n}",
@@ -233,6 +233,30 @@ export const adminEt = {
       cancel: "Tühista registreerimine",
       cancelled: "Registreerimine on tühistatud.",
     },
+  },
+
+  // "Maksed" (phase 2b, spec 8): the online payments through Montonio. Bank transfers stay Maria's own entries on the registration.
+  payments: {
+    eyebrow: "Montonio",
+    title: "Maksed",
+    lead: "Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures nagu varem.",
+    filterLabel: "Staatus",
+    filter: { all: "Kõik", paid: "Makstud", pending: "Pooleli", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil" },
+    status: { pending: "Pooleli", paid: "Makstud", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil" },
+    // a payment the bank took back after it was paid (stored as failed, with its paid_at): the owner's word for a bank reversal
+    statusVoided: "Tühistatud pangas",
+    kind: { prepayment: "Ettemaks", balance: "Ülejäänud", ecourse: "E-koolitus" },
+    // a held payment, or one the bank voided after it was paid
+    check: "Kontrolli Montonios",
+    count: "Makseid: {n}",
+    empty: "Makseid veel pole.",
+    emptyFiltered: "Selle valikuga makseid pole.",
+    col: { date: "Kuupäev", payer: "Maksja", what: "Eest", kind: "Liik", amount: "Summa", method: "Makseviis", status: "Staatus", provider: "Montonio id" },
+    courseGone: "Koolitus on kustutatud",
+    // under "Laekunud" in a registration's drawer
+    online: "Veebimaksed",
+    // the Õpilased drawer
+    noneForClient: "Makseid pole.",
   },
 
   requests: {
@@ -320,6 +344,8 @@ export const adminEt = {
       noAccess: "E-koolitusi pole avatud.",
       state: { active: "Avatud kuni {date}", expired: "Lõppes {date}", revoked: "Lõpetatud {date}" },
       grantedBy: "Avas {who}, {date}",
+      // an access a paid e-course purchase opened (granted_by "payment", phase 2b)
+      byPayment: "veebimakse",
       registrations: "Registreerimised",
       noRegistrations: "Registreerimisi pole.",
       openRegistration: "Ava registreerimine",

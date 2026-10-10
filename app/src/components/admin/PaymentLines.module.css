@@ -1,0 +1,21 @@
+/* The online payments of a registration or a student (phase 2b): one line each, the status as the admin's tags. */
+
+.lines {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 14px;
+}
+
+.when {
+  color: var(--muted-2);
+}

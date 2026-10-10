@@ -129,6 +129,7 @@ describe("admin menu (prototype B sidebar, A1)", () => {
       "Koolitused",
       "Kalender",
       "Registreerimised",
+      "Maksed",
       "Õpilased",
       "Päringud",
       "Praktika",
@@ -144,10 +145,31 @@ describe("admin menu (prototype B sidebar, A1)", () => {
     expect(adminEt.shell.viewSite).toBe("Vaata lehte");
     expect(adminEt.shell.logout).toBe("Logi välja");
   });
-  test("the status labels and the e-learning note are Maria's words", () => {
+  test("the status labels are Maria's words; the old 'e-learning purchases will come with the payments' note is gone (they show on Maksed and in the student's drawer)", () => {
     expect(adminEt.registrations.status).toEqual({ awaiting_prepayment: "Ootab ettemaksu", confirmed: "Kinnitatud", cancelled: "Tühistatud" });
     expect(adminEt.registrations.type).toEqual({ all: "Kõik", e: "E-õpe", k: "Kontaktõpe" });
-    expect(adminEt.registrations.eNote).toBe("E-õppe ostud lisanduvad koos maksetega.");
+    expect(adminEt.registrations).not.toHaveProperty("eNote");
+    expect(JSON.stringify(adminEt)).not.toContain("lisanduvad koos maksetega");
     expect(adminEt.requests.tabs).toEqual({ kontakt: "Kontakt", individuaal: "Individuaal", praktika: "Praktika", ootenimekiri: "Ootenimekiri", muutmine: "Muutmine" });
+  });
+});
+
+describe("Maksed (phase 2b, spec 8): Maria's words", () => {
+  const t = adminEt.payments;
+  test("the menu entry, the heading, the lead (Montonio halduses), the filter and the statuses", () => {
+    expect(adminEt.nav.payments).toBe("Maksed");
+    expect([t.eyebrow, t.title]).toEqual(["Montonio", "Maksed"]);
+    expect(t.lead).toBe("Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures nagu varem.");
+    expect(t.filter).toEqual({ all: "Kõik", paid: "Makstud", pending: "Pooleli", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil" });
+    expect(t.status).toEqual({ pending: "Pooleli", paid: "Makstud", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil" });
+    expect(t.statusVoided).toBe("Tühistatud pangas");
+    expect(t.kind).toEqual({ prepayment: "Ettemaks", balance: "Ülejäänud", ecourse: "E-koolitus" });
+    expect(t.check).toBe("Kontrolli Montonios");
+  });
+  test("the column heads: 'Eest' and 'Makseviis', not the bare question words 'Mis' and 'Viis'", () => {
+    expect(t.col).toEqual({ date: "Kuupäev", payer: "Maksja", what: "Eest", kind: "Liik", amount: "Summa", method: "Makseviis", status: "Staatus", provider: "Montonio id" });
+  });
+  test("an access a payment opened says so in the student's drawer", () => {
+    expect(adminEt.clients.drawer.byPayment).toBe("veebimakse");
   });
 });

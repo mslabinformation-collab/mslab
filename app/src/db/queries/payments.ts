@@ -1,10 +1,12 @@
-import { and, asc, count, eq, gt, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import { PAGE_SIZE } from "@/domain/paging";
 import { orderReference } from "@/domain/payments";
 import type { I18n } from "@/i18n/field";
 import type { Db, Q } from "../client";
 import * as schema from "../schema";
-import { courses, courseSessions, payments, registrations, type Payment, type PaymentKind } from "../schema";
+import { courses, courseSessions, payments, registrations, type Payment, type PaymentKind, type PaymentStatus } from "../schema";
+import { paged, type Paged } from "./admin";
 import { lockRegistration } from "./seats";
 
 // The payments table (phase 2b, spec 5.1): one row per online payment attempt. The rows are written here and by server/payments/settle.ts
@@ -216,4 +218,48 @@ export async function holdsEnded(db: Db, since: Date, now: Date): Promise<number
       ),
     );
   return Number(n);
+}
+
+// ---------- the admin's lists (phase 2b, spec 8) ----------
+
+/** A payment with what it was for: the course's title and slug (null when the course is gone) and its registration's session day. */
+export type PaymentRow = Payment & { courseTitle: I18n | null; courseSlug: string | null; startsAt: Date | null };
+
+/** "Maksed"'s filter: every payment, or one status. */
+export type PaymentFilter = "all" | PaymentStatus;
+
+const rowFields = { payment: payments, courseTitle: courses.title, courseSlug: courses.slug, startsAt: courseSessions.startsAt };
+
+function rowQuery(db: Db) {
+  return db
+    .select(rowFields)
+    .from(payments)
+    .leftJoin(courses, eq(payments.courseId, courses.id))
+    .leftJoin(registrations, eq(payments.registrationId, registrations.id))
+    .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id));
+}
+
+const toRow = (r: { payment: Payment; courseTitle: I18n | null; courseSlug: string | null; startsAt: Date | null }): PaymentRow => ({ ...r.payment, courseTitle: r.courseTitle, courseSlug: r.courseSlug, startsAt: r.startsAt });
+
+/** One page of "Maksed": newest first, `size` (50) a page, all or one status. */
+export async function pagePayments(db: Db, filter: PaymentFilter, page: number, size: number = PAGE_SIZE): Promise<Paged<PaymentRow>> {
+  const where = filter === "all" ? undefined : eq(payments.status, filter);
+  return paged(
+    page,
+    size,
+    async () => Number((await db.select({ n: count() }).from(payments).where(where))[0].n),
+    async (range) => (await rowQuery(db).where(where).orderBy(desc(payments.createdAt), desc(payments.id)).limit(range.limit).offset(range.offset)).map(toRow),
+  );
+}
+
+/**
+ * The payments of one registration (its drawer), or of one student (the Õpilased drawer): hers, and those of her registrations — a payment
+ * made before she had an account carries no client of its own, its registration was linked to her later. Newest first.
+ */
+export async function listPaymentsOf(db: Db, of: { registrationId: number } | { clientId: number }): Promise<PaymentRow[]> {
+  const where =
+    "registrationId" in of
+      ? eq(payments.registrationId, of.registrationId)
+      : or(eq(payments.clientId, of.clientId), sql`${payments.registrationId} in (select r.id from registrations r where r.client_id = ${of.clientId})`);
+  return (await rowQuery(db).where(where).orderBy(desc(payments.createdAt), desc(payments.id))).map(toRow);
 }

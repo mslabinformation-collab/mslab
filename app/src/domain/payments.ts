@@ -1,6 +1,7 @@
 // Online payments' pure rules (phase 2b): the reference Montonio knows a payment by, what a registration can pay now, and Maria's word for
 // how it was paid. No database, no React.
 
+import type { PaymentStatus } from "@/db/schema";
 import { isSlug } from "@/lib/slug";
 import { startOfDayTallinn, upcomingFrom } from "./calendar";
 import { prepaymentDue, type RegStatus } from "./registration";
@@ -101,4 +102,12 @@ export function parseResultFragment(hash: string): ResultView | null {
     payToken: token && /^[A-Za-z0-9_-]{20,100}$/.test(token) ? token : null,
     course: course && isSlug(course) ? course : null,
   };
+}
+
+/**
+ * A payment Maria must look at in Montonio's own dashboard (spec 8): held (paid, but the amount or the currency did not match), or failed
+ * after it was paid (the bank voided it). The admin marks it "Kontrolli Montonios".
+ */
+export function needsCheck(p: { status: PaymentStatus; paidAt: Date | null }): boolean {
+  return p.status === "held" || (p.status === "failed" && p.paidAt !== null);
 }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getAdminCounts } from "@/components/admin/data";
 import { Drawer } from "@/components/admin/Drawer";
 import { Pager } from "@/components/admin/Pager";
+import { PaymentLines } from "@/components/admin/PaymentLines";
 import { RegistrationForms } from "@/components/admin/RegistrationForms";
 import { adminTitle } from "@/components/admin/sections";
 import { Shell } from "@/components/admin/Shell";
@@ -11,6 +12,7 @@ import { StatusPill } from "@/components/admin/StatusPill";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { getRegistration, pageRegistrations, type RegistrationFilter, type RegistrationRow } from "@/db/queries/admin";
+import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
 import { formatEUR } from "@/domain/money";
 import { parsePage } from "@/domain/paging";
 import { prepaymentDue, registrationPrice, type RegStatus } from "@/domain/registration";
@@ -80,7 +82,12 @@ export default async function RegistrationsPage({ searchParams }: Props) {
   const db = getDb();
   const filter: RegistrationFilter = { type: view.vorm ? FORMS[view.vorm] : undefined, status: view.staatus ?? undefined };
   // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
-  const [list, open] = await Promise.all([pageRegistrations(db, filter, view.leht), view.id ? getRegistration(db, view.id) : null, getAdminCounts()]);
+  const [list, open, online] = await Promise.all([
+    pageRegistrations(db, filter, view.leht),
+    view.id ? getRegistration(db, view.id) : null,
+    view.id ? listPaymentsOf(db, { registrationId: view.id }) : [],
+    getAdminCounts(),
+  ]);
   const rows = list.rows;
   const t = adminEt.registrations;
   const filtered = view.vorm !== null || view.staatus !== null;
@@ -130,12 +137,6 @@ export default async function RegistrationsPage({ searchParams }: Props) {
             </Link>
           ))}
         </nav>
-
-        {view.vorm === "e" && (
-          <p className={ui.notice} data-e-note="">
-            {t.eNote}
-          </p>
-        )}
 
         <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
           <p className={`${ui.muted} ${ui.small} ${styles.count}`}>{fill(t.count, { n: list.total })}</p>
@@ -212,14 +213,14 @@ export default async function RegistrationsPage({ searchParams }: Props) {
           closeLabel={t.drawer.close}
           returnFocus={open ? `reg-${open.id}` : undefined}
         >
-          {open ? <RegistrationDetail r={open} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}
+          {open ? <RegistrationDetail r={open} payments={online} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}
         </Drawer>
       )}
     </Shell>
   );
 }
 
-function RegistrationDetail({ r }: { r: RegistrationRow }) {
+function RegistrationDetail({ r, payments }: { r: RegistrationRow; payments: PaymentRow[] }) {
   const t = adminEt.registrations.drawer;
   const yesNo = (v: boolean) => (v ? adminEt.common.yes : adminEt.common.no);
   const total = registrationPrice(r.course, r.kind);
@@ -270,6 +271,13 @@ function RegistrationDetail({ r }: { r: RegistrationRow }) {
               <dd data-paid="">{formatEUR(r.paidCents, "et")}</dd>
             </div>
           </dl>
+        )}
+        {/* the online payments under "Laekunud" (phase 2b, spec 8); Maria's own "amount received" form below stays */}
+        {payments.length > 0 && (
+          <div className={styles.online} data-registration-payments="">
+            <h3 className={ui.h3}>{adminEt.payments.online}</h3>
+            <PaymentLines rows={payments} />
+          </div>
         )}
       </section>
 

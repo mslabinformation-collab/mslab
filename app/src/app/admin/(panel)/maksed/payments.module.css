@@ -1,0 +1,52 @@
+/* Maksed (phase 2b): the list's own pieces (the table itself is the shared admin list, components/admin/list-table.module.css). */
+
+.count {
+  margin-bottom: 6px;
+}
+
+.sub {
+  display: block;
+  font-size: 12px;
+}
+
+/* a payer without a student record is plain text: the shared list's name is underlined as a link */
+span.plain {
+  text-decoration: none;
+}
+
+.contact {
+  color: var(--muted-2);
+  font-size: 12px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  text-decoration: none;
+}
+
+.contact:hover {
+  text-decoration: underline;
+}
+
+.status {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+.provider {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* a row Maria must look at in Montonio: held, or voided after it was paid */
+.check > td {
+  background: color-mix(in srgb, var(--bad) 6%, transparent);
+}
+
+/* the time next to the date once the row is a block (the shared list's narrow card) */
+@container (max-width: 980px) {
+  .sub {
+    display: inline;
+    margin-left: 6px;
+  }
+}
