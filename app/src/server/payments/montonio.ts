@@ -105,7 +105,8 @@ function off(why: string): null {
 }
 
 /**
- * The store and the address, or null: no online payments. Both keys are needed (a blank one counts as not set: paymentsEnv). MONTONIO_ENV
+ * The store and the address, or null: no online payments. Both keys are needed (a blank one counts as not set: paymentsEnv); only one of
+ * them is noted once ("online payments are off"), by name. MONTONIO_ENV
  * "live" (exactly) is production, anything else the sandbox. PAYMENT_PROVIDER unset or "montonio" is Montonio; "mock" is the fake at
  * MONTONIO_FAKE_URL, refused on Vercel and in a production build without PAYMENT_MOCK_IN_PRODUCTION=1, and only when that address is plain
  * http on localhost, 127.0.0.1 or [::1] (a remote, https, credentialed or junk address turns payments off, it is never used); any other
@@ -114,6 +115,8 @@ function off(why: string): null {
 export function montonioConfig(env: PaymentsEnv = paymentsEnv(), runtime: Runtime = currentRuntime()): MontonioConfig | null {
   const accessKey = env.MONTONIO_ACCESS_KEY;
   const secretKey = env.MONTONIO_SECRET_KEY;
+  // neither key is the normal "no payments" and says nothing; one alone is a setting forgotten or mistyped (the names only, never a value)
+  if (!accessKey !== !secretKey) return off("only one of MONTONIO_ACCESS_KEY and MONTONIO_SECRET_KEY is set");
   if (!accessKey || !secretKey) return null;
   const provider = env.PAYMENT_PROVIDER;
   if (provider === undefined || provider === "montonio") {

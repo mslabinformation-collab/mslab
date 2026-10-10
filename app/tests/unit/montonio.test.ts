@@ -22,6 +22,7 @@ afterEach(() => {
 
 describe("montonioConfig: which store, which address", () => {
   test("both keys or nothing: payments are optional", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {}); // (one key alone is noted: the test below)
     expect(montonioConfig({}, LOCAL)).toBeNull();
     expect(montonioConfig({ MONTONIO_ACCESS_KEY: "a" }, LOCAL)).toBeNull();
     expect(montonioConfig({ MONTONIO_SECRET_KEY: "s" }, LOCAL)).toBeNull();
@@ -122,6 +123,25 @@ describe("montonioConfig: which store, which address", () => {
     const line = String(note.mock.calls[0][0]);
     expect(line).toContain("online payments are off");
     for (const secret of [KEYS.MONTONIO_ACCESS_KEY, KEYS.MONTONIO_SECRET_KEY, "localhost"]) expect(line).not.toContain(secret);
+  });
+
+  test("only one of the two keys set: payments are off, and that is noted once, naming the settings, never a value; neither set: silent", async () => {
+    const note = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const env of [{ MONTONIO_ACCESS_KEY: KEYS.MONTONIO_ACCESS_KEY }, { MONTONIO_SECRET_KEY: KEYS.MONTONIO_SECRET_KEY }, { ...KEYS, MONTONIO_SECRET_KEY: "" }]) {
+      vi.resetModules(); // a copy that has not noted anything yet
+      const fresh = await import("@/server/payments/montonio");
+      note.mockClear();
+      for (let i = 0; i < 2; i++) expect(fresh.montonioConfig(env, LOCAL), JSON.stringify(Object.keys(env))).toBeNull();
+      expect(note, JSON.stringify(Object.keys(env))).toHaveBeenCalledTimes(1);
+      const line = String(note.mock.calls[0][0]);
+      expect(line).toBe("[payments] only one of MONTONIO_ACCESS_KEY and MONTONIO_SECRET_KEY is set: online payments are off");
+      for (const secret of [KEYS.MONTONIO_ACCESS_KEY, KEYS.MONTONIO_SECRET_KEY]) expect(line).not.toContain(secret);
+    }
+    vi.resetModules();
+    const fresh = await import("@/server/payments/montonio");
+    note.mockClear();
+    for (const env of [{}, { MONTONIO_ACCESS_KEY: "", MONTONIO_SECRET_KEY: "" }]) expect(fresh.montonioConfig(env, LOCAL)).toBeNull();
+    expect(note).not.toHaveBeenCalled(); // no keys at all is the normal "no payments", not a mistake
   });
 
   test("currentRuntime reads this process: NODE_ENV production, and VERCEL set", () => {
