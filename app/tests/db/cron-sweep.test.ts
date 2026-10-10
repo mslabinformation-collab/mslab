@@ -22,7 +22,7 @@ import { GET } from "@/app/api/cron/sweep/route";
 const SECRET = "cron-secret-for-tests-0123456789";
 const call = (authorization?: string) => GET(new Request("https://mslab.example/api/cron/sweep", { headers: authorization ? { authorization } : {} }));
 const NO_VIDEOS = { uploads: 0, processingReady: 0, processingFailed: 0, videosLeft: 0 };
-const NO_PAYMENTS = { paymentsChecked: 0, paymentsSettled: 0, paymentsExpired: 0, paymentsLeft: 0 };
+const NO_PAYMENTS = { paymentsChecked: 0, paymentsSettled: 0, paymentsExpired: 0, paymentsLeft: 0, paymentsErrors: 0 };
 const keys = async (db: Db) => (await db.select().from(kvEntries)).map((r) => r.key).sort();
 
 /** Three rows: one expired an hour ago, one expiring in an hour, one without expiry. */
@@ -114,7 +114,7 @@ describe("GET /api/cron/sweep", () => {
     // counts only: no reference, no address, no uuid
     expect(info.mock.calls.map(String)).toEqual([
       "[cron] sweep: 1 expired kv entries, 0 login codes, 0 sessions, 0 mail counters, 0 stuck video uploads deleted, 0 stuck processing videos found ready, 0 marked failed, 0 video rows left for the next run",
-      "[cron] sweep: payments 0 checked at Montonio, 0 settled, 0 not answered, 1 failed as stale, 0 left for the next run, 0 seat holds ended",
+      "[cron] sweep: payments 0 checked at Montonio, 0 settled, 0 not answered, 1 failed as stale, 0 left for the next run, 0 seat holds ended, 0 errors",
     ]);
   });
 
@@ -167,7 +167,7 @@ describe("GET /api/cron/sweep: the pending payments (phase 2b)", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const f = stubFetch((url) => (url.endsWith("/uuid-1") ? Response.json(order(1, "ABANDONED")) : new Response("Service unavailable", { status: 503 })));
     await purchases([2 * HOURS, 3 * HOURS, 10 * MINUTES, 15 * 24 * HOURS]);
-    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, paymentsChecked: 2, paymentsSettled: 1, paymentsExpired: 1, paymentsLeft: 0 });
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, paymentsChecked: 2, paymentsSettled: 1, paymentsExpired: 1, paymentsLeft: 0, paymentsErrors: 0 });
     expect(await statuses()).toEqual(["failed", "pending", "pending", "failed"]);
     expect(f.calls.map((c) => [c.method, c.url, c.headers.get("authorization")?.startsWith("Bearer eyJ")])).toEqual([
       ["GET", "https://sandbox-stargate.montonio.com/api/orders/uuid-2", true],
@@ -176,7 +176,7 @@ describe("GET /api/cron/sweep: the pending payments (phase 2b)", () => {
     const logged = info.mock.calls.map(String);
     const cron = logged.filter((l) => l.startsWith("[cron]"));
     expect(cron).toHaveLength(2);
-    expect(cron[1]).toBe("[cron] sweep: payments 2 checked at Montonio, 1 settled, 1 not answered, 1 failed as stale, 0 left for the next run, 0 seat holds ended");
+    expect(cron[1]).toBe("[cron] sweep: payments 2 checked at Montonio, 1 settled, 1 not answered, 1 failed as stale, 0 left for the next run, 0 seat holds ended, 0 errors");
     expect(logged.filter((l) => !l.startsWith("[cron]"))).toEqual(["[payments] payment 1: failed"]); // (the settlement's own line: the payment id and its status)
     expect(logged.join("\n")).not.toMatch(/@|MSLAB-M|uuid/);
     // the next day: the one Montonio answered is settled, the other is asked about again
@@ -196,18 +196,18 @@ describe("GET /api/cron/sweep: the pending payments (phase 2b)", () => {
     const answer = await (await call(`Bearer ${SECRET}`)).json();
     // calls at 0, 10, 20 and 30 s (before 35: the fourth ends at 40 s); the fifth would start at 40 s
     expect(Date.now() - started).toBe(40_000);
-    expect(answer).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, paymentsChecked: 4, paymentsSettled: 0, paymentsExpired: 0, paymentsLeft: 1 });
+    expect(answer).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, paymentsChecked: 4, paymentsSettled: 0, paymentsExpired: 0, paymentsLeft: 1, paymentsErrors: 0 });
     expect(f.calls.map((c) => c.url.split("/").pop())).toEqual(["uuid-1", "uuid-2", "uuid-3", "uuid-4"]);
     expect(info.mock.calls.map(String).slice(1)).toEqual([
-      "[cron] sweep: payments 4 checked at Montonio, 0 settled, 0 not answered, 0 failed as stale, 1 left for the next run, 0 seat holds ended",
+      "[cron] sweep: payments 4 checked at Montonio, 0 settled, 0 not answered, 0 failed as stale, 1 left for the next run, 0 seat holds ended, 0 errors",
       "[cron] sweep: no new payment asked about after 35 s",
     ]);
     expect(await statuses()).toEqual(["pending", "pending", "pending", "pending", "pending"]);
   });
 
-  test("a failing database while a payment is settled is a 500 with the payments set up; the payment is asked about again the next day", async () => {
+  test("a payment that cannot be settled (here: its transaction fails) is counted, logged without details, and does not make the cron a 500; it is asked about again the next day", async () => {
     paymentsOn();
-    vi.spyOn(console, "info").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const f = stubFetch(() => Response.json(order(1, "ABANDONED")));
     await purchases([2 * HOURS]);
@@ -215,13 +215,16 @@ describe("GET /api/cron/sweep: the pending payments (phase 2b)", () => {
     // (the failing step is the settlement's transaction: reading works, so the check gets as far as Montonio's answer)
     state.db = new Proxy(real, { get: (target, key, receiver) => (key === "transaction" ? () => Promise.reject(Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" })) : Reflect.get(target, key, receiver)) });
     const res = await call(`Bearer ${SECRET}`);
-    expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ ok: false });
-    expect(log.mock.calls.map(String)).toContain("[cron] sweep failed: Error (code ECONNREFUSED)");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, paymentsChecked: 1, paymentsSettled: 0, paymentsExpired: 0, paymentsLeft: 0, paymentsErrors: 1 });
     expect(f.calls).toHaveLength(1); // (it got as far as asking Montonio)
+    expect(log.mock.calls.map(String)).toEqual(["[payments] a payment could not be settled (payment 1): Error (code ECONNREFUSED)"]);
+    expect(info.mock.calls.map(String).filter((l) => l.includes("payments"))).toEqual([
+      "[cron] sweep: payments 1 checked at Montonio, 0 settled, 0 not answered, 0 failed as stale, 0 left for the next run, 0 seat holds ended, 1 errors",
+    ]);
     state.db = real;
     expect(await statuses()).toEqual(["pending"]);
-    expect(await (await call(`Bearer ${SECRET}`)).json()).toMatchObject({ ok: true, paymentsChecked: 1, paymentsSettled: 1 });
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toMatchObject({ ok: true, paymentsChecked: 1, paymentsSettled: 1, paymentsErrors: 0 });
     expect(await statuses()).toEqual(["failed"]);
   });
 });

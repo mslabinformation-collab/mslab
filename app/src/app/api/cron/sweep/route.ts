@@ -57,12 +57,14 @@ async function sweepPayments(db: Db, now: Date, until: number): Promise<PaymentS
  *   still plays is only deleted once the new one is ready.
  * - with online payments set up (server/payments/check.ts, phase 2b), the pending payments: those older than 45 minutes and younger than 14
  *   days are asked about at Montonio (at most 50, none after SWEEP_DEADLINE_MS) and settled; older ones, and orders never created, fail
- *   (at most 50 a run, through failPayment: the registration's lock first); holds that ended in the last day revalidate the seats;
+ *   (at most 50 a run, through failPayment: the registration's lock first); holds that ended in the last day revalidate the seats. A
+ *   payment that cannot be settled is counted and logged and does not stop the others (three in a row stop the run);
  * Vercel sends `Authorization: Bearer <CRON_SECRET>` when the project has the CRON_SECRET variable; anything else, and every
  * request while CRON_SECRET is not set, is a 401.
  * 200 `{ ok: true, deleted, logins, sessions, mailDays, uploads, processingReady, processingFailed, videosLeft, paymentsChecked,
- * paymentsSettled, paymentsExpired, paymentsLeft }` (counts; `deleted` is the kv entries; the payment counts are zeros without online
- * payments); 500 `{ ok: false }` when the database fails. The log line has the counts only, no ids.
+ * paymentsSettled, paymentsExpired, paymentsLeft, paymentsErrors }` (counts; `deleted` is the kv entries; the payment counts are zeros
+ * without online payments; `paymentsErrors`: payments that could not be settled, each one counted and logged by id and error class, none
+ * of them a 500); 500 `{ ok: false }` when the database fails. The log line has the counts only, no ids.
  */
 export async function GET(request: Request): Promise<Response> {
   const secret = serverEnv().CRON_SECRET;
@@ -80,7 +82,7 @@ export async function GET(request: Request): Promise<Response> {
     // counts them: toHaveBeenCalledTimes(1), the exact list of two), and the answer's payment counts are zeros
     if (checked) {
       console.info(
-        `[cron] sweep: payments ${checked.checked} checked at Montonio, ${checked.settled} settled, ${checked.unanswered} not answered, ${checked.expired} failed as stale, ${checked.left} left for the next run, ${checked.holdsEnded} seat holds ended`,
+        `[cron] sweep: payments ${checked.checked} checked at Montonio, ${checked.settled} settled, ${checked.unanswered} not answered, ${checked.expired} failed as stale, ${checked.left} left for the next run, ${checked.holdsEnded} seat holds ended, ${checked.errors} errors`,
       );
       if (checked.outOfTime) console.info(`[cron] sweep: no new payment asked about after ${SWEEP_DEADLINE_MS / 1000} s`);
     }
@@ -97,6 +99,7 @@ export async function GET(request: Request): Promise<Response> {
       paymentsSettled: paid.settled,
       paymentsExpired: paid.expired,
       paymentsLeft: paid.left,
+      paymentsErrors: paid.errors,
     });
   } catch (e) {
     logFailure("[cron] sweep failed", e);
