@@ -12,10 +12,11 @@ import { MontonioError, type Montonio } from "./montonio";
 
 // Every way an online payment starts (phase 2b, spec 6.1, 6.3, 6.4): a pending payment row (a new MSLAB-M<id> for each new attempt), then
 // Montonio's order outside any transaction (a 15 s call must not hold a row lock), then the page to send the payer to. When Montonio says no
-// or cannot be reached, the row is failed and a prepayment's hold ends (db/queries/payments.ts failPayment): nothing breaks, the registration
-// stands. A start while the same attempt is still open (the same registration and kind, or the same e-course and address, the same amount,
-// its order inside Montonio's 30-minute window) re-sends that attempt instead of making a second order (the double-payment rule): POST /orders
-// with the same merchantReference overwrites the unpaid order at Montonio (spec 4), so the payer never has two orders open to pay.
+// or cannot be reached, a new attempt's row is failed and a prepayment's hold ends (db/queries/payments.ts failPayment): nothing breaks, the
+// registration stands; a re-send's row stays pending (see order). A start while the same attempt is still open (the same registration and
+// kind, or the same e-course and address, the same amount, its order inside Montonio's 30-minute window) re-sends that attempt instead of
+// making a second order (the double-payment rule): POST /orders with the same merchantReference overwrites the unpaid order at Montonio
+// (spec 4), so the payer never has two orders open to pay.
 // The locks are the one order of every payment path (db/queries/seats.ts): the session, then the registration (lockForPayment, taken first),
 // then the payment row. Nothing is held across Montonio's call: the transaction commits first, and only then are the order made and the row
 // given its uuid (attachOrder) or failed (failPayment, which takes the registration's lock in its own transaction). An e-course purchase has
@@ -77,21 +78,26 @@ async function liveAttempt(
 }
 
 /**
- * Montonio's order for a stored pending row, called with no transaction open; the row fails (and its hold ends) when there is none. `again`:
- * the row is an open attempt sent again (same reference): Montonio overwrites the unpaid order and may answer a new uuid, which the row takes
- * only while it is still unpaid (status pending, paid_at null: a replaced uuid that landed after a PAID would make a repeat of the paid order
- * look like a double payment, settle.ts). When that UPDATE loses, the row was settled meanwhile: Montonio is not called again, and the answer
- * is "nothing to pay" (or "failed" when the row was failed meanwhile: no one is sent to the replaced order). A token of the order the row had
- * before is settle.ts's doubt case.
+ * Montonio's order for a stored pending row, called with no transaction open. A first sending that gets no order fails the row (and its
+ * hold ends). `again`: the row is an open attempt sent again (same reference): Montonio overwrites the unpaid order and may answer a new
+ * uuid, which the row takes only while it is still unpaid (status pending, paid_at null: a replaced uuid that landed after a PAID would make a
+ * repeat of the paid order look like a double payment, settle.ts). When that UPDATE loses, the row was settled meanwhile: Montonio is not
+ * called again, and the answer is "nothing to pay" (or "failed" when the row was failed meanwhile: no one is sent to the replaced order). A
+ * token of the order the row had before is settle.ts's doubt case.
+ * A re-send that gets no order (Montonio refused it, or did not answer in time) is "failed" too, but its row is NOT failed: the order under
+ * that reference may be paid already, its webhook late (Montonio refuses to overwrite a paid order), or the timed-out call may have replaced
+ * it after all. The row stays pending with the hold its start refreshed, so the next press re-sends the same reference again — a failed row
+ * would make the next press a new attempt with a new reference, a second order she could pay as well. Its webhook, the return or the daily
+ * check settles it; failing it is left to them (ABANDONED) and to the daily check's 14 days.
  */
 async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment, again = false): Promise<StartResult> {
   let created: { uuid: string; paymentUrl: string };
   try {
     created = await deps.montonio.createOrder({ reference: payment.reference, amountCents: payment.amountCents, locale: payment.locale, ...paymentUrls(deps.siteUrl) });
   } catch (e) {
-    logNote(`[payments] payment ${payment.id}: no order (${e instanceof MontonioError ? `${e.code}${e.detail ? `: ${e.detail}` : ""}` : "error"})`);
+    logNote(`[payments] payment ${payment.id}: no order${again ? " for the re-send, the payment stays pending" : ""} (${e instanceof MontonioError ? `${e.code}${e.detail ? `: ${e.detail}` : ""}` : "error"})`);
     // after the start's commit: failPayment locks the registration in a transaction of its own
-    await failPayment(deps.db, payment.id, deps.now);
+    if (!again) await failPayment(deps.db, payment.id, deps.now);
     return { kind: "failed" };
   }
   if (again) {

@@ -75,6 +75,39 @@ describe("PAID", () => {
     expect(m.mails()[1].text).toContain("Registreering on kinnitatud ja täielikult tasutud.");
   });
 
+  test("two paid rows of one registration whose sum is over its price: both are recorded as today, and Maria gets ONE 'Ülemakse' alert (the backstop of the double-payment rule)", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { paymentChoice: "full" });
+    const first = await pendingPayment(db, r, { amountCents: 35000 });
+    const second = await pendingPayment(db, r, { amountCents: 35000 });
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    for (const p of [first, second]) {
+      await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+      await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p))); // (a retry: no second alert)
+    }
+    await flush();
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 70000]);
+    expect([(await payment(first.id)).status, (await payment(second.id)).status]).toEqual(["paid", "paid"]);
+    const over = m.mails().filter((x) => x.subject.startsWith("Ülemakse"));
+    expect(over.map((x) => [x.to, x.subject])).toEqual([["maria@example.test", "Ülemakse: Kati Tamm, Kulmumeistri baaskoolitus"]]);
+    expect(over[0].text).toContain("Laekunud kokku 700 €, koolituse hind 350 €. Kontrolli Montonios ja tagasta liigne osa.");
+    expect(over[0].text).toContain(`Viide: ${second.reference}`);
+    expect(m.pings().filter((t) => t.startsWith("Ülemakse"))).toEqual([expect.stringContaining("Ülemakse: Kati Tamm, Kulmumeistri baaskoolitus")]);
+    // her mails and Maria's "Uus makse" are today's, one per payment
+    expect(m.mails().filter((x) => x.subject.startsWith("Uus makse"))).toHaveLength(2);
+  });
+
+  test("a payment that brings the sum exactly to the price is no overpayment", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { status: "confirmed", paidCents: 17500 });
+    const p = await pendingPayment(db, r, { kind: "balance" });
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
+    await flush();
+    expect((await registration(r.id)).paidCents).toBe(35000);
+    expect(m.mails().map((x) => x.subject).filter((s) => s.startsWith("Ülemakse"))).toEqual([]);
+  });
+
   test("paid when the course is full (D2): the money is recorded, the place stays unconfirmed, 'Makse laekus, aga koolitus on täis'", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db, { capacity: 1 });

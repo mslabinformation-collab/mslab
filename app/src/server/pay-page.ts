@@ -177,8 +177,9 @@ async function withinPayLimit(deps: PayPageDeps): Promise<boolean> {
  * GET /maksa/<token>: the page, nothing else. POST (its button): a cross-site POST is 403; else what is due is checked again and the payment
  * starts (server/payments/start.ts): 303 to Montonio's page. Nothing due by now: the page (its sentence). The session full: 409 with its line;
  * 5 starts from this IP in 10 minutes or 5 of this registration in an hour: 429; Montonio down or no payments: 503 "Midagi läks valesti".
- * The hold: what a start refreshes it refreshes together with a pending payment (one transaction), and a failed order ends it again
- * (db/queries/payments.ts failPayment), so a refusal or a throw here has no hold of its own to release.
+ * The hold: what a start refreshes it refreshes together with a pending payment (one transaction), and a failed new order ends it again
+ * (db/queries/payments.ts failPayment), so a refusal or a throw here has no hold of its own to release. (A failed re-send keeps its row
+ * pending and its hold: that order may be paid already, start.ts order.)
  */
 export async function handlePayPage(request: Request, token: string, deps: PayPageDeps): Promise<Response> {
   const online = deps.montonio !== null;

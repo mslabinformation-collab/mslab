@@ -272,6 +272,36 @@ export type PaymentAlert = {
   currency: string | null;
 };
 
+/**
+ * "Ülemakse: {nimi}, {kursus}" (the final review of 10.10): an online payment took the registration's paid sum over the course's price — the
+ * backstop of the double-payment rule (two orders of one registration both paid). The payment is recorded as any other; Maria refunds the
+ * part over the price in Montonio. `paidCents`: the registration's sum after this payment; `amountCents`: this payment.
+ */
+export function overpaymentSummary(
+  o: { kind: PaymentKind; name: string; email: string; amountCents: number; course: string; startsAt: Date | null; reference: string; providerUuid: string | null; paidCents: number; priceCents: number },
+  adminUrl: string,
+): Summary {
+  const subject = `Ülemakse: ${o.name}, ${o.course}`;
+  return {
+    subject,
+    text: body(
+      subject,
+      [
+        ["Makse", PAYMENT_KIND[o.kind]],
+        ["Summa", formatEUR(o.amountCents, "et")],
+        ["Koolitus", paidFor(o.kind, o.course, o.startsAt)],
+        ["Maksja", o.name],
+        ["E-post", o.email],
+        ["Viide", o.reference],
+        ["Montonio", o.providerUuid ?? undefined],
+      ],
+      adminUrl,
+      `Laekunud kokku ${formatEUR(o.paidCents, "et")}, koolituse hind ${formatEUR(o.priceCents, "et")}. Kontrolli Montonios ja tagasta liigne osa.`,
+    ),
+    short: subject,
+  };
+}
+
 /** A number of cents as a plain amount ("125,50"), for a currency other than the euro. */
 const plainAmount = (cents: number): string => formatEUR(cents, "et").replace(/ €$/, "");
 

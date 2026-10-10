@@ -1,11 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { payments, registrations, settings } from "@/db/schema";
+import { courses, payments, registrations, settings } from "@/db/schema";
 import type { PublicChange } from "@/server/cache-targets";
 import type { Env } from "@/server/notify";
-import type { Montonio } from "@/server/payments/montonio";
-import { paymentUrls, startRegistrationPayment, STARTS_PER_HOUR } from "@/server/payments/start";
+import { MontonioError, type Montonio } from "@/server/payments/montonio";
+import { paymentUrls, startEcoursePayment, startRegistrationPayment, STARTS_PER_HOUR } from "@/server/payments/start";
 import { handleRegistration, type Deps } from "@/server/submit";
 import { fakeKv } from "../fakes";
 import { contactCourse, loggedDb, registrationOn, SITE, stubMontonio } from "./payments-fixtures";
@@ -327,15 +327,46 @@ describe("a failed start and a failed re-send", () => {
     expect((await rows()).map((p) => p.status)).toEqual(["failed", "pending"]);
   });
 
-  test("a re-send that fails fails the row as a new attempt would (a late PAID of it still settles: paid is reachable from failed)", async () => {
+  // A re-send goes out under the reference of an order that may be paid already (its webhook late): Montonio then refuses it, or the call
+  // times out. Failing the row there freed its hold, and the next press made a NEW row and reference — a second order the payer could pay too.
+  test.each([
+    ["refused", (m: ReturnType<typeof stubMontonio>) => m.montonio],
+    ["timed out", (m: ReturnType<typeof stubMontonio>): Montonio => ({ ...m.montonio, createOrder: () => Promise.reject(new MontonioError("create", "unreachable")) })],
+  ])("a re-send that is %s: 'failed', but the row stays pending with its refreshed hold; the next press re-sends the SAME reference, and no second row is made", async (_, failing) => {
     const m = stubMontonio();
     const r = await registrationOn(db, await contactCourse(db));
     expect(await start(m.montonio, { registrationId: r.id })).toMatchObject({ kind: "started" });
-    expect((await reg()).seatHoldUntil).not.toBeNull();
+    const [open] = await rows();
     m.state.down = true;
-    expect(await start(m.montonio, { registrationId: r.id }, new Date(NOW.getTime() + 5 * MIN))).toEqual({ kind: "failed" });
-    expect((await rows()).map((p) => [p.status, p.providerUuid === null])).toEqual([["failed", false]]); // the row keeps the uuid of the order it has
-    expect((await reg()).seatHoldUntil).toBeNull();
+    const resent = new Date(NOW.getTime() + 5 * MIN);
+    expect(await start(failing(m), { registrationId: r.id }, resent)).toEqual({ kind: "failed" });
+    const [kept, ...none] = await rows();
+    expect(none).toEqual([]);
+    expect([kept.id, kept.status, kept.providerUuid]).toEqual([open.id, "pending", open.providerUuid]); // the uuid of the order it has
+    expect((await reg()).seatHoldUntil).toEqual(new Date(resent.getTime() + 30 * MIN));
+    // the next press: the same row and the same reference again, never a new attempt
+    m.state.down = false;
+    expect(await start(m.montonio, { registrationId: r.id }, new Date(NOW.getTime() + 6 * MIN))).toMatchObject({ kind: "started" });
+    expect((await rows()).map((p) => [p.id, p.reference, p.status])).toEqual([[open.id, open.reference, "pending"]]);
+    expect(new Set(m.state.orders.map((o) => o.merchantReference))).toEqual(new Set([open.reference]));
+  });
+
+  test("an e-course re-send that fails: the row stays pending; the next press re-sends the same reference", async () => {
+    const m = stubMontonio();
+    const [course] = await db
+      .insert(courses)
+      .values({ slug: "kulmumeistri-e-koolitus", type: "e_learning", level: "basic", title: { et: "Kulmumeistri e-koolitus" }, summary: { et: "" }, body: { et: "" }, published: true, price: 19000, accessMonths: 6 })
+      .returning();
+    const buy = (montonio: Montonio, now: Date) =>
+      startEcoursePayment({ db, now, siteUrl: SITE, montonio }, { courseId: course.id, amountCents: 19000, email: "ostja@example.com", name: "Kati Tamm", locale: "et", newsletter: false });
+    expect(await buy(m.montonio, NOW)).toMatchObject({ kind: "started" });
+    const [open] = await rows();
+    m.state.down = true;
+    expect(await buy(m.montonio, new Date(NOW.getTime() + 5 * MIN))).toEqual({ kind: "failed" });
+    expect((await rows()).map((p) => [p.id, p.status])).toEqual([[open.id, "pending"]]);
+    m.state.down = false;
+    expect(await buy(m.montonio, new Date(NOW.getTime() + 6 * MIN))).toMatchObject({ kind: "started" });
+    expect((await rows()).map((p) => [p.id, p.reference, p.status])).toEqual([[open.id, open.reference, "pending"]]);
   });
 
   test("the row was paid while Montonio was being called: its uuid is not replaced, Montonio is not called again, and the answer is 'nothing to pay'", async () => {

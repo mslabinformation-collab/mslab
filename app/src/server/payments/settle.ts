@@ -11,7 +11,7 @@ import { ecourseOpenMail, registrationPaidMail } from "../account-mail";
 import type { PublicChange } from "../cache-targets";
 import { issueClientLogin } from "../client-auth";
 import { logFailure, logNote } from "../log";
-import { paymentAlertSummary, paymentSummary, type PaymentNotice } from "../messages";
+import { overpaymentSummary, paymentAlertSummary, paymentSummary, type PaymentNotice } from "../messages";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env } from "../notify";
 import { releaseSlot, reserveSlot } from "../ratelimit";
 import { subscribeLater } from "../submit";
@@ -25,9 +25,10 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken } from "./mont
 //   the registration (db/queries/admin.ts addRegistrationPayment: confirmed from 50 %, unless the course is full, D2), or, for an e-course, its
 //   client is found or created and the course opened (grant.ts, in a savepoint: a grant that throws is rolled back alone, the row stays paid
 //   and Maria is told at once that nothing was opened, unless the error is a transient database one, which rolls everything back and leaves
-//   the row pending for the next call; openCourse also says why this order of locks cannot deadlock). After it: the seats are revalidated, and the payer's mail and Maria's notice
-//   go out after the response (an e-course's with a login code, and the newsletter sign-up when it was ticked). Every other caller finds the row
-//   paid and does nothing.
+//   the row pending for the next call; openCourse also says why this order of locks cannot deadlock). After it: the seats are revalidated, and
+//   the payer's mail and Maria's notice go out after the response (an e-course's with a login code, and the newsletter sign-up when it was
+//   ticked), and Maria's "Ülemakse" when the payment took the registration's paid sum over its price (alertIfOverpaid). Every other caller
+//   finds the row paid and does nothing.
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
 // - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
 //   nothing; a VOIDED (the bank took a paid payment back) is stored as failed with its paid_at and alerts Maria, who decides.
@@ -183,8 +184,27 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
         await subscribeLater({ db: deps.db, env: deps.env, ip: null, siteUrl: deps.siteUrl, now: deps.now, later: deps.later }, "ecourse", { email: won.payment.email, locale: won.payment.locale });
     }
   });
+  if (won.registration) alertIfOverpaid(deps, won.payment, won.registration);
   if (won.registration) await seatsChanged(deps, won.registration.course.slug);
   return won.payment;
+}
+
+/**
+ * The backstop of the double-payment rule (start.ts): when this payment took the registration's paid sum over the course's price (two
+ * orders of one registration both paid), Maria gets one "Ülemakse" alert, after the response. It is part of the winner's once-only work, so it
+ * goes out once per payment; the payment is recorded as any other.
+ */
+function alertIfOverpaid(deps: SettleDeps, p: Payment, r: RegistrationPaid): void {
+  const price = registrationPrice(r.course, r.registration.kind);
+  if (price === null || r.registration.paidCents <= price) return;
+  logNote(`[payments] payment ${p.id}: over the price, Maria is alerted`);
+  deps.later(async () => {
+    const s = overpaymentSummary(
+      { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: pick(r.course.title, "et"), startsAt: r.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, paidCents: r.registration.paidCents, priceCents: price },
+      adminUrl(deps.siteUrl),
+    );
+    await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+  });
 }
 
 /**
