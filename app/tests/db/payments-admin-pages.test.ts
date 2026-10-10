@@ -164,6 +164,26 @@ test("Maksed: statuses in Estonian; 'Kontrolli Montonios' on a held payment and 
   expect(html).not.toMatch(/>(held|failed|refunded|pending|paid)</);
 });
 
+test("Maksed: 'Kuupäev' is the day it was paid (else the day it was started), and the list is newest first by that day", async () => {
+  const own = await makeTestDb();
+  const was = state.db;
+  state.db = own;
+  try {
+    const r = await registrationOn(own, await contactCourse(own));
+    // started on 1.10 and paid on 5.10; another started on 3.10 and still pending
+    const paidLater = await pendingPayment(own, r, {}, new Date("2026-10-01T09:00:00Z"));
+    await own.update(payments).set({ status: "paid", paidAt: new Date("2026-10-05T09:00:00Z") }).where(eq(payments.id, paidLater.id));
+    const open = await pendingPayment(own, r, { kind: "balance" }, new Date("2026-10-03T09:00:00Z"));
+    const html = await render(PaymentsPage);
+    expect(refs(html)).toEqual([paidLater.reference, open.reference]);
+    const day = (reference: string) => /data-label="Kuupäev"[^>]*>([\s\S]*?)<\/td>/.exec(row(html, reference))![1].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    expect(day(paidLater.reference)).toBe("05.10.2026 12:00"); // 09:00 UTC is 12:00 in Tallinn (summer time)
+    expect(day(open.reference)).toBe("03.10.2026 12:00");
+  } finally {
+    state.db = was;
+  }
+});
+
 test("Maksed: no payments yet, and a filter with none, each say so", async () => {
   const empty = await makeTestDb();
   const was = state.db;

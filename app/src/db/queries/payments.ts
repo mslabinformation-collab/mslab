@@ -269,14 +269,21 @@ function rowQuery(db: Db) {
 
 const toRow = (r: { payment: Payment; courseTitle: I18n | null; courseSlug: string | null; startsAt: Date | null }): PaymentRow => ({ ...r.payment, courseTitle: r.courseTitle, courseSlug: r.courseSlug, startsAt: r.startsAt });
 
-/** One page of "Maksed": newest first, `size` (50) a page, all or one status. */
+/**
+ * The day "Maksed" shows and sorts a payment by (its "Kuupäev"): the day it was paid, else the day it was started (the owner's default of
+ * 10.10: a payment paid later shows its pay day, as Maria's bank statement does). A voided one keeps its paid_at, so it shows its pay day too.
+ * The page shows the same day (app/admin/(panel)/maksed/page.tsx).
+ */
+const listedAt = sql`coalesce(${payments.paidAt}, ${payments.createdAt})`;
+
+/** One page of "Maksed": newest first by listedAt, `size` (50) a page, all or one status. */
 export async function pagePayments(db: Db, filter: PaymentFilter, page: number, size: number = PAGE_SIZE): Promise<Paged<PaymentRow>> {
   const where = filter === "all" ? undefined : eq(payments.status, filter);
   return paged(
     page,
     size,
     async () => Number((await db.select({ n: count() }).from(payments).where(where))[0].n),
-    async (range) => (await rowQuery(db).where(where).orderBy(desc(payments.createdAt), desc(payments.id)).limit(range.limit).offset(range.offset)).map(toRow),
+    async (range) => (await rowQuery(db).where(where).orderBy(desc(listedAt), desc(payments.id)).limit(range.limit).offset(range.offset)).map(toRow),
   );
 }
 

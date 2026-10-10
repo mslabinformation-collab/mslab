@@ -48,8 +48,9 @@ function href(view: View): string {
 }
 
 /**
- * Maksed (phase 2b, spec 8): the online payments, newest first, 50 a page, with the status filter. Each row: the date, the payer (a link to the
- * student when the payment has one), what it was for, the kind, the amount, how it was paid (Pangalink · Swedbank, Kaart …), the status —
+ * Maksed (phase 2b, spec 8): the online payments, newest first, 50 a page, with the status filter. Each row: the date (the day it was paid,
+ * else the day it was started), the payer (a link to the student when the payment has one), what it was for, the kind, the amount, how it
+ * was paid (Pangalink · Swedbank, Kaart …), the status —
  * "Kontrolli Montonios" on a held payment or one voided after it was paid — and Montonio's id (to find it in Montonio's dashboard).
  * Read-only: refunds are made in Montonio's own dashboard.
  */
@@ -108,12 +109,14 @@ export default async function PaymentsPage({ searchParams }: Props) {
               <tbody>
                 {list.rows.map((p) => {
                   const check = needsCheck(p);
+                  // the day it was paid, else the day it was started: the list's own order (db/queries/payments.ts pagePayments)
+                  const day = p.paidAt ?? p.createdAt;
                   return (
                     <tr key={p.id} className={check ? styles.check : undefined} data-payment={p.reference} data-payment-status={p.status}>
                       <td data-label={t.col.date} className={ui.nowrap}>
                         <span>
-                          {formatDate(p.createdAt, "et")}
-                          <span className={`${ui.muted} ${styles.sub}`}>{formatTime(p.createdAt, "et")}</span>
+                          {formatDate(day, "et")}
+                          <span className={`${ui.muted} ${styles.sub}`}>{formatTime(day, "et")}</span>
                         </span>
                       </td>
                       <td data-label={t.col.payer}>
