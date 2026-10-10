@@ -197,6 +197,15 @@ test("Registreerimised: the registration's drawer lists its online payments unde
   expect(html.indexOf("data-registration-payments")).toBeGreaterThan(html.indexOf("Laekunud</dt>"));
 });
 
+test("Registreerimised: ?staatus= with a name of the object's prototype ('constructor', '__proto__' …) is the unfiltered list, not a 500", async () => {
+  const count = (html: string) => /Registreerimisi: \d+/.exec(html)?.[0];
+  const all = count(await render(RegistrationsPage));
+  expect(all).toMatch(/Registreerimisi: [1-9]/);
+  expect(count(await render(RegistrationsPage, { staatus: "midagi-muud" }))).toBe(all);
+  for (const own of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) expect(count(await render(RegistrationsPage, { staatus: own })), own).toBe(all);
+  expect(count(await render(RegistrationsPage, { staatus: "kinnitatud" }))).toBe("Registreerimisi: 0"); // (a real filter still filters: none is confirmed)
+});
+
 test("Registreerimised: no online payments, no block; and the old e-learning note is gone", async () => {
   const bare = await registrationOn(db, contact, { email: "bare@example.com", name: "Ilma Maksetaa" });
   const html = await render(RegistrationsPage, { id: String(bare.id) });

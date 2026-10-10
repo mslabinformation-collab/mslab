@@ -44,7 +44,8 @@ function parse(sp: Search): View & { id: number | null } {
   const id = Number(one(sp.id));
   return {
     vorm: vorm === "e" || vorm === "k" ? vorm : null,
-    staatus: staatus && staatus in STATUS_PARAM ? STATUS_PARAM[staatus] : null,
+    // (own keys only: "constructor" or "__proto__" in the address must not read the object's prototype, as on Maksed)
+    staatus: staatus && Object.hasOwn(STATUS_PARAM, staatus) ? STATUS_PARAM[staatus] : null,
     leht: parsePage(sp.leht),
     id: Number.isInteger(id) && id > 0 && id <= 2_147_483_647 ? id : null,
   };
