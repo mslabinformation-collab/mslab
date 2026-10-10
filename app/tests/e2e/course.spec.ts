@@ -477,7 +477,7 @@ test.describe("cart (/ostukorv)", () => {
     await expect(form.locator("input[name='locale']")).toHaveValue("ru");
   });
 
-  test("paid at the bank: the course opens for the buyer (by payment), and she lands on 'Makse õnnestus.'; 'Maksa' again within 30 minutes is not a second charge (phase 2b)", async ({ page, isMobile }, info) => {
+  test("paid at the bank: the course opens for the buyer (by payment), and she lands on 'Makse õnnestus.'; 'Maksa' again within 30 minutes is not a second charge (phase 2b)", async ({ page }, info) => {
     submitsForms();
     test.skip(!LOCAL_FIXTURES, "reads the local database");
     const addr = clientEmail("buy", info.project.name); // a sample address: never mailed; its rows are removed with the account tests'
@@ -502,19 +502,17 @@ test.describe("cart (/ostukorv)", () => {
       // no session was made by buying: the course is behind her login link, which only the mail carries
       expect((await page.context().cookies()).some((c) => c.name === "__Host-mslab_client")).toBe(false);
       // Back from the bank brings the cart back with "Maksa" ready: pressing it now (the Russian cart, so that the Russian text is checked
-      // too) says it is paid, in the form's place, and starts nothing (Dim, 10.10). One press, on the desktop run only: the dev server counts
-      // 5 presses of this form per 10 minutes for every visitor, for both projects together.
-      if (!isMobile) {
-        await page.goto("/ru/ostukorv?kursus=kulmumeistri-e-koolitus");
-        const again = page.locator("[data-ecourse-form]");
-        await again.getByLabel("Имя").fill("Test Ostja");
-        await again.getByLabel("E-mail").fill(addr);
-        await again.getByLabel(/условиями/).check();
-        await again.getByRole("button", { name: "Оплатить 190 €" }).click();
-        await expect(page.getByText("Оплата уже прошла — проверьте свою почту.")).toBeVisible();
-        await expect(page.locator("[data-ecourse-form]")).toHaveCount(0);
-        expect(await storedPayments(addr)).toEqual([{ kind: "ecourse", status: "paid", amountCents: 19000 }]); // still the one payment
-      }
+      // too) says it is paid, in the form's place, and starts nothing (Dim, 10.10). Both projects press it: the forms' limit (5 presses in 10
+      // minutes) is counted per visitor, and every test is a visitor of its own (test.ts visitorIp), so the two projects share no counter.
+      await page.goto("/ru/ostukorv?kursus=kulmumeistri-e-koolitus");
+      const again = page.locator("[data-ecourse-form]");
+      await again.getByLabel("Имя").fill("Test Ostja");
+      await again.getByLabel("E-mail").fill(addr);
+      await again.getByLabel(/условиями/).check();
+      await again.getByRole("button", { name: "Оплатить 190 €" }).click();
+      await expect(page.getByText("Оплата уже прошла — проверьте свою почту.")).toBeVisible();
+      await expect(page.locator("[data-ecourse-form]")).toHaveCount(0);
+      expect(await storedPayments(addr)).toEqual([{ kind: "ecourse", status: "paid", amountCents: 19000 }]); // still the one payment
     } finally {
       await removeClientRows(addr);
     }
