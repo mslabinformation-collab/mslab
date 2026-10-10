@@ -2,6 +2,7 @@ import type { Page, Request, TestInfo } from "@playwright/test";
 import { clientEmail, insertAccountFixtures, signInAsClient, storedAccess, storedClient } from "./account";
 import { signInAsAdmin, type CreatedRows } from "./admin-login";
 import { insertStoredPayment, onLocalDb, removeAdminRows, removeClientRows, storedPayments, storedPayToken, storedRegistrations } from "./fixtures";
+import { ECOURSE_BUY_LOCK_CLASS } from "../../src/server/payments/start";
 import { E2E_MONTONIO } from "./montonio-values";
 import { revalidateLocalPages } from "./prod-build";
 import { LOCAL_URL, TARGET } from "./target";
@@ -12,8 +13,10 @@ import { submitsForms, test, expect } from "./test";
 // rows — registrations, payments, the client — are removed after each test (fixtures.ts removeClientRows). A paid group registration takes a
 // real seat of a seed session (Kulmumeistri baaskoolitus, Tallinn, 6 seats) for the length of the test; no other spec counts that session's
 // seats, and the row is removed after the test (and the cached pages of a production build are marked stale, so the seat is given back there too).
-// Two tests prove on the local Postgres what the unit tests' single-connection PGlite cannot: the once-only work under two webhooks at the
-// same moment, and one pending payment under two starts of the same e-course purchase at the same moment.
+// Three tests prove on the local Postgres what the unit tests' single-connection PGlite cannot: the once-only work under four webhooks of one
+// token at the same moment, and one pending payment under eight starts of the same e-course purchase at the same moment. The race alone does
+// not always overlap (with the lock removed, eight racers still missed it in one run in five), so the lock has a test that never misses: another
+// connection holds the purchase's advisory lock and a start must wait for it.
 
 const APP = new URL(TARGET || LOCAL_URL);
 const made = new Set<string>();
@@ -212,7 +215,7 @@ test("the admin's Maksed: the filter, 'Kontrolli Montonios' on a held payment; t
   await expect(lines).not.toContainText("paymentInitiation");
 });
 
-test("two webhooks of the same PAID token at the same moment: both 200, the payment paid once, the registration credited once (Postgres, Task 3)", async ({ page }, info) => {
+test("four webhooks of the same PAID token at the same moment: all 200, the payment paid once, the registration credited once (Postgres, Task 3)", async ({ page }, info) => {
   const email = await fresh("twice", info);
   const f = await insertAccountFixtures(email, { cards: ["awaiting"] });
   await page.goto(`/maksa/${await storedPayToken(f.registrations.awaiting!)}`);
@@ -226,25 +229,27 @@ test("two webhooks of the same PAID token at the same moment: both 200, the paym
 
   const hook = new URL("/api/payments/notify", APP);
   const send = () => fetch(hook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ orderToken }) });
-  const answers = await Promise.all([send(), send()]);
-  expect(answers.map((a) => a.status)).toEqual([200, 200]);
+  const answers = await Promise.all(Array.from({ length: 4 }, send));
+  expect(answers.map((a) => a.status)).toEqual([200, 200, 200, 200]);
   expect(await storedPayments(email)).toEqual([{ kind: "prepayment", status: "paid", amountCents: 17500 }]); // one row, paid
-  expect(await storedRegistrations(email)).toEqual([expect.objectContaining({ status: "confirmed", paidCents: 17500 })]); // credited once, not 35000
+  expect(await storedRegistrations(email)).toEqual([expect.objectContaining({ status: "confirmed", paidCents: 17500 })]); // credited once, not four times (70000)
   // and Montonio's retry, long after: still 200 and nothing new
   expect((await send()).status).toBe(200);
   expect(await storedRegistrations(email)).toEqual([expect.objectContaining({ status: "confirmed", paidCents: 17500 })]);
   expect(await storedPayments(email)).toEqual([{ kind: "prepayment", status: "paid", amountCents: 17500 }]);
 });
 
-test("the same e-course purchase started twice at the same moment is one pending payment, never two charges (the advisory lock, Postgres, Task 7)", async ({ page, visitorIp }, info) => {
-  const email = await fresh("lock", info);
+/**
+ * The e-course form filled in for `email`, and its press held back at the browser: the page's own server-action call, as it is (the same form
+ * data, the same action), is captured and refused there. `replay(racer)` sends it again from the test process, as a visitor of its own (the forms
+ * allow 5 presses in 10 minutes per visitor), and answers the response.
+ */
+async function heldEcoursePress(page: Page, email: string): Promise<{ replay: (racer: string) => Promise<Response> }> {
   await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
   const form = page.locator("[data-ecourse-form]");
   await form.getByLabel("Nimi").fill("Test Ostja");
   await form.getByLabel("E-post").fill(email);
   await form.getByLabel(/tingimustega/).check();
-  // The press is held back at the browser and sent twice, side by side, by the test: the page's own action call as it is (the same form
-  // data, the same action), once from each of two requests that meet in the server at the same moment.
   let hold!: (request: Request) => void;
   const held = new Promise<Request>((resolve) => (hold = resolve));
   await page.route("**/*", (route) => {
@@ -258,12 +263,48 @@ test("the same e-course purchase started twice at the same moment is one pending
   const body = press.postDataBuffer();
   expect(body, "the form data of the press").not.toBeNull();
   const headers = Object.fromEntries(Object.entries(await press.allHeaders()).filter(([name]) => !["host", "connection", "content-length", "accept-encoding"].includes(name)));
-  headers["x-forwarded-for"] = visitorIp;
-  const replay = () => fetch(press.url(), { method: "POST", headers, body: new Uint8Array(body!) });
-  const answers = await Promise.all([replay(), replay()]);
-  for (const answer of answers) {
-    expect(answer.status).toBe(200);
-    expect(await answer.text()).toContain(`"paymentUrl":"${E2E_MONTONIO.url}/pay/`); // both are sent to the bank, to the one open order
-  }
+  return { replay: (racer) => fetch(press.url(), { method: "POST", headers: { ...headers, "x-forwarded-for": racer }, body: new Uint8Array(body!) }) };
+}
+
+/** A visitor address of its own for each racer of a test (the server keeps 64 characters of an address, and the run-unique part comes first). */
+const racerIps = (visitorIp: string, n: number) => Array.from({ length: n }, (_, i) => `e2e-lock-${visitorIp.slice(0, 40)}-${i}`);
+
+const answeredWithBank = async (answer: Response) => {
+  expect(answer.status).toBe(200);
+  expect(await answer.text()).toContain(`"paymentUrl":"${E2E_MONTONIO.url}/pay/`); // sent to the bank, to the one open order
+};
+
+test("a start of an e-course purchase waits for the purchase's advisory lock while another transaction holds it, and goes on when it is let go (Postgres, Task 7)", async ({ page, visitorIp }, info) => {
+  const email = await fresh("held", info);
+  const { replay } = await heldEcoursePress(page, email);
+  const [course] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from courses where slug = 'kulmumeistri-e-koolitus'`, { marksPages: false });
+  let answer!: Promise<Response>;
+  let finished = false;
+  // another connection holds the purchase's lock (start.ts lockEcoursePurchase: class ECOURSE_BUY_LOCK_CLASS, key "<course id>:<address>") …
+  await onLocalDb(
+    (sql) =>
+      sql.begin(async (tx) => {
+        await tx`select pg_advisory_xact_lock(${ECOURSE_BUY_LOCK_CLASS}::int, hashtext(${`${course.id}:${email}`}))`;
+        answer = replay(racerIps(visitorIp, 1)[0]);
+        void answer.then(() => (finished = true), () => (finished = true));
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        // … so the start cannot have got further than the lock: no answer yet, and no payment row (the look for an open attempt and the insert are behind it)
+        expect(finished, "the start went past the purchase's lock while it was held").toBe(false);
+        expect(await storedPayments(email)).toEqual([]);
+      }),
+    { marksPages: false },
+  );
+  // the lock is let go with the transaction: the start goes on and ends as any other
+  await answeredWithBank(await answer);
+  expect(await storedPayments(email)).toEqual([{ kind: "ecourse", status: "pending", amountCents: 19000 }]);
+});
+
+test("the same e-course purchase started eight times at the same moment is one pending payment, never several charges (the advisory lock, Postgres, Task 7)", async ({ page, visitorIp }, info) => {
+  const email = await fresh("lock", info);
+  const { replay } = await heldEcoursePress(page, email);
+  // eight requests that meet in the server at the same moment. Without the lock, two or three of them are enough to make two rows, but how often
+  // they overlap varies (about four runs in five caught the missing lock): the test above is the one that never misses it.
+  const answers = await Promise.all(racerIps(visitorIp, 8).map(replay));
+  for (const answer of answers) await answeredWithBank(answer);
   expect(await storedPayments(email)).toEqual([{ kind: "ecourse", status: "pending", amountCents: 19000 }]);
 });
