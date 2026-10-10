@@ -5,7 +5,7 @@
  * ("Failed query: <sql>\nparams: <values>"): rows of the copy tool carry the clients' comment text, the sample data carries
  * names and addresses. So no message of a database error is ever printed, not even a redacted one: only a fixed text and
  * the driver's own error code (a Postgres SQLSTATE such as 23505, or a Node / postgres.js code such as ECONNREFUSED), which
- * the wrapper keeps on its `cause`.
+ * the wrapper keeps on its `cause`. (dbErrorCode also tells the daily payment check a lost connection: db/queries/payments.ts isConnectionError.)
  */
 
 /** A code is an identifier (SQLSTATE, ECONNREFUSED, CONNECT_TIMEOUT), never free text: anything else is not printed. */

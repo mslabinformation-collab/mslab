@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, test } from "vitest";
 import type { Db } from "@/db/client";
-import { attachOrder, failPayment, insertPayment, paymentByReference, paymentContext, releaseHold, releaseHoldLocked } from "@/db/queries/payments";
+import { attachOrder, failPayment, insertPayment, isConnectionError, paymentByReference, paymentContext, releaseHold, releaseHoldLocked } from "@/db/queries/payments";
 import { courses, payments, registrations } from "@/db/schema";
 import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
@@ -161,5 +161,21 @@ describe("paymentContext", () => {
     expect(await paymentContext(db, e.id)).toEqual({ course: null, session: null, payToken: null });
     expect(await paymentContext(db, 99999)).toEqual({ course: null, session: null, payToken: null });
     expect(await db.select().from(courses)).toHaveLength(1);
+  });
+});
+
+describe("isConnectionError: the only errors that stop a loop of the daily check", () => {
+  test("SQLSTATE class 08 and the driver's connection errors, on the error or down its cause (drizzle's wrapper); nothing else", () => {
+    const wrapped = (code: string) => Object.assign(new Error("Failed query"), { cause: Object.assign(new Error("driver"), { code }) });
+    for (const code of ["08000", "08003", "08006", "08001", "08004", "08P01", "CONNECTION_CLOSED", "CONNECTION_ENDED", "CONNECTION_DESTROYED", "CONNECT_TIMEOUT", "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH"]) {
+      expect(isConnectionError(Object.assign(new Error("x"), { code })), code).toBe(true);
+      expect(isConnectionError(wrapped(code)), `wrapped ${code}`).toBe(true);
+    }
+    // a poison row's errors, and the transient ones a retry gets past, go on to the next row
+    for (const code of ["P0001", "23505", "23514", "40001", "40P01", "55P03", "57014", "XX000", "08", "0800", "080000", "ABC08"]) {
+      expect(isConnectionError(Object.assign(new Error("x"), { code })), code).toBe(false);
+      expect(isConnectionError(wrapped(code)), `wrapped ${code}`).toBe(false);
+    }
+    for (const other of [new Error("x"), new TypeError("boom"), null, undefined, "08006", { code: 8006 }]) expect(isConnectionError(other), String(other)).toBe(false);
   });
 });

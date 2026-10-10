@@ -360,14 +360,17 @@ describe("the rows that fail: through failPayment, the registration's lock first
 
 describe("one payment that cannot be settled does not stop the check", () => {
   // A row whose settlement (or whose failing) throws on every run used to abort the whole check: the rows behind it were never asked about, and
-  // a stale one never left the stale set. Now each row is its own try: the error is counted and logged (class and code), the next row goes on;
-  // three in a row stop the run (a dead database must not burn fifty rows), and what was not reached is counted as left.
-  const poison = async (table: "registrations" | "payments") => {
+  // a stale one never left the stale set. Now each row is its own try: the error is counted and logged (class and code), the next row goes on.
+  // Only connection errors (SQLSTATE class 08, the driver's own) stop a loop, three in a row (a dead database must not burn fifty rows), and
+  // what was not reached is counted as left: poison rows at the head of the queue can never starve the rows behind them.
+  // A row Montonio says is PAID but that cannot be settled is money taken and recorded nowhere: Maria is told, once per payment.
+  const poison = async (table: "registrations" | "payments", errcode = "P0001") => {
     const condition = table === "registrations" ? "new.paid_cents > 0" : "new.status = 'failed'";
-    await db.execute(sql.raw(`create function mslab_poison() returns trigger language plpgsql as $$ begin if ${condition} and new.email like 'giftig%' then raise exception 'refused'; end if; return new; end $$`));
+    await db.execute(sql.raw(`create function mslab_poison() returns trigger language plpgsql as $$ begin if ${condition} and new.email like 'giftig%' then raise exception 'refused' using errcode = '${errcode}'; end if; return new; end $$`));
     await db.execute(sql.raw(`create trigger mslab_poison before update on ${table} for each row execute function mslab_poison()`));
   };
   const logged = () => vi.mocked(console.error).mock.calls.map((c) => c.map(String).join(" "));
+  const STUCK = "Makse vajab kontrolli: ";
 
   test("a settlement that throws on every run: the next row is still asked about and settled; the error is counted and logged without an address", async () => {
     const m = stubMontonio();
@@ -380,14 +383,62 @@ describe("one payment that cannot be settled does not stop the check", () => {
     expect(await checkPendingPayments(deps, FOREVER)).toEqual({ checked: 2, settled: 1, unanswered: 0, expired: 0, left: 0, outOfTime: false, holdsEnded: 0, errors: 1 });
     await flush();
     expect([await status(bad.id), await status(good.id)]).toEqual(["pending", "paid"]);
-    expect(m.mails().map((x) => x.to)).toEqual(["hea@example.com", "maria@example.test"]);
+    expect(m.mails().filter((x) => !x.subject.startsWith(STUCK)).map((x) => x.to)).toEqual(["hea@example.com", "maria@example.test"]);
     // the log has the payment's id, the error's class and code: no address, no message
     expect(logged().filter((l) => l.includes("could not be settled"))).toEqual([`[payments] a payment could not be settled (payment ${bad.id}): DrizzleQueryError (code P0001)`]);
-    expect(logged().join("\n")).not.toMatch(/giftig|refused|@/);
+    expect(logged().join("\n")).not.toMatch(/giftig|refused|@|MSLAB-M/);
     // tomorrow, with the cause gone, the same row is settled
     await db.execute(sql`drop trigger mslab_poison on registrations`);
     expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ checked: 1, settled: 1, errors: 0 });
     expect(await status(bad.id)).toBe("paid");
+  });
+
+  test("Montonio says PAID and the settlement throws: Maria gets ONE 'Makse vajab kontrolli' across two runs (kept in the KV for 30 days), the row stays pending", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await poison("registrations");
+    const bad = await pendingPayment(db, await registrationOn(db, c, { email: "giftig@example.com", name: "Mari Mürk" }), {}, ago(3 * 60 * MIN));
+    m.state.snapshots.set(bad.providerUuid!, snapshot(bad, "PAID"));
+    const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
+    for (let run = 0; run < 2; run++) {
+      expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ checked: 1, settled: 0, errors: 1 });
+      await flush();
+    }
+    const stuck = m.mails().filter((x) => x.subject.startsWith(STUCK));
+    expect(stuck.map((x) => [x.to, x.subject])).toEqual([["maria@example.test", "Makse vajab kontrolli: Mari Mürk"]]);
+    expect(stuck[0].text).toContain(`Montonio järgi on 175 € makstud (viide ${bad.reference}), aga seda ei õnnestunud kirja panna. Kontrolli Montonios ja märgi makse registreeringu juures käsitsi.`);
+    expect(m.pings().filter((t) => t.startsWith(STUCK))).toHaveLength(1);
+    expect(kv.ttl.get(`pay:stuck:${bad.id}`)).toBe(30 * 86_400);
+    expect(await status(bad.id)).toBe("pending");
+    expect(logged().join("\n")).not.toMatch(/giftig|Mürk|@|MSLAB-M/);
+  });
+
+  test("an alert that reached no one gives its KV record back: the next run tells Maria", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await poison("registrations");
+    const bad = await pendingPayment(db, await registrationOn(db, c, { email: "giftig@example.com" }), {}, ago(3 * 60 * MIN));
+    m.state.snapshots.set(bad.providerUuid!, snapshot(bad, "PAID"));
+    const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
+    const silent = { ...deps, env: { ...deps.env, RESEND_API_KEY: undefined, TELEGRAM_BOT_TOKEN: undefined } };
+    await checkPendingPayments(silent, FOREVER);
+    await flush();
+    expect(kv.store.get(`pay:stuck:${bad.id}`) ?? "0").toBe("0");
+    await checkPendingPayments(deps, FOREVER);
+    await flush();
+    expect(m.mails().filter((x) => x.subject.startsWith(STUCK))).toHaveLength(1);
+  });
+
+  test("no alert when Montonio does not say PAID (an ABANDONED whose failing throws: no money was taken)", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await poison("payments");
+    const abandoned = await pendingPayment(db, await registrationOn(db, c, { email: "giftig@example.com" }), {}, ago(3 * 60 * MIN));
+    m.state.snapshots.set(abandoned.providerUuid!, snapshot(abandoned, "ABANDONED"));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ checked: 1, errors: 1 });
+    await flush();
+    expect(m.mails()).toEqual([]);
   });
 
   test("a stale row whose failing throws does not stop the check: the other stale row is failed and the pending payments are still asked about", async () => {
@@ -406,7 +457,7 @@ describe("one payment that cannot be settled does not stop the check", () => {
     expect(logged().filter((l) => l.includes("could not be settled"))).toEqual([`[payments] a payment could not be settled (payment ${bad.id}): DrizzleQueryError (code P0001)`]);
   });
 
-  test("three errors in a row stop the asking (what was not reached is left), and the seats are still revalidated", async () => {
+  test("a non-connection error on the first three rows (and the fourth) does not stop the asking: the row behind them is settled", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
     await poison("registrations");
@@ -416,16 +467,34 @@ describe("one payment that cannot be settled does not stop the check", () => {
     for (const p of rows) m.state.snapshots.set(p.providerUuid!, snapshot(p, "PAID"));
     await registrationOn(db, c, { email: "hold@example.com", seatHoldUntil: ago(5 * 60 * MIN) }); // a hold that ended in the last day
     const { deps, changes } = settleDeps(db, m.montonio, NOW);
+    expect(await checkPendingPayments(deps, FOREVER)).toEqual({ checked: 5, settled: 1, unanswered: 0, expired: 0, left: 0, outOfTime: false, holdsEnded: 1, errors: 4 });
+    expect(m.state.gets).toHaveLength(5);
+    expect(await Promise.all(rows.map((p) => status(p.id)))).toEqual(["pending", "pending", "pending", "pending", "paid"]);
+    expect(changes).toEqual([{ kind: "seats", course: "kulmumeistri-baaskoolitus" }, { kind: "seats" }]); // the paid one's, then the ended hold's
+  });
+
+  test("connection errors (SQLSTATE class 08), three in a row, stop the asking: what was not reached is left, no alert is sent, and the seats are still revalidated", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await poison("registrations", "08006");
+    const rows: Payment[] = [];
+    for (let i = 1; i <= 4; i++) rows.push(await pendingPayment(db, await registrationOn(db, c, { email: `giftig${i}@example.com` }), {}, ago((10 - i) * 60 * MIN)));
+    rows.push(await pendingPayment(db, await registrationOn(db, c, { email: "hea@example.com" }), {}, ago(2 * 60 * MIN)));
+    for (const p of rows) m.state.snapshots.set(p.providerUuid!, snapshot(p, "PAID"));
+    await registrationOn(db, c, { email: "hold@example.com", seatHoldUntil: ago(5 * 60 * MIN) });
+    const { deps, changes, flush } = settleDeps(db, m.montonio, NOW);
     expect(await checkPendingPayments(deps, FOREVER)).toEqual({ checked: 3, settled: 0, unanswered: 0, expired: 0, left: 2, outOfTime: false, holdsEnded: 1, errors: 3 });
+    await flush();
     expect(m.state.gets).toHaveLength(3);
     expect(await Promise.all(rows.map((p) => status(p.id)))).toEqual(["pending", "pending", "pending", "pending", "pending"]);
     expect(changes).toEqual([{ kind: "seats" }]);
+    expect(m.mails()).toEqual([]);
   });
 
-  test("errors that are not in a row do not stop it: a good row in between starts the count again", async () => {
+  test("connection errors that are not in a row do not stop it: a good row in between starts the count again", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
-    await poison("registrations");
+    await poison("registrations", "08006");
     const rows: Payment[] = [];
     // two bad, a good one, two bad, a good one: four errors, never three in a row
     for (const [i, who] of ["giftig1", "giftig2", "hea1", "giftig3", "giftig4", "hea2"].entries()) rows.push(await pendingPayment(db, await registrationOn(db, c, { email: `${who}@example.com` }), {}, ago((10 - i) * 60 * MIN)));
@@ -435,10 +504,25 @@ describe("one payment that cannot be settled does not stop the check", () => {
     expect(await Promise.all(rows.map((p) => status(p.id)))).toEqual(["pending", "pending", "paid", "pending", "pending", "paid"]);
   });
 
-  test("three stale rows in a row that cannot be failed stop the failing (the rest is left); the asking goes on", async () => {
+  test("stale rows that cannot be failed (not a connection error) do not stop the failing: the one behind four of them is failed, and the asking goes on", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
     await poison("payments");
+    const rows: Payment[] = [];
+    for (let i = 1; i <= 4; i++) rows.push(await pendingPayment(db, await registrationOn(db, c, { email: `giftig${i}@example.com` }), {}, ago((21 - i) * DAY)));
+    rows.push(await pendingPayment(db, await registrationOn(db, c, { email: "vana@example.com" }), {}, ago(15 * DAY)));
+    const open = await pendingPayment(db, await registrationOn(db, c, { email: "hea@example.com" }), {}, ago(2 * 60 * MIN));
+    m.state.snapshots.set(open.providerUuid!, snapshot(open, "PENDING"));
+    const { deps } = settleDeps(db, m.montonio, NOW);
+    expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ checked: 1, expired: 1, left: 0, errors: 4 });
+    expect(await Promise.all(rows.map((p) => status(p.id)))).toEqual(["pending", "pending", "pending", "pending", "failed"]);
+    expect(m.state.gets).toEqual([open.providerUuid]);
+  });
+
+  test("three stale rows in a row that fail with a connection error stop the failing (the rest is left); the asking goes on", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await poison("payments", "08006");
     const rows: Payment[] = [];
     for (let i = 1; i <= 4; i++) rows.push(await pendingPayment(db, await registrationOn(db, c, { email: `giftig${i}@example.com` }), {}, ago((21 - i) * DAY)));
     rows.push(await pendingPayment(db, await registrationOn(db, c, { email: "vana@example.com" }), {}, ago(15 * DAY)));

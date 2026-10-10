@@ -4,6 +4,7 @@ import { PAGE_SIZE } from "@/domain/paging";
 import { orderReference } from "@/domain/payments";
 import type { I18n } from "@/i18n/field";
 import type { Db, Q } from "../client";
+import { dbErrorCode } from "../safe-error";
 import * as schema from "../schema";
 import { courses, courseSessions, payments, registrations, type Payment, type PaymentKind, type PaymentStatus } from "../schema";
 import { paged, type Paged } from "./admin";
@@ -132,8 +133,27 @@ export async function paymentContext(q: Q, paymentId: number): Promise<PaymentCo
 export const CHECK_AFTER_MS = 45 * 60_000;
 export const GIVE_UP_MS = 14 * 86_400_000;
 
-/** The daily check stops a run of work after this many errors in a row (a dead database must not burn the whole batch), not before. */
+/**
+ * The daily check stops one of its loops (the stale rows, the asking) after this many connection errors in a row (isConnectionError: a dead
+ * database must not burn the whole batch), not before. Any other error of a row is counted and the loop goes on, within its batch and its
+ * time: poison rows at the head of the queue never stop the rows behind them.
+ */
 export const MAX_CONSECUTIVE_ERRORS = 3;
+
+/** The driver's own codes of a lost connection (postgres.js) and Node's socket errors. */
+const CONNECTION_CODES: ReadonlySet<string> = new Set([
+  "CONNECTION_CLOSED", "CONNECTION_ENDED", "CONNECTION_DESTROYED", "CONNECT_TIMEOUT",
+  "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH",
+]);
+
+/**
+ * Is this a lost or refused connection to the database — SQLSTATE class 08 (connection exception), or the driver's connection error — and so
+ * one the next row would only meet again? The code is on the error or down its `cause` (drizzle's wrapper: db/safe-error.ts dbErrorCode).
+ */
+export function isConnectionError(e: unknown): boolean {
+  const code = dbErrorCode(e);
+  return code !== null && (CONNECTION_CODES.has(code) || /^08[0-9A-Z]{3}$/.test(code));
+}
 
 /** The pending payments the daily check asks Montonio about: with an order, older than 45 minutes and younger than 14 days; oldest first. */
 export async function pendingToCheck(db: Db, now: Date, limit: number): Promise<Payment[]> {
@@ -160,8 +180,8 @@ export async function pendingToCheck(db: Db, now: Date, limit: number): Promise<
  * One bulk UPDATE would write the payment rows with no registration lock at all. That also frees a hold that such a row was keeping for a
  * later, failed attempt of the same registration (releaseHold counts every pending row). No lock is held after the call.
  * A row whose failing throws is its own failure: `onError(id, error)` is told, it is counted in `errors`, and the next row goes on (a stale
- * row stays in this set until it can be failed, so one that always throws must not stop the rows behind it). MAX_CONSECUTIVE_ERRORS errors in
- * a row stop the run: a dead database would only throw on the rest.
+ * row stays in this set until it can be failed, so one that always throws must not stop the rows behind it). MAX_CONSECUTIVE_ERRORS
+ * connection errors in a row (isConnectionError) stop that loop: a dead database would only throw on the rest.
  * `failed`: rows failed (one that was paid or failed meanwhile is left as it is and not counted); `released`: holds ended with them (the
  * seats are free again); `left`: at least this many stale rows were not looked at (over the bound, or after the stop) and wait for the next run.
  */
@@ -197,8 +217,9 @@ export async function expireStalePending(
       if (done.released) released++;
     } catch (e) {
       errors++;
-      inARow++;
       onError(id, e);
+      // only a lost connection counts towards the stop: any other error is this row's own
+      inARow = isConnectionError(e) ? inARow + 1 : 0;
       if (inARow >= MAX_CONSECUTIVE_ERRORS) break;
     }
   }

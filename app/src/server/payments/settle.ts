@@ -11,7 +11,7 @@ import { ecourseOpenMail, registrationPaidMail } from "../account-mail";
 import type { PublicChange } from "../cache-targets";
 import { issueClientLogin } from "../client-auth";
 import { logFailure, logNote } from "../log";
-import { overpaymentSummary, paymentAlertSummary, paymentSummary, type PaymentNotice } from "../messages";
+import { overpaymentSummary, paymentAlertSummary, paymentSummary, stuckPaymentSummary, type PaymentNotice } from "../messages";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env } from "../notify";
 import { releaseSlot, reserveSlot } from "../ratelimit";
 import { subscribeLater } from "../submit";
@@ -245,7 +245,7 @@ const TRANSIENT_SQLSTATES: ReadonlySet<string> = new Set(["40001", "40P01", "55P
 const transientCode = (code: unknown): boolean => typeof code === "string" && (TRANSIENT_SQLSTATES.has(code) || (code.length === 5 && code.startsWith("08")));
 
 /** A database error that a retry can get past. The SQLSTATE is on the error itself, or on its `cause` when drizzle wrapped the driver's error. */
-function isTransient(e: unknown): boolean {
+export function isTransient(e: unknown): boolean {
   if (typeof e !== "object" || e === null) return false;
   const { code, cause } = e as { code?: unknown; cause?: unknown };
   return transientCode(code) || (typeof cause === "object" && cause !== null && transientCode((cause as { code?: unknown }).code));
@@ -320,25 +320,31 @@ const DOUBLE_ALERT_TTL_SECONDS = 14 * 24 * 3600;
 /** The KV record that Maria was told about this second order of this payment. */
 const doubleAlertKey = (paymentId: number, uuid: string): string => `pay:double:${paymentId}:${uuid}`;
 
+/** How long the daily check's "Makse vajab kontrolli" of a payment is remembered (it asks about a pending payment for 14 days). */
+const STUCK_ALERT_TTL_SECONDS = 30 * 24 * 3600;
+
+/** The KV record that Maria was told Montonio says this payment is paid but it could not be recorded. */
+const stuckAlertKey = (paymentId: number): string => `pay:stuck:${paymentId}`;
+
 /**
- * Takes the record of a second order's alert in one step (two calls at the same moment cannot both take it). A store that fails answers
- * true: a repeated alert is better than a lost one.
+ * Takes the record of a once-only alert in one step (two calls at the same moment cannot both take it). A store that fails answers true: a
+ * repeated alert is better than a lost one.
  */
-async function takeDoubleAlert(deps: SettleDeps, key: string): Promise<boolean> {
+async function takeAlertRecord(deps: SettleDeps, key: string, ttlSeconds: number): Promise<boolean> {
   try {
-    return await reserveSlot(deps.env.KV, key, 1, DOUBLE_ALERT_TTL_SECONDS);
+    return await reserveSlot(deps.env.KV, key, 1, ttlSeconds);
   } catch (e) {
-    logFailure("[payments] the record of a second order's alert could not be taken", e);
+    logFailure("[payments] the record of an alert could not be taken", e);
     return true;
   }
 }
 
 /** Gives the record back when the alert reached no one, so the next call tells Maria. */
-async function releaseDoubleAlert(deps: SettleDeps, key: string): Promise<void> {
+async function releaseAlertRecord(deps: SettleDeps, key: string, ttlSeconds: number): Promise<void> {
   try {
-    await releaseSlot(deps.env.KV, key, DOUBLE_ALERT_TTL_SECONDS);
+    await releaseSlot(deps.env.KV, key, ttlSeconds);
   } catch (e) {
-    logFailure("[payments] the record of a second order's alert could not be given back", e);
+    logFailure("[payments] the record of an alert could not be given back", e);
   }
 }
 
@@ -350,7 +356,7 @@ function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded
   logNote(`[payments] payment ${p.id}: ${kind}, Maria is alerted`);
   deps.later(async () => {
     const record = kind === "double" ? doubleAlertKey(p.id, facts.uuid) : null;
-    if (record && !(await takeDoubleAlert(deps, record))) {
+    if (record && !(await takeAlertRecord(deps, record, DOUBLE_ALERT_TTL_SECONDS))) {
       logNote(`[payments] payment ${p.id}: Maria was told about this second order before`);
       return;
     }
@@ -364,7 +370,35 @@ function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded
       const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
       told = r.mail || r.telegram;
     } finally {
-      if (record && !told) await releaseDoubleAlert(deps, record);
+      if (record && !told) await releaseAlertRecord(deps, record, DOUBLE_ALERT_TTL_SECONDS);
+    }
+  });
+}
+
+/**
+ * The daily check's "Makse vajab kontrolli" (check.ts), after the response: Montonio says `row` is paid (`snapshot`), but settling it threw,
+ * so the money is recorded nowhere. Once per payment: the record pay:stuck:<payment> is taken in the KV (30 days, past the check's 14 days
+ * of asking), and an alert that reached no one gives it back, so the next run tells Maria. The log has the payment's id only.
+ */
+export function alertUnsettled(deps: SettleDeps, row: Payment, snapshot: OrderSnapshot): void {
+  logNote(`[payments] payment ${row.id}: Montonio says paid but it could not be recorded, Maria is alerted`);
+  deps.later(async () => {
+    const record = stuckAlertKey(row.id);
+    if (!(await takeAlertRecord(deps, record, STUCK_ALERT_TTL_SECONDS))) {
+      logNote(`[payments] payment ${row.id}: Maria was told about it before`);
+      return;
+    }
+    let told = false;
+    try {
+      const ctx = await contextOf(deps, row.id);
+      const s = stuckPaymentSummary(
+        { kind: row.kind, name: row.name, email: row.email, amountCents: row.amountCents, course: courseName(ctx, row.kind), startsAt: ctx.session?.startsAt ?? null, reference: row.reference, providerUuid: row.providerUuid, paidCents: snapshot.amountCents, currency: snapshot.currency },
+        adminUrl(deps.siteUrl),
+      );
+      const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: row.email, siteUrl: deps.siteUrl });
+      told = r.mail || r.telegram;
+    } finally {
+      if (!told) await releaseAlertRecord(deps, record, STUCK_ALERT_TTL_SECONDS);
     }
   });
 }

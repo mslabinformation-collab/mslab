@@ -58,7 +58,8 @@ async function sweepPayments(db: Db, now: Date, until: number): Promise<PaymentS
  * - with online payments set up (server/payments/check.ts, phase 2b), the pending payments: those older than 45 minutes and younger than 14
  *   days are asked about at Montonio (at most 50, none after SWEEP_DEADLINE_MS) and settled; older ones, and orders never created, fail
  *   (at most 50 a run, through failPayment: the registration's lock first); holds that ended in the last day revalidate the seats. A
- *   payment that cannot be settled is counted and logged and does not stop the others (three in a row stop the run);
+ *   payment that cannot be settled is counted and logged and does not stop the others (only three connection errors in a row stop that
+ *   loop), and one Montonio says is paid but that cannot be recorded alerts Maria once ("Makse vajab kontrolli");
  * Vercel sends `Authorization: Bearer <CRON_SECRET>` when the project has the CRON_SECRET variable; anything else, and every
  * request while CRON_SECRET is not set, is a 401.
  * 200 `{ ok: true, deleted, logins, sessions, mailDays, uploads, processingReady, processingFailed, videosLeft, paymentsChecked,

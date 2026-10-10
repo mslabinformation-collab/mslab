@@ -302,6 +302,36 @@ export function overpaymentSummary(
   };
 }
 
+/**
+ * "Makse vajab kontrolli: {nimi}" (the final review of 10.10): the daily check found a payment that Montonio says is paid, but recording it
+ * threw (server/payments/check.ts). The money is at Montonio and nowhere in the app: Maria records it by hand. `paidCents` and `currency`:
+ * what Montonio said was paid.
+ */
+export function stuckPaymentSummary(
+  s: { kind: PaymentKind; name: string; email: string; amountCents: number; course: string; startsAt: Date | null; reference: string; providerUuid: string | null; paidCents: number | null; currency: string | null },
+  adminUrl: string,
+): Summary {
+  const subject = `Makse vajab kontrolli: ${s.name}`;
+  return {
+    subject,
+    text: body(
+      subject,
+      [
+        ["Makse", PAYMENT_KIND[s.kind]],
+        ["Summa", formatEUR(s.amountCents, "et")],
+        ["Koolitus", paidFor(s.kind, s.course, s.startsAt)],
+        ["Maksja", s.name],
+        ["E-post", s.email],
+        ["Viide", s.reference],
+        ["Montonio", s.providerUuid ?? undefined],
+      ],
+      adminUrl,
+      `Montonio järgi on ${montonioSaid(s.paidCents, s.currency)} makstud (viide ${s.reference}), aga seda ei õnnestunud kirja panna. Kontrolli Montonios ja märgi makse registreeringu juures käsitsi.`,
+    ),
+    short: subject,
+  };
+}
+
 /** A number of cents as a plain amount ("125,50"), for a currency other than the euro. */
 const plainAmount = (cents: number): string => formatEUR(cents, "et").replace(/ €$/, "");
 
