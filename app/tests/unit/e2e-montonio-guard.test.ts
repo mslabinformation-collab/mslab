@@ -1,7 +1,8 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test } from "vitest";
 import { verifyHs256 } from "@/server/payments/jwt";
+import { refuseOffMachineFetch } from "../fakes";
 import { assertAppOnFakeMontonio } from "../e2e/montonio-guard";
 import { E2E_MONTONIO } from "../e2e/montonio-values";
 
@@ -12,7 +13,14 @@ import { E2E_MONTONIO } from "../e2e/montonio-values";
 // real Montonio is not involved at all.
 
 const servers: Server[] = [];
+// the guard asks stub apps on this machine; any other address would be refused (and recorded) here
+let offMachine: ReturnType<typeof refuseOffMachineFetch>;
+beforeEach(() => {
+  offMachine = refuseOffMachineFetch();
+});
 afterEach(async () => {
+  expect(offMachine.refused).toEqual([]);
+  offMachine.restore();
   await Promise.all(servers.splice(0).map((s) => new Promise((r) => s.close(r))));
 });
 
@@ -54,6 +62,11 @@ test("an app that refuses the token (400) holds other keys — a dev server of y
   expect(error?.message).toContain("MONTONIO_FAKE_URL");
   expect(error?.message).toMatch(/stop it/i);
   expect(error?.message).not.toContain(E2E_MONTONIO.secretKey);
+});
+
+test("an app that is not on this machine is never asked: the check throws before any request (no probe token goes to a live site)", async () => {
+  for (const url of ["https://shop.example", "http://localhost.evil.example", "http://localhost@evil.example", "not a url"]) await expect(assertAppOnFakeMontonio(url), url).rejects.toThrow(/only ever made against an app on this machine/);
+  expect(offMachine.refused).toEqual([]); // not even an attempt (the guard would have recorded and refused it)
 });
 
 test("an app with payments off (404), one that fails (503) and one that is not there all stop the run", async () => {

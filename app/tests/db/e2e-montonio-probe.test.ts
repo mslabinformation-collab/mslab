@@ -5,6 +5,7 @@ import { montonioClient } from "@/server/payments/montonio";
 import { handleNotify } from "@/server/payments/routes";
 import { probeOrderToken } from "../e2e/montonio-guard";
 import { E2E_MONTONIO } from "../e2e/montonio-values";
+import { refuseOffMachineFetch } from "../fakes";
 import { settleDeps, SITE } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
@@ -13,11 +14,17 @@ import { makeTestDb } from "./helpers";
 // .env.local, say); and it changes nothing in the database.
 
 let db: Db;
+let offMachine: ReturnType<typeof refuseOffMachineFetch>;
 beforeEach(async () => {
+  offMachine = refuseOffMachineFetch(); // (the webhook asks no one, but no test may reach beyond this machine)
   db = await makeTestDb();
   for (const method of ["info", "error"] as const) vi.spyOn(console, method).mockImplementation(() => {});
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  expect(offMachine.refused).toEqual([]);
+  offMachine.restore();
+  vi.restoreAllMocks();
+});
 
 const answer = async (secretKey: string, accessKey = E2E_MONTONIO.accessKey): Promise<number> => {
   const montonio = montonioClient({ accessKey, secretKey, baseUrl: "http://127.0.0.1:1", live: false, mock: true });

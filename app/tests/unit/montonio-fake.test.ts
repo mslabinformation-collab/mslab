@@ -1,8 +1,9 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { signHs256 } from "@/server/payments/jwt";
 import { montonioClient, type MontonioConfig } from "@/server/payments/montonio";
+import { refuseOffMachineFetch } from "../fakes";
 import { createFakeMontonio, isLocalUrl } from "../e2e/fake-montonio";
 import { E2E_MONTONIO } from "../e2e/montonio-values";
 
@@ -15,7 +16,14 @@ const listen = (server: Server) =>
     servers.push(server);
     server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`));
   });
+// Nothing here may reach beyond this machine, whether the fake behaves or not: the fake's webhook goes through the global fetch, which refuses (and
+// records) any address that is not localhost, 127.0.0.1 or [::1].
+let offMachine: ReturnType<typeof refuseOffMachineFetch>;
+beforeEach(() => {
+  offMachine = refuseOffMachineFetch();
+});
 afterEach(async () => {
+  offMachine.restore();
   await Promise.all(servers.splice(0).map((s) => new Promise((r) => s.close(r))));
 });
 
@@ -153,12 +161,6 @@ test("the webhook goes only to this machine: a notificationUrl anywhere else is 
   const base = await listen(createFakeMontonio());
   const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true });
   const elsewhere = ["https://shop.example/api/payments/notify", "http://localhost.evil.example/n", "http://127.0.0.1.evil.example/n", "http://localhost@evil.example/n", "not a url"];
-  const real = globalThis.fetch;
-  const asked: string[] = [];
-  const spy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
-    asked.push(String(input instanceof Request ? input.url : input));
-    return real(input, init);
-  });
   const logged = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
     for (const [i, notificationUrl] of elsewhere.entries()) {
@@ -170,12 +172,11 @@ test("the webhook goes only to this machine: a notificationUrl anywhere else is 
     // a later settle by the test hook is a webhook too
     const later = await client.createOrder({ reference: "MSLAB-M30", amountCents: 1000, locale: "et", returnUrl: "https://mslab.example/r", notificationUrl: elsewhere[0] });
     expect((await fetch(`${base}/_fake/settle/${later.uuid}`, { method: "POST", body: JSON.stringify({ status: "PAID" }) })).status).toBe(200);
-    expect(asked.filter((url) => !url.startsWith(base))).toEqual([]); // not one request left this machine
+    expect(offMachine.refused, "the fake tried to reach beyond this machine (the call was refused here, and went nowhere)").toEqual([]);
     const noted = logged.mock.calls.map((c) => String(c[0])).filter((line) => line.includes("[fake-montonio]") && line.includes("not sent"));
     expect(noted).toHaveLength(elsewhere.length + 1);
     expect(noted.join("\n")).not.toContain("shop.example/api"); // the host is named, not the whole address
   } finally {
-    spy.mockRestore();
     logged.mockRestore();
   }
 });

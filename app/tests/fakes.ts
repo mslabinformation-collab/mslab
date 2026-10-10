@@ -89,3 +89,33 @@ export function fakeMediaStore(initial: Record<string, { bytes: number[]; conten
     },
   };
 }
+
+/** The names of this machine: the only places a unit test's `fetch` may reach. */
+const THIS_MACHINE: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+const onThisMachine = (url: string): boolean => {
+  try {
+    const u = new URL(url);
+    return (u.protocol === "http:" || u.protocol === "https:") && THIS_MACHINE.has(u.hostname);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Makes globalThis.fetch refuse any address that is not on this machine (localhost, 127.0.0.1, [::1]): the refused address is recorded and the call
+ * rejects with a TypeError, and the real network is never asked. Local addresses go through to the real fetch (the fake servers of a test listen
+ * there). For a test of code that may call out to somewhere it must not, GREEN or RED: a RED run of a missing guard must not be what sends the
+ * request (the first RED run of the fake Montonio's webhook gate posted to the live site that way). Call `restore()` afterwards.
+ */
+export function refuseOffMachineFetch() {
+  const real = globalThis.fetch;
+  const refused: string[] = [];
+  const spy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (onThisMachine(url)) return real(input, init);
+    refused.push(url);
+    return Promise.reject(new TypeError(`fetch refused by the test: ${url} is not on this machine`));
+  });
+  return { refused, restore: () => spy.mockRestore() };
+}
