@@ -147,15 +147,20 @@ export const GIVE_UP_MS = 14 * 86_400_000;
  */
 export const MAX_CONSECUTIVE_ERRORS = 3;
 
-/** The driver's own codes of a lost connection (postgres.js) and Node's socket errors. */
+/**
+ * The driver's own codes of a lost connection (postgres.js) and Node's socket errors; and the SQLSTATEs of a server that is going or not there
+ * yet: 57P01 admin_shutdown, 57P02 crash_shutdown, 57P03 cannot_connect_now (a restart, as Railway's), 53300 too_many_connections.
+ */
 const CONNECTION_CODES: ReadonlySet<string> = new Set([
   "CONNECTION_CLOSED", "CONNECTION_ENDED", "CONNECTION_DESTROYED", "CONNECT_TIMEOUT",
   "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH",
+  "57P01", "57P02", "57P03", "53300",
 ]);
 
 /**
- * Is this a lost or refused connection to the database — SQLSTATE class 08 (connection exception), or the driver's connection error — and so
- * one the next row would only meet again? The code is on the error or down its `cause` (drizzle's wrapper: db/safe-error.ts dbErrorCode).
+ * Is this a lost or refused connection to the database — SQLSTATE class 08 (connection exception), a server shutting down, starting up or
+ * full (CONNECTION_CODES), or the driver's connection error — and so one the next row would only meet again? The code is on the error or
+ * down its `cause` (drizzle's wrapper: db/safe-error.ts dbErrorCode).
  */
 export function isConnectionError(e: unknown): boolean {
   const code = dbErrorCode(e);

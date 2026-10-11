@@ -1,8 +1,9 @@
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { Db, Tx } from "@/db/client";
 import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admin";
-import { failPayment, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
+import { failPayment, isConnectionError, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
+import { dbErrorCode } from "@/db/safe-error";
 import { payments, type Payment } from "@/db/schema";
 import { isSampleAddress } from "@/domain/email";
 import { registrationPrice } from "@/domain/registration";
@@ -239,7 +240,7 @@ function alertIfOverpaid(deps: SettleDeps, p: Payment, r: RegistrationPaid): voi
  * client it had made with it): the payment stays paid, which is the truth (the money is at Montonio), and the outcome is "not opened", so Maria
  * is told at once to open the course by hand or refund, instead of the whole payment staying pending with nobody told while the webhook retries.
  * The one exception is a transient database error (a serialization failure, a deadlock, a lock not available, a statement timeout, a
- * connection error: isTransient): that is no verdict on the course, so it is thrown on, the whole paid transaction rolls back and the payment
+ * connection error, the database restarting or full: isTransient): that is no verdict on the course, so it is thrown on, the whole paid transaction rolls back and the payment
  * stays pending until Montonio's retry, the return or the daily check settles it again. The log has the class and the code only.
  *
  * The locks of this path (the e-course has no session and no registration): its payment row (the conditional UPDATE above), then the address
@@ -265,17 +266,17 @@ async function openCourse(tx: Tx, payment: Payment, now: Date): Promise<Grant | 
   }
 }
 
-/** The SQLSTATEs of errors that pass by themselves: a serialization failure, a deadlock, a lock not available, a statement timeout. (Class 08, a connection, is added in isTransient.) */
+/** The SQLSTATEs of errors that pass by themselves: a serialization failure, a deadlock, a lock not available, a statement timeout. */
 const TRANSIENT_SQLSTATES: ReadonlySet<string> = new Set(["40001", "40P01", "55P03", "57014"]);
 
-/** Is this SQLSTATE one of a transient failure (see TRANSIENT_SQLSTATES), or of class 08 (connection exception)? */
-const transientCode = (code: unknown): boolean => typeof code === "string" && (TRANSIENT_SQLSTATES.has(code) || (code.length === 5 && code.startsWith("08")));
-
-/** A database error that a retry can get past. The SQLSTATE is on the error itself, or on its `cause` when drizzle wrapped the driver's error. */
+/**
+ * A database error that a retry can get past: one of TRANSIENT_SQLSTATES, or a connection lost, refused or not there yet (db/queries/payments.ts
+ * isConnectionError: class 08, a restart, too many connections, the driver's own). The code is on the error itself, or down its `cause` when
+ * drizzle wrapped the driver's error (db/safe-error.ts dbErrorCode).
+ */
 export function isTransient(e: unknown): boolean {
-  if (typeof e !== "object" || e === null) return false;
-  const { code, cause } = e as { code?: unknown; cause?: unknown };
-  return transientCode(code) || (typeof cause === "object" && cause !== null && transientCode((cause as { code?: unknown }).code));
+  const code = dbErrorCode(e);
+  return (code !== null && TRANSIENT_SQLSTATES.has(code)) || isConnectionError(e);
 }
 
 /** What the payment did, for Maria's notice. An e-course's is told in its own words (messages.ts): opened until a day, or not opened. */

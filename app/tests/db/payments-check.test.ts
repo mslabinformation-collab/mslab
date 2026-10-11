@@ -371,6 +371,8 @@ describe("one payment that cannot be settled does not stop the check", () => {
   };
   const logged = () => vi.mocked(console.error).mock.calls.map((c) => c.map(String).join(" "));
   const STUCK = "Makse vajab kontrolli: ";
+  /** A database restarting (admin_shutdown, crash_shutdown, cannot_connect_now) or full (too_many_connections). */
+  const RESTART_CODES = ["57P01", "57P02", "57P03", "53300"];
 
   test("a settlement that throws on every run: the next row is still asked about and settled; the error is counted and logged without an address", async () => {
     const m = stubMontonio();
@@ -411,6 +413,31 @@ describe("one payment that cannot be settled does not stop the check", () => {
     expect(kv.ttl.get(`pay:stuck:${bad.id}`)).toBe(30 * 86_400);
     expect(await status(bad.id)).toBe("pending");
     expect(logged().join("\n")).not.toMatch(/giftig|Mürk|@|MSLAB-M/);
+  });
+
+  // The database restarting (57P01 admin_shutdown, 57P02 crash_shutdown, 57P03 cannot_connect_now) or full (53300 too_many_connections) is
+  // no verdict on the payment: the settlement rolls back, Maria is not told "Makse vajab kontrolli", and the next run records it.
+  test.each(RESTART_CODES)("a database restart or a full server (%s) while a PAID row is settled: no alert, the row stays pending, and the next run settles it", async (code) => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await poison("registrations", code);
+    const bad = await pendingPayment(db, await registrationOn(db, c, { email: "giftig@example.com" }), {}, ago(3 * 60 * MIN));
+    const e = await ecoursePayment(db, await ecourse(db), ago(2 * 60 * MIN));
+    for (const p of [bad, e]) m.state.snapshots.set(p.providerUuid!, snapshot(p, "PAID", p.kind === "ecourse" ? { grandTotal: "190.00" } : {}));
+    const grant = vi.spyOn(adminClients, "grantAccess").mockRejectedValueOnce(Object.assign(new Error("terminating connection for ostja@example.com"), { code }));
+    const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
+    expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ checked: 2, settled: 0, errors: 2 });
+    await flush();
+    expect([await status(bad.id), await status(e.id)]).toEqual(["pending", "pending"]);
+    expect(m.mails()).toEqual([]);
+    expect([...kv.store.keys()].filter((k) => k.startsWith("pay:stuck:"))).toEqual([]);
+    // the next run, the database back: both are recorded, with their usual mails and no alert
+    await db.execute(sql`drop trigger mslab_poison on registrations`);
+    expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ checked: 2, settled: 2, errors: 0 });
+    await flush();
+    expect([await status(bad.id), await status(e.id)]).toEqual(["paid", "paid"]);
+    expect(grant).toHaveBeenCalledTimes(2);
+    expect(m.mails().filter((x) => x.subject.startsWith(STUCK) || x.text.includes("E-koolitust ei avatud"))).toEqual([]);
   });
 
   test("an alert that reached no one gives its KV record back: the next run tells Maria", async () => {
@@ -473,10 +500,10 @@ describe("one payment that cannot be settled does not stop the check", () => {
     expect(changes).toEqual([{ kind: "seats", course: "kulmumeistri-baaskoolitus" }, { kind: "seats" }]); // the paid one's, then the ended hold's
   });
 
-  test("connection errors (SQLSTATE class 08), three in a row, stop the asking: what was not reached is left, no alert is sent, and the seats are still revalidated", async () => {
+  test.each(["08006", ...RESTART_CODES])("connection errors (%s), three in a row, stop the asking: what was not reached is left, no alert is sent, and the seats are still revalidated", async (code) => {
     const m = stubMontonio();
     const c = await contactCourse(db);
-    await poison("registrations", "08006");
+    await poison("registrations", code);
     const rows: Payment[] = [];
     for (let i = 1; i <= 4; i++) rows.push(await pendingPayment(db, await registrationOn(db, c, { email: `giftig${i}@example.com` }), {}, ago((10 - i) * 60 * MIN)));
     rows.push(await pendingPayment(db, await registrationOn(db, c, { email: "hea@example.com" }), {}, ago(2 * 60 * MIN)));
