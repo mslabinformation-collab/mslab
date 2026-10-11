@@ -13,9 +13,9 @@ import { ecourseOpenMail, registrationPaidMail } from "../account-mail";
 import type { PublicChange } from "../cache-targets";
 import { issueClientLogin } from "../client-auth";
 import { logFailure, logNote } from "../log";
-import { overpaymentSummary, paymentAlertSummary, paymentSummary, stuckPaymentSummary, type PaymentNotice } from "../messages";
+import { overpaymentSummary, paymentAlertSummary, paymentSummary, recordedAfterAlertSummary, stuckPaymentSummary, type PaymentNotice } from "../messages";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env } from "../notify";
-import { releaseSlot, reserveSlot } from "../ratelimit";
+import { forgetKey, releaseSlot, reserveSlot } from "../ratelimit";
 import { subscribeLater } from "../submit";
 import { grantPurchase, type Grant } from "./grant";
 import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken } from "./montonio";
@@ -30,7 +30,8 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken }
 //   and Maria is told at once that nothing was opened, unless the error is a transient database one, which rolls everything back and leaves
 //   the row pending for the next call; openCourse also says why this order of locks cannot deadlock). After it: the seats are revalidated, and
 //   the payer's mail and Maria's notice go out after the response (an e-course's with a login code, and the newsletter sign-up when it was
-//   ticked), and Maria's "Ülemakse" when the payment took the registration's paid sum over its price (alertIfOverpaid). Every other caller
+//   ticked), Maria's "Ülemakse" when the payment took the registration's paid sum over its price (alertIfOverpaid), and "Makse on nüüd kirja
+//   pandud" when she had been told "Makse vajab kontrolli" about it (followUpUnsettled: she may have recorded it by hand). Every other caller
 //   finds the row paid and does nothing.
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
 // - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
@@ -222,6 +223,8 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     }
   });
   if (won.registration) alertIfOverpaid(deps, won.payment, won.registration);
+  // after "Makse vajab kontrolli" Maria may have recorded it by hand: she is told it is recorded now (once: only the winner gets here)
+  deps.later(() => followUpUnsettled(deps, won.payment));
   if (won.registration) await seatsChanged(deps, won.registration.course.slug);
   return won.payment;
 }
@@ -438,6 +441,39 @@ export function alertUnsettled(deps: SettleDeps, row: Payment, snapshot: OrderSn
       if (!told) await releaseAlertRecord(deps, record, STUCK_ALERT_TTL_SECONDS);
     }
   });
+}
+
+/**
+ * The follow-up of "Makse vajab kontrolli" (alertUnsettled), after the response: the payment `p` was just recorded, and the record
+ * pay:stuck:<payment> says Maria was told it could not be (a record given back, "0", is an alert that reached no one: nothing to follow up).
+ * She may have recorded it by hand meanwhile, so she gets "Makse on nüüd kirja pandud" once, and the record is removed. A store that fails
+ * to answer loses the follow-up (logged): the payment itself is recorded. The log has the payment's id only.
+ */
+async function followUpUnsettled(deps: SettleDeps, p: Payment): Promise<void> {
+  const record = stuckAlertKey(p.id);
+  let told: boolean;
+  try {
+    told = Number(await deps.env.KV.get(record)) > 0;
+  } catch (e) {
+    logFailure(`[payments] payment ${p.id}: the record of an earlier alert could not be read`, e);
+    return;
+  }
+  if (!told) return;
+  logNote(`[payments] payment ${p.id}: recorded after Maria was told it could not be, she is told now`);
+  try {
+    const ctx = await contextOf(deps, p.id);
+    const s = recordedAfterAlertSummary(
+      { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid },
+      adminUrl(deps.siteUrl),
+    );
+    await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+  } finally {
+    try {
+      await forgetKey(deps.env.KV, record);
+    } catch (e) {
+      logFailure("[payments] the record of an alert could not be removed", e);
+    }
+  }
 }
 
 /** Maria's "Uus makse: …" (mail and Telegram). */

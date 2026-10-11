@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { registrationPaidMail } from "@/server/account-mail";
-import { paymentAlertSummary, paymentSummary, type PaymentAlert, type PaymentNotice } from "@/server/messages";
+import { paymentAlertSummary, paymentSummary, recordedAfterAlertSummary, stuckPaymentSummary, type PaymentAlert, type PaymentNotice, type StuckPayment } from "@/server/messages";
 
 // Phase 2b (spec 6.2.4–6.2.5, 9): Maria's notice of every payment ("Uus makse: {nimi}, {mis}, {summa}"), her alerts ("Kontrolli Montonios"),
 // and the payer's mail after a paid registration in the confirmation mails' frame. Maria's texts carry no English Montonio codes (the owner's
@@ -171,6 +171,47 @@ describe("Maria's alerts: 'Kontrolli Montonios'", () => {
       paymentSummary({ ...NOTICE, kind: "ecourse", outcome: "notOpened", method: "cardPayments" }, ADMIN),
     ].map((s) => `${s.subject}\n${s.text}\n${s.short}`);
     for (const text of texts) expect(text).not.toMatch(/VOIDED|REFUNDED|ABANDONED|PAID\b|paymentInitiation|cardPayments|\bEUR\b|Tasutud summa/);
+  });
+});
+
+describe("'Makse vajab kontrolli' and its follow-up 'Makse on nüüd kirja pandud'", () => {
+  const STUCK: StuckPayment = {
+    kind: "prepayment",
+    name: "Kati Tamm",
+    email: "kati@example.test",
+    amountCents: 17500,
+    course: "Kulmumeistri baaskoolitus",
+    startsAt: new Date("2026-11-14T08:00:00Z"),
+    reference: "MSLAB-M7",
+    providerUuid: "uuid-7",
+  };
+  const ECOURSE: StuckPayment = { ...STUCK, kind: "ecourse", course: "Kulmumeistri e-koolitus", startsAt: null, amountCents: 19000 };
+  const stuck = (s: StuckPayment) => stuckPaymentSummary({ ...s, paidCents: s.amountCents, currency: "EUR" }, ADMIN);
+
+  test("a registration's payment is recorded by hand at the registration; an e-course's has none: its course is opened by hand under Õpilased", () => {
+    expect(stuck(STUCK).text).toContain("Montonio järgi on 175 € makstud (viide MSLAB-M7), aga seda ei õnnestunud kirja panna. Kontrolli Montonios ja märgi makse registreeringu juures käsitsi.");
+    expect(stuck(ECOURSE).subject).toBe("Makse vajab kontrolli: Kati Tamm");
+    expect(stuck(ECOURSE).text).toContain("Montonio järgi on 190 € makstud (viide MSLAB-M7), aga seda ei õnnestunud kirja panna. Kontrolli Montonios ja ava vajadusel e-koolitus käsitsi Õpilaste all.");
+    expect(stuck(ECOURSE).text).not.toMatch(/registree/i);
+  });
+
+  test("the follow-up: the payment is recorded now, and a registration's own entry by hand is to be removed so it is not counted twice", () => {
+    const s = recordedAfterAlertSummary(STUCK, ADMIN);
+    expect(s.subject).toBe("Makse on nüüd kirja pandud: Kati Tamm");
+    expect(s.short).toBe(s.subject);
+    expect(s.text).toContain(
+      'Makse, mille kohta tuli teade "Makse vajab kontrolli", on nüüd automaatselt kirja pandud (viide MSLAB-M7). Kui märkisid selle juba käsitsi registreeringu juures, eemalda oma käsitsi lisatud summa, et makset ei loetaks kaks korda.',
+    );
+    for (const line of ["Makse: Ettemaks", "Summa: 175 €", "Koolitus: Kulmumeistri baaskoolitus, 14.11.2026", "Maksja: Kati Tamm", "E-post: kati@example.test", "Viide: MSLAB-M7", "Montonio: uuid-7", "Admin: https://mslab.example/admin"])
+      expect(s.text).toContain(line);
+  });
+
+  test("an e-course's follow-up: nothing to remove (opening it twice does not lengthen the access)", () => {
+    const s = recordedAfterAlertSummary(ECOURSE, ADMIN);
+    expect(s.subject).toBe("Makse on nüüd kirja pandud: Kati Tamm");
+    expect(s.text).toContain('Makse, mille kohta tuli teade "Makse vajab kontrolli", on nüüd automaatselt kirja pandud (viide MSLAB-M7). Kui avasid e-koolituse juba käsitsi Õpilaste all, pole vaja midagi teha.');
+    expect(s.text).toContain("Koolitus: Kulmumeistri e-koolitus (e-koolitus)");
+    expect(s.text).not.toMatch(/registree/i);
   });
 });
 
