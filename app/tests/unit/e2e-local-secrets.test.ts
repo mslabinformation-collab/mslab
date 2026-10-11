@@ -88,7 +88,7 @@ describe("the dev server's environment (LOCAL_ENV)", () => {
 
   test("the payments go to the fake Montonio on this machine, never the sandbox; the production build needs its explicit flag (phase 2b)", () => {
     expect(montonioConfig(paymentsEnv(LOCAL_ENV), { production: false, onVercel: false })).toEqual({
-      accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: E2E_MONTONIO.url, live: false, mock: true,
+      accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: E2E_MONTONIO.url, live: false, mock: true, referencePrefix: "MSLAB-L",
     });
     expect(montonioConfig(paymentsEnv(LOCAL_ENV), { production: true, onVercel: false })).toBeNull();
     expect(montonioConfig(paymentsEnv({ ...LOCAL_ENV, ...PROD_ENV }), { production: true, onVercel: false })).toMatchObject({ mock: true, baseUrl: E2E_MONTONIO.url });

@@ -57,6 +57,11 @@ export type ServerEnv = {
   PAYMENT_PROVIDER?: string;
   MONTONIO_FAKE_URL?: string;
   PAYMENT_MOCK_IN_PRODUCTION?: string;
+  /**
+   * What this environment's Montonio references start with (server/payments/montonio.ts): 2 to 16 capitals, digits or hyphens, not ending in a
+   * digit. Unset: MSLAB-M on Vercel's production, MSLAB-P on a preview, MSLAB-L anywhere else. Any other value turns payments off.
+   */
+  MONTONIO_REFERENCE_PREFIX?: string;
 };
 
 type Source = Record<string, string | undefined>;
@@ -117,6 +122,7 @@ const OPTIONAL = [
   "PAYMENT_PROVIDER",
   "MONTONIO_FAKE_URL",
   "PAYMENT_MOCK_IN_PRODUCTION",
+  "MONTONIO_REFERENCE_PREFIX",
 ] as const;
 
 /**
@@ -155,10 +161,10 @@ export function gateEnv(source: Source = process.env): Pick<ServerEnv, "SITE_GAT
 
 /** The payment settings (server/payments/montonio.ts montonioConfig). */
 export type PaymentsEnv = Partial<
-  Pick<ServerEnv, "MONTONIO_ENV" | "MONTONIO_ACCESS_KEY" | "MONTONIO_SECRET_KEY" | "PAYMENT_PROVIDER" | "MONTONIO_FAKE_URL" | "PAYMENT_MOCK_IN_PRODUCTION">
+  Pick<ServerEnv, "MONTONIO_ENV" | "MONTONIO_ACCESS_KEY" | "MONTONIO_SECRET_KEY" | "PAYMENT_PROVIDER" | "MONTONIO_FAKE_URL" | "PAYMENT_MOCK_IN_PRODUCTION" | "MONTONIO_REFERENCE_PREFIX">
 >;
 
-const PAYMENT_NAMES = ["MONTONIO_ENV", "MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER", "MONTONIO_FAKE_URL", "PAYMENT_MOCK_IN_PRODUCTION"] as const;
+const PAYMENT_NAMES = ["MONTONIO_ENV", "MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER", "MONTONIO_FAKE_URL", "PAYMENT_MOCK_IN_PRODUCTION", "MONTONIO_REFERENCE_PREFIX"] as const;
 
 /**
  * The payment settings alone, trimmed, blank as not set (phase 2b). Not serverEnv(): the static cart page reads them while it renders, and a

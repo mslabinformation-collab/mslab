@@ -30,6 +30,7 @@ beforeEach(async () => {
   vi.stubEnv("MONTONIO_ACCESS_KEY", TEST_MONTONIO.accessKey);
   vi.stubEnv("MONTONIO_SECRET_KEY", TEST_MONTONIO.secretKey);
   vi.stubEnv("MONTONIO_ENV", "sandbox");
+  vi.stubEnv("MONTONIO_REFERENCE_PREFIX", TEST_MONTONIO.referencePrefix); // the rows the tests make are named as production names them
   vi.stubEnv("SITE_URL", "https://mslab.example");
   vi.stubEnv("MARIA_EMAIL", "maria@example.test");
   vi.stubEnv("MAIL_FROM", "MS LAB <info@send.example>");
@@ -64,6 +65,22 @@ test("a signed order token pays the payment; the payer's mail and Maria's notice
     ["maria@example.test", "Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €"],
   ]);
   expect(m.mails()[0].text).toContain("https://mslab.example/konto/sisene#email=");
+});
+
+test("on Vercel's production with no MONTONIO_REFERENCE_PREFIX: production's MSLAB-M rows keep working, and a local run's MSLAB-L token is ignored (200)", async () => {
+  vi.stubEnv("MONTONIO_REFERENCE_PREFIX", "");
+  vi.stubEnv("VERCEL", "1");
+  vi.stubEnv("VERCEL_ENV", "production");
+  const m = stubMontonio();
+  const p = await pendingPayment(db, await registrationOn(db, await contactCourse(db)));
+  expect(p.reference).toBe(`MSLAB-M${p.id}`);
+  const local = await route.POST(post({ orderToken: orderToken({ ...p, reference: `MSLAB-L${p.id}` }) }));
+  expect([local.status, await local.json()]).toEqual([200, { ok: true }]);
+  expect((await db.select().from(payments).where(eq(payments.id, p.id)))[0].status).toBe("pending");
+  expect(m.state.gets).toEqual([]);
+  const res = await route.POST(post({ orderToken: orderToken(p) }));
+  expect([res.status, await res.json()]).toEqual([200, { ok: true }]);
+  expect((await db.select().from(payments).where(eq(payments.id, p.id)))[0].status).toBe("paid");
 });
 
 test("Montonio's refund notice ({ refundToken }): Montonio is asked, REFUNDED marks the payment refunded, Maria's alert follows after the response; a bad one is 400, an unknown order 200, Montonio down 503", async () => {

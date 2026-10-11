@@ -5,7 +5,7 @@ import { attachOrder, insertPayment } from "@/db/queries/payments";
 import { courses, payments, registrations, type Course, type Payment } from "@/db/schema";
 import * as adminClients from "@/server/admin-clients";
 import { CHECK_BATCH, checkPendingPayments } from "@/server/payments/check";
-import { contactCourse, loggedDb, pendingPayment, registrationOn, settleDeps, stubMontonio } from "./payments-fixtures";
+import { contactCourse, loggedDb, pendingPayment, registrationOn, settleDeps, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
 // The daily check (phase 2b, spec 6.6): Montonio is asked about every pending payment older than 45 minutes and younger than 14 days (at most
@@ -51,7 +51,7 @@ async function ecourse(d: Db): Promise<Course> {
 
 /** A pending purchase of `course` made at `at`, whose order exists at Montonio with `providerUuid` (`uuid-<id>` by default; null: never created). */
 async function ecoursePayment(d: Db, course: Course, at: Date, over: { email?: string; providerUuid?: string | null } = {}): Promise<Payment> {
-  const row = await insertPayment(d, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email: over.email ?? "ostja@example.com", name: "Kati Tamm", locale: "et", amountCents: 19000 }, at);
+  const row = await insertPayment(d, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email: over.email ?? "ostja@example.com", name: "Kati Tamm", locale: "et", amountCents: 19000 }, at, TEST_MONTONIO.referencePrefix);
   const uuid = over.providerUuid === undefined ? `uuid-${row.id}` : over.providerUuid;
   if (uuid === null) return row;
   await attachOrder(d, row.id, uuid, at);

@@ -6,6 +6,7 @@ import { lockForPayment } from "@/db/queries/seats";
 import { dbErrorCode } from "@/db/safe-error";
 import { payments, type Payment } from "@/db/schema";
 import { isSampleAddress } from "@/domain/email";
+import { referenceId } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
 import { pick } from "@/i18n/field";
 import { ecourseOpenMail, registrationPaidMail } from "../account-mail";
@@ -75,8 +76,16 @@ export const factsOf = (s: OrderSnapshot, bank = ""): Facts => ({ uuid: s.uuid, 
 /** The once-only work's outcome: the paid row, and what it did to its registration, or the e-course it opened (phase 2b Task 7). */
 type Won = { payment: Payment; registration: RegistrationPaid | null; grant: Grant | null };
 
-/** The door of an order token (the webhook, the return). */
+/**
+ * The door of an order token (the webhook, the return). A reference without this environment's prefix (Montonio.referencePrefix: a local
+ * run's MSLAB-L<id> on the sandbox store production shares, its webhook signed with the same keys) is no payment of ours: unknown, before
+ * the database or Montonio is asked, and logged without the reference.
+ */
 export async function settleToken(deps: SettleDeps, token: OrderToken): Promise<SettleResult> {
+  if (referenceId(token.reference, deps.montonio.referencePrefix) === null) {
+    logNote("[payments] an order token for a reference of another environment: nothing to settle");
+    return { kind: "unknown" };
+  }
   const row = await paymentByReference(deps.db, token.reference);
   if (!row) {
     logNote("[payments] an order token for an unknown reference: nothing to settle");

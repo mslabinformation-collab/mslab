@@ -148,6 +148,17 @@ test("a good token: 200 and settled; again: 200 and nothing new; an unknown refe
   expect((await handleNotify(post({ orderToken: orderToken({ reference: "MSLAB-M999", amountCents: 100, providerUuid: "u" }) }), deps)).status).toBe(200);
 });
 
+test("a token with another environment's prefix (a local run's webhook on the same sandbox store): 200, nothing asked or changed", async () => {
+  const m = stubMontonio();
+  const p = await pendingPayment(db, await registrationOn(db, await contactCourse(db)));
+  const { deps, flush } = settleDeps(db, m.montonio, NOW);
+  expect(await answer(await handleNotify(post({ orderToken: orderToken({ ...p, reference: `MSLAB-L${p.id}` }) }), deps))).toEqual([200, { ok: true }, "no-store"]);
+  await flush();
+  expect(m.state.gets).toEqual([]);
+  expect(m.mails()).toEqual([]);
+  expect((await db.select().from(payments).where(eq(payments.id, p.id)))[0].status).toBe("pending");
+});
+
 test("a token in doubt that Montonio cannot confirm: 503 (Montonio retries)", async () => {
   const m = stubMontonio();
   const p = await pendingPayment(db, await registrationOn(db, await contactCourse(db)));

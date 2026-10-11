@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 const answer = async (secretKey: string, accessKey = E2E_MONTONIO.accessKey): Promise<number> => {
-  const montonio = montonioClient({ accessKey, secretKey, baseUrl: "http://127.0.0.1:1", live: false, mock: true });
+  const montonio = montonioClient({ accessKey, secretKey, baseUrl: "http://127.0.0.1:1", live: false, mock: true, referencePrefix: "MSLAB-L" });
   const { deps } = settleDeps(db, montonio, new Date());
   const request = new Request(`${SITE}/api/payments/notify`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ orderToken: probeOrderToken() }) });
   return (await handleNotify(request, deps)).status;

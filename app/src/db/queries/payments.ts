@@ -27,16 +27,17 @@ export type NewPayment = {
 };
 
 /**
- * A new pending payment row with its reference MSLAB-M<id> (spec 5.1: written right after the insert, in the same transaction; a
- * savepoint inside the caller's when `q` is one). The insert's own placeholder reference is never seen outside it.
+ * A new pending payment row with its reference <prefix><id> (spec 5.1: written right after the insert, in the same transaction; a
+ * savepoint inside the caller's when `q` is one). `prefix` is this environment's (the store's: server/payments/montonio.ts, MSLAB-M in
+ * production). The insert's own placeholder reference is never seen outside it.
  */
-export async function insertPayment(q: Q, input: NewPayment, now: Date): Promise<Payment> {
+export async function insertPayment(q: Q, input: NewPayment, now: Date, prefix: string): Promise<Payment> {
   return (q as Db).transaction(async (tx) => {
     const [row] = await tx
       .insert(payments)
       .values({ ...input, newsletter: input.newsletter ?? false, reference: `new-${crypto.randomUUID()}`, status: "pending", createdAt: now, updatedAt: now })
       .returning();
-    const [named] = await tx.update(payments).set({ reference: orderReference(row.id) }).where(eq(payments.id, row.id)).returning();
+    const [named] = await tx.update(payments).set({ reference: orderReference(row.id, prefix) }).where(eq(payments.id, row.id)).returning();
     return named;
   });
 }

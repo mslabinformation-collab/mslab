@@ -15,7 +15,8 @@ import { fakeKv, stubFetch } from "../fakes";
 // The payment DB tests' common parts (phase 2b): a store with made-up keys, Montonio + Resend + Telegram behind one stubbed fetch, order
 // tokens as Montonio signs them, the settlement's dependencies, and a contact course with a registration and a pending payment.
 
-export const TEST_MONTONIO: MontonioConfig = { accessKey: "test-access-key", secretKey: "test-secret-key-0123456789abcdef", baseUrl: SANDBOX_BASE, live: false, mock: false };
+/** The tests' store, with production's reference prefix (MSLAB-M): the rows the tests make are named as production names them. */
+export const TEST_MONTONIO: MontonioConfig = { accessKey: "test-access-key", secretKey: "test-secret-key-0123456789abcdef", baseUrl: SANDBOX_BASE, live: false, mock: false, referencePrefix: "MSLAB-M" };
 export const SITE = "https://mslab.example";
 
 /** An order token as Montonio signs it (its orders guide's decoded payload) for `payment`: PAID, its amount, Swedbank; `over` replaces fields. */
@@ -57,7 +58,7 @@ export function refundToken(orderUuid: string, over: Record<string, unknown> = {
  * while `state.down`), and keeps the token's claims in `state.orders`; GET /orders/<uuid> answers `state.snapshots.get(uuid)` (none: a 503, "no
  * answer") and keeps the uuid in `state.gets`. `mails()`: the Resend calls' bodies; `pings()`: the Telegram texts.
  */
-export function stubMontonio() {
+export function stubMontonio(config: Partial<MontonioConfig> = {}) {
   const state = { down: false, snapshots: new Map<string, Record<string, unknown>>(), orders: [] as Record<string, unknown>[], gets: [] as string[] };
   let n = 0;
   const f = stubFetch((url, init) => {
@@ -80,7 +81,7 @@ export function stubMontonio() {
   });
   return {
     state,
-    montonio: montonioClient(TEST_MONTONIO),
+    montonio: montonioClient({ ...TEST_MONTONIO, ...config }),
     mails: () => f.calls.filter((c) => c.url.includes("resend")).map((c) => c.body as { to: string; subject: string; text: string; html?: string }),
     pings: () => f.calls.filter((c) => c.url.includes("telegram")).map((c) => (c.body as { text: string }).text),
   };
@@ -131,7 +132,7 @@ export async function pendingPayment(
   over: { kind?: "prepayment" | "balance"; amountCents?: number; providerUuid?: string | null } = {},
   now: Date = new Date("2026-10-09T09:55:00Z"),
 ): Promise<Payment> {
-  const row = await insertPayment(db, { kind: over.kind ?? "prepayment", registrationId: r.id, courseId: r.courseId, clientId: r.clientId, email: r.email, name: r.name, locale: r.locale === "ru" ? "ru" : "et", amountCents: over.amountCents ?? 17500 }, now);
+  const row = await insertPayment(db, { kind: over.kind ?? "prepayment", registrationId: r.id, courseId: r.courseId, clientId: r.clientId, email: r.email, name: r.name, locale: r.locale === "ru" ? "ru" : "et", amountCents: over.amountCents ?? 17500 }, now, TEST_MONTONIO.referencePrefix);
   const uuid = over.providerUuid === undefined ? `uuid-${row.id}` : over.providerUuid;
   if (uuid === null) return row;
   await attachOrder(db, row.id, uuid, now);

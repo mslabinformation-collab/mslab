@@ -5,6 +5,7 @@ import { join } from "node:path";
 import postgres from "postgres";
 import { courseSeeds, pageSeeds } from "../../src/db/seed-data";
 import { TERMS_PAGE_KEY } from "../../src/domain/course-terms";
+import { LOCAL_REFERENCE_PREFIX, orderReference } from "../../src/domain/payments";
 import { revalidateLocalPages } from "./prod-build";
 import { assertLocalDatabases, isLocalDbUrl } from "./local-db";
 import { PROD_BUILD, TARGET } from "./target";
@@ -262,7 +263,8 @@ export type StoredPaymentInput = {
 };
 
 /**
- * Writes a payment row straight to the LOCAL database, with its Montonio id and the reference `MSLAB-M<id>` (as insertPayment names it).
+ * Writes a payment row straight to the LOCAL database, with its Montonio id and the reference `MSLAB-L<id>` (as insertPayment names it on
+ * this machine: domain/payments.ts LOCAL_REFERENCE_PREFIX).
  * The row carries the test address, so removeClientRows / removeAdminFixtures delete it with the rest of the test's rows.
  */
 export async function insertStoredPayment(input: StoredPaymentInput): Promise<{ id: number; reference: string; providerUuid: string }> {
@@ -275,7 +277,7 @@ export async function insertStoredPayment(input: StoredPaymentInput): Promise<{ 
       values (${`e2e-${randomUUID()}`}, ${input.kind}, ${input.registrationId ?? null}, ${input.courseId ?? null}, ${input.clientId ?? null}, ${input.email}, ${input.name},
               ${input.amountCents}, ${input.status}, ${providerUuid}, ${input.method ?? ""}, ${input.bank ?? ""}, ${input.paid ? created : null}, ${created}, ${created})
       returning id`;
-    const reference = `MSLAB-M${row.id}`;
+    const reference = orderReference(row.id, LOCAL_REFERENCE_PREFIX);
     await sql`update payments set reference = ${reference} where id = ${row.id}`;
     return { id: row.id, reference, providerUuid };
   } finally {
@@ -530,7 +532,7 @@ export async function insertAdminFixtures(project: string, opts: { extraSubscrib
   }
 }
 
-/** The references (MSLAB-M<id>) of the payments insertAdminPayments stored, by what each one shows. */
+/** The references (MSLAB-L<id>) of the payments insertAdminPayments stored, by what each one shows. */
 export type AdminPayments = { paid: string; held: string; voided: string; pending: string; ecourse: string };
 
 /**
