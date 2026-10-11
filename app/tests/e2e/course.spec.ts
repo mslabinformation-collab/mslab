@@ -1,6 +1,8 @@
 import type { Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
-import { LOCAL_FIXTURES, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
+import { clientEmail, insertClient, signInAsClient, storedAccess, storedClient } from "./account";
+import { LOCAL_FIXTURES, removeClientRows, storedHold, storedPayments, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
+import { E2E_MONTONIO } from "./montonio-values";
 
 // Course pages (Task 8): Maria's P1–P16. The first two tests are the brief's tests, verbatim except:
 // - getByLabel("E-post") also matches the footer newsletter's "Sinu e-post", so it is `exact`;
@@ -18,7 +20,7 @@ test("e-learning course page", async ({ page }) => {
   await expect(page.getByText("Sulle võiksid huvi pakkuda")).toBeVisible();
   await page.locator("[data-gallery-main]").click(); await expect(page.getByRole("dialog")).toBeVisible(); await page.keyboard.press("Escape");
 });
-test("contact course group registration stays awaiting prepayment", async ({ page }, info) => {
+test("contact course group registration: the prepayment starts at once at the bank; cancelled there, the registration stays awaiting and the seat is free again (phase 2b)", async ({ page }, info) => {
   submitsForms();
   const addr = testEmail("register", info.project.name);
   await page.goto("/koolitused/kulmumeistri-baaskoolitus");
@@ -29,11 +31,20 @@ test("contact course group registration stays awaiting prepayment", async ({ pag
   await page.getByRole("radio", { name: /50%/ }).check(); await page.getByLabel(/modellide leidmisel/).check(); await page.getByLabel(/tingimustega/).check();
   const session = Number(await page.locator("[data-session][aria-checked='true']").getAttribute("data-session"));
   await page.getByRole("button", { name: "Registreeru" }).click();
-  await expect(page.getByText(/koht kinnitub pärast ettemaksu/)).toBeVisible();
-  if (LOCAL_FIXTURES)
+  await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
+  await expect(page.locator("[data-fake-order]")).toContainText("175.00 EUR");
+  await page.getByRole("button", { name: "Katkesta" }).click();
+  // the bank sends her back: the return settles the token and lands on the static /makse page with the result in the fragment
+  await page.waitForURL(/\/makse#tulemus=katkestatud&liik=registreering&maksa=/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse jäi tegemata.");
+  await expect(page.getByRole("link", { name: "Proovi uuesti" })).toHaveAttribute("href", /^\/maksa\/[A-Za-z0-9_-]{43}$/);
+  if (LOCAL_FIXTURES) {
     expect(await storedRegistrations(addr)).toEqual([
       { kind: "group", status: "awaiting_prepayment", paidCents: 0, paymentChoice: "half", wantsModelHelp: true, locale: "et", course: "kulmumeistri-baaskoolitus", sessionId: session },
     ]);
+    await expect.poll(() => storedPayments(addr)).toEqual([{ kind: "prepayment", status: "failed", amountCents: 17500 }]);
+    expect(await storedHold(addr)).toBe(false);
+  }
 });
 test("the newsletter consent ticked on a group registration: a subscriber follows, confirmed at once (one step, 09.10); the message is the group's too (phase 2c)", async ({ page }, info) => {
   test.skip(!LOCAL_FIXTURES, "reads the local database");
@@ -47,8 +58,10 @@ test("the newsletter consent ticked on a group registration: a subscriber follow
   await page.getByLabel("Soovin MS LABi uudiseid ja pakkumisi").check();
   await page.getByLabel(/Sõnum/).fill("Kood E2E");
   await page.getByRole("button", { name: "Registreeru" }).click();
-  await expect(page.getByText(/koht kinnitub pärast ettemaksu/)).toBeVisible();
+  await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
   await expect.poll(() => storedSubscriber(addr)).toMatchObject({ email: addr, confirmed: true });
+  await page.getByRole("button", { name: "Katkesta" }).click();
+  await expect.poll(() => storedHold(addr)).toBe(false);
 });
 
 const noErrors = (page: Page) => {
@@ -188,7 +201,7 @@ test.describe("contact page", () => {
     await page.goto("/koolitused/kulmumeistri-baaskoolitus");
     await expect(page.locator("[data-register-form]")).toHaveAttribute("method", "post");
     await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
-    await expect(page.locator("[data-interest-form]")).toHaveAttribute("method", "post");
+    await expect(page.locator("[data-ecourse-form]")).toHaveAttribute("method", "post");
   });
 
   test("cancelled sessions are shown but cannot be picked", async ({ page }) => {
@@ -431,25 +444,97 @@ test.describe("both types", () => {
 });
 
 test.describe("cart (/ostukorv)", () => {
-  test("summarises the e-course, says payment opens soon, takes an e-mail (P9)", async ({ page }, info) => {
+  test("summarises the e-course; the purchase form — name, e-mail, the terms, the newsletter box — and 'Maksa 190 €' goes to the bank (phase 2b, D3)", async ({ page }, info) => {
     submitsForms();
-    const addr = testEmail("interest", info.project.name);
+    const addr = testEmail("buy", info.project.name);
     await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
     await expect(page.getByRole("heading", { name: "Kulmumeistri e-koolitus" })).toBeVisible();
     await expect(page.locator("[data-cart-summary]")).toContainText("190 €");
-    await expect(page.getByText(/Makse lisandub peagi — saad koolituse osta niipea, kui makse on avatud\. Jäta oma e-post, anname teada\./)).toBeVisible();
-    const form = page.locator("[data-interest-form]");
-    await form.getByRole("button").click(); // empty: focus goes to the e-mail field with its error
-    await expect(form.getByLabel("E-post")).toBeFocused();
-    await expect(form.getByLabel("E-post")).toHaveAttribute("aria-invalid", "true");
+    const form = page.locator("[data-ecourse-form]");
+    await form.getByRole("button", { name: "Maksa 190 €" }).click(); // empty: the focus on the name, with its error
+    await expect(form.getByLabel("Nimi")).toBeFocused();
+    await expect(form.getByLabel("Nimi")).toHaveAttribute("aria-invalid", "true");
+    await form.getByLabel("Nimi").fill("Test Ostja");
     await form.getByLabel("E-post").fill(addr);
-    await expect(form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi")).not.toBeChecked(); // phase 2c: the newsletter consent, unticked
-    await form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi").check();
-    await form.getByRole("button").click();
-    await expect(page.getByText("Aitäh! Anname teada, kui makse on avatud.")).toBeVisible();
-    if (LOCAL_FIXTURES) {
-      expect(await storedRequests(addr)).toEqual([{ kind: "contact", payload: { course: "kulmumeistri-e-koolitus", intent: "purchase", email: addr, locale: "et" } }]);
-      await expect.poll(() => storedSubscriber(addr)).toMatchObject({ email: addr, confirmed: true }); // one step: subscribed at once
+    await expect(form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi")).not.toBeChecked();
+    await form.getByLabel(/tingimustega/).check();
+    await form.getByRole("button", { name: "Maksa 190 €" }).click();
+    await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
+    await page.getByRole("button", { name: "Katkesta" }).click();
+    await page.waitForURL(/\/makse#tulemus=katkestatud&liik=ekoolitus&kursus=kulmumeistri-e-koolitus/);
+    await expect(page.getByRole("link", { name: "Proovi uuesti" })).toHaveAttribute("href", "/ostukorv?kursus=kulmumeistri-e-koolitus");
+    if (LOCAL_FIXTURES) expect(await storedPayments(addr)).toEqual([{ kind: "ecourse", status: "failed", amountCents: 19000 }]);
+  });
+
+  test("the cart does not show the 'payment opens soon' text while payments are on, and the RU cart has the same form", async ({ page }) => {
+    await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
+    await expect(page.getByText(/Makse lisandub peagi/)).toHaveCount(0);
+    await expect(page.locator("[data-interest-form]")).toHaveCount(0);
+    await page.goto("/ru/ostukorv?kursus=kulmumeistri-e-koolitus");
+    const form = page.locator("[data-ecourse-form]");
+    await expect(form.getByLabel("Имя")).toBeVisible();
+    await expect(form.getByRole("button", { name: "Оплатить 190 €" })).toBeVisible();
+    await expect(form.locator("input[name='locale']")).toHaveValue("ru");
+  });
+
+  test("paid at the bank: the course opens for the buyer (by payment), and she lands on 'Makse õnnestus.'; 'Maksa' again within 30 minutes is not a second charge (phase 2b)", async ({ page }, info) => {
+    submitsForms();
+    test.skip(!LOCAL_FIXTURES, "reads the local database");
+    const addr = clientEmail("buy", info.project.name); // a sample address: never mailed; its rows are removed with the account tests'
+    try {
+      await removeClientRows(addr);
+      await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
+      const form = page.locator("[data-ecourse-form]");
+      await form.getByLabel("Nimi").fill("Test Ostja");
+      await form.getByLabel("E-post").fill(addr);
+      await form.getByLabel(/tingimustega/).check();
+      await form.getByRole("button", { name: "Maksa 190 €" }).click();
+      await page.waitForURL(`${E2E_MONTONIO.url}/pay/**`);
+      await expect(page.locator("[data-fake-order]")).toContainText("190.00 EUR");
+      await page.getByRole("button", { name: "Makstud" }).click();
+      await page.waitForURL(/\/makse#tulemus=makstud&liik=ekoolitus&kursus=kulmumeistri-e-koolitus/);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse õnnestus.");
+      await expect(page.getByText("Saatsime sulle e-postiga sisselogimislingi.")).toBeVisible();
+      await expect(page.getByRole("link", { name: "Ava e-koolitus" })).toHaveAttribute("href", "/konto/kursus/kulmumeistri-e-koolitus");
+      expect(await storedPayments(addr)).toEqual([{ kind: "ecourse", status: "paid", amountCents: 19000 }]);
+      expect(await storedClient(addr)).toMatchObject({ name: "Test Ostja", locale: "et" });
+      expect(await storedAccess(addr, "kulmumeistri-e-koolitus")).toMatchObject({ grantedBy: "payment", revoked: false });
+      // no session was made by buying: the course is behind her login link, which only the mail carries
+      expect((await page.context().cookies()).some((c) => c.name === "__Host-mslab_client")).toBe(false);
+      // Back from the bank brings the cart back with "Maksa" ready: pressing it now (the Russian cart, so that the Russian text is checked
+      // too) says it is paid, in the form's place, and starts nothing (Dim, 10.10). Both projects press it: the forms' limit (5 presses in 10
+      // minutes) is counted per visitor, and every test is a visitor of its own (test.ts visitorIp), so the two projects share no counter.
+      await page.goto("/ru/ostukorv?kursus=kulmumeistri-e-koolitus");
+      const again = page.locator("[data-ecourse-form]");
+      await again.getByLabel("Имя").fill("Test Ostja");
+      await again.getByLabel("E-mail").fill(addr);
+      await again.getByLabel(/условиями/).check();
+      await again.getByRole("button", { name: "Оплатить 190 €" }).click();
+      await expect(page.getByText("Оплата уже прошла — проверьте свою почту.")).toBeVisible();
+      await expect(page.locator("[data-ecourse-form]")).toHaveCount(0);
+      expect(await storedPayments(addr)).toEqual([{ kind: "ecourse", status: "paid", amountCents: 19000 }]); // still the one payment
+    } finally {
+      await removeClientRows(addr);
+    }
+  });
+
+  test("a signed-in browser has her name and e-mail filled in by the browser, not by the page", async ({ page, request }, info) => {
+    test.skip(!LOCAL_FIXTURES, "signs in through the local database");
+    const addr = clientEmail("cartme", info.project.name);
+    try {
+      await removeClientRows(addr);
+      await insertClient(addr, { name: "Kati Tamm" });
+      const anonymous = await (await request.get("/ostukorv?kursus=kulmumeistri-e-koolitus")).text();
+      expect(anonymous).not.toContain("Kati Tamm"); // (the page every visitor is given)
+      await signInAsClient(page, addr);
+      await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
+      const form = page.locator("[data-ecourse-form]");
+      await expect(form.getByLabel("Nimi")).toHaveValue("Kati Tamm");
+      await expect(form.getByLabel("E-post")).toHaveValue(addr);
+      await form.getByLabel("Nimi").fill("Kati T."); // what she types is hers
+      await expect(form.getByLabel("Nimi")).toHaveValue("Kati T.");
+    } finally {
+      await removeClientRows(addr);
     }
   });
 

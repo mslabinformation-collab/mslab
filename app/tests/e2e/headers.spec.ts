@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 import { LOCAL_ENV } from "../local-secrets";
 import { PROD_ENV } from "./prod-build";
+import { DEV_ENV } from "./server";
 import { PROD_BUILD, TARGET } from "./target";
 import { test, expect } from "./test";
 
@@ -15,10 +16,10 @@ const REFERRER = "strict-origin-when-cross-origin";
 const FRAMING = "frame-ancestors 'self'";
 
 /**
- * The site's address (SITE_URL): link previews name it, whichever host served the page (Task 17). The public value of
- * .env.example, or the local production build's own address (prod-build.ts).
+ * The site's address (SITE_URL): link previews name it, whichever host served the page (Task 17). The local production build's own
+ * address (prod-build.ts), the dev server's own (server.ts DEV_ENV), or, for a deployment, the public value of .env.example.
  */
-const SITE_URL = PROD_BUILD ? PROD_ENV.SITE_URL : LOCAL_ENV.SITE_URL;
+const SITE_URL = PROD_BUILD ? PROD_ENV.SITE_URL : TARGET ? LOCAL_ENV.SITE_URL : DEV_ENV.SITE_URL;
 
 /** HEAD (as curl -I), without following redirects; GET where the answer to HEAD would not say anything. */
 async function head(request: APIRequestContext, path: string) {

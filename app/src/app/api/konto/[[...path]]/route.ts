@@ -6,6 +6,7 @@ import { serverEnv } from "@/server/env";
 import { serverKv } from "@/server/kv";
 import { logFailure } from "@/server/log";
 import { mediaStore } from "@/server/media-store";
+import { paymentProvider } from "@/server/payments/montonio";
 import { hostOrigin, isLocalHost, linkBase } from "@/server/site";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,8 @@ function deps(request: Request): AccountDeps {
     // The lesson files' store (R2, or the local folder) and Bunny Stream (null without its three settings).
     files: mediaStore(),
     bunny: bunnyConfig(env),
+    // online payments (phase 2b): null without the keys
+    montonio: paymentProvider(),
   };
 }
 

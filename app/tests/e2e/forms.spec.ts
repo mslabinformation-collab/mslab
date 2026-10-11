@@ -252,12 +252,15 @@ test.describe("spam protection", () => {
     test.skip(isMobile, "the limit is per visitor, not per layout: desktop only");
     test.skip(!LOCAL_FIXTURES, "the visitor address comes from x-forwarded-for only under next dev");
     const addr = testEmail("rate", info.project.name);
+    // (the contact form: the cart's interest form is not on the cart while payments are on, and the limit is the same for every form)
     for (let i = 1; i <= 6; i++) {
-      await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
-      const form = page.locator("[data-interest-form]");
-      await form.getByLabel("E-post").fill(addr);
-      await form.getByRole("button").click();
-      if (i <= 5) await expect(page.getByText("Aitäh! Anname teada, kui makse on avatud.")).toBeVisible();
+      await page.goto("/kontakt");
+      const form = page.locator("[data-contact-form]");
+      await form.getByLabel("Nimi").fill("Test Õpilane");
+      await form.getByLabel("E-post", { exact: true }).fill(addr);
+      await form.getByLabel("Sõnum").fill(`Küsimus ${i}`);
+      await form.getByRole("button", { name: "Saada" }).click();
+      if (i <= 5) await expect(page.getByText("Aitäh! Sinu sõnum on saadetud.")).toBeVisible();
       else {
         const error = form.getByRole("alert");
         await expect(error).toHaveText("Liiga palju katseid. Proovi mõne minuti pärast.");

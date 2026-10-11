@@ -12,6 +12,8 @@ export type CoursesTexts = Dict["account"]["dashboard"] & {
   /** The card sentences (account.next, filled with domain/account-cards.ts nextStep's vars). */
   next: Dict["account"]["next"];
   loader: LoaderTexts;
+  /** The pay button's texts (phase 2b). */
+  online: PayTexts;
 };
 
 /** "Lemmikud": the account.favourites strings and AccountLoader's. */
@@ -26,13 +28,27 @@ export type EcourseTexts = Dict["account"]["ecourse"] & { locked: string; loader
 /** One lesson's page: the account.lesson strings, "Jätka" and the lock sentence (account.ecourse), AccountLoader's. */
 export type LessonTexts = Dict["account"]["lesson"] & { resume: string; lockedHint: string; loader: LoaderTexts };
 
+/** The cards' pay button (phase 2b): "Maksa {amount}", "Maksa ülejäänud {amount}", the transfer line, the button while it opens, and why a start was refused. */
+export type PayTexts = { pay: string; payRest: string; transfer: string; starting: string; full: string; nothing: string; rate: string; failed: string };
+
+export const payTexts = (d: Dict): PayTexts => ({
+  pay: d.payment.pay,
+  payRest: d.payment.payRest,
+  transfer: d.payment.transfer,
+  starting: d.payment.starting,
+  full: d.payment.page.full,
+  nothing: d.payment.page.nothing,
+  rate: d.forms.errorTooMany,
+  failed: d.forms.errorGeneric,
+});
+
 export const shellTexts = (d: Dict): ShellTexts => d.account.shell;
 
 export const loaderTexts = (d: Dict): LoaderTexts => d.account.loader;
 
 export const ecourseTexts = (d: Dict): EcourseTexts => ({ ...d.account.ecourse, locked: d.course.locked, loader: loaderTexts(d) });
 
-export const coursesTexts = (d: Dict): CoursesTexts => ({ ...d.account.dashboard, next: d.account.next, loader: loaderTexts(d) });
+export const coursesTexts = (d: Dict): CoursesTexts => ({ ...d.account.dashboard, next: d.account.next, loader: loaderTexts(d), online: payTexts(d) });
 
 export const favouritesTexts = (d: Dict): FavouritesTexts => ({ ...d.account.favourites, loader: loaderTexts(d) });
 

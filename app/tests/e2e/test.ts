@@ -16,8 +16,8 @@ import { PROD_BUILD } from "./target";
 //   number sets a shorter delay in ms through the page's test hook (window.__mslabCampaignDelay).
 export type CampaignPopup = "off" | "site" | number;
 
-/** A page of the public site (not the admin, the API, /media or the design-review hub), which carries the ready mark. */
-const SITE_PAGE = /^\/(?!admin(\/|$)|api\/|media\/|guide(\/|$)|p\/|_next\/)/;
+/** A page of the public site (not the admin, the API, /media or the design-review hub), which carries the ready mark (the pay page /maksa/<token> is standalone HTML: no ready mark either). */
+const SITE_PAGE = /^\/(?!admin(\/|$)|api\/|media\/|maksa\/|guide(\/|$)|p\/|_next\/)/;
 
 /**
  * Waits after page.goto / page.reload until the public page has hydrated (<html data-site-ready>, SiteReady.tsx): a

@@ -5,6 +5,7 @@ import { startTransition, useActionState, useEffect, useId, useRef, useState } f
 import { hasPickableSession, initialSession } from "@/domain/catalogue";
 import type { SeatState } from "@/domain/sessions";
 import type { Locale } from "@/i18n/locales";
+import { navigate } from "@/lib/navigate";
 import { useUrlQuery } from "@/lib/url-query";
 import { registerContact, submitIndividual } from "@/server/actions/public";
 import { Icon } from "./Icon";
@@ -68,8 +69,11 @@ export type ContactRegisterTexts = {
 
 type Field = "session" | "name" | "email" | "phone" | "period" | "message" | "payment" | "terms" | "form";
 type Errors = Partial<Record<Field, string>>;
-/** `rejected`: the date the server turned down (filled up or cancelled meanwhile); its error stays while it is picked. */
-type State = { status: "idle" } | { status: "sent"; kind: Kind } | { status: "error"; kind: Kind; errors: Errors; rejected?: number };
+/**
+ * `rejected`: the date the server turned down (filled up or cancelled meanwhile); its error stays while it is picked.
+ * `paymentUrl` (sent, group): the prepayment's page at Montonio, where the browser goes once this state is on the page (see the effect below).
+ */
+type State = { status: "idle" } | { status: "sent"; kind: Kind; paymentUrl?: string } | { status: "error"; kind: Kind; errors: Errors; rejected?: number };
 
 /** Where focus goes after a failed submit: the first of these with an error, in page order. */
 const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "message", "payment", "terms"];
@@ -79,8 +83,9 @@ const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "me
  * each with its own price (P12, P13).
  * - Group: pick one of the upcoming sessions (full and cancelled ones are shown but cannot be picked), then the form with
  *   payment 100% now or 50% + 50% (P14). The form never confirms a place: it is confirmed after at least 50% prepayment
- *   (P15), said under the button. With no session to pick, the form is replaced by "new dates soon" and, when the course
- *   has an individual price, a way to ask for the individual course instead.
+ *   (P15), said under the button. With online payments the browser goes on to the prepayment's page (phase 2b). With no
+ *   session to pick, the form is replaced by "new dates soon" and, when the course has an individual price, a way to ask
+ *   for the individual course instead.
  * - Individual: a request with the preferred period or date; Maria agrees the time and the payment afterwards, so there
  *   is no payment choice and no prepayment line.
  * Both: help finding models (P11), create an account (P16), the newsletter consent and the optional message (phase 2c), terms.
@@ -124,7 +129,12 @@ export function ContactRegister({
     const k: Kind = formData.get("kind") === "individual" ? "individual" : "group";
     try {
       const result = k === "individual" ? await submitIndividual(formData) : await registerContact(formData);
-      if (result.ok) return { status: "sent", kind: k };
+      if (result.ok) {
+        // phase 2b (spec 6.1): the prepayment's page at Montonio (the bank or the card is chosen there); the answer shows meanwhile. The
+        // browser leaves from the effect below, not here: the action's answer carries the revalidated course page (the seats changed), which
+        // Next streams after this result, and leaving at once cut it off mid-stream ("The destination stream closed early" in the server's log).
+        return { status: "sent", kind: k, paymentUrl: k === "group" && result.paymentUrl ? result.paymentUrl : undefined };
+      }
       const errors: Errors = {};
       let rejected: number | undefined;
       for (const [f, code] of Object.entries(result.errors)) {
@@ -145,10 +155,12 @@ export function ContactRegister({
     }
   }, { status: "idle" });
 
-  // Land keyboard and screen-reader users on the confirmation, or on the first field that needs fixing.
+  // Land keyboard and screen-reader users on the confirmation, or on the first field that needs fixing. A registration that has a payment page
+  // goes on to it from here: the state is on the page, so the action's whole answer (with the revalidated page) has been received.
   useEffect(() => {
     if (state.status === "sent") {
       sentRef.current?.focus();
+      if (state.paymentUrl) navigate(state.paymentUrl);
       return;
     }
     if (state.status !== "error") return;

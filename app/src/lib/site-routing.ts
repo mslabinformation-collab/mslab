@@ -8,8 +8,9 @@ import { isSlug } from "./slug";
 // Paths the app serves as they are (no "/et" rewrite). The hub (guide, p/…) and /api are handled before this list.
 // Every entry ends at a path boundary or is one exact file: "/admin.php", "/administrator" or "/media.php" are unknown
 // addresses (the cached 404 page), not the admin or /media. The static files are lib/root-files.ts's list, which the
-// coming-soon gate shares.
-const PASS = new RegExp(`^\\/(ru(\\/|$)|admin(\\/|$)|media(\\/|$)|_next(\\/|$)|${ROOT_FILE_SOURCE})`);
+// coming-soon gate shares. The pay page of a registration (/maksa/<token>, phase 2b) is a route handler at its own path: one segment after it,
+// nothing deeper.
+const PASS = new RegExp(`^\\/(ru(\\/|$)|admin(\\/|$)|media(\\/|$)|_next(\\/|$)|maksa\\/[^/]+$|${ROOT_FILE_SOURCE})`);
 
 /** API routes answer at their own path: no trailing-slash or locale redirect (a POST must not be redirected). */
 const API = /^\/api(\/|$)/;
@@ -50,11 +51,12 @@ const ACCOUNT_SHELL = /^\/(et|ru)\/konto(\/|$)/;
 
 /**
  * The pages of app/[locale]/(site) without their locale (tests/unit/site-routing.test.ts checks them against the app),
- * with the client account's shells (/konto…, phase 2a: the login page, favourites and my details). The pages with a slug or an
+ * with the client account's shells (/konto…, phase 2a: the login page, favourites and my details) and the payment's result page (/makse,
+ * phase 2b: where the bank sends the payer back; its result is in the fragment). The pages with a slug or an
  * id are the patterns below: a course, a news item, an e-course in the account and (phase 3a) one lesson of it, a course's cart.
  */
 const STATIC_PAGES = new Set([
-  "", "/kontakt", "/konto", "/konto/andmed", "/konto/lemmikud", "/konto/sisene", "/koolitaja", "/koolitused", "/koolituskalender", "/ostukorv",
+  "", "/kontakt", "/konto", "/konto/andmed", "/konto/lemmikud", "/konto/sisene", "/koolitaja", "/koolitused", "/koolituskalender", "/makse", "/ostukorv",
   "/praktika", "/privaatsus", "/tingimused", "/uudised",
 ]);
 /** Pages with a slug of ours (lowercase letters, digits, dashes), an e-course in the account too; the cart takes whatever ?kursus= says (its own 404). */

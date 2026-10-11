@@ -1,16 +1,19 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
-import type { Db } from "@/db/client";
+import { and, eq, isNull } from "drizzle-orm";
+import type { Db, Q } from "@/db/client";
+import { releaseHoldLocked } from "@/db/queries/payments";
 import { readSetting } from "@/db/queries/public";
+import { lockSession, seatsTaken } from "@/db/queries/seats";
 import { courses, courseSessions, practicePackages, registrations, requests, subscribers } from "@/db/schema";
 import type { Course, CourseSession, Registration } from "@/db/schema";
 import { PREPAYMENT_KEY, parsePrepayment } from "@/domain/account-cards";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import { registrationPrice } from "@/domain/registration";
-import { seatState } from "@/domain/sessions";
+import { holdUntil, seatState } from "@/domain/sessions";
 import { pick } from "@/i18n/field";
 import {
   isSpam,
   parseContact,
+  parseEcoursePurchase,
   parseGroupRegistration,
   parseIndividual,
   parsePractice,
@@ -29,10 +32,12 @@ import {
   waitlistSummary,
   type Summary,
 } from "./messages";
-import { registrationConfirmationMail, requestConfirmationMail, type LoginCode } from "./account-mail";
+import { payLinkUrl, registrationConfirmationMail, requestConfirmationMail, type LoginCode } from "./account-mail";
 import { CONFIRMATION_MAIL_DAILY_CAP, LOGIN_MAIL_DAILY_CAP, accountOf, fillClientContact, issueClientLogin, reserveLoginMail } from "./client-auth";
 import { logFailure, logNote } from "./log";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env, type Mail } from "./notify";
+import type { Montonio } from "./payments/montonio";
+import { startEcoursePayment, startRegistrationPayment } from "./payments/start";
 import { RATE_LIMIT, RATE_WINDOW_SEC, rateKey, rateLimit } from "./ratelimit";
 import type { PublicChange } from "./cache-targets";
 import { sendWelcome } from "./newsletter";
@@ -46,7 +51,8 @@ import { upcomingFrom } from "@/domain/calendar";
 // → storage → notifications after the response. Storage is the contract; a failed e-mail or Telegram ping is logged
 // and never fails the request.
 
-export type ActionResult = { ok: true } | { ok: false; errors: Record<string, string> };
+/** `paymentUrl` (phase 2b): a group registration's prepayment, or an e-course purchase, has started; the form sends the browser there. */
+export type ActionResult = { ok: true; paymentUrl?: string } | { ok: false; errors: Record<string, string> };
 
 export type Deps = {
   db: Db;
@@ -63,9 +69,11 @@ export type Deps = {
    * renders those pages again (revalidatePath(); public-cache.ts).
    */
   changed?: (change: PublicChange) => Promise<void> | void;
+  /** Online payments (phase 2b, server/payments/montonio.ts paymentProvider); absent or null: the forms of today. */
+  montonio?: Montonio | null;
 };
 
-export type FormName = "contact" | "subscribe" | "register" | "individual" | "interest" | "practice" | "waitlist";
+export type FormName = "contact" | "subscribe" | "register" | "individual" | "interest" | "ecourse" | "practice" | "waitlist";
 
 const OK: ActionResult = { ok: true };
 const fail = (errors: Record<string, string>): ActionResult => ({ ok: false, errors });
@@ -244,12 +252,21 @@ export async function runSubmission(
 
 // ---------- registrations ----------
 
+/**
+ * A registration to store: the form's fields, and (phase 2b) the end of the seat hold it starts with. `seatHoldUntil` is written in the
+ * insert, so a registration that is stored under the session's lock already holds its seat when the lock is let go.
+ */
+export type NewRegistration = RegistrationInput & { seatHoldUntil?: Date | null };
+
 /** Stores a contact-course registration. The status is always `awaiting_prepayment` (a place is confirmed only
- *  after at least 50% prepayment, P15) and nothing has been paid. An address with an account is linked to it at once
- *  (client-auth.ts accountOf), and the account's empty name and phone are filled from it, in the same transaction. */
-export async function createRegistration(db: Db, input: RegistrationInput): Promise<Registration> {
+ *  after at least 50% prepayment, P15) and nothing has been paid. Its "Maksa" token is a fresh newToken() (phase 2b).
+ *  An address with an account is linked to it at once
+ *  (client-auth.ts accountOf), and the account's empty name and phone are filled from it, in the same transaction. A caller
+ *  that counts seats first (handleRegistration) passes its own transaction. */
+export async function createRegistration(q: Q, input: NewRegistration): Promise<Registration> {
   const email = normalizeEmail(input.email);
-  return db.transaction(async (tx) => {
+  // (inside the caller's transaction, when `q` is one, this is a savepoint of it)
+  return (q as Db).transaction(async (tx) => {
     const [row] = await tx
       .insert(registrations)
       .values({
@@ -268,6 +285,8 @@ export async function createRegistration(db: Db, input: RegistrationInput): Prom
         locale: input.locale,
         status: "awaiting_prepayment",
         paidCents: 0,
+        seatHoldUntil: input.seatHoldUntil ?? null,
+        payToken: newToken(),
       })
       .returning();
     if (row.clientId !== null) await fillClientContact(tx, row.clientId, [{ name: row.name, phone: row.phone, at: row.createdAt }]);
@@ -285,31 +304,73 @@ async function contactCourse(db: Db, slug: string): Promise<Course | null> {
   return row ?? null;
 }
 
-/** A session with its confirmed registrations, counted now (the page the visitor saw may be out of date). */
-async function sessionWithSeats(db: Db, id: number): Promise<(CourseSession & { confirmed: number }) | null> {
-  const [session] = await db.select().from(courseSessions).where(eq(courseSessions.id, id)).limit(1);
-  if (!session) return null;
-  const [{ confirmed }] = await db
-    .select({ confirmed: sql<number>`count(*)`.mapWith(Number) })
-    .from(registrations)
-    .where(and(eq(registrations.courseSessionId, id), eq(registrations.status, "confirmed")));
-  return { ...session, confirmed };
+/**
+ * Ends the seat hold a registration was stored with (phase 2b) when the payment start left no attempt to keep it: the start said "full",
+ * "nothing", "rate" or "notFound", or it threw. One conditional UPDATE of the registration (db/queries/payments.ts releaseHold: only while
+ * it is unpaid and no payment of it is still pending), run behind the registration's lock in a transaction of its own (releaseHoldLocked): a
+ * start of the same registration from the /maksa page or the dashboard may run at once, and must not have its new hold cleared. It holds no
+ * other lock, so it is within the lock order. A failed order needs none: failPayment ends the hold with the row. Never throws: the
+ * registration is stored, and the hold ends by itself after its 30 minutes. (The /maksa page and POST /api/konto/maksa store no hold before
+ * their start: what a start refreshes it refreshes together with a pending payment, so they have nothing to release.)
+ */
+async function releaseStoredHold(deps: Deps, registrationId: number): Promise<void> {
+  try {
+    await releaseHoldLocked(deps.db, registrationId, deps.now);
+  } catch (e) {
+    logFailure("[forms] register: the seat hold was not released", e);
+  }
 }
 
-/** Group registration for one session of a contact course (P12–P16). */
+/** A session with the seats taken at `now` (confirmed and live holds, db/queries/seats.ts), counted now: the page the visitor saw may be out of date. */
+async function sessionWithSeats(db: Q, id: number, now: Date): Promise<(CourseSession & { taken: number }) | null> {
+  const [session] = await db.select().from(courseSessions).where(eq(courseSessions.id, id)).limit(1);
+  if (!session) return null;
+  return { ...session, taken: (await seatsTaken(db, [id], now)).get(id) ?? 0 };
+}
+
+/**
+ * Group registration for one session of a contact course (P12–P16). With online payments (phase 2b) the prepayment starts at once and the
+ * answer carries its page (`paymentUrl`).
+ */
 export function handleRegistration(deps: Deps, formData: FormData): Promise<ActionResult> {
   return submission(deps, "register", formData, parseGroupRegistration, async ({ course: slug, courseSessionId, terms: _terms, wantsNewsletter, ...data }) => {
     void _terms;
     const course = await contactCourse(deps.db, slug);
     if (!course || course.priceGroup == null) return { result: fail({ form: "invalid" }) };
-    const session = await sessionWithSeats(deps.db, courseSessionId);
-    // Another course's session, a cancelled one or one that has begun cannot be booked (upcomingFrom: the same
-    // "upcoming" as the calendar and the course page, so they offer exactly the dates that can be booked).
-    if (!session || session.courseId !== course.id || session.status !== "scheduled" || session.startsAt < upcomingFrom(deps.now))
-      return { result: fail({ session: "unavailable" }) };
-    if (seatState(session, session.confirmed) === "full") return { result: fail({ session: "full" }) };
-
-    const registration = await createRegistration(deps.db, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "" });
+    // One transaction under the session's lock (the first lock of the order course_sessions → registrations → payments, db/queries/seats.ts):
+    // the full check and the insert see the same seats as a payment that starts or settles meanwhile, which takes the same lock. With online
+    // payments the registration is stored already holding its seat (30 minutes): whoever is queued on the lock behind it then counts that seat,
+    // and "full" is told to the one who really finds none, instead of a second registration being stored for a seat that is held.
+    const stored = await deps.db.transaction(async (tx) => {
+      await lockSession(tx, courseSessionId);
+      const session = await sessionWithSeats(tx, courseSessionId, deps.now);
+      // Another course's session, a cancelled one or one that has begun cannot be booked (upcomingFrom: the same
+      // "upcoming" as the calendar and the course page, so they offer exactly the dates that can be booked).
+      if (!session || session.courseId !== course.id || session.status !== "scheduled" || session.startsAt < upcomingFrom(deps.now)) return { status: "refused" as const, result: fail({ session: "unavailable" }) };
+      if (seatState(session, session.taken) === "full") return { status: "refused" as const, result: fail({ session: "full" }) };
+      const seatHoldUntil = deps.montonio ? holdUntil(deps.now) : null;
+      const registration = await createRegistration(tx, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "", seatHoldUntil });
+      return { status: "stored" as const, session, registration };
+    });
+    if (stored.status === "refused") return { result: stored.result };
+    const { session, registration } = stored;
+    // Phase 2b (spec 6.1): the prepayment starts at once — the seat is held already (stored with the registration), then a payment row and
+    // Montonio's order. Without payments, or when it does not start, the registration stands and the answer is today's ("Maksa" is offered
+    // later, in the mail and Minu koolitused). A failure here never fails the stored registration: it is logged and the answer is today's.
+    // The hold is kept only by a live attempt: when the start leaves none (it said full / nothing / rate / notFound, or it threw), it ends
+    // here; a failed order has ended it already (failPayment).
+    let paymentUrl: string | undefined;
+    if (deps.montonio) {
+      let attempt = false;
+      try {
+        const started = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio }, { registrationId: registration.id });
+        if (started.kind === "started") paymentUrl = started.paymentUrl;
+        attempt = started.kind === "started" || started.kind === "failed";
+      } catch (e) {
+        logFailure("[forms] register: the payment did not start", e);
+      }
+      if (!attempt) await releaseStoredHold(deps, registration.id);
+    }
     await deps.changed?.({ kind: "seats", course: course.slug });
     const summary = registrationSummary(
       { ...data, course: pick(course.title, "et"), startsAt: session.startsAt, city: session.city, venue: session.venue },
@@ -332,11 +393,12 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
             paymentChoice: data.paymentChoice,
             priceCents: registrationPrice(course, "group"),
             prepayment,
+            payLink: deps.montonio ? payLinkUrl(deps.siteUrl, registration.payToken) : null,
             login,
           });
       },
     };
-    return { result: OK, notify: { ...summary, replyTo: data.email }, confirm, subscribe: wantsNewsletter ? { email: data.email, locale: data.locale } : undefined };
+    return { result: paymentUrl ? { ok: true, paymentUrl } : OK, notify: { ...summary, replyTo: data.email }, confirm, subscribe: wantsNewsletter ? { email: data.email, locale: data.locale } : undefined };
   });
 }
 
@@ -398,6 +460,32 @@ export function handlePurchaseInterest(deps: Deps, formData: FormData): Promise<
       notify: { ...purchaseInterestSummary({ course: pick(course.title, "et"), email, locale }, admin(deps)), replyTo: email },
       subscribe: wantsNewsletter ? { email, locale } : undefined,
     };
+  });
+}
+
+/**
+ * The e-course cart's "Maksa {hind}" (phase 2b, spec 6.4): the forms' pipeline (honeypot, validation, 5 per 10 minutes per IP), a published
+ * e-course with a price, then a payment row (`ecourse`; its time is the terms box's acceptance) and Montonio's order: `{ ok: true, paymentUrl }`.
+ * The price is the course's own, read here: the browser sends none. Nothing else before the payment: no account, no access, no newsletter, no
+ * mail (server/payments/settle.ts does that when it is paid). Without payments, or when Montonio says no: form "unavailable", and the cart
+ * shows its purchase-interest form instead. An address that paid this course in the last 30 minutes starts nothing: form "alreadyPaid" (the
+ * cart says "Makse on juba tehtud — vaata oma e-posti."; Back from the bank would otherwise charge a second time).
+ */
+export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<ActionResult> {
+  return submission(deps, "ecourse", formData, parseEcoursePurchase, async ({ course: slug, name, email, locale, wantsNewsletter, terms: _terms }) => {
+    void _terms;
+    const [course] = await deps.db
+      .select()
+      .from(courses)
+      .where(and(eq(courses.slug, slug), eq(courses.published, true), eq(courses.type, "e_learning")))
+      .limit(1);
+    if (!course || course.price == null || course.price <= 0) return { result: fail({ form: "invalid" }) };
+    const started = await startEcoursePayment(
+      { db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio ?? null },
+      { courseId: course.id, amountCents: course.price, email, name, locale, newsletter: wantsNewsletter },
+    );
+    if (started.kind === "alreadyPaid") return { result: fail({ form: "alreadyPaid" }) };
+    return { result: started.kind === "started" ? { ok: true, paymentUrl: started.paymentUrl } : fail({ form: "unavailable" }) };
   });
 }
 
@@ -523,9 +611,9 @@ async function welcomeLater(deps: Deps, form: FormName, due: WelcomeDue): Promis
 /**
  * "Soovin MS LABi uudiseid ja pakkumisi" ticked on a registration form (phase 2c): the newsletter's own sign-up (subscribeAddress, then
  * its welcome mail with all the guards) after the answer. Never throws: the registration is stored whatever happens here, and a failure is
- * logged without the address.
+ * logged without the address. settle.ts calls it too, when a paid e-course purchase had the box ticked (phase 2b).
  */
-async function subscribeLater(deps: Deps, form: FormName, wish: { email: string; locale: "et" | "ru" }): Promise<void> {
+export async function subscribeLater(deps: Deps, form: FormName, wish: { email: string; locale: "et" | "ru" }): Promise<void> {
   try {
     const due = await subscribeAddress(deps, form, wish.email, wish.locale);
     if (due) await welcomeLater(deps, form, due);

@@ -209,6 +209,17 @@ export function isCrossSite(request: Request): boolean {
   }
 }
 
+/**
+ * Is this form POST from another site? isCrossSite (the Origin header), except that `Origin: null` with `Sec-Fetch-Site: same-origin` is this
+ * site's own page: the browser sends that pair when the page's referrer policy is strict, and only a browser can say it (the header is
+ * forbidden to scripts). A named foreign site is cross-site whatever Sec-Fetch-Site says. The standalone pages' buttons use it: the
+ * unsubscribe page (api/newsletter/loobu) and the pay page (/maksa/<token>, phase 2b).
+ */
+export function crossSiteFormPost(request: Request): boolean {
+  if (request.headers.get("origin") === "null" && request.headers.get("sec-fetch-site") === "same-origin") return false;
+  return isCrossSite(request);
+}
+
 const denied = (status: 401 | 403, error: string) =>
   new Response(JSON.stringify({ ok: false, error }), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 

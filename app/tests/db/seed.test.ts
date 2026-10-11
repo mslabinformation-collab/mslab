@@ -117,7 +117,7 @@ describe("prototype seed", () => {
     expect(sessions[0].startsAt.toISOString()).toBe(seedSessionStart(SEEDED_AT, 0).toISOString());
     expect(sessions[sessions.length - 1].startsAt.toISOString()).toBe(seedSessionStart(SEEDED_AT, 70).toISOString());
     expect(sessions.map((s) => formatWeekday(s.startsAt, "et"))).toEqual(["laupäev", "laupäev", "laupäev", "laupäev", "kolmapäev", "laupäev", "laupäev", "laupäev"]);
-    expect(sessions.every((s) => s.confirmed === 0)).toBe(true);
+    expect(sessions.every((s) => s.taken === 0)).toBe(true);
   });
 
   test("practice packages carry duration and price (MINI 4 ak / 100 €, MAXI 8 ak / 150 €)", async () => {

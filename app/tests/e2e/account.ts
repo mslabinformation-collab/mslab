@@ -329,6 +329,17 @@ export async function storedClient(email: string): Promise<{ id: number; name: s
   return row ?? null;
 }
 
+/** The access of an address to an e-course (null when there is none): who gave it, whether an admin ended it, and until when (phase 2b: "payment"). */
+export async function storedAccess(email: string, slug: string): Promise<{ grantedBy: string; revoked: boolean; expiresAt: Date } | null> {
+  const [row] = await localDb(
+    (sql) => sql<{ grantedBy: string; revoked: boolean; expiresAt: Date }[]>`
+      select a.granted_by as "grantedBy", a.revoked_at is not null as revoked, a.expires_at as "expiresAt"
+        from course_access a join clients c on c.id = a.client_id join courses k on k.id = a.course_id
+       where c.email = ${email} and k.slug = ${slug}`,
+  );
+  return row ?? null;
+}
+
 /** The stored password of an address (phase 2c): the scrypt hash and the time of its last change; both null without one. */
 export async function storedPassword(email: string): Promise<{ hash: string | null; changedAt: Date | null }> {
   const [row] = await localDb(

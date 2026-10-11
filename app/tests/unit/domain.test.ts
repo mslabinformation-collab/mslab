@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { formatEUR } from "@/domain/money";
 import { priceOptions, fromPrice, participationKinds } from "@/domain/course";
 import { prepaymentDue, registrationStatusAfterPayment } from "@/domain/registration";
-import { seatsLeft, seatState } from "@/domain/sessions";
+import { holdsSeat, holdUntil, SEAT_HOLD_MS, seatsLeft, seatState } from "@/domain/sessions";
 import { recommend } from "@/domain/recommend";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,6 +64,21 @@ describe("sessions", () => {
     expect(seatState({ status: "scheduled", capacity: 6 }, 4)).toBe("few");
     expect(seatState({ status: "scheduled", capacity: 6 }, 6)).toBe("full");
     expect(seatState({ status: "cancelled", capacity: 6 }, 0)).toBe("cancelled");
+  });
+});
+describe("the seat hold (phase 2b, D2)", () => {
+  const NOW = new Date("2026-10-09T10:00:00Z");
+  test("a hold lasts Montonio's payment window, 30 minutes", () => {
+    expect(SEAT_HOLD_MS).toBe(30 * 60_000);
+    expect(holdUntil(NOW)).toEqual(new Date("2026-10-09T10:30:00Z"));
+  });
+  test("confirmed takes a seat; awaiting only while its hold has not ended; cancelled never", () => {
+    const later = new Date(NOW.getTime() + 1);
+    expect(holdsSeat({ status: "confirmed", seatHoldUntil: null }, NOW)).toBe(true);
+    expect(holdsSeat({ status: "awaiting_prepayment", seatHoldUntil: later }, NOW)).toBe(true);
+    expect(holdsSeat({ status: "awaiting_prepayment", seatHoldUntil: NOW }, NOW)).toBe(false); // ends at that moment
+    expect(holdsSeat({ status: "awaiting_prepayment", seatHoldUntil: null }, NOW)).toBe(false);
+    expect(holdsSeat({ status: "cancelled", seatHoldUntil: later }, NOW)).toBe(false);
   });
 });
 describe("recommend", () => {

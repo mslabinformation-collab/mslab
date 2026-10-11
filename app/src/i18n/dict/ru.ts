@@ -356,6 +356,46 @@ export const ru: Dict = {
     total: "Итого",
   },
 
+  // Online payments (phase 2b, spec 9); drafts for the native-speaker check (docs/launch-checklist.md §10).
+  payment: {
+    pay: "Оплатить {amount}",
+    payRest: "Оплатить остаток {amount}",
+    transfer: "или оплатите банковским переводом",
+    starting: "Открываем оплату…",
+    cartDown: "Оплата не открылась. Оставьте свой e-mail, и мы сообщим.",
+    alreadyPaid: "Оплата уже прошла — проверьте свою почту.",
+    page: {
+      heading: "Оплата обучения",
+      nothing: "По этой регистрации сейчас ничего оплачивать не нужно.",
+      full: "Эта группа заполнена. Свяжитесь с Марией.",
+    },
+    result: {
+      title: "Оплата",
+      paid: "Оплата прошла. Мы отправили вам подтверждение по e-mail.",
+      paidEcourse: "Оплата прошла.",
+      paidEcourseText: "Мы отправили вам ссылку для входа на e-mail.",
+      pending: "Платёж в обработке. Когда банк его подтвердит, мы пришлём подтверждение.",
+      cancelled: "Оплата не прошла.",
+      retry: "Попробовать снова",
+      openCourse: "Открыть онлайн-курс",
+    },
+    mail: {
+      subjectConfirmed: "Место подтверждено — {title}",
+      subjectReceived: "Платёж получен — {title}",
+      subjectEcourse: "Онлайн-курс открыт — {title}",
+      leadConfirmed: "Платёж получен. Ваше место подтверждено.",
+      leadReceived: "Платёж получен. Спасибо!",
+      leadEcourse: "Платёж получен. Онлайн-курс для вас открыт.",
+      paid: "Оплачено",
+      // the passive of the account card's own sentence (owner decision 09.10, wording.md item 8)
+      rest: "Остаток {amount} оплачивается в день обучения или на странице «Мои курсы».",
+      allPaid: "Вся сумма оплачена.",
+      full: "Группа тем временем заполнилась, поэтому место не подтверждено. Мария свяжется с вами.",
+      notConfirmed: "Мария свяжется с вами.",
+      access: "Доступ до {date}.",
+    },
+  },
+
   campaign: {
     cta: "Найти свой курс",
     codeLabel: "Промокод",

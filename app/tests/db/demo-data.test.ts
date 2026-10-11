@@ -29,7 +29,7 @@ const totals = async () => ({ registrations: await total(registrations), request
 
 async function seatStates() {
   const rows = await listUpcomingSessions(db, NOW);
-  return new Map(rows.map((s) => [`${s.course.slug} ${s.id}`, seatState(s, s.confirmed)]));
+  return new Map(rows.map((s) => [`${s.course.slug} ${s.id}`, seatState(s, s.taken)]));
 }
 
 describe("sample data", () => {
@@ -148,8 +148,22 @@ describe("sample data", () => {
     // a real confirmed registration on the session to be made full: the samples would overfill it
     const [{ s }] = await db.select({ s: courseSessions }).from(courseSessions).innerJoin(courses, eq(courseSessions.courseId, courses.id)).where(eq(courses.slug, PLAN.full.course)).orderBy(courseSessions.startsAt).limit(1);
     await db.insert(registrations).values({ courseId: s.courseId, courseSessionId: s.id, kind: "group", name: "Päris", email: "paris@example.test", paymentChoice: "full", status: "confirmed" });
-    await expect(applyDemo(db, PLAN, NOW)).rejects.toThrow(/would have 5 confirmed of 4 places/);
+    await expect(applyDemo(db, PLAN, NOW)).rejects.toThrow(/would have 5 seats taken of 4 places/);
     expect(await totals()).toEqual({ ...before, registrations: before.registrations + 1 });
+  });
+
+  test("a live seat hold counts as a taken seat in the plan (phase 2b), an ended one does not", async () => {
+    const [{ s }] = await db.select({ s: courseSessions }).from(courseSessions).innerJoin(courses, eq(courseSessions.courseId, courses.id)).where(eq(courses.slug, PLAN.full.course)).orderBy(courseSessions.startsAt).limit(1);
+    const hold = (n: string, until: Date) => ({ courseId: s.courseId, courseSessionId: s.id, kind: "group" as const, name: n, email: `${n}@example.test`, paymentChoice: "half" as const, status: "awaiting_prepayment" as const, seatHoldUntil: until });
+    // two holds that ended: nobody's seat
+    await db.insert(registrations).values([hold("a", new Date(NOW.getTime() - 60_000)), hold("b", new Date(NOW.getTime() - 60_000))]);
+    expect(await planDemo(db, PLAN, NOW)).toMatchObject({ problems: [], sessions: { full: { before: "open", after: "full" } } });
+    // two holds that are live: two of the four places are taken, so the four sample confirmations would overfill it
+    await db.insert(registrations).values([hold("c", new Date(NOW.getTime() + 600_000)), hold("d", new Date(NOW.getTime() + 600_000))]);
+    const report = await planDemo(db, PLAN, NOW);
+    expect(report.sessions.full).toMatchObject({ before: "few", after: "full" });
+    expect(report.problems).toEqual([expect.stringMatching(/would have 6 seats taken of 4 places/)]);
+    await expect(applyDemo(db, PLAN, NOW)).rejects.toThrow(/would have 6 seats taken of 4 places/);
   });
 
   test("the samples are all made up: example.test addresses with the marker, names marked (näidis)", () => {

@@ -11,7 +11,7 @@ import { migrationsThrough } from "./helpers";
 // Migration 0003 copies every course's module titles (courses.modules, jsonb) into course_modules, in their order, and keeps the
 // column (the live code reads it until the 3a deploy). Checked as the Railway database goes through it: 0000–0002 applied, courses
 // with titles, then 0003. courses.modules is written and read by plain SQL, and the test stops at 0003, so it stays true after
-// migration 0006 drops the column from the schema and the database (Task 12; 0004 adds the lessons' video shape).
+// migration 0007 drops the column from the schema and the database (Task 12; 0004 adds the lessons' video shape).
 
 test("0003 copies the module titles of every course into course_modules, in order; courses.modules stays", async () => {
   const db = drizzle(new PGlite(), { schema });

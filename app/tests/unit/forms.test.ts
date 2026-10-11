@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   isSpam,
   parseContact,
+  parseEcoursePurchase,
   parseGroupRegistration,
   parseIndividual,
   parsePractice,
@@ -203,5 +204,30 @@ describe("the newsletter consent and the group form's message (phase 2c)", () =>
     const none = parseGroupRegistration(fd(group));
     expect(none.ok && none.data.message).toBe("");
     expect(parseGroupRegistration(fd({ ...group, message: "x".repeat(2001) })).ok).toBe(false);
+  });
+});
+
+describe("the e-course purchase (phase 2b, D3)", () => {
+  const fd = (fields: Record<string, string>) => {
+    const f = new FormData();
+    for (const [k, v] of Object.entries(fields)) f.set(k, v);
+    return f;
+  };
+  test("name, e-mail, the terms box (required) and the newsletter box; the course is a slug", () => {
+    expect(parseEcoursePurchase(fd({ course: "kulmumeistri-e-koolitus", name: "  Kati   Tamm ", email: " Kati@Example.com ", terms: "on", newsletter: "on", locale: "ru" }))).toEqual({
+      ok: true,
+      data: { course: "kulmumeistri-e-koolitus", name: "Kati Tamm", email: "kati@example.com", terms: "on", wantsNewsletter: true, locale: "ru" },
+    });
+    const missing = parseEcoursePurchase(fd({ course: "Not a slug", name: "", email: "x" }));
+    expect(missing).toEqual({ ok: false, errors: { form: "invalid", name: "required", email: "invalid", terms: "required" } });
+    expect(parseEcoursePurchase(fd({ course: "k", name: "K", email: "k@example.com", terms: "on" }))).toMatchObject({ ok: true, data: { wantsNewsletter: false, locale: "et" } });
+  });
+
+  test("the terms box is 'on' or nothing; the newsletter box only 'on'; a name longer than a client keeps is refused", () => {
+    const ok = { course: "k", name: "K", email: "k@example.com", terms: "on" };
+    for (const terms of ["", "off", "true", "ON", "1"]) expect(parseEcoursePurchase(fd({ ...ok, terms })), terms).toEqual({ ok: false, errors: { terms: "required" } });
+    for (const newsletter of ["", "off", "true", "ON", "1"]) expect(parseEcoursePurchase(fd({ ...ok, newsletter })), newsletter).toMatchObject({ ok: true, data: { wantsNewsletter: false } });
+    expect(parseEcoursePurchase(fd({ ...ok, name: "x".repeat(121) }))).toEqual({ ok: false, errors: { name: "required" } });
+    expect(parseEcoursePurchase(fd({ ...ok, name: "x".repeat(120) })).ok).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -161,10 +161,12 @@ export async function removeFormRows(): Promise<number> {
     await sql`delete from registrations where email like ${TEST_EMAIL_PATTERN}`;
     await sql`delete from requests where payload->>'email' like ${TEST_EMAIL_PATTERN}`;
     await sql`delete from subscribers where email like ${TEST_EMAIL_PATTERN}`;
+    await sql`delete from payments where email like ${TEST_EMAIL_PATTERN}`;
     const [{ n }] = await sql<{ n: number }[]>`
       select (select count(*) from registrations where email like ${TEST_EMAIL_PATTERN})
            + (select count(*) from requests where payload->>'email' like ${TEST_EMAIL_PATTERN})
-           + (select count(*) from subscribers where email like ${TEST_EMAIL_PATTERN})::int as n`;
+           + (select count(*) from subscribers where email like ${TEST_EMAIL_PATTERN})
+           + (select count(*) from payments where email like ${TEST_EMAIL_PATTERN})::int as n`;
     return Number(n);
   } finally {
     await sql.end();
@@ -204,6 +206,78 @@ export async function storedSubscriber(email: string): Promise<StoredSubscriber 
   try {
     const [row] = await sql<StoredSubscriber[]>`select email, locale, confirmed_at is not null as confirmed, token from subscribers where email = ${email}`;
     return row ?? null;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** The online payments of one test address (phase 2b), oldest first. */
+export async function storedPayments(email: string): Promise<{ kind: string; status: string; amountCents: number }[]> {
+  const sql = connect(false);
+  try {
+    return await sql<{ kind: string; status: string; amountCents: number }[]>`select kind, status, amount_cents as "amountCents" from payments where email = ${email} order by id`;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Does a registration of this test address hold a seat right now (a live seat_hold_until, phase 2b)? */
+export async function storedHold(email: string): Promise<boolean> {
+  const sql = connect(false);
+  try {
+    const [{ held }] = await sql<{ held: boolean }[]>`select exists (select 1 from registrations where email = ${email} and seat_hold_until > now()) as held`;
+    return held;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** A registration's "Maksa" token (phase 2b): the mail's /maksa/<token> link. */
+export async function storedPayToken(registrationId: number): Promise<string> {
+  const sql = connect(false);
+  try {
+    const [row] = await sql<{ token: string }[]>`select pay_token as token from registrations where id = ${registrationId}`;
+    return row.token;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** One online payment to store for a test (phase 2b): what the admin's Maksed shows. `paid`: it has a paid_at (a voided payment keeps it). */
+export type StoredPaymentInput = {
+  email: string;
+  name: string;
+  kind: "prepayment" | "balance" | "ecourse";
+  status: "pending" | "paid" | "failed" | "refunded" | "held";
+  amountCents: number;
+  registrationId?: number | null;
+  courseId?: number | null;
+  clientId?: number | null;
+  /** Montonio's method code and the bank's name, as the settlement stores them ("paymentInitiation", "Swedbank"). */
+  method?: string;
+  bank?: string;
+  paid?: boolean;
+  /** How long ago it was made: the list is newest first. */
+  minutesAgo?: number;
+};
+
+/**
+ * Writes a payment row straight to the LOCAL database, with its Montonio id and the reference `MSLAB-M<id>` (as insertPayment names it).
+ * The row carries the test address, so removeClientRows / removeAdminFixtures delete it with the rest of the test's rows.
+ */
+export async function insertStoredPayment(input: StoredPaymentInput): Promise<{ id: number; reference: string; providerUuid: string }> {
+  const sql = connect(false); // no public page shows a payment
+  try {
+    const providerUuid = `e2e-${randomUUID()}`;
+    const created = new Date(Date.now() - (input.minutesAgo ?? 0) * 60_000);
+    const [row] = await sql<{ id: number }[]>`
+      insert into payments (reference, kind, registration_id, course_id, client_id, email, name, amount_cents, status, provider_uuid, method, bank, paid_at, created_at, updated_at)
+      values (${`e2e-${randomUUID()}`}, ${input.kind}, ${input.registrationId ?? null}, ${input.courseId ?? null}, ${input.clientId ?? null}, ${input.email}, ${input.name},
+              ${input.amountCents}, ${input.status}, ${providerUuid}, ${input.method ?? ""}, ${input.bank ?? ""}, ${input.paid ? created : null}, ${created}, ${created})
+      returning id`;
+    const reference = `MSLAB-M${row.id}`;
+    await sql`update payments set reference = ${reference} where id = ${row.id}`;
+    return { id: row.id, reference, providerUuid };
   } finally {
     await sql.end();
   }
@@ -300,10 +374,12 @@ export async function removeClientRows(email?: string): Promise<number> {
     await sql`delete from client_login_tokens where email like ${match}`;
     await sql`delete from subscribers where email like ${match}`; // "Saada mulle uudiskirja" in Minu andmed
     await sql`delete from clients where email like ${match}`; // on delete cascade: sessions, favourites, access, terms
+    await sql`delete from payments where email like ${match}`; // the online payments of the test address (phase 2b)
     const [{ n }] = await sql<{ n: number }[]>`
       select (select count(*) from client_login_tokens where email like ${match})
            + (select count(*) from subscribers where email like ${match})
            + (select count(*) from clients where email like ${match})
+           + (select count(*) from payments where email like ${match})
            + (select count(*) from registrations where email like ${match})
            + (select count(*) from requests where payload->>'email' like ${match})
            + (select count(*) from courses where slug like ${courses})::int as n`;
@@ -454,12 +530,43 @@ export async function insertAdminFixtures(project: string, opts: { extraSubscrib
   }
 }
 
+/** The references (MSLAB-M<id>) of the payments insertAdminPayments stored, by what each one shows. */
+export type AdminPayments = { paid: string; held: string; voided: string; pending: string; ecourse: string };
+
+/**
+ * Online payments for the fixture registration (phase 2b), oldest first: a paid prepayment by bank link (Swedbank), a held balance
+ * paid by card (the amount did not match), a balance the bank voided after it was paid, a pending prepayment with no method yet — and an
+ * e-course purchase of another address (the seed e-course). Removed by removeAdminFixtures with the tag's other rows.
+ */
+export async function insertAdminPayments(fx: AdminFixtures): Promise<AdminPayments> {
+  const { registration: r, course } = fx;
+  const ours = { email: r.email, name: r.name, registrationId: r.id, courseId: course.id };
+  const [seed] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from courses where slug = 'kulmumeistri-e-koolitus'`, { marksPages: false });
+  const paid = await insertStoredPayment({ ...ours, kind: "prepayment", status: "paid", amountCents: 17500, method: "paymentInitiation", bank: "Swedbank", paid: true, minutesAgo: 50 });
+  const held = await insertStoredPayment({ ...ours, kind: "balance", status: "held", amountCents: 17500, method: "cardPayments", paid: true, minutesAgo: 40 });
+  const voided = await insertStoredPayment({ ...ours, kind: "balance", status: "failed", amountCents: 17500, method: "paymentInitiation", bank: "LHV", paid: true, minutesAgo: 30 });
+  const pending = await insertStoredPayment({ ...ours, kind: "prepayment", status: "pending", amountCents: 17500, minutesAgo: 20 });
+  const ecourse = await insertStoredPayment({
+    email: `e2e-admin-ecourse-${fx.tag}@example.com`,
+    name: `E2E E-koolitus ${fx.tag}`,
+    kind: "ecourse",
+    status: "paid",
+    amountCents: 19000,
+    courseId: seed.id,
+    method: "applePay",
+    paid: true,
+    minutesAgo: 10,
+  });
+  return { paid: paid.reference, held: held.reference, voided: voided.reference, pending: pending.reference, ecourse: ecourse.reference };
+}
+
 /** Deletes the admin fixture rows of one tag, or all of them; returns how many are left (0 when clean). */
 export async function removeAdminFixtures(tag?: string): Promise<number> {
   const mails = tag ? `e2e-admin-%-${tag}@example.com` : ADMIN_FIXTURE_EMAIL_PATTERN;
   const slugs = tag ? `e2e-admin-${tag}` : ADMIN_FIXTURE_SLUG_PATTERN;
   const sql = connect();
   try {
+    await sql`delete from payments where email like ${mails}`; // the online payments of the admin tests (phase 2b)
     await sql`delete from registrations where email like ${mails} or course_id in (select id from courses where slug like ${slugs})`;
     // Matched on the whole payload text, so a payload stored the wrong way (one jsonb string) is found too.
     const inPayload = `%${mails}%`;
@@ -468,6 +575,7 @@ export async function removeAdminFixtures(tag?: string): Promise<number> {
     await sql`delete from courses where slug like ${slugs}`; // its sessions go with it (on delete cascade)
     const [{ n }] = await sql<{ n: number }[]>`
       select (select count(*) from registrations where email like ${mails})
+           + (select count(*) from payments where email like ${mails})
            + (select count(*) from requests where payload::text like ${inPayload})
            + (select count(*) from subscribers where email like ${mails})
            + (select count(*) from courses where slug like ${slugs})::int as n`;

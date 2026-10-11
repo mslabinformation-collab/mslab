@@ -3,9 +3,11 @@ import { applySeatFixtures, ensureCourseTermsPage, LOCAL_FIXTURES, scheduleSampl
 import { forbiddenSettingError, SERVER_ENV_FILES } from "../local-secrets";
 import { assertLocalDatabases } from "./local-db";
 import { removeLeftoverComments } from "./local-kv";
+import { assertAppOnFakeMontonio } from "./montonio-guard";
+import { LOCAL_URL, TARGET } from "./target";
 
-// Runs once per `playwright test` run (whatever the file or --grep filter): seat fixtures for the calendar tests, and
-// leftovers of an interrupted run's form submissions removed.
+// Runs once per `playwright test` run (whatever the file or --grep filter): the app under test is checked to be on the fake Montonio (not the
+// real sandbox), seat fixtures for the calendar tests, and leftovers of an interrupted run's form submissions removed.
 export default async function globalSetup(): Promise<void> {
   if (!LOCAL_FIXTURES) {
     // A deployment has a real database and real notifications. Read-only runs against it need an explicit opt-in;
@@ -16,6 +18,7 @@ export default async function globalSetup(): Promise<void> {
   }
   refuseForbiddenSettings();
   assertLocalDatabases(); // before any write: the fixtures' database and the server's are both on this machine
+  await assertAppOnFakeMontonio(TARGET || LOCAL_URL); // a server of your own with the owner's sandbox keys must not create real Montonio orders
   await removeFormRows();
   await removeAdminRows(); // e2e-auth-… leftovers of an interrupted run
   await removeClientRows(); // e2e-client-… accounts and login tokens of an interrupted run

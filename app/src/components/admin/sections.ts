@@ -7,6 +7,7 @@ export type Section =
   | "courses"
   | "calendar"
   | "registrations"
+  | "payments"
   | "clients"
   | "requests"
   | "practice"
@@ -22,6 +23,7 @@ export const SECTIONS: readonly { key: Section; href: string; icon: AdminIconNam
   { key: "courses", href: "/admin/koolitused", icon: "book" },
   { key: "calendar", href: "/admin/kalender", icon: "calendar" },
   { key: "registrations", href: "/admin/registreerimised", icon: "clipboard" },
+  { key: "payments", href: "/admin/maksed", icon: "card" },
   { key: "clients", href: "/admin/opilased", icon: "users" },
   { key: "requests", href: "/admin/paringud", icon: "inbox" },
   { key: "practice", href: "/admin/praktika", icon: "flower" },

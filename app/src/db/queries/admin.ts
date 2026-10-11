@@ -1,10 +1,11 @@
 import { and, asc, count, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
-import type { Db, Q } from "../client";
+import type { Db, Q, Tx } from "../client";
 import { campaign, courseAccess, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, registrations, requests, settings, subscribers } from "../schema";
 import type { Campaign, Course, CourseImage, CourseSession, FaqItem, GalleryItem, HeroSlide, Page, PopupKind, Post, PracticePackage, Registration, Request as RequestRow, Subscriber } from "../schema";
 import { pageInfo, PAGE_SIZE, type PageInfo } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
 import type { I18n } from "@/i18n/field";
+import { hasFreeSeat, takesSeat } from "./seats";
 
 // Admin (write) queries. Callers must already have checked the admin session; nothing here does authorization.
 
@@ -166,6 +167,8 @@ export type AdminSessionRow = CourseSession & {
   /** Registrations by status (cancelled ones are not counted). */
   confirmed: number;
   awaiting: number;
+  /** Seats taken now: the confirmed ones and the live holds of unpaid ones (phase 2b, db/queries/seats.ts). What "vabu" counts against. */
+  taken: number;
   /** Open waitlist requests for this session. */
   waitlist: number;
 };
@@ -175,7 +178,7 @@ export type AdminSessionRow = CourseSession & {
  * `upcoming`: starting from `from`, soonest first; otherwise the ones before `from`, latest first. `{ ids }`: those
  * sessions, wherever they are in time (the drawer of a session opened from either list).
  */
-export async function listAdminSessions(db: Db, opts: { from: Date; upcoming: boolean } | { ids: number[] }): Promise<AdminSessionRow[]> {
+export async function listAdminSessions(db: Db, opts: { from: Date; upcoming: boolean } | { ids: number[] }, now: Date = new Date()): Promise<AdminSessionRow[]> {
   if ("ids" in opts && opts.ids.length === 0) return [];
   const where = "ids" in opts ? inArray(courseSessions.id, opts.ids) : opts.upcoming ? gte(courseSessions.startsAt, opts.from) : lt(courseSessions.startsAt, opts.from);
   const newestFirst = "upcoming" in opts && !opts.upcoming;
@@ -193,6 +196,7 @@ export async function listAdminSessions(db: Db, opts: { from: Date; upcoming: bo
         sessionId: registrations.courseSessionId,
         confirmed: sql<number>`count(*) filter (where ${registrations.status} = 'confirmed')`.mapWith(Number),
         awaiting: sql<number>`count(*) filter (where ${registrations.status} = 'awaiting_prepayment')`.mapWith(Number),
+        taken: sql<number>`count(*) filter (where ${takesSeat(now)})`.mapWith(Number),
       })
       .from(registrations)
       .where(inArray(registrations.courseSessionId, ids))
@@ -210,6 +214,7 @@ export async function listAdminSessions(db: Db, opts: { from: Date; upcoming: bo
     course: r.course,
     confirmed: reg.get(r.session.id)?.confirmed ?? 0,
     awaiting: reg.get(r.session.id)?.awaiting ?? 0,
+    taken: reg.get(r.session.id)?.taken ?? 0,
     waitlist: wait.get(r.session.id) ?? 0,
   }));
 }
@@ -358,6 +363,47 @@ export async function recordRegistrationPayment(db: Db, id: number, paidCents: n
     const [row] = await tx.update(registrations).set({ paidCents, status }).where(eq(registrations.id, id)).returning();
     return row ?? null;
   });
+}
+
+/** What an online payment did to a registration (server/payments/settle.ts). `full`: paid, but kept unconfirmed for want of a seat (D2). */
+export type RegistrationPaid = { registration: Registration; course: Course; session: CourseSession | null; wasConfirmed: boolean; full: boolean };
+
+/**
+ * An online payment of `cents` arrived for a registration (phase 2b, spec 6.2.2): `paidCents` becomes the current value + `cents` — an
+ * absolute value written under the row's lock (FOR UPDATE), as recordRegistrationPayment writes Maria's — and the status follows the same
+ * rule (confirmed from 50 %), but a payment never takes a confirmed place back: Maria may have confirmed it by hand with less paid. One
+ * exception (D2): a registration that is not confirmed yet stays awaiting_prepayment when its session has
+ * no free seat for it, counting the others' seats, confirmed or held, but not her own row (her hold may have ended): `full` says so. A
+ * confirmed registration, or one kept for want of a seat, has no hold any more. Runs in the caller's transaction; null: the row is gone.
+ * The caller has taken lockForPayment (db/queries/seats.ts: the session, then the registration) before anything else, so that the seats
+ * counted here are counted under the session's lock; the FOR UPDATE below is then a lock it already has.
+ */
+export async function addRegistrationPayment(tx: Tx, registrationId: number, cents: number, now: Date): Promise<RegistrationPaid | null> {
+  const [current] = await tx
+    .select({ registration: registrations, course: courses, session: courseSessions })
+    .from(registrations)
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id))
+    .where(eq(registrations.id, registrationId))
+    .for("update", { of: registrations });
+  if (!current) return null;
+  const { registration: r, course, session } = current;
+  const paidCents = r.paidCents + cents;
+  const total = registrationPrice(course, r.kind);
+  const wasConfirmed = r.status === "confirmed";
+  let status = wasConfirmed || total == null ? r.status : registrationStatusAfterPayment({ status: r.status, paidCents }, total);
+  let full = false;
+  if (!wasConfirmed && status === "confirmed" && session && !(await hasFreeSeat(tx, session, now, r.id))) {
+    status = r.status;
+    full = true;
+  }
+  const endHold = full || status === "confirmed";
+  const [row] = await tx
+    .update(registrations)
+    .set({ paidCents, status, ...(endHold ? { seatHoldUntil: null } : {}) })
+    .where(eq(registrations.id, registrationId))
+    .returning();
+  return { registration: row, course, session, wasConfirmed, full };
 }
 
 /** Requests newest first, optionally of one kind. `openFirst`: not handled ones before handled ones (the inbox). */

@@ -392,6 +392,53 @@ export const et = {
     total: "Kokku",
   },
 
+  // Online payments (phase 2b, spec 9). {amount} is euros ("175 €"), {title} the course, {date} the last day of an e-course's access. The
+  // buttons are the card's (components/account/AccountCourseCard.tsx), the mail's, the /maksa page's (server/pay-page.ts) and the cart's.
+  payment: {
+    pay: "Maksa {amount}",
+    payRest: "Maksa ülejäänud {amount}",
+    transfer: "või tasu pangaülekandega",
+    // the button while the payment page is being opened
+    starting: "Avan makse…",
+    // the e-course cart when Montonio did not open the payment: the line above the purchase-interest form (owner's wording, 09.10)
+    cartDown: "Makse ei avanenud. Jäta oma e-post, anname teada.",
+    // the e-course cart when this address paid the course in the last 30 minutes (Dim's decision of 10.10): in place of the form
+    alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
+    // the page behind the mail's "Maksa" link (/maksa/<token>)
+    page: {
+      heading: "Koolituse eest tasumine",
+      nothing: "Selle registreeringu eest pole praegu midagi tasuda.",
+      full: "See koolitus on täis. Võta ühendust Mariaga.",
+    },
+    // the page the bank sends the payer back to (/makse#tulemus=…, components/site/PaymentResult.tsx)
+    result: {
+      title: "Makse",
+      paid: "Makse õnnestus. Saatsime sulle kinnituse e-postiga.",
+      // an e-course's purchase (owner's wording, 09.10): a buyer who is not signed in learns where her login is
+      paidEcourse: "Makse õnnestus.",
+      paidEcourseText: "Saatsime sulle e-postiga sisselogimislingi.",
+      pending: "Makse on pooleli. Kui pank selle kinnitab, saadame sulle kinnituse.",
+      cancelled: "Makse jäi tegemata.",
+      retry: "Proovi uuesti",
+      openCourse: "Ava e-koolitus",
+    },
+    // the mails after a payment (server/account-mail.ts registrationPaidMail, ecourseOpenMail)
+    mail: {
+      subjectConfirmed: "Koht on kinnitatud — {title}",
+      subjectReceived: "Makse on kätte saadud — {title}",
+      subjectEcourse: "E-koolitus on avatud — {title}",
+      leadConfirmed: "Makse on kätte saadud. Sinu koht on kinnitatud.",
+      leadReceived: "Makse on kätte saadud. Aitäh!",
+      leadEcourse: "Makse on kätte saadud. E-koolitus on sinu jaoks avatud.",
+      paid: "Tasutud",
+      rest: "Ülejäänud {amount} tasud koolituspäeval või Minu koolitused lehel.",
+      allPaid: "Kogu summa on tasutud.",
+      full: "Koolitus on vahepeal täitunud, nii et koht jäi kinnitamata. Maria võtab sinuga ühendust.",
+      notConfirmed: "Maria võtab sinuga ühendust.",
+      access: "Ligipääs kuni {date}.",
+    },
+  },
+
   // Campaign popup. No "Mitte praegu" button (M3); the CTA label is editable in admin, this is the default (M4).
   campaign: {
     cta: "Leia enda koolitus",

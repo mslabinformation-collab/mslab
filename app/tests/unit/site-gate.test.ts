@@ -34,6 +34,8 @@ const THROUGH = [
   "/api/admin/lesson-file",
   "/api/cron/sweep",
   "/api/bunny/webhook",
+  "/api/payments/notify", // Montonio's webhook (phase 2b)
+  "/maksa/AbC_d-0123456789012345678901234567890", // the mail's Maksa link (phase 2b)
   "/api/newsletter/confirm",
   "/api/newsletter/loobu", // the unsubscribe link of the welcome mail (one-step newsletter, 09.10)
   "/_next/static/chunks/main.js",
@@ -98,6 +100,27 @@ const GATED = [
   "/api/bunny",
   "/api/bunny/webhookx",
   "/api/bunny/other",
+  // the webhook is one exact address: the return, the rest of /api/payments and look-alikes of the webhook stay gated (phase 2b)
+  "/api/payments",
+  "/api/payments/notify/",
+  "/api/payments/notifyx",
+  "/api/payments/notify/x",
+  "/api/payments/return",
+  "/api/payments/return/",
+  "/api/payments/return/x",
+  "/api/payments/returnx",
+  // the result page the bank sends the payer back to is a page of the site (phase 2b): gated like the rest, in both languages. It is not /maksa
+  "/makse",
+  "/ru/makse",
+  "/et/makse",
+  "/makse/x",
+  "/makse/..%2fkonto",
+  // the pay page is one segment after /maksa: the bare path, anything deeper, look-alikes, a locale in front and an encoded way out stay gated (phase 2b)
+  "/maksa",
+  "/maksa/a/b",
+  "/maksax/a",
+  "/ru/maksa/a",
+  "/maksa/..%2fkonto",
   "/api/newsletterx",
   "/_nextx/a",
   "/_next",
@@ -181,6 +204,26 @@ describe("gateDecision", () => {
     }
   });
 
+  test("the bank's way back and its result page stay gated (phase 2b): the payer's browser gets the coming-soon page, a script the 404 JSON; no method, query or look-alike opens them; an admin's preview cookie does", async () => {
+    const BACK = ["/api/payments/return", "/makse", "/ru/makse"];
+    // the payer arrives from the bank as a navigation; before the launch that is the coming-soon page of her language
+    expect(await asked("/api/payments/return", "GET", { fetchMode: "navigate", accept: BROWSER_ACCEPT })).toEqual({ kind: "gate", page: "/tulekul/et", json: false });
+    expect(await asked("/api/payments/return", "GET", { fetchMode: "cors", accept: "application/json" })).toEqual({ kind: "gate", page: "/tulekul/et", json: true });
+    expect(await asked("/api/payments/return", "HEAD", { fetchMode: "navigate" })).toMatchObject({ kind: "gate", json: false });
+    expect(await decide("/makse")).toEqual({ kind: "gate", page: "/tulekul/et", json: false });
+    expect(await decide("/ru/makse")).toEqual({ kind: "gate", page: "/tulekul/ru", json: false });
+    // they are not on the list of addresses that always go through (only the webhook and the mail's /maksa/<token> are), whatever the method
+    for (const path of BACK) {
+      expect(alwaysThrough(path), path).toBe(false);
+      for (const method of METHODS) expect(await kind(path, ON, undefined, method), `${method} ${path}`).toBe("gate");
+    }
+    expect(alwaysThrough("/api/payments/notify")).toBe(true);
+    // the cookie of a signed-in admin opens them, and nothing else does (a forged one, none)
+    const cookie = await signPreview(SECRET, NOW);
+    for (const path of BACK) expect(await kind(path, ON, cookie), path).toBe("pass");
+    for (const path of BACK) expect(await kind(path, ON, "1"), path).toBe("gate");
+  });
+
   test("a script's call (fetch, XHR: cors, same-origin, no-cors) or an Accept that prefers JSON keeps the 404 JSON; so does any other method", async () => {
     for (const fetchMode of ["cors", "same-origin", "no-cors", "websocket", null, undefined])
       for (const accept of ["*/*", "application/json", "application/json, text/plain, */*", null, undefined, ""])
@@ -258,7 +301,7 @@ describe("gateDecision", () => {
   test("the method never opens the gate (a server action is a POST to the page's own address) and never closes it", async () => {
     for (const method of METHODS) {
       for (const path of ["/", "/konto/sisene", "/ru/kontakt", "/api/konto/request", "/api/feedback"]) expect(await kind(path, ON, undefined, method), `${method} ${path}`).toBe("gate");
-      for (const path of ["/admin/login", "/api/auth/logout", "/api/admin/upload", "/api/bunny/webhook", "/api/newsletter/confirm", "/api/newsletter/loobu"])
+      for (const path of ["/admin/login", "/api/auth/logout", "/api/admin/upload", "/api/bunny/webhook", "/api/payments/notify", "/api/newsletter/confirm", "/api/newsletter/loobu", "/maksa/AbC_d-0123456789012345678901234567890"])
         expect(await kind(path, ON, undefined, method), `${method} ${path}`).toBe("pass");
     }
   });

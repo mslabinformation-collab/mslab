@@ -40,6 +40,18 @@ export function defaultExpiryDate(now: Date, accessMonths: number | null): strin
   return addMonths(tallinnToday(now), months)!;
 }
 
+/**
+ * The end date a paid purchase gives (phase 2b, the owner's decision of 09.10: buying again never shortens access): today + the course's
+ * access months (defaultExpiryDate), or the day her access ends when that is later. An access an admin ended counts as none, and one that has
+ * run out ends before today, so both give the new date. `current`: her access row to the course, or null.
+ */
+export function purchaseExpiryDate(now: Date, accessMonths: number | null, current: { expiresAt: Date; revokedAt: Date | null } | null): string {
+  const fresh = defaultExpiryDate(now, accessMonths);
+  if (!current || current.revokedAt) return fresh;
+  const kept = tallinnToday(current.expiresAt); // (the Estonian day it ends on: grantAccess stores the end of that day)
+  return kept > fresh ? kept : fresh;
+}
+
 /** The last moment of an Estonian calendar day, 23:59:59.999 Tallinn time; null when `date` is not a real date. */
 export function endOfDayTallinn(date: string): Date | null {
   const minute = tallinnInstant(date, "23:59");

@@ -3,7 +3,7 @@ import { addMonths, defaultExpiryDate, tallinnToday } from "../../src/domain/cli
 import { formatDate, formatTime } from "../../src/i18n/format";
 import { clientEmail, insertAccountFixtures, setPrepayment, signInAsClient, takeTerms, TEST_PREPAYMENT, type AccountCardKind } from "./account";
 import { ADMIN, adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
-import { accountCourseSlug, holdLocalLock, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows, snapshotRows } from "./fixtures";
+import { accountCourseSlug, holdLocalLock, insertStoredPayment, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows, snapshotRows } from "./fixtures";
 import { insertLessonCourse, markDone, removeLessonFile } from "./lessons";
 import { LOCAL_URL, TARGET } from "./target";
 import { smallTargets } from "./targets";
@@ -571,7 +571,7 @@ test("a change request in Päringud: the course and its date as the heading, the
   expect(await noOverflow(page)).toBe(true);
 });
 
-test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid card shows it in groups of four; cleared, Maria sends an invoice", async ({ page, context, browser, visitorIp }, info) => {
+test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid card shows it in groups of four; cleared, only 'Maksa' is left on the card (online payments are on, phase 2b)", async ({ page, context, browser, visitorIp }, info) => {
   // The prepayment instructions are one shared setting (the dashboard tests use it too): the runs take turns.
   info.setTimeout(info.timeout + LOCK_WAIT_MS);
   const release = await holdLocalLock("e2e-prepayment-setting");
@@ -583,7 +583,9 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
     const student = await studentBrowser(browser, email, visitorIp);
     try {
       const unpaid = card(student.page, `registration-${f.registrations.awaiting}`);
-      await expect(unpaid.locator("[data-next-step]")).toHaveText("Maria saadab sulle arve ettemaksu tasumiseks.");
+      // no instructions yet: with online payments (the e2e server has the fake Montonio) the card still says what is due, and "Maksa 175 €" is its only button
+      await expect(unpaid.locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 175 €.");
+      await expect(unpaid.locator("button, a")).toHaveText(["Maksa 175 €"]);
 
       await signInAsAdmin(page, context, visitorIp, created);
       page.on("dialog", (dialog) => void dialog.accept());
@@ -607,6 +609,7 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
 
       await student.page.reload();
       await expect(unpaid.locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 175 €.");
+      await expect(unpaid.locator("button, a")).toHaveText(["Maksa 175 €", "Vaata juhiseid"]); // the transfer is the text button under "Maksa"
       await unpaid.getByRole("button", { name: "Vaata juhiseid" }).click();
       const panel = unpaid.locator("[data-prepayment]");
       await expect(panel.locator("[data-pay-row]")).toHaveText([
@@ -617,13 +620,13 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
         new RegExp(`^Selgitus\\s*MSLAB-${f.registrations.awaiting}\\s*Kopeeri`),
       ]);
 
-      // all four emptied: no instructions, the invoice sentence and nothing to press
+      // all four emptied: no instructions, so no "Vaata juhiseid"; "Maksa 175 €" is all that is left to press
       for (const name of ["Saaja", "IBAN", "Pank", "Selgituse algus"]) await box.getByRole("textbox", { name, exact: true }).fill("");
       await page.getByRole("button", { name: "Salvesta", exact: true }).click();
       await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
       await student.page.reload();
-      await expect(unpaid.locator("[data-next-step]")).toHaveText("Maria saadab sulle arve ettemaksu tasumiseks.");
-      await expect(unpaid.locator("button, a")).toHaveCount(0);
+      await expect(unpaid.locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 175 €.");
+      await expect(unpaid.locator("button, a")).toHaveText(["Maksa 175 €"]);
     } finally {
       await student.close();
     }
@@ -631,4 +634,49 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
     await restore();
     await release();
   }
+});
+
+test("her online payments in the drawer: a prepayment made before she had an account and an e-course purchase, in Maria's words; the access the purchase opened says 'Avas veebimakse' (phase 2b)", async ({ page, context, visitorIp }, info) => {
+  const email = await fresh("pay", info.project.name);
+  const name = `Pia E2E ${info.project.name}`;
+  const f = await insertAccountFixtures(email, { name, cards: ["awaiting", "ecourse"] });
+  const [seed] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from courses where slug = ${f.ecourse.slug}`, { marksPages: false });
+  // the prepayment was made before she had an account: it carries no client of its own, only its registration (which her login linked to her)
+  const prepayment = await insertStoredPayment({ email, name, kind: "prepayment", status: "paid", amountCents: 17500, registrationId: f.registrations.awaiting, courseId: f.course.id, method: "paymentInitiation", bank: "Swedbank", paid: true, minutesAgo: 30 });
+  const ecourse = await insertStoredPayment({ email, name, kind: "ecourse", status: "paid", amountCents: 19000, courseId: seed.id, clientId: f.clientId, method: "cardPayments", paid: true, minutesAgo: 5 });
+  const voided = await insertStoredPayment({ email, name, kind: "balance", status: "failed", amountCents: 17500, registrationId: f.registrations.awaiting, courseId: f.course.id, method: "paymentInitiation", bank: "LHV", paid: true, minutesAgo: 10 });
+  // the e-course purchase opened her access ("payment" is who opened it)
+  await onLocalDb((sql) => sql`update course_access set granted_by = 'payment' where client_id = ${f.clientId}`, { marksPages: false });
+  await signInAsAdmin(page, context, visitorIp, created);
+  const d = await openStudent(page, email);
+
+  const payments = d.locator("[data-client-payments]");
+  await expect(payments.getByRole("heading", { level: 3 })).toHaveText("Maksed");
+  const shown = await payments.locator("[data-payment]").evaluateAll((lines) => lines.map((l) => l.getAttribute("data-payment")));
+  expect(shown).toEqual([ecourse.reference, voided.reference, prepayment.reference]); // newest first: hers, and her registration's
+  const line = (ref: string) => payments.locator(`[data-payment="${ref}"]`);
+  await expect(line(ecourse.reference)).toContainText("190 €");
+  await expect(line(ecourse.reference)).toContainText("E-koolitus · Kulmumeistri e-koolitus");
+  await expect(line(ecourse.reference)).toContainText("Kaart");
+  await expect(line(ecourse.reference)).toContainText("Makstud");
+  await expect(line(prepayment.reference)).toContainText("175 €");
+  await expect(line(prepayment.reference)).toContainText(`Ettemaks · ${f.course.title}`);
+  await expect(line(prepayment.reference)).toContainText("Pangalink · Swedbank");
+  await expect(line(voided.reference)).toContainText("Tühistatud pangas");
+  await expect(line(voided.reference).locator("[data-payment-check]")).toHaveText("Kontrolli Montonios");
+  await expect(line(prepayment.reference).locator("[data-payment-check]")).toHaveCount(0);
+  await expect(payments).not.toContainText(/paymentInitiation|cardPayments/);
+  await expect(d.locator("[data-access]")).toContainText("Avas veebimakse,");
+  await expect(d.locator("[data-access]")).not.toContainText("Avas payment");
+  expect(await smallTargets(d)).toEqual([]);
+  expect(await noOverflow(page)).toBe(true);
+});
+
+test("a student with no online payments: the drawer says so", async ({ page, context, visitorIp }, info) => {
+  const email = await fresh("nopay", info.project.name);
+  await insertAccountFixtures(email, { name: `Nora E2E ${info.project.name}`, cards: ["confirmed"] });
+  await signInAsAdmin(page, context, visitorIp, created);
+  const d = await openStudent(page, email);
+  await expect(d.locator("[data-client-payments]")).toContainText("Makseid pole.");
+  await expect(d.locator("[data-client-payments] [data-payment]")).toHaveCount(0);
 });

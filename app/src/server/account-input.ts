@@ -33,6 +33,7 @@ const deletion = z.object({ confirm: z.literal(true) });
 const progress = z.object({ watchedSec: z.number().min(0).max(LIMITS.watchedSec) });
 /** Kept exactly as typed (no trim): the length and the e-mail rules are the server's, with the account's address (domain/password.ts). */
 const password = z.object({ password: z.string().min(1).max(LIMITS.passwordInput).refine(storable) });
+const payStart = z.object({ registrationId: rowId });
 
 export type FavouriteInput = z.infer<typeof favourite>;
 export type MergeInput = z.infer<typeof merge>;
@@ -59,6 +60,7 @@ export const parseTerms = (body: unknown) => parse(terms, body);
 export const parseDeletion = (body: unknown) => parse(deletion, body);
 export const parseProgress = (body: unknown) => parse(progress, body);
 export const parsePassword = (body: unknown) => parse(password, body);
+export const parsePayStart = (body: unknown) => parse(payStart, body);
 
 /** The course slug of a request path (still percent-encoded), or null when it cannot be a slug (not decodable, empty, too long, text the database cannot hold). */
 export function parseSlug(raw: string): string | null {

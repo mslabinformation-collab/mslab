@@ -6,11 +6,13 @@ import { getDb } from "@/db/client";
 import { serverEnv } from "../env";
 import { serverKv } from "../kv";
 import { logFailure } from "../log";
+import { paymentProvider } from "../payments/montonio";
 import { revalidatePublic } from "../public-cache";
 import { clientIp } from "../ratelimit";
 import { linkBase, requestOrigin } from "../site";
 import {
   handleContact,
+  handleEcoursePurchase,
   handleIndividual,
   handlePractice,
   handlePurchaseInterest,
@@ -25,7 +27,7 @@ import {
 
 // Public form actions. Every export of a "use server" file is callable from the browser, so only the actions live
 // here; validation, rate limiting, storage and notifications are in ../submit.ts (tested without Next.js).
-// Result: { ok: true } | { ok: false; errors: Record<field, code> } — codes in ../forms.ts; form "rate" when rate
+// Result: { ok: true, paymentUrl? } | { ok: false; errors: Record<field, code> } — codes in ../forms.ts; form "rate" when rate
 // limited, form "server" when storage failed.
 
 async function run(form: FormName, handler: (deps: Deps, formData: FormData) => Promise<ActionResult>, formData: FormData): Promise<ActionResult> {
@@ -46,6 +48,8 @@ async function run(form: FormName, handler: (deps: Deps, formData: FormData) => 
         // a registration or waitlist entry: the calendar and the course page show the session's seats. They are
         // revalidated before the answer, so the very next request shows the new count (server/public-cache.ts).
         changed: revalidatePublic,
+        // online payments (phase 2b): null without the keys, and the forms are today's
+        montonio: paymentProvider(),
       };
     },
     handler,
@@ -66,7 +70,8 @@ export async function subscribe(formData: FormData): Promise<ActionResult> {
 /**
  * Contact course, group: registration for one session, stored as `awaiting_prepayment` (P15). Fields: course (slug),
  * session (id), name, email, phone, payment (full|half), modelHelp, account, terms ("on"), locale, website.
- * Extra errors: session "full" / "unavailable" when the date can no longer be booked.
+ * Extra errors: session "full" / "unavailable" when the date can no longer be booked. With online payments the answer is
+ * `{ ok: true, paymentUrl }`: the prepayment has started (phase 2b).
  */
 export async function registerContact(formData: FormData): Promise<ActionResult> {
   return run("register", handleRegistration, formData);
@@ -80,6 +85,16 @@ export async function submitIndividual(formData: FormData): Promise<ActionResult
 /** E-learning cart before payment opens (P9): request of kind `contact` { course, intent: "purchase", email }. */
 export async function submitPurchaseInterest(formData: FormData): Promise<ActionResult> {
   return run("interest", handlePurchaseInterest, formData);
+}
+
+/**
+ * The e-course cart's purchase (phase 2b): `{ ok: true, paymentUrl }` (the cart sends the browser there), or form "unavailable" (no payments,
+ * Montonio down: the cart shows its interest form), or form "alreadyPaid" (this address paid the course in the last 30 minutes: the cart says so
+ * and starts nothing). The price is the course's own, never a field. Fields: course (slug), name, email, terms,
+ * newsletter, locale, website (honeypot).
+ */
+export async function buyEcourse(formData: FormData): Promise<ActionResult> {
+  return run("ecourse", handleEcoursePurchase, formData);
 }
 
 /** Practice request (/praktika#taotlus): request of kind `practice`. Fields: package, name, email, phone, course, times. */

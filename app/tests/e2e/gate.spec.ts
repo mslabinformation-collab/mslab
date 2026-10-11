@@ -89,6 +89,16 @@ test.describe("a visitor", () => {
     }
   });
 
+  test("the mail's Maksa link goes through: /maksa/<token> is the app's page (an unknown token: nothing to pay), and its button refuses a cross-site POST (phase 2b)", async ({ page, request }) => {
+    const path = "/maksa/unknown-token-00000000000000000000000000000000";
+    const res = await page.goto(path);
+    expect(res?.status()).toBe(200);
+    expect(res?.headers()["referrer-policy"]).toBe("same-origin");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Koolituse eest tasumine");
+    await expect(page.getByText("Selle registreeringu eest pole praegu midagi tasuda.")).toBeVisible();
+    expect((await request.post(path, { headers: { origin: "https://elsewhere.example" }, maxRedirects: 0 })).status()).toBe(403);
+  });
+
   test("the page: logo, heading, one line, the sign-up with its line (no privacy link here); no horizontal overflow, 44px targets", async ({ page }) => {
     await page.goto("/koolitused");
     await expect(page.getByRole("img", { name: "MS LAB" })).toBeVisible();
@@ -214,6 +224,35 @@ test.describe("a visitor", () => {
       await expectComingSoon(page);
     }
   });
+
+  test("the bank's way back and the result page are the site's: gated for a visitor (phase 2b)", async ({ page, request }) => {
+    const res = await request.get("/api/payments/return?order-token=x", { maxRedirects: 0 });
+    expect(res.status()).toBe(404);
+    expect(await res.json()).toEqual({ ok: false, error: "not_found" });
+    expect((await page.goto("/makse"))?.status()).toBe(200);
+    await expectComingSoon(page);
+    expect((await page.goto("/ru/makse"))?.status()).toBe(200);
+    await expectComingSoon(page, HEADING_RU);
+    // the payer arriving from the bank (a navigation, the token in the address) sees the coming-soon page too, never the redirect to /makse
+    await page.goto("/api/payments/return?order-token=x");
+    expect(page.url()).toContain("/api/payments/return?order-token=x");
+    await expectComingSoon(page);
+  });
+
+  test("Montonio's webhook goes through: a POST is answered by the app (400 for a token it cannot verify), not the gate, and is never redirected (phase 2b)", async ({ request }) => {
+    const res = await request.post("/api/payments/notify", { data: { orderToken: "not-a-token" }, maxRedirects: 0 });
+    expect(res.status()).toBe(400);
+    expect(res.status() >= 300 && res.status() < 400).toBe(false);
+    expect(res.headers()["location"]).toBeUndefined();
+    expect(await res.json()).toEqual({ ok: false });
+    // the webhook is that one address: POST only (Next.js answers the rest 405), and the rest of /api/payments stays behind the gate
+    expect((await request.get("/api/payments/notify", { maxRedirects: 0 })).status()).toBe(405);
+    for (const path of ["/api/payments/return", "/api/payments/notify/"]) {
+      const gated = await request.post(path, { data: { orderToken: "not-a-token" }, maxRedirects: 0 });
+      expect(gated.status(), path).toBe(404);
+      expect(await gated.json(), path).toEqual({ ok: false, error: "not_found" });
+    }
+  });
 });
 
 /** The preview cookie in this browser, as the server would set it. */
@@ -235,6 +274,17 @@ test.describe("an admin", () => {
     await expect(page.locator("[data-coming-soon]")).toHaveCount(0);
     // what the gate shows is no page of the site
     for (const path of ["/tulekul", "/tulekul/et", "/tulekul/ru"]) expect((await page.goto(path))?.status(), path).toBe(404);
+  });
+
+  test("with the preview cookie the bank's way back works: /makse shows the result of its fragment, the return lands on it (phase 2b)", async ({ page, context }) => {
+    await setPreview(context, await signPreview(GATE_PREVIEW_SECRET));
+    await page.goto("/makse#tulemus=katkestatud");
+    await expect(page.locator("[data-coming-soon]")).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse jäi tegemata.");
+    // a token that cannot be verified lands on the same page, never an error
+    await page.goto("/api/payments/return?order-token=x");
+    await page.waitForURL(/\/makse#tulemus=katkestatud$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse jäi tegemata.");
   });
 
   test("sign-in sets the preview cookie; 'Vaata kodulehte' gives it again; logout clears it", async ({ page, context }, info) => {

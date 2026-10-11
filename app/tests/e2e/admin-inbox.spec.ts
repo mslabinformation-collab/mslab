@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
 import { signInAsAdmin } from "./admin-login";
+import { smallTargets } from "./targets";
 import {
   deleteStoredRequest,
   insertAdminFixtures,
+  insertAdminPayments,
   removeAdminFixtures,
   removeAdminRows,
   requestHandled,
@@ -19,7 +21,7 @@ import {
 // fixtures.ts, an unpublished fixture course with its own session) and deletes again. The guard tests are GET-only and
 // also run against a deployment.
 
-const MENU = ["Ülevaade", "Koolitused", "Kalender", "Registreerimised", "Õpilased", "Päringud", "Praktika", "Avaleht", "Koolitaja", "Uudised", "Hüpikaken", "Uudiskiri", "Seaded"];
+const MENU = ["Ülevaade", "Koolitused", "Kalender", "Registreerimised", "Maksed", "Õpilased", "Päringud", "Praktika", "Avaleht", "Koolitaja", "Uudised", "Hüpikaken", "Uudiskiri", "Seaded"];
 
 const created = { tokens: new Set<string>(), sessions: new Set<string>() };
 let fx: AdminFixtures | null = null;
@@ -56,7 +58,7 @@ async function menu(page: Page, isMobile: boolean): Promise<Locator> {
 
 test.describe("guard (GET only, also against a deployment)", () => {
   test("the inbox pages and the CSV export need a session", async ({ request }) => {
-    for (const path of ["/admin/registreerimised", "/admin/paringud", "/admin/uudiskiri", "/admin/koolitused", "/admin/seaded"]) {
+    for (const path of ["/admin/registreerimised", "/admin/maksed", "/admin/paringud", "/admin/uudiskiri", "/admin/koolitused", "/admin/seaded"]) {
       const res = await request.get(path, { maxRedirects: 0 });
       expect([302, 303, 307], path).toContain(res.status());
       expect(new URL(res.headers()["location"], "http://x").pathname, path).toBe("/admin/login");
@@ -192,10 +194,11 @@ test.describe("signed in", () => {
     await expect(row.locator("[data-reg-status]")).toHaveText("Kinnitatud");
     await expect(row.getByRole("link", { name: `Ava ${f.registration.name}` })).toBeFocused();
 
-    // E-õpe: not listed there; the note about e-learning purchases
+    // E-õpe: not listed there; the old note "E-õppe ostud lisanduvad koos maksetega." is gone (the purchases are on Maksed and in the student's drawer)
     await typeFilter.getByRole("link", { name: "E-õpe" }).click();
     await expect(page).toHaveURL(/\?vorm=e$/);
-    await expect(page.locator("[data-e-note]")).toHaveText("E-õppe ostud lisanduvad koos maksetega.");
+    await expect(page.locator("[data-e-note]")).toHaveCount(0);
+    await expect(page.getByText("lisanduvad koos maksetega")).toHaveCount(0);
     await expect(page.locator(`[data-registration="${f.registration.id}"]`)).toHaveCount(0);
 
     // status filter
@@ -251,6 +254,127 @@ test.describe("signed in", () => {
     await drawer.getByRole("button", { name: "Salvesta staatus" }).click();
     await expect(drawer.getByText("Staatus salvestatud.")).toBeVisible();
     expect((await storedAdminRegistration(f.registration.id)).status).toBe("confirmed");
+  });
+
+  test("payments: Maksed after Registreerimised — newest first, Maria's words, 'Kontrolli Montonios', the filter", async ({ page, context, visitorIp, isMobile }, info) => {
+    const f = await fixtures(info.project.name);
+    const p = await insertAdminPayments(f);
+    await signIn(page, context, visitorIp);
+    await (await menu(page, isMobile)).getByRole("link", { name: "Maksed", exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/maksed$/);
+    if (isMobile) await expect(page.locator("[data-admin-drawer]")).toBeHidden(); // the link closed the drawer
+    await expect(page).toHaveTitle(/Maksed — Haldus/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Maksed");
+    await expect(page.locator("aside [data-nav='payments']")).toHaveAttribute("aria-current", "page"); // (a phone has it in the menu drawer)
+    await expect(page.getByText("Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses;")).toBeVisible();
+    await expect(page.getByText("töölaual")).toHaveCount(0);
+
+    const row = (reference: string) => page.locator(`[data-payment="${reference}"]`);
+    const cell = (reference: string, label: string) => row(reference).locator(`[data-label="${label}"]`);
+    // newest first: the e-course purchase, the pending one, the voided one, the held one, the paid one (other tests' payments may lie between)
+    const shown = await page.locator("tr[data-payment]").evaluateAll((rows) => rows.map((r) => r.getAttribute("data-payment")));
+    const mine = [p.ecourse, p.pending, p.voided, p.held, p.paid];
+    expect(shown.filter((ref) => mine.includes(ref!))).toEqual(mine);
+
+    // Eest / Makseviis, the method in Maria's Estonian (never Montonio's code), the kind and the amount
+    await expect(cell(p.paid, "Maksja")).toContainText(f.registration.name);
+    await expect(cell(p.paid, "Maksja").getByRole("link", { name: f.registration.email })).toHaveAttribute("href", `mailto:${f.registration.email}`);
+    await expect(cell(p.paid, "Eest")).toContainText(f.course.title);
+    await expect(cell(p.paid, "Liik")).toHaveText("Ettemaks");
+    await expect(cell(p.paid, "Summa")).toHaveText("175 €");
+    await expect(cell(p.paid, "Makseviis")).toHaveText("Pangalink · Swedbank");
+    await expect(cell(p.held, "Makseviis")).toHaveText("Kaart");
+    await expect(cell(p.voided, "Makseviis")).toHaveText("Pangalink · LHV");
+    await expect(cell(p.ecourse, "Makseviis")).toHaveText("Apple Pay");
+    await expect(cell(p.pending, "Makseviis")).toHaveText("—");
+    await expect(cell(p.ecourse, "Eest")).toContainText("Kulmumeistri e-koolitus");
+    await expect(cell(p.ecourse, "Liik")).toHaveText("E-koolitus");
+    await expect(cell(p.held, "Liik")).toHaveText("Ülejäänud");
+    await expect(cell(p.paid, "Montonio id")).not.toHaveText("—");
+    await expect(page.locator("main")).not.toContainText(/paymentInitiation|cardPayments|applePay/);
+
+    // statuses in Estonian; "Kontrolli Montonios" on the held and the voided row only, with a tinted row
+    await expect(cell(p.paid, "Staatus")).toHaveText("Makstud");
+    await expect(cell(p.pending, "Staatus")).toHaveText("Pooleli");
+    await expect(cell(p.held, "Staatus")).toContainText("Ootel kontrollil");
+    await expect(cell(p.voided, "Staatus")).toContainText("Tühistatud pangas");
+    for (const ref of [p.held, p.voided]) await expect(row(ref).locator("[data-payment-check]")).toHaveText("Kontrolli Montonios");
+    for (const ref of [p.paid, p.pending, p.ecourse]) await expect(row(ref).locator("[data-payment-check]")).toHaveCount(0);
+    const tint = (ref: string) => cell(ref, "Staatus").evaluate((td) => getComputedStyle(td).backgroundColor);
+    expect(await tint(p.held)).not.toBe("rgba(0, 0, 0, 0)");
+    expect(await tint(p.voided)).not.toBe("rgba(0, 0, 0, 0)");
+    expect(await tint(p.paid)).toBe("rgba(0, 0, 0, 0)");
+
+    expect(await noOverflow(page)).toBe(true);
+    expect(await smallTargets(page.locator("main"))).toEqual([]);
+    if (!isMobile) {
+      await page.setViewportSize({ width: 834, height: 1112 }); // a tablet: between the phone and the desktop
+      expect(await noOverflow(page)).toBe(true);
+      expect(await smallTargets(page.locator("main"))).toEqual([]);
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+
+    // the filter: Kõik / Makstud / Pooleli / Ebaõnnestunud / Tagastatud / Ootel kontrollil, each its own address
+    const filter = page.locator("[data-payment-filter]");
+    await expect(filter.getByRole("link")).toHaveText(["Kõik", "Makstud", "Pooleli", "Ebaõnnestunud", "Tagastatud", "Ootel kontrollil"]);
+    await expect(filter.getByRole("link", { name: "Kõik" })).toHaveAttribute("aria-current", "true");
+    await filter.getByRole("link", { name: "Ootel kontrollil" }).click();
+    await expect(page).toHaveURL(/\?staatus=kontroll$/);
+    await expect(filter.getByRole("link", { name: "Ootel kontrollil" })).toHaveAttribute("aria-current", "true");
+    await expect(row(p.held)).toBeVisible();
+    await expect(row(p.paid)).toHaveCount(0);
+    await filter.getByRole("link", { name: "Ebaõnnestunud" }).click();
+    await expect(page).toHaveURL(/\?staatus=ebaonnestunud$/);
+    await expect(row(p.voided)).toBeVisible(); // the bank's reversal is a failure that carries the note
+    await expect(row(p.held)).toHaveCount(0);
+    await page.goto("/admin/maksed?staatus=makstud");
+    await expect(row(p.paid)).toBeVisible();
+    await expect(row(p.ecourse)).toBeVisible();
+    await expect(row(p.pending)).toHaveCount(0);
+    await page.goto("/admin/maksed?staatus=midagi&leht=zzz"); // not a status, not a page: everything, page 1
+    await expect(row(p.paid)).toBeVisible();
+  });
+
+  test("payments: the registration's drawer lists its online payments under 'Laekunud'; Maria's amount form stays", async ({ page, context, visitorIp }, info) => {
+    const f = await fixtures(info.project.name);
+    const p = await insertAdminPayments(f);
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/registreerimised?id=${f.registration.id}`);
+    const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
+    await expect(drawer).toBeVisible();
+    const online = drawer.locator("[data-registration-payments]");
+    await expect(online.getByRole("heading", { level: 3 })).toHaveText("Veebimaksed");
+    // its own four, newest first; the e-course purchase of another address is not among them
+    const shown = await online.locator("[data-payment]").evaluateAll((lines) => lines.map((l) => l.getAttribute("data-payment")));
+    expect(shown).toEqual([p.pending, p.voided, p.held, p.paid]);
+    const line = (ref: string) => online.locator(`[data-payment="${ref}"]`);
+    await expect(line(p.paid)).toContainText("175 €");
+    await expect(line(p.paid)).toContainText("Ettemaks");
+    await expect(line(p.paid)).toContainText("Pangalink · Swedbank");
+    await expect(line(p.paid)).toContainText("Makstud");
+    await expect(line(p.held)).toContainText("Ülejäänud");
+    await expect(line(p.held)).toContainText("Kaart");
+    await expect(line(p.held)).toContainText("Ootel kontrollil");
+    await expect(line(p.voided)).toContainText("Tühistatud pangas");
+    await expect(line(p.pending)).toContainText("Pooleli");
+    for (const ref of [p.held, p.voided]) await expect(line(ref).locator("[data-payment-check]")).toHaveText("Kontrolli Montonios");
+    for (const ref of [p.paid, p.pending]) await expect(line(ref).locator("[data-payment-check]")).toHaveCount(0);
+    await expect(online).not.toContainText(/paymentInitiation|cardPayments/);
+    // Maria's own "amount received" form is still there and still works
+    await drawer.getByLabel("Laekunud summa (€)").fill("175");
+    await drawer.getByRole("button", { name: "Salvesta summa" }).click();
+    await expect(drawer.getByText("Summa salvestatud.")).toBeVisible();
+    await expect(drawer.locator("[data-paid]")).toHaveText("175 €");
+    expect(await smallTargets(online)).toEqual([]); // (Maria's own status radios are the registration forms' business, unchanged)
+    expect(await noOverflow(page)).toBe(true);
+  });
+
+  test("payments: a registration with no online payments has no such block", async ({ page, context, visitorIp }, info) => {
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/registreerimised?id=${f.registration.id}`);
+    await expect(page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` })).toBeVisible();
+    await expect(page.locator("[data-registration-payments]")).toHaveCount(0);
   });
 
   test("requests: tabs Kontakt / Individuaal / Praktika / Ootenimekiri / Muutmine, the practice request, 'Märgi tehtuks'", async ({ page, context, visitorIp }, info) => {
@@ -344,21 +468,25 @@ test.describe("signed in", () => {
   });
 
   test("newsletter: 50 subscribers a page, Järgmine / Eelmine, an out-of-range ?leht= shows the last page", async ({ page, context, visitorIp }, info) => {
+    // The desktop and phone projects run side by side and both put their 55 subscribers into this one table, and every other admin test adds two:
+    // how many pages there are is whatever the whole table makes of it at the moment a page is read. So no page count is carried from one page
+    // view to the next (it once was, and "Lehekülg 2 / 3" followed a first page that had said "/ 2"); each view is checked against itself: 50 on
+    // the first page, a second page that says "2 / N", and the page the address 9999 lands on is the last one, "N / N".
     await fixtures(info.project.name, { extraSubscribers: 55 });
     await signIn(page, context, visitorIp);
     await page.goto("/admin/uudiskiri");
     const pager = page.locator("[data-pager]");
     await expect(pager).toContainText(/Lehekülg 1 \/ \d+/);
-    const pages = Number((await pager.textContent())!.match(/Lehekülg 1 \/ (\d+)/)![1]);
-    expect(pages).toBeGreaterThanOrEqual(2);
+    expect(Number((await pager.textContent())!.match(/Lehekülg 1 \/ (\d+)/)![1])).toBeGreaterThanOrEqual(2); // (our 55 alone are more than a page)
     await expect(page.locator("[data-subscriber]")).toHaveCount(50);
     await expect(pager.getByRole("link", { name: /Eelmine/ })).toHaveCount(0);
     await pager.getByRole("link", { name: /Järgmine/ }).click();
     await expect(page).toHaveURL(/\/admin\/uudiskiri\?leht=2$/);
-    await expect(pager).toContainText(`Lehekülg 2 / ${pages}`);
+    await expect(pager).toContainText(/Lehekülg 2 \/ \d+/);
     await expect(pager.getByRole("link", { name: /Eelmine/ })).toHaveAttribute("href", "/admin/uudiskiri");
     await page.goto("/admin/uudiskiri?leht=9999");
-    await expect(pager).toContainText(`Lehekülg ${pages} / ${pages}`);
+    await expect(pager).toContainText(/Lehekülg (\d+) \/ \1(?!\d)/); // the last page: N / N
+    expect(Number((await pager.textContent())!.match(/Lehekülg (\d+) \/ \1(?!\d)/)![1])).toBeGreaterThanOrEqual(2);
     await expect(pager.getByRole("link", { name: /Järgmine/ })).toHaveCount(0);
     expect(await noOverflow(page)).toBe(true);
   });

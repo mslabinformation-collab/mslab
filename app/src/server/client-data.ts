@@ -48,6 +48,11 @@ export type Dashboard = {
   prepayment: PrepaymentInfo | null;
   /** The slug of the e-course the "Pooleli" card is for (domain/account-cards.ts resumeSlug); null: no card. */
   resume: string | null;
+  /**
+   * Online payments are on (phase 2b): the cards offer "Maksa {summa}" / "Maksa ülejäänud {summa}". Set by the account API (account-api.ts
+   * dashboard), never by loadDashboard: the admin's read-only view shows the cards without it.
+   */
+  payOnline?: boolean;
 };
 
 export type EcourseView = {

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { EcoursePurchase } from "@/components/site/EcoursePurchase";
 import { Notice } from "@/components/site/Notice";
 import { PurchaseInterest } from "@/components/site/PurchaseInterest";
 import ui from "@/components/site/ui.module.css";
@@ -9,9 +10,11 @@ import { getDb } from "@/db/client";
 import { getCourseBySlug } from "@/db/queries/public";
 import { formatEUR } from "@/domain/money";
 import { pick } from "@/i18n/field";
+import { fill } from "@/i18n/format";
 import { href } from "@/i18n/href";
 import { getDict, type Locale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
+import { paymentsConfigured } from "@/server/payments/montonio";
 import styles from "./cart.module.css";
 
 export function cartMetadata(locale: Locale): Metadata {
@@ -20,8 +23,12 @@ export function cartMetadata(locale: Locale): Metadata {
 }
 
 /**
- * Cart (/ostukorv?kursus=<slug>), target of "Osta kohe" on an e-learning page (P9). Bank-link payment arrives later:
- * until then the page sums up the course, says payment opens soon and takes an e-mail to tell the visitor.
+ * Cart (/ostukorv?kursus=<slug>), target of "Osta kohe" on an e-learning page (P9). With online payments (phase 2b, spec 6.4) it sums up the
+ * course and takes the purchase: name, e-mail, the terms, the newsletter box and "Maksa {hind}" (components/site/EcoursePurchase.tsx); without
+ * them it says payment opens soon and takes an e-mail to tell the visitor, and when Montonio does not open the payment at the moment of buying
+ * the form gives way to that same interest form under "Makse ei avanenud…". Whether payments are on is a setting of the deployment, read while
+ * the page renders (the page stays one cached page per course): nothing about the visitor is in it, her name and e-mail are filled in by the
+ * browser from /api/konto/me.
  * Only e-learning courses can be bought; contact courses are registered on their own page.
  * The middleware serves "?kursus=<slug>" from ./[kursus] (one cached page per course); /ostukorv alone is the empty cart.
  * A course that does not exist or is not published is a 404 (./[kursus]/not-found.tsx says the cart is empty). Next.js
@@ -41,6 +48,27 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
   const image = course.images[0];
   const price = formatEUR(course.price, locale);
   const c = d.course;
+  // today's purchase-interest form under a line saying why: "Makse lisandub peagi" without payments, "Makse ei avanenud" when Montonio is down
+  // at the moment of buying (phase 2b: nothing is lost)
+  const interest = (line: string) => (
+    <>
+      <p className={styles.soon}>{line}</p>
+      <PurchaseInterest
+        course={course.slug}
+        locale={locale}
+        t={{
+          email: d.forms.email,
+          newsletterConsent: d.forms.newsletterConsent,
+          submit: d.forms.interestSubmit,
+          sending: d.forms.sending,
+          sent: d.forms.interestSent,
+          errorEmail: d.forms.errorEmail,
+          errorTooMany: d.forms.errorTooMany,
+          errorGeneric: d.forms.errorGeneric,
+        }}
+      />
+    </>
+  );
   return (
     <div className={`${ui.wrap} ${styles.page}`}>
       <p className={ui.eyebrow}>{d.formats.elearning.name}</p>
@@ -82,21 +110,29 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
             <span>{d.cart.total}</span>
             <b>{price}</b>
           </p>
-          <p className={styles.soon}>{c.checkoutSoon}</p>
-          <PurchaseInterest
-            course={course.slug}
-            locale={locale}
-            t={{
-              email: d.forms.email,
-              newsletterConsent: d.forms.newsletterConsent,
-              submit: d.forms.interestSubmit,
-              sending: d.forms.sending,
-              sent: d.forms.interestSent,
-              errorEmail: d.forms.errorEmail,
-              errorTooMany: d.forms.errorTooMany,
-              errorGeneric: d.forms.errorGeneric,
-            }}
-          />
+          {paymentsConfigured() ? (
+            <EcoursePurchase
+              course={course.slug}
+              locale={locale}
+              t={{
+                name: d.forms.name,
+                email: d.forms.email,
+                terms: d.forms.terms,
+                termsLink: { label: d.footer.terms, href: to("/tingimused") },
+                newsletterConsent: d.forms.newsletterConsent,
+                submit: fill(d.payment.pay, { amount: price }),
+                starting: d.payment.starting,
+                alreadyPaid: d.payment.alreadyPaid,
+                errorRequired: d.forms.errorRequired,
+                errorEmail: d.forms.errorEmail,
+                errorTooMany: d.forms.errorTooMany,
+                errorGeneric: d.forms.errorGeneric,
+              }}
+              fallback={interest(d.payment.cartDown)}
+            />
+          ) : (
+            interest(c.checkoutSoon)
+          )}
         </aside>
       </div>
     </div>

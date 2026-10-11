@@ -15,6 +15,7 @@ import type { Mail } from "./notify";
 // The confirmation e-mails to a visitor who registered or sent a request (registrationConfirmationMail,
 // requestConfirmationMail) are the same card again: what was received, the next step and one button, "Ava minu konto" or,
 // when the visitor ticked "Loo mulle kohe konto", the live login code with "Logi sisse" in its place.
+// After an online payment (phase 2b) the same card says what was paid (registrationPaidMail) or that an e-course is open (ecourseOpenMail).
 
 /**
  * The link in the login e-mail: it signs in the device that opens it (api/konto verify). `pageLocale` is the language of
@@ -33,6 +34,9 @@ export const verifyLink = (siteUrl: string, token: string, pageLocale: Locale = 
  */
 export const accountLink = (siteUrl: string, email: string, locale: Locale = "et", enterCode = false): string =>
   `${siteUrl.replace(/\/+$/, "")}${href(locale, "/konto/sisene")}#email=${encodeURIComponent(email)}${enterCode ? "&kood=1" : ""}`;
+
+/** The "Maksa" link of a registration (phase 2b, spec 6.3): its own page, /maksa/<pay_token>, which shows the amount and starts the payment with a button. */
+export const payLinkUrl = (siteUrl: string, payToken: string): string => `${siteUrl.replace(/\/+$/, "")}/maksa/${encodeURIComponent(payToken)}`;
 
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
@@ -202,8 +206,8 @@ export type LoginCode = { token: string; code: string };
 /** A session of a course: when and where (the time is Estonian time, whatever the server's own). */
 export type SessionInfo = { startsAt: Date; city: string; venue: string };
 
-/** What the layout shows, in the order of the page: the lead, the course box, then paragraphs and rows of fields. */
-type Section = { text: string } | { fields: [label: string, value: string][] };
+/** What the layout shows, in the order of the page: the lead, the course box, then paragraphs, rows of fields and (phase 2b) a pay button. */
+type Section = { text: string } | { fields: [label: string, value: string][] } | { button: { href: string; label: string } };
 type Confirmation = {
   email: string;
   name: string;
@@ -216,6 +220,11 @@ type Confirmation = {
   box: { title: string; lines: string[] };
   sections: Section[];
   login: LoginCode | null;
+  /**
+   * The login follows a purchase she has just paid for (ecourseOpenMail): the mail leaves out "Kui sa ei palunud sisselogimist, võid selle kirja
+   * kustutada.", which could make a buyer delete her access mail. Every other mail with a code keeps it.
+   */
+  afterPurchase?: boolean;
 };
 
 /** The first line of the e-mail: "Tere, Kati!", or just "Tere!" when the name has no word. */
@@ -243,9 +252,10 @@ function confirmationText(c: Confirmation, greeting: string, mail: MailTexts, li
   const lines = [greeting, "", c.lead, "", c.box.title, ...c.box.lines, ""];
   for (const section of c.sections) {
     if ("text" in section) lines.push(section.text, "");
+    else if ("button" in section) lines.push(`${section.button.label}: ${section.button.href}`, "");
     else lines.push(...section.fields.map(([label, value]) => `${label}: ${value}`), "");
   }
-  if (c.login) lines.push(mail.codeIntro, "", c.login.code, "", `${mail.button}:`, links.main, "", mail.valid, mail.ignore, "", mail.confirm.codeHere, links.code, "");
+  if (c.login) lines.push(mail.codeIntro, "", c.login.code, "", `${mail.button}:`, links.main, "", mail.valid, ...(c.afterPurchase ? [] : [mail.ignore]), "", mail.confirm.codeHere, links.code, "");
   else lines.push(`${mail.confirm.open}:`, links.main, "");
   lines.push(mail.signature);
   return lines.join("\n");
@@ -266,6 +276,7 @@ function confirmationHtml(c: Confirmation, greeting: string, mail: MailTexts, li
   ];
   for (const section of c.sections) {
     if ("text" in section) rows.push(paragraphRow(section.text));
+    else if ("button" in section) rows.push(buttonRow(section.button.href, section.button.label));
     else
       rows.push(
         boxRow(
@@ -280,7 +291,9 @@ function confirmationHtml(c: Confirmation, greeting: string, mail: MailTexts, li
       );
   }
   // One button: "Ava minu konto", or with a live login the code and "Logi sisse" (and the link written out, as in the login e-mail),
-  // the 30 minutes, the ignore line, and a small text link (no button) to type the code on the login page if the button fails.
+  // the 30 minutes, the ignore line, and a small text link (no button) to type the code on the login page if the button fails. When the
+  // mail has a pay button (phase 2b), "Ava minu konto" is a text link under it: the mail keeps one primary button.
+  const payButton = c.sections.some((s) => "button" in s);
   if (c.login)
     rows.push(
       paragraphRow(mail.codeIntro, 24),
@@ -288,9 +301,10 @@ function confirmationHtml(c: Confirmation, greeting: string, mail: MailTexts, li
       buttonRow(links.main, mail.button),
       linkRow(links.main),
       row(`padding:24px 28px 0;${textStyle(14)}`, esc(mail.valid)),
-      row(`padding:4px 28px 0;${textStyle(14)}`, esc(mail.ignore)),
+      ...(c.afterPurchase ? [] : [row(`padding:4px 28px 0;${textStyle(14)}`, esc(mail.ignore))]),
       row(`padding:12px 28px 0;${textStyle(14)}`, `${esc(mail.confirm.codeHere)} <a href="${esc(links.code)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.codeLink)}</a>`),
     );
+  else if (payButton) rows.push(row(`padding:20px 28px 0;text-align:center;${textStyle(14)}`, `<a href="${esc(links.main)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.open)}</a>`));
   else rows.push(buttonRow(links.main, mail.confirm.open));
   rows.push(signatureRow(mail));
   return mailCard(c.subject, c.locale, rows);
@@ -321,38 +335,44 @@ export type RegistrationConfirmationInput = {
   priceCents: number | null;
   /** The admin's prepayment setting (domain/account-cards.ts parsePrepayment); without a receiver and an IBAN Maria sends an invoice. */
   prepayment: PrepaymentInfo | null;
+  /** The registration's "Maksa" link (payLinkUrl) when online payments are on (phase 2b); null or absent: today's mail. */
+  payLink?: string | null;
   /** A live login for the address, when the visitor ticked "Loo mulle kohe konto" and one could be issued. */
   login: LoginCode | null;
 };
 
 /**
  * The confirmation of a group registration: what was received, the course and its date and place, the next step (the
- * prepayment amount and where to pay it, or "Maria saadab sulle arve …") and one button. The next-step sentence is the
- * dashboard card's (`account.next.pay` / `invoice`, domain/account-cards.ts nextStep), the payment rows are the card's own
- * (components/account/PrepaymentInfo.tsx), and "Koht kinnitatakse …" is the registration form's.
+ * prepayment amount with "Maksa {summa}" when online payments are on, and where to pay it by transfer, or "Maria saadab sulle arve …")
+ * and one button. The next-step sentence is the dashboard card's (`account.next.pay` / `invoice`, domain/account-cards.ts nextStep), the
+ * payment rows are the card's own (components/account/PrepaymentInfo.tsx), and "Koht kinnitatakse …" is the registration form's.
  */
 export function registrationConfirmationMail(input: RegistrationConfirmationInput): Mail {
   const dict = getDict(input.locale);
   const mail = dict.account.mail;
   const title = pick(input.course, input.locale);
   const due = input.priceCents === null ? 0 : prepaymentDue(input.priceCents, input.paymentChoice);
-  const pay = hasPrepayment(input.prepayment) && due > 0 ? input.prepayment : null;
+  const transfer = hasPrepayment(input.prepayment) && due > 0 ? input.prepayment : null;
   const sections: Section[] = [];
-  if (pay) {
+  const amount = formatEUR(due, input.locale);
+  const transferRows = (pay: PrepaymentInfo): Section => {
     const labels = dict.account.dashboard.payment;
-    const amount = formatEUR(due, input.locale);
-    sections.push(
-      { text: fill(dict.account.next.pay, { amount }) },
-      {
-        fields: ([
-          [labels.receiver, pay.receiver],
-          [labels.iban, groupIban(pay.iban)],
-          [labels.bank, pay.bank],
-          [labels.amount, amount],
-          [labels.reference, paymentReference(pay, input.registrationId)],
-        ] as [string, string][]).filter(([, value]) => value.trim() !== ""),
-      },
-    );
+    return {
+      fields: ([
+        [labels.receiver, pay.receiver],
+        [labels.iban, groupIban(pay.iban)],
+        [labels.bank, pay.bank],
+        [labels.amount, amount],
+        [labels.reference, paymentReference(pay, input.registrationId)],
+      ] as [string, string][]).filter(([, value]) => value.trim() !== ""),
+    };
+  };
+  if (input.payLink && due > 0) {
+    // phase 2b (spec 6.1.4): "Maksa {summa}" first, the bank transfer as the second way under it (D6)
+    sections.push({ text: fill(dict.account.next.pay, { amount }) }, { button: { href: input.payLink, label: fill(dict.payment.pay, { amount }) } });
+    if (transfer) sections.push({ text: dict.payment.transfer }, transferRows(transfer));
+  } else if (transfer) {
+    sections.push({ text: fill(dict.account.next.pay, { amount }) }, transferRows(transfer));
   } else {
     sections.push({ text: dict.account.next.invoice });
   }
@@ -367,6 +387,84 @@ export function registrationConfirmationMail(input: RegistrationConfirmationInpu
     box: { title, lines: sessionLines(input.session, input.locale) },
     sections,
     login: input.login,
+  });
+}
+
+export type RegistrationPaidInput = {
+  siteUrl: string;
+  email: string;
+  name: string;
+  locale: Locale;
+  course: I18n;
+  session: SessionInfo | null;
+  /** This payment, cents. */
+  paidCents: number;
+  /** What is left to pay on the registration after it (its price − its paidCents), cents. */
+  restCents: number;
+  /** The registration is confirmed now. */
+  confirmed: boolean;
+  /** Paid, but the course was full: the place stayed unconfirmed (D2). */
+  full: boolean;
+};
+
+/**
+ * The mail after an online payment of a registration (phase 2b, spec 6.2.4): "Koht on kinnitatud — {title}" when the place is confirmed now,
+ * else "Makse on kätte saadud — {title}"; the course with its date and place, what was paid, and what is left ("Ülejäänud {amount} tasud
+ * koolituspäeval või Minu koolitused lehel.") or "Kogu summa on tasutud."; a place left unconfirmed says why. One button: "Ava minu konto".
+ * settle.ts never sends it to a sample address and does not count it in the daily caps (it follows a real payment).
+ */
+export function registrationPaidMail(input: RegistrationPaidInput): Mail {
+  const m = getDict(input.locale).payment.mail;
+  const title = pick(input.course, input.locale);
+  const sections: Section[] = [{ fields: [[m.paid, formatEUR(input.paidCents, input.locale)]] }];
+  if (input.full) sections.push({ text: m.full });
+  else if (!input.confirmed) sections.push({ text: m.notConfirmed });
+  else sections.push({ text: input.restCents > 0 ? fill(m.rest, { amount: formatEUR(input.restCents, input.locale) }) : m.allPaid });
+  return confirmationMail({
+    email: input.email,
+    name: input.name,
+    locale: input.locale,
+    siteUrl: input.siteUrl,
+    subject: oneLine(fill(input.confirmed ? m.subjectConfirmed : m.subjectReceived, { title })),
+    lead: input.confirmed ? m.leadConfirmed : m.leadReceived,
+    box: { title, lines: input.session ? sessionLines(input.session, input.locale) : [] },
+    sections,
+    login: null,
+  });
+}
+
+export type EcourseOpenInput = {
+  siteUrl: string;
+  email: string;
+  name: string;
+  locale: Locale;
+  course: I18n;
+  /** The access's last moment (server/payments/grant.ts). */
+  expiresAt: Date;
+  /** A live login for the address (client-auth.ts issueClientLogin), or null when it has its 3 already: then "Ava minu konto". */
+  login: LoginCode | null;
+};
+
+/**
+ * The mail after a paid e-course purchase (phase 2b, spec 6.2.4): "E-koolitus on avatud — {title}", the course with "Ligipääs kuni {date}.",
+ * and the login: the code large and "Logi sisse" (verifyLink, like the code login), which opens Minu koolitused with the course on it. It leaves
+ * out the login mail's "Kui sa ei palunud sisselogimist, võid selle kirja kustutada.": the buyer has just paid, and that line could make her
+ * delete her access. settle.ts never sends it to a sample address and does not count it in the daily caps (it follows a real payment).
+ */
+export function ecourseOpenMail(input: EcourseOpenInput): Mail {
+  const m = getDict(input.locale).payment.mail;
+  const title = pick(input.course, input.locale);
+  return confirmationMail({
+    email: input.email,
+    name: input.name,
+    locale: input.locale,
+    siteUrl: input.siteUrl,
+    subject: oneLine(fill(m.subjectEcourse, { title })),
+    lead: m.leadEcourse,
+    box: { title, lines: [fill(m.access, { date: formatDate(input.expiresAt, input.locale) })] },
+    sections: [],
+    login: input.login,
+    afterPurchase: true,
   });
 }
 

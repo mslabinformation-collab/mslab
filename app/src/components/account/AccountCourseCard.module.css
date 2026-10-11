@@ -78,6 +78,56 @@
   margin-top: 20px;
 }
 
+/* the second way next to "Maksa" (phase 2b): the transfer's instructions, or the change request — a text button in the site's link style,
+   44 px tall, never a second filled button */
+.secondRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 10px;
+  margin-top: 6px;
+}
+
+.or {
+  margin: 0;
+  color: var(--muted-2);
+  font: 400 13px/1.5 var(--font-body);
+}
+
+.second {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--muted);
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: 500 13px/1.2 var(--font-body);
+  cursor: pointer;
+}
+
+.second:hover {
+  border-bottom-color: var(--ink);
+}
+
+.second:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 4px;
+}
+
+.second[aria-disabled="true"] {
+  cursor: default;
+}
+
+/* why a payment did not start (phase 2b) */
+.payError {
+  margin: 10px 0 0;
+  color: var(--bad);
+  font: 400 13px/1.45 var(--font-body);
+}
+
 .sent {
   display: flex;
   align-items: flex-start;

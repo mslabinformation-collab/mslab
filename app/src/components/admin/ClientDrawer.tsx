@@ -7,6 +7,7 @@ import { fill, formatDate, formatTime } from "@/i18n/format";
 import { getDict } from "@/i18n/locales";
 import type { ClientDetail, ClientRequestRow, EcourseOption } from "@/server/admin-clients";
 import { GrantAccessForm, RevokeAccess, UnlockNextLesson } from "./ClientForms";
+import { PaymentLines } from "./PaymentLines";
 import { StatusPill } from "./StatusPill";
 import ui from "./ui.module.css";
 import styles from "./ClientDrawer.module.css";
@@ -27,7 +28,8 @@ function requestLabel(q: ClientRequestRow): string {
  * One student in the Õpilased drawer: who she is and "Vaata tema vaadet" (her account page, read-only); her e-courses
  * with "Ava ligipääs" right there (the reason Maria most often opens a student) and, on each open one, "Lõpeta ligipääs",
  * her lessons done ("5/24 tehtud"), her page of that course (read-only) and "Ava järgmine õppetund" while a lesson is still
- * locked for her (an e-course without lessons shows none of these three); then her registrations (each with a link to its own drawer), her requests and the e-course terms she has accepted.
+ * locked for her (an e-course without lessons shows none of these three); then her registrations (each with a link to its own drawer),
+ * her online payments (phase 2b), her requests and the e-course terms she has accepted.
  */
 export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDetail; ecourses: EcourseOption[]; now: Date }) {
   const t = adminEt.clients.drawer;
@@ -89,7 +91,7 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
                       {fill(t.state[a.state], { date: until })}
                     </span>
                   </div>
-                  <p className={styles.meta}>{fill(t.grantedBy, { who: a.grantedBy, date: stamp(a.grantedAt) })}</p>
+                  <p className={styles.meta}>{fill(t.grantedBy, { who: a.grantedBy === "payment" ? t.byPayment : a.grantedBy, date: stamp(a.grantedAt) })}</p>
                   {a.progress.total > 0 && (
                     <p className={styles.meta} data-access-progress="">
                       {fill(t.progress, a.progress)}
@@ -160,6 +162,13 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
             })}
           </ul>
         )}
+      </section>
+
+      <section className={styles.section} aria-labelledby={`client-${c.id}-payments`} data-client-payments="">
+        <h3 id={`client-${c.id}-payments`} className={ui.h3}>
+          {adminEt.payments.title}
+        </h3>
+        {detail.payments.length === 0 ? <p className={styles.none}>{adminEt.payments.noneForClient}</p> : <PaymentLines rows={detail.payments} withWhat />}
       </section>
 
       <section className={styles.section} aria-labelledby={`client-${c.id}-reqs`} data-client-requests="">

@@ -132,7 +132,7 @@ const step = (key: NextStepKey, vars: Record<string, string> = {}, action: NextS
 /** The session has begun: the same "upcoming" as the calendar and booking (calendar.ts upcomingFrom), so a card turns "done" when its date leaves them. */
 const begun = (startsAt: string, now: Date): boolean => new Date(startsAt) < upcomingFrom(now);
 
-function contactStep(card: ContactCard, now: Date, pay: PrepaymentInfo | null, locale: Locale): NextStep {
+function contactStep(card: ContactCard, now: Date, pay: PrepaymentInfo | null, locale: Locale, online: boolean): NextStep {
   if (card.status === "cancelled" || card.session.cancelled) return step("cancelled");
   if (begun(card.session.startsAt, now)) return step("done");
   const rest = card.priceCents === null ? 0 : card.priceCents - card.paidCents;
@@ -142,7 +142,8 @@ function contactStep(card: ContactCard, now: Date, pay: PrepaymentInfo | null, l
     const due = prepaymentDue(card.priceCents, card.paymentChoice) - card.paidCents;
     // Paid enough already (the admin has not confirmed yet): nothing is left to pay.
     if (due <= 0) return step("confirming");
-    return hasPrepayment(pay) ? step("pay", { amount: formatEUR(due, locale) }, { kind: "pay", registrationId: card.registrationId }) : step("invoice");
+    // phase 2b: with online payments the amount can be paid by "Maksa" even when Maria has no transfer instructions in Seaded
+    return hasPrepayment(pay) || online ? step("pay", { amount: formatEUR(due, locale) }, { kind: "pay", registrationId: card.registrationId }) : step("invoice");
   }
   const change: NextStepAction = { kind: "changeRequest", registrationId: card.registrationId };
   if (rest > 0) return step("confirmedRest", { rest: formatEUR(rest, locale) }, change);
@@ -153,12 +154,13 @@ function contactStep(card: ContactCard, now: Date, pay: PrepaymentInfo | null, l
 /**
  * The sentence and the button of a card. Dates and times are Estonian time and amounts are euros, formatted for `locale`
  * (the formatters of src/i18n/format.ts and domain/money.ts), so the caller only puts the vars into the dictionary text.
- * `pay` is the admin's prepayment setting (null, or without a receiver or an IBAN: Maria sends an invoice).
+ * `pay` is the admin's prepayment setting (null, or without a receiver or an IBAN: Maria sends an invoice). `online`: online payments are on
+ * (phase 2b, Dashboard.payOnline): an unpaid card is "pay" (its "Maksa {summa}") even without the transfer instructions.
  */
-export function nextStep(card: AccountCard, now: Date, pay: PrepaymentInfo | null, locale: Locale = "et"): NextStep {
+export function nextStep(card: AccountCard, now: Date, pay: PrepaymentInfo | null, locale: Locale = "et", online = false): NextStep {
   switch (card.kind) {
     case "contact":
-      return contactStep(card, now, pay, locale);
+      return contactStep(card, now, pay, locale, online);
     case "individual":
       return card.status === "cancelled" ? step("cancelled") : step("individualPending");
     case "request":

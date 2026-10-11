@@ -35,7 +35,7 @@ function href(past: boolean, id?: number | "uus"): string {
 function stateTag(s: AdminSessionRow): { text: string; cls: string } {
   const t = adminEt.calendar;
   if (s.status === "cancelled") return { text: t.status.cancelled, cls: ui.bad };
-  if (seatsLeft(s.capacity, s.confirmed) === 0) return { text: t.full, cls: ui.warn };
+  if (seatsLeft(s.capacity, s.taken) === 0) return { text: t.full, cls: ui.warn };
   return { text: t.status.scheduled, cls: ui.ok };
 }
 
@@ -196,7 +196,7 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
                           <span>{fill(t.seats, { confirmed: s.confirmed, capacity: s.capacity })}</span>
                           <span className={`${ui.muted} ${styles.sub}`}>
                             {[
-                              s.status === "scheduled" ? fill(t.left, { n: seatsLeft(s.capacity, s.confirmed) }) : "",
+                              s.status === "scheduled" ? fill(t.left, { n: seatsLeft(s.capacity, s.taken) }) : "",
                               s.awaiting ? fill(t.awaiting, { n: s.awaiting }) : "",
                               s.waitlist ? fill(t.waitlist, { n: s.waitlist }) : "",
                             ]

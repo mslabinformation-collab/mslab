@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clientLoginTokens, clients, clientSessions, courseModules, courses, kvEntries, lessons, mailQuota } from "@/db/schema";
+import { clientLoginTokens, clients, clientSessions, courseModules, courses, kvEntries, lessons, mailQuota, payments } from "@/db/schema";
 import { sweepClientRows } from "@/server/client-auth";
 import { PgKv, sweepExpired } from "@/server/kv";
 import { stubFetch } from "../fakes";
@@ -22,6 +22,7 @@ import { GET } from "@/app/api/cron/sweep/route";
 const SECRET = "cron-secret-for-tests-0123456789";
 const call = (authorization?: string) => GET(new Request("https://mslab.example/api/cron/sweep", { headers: authorization ? { authorization } : {} }));
 const NO_VIDEOS = { uploads: 0, processingReady: 0, processingFailed: 0, videosLeft: 0 };
+const NO_PAYMENTS = { paymentsChecked: 0, paymentsSettled: 0, paymentsExpired: 0, paymentsLeft: 0, paymentsErrors: 0 };
 const keys = async (db: Db) => (await db.select().from(kvEntries)).map((r) => r.key).sort();
 
 /** Three rows: one expired an hour ago, one expiring in an hour, one without expiry. */
@@ -38,6 +39,8 @@ let db: Db;
 beforeEach(async () => {
   db = await makeTestDb();
   state.db = db;
+  // no payments unless a test says so
+  for (const name of ["MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER"]) vi.stubEnv(name, "");
   await rows(db);
 });
 afterEach(() => {
@@ -54,18 +57,18 @@ describe("GET /api/cron/sweep", () => {
     const res = await call(`Bearer ${SECRET}`);
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(await res.json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS });
+    expect(await res.json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, ...NO_PAYMENTS });
     expect(await keys(db)).toEqual(["rl:contact:203.0.113.8", "tg:chat"]);
     // nothing left to delete: 0
-    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 0, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS });
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 0, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, ...NO_PAYMENTS });
   });
 
   test("the same call sweeps the client accounts' old rows and answers their counts (one invocation a day)", async () => {
     vi.stubEnv("CRON_SECRET", SECRET);
     vi.spyOn(console, "info").mockImplementation(() => {});
     await accountRows(db, new Date());
-    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 1, sessions: 2, mailDays: 2, ...NO_VIDEOS });
-    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 0, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS });
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 1, sessions: 2, mailDays: 2, ...NO_VIDEOS, ...NO_PAYMENTS });
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 0, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, ...NO_PAYMENTS });
   });
 
   test("401 and nothing deleted without the header, with a wrong secret, or another scheme", async () => {
@@ -95,6 +98,134 @@ describe("GET /api/cron/sweep", () => {
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ ok: false });
     expect(log.mock.calls.map((c) => c[0])).toEqual(["[cron] sweep failed: Error (code ECONNREFUSED)"]);
+  });
+
+  test("with payments set up the same call runs the daily check: a pending payment of 14 days is failed and counted (phase 2b)", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    vi.stubEnv("MONTONIO_ACCESS_KEY", "test-access-key");
+    vi.stubEnv("MONTONIO_SECRET_KEY", "test-secret-key-0123456789abcdef");
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const f = stubFetch(() => new Response("never asked", { status: 503 })); // (the real Montonio is never called: a 14-day-old payment is failed without asking)
+    const [c] = await db.insert(courses).values({ slug: "e", type: "e_learning", level: "basic", title: { et: "E" }, summary: { et: "" }, body: { et: "" }, price: 100 }).returning();
+    await db.insert(payments).values({ reference: "MSLAB-M1", kind: "ecourse", courseId: c.id, email: "kati@example.test", name: "Kati", amountCents: 100, providerUuid: "uuid-1", createdAt: new Date(Date.now() - 15 * DAY) });
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, ...NO_PAYMENTS, paymentsExpired: 1 });
+    expect((await db.select().from(payments))[0].status).toBe("failed");
+    expect(f.calls).toEqual([]);
+    // counts only: no reference, no address, no uuid
+    expect(info.mock.calls.map(String)).toEqual([
+      "[cron] sweep: 1 expired kv entries, 0 login codes, 0 sessions, 0 mail counters, 0 stuck video uploads deleted, 0 stuck processing videos found ready, 0 marked failed, 0 video rows left for the next run",
+      "[cron] sweep: payments 0 checked at Montonio, 0 settled, 0 not answered, 1 failed as stale, 0 left for the next run, 0 seat holds ended, 0 errors",
+    ]);
+  });
+
+  test("without payments (no keys, one key, a blank one, another provider) nothing is asked, nothing is failed, the answer has zeros and the log has no payments line", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = stubFetch();
+    const [c] = await db.insert(courses).values({ slug: "e", type: "e_learning", level: "basic", title: { et: "E" }, summary: { et: "" }, body: { et: "" }, price: 100 }).returning();
+    await db.insert(payments).values({ reference: "MSLAB-M1", kind: "ecourse", courseId: c.id, email: "kati@example.test", name: "Kati", amountCents: 100, providerUuid: "uuid-1", createdAt: new Date(Date.now() - 15 * DAY) });
+    const setups: Record<string, string>[] = [
+      {},
+      { MONTONIO_ACCESS_KEY: "test-access-key" },
+      { MONTONIO_ACCESS_KEY: "test-access-key", MONTONIO_SECRET_KEY: "   " },
+      { MONTONIO_ACCESS_KEY: "test-access-key", MONTONIO_SECRET_KEY: "test-secret-key-0123456789abcdef", PAYMENT_PROVIDER: "other" },
+    ];
+    for (const env of setups) {
+      for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+      info.mockClear();
+      expect(await (await call(`Bearer ${SECRET}`)).json(), JSON.stringify(Object.keys(env))).toMatchObject({ ok: true, ...NO_PAYMENTS });
+      expect(info.mock.calls.map(String).filter((l) => l.includes("payments"))).toEqual([]);
+      for (const name of ["MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER"]) vi.stubEnv(name, "");
+    }
+    expect((await db.select().from(payments))[0].status).toBe("pending");
+    expect(f.calls).toEqual([]);
+  });
+});
+
+describe("GET /api/cron/sweep: the pending payments (phase 2b)", () => {
+  const HOURS = 3600_000;
+  const MINUTES = 60_000;
+  const ago = (ms: number) => new Date(Date.now() - ms);
+  const paymentsOn = () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    vi.stubEnv("MONTONIO_ACCESS_KEY", "test-access-key");
+    vi.stubEnv("MONTONIO_SECRET_KEY", "test-secret-key-0123456789abcdef");
+  };
+  /** Pending purchases of an e-course made `ages` ago, each with its Montonio order (uuid-<n>, MSLAB-M<n>): e-course rows, so that no registration is involved. */
+  async function purchases(ages: number[]) {
+    const [c] = await db.insert(courses).values({ slug: "e", type: "e_learning", level: "basic", title: { et: "E" }, summary: { et: "" }, body: { et: "" }, price: 100 }).returning();
+    for (const [i, age] of ages.entries())
+      await db.insert(payments).values({ reference: `MSLAB-M${i + 1}`, kind: "ecourse", courseId: c.id, email: `ostja${i + 1}@example.test`, name: "Kati", amountCents: 100, providerUuid: `uuid-${i + 1}`, createdAt: ago(age) });
+  }
+  const order = (n: number, paymentStatus: string) => ({ uuid: `uuid-${n}`, paymentStatus, merchantReference: `MSLAB-M${n}`, grandTotal: "1.00", currency: "EUR", paymentMethodType: "paymentInitiation" });
+  const statuses = async () => (await db.select().from(payments).orderBy(payments.id)).map((p) => p.status);
+
+  test("a payment older than 45 minutes is asked about at Montonio (the sandbox, a Bearer token) and settled; one it does not answer waits; a young one is not asked; counts only in the answer and the log", async () => {
+    paymentsOn();
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = stubFetch((url) => (url.endsWith("/uuid-1") ? Response.json(order(1, "ABANDONED")) : new Response("Service unavailable", { status: 503 })));
+    await purchases([2 * HOURS, 3 * HOURS, 10 * MINUTES, 15 * 24 * HOURS]);
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, paymentsChecked: 2, paymentsSettled: 1, paymentsExpired: 1, paymentsLeft: 0, paymentsErrors: 0 });
+    expect(await statuses()).toEqual(["failed", "pending", "pending", "failed"]);
+    expect(f.calls.map((c) => [c.method, c.url, c.headers.get("authorization")?.startsWith("Bearer eyJ")])).toEqual([
+      ["GET", "https://sandbox-stargate.montonio.com/api/orders/uuid-2", true],
+      ["GET", "https://sandbox-stargate.montonio.com/api/orders/uuid-1", true],
+    ]);
+    const logged = info.mock.calls.map(String);
+    const cron = logged.filter((l) => l.startsWith("[cron]"));
+    expect(cron).toHaveLength(2);
+    expect(cron[1]).toBe("[cron] sweep: payments 2 checked at Montonio, 1 settled, 1 not answered, 1 failed as stale, 0 left for the next run, 0 seat holds ended, 0 errors");
+    expect(logged.filter((l) => !l.startsWith("[cron]"))).toEqual(["[payments] payment 1: failed"]); // (the settlement's own line: the payment id and its status)
+    expect(logged.join("\n")).not.toMatch(/@|MSLAB-M|uuid/);
+    // the next day: the one Montonio answered is settled, the other is asked about again
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toMatchObject({ paymentsChecked: 1, paymentsSettled: 0, paymentsExpired: 0 });
+  });
+
+  test("after 35 s of the run no new payment is asked about: a request begun is finished, the rest is counted as left and logged", async () => {
+    paymentsOn();
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.useFakeTimers({ toFake: ["Date"] }); // the run's own clock: every Montonio call takes 10 s of it
+    const f = stubFetch((url) => {
+      vi.setSystemTime(Date.now() + 10_000);
+      return Response.json(order(Number(url.split("uuid-")[1]), "PENDING"));
+    });
+    await purchases([6 * HOURS, 5 * HOURS, 4 * HOURS, 3 * HOURS, 2 * HOURS]);
+    const started = Date.now();
+    const answer = await (await call(`Bearer ${SECRET}`)).json();
+    // calls at 0, 10, 20 and 30 s (before 35: the fourth ends at 40 s); the fifth would start at 40 s
+    expect(Date.now() - started).toBe(40_000);
+    expect(answer).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, paymentsChecked: 4, paymentsSettled: 0, paymentsExpired: 0, paymentsLeft: 1, paymentsErrors: 0 });
+    expect(f.calls.map((c) => c.url.split("/").pop())).toEqual(["uuid-1", "uuid-2", "uuid-3", "uuid-4"]);
+    expect(info.mock.calls.map(String).slice(1)).toEqual([
+      "[cron] sweep: payments 4 checked at Montonio, 0 settled, 0 not answered, 0 failed as stale, 1 left for the next run, 0 seat holds ended, 0 errors",
+      "[cron] sweep: no new payment asked about after 35 s",
+    ]);
+    expect(await statuses()).toEqual(["pending", "pending", "pending", "pending", "pending"]);
+  });
+
+  test("a payment that cannot be settled (here: its transaction fails) is counted, logged without details, and does not make the cron a 500; it is asked about again the next day", async () => {
+    paymentsOn();
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = stubFetch(() => Response.json(order(1, "ABANDONED")));
+    await purchases([2 * HOURS]);
+    const real = state.db as Db;
+    // (the failing step is the settlement's transaction: reading works, so the check gets as far as Montonio's answer)
+    state.db = new Proxy(real, { get: (target, key, receiver) => (key === "transaction" ? () => Promise.reject(Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" })) : Reflect.get(target, key, receiver)) });
+    const res = await call(`Bearer ${SECRET}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, paymentsChecked: 1, paymentsSettled: 0, paymentsExpired: 0, paymentsLeft: 0, paymentsErrors: 1 });
+    expect(f.calls).toHaveLength(1); // (it got as far as asking Montonio)
+    expect(log.mock.calls.map(String)).toEqual(["[payments] a payment could not be settled (payment 1): Error (code ECONNREFUSED)"]);
+    expect(info.mock.calls.map(String).filter((l) => l.includes("payments"))).toEqual([
+      "[cron] sweep: payments 1 checked at Montonio, 0 settled, 0 not answered, 0 failed as stale, 0 left for the next run, 0 seat holds ended, 1 errors",
+    ]);
+    state.db = real;
+    expect(await statuses()).toEqual(["pending"]);
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toMatchObject({ ok: true, paymentsChecked: 1, paymentsSettled: 1, paymentsErrors: 0 });
+    expect(await statuses()).toEqual(["failed"]);
   });
 });
 
@@ -196,7 +327,7 @@ describe("GET /api/cron/sweep: the lesson videos", () => {
     const f = fakeBunny({ [A]: { status: 0, length: 0 } }); // Bunny has it as created: nothing ever arrived
     const lesson = await course();
     const l = await lesson({ videoId: A, videoStatus: "uploading", videoStartedAt: ago(25) });
-    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, uploads: 1, processingReady: 0, processingFailed: 0, videosLeft: 0 });
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, uploads: 1, processingReady: 0, processingFailed: 0, videosLeft: 0, ...NO_PAYMENTS });
     expect(f.calls.map((c) => [c.method, c.url])).toEqual([
       ["GET", `https://video.bunnycdn.com/library/12345/videos/${A}`],
       ["DELETE", `https://video.bunnycdn.com/library/12345/videos/${A}`],
@@ -216,7 +347,7 @@ describe("GET /api/cron/sweep: the lesson videos", () => {
     const hung = await lesson({ videoId: B, videoStatus: "processing", videoStartedAt: ago(26), replacedVideoId: KEPT, durationSec: 300 });
     const young = await lesson({ videoId: C, videoStatus: "processing", videoStartedAt: ago(5) });
     const playing = await lesson({ videoId: "11111111-2222-4333-8444-5555555555ff", videoStatus: "ready", durationSec: 90 });
-    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, uploads: 0, processingReady: 1, processingFailed: 1, videosLeft: 0 });
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, uploads: 0, processingReady: 1, processingFailed: 1, videosLeft: 0, ...NO_PAYMENTS });
     expect(f.calls.map((c) => [c.method, c.url.split("/").pop()])).toEqual([
       ["GET", A],
       ["DELETE", REPLACED], // the new video is ready: the old one is deleted
@@ -265,7 +396,7 @@ describe("GET /api/cron/sweep: the lesson videos", () => {
     const answer = await (await call(`Bearer ${SECRET}`)).json();
     // a row is two calls, 20 s: row 1 runs from 0 to 20 s, row 2 starts at 20 s (before 35) and ends at 40 s (past it: a row begun is finished), row 3 and the processing row would start at 40 s, after 35 s (with a 45 s deadline row 3 would run too)
     expect(Date.now() - started).toBe(40_000);
-    expect(answer).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, uploads: 2, processingReady: 0, processingFailed: 0, videosLeft: 2 });
+    expect(answer).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, uploads: 2, processingReady: 0, processingFailed: 0, videosLeft: 2, ...NO_PAYMENTS });
     expect(f.calls.map((c) => [c.method, c.url.split("/").pop()])).toEqual([["GET", A], ["DELETE", A], ["GET", B], ["DELETE", B]]);
     expect(await row(rows[0].id)).toMatchObject({ videoStatus: "none" });
     expect(await row(rows[1].id)).toMatchObject({ videoStatus: "none" });
@@ -285,7 +416,7 @@ describe("GET /api/cron/sweep: the lesson videos", () => {
     const up = await lesson({ videoId: A, videoStatus: "uploading", videoStartedAt: ago(30) });
     const processing = await lesson({ videoId: B, videoStatus: "processing", videoStartedAt: ago(30) });
     vi.spyOn(console, "info").mockImplementation(() => {});
-    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS });
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, ...NO_PAYMENTS });
     expect(f.calls).toEqual([]);
     expect(await row(up.id)).toMatchObject({ videoId: A, videoStatus: "uploading" });
     expect(await row(processing.id)).toMatchObject({ videoId: B, videoStatus: "processing" });
@@ -304,7 +435,7 @@ describe("GET /api/cron/sweep: the lesson videos", () => {
     const processing = await lesson({ videoId: B, videoStatus: "processing", videoStartedAt: ago(30) });
     const res = await call(`Bearer ${SECRET}`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS });
+    expect(await res.json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, ...NO_PAYMENTS });
     expect(f.calls.every((c) => c.method === "GET")).toBe(true);
     expect(await row(up.id)).toMatchObject({ videoStatus: "uploading" });
     expect(await row(processing.id)).toMatchObject({ videoStatus: "processing" });
