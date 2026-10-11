@@ -67,6 +67,26 @@ describe("Montonio's refund webhook, { refundToken }: verified like an order tok
     expect(m.mails()[0].text).toContain("Montonio teatab tagastusest (tagastatud).");
   });
 
+  // A re-send replaced the row's order A with B, and A was paid all the same ("a replaced order counts with its money"): the row then carries
+  // A's uuid (settle.ts detailsOf), so a refund of A — its refund notice, or A's own order token saying REFUNDED — reaches the row and Maria.
+  test.each(["a refund notice", "A's order token"])("a refund of a replaced order that was paid: %s reaches the row, and Maria is alerted once", async (how) => {
+    const m = stubMontonio();
+    const p = await pendingPayment(db, await registrationOn(db, await contactCourse(db)));
+    const a = p.providerUuid!;
+    await db.update(payments).set({ providerUuid: "uuid-resent" }).where(eq(payments.id, p.id)); // the re-send's order B
+    const order = (status: string) => ({ uuid: a, paymentStatus: status, merchantReference: p.reference, grandTotal: "175.00", currency: "EUR", paymentMethodType: "paymentInitiation" });
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    m.state.snapshots.set(a, order("PAID"));
+    expect((await handleNotify(post({ orderToken: orderToken(p) }), deps)).status).toBe(200); // A's PAID: in doubt (not the row's uuid), asked, counted
+    expect(await row(p.id)).toMatchObject({ status: "paid", providerUuid: a });
+    m.state.snapshots.set(a, order("REFUNDED"));
+    const body = how === "a refund notice" ? { refundToken: refundToken(a) } : { orderToken: orderToken(p, { paymentStatus: "REFUNDED" }) };
+    for (let i = 0; i < 2; i++) expect((await handleNotify(post(body), deps)).status).toBe(200);
+    await flush();
+    expect((await row(p.id)).status).toBe("refunded");
+    expect(m.mails().filter((x) => x.subject.startsWith("Kontrolli Montonios")).map((x) => x.to)).toEqual(["maria@example.test"]);
+  });
+
   test("PARTIALLY_REFUNDED is refunded too, and the alert says 'osaliselt'", async () => {
     const m = stubMontonio();
     const p = await paidPayment(m, "PARTIALLY_REFUNDED");
