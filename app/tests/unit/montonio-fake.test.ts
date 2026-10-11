@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { signHs256 } from "@/server/payments/jwt";
 import { montonioClient, type MontonioConfig } from "@/server/payments/montonio";
 import { refuseOffMachineFetch } from "../fakes";
-import { createFakeMontonio, isLocalUrl } from "../e2e/fake-montonio";
+import { createFakeMontonio, isLocalUrl, startFakeMontonio } from "../e2e/fake-montonio";
 import { E2E_MONTONIO } from "../e2e/montonio-values";
 
 // The e2e run's fake Montonio (tests/e2e/fake-montonio.ts) answers the app's real client: an order, the bank's "Makstud", the webhook it
@@ -25,6 +25,17 @@ beforeEach(() => {
 afterEach(async () => {
   offMachine.restore();
   await Promise.all(servers.splice(0).map((s) => new Promise((r) => s.close(r))));
+});
+
+test("the run's fake listens on 127.0.0.1 only (never on the network), and its localhost address still reaches it", async () => {
+  const server = await startFakeMontonio(0);
+  servers.push(server);
+  const { address, port } = server.address() as AddressInfo;
+  expect(address).toBe("127.0.0.1");
+  // E2E_MONTONIO.url is http://localhost:<port>: Node's fetch tries every address localhost has (::1 and 127.0.0.1), as the browser does
+  const res = await fetch(`http://localhost:${port}/health`);
+  expect([res.status, await res.json()]).toEqual([200, { ok: true }]);
+  expect(E2E_MONTONIO.url).toBe(`http://localhost:${E2E_MONTONIO.port}`);
 });
 
 /** A stand-in for the app's notificationUrl: records every body it is sent. */

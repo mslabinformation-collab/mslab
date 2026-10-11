@@ -22,7 +22,8 @@ import { E2E_MONTONIO } from "./montonio-values";
 //   that status, nothing settled and no webhook: for a test that sends a webhook itself, twice at once); POST /_fake/refund/<uuid>
 //   { amount? } (Maria refunds in the Partner System: the order becomes REFUNDED, or PARTIALLY_REFUNDED for less than its total, and the
 //   answer is { refundToken }, the refund notice Montonio would send, which is NOT sent: the test posts it); GET /health.
-// Run: npx tsx tests/e2e/fake-montonio.ts (Playwright starts it: tests/e2e/server.ts), on E2E_MONTONIO.port. The keys are E2E_MONTONIO's.
+// Run: npx tsx tests/e2e/fake-montonio.ts (Playwright starts it: tests/e2e/server.ts), on E2E_MONTONIO.port of 127.0.0.1 only. The keys are
+// E2E_MONTONIO's.
 
 type Order = { uuid: string; reference: string; grandTotal: number; currency: string; locale: string; returnUrl: string; notificationUrl: string; status: string };
 type Keys = { accessKey: string; secretKey: string };
@@ -246,4 +247,16 @@ export function createFakeMontonio(keys: Keys = { accessKey: E2E_MONTONIO.access
   return createServer((req, res) => void handle(req, res).catch(() => send(res, 500, { message: "fake error" })));
 }
 
-if (process.argv[1]?.replace(/\\/g, "/").endsWith("tests/e2e/fake-montonio.ts")) createFakeMontonio().listen(E2E_MONTONIO.port);
+/**
+ * The fake on `port`, listening on 127.0.0.1 only: never on the network, whatever this machine's firewall says. Its address stays
+ * E2E_MONTONIO.url, http://localhost:<port>: the app's fetch and the browser try 127.0.0.1 among localhost's addresses.
+ */
+export function startFakeMontonio(port: number): Promise<Server> {
+  const server = createFakeMontonio();
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => resolve(server));
+  });
+}
+
+if (process.argv[1]?.replace(/\\/g, "/").endsWith("tests/e2e/fake-montonio.ts")) void startFakeMontonio(E2E_MONTONIO.port);
