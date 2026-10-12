@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act, createElement, Profiler, useInsertionEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CoursesTab } from "@/components/account/CoursesTab";
@@ -90,12 +92,69 @@ describe("the protocol page", () => {
     expect($("[data-account-state='noProtocol']")).not.toBeNull();
   });
 
-  test("Review Focus 5: Russian: the frame and the course in Russian, Maria's text as she wrote it", async () => {
+  test("in Russian: the frame and the course in Russian, Maria's text as she wrote it", async () => {
     fetchMock.mockResolvedValue(json(200, ANSWER));
     await page("ru", "#id=42");
     expect($("h1")!.textContent).toBe("Ламинирование бровей");
     for (const text of ["Практическая часть", "Общие замечания", "Отправлен 12.10.2026", "Kulmud said ühtlased", "Ettevalmistus"]) expect(container.textContent).toContain(text);
     expect($("[data-protocol-back]")!.getAttribute("href")).toBe("/ru/konto");
+  });
+
+  test("an individual course has no session: no date line, the rest as usual", async () => {
+    fetchMock.mockResolvedValue(json(200, { ...ANSWER, session: null }));
+    await page("et", "#id=42");
+    expect($("h1")!.textContent).toBe("Kulmude lamineerimine");
+    expect($("[data-protocol-when]")).toBeNull();
+    expect($$("[data-protocol-stage]")).toHaveLength(2);
+    expect($("[data-protocol-general]")).not.toBeNull();
+  });
+
+  test("Maria's text is text: markup in a heading, a note or the general notes is shown as typed, and the note keeps its line breaks (pre-wrap)", async () => {
+    const markup = { title: "<i>Ettevalmistus</i>", note: "<b>x</b> & <script>window.__ran = 1</script>\nteine rida" };
+    fetchMock.mockResolvedValue(json(200, { ...ANSWER, stages: [markup], generalNote: "<img src=x onerror=alert(1)>" }));
+    await page("et", "#id=42");
+    expect($("[data-protocol-stage] h3")!.textContent).toBe(markup.title);
+    expect($("[data-protocol-stage] p")!.textContent).toBe(markup.note);
+    expect($("[data-protocol-general]")!.textContent).toBe("<img src=x onerror=alert(1)>");
+    expect(container.querySelector("b, i, script, img")).toBeNull();
+    expect((window as unknown as { __ran?: number }).__ran).toBeUndefined();
+    // the line break is the CSS's to keep: the note's class is pre-wrap
+    const css = readFileSync(join(process.cwd(), "src/components/account/ProtocolPage.module.css"), "utf8");
+    expect(css).toMatch(/\.note\s*\{[^}]*white-space:\s*pre-wrap/);
+  });
+
+  test("opened from the card (Next pushes the address in an insertion effect, after the page's first render): never 'not found' on the way, then the protocol", async () => {
+    // What the app router does with a <Link>: the new page renders while the address still has no id, and HistoryUpdater's insertion effect
+    // puts #id=42 in at the same commit. The log is what each commit leaves in the DOM (a Profiler reports every commit of its subtree after
+    // the DOM is written and before the browser can paint): a commit that shows "noProtocol" is the flash.
+    window.history.replaceState(null, "", "/konto/protokoll");
+    fetchMock.mockResolvedValue(json(200, ANSWER));
+    const log: string[] = [];
+    const Updater = () => {
+      useInsertionEffect(() => window.history.replaceState(null, "", "/konto/protokoll#id=42"), []);
+      return null;
+    };
+    const onCommit = () => log.push($("[data-account-state]")?.getAttribute("data-account-state") ?? ($("[data-protocol-page]") ? "protocol" : "empty"));
+    await act(async () =>
+      root.render(createElement(Profiler, { id: "protocol", onRender: onCommit }, createElement(Updater), createElement(ProtocolPage, { locale: "et", t: protocolTexts(getDict("et")) }))),
+    );
+    await settle();
+    expect(log[0]).toBe("empty");
+    expect(log).not.toContain("noProtocol");
+    expect(log.at(-1)).toBe("protocol");
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(["/api/konto/protokoll?id=42"]);
+  });
+
+  test("another registration's address while the page is open (hashchange): that protocol is loaded; the hook lets go of the event when the page goes", async () => {
+    fetchMock.mockResolvedValue(json(200, ANSWER));
+    await page("et", "#id=42");
+    window.history.replaceState(null, "", "/konto/protokoll#id=43");
+    await act(async () => window.dispatchEvent(new Event("hashchange")));
+    await settle();
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(["/api/konto/protokoll?id=42", "/api/konto/protokoll?id=43"]);
+    const off = vi.spyOn(window, "removeEventListener");
+    await act(async () => root.render(createElement("div")));
+    expect(off.mock.calls.map((c) => c[0])).toContain("hashchange");
   });
 });
 

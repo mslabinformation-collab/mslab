@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clients, clientSessions } from "@/db/schema";
+import { clients, clientSessions, courses } from "@/db/schema";
 import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
 import { loadDashboard } from "@/server/client-data";
@@ -84,7 +84,8 @@ test("another's protocol, a draft, a registration under another address, an id t
   await send(anu.id, 1); // sent: Anu's account, not Mari's
   const kati = await student(db, course, session, "Kati Kask");
   await write(kati.id, 0, ["mustand", "", "", ""], ""); // a draft
-  for (const query of [`?id=${anu.id}`, `?id=${kati.id}`, "?id=abc", "?id=0", "", "?id=999999"]) {
+  // (an id beyond the integer column's range must be 404 too, not a database error: lib/row-id.ts parseRowId)
+  for (const query of [`?id=${anu.id}`, `?id=${kati.id}`, "?id=abc", "?id=0", "", "?id=999999", "?id=99999999999", "?id=2147483648"]) {
     const res = await get(cookie, query);
     expect(res.status, query).toBe(404);
     expect(await res.json(), query).toEqual({ ok: false });
@@ -92,6 +93,27 @@ test("another's protocol, a draft, a registration under another address, an id t
   // Mari signed in under another address: her registration is not linked to that account (spec §9), so not hers there
   const [other] = await db.insert(clients).values({ email: "mari.teine@example.com" }).returning();
   expect((await get(await cookieOf(other.id), `?id=${mari.id}`)).status).toBe(404);
+});
+
+test("her own registration with a draft that was never sent: 404, and nothing of the draft in the answer", async () => {
+  const { course, session, account, cookie } = await sent();
+  // linked to Mari's own account (so ownership alone cannot refuse it): only the unsent draft is the reason for the 404
+  const own = await student(db, course, session, "Mari Maasikas", { clientId: account.id, email: "marimaasikas@example.com" });
+  await write(own.id, 0, ["Salajane mustand", "", "", ""], "Mustandi üldised märkused");
+  const res = await get(cookie, `?id=${own.id}`);
+  expect(res.status).toBe(404);
+  const text = await res.text();
+  expect(text).toBe(JSON.stringify({ ok: false }));
+  expect(text).not.toContain("mustand");
+});
+
+test("an e-course registration of her own has no protocol: 404", async () => {
+  const { account, cookie } = await sent();
+  const [ecourse] = await db.insert(courses).values({ slug: "e-kursus", type: "e_learning", level: "basic", title: { et: "E-kursus" }, summary: { et: "" }, body: { et: "" }, price: 9000 }).returning();
+  const own = await student(db, ecourse, null, "Mari Maasikas", { clientId: account.id, email: "marimaasikas@example.com" });
+  const res = await get(cookie, `?id=${own.id}`);
+  expect(res.status).toBe(404);
+  expect(await res.json()).toEqual({ ok: false });
 });
 
 test("without a session: 401", async () => {
