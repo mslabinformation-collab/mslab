@@ -223,6 +223,63 @@ test("Back from Kalender: 'Lukusta ja saada kõik' on the restored screen leaves
 
 /** The refusals the route can answer, each with a body that earns it (b: the screen's own body). */
 type Body = { registrationId: number; version: number; titles: string[]; notes: string[]; generalNote: string };
+
+test("a lost answer, 'AB' on its way, and the read that finds the lost answer's text stored comes meanwhile: one save at a time, no notice, the box keeps her text, the server ends with it", async ({ page, context, visitorIp }, info) => {
+  // the re-review's P1: the screen has not read the server's text yet (the read is held back), a save's answer is lost (the server stored it), 'AB' is typed and its
+  // POST is on its way when the read is let through and finds that stored text. A read must not go through the refusal's path beside a save of its own protocol.
+  const fx = await fixtures("p1", runName(info), ["Mari Maasikas"]);
+  const [mari] = fx.students;
+  await signInAsAdmin(page, context, visitorIp, created);
+  const read = await holdRefresh(page);
+  read.arm();
+  type Sent = { base: number; text: string };
+  const posts: Sent[] = [];
+  let inFlight = 0;
+  let mostAtOnce = 0;
+  let mode: "lose" | "hold" | "through" = "lose";
+  let releasePost!: () => void;
+  const postGate = new Promise<void>((resolve) => (releasePost = resolve));
+  await page.route(SAVE, async (route) => {
+    const sent = JSON.parse(route.request().postData() ?? "{}") as Body;
+    posts.push({ base: sent.version, text: sent.notes[0] });
+    inFlight++;
+    mostAtOnce = Math.max(mostAtOnce, inFlight);
+    try {
+      const response = await route.fetch(); // the server has it
+      if (mode === "lose") return await route.abort("connectionreset"); // … and the answer never reaches the page
+      if (mode === "hold") await postGate;
+      await route.fulfill({ response });
+    } finally {
+      inFlight--;
+    }
+  });
+  await page.goto(`/admin/protokollid?sessioon=${fx.session.id}`);
+  await adminReady(page);
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "checking"); // (the read is held back)
+  await note(page, mari.id, 0).fill("A");
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "retrying", { timeout: 20_000 });
+  await expect.poll(async () => (await storedProtocol(mari.id))?.stages[0].note).toBe("A"); // stored as version 1, unknown to the screen
+  mode = "hold";
+  await note(page, mari.id, 0).fill("AB");
+  await expect.poll(() => posts.length, { timeout: 20_000 }).toBe(2); // 'AB' from version 0, on its way (the server has answered: refused, its answer held)
+  const answered = page.waitForResponse((r) => r.url().includes("/api/admin/protokoll?") && r.request().method() === "GET");
+  read.release(); // the read: the server's text is version 1 "A"
+  await answered;
+  await page.waitForTimeout(500);
+  expect(posts, "the read must not make a second save fly beside the one on its way").toHaveLength(2);
+  await expect(editor(page, mari.id).locator("[data-conflict]")).toHaveCount(0);
+  await expect(note(page, mari.id, 0)).toHaveValue("AB");
+  mode = "through";
+  releasePost();
+  await saved(page, mari.id);
+  await expect(editor(page, mari.id).locator("[data-conflict]")).toHaveCount(0);
+  await expect(note(page, mari.id, 0)).toHaveValue("AB");
+  expect(posts).toEqual([{ base: 0, text: "A" }, { base: 0, text: "AB" }, { base: 1, text: "AB" }]); // 'AB' goes on top of the stored 'A' once
+  expect(mostAtOnce, "saves of the protocol on their way at the same time").toBe(1);
+  expect(await storedProtocol(mari.id)).toMatchObject({ version: 2, stages: [{ note: "AB" }, ...emptyNotes(2)] });
+  expect(await keptKeys(page, mari.id)).toEqual([]);
+});
+
 const REFUSALS: { name: string; status: number; error: string; body: (b: Body) => string }[] = [
   { name: "413 size (a body over MAX_SAVE_CHARS)", status: 413, error: "size", body: (b) => JSON.stringify({ ...b, generalNote: "x".repeat(700_000) }) },
   { name: "400 body (not a save)", status: 400, error: "body", body: () => "{" },
