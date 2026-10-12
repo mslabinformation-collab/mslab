@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
+import * as paymentQueries from "@/db/queries/payments";
 import { attachOrder, insertPayment } from "@/db/queries/payments";
 import { courses, payments, registrations, type Course, type Payment } from "@/db/schema";
 import * as adminClients from "@/server/admin-clients";
@@ -501,6 +502,49 @@ describe("one payment that cannot be settled does not stop the check", () => {
       ["maria@example.test", "Makse on nüüd kirja pandud: Kati Tamm"],
     ]);
     expect(m.mails()[3].text).toContain("Kui avasid e-koolituse juba käsitsi Õpilaste all, pole vaja midagi teha.");
+  });
+
+  // The check's alert is sent after the response, and meanwhile the webhook or the return can record the same payment. Whichever of the two
+  // after-response tasks runs first, no alert goes out about a row that is no longer pending, and so there is nothing to follow up.
+  test.each([
+    ["the alert's task runs first", false],
+    ["the webhook's follow-up runs first", true],
+  ])("'Makse vajab kontrolli' queued, then the webhook records the payment before it is sent (%s): no alert, no follow-up, the row paid", async (_, webhookFirst) => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await poison("registrations");
+    const bad = await pendingPayment(db, await registrationOn(db, c, { email: "giftig@example.com", name: "Mari Mürk" }), {}, ago(3 * 60 * MIN));
+    m.state.snapshots.set(bad.providerUuid!, snapshot(bad, "PAID"));
+    const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
+    expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ checked: 1, settled: 0, errors: 1 }); // the alert is queued, not sent yet
+    await db.execute(sql`drop trigger mslab_poison on registrations`);
+    // the webhook's own after-response tasks (its mails, followUpUnsettled), kept apart to run before or after the check's
+    const webhook: (() => Promise<unknown>)[] = [];
+    await settlePayment({ ...deps, later: (task) => void webhook.push(task) }, await row(bad.id), factsOf(snapshotOf(bad)));
+    const flushWebhook = async () => {
+      for (let task = webhook.shift(); task; task = webhook.shift()) await task();
+    };
+    for (const run of webhookFirst ? [flushWebhook, flush] : [flush, flushWebhook]) await run();
+    expect(await status(bad.id)).toBe("paid");
+    expect(m.mails().map((x) => x.subject)).toEqual(["Koht on kinnitatud — Kulmumeistri baaskoolitus", "Uus makse: Mari Mürk, Kulmumeistri baaskoolitus, 14.11.2026, 175 €"]);
+    expect(m.pings().filter((t) => t.startsWith(STUCK) || t.startsWith(RECORDED))).toEqual([]);
+    expect(kv.store.get(`pay:stuck:${bad.id}`) ?? "0").toBe("0");
+  });
+
+  test("a row that cannot be read again before 'Makse vajab kontrolli' does not lose it: Maria is told, the log has the id and the error's class", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await poison("registrations");
+    const bad = await pendingPayment(db, await registrationOn(db, c, { email: "giftig@example.com", name: "Mari Mürk" }), {}, ago(3 * 60 * MIN));
+    m.state.snapshots.set(bad.providerUuid!, snapshot(bad, "PAID"));
+    const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
+    await checkPendingPayments(deps, FOREVER);
+    vi.spyOn(paymentQueries, "paymentByReference").mockRejectedValueOnce(new Error("connection lost for giftig@example.com"));
+    await flush();
+    expect(m.mails().map((x) => x.subject)).toEqual(["Makse vajab kontrolli: Mari Mürk"]);
+    expect(kv.store.get(`pay:stuck:${bad.id}`)).toBe("1");
+    expect(logged().filter((l) => l.includes("read again"))).toEqual([`[payments] payment ${bad.id}: it could not be read again before the alert: Error`]);
+    expect(logged().join("\n")).not.toMatch(/giftig|Mürk|@|MSLAB-M/);
   });
 
   test("no follow-up for a payment Maria was never told about: a normal settle, or an alert that reached no one", async () => {
