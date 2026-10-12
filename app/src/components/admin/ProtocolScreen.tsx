@@ -5,6 +5,7 @@ import { PROTOCOL_LIMITS, type ProtocolStatus } from "@/domain/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { GrowingText } from "./GrowingText";
+import { SendAll, StudentSend } from "./ProtocolSend";
 import { ProtocolAutosave, statusOf, type Conflict, type Entry, type SaveStatus, type ServerDraft } from "./protocol-autosave";
 import ui from "./ui.module.css";
 import styles from "./ProtocolScreen.module.css";
@@ -68,14 +69,25 @@ export function statusLine(s: SaveStatus, t: T): { text: string; failing: boolea
  * while her text is not confirmed; and the selected student's protocol: the practice part (each heading with a box that grows with its
  * text), then "Üldised märkused". Switching student is one tap: the one left saves in the background at once, never waited for; a student
  * whose boxes were never typed in is never saved (a first save creates the protocol). The autosave is protocol-autosave.ts; a sent protocol
- * shows read-only. Leaving the page while a text is not confirmed asks first (it is in this browser all the same). One student (an
- * individual course, or a session with one): no list.
+ * shows read-only. The sends are ProtocolSend.tsx: "Lukusta ja saada kõik" above the students (the session's primary button), each student's
+ * "Saada" / "Muuda" / "Saada uuesti" under her protocol. Leaving the page while a text is not confirmed asks first (it is in this browser
+ * all the same). One student (an individual course, or a session with one): no list.
  */
 export function ProtocolScreen({ view }: { view: ScreenView }) {
   const t = adminEt.protocols;
   const [engine] = useState(() => new ProtocolAutosave(view.students.map(serverDraft)));
   useSyncExternalStore(engine.subscribe, engine.snapshot, engine.snapshot);
   const [selected, setSelected] = useState(view.students[0]?.registrationId ?? 0);
+  // "Muuda" pressed: these sent protocols are open on this screen (spec §3: only the screen unlocks; the first saved edit raises the version)
+  const [unlocked, setUnlocked] = useState<ReadonlySet<number>>(() => new Set());
+  const unlock = (id: number, on: boolean) =>
+    setUnlocked((now) => {
+      const next = new Set(now);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const names = new Map(view.students.map((s) => [s.registrationId, s.name]));
 
   useEffect(() => {
     let storage: Storage | null = null;
@@ -106,6 +118,7 @@ export function ProtocolScreen({ view }: { view: ScreenView }) {
 
   return (
     <div className={styles.screen} data-protocol-screen="">
+      {!view.single && <SendAll engine={engine} names={names} onSent={(id) => unlock(id, false)} />}
       <div className={list ? `${styles.layout} ${styles.withList}` : styles.layout}>
         {list && (
           <nav className={styles.students} aria-label={t.students} data-students="">
@@ -141,18 +154,43 @@ export function ProtocolScreen({ view }: { view: ScreenView }) {
             })}
           </nav>
         )}
-        {entry && student && <StudentEditor key={entry.registrationId} engine={engine} entry={entry} name={student.name} />}
+        {entry && student && (
+          <StudentEditor
+            key={entry.registrationId}
+            engine={engine}
+            entry={entry}
+            name={student.name}
+            primary={view.single}
+            unlocked={unlocked.has(entry.registrationId)}
+            onUnlock={(on) => unlock(entry.registrationId, on)}
+          />
+        )}
       </div>
     </div>
   );
 }
 
 /** One student's protocol: her name and the save's status, a conflict's notice, the practice part's boxes, the general notes. */
-function StudentEditor({ engine, entry, name }: { engine: ProtocolAutosave; entry: Entry; name: string }) {
+function StudentEditor({
+  engine,
+  entry,
+  name,
+  primary,
+  unlocked,
+  onUnlock,
+}: {
+  engine: ProtocolAutosave;
+  entry: Entry;
+  name: string;
+  primary: boolean;
+  unlocked: boolean;
+  onUnlock(on: boolean): void;
+}) {
   const t = adminEt.protocols;
   const uid = useId();
   const id = entry.registrationId;
-  const locked = statusOf(entry) === "sent";
+  // a sent protocol is read-only until "Muuda"
+  const locked = statusOf(entry) === "sent" && !unlocked;
   // read-only while it is sent, and while a send is on its way (its text must stay the one sent)
   const frozen = locked || entry.sending;
   const line = statusLine(entry.status, t);
@@ -198,6 +236,7 @@ function StudentEditor({ engine, entry, name }: { engine: ProtocolAutosave; entr
       <div className={styles.part}>
         <NoteBox id={`${uid}-general`} label={t.general} heading value={entry.content.generalNote} readOnly={frozen} onChange={(v) => engine.editGeneral(id, v)} onBlur={() => void engine.save(id)} />
       </div>
+      <StudentSend engine={engine} id={id} primary={primary} unlocked={unlocked} onUnlock={onUnlock} />
     </section>
   );
 }

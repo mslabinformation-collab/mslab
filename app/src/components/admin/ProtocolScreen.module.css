@@ -169,3 +169,44 @@
     padding: 20px 16px;
   }
 }
+
+/* the sends (ProtocolSend.tsx): "Lukusta ja saada kõik" above the screen with its confirmation; a student's buttons under her protocol */
+.sendAll {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.sendAll p {
+  margin: 0;
+}
+
+.confirm {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin: 0;
+}
+
+.confirm p:focus {
+  outline: none;
+}
+
+.answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sendBar {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.sendBar p {
+  margin: 0;
+}

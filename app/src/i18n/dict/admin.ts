@@ -302,6 +302,33 @@ export const adminEt = {
     conflictLost: "Selle ekraani salvestamata tekst",
     dismiss: "Selge",
     locked: "Saadetud {date}. Õpilane näeb seda versiooni.",
+    send: "Saada",
+    sending: "Saadan…",
+    edit: "Muuda",
+    resend: "Saada uuesti",
+    sendAll: "Lukusta ja saada kõik",
+    // a sent protocol opened with "Muuda": the first saved edit makes it "Muudetud", which offers "Saada uuesti"
+    editing: "Muuda teksti — salvestan ise. Siis saad selle uuesti saata.",
+    // the confirmation of "Lukusta ja saada kõik" (spec §4): who gets a protocol, who is skipped because hers is empty, who has hers already
+    confirm: {
+      title: "Lukustan ja saadan protokollid",
+      will: "Saavad protokolli: {names}",
+      skipped: "Jäävad vahele, sest protokoll on tühi: {names}",
+      already: "Juba saadetud, uut pole: {names}",
+      nothing: "Pole midagi uut saata.",
+      yes: "Saada",
+      no: "Tagasi",
+    },
+    // the summary after "Saada": who got one, and per reason (sendErrors' words) who did not
+    result: { sent: "Saadetud: {names}.", notSent: "Ei saadetud: {names}. {reason}" },
+    sendErrors: {
+      empty: "Protokoll on tühi. Kirjuta midagi enne saatmist.",
+      unsaved: "Kõik pole veel salvestatud. Saada uuesti, kui ühendus on tagasi.",
+      stale: "Protokolli muudeti vahepeal mujal. Laadi leht uuesti ja vaata see üle.",
+      cancelled: "Registreering on tühistatud: protokolli ei saadeta.",
+      notFound: "Seda registreeringut ei leitud.",
+      failed: "Saatmine ei õnnestunud. Proovi uuesti.",
+    },
   },
 
   requests: {
