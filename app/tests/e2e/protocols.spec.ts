@@ -1,10 +1,12 @@
 import type { Page } from "@playwright/test";
 import { mintLoginToken } from "./account";
-import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
-import { removeAdminRows, removeClientRows } from "./fixtures";
-import { chip, E2E_HEADINGS, editor, general, insertDraftProtocol, insertFeedbackAnswer, insertProtocolFixtures, insertSentProtocol, keptKeys, note, runName, saved, saveStatus, storedFeedback, storedProtocol, studentContext, studentPage } from "./protocols";
+import { adminReady, signInAsAdmin } from "./admin-login";
+import {
+  chip, E2E_HEADINGS, editor, emptyNotes, general, insertDraftProtocol, insertFeedbackAnswer, insertSentProtocol, keptKeys, note, protocolRows, runName, saved, SAVE_ROUTE, saveStatus,
+  storedFeedback, storedProtocol, studentContext, studentPage,
+} from "./protocols";
 import { smallTargets } from "./targets";
-import { submitsForms, test, expect } from "./test";
+import { test, expect } from "./test";
 
 // Phase protocols (spec §10 "End to end"): Maria's course day — the headings in the course editor, two students written while switching between
 // them, a dropped connection and a reload that lose nothing, "Lukusta ja saada kõik", the student reading hers (from her card and from the
@@ -14,30 +16,10 @@ import { submitsForms, test, expect } from "./test";
 // The autosave in a real browser (offline, Back, the server's refusals) is protocols-autosave.spec.ts; the locks on real Postgres are
 // protocols-race.spec.ts.
 
-const made = new Set<string>();
-const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
-const SAVE = "**/api/admin/protokoll";
-
-test.beforeEach(() => {
-  submitsForms();
-  test.setTimeout(180_000); // (the first view of each page under `next dev` compiles it; the retries wait seconds)
-});
-test.afterEach(async () => {
-  for (const email of made) await removeClientRows(email);
-  made.clear();
-  await removeAdminRows(created).catch(() => {});
-  created.tokens.clear();
-  created.sessions.clear();
-});
-
-async function fixtures(...args: Parameters<typeof insertProtocolFixtures>) {
-  const fx = await insertProtocolFixtures(...args);
-  for (const s of fx.students) made.add(s.email);
-  return fx;
-}
+const { created, fixtures } = protocolRows();
+const SAVE = SAVE_ROUTE;
 
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-const emptyNotes = (n: number) => Array.from({ length: n }, () => expect.objectContaining({ note: "" }));
 /**
  * Records whether the protocol page's "not found" was on the page in any frame from now on: a MutationObserver over the whole document (it
  * also looks at once). It looks at the page's visible text and at the case's own mark (AccountNotFound's data-account-state), never at the
@@ -98,7 +80,7 @@ test("the headings in the course editor; Kalender's 'Protokollid'; two students 
   await expect(note(page, mari.id, 0)).toHaveValue("Mari: ühtlane joon.");
 });
 
-test("Review Focus 1: answers lost on the way, then no network and a reload: nothing is lost, no conflict, stored once the network is back (§10 e2e 2)", async ({ page, context, visitorIp }, info) => {
+test("answers lost on the way, then no network and a reload: nothing is lost, no conflict, stored once the network is back (§10 e2e 2)", async ({ page, context, visitorIp }, info) => {
   const fx = await fixtures("wifi", runName(info), ["Mari Maasikas"]);
   const [mari] = fx.students;
   await signInAsAdmin(page, context, visitorIp, created);

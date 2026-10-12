@@ -23,11 +23,13 @@ import { submitsForms, test, expect } from "./test";
 test.skip(({ isMobile }) => isMobile, "no browser in these tests: the desktop project runs them once");
 
 const made = new Set<string>();
+/** The name this process's pool connects under, so the test can find its own backends in pg_stat_activity and no one else's. */
+const APPLICATION = `mslab-e2e-race-${process.pid}`;
 let pool: postgres.Sql | null = null;
 let db: Db;
 
 test.beforeAll(() => {
-  pool = postgres(localDatabaseUrl(), { max: 6, connect_timeout: 20, onnotice: () => {} });
+  pool = postgres(localDatabaseUrl(), { max: 6, connect_timeout: 20, onnotice: () => {}, connection: { application_name: APPLICATION } });
   db = drizzle(pool, { schema }) as unknown as Db;
 });
 test.afterAll(async () => {
@@ -158,6 +160,9 @@ test("the once-only holds under the address lock: two sends queue behind it, and
         await tx`select pg_advisory_xact_lock(hashtext(${`client-login:${mari.email}`}))`;
         first = sendProtocol(deps(jobs), { registrationId: mari.id, version: 1 });
         second = sendProtocol(deps(jobs), { registrationId: mari.id, version: 1 });
+        // (a handler on each at once: a send that fails while the test waits is no unhandled rejection; Promise.all below still sees it)
+        void first.catch(() => {});
+        void second.catch(() => {});
         await pause(1_500); // both have read what they read before the lock, and wait for it
         expect((await storedProtocol(mari.id))!.sentAt).toBeNull();
       }),
@@ -187,11 +192,13 @@ test("deleteClient locks her registrations FOR UPDATE: a feedback answer committ
         await pause(1_500);
         // … so the deletion waits, at the statement that locks the registrations (not later, after it has already deleted the feedback it saw)
         expect(finished, "the deletion went past the registration's lock while it was held").toBe(false);
+        // (its own pool's backends only: nothing another test or process waits for is read as this one's)
         const waiting = await onLocalDb(
-          (other) => other<{ query: string }[]>`select query from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and pid <> pg_backend_pid()`,
+          (other) => other<{ query: string }[]>`select query from pg_stat_activity where application_name = ${APPLICATION} and wait_event_type = 'Lock'`,
           { marksPages: false },
         );
-        expect(waiting.map((w) => w.query).join("\n"), "what the deletion waits at").toMatch(/\bfor update\b/i);
+        expect(waiting, "this pool's backends that wait for a lock: only the deletion's").toHaveLength(1);
+        expect(waiting[0].query, "what the deletion waits at").toMatch(/from "registrations" where [\s\S]*\bfor update\b/i);
         // the late answer, committed with the lock let go
         await tx`insert into course_feedback (registration_id, answers, locale, submitted_at) values (${mari.id}, ${tx.json({ score: 7 })}, 'et', now())`;
       }),

@@ -1,8 +1,9 @@
 import type { Browser, BrowserContext, Page, TestInfo } from "@playwright/test";
 import { clientEmail, signInAsClient } from "./account";
-import { accountCourseSlug, onLocalDb, removeClientRows } from "./fixtures";
+import type { CreatedRows } from "./admin-login";
+import { accountCourseSlug, onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
 import { LOCAL_URL, PROD_BUILD, TARGET } from "./target";
-import { expect } from "./test";
+import { expect, submitsForms, test } from "./test";
 
 // The protocols' e2e rows (phase protocols): a contact course of the test's own, not published, with Maria's headings and one session; its
 // students' confirmed group registrations, without an account (a send, or her first login, makes it). Every address is
@@ -49,6 +50,42 @@ export async function insertProtocolFixtures(label: string, project: string, nam
     return { course: { id: course.id, slug }, session: { id: session.id }, students };
   });
 }
+
+/**
+ * What the protocol specs that sign in as Maria share (protocols.spec.ts, protocols-autosave.spec.ts); call it once at the top of the spec file.
+ * Registers the hooks of the file: every test runs only against the local server (submitsForms), has 3 minutes (the first view of each page under
+ * `next dev` compiles it; the retries wait seconds), and after each test the rows of every student `fixtures()` made and Maria's login rows
+ * (`created`, for signInAsAdmin) are removed.
+ */
+export function protocolRows(): { created: CreatedRows; fixtures: (...args: Parameters<typeof insertProtocolFixtures>) => Promise<ProtocolFixtures> } {
+  const made = new Set<string>();
+  const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
+  test.beforeEach(() => {
+    submitsForms();
+    test.setTimeout(180_000);
+  });
+  test.afterEach(async () => {
+    for (const email of made) await removeClientRows(email);
+    made.clear();
+    await removeAdminRows(created).catch(() => {});
+    created.tokens.clear();
+    created.sessions.clear();
+  });
+  return {
+    created,
+    fixtures: async (...args) => {
+      const fx = await insertProtocolFixtures(...args);
+      for (const s of fx.students) made.add(s.email);
+      return fx;
+    },
+  };
+}
+
+/** The autosave route, as a route pattern. */
+export const SAVE_ROUTE = "**/api/admin/protokoll";
+
+/** `n` stages with an empty note, for toMatchObject on a stored protocol. */
+export const emptyNotes = (n: number) => Array.from({ length: n }, () => expect.objectContaining({ note: "" }));
 
 type Stage = { title: string; note: string };
 
@@ -121,6 +158,44 @@ export const general = (page: Page, id: number) => editor(page, id).locator("[da
 export const saveStatus = (page: Page, id: number) => editor(page, id).locator("[data-save-status]");
 /** The autosave has confirmed this student's text (the debounce is 1.5 s; a retry can be 20 s away). */
 export const saved = (page: Page, id: number) => expect(saveStatus(page, id)).toHaveAttribute("data-save-status", "saved", { timeout: 40_000 });
-/** Every key this browser keeps for a protocol (the copy, the texts sent without an answer, the notice: protocol-autosave.ts localKey / sentKey / conflictKey). */
+/**
+ * Every key this browser keeps for ONE protocol (the copy, the texts sent without an answer, the notice: protocol-autosave.ts localKey / sentKey /
+ * conflictKey): `<prefix>:<id>` or `<prefix>:<id>:<tab>`, so protocol 1 never matches 12.
+ */
 export const keptKeys = (page: Page, id: number) =>
-  page.evaluate((n) => Object.keys(localStorage).filter((k) => k.startsWith(`mslab-protocol:${n}`) || k.startsWith(`mslab-protocol-sent:${n}`) || k.startsWith(`mslab-protocol-conflict:${n}`)), id);
+  page.evaluate(
+    (n) =>
+      Object.keys(localStorage).filter((k) =>
+        ["mslab-protocol", "mslab-protocol-sent", "mslab-protocol-conflict"].some((prefix) => k === `${prefix}:${n}` || k.startsWith(`${prefix}:${n}:`)),
+      ),
+    id,
+  );
+/** The first box's text in every copy this browser keeps of ONE protocol (one per tab; a test has one). */
+export const keptTexts = (page: Page, id: number) =>
+  page.evaluate(
+    (n) =>
+      Object.entries(localStorage)
+        .filter(([k]) => k === `mslab-protocol:${n}` || k.startsWith(`mslab-protocol:${n}:`))
+        .map(([, v]) => (JSON.parse(v) as { content: { notes: string[] } }).content.notes[0]),
+    id,
+  );
+
+/**
+ * Holds the protocol screen's read of the server's text: the GET /api/admin/protokoll?… request it makes when it is shown (keepReading) waits once
+ * `arm()` was called, until `release()`. A screen the browser's Back restores is the visit's old render until that answer comes: this keeps it in
+ * that state for as long as a test needs. The saves (POST, no query) and every other request pass. `held` counts the requests held.
+ */
+export async function holdRefresh(page: Page): Promise<{ arm(): void; release(): void; held(): number }> {
+  let armed = false;
+  let count = 0;
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => (open = resolve));
+  await page.route(/\/api\/admin\/protokoll\?/, async (route) => {
+    if (armed && route.request().method() === "GET") {
+      count++;
+      await gate;
+    }
+    await route.continue().catch(() => {}); // (a page that went meanwhile)
+  });
+  return { arm: () => void (armed = true), release: () => open(), held: () => count };
+}
