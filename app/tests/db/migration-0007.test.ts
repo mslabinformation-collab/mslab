@@ -1,0 +1,50 @@
+import { rmSync } from "node:fs";
+import { PGlite } from "@electric-sql/pglite";
+import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
+import { expect, test } from "vitest";
+import * as schema from "@/db/schema";
+import { courseFeedback, courses, protocols, registrations } from "@/db/schema";
+import { migrationsThrough } from "./helpers";
+
+// Migration 0007 (protocols) as the Railway database goes through it: 0000–0006 applied, a contact course and a registration written by the
+// live code (which knows no protocol_stages), then 0007. The course gets no headings ([]), and the two new tables are there, empty, with their
+// rules: one protocol and one feedback row per registration, both deleted with their registration. Additive: nothing else changes.
+
+test("0007 gives every course an empty protocol_stages and adds protocols and course_feedback, one per registration, deleted with it", async () => {
+  const db = drizzle(new PGlite(), { schema });
+  const through = async (tag: string) => {
+    const dir = migrationsThrough(tag);
+    try {
+      await migrate(db, { migrationsFolder: dir });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  await through("0006_phase2b_payments");
+  // the live code's inserts (raw SQL: drizzle would name the new column)
+  await db.execute(sql`insert into courses (slug, type, level, title, summary, body, price_group) values ('k', 'contact', 'basic', '{"et":"K"}', '{"et":""}', '{"et":""}', 35000)`);
+  const [{ id: courseId }] = await db.select({ id: courses.id }).from(courses);
+  await db.execute(sql`insert into registrations (course_id, kind, name, email, payment_choice) values (${courseId}, 'individual', 'Kati', 'kati@example.test', 'full')`);
+
+  await through("0007_protocols");
+
+  const [course] = await db.select().from(courses);
+  expect(course.protocolStages).toEqual([]);
+  expect(await db.select().from(protocols)).toEqual([]);
+  expect(await db.select().from(courseFeedback)).toEqual([]);
+  const [reg] = await db.select({ id: registrations.id }).from(registrations);
+
+  const [p] = await db.insert(protocols).values({ registrationId: reg.id, stages: [{ title: "Ettevalmistus", note: "" }] }).returning();
+  expect(p).toMatchObject({ generalNote: "", version: 1, sent: null, sentAt: null, sentVersion: null });
+  expect(p.createdAt).toBeInstanceOf(Date);
+  await expect(db.insert(protocols).values({ registrationId: reg.id, stages: [] })).rejects.toThrow(); // one per registration
+  const [f] = await db.insert(courseFeedback).values({ registrationId: reg.id }).returning();
+  expect(f).toMatchObject({ answers: null, locale: null, submittedAt: null, dismissedAt: null });
+  await expect(db.insert(courseFeedback).values({ registrationId: reg.id })).rejects.toThrow();
+
+  await db.delete(registrations).where(eq(registrations.id, reg.id));
+  expect(await db.select().from(protocols)).toEqual([]);
+  expect(await db.select().from(courseFeedback)).toEqual([]);
+});

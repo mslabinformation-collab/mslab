@@ -109,7 +109,7 @@ DATABASE_URL='postgres://…@<host>.proxy.rlwy.net:<port>/railway?sslmode=requir
 ```
 
 - Take the **public** TCP proxy URL from the Postgres service of Maria's Railway project `mslab` (Connect → Public Network) and add `?sslmode=require`. Put it in the shell only: never in a file, never in the repository (`.env*` files are git-ignored, but an `.env` that a local `next dev` reads would then point the dev server at production data too).
-- `drizzle-kit migrate` applies what is not yet recorded in its own table, in order. Check afterwards (`select count(*) from drizzle.__drizzle_migrations`; 7 after phase 2b's 0006).
+- `drizzle-kit migrate` applies what is not yet recorded in its own table, in order. Check afterwards (`select count(*) from drizzle.__drizzle_migrations`; 7 after phase 2b's 0006, 8 after the protocols' 0007).
 - A new migration: change `src/db/schema.ts`, `npm run db:generate`, review and commit the SQL. Railway runs Postgres 18 (`ALTER TYPE … ADD VALUE` needs 12 or later).
 - Order: migrate first, then deploy. An additive migration is harmless to the code that is live, so a rollback of the code (section 8) stays safe.
 

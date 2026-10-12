@@ -104,7 +104,7 @@ From the final review of phase 2a (04.10.2026); the merge-blocking items were fi
 - [ ] Bunny library → allowed domains: replace the stale `mslab-five.vercel.app` with the project's current `*.vercel.app` address (or remove it).
 - [x] Done: the library is on Maria's Bunny account from the start (08.10.2026).
 - [ ] After the first month read Bunny's bill (the estimate is about €5–15 a month at 500 hours watched) and Vercel's function invocations (a watching student makes about 240 progress calls an hour).
-- [ ] Migration 0007 (drops `courses.modules`) only after 3a has run for a few days with no rollback planned: the code first, then the migration (plan 2026-10-05-phase3a, Task 12 step 11).
+- [ ] Migration 0008 (drops `courses.modules`) only after 3a has run for a few days with no rollback planned: the code first, then the migration (plan 2026-10-05-phase3a, Task 12 step 11).
 - [ ] Accepted limit: the iPhone's own full-screen video player shows no watermark (the page's "Täisekraan" keeps it).
 - [ ] Accepted limit, narrowed in phase 2c: the player takes back a forward jump past what she has watched, and the server keeps at most twice the real time since the lesson was opened plus 30 s, so a video lesson cannot be completed in less than about half its length. A script can still report steadily at 2× without watching: "done" means "the time was spent with the lesson open", not "watched".
 - [ ] Accepted limit: the player's height is capped to leave room for the buttons below it (about 400 px reserved, 240 to 540 px high), so on a small laptop screen, with a 4:3 video or a lesson title that runs to two lines, "Täisekraan" can sit below the fold.

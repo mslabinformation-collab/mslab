@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import { pgTable, serial, text, integer, boolean, jsonb, timestamp, pgEnum, uniqueIndex, index, primaryKey, customType, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { I18n } from "@/i18n/field";
+import type { FeedbackAnswers } from "@/domain/protocols";
 
 export const courseType = pgEnum("course_type", ["e_learning", "contact"]);
 export const courseLevel = pgEnum("course_level", ["basic", "advanced"]);
@@ -31,7 +32,7 @@ export const courses = pgTable("courses", {
   body: jsonb("body").$type<I18n>().notNull(),
   outcomes: jsonb("outcomes").$type<I18n[]>().notNull().default([]),
   includes: jsonb("includes").$type<I18n[]>().notNull().default([]),
-  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0007 drops it after the 3a deploy (code first).
+  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0008 drops it after the 3a deploy (code first).
   modules: jsonb("modules").$type<I18n[]>().notNull().default([]),
   language: text("language").notNull().default("ET"),        // "ET" | "RU" | "ET / RU"
   price: integer("price"),                                     // e-learning, cents
@@ -43,6 +44,12 @@ export const courses = pgTable("courses", {
   nextDiscount: jsonb("next_discount").$type<I18n>(),
   badge: jsonb("badge").$type<StoredBadge>(),
   recommendationIds: jsonb("recommendation_ids").$type<number[]>().notNull().default([]),
+  /**
+   * Maria's stage headings for a contact course's protocols (phase protocols, spec §3): plain strings in the language she writes in, not
+   * translated; at most 30, each at most 120 characters, trimmed, no empty ones (domain/protocols.ts checkStages). A protocol copies them when
+   * it is created (its first save); a change here reaches only protocols not created yet.
+   */
+  protocolStages: jsonb("protocol_stages").$type<string[]>().notNull().default([]),
   published: boolean("published").notNull().default(false),
   sort: integer("sort").notNull().default(0),
   isSample: boolean("is_sample").notNull().default(false),
@@ -278,6 +285,57 @@ export const payments = pgTable(
   ],
 );
 
+// ---------- protocols and the course feedback form ----------
+
+/** One stage of a protocol: Maria's heading (copied from the course) and her note under it. */
+export type ProtocolStage = { title: string; note: string };
+/** What the student sees: the copy "Saada" froze (server/protocols.ts sendProtocol). */
+export type SentProtocol = { stages: ProtocolStage[]; generalNote: string };
+
+/**
+ * A registration's protocol (spec §3, D1): the practice part (`stages`) and the training part (`generalNote`), written by Maria on the course
+ * day. `version` rises with every saved change (server/protocols.ts saveProtocol refuses a save made from an older one). "Saada" freezes the
+ * draft into `sent` with `sentAt` and `sentVersion`; the student is only ever served `sent`. The status is computed (domain/protocols.ts
+ * protocolStatus): none without a row, a draft until sent, sent while version = sentVersion, changed after. Deleted with the registration, and
+ * with the account (server/client-data.ts deleteClient).
+ */
+export const protocols = pgTable(
+  "protocols",
+  {
+    id: serial("id").primaryKey(),
+    registrationId: integer("registration_id").notNull().references(() => registrations.id, { onDelete: "cascade" }),
+    stages: jsonb("stages").$type<ProtocolStage[]>().notNull(),
+    generalNote: text("general_note").notNull().default(""),
+    version: integer("version").notNull().default(1),
+    sent: jsonb("sent").$type<SentProtocol>(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    sentVersion: integer("sent_version"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("protocols_registration").on(t.registrationId)],
+);
+
+/**
+ * The end-of-course feedback form of one registration (spec §7): Maria's paper form "Sinu kogemus MS LAB koolitusel", answered online.
+ * `answers` holds keys (domain/protocols.ts FEEDBACK_ORDER), never texts, so a wording fix never breaks an old answer. A row is made by
+ * the submit (`submittedAt`) or by "Ei soovi" (`dismissedAt`, `answers` null); one per registration. Deleted with the registration, and with
+ * the account.
+ */
+export const courseFeedback = pgTable(
+  "course_feedback",
+  {
+    id: serial("id").primaryKey(),
+    registrationId: integer("registration_id").notNull().references(() => registrations.id, { onDelete: "cascade" }),
+    answers: jsonb("answers").$type<FeedbackAnswers>(),
+    locale: text("locale").$type<"et" | "ru">(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("course_feedback_registration").on(t.registrationId), index("course_feedback_submitted").on(t.submittedAt)],
+);
+
 // ---------- phase 3a: modules, lessons, files, progress ----------
 
 /** A module of a course (an e-course's module, a contact course's programme item), in `position` order (1…n). */
@@ -411,3 +469,5 @@ export type LessonProgressRow = typeof lessonProgress.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type PaymentKind = Payment["kind"];
 export type PaymentStatus = Payment["status"];
+export type Protocol = typeof protocols.$inferSelect;
+export type CourseFeedback = typeof courseFeedback.$inferSelect;

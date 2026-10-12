@@ -7794,7 +7794,7 @@ The ledger is `.superpowers/sdd/2026-10-09-phase2b-montonio-payments/progress.md
   - Nothing to clean in Montonio's sandbox (its orders stay there; they are test orders).
   - Check: `select count(*) from payments` → 0, `select count(*) from registrations where seat_hold_until > now()` → 0.
 - [ ] **Step 11: Durations.** From the runtime logs, note the max and median of `POST /api/payments/notify`, `GET /api/payments/return`, `POST /maksa/<token>` and the registration's server action (it now creates an order).
-- [ ] **Step 12: What stays for the public launch** is `docs/launch-checklist.md` §10 (Maria's approved store, the live keys and `MONTONIO_ENV=live`, her methods, the €1 test with a refund, the privacy line, the Russian texts). Migration 0007 (the drop of `courses.modules`) stays as planned in phase 3a: code first, then the migration; the migrations count afterwards is 8.
+- [ ] **Step 12: What stays for the public launch** is `docs/launch-checklist.md` §10 (Maria's approved store, the live keys and `MONTONIO_ENV=live`, her methods, the €1 test with a refund, the privacy line, the Russian texts). Migration 0008 (the drop of `courses.modules`; the protocols phase took 0007) stays as planned in phase 3a: code first, then the migration; the migrations count afterwards is 9.
 
 ---
 

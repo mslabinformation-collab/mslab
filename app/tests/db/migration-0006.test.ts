@@ -36,10 +36,9 @@ test("0006 gives every registration its own pay token, no hold, and adds the pay
     }
   };
   await through("0005_phase2c");
-  const [course] = await db
-    .insert(courses)
-    .values({ slug: "k", type: "contact", level: "basic", title: { et: "K" }, summary: { et: "" }, body: { et: "" }, priceGroup: 35000 })
-    .returning();
+  // (raw SQL: drizzle's insert would name courses.protocol_stages, which migration 0007 adds)
+  await db.execute(sql`insert into courses (slug, type, level, title, summary, body, price_group) values ('k', 'contact', 'basic', '{"et":"K"}', '{"et":""}', '{"et":""}', 35000)`);
+  const [course] = await db.select({ id: courses.id }).from(courses);
   const [session] = await db.insert(courseSessions).values({ courseId: course.id, startsAt: new Date("2026-11-14T08:00:00Z"), city: "Pärnu" }).returning();
   // the live code's insert: it knows no pay_token or seat_hold_until (raw SQL: drizzle would name the new columns)
   for (const email of ["a@example.test", "b@example.test", "c@example.test"])
