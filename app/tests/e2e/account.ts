@@ -34,13 +34,22 @@ async function storeLogin(email: string, token: string, code: string): Promise<v
 const sixDigits = () => String(randomInt(1_000_000)).padStart(6, "0");
 
 /**
+ * A live login for `email` stored straight in the local database: the link token of the mail's /api/konto/verify?t=… (the login's code is
+ * made up and never used). For a test that opens the link itself, as the protocol mail's button does (&p=<registration>).
+ */
+export async function mintLoginToken(email: string): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  await storeLogin(email, token, sixDigits());
+  return token;
+}
+
+/**
  * Signs `page` in as `email` through the login link: a login stored straight in the local database, then the app's own
  * /api/konto/verify uses it, starts the session (ending any other of this client: one device only) and opens /konto.
  * The same against `next dev` and the local production build (which never hands out a code or link).
  */
 export async function signInAsClient(page: Page, email: string): Promise<void> {
-  const token = randomBytes(32).toString("base64url");
-  await storeLogin(email, token, sixDigits());
+  const token = await mintLoginToken(email);
   await page.goto(`/api/konto/verify?t=${token}`);
   await expect(page).toHaveURL(/\/konto$/);
   expect((await page.context().cookies()).some((c) => c.name === "__Host-mslab_client"), "session cookie").toBe(true);

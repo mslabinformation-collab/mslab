@@ -46,6 +46,15 @@ const connect = (marksPages = true) => {
   return Object.assign(sql, { end: async (...args: Parameters<typeof end>) => { await end(...args); revalidateLocalPages(); } });
 };
 
+/**
+ * The local test database's address, checked to be local (local-db.ts), for a test that needs connections of its own: protocols-race.spec.ts
+ * runs the app's own sendProtocol on a pool of it (two connections at once, which onLocalDb's single one cannot be).
+ */
+export function localDatabaseUrl(): string {
+  if (!isLocalDbUrl(DB_URL)) assertLocalDatabases([{ source: "E2E_DATABASE_URL", url: DB_URL }]);
+  return DB_URL;
+}
+
 /** Removes this suite's rows; returns how many are left afterwards (0 when clean). */
 async function clear(sql: postgres.Sql): Promise<number> {
   await sql`delete from registrations where note = ${FIXTURE_NOTE}`;
