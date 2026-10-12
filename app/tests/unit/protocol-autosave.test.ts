@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  DEBOUNCE_MS, FRESH_WAIT_MS, localKey, NOTICE_MAX_CHARS, ProtocolAutosave, readConflict, readLocal, remember, resumeLocal, SENT_MAX_CHARS, sentKey, statusOf,
+  DEBOUNCE_MS, FRESH_WAIT_MS, HIDDEN_RECHECK_MS, keepReading, localKey, NOTICE_MAX_CHARS, ProtocolAutosave, readConflict, readLocal, remember, resumeLocal, SENT_MAX_CHARS, sentKey, statusOf,
   type Answer, type Content, type SaveBody, type SendOptions, type ServerDraft,
 } from "@/components/admin/protocol-autosave";
 import { PROTOCOL_LIMITS } from "@/domain/protocols";
@@ -979,5 +979,260 @@ describe("the server's text read again: a screen restored by the browser's Back 
     f.editNote(7, 0, "Kirjutatud vanade pealkirjade alla.");
     f.reconcile([other]);
     expect(f.get(7)).toMatchObject({ titles: ["Uus pealkiri", "Teine"], conflict: { titles: TITLES, lost: { notes: ["Kirjutatud vanade pealkirjade alla.", ""] } } });
+  });
+});
+
+describe("a read that comes while a save is queued or on its way, and the answers a read can get (fix round 2 of Task 11)", () => {
+  const at = (v: number, note: string, over: Partial<ServerDraft> = {}) =>
+    draft({ version: v, content: { notes: [note, ""], generalNote: "" }, savedAt: Date.parse("2026-10-12T08:00:00.000Z"), ...over });
+
+  test("P1: a lost answer, then 'AB' on its way, and the read finds the lost answer's text stored (v2 'A'): nothing flies beside it, no notice, the server ends with 'AB'", async () => {
+    const s = server();
+    const e = start([at(1, "E")], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(null); // stored as v2 "A" on the server, the answer lost
+    await tick();
+    e.editNote(7, 0, "AB");
+    await tick(DEBOUNCE_MS); // POST v1 "AB" on its way
+    expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[1, "A"], [1, "AB"]]);
+    e.reconcile([at(2, "A")]); // the read answers first
+    await tick();
+    expect(s.calls).toHaveLength(2); // no second POST of the protocol while one is on its way
+    expect(e.get(7)).toMatchObject({ content: { notes: ["AB", ""] }, version: 1, conflict: null, status: { kind: "saving" } });
+    expect(e.checking(7)).toBe(true); // the save's answer is what tells
+    // the POST's answer: refused, the server is at v2 "A" — the text this screen sent before, so it is ours — and 'AB' goes on top, once
+    s.calls[1].answer(refused(2, ["A", ""]));
+    await tick();
+    expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[1, "A"], [1, "AB"], [2, "AB"]]);
+    expect(e.get(7)).toMatchObject({ conflict: null, status: { kind: "saving" } });
+    s.calls[2].answer(ok(3));
+    await tick();
+    expect(s.calls).toHaveLength(3);
+    expect(e.get(7)).toMatchObject({ version: 3, content: { notes: ["AB", ""] }, confirmed: { notes: ["AB", ""] }, conflict: null, status: { kind: "saved" } });
+    expect(e.checking()).toBe(false);
+    expect(readConflict(localStorage, 7)).toBeNull();
+  });
+
+  test("P2: a read that comes while this screen's save is on its way, and she typed on: no notice, the box keeps her text, the newer text goes next", async () => {
+    const s = server();
+    const e = start([at(1, "E")], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS); // POST v1 "A" on its way (the server commits it as v2)
+    e.editNote(7, 0, "AB"); // typed on
+    e.reconcile([at(2, "A")]); // the read after the commit, answered before the POST
+    await tick();
+    expect(e.get(7)).toMatchObject({ content: { notes: ["AB", ""] }, conflict: null });
+    expect(s.calls).toHaveLength(1);
+    s.calls[0].answer(ok(2));
+    await tick();
+    expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[1, "A"], [2, "AB"]]);
+    s.calls[1].answer(ok(3));
+    await tick(DEBOUNCE_MS * 2);
+    expect(s.calls).toHaveLength(2);
+    expect(e.get(7)).toMatchObject({ version: 3, content: { notes: ["AB", ""] }, conflict: null, status: { kind: "saved" } });
+    expect(e.checking()).toBe(false);
+  });
+
+  test("a read that came while a save was on its way, and the save got no answer: it is taken when the save is over — the lost answer's text stored is ours", async () => {
+    const s = server();
+    const e = start([at(1, "E")], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    e.reconcile([at(2, "A")]); // stored as v2 "A", the read answers first
+    expect(e.checking(7)).toBe(true);
+    s.calls[0].answer(null); // the POST's answer is lost
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 2, content: { notes: ["A", ""] }, conflict: null, status: { kind: "saved" } });
+    expect(e.checking(7)).toBe(false);
+    expect(s.calls).toHaveLength(1); // nothing more to send: the server holds exactly her text
+  });
+
+  test("a read that came while a save was on its way and typed on, the save got no answer: the newer text goes on top of the stored one, no notice, one save at a time", async () => {
+    const s = server();
+    const e = start([at(1, "E")], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    e.editNote(7, 0, "AB");
+    e.reconcile([at(2, "A")]);
+    s.calls[0].answer(null);
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 2, content: { notes: ["AB", ""] }, conflict: null });
+    await tick();
+    expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[1, "A"], [2, "AB"]]);
+    s.calls[1].answer(ok(3));
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 3, status: { kind: "saved" } });
+  });
+
+  test("a read while her next text waits for its 1.5 s (a lost answer's text stored): the newer text goes on top once, through the queue, and the waiting save does not send it again", async () => {
+    const s = server();
+    const e = start([at(1, "E")], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(null); // stored as v2 "A", the answer lost
+    await tick();
+    e.editNote(7, 0, "AB"); // waits for its 1.5 s
+    e.reconcile([at(2, "A")]);
+    await tick();
+    expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[1, "A"], [2, "AB"]]);
+    s.calls[1].answer(ok(3));
+    await tick(DEBOUNCE_MS * 3);
+    expect(s.calls).toHaveLength(2); // (and the retry of the lost answer's save found nothing left to send)
+    expect(e.get(7)).toMatchObject({ version: 3, content: { notes: ["AB", ""] }, conflict: null, status: { kind: "saved" } });
+  });
+
+  test("P3: the read finds LESS than the render this screen was made from (the protocol is gone, deleted with the account): the server's state is shown, her text is in the notice", async () => {
+    const e = start([at(3, "Kolmas")], server().send);
+    e.awaitFresh();
+    e.reconcile([draft({ version: 0 })]);
+    expect(e.get(7)).toMatchObject({ version: 0, content: { notes: ["", ""] }, conflict: { titles: TITLES, lost: { notes: ["Kolmas", ""] } } });
+    expect(readConflict(localStorage, 7)?.lost?.notes).toEqual(["Kolmas", ""]);
+    expect(e.checking()).toBe(false);
+    // what she types next is a new protocol, from version 0
+    const s = server();
+    const f = start([at(3, "Kolmas")], s.send);
+    f.awaitFresh();
+    f.reconcile([draft({ version: 0 })]);
+    f.editNote(7, 0, "Uus");
+    void f.save(7);
+    await tick();
+    expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[0, "Uus"]]);
+  });
+
+  test("an older read after this screen has heard from the server (it saved since) is still ignored", async () => {
+    const s = server();
+    const e = start([at(1, "E")], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(ok(2));
+    await tick();
+    e.reconcile([at(1, "E")]); // a read that was made before the save
+    expect(e.get(7)).toMatchObject({ version: 2, content: { notes: ["A", ""] }, conflict: null, status: { kind: "saved" } });
+  });
+
+  test("P4: a student the read does not list says she is gone and is not 'checking' for good; one with text not saved yet keeps saving it", async () => {
+    const s = server();
+    const e = start([at(1, "x"), at(1, "y", { registrationId: 8 }), at(1, "z", { registrationId: 9 })], s.send);
+    e.awaitFresh();
+    e.editNote(9, 0, "z, mu lisa");
+    e.reconcile([at(1, "x")]);
+    expect(e.checking()).toBe(false);
+    expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
+    expect(e.get(8)).toMatchObject({ status: { kind: "gone" }, version: 1, content: { notes: ["y", ""] } }); // her text stays
+    expect(e.get(9)!.status).toEqual({ kind: "pending" }); // hers is not saved yet: a cancelled registration still saves, nothing typed is lost
+    await tick(DEBOUNCE_MS);
+    expect(s.calls.map((c) => [c.body.registrationId, c.body.notes[0]])).toEqual([[9, "z, mu lisa"]]);
+  });
+
+  test("a student missing from the read while her save is on its way: after the save the answer is its own, she is not marked gone", async () => {
+    const s = server();
+    const e = start([at(1, "x"), at(1, "y", { registrationId: 8 })], s.send);
+    e.awaitFresh();
+    e.editNote(8, 0, "y2");
+    await tick(DEBOUNCE_MS);
+    e.reconcile([at(1, "x")]);
+    s.calls[0].answer(ok(2));
+    await tick();
+    expect(e.get(8)).toMatchObject({ version: 2, status: { kind: "saved" } });
+    expect(e.checking()).toBe(false);
+  });
+
+  test("signedOut (the read was refused): each protocol says so instead of 'saved', 'checking' ends, a save still keeps it; a save the server takes ends it", async () => {
+    const s = server();
+    const e = start([at(1, "x"), at(1, "y", { registrationId: 8 })], s.send);
+    e.awaitFresh();
+    e.signedOut();
+    expect(e.checking()).toBe(false);
+    expect(await e.whenFresh([7, 8])).toBe(true);
+    expect(e.get(7)!.status).toEqual({ kind: "signedOut" });
+    void e.save(7);
+    await tick();
+    expect(e.get(7)!.status).toEqual({ kind: "signedOut" }); // nothing to save is not "saved"
+    expect(s.calls).toHaveLength(0);
+    e.editNote(8, 0, "y2");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(ok(2));
+    await tick();
+    expect(e.get(8)!.status).toMatchObject({ kind: "saved" });
+  });
+});
+
+describe("keepReading: refusals and a tab hidden for long (fix round 2 of Task 11)", () => {
+  const at = (v: number, note: string, over: Partial<ServerDraft> = {}) => draft({ version: v, content: { notes: [note, ""], generalNote: "" }, ...over });
+  const wire = (d: ServerDraft) => ({ registrationId: d.registrationId, name: "Mari", awaiting: false, version: d.version, titles: d.titles, notes: d.content.notes, generalNote: d.content.generalNote, sentVersion: null, sentAt: null, savedAt: null });
+  let visibility = "visible";
+  let clock = 1_000_000;
+
+  beforeEach(() => {
+    visibility = "visible";
+    clock = 1_000_000;
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(document, "visibilityState");
+  });
+  const show = (state: "hidden" | "visible") => {
+    visibility = state;
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+
+  test("401 and 403: the engine says it is signed out, at once and for good (no retries)", async () => {
+    for (const status of [401, 403]) {
+      const e = new ProtocolAutosave([at(1, "x")], server().send);
+      e.start(localStorage);
+      e.awaitFresh();
+      const read = vi.fn(async () => ({ status, body: { ok: false, error: "unauthorized" } }));
+      const reading = keepReading(e, { sessioon: 5 }, read, () => {});
+      await tick();
+      expect(e.get(7)!.status).toEqual({ kind: "signedOut" });
+      expect(e.checking()).toBe(false);
+      await tick(120_000);
+      expect(read).toHaveBeenCalledTimes(1);
+      reading.stop();
+      e.stop();
+    }
+  });
+
+  test("404 (no such session): none of the students is listed, so each says she is gone", async () => {
+    const e = start([at(1, "x"), at(1, "y", { registrationId: 8 })], server().send);
+    e.awaitFresh();
+    const reading = keepReading(e, { sessioon: 5 }, async () => ({ status: 404, body: { ok: false, error: "notFound" } }), () => {});
+    await tick();
+    expect([e.get(7)!.status.kind, e.get(8)!.status.kind]).toEqual(["gone", "gone"]);
+    expect(e.checking()).toBe(false);
+    reading.stop();
+  });
+
+  test("a tab hidden for over five minutes reads again when it is shown; one hidden for less does not", async () => {
+    const e = start([at(1, "x")], server().send);
+    e.awaitFresh();
+    const read = vi.fn(async () => ({ status: 200, body: { ok: true, students: [wire(at(1, "x"))] } }));
+    const reading = keepReading(e, { sessioon: 5 }, read, () => {});
+    await tick();
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(e.checking()).toBe(false);
+    show("hidden");
+    clock += HIDDEN_RECHECK_MS - 1;
+    show("visible");
+    await tick();
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(e.checking()).toBe(false);
+    show("hidden");
+    clock += HIDDEN_RECHECK_MS + 1;
+    show("visible");
+    expect(e.get(7)!.status).toEqual({ kind: "checking" }); // unread again until the server answers
+    await tick();
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
+    reading.stop();
   });
 });

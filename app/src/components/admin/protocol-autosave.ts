@@ -461,6 +461,13 @@ export class ProtocolAutosave {
   private readonly awaiting = new Set<number>();
   /** Calls waiting for `awaiting` to empty (whenFresh): told after every change. */
   private readonly freshWaiters = new Set<() => void>();
+  /**
+   * What a read brought for a protocol with a save queued or on its way (null: she was not in the answer): taken when that save is over, if it did
+   * not read the server's text itself (its answer is the server's word, and newer than the read).
+   */
+  private readonly deferred = new Map<number, ServerDraft | null>();
+  /** The protocols whose read was refused (signed out): they say so instead of "saved", until the server takes a save of theirs again. */
+  private readonly signedOutIds = new Set<number>();
   private storage: Storage | null = null;
   private running = false;
   private resumed = false;
@@ -517,32 +524,87 @@ export class ProtocolAutosave {
    * - text of this screen's own that is not on the server: the refusal's path (conflict): the server's text is shown, this screen's words go into
    *   the notice, and a text this screen sent without an answer that the server holds is its own (saved on top, no notice);
    * the same version: "checking" becomes "saved", and the send marks only move forward (a send made here after the render was read stays);
-   * an older version (this screen has saved since) is ignored. A student the screen did not have is added.
+   * an older version while the text is still unread (the protocol is gone from the server, with the account): the server's state is shown and
+   * the screen's text goes into the notice; an older one after this screen has heard from the server (it saved since) is ignored;
+   * a protocol with a save queued or on its way is left alone until that save is over: its answer is the server's word (a read that comes
+   * meanwhile would see the save half done, and a second save of the same protocol must never fly beside it); a student the answer does not list
+   * (cancelled or moved meanwhile) says she is gone, unless text of hers is not saved yet; a student the screen did not have is added.
    */
   reconcile(drafts: readonly ServerDraft[]): void {
+    const listed = new Set<number>();
     for (const d of drafts) {
+      listed.add(d.registrationId);
       const e = this.entries.get(d.registrationId);
       if (!e) {
         this.entries.set(d.registrationId, entryOf(d));
         this.order.push(d.registrationId);
         continue;
       }
-      this.awaiting.delete(e.registrationId);
-      const newer = d.version > e.version || (d.version === e.version && !sameTitles(d.titles, e.titles));
-      if (newer) {
-        if (this.uncertain(e)) void this.conflict(e, d, e.version);
-        else {
-          this.adopt(e, d);
-          e.content = copy(d.content);
-          this.settle(e);
-        }
-        continue;
+      this.take(e, d);
+    }
+    for (const e of [...this.entries.values()]) if (!listed.has(e.registrationId)) this.take(e, null);
+    this.changed();
+  }
+
+  /** One protocol of a read: `d` is the server's text of it, null when the answer did not list her (see reconcile). */
+  private take(e: Entry, d: ServerDraft | null): void {
+    const id = e.registrationId;
+    if (this.chains.has(id) || this.flying.has(id)) {
+      this.deferred.set(id, d);
+      return;
+    }
+    this.deferred.delete(id);
+    const unread = this.awaiting.delete(id);
+    if (d === null) {
+      // not in the answer: cancelled or moved meanwhile. Text of hers that is not saved yet stays as it is (a cancelled registration still saves:
+      // nothing typed is lost); else she says she is gone, and it is not "checking" for good
+      if (!this.uncertain(e) && (e.status.kind === "checking" || e.status.kind === "saved")) this.set(e, { kind: "gone" });
+      return;
+    }
+    const newer = d.version > e.version || (d.version === e.version && !sameTitles(d.titles, e.titles));
+    if (newer) {
+      if (this.uncertain(e)) void this.conflict(e, d, e.version, { resend: () => this.queue(id, false) });
+      else {
+        this.adopt(e, d);
+        e.content = copy(d.content);
+        this.settle(e);
       }
-      if (d.version === e.version && sentLater(d, e)) {
-        e.sentVersion = d.sentVersion;
-        e.sentAt = d.sentAt;
-      }
-      if (e.status.kind === "checking") this.settle(e);
+      return;
+    }
+    if (d.version < e.version && unread) {
+      // the server holds less than the render this screen was made from, and nothing has been heard from it since: the protocol is gone (deleted with
+      // the account). What is on the screen is the only copy: it goes into the notice, and the server's state is what is shown
+      void this.conflict(e, d, e.version, { words: true });
+      return;
+    }
+    if (d.version === e.version && sentLater(d, e)) {
+      e.sentVersion = d.sentVersion;
+      e.sentAt = d.sentAt;
+    }
+    if (e.status.kind === "checking") this.settle(e);
+  }
+
+  /** A save is over (the chain of the protocol ended): a read it made wait is taken now, unless the save's own answer was the server's word on it. */
+  private takeDeferred(id: number): void {
+    if (!this.deferred.has(id)) return;
+    const d = this.deferred.get(id) ?? null;
+    const e = this.entries.get(id);
+    this.deferred.delete(id);
+    if (!e || !this.awaiting.has(id)) return;
+    this.take(e, d);
+    this.changed();
+  }
+
+  /**
+   * The read was refused (signed out): the server's text cannot be read, and saying "checking" for good helps no one. Each protocol says it is signed
+   * out, a send stops at once with that line, and the text on the screen stays in this browser.
+   */
+  signedOut(): void {
+    for (const e of this.entries.values()) {
+      const id = e.registrationId;
+      this.awaiting.delete(id);
+      this.signedOutIds.add(id);
+      if (e.status.kind === "checking" || e.status.kind === "saved") this.set(e, { kind: "signedOut" });
     }
     this.changed();
   }
@@ -816,7 +878,9 @@ export class ProtocolAutosave {
         : Promise.resolve().then(() => this.sendIfNeeded(id));
     this.chains.set(id, next);
     void next.then(() => {
-      if (this.chains.get(id) === next) this.chains.delete(id);
+      if (this.chains.get(id) !== next) return;
+      this.chains.delete(id);
+      this.takeDeferred(id);
     });
     return next;
   }
@@ -846,6 +910,7 @@ export class ProtocolAutosave {
     const reply = (answer?.body ?? null) as Record<string, unknown> | null;
     if (answer && answer.status === 200 && reply?.ok === true && typeof reply.version === "number") {
       this.awaiting.delete(id); // (the server took it from the version this screen had, so that was its current one)
+      this.signedOutIds.delete(id);
       this.unanswered.delete(id);
       this.attempts.delete(id);
       e.version = reply.version;
@@ -882,9 +947,15 @@ export class ProtocolAutosave {
     e.savedAt = stored.savedAt;
   }
 
-  private conflict(e: Entry, stored: ServerDraft, sentFrom: number): Promise<boolean> | boolean {
+  /**
+   * `resend`: how the screen's newer text goes on top of one of its own saves that the server holds (the queue, when this is not called from the
+   * save's own answer); `words`: the text on the screen is hers to keep even when it is the last text the server confirmed (the server holds less).
+   */
+  private conflict(e: Entry, stored: ServerDraft, sentFrom: number, how: { resend?: () => Promise<boolean>; words?: boolean } = {}): Promise<boolean> | boolean {
     this.awaiting.delete(e.registrationId); // (the server's own text: read)
-    const mine = this.unanswered.get(e.registrationId) ?? [];
+    this.signedOutIds.delete(e.registrationId);
+    const flying = this.flying.get(e.registrationId);
+    const mine = flying ? remember(this.unanswered.get(e.registrationId) ?? [], flying) : (this.unanswered.get(e.registrationId) ?? []);
     this.unanswered.delete(e.registrationId);
     this.attempts.delete(e.registrationId);
     if (sameTitles(stored.titles, e.titles) && sameContent(stored.content, e.content)) {
@@ -896,11 +967,11 @@ export class ProtocolAutosave {
     if (stored.version > sentFrom && sameTitles(stored.titles, e.titles) && mine.some((c) => sameContent(c, stored.content))) {
       // our own earlier save, whose answer was lost: it is stored as that version, and the screen's newer text goes on from there
       this.adopt(e, stored);
-      return this.sendIfNeeded(e.registrationId);
+      return how.resend ? how.resend() : this.sendIfNeeded(e.registrationId);
     }
     // another device or tab saved first: its text is shown, and this screen's goes into the notice (newer text is never overwritten); a
     // screen that shows the text confirmed last has no words of its own to lose (the other device built on that text)
-    const nothingNew = sameContent(e.content, stored.content) || sameContent(e.content, e.confirmed);
+    const nothingNew = sameContent(e.content, stored.content) || (!how.words && sameContent(e.content, e.confirmed));
     this.showConflict(e, { titles: e.titles, lost: nothingNew ? null : copy(e.content) });
     this.adopt(e, stored);
     e.content = copy(stored.content);
@@ -957,7 +1028,7 @@ export class ProtocolAutosave {
     if (this.unkept.has(e.registrationId)) this.storeNotice(e);
     if (this.unkept.has(e.registrationId)) this.keep(e);
     else this.dropCopy(e);
-    this.set(e, this.awaiting.has(e.registrationId) ? { kind: "checking" } : { kind: "saved", at: e.savedAt });
+    this.set(e, this.awaiting.has(e.registrationId) ? { kind: "checking" } : this.signedOutIds.has(e.registrationId) ? { kind: "signedOut" } : { kind: "saved", at: e.savedAt });
   }
 
   /** Nothing is left to keep: this page's copy goes, and so do the closed tabs' keys it took over. */
@@ -1095,11 +1166,15 @@ export function readStudents(body: unknown): ScreenStudentView[] | null {
   return list.every(good) ? list : null;
 }
 
+/** A tab hidden for longer than this has its text read again when it is shown (another device may have saved meanwhile). */
+export const HIDDEN_RECHECK_MS = 5 * 60_000;
+
 /**
  * Keeps the screen's text read from the server while `engine.checking()`: reads at once, and again after a failed read (after 2, 5, 10, 20, then every
  * 30 s, like a failed save), when the network is back, when the tab is shown again, and when the whole page comes back from the browser's cache
- * (pageshow, persisted: the text is then unread again). An answer is reconciled into the engine (and `onStudents` told, for the list of students).
- * It stops for good at an answer that trying again cannot change (signed out, no such session). `stop` ends it (the screen is left).
+ * (pageshow, persisted: the text is then unread again; so is a tab shown again after HIDDEN_RECHECK_MS hidden). An answer is reconciled into the
+ * engine (and `onStudents` told, for the list of students). An answer that trying again cannot change ends it: signed out (401, 403: the engine says
+ * so, engine.signedOut) and no such session (404: none of the students is listed). `stop` ends it (the screen is left).
  */
 export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read: ReadScreen, onStudents: (students: ScreenStudentView[]) => void): { stop(): void } {
   let alive = true;
@@ -1125,7 +1200,8 @@ export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read
       onStudents(students);
       return;
     }
-    if (answer && (answer.status === 401 || answer.status === 403 || answer.status === 404)) return;
+    if (answer && (answer.status === 401 || answer.status === 403)) return engine.signedOut();
+    if (answer && answer.status === 404) return engine.reconcile([]);
     timer = setTimeout(() => {
       timer = null;
       void ask();
@@ -1141,8 +1217,15 @@ export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read
     engine.awaitFresh();
     again();
   };
+  let hiddenAt: number | null = null;
   const seen = () => {
-    if (visible()) again();
+    if (!visible()) {
+      hiddenAt = Date.now();
+      return;
+    }
+    if (hiddenAt !== null && Date.now() - hiddenAt > HIDDEN_RECHECK_MS) engine.awaitFresh();
+    hiddenAt = null;
+    again();
   };
   window.addEventListener("online", again);
   window.addEventListener("pageshow", shown);

@@ -21,6 +21,15 @@ export type ScreenView = { single: boolean; source: ScreenSource; students: Scre
 
 type T = typeof adminEt.protocols;
 
+/**
+ * The students of a read, and after them those it no longer lists (cancelled or moved meanwhile): they stay, so the screen says she is gone
+ * ("Seda registreeringut enam ei ole …", with her text kept) instead of her editor disappearing under Maria's hands.
+ */
+const withDropped = (now: ScreenStudentView[], before: ScreenStudentView[]): ScreenStudentView[] => {
+  const listed = new Set(now.map((s) => s.registrationId));
+  return [...now, ...before.filter((s) => !listed.has(s.registrationId))];
+};
+
 const TONE: Record<Exclude<ProtocolStatus, "none">, string> = { draft: ui.warn, sent: ui.ok, changed: ui.bad };
 
 /** The save's status line: "Salvestatud HH:MM" (Tallinn), the waiting states, and the failing ones (in the error colour). */
@@ -55,10 +64,11 @@ export function statusLine(s: SaveStatus, t: T): { text: string; failing: boolea
  * shows read-only. The sends are ProtocolSend.tsx: "Lukusta ja saada kõik" above the students (the session's primary button), each student's
  * "Saada" / "Muuda" / "Saada uuesti" under her protocol. Leaving the page while a text is not confirmed asks first (it is in this browser
  * all the same). One student (an individual course, or a session with one): no list.
- * The browser's Back restores this page from the client router's copy of the visit's server render, older than what was saved since, and a tab
- * hidden for hours may come back as it was: so the screen never takes its text for the server's. It says "Kontrollin …" instead of "Salvestatud"
- * until it has read the server's text again (GET /api/admin/protokoll when the screen is shown, and when it comes back from the browser's cache, the
- * tab is shown or the network is back: protocol-autosave.ts keepReading), and the engine then reconciles each student with it (reconcile). `read` is
+ * The browser's Back restores this page from the client router's copy of the visit's server render, older than what was saved since: so the
+ * screen never takes its text for the server's. It says "Kontrollin …" instead of "Salvestatud" until it has read the server's text again (GET
+ * /api/admin/protokoll when the screen is shown, and again when the page comes back from the browser's cache, when a tab hidden for over five
+ * minutes is shown, and while the text is still unread when the tab is shown or the network is back: protocol-autosave.ts keepReading), and the
+ * engine then reconciles each student with it (reconcile). A student the answer no longer lists stays on the screen, saying she is gone. `read` is
  * the reading, replaceable for the tests.
  */
 export function ProtocolScreen({ view, read = getScreen }: { view: ScreenView; read?: ReadScreen }) {
@@ -93,7 +103,7 @@ export function ProtocolScreen({ view, read = getScreen }: { view: ScreenView; r
     }
     engine.start(storage);
     engine.awaitFresh();
-    const reading = keepReading(engine, source, read, setStudents);
+    const reading = keepReading(engine, source, read, (now) => setStudents((before) => withDropped(now, before)));
     const warn = (e: BeforeUnloadEvent) => {
       if (engine.unsaved()) e.preventDefault();
     };

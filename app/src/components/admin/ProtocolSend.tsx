@@ -6,7 +6,7 @@ import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { sendProtocolAction, sendProtocolsAction } from "@/server/actions/admin-protocols";
 import type { BulkResult, SendOutcome } from "@/server/protocols";
-import { statusOf, unsavedEntry, written, type Entry, type ProtocolAutosave } from "./protocol-autosave";
+import { sameContent, statusOf, unsavedEntry, written, type Content, type Entry, type ProtocolAutosave } from "./protocol-autosave";
 import ui from "./ui.module.css";
 import styles from "./ProtocolScreen.module.css";
 
@@ -56,6 +56,9 @@ export function unsavedMessage(e: Pick<Entry, "status" | "conflict">, t: T): str
   }
 }
 
+/** The text on the screen as it is now (the engine changes the entry's own arrays). */
+const copyOf = (c: Content): Content => ({ notes: [...c.notes], generalNote: c.generalNote });
+
 /** What "Lukusta ja saada kõik" would do with each protocol (planSendAll). */
 export type SendPlan = { will: number[]; skipped: number[]; already: number[]; sending: number[]; review: number[] };
 
@@ -68,8 +71,9 @@ export type SendPlan = { will: number[]; skipped: number[]; already: number[]; s
 export function planSendAll(engine: ProtocolAutosave, shown?: ReadonlyMap<number, string>): SendPlan {
   const out: SendPlan = { will: [], skipped: [], already: [], sending: [], review: [] };
   for (const id of engine.ids()) {
-    if (shown && !shown.has(id)) continue; // (a student the screen no longer lists, cancelled meanwhile: not one of this send)
+    if (shown && !shown.has(id)) continue; // (a student the screen no longer lists: not one of this send)
     const e = engine.get(id)!;
+    if (e.status.kind === "gone") continue; // (cancelled or moved meanwhile, as the server's last answer said: nothing to send)
     if (e.sending) {
       out.sending.push(id);
       continue;
@@ -105,9 +109,10 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
     engine.setSendError(id, null);
     // A screen shown from an older page (the browser's Back) has not read the server's text yet, so the text on it may not be the server's, and a
     // send of it must never reach the student unseen: it waits for the server's text (the page is being rendered again), and when that is another
-    // text than the one on the screen, that text is shown now and not sent: Maria looks at it and presses again.
+    // text than the one on the screen, that text is shown now and not sent: Maria looks at it and presses again. (The text, not the version: her own
+    // save, which her tap on the button started by taking the focus from her box, moves the version too, and the text she was shown is the one sent.)
     if (engine.checking(id)) {
-      const shown = now.version;
+      const shown = copyOf(now.content);
       engine.setSending(id, true);
       try {
         const read = await engine.whenFresh([id]);
@@ -120,13 +125,18 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
           engine.setSendError(id, unsavedMessage(now, t));
           return;
         }
-        if (now.version !== shown) {
+        if (!sameContent(now.content, shown)) {
           engine.setSendError(id, t.sendErrors.refreshed);
           return;
         }
       } finally {
         engine.setSending(id, false);
       }
+    }
+    if (now.status.kind === "signedOut") {
+      // the read was refused: she is signed out, and a send would only be turned away by the server
+      engine.setSendError(id, unsavedMessage(now, t));
+      return;
     }
     if (now.conflict) {
       // the notice of a refusal is open: the text on the screen is another device's, which Maria has not looked at ("Selge" first)
@@ -239,14 +249,15 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
     try {
       // A screen shown from an older page (the browser's Back) has not read the server's text yet (see StudentSend): the protocols it lists wait for
       // it, and one whose text turns out to be another than the one the confirmation named is shown as it is now and left out, never sent unseen.
-      const shown = new Map(planned.map((id) => [id, engine.get(id)!.version]));
+      const shown = new Map(planned.map((id) => [id, copyOf(engine.get(id)!.content)]));
       const read = planned.some((id) => engine.checking(id)) ? await engine.whenFresh(planned) : true;
       const held = new Map<number, { reason: string; review: boolean }>();
       for (const id of planned) {
         const e = engine.get(id)!;
         if (!read && engine.checking(id)) held.set(id, { reason: t.sendErrors.unsaved, review: false });
+        else if (e.status.kind === "signedOut" || e.status.kind === "gone") held.set(id, { reason: unsavedMessage(e, t), review: false });
         else if (e.conflict) held.set(id, { reason: t.sendErrors.review, review: true });
-        else if (e.version !== shown.get(id)) held.set(id, { reason: t.sendErrors.refreshed, review: false });
+        else if (!sameContent(e.content, shown.get(id)!)) held.set(id, { reason: t.sendErrors.refreshed, review: false });
       }
       const will = planned.filter((id) => !held.has(id));
       // each protocol saves on its own: one that cannot be saved is left out and named, the others go on (spec §8)

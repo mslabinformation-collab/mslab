@@ -265,7 +265,7 @@ test("words typed on the restored screen before the server's text came: it is sh
   expect(fetchMock).not.toHaveBeenCalled(); // the stale version was never sent
 });
 
-test("a student the server's answer adds appears, and the open student stays open; one it drops makes the first student the open one", async () => {
+test("a student the server's answer adds appears, and the open student stays open; one it drops stays, saying she is gone, with her text", async () => {
   await renderOnly({ single: false, students: [student(1, "Anu"), student(2, "Mari")] });
   await click("[data-student='2']");
   await answered(answer([student(1, "Anu"), student(2, "Mari"), student(3, "Kati")]));
@@ -274,9 +274,34 @@ test("a student the server's answer adds appears, and the open student stays ope
   // the screen reads again when the page comes back from the browser's cache; this time Mari is gone (cancelled meanwhile)
   await act(async () => void window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true })));
   await answered(answer([student(1, "Anu"), student(3, "Kati")]));
-  expect($$("[data-student]").map((b) => b.getAttribute("data-student"))).toEqual(["1", "3"]);
-  expect($("[data-student='1']")!.getAttribute("aria-pressed")).toBe("true");
-  expect($("[data-editor='1']")).not.toBeNull();
+  expect($$("[data-student]").map((b) => b.getAttribute("data-student"))).toEqual(["1", "3", "2"]); // (hers last: the answer's students first)
+  expect($("[data-student='2']")!.getAttribute("aria-pressed")).toBe("true"); // and she is still the open one, not gone from under Maria's hands
+  expect($("[data-editor='2'] [data-save-status]")!.getAttribute("data-save-status")).toBe("gone");
+  expect($("[data-editor='2'] [data-save-status]")!.textContent).toBe("Seda registreeringut enam ei ole. Tekst on selles seadmes alles.");
+  expect($("[data-editor='2'] [data-note='0']")).not.toBeNull(); // her editor is still there
+  expect($("[data-student='1'] [data-unsaved]")).toBeNull();
+});
+
+test("the read answers 404 (no such session now): every student says she is gone, none is 'checking' for good", async () => {
+  await renderOnly({ single: false, students: [student(1, "Anu"), student(2, "Mari")] });
+  await answered({ status: 404, body: { ok: false, error: "notFound" } });
+  expect($$("[data-student]")).toHaveLength(2);
+  expect($("[data-editor='1'] [data-save-status]")!.getAttribute("data-save-status")).toBe("gone");
+  await click("[data-student='2']");
+  expect($("[data-editor='2'] [data-save-status]")!.getAttribute("data-save-status")).toBe("gone");
+  await wait(120_000);
+  expect(read).toHaveBeenCalledTimes(1);
+});
+
+test("the read is refused (401): the screen says she is signed out instead of 'checking', with her text; the read is not repeated", async () => {
+  await renderOnly({ single: true, students: [student(1, "Anu", { version: 1, notes: ["Esimene.", ""] })] });
+  await answered({ status: 401, body: { ok: false, error: "unauthorized" } });
+  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("signedOut");
+  expect($("[data-save-status]")!.textContent).toBe("Salvestamata — logi uuesti sisse. Tekst on selles seadmes alles.");
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Esimene.");
+  await wait(120_000);
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 test("a read that fails is tried again after 2, 5 and 10 s, and at once when the network is back or the tab is shown; the page back from the browser's cache reads again; a read that cannot change is not repeated", async () => {
@@ -310,7 +335,7 @@ test("a read that fails is tried again after 2, 5 and 10 s, and at once when the
   await answered({ status: 401, body: { ok: false, error: "unauthorized" } }); // signed out: trying again changes nothing
   await wait(120_000);
   expect(read).toHaveBeenCalledTimes(5);
-  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("checking");
+  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("signedOut");
 });
 
 test("the screen being left: an answer that comes after is not applied, and nothing is asked again", async () => {
