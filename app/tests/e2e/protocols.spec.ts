@@ -308,6 +308,7 @@ test("the screens at 390, 834, 1194 and 1440 px: no sideways scroll, every targe
   await insertSentProtocol(mari.id, ["Ühtlane joon, hea kuju. ".repeat(20)], "Tubli töö!");
   await insertDraftProtocol(anu.id, ["Kulmud analüüsitud.", "", ""], "");
   await insertFeedbackAnswer(anu.id, { score: 8, expectations: "exceeded", recommend: "Jah, kindlasti." });
+  const answer = (await storedFeedback(anu.id))!;
   await signInAsAdmin(page, context, visitorIp, created);
   const student = await studentPage(browser, mari.email, visitorIp);
   const screens = [
@@ -315,6 +316,9 @@ test("the screens at 390, 834, 1194 and 1440 px: no sideways scroll, every targe
     // … with "Lukusta ja saada kõik" asking (who gets one, who is skipped, who has hers already)
     { page, url: `/admin/protokollid?sessioon=${fx.session.id}`, scope: "[data-protocol-screen]", admin: true, open: "[data-send-all-open]", shown: "[data-send-confirm]" },
     { page, url: "/admin/tagasiside", scope: "main", admin: true },
+    // … one course's numbers (the average and every option's count), and one answer's drawer
+    { page, url: `/admin/tagasiside?koolitus=${fx.course.id}`, scope: "main", admin: true },
+    { page, url: `/admin/tagasiside?koolitus=${fx.course.id}&id=${answer.id}`, scope: "dialog[open]", admin: true },
     { page: student.page, url: `/konto/protokoll#id=${mari.id}`, scope: "[data-protocol-page]", admin: false },
     { page: student.page, url: `/konto/tagasiside#id=${mari.id}`, scope: "[data-feedback-form]", admin: false },
   ];
