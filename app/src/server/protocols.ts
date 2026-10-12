@@ -8,10 +8,10 @@ import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import { hasText, overLimit, PROTOCOL_LIMITS, readStages } from "@/domain/protocols";
 import type { I18n } from "@/i18n/field";
 import { storable } from "@/lib/storable";
-import { protocolMail, type SessionInfo } from "./account-mail";
+import { protocolMail, type LoginCode, type SessionInfo } from "./account-mail";
 import { addClient } from "./admin-clients";
 import { issueClientLogin, lockAddress } from "./client-auth";
-import { logFailure } from "./log";
+import { logFailure, logNote } from "./log";
 import { mailConfigured, sendMail, type Env } from "./notify";
 
 // Maria's protocols on the course day (phase protocols, spec §3, §4, §8), without Next.js: the autosave (saveProtocol, and handleSave behind
@@ -168,7 +168,12 @@ export type SendDeps = {
   now: Date;
   /** Runs work after the answer: the mail (next/server after(); collected and awaited in the tests). */
   later: (task: () => Promise<unknown>) => void;
+  /** The pause between the mails of one call, ms (MAIL_GAP_MS when absent; the tests pass 0 so they do not sleep). */
+  mailGapMs?: number;
 };
+
+/** The pause between two protocol mails of a bulk send: Resend answers 429 above about 2 requests a second (500 ms), and a request takes time too. */
+export const MAIL_GAP_MS = 600;
 
 /**
  * What a send did. sent: frozen now (`again`: it had been sent before, so the mail says "uuendatud"); already: this version was sent before
@@ -203,8 +208,15 @@ type ProtocolMailJob = { registrationId: number; email: string; name: string; lo
  * undoes the send. A sample address is never mailed.
  */
 export async function sendProtocol(deps: SendDeps, input: { registrationId: number; version: number }): Promise<SendResult> {
+  const { result, mail } = await freezeProtocol(deps, input);
+  if (mail) deps.later(() => mailProtocols(deps, [mail]));
+  return result;
+}
+
+/** The transaction of sendProtocol; it answers with the mail still to go instead of queuing it, so a bulk send can queue all of its mails as one task. */
+async function freezeProtocol(deps: SendDeps, input: { registrationId: number; version: number }): Promise<{ result: SendResult; mail: ProtocolMailJob | null }> {
   const [peek] = await deps.db.select({ email: registrations.email }).from(registrations).where(eq(registrations.id, input.registrationId)).limit(1);
-  if (!peek) return { kind: "notFound" };
+  if (!peek) return { result: { kind: "notFound" }, mail: null };
   const done = await deps.db.transaction(async (tx): Promise<{ result: SendResult; mail: ProtocolMailJob | null }> => {
     const t = tx as unknown as Db;
     const none = (result: SendResult) => ({ result, mail: null });
@@ -248,43 +260,72 @@ export async function sendProtocol(deps: SendDeps, input: { registrationId: numb
     };
   });
   if (done.result.kind === "sent") console.info(`[protocols] registration ${input.registrationId}: sent${done.result.again ? " again" : ""}`);
-  const job = done.mail;
-  if (job) deps.later(() => mailProtocol(deps, job));
-  return done.result;
+  return done;
 }
 
 /**
- * The protocol's mail, after the commit: never to a sample address, not counted in the daily caps (it follows Maria's own send, a handful a
- * course day). The login is a normal client login made only now (client-auth.ts issueClientLogin), so its 30 minutes start with the mail; an
- * address that has its 3 already gets the mail without one. A failure is logged by the registration's id and never undoes the send.
+ * The mails of the sends of one call, after the commit, as ONE task: one after another, `mailGapMs` apart. Resend answers 429 above about 2
+ * requests a second, and Next runs every task of after() at once, so a task for each student would send them all in the same moment and lose
+ * the ones refused. A lost mail cannot be re-sent for its version (a second send of it is "already"), so the mails wait for each other here.
  */
-async function mailProtocol(deps: SendDeps, job: ProtocolMailJob): Promise<void> {
-  if (isSampleAddress(job.email) || !mailConfigured(deps.env)) return;
+async function mailProtocols(deps: SendDeps, jobs: readonly ProtocolMailJob[]): Promise<void> {
+  const gap = deps.mailGapMs ?? MAIL_GAP_MS;
+  let requested = false; // the last job went to Resend: the next one waits
+  for (const job of jobs) {
+    if (requested && gap > 0) await new Promise((resolve) => setTimeout(resolve, gap));
+    requested = await mailProtocol(deps, job);
+  }
+}
+
+/** The login of a protocol mail, or null when the address has its 3 already or the database failed: then the mail goes without the code (as submit.ts liveLogin does). */
+async function protocolLogin(deps: SendDeps, job: ProtocolMailJob): Promise<LoginCode | null> {
   try {
-    const login = await issueClientLogin(deps.db, job.email, deps.now);
-    const sent = await sendMail(deps.env, protocolMail({ siteUrl: deps.siteUrl, ...job, login }));
-    console.info(`[protocols] registration ${job.registrationId}: the mail sent: ${sent}`);
+    return await issueClientLogin(deps.db, job.email, deps.now);
+  } catch (e) {
+    logFailure(`[protocols] registration ${job.registrationId}: login code unavailable, the mail goes without it`, e);
+    return null;
+  }
+}
+
+/**
+ * One protocol mail: never to a sample address, not counted in the daily caps (it follows Maria's own send, a handful a course day). The
+ * login is a normal client login made only now (client-auth.ts issueClientLogin), so its 30 minutes start with the mail; an address that has
+ * its 3 already, or a login that cannot be made, gets the mail without one, its button opening the page. A mail Resend does not take is logged
+ * as a failure by the registration's id and never undoes the send. true = a request went to Resend (the next mail waits for it).
+ */
+async function mailProtocol(deps: SendDeps, job: ProtocolMailJob): Promise<boolean> {
+  if (isSampleAddress(job.email) || !mailConfigured(deps.env)) return false;
+  try {
+    const login = await protocolLogin(deps, job);
+    if (await sendMail(deps.env, protocolMail({ siteUrl: deps.siteUrl, ...job, login }))) console.info(`[protocols] registration ${job.registrationId}: the mail sent`);
+    else logNote(`[protocols] registration ${job.registrationId}: the mail was not sent`);
   } catch (e) {
     logFailure(`[protocols] registration ${job.registrationId}: the mail failed`, e);
   }
+  return true;
 }
 
 /** One student's outcome of "Lukusta ja saada kõik". */
 export type BulkResult = { registrationId: number; result: SendOutcome };
 
 /**
- * "Lukusta ja saada kõik" (spec §4, §8): the protocols the confirmation listed, one after another, each in its own transaction (sendProtocol),
- * so one that fails does not stop the others; a throw is "failed", logged by the registration's id.
+ * "Lukusta ja saada kõik" (spec §4, §8): the protocols the confirmation listed, one after another, each in its own transaction (like
+ * sendProtocol), so one that fails does not stop the others; a throw is "failed", logged by the registration's id. The mails of the ones
+ * sent go out as one task after the last transaction, one after another (mailProtocols).
  */
 export async function sendProtocols(deps: SendDeps, items: readonly { registrationId: number; version: number }[]): Promise<BulkResult[]> {
   const out: BulkResult[] = [];
+  const mails: ProtocolMailJob[] = [];
   for (const item of items) {
     try {
-      out.push({ registrationId: item.registrationId, result: await sendProtocol(deps, item) });
+      const { result, mail } = await freezeProtocol(deps, item);
+      out.push({ registrationId: item.registrationId, result });
+      if (mail) mails.push(mail);
     } catch (e) {
       logFailure(`[protocols] registration ${item.registrationId}: the send failed`, e);
       out.push({ registrationId: item.registrationId, result: { kind: "failed" } });
     }
   }
+  if (mails.length > 0) deps.later(() => mailProtocols(deps, mails));
   return out;
 }

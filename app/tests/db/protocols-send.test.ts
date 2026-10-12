@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { clientLoginTokens, clients, courses, protocols, registrations } from "@/db/schema";
 import type { Env } from "@/server/notify";
+import { issueClientLogin } from "@/server/client-auth";
 import { saveProtocol, sendProtocol, sendProtocols, type SendDeps } from "@/server/protocols";
 import { fakeKv, stubFetch } from "../fakes";
 import { HEADINGS, protocolCourse, student } from "./protocols-fixtures";
@@ -27,9 +28,10 @@ afterEach(() => {
 });
 
 const env = (): Env => ({ KV: fakeKv(), MAIL_FROM: "MS LAB <info@send.example>", MARIA_EMAIL: "maria@example.test", SITE_URL: SITE, RESEND_API_KEY: "re_test" });
-function deps(now = DAY_END) {
+/** `flush` runs every queued task at the same moment, as Next's after-queue does; the pause between a bulk send's mails is `mailGapMs` (0: the tests do not sleep). */
+function deps(now = DAY_END, mailGapMs = 0) {
   const tasks: (() => Promise<unknown>)[] = [];
-  const d: SendDeps = { db, env: env(), siteUrl: SITE, now, later: (task) => void tasks.push(task) };
+  const d: SendDeps = { db, env: env(), siteUrl: SITE, now, mailGapMs, later: (task) => void tasks.push(task) };
   return { d, queued: () => tasks.length, flush: () => Promise.all(tasks.splice(0).map((task) => task())) };
 }
 type SentMail = { to: string; subject: string; text: string; html: string };
@@ -37,6 +39,9 @@ const mails = () => resend.calls.filter((c) => c.url.includes("resend")).map((c)
 const write = (registrationId: number, version: number, note: string, generalNote = "Tubli töö") =>
   saveProtocol(db, { registrationId, version, titles: HEADINGS, notes: [note, "", "", ""], generalNote }, new Date("2026-10-12T09:00:00Z"));
 const stored = async (registrationId: number) => (await db.select().from(protocols).where(eq(protocols.registrationId, registrationId)))[0];
+const logged = (method: "info" | "error") => vi.mocked(console[method]).mock.calls.flat().join("\n");
+const infoLog = () => logged("info");
+const errorLog = () => logged("error");
 const registration = async (id: number) => (await db.select().from(registrations).where(eq(registrations.id, id)))[0];
 
 async function setup() {
@@ -62,6 +67,7 @@ describe("sendProtocol", () => {
     // nothing is mailed inside the transaction: the mail is queued, and goes when the work after the answer runs
     expect(mails()).toEqual([]);
     expect(queued()).toBe(1);
+    expect(await db.select().from(clientLoginTokens)).toEqual([]); // and her login is made with the mail, not in the transaction
     await flush();
     const [mail] = mails();
     expect([mail.to, mail.subject]).toEqual(["marimaasikas@example.com", "Sinu koolituse protokoll on valmis"]);
@@ -153,7 +159,7 @@ describe("sendProtocol", () => {
     expect(await db.select().from(clientLoginTokens)).toEqual([]);
   });
 
-  test("a mail that fails never undoes the send", async () => {
+  test("a mail that fails never undoes the send, and is logged as a failure by the registration's id", async () => {
     const { mari } = await setup();
     resend = stubFetch(() => new Response("down", { status: 500 }));
     await write(mari.id, 0, "A");
@@ -161,6 +167,38 @@ describe("sendProtocol", () => {
     expect(await sendProtocol(d, { registrationId: mari.id, version: 1 })).toMatchObject({ kind: "sent" });
     await expect(flush()).resolves.toBeDefined();
     expect((await stored(mari.id)).sentVersion).toBe(1);
+    expect(errorLog()).toContain(`[protocols] registration ${mari.id}: the mail was not sent`);
+    expect(errorLog()).not.toContain("marimaasikas"); // ids only, never an address
+    expect(infoLog()).not.toContain("the mail sent");
+  });
+
+  test("a login that cannot be made does not cost the mail: it goes without the code, its button opening the page, and the failure is logged by the id", async () => {
+    const { mari } = await setup();
+    await write(mari.id, 0, "A");
+    const { d, flush } = deps();
+    await sendProtocol(d, { registrationId: mari.id, version: 1 });
+    const target = db as unknown as { transaction: (fn: unknown) => Promise<unknown> };
+    vi.spyOn(target, "transaction").mockImplementationOnce(() => Promise.reject(new Error("connection lost to marimaasikas@example.com"))); // issueClientLogin's
+    await flush();
+    const [mail] = mails();
+    expect([mail.to, mail.subject]).toEqual(["marimaasikas@example.com", "Sinu koolituse protokoll on valmis"]);
+    expect(mail.text).toContain(`Vaata protokolli:\n${SITE}/konto/protokoll#id=${mari.id}`);
+    for (const body of [mail.text, mail.html]) for (const part of ["/api/konto/verify", "sisselogimiskood", "30 minutit"]) expect(body).not.toContain(part);
+    expect(mail.text).toContain(`${SITE}/konto/tagasiside#id=${mari.id}`); // the feedback line stays
+    expect(await db.select().from(clientLoginTokens)).toEqual([]);
+    expect(errorLog()).toContain(`[protocols] registration ${mari.id}: login code unavailable, the mail goes without it`);
+    for (const secret of ["marimaasikas", "connection lost"]) expect(errorLog()).not.toContain(secret);
+  });
+
+  test("an address that has its 3 live logins already gets the mail without the code as well", async () => {
+    const { mari } = await setup();
+    await write(mari.id, 0, "A");
+    for (let i = 0; i < 3; i++) await issueClientLogin(db, "marimaasikas@example.com", DAY_END);
+    const { d, flush } = deps();
+    await sendProtocol(d, { registrationId: mari.id, version: 1 });
+    await flush();
+    expect(mails()[0].text).toContain(`Vaata protokolli:\n${SITE}/konto/protokoll#id=${mari.id}`);
+    expect(errorLog()).not.toContain("the mail was not sent");
   });
 
   test("Review Focus 5: a Russian registration gets the Russian mail and the Russian pages", async () => {
@@ -192,7 +230,7 @@ describe("sendProtocols ('Lukusta ja saada kõik')", () => {
     await write(mari.id, 0, "Mari");
     await write(anu.id, 0, "Anu");
     await write(eve.id, 0, "Eve");
-    const { d, queued } = deps();
+    const { d, queued, flush } = deps();
     // the second student's transaction fails (a dropped connection, say)
     const target = db as unknown as { transaction: (fn: unknown) => Promise<unknown> };
     const real = target.transaction.bind(db);
@@ -205,7 +243,76 @@ describe("sendProtocols ('Lukusta ja saada kõik')", () => {
       { registrationId: eve.id, version: 1 },
     ]);
     expect(results.map((r) => [r.registrationId, r.result.kind])).toEqual([[mari.id, "sent"], [anu.id, "failed"], [999_999, "notFound"], [eve.id, "sent"]]);
-    expect(queued()).toBe(2);
+    expect(queued()).toBe(1); // one task for the whole send's mails (below), not one for each student
     expect((await stored(anu.id)).sentAt).toBeNull();
+    await flush();
+    expect(mails().map((m) => m.to)).toEqual(["marimaasikas@example.com", "evekask@example.com"]); // the sent ones, in order
+  });
+
+  /** Resend as a slow transport: it records when each request starts and ends, and how many were in flight at once. */
+  function slowResend(ms = 15) {
+    const events: string[] = [];
+    const starts: number[] = [];
+    let inFlight = 0;
+    let most = 0;
+    let n = 0;
+    resend = stubFetch(async (url) => {
+      if (!url.includes("resend")) return Response.json({});
+      const id = ++n;
+      events.push(`start ${id}`);
+      starts.push(Date.now());
+      most = Math.max(most, ++inFlight);
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      inFlight--;
+      events.push(`end ${id}`);
+      return Response.json({ id: `email_${id}` });
+    });
+    return { events, starts, most: () => most };
+  }
+
+  async function three() {
+    const { course, session, mari } = await setup();
+    const anu = await student(db, course, session, "Anu Aas");
+    const eve = await student(db, course, session, "Eve Kask");
+    for (const [s, note] of [[mari, "Mari"], [anu, "Anu"], [eve, "Eve"]] as const) await write(s.id, 0, note);
+    return [mari, anu, eve].map((s) => ({ registrationId: s.id, version: 1 }));
+  }
+
+  test("Resend allows about 2 requests a second: a bulk send of 3 mails them one after another, never two in flight (one task, run at once as Next runs them)", async () => {
+    const items = await three();
+    const transport = slowResend();
+    const { d, queued, flush } = deps();
+    expect((await sendProtocols(d, items)).map((r) => r.result.kind)).toEqual(["sent", "sent", "sent"]);
+    const tasks = queued();
+    await flush();
+    expect(transport.most()).toBe(1);
+    expect(transport.events).toEqual(["start 1", "end 1", "start 2", "end 2", "start 3", "end 3"]);
+    expect(mails()).toHaveLength(3);
+    expect(tasks).toBe(1);
+  });
+
+  test("and spaced: the next request starts at least mailGapMs after the last began (600 ms in production)", async () => {
+    const items = await three();
+    const transport = slowResend(5);
+    const { d, flush } = deps(DAY_END, 60);
+    await sendProtocols(d, items);
+    await flush();
+    expect(transport.starts).toHaveLength(3);
+    expect(transport.starts[1] - transport.starts[0]).toBeGreaterThanOrEqual(55);
+    expect(transport.starts[2] - transport.starts[1]).toBeGreaterThanOrEqual(55);
+  });
+
+  test("a sample address in a bulk send is skipped and costs no request", async () => {
+    const { course, session, mari } = await setup();
+    const sample = await student(db, course, session, "Proov Naidis", { email: "proov.naidis@example.test" });
+    await write(mari.id, 0, "A");
+    await write(sample.id, 0, "B");
+    const transport = slowResend();
+    const { d, queued, flush } = deps();
+    await sendProtocols(d, [{ registrationId: sample.id, version: 1 }, { registrationId: mari.id, version: 1 }]);
+    expect(queued()).toBe(1);
+    await flush();
+    expect(transport.events).toEqual(["start 1", "end 1"]);
+    expect(mails().map((m) => m.to)).toEqual(["marimaasikas@example.com"]);
   });
 });
