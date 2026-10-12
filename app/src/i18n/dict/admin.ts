@@ -292,6 +292,8 @@ export const adminEt = {
     saved: "Salvestatud {time}",
     pending: "Salvestamata muudatused",
     saving: "Salvestan…",
+    // the screen shown from a page the browser kept (Back): what the server holds is read again before it says "Salvestatud" (NEW wording, for Dim's approval)
+    checking: "Kontrollin salvestatud teksti…",
     retrying: "Salvestamata — proovin uuesti",
     tooLongStatus: "Salvestamata — üks tekst on liiga pikk",
     signedOut: "Salvestamata — logi uuesti sisse. Tekst on selles seadmes alles.",
@@ -335,6 +337,8 @@ export const adminEt = {
       failed: "Saatmine ei õnnestunud. Proovi uuesti.",
       // a send stopped by the notice of a refusal (another device saved first): only "Selge" lets it go on (NEW wording, for Dim's approval)
       review: "Vaata enne saatmist üle teises seadmes tehtud muudatus ja vajuta „Selge“.",
+      // the screen was an older page and the server's text is newer: it is on the screen now, and was not sent unseen (NEW wording, for Dim's approval)
+      refreshed: "Protokolli muudeti vahepeal mujal ja siin on nüüd uus tekst. Vaata see üle ja saada siis.",
     },
   },
 

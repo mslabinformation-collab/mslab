@@ -1,52 +1,35 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { PROTOCOL_LIMITS, type ProtocolStatus } from "@/domain/protocols";
+import { PROTOCOL_LIMITS, type ProtocolStatus, type ScreenStudentView } from "@/domain/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { GrowingText } from "./GrowingText";
 import { SendAll, StudentSend } from "./ProtocolSend";
-import { ProtocolAutosave, statusOf, type Conflict, type Entry, type SaveStatus, type ServerDraft } from "./protocol-autosave";
+import { getScreen, keepReading, ProtocolAutosave, serverDraft, statusOf, type Conflict, type Entry, type ReadScreen, type SaveStatus, type ScreenSource } from "./protocol-autosave";
 import ui from "./ui.module.css";
 import styles from "./ProtocolScreen.module.css";
 
-/** One student as the page hands her over: her protocol's draft, every date as text. */
-export type ScreenStudentView = {
-  registrationId: number;
-  name: string;
-  /** Her registration waits for its prepayment: "ootab ettemaksu". */
-  awaiting: boolean;
-  version: number;
-  titles: string[];
-  notes: string[];
-  generalNote: string;
-  sentVersion: number | null;
-  sentAt: string | null;
-  savedAt: string | null;
-};
+/** One student as the page hands her over: her protocol's draft, every date as text (domain/protocols.ts). */
+export type { ScreenStudentView };
 
-/** The screen's students. `single`: one registration's screen (an individual course): its "Saada" is the primary button (Task 6). */
-export type ScreenView = { single: boolean; students: ScreenStudentView[] };
+/**
+ * The screen's students. `single`: one registration's screen (an individual course): its "Saada" is the primary button (Task 6). `source`: the
+ * address the page was made from, which the screen reads its data from again (GET /api/admin/protokoll).
+ */
+export type ScreenView = { single: boolean; source: ScreenSource; students: ScreenStudentView[] };
 
 type T = typeof adminEt.protocols;
 
 const TONE: Record<Exclude<ProtocolStatus, "none">, string> = { draft: ui.warn, sent: ui.ok, changed: ui.bad };
-
-const serverDraft = (s: ScreenStudentView): ServerDraft => ({
-  registrationId: s.registrationId,
-  version: s.version,
-  titles: s.titles,
-  content: { notes: s.notes, generalNote: s.generalNote },
-  sentVersion: s.sentVersion,
-  sentAt: s.sentAt,
-  savedAt: s.savedAt === null ? null : Date.parse(s.savedAt),
-});
 
 /** The save's status line: "Salvestatud HH:MM" (Tallinn), the waiting states, and the failing ones (in the error colour). */
 export function statusLine(s: SaveStatus, t: T): { text: string; failing: boolean } {
   switch (s.kind) {
     case "saved":
       return { text: s.at === null ? "" : fill(t.saved, { time: formatTime(new Date(s.at), "et") }), failing: false };
+    case "checking":
+      return { text: t.checking, failing: false };
     case "pending":
       return { text: t.pending, failing: false };
     case "saving":
@@ -72,11 +55,23 @@ export function statusLine(s: SaveStatus, t: T): { text: string; failing: boolea
  * shows read-only. The sends are ProtocolSend.tsx: "Lukusta ja saada kõik" above the students (the session's primary button), each student's
  * "Saada" / "Muuda" / "Saada uuesti" under her protocol. Leaving the page while a text is not confirmed asks first (it is in this browser
  * all the same). One student (an individual course, or a session with one): no list.
+ * The browser's Back restores this page from the client router's copy of the visit's server render, older than what was saved since, and a tab
+ * hidden for hours may come back as it was: so the screen never takes its text for the server's. It says "Kontrollin …" instead of "Salvestatud"
+ * until it has read the server's text again (GET /api/admin/protokoll when the screen is shown, and when it comes back from the browser's cache, the
+ * tab is shown or the network is back: protocol-autosave.ts keepReading), and the engine then reconciles each student with it (reconcile). `read` is
+ * the reading, replaceable for the tests.
  */
-export function ProtocolScreen({ view }: { view: ScreenView }) {
+export function ProtocolScreen({ view, read = getScreen }: { view: ScreenView; read?: ReadScreen }) {
   const t = adminEt.protocols;
-  const [engine] = useState(() => new ProtocolAutosave(view.students.map(serverDraft)));
+  const [engine] = useState(() => {
+    const made = new ProtocolAutosave(view.students.map(serverDraft));
+    made.awaitFresh();
+    return made;
+  });
   useSyncExternalStore(engine.subscribe, engine.snapshot, engine.snapshot);
+  // the students: the page's, and the server's when the screen has read it again (a student added or cancelled meanwhile)
+  const [students, setStudents] = useState(view.students);
+  const [source] = useState(view.source); // (where it reads from again: the address the page was made from)
   const [selected, setSelected] = useState(view.students[0]?.registrationId ?? 0);
   // "Muuda" pressed: these sent protocols are open on this screen (spec §3: only the screen unlocks; the first saved edit raises the version)
   const [unlocked, setUnlocked] = useState<ReadonlySet<number>>(() => new Set());
@@ -87,7 +82,7 @@ export function ProtocolScreen({ view }: { view: ScreenView }) {
       else next.delete(id);
       return next;
     });
-  const names = new Map(view.students.map((s) => [s.registrationId, s.name]));
+  const names = new Map(students.map((s) => [s.registrationId, s.name]));
 
   useEffect(() => {
     let storage: Storage | null = null;
@@ -97,24 +92,29 @@ export function ProtocolScreen({ view }: { view: ScreenView }) {
       storage = null; // blocked storage: the autosave still works; only a reload could not resume a text not saved yet
     }
     engine.start(storage);
+    engine.awaitFresh();
+    const reading = keepReading(engine, source, read, setStudents);
     const warn = (e: BeforeUnloadEvent) => {
       if (engine.unsaved()) e.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => {
       window.removeEventListener("beforeunload", warn);
+      reading.stop();
       engine.stop();
     };
-  }, [engine]);
+  }, [engine, source, read]);
 
   const choose = (id: number) => {
-    if (id === selected) return;
-    void engine.save(selected); // in the background: switching never waits for it
+    if (id === open) return;
+    void engine.save(open); // in the background: switching never waits for it
     setSelected(id);
   };
-  const entry = engine.get(selected);
-  const student = view.students.find((s) => s.registrationId === selected);
-  const list = view.students.length > 1;
+  // (a render that dropped the open student, a registration cancelled meanwhile: the first one is shown)
+  const open = students.some((s) => s.registrationId === selected) ? selected : (students[0]?.registrationId ?? 0);
+  const entry = engine.get(open);
+  const student = students.find((s) => s.registrationId === open);
+  const list = students.length > 1;
 
   return (
     <div className={styles.screen} data-protocol-screen="">
@@ -122,15 +122,16 @@ export function ProtocolScreen({ view }: { view: ScreenView }) {
       <div className={list ? `${styles.layout} ${styles.withList}` : styles.layout}>
         {list && (
           <nav className={styles.students} aria-label={t.students} data-students="">
-            {view.students.map((s) => {
-              const e = engine.get(s.registrationId)!;
+            {students.map((s) => {
+              const e = engine.get(s.registrationId);
+              if (!e) return null;
               const status = statusOf(e);
               return (
                 <button
                   key={s.registrationId}
                   type="button"
                   className={styles.student}
-                  aria-pressed={s.registrationId === selected}
+                  aria-pressed={s.registrationId === open}
                   onClick={() => choose(s.registrationId)}
                   data-student={s.registrationId}
                   data-status={status}

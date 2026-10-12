@@ -1,4 +1,4 @@
-import { hasText, overLimit, protocolStatus, type NotePlace, type ProtocolStatus } from "@/domain/protocols";
+import { hasText, overLimit, protocolStatus, type NotePlace, type ProtocolStatus, type ScreenStudentView } from "@/domain/protocols";
 import { toStorable } from "@/lib/to-storable"; // (never lib/storable: this file runs on old iPads, tests/unit/old-safari.test.ts)
 
 // The protocol screen's autosave (phase protocols, spec §4), without React: ProtocolScreen.tsx renders what it holds and tells it what Maria
@@ -25,6 +25,11 @@ import { toStorable } from "@/lib/to-storable"; // (never lib/storable: this fil
 //   browser freezing it) sends it as a keepalive request when it is small enough, else leaves it to the copy; leaving the screen for another
 //   admin page sends it unanswered (stop);
 // - while a send is on its way (setSending, counted) the protocol takes no edits;
+// - the screen may be shown from a server render older than the server's text (the browser's Back restores the page from the client router's
+//   copy): until the screen has read the server's text again (keepReading: GET /api/admin/protokoll, then reconcile) the status says "checking" and
+//   never "saved";
+//   a newer text of the server is taken silently by a protocol with nothing unsaved, and goes through the refusal's path (the notice, the
+//   words kept) when this screen has text of its own; a send waits for it (whenFresh) and is never made on text the screen has not shown;
 // - a box over 10 000 characters is never cut: nothing is sent until it is shortened, the status and the box say so;
 // - pasted control characters that Postgres cannot store are dropped (toStorable), the words kept.
 // The server's side is server/protocols.ts saveProtocol behind POST /api/admin/protokoll.
@@ -35,6 +40,7 @@ export type Content = { notes: string[]; generalNote: string };
 /** A protocol's save, as its status line says it. `at`: when the server saved it last (ms), null before the first save. */
 export type SaveStatus =
   | { kind: "saved"; at: number | null }
+  | { kind: "checking" }
   | { kind: "pending" }
   | { kind: "saving" }
   | { kind: "retrying" }
@@ -87,6 +93,8 @@ export type Entry = {
 export type LocalCopy = { version: number; titles: string[]; content: Content; sent: Content[]; at?: number; lost?: Conflict };
 
 export const DEBOUNCE_MS = 1500;
+/** How long a send waits for the server's text to be read again (a screen restored by Back) before it says the text is not confirmed. */
+export const FRESH_WAIT_MS = 10_000;
 /** A save that has not been answered in 10 s is given up (and kept, and tried again). */
 export const SAVE_TIMEOUT_MS = 10_000;
 /** The waits before trying a failed save again; the last one repeats. */
@@ -397,6 +405,27 @@ const utf8Bytes = (text: string): number => new TextEncoder().encode(text).lengt
 /** A name for this page's tab: its keys in this browser's storage are its own (no crypto.randomUUID: iOS before 15.4 has none). */
 const newTabName = (): string => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
+/** A protocol as the screen starts with it: the server's text, saved. */
+const entryOf = (d: ServerDraft): Entry => ({
+  registrationId: d.registrationId,
+  version: d.version,
+  titles: [...d.titles],
+  confirmed: copy(d.content),
+  content: copy(d.content),
+  sentVersion: d.sentVersion,
+  sentAt: d.sentAt,
+  savedAt: d.savedAt,
+  status: { kind: "saved", at: d.savedAt },
+  conflict: null,
+  sending: false,
+  sendError: null,
+  kept: true,
+});
+
+/** Did the server send a version after the one the entry shows as sent (a send from another device, or this one before its render was read)? */
+const sentLater = (d: ServerDraft, e: Entry): boolean =>
+  d.sentVersion !== null && (e.sentVersion === null || d.sentVersion > e.sentVersion || (d.sentVersion === e.sentVersion && d.sentAt !== null && (e.sentAt === null || d.sentAt > e.sentAt)));
+
 /** The autosave of one screen's protocols (see the top of the file). */
 export class ProtocolAutosave {
   private readonly entries = new Map<number, Entry>();
@@ -428,6 +457,10 @@ export class ProtocolAutosave {
   /** Other tabs' (closed ones') keys this page resumed: removed once their words are kept by this page or on the server. */
   private readonly taken = new Map<number, Held[]>();
   private readonly listeners = new Set<() => void>();
+  /** The protocols whose text this screen has not read from the server since it was shown (awaitFresh): their status is "checking", not "saved". */
+  private readonly awaiting = new Set<number>();
+  /** Calls waiting for `awaiting` to empty (whenFresh): told after every change. */
+  private readonly freshWaiters = new Set<() => void>();
   private storage: Storage | null = null;
   private running = false;
   private resumed = false;
@@ -438,22 +471,80 @@ export class ProtocolAutosave {
     this.send = send;
     this.tab = options.tab ?? newTabName();
     this.order = drafts.map((d) => d.registrationId);
-    for (const d of drafts)
-      this.entries.set(d.registrationId, {
-        registrationId: d.registrationId,
-        version: d.version,
-        titles: [...d.titles],
-        confirmed: copy(d.content),
-        content: copy(d.content),
-        sentVersion: d.sentVersion,
-        sentAt: d.sentAt,
-        savedAt: d.savedAt,
-        status: { kind: "saved", at: d.savedAt },
-        conflict: null,
-        sending: false,
-        sendError: null,
-        kept: true,
-      });
+    for (const d of drafts) this.entries.set(d.registrationId, entryOf(d));
+  }
+
+  /**
+   * The screen was made from a server render that may be older than the server's text (the browser's Back restores the page from the client
+   * router's copy): until `reconcile` brings the server's text, each protocol that shows "saved" says "checking" instead, and a successful save or a
+   * refusal (both are the server's own word) ends it for that protocol.
+   */
+  awaitFresh(): void {
+    for (const e of this.entries.values()) {
+      this.awaiting.add(e.registrationId);
+      if (e.status.kind === "saved") e.status = { kind: "checking" };
+    }
+    this.changed();
+  }
+
+  /** Is this protocol's text (any protocol, without an id) not yet read from the server since the screen was shown? */
+  checking(id?: number): boolean {
+    return id === undefined ? this.awaiting.size > 0 : this.awaiting.has(id);
+  }
+
+  /** Resolves true once the server's text of these protocols has been read (reconcile, a save, a refusal), false after `ms` without it. */
+  whenFresh(ids: readonly number[], ms = FRESH_WAIT_MS): Promise<boolean> {
+    const pending = () => ids.some((id) => this.awaiting.has(id));
+    if (!pending()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const finish = (ok: boolean) => {
+        clearTimeout(timer);
+        this.freshWaiters.delete(check);
+        resolve(ok);
+      };
+      const check = () => {
+        if (!pending()) finish(true);
+      };
+      const timer = setTimeout(() => finish(false), ms);
+      this.freshWaiters.add(check);
+    });
+  }
+
+  /**
+   * The server's text as GET /api/admin/protokoll has it now (the page's data, read again): for each protocol, newer than the one this screen builds on
+   * (a higher version, or other headings while none is written yet):
+   * - nothing unsaved or unconfirmed here: the server's text, version and send marks are taken silently and the status says "saved";
+   * - text of this screen's own that is not on the server: the refusal's path (conflict): the server's text is shown, this screen's words go into
+   *   the notice, and a text this screen sent without an answer that the server holds is its own (saved on top, no notice);
+   * the same version: "checking" becomes "saved", and the send marks only move forward (a send made here after the render was read stays);
+   * an older version (this screen has saved since) is ignored. A student the screen did not have is added.
+   */
+  reconcile(drafts: readonly ServerDraft[]): void {
+    for (const d of drafts) {
+      const e = this.entries.get(d.registrationId);
+      if (!e) {
+        this.entries.set(d.registrationId, entryOf(d));
+        this.order.push(d.registrationId);
+        continue;
+      }
+      this.awaiting.delete(e.registrationId);
+      const newer = d.version > e.version || (d.version === e.version && !sameTitles(d.titles, e.titles));
+      if (newer) {
+        if (this.uncertain(e)) void this.conflict(e, d, e.version);
+        else {
+          this.adopt(e, d);
+          e.content = copy(d.content);
+          this.settle(e);
+        }
+        continue;
+      }
+      if (d.version === e.version && sentLater(d, e)) {
+        e.sentVersion = d.sentVersion;
+        e.sentAt = d.sentAt;
+      }
+      if (e.status.kind === "checking") this.settle(e);
+    }
+    this.changed();
   }
 
   /** For useSyncExternalStore: told after every change. */
@@ -754,6 +845,7 @@ export class ProtocolAutosave {
     if (!this.running) return false;
     const reply = (answer?.body ?? null) as Record<string, unknown> | null;
     if (answer && answer.status === 200 && reply?.ok === true && typeof reply.version === "number") {
+      this.awaiting.delete(id); // (the server took it from the version this screen had, so that was its current one)
       this.unanswered.delete(id);
       this.attempts.delete(id);
       e.version = reply.version;
@@ -791,6 +883,7 @@ export class ProtocolAutosave {
   }
 
   private conflict(e: Entry, stored: ServerDraft, sentFrom: number): Promise<boolean> | boolean {
+    this.awaiting.delete(e.registrationId); // (the server's own text: read)
     const mine = this.unanswered.get(e.registrationId) ?? [];
     this.unanswered.delete(e.registrationId);
     this.attempts.delete(e.registrationId);
@@ -864,7 +957,7 @@ export class ProtocolAutosave {
     if (this.unkept.has(e.registrationId)) this.storeNotice(e);
     if (this.unkept.has(e.registrationId)) this.keep(e);
     else this.dropCopy(e);
-    this.set(e, { kind: "saved", at: e.savedAt });
+    this.set(e, this.awaiting.has(e.registrationId) ? { kind: "checking" } : { kind: "saved", at: e.savedAt });
   }
 
   /** Nothing is left to keep: this page's copy goes, and so do the closed tabs' keys it took over. */
@@ -936,5 +1029,132 @@ export class ProtocolAutosave {
   private changed(): void {
     this.revision++;
     for (const listener of this.listeners) listener();
+    for (const waiting of [...this.freshWaiters]) waiting();
   }
+}
+
+// ---------- reading the server's text again ----------
+
+/** Where the screen reads its data again: the session it shows (`?sessioon=`) or the one registration (`?registreering=`), as the page's address has it. */
+export type ScreenSource = { sessioon: number } | { registreering: number };
+/** The route's answer to a read; null when none came (no connection, the 10 s ran out). */
+export type ScreenAnswer = { status: number; body: unknown } | null;
+export type ReadScreen = (source: ScreenSource) => Promise<ScreenAnswer>;
+
+/**
+ * GET /api/admin/protokoll with the admin's cookie, given up after 10 s. Never throws. (Not router.refresh(): a refresh that fails, offline or on a
+ * server error, makes Next.js leave the page for the browser's own navigation, which offline is the browser's error page.)
+ */
+export async function getScreen(source: ScreenSource): Promise<ScreenAnswer> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), SAVE_TIMEOUT_MS);
+  const query = "sessioon" in source ? `sessioon=${source.sessioon}` : `registreering=${source.registreering}`;
+  try {
+    const res = await fetch(`/api/admin/protokoll?${query}`, { credentials: "same-origin", headers: { accept: "application/json" }, cache: "no-store", signal: abort.signal });
+    return { status: res.status, body: await res.json().catch(() => null) };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** A student of the page's data as the engine takes her. */
+export const serverDraft = (s: ScreenStudentView): ServerDraft => ({
+  registrationId: s.registrationId,
+  version: s.version,
+  titles: s.titles,
+  content: { notes: s.notes, generalNote: s.generalNote },
+  sentVersion: s.sentVersion,
+  sentAt: s.sentAt,
+  savedAt: s.savedAt === null ? null : Date.parse(s.savedAt),
+});
+
+/** The students of a 200 answer (server/protocols.ts handleRead), or null for anything else. */
+export function readStudents(body: unknown): ScreenStudentView[] | null {
+  if (typeof body !== "object" || body === null || (body as { ok?: unknown }).ok !== true) return null;
+  const list = (body as { students?: unknown }).students;
+  if (!Array.isArray(list)) return null;
+  const good = (s: unknown): s is ScreenStudentView => {
+    if (typeof s !== "object" || s === null) return false;
+    const v = s as Record<string, unknown>;
+    return (
+      typeof v.registrationId === "number" &&
+      typeof v.name === "string" &&
+      typeof v.awaiting === "boolean" &&
+      typeof v.version === "number" &&
+      isStrings(v.titles) &&
+      isStrings(v.notes) &&
+      (v.notes as string[]).length === (v.titles as string[]).length &&
+      typeof v.generalNote === "string" &&
+      (v.sentVersion === null || typeof v.sentVersion === "number") &&
+      (v.sentAt === null || typeof v.sentAt === "string") &&
+      (v.savedAt === null || typeof v.savedAt === "string")
+    );
+  };
+  return list.every(good) ? list : null;
+}
+
+/**
+ * Keeps the screen's text read from the server while `engine.checking()`: reads at once, and again after a failed read (after 2, 5, 10, 20, then every
+ * 30 s, like a failed save), when the network is back, when the tab is shown again, and when the whole page comes back from the browser's cache
+ * (pageshow, persisted: the text is then unread again). An answer is reconciled into the engine (and `onStudents` told, for the list of students).
+ * It stops for good at an answer that trying again cannot change (signed out, no such session). `stop` ends it (the screen is left).
+ */
+export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read: ReadScreen, onStudents: (students: ScreenStudentView[]) => void): { stop(): void } {
+  let alive = true;
+  let reading = false;
+  let attempts = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const visible = () => typeof document === "undefined" || document.visibilityState !== "hidden";
+  const clear = () => {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+  };
+  async function ask(): Promise<void> {
+    if (!alive || reading || !visible()) return; // (a tab in the background asks when it is shown)
+    clear();
+    reading = true;
+    const answer = await read(source);
+    reading = false;
+    if (!alive) return;
+    const students = answer && answer.status === 200 ? readStudents(answer.body) : null;
+    if (students) {
+      attempts = 0;
+      engine.reconcile(students.map(serverDraft));
+      onStudents(students);
+      return;
+    }
+    if (answer && (answer.status === 401 || answer.status === 403 || answer.status === 404)) return;
+    timer = setTimeout(() => {
+      timer = null;
+      void ask();
+    }, RETRY_MS[Math.min(attempts++, RETRY_MS.length - 1)]);
+  }
+  const again = () => {
+    if (!engine.checking()) return;
+    attempts = 0;
+    void ask();
+  };
+  const shown = (e: Event) => {
+    if (!(e as PageTransitionEvent).persisted) return;
+    engine.awaitFresh();
+    again();
+  };
+  const seen = () => {
+    if (visible()) again();
+  };
+  window.addEventListener("online", again);
+  window.addEventListener("pageshow", shown);
+  document.addEventListener("visibilitychange", seen);
+  void ask();
+  return {
+    stop() {
+      alive = false;
+      clear();
+      window.removeEventListener("online", again);
+      window.removeEventListener("pageshow", shown);
+      document.removeEventListener("visibilitychange", seen);
+    },
+  };
 }

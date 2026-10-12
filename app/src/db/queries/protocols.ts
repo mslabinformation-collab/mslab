@@ -3,7 +3,7 @@ import type { Db } from "../client";
 import { courseFeedback, courses, courseSessions, protocols, registrations, type CourseSession, type Protocol, type ProtocolStage, type Registration } from "../schema";
 import { tallinnFormParts } from "@/domain/calendar";
 import { PAGE_SIZE } from "@/domain/paging";
-import { protocolStatus, readStages, stagesFrom, summarizeFeedback, type FeedbackAnswers, type FeedbackSummary, type ProtocolStatus } from "@/domain/protocols";
+import { protocolStatus, readStages, stagesFrom, summarizeFeedback, type FeedbackAnswers, type FeedbackSummary, type ProtocolStatus, type ScreenStudentView } from "@/domain/protocols";
 import type { RegStatus } from "@/domain/registration";
 import type { I18n } from "@/i18n/field";
 import { paged, type Paged } from "./admin";
@@ -41,6 +41,22 @@ export type ScreenData = {
   students: ScreenStudent[];
   hidden: number;
 };
+
+/** The screen's students for the browser (the page's props, and GET /api/admin/protokoll's answer): every date as text. */
+export function screenStudents(screen: ScreenData): ScreenStudentView[] {
+  return screen.students.map((s) => ({
+    registrationId: s.registrationId,
+    name: s.name,
+    awaiting: s.status === "awaiting_prepayment",
+    version: s.protocol.version,
+    titles: s.protocol.stages.map((x) => x.title),
+    notes: s.protocol.stages.map((x) => x.note),
+    generalNote: s.protocol.generalNote,
+    sentVersion: s.protocol.sentVersion,
+    sentAt: s.protocol.sentAt?.toISOString() ?? null,
+    savedAt: s.protocol.updatedAt?.toISOString() ?? null,
+  }));
+}
 
 const courseFields = { id: courses.id, title: courses.title, type: courses.type, protocolStages: courses.protocolStages };
 const sessionOf = (s: CourseSession) => ({ id: s.id, startsAt: s.startsAt, city: s.city, venue: s.venue, cancelled: s.status === "cancelled" });

@@ -184,3 +184,20 @@ export function feedbackOpenFor(
   const session = r.startsAt === null ? null : { startsAt: r.startsAt, cancelled: r.sessionStatus === "cancelled" };
   return feedbackOpen({ status: r.status, kind: r.kind, session, protocolSentAt: r.protocolSentAt }, now);
 }
+
+/**
+ * One student on the course day's screen as the page hands her over and GET /api/admin/protokoll answers: her protocol's draft, every date as text.
+ * `awaiting`: her registration waits for its prepayment ("ootab ettemaksu"). `version` 0: no protocol yet (the course's headings, empty notes).
+ */
+export type ScreenStudentView = {
+  registrationId: number;
+  name: string;
+  awaiting: boolean;
+  version: number;
+  titles: string[];
+  notes: string[];
+  generalNote: string;
+  sentVersion: number | null;
+  sentAt: string | null;
+  savedAt: string | null;
+};

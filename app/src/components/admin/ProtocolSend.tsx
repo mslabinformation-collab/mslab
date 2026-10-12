@@ -65,9 +65,10 @@ export type SendPlan = { will: number[]; skipped: number[]; already: number[]; s
  * `sending` — those with a send already on its way (a single "Saada"), which this one leaves alone; `review` — those that would go but have
  * the notice of a refusal open (another device's text is on the screen, which Maria has not looked at), which are left out until she has.
  */
-export function planSendAll(engine: ProtocolAutosave): SendPlan {
+export function planSendAll(engine: ProtocolAutosave, shown?: ReadonlyMap<number, string>): SendPlan {
   const out: SendPlan = { will: [], skipped: [], already: [], sending: [], review: [] };
   for (const id of engine.ids()) {
+    if (shown && !shown.has(id)) continue; // (a student the screen no longer lists, cancelled meanwhile: not one of this send)
     const e = engine.get(id)!;
     if (e.sending) {
       out.sending.push(id);
@@ -99,9 +100,34 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
   const button = primary ? ui.btn : `${ui.btn} ${ui.secondary} ${ui.smallBtn}`;
 
   async function send() {
-    const now = engine.get(id);
+    let now = engine.get(id);
     if (!now || now.sending) return;
     engine.setSendError(id, null);
+    // A screen shown from an older page (the browser's Back) has not read the server's text yet, so the text on it may not be the server's, and a
+    // send of it must never reach the student unseen: it waits for the server's text (the page is being rendered again), and when that is another
+    // text than the one on the screen, that text is shown now and not sent: Maria looks at it and presses again.
+    if (engine.checking(id)) {
+      const shown = now.version;
+      engine.setSending(id, true);
+      try {
+        const read = await engine.whenFresh([id]);
+        now = engine.get(id)!;
+        if (!read) {
+          engine.setSendError(id, t.sendErrors.unsaved);
+          return;
+        }
+        if (now.conflict) {
+          engine.setSendError(id, unsavedMessage(now, t));
+          return;
+        }
+        if (now.version !== shown) {
+          engine.setSendError(id, t.sendErrors.refreshed);
+          return;
+        }
+      } finally {
+        engine.setSending(id, false);
+      }
+    }
     if (now.conflict) {
       // the notice of a refusal is open: the text on the screen is another device's, which Maria has not looked at ("Selge" first)
       engine.setSendError(id, unsavedMessage(now, t));
@@ -192,7 +218,7 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
   useEffect(() => {
     if (asking) question.current?.focus();
   }, [asking]);
-  const plan = started ?? planSendAll(engine);
+  const plan = started ?? planSendAll(engine, names);
   const nameOf = (id: number) => names.get(id) ?? String(id);
   const list = (ids: number[]) => ids.map(nameOf).join(", ");
 
@@ -205,12 +231,24 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
 
   async function confirm() {
     if (busy) return;
-    const start = planSendAll(engine);
-    const will = start.will;
+    const start = planSendAll(engine, names);
+    const planned = start.will;
     setBusy(true);
     setStarted(start);
-    for (const id of will) engine.setSending(id, true);
+    for (const id of planned) engine.setSending(id, true);
     try {
+      // A screen shown from an older page (the browser's Back) has not read the server's text yet (see StudentSend): the protocols it lists wait for
+      // it, and one whose text turns out to be another than the one the confirmation named is shown as it is now and left out, never sent unseen.
+      const shown = new Map(planned.map((id) => [id, engine.get(id)!.version]));
+      const read = planned.some((id) => engine.checking(id)) ? await engine.whenFresh(planned) : true;
+      const held = new Map<number, { reason: string; review: boolean }>();
+      for (const id of planned) {
+        const e = engine.get(id)!;
+        if (!read && engine.checking(id)) held.set(id, { reason: t.sendErrors.unsaved, review: false });
+        else if (e.conflict) held.set(id, { reason: t.sendErrors.review, review: true });
+        else if (e.version !== shown.get(id)) held.set(id, { reason: t.sendErrors.refreshed, review: false });
+      }
+      const will = planned.filter((id) => !held.has(id));
       // each protocol saves on its own: one that cannot be saved is left out and named, the others go on (spec §8)
       const saved = await Promise.all(will.map((id) => engine.save(id)));
       // (one whose notice opened meanwhile is left out as an unsaved one: see StudentSend)
@@ -230,6 +268,7 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
         notSent.set(key, group);
         own.set(id, review ? t.sendErrors.review : reason);
       };
+      for (const [id, why] of held) leftOut(why.reason, id, why.review);
       for (const id of will.filter((_, i) => !goes[i])) leftOut(unsavedMessage(engine.get(id)!, t), id, engine.get(id)!.conflict !== null);
       for (const r of results) {
         if (r.result.kind === "sent" || r.result.kind === "already") {
@@ -241,7 +280,7 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
       // (an answer that does not list a protocol that was sent for: no one is left unexplained)
       const answered = new Set(results.map((r) => r.registrationId));
       for (const item of items) if (!answered.has(item.registrationId)) leftOut(t.sendErrors.failed, item.registrationId);
-      for (const id of will) engine.setSendError(id, own.get(id) ?? null); // (one that went has no line left from an earlier try)
+      for (const id of planned) engine.setSendError(id, own.get(id) ?? null); // (one that went has no line left from an earlier try)
       const lines = [...notSent].map(([key, g]) => ({
         key,
         line: g.review ? fill(t.confirm.review, { names: g.names.join(", ") }) : fill(t.result.notSent, { names: g.names.join(", "), reason: g.reason }),
@@ -249,7 +288,7 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
       setSummary(sent.length === 0 && lines.length === 0 ? null : { sent, notSent: lines });
       close();
     } finally {
-      for (const id of will) engine.setSending(id, false);
+      for (const id of planned) engine.setSending(id, false);
       setStarted(null);
       setBusy(false);
     }

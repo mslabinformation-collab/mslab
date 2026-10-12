@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  DEBOUNCE_MS, localKey, NOTICE_MAX_CHARS, ProtocolAutosave, readConflict, readLocal, remember, resumeLocal, SENT_MAX_CHARS, sentKey, statusOf,
+  DEBOUNCE_MS, FRESH_WAIT_MS, localKey, NOTICE_MAX_CHARS, ProtocolAutosave, readConflict, readLocal, remember, resumeLocal, SENT_MAX_CHARS, sentKey, statusOf,
   type Answer, type Content, type SaveBody, type SendOptions, type ServerDraft,
 } from "@/components/admin/protocol-autosave";
 import { PROTOCOL_LIMITS } from "@/domain/protocols";
@@ -811,5 +811,173 @@ describe("two tabs, a full storage, and the rest (fix round 1)", () => {
     await tick(DEBOUNCE_MS); // the page came back (the browser's cache): the big one goes at its time
     expect(s.calls.map((c) => [c.body.registrationId, c.opts?.keepalive ?? false])).toEqual([[7, true], [8, false]]);
     expect(readLocal(localStorage, 8)?.content.generalNote).toHaveLength(10_000); // in the browser until the server has it
+  });
+});
+
+describe("the server's text read again: a screen restored by the browser's Back (fix round 1 of Task 11)", () => {
+  // the render the screen was made from is the server's text at version 1; the page read again later brings the newer one
+  const old = (over: Partial<ServerDraft> = {}) => draft({ version: 1, content: { notes: ["Esimene.", ""], generalNote: "" }, savedAt: Date.parse("2026-10-12T08:00:00.000Z"), ...over });
+  const newer = (over: Partial<ServerDraft> = {}) =>
+    draft({ version: 2, content: { notes: ["Teine.", ""], generalNote: "Üldiselt." }, savedAt: Date.parse("2026-10-12T08:05:00.000Z"), sentVersion: 1, sentAt: "2026-10-12T08:06:00.000Z", ...over });
+
+  test("until the server's text is read the status says 'checking', never 'saved'; typing and the checking itself do not send anything", async () => {
+    const s = server();
+    const e = start([old()], s.send);
+    e.awaitFresh();
+    expect(e.get(7)!.status).toEqual({ kind: "checking" });
+    expect(e.checking(7)).toBe(true);
+    expect(e.checking()).toBe(true);
+    void e.save(7); // a blur with nothing typed: still not 'saved'
+    await tick();
+    expect(e.get(7)!.status).toEqual({ kind: "checking" });
+    expect(s.calls).toHaveLength(0);
+    e.editNote(7, 0, "Esimene. Lisa.");
+    expect(e.get(7)!.status).toEqual({ kind: "pending" });
+    e.editNote(7, 0, "Esimene."); // typed back to the text shown: nothing to save, and still not 'saved'
+    expect(e.get(7)!.status).toEqual({ kind: "checking" });
+    await tick(DEBOUNCE_MS * 2);
+    expect(s.calls).toHaveLength(0);
+  });
+
+  test("a newer text of the server and nothing unsaved here: taken silently (text, version, send marks), 'saved' with the server's time, nothing sent", async () => {
+    const s = server();
+    const e = start([old()], s.send);
+    e.awaitFresh();
+    e.reconcile([newer()]);
+    expect(e.get(7)).toMatchObject({
+      version: 2,
+      content: { notes: ["Teine.", ""], generalNote: "Üldiselt." },
+      confirmed: { notes: ["Teine.", ""], generalNote: "Üldiselt." },
+      sentVersion: 1,
+      sentAt: "2026-10-12T08:06:00.000Z",
+      conflict: null,
+      status: { kind: "saved", at: Date.parse("2026-10-12T08:05:00.000Z") },
+    });
+    expect(e.checking()).toBe(false);
+    expect(readLocal(localStorage, 7)).toBeNull();
+    await tick(DEBOUNCE_MS * 4);
+    expect(s.calls).toHaveLength(0); // taking the server's text is not a save
+  });
+
+  test("a newer text of the server and text of this screen's own not saved: the refusal's path, the server's text shown, her words in the notice, nothing overwritten", async () => {
+    const s = server();
+    const e = start([old()], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "Esimene. Minu lisa."); // typed on the restored screen before the server's text came
+    e.reconcile([newer()]);
+    expect(e.get(7)).toMatchObject({
+      version: 2,
+      content: { notes: ["Teine.", ""] },
+      confirmed: { notes: ["Teine.", ""] },
+      conflict: { titles: TITLES, lost: { notes: ["Esimene. Minu lisa.", ""], generalNote: "" } },
+      status: { kind: "saved" },
+    });
+    expect(e.checking(7)).toBe(false);
+    expect(readConflict(localStorage, 7)?.lost?.notes).toEqual(["Esimene. Minu lisa.", ""]); // kept in the browser until 'Selge'
+    await tick(DEBOUNCE_MS * 4);
+    expect(s.calls).toHaveLength(0); // the stale text was never sent
+    expect(e.unsaved()).toBe(false);
+  });
+
+  test("a text this screen sent whose answer was lost, found stored by the render: it is ours, and the newer text goes on top (no notice)", async () => {
+    const s = server();
+    const e = start([draft()], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(null); // sent, the answer lost
+    await tick();
+    e.editNote(7, 0, "AB"); // typed on
+    e.reconcile([draft({ version: 1, content: { notes: ["A", ""], generalNote: "" } })]);
+    await tick();
+    expect(e.get(7)!.conflict).toBeNull();
+    expect(s.calls.map((c) => [c.body.version, c.body.notes[0]]).slice(-1)).toEqual([[1, "AB"]]);
+  });
+
+  test("the same version: 'checking' becomes 'saved'; the send marks only move forward; an older render (this screen saved since) is ignored", async () => {
+    const s = server();
+    const e = start([old()], s.send);
+    e.awaitFresh();
+    e.reconcile([old()]);
+    expect(e.get(7)).toMatchObject({ version: 1, status: { kind: "saved", at: Date.parse("2026-10-12T08:00:00.000Z") } });
+    // a send made here (markSent) after the render was read is not undone by a render that was read before it
+    e.markSent(7, 1, "2026-10-12T09:00:00.000Z");
+    e.reconcile([old()]);
+    expect(e.get(7)).toMatchObject({ sentVersion: 1, sentAt: "2026-10-12T09:00:00.000Z" });
+    // … and a send from another device that the render knows of is taken
+    e.reconcile([old({ sentVersion: 1, sentAt: "2026-10-12T09:30:00.000Z" })]);
+    expect(e.get(7)).toMatchObject({ sentVersion: 1, sentAt: "2026-10-12T09:30:00.000Z" });
+    // this screen saved version 2 since the render began: the render's version 1 changes nothing
+    e.editNote(7, 0, "Teine.");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(ok(2));
+    await tick();
+    e.reconcile([old()]);
+    expect(e.get(7)).toMatchObject({ version: 2, content: { notes: ["Teine.", ""] }, conflict: null, status: { kind: "saved" } });
+  });
+
+  test("a successful save, or a refusal, is the server's own word: it ends 'checking' for that protocol", async () => {
+    const s = server();
+    const e = start([old(), old({ registrationId: 8 })], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "Teine.");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(ok(2));
+    await tick();
+    expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
+    expect(e.checking(7)).toBe(false);
+    e.editNote(8, 0, "Kolmas.");
+    await tick(DEBOUNCE_MS);
+    s.calls[1].answer({
+      status: 409,
+      body: { ok: false, error: "conflict", protocol: { version: 3, stages: TITLES.map((title, i) => ({ title, note: ["Neljas.", ""][i] })), generalNote: "", sentVersion: null, sentAt: null, updatedAt: "2026-10-12T08:07:00.000Z" } },
+    });
+    await tick();
+    expect(e.checking(8)).toBe(false);
+    expect(e.get(8)).toMatchObject({ version: 3, conflict: { lost: { notes: ["Kolmas.", ""] } } });
+  });
+
+  test("a student the render adds is taken in (the others stay as they are); one it leaves out stays with her text", () => {
+    const e = start([old(), old({ registrationId: 8 })], server().send);
+    e.awaitFresh();
+    e.editNote(8, 0, "Minu tekst.");
+    e.reconcile([newer(), draft({ registrationId: 9, version: 3, content: { notes: ["Uus.", ""], generalNote: "" } })]);
+    expect(e.ids()).toEqual([7, 8, 9]);
+    expect(e.get(9)).toMatchObject({ version: 3, content: { notes: ["Uus.", ""] }, status: { kind: "saved" } });
+    expect(e.get(7)).toMatchObject({ version: 2 });
+    expect(e.get(8)).toMatchObject({ version: 1, content: { notes: ["Minu tekst.", ""] } }); // (not in the render: untouched, still unsaved)
+  });
+
+  test("whenFresh: true at once when nothing is awaited, true when the render comes, false after FRESH_WAIT_MS without it", async () => {
+    const e = start([old()], server().send);
+    expect(await e.whenFresh([7])).toBe(true);
+    e.awaitFresh();
+    let answer: boolean | null = null;
+    void e.whenFresh([7]).then((v) => (answer = v));
+    await tick(FRESH_WAIT_MS - 1);
+    expect(answer).toBeNull();
+    e.reconcile([old()]);
+    await tick();
+    expect(answer).toBe(true);
+    answer = null;
+    e.awaitFresh();
+    void e.whenFresh([7]).then((v) => (answer = v));
+    await tick(FRESH_WAIT_MS);
+    expect(answer).toBe(false);
+    expect(e.checking(7)).toBe(true); // (a render that comes later still ends it)
+  });
+
+  test("other headings of a protocol not written yet (version 0): taken when nothing is typed, the refusal's path when something is", () => {
+    const other = draft({ titles: ["Uus pealkiri", "Teine"], content: { notes: ["", ""], generalNote: "" } });
+    const e = start([draft()], server().send);
+    e.awaitFresh();
+    e.reconcile([other]);
+    expect(e.get(7)).toMatchObject({ titles: ["Uus pealkiri", "Teine"], status: { kind: "saved" }, conflict: null });
+    e.stop();
+    const f = start([draft()], server().send);
+    f.awaitFresh();
+    f.editNote(7, 0, "Kirjutatud vanade pealkirjade alla.");
+    f.reconcile([other]);
+    expect(f.get(7)).toMatchObject({ titles: ["Uus pealkiri", "Teine"], conflict: { titles: TITLES, lost: { notes: ["Kirjutatud vanade pealkirjade alla.", ""] } } });
   });
 });

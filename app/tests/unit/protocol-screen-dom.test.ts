@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { localKey } from "@/components/admin/protocol-autosave";
+import { localKey, type ScreenAnswer } from "@/components/admin/protocol-autosave";
 import { ProtocolScreen, type ScreenStudentView, type ScreenView } from "@/components/admin/ProtocolScreen";
 
 // The course day's screen (spec §4): the students with their marks, the selected one's boxes under her headings, the autosave's status,
@@ -36,7 +36,23 @@ let container: HTMLDivElement;
 let root: Root;
 const $ = (selector: string) => container.querySelector(selector);
 const $$ = (selector: string) => [...container.querySelectorAll(selector)];
-const render = async (view: ScreenView) => act(async () => root.render(createElement(ProtocolScreen, { view })));
+// The screen reads the server's text again when it is shown (GET /api/admin/protokoll: here `read`, answered by hand, each call waits for the test).
+// `render` shows the screen and lets the server answer with the same text; `renderOnly` is the first half, a screen restored by the browser's Back
+// before the server has answered; `answered` brings the server's answer to the newest read waiting.
+type TestView = Omit<ScreenView, "source">;
+const pending: ((answer: ScreenAnswer) => void)[] = [];
+const read = vi.fn(() => new Promise<ScreenAnswer>((resolve) => pending.push(resolve)));
+const answer = (students: ScreenStudentView[]): ScreenAnswer => ({ status: 200, body: { ok: true, students } });
+const renderOnly = async (view: TestView) => act(async () => root.render(createElement(ProtocolScreen, { view: { ...view, source: { sessioon: 5 } }, read })));
+const answered = async (reply: ScreenAnswer) =>
+  act(async () => {
+    pending.pop()!(reply);
+    await Promise.resolve();
+  });
+const render = async (view: TestView) => {
+  await renderOnly(view);
+  await answered(answer(view.students));
+};
 const type = async (selector: string, value: string) =>
   act(async () => {
     const el = $(selector) as HTMLTextAreaElement;
@@ -51,6 +67,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   localStorage.clear();
   fetchMock.mockReset();
+  read.mockClear();
+  pending.length = 0;
   fetchMock.mockImplementation(async () => saved());
   vi.stubGlobal("fetch", fetchMock);
   container = document.createElement("div");
@@ -202,4 +220,105 @@ test("a text kept in this browser comes back after a reload and is saved at once
   expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("jäi alles");
   await wait(0);
   expect(bodies().map((b) => b.notes[0])).toEqual(["jäi alles"]);
+});
+
+// ---------- a screen restored by the browser's Back (fix round 1 of Task 11) ----------
+
+test("shown, the screen reads the server's text again and says so instead of 'Salvestatud'; when the server has answered it says when it saved it", async () => {
+  const view: TestView = { single: true, students: [student(1, "Anu", { version: 1, notes: ["Esimene.", ""], savedAt: "2026-10-12T08:00:00.000Z" })] };
+  await renderOnly(view);
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(read).toHaveBeenCalledWith({ sessioon: 5 });
+  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("checking");
+  expect($("[data-save-status]")!.textContent).toBe("Kontrollin salvestatud teksti…");
+  await answered(answer(view.students));
+  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("saved");
+  expect($("[data-save-status]")!.textContent).toBe("Salvestatud 11:00");
+});
+
+test("the server's text newer: it is on the screen (and the student's mark), 'Salvestatud' with the server's time, nothing sent, no notice", async () => {
+  await renderOnly({ single: false, students: [student(1, "Anu", { version: 1, notes: ["Esimene.", ""], savedAt: "2026-10-12T08:00:00.000Z" }), student(2, "Mari")] });
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Esimene.");
+  await answered(
+    answer([
+      student(1, "Anu", { version: 3, notes: ["Kolmas versioon.", ""], generalNote: "Üldiselt hästi.", sentVersion: 2, sentAt: "2026-10-12T09:00:00.000Z", savedAt: "2026-10-12T08:05:00.000Z" }),
+      student(2, "Mari"),
+    ]),
+  );
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Kolmas versioon.");
+  expect(($("[data-general]") as HTMLTextAreaElement).value).toBe("Üldiselt hästi.");
+  expect($("[data-save-status]")!.textContent).toBe("Salvestatud 11:05");
+  expect($("[data-student='1']")!.getAttribute("data-status")).toBe("changed"); // sent version 2 of 3
+  expect($("[data-conflict]")).toBeNull();
+  await wait(10_000);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("words typed on the restored screen before the server's text came: it is shown with a notice that keeps her words; nothing is saved over it", async () => {
+  await renderOnly({ single: true, students: [student(1, "Anu", { version: 1, notes: ["Esimene.", ""], savedAt: "2026-10-12T08:00:00.000Z" })] });
+  await type("[data-note='0']", "Esimene. Minu lisa.");
+  await answered(answer([student(1, "Anu", { version: 2, notes: ["Teine.", ""], savedAt: "2026-10-12T08:05:00.000Z" })]));
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Teine.");
+  expect($("[data-conflict]")).not.toBeNull();
+  expect($("[data-conflict]")!.textContent).toContain("Esimene. Minu lisa.");
+  await wait(10_000);
+  expect(fetchMock).not.toHaveBeenCalled(); // the stale version was never sent
+});
+
+test("a student the server's answer adds appears, and the open student stays open; one it drops makes the first student the open one", async () => {
+  await renderOnly({ single: false, students: [student(1, "Anu"), student(2, "Mari")] });
+  await click("[data-student='2']");
+  await answered(answer([student(1, "Anu"), student(2, "Mari"), student(3, "Kati")]));
+  expect($$("[data-student]").map((b) => b.getAttribute("data-student"))).toEqual(["1", "2", "3"]);
+  expect($("[data-student='2']")!.getAttribute("aria-pressed")).toBe("true");
+  // the screen reads again when the page comes back from the browser's cache; this time Mari is gone (cancelled meanwhile)
+  await act(async () => void window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true })));
+  await answered(answer([student(1, "Anu"), student(3, "Kati")]));
+  expect($$("[data-student]").map((b) => b.getAttribute("data-student"))).toEqual(["1", "3"]);
+  expect($("[data-student='1']")!.getAttribute("aria-pressed")).toBe("true");
+  expect($("[data-editor='1']")).not.toBeNull();
+});
+
+test("a read that fails is tried again after 2, 5 and 10 s, and at once when the network is back or the tab is shown; the page back from the browser's cache reads again; a read that cannot change is not repeated", async () => {
+  const view: TestView = { single: true, students: [student(1, "Anu")] };
+  await renderOnly(view);
+  expect(read).toHaveBeenCalledTimes(1);
+  await answered(null); // no connection
+  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("checking");
+  await wait(1_999);
+  expect(read).toHaveBeenCalledTimes(1);
+  await wait(1);
+  expect(read).toHaveBeenCalledTimes(2);
+  await answered({ status: 500, body: { ok: false, error: "server" } });
+  await wait(4_999);
+  expect(read).toHaveBeenCalledTimes(2);
+  await wait(1);
+  expect(read).toHaveBeenCalledTimes(3);
+  await answered(null);
+  await act(async () => void window.dispatchEvent(new Event("online"))); // the network is back: at once, without the 10 s
+  expect(read).toHaveBeenCalledTimes(4);
+  await answered(answer(view.students));
+  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("saved");
+  await act(async () => void window.dispatchEvent(new Event("online"))); // read: nothing to ask
+  await wait(60_000);
+  expect(read).toHaveBeenCalledTimes(4);
+  await act(async () => void window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: false })));
+  expect(read).toHaveBeenCalledTimes(4);
+  await act(async () => void window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }))); // from the browser's cache: unread again
+  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("checking");
+  expect(read).toHaveBeenCalledTimes(5);
+  await answered({ status: 401, body: { ok: false, error: "unauthorized" } }); // signed out: trying again changes nothing
+  await wait(120_000);
+  expect(read).toHaveBeenCalledTimes(5);
+  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("checking");
+});
+
+test("the screen being left: an answer that comes after is not applied, and nothing is asked again", async () => {
+  await renderOnly({ single: true, students: [student(1, "Anu")] });
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await answered(answer([student(1, "Anu", { version: 5, notes: ["Hilja.", ""] })]));
+  await wait(120_000);
+  expect(read).toHaveBeenCalledTimes(1);
+  expect($("[data-protocol-screen]")).toBeNull();
 });

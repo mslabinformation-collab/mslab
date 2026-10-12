@@ -6,7 +6,7 @@ import { adminTitle, type Section } from "@/components/admin/sections";
 import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
-import { protocolScreen, type ScreenData } from "@/db/queries/protocols";
+import { protocolScreen, screenStudents, type ScreenData } from "@/db/queries/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill, formatDate, formatTime, formatWeekday } from "@/i18n/format";
@@ -27,23 +27,9 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
 
-/** The screen's data for the browser: every date as text. */
-function viewOf(screen: ScreenData): ScreenView {
-  return {
-    single: screen.kind === "registration",
-    students: screen.students.map((s) => ({
-      registrationId: s.registrationId,
-      name: s.name,
-      awaiting: s.status === "awaiting_prepayment",
-      version: s.protocol.version,
-      titles: s.protocol.stages.map((x) => x.title),
-      notes: s.protocol.stages.map((x) => x.note),
-      generalNote: s.protocol.generalNote,
-      sentVersion: s.protocol.sentVersion,
-      sentAt: s.protocol.sentAt?.toISOString() ?? null,
-      savedAt: s.protocol.updatedAt?.toISOString() ?? null,
-    })),
-  };
+/** The screen's data for the browser: every date as text; `source` is where it asks for it again (GET /api/admin/protokoll). */
+function viewOf(screen: ScreenData, source: ScreenView["source"]): ScreenView {
+  return { single: screen.kind === "registration", source, students: screenStudents(screen) };
 }
 
 /**
@@ -116,7 +102,7 @@ export default async function ProtocolsPage({ searchParams }: Props) {
             <p className={ui.empty}>{screen.kind === "registration" ? t.cancelledOne : t.empty}</p>
           </section>
         ) : (
-          <ProtocolScreen view={viewOf(screen)} />
+          <ProtocolScreen view={viewOf(screen, sessionId !== null ? { sessioon: sessionId } : { registreering: registrationId! })} />
         )}
       </div>
     </Shell>

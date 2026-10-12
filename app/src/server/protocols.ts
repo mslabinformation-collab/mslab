@@ -1,12 +1,13 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@/db/client";
-import { draftOf, type ProtocolDraft } from "@/db/queries/protocols";
+import { draftOf, protocolScreen, screenStudents, type ProtocolDraft } from "@/db/queries/protocols";
 import { lockRegistration } from "@/db/queries/seats";
 import { courses, courseSessions, protocols, registrations, type Protocol, type ProtocolStage } from "@/db/schema";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import { hasText, overLimit, PROTOCOL_LIMITS, readStages } from "@/domain/protocols";
 import type { I18n } from "@/i18n/field";
+import { parseRowId } from "@/lib/row-id";
 import { storable } from "@/lib/storable";
 import { protocolMail, type LoginCode, type SessionInfo } from "./account-mail";
 import { addClient } from "./admin-clients";
@@ -153,6 +154,28 @@ export async function handleSave(db: Db, request: Request, now: Date): Promise<R
     return json({ ok: false, error: "notFound" }, 404);
   } catch (e) {
     logFailure(`[protocols] registration ${input.registrationId}: the save failed`, e);
+    return json({ ok: false, error: "server" }, 500);
+  }
+}
+
+/**
+ * GET /api/admin/protokoll?sessioon=<id> | ?registreering=<id> — the protocol screen's data again (the route wraps this in withAdmin): what the page
+ * handed the screen when it was rendered, read now. A screen the browser restored from its cache (the Back button) shows the render of the visit,
+ * older than what was saved since, so it asks for this and takes the server's text (protocol-autosave.ts reconcile). 200 `{ ok: true, students }`
+ * (domain/protocols.ts ScreenStudentView, the page's own); 400 `{ error: "body" }` without a valid id; 404 `{ error: "notFound" }` for no such session
+ * or registration of a contact course; 500 `{ error: "server" }`, logged by the id. Never cached. Reads only: nothing is created by looking.
+ */
+export async function handleRead(db: Db, request: Request): Promise<Response> {
+  const query = new URL(request.url).searchParams;
+  const sessionId = parseRowId(query.get("sessioon") ?? "");
+  const registrationId = sessionId === null ? parseRowId(query.get("registreering") ?? "") : null;
+  if (sessionId === null && registrationId === null) return json({ ok: false, error: "body" }, 400);
+  try {
+    const screen = sessionId !== null ? await protocolScreen(db, { sessionId }) : await protocolScreen(db, { registrationId: registrationId! });
+    if (!screen) return json({ ok: false, error: "notFound" }, 404);
+    return json({ ok: true, students: screenStudents(screen) });
+  } catch (e) {
+    logFailure(`[protocols] ${sessionId !== null ? "session" : "registration"} ${sessionId ?? registrationId}: the screen could not be read`, e);
     return json({ ok: false, error: "server" }, 500);
   }
 }

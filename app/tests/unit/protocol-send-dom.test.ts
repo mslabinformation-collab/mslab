@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { localKey } from "@/components/admin/protocol-autosave";
+import { localKey, type ScreenAnswer } from "@/components/admin/protocol-autosave";
 import { ProtocolScreen, type ScreenStudentView, type ScreenView } from "@/components/admin/ProtocolScreen";
 import type { SendOutcome } from "@/server/protocols";
 
@@ -40,8 +40,25 @@ let root: Root;
 const $ = (selector: string) => container.querySelector(selector);
 const $$ = (selector: string) => [...container.querySelectorAll(selector)];
 // a new key for each list of students: a new screen (and engine), as a new page load gives one
-const render = async (view: ScreenView) =>
-  act(async () => root.render(createElement(ProtocolScreen, { view, key: view.students.map((s) => s.registrationId).join("-") })));
+// The screen reads the server's text again when it is shown (GET /api/admin/protokoll: here `read`, answered by hand, each call waits for the test).
+// `render` shows the screen and lets the server answer with the same text; `renderOnly` is the first half, a screen restored by the browser's Back
+// before the server has answered; `answered` brings the server's answer to the newest read waiting.
+type TestView = Omit<ScreenView, "source">;
+const pending: ((answer: ScreenAnswer) => void)[] = [];
+const read = vi.fn(() => new Promise<ScreenAnswer>((resolve) => pending.push(resolve)));
+const answer = (students: ScreenStudentView[]): ScreenAnswer => ({ status: 200, body: { ok: true, students } });
+// a new key for each list of students: a new screen (and engine), as a new page load gives one
+const keyOf = (view: TestView) => view.students.map((s) => s.registrationId).join("-");
+const renderOnly = async (view: TestView) => act(async () => root.render(createElement(ProtocolScreen, { view: { ...view, source: { sessioon: 5 } }, read, key: keyOf(view) })));
+const answered = async (reply: ScreenAnswer) =>
+  act(async () => {
+    pending.pop()!(reply);
+    await Promise.resolve();
+  });
+const render = async (view: TestView) => {
+  await renderOnly(view);
+  await answered(answer(view.students));
+};
 const click = async (selector: string) => act(async () => ($(selector) as HTMLElement).click());
 const wait = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
 const type = async (selector: string, value: string) =>
@@ -56,6 +73,8 @@ beforeEach(() => {
   localStorage.clear();
   actions.sendProtocolAction.mockReset();
   actions.sendProtocolsAction.mockReset();
+  read.mockClear();
+  pending.length = 0;
   fetchMock.mockReset();
   fetchMock.mockImplementation(async () => json(200, { ok: true, version: 2, savedAt: "2026-10-12T15:05:00.000Z" }));
   vi.stubGlobal("fetch", fetchMock);
@@ -138,7 +157,7 @@ test("a text that cannot be saved is not sent: the screen says so", async () => 
 });
 
 test("'Lukusta ja saada kõik': one confirmation names who gets one, who is skipped as empty and who has it already; one more tap sends; a failure is named", async () => {
-  const view: ScreenView = {
+  const view: TestView = {
     single: false,
     students: [student(1, "Anu"), student(2, "Berit", { version: 0, notes: ["", ""], savedAt: null }), student(3, "Carmen", { sentVersion: 1, sentAt: SENT_AT })],
   };
@@ -613,4 +632,97 @@ test("a failed single 'Saada', then a bulk that sends her: no failure line is le
   expect($("[data-send-error]")!.textContent).toBe("Registreering on tühistatud: protokolli ei saadeta.");
   await click("[data-student='1']");
   expect($("[data-send-error]")).toBeNull();
+});
+
+// ---------- a screen restored by the browser's Back (fix round 1 of Task 11) ----------
+// Next restores the page from the client router's copy of the visit's server render, which is older than what was saved since. The screen reads the
+// server's text again (GET /api/admin/protokoll; here `answered` is its answer) and until it has it does not call its text saved, and a send waits
+// for it: it is never made on text that is not the server's, and never on a text Maria has not been shown.
+
+const OLD = student(1, "Kati", { version: 1, notes: ["Esimene.", ""], savedAt: "2026-10-12T08:00:00.000Z" });
+const NEW = student(1, "Kati", { version: 2, notes: ["Teine.", ""], savedAt: "2026-10-12T08:05:00.000Z" });
+
+test("a restored screen: 'Saada' waits for the server's text; another text is shown and NOT sent, with the line that says so; pressed again it sends that version", async () => {
+  actions.sendProtocolAction.mockResolvedValue({ kind: "sent", again: false, version: 2, sentAt: SENT_AT });
+  await renderOnly({ single: true, students: [OLD] });
+  expect(read).toHaveBeenCalledTimes(1);
+  expect($("[data-save-status]")!.textContent).toBe("Kontrollin salvestatud teksti…");
+  await click("[data-send='first']");
+  expect(actions.sendProtocolAction).not.toHaveBeenCalled(); // waiting for the server's text
+  expect($("[data-send='first']")!.textContent).toBe("Saadan…");
+  expect(($("[data-note='0']") as HTMLTextAreaElement).readOnly).toBe(true);
+  await answered(answer([NEW]));
+  expect(actions.sendProtocolAction).not.toHaveBeenCalled(); // the text on the screen changed under her: not sent unseen
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Teine.");
+  expect($("[data-send-error]")!.textContent).toBe("Protokolli muudeti vahepeal mujal ja siin on nüüd uus tekst. Vaata see üle ja saada siis.");
+  expect($("[data-save-status]")!.textContent).toBe("Salvestatud 11:05");
+  expect(($("[data-note='0']") as HTMLTextAreaElement).readOnly).toBe(false);
+  expect(fetchMock).not.toHaveBeenCalled(); // and nothing was saved over it
+  await click("[data-send='first']");
+  expect(actions.sendProtocolAction).toHaveBeenCalledTimes(1);
+  expect(actions.sendProtocolAction).toHaveBeenCalledWith({ registrationId: 1, version: 2 });
+});
+
+test("a restored screen whose text the server still holds: 'Saada' sends after the server's text is read, at that version", async () => {
+  actions.sendProtocolAction.mockResolvedValue({ kind: "sent", again: false, version: 1, sentAt: SENT_AT });
+  await renderOnly({ single: true, students: [OLD] });
+  await click("[data-send='first']");
+  expect(actions.sendProtocolAction).not.toHaveBeenCalled();
+  await answered(answer([OLD]));
+  expect(actions.sendProtocolAction).toHaveBeenCalledWith({ registrationId: 1, version: 1 });
+  expect($("[data-send-error]")).toBeNull();
+  expect($("[data-locked]")).not.toBeNull();
+});
+
+test("a restored screen the server never answers: 'Saada' says the text is not confirmed after 10 s and sends nothing; the boxes are writable again", async () => {
+  await renderOnly({ single: true, students: [OLD] });
+  await click("[data-send='first']");
+  await wait(9_999);
+  expect($("[data-send='first']")!.textContent).toBe("Saadan…");
+  await wait(1);
+  expect($("[data-send-error]")!.textContent).toBe("Kõik pole veel salvestatud. Saada uuesti, kui ühendus on tagasi.");
+  expect(actions.sendProtocolAction).not.toHaveBeenCalled();
+  expect(($("[data-note='0']") as HTMLTextAreaElement).readOnly).toBe(false);
+  expect($("[data-save-status]")!.textContent).toBe("Kontrollin salvestatud teksti…"); // it still has not read the server's text
+});
+
+test("a restored screen: 'Lukusta ja saada kõik' waits for the server's text; the one whose text changed is shown and named, not sent; the others go; again, it goes", async () => {
+  const view: TestView = { single: false, students: [student(1, "Anu", { version: 1, notes: ["Esimene.", ""] }), student(2, "Berit", { version: 1, notes: ["Valmis", ""] })] };
+  const fresh = [student(1, "Anu", { version: 2, notes: ["Teine.", ""], savedAt: "2026-10-12T08:05:00.000Z" }), student(2, "Berit", { version: 1, notes: ["Valmis", ""] })];
+  await renderOnly(view);
+  await click("[data-send-all-open]");
+  expect($("[data-confirm-will]")!.textContent).toBe("Saavad protokolli: Anu, Berit");
+  actions.sendProtocolsAction.mockResolvedValue([{ registrationId: 2, result: { kind: "sent", again: false, version: 1, sentAt: SENT_AT } }]);
+  await click("[data-confirm-send]");
+  expect(actions.sendProtocolsAction).not.toHaveBeenCalled(); // waiting for the server's text
+  await answered(answer(fresh));
+  expect(actions.sendProtocolsAction).toHaveBeenCalledTimes(1);
+  expect(actions.sendProtocolsAction).toHaveBeenCalledWith([{ registrationId: 2, version: 1 }]); // Anu's stale text is not in it
+  expect($("[data-summary-sent]")!.textContent).toBe("Saadetud: Berit.");
+  expect($("[data-summary-failed]")!.textContent).toBe("Ei saadetud: Anu. Protokolli muudeti vahepeal mujal ja siin on nüüd uus tekst. Vaata see üle ja saada siis.");
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Teine."); // Anu's screen shows the server's text now
+  actions.sendProtocolsAction.mockResolvedValue([{ registrationId: 1, result: { kind: "sent", again: false, version: 2, sentAt: SENT_AT } }]);
+  await click("[data-send-all-open]");
+  await click("[data-confirm-send]");
+  expect(actions.sendProtocolsAction).toHaveBeenLastCalledWith([{ registrationId: 1, version: 2 }]);
+});
+
+test("a restored screen the server never answers: 'Lukusta ja saada kõik' sends nothing and names every student as not confirmed", async () => {
+  await renderOnly({ single: false, students: [student(1, "Anu"), student(2, "Berit")] });
+  await click("[data-send-all-open]");
+  await click("[data-confirm-send]");
+  await wait(10_000);
+  expect(actions.sendProtocolsAction).not.toHaveBeenCalled();
+  expect($("[data-summary-failed]")!.textContent).toBe("Ei saadetud: Anu, Berit. Kõik pole veel salvestatud. Saada uuesti, kui ühendus on tagasi.");
+  expect($("[data-send-confirm]")).toBeNull();
+});
+
+test("a student the server's answer no longer lists (cancelled meanwhile) is not one of 'Lukusta ja saada kõik': not named, not sent", async () => {
+  await renderOnly({ single: false, students: [student(1, "Anu"), student(2, "Berit")] });
+  await answered(answer([student(1, "Anu")]));
+  await click("[data-send-all-open]");
+  expect($("[data-confirm-will]")!.textContent).toBe("Saavad protokolli: Anu");
+  actions.sendProtocolsAction.mockResolvedValue([{ registrationId: 1, result: { kind: "sent", again: false, version: 1, sentAt: SENT_AT } }]);
+  await click("[data-confirm-send]");
+  expect(actions.sendProtocolsAction).toHaveBeenCalledWith([{ registrationId: 1, version: 1 }]);
 });
