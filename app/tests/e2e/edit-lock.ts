@@ -1,9 +1,6 @@
-import { holdLocalLock } from "./fixtures";
+import { holdLocalLock, LOCK_WAIT_MS } from "./fixtures";
 import { PROD_BUILD } from "./target";
 import { test as base } from "./test";
-
-/** How long a content test waits for its turn: the other project's test in front of it, one test (about 10 s, the slowest 30). */
-const TURN_WAIT_MS = 120_000;
 
 /**
  * `test` of the content editors' specs (admin-edit.spec.ts, admin-site.spec.ts) in the production build: one test at a time across both edit
@@ -21,8 +18,10 @@ export const test = base.extend<{ editTurn: void }>({
   editTurn: [
     async ({}, provide, info) => {
       if (!PROD_BUILD) return provide();
-      info.setTimeout(info.timeout + TURN_WAIT_MS);
-      const release = await holdLocalLock("e2e-edit-content", TURN_WAIT_MS);
+      // (the wait for the turn is added to the test's own time: with 8 workers up to three tests of both projects can be ahead, about 10 s each, the
+      // slowest 30 s; LOCK_WAIT_MS, the 3 minutes every lock of these tests waits, is room for a queue several times that)
+      info.setTimeout(info.timeout + LOCK_WAIT_MS);
+      const release = await holdLocalLock("e2e-edit-content", LOCK_WAIT_MS);
       try {
         await provide();
       } finally {

@@ -20,10 +20,11 @@ if (process.env.NEXT_RUNTIME === "edge") {
 
   /**
    * The time written by the last revalidation of every page, or 0 (none yet, or no switch file configured).
-   * The file is rewritten in place (writeFileSync truncates it, then writes), so a read that comes between the two sees it EMPTY. That read must
-   * not count as "nothing was ever revalidated": every page would pass as fresh for that request, and a page stored before a test's change would
-   * be served after it (the newsletter popup test, once in about three runs of the edit phase). An empty file is read again a moment later; if it
-   * stays empty, the newest time seen before stands.
+   * The workers write the file side by side (prod-build.ts writeStaleMark: a time of a fixed width over the old one, in place, never truncated),
+   * and once a build's first mark is being created a read can still find it empty. That read must not count as "nothing was ever revalidated":
+   * every page would pass as fresh for that request, and a page stored before a test's change would be served after it (it was, when the file
+   * was truncated and written again by every write: the newsletter popup test failed in about one run in three). An empty or unreadable file is
+   * read again a moment later; if it stays so, the newest time seen before stands.
    */
   const staleBefore = () => {
     const file = process.env.E2E_PAGE_CACHE;

@@ -34,14 +34,39 @@ export const PROD_ENV = {
  */
 export function revalidateLocalPages(): void {
   if (!PROD_BUILD) return;
-  mkdirSync(dirname(STALE_PAGES_FILE), { recursive: true });
-  // The mark only moves forward: the workers write it side by side, and one that was late must not put an older time over a newer one. (The file is
-  // rewritten in place, which leaves it empty for a moment: page-cache.cjs reads an empty file again, and never takes it for "nothing revalidated".)
+  writeStaleMark(STALE_PAGES_FILE);
+}
+
+/** The width of the time in the file: milliseconds since 1970 have 13 digits until the year 2286. */
+const MARK_WIDTH = 13;
+
+/**
+ * Writes "now" into the switch file at `file`. The workers write it side by side while the server reads it on every page lookup, so it is never
+ * emptied: the new time is written OVER the old one in place (flag "r+": no truncating), at a fixed width, so the file keeps its length and a reader
+ * sees the old time or the new one, never an empty file. Only a file that is not there yet is created (the first mark of a build; page-cache.cjs
+ * reads an empty or unreadable file again). The mark only moves forward: a worker that was late must not put an older time over a newer one.
+ */
+export function writeStaleMark(file: string, now: number = Date.now()): void {
+  mkdirSync(dirname(file), { recursive: true });
   let newest = 0;
   try {
-    newest = Number(readFileSync(STALE_PAGES_FILE, "utf8")) || 0;
+    newest = Number(readFileSync(file, "utf8")) || 0;
   } catch {
     // none yet
   }
-  writeFileSync(STALE_PAGES_FILE, String(Math.max(Date.now(), newest)));
+  const text = String(Math.max(now, newest)).padStart(MARK_WIDTH, "0");
+  for (let attempt = 0; ; attempt++) {
+    try {
+      writeFileSync(file, text, { flag: "r+" });
+      return;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    }
+    try {
+      writeFileSync(file, text, { flag: "wx" }); // not there yet: this worker creates it
+      return;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST" || attempt > 0) throw e; // another worker created it first: over it, once
+    }
+  }
 }
