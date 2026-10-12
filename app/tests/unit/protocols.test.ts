@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
-  checkFeedback, checkStages, FEEDBACK_CHOICES, FEEDBACK_ORDER, FEEDBACK_TEXT_MAX, feedbackOpen, feedbackOpenFor, hasText, isChoice, newToSend, overLimit, PROTOCOL_LIMITS,
-  protocolStatus, readStages, stagesFrom, summarizeFeedback,
+  answerText, checkFeedback, checkStages, FEEDBACK_CHOICES, FEEDBACK_ORDER, FEEDBACK_TEXT_MAX, feedbackOpen, feedbackOpenFor, feedbackQuestions, hasText, isChoice, newToSend,
+  overLimit, PROTOCOL_LIMITS, protocolStatus, readStages, stagesFrom, summarizeFeedback,
 } from "@/domain/protocols";
+import { et } from "@/i18n/dict/et";
+import { ru } from "@/i18n/dict/ru";
 import { storable } from "@/lib/storable";
 import { toStorable } from "@/lib/to-storable";
 
@@ -172,5 +174,24 @@ describe("toStorable", () => {
     }
     for (const s of ["👋", "\ud800", "\udc00", "\udc00\ud800", "a\ud800b\udc00c", "\ud83d👋"]) expect(toStorable(s) === s, JSON.stringify(s)).toBe(storable(s));
     expect(toStorable("\ud83d👋")).toBe("👋"); // a lone high surrogate before a pair: only it goes
+  });
+});
+
+describe("the questions' texts (Task 8)", () => {
+  test("every question and every option has its words in both languages; nothing more", () => {
+    for (const dict of [et, ru]) {
+      const q = feedbackQuestions(dict.account.feedback.questions);
+      expect(Object.keys(q)).toEqual([...FEEDBACK_ORDER]);
+      for (const [key, options] of Object.entries(FEEDBACK_CHOICES)) expect(Object.keys(q[key as keyof typeof FEEDBACK_CHOICES].options ?? {}), key).toEqual([...options]);
+      for (const key of ["score", "recommend", "message"] as const) expect(q[key].options, key).toBeUndefined();
+    }
+  });
+
+  test("answerText: the score as n/10, an option in the given wording, a free text as written", () => {
+    const q = feedbackQuestions(et.account.feedback.questions);
+    expect(answerText("score", 9, q)).toBe("9/10");
+    expect(answerText("expectations", "met", q)).toBe("Vastas ootustele");
+    expect(answerText("ready", "mostly", feedbackQuestions(ru.account.feedback.questions))).toBe("Скорее да, нужно немного практики");
+    expect(answerText("message", "Väga hea!", q)).toBe("Väga hea!");
   });
 });

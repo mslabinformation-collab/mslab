@@ -4,14 +4,15 @@ import { courseCardData } from "@/components/site/course-card-data";
 import type { Db } from "@/db/client";
 import { listPublishedCourses, listUpcomingSessions, readSetting } from "@/db/queries/public";
 import {
-  clientFavourites, clientLoginTokens, clients, courseAccess, courses, courseSessions, pages, practicePackages, protocols, registrations, requests, subscribers,
-  termsAcceptances,
+  clientFavourites, clientLoginTokens, clients, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols, registrations, requests,
+  subscribers, termsAcceptances,
 } from "@/db/schema";
-import { PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type EcourseCard, type PrepaymentInfo } from "@/domain/account-cards";
+import { PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type EcourseCard, type FeedbackPrompt, type PrepaymentInfo } from "@/domain/account-cards";
 import { upcomingFrom } from "@/domain/calendar";
 import { DEFAULT_TERMS_VERSION, TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
 import { nextSessionByCourse } from "@/domain/home";
 import type { CourseProgress } from "@/domain/lessons";
+import { feedbackOpenFor } from "@/domain/protocols";
 import { registrationPrice } from "@/domain/registration";
 import { normalizeEmail } from "@/domain/email";
 import type { I18n } from "@/i18n/field";
@@ -53,6 +54,8 @@ export type Dashboard = {
    * dashboard), never by loadDashboard: the admin's read-only view shows the cards without it.
    */
   payOnline?: boolean;
+  /** The feedback forms open for her and not answered or dismissed (phase protocols, spec §7), the latest first; absent when there is none. */
+  feedback?: FeedbackPrompt[];
 };
 
 export type EcourseView = {
@@ -101,11 +104,13 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         venue: courseSessions.venue,
         sessionStatus: courseSessions.status,
         protocolSentAt: protocols.sentAt,
+        feedbackId: courseFeedback.id,
       })
       .from(registrations)
       .innerJoin(courses, eq(registrations.courseId, courses.id))
       .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id))
       .leftJoin(protocols, eq(protocols.registrationId, registrations.id))
+      .leftJoin(courseFeedback, eq(courseFeedback.registrationId, registrations.id))
       .where(eq(registrations.clientId, clientId)),
     // Individual and practice requests and waitlist entries; the payload's course (a slug), package (a code) and session (an id,
     // read only when it is all digits, so a odd value cannot fail the query) point at what the card names. A practice request's
@@ -190,6 +195,11 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       });
     }
   }
+  // the feedback forms' cards (phase protocols, spec §7): a contact course's registration whose form is open and has no row yet
+  const feedback: FeedbackPrompt[] = regRows
+    .filter((r) => r.course.type === "contact" && r.feedbackId === null && feedbackOpenFor(r, now))
+    .sort((a, b) => (b.startsAt ?? b.createdAt).getTime() - (a.startsAt ?? a.createdAt).getTime() || b.id - a.id)
+    .map((r) => ({ registrationId: r.id, course: { slug: r.course.slug, title: r.course.title } }));
   for (const r of requestRows) {
     if (r.kind === "waitlist") {
       cards.push({
@@ -236,6 +246,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
     favourites,
     prepayment: parsePrepayment(prepayment),
     resume: resumeSlug(sorted, lastAt, now),
+    ...(feedback.length ? { feedback } : {}),
   };
 }
 

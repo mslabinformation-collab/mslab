@@ -4,12 +4,14 @@ import { studentProtocol } from "@/db/queries/protocols";
 import { readSetting } from "@/db/queries/public";
 import { clients } from "@/db/schema";
 import { isEmail, isSampleAddress, normalizeEmail } from "@/domain/email";
+import { FEEDBACK_TEXT_MAX } from "@/domain/protocols";
 import type { Locale } from "@/i18n/locales";
 import { LOGIN_MARK } from "@/lib/account-marks";
 import { parseRowId } from "@/lib/row-id";
 import { deletionMail, loginMail, passwordChangedMail, verifyLink } from "./account-mail";
 import {
-  LIMITS, parseChangeRequest, parseDeletion, parseFavourite, parseMerge, parseNewsletter, parsePassword, parsePayStart, parseProfile, parseProgress, parseSlug, parseTerms,
+  LIMITS, parseChangeRequest, parseDeletion, parseFavourite, parseFeedbackHide, parseFeedbackPost, parseMerge, parseNewsletter, parsePassword, parsePayStart, parseProfile,
+  parseProgress, parseSlug, parseTerms,
 } from "./account-input";
 import { isCrossSite } from "./auth";
 import type { BunnyConfig } from "./bunny";
@@ -21,6 +23,7 @@ import {
   acceptTerms, createChangeRequest, deleteClient, loadDashboard, loadEcourse, loadFavouriteCards, mergeFavourites, setFavourite, setNewsletter, updateProfile,
 } from "./client-data";
 import { removeClientPassword, setClientPassword } from "./client-password";
+import { feedbackState, hideFeedback, notifyFeedback, submitFeedback } from "./course-feedback";
 import { PgKv } from "./kv";
 import { lessonFileFor, loadLesson, markTextLessonDone, saveProgress } from "./lesson-data";
 import { attachmentHeader, FILE_URL_TTL_SEC } from "./lesson-files";
@@ -51,7 +54,7 @@ import { sha256 } from "./token";
 // GET /kursus/:slug/:lesson one lesson (an open one with a signed video URL; 403 terms or locked), POST …/:lesson/progress how far a video has
 // been watched, POST …/:lesson/tehtud "Märgi tehtuks" for a text lesson, GET …/:lesson/fail/:file a lesson file, GET /lemmikud the
 // favourites as course cards, POST /lemmikud and /lemmikud/merge favourites, PATCH /andmed the profile, POST /uudiskiri the newsletter, POST /muutmine a request to cancel or
-// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), POST /tingimused the e-course terms, POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
+// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
 // Each one starts with requireClient and answers through clientResponse (a renewed session's cookies reach the browser); the
 // client is always the session's, never a value from the request. A body that is not what the endpoint expects is 400
 // { ok: false, error: "<field>" } (account-input.ts), a record that is not the client's is 404.
@@ -93,6 +96,17 @@ const PASSWORD_FAILURES_PER_IP = 20;
 const PASSWORD_LOCK_SEC = 15 * 60;
 /** Password changes a client may make per hour: each one mails her. */
 const PASSWORD_CHANGES_PER_HOUR = 5;
+/** Feedback submits and "Ei soovi"s a client may send per hour, together: each submit mails Maria. */
+const FEEDBACK_PER_HOUR = 10;
+/** A feedback body: two free texts at their limit, JSON-escaped, and the rest. */
+const FEEDBACK_BODY_CHARS = 2 * FEEDBACK_TEXT_MAX * 2 + 2048;
+
+/** The feedback's own limit, the submits and the "Ei soovi"s together: null within it, else the 429 to answer. */
+async function feedbackLimited(deps: AccountDeps, session: ClientSession): Promise<Response | null> {
+  if (await withinClientLimit(deps, session.clientId, "client-feedback", FEEDBACK_PER_HOUR, 60 * 60)) return null;
+  logNote("[account] feedback rate limited");
+  return clientResponse(session, { ok: false, error: "rate" }, 429);
+}
 
 const BASE_HEADERS = { "cache-control": "private, no-store", "x-robots-tag": "noindex, nofollow" } as const;
 
@@ -690,6 +704,53 @@ async function protocol(request: Request, deps: AccountDeps): Promise<Response> 
 }
 
 /**
+ * GET /tagasiside?id=<registration id> (phase protocols, spec §7): the feedback form of one of her registrations — its course, and whether she
+ * has answered already (`sent`). 404 `{ ok: false }` when it is not hers, or the form is not open (spec §3) and she has sent nothing.
+ */
+async function feedbackForm(request: Request, deps: AccountDeps): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const id = queryId(request);
+  const state = id === null ? null : await feedbackState(deps.db, session.clientId, id, deps.now);
+  return state ? clientResponse(session, { ok: true, ...state }) : clientResponse(session, { ok: false }, 404);
+}
+
+/**
+ * POST /tagasiside `{ registrationId, locale, answers }` (spec §7): her answers, once per registration; Maria is told after the response ("Uus
+ * tagasiside: …", mail and Telegram). 200 `{ ok: true }`; 400 `{ error }` (a field, a question's key, "answers" or "empty"); 404 `{ error:
+ * "registration" }` (not hers, or not open); 409 `{ error: "sent" }` (answered already); 429 `{ error: "rate" }` after 10 in an hour.
+ */
+async function sendFeedback(request: Request, deps: AccountDeps): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const input = parseFeedbackPost(await readObject(request, FEEDBACK_BODY_CHARS));
+  if (!input.ok) return badInput(session, input.error);
+  const limited = await feedbackLimited(deps, session);
+  if (limited) return limited;
+  const result = await submitFeedback(deps.db, { clientId: session.clientId, ...input.data }, deps.now);
+  if (result.kind === "notFound") return clientResponse(session, { ok: false, error: "registration" }, 404);
+  if (result.kind === "sent") return clientResponse(session, { ok: false, error: "sent" }, 409);
+  const notice = result.notice;
+  deps.later(() => notifyFeedback(deps.env, deps.siteUrl, notice));
+  return clientResponse(session, { ok: true });
+}
+
+/**
+ * POST /tagasiside/peida `{ registrationId }` ("Ei soovi", spec §7): the dashboard's card is gone for good; the form itself still takes her
+ * answers later. 200 `{ ok: true }`; 404 `{ error: "registration" }` (not hers, or not open); 429 (with the submits, 10 an hour).
+ */
+async function dismissFeedback(request: Request, deps: AccountDeps): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const input = parseFeedbackHide(await readObject(request));
+  if (!input.ok) return badInput(session, input.error);
+  const limited = await feedbackLimited(deps, session);
+  if (limited) return limited;
+  const hidden = await hideFeedback(deps.db, { clientId: session.clientId, registrationId: input.data.registrationId }, deps.now);
+  return hidden ? clientResponse(session, { ok: true }) : clientResponse(session, { ok: false, error: "registration" }, 404);
+}
+
+/**
  * POST /tingimused `{ slug, version }`: the client accepts the e-course terms, the version the page showed (`terms.version` of the e-course view).
  * 404 `{ error: "slug" }` without active access to that course; 409 `{ error: "version" }` when the terms have changed since the page was loaded
  * (nothing is stored: the page loads the course again and shows the new text).
@@ -741,6 +802,9 @@ async function dataRoute(request: Request, path: string, deps: AccountDeps): Pro
     case "POST /muutmine": return changeRequest(request, deps);
     case "POST /maksa": return payRegistration(request, deps);
     case "GET /protokoll": return protocol(request, deps);
+    case "GET /tagasiside": return feedbackForm(request, deps);
+    case "POST /tagasiside": return sendFeedback(request, deps);
+    case "POST /tagasiside/peida": return dismissFeedback(request, deps);
     case "POST /tingimused": return terms(request, deps);
     case "POST /kustuta": return deleteAccount(request, deps);
   }

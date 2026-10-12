@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checkFeedback, type FeedbackAnswers } from "@/domain/protocols";
 import { storable } from "@/lib/storable"; // Postgres rejects a NUL in text and a lone surrogate in jsonb: both would be a 500
 
 // The bodies of the client account's data endpoints (account-api.ts), parsed without trusting anything: a wrong type, a value
@@ -34,6 +35,9 @@ const progress = z.object({ watchedSec: z.number().min(0).max(LIMITS.watchedSec)
 /** Kept exactly as typed (no trim): the length and the e-mail rules are the server's, with the account's address (domain/password.ts). */
 const password = z.object({ password: z.string().min(1).max(LIMITS.passwordInput).refine(storable) });
 const payStart = z.object({ registrationId: rowId });
+/** The feedback form (phase protocols): the registration, the page's language, the answers (domain/protocols.ts checkFeedback). */
+const feedbackPost = z.object({ registrationId: rowId, locale: z.enum(["et", "ru"]), answers: z.unknown() });
+const feedbackHide = z.object({ registrationId: rowId });
 
 export type FavouriteInput = z.infer<typeof favourite>;
 export type MergeInput = z.infer<typeof merge>;
@@ -61,6 +65,15 @@ export const parseDeletion = (body: unknown) => parse(deletion, body);
 export const parseProgress = (body: unknown) => parse(progress, body);
 export const parsePassword = (body: unknown) => parse(password, body);
 export const parsePayStart = (body: unknown) => parse(payStart, body);
+
+/** POST /tagasiside's body; the error is the first wrong field, or the answers' own (checkFeedback: a key, "answers" or "empty"). */
+export function parseFeedbackPost(body: unknown): Input<{ registrationId: number; locale: "et" | "ru"; answers: FeedbackAnswers }> {
+  const base = parse(feedbackPost, body);
+  if (!base.ok) return base;
+  const answers = checkFeedback(base.data.answers);
+  return answers.ok ? { ok: true, data: { registrationId: base.data.registrationId, locale: base.data.locale, answers: answers.answers } } : { ok: false, error: answers.error };
+}
+export const parseFeedbackHide = (body: unknown) => parse(feedbackHide, body);
 
 /** The course slug of a request path (still percent-encoded), or null when it cannot be a slug (not decodable, empty, too long, text the database cannot hold). */
 export function parseSlug(raw: string): string | null {

@@ -26,6 +26,16 @@
   margin-top: 28px;
 }
 
+/* the feedback forms' cards (phase protocols): above the course cards, as wide as one of them */
+.prompts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
 .list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

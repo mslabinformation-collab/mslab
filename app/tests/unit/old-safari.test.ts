@@ -29,6 +29,13 @@ const BROWSER_FILES = [
   "src/components/account/useHashId.ts",
   "src/components/account/AccountNotFound.tsx",
   "src/components/account/ProtocolPage.tsx",
+  // Task 8
+  "src/components/account/FeedbackCard.tsx",
+  "src/components/account/FeedbackForm.tsx",
+  // what the card and the form pull into the browser besides: the JSON request, the language's address, the loader around the form's state
+  "src/lib/json-request.ts",
+  "src/i18n/href.ts",
+  "src/components/account/AccountLoader.tsx",
   // what the student's page pulls into the browser besides: the id parser, the language pick, the texts and the dictionaries they come from
   "src/lib/row-id.ts",
   "src/i18n/field.ts",

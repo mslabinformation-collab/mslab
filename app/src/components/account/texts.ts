@@ -60,3 +60,14 @@ export const lessonTexts = (d: Dict): LessonTexts => ({ ...d.account.lesson, res
 export type ProtocolTexts = Dict["account"]["protocol"] & { back: string; loader: LoaderTexts };
 
 export const protocolTexts = (d: Dict): ProtocolTexts => ({ ...d.account.protocol, back: d.account.shell.courses, loader: loaderTexts(d) });
+
+/** The feedback form (phase protocols): account.feedback, the way back, the two failure lines and AccountLoader's. */
+export type FeedbackTexts = Dict["account"]["feedback"] & { back: string; rate: string; failed: string; loader: LoaderTexts };
+
+export const feedbackTexts = (d: Dict): FeedbackTexts => ({
+  ...d.account.feedback,
+  back: d.account.shell.courses,
+  rate: d.forms.errorTooMany,
+  failed: d.forms.errorGeneric,
+  loader: loaderTexts(d),
+});

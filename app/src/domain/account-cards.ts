@@ -98,6 +98,9 @@ export type EcourseCard = {
 
 export type AccountCard = ContactCard | IndividualCard | RequestCard | WaitlistCard | EcourseCard;
 
+/** A feedback form that is open and has no answer (phase protocols, spec §7): the dashboard's "Kuidas koolitus läks?" card. */
+export type FeedbackPrompt = { registrationId: number; course: CourseRef };
+
 export type NextStepKey =
   | "cancelled"
   | "done"
