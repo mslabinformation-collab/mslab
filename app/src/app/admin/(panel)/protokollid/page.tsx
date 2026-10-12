@@ -14,6 +14,13 @@ import { parseRowId } from "@/lib/row-id";
 import { requireAdmin } from "@/server/auth";
 
 export const dynamic = "force-dynamic";
+/**
+ * "Lukusta ja saada kõik" is a server action of this page (sendProtocolsAction), so its mails run under this page's limit: they go out after the
+ * answer as ONE task, one after another about 0.8 s apart (server/protocols.ts mailProtocols), up to 100 of them (about 80 s). 300 s is the longest
+ * a function may run on Vercel Hobby; a task cut short would lose the mails of the students not reached, and a mail cannot be sent again.
+ * (tests/unit/protocol-page.test.ts pins it.)
+ */
+export const maxDuration = 300;
 export const metadata: Metadata = { title: adminTitle(adminEt.protocols.title) };
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
