@@ -239,8 +239,8 @@ export const mailQuota = pgTable("mail_quota", { day: text("day").primaryKey(), 
 // ---------- phase 2b: online payments (Montonio) ----------
 
 /**
- * One online payment attempt (phase 2b, spec 5.1). `reference` is Montonio's merchantReference, `MSLAB-M<id>` (domain/payments.ts
- * orderReference), written in the insert's own transaction (db/queries/payments.ts insertPayment): every attempt is a new order.
+ * One online payment attempt (phase 2b, spec 5.1). `reference` is Montonio's merchantReference, `MSLAB-M<id>` in production (domain/payments.ts
+ * orderReference; MSLAB-L<id> on this machine, MSLAB-P<id> on a preview), written in the insert's own transaction (db/queries/payments.ts insertPayment): every attempt is a new order.
  * `email` and `name` are the payer's as entered, kept for the books when the account or the registration is deleted (the links are set
  * null). `held`: Montonio said paid, but the amount or the currency did not match (server/payments/settle.ts). `paidAt` stays set when
  * the bank voids a paid payment (status failed), which the admin shows as "Kontrolli Montonios".

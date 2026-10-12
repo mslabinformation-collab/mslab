@@ -1,19 +1,21 @@
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { Db, Tx } from "@/db/client";
 import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admin";
-import { failPayment, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
+import { failPayment, isConnectionError, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
+import { dbErrorCode } from "@/db/safe-error";
 import { payments, type Payment } from "@/db/schema";
 import { isSampleAddress } from "@/domain/email";
+import { referenceId } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
 import { pick } from "@/i18n/field";
 import { ecourseOpenMail, registrationPaidMail } from "../account-mail";
 import type { PublicChange } from "../cache-targets";
 import { issueClientLogin } from "../client-auth";
 import { logFailure, logNote } from "../log";
-import { overpaymentSummary, paymentAlertSummary, paymentSummary, stuckPaymentSummary, type PaymentNotice } from "../messages";
+import { overpaymentSummary, paymentAlertSummary, paymentSummary, recordedAfterAlertSummary, stuckPaymentSummary, type PaymentNotice } from "../messages";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env } from "../notify";
-import { releaseSlot, reserveSlot } from "../ratelimit";
+import { forgetKey, releaseSlot, reserveSlot } from "../ratelimit";
 import { subscribeLater } from "../submit";
 import { grantPurchase, type Grant } from "./grant";
 import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken } from "./montonio";
@@ -28,7 +30,8 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken }
 //   and Maria is told at once that nothing was opened, unless the error is a transient database one, which rolls everything back and leaves
 //   the row pending for the next call; openCourse also says why this order of locks cannot deadlock). After it: the seats are revalidated, and
 //   the payer's mail and Maria's notice go out after the response (an e-course's with a login code, and the newsletter sign-up when it was
-//   ticked), and Maria's "Ülemakse" when the payment took the registration's paid sum over its price (alertIfOverpaid). Every other caller
+//   ticked), Maria's "Ülemakse" when the payment took the registration's paid sum over its price (alertIfOverpaid), and "Makse on nüüd kirja
+//   pandud" when she had been told "Makse vajab kontrolli" about it (followUpUnsettled: she may have recorded it by hand). Every other caller
 //   finds the row paid and does nothing.
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
 // - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
@@ -74,8 +77,16 @@ export const factsOf = (s: OrderSnapshot, bank = ""): Facts => ({ uuid: s.uuid, 
 /** The once-only work's outcome: the paid row, and what it did to its registration, or the e-course it opened (phase 2b Task 7). */
 type Won = { payment: Payment; registration: RegistrationPaid | null; grant: Grant | null };
 
-/** The door of an order token (the webhook, the return). */
+/**
+ * The door of an order token (the webhook, the return). A reference without this environment's prefix (Montonio.referencePrefix: a local
+ * run's MSLAB-L<id> on the sandbox store production shares, its webhook signed with the same keys) is no payment of ours: unknown, before
+ * the database or Montonio is asked, and logged without the reference.
+ */
 export async function settleToken(deps: SettleDeps, token: OrderToken): Promise<SettleResult> {
+  if (referenceId(token.reference, deps.montonio.referencePrefix) === null) {
+    logNote("[payments] an order token for a reference of another environment: nothing to settle");
+    return { kind: "unknown" };
+  }
   const row = await paymentByReference(deps.db, token.reference);
   if (!row) {
     logNote("[payments] an order token for an unknown reference: nothing to settle");
@@ -212,6 +223,8 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     }
   });
   if (won.registration) alertIfOverpaid(deps, won.payment, won.registration);
+  // after "Makse vajab kontrolli" Maria may have recorded it by hand: she is told it is recorded now (once: only the winner gets here)
+  deps.later(() => followUpUnsettled(deps, won.payment));
   if (won.registration) await seatsChanged(deps, won.registration.course.slug);
   return won.payment;
 }
@@ -239,7 +252,7 @@ function alertIfOverpaid(deps: SettleDeps, p: Payment, r: RegistrationPaid): voi
  * client it had made with it): the payment stays paid, which is the truth (the money is at Montonio), and the outcome is "not opened", so Maria
  * is told at once to open the course by hand or refund, instead of the whole payment staying pending with nobody told while the webhook retries.
  * The one exception is a transient database error (a serialization failure, a deadlock, a lock not available, a statement timeout, a
- * connection error: isTransient): that is no verdict on the course, so it is thrown on, the whole paid transaction rolls back and the payment
+ * connection error, the database restarting or full: isTransient): that is no verdict on the course, so it is thrown on, the whole paid transaction rolls back and the payment
  * stays pending until Montonio's retry, the return or the daily check settles it again. The log has the class and the code only.
  *
  * The locks of this path (the e-course has no session and no registration): its payment row (the conditional UPDATE above), then the address
@@ -265,17 +278,17 @@ async function openCourse(tx: Tx, payment: Payment, now: Date): Promise<Grant | 
   }
 }
 
-/** The SQLSTATEs of errors that pass by themselves: a serialization failure, a deadlock, a lock not available, a statement timeout. (Class 08, a connection, is added in isTransient.) */
+/** The SQLSTATEs of errors that pass by themselves: a serialization failure, a deadlock, a lock not available, a statement timeout. */
 const TRANSIENT_SQLSTATES: ReadonlySet<string> = new Set(["40001", "40P01", "55P03", "57014"]);
 
-/** Is this SQLSTATE one of a transient failure (see TRANSIENT_SQLSTATES), or of class 08 (connection exception)? */
-const transientCode = (code: unknown): boolean => typeof code === "string" && (TRANSIENT_SQLSTATES.has(code) || (code.length === 5 && code.startsWith("08")));
-
-/** A database error that a retry can get past. The SQLSTATE is on the error itself, or on its `cause` when drizzle wrapped the driver's error. */
+/**
+ * A database error that a retry can get past: one of TRANSIENT_SQLSTATES, or a connection lost, refused or not there yet (db/queries/payments.ts
+ * isConnectionError: class 08, a restart, too many connections, the driver's own). The code is on the error itself, or down its `cause` when
+ * drizzle wrapped the driver's error (db/safe-error.ts dbErrorCode).
+ */
 export function isTransient(e: unknown): boolean {
-  if (typeof e !== "object" || e === null) return false;
-  const { code, cause } = e as { code?: unknown; cause?: unknown };
-  return transientCode(code) || (typeof cause === "object" && cause !== null && transientCode((cause as { code?: unknown }).code));
+  const code = dbErrorCode(e);
+  return (code !== null && TRANSIENT_SQLSTATES.has(code)) || isConnectionError(e);
 }
 
 /** What the payment did, for Maria's notice. An e-course's is told in its own words (messages.ts): opened until a day, or not opened. */
@@ -428,6 +441,39 @@ export function alertUnsettled(deps: SettleDeps, row: Payment, snapshot: OrderSn
       if (!told) await releaseAlertRecord(deps, record, STUCK_ALERT_TTL_SECONDS);
     }
   });
+}
+
+/**
+ * The follow-up of "Makse vajab kontrolli" (alertUnsettled), after the response: the payment `p` was just recorded, and the record
+ * pay:stuck:<payment> says Maria was told it could not be (a record given back, "0", is an alert that reached no one: nothing to follow up).
+ * She may have recorded it by hand meanwhile, so she gets "Makse on nüüd kirja pandud" once, and the record is removed. A store that fails
+ * to answer loses the follow-up (logged): the payment itself is recorded. The log has the payment's id only.
+ */
+async function followUpUnsettled(deps: SettleDeps, p: Payment): Promise<void> {
+  const record = stuckAlertKey(p.id);
+  let told: boolean;
+  try {
+    told = Number(await deps.env.KV.get(record)) > 0;
+  } catch (e) {
+    logFailure(`[payments] payment ${p.id}: the record of an earlier alert could not be read`, e);
+    return;
+  }
+  if (!told) return;
+  logNote(`[payments] payment ${p.id}: recorded after Maria was told it could not be, she is told now`);
+  try {
+    const ctx = await contextOf(deps, p.id);
+    const s = recordedAfterAlertSummary(
+      { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid },
+      adminUrl(deps.siteUrl),
+    );
+    await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+  } finally {
+    try {
+      await forgetKey(deps.env.KV, record);
+    } catch (e) {
+      logFailure("[payments] the record of an alert could not be removed", e);
+    }
+  }
 }
 
 /** Maria's "Uus makse: …" (mail and Telegram). */

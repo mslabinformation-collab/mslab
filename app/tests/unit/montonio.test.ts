@@ -10,7 +10,7 @@ import { stubFetch } from "../fakes";
 
 const KEYS = { MONTONIO_ACCESS_KEY: "test-access-key", MONTONIO_SECRET_KEY: "test-secret-key-0123456789abcdef" };
 const LOCAL = { production: false, onVercel: false };
-const CONFIG: MontonioConfig = { accessKey: KEYS.MONTONIO_ACCESS_KEY, secretKey: KEYS.MONTONIO_SECRET_KEY, baseUrl: SANDBOX_BASE, live: false, mock: false };
+const CONFIG: MontonioConfig = { accessKey: KEYS.MONTONIO_ACCESS_KEY, secretKey: KEYS.MONTONIO_SECRET_KEY, baseUrl: SANDBOX_BASE, live: false, mock: false, referencePrefix: "MSLAB-M" };
 const ORDER = { reference: "MSLAB-M7", amountCents: 17550, locale: "ru" as const, returnUrl: "https://mslab.example/api/payments/return", notificationUrl: "https://mslab.example/api/payments/notify" };
 
 afterEach(() => {
@@ -31,7 +31,7 @@ describe("montonioConfig: which store, which address", () => {
   });
 
   test("only the exact 'live' is production; anything else is the sandbox", () => {
-    expect(montonioConfig({ ...KEYS, MONTONIO_ENV: "live" }, LOCAL)).toEqual({ accessKey: "test-access-key", secretKey: KEYS.MONTONIO_SECRET_KEY, baseUrl: LIVE_BASE, live: true, mock: false });
+    expect(montonioConfig({ ...KEYS, MONTONIO_ENV: "live" }, LOCAL)).toEqual({ accessKey: "test-access-key", secretKey: KEYS.MONTONIO_SECRET_KEY, baseUrl: LIVE_BASE, live: true, mock: false, referencePrefix: "MSLAB-L" });
     for (const env of [undefined, "sandbox", "Live", "LIVE", "production", "prod"])
       expect(montonioConfig({ ...KEYS, MONTONIO_ENV: env }, LOCAL), String(env)).toMatchObject({ baseUrl: SANDBOX_BASE, live: false, mock: false });
     expect(LIVE_BASE).toBe("https://stargate.montonio.com/api");
@@ -42,7 +42,7 @@ describe("montonioConfig: which store, which address", () => {
   test("the mock: only PAYMENT_PROVIDER=mock with MONTONIO_FAKE_URL; never on Vercel; in production only with the explicit flag; never a fallback", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const mock = { ...KEYS, PAYMENT_PROVIDER: "mock", MONTONIO_FAKE_URL: "http://localhost:3997/" };
-    expect(montonioConfig(mock, LOCAL)).toEqual({ accessKey: "test-access-key", secretKey: KEYS.MONTONIO_SECRET_KEY, baseUrl: "http://localhost:3997", live: false, mock: true });
+    expect(montonioConfig(mock, LOCAL)).toEqual({ accessKey: "test-access-key", secretKey: KEYS.MONTONIO_SECRET_KEY, baseUrl: "http://localhost:3997", live: false, mock: true, referencePrefix: "MSLAB-L" });
     expect(montonioConfig(mock, { production: false, onVercel: true })).toBeNull();
     expect(montonioConfig({ ...mock, PAYMENT_MOCK_IN_PRODUCTION: "1" }, { production: true, onVercel: true })).toBeNull();
     expect(montonioConfig(mock, { production: true, onVercel: false })).toBeNull();
@@ -144,20 +144,54 @@ describe("montonioConfig: which store, which address", () => {
     expect(note).not.toHaveBeenCalled(); // no keys at all is the normal "no payments", not a mistake
   });
 
-  test("currentRuntime reads this process: NODE_ENV production, and VERCEL set", () => {
+  test("currentRuntime reads this process: NODE_ENV production, VERCEL set, and Vercel's VERCEL_ENV", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("VERCEL", "");
-    expect(currentRuntime()).toEqual({ production: true, onVercel: false });
+    vi.stubEnv("VERCEL_ENV", "");
+    expect(currentRuntime()).toEqual({ production: true, onVercel: false, vercelEnv: undefined });
     vi.stubEnv("VERCEL", "1");
-    expect(currentRuntime()).toEqual({ production: true, onVercel: true });
+    vi.stubEnv("VERCEL_ENV", "production");
+    expect(currentRuntime()).toEqual({ production: true, onVercel: true, vercelEnv: "production" });
+    vi.stubEnv("VERCEL_ENV", "preview");
+    expect(currentRuntime()).toEqual({ production: true, onVercel: true, vercelEnv: "preview" });
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("VERCEL", "");
-    expect(currentRuntime()).toEqual({ production: false, onVercel: false });
+    vi.stubEnv("VERCEL_ENV", "");
+    expect(currentRuntime()).toEqual({ production: false, onVercel: false, vercelEnv: undefined });
+  });
+
+  // While production runs on the sandbox store, a local run with the same sandbox keys must not make production's references: its order
+  // would replace production's order of the same MSLAB-M<id> in the one store, and its webhook (signed with the same keys) reach production.
+  test("the reference prefix: MSLAB-M on Vercel's production only, MSLAB-P on a preview, MSLAB-L anywhere else (this machine, the e2e run, vercel dev)", () => {
+    const production = { production: true, onVercel: true, vercelEnv: "production" };
+    expect(montonioConfig(KEYS, production)?.referencePrefix).toBe("MSLAB-M");
+    expect(montonioConfig({ ...KEYS, MONTONIO_ENV: "live" }, production)?.referencePrefix).toBe("MSLAB-M");
+    expect(montonioConfig(KEYS, { production: true, onVercel: true, vercelEnv: "preview" })?.referencePrefix).toBe("MSLAB-P");
+    for (const runtime of [LOCAL, { production: true, onVercel: false }, { production: false, onVercel: true, vercelEnv: "development" }, { production: true, onVercel: false, vercelEnv: "production" }, { production: true, onVercel: true }])
+      expect(montonioConfig(KEYS, runtime)?.referencePrefix, JSON.stringify(runtime)).toBe("MSLAB-L");
+    expect(montonioConfig({ ...KEYS, PAYMENT_PROVIDER: "mock", MONTONIO_FAKE_URL: "http://localhost:3997" }, LOCAL)?.referencePrefix).toBe("MSLAB-L");
+    expect(paymentProvider(KEYS, production)?.referencePrefix).toBe("MSLAB-M");
+    expect(paymentProvider(KEYS, LOCAL)?.referencePrefix).toBe("MSLAB-L");
+  });
+
+  test("MONTONIO_REFERENCE_PREFIX sets it anywhere (a sandbox store shared by two machines); one that is no prefix turns payments off, noted once by name", async () => {
+    expect(montonioConfig({ ...KEYS, MONTONIO_REFERENCE_PREFIX: "MSLAB-D" }, LOCAL)?.referencePrefix).toBe("MSLAB-D");
+    expect(montonioConfig({ ...KEYS, MONTONIO_REFERENCE_PREFIX: "MSLAB-M" }, { production: true, onVercel: true, vercelEnv: "production" })?.referencePrefix).toBe("MSLAB-M");
+    const note = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const bad of ["mslab-d", "MSLAB-1", "MSLAB D", "X".repeat(17), "M"]) {
+      vi.resetModules(); // a copy that has not noted anything yet
+      const fresh = await import("@/server/payments/montonio");
+      note.mockClear();
+      for (let i = 0; i < 2; i++) expect(fresh.montonioConfig({ ...KEYS, MONTONIO_REFERENCE_PREFIX: bad }, LOCAL), bad).toBeNull();
+      expect(note).toHaveBeenCalledTimes(1);
+      expect(String(note.mock.calls[0][0])).toBe("[payments] MONTONIO_REFERENCE_PREFIX must be 2 to 16 capitals, digits or hyphens, not ending in a digit: online payments are off");
+    }
   });
 
   test("paymentProvider is the client of the config, or null", () => {
     expect(paymentProvider({}, LOCAL)).toBeNull();
     expect(paymentProvider(KEYS, LOCAL)?.accessKey).toBe("test-access-key");
+    expect(montonioClient(CONFIG).referencePrefix).toBe("MSLAB-M");
   });
 });
 

@@ -10,13 +10,13 @@ import { holdUntil, SEAT_HOLD_MS } from "@/domain/sessions";
 import { logNote } from "../log";
 import { MontonioError, type Montonio } from "./montonio";
 
-// Every way an online payment starts (phase 2b, spec 6.1, 6.3, 6.4): a pending payment row (a new MSLAB-M<id> for each new attempt), then
-// Montonio's order outside any transaction (a 15 s call must not hold a row lock), then the page to send the payer to. When Montonio says no
-// or cannot be reached, a new attempt's row is failed and a prepayment's hold ends (db/queries/payments.ts failPayment): nothing breaks, the
-// registration stands; a re-send's row stays pending (see order). A start while the same attempt is still open (the same registration and
-// kind, or the same e-course and address, the same amount, its order inside Montonio's 30-minute window) re-sends that attempt instead of
-// making a second order (the double-payment rule): POST /orders with the same merchantReference overwrites the unpaid order at Montonio
-// (spec 4), so the payer never has two orders open to pay.
+// Every way an online payment starts (phase 2b, spec 6.1, 6.3, 6.4): a pending payment row (a new MSLAB-M<id> for each new attempt, the
+// prefix this environment's: montonio.ts), then Montonio's order outside any transaction (a 15 s call must not hold a row lock), then the page
+// to send the payer to. When Montonio says no or cannot be reached, a new attempt's row is failed and a prepayment's hold ends
+// (db/queries/payments.ts failPayment): nothing breaks, the registration stands; a re-send's row stays pending (see order). A start while the
+// same attempt is still open (the same registration and kind, or the same e-course and address, the same amount, its order inside Montonio's
+// 30-minute window) re-sends that attempt instead of making a second order (the double-payment rule): POST /orders with the same
+// merchantReference overwrites the unpaid order at Montonio (spec 4), so the payer never has two orders open to pay.
 // The locks are the one order of every payment path (db/queries/seats.ts): the session, then the registration (lockForPayment, taken first),
 // then the payment row. Nothing is held across Montonio's call: the transaction commits first, and only then are the order made and the row
 // given its uuid (attachOrder) or failed (failPayment, which takes the registration's lock in its own transaction). An e-course purchase has
@@ -187,6 +187,7 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
       tx,
       { kind: due.kind, registrationId: r.id, courseId: course.id, clientId: r.clientId, email: r.email, name: r.name, locale: r.locale === "ru" ? "ru" : "et", amountCents: due.cents },
       deps.now,
+      montonio.referencePrefix,
     );
     return { kind: "ready", payment, again: false };
   });
@@ -272,6 +273,7 @@ export async function startEcoursePayment(
       tx,
       { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email, name: input.name, locale: input.locale, amountCents: input.amountCents, newsletter: input.newsletter },
       deps.now,
+      montonio.referencePrefix,
     );
     return { payment, again: false };
   });

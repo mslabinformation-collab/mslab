@@ -31,6 +31,7 @@ beforeEach(async () => {
   vi.stubEnv("MONTONIO_ACCESS_KEY", TEST_MONTONIO.accessKey);
   vi.stubEnv("MONTONIO_SECRET_KEY", TEST_MONTONIO.secretKey);
   vi.stubEnv("MONTONIO_ENV", "sandbox");
+  vi.stubEnv("MONTONIO_REFERENCE_PREFIX", TEST_MONTONIO.referencePrefix); // the rows the tests make are named as production names them
   vi.stubEnv("SITE_URL", "https://mslab.ee");
   vi.stubEnv("MARIA_EMAIL", "maria@example.test");
   vi.stubEnv("MAIL_FROM", "MS LAB <info@send.example>");

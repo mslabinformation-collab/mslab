@@ -302,32 +302,49 @@ export function overpaymentSummary(
   };
 }
 
+/** A payment of "Makse vajab kontrolli" and of its follow-up: what it was for, who paid, and its ids. */
+export type StuckPayment = { kind: PaymentKind; name: string; email: string; amountCents: number; course: string; startsAt: Date | null; reference: string; providerUuid: string | null };
+
+/** The rows of "Makse vajab kontrolli" and of its follow-up. */
+const stuckRows = (s: StuckPayment): Row[] => [
+  ["Makse", PAYMENT_KIND[s.kind]],
+  ["Summa", formatEUR(s.amountCents, "et")],
+  ["Koolitus", paidFor(s.kind, s.course, s.startsAt)],
+  ["Maksja", s.name],
+  ["E-post", s.email],
+  ["Viide", s.reference],
+  ["Montonio", s.providerUuid ?? undefined],
+];
+
 /**
  * "Makse vajab kontrolli: {nimi}" (the final review of 10.10): the daily check found a payment that Montonio says is paid, but recording it
- * threw (server/payments/check.ts). The money is at Montonio and nowhere in the app: Maria records it by hand. `paidCents` and `currency`:
- * what Montonio said was paid.
+ * threw (server/payments/check.ts). The money is at Montonio and nowhere in the app: Maria records it by hand, at the registration — or, for
+ * an e-course, which has no registration, by opening the course under Õpilased. `paidCents` and `currency`: what Montonio said was paid.
  */
-export function stuckPaymentSummary(
-  s: { kind: PaymentKind; name: string; email: string; amountCents: number; course: string; startsAt: Date | null; reference: string; providerUuid: string | null; paidCents: number | null; currency: string | null },
-  adminUrl: string,
-): Summary {
+export function stuckPaymentSummary(s: StuckPayment & { paidCents: number | null; currency: string | null }, adminUrl: string): Summary {
   const subject = `Makse vajab kontrolli: ${s.name}`;
+  const byHand = s.kind === "ecourse" ? "Kontrolli Montonios ja ava vajadusel e-koolitus käsitsi Õpilaste all." : "Kontrolli Montonios ja märgi makse registreeringu juures käsitsi.";
   return {
     subject,
-    text: body(
-      subject,
-      [
-        ["Makse", PAYMENT_KIND[s.kind]],
-        ["Summa", formatEUR(s.amountCents, "et")],
-        ["Koolitus", paidFor(s.kind, s.course, s.startsAt)],
-        ["Maksja", s.name],
-        ["E-post", s.email],
-        ["Viide", s.reference],
-        ["Montonio", s.providerUuid ?? undefined],
-      ],
-      adminUrl,
-      `Montonio järgi on ${montonioSaid(s.paidCents, s.currency)} makstud (viide ${s.reference}), aga seda ei õnnestunud kirja panna. Kontrolli Montonios ja märgi makse registreeringu juures käsitsi.`,
-    ),
+    text: body(subject, stuckRows(s), adminUrl, `Montonio järgi on ${montonioSaid(s.paidCents, s.currency)} makstud (viide ${s.reference}), aga seda ei õnnestunud kirja panna. ${byHand}`),
+    short: subject,
+  };
+}
+
+/**
+ * "Makse on nüüd kirja pandud: {nimi}": the follow-up of "Makse vajab kontrolli" (stuckPaymentSummary), when the app recorded that payment
+ * after all (server/payments/settle.ts). Maria may have recorded it by hand meanwhile: a registration's sum she added is to be removed, or the
+ * payment counts twice; an e-course she opened by hand needs nothing (opened twice, the access is not longer).
+ */
+export function recordedAfterAlertSummary(s: StuckPayment, adminUrl: string): Summary {
+  const subject = `Makse on nüüd kirja pandud: ${s.name}`;
+  const byHand =
+    s.kind === "ecourse"
+      ? "Kui avasid e-koolituse juba käsitsi Õpilaste all, pole vaja midagi teha."
+      : "Kui märkisid selle juba käsitsi registreeringu juures, eemalda oma käsitsi lisatud summa, et makset ei loetaks kaks korda.";
+  return {
+    subject,
+    text: body(subject, stuckRows(s), adminUrl, `Makse, mille kohta tuli teade "Makse vajab kontrolli", on nüüd automaatselt kirja pandud (viide ${s.reference}). ${byHand}`),
     short: subject,
   };
 }

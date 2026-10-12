@@ -5,7 +5,7 @@ import * as paymentQueries from "@/db/queries/payments";
 import { insertPayment, attachOrder } from "@/db/queries/payments";
 import { courses, payments, registrations } from "@/db/schema";
 import { handleNotify, handleReturn, returnTarget } from "@/server/payments/routes";
-import { contactCourse, orderToken, pendingPayment, registrationOn, settleDeps, SITE, stubMontonio } from "./payments-fixtures";
+import { contactCourse, orderToken, pendingPayment, registrationOn, settleDeps, SITE, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
 // GET /api/payments/return?order-token=… (phase 2b, spec 6.5): the token verified, the payment settled through the one door, and a 303 to the
@@ -64,7 +64,7 @@ test("an e-course: makstud with its slug ('Ava e-koolitus'); katkestatud with it
     .returning();
   const { deps } = settleDeps(db, m.montonio, NOW);
   const buy = async (email: string) => {
-    const p = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email, name: "Kati Tamm", locale: "et", amountCents: 19000 }, NOW);
+    const p = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email, name: "Kati Tamm", locale: "et", amountCents: 19000 }, NOW, TEST_MONTONIO.referencePrefix);
     await attachOrder(db, p.id, `uuid-${p.id}`, NOW);
     return { ...p, providerUuid: `uuid-${p.id}` };
   };
@@ -91,7 +91,7 @@ test("a refunded payment is 'jäi tegemata' with no way to pay again: 'Proovi uu
   const refundedFirst = await pendingPayment(db, await registrationOn(db, c, { email: "teine@example.com" }));
   expect(where(await handleReturn(back(orderToken(refundedFirst, { paymentStatus: "PARTIALLY_REFUNDED" })), deps))).toBe("/makse#tulemus=katkestatud&liik=registreering");
   // an e-course: no slug for the cart's retry either
-  const e = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email: "kati@example.test", name: "Kati Tamm", locale: "et", amountCents: 19000 }, NOW);
+  const e = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email: "kati@example.test", name: "Kati Tamm", locale: "et", amountCents: 19000 }, NOW, TEST_MONTONIO.referencePrefix);
   await attachOrder(db, e.id, `uuid-${e.id}`, NOW);
   const ecourse = { ...e, providerUuid: `uuid-${e.id}` };
   expect(where(await handleReturn(back(orderToken(ecourse, { paymentStatus: "REFUNDED" })), deps))).toBe("/makse#tulemus=katkestatud&liik=ekoolitus");

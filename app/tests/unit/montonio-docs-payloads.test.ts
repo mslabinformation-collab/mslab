@@ -8,7 +8,7 @@ import { stubFetch } from "../fakes";
 // docs/montonio-shipping-audit.md § 1.1). Sources: docs.montonio.com/api/stargate/guides/orders (the decoded order token, the POST /orders
 // answer, the webhook body) and the API reference "Get Order by UUID".
 
-const config: MontonioConfig = { accessKey: "MY_ACCESS_KEY", secretKey: "docs-test-secret-0123456789abcdef", baseUrl: LIVE_BASE, live: true, mock: false };
+const config: MontonioConfig = { accessKey: "MY_ACCESS_KEY", secretKey: "docs-test-secret-0123456789abcdef", baseUrl: LIVE_BASE, live: true, mock: false, referencePrefix: "MSLAB-M" };
 
 /** Orders guide, "Validating the returned order token": the decoded payload, its deprecated snake_case twins included. */
 const ORDER_TOKEN_PAYLOAD = {

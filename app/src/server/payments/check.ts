@@ -10,8 +10,8 @@ import { alertUnsettled, factsOf, isTransient, settlePayment, type SettleDeps } 
 // transaction (the door's, and failPayment's), taken in the order of every payment path (db/queries/seats.ts).
 // Each payment is its own try (as the video sweep's rows are, lesson-videos.ts): one that cannot be settled — a settlement that throws on
 // every run, a stale row that cannot be failed — is counted and logged (its id, the error's class and code), and the next one goes on, so it
-// can never stop the rows behind it; MAX_CONSECUTIVE_ERRORS connection errors in a row (isConnectionError) stop that loop (a dead database
-// would only throw on the rest). A payment Montonio says is PAID but whose settlement throws is money recorded nowhere: Maria gets
+// can never stop the rows behind it; MAX_CONSECUTIVE_ERRORS connection errors in a row (isConnectionError: a connection lost or refused, the
+// database restarting or full) stop that loop (a dead database would only throw on the rest). A payment Montonio says is PAID but whose settlement throws is money recorded nowhere: Maria gets
 // "Makse vajab kontrolli" once (settle.ts alertUnsettled), unless the error is a transient or connection one, which the next run gets past.
 
 /** At most this many GET /orders a run, and at most this many stale rows failed (the run's other parts share its time). */

@@ -235,6 +235,27 @@ describe("failed and pending", () => {
     expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)))).toMatchObject({ payment: { status: "paid" } });
   });
 
+  // A local run on the same sandbox store names its payments MSLAB-L<id>, and its webhook is signed with the same keys: it may reach
+  // production (its notificationUrl is SITE_URL). It is no payment of production's, whatever row of the same number production has.
+  test("a token with another environment's prefix is ignored: 'unknown', nothing asked, nothing changes, the log names no reference", async () => {
+    const m = stubMontonio();
+    const p = await pendingPayment(db, await registrationOn(db, await contactCourse(db)));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    const log = vi.mocked(console.error);
+    log.mockClear();
+    const foreign = `MSLAB-L${p.id}`;
+    // the same number, the same uuid, the right amount, PAID: and in doubt too (another key), which would otherwise ask Montonio
+    for (const over of [{}, { accessKey: "someone-else" }, { paymentStatus: "REFUNDED" }])
+      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken({ ...p, reference: foreign }, over)))).toEqual({ kind: "unknown" });
+    await flush();
+    expect(m.state.gets).toEqual([]);
+    expect(m.mails()).toEqual([]);
+    expect((await db.select().from(payments).where(eq(payments.id, p.id)))[0]).toMatchObject({ status: "pending", paidAt: null });
+    const lines = log.mock.calls.map((c) => c.map(String).join(" "));
+    expect(lines).toEqual(Array(3).fill("[payments] an order token for a reference of another environment: nothing to settle"));
+    expect(lines.join("\n")).not.toContain(foreign);
+  });
+
   test("an unknown reference: 'unknown', nothing changes", async () => {
     const m = stubMontonio();
     const { deps } = settleDeps(db, m.montonio, NOW);

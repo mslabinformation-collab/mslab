@@ -116,6 +116,16 @@ describe("Registreeru with payments", () => {
     expect(changes).toEqual([{ kind: "seats", course: "kulmumeistri-baaskoolitus" }]);
   });
 
+  test("the reference takes the prefix of this environment's store: MSLAB-L<id> on this machine, in the row and in the order", async () => {
+    const m = stubMontonio({ referencePrefix: "MSLAB-L" });
+    const c = await contactCourse(db);
+    const { d } = deps(m.montonio);
+    expect(await handleRegistration(d, form(c.session.id))).toMatchObject({ ok: true });
+    const [p] = await rows();
+    expect(p.reference).toBe(`MSLAB-L${p.id}`);
+    expect(m.state.orders).toEqual([expect.objectContaining({ merchantReference: `MSLAB-L${p.id}`, payment: expect.objectContaining({ methodOptions: { paymentDescription: `MS LAB MSLAB-L${p.id}` } }) })]);
+  });
+
   test("a form posted with Origin: http://localhost:3000 (allow-listed) while SITE_URL is the public site: the return comes back to that origin, Montonio's webhook always goes to SITE_URL", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);

@@ -586,6 +586,12 @@ describe("paid", () => {
       ["statement timeout", "57014"],
       ["a connection error", "08006"],
       ["another connection error", "08003"],
+      ["the server shutting down (admin_shutdown)", "57P01"],
+      ["the server crashing (crash_shutdown)", "57P02"],
+      ["the server starting up (cannot_connect_now)", "57P03"],
+      ["too many connections", "53300"],
+      ["the driver's lost connection", "CONNECTION_CLOSED"],
+      ["a reset socket", "ECONNRESET"],
     ])("%s (%s): nothing is written, the payment stays pending, nobody is told; the retry pays and opens it", async (_name, code) => {
       const m = stubMontonio();
       for (const wrapped of [false, true]) {

@@ -6,11 +6,38 @@ import { isSlug } from "@/lib/slug";
 import { startOfDayTallinn, upcomingFrom } from "./calendar";
 import { prepaymentDue, type RegStatus } from "./registration";
 
-/** The prefix of every merchantReference (spec 4): MSLAB-M<the payment row's id>. */
+/**
+ * The prefix of production's merchantReferences (spec 4): MSLAB-M<the payment row's id>. Every other place has a prefix of its own
+ * (server/payments/montonio.ts montonioConfig): while production runs on the sandbox store, a local database numbers its payments from 1 as
+ * production's does, and with one prefix a local order would replace production's order of the same reference in the one store, and its
+ * webhook, signed with the same keys, could settle production's row.
+ */
 export const ORDER_REFERENCE_PREFIX = "MSLAB-M";
+/** The prefix on this machine: `next dev`, the e2e run, a local production build, `vercel dev`. */
+export const LOCAL_REFERENCE_PREFIX = "MSLAB-L";
+/** The prefix of a Vercel preview deployment. */
+export const PREVIEW_REFERENCE_PREFIX = "MSLAB-P";
 
-/** Montonio's merchantReference of a payment row: unique per store, and a new one for every attempt (a new row). */
-export const orderReference = (paymentId: number): string => `${ORDER_REFERENCE_PREFIX}${paymentId}`;
+/** 2 to 16 capitals, digits and hyphens, starting with a capital and never ending in a digit: the id that follows can never run into it. */
+const PREFIX = /^[A-Z][A-Z0-9-]{0,14}[A-Z-]$/;
+
+/** Can `value` be a reference prefix (MONTONIO_REFERENCE_PREFIX)? */
+export const isReferencePrefix = (value: string): boolean => PREFIX.test(value);
+
+/** Montonio's merchantReference of a payment row: `prefix` (this environment's) and the row's id; unique per store, a new one for every attempt. */
+export const orderReference = (paymentId: number, prefix: string): string => `${prefix}${paymentId}`;
+
+/**
+ * The payment id in a merchantReference of this environment (`prefix`), or null: another environment's reference, or none of ours at all. Only
+ * the exact form orderReference writes counts (no leading zero, no sign, no space, a safe integer).
+ */
+export function referenceId(reference: string, prefix: string): number | null {
+  if (!reference.startsWith(prefix)) return null;
+  const digits = reference.slice(prefix.length);
+  if (!/^[1-9][0-9]{0,15}$/.test(digits)) return null;
+  const id = Number(digits);
+  return Number.isSafeInteger(id) ? id : null;
+}
 
 /**
  * Montonio's payment methods in Maria's Estonian (the owner's decision of 09.10: no English Montonio codes in her texts). Keyed by the

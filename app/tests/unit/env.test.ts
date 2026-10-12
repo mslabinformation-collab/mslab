@@ -34,16 +34,16 @@ describe("serverEnv in production", () => {
   test("returns the six required values as given; every optional one is undefined when not set", () => {
     const env = serverEnv(FULL, true);
     expect(env).toMatchObject(FULL);
-    for (const name of ["RESEND_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "ADMIN_KEY", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "MEDIA_LOCAL", "CRON_SECRET", "BUNNY_LIBRARY_ID", "BUNNY_API_KEY", "BUNNY_TOKEN_KEY", "BUNNY_WEBHOOK_SECRET", "BUNNY_FAKE_URL", "SITE_GATE", "PREVIEW_SECRET", "MONTONIO_ENV", "MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER", "MONTONIO_FAKE_URL", "PAYMENT_MOCK_IN_PRODUCTION"] as const)
+    for (const name of ["RESEND_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "ADMIN_KEY", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "MEDIA_LOCAL", "CRON_SECRET", "BUNNY_LIBRARY_ID", "BUNNY_API_KEY", "BUNNY_TOKEN_KEY", "BUNNY_WEBHOOK_SECRET", "BUNNY_FAKE_URL", "SITE_GATE", "PREVIEW_SECRET", "MONTONIO_ENV", "MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER", "MONTONIO_FAKE_URL", "PAYMENT_MOCK_IN_PRODUCTION", "MONTONIO_REFERENCE_PREFIX"] as const)
       expect(env[name], name).toBeUndefined();
   });
 
   test("optional values are passed through; blank ones count as not set", () => {
     const env = serverEnv(
-      { ...FULL, RESEND_API_KEY: SECRET_KEY, TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHAT_ID: "42", ADMIN_KEY: "k", R2_ACCOUNT_ID: "acct", R2_ACCESS_KEY_ID: "id", R2_SECRET_ACCESS_KEY: "secret", R2_BUCKET: "mslab-media", MEDIA_LOCAL: "1", CRON_SECRET: "c", BUNNY_LIBRARY_ID: "12345", BUNNY_API_KEY: "bunny-api-key", BUNNY_TOKEN_KEY: "bunny-token-key", BUNNY_WEBHOOK_SECRET: "bunny-hook", BUNNY_FAKE_URL: "http://localhost:3998", SITE_GATE: "1", PREVIEW_SECRET: "preview-secret", MONTONIO_ENV: "sandbox", MONTONIO_ACCESS_KEY: "access", MONTONIO_SECRET_KEY: "secret", PAYMENT_PROVIDER: "mock", MONTONIO_FAKE_URL: "http://localhost:3997", PAYMENT_MOCK_IN_PRODUCTION: "1" },
+      { ...FULL, RESEND_API_KEY: SECRET_KEY, TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHAT_ID: "42", ADMIN_KEY: "k", R2_ACCOUNT_ID: "acct", R2_ACCESS_KEY_ID: "id", R2_SECRET_ACCESS_KEY: "secret", R2_BUCKET: "mslab-media", MEDIA_LOCAL: "1", CRON_SECRET: "c", BUNNY_LIBRARY_ID: "12345", BUNNY_API_KEY: "bunny-api-key", BUNNY_TOKEN_KEY: "bunny-token-key", BUNNY_WEBHOOK_SECRET: "bunny-hook", BUNNY_FAKE_URL: "http://localhost:3998", SITE_GATE: "1", PREVIEW_SECRET: "preview-secret", MONTONIO_ENV: "sandbox", MONTONIO_ACCESS_KEY: "access", MONTONIO_SECRET_KEY: "secret", PAYMENT_PROVIDER: "mock", MONTONIO_FAKE_URL: "http://localhost:3997", PAYMENT_MOCK_IN_PRODUCTION: "1", MONTONIO_REFERENCE_PREFIX: "MSLAB-X" },
       true,
     );
-    expect(env).toMatchObject({ RESEND_API_KEY: SECRET_KEY, TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHAT_ID: "42", ADMIN_KEY: "k", R2_ACCOUNT_ID: "acct", R2_ACCESS_KEY_ID: "id", R2_SECRET_ACCESS_KEY: "secret", R2_BUCKET: "mslab-media", MEDIA_LOCAL: "1", CRON_SECRET: "c", BUNNY_LIBRARY_ID: "12345", BUNNY_API_KEY: "bunny-api-key", BUNNY_TOKEN_KEY: "bunny-token-key", BUNNY_WEBHOOK_SECRET: "bunny-hook", BUNNY_FAKE_URL: "http://localhost:3998", SITE_GATE: "1", PREVIEW_SECRET: "preview-secret", MONTONIO_ENV: "sandbox", MONTONIO_ACCESS_KEY: "access", MONTONIO_SECRET_KEY: "secret", PAYMENT_PROVIDER: "mock", MONTONIO_FAKE_URL: "http://localhost:3997", PAYMENT_MOCK_IN_PRODUCTION: "1" });
+    expect(env).toMatchObject({ RESEND_API_KEY: SECRET_KEY, TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHAT_ID: "42", ADMIN_KEY: "k", R2_ACCOUNT_ID: "acct", R2_ACCESS_KEY_ID: "id", R2_SECRET_ACCESS_KEY: "secret", R2_BUCKET: "mslab-media", MEDIA_LOCAL: "1", CRON_SECRET: "c", BUNNY_LIBRARY_ID: "12345", BUNNY_API_KEY: "bunny-api-key", BUNNY_TOKEN_KEY: "bunny-token-key", BUNNY_WEBHOOK_SECRET: "bunny-hook", BUNNY_FAKE_URL: "http://localhost:3998", SITE_GATE: "1", PREVIEW_SECRET: "preview-secret", MONTONIO_ENV: "sandbox", MONTONIO_ACCESS_KEY: "access", MONTONIO_SECRET_KEY: "secret", PAYMENT_PROVIDER: "mock", MONTONIO_FAKE_URL: "http://localhost:3997", PAYMENT_MOCK_IN_PRODUCTION: "1", MONTONIO_REFERENCE_PREFIX: "MSLAB-X" });
     expect(serverEnv({ ...FULL, RESEND_API_KEY: "  ", ADMIN_KEY: "", CRON_SECRET: " " }, true)).toMatchObject({ RESEND_API_KEY: undefined, ADMIN_KEY: undefined, CRON_SECRET: undefined });
   });
 
@@ -158,18 +158,18 @@ describe("gateEnv (the middleware: the coming-soon gate's two settings only)", (
 });
 
 describe("paymentsEnv (phase 2b)", () => {
-  test("the six payment settings, trimmed, blank as not set, without the required ones even in production", () => {
-    expect(paymentsEnv({})).toEqual({ MONTONIO_ENV: undefined, MONTONIO_ACCESS_KEY: undefined, MONTONIO_SECRET_KEY: undefined, PAYMENT_PROVIDER: undefined, MONTONIO_FAKE_URL: undefined, PAYMENT_MOCK_IN_PRODUCTION: undefined });
+  test("the seven payment settings, trimmed, blank as not set, without the required ones even in production", () => {
+    expect(paymentsEnv({})).toEqual({ MONTONIO_ENV: undefined, MONTONIO_ACCESS_KEY: undefined, MONTONIO_SECRET_KEY: undefined, PAYMENT_PROVIDER: undefined, MONTONIO_FAKE_URL: undefined, PAYMENT_MOCK_IN_PRODUCTION: undefined, MONTONIO_REFERENCE_PREFIX: undefined });
     expect(paymentsEnv({ MONTONIO_ENV: " live ", MONTONIO_ACCESS_KEY: "a\n", MONTONIO_SECRET_KEY: "  ", PAYMENT_PROVIDER: "" })).toMatchObject({ MONTONIO_ENV: "live", MONTONIO_ACCESS_KEY: "a", MONTONIO_SECRET_KEY: undefined, PAYMENT_PROVIDER: undefined });
   });
 
-  test("with no argument it reads process.env, in production too, and only its six names", () => {
+  test("with no argument it reads process.env, in production too, and only its seven names", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("MONTONIO_ACCESS_KEY", " access ");
     vi.stubEnv("DATABASE_URL", "");
     expect(paymentsEnv().MONTONIO_ACCESS_KEY).toBe("access");
     expect(Object.keys(paymentsEnv({ DATABASE_URL: "postgres://x", RESEND_API_KEY: "k" })).sort()).toEqual(
-      ["MONTONIO_ACCESS_KEY", "MONTONIO_ENV", "MONTONIO_FAKE_URL", "MONTONIO_SECRET_KEY", "PAYMENT_MOCK_IN_PRODUCTION", "PAYMENT_PROVIDER"],
+      ["MONTONIO_ACCESS_KEY", "MONTONIO_ENV", "MONTONIO_FAKE_URL", "MONTONIO_REFERENCE_PREFIX", "MONTONIO_SECRET_KEY", "PAYMENT_MOCK_IN_PRODUCTION", "PAYMENT_PROVIDER"],
     );
   });
 });

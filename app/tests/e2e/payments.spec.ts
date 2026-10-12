@@ -77,7 +77,7 @@ async function atBank(page: Page, outcome: "Makstud" | "Pooleli" | "Katkesta"): 
 
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
-/** The reference (MSLAB-M<id>) of the payer's only payment row. */
+/** The reference (MSLAB-L<id>: this machine's prefix) of the payer's only payment row. */
 async function onlyReference(email: string): Promise<string> {
   const rows = await onLocalDb((sql) => sql<{ reference: string }[]>`select reference from payments where email = ${email}`, { marksPages: false });
   expect(rows).toHaveLength(1);

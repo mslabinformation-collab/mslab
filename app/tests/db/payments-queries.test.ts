@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import type { Db } from "@/db/client";
 import { attachOrder, failPayment, insertPayment, isConnectionError, paymentByReference, paymentContext, releaseHold, releaseHoldLocked } from "@/db/queries/payments";
 import { courses, payments, registrations } from "@/db/schema";
-import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtures";
+import { contactCourse, pendingPayment, registrationOn, TEST_MONTONIO } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
 // The payments table's queries (phase 2b, spec 5.1): the reference is written with the row, a hold ends only when nothing else of the
@@ -22,12 +22,19 @@ describe("insertPayment", () => {
   test("a pending row whose reference is MSLAB-M<its id>, stamped with `now`; a new one for every attempt", async () => {
     const r = await registrationOn(db, await contactCourse(db));
     const input = { kind: "prepayment" as const, registrationId: r.id, courseId: r.courseId, clientId: null, email: r.email, name: r.name, locale: "et" as const, amountCents: 17500 };
-    const a = await insertPayment(db, input, NOW);
-    const b = await insertPayment(db, input, NOW);
+    const a = await insertPayment(db, input, NOW, "MSLAB-M");
+    const b = await insertPayment(db, input, NOW, "MSLAB-M");
     expect(a).toMatchObject({ reference: `MSLAB-M${a.id}`, status: "pending", providerUuid: null, paidAt: null, newsletter: false, method: "", bank: "", createdAt: NOW, updatedAt: NOW });
     expect(b.reference).toBe(`MSLAB-M${b.id}`);
     expect(b.reference).not.toBe(a.reference);
     expect((await db.select().from(payments)).map((x) => x.reference).sort()).toEqual([a.reference, b.reference].sort());
+  });
+
+  test("the prefix is the store's of this environment: MSLAB-L<id> on this machine, never production's MSLAB-M<id>", async () => {
+    const r = await registrationOn(db, await contactCourse(db));
+    const input = { kind: "prepayment" as const, registrationId: r.id, courseId: r.courseId, clientId: null, email: r.email, name: r.name, locale: "et" as const, amountCents: 17500 };
+    const local = await insertPayment(db, input, NOW, "MSLAB-L");
+    expect(local.reference).toBe(`MSLAB-L${local.id}`);
   });
 
   test("inside a caller's transaction it is a savepoint: it goes with the transaction, and no placeholder reference is left behind", async () => {
@@ -35,7 +42,7 @@ describe("insertPayment", () => {
     const input = { kind: "prepayment" as const, registrationId: r.id, courseId: r.courseId, clientId: null, email: r.email, name: r.name, locale: "et" as const, amountCents: 17500 };
     await expect(
       db.transaction(async (tx) => {
-        const row = await insertPayment(tx, input, NOW);
+        const row = await insertPayment(tx, input, NOW, TEST_MONTONIO.referencePrefix);
         expect(row.reference).toBe(`MSLAB-M${row.id}`);
         throw new Error("rolled back");
       }),
@@ -45,7 +52,7 @@ describe("insertPayment", () => {
 
   test("the e-course's newsletter box is kept", async () => {
     const r = await registrationOn(db, await contactCourse(db));
-    const row = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: r.courseId, clientId: null, email: "ostja@example.com", name: "Ostja", locale: "ru", amountCents: 19000, newsletter: true }, NOW);
+    const row = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: r.courseId, clientId: null, email: "ostja@example.com", name: "Ostja", locale: "ru", amountCents: 19000, newsletter: true }, NOW, TEST_MONTONIO.referencePrefix);
     expect(row).toMatchObject({ kind: "ecourse", registrationId: null, locale: "ru", newsletter: true });
   });
 });
@@ -155,7 +162,7 @@ describe("paymentContext", () => {
 
   test("an e-course payment has a course and nothing else; a payment whose course is gone has nothing; an unknown payment too", async () => {
     const c = await contactCourse(db);
-    const e = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: c.course.id, clientId: null, email: "ostja@example.com", name: "Ostja", locale: "et", amountCents: 19000 }, NOW);
+    const e = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: c.course.id, clientId: null, email: "ostja@example.com", name: "Ostja", locale: "et", amountCents: 19000 }, NOW, TEST_MONTONIO.referencePrefix);
     expect(await paymentContext(db, e.id)).toMatchObject({ course: { slug: "kulmumeistri-baaskoolitus" }, session: null, payToken: null });
     await db.update(payments).set({ courseId: null }).where(eq(payments.id, e.id));
     expect(await paymentContext(db, e.id)).toEqual({ course: null, session: null, payToken: null });
@@ -165,14 +172,15 @@ describe("paymentContext", () => {
 });
 
 describe("isConnectionError: the only errors that stop a loop of the daily check", () => {
-  test("SQLSTATE class 08 and the driver's connection errors, on the error or down its cause (drizzle's wrapper); nothing else", () => {
+  test("SQLSTATE class 08, a server shutting down, starting up or full, and the driver's connection errors, on the error or down its cause (drizzle's wrapper); nothing else", () => {
     const wrapped = (code: string) => Object.assign(new Error("Failed query"), { cause: Object.assign(new Error("driver"), { code }) });
-    for (const code of ["08000", "08003", "08006", "08001", "08004", "08P01", "CONNECTION_CLOSED", "CONNECTION_ENDED", "CONNECTION_DESTROYED", "CONNECT_TIMEOUT", "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH"]) {
+    // 57P01 admin_shutdown, 57P02 crash_shutdown, 57P03 cannot_connect_now (a restart), 53300 too_many_connections: the next row meets them too
+    for (const code of ["08000", "08003", "08006", "08001", "08004", "08P01", "57P01", "57P02", "57P03", "53300", "CONNECTION_CLOSED", "CONNECTION_ENDED", "CONNECTION_DESTROYED", "CONNECT_TIMEOUT", "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH"]) {
       expect(isConnectionError(Object.assign(new Error("x"), { code })), code).toBe(true);
       expect(isConnectionError(wrapped(code)), `wrapped ${code}`).toBe(true);
     }
     // a poison row's errors, and the transient ones a retry gets past, go on to the next row
-    for (const code of ["P0001", "23505", "23514", "40001", "40P01", "55P03", "57014", "XX000", "08", "0800", "080000", "ABC08"]) {
+    for (const code of ["P0001", "23505", "23514", "40001", "40P01", "55P03", "57014", "57P04", "53200", "XX000", "08", "0800", "080000", "ABC08"]) {
       expect(isConnectionError(Object.assign(new Error("x"), { code })), code).toBe(false);
       expect(isConnectionError(wrapped(code)), `wrapped ${code}`).toBe(false);
     }

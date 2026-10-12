@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { signHs256 } from "@/server/payments/jwt";
 import { montonioClient, type MontonioConfig } from "@/server/payments/montonio";
 import { refuseOffMachineFetch } from "../fakes";
-import { createFakeMontonio, isLocalUrl } from "../e2e/fake-montonio";
+import { createFakeMontonio, isLocalUrl, startFakeMontonio } from "../e2e/fake-montonio";
 import { E2E_MONTONIO } from "../e2e/montonio-values";
 
 // The e2e run's fake Montonio (tests/e2e/fake-montonio.ts) answers the app's real client: an order, the bank's "Makstud", the webhook it
@@ -27,6 +27,17 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((s) => new Promise((r) => s.close(r))));
 });
 
+test("the run's fake listens on 127.0.0.1 only (never on the network), and its localhost address still reaches it", async () => {
+  const server = await startFakeMontonio(0);
+  servers.push(server);
+  const { address, port } = server.address() as AddressInfo;
+  expect(address).toBe("127.0.0.1");
+  // E2E_MONTONIO.url is http://localhost:<port>: Node's fetch tries every address localhost has (::1 and 127.0.0.1), as the browser does
+  const res = await fetch(`http://localhost:${port}/health`);
+  expect([res.status, await res.json()]).toEqual([200, { ok: true }]);
+  expect(E2E_MONTONIO.url).toBe(`http://localhost:${E2E_MONTONIO.port}`);
+});
+
 /** A stand-in for the app's notificationUrl: records every body it is sent. */
 const webhookSink = async () => {
   const hooks: string[] = [];
@@ -44,7 +55,7 @@ const webhookSink = async () => {
 test("an order, the bank's 'Makstud': the webhook and the return carry the same PAID token; GET /orders says PAID", async () => {
   const base = await listen(createFakeMontonio());
   const { hooks, url: hook } = await webhookSink();
-  const config: MontonioConfig = { accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true };
+  const config: MontonioConfig = { accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true, referencePrefix: "MSLAB-L" };
   const client = montonioClient(config);
   const order = await client.createOrder({ reference: "MSLAB-M9", amountCents: 17550, locale: "et", returnUrl: "https://mslab.example/api/payments/return", notificationUrl: `${hook}/api/payments/notify` });
   expect(order.paymentUrl).toBe(`${base}/pay/${order.uuid}`);
@@ -66,7 +77,7 @@ test("an order, the bank's 'Makstud': the webhook and the return carry the same 
 test("'Pooleli' sends no webhook; the test hook settles it later and sends one; 'Katkesta' is ABANDONED", async () => {
   const base = await listen(createFakeMontonio());
   const { hooks, url: hook } = await webhookSink();
-  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true });
+  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true, referencePrefix: "MSLAB-L" });
   const urls = { returnUrl: "https://mslab.example/api/payments/return", notificationUrl: `${hook}/api/payments/notify` };
   const a = await client.createOrder({ reference: "MSLAB-M10", amountCents: 1000, locale: "ru", ...urls });
   const pending = await fetch(a.paymentUrl, { method: "POST", body: new URLSearchParams({ status: "PENDING" }), redirect: "manual" });
@@ -83,7 +94,7 @@ test("'Pooleli' sends no webhook; the test hook settles it later and sends one; 
 test("a reference reused for an unpaid order replaces it, as at Montonio (the double-payment rule's re-send): the old page is gone, the new one works", async () => {
   const base = await listen(createFakeMontonio());
   const { url: hook } = await webhookSink();
-  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true });
+  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true, referencePrefix: "MSLAB-L" });
   const request = { reference: "MSLAB-M13", amountCents: 5000, locale: "et" as const, returnUrl: "https://mslab.example/r", notificationUrl: `${hook}/n` };
   const first = await client.createOrder(request);
   const second = await client.createOrder(request);
@@ -144,7 +155,7 @@ test("and the rest of the order's rules: amounts that agree and are positive, EU
 test("GET /orders wants Montonio's Bearer token and knows its orders only; the bank page escapes what it prints; /health answers", async () => {
   const base = await listen(createFakeMontonio());
   expect(await (await fetch(`${base}/health`)).json()).toEqual({ ok: true });
-  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true });
+  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true, referencePrefix: "MSLAB-L" });
   expect(await client.fetchOrder("no-such-order")).toBeNull();
   const get = (token?: string) => fetch(`${base}/orders/x`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
   expect((await get()).status).toBe(401);
@@ -159,7 +170,7 @@ test("GET /orders wants Montonio's Bearer token and knows its orders only; the b
 
 test("the webhook goes only to this machine: a notificationUrl anywhere else is logged and skipped, and the bank still sends the browser back (Task 10)", async () => {
   const base = await listen(createFakeMontonio());
-  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true });
+  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true, referencePrefix: "MSLAB-L" });
   const elsewhere = ["https://shop.example/api/payments/notify", "http://localhost.evil.example/n", "http://127.0.0.1.evil.example/n", "http://localhost@evil.example/n", "not a url"];
   const logged = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
@@ -189,7 +200,7 @@ test("isLocalUrl: localhost, 127.0.0.1 and [::1] (any port, http or https) are t
 
 test("the test hook mints the token Montonio would sign for an order without settling it: the app's client reads it, the order stays as it is", async () => {
   const base = await listen(createFakeMontonio());
-  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true });
+  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true, referencePrefix: "MSLAB-L" });
   const order = await client.createOrder({ reference: "MSLAB-M31", amountCents: 17500, locale: "et", returnUrl: "https://mslab.example/r", notificationUrl: "http://127.0.0.1:1/n" });
   const minted = await fetch(`${base}/_fake/token/${order.uuid}?status=PAID`);
   expect(minted.status).toBe(200);
@@ -203,7 +214,7 @@ test("the test hook mints the token Montonio would sign for an order without set
 test("the refund hook refunds an order as Montonio does (GET /orders says REFUNDED, or PARTIALLY_REFUNDED for a part) and answers the refund token Montonio would send, sending nothing itself", async () => {
   const sink = await webhookSink();
   const base = await listen(createFakeMontonio());
-  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true });
+  const client = montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true, referencePrefix: "MSLAB-L" });
   const order = await client.createOrder({ reference: "MSLAB-M32", amountCents: 17500, locale: "et", returnUrl: "https://mslab.example/r", notificationUrl: sink.url });
   const part = await fetch(`${base}/_fake/refund/${order.uuid}`, { method: "POST", body: JSON.stringify({ amount: 50 }) });
   expect(part.status).toBe(200);

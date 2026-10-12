@@ -1,3 +1,4 @@
+import { isReferencePrefix, LOCAL_REFERENCE_PREFIX, ORDER_REFERENCE_PREFIX, PREVIEW_REFERENCE_PREFIX } from "@/domain/payments";
 import { paymentsEnv, type PaymentsEnv } from "../env";
 import { logFailure, logNote } from "../log";
 import { JwtError, signHs256, verifyHs256 } from "./jwt";
@@ -5,11 +6,11 @@ import { JwtError, signHs256, verifyHs256 } from "./jwt";
 // Montonio's Stargate API (phase 2b, spec 4 and 7.1–7.3; docs.montonio.com checked 09.10.2026), ported from Rempire's integration:
 // - every request is a JWT, HS256 with the store's secret key, with `accessKey`, `iat` and `exp` (10 minutes for a POST, an hour for a GET);
 //   a POST body is { "data": "<jwt>" }, a GET carries "Authorization: Bearer <jwt>";
-// - POST /orders creates an order: merchantReference (ours, MSLAB-M<id>, a new one for every attempt), returnUrl, notificationUrl, grandTotal
-//   and payment.amount in euros (a number with at most two decimals; cents everywhere else in this app), currency EUR, locale et/ru, and
-//   payment.method "paymentInitiation" with NO preferredProvider, so Montonio's own page lists every bank and every method the store has on
-//   (D4), and methodOptions.paymentDescription "MS LAB <reference>". We never send paymentReference: banks check it strictly and a bad one
-//   fails the payment. The window is Montonio's default 30 minutes (domain/sessions.ts SEAT_HOLD_MS holds the seat as long);
+// - POST /orders creates an order: merchantReference (ours, MSLAB-M<id> in production, a new one for every attempt; the prefix is the
+//   environment's, montonioConfig), returnUrl, notificationUrl, grandTotal and payment.amount in euros (a number with at most two decimals;
+//   cents everywhere else in this app), currency EUR, locale et/ru, and payment.method "paymentInitiation" with NO preferredProvider, so
+//   Montonio's own page lists every bank and every method the store has on (D4), and methodOptions.paymentDescription "MS LAB <reference>".
+//   We never send paymentReference: banks check it strictly and a bad one fails the payment. The window is Montonio's default 30 minutes (domain/sessions.ts SEAT_HOLD_MS holds the seat as long);
 // - the webhook (POST notificationUrl { orderToken }) and the return (returnUrl?order-token=…) carry the same signed order token, in any
 //   order; GET /orders/:uuid answers what Montonio itself believes (its grandTotal is a string there);
 // - a refund's status change is a webhook of its own to the same notificationUrl, { refundToken }: a JWT signed the same way, whose claims
@@ -73,12 +74,14 @@ export function toCents(euros: unknown): number | null {
 /** Cents as the euros Montonio takes: a number with at most two decimals (17550 → 175.5). */
 export const toEuros = (cents: number): number => Math.round(cents) / 100;
 
-export type Runtime = { production: boolean; onVercel: boolean };
+/** `vercelEnv`: Vercel's VERCEL_ENV ("production", "preview", "development"), set with VERCEL; undefined elsewhere. */
+export type Runtime = { production: boolean; onVercel: boolean; vercelEnv?: string };
 
-/** This process: a production build (`next start`, Vercel) or not, and on Vercel or not (VERCEL is set there, build and run time). */
-export const currentRuntime = (): Runtime => ({ production: process.env.NODE_ENV === "production", onVercel: Boolean(process.env.VERCEL) });
+/** This process: a production build (`next start`, Vercel) or not, on Vercel or not (VERCEL is set there, build and run time), and which of Vercel's environments. */
+export const currentRuntime = (): Runtime => ({ production: process.env.NODE_ENV === "production", onVercel: Boolean(process.env.VERCEL), vercelEnv: process.env.VERCEL_ENV?.trim() || undefined });
 
-export type MontonioConfig = { accessKey: string; secretKey: string; baseUrl: string; live: boolean; mock: boolean };
+/** `referencePrefix`: what this environment's merchantReferences start with (domain/payments.ts orderReference; referencePrefixOf). */
+export type MontonioConfig = { accessKey: string; secretKey: string; baseUrl: string; live: boolean; mock: boolean; referencePrefix: string };
 
 /** The names of this machine: the only places the fake Montonio is ever reached, whatever MONTONIO_FAKE_URL says. */
 const LOCAL_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -94,6 +97,20 @@ function localHttpUrl(value: string): URL | null {
   return url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname) && !url.username && !url.password ? url : null;
 }
 
+/**
+ * This environment's reference prefix: MONTONIO_REFERENCE_PREFIX when it is set (null when it is no prefix: domain/payments.ts
+ * isReferencePrefix); else MSLAB-M on Vercel's production only, MSLAB-P on a Vercel preview, and MSLAB-L anywhere else (this machine, the e2e
+ * run, a local production build, `vercel dev`). Production keeps the MSLAB-M its rows and Montonio's orders already carry; nowhere else can
+ * make a reference of production's by default, whatever keys it holds.
+ */
+function referencePrefixOf(env: PaymentsEnv, runtime: Runtime): string | null {
+  const set = env.MONTONIO_REFERENCE_PREFIX;
+  if (set !== undefined) return isReferencePrefix(set) ? set : null;
+  if (runtime.onVercel && runtime.vercelEnv === "production") return ORDER_REFERENCE_PREFIX;
+  if (runtime.onVercel && runtime.vercelEnv === "preview") return PREVIEW_REFERENCE_PREFIX;
+  return LOCAL_REFERENCE_PREFIX;
+}
+
 /** "payments are off" is noted once per instance, not on every request. */
 let notedOff = false;
 function off(why: string): null {
@@ -105,7 +122,8 @@ function off(why: string): null {
 }
 
 /**
- * The store and the address, or null: no online payments. Both keys are needed (a blank one counts as not set: paymentsEnv); only one of
+ * The store, the address and the reference prefix (referencePrefixOf; one that is no prefix turns payments off, noted once by name), or null:
+ * no online payments. Both keys are needed (a blank one counts as not set: paymentsEnv); only one of
  * them is noted once ("online payments are off"), by name. MONTONIO_ENV
  * "live" (exactly) is production, anything else the sandbox. PAYMENT_PROVIDER unset or "montonio" is Montonio; "mock" is the fake at
  * MONTONIO_FAKE_URL, refused on Vercel and in a production build without PAYMENT_MOCK_IN_PRODUCTION=1, and only when that address is plain
@@ -118,10 +136,12 @@ export function montonioConfig(env: PaymentsEnv = paymentsEnv(), runtime: Runtim
   // neither key is the normal "no payments" and says nothing; one alone is a setting forgotten or mistyped (the names only, never a value)
   if (!accessKey !== !secretKey) return off("only one of MONTONIO_ACCESS_KEY and MONTONIO_SECRET_KEY is set");
   if (!accessKey || !secretKey) return null;
+  const referencePrefix = referencePrefixOf(env, runtime);
+  if (referencePrefix === null) return off("MONTONIO_REFERENCE_PREFIX must be 2 to 16 capitals, digits or hyphens, not ending in a digit");
   const provider = env.PAYMENT_PROVIDER;
   if (provider === undefined || provider === "montonio") {
     const live = env.MONTONIO_ENV === "live";
-    return { accessKey, secretKey, baseUrl: live ? LIVE_BASE : SANDBOX_BASE, live, mock: false };
+    return { accessKey, secretKey, baseUrl: live ? LIVE_BASE : SANDBOX_BASE, live, mock: false, referencePrefix };
   }
   if (provider !== "mock") return off("PAYMENT_PROVIDER is neither montonio nor mock");
   if (runtime.onVercel) return off("PAYMENT_PROVIDER=mock is refused on Vercel");
@@ -130,7 +150,7 @@ export function montonioConfig(env: PaymentsEnv = paymentsEnv(), runtime: Runtim
   // in every runtime the mock is allowed in, a dev machine and a flagged production build alike: the fake is on this machine or it is not used
   const fake = localHttpUrl(env.MONTONIO_FAKE_URL);
   if (!fake) return off("MONTONIO_FAKE_URL must be plain http on localhost, 127.0.0.1 or [::1]");
-  return { accessKey, secretKey, baseUrl: `${fake.origin}${fake.pathname.replace(/\/+$/, "")}`, live: false, mock: true };
+  return { accessKey, secretKey, baseUrl: `${fake.origin}${fake.pathname.replace(/\/+$/, "")}`, live: false, mock: true, referencePrefix };
 }
 
 /** Are online payments on (spec 7.2)? Without them the "Maksa" buttons are hidden, the cart keeps its interest form and /api/payments/* are 404. */
@@ -214,6 +234,8 @@ export type RefundToken = { orderUuid: string; refundUuid: string; accessKey: st
 export type Montonio = {
   /** The store's access key: an order token must name it (settle.ts). */
   readonly accessKey: string;
+  /** This environment's reference prefix (montonioConfig): a payment is started under it (start.ts), and a token of another is no payment of ours (settle.ts). */
+  readonly referencePrefix: string;
   /** POST /orders: the order's Montonio uuid and the page to send the payer to. Throws a MontonioError. */
   createOrder(order: OrderRequest): Promise<{ uuid: string; paymentUrl: string }>;
   /** GET /orders/:uuid, or null on anything at all (no answer, a refusal, no order): never a throw. */
@@ -245,6 +267,7 @@ export function montonioClient(config: MontonioConfig, fetchImpl: typeof fetch =
 
   return {
     accessKey: config.accessKey,
+    referencePrefix: config.referencePrefix,
 
     async createOrder(order) {
       if (!Number.isInteger(order.amountCents) || order.amountCents <= 0) throw new RangeError("amountCents must be a positive whole number");

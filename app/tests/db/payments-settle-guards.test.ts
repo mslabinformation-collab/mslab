@@ -503,7 +503,7 @@ describe("one lock order for every payment path: course_sessions → registratio
     const { db: logged, queries } = await loggedDb();
     const m = stubMontonio();
     const c = await contactCourse(logged);
-    const e = await insertPayment(logged, { kind: "ecourse", registrationId: null, courseId: c.course.id, clientId: null, email: "ostja@example.com", name: "Ostja", locale: "et", amountCents: 19000 }, NOW);
+    const e = await insertPayment(logged, { kind: "ecourse", registrationId: null, courseId: c.course.id, clientId: null, email: "ostja@example.com", name: "Ostja", locale: "et", amountCents: 19000 }, NOW, TEST_MONTONIO.referencePrefix);
     await attachOrder(logged, e.id, "uuid-e", NOW);
     const { deps } = settleDeps(logged, m.montonio, NOW);
     queries.length = 0;
