@@ -17,14 +17,19 @@ import { logFailure } from "./log";
 // heading (spec §4, §9). A save that changes nothing raises nothing: a look at a protocol, or the repeat of a save whose answer was lost, is
 // answered with the version that holds that text.
 
-/** What a save sends: the registration, the version the screen has (0: none yet), the headings it shows and the notes under them. */
-export const saveBody = z.object({
-  registrationId: z.number().int().positive().max(2_147_483_647),
-  version: z.number().int().min(0).max(2_147_483_647),
-  titles: z.array(z.string().max(PROTOCOL_LIMITS.title)).max(PROTOCOL_LIMITS.stages),
-  notes: z.array(z.string()).max(PROTOCOL_LIMITS.stages),
-  generalNote: z.string(),
-});
+/**
+ * What a save sends: the registration, the version the screen has (0: none yet), the headings it shows and the notes under them, one note
+ * for each heading (a body with another count is not a save, so a `SaveInput` always has as many notes as titles).
+ */
+export const saveBody = z
+  .object({
+    registrationId: z.number().int().positive().max(2_147_483_647),
+    version: z.number().int().min(0).max(2_147_483_647),
+    titles: z.array(z.string().max(PROTOCOL_LIMITS.title)).max(PROTOCOL_LIMITS.stages),
+    notes: z.array(z.string()).max(PROTOCOL_LIMITS.stages),
+    generalNote: z.string(),
+  })
+  .refine((body) => body.notes.length === body.titles.length, { message: "one note for each heading", path: ["notes"] });
 export type SaveInput = z.infer<typeof saveBody>;
 
 export type SaveResult = { kind: "saved"; version: number; savedAt: Date } | { kind: "conflict"; protocol: ProtocolDraft } | { kind: "notFound" };
@@ -51,6 +56,9 @@ async function current(db: Db, registrationId: number): Promise<{ headings: stri
  * One save of the screen. A registration that is cancelled meanwhile still saves (spec §9: hidden and never sent, but nothing typed is lost).
  * The insert and the update are each one conditional statement; one that meets another save at the same moment reads again and decides on
  * what is stored then (twice at most, then the answer is a conflict with the protocol as it is).
+ * The contract with the screen: a save from an older version whose text differs from what is stored is answered with a conflict and the
+ * stored protocol, even when the stored text is the screen's own earlier save whose answer was lost. Recognising a lost answer of its own is
+ * the client's job: the screen keeps every unacknowledged text it sent and treats a conflict whose stored text equals one of them as its own save.
  */
 export async function saveProtocol(db: Db, input: SaveInput, now: Date): Promise<SaveResult> {
   for (let attempt = 0; ; attempt++) {
@@ -113,6 +121,8 @@ export const draftJson = (d: ProtocolDraft) => ({
  * 400 `{ error: "body" }` (not a save), `{ error: "text" }` (text Postgres cannot store: the screen cleans pasted text first) or
  * `{ error: "tooLong", places }` (a box over 10 000 characters: nothing is cut, the screen says so first); 413 `{ error: "size" }`; 500
  * `{ error: "server" }`, logged by the registration's id. Never cached.
+ * A save from an older version whose text differs is answered 409 with the stored protocol. Recognising a lost answer of its own is the
+ * client's job: the screen keeps every unacknowledged text it sent and treats a 409 whose stored text equals one of them as its own save.
  */
 export async function handleSave(db: Db, request: Request, now: Date): Promise<Response> {
   let value: unknown;
@@ -124,7 +134,7 @@ export async function handleSave(db: Db, request: Request, now: Date): Promise<R
     return json({ ok: false, error: "body" }, 400);
   }
   const parsed = saveBody.safeParse(value);
-  if (!parsed.success || parsed.data.notes.length !== parsed.data.titles.length) return json({ ok: false, error: "body" }, 400);
+  if (!parsed.success) return json({ ok: false, error: "body" }, 400);
   const input = parsed.data;
   if (![...input.notes, input.generalNote].every(storable)) return json({ ok: false, error: "text" }, 400);
   const places = overLimit(input.notes, input.generalNote);

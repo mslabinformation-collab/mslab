@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { courses, protocols, registrations } from "@/db/schema";
 import { PROTOCOL_LIMITS } from "@/domain/protocols";
-import { handleSave, MAX_SAVE_CHARS, saveProtocol, type SaveInput } from "@/server/protocols";
+import { handleSave, MAX_SAVE_CHARS, saveBody, saveProtocol, type SaveInput } from "@/server/protocols";
 import { HEADINGS, protocolCourse, student } from "./protocols-fixtures";
 import { makeTestDb } from "./helpers";
 
@@ -162,5 +162,17 @@ describe("POST /api/admin/protokoll (handleSave)", () => {
     for (const bad of ["{", "[]", { registrationId: mari.id }, body(mari.id, -1), body(mari.id, 0, { notes: ["only one"] }), body(0, 0), body(mari.id, 0, { titles: ["x".repeat(121)], notes: [""] })])
       expect((await post(bad)).status, JSON.stringify(bad).slice(0, 80)).toBe(400);
     expect(await answer(await post("x".repeat(MAX_SAVE_CHARS + 1)))).toEqual([413, { ok: false, error: "size" }, "no-store"]);
+  });
+
+  test("one note for each heading is part of the body's shape (saveBody), so a SaveInput always has it; a body with another count is the same 400 as before, and nothing is stored", async () => {
+    const { mari } = await setup();
+    const ok = body(mari.id, 0);
+    expect(saveBody.safeParse(ok).success).toBe(true);
+    expect(saveBody.safeParse({ ...ok, titles: [], notes: [] }).success).toBe(true);
+    for (const bad of [{ ...ok, notes: ["only one"] }, { ...ok, notes: [...notes("A"), "extra"] }, { ...ok, titles: ["Üks"] }]) {
+      expect(saveBody.safeParse(bad).success, JSON.stringify(bad.notes)).toBe(false);
+      expect(await answer(await post(bad))).toEqual([400, { ok: false, error: "body" }, "no-store"]);
+    }
+    expect(await stored(mari.id)).toBeUndefined();
   });
 });
