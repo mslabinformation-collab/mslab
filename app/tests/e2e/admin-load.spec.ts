@@ -27,6 +27,7 @@ const ADMIN_PAGES = [
   "/admin/opilased",
   "/admin/paringud",
   "/admin/praktika",
+  "/admin/protokollid",
   "/admin/registreerimised",
   "/admin/seaded",
   "/admin/uudised",

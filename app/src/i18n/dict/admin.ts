@@ -147,6 +147,11 @@ export const adminEt = {
       seats: "Vabu kohti",
       empty: "Kalendris pole tulevasi koolitusi.",
     },
+    // today's sessions in Tallinn, each with "Protokollid" (phase protocols, spec §4); the card is hidden on a day with none
+    today: {
+      title: "Täna",
+      students: "Õpilasi: {n}",
+    },
     inbox: {
       title: "Päringud",
       open: "{n} tegemata",
@@ -257,6 +262,46 @@ export const adminEt = {
     online: "Veebimaksed",
     // the Õpilased drawer
     noneForClient: "Makseid pole.",
+  },
+
+  // The course day's protocols (phase protocols, spec §4): /admin/protokollid?sessioon=<id> | ?registreering=<id> (ProtocolScreen.tsx and its
+  // autosave). The status marks are spec §3's. {time} is "HH:MM" in Tallinn, {n} a count, {max} the box's limit, {date} a day and a time.
+  protocols: {
+    eyebrow: "Koolituspäev",
+    title: "Protokollid",
+    // the entry points: the Kalender session drawer and the overview's "Täna" (open), the Registreerimised drawer (openOne)
+    open: "Protokollid",
+    openOne: "Ava protokoll",
+    notFound: "Seda toimumist või registreeringut ei leitud, või pole see kontaktkoolitus.",
+    toCalendar: "Kalendrisse",
+    toRegistration: "Registreeringu juurde",
+    individual: "Individuaalkoolitus",
+    sessionCancelled: "Toimumine on tühistatud",
+    hidden: "Tühistatud registreeringuid peidetud: {n}",
+    empty: "Sellel toimumisel pole õpilasi.",
+    cancelledOne: "Registreering on tühistatud: protokolli ei näidata ega saadeta.",
+    students: "Õpilased",
+    awaiting: "ootab ettemaksu",
+    mark: { draft: "Mustand", sent: "Saadetud", changed: "Muudetud" },
+    // on a student's chip while her text is not confirmed by the server (it is in this browser all the same)
+    unsavedMark: "Salvestamata",
+    practice: "Praktiline osa",
+    general: "Üldised märkused",
+    noStages: "Koolitusel pole protokolli punkte. Lisa need koolituse juures („Protokolli punktid“); seni on siin ainult üldised märkused.",
+    saved: "Salvestatud {time}",
+    pending: "Salvestamata muudatused",
+    saving: "Salvestan…",
+    retrying: "Salvestamata — proovin uuesti",
+    tooLongStatus: "Salvestamata — üks tekst on liiga pikk",
+    signedOut: "Salvestamata — logi uuesti sisse. Tekst on selles seadmes alles.",
+    gone: "Seda registreeringut enam ei ole. Tekst on selles seadmes alles.",
+    // the browser could not keep the unsaved text (its storage full or blocked): shown on that protocol until the server has the text
+    notKept: "Seda teksti ei saa selles seadmes hoida (brauseri mälu on täis või suletud). Ära sulge lehte enne, kui see on salvestatud.",
+    tooLong: "Liiga pikk: {n} / {max} märki. Lühenda, siis salvestan.",
+    conflict: "Seda protokolli muudeti vahepeal teises seadmes või aknas. Näed nüüd salvestatud teksti; selle ekraani salvestamata tekst on allpool.",
+    conflictLost: "Selle ekraani salvestamata tekst",
+    dismiss: "Selge",
+    locked: "Saadetud {date}. Õpilane näeb seda versiooni.",
   },
 
   requests: {

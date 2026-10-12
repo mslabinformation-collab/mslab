@@ -1,0 +1,171 @@
+/* The course day's protocols (phase protocols, spec §4): the students in a column on the left on a wide screen and a row of chips across the
+   top on a narrow one (a container query on the screen's own width, 720 px: the 1194 px tablet and wider get the column; the 834 px tablet
+   upright, its menu beside the screen, and a phone the chips), the selected student's protocol with boxes that grow with their text, and the
+   save status. Tokens only; every target 44 px. */
+
+.head {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+.screen {
+  container-type: inline-size;
+}
+
+.layout {
+  display: grid;
+  align-items: start;
+  gap: 20px;
+}
+
+.students {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@container (min-width: 720px) {
+  .withList {
+    grid-template-columns: 230px minmax(0, 1fr);
+  }
+
+  .withList .students {
+    position: sticky;
+    top: 16px;
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+}
+
+.student {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--heather);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 600 14px/1.3 var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.student:hover {
+  border-color: var(--ink);
+}
+
+.student[aria-pressed="true"] {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.student:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.studentName {
+  overflow-wrap: anywhere;
+}
+
+.marks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.awaiting {
+  color: var(--muted-2);
+  font: 500 12px/1.3 var(--font-body);
+}
+
+.unsaved {
+  color: var(--bad);
+  font: 600 12px/1.3 var(--font-body);
+}
+
+.editor {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--paper);
+}
+
+.editorHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+
+.editorHead p {
+  margin: 0;
+}
+
+.part {
+  display: grid;
+  gap: 16px;
+}
+
+/* the box grows with its text (GrowingText): no scrollbar or handle of its own */
+.note {
+  min-height: 96px;
+  overflow: hidden;
+  resize: none;
+}
+
+/* over its limit (the text under it says by how much), as ui.input's refused field */
+.note[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+
+/* "Üldised märkused": a heading of its own, as the practice part's */
+.part .generalLabel {
+  font: 500 18px/1.3 var(--font-display);
+}
+
+.conflict {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.conflict p {
+  margin: 0;
+}
+
+.lost {
+  display: grid;
+  gap: 8px;
+}
+
+.lost summary {
+  padding: 12px 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lostPart {
+  display: grid;
+  gap: 2px;
+}
+
+.lostText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .editor {
+    padding: 20px 16px;
+  }
+}
