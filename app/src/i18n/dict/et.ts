@@ -503,6 +503,17 @@ export const et = {
       notYou: "Kui see polnud sina, kirjuta kohe Mariale.",
       notYouAt: "Kui see polnud sina, kirjuta kohe Mariale: {email}",
     },
+    // The protocol's mails (server/account-mail.ts protocolMail, phase protocols): "Saada" sends the first, "Saada uuesti" the second. The
+    // button opens the protocol (with a live login it signs her in first); the first mail adds the feedback line, a link to the form.
+    protocolMail: {
+      subjectFirst: "Sinu koolituse protokoll on valmis",
+      subjectAgain: "Sinu koolituse protokolli on uuendatud",
+      leadFirst: "Sinu koolituse protokoll on valmis.",
+      leadAgain: "Sinu koolituse protokolli on uuendatud.",
+      button: "Vaata protokolli",
+      valid: "Kood ja nupp kehtivad 30 minutit. Hiljem leiad protokolli Minu koolituste lehelt.",
+      feedback: "Soovi korral jäta meile tagasisidet",
+    },
     // The one sentence on each course card (domain/account-cards.ts nextStep): `{amount}` and `{rest}` are euros ("175 €"),
     // `{date}` the last day of an e-course access ("22.03.2027"). A session's date, time and place are on the card's own
     // line, so the sentences do not repeat them.
