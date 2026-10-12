@@ -11,6 +11,8 @@ const BROWSER_FILES = [
   // phase protocols, Task 1
   "src/lib/to-storable.ts",
   "src/domain/protocols.ts",
+  // Task 4
+  "src/components/admin/ProtocolStagesEditor.tsx",
 ];
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));
 const STORABLE_IMPORT = /from "(@\/lib\/storable|(\.\.?\/)+(lib\/)?storable)"/;

@@ -110,6 +110,7 @@ describe("drafts", () => {
       body: { et: "B" },
       outcomes: [{ et: "O" }],
       includes: [{ et: "I" }],
+      protocolStages: ["Ettevalmistus", "  ", "Värvimine"],
       price: null,
       priceGroup: 22050,
       priceIndividual: 30000,
@@ -135,10 +136,11 @@ describe("drafts", () => {
       durationLabel: { et: "6 ak" },
       images: [{ key: "/seed/a.jpg", alt: { et: "" } }],
       recommendationIds: [3, 1],
+      protocolStages: ["Ettevalmistus", "Värvimine"], // the blank one is not a heading
       badge: { label: { et: "Uus" }, bg: "#DDD4DC", fg: "#222222" },
     });
     expect(draftFromCourse({ ...stored, language: "EN" }).language).toBe("ET"); // not one of the three: ET
-    expect(newCourseDraft()).toMatchObject({ id: null, version: null, type: "contact", published: false, isSample: false, badge: null });
+    expect(newCourseDraft()).toMatchObject({ id: null, version: null, type: "contact", published: false, isSample: false, badge: null, protocolStages: [] });
   });
 
   test("moveItem moves one item and leaves the input alone", () => {

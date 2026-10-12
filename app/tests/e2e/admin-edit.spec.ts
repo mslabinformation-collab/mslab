@@ -218,12 +218,14 @@ test.describe("course editor", () => {
     for (const name of ["Ligipääs (kuud)", "Videotunde", /^Soodustus järgmiselt koolituselt/]) await expect(field(name)).toHaveCount(1);
     for (const name of ["Grupikoolituse hind (€)", "Individuaalkoolituse hind (€)", /^Kestus/]) await expect(field(name)).toHaveCount(0);
     await expect(page.locator('[data-list-editor="includes"]')).toHaveCount(0);
+    await expect(page.locator("[data-protocol-stages]")).toHaveCount(0); // "Protokolli punktid" are a contact course's only
     await expect(page.getByText(/hübriid/i)).toHaveCount(0); // no third type anywhere
 
     await typeSwitch.getByRole("radio", { name: "Kontaktõpe" }).check();
     for (const name of ["Grupikoolituse hind (€)", "Individuaalkoolituse hind (€)", /^Kestus/]) await expect(field(name)).toHaveCount(1);
     for (const name of ["Hind (€)", "Ligipääs (kuud)", "Videotunde", /^Soodustus/]) await expect(field(name)).toHaveCount(0);
     await expect(page.locator('[data-list-editor="includes"] h3')).toHaveText("Koolitus sisaldab");
+    await expect(page.locator("[data-protocol-stages] h3")).toHaveText("Protokolli punktid");
     await typeSwitch.getByRole("radio", { name: "E-õpe" }).check();
     await expect(page.getByLabel("Hind (€)")).toHaveValue(c.price); // switching back keeps what was there
 
@@ -474,6 +476,15 @@ test.describe("course editor", () => {
     const name = `E2E uus ${info.project.name} ${unique()}`;
     await page.getByRole("textbox", { name: "Koolituse nimi (eesti keeles)" }).fill(name);
     await page.getByLabel("Grupikoolituse hind (€)").fill("199,50");
+    // "Protokolli punktid" (phase protocols): a new contact course has none yet; the headings go with the course, a blank row is dropped, the order is kept
+    const stages = page.locator("[data-protocol-stages]");
+    await expect(stages.locator("[data-protocol-stage]")).toHaveCount(0);
+    await stages.locator("[data-add-stage]").click();
+    await page.keyboard.type("Ettevalmistus"); // (the new field has the focus)
+    await stages.locator("[data-add-stage]").click(); // a blank row
+    await stages.locator("[data-add-stage]").click();
+    await page.keyboard.type("  Värvimine ");
+    await expect(stages.locator("[data-protocol-stage]")).toHaveCount(3);
     await page.getByRole("button", { name: "Salvesta", exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/koolitused\/\d+\?loodud=1$/);
     await expect(page.getByText("Koolitus loodud.", { exact: false })).toBeVisible();
@@ -482,6 +493,9 @@ test.describe("course editor", () => {
     expect(slug.startsWith(NEW_COURSE_SLUG_PREFIX)).toBe(true);
     await expect(page.getByLabel("Aadress")).toHaveValue(slug);
     await expect(page.getByLabel("Grupikoolituse hind (€)")).toHaveValue("199,50");
+    await expect(stages.locator("[data-protocol-stage]")).toHaveCount(2); // the blank row was dropped
+    await expect(stages.locator('[data-protocol-stage="0"]')).toHaveValue("Ettevalmistus");
+    await expect(stages.locator('[data-protocol-stage="1"]')).toHaveValue("Värvimine");
     expect((await courseOrder()).indexOf(slug)).toBeGreaterThanOrEqual(6); // after the six seed courses
     expect((await page.request.get(`/koolitused/${slug}`)).status()).toBe(404); // a draft
     await page.goto("/admin/koolitused");

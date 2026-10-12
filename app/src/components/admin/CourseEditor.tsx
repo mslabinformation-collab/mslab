@@ -17,6 +17,7 @@ import { Choice } from "./Choice";
 import { GalleryEditor } from "./GalleryEditor";
 import { I18nInput } from "./I18nInput";
 import { ListEditor } from "./ListEditor";
+import { ProtocolStagesEditor } from "./ProtocolStagesEditor";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import styles from "./CourseEditor.module.css";
@@ -302,6 +303,13 @@ export function CourseEditor({ initial, others, next, publicHref, created, typeL
           {!online && (
             <section className={ui.card} aria-label={t.sections.includes}>
               <ListEditor title={t.sections.includes} itemLabel={f.includes} hint={f.includesHint} items={draft.includes} onChange={(v) => set("includes", v)} error={err("includes")} maxLength={LIMITS.item} multiline name="includes" />
+            </section>
+          )}
+
+          {/* "Protokolli punktid" (phase protocols): the headings of the course day's protocols, a contact course's only */}
+          {!online && (
+            <section className={ui.card} aria-label={t.sections.protocolStages}>
+              <ProtocolStagesEditor items={draft.protocolStages} onChange={(v) => set("protocolStages", v)} error={err("protocolStages")} />
             </section>
           )}
 

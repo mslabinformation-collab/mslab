@@ -642,7 +642,7 @@ export const NEW_COURSE_SLUG_PREFIX = "e2e-uus-";
 const EDIT_EMAIL_PATTERN = "e2e-edit-%@example.com";
 const SNAPSHOT_DIR = join(tmpdir(), "mslab-e2e-course-snapshots");
 
-const JSON_COLUMNS = ["title", "summary", "body", "outcomes", "includes", "duration_label", "next_discount", "badge", "recommendation_ids"] as const;
+const JSON_COLUMNS = ["title", "summary", "body", "outcomes", "includes", "duration_label", "next_discount", "badge", "recommendation_ids", "protocol_stages"] as const;
 const PLAIN_COLUMNS = ["slug", "type", "level", "language", "price", "price_group", "price_individual", "access_months", "video_count", "published", "sort", "is_sample", "updated_at"] as const;
 
 type CourseSnapshot = { id: number; row: Record<string, unknown>; images: { key: string; alt: unknown; sort: number }[] };
