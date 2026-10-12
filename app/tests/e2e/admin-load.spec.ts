@@ -30,6 +30,7 @@ const ADMIN_PAGES = [
   "/admin/protokollid",
   "/admin/registreerimised",
   "/admin/seaded",
+  "/admin/tagasiside",
   "/admin/uudised",
   "/admin/uudiskiri",
 ];

@@ -55,6 +55,8 @@ const COURSE_CSS = [
   "src/app/admin/(panel)/maksed/payments.module.css",
   // the course day's protocols (phase protocols)
   "src/components/admin/ProtocolScreen.module.css",
+  "src/components/admin/FeedbackAnswers.module.css",
+  "src/app/admin/(panel)/tagasiside/feedback.module.css",
   "src/app/admin/(panel)/overview.module.css",
   // the course editor's "Moodulid ja õppetunnid" and the lesson drawer (phase 3a Task 5)
   "src/components/admin/LessonsEditor.module.css",

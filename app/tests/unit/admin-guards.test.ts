@@ -68,7 +68,7 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/admin/login/page.tsx",
         "app/admin/layout.tsx",
         // Task 12: the inboxes; Task 13: every content section of the menu; phase 2b Task 9: Maksed
-        ...["registreerimised", "maksed", "protokollid", "paringud", "uudiskiri", "koolitused", "kalender", "praktika", "avaleht", "koolitaja", "uudised", "kampaania", "seaded"].map(
+        ...["registreerimised", "maksed", "protokollid", "tagasiside", "paringud", "uudiskiri", "koolitused", "kalender", "praktika", "avaleht", "koolitaja", "uudised", "kampaania", "seaded"].map(
           (dir) => `app/admin/(panel)/${dir}/page.tsx`,
         ),
       ]),

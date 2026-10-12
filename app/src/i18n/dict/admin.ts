@@ -100,6 +100,7 @@ export const adminEt = {
     calendar: "Kalender",
     registrations: "Registreerimised",
     payments: "Maksed",
+    feedback: "Tagasiside",
     clients: "Õpilased",
     requests: "Päringud",
     practice: "Praktika",
@@ -335,6 +336,33 @@ export const adminEt = {
       // a send stopped by the notice of a refusal (another device saved first): only "Selge" lets it go on (NEW wording, for Dim's approval)
       review: "Vaata enne saatmist üle teises seadmes tehtud muudatus ja vajuta „Selge“.",
     },
+  },
+
+  // Tagasiside (phase protocols, spec §7): the answers to the course feedback form. /admin/tagasiside, ?koolitus=<course id> (the filter),
+  // ?leht=<n>, ?id=<answer> (the drawer). The questions and options are the form's own words (et.ts account.feedback), never written here.
+  // {n} a count, {score} an average ("7,5"), {date} a day and a time.
+  feedback: {
+    eyebrow: "Õpilased",
+    title: "Tagasiside",
+    lead: "Õpilaste vastused koolituse tagasiside vormile, uuemad eespool. Vali koolitus, et näha selle keskmist hinnet ja iga vastusevariandi arvu.",
+    filterLabel: "Koolitus",
+    all: "Kõik koolitused",
+    byCourse: "Koolituste kaupa",
+    count: "Vastuseid: {n}",
+    scored: "Hindeid: {n}",
+    average: "Keskmine hinne: {score} / 10",
+    noScore: "Hinnet pole antud",
+    empty: "Tagasisidet pole veel antud.",
+    emptyFiltered: "Selle koolituse kohta pole tagasisidet.",
+    col: { date: "Kuupäev", student: "Õpilane", course: "Koolitus", score: "Hinne", answers: "Vastuseid", average: "Keskmine hinne" },
+    drawer: { label: "Tagasiside: {name}", close: "Sulge", notFound: "Seda tagasisidet ei leitud." },
+    submitted: "Saadetud {date}",
+    inRussian: "Vastas vene keeles",
+    toStudent: "Õpilase juurde",
+    toRegistration: "Registreeringu juurde",
+    // the Õpilased and Registreerimised drawers
+    section: "Tagasiside",
+    none: "Tagasisidet pole antud.",
   },
 
   requests: {

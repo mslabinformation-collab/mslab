@@ -1,10 +1,12 @@
-import { and, asc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import type { Db } from "../client";
-import { courses, courseSessions, protocols, registrations, type CourseSession, type Protocol, type ProtocolStage, type Registration } from "../schema";
+import { courseFeedback, courses, courseSessions, protocols, registrations, type CourseSession, type Protocol, type ProtocolStage, type Registration } from "../schema";
 import { tallinnFormParts } from "@/domain/calendar";
-import { protocolStatus, readStages, stagesFrom, type ProtocolStatus } from "@/domain/protocols";
+import { PAGE_SIZE } from "@/domain/paging";
+import { protocolStatus, readStages, stagesFrom, summarizeFeedback, type FeedbackAnswers, type FeedbackSummary, type ProtocolStatus } from "@/domain/protocols";
 import type { RegStatus } from "@/domain/registration";
 import type { I18n } from "@/i18n/field";
+import { paged, type Paged } from "./admin";
 
 // The protocols' reads (phase protocols, spec §8): the course day's screen (Task 2), today's sessions (Task 5), the student's page (Task 7) and
 // the admin's feedback page (Task 9). Callers have checked the session (admin or client); nothing here does authorization.
@@ -156,4 +158,110 @@ export async function studentProtocol(db: Db, clientId: number, registrationId: 
     stages: r.sent.stages,
     generalNote: r.sent.generalNote,
   };
+}
+
+// ---------- the admin's Tagasiside and the drawers (Task 9) ----------
+
+/** One answered feedback form, for Maria (spec §7): who, which course and day, the answers as keys, the language she answered in, when. */
+export type FeedbackRow = {
+  id: number;
+  registrationId: number;
+  clientId: number | null;
+  name: string;
+  email: string;
+  course: { id: number; title: I18n };
+  startsAt: Date | null;
+  answers: FeedbackAnswers;
+  locale: "et" | "ru";
+  submittedAt: Date;
+};
+
+/** An answer, not an "Ei soovi" (that row has no submitted_at). */
+const ANSWERED = isNotNull(courseFeedback.submittedAt);
+
+function feedbackRows(db: Db) {
+  return db
+    .select({
+      id: courseFeedback.id,
+      registrationId: courseFeedback.registrationId,
+      clientId: registrations.clientId,
+      name: registrations.name,
+      email: registrations.email,
+      courseId: courses.id,
+      courseTitle: courses.title,
+      startsAt: courseSessions.startsAt,
+      answers: courseFeedback.answers,
+      locale: courseFeedback.locale,
+      submittedAt: courseFeedback.submittedAt,
+    })
+    .from(courseFeedback)
+    .innerJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id));
+}
+
+type FeedbackSelect = Awaited<ReturnType<typeof feedbackRows>>[number];
+
+// (answers, locale and submitted_at are set together by the submit, server/course-feedback.ts; every read here has ANSWERED)
+const toFeedbackRow = (r: FeedbackSelect): FeedbackRow => ({
+  id: r.id,
+  registrationId: r.registrationId,
+  clientId: r.clientId,
+  name: r.name,
+  email: r.email,
+  course: { id: r.courseId, title: r.courseTitle },
+  startsAt: r.startsAt,
+  answers: r.answers ?? {},
+  locale: r.locale === "ru" ? "ru" : "et",
+  submittedAt: r.submittedAt!,
+});
+
+const NEWEST = [desc(courseFeedback.submittedAt), desc(courseFeedback.id)] as const;
+
+/** Tagasiside's list: the answers, newest first, `size` a page; `courseId` keeps one course's. */
+export async function pageFeedback(db: Db, courseId: number | null, page: number, size: number = PAGE_SIZE): Promise<Paged<FeedbackRow>> {
+  const where = courseId === null ? ANSWERED : and(ANSWERED, eq(registrations.courseId, courseId));
+  return paged(
+    page,
+    size,
+    async () => Number((await db.select({ n: count() }).from(courseFeedback).innerJoin(registrations, eq(courseFeedback.registrationId, registrations.id)).where(where))[0].n),
+    async (range) => (await feedbackRows(db).where(where).orderBy(...NEWEST).limit(range.limit).offset(range.offset)).map(toFeedbackRow),
+  );
+}
+
+/** One answer (the page's drawer, ?id=); null when there is none, or it is an "Ei soovi". */
+export async function feedbackById(db: Db, id: number): Promise<FeedbackRow | null> {
+  const [row] = await feedbackRows(db).where(and(ANSWERED, eq(courseFeedback.id, id))).limit(1);
+  return row ? toFeedbackRow(row) : null;
+}
+
+/** The answers in a registration's drawer (at most one), or in a student's (those of her registrations), newest first. */
+export async function feedbackOf(db: Db, of: { registrationId: number } | { clientId: number }): Promise<FeedbackRow[]> {
+  const whose = "registrationId" in of ? eq(courseFeedback.registrationId, of.registrationId) : eq(registrations.clientId, of.clientId);
+  return (await feedbackRows(db).where(and(ANSWERED, whose)).orderBy(...NEWEST)).map(toFeedbackRow);
+}
+
+/** A course's answers in numbers (domain/protocols.ts summarizeFeedback). */
+export type CourseFeedbackStats = { course: { id: number; title: I18n }; summary: FeedbackSummary };
+
+/**
+ * Every course that has answers, by its Estonian title, with its numbers: the average score and the count of every option of every choice
+ * question (spec §7). All the answered rows are read (a few hundred a year) and summed here.
+ */
+export async function feedbackStats(db: Db): Promise<CourseFeedbackStats[]> {
+  const rows = await db
+    .select({ courseId: courses.id, title: courses.title, answers: courseFeedback.answers })
+    .from(courseFeedback)
+    .innerJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .where(ANSWERED);
+  const byCourse = new Map<number, { title: I18n; answers: FeedbackAnswers[] }>();
+  for (const r of rows) {
+    const entry = byCourse.get(r.courseId) ?? { title: r.title, answers: [] };
+    entry.answers.push(r.answers ?? {});
+    byCourse.set(r.courseId, entry);
+  }
+  return [...byCourse]
+    .map(([id, { title, answers }]) => ({ course: { id, title }, summary: summarizeFeedback(answers) }))
+    .sort((x, y) => x.course.title.et.localeCompare(y.course.title.et, "et") || x.course.id - y.course.id);
 }

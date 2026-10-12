@@ -7,6 +7,7 @@ import { fill, formatDate, formatTime } from "@/i18n/format";
 import { getDict } from "@/i18n/locales";
 import type { ClientDetail, ClientRequestRow, EcourseOption } from "@/server/admin-clients";
 import { GrantAccessForm, RevokeAccess, UnlockNextLesson } from "./ClientForms";
+import { FeedbackAnswers } from "./FeedbackAnswers";
 import { PaymentLines } from "./PaymentLines";
 import { StatusPill } from "./StatusPill";
 import ui from "./ui.module.css";
@@ -169,6 +170,28 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
           {adminEt.payments.title}
         </h3>
         {detail.payments.length === 0 ? <p className={styles.none}>{adminEt.payments.noneForClient}</p> : <PaymentLines rows={detail.payments} withWhat />}
+      </section>
+
+      {/* her answers to the course feedback form (phase protocols, spec §7), newest first */}
+      <section className={styles.section} aria-labelledby={`client-${c.id}-feedback`} data-client-feedback="">
+        <h3 id={`client-${c.id}-feedback`} className={ui.h3}>
+          {adminEt.feedback.section}
+        </h3>
+        {detail.feedback.length === 0 ? (
+          <p className={styles.none}>{adminEt.feedback.none}</p>
+        ) : (
+          <ul className={styles.rows}>
+            {detail.feedback.map((f) => (
+              <li key={f.id} className={styles.row} data-client-feedback-row={f.id}>
+                <div className={styles.rowHead}>
+                  <strong>{pick(f.course.title, "et")}</strong>
+                </div>
+                {f.startsAt && <p className={styles.meta}>{formatDate(f.startsAt, "et")}</p>}
+                <FeedbackAnswers answers={f.answers} locale={f.locale} submittedAt={f.submittedAt} />
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className={styles.section} aria-labelledby={`client-${c.id}-reqs`} data-client-requests="">
