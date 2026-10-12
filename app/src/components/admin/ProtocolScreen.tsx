@@ -5,7 +5,7 @@ import { PROTOCOL_LIMITS, type ProtocolStatus } from "@/domain/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { GrowingText } from "./GrowingText";
-import { ProtocolAutosave, statusOf, unsavedEntry, type Conflict, type Entry, type SaveStatus, type ServerDraft } from "./protocol-autosave";
+import { ProtocolAutosave, statusOf, type Conflict, type Entry, type SaveStatus, type ServerDraft } from "./protocol-autosave";
 import ui from "./ui.module.css";
 import styles from "./ProtocolScreen.module.css";
 
@@ -130,7 +130,7 @@ export function ProtocolScreen({ view }: { view: ScreenView }) {
                       </span>
                     )}
                     {s.awaiting && <span className={styles.awaiting}>{t.awaiting}</span>}
-                    {unsavedEntry(e) && (
+                    {engine.unconfirmed(s.registrationId) && (
                       <span className={styles.unsaved} data-unsaved="">
                         {t.unsavedMark}
                       </span>
@@ -169,7 +169,7 @@ function StudentEditor({ engine, entry, name }: { engine: ProtocolAutosave; entr
         </p>
       </div>
       {entry.conflict && <ConflictNotice conflict={entry.conflict} onDismiss={() => engine.dismissConflict(id)} />}
-      {!entry.kept && unsavedEntry(entry) && (
+      {!entry.kept && (
         <p className={ui.error} role="alert" data-not-kept="">
           {t.notKept}
         </p>

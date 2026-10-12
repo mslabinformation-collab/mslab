@@ -624,6 +624,9 @@ test.describe("calendar", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("heading", { level: 2 })).toHaveText(COURSE.title);
     await expect(dialog.locator("[data-session-registrations]")).toHaveText("Registreerimisi: 0 kinnitatud, 1 ootab ettemaksu.");
+    // a contact course's session: one tap to its protocols (phase protocols)
+    await expect(dialog.locator("[data-session-protocols]")).toHaveText("Protokollid");
+    await expect(dialog.locator("[data-session-protocols]")).toHaveAttribute("href", `/admin/protokollid?sessioon=${id}`);
     await dialog.getByRole("button", { name: "Sulge" }).click();
     await expect(page).toHaveURL(/\/admin\/kalender\?aeg=moodunud$/);
     await page.goto(`/admin/kalender?id=${id}`);
@@ -651,6 +654,7 @@ test.describe("calendar", () => {
     await adminReady(page);
     const dialog = page.getByRole("dialog", { name: new RegExp(`^Toimumine: ${online.title},`) });
     await expect(dialog.getByRole("heading", { level: 2 })).toHaveText(online.title);
+    await expect(dialog.locator("[data-session-protocols]")).toHaveCount(0); // protocols are for contact courses only
     const course = dialog.getByLabel("Koolitus");
     await expect(course).toHaveValue(String((await storedCourse(online.slug)).id)); // its own course, not the first contact course
     await dialog.getByLabel("Kohti").fill("3");

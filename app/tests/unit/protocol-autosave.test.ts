@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  conflictKey, DEBOUNCE_MS, localKey, ProtocolAutosave, readLocal, remember, resumeLocal, SENT_MAX_CHARS, statusOf, type Answer, type Content, type SaveBody,
-  type ServerDraft,
+  DEBOUNCE_MS, localKey, NOTICE_MAX_CHARS, ProtocolAutosave, readConflict, readLocal, remember, resumeLocal, SENT_MAX_CHARS, sentKey, statusOf,
+  type Answer, type Content, type SaveBody, type SendOptions, type ServerDraft,
 } from "@/components/admin/protocol-autosave";
 import { PROTOCOL_LIMITS } from "@/domain/protocols";
 
@@ -28,9 +28,29 @@ const refused = (version: number, notes: string[], generalNote = ""): Answer => 
 
 /** A server answered by hand: each save waits until the test calls `answer`. */
 function server() {
-  const calls: { body: SaveBody; answer: (a: Answer) => void }[] = [];
-  const send = (body: SaveBody) => new Promise<Answer>((resolve) => calls.push({ body, answer: resolve }));
+  const calls: { body: SaveBody; opts?: SendOptions; answer: (a: Answer) => void }[] = [];
+  const send = (body: SaveBody, opts?: SendOptions) => new Promise<Answer>((resolve) => calls.push({ body, opts, answer: resolve }));
   return { calls, send };
+}
+
+/** A browser storage in a Map that can list its keys, counts its writes by key, and refuses the keys `full` names (a full or blocked one). */
+function mapStorage(full: (key: string) => boolean = () => false) {
+  const map = new Map<string, string>();
+  const writes = new Map<string, number>();
+  const storage = {
+    get length() {
+      return map.size;
+    },
+    key: (i: number) => [...map.keys()][i] ?? null,
+    getItem: (k: string) => map.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      if (full(k)) throw new DOMException("full", "QuotaExceededError");
+      writes.set(k, (writes.get(k) ?? 0) + 1);
+      map.set(k, v);
+    },
+    removeItem: (k: string) => void map.delete(k),
+  } as unknown as Storage;
+  return { map, writes, storage };
 }
 
 let engine: ProtocolAutosave | null = null;
@@ -68,7 +88,7 @@ describe("when a box saves, and what a save sends", () => {
     s.calls[0].answer(ok(1));
     await tick();
     expect(e.get(7)).toMatchObject({ version: 1, status: { kind: "saved", at: Date.parse("2026-10-12T08:00:00.000Z") }, confirmed: { notes: ["Ku", ""], generalNote: "" } });
-    expect(localStorage.getItem(localKey(7))).toBeNull();
+    expect(readLocal(localStorage, 7)).toBeNull();
     expect(e.unsaved()).toBe(false);
   });
 
@@ -105,7 +125,7 @@ describe("when a box saves, and what a save sends", () => {
     await tick(DEBOUNCE_MS * 2);
     expect(s.calls).toHaveLength(0);
     expect(e.get(7)!.status.kind).toBe("saved");
-    expect(localStorage.getItem(localKey(7))).toBeNull();
+    expect(readLocal(localStorage, 7)).toBeNull();
   });
 
   test("saveAll is true only when every protocol is confirmed", async () => {
@@ -231,7 +251,7 @@ describe("a long day on flaky Wi-Fi (Review Focus 1)", () => {
     start([draft({ version: 2 }), draft({ registrationId: 8, version: 2, content: { notes: ["sama", ""], generalNote: "" } })], s.send);
     await tick();
     expect(s.calls.map((c) => [c.body.registrationId, c.body.notes[0]])).toEqual([[7, "jäi alles"]]);
-    expect(localStorage.getItem(localKey(8))).toBeNull();
+    expect(readLocal(localStorage, 8)).toBeNull();
   });
 });
 
@@ -251,7 +271,7 @@ describe("two devices (Review Focus 2)", () => {
       conflict: { titles: TITLES, lost: { notes: ["tahvel", ""], generalNote: "" } },
       status: { kind: "saved", at: Date.parse("2026-10-12T08:01:00.000Z") },
     });
-    expect(localStorage.getItem(localKey(7))).toBeNull();
+    expect(readLocal(localStorage, 7)).toBeNull();
     e.dismissConflict(7);
     expect(e.get(7)!.conflict).toBeNull();
   });
@@ -274,7 +294,7 @@ describe("two devices (Review Focus 2)", () => {
     const again = start([stored], server().send);
     expect(again.get(7)!.conflict).toEqual({ titles: TITLES, lost: { notes: ["tahvel", ""], generalNote: "" } });
     again.dismissConflict(7);
-    expect(localStorage.getItem(conflictKey(7))).toBeNull();
+    expect(readConflict(localStorage, 7)).toBeNull();
     again.stop();
     expect(start([stored], server().send).get(7)!.conflict).toBeNull();
   });
@@ -393,7 +413,7 @@ describe("looking creates nothing, and the lost answers that are ours", () => {
     e.editNote(8, 0, "");
     await tick(DEBOUNCE_MS * 4);
     expect(s.calls).toHaveLength(0);
-    for (const id of [7, 8, 9]) expect(localStorage.getItem(localKey(id)), String(id)).toBeNull();
+    for (const id of [7, 8, 9]) expect(readLocal(localStorage, id), String(id)).toBeNull();
     expect(e.ids().map((id) => statusOf(e.get(id)!))).toEqual(["none", "none", "draft"]);
   });
 
@@ -437,6 +457,7 @@ describe("looking creates nothing, and the lost answers that are ours", () => {
     await tick(DEBOUNCE_MS);
     e.editNote(7, 0, "A"); // while "AB" is on its way
     expect(e.get(7)!.status).toEqual({ kind: "pending" });
+    expect([e.unsaved(), e.unconfirmed(7)]).toEqual([true, true]); // the chip, the leave warning and the status agree
     expect(readLocal(localStorage, 7)).toMatchObject({ version: 1, content: { notes: ["A", ""] }, sent: [{ notes: ["AB", ""], generalNote: "" }] });
     s.calls[0].answer(null); // the server stored "AB" as version 2; the answer never came
     await tick(DEBOUNCE_MS);
@@ -447,7 +468,7 @@ describe("looking creates nothing, and the lost answers that are ours", () => {
     s.calls[2].answer(ok(3));
     await tick();
     expect(e.get(7)).toMatchObject({ version: 3, conflict: null, content: { notes: ["A", ""] }, confirmed: { notes: ["A", ""] }, status: { kind: "saved" } });
-    expect(localStorage.getItem(localKey(7))).toBeNull();
+    expect(readLocal(localStorage, 7)).toBeNull();
   });
 
   test("leaving the screen within 1.5 s of typing (another admin page) sends the waiting save at once; the copy stays until the server is seen to hold it", async () => {
@@ -464,7 +485,7 @@ describe("looking creates nothing, and the lost answers that are ours", () => {
     const back = start([draft({ version: 1, content: { notes: ["viimane lause", ""], generalNote: "" } }), draft({ registrationId: 8 })], again.send);
     await tick(DEBOUNCE_MS);
     expect(again.calls).toHaveLength(0);
-    expect(localStorage.getItem(localKey(7))).toBeNull();
+    expect(readLocal(localStorage, 7)).toBeNull();
     expect(back.get(7)).toMatchObject({ version: 1, conflict: null, status: { kind: "saved" } });
   });
 
@@ -500,5 +521,251 @@ describe("looking creates nothing, and the lost answers that are ours", () => {
     expect(e.get(7)).toMatchObject({ version: 3, content: { notes: ["arvuti", ""] }, conflict: both });
     e.stop();
     expect(start([draft({ version: 3, content: { notes: ["arvuti", ""], generalNote: "" } })], server().send).get(7)!.conflict).toEqual(both);
+  });
+});
+
+// Fix round 1 of the review: two tabs of one browser share its storage, so each keeps its own copy and notice; the notice's words are never
+// moved out of the browser while it cannot keep them; and the smaller points (a refusal with the screen's own text, the parting save of strict
+// mode, a keystroke writes only the text, the notice's size, the tablet put to sleep).
+describe("two tabs, a full storage, and the rest (fix round 1)", () => {
+  const shown = () => draft({ version: 1, content: { notes: ["vana", ""], generalNote: "" } });
+  const tabs: ProtocolAutosave[] = [];
+  const tab = (name: string, send: (b: SaveBody, o?: SendOptions) => Promise<Answer>, storage: Storage = localStorage, drafts: ServerDraft[] = [shown()]) => {
+    const t = new ProtocolAutosave(drafts, send, { tab: name });
+    t.start(storage);
+    tabs.push(t);
+    return t;
+  };
+  beforeEach(() => {
+    // the copies of several tabs are ordered by when each was written
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now: new Date("2026-10-12T08:00:00.000Z") });
+  });
+  afterEach(() => {
+    for (const t of tabs.splice(0)) t.stop();
+  });
+
+  test("Important 1: tab B only leaving the student, then typing, never removes or overwrites tab A's unsaved copy", async () => {
+    const a = server();
+    const b = server();
+    const tabA = tab("A", a.send);
+    const tabB = tab("B", b.send);
+    tabA.editNote(7, 0, "tahvel, võrguta");
+    await tick(DEBOUNCE_MS);
+    a.calls[0].answer(null); // offline
+    await tick();
+    expect(readLocal(localStorage, 7, "A")?.content.notes[0]).toBe("tahvel, võrguta");
+    expect(await tabB.save(7)).toBe(true); // B switches away from the student, typing nothing
+    expect(b.calls).toHaveLength(0);
+    expect(readLocal(localStorage, 7, "A")?.content.notes[0]).toBe("tahvel, võrguta");
+    expect(tabA.unsaved()).toBe(true);
+    tabB.editNote(7, 0, "telefon");
+    expect(readLocal(localStorage, 7, "A")?.content.notes[0]).toBe("tahvel, võrguta");
+    expect(readLocal(localStorage, 7, "B")?.content.notes[0]).toBe("telefon");
+    await tick(DEBOUNCE_MS);
+    b.calls[0].answer(ok(2));
+    await tick();
+    expect(readLocal(localStorage, 7, "B")).toBeNull(); // B's own copy goes once the server has B's text
+    expect(readLocal(localStorage, 7, "A")?.content.notes[0]).toBe("tahvel, võrguta"); // A's stays: its text is not on the server
+  });
+
+  test("Important 1: closed tabs' copies: a new tab resumes the newest, the other's words go into the notice; both copies go once all is kept", async () => {
+    const a = server();
+    const b = server();
+    const tabA = tab("A", a.send);
+    const tabB = tab("B", b.send);
+    tabA.editNote(7, 0, "tahvel");
+    await tick(DEBOUNCE_MS);
+    a.calls[0].answer(null);
+    await tick();
+    tabB.editNote(7, 0, "telefon");
+    await tick(DEBOUNCE_MS);
+    b.calls[0].answer(null);
+    await tick();
+    tabA.stop();
+    tabB.stop();
+    const c = server();
+    const tabC = tab("C", c.send);
+    const words = { titles: TITLES, lost: { notes: ["tahvel", ""], generalNote: "" } };
+    expect(tabC.get(7)).toMatchObject({ content: { notes: ["telefon", ""] }, conflict: words });
+    await tick();
+    expect(c.calls.map((x) => [x.body.version, x.body.notes[0]])).toEqual([[1, "telefon"]]);
+    c.calls[0].answer(ok(2));
+    await tick();
+    expect(readLocal(localStorage, 7)).toBeNull(); // every copy gone: the server has the text, the notice has the words
+    expect(readConflict(localStorage, 7)).toEqual(words);
+    expect(readConflict(localStorage, 7, "C")).toEqual(words);
+  });
+
+  test("Important 1: one tab's notice or 'Selge' never removes or overwrites another tab's notice words", async () => {
+    const a = server();
+    const b = server();
+    const tabA = tab("A", a.send);
+    const tabB = tab("B", b.send);
+    tabA.editNote(7, 0, "tahvel");
+    await tick(DEBOUNCE_MS);
+    a.calls[0].answer(refused(2, ["telefon", ""]));
+    await tick();
+    expect(readConflict(localStorage, 7, "A")?.lost?.notes[0]).toBe("tahvel");
+    tabB.dismissConflict(7); // B has no notice: nothing of A's goes
+    expect(readConflict(localStorage, 7, "A")?.lost?.notes[0]).toBe("tahvel");
+    tabB.editNote(7, 0, "arvuti");
+    await tick(DEBOUNCE_MS);
+    b.calls[0].answer(refused(3, ["kolmas", ""]));
+    await tick();
+    expect(readConflict(localStorage, 7, "A")?.lost?.notes[0]).toBe("tahvel");
+    expect(readConflict(localStorage, 7, "B")?.lost?.notes[0]).toBe("arvuti");
+    tabB.dismissConflict(7);
+    expect(readConflict(localStorage, 7, "A")?.lost?.notes[0]).toBe("tahvel");
+    expect(readConflict(localStorage, 7, "B")).toBeNull();
+  });
+
+  test("Important 2: a storage that cannot take the notice: the copy keeps the words, the entry says so, a reload shows them; with room again they move", async () => {
+    let blocked = true;
+    const m = mapStorage((k) => blocked && k.startsWith("mslab-protocol-conflict:"));
+    const s = server();
+    const e = tab("A", s.send, m.storage);
+    e.editNote(7, 0, "tahvel");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(refused(2, ["telefon", ""]));
+    await tick();
+    const words = { titles: TITLES, lost: { notes: ["tahvel", ""], generalNote: "" } };
+    expect(e.get(7)).toMatchObject({ kept: false, content: { notes: ["telefon", ""] }, conflict: words });
+    expect(readLocal(m.storage, 7, "A")).toMatchObject({ lost: words }); // still in this browser
+    e.stop();
+    const again = tab("B", server().send, m.storage, [draft({ version: 2, content: { notes: ["telefon", ""], generalNote: "" } })]);
+    expect(again.get(7)).toMatchObject({ kept: false, conflict: words });
+    blocked = false;
+    again.editNote(7, 1, "lisa"); // the next write finds room
+    expect(again.get(7)!.kept).toBe(true);
+    expect(readConflict(m.storage, 7, "B")).toEqual(words);
+    expect(readLocal(m.storage, 7, "A")).toBeNull(); // the old copy went once its words were kept under the notice's key
+  });
+
+  test("Important 2, the reviewer's probe: a storage that cannot list its keys nor take the notice: a reload still shows the words", async () => {
+    const map = new Map<string, string>();
+    const storage = {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        if (k.startsWith("mslab-protocol-conflict:")) throw new DOMException("full", "QuotaExceededError");
+        map.set(k, v);
+      },
+      removeItem: (k: string) => void map.delete(k),
+    } as unknown as Storage;
+    const s = server();
+    const e = tab("A", s.send, storage);
+    e.editNote(7, 0, "tahvel");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(refused(2, ["telefon", ""]));
+    await tick();
+    expect(e.get(7)).toMatchObject({ kept: false, conflict: { lost: { notes: ["tahvel", ""] } } });
+    e.stop();
+    const again = tab("B", server().send, storage, [draft({ version: 2, content: { notes: ["telefon", ""], generalNote: "" } })]);
+    expect(again.get(7)).toMatchObject({ kept: false, conflict: { titles: TITLES, lost: { notes: ["tahvel", ""], generalNote: "" } } });
+  });
+
+  test("Important 2: a full storage and a real conflict: the words stay on the screen and the entry says the browser cannot keep them", async () => {
+    const m = mapStorage(() => true);
+    const s = server();
+    const e = tab("A", s.send, m.storage);
+    e.editNote(7, 0, "tahvel");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(refused(2, ["telefon", ""]));
+    await tick();
+    expect(e.get(7)).toMatchObject({ kept: false, status: { kind: "saved" }, conflict: { lost: { notes: ["tahvel", ""] } } });
+    e.dismissConflict(7);
+    expect(e.get(7)!.kept).toBe(true); // nothing is left to keep
+  });
+
+  test("Important 2: a reload whose notice cannot be kept leaves the copy where it is, and the next reload shows the words again", async () => {
+    const m = mapStorage((k) => k.startsWith("mslab-protocol-conflict:"));
+    m.storage.setItem(localKey(7), JSON.stringify({ version: 1, titles: TITLES, content: { notes: ["minu", ""], generalNote: "" }, sent: [] }));
+    const moved = draft({ version: 2, content: { notes: ["teine", ""], generalNote: "" } });
+    const first = tab("A", server().send, m.storage, [moved]);
+    expect(first.get(7)).toMatchObject({ kept: false, content: { notes: ["teine", ""] }, conflict: { lost: { notes: ["minu", ""] } } });
+    expect(m.map.has(localKey(7))).toBe(true);
+    first.stop();
+    expect(tab("B", server().send, m.storage, [moved]).get(7)!.conflict).toEqual({ titles: TITLES, lost: { notes: ["minu", ""], generalNote: "" } });
+  });
+
+  test("Minor 3: a refusal that holds exactly the screen's text (the same save twice) is taken as saved, with no notice", async () => {
+    const s = server();
+    const e = start([draft()], s.send);
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(refused(1, ["A", ""]));
+    await tick(DEBOUNCE_MS * 2);
+    expect(s.calls).toHaveLength(1);
+    expect(e.get(7)).toMatchObject({ version: 1, conflict: null, status: { kind: "saved" } });
+    expect(readLocal(localStorage, 7)).toBeNull();
+  });
+
+  test("strict mode's stop between two starts: the parting save is remembered, so a refusal that holds its text is ours", async () => {
+    localStorage.setItem(localKey(7), JSON.stringify({ version: 0, titles: TITLES, content: { notes: ["jäi alles", ""], generalNote: "" }, sent: [] }));
+    const s = server();
+    const e = new ProtocolAutosave([draft()], s.send);
+    tabs.push(e);
+    e.start(localStorage);
+    e.stop(); // React strict mode's cleanup: the resumed save goes as a parting one (it reached the server)
+    e.start(localStorage);
+    e.editNote(7, 0, "jäi alles, lisa");
+    await tick(DEBOUNCE_MS);
+    expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[0, "jäi alles"], [0, "jäi alles, lisa"]]);
+    s.calls[1].answer(refused(1, ["jäi alles", ""]));
+    await tick();
+    expect(s.calls[2].body).toMatchObject({ version: 1, notes: ["jäi alles, lisa", ""] });
+    s.calls[2].answer(ok(2));
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 2, conflict: null, status: { kind: "saved" } });
+  });
+
+  test("Minor 5: a keystroke writes only the text; the texts sent without an answer are written when they change", async () => {
+    const m = mapStorage();
+    const s = server();
+    const e = tab("A", s.send, m.storage, [draft()]);
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(null);
+    await tick();
+    const sentWrites = m.writes.get(sentKey(7, "A"));
+    const copyWrites = m.writes.get(localKey(7, "A"))!;
+    expect(sentWrites).toBe(1);
+    for (const text of ["AB", "ABC", "ABCD"]) e.editNote(7, 0, text);
+    expect(m.writes.get(sentKey(7, "A"))).toBe(sentWrites);
+    expect(m.writes.get(localKey(7, "A"))).toBe(copyWrites + 3);
+    expect(readLocal(m.storage, 7, "A")).toMatchObject({ content: { notes: ["ABCD", ""] }, sent: [{ notes: ["A", ""], generalNote: "" }] });
+  });
+
+  test("Minor 6: the notice keeps the newest words within NOTICE_MAX_CHARS, the oldest left out first", async () => {
+    const s = server();
+    const e = start([shown()], s.send);
+    const letters = "abcdefgh"; // eight refusals of 27 000 characters each: 216 000 together
+    for (let i = 0; i < letters.length; i++) {
+      const text = letters[i].repeat(9000);
+      e.edit(7, { notes: [text, text], generalNote: text });
+      await tick(DEBOUNCE_MS);
+      s.calls[i].answer(refused(i + 2, [`teine ${i}`, ""]));
+      await tick();
+    }
+    const lost = e.get(7)!.conflict!.lost!;
+    const all = [...lost.notes, lost.generalNote].join("");
+    const count = (ch: string) => all.split(ch).length - 1;
+    expect(count("a")).toBe(0);
+    expect([..."bcdefgh"].map(count)).toEqual(Array(7).fill(27_000));
+    expect(7 * 27_000).toBeLessThanOrEqual(NOTICE_MAX_CHARS);
+    expect(readConflict(localStorage, 7)).toEqual(e.get(7)!.conflict);
+  });
+
+  test("Minor 7: the page hidden for good (the tablet asleep, the tab closed): a waiting save goes as a keepalive request when it is small enough", async () => {
+    const s = server();
+    const e = start([draft(), draft({ registrationId: 8 })], s.send);
+    e.editNote(7, 0, "lühike");
+    const big = "€".repeat(10_000); // 90 000 bytes: over a keepalive request's 64 KB
+    e.edit(8, { notes: [big, big], generalNote: big });
+    window.dispatchEvent(new Event("pagehide"));
+    await tick();
+    expect(s.calls.map((c) => [c.body.registrationId, c.opts])).toEqual([[7, { keepalive: true }]]);
+    await tick(DEBOUNCE_MS); // the page came back (the browser's cache): the big one goes at its time
+    expect(s.calls.map((c) => [c.body.registrationId, c.opts?.keepalive ?? false])).toEqual([[7, true], [8, false]]);
+    expect(readLocal(localStorage, 8)?.content.generalNote).toHaveLength(10_000); // in the browser until the server has it
   });
 });

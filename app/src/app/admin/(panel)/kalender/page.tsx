@@ -85,10 +85,13 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
           {open ? (
             <>
               <h2 className={ui.h2}>{name}</h2>
-              {/* the session's protocols (phase protocols, spec §4): one tap to the course day's screen */}
-              <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.protocols}`} href={`/admin/protokollid?sessioon=${open.id}`} data-session-protocols="">
-                {adminEt.protocols.open}
-              </Link>
+              {/* the session's protocols (phase protocols, spec §4): one tap to the course day's screen; contact courses only (a row of
+                  another course's session can be left from before its type was locked) */}
+              {open.course.type === "contact" && (
+                <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.protocols}`} href={`/admin/protokollid?sessioon=${open.id}`} data-session-protocols="">
+                  {adminEt.protocols.open}
+                </Link>
+              )}
               <SessionForm
                 key={open.id}
                 initial={{ id: open.id, courseId: open.courseId, ...tallinnFormParts(open.startsAt), city: open.city, venue: open.venue, language: open.language, capacity: open.capacity, status: open.status }}

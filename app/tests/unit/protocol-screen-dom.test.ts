@@ -58,6 +58,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.restoreAllMocks(); // a storage spy of a failed test must not fill the next one's storage
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -161,6 +162,36 @@ test("a browser that cannot keep the text (storage full): 'Salvestamata' and a s
   expect($("[data-not-kept]")!.textContent).toBe("Seda teksti ei saa selles seadmes hoida (brauseri mälu on täis või suletud). Ära sulge lehte enne, kui see on salvestatud.");
   expect($("[data-student='1'] [data-unsaved]")!.textContent).toBe("Salvestamata");
   setItem.mockRestore();
+});
+
+test("a full storage and a real conflict: the notice with this screen's words, and the short notice that the browser cannot keep them", async () => {
+  const setItem = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+    throw new DOMException("full", "QuotaExceededError");
+  });
+  fetchMock.mockImplementation(async () =>
+    json(409, { ok: false, error: "conflict", protocol: { version: 3, stages: TITLES.map((title, i) => ({ title, note: i === 0 ? "teine seade" : "" })), generalNote: "", sentVersion: null, sentAt: null, updatedAt: "2026-10-12T08:01:00.000Z" } }),
+  );
+  await render({ single: true, students: [student(1, "Anu", { version: 2, notes: ["vana", ""] })] });
+  await type("[data-note='0']", "minu tekst");
+  await wait(1500);
+  await wait(0);
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("teine seade");
+  expect($("[data-conflict]")!.textContent).toContain("minu tekst");
+  expect($("[data-not-kept]")).not.toBeNull();
+  await click("[data-conflict-dismiss]");
+  expect($("[data-not-kept]")).toBeNull();
+  setItem.mockRestore();
+});
+
+test("the chip says 'Salvestamata' while a save's answer is unknown, also when the text was typed back to the saved one", async () => {
+  fetchMock.mockImplementation(() => new Promise<Response>(() => {})); // the save hangs
+  await render({ single: false, students: [student(1, "Anu", { version: 1, notes: ["A", ""] }), student(2, "Mari")] });
+  await type("[data-note='0']", "AB");
+  await wait(1500);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  await type("[data-note='0']", "A");
+  expect($("[data-student='1'] [data-unsaved]")!.textContent).toBe("Salvestamata");
+  expect($("[data-save-status]")!.textContent).toBe("Salvestamata muudatused");
 });
 
 test("a text kept in this browser comes back after a reload and is saved at once", async () => {

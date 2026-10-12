@@ -20,6 +20,9 @@ const BROWSER_FILES = [
   "src/components/admin/protocol-autosave.ts",
   "src/components/admin/ProtocolScreen.tsx",
   "src/components/admin/GrowingText.tsx",
+  // what the screen pulls into the browser besides (Task 5's review)
+  "src/i18n/format.ts",
+  "src/i18n/dict/admin.ts",
 ];
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));
 const STORABLE_IMPORT = /from "(@\/lib\/storable|(\.\.?\/)+(lib\/)?storable)"/;
