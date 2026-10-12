@@ -418,7 +418,8 @@ function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded
 /**
  * The daily check's "Makse vajab kontrolli" (check.ts), after the response: Montonio says `row` is paid (`snapshot`), but settling it threw,
  * so the money is recorded nowhere. Once per payment: the record pay:stuck:<payment> is taken in the KV (30 days, past the check's 14 days
- * of asking), and an alert that reached no one gives it back, so the next run tells Maria. The log has the payment's id only.
+ * of asking), and an alert that reached no one gives it back, so the next run tells Maria. A row the webhook or the return settled before
+ * the alert went out gets none (its record is given back too). The log has the payment's id only.
  */
 export function alertUnsettled(deps: SettleDeps, row: Payment, snapshot: OrderSnapshot): void {
   logNote(`[payments] payment ${row.id}: Montonio says paid but it could not be recorded, Maria is alerted`);
@@ -430,6 +431,14 @@ export function alertUnsettled(deps: SettleDeps, row: Payment, snapshot: OrderSn
     }
     let told = false;
     try {
+      // the webhook or the return may have settled the row since the check's try. The record is taken before the row is read again, so a
+      // winner either committed before this read (no alert), or its follow-up (followUpUnsettled) reads the record after it was taken and
+      // follows this alert up. A row no longer pending gets no alert, and the record is given back (the finally below): a record left set
+      // would make a winner whose follow-up runs later tell Maria about an alert she never got
+      if (!(await stillPending(deps, row))) {
+        logNote(`[payments] payment ${row.id}: settled before Maria was alerted, no alert`);
+        return;
+      }
       const ctx = await contextOf(deps, row.id);
       const s = stuckPaymentSummary(
         { kind: row.kind, name: row.name, email: row.email, amountCents: row.amountCents, course: courseName(ctx, row.kind), startsAt: ctx.session?.startsAt ?? null, reference: row.reference, providerUuid: row.providerUuid, paidCents: snapshot.amountCents, currency: snapshot.currency },
@@ -443,9 +452,19 @@ export function alertUnsettled(deps: SettleDeps, row: Payment, snapshot: OrderSn
   });
 }
 
+/** Whether `row` is still pending as the database has it now. A failure to read it must not lose Maria's alert: it counts as pending (logged). */
+async function stillPending(deps: SettleDeps, row: Payment): Promise<boolean> {
+  try {
+    return (await current(deps, row)).status === "pending";
+  } catch (e) {
+    logFailure(`[payments] payment ${row.id}: it could not be read again before the alert`, e);
+    return true;
+  }
+}
+
 /**
  * The follow-up of "Makse vajab kontrolli" (alertUnsettled), after the response: the payment `p` was just recorded, and the record
- * pay:stuck:<payment> says Maria was told it could not be (a record given back, "0", is an alert that reached no one: nothing to follow up).
+ * pay:stuck:<payment> says Maria was told it could not be (a record given back, "0", is an alert that reached no one or was not sent: nothing to follow up).
  * She may have recorded it by hand meanwhile, so she gets "Makse on nüüd kirja pandud" once, and the record is removed. A store that fails
  * to answer loses the follow-up (logged): the payment itself is recorded. The log has the payment's id only.
  */
