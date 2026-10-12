@@ -315,6 +315,8 @@ export const adminEt = {
       will: "Saavad protokolli: {names}",
       skipped: "Jäävad vahele, sest protokoll on tühi: {names}",
       already: "Juba saadetud, uut pole: {names}",
+      // a student whose own "Saada" is on its way: this send leaves her alone (NEW wording, for Dim's approval)
+      onItsWay: "Saatmine juba käib: {names}",
       nothing: "Pole midagi uut saata.",
       yes: "Saada",
       no: "Tagasi",

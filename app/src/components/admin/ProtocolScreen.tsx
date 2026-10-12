@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { PROTOCOL_LIMITS, type ProtocolStatus } from "@/domain/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
@@ -195,9 +195,17 @@ function StudentEditor({
   const frozen = locked || entry.sending;
   const line = statusLine(entry.status, t);
   const sentAt = entry.sentAt ? new Date(entry.sentAt) : null;
+  // "Muuda" pressed: its button is gone (the hint takes its place), so the focus goes to the first box, or to the general notes when the
+  // course has no headings; a screen opened again with the protocol already open takes no focus
+  const section = useRef<HTMLElement>(null);
+  const wasUnlocked = useRef(unlocked);
+  useEffect(() => {
+    if (unlocked && !wasUnlocked.current) section.current?.querySelector("textarea")?.focus();
+    wasUnlocked.current = unlocked;
+  }, [unlocked]);
 
   return (
-    <section className={styles.editor} aria-labelledby={`${uid}-name`} data-editor={id}>
+    <section ref={section} className={styles.editor} aria-labelledby={`${uid}-name`} data-editor={id}>
       <div className={styles.editorHead}>
         <h2 id={`${uid}-name`} className={ui.h2}>
           {name}

@@ -172,9 +172,11 @@
 
 /* the sends (ProtocolSend.tsx): "Lukusta ja saada kõik" above the screen with its confirmation; a student's buttons under her protocol */
 .sendAll {
-  display: grid;
-  justify-items: start;
-  gap: 12px;
+  --gap: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gap);
   margin-bottom: 20px;
 }
 
@@ -197,6 +199,17 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* the summary's place is on the screen from the start (a screen reader announces what comes into a live region that is already there): empty, it takes no room (its negative margin takes back the gap before it; a flex column
+   counts it, a grid would not) */
+.summary {
+  display: grid;
+  gap: 4px;
+}
+
+.summary:empty {
+  margin-top: calc(var(--gap) * -1);
 }
 
 .sendBar {

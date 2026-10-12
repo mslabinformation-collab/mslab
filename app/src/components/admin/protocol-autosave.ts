@@ -24,7 +24,7 @@ import { toStorable } from "@/lib/to-storable"; // (never lib/storable: this fil
 // - the tab hidden (another app, the tablet locked) sends a waiting save at once; the page put away (pagehide: the tab closed, the tablet's
 //   browser freezing it) sends it as a keepalive request when it is small enough, else leaves it to the copy; leaving the screen for another
 //   admin page sends it unanswered (stop);
-// - while a send is on its way (setSending) the protocol takes no edits;
+// - while a send is on its way (setSending, counted) the protocol takes no edits;
 // - a box over 10 000 characters is never cut: nothing is sent until it is shortened, the status and the box say so;
 // - pasted control characters that Postgres cannot store are dropped (toStorable), the words kept.
 // The server's side is server/protocols.ts saveProtocol behind POST /api/admin/protokoll.
@@ -69,8 +69,10 @@ export type Entry = {
   savedAt: number | null;
   status: SaveStatus;
   conflict: Conflict | null;
-  /** "Saada" is on its way (Task 6): the boxes are read-only and edits are not taken. */
+  /** A send is on its way (setSending): the boxes are read-only and edits are not taken. */
   sending: boolean;
+  /** The line under the protocol's send button (why the last send did not go through); it stays with the protocol until its next send or edit. */
+  sendError: string | null;
   /**
    * This browser holds what is not on the server (the unsaved text, the notice's words); false: its storage is full or blocked, and a reload
    * would lose them. The screen says so ("Seda teksti ei saa selles seadmes hoida …").
@@ -413,6 +415,8 @@ export class ProtocolAutosave {
   private readonly chains = new Map<number, Promise<boolean>>();
   /** Texts sent without an answer since the last confirmed one: any of them may be stored (a lost answer). */
   private readonly unanswered = new Map<number, Content[]>();
+  /** How many sends of a protocol are on their way: it takes no edits until the last of them is answered. */
+  private readonly sends = new Map<number, number>();
   /** The text of the save on its way. */
   private readonly flying = new Map<number, Content>();
   /** The notice's parts (each refusal's words, oldest first); the entry's `conflict` is them as one. */
@@ -447,6 +451,7 @@ export class ProtocolAutosave {
         status: { kind: "saved", at: d.savedAt },
         conflict: null,
         sending: false,
+        sendError: null,
         kept: true,
       });
   }
@@ -542,6 +547,7 @@ export class ProtocolAutosave {
   edit(id: number, content: Content): void {
     const e = this.entries.get(id);
     if (!e || e.sending) return;
+    e.sendError = null;
     e.content = { notes: content.notes.map(toStorable), generalNote: toStorable(content.generalNote) };
     if (!this.uncertain(e)) {
       this.clearTimer(this.debounce, id);
@@ -579,11 +585,25 @@ export class ProtocolAutosave {
     this.changed();
   }
 
-  /** "Saada" is on its way (on) or answered (off): meanwhile the protocol takes no edits, so the version sent is the one on the screen. */
+  /**
+   * A send is on its way (on) or answered (off): meanwhile the protocol takes no edits, so the version sent is the one on the screen. Sends
+   * are counted: with two on their way the first answer does not open what the second still needs shut.
+   */
   setSending(id: number, on: boolean): void {
     const e = this.entries.get(id);
     if (!e) return;
-    e.sending = on;
+    const n = Math.max(0, (this.sends.get(id) ?? 0) + (on ? 1 : -1));
+    if (n === 0) this.sends.delete(id);
+    else this.sends.set(id, n);
+    e.sending = n > 0;
+    this.changed();
+  }
+
+  /** The line under a protocol's send button, or none: kept with the protocol (not with the button, which goes when Maria changes student). */
+  setSendError(id: number, message: string | null): void {
+    const e = this.entries.get(id);
+    if (!e) return;
+    e.sendError = message;
     this.changed();
   }
 

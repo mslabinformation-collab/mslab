@@ -381,6 +381,38 @@ describe("the other answers and the parts", () => {
     expect(e.get(7)!.content.notes[0]).toBe("Valmis!");
   });
 
+  test("sends that overlap: the protocol stays read-only until the last of them is answered, and one 'off' too many changes nothing", () => {
+    const e = start([draft({ version: 1, content: { notes: ["Valmis", ""], generalNote: "" } })], server().send);
+    e.setSending(7, true);
+    e.setSending(7, true);
+    e.setSending(7, false); // the first answer: the second send still needs the text as it is
+    e.editNote(7, 0, "Valmis!");
+    expect(e.get(7)).toMatchObject({ sending: true, content: { notes: ["Valmis", ""] } });
+    e.setSending(7, false);
+    expect(e.get(7)!.sending).toBe(false);
+    e.setSending(7, false); // (never below none: the next send must still lock)
+    e.setSending(7, true);
+    expect(e.get(7)!.sending).toBe(true);
+    e.setSending(7, false);
+    expect(e.get(7)!.sending).toBe(false);
+  });
+
+  test("the note under a send's button is kept with the protocol until its next edit or the next note", () => {
+    const e = start([draft({ version: 1, content: { notes: ["Valmis", ""], generalNote: "" } })], server().send);
+    expect(e.get(7)!.sendError).toBeNull();
+    e.setSendError(7, "Saatmine ei õnnestunud.");
+    expect(e.get(7)!.sendError).toBe("Saatmine ei õnnestunud.");
+    e.editNote(7, 0, "Valmis!");
+    expect(e.get(7)!.sendError).toBeNull();
+    e.setSendError(7, "Uus");
+    e.setSendError(7, null);
+    expect(e.get(7)!.sendError).toBeNull();
+    e.setSending(7, true);
+    e.setSendError(7, "Ei");
+    e.editNote(7, 0, "Valmis!!"); // (a read-only protocol takes no edit, and so does not drop the note)
+    expect(e.get(7)!.sendError).toBe("Ei");
+  });
+
   test("readLocal reads only a copy it wrote; resumeLocal's three outcomes", () => {
     localStorage.setItem(localKey(1), "{");
     localStorage.setItem(localKey(2), JSON.stringify({ version: "1", titles: [], content: { notes: [], generalNote: "" }, sent: [] }));
