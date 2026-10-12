@@ -243,12 +243,14 @@ for (const refusal of REFUSALS) {
     // (each request is stamped when the page sends it, so "backs off" is measured between requests, never from when this test noticed an answer)
     const answers: { at: number; status: number; body: unknown }[] = [];
     const sentAt: number[] = [];
+    let handed = 0; // the requests whose answer has been handed to the page
     await page.route(SAVE, async (route) => {
       sentAt.push(Date.now());
       const sent = JSON.parse(route.request().postData() ?? "{}") as Body;
       const response = await route.fetch({ postData: refusal.body(sent) });
       answers.push({ at: sentAt[sentAt.length - 1], status: response.status(), body: await response.json().catch(() => null) });
       await route.fulfill({ response });
+      handed++;
     });
     await note(page, mari.id, 0).fill("Sõnad, mis ei lähe kaduma.");
     await expect.poll(() => answers.length, { timeout: 20_000 }).toBeGreaterThan(0);
@@ -263,6 +265,8 @@ for (const refusal of REFUSALS) {
     await expect.poll(() => sentAt.length, { message: "the first retry", timeout: 20_000 }).toBeGreaterThan(1);
     expect(sentAt.length, "requests before the first retry").toBe(2);
     expect(sentAt[1] - sentAt[0], "ms between the first request and its retry").toBeGreaterThanOrEqual(1_800);
+    await expect.poll(() => handed, { message: "the retry's answer handed to the page" }).toBe(2); // (a route taken away while its handler is busy answers the page 404)
+    expect([answers[1].status, answers[1].body]).toMatchObject([refusal.status, { ok: false, error: refusal.error }]);
     // the server takes it: the next try (here, leaving the box) stores it
     await page.unroute(SAVE);
     await page.getByRole("heading", { level: 1 }).click();
