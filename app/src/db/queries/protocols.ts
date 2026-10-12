@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, asc, eq, gte, lt, sql } from "drizzle-orm";
 import type { Db } from "../client";
 import { courses, courseSessions, protocols, registrations, type CourseSession, type Protocol, type ProtocolStage, type Registration } from "../schema";
+import { tallinnFormParts } from "@/domain/calendar";
 import { protocolStatus, readStages, stagesFrom, type ProtocolStatus } from "@/domain/protocols";
 import type { RegStatus } from "@/domain/registration";
 import type { I18n } from "@/i18n/field";
@@ -86,4 +87,39 @@ export async function protocolScreen(db: Db, target: { sessionId: number } | { r
     .limit(1);
   if (!r || r.course.type !== "contact") return null;
   return screenOf("registration", r.course, r.session ? sessionOf(r.session) : null, [{ registration: r.registration, protocol: r.protocol }]);
+}
+
+// ---------- the overview's "Täna" (Task 5) ----------
+
+/** One of today's sessions: its course, when and where, and how many students are listed on its screen (not cancelled). */
+export type TodaySession = { id: number; startsAt: Date; city: string; venue: string; title: I18n; students: number };
+
+/**
+ * Today's sessions in Tallinn (spec §4: the overview's "Täna" card), scheduled ones of contact courses, earliest first. A window of two days
+ * either side is read and each session's Tallinn date compared with today's: the same on the two days the clocks change.
+ */
+export async function todaySessions(db: Db, now: Date): Promise<TodaySession[]> {
+  const DAY = 86_400_000;
+  const rows = await db
+    .select({
+      id: courseSessions.id,
+      startsAt: courseSessions.startsAt,
+      city: courseSessions.city,
+      venue: courseSessions.venue,
+      title: courses.title,
+      students: sql<number>`(select count(*) from registrations r where r.course_session_id = ${courseSessions.id} and r.status <> 'cancelled')`.mapWith(Number),
+    })
+    .from(courseSessions)
+    .innerJoin(courses, eq(courseSessions.courseId, courses.id))
+    .where(
+      and(
+        eq(courseSessions.status, "scheduled"),
+        eq(courses.type, "contact"),
+        gte(courseSessions.startsAt, new Date(now.getTime() - 2 * DAY)),
+        lt(courseSessions.startsAt, new Date(now.getTime() + 2 * DAY)),
+      ),
+    )
+    .orderBy(asc(courseSessions.startsAt), asc(courseSessions.id));
+  const today = tallinnFormParts(now).date;
+  return rows.filter((r) => tallinnFormParts(r.startsAt).date === today);
 }

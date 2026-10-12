@@ -248,6 +248,12 @@ function RegistrationDetail({ r, payments }: { r: RegistrationRow; payments: Pay
         <StatusPill status={r.status} />
         <h2 className={ui.h2}>{r.name}</h2>
         <p className={ui.muted}>{pick(r.course.title, "et")}</p>
+        {/* the protocol of a contact course's registration (phase protocols, spec §4): one tap to its screen */}
+        {r.course.type === "contact" && r.status !== "cancelled" && (
+          <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?registreering=${r.id}`} data-registration-protocol="">
+            {adminEt.protocols.openOne}
+          </Link>
+        )}
       </div>
 
       <section className={styles.money} aria-label={t.priceTitle}>
