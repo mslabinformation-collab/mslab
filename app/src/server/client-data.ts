@@ -496,8 +496,11 @@ export async function createChangeRequest(
 /**
  * Deletes the client with its sessions, favourites, terms acceptances and course access, the login codes and links still waiting for its
  * address (they are keyed by address, so no cascade reaches them; a live one would otherwise sign in again and re-create the account), and the
- * newsletter subscription of the address. Registrations and requests stay with Maria, their name and e-mail as given, only unlinked
+ * newsletter subscription of the address. Her protocols and her course feedback go too (phase protocols, spec §3): those of the registrations linked to her.
+ * Registrations and requests stay with Maria, their name and e-mail as given, only unlinked
  * (client_id null). Takes the address lock the logins take, so a login in flight finishes before this runs or finds nothing after it.
+ * Then her registrations, FOR UPDATE, before their protocols and feedback: the order a send takes (the address, the registration, the protocol), so a send or a
+ * feedback answer on one of them finishes first, or finds it no longer hers after.
  * Returns the address and language the confirmation mail goes to; null when the client was already gone.
  */
 export async function deleteClient(db: Db, clientId: number): Promise<{ email: string; locale: "et" | "ru" } | null> {
@@ -506,6 +509,12 @@ export async function deleteClient(db: Db, clientId: number): Promise<{ email: s
     if (!existing) return null;
     const address = normalizeEmail(existing.email);
     await lockAddress(tx as unknown as Db, address);
+    // her protocols and feedback (phase protocols): the registrations themselves stay with Maria, unlinked below (ON DELETE SET NULL)
+    const mine = (await tx.select({ id: registrations.id }).from(registrations).where(eq(registrations.clientId, clientId)).for("update")).map((r) => r.id);
+    if (mine.length > 0) {
+      await tx.delete(protocols).where(inArray(protocols.registrationId, mine));
+      await tx.delete(courseFeedback).where(inArray(courseFeedback.registrationId, mine));
+    }
     const [row] = await tx.delete(clients).where(eq(clients.id, clientId)).returning(); // (returning(fields) has no common overload on the Db union)
     if (!row) return null;
     await tx.delete(clientLoginTokens).where(eq(clientLoginTokens.email, address));
