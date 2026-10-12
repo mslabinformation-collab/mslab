@@ -325,7 +325,9 @@ function redirect(url: URL, target: string, cookies: string[] = []): Response {
 /**
  * GET /verify?t=<token>&l=<et|ru>: the link in the login e-mail. Uses the login once, starts the session and goes to the
  * client's own page (/konto#sisse, /ru/konto#sisse, by the client's language: the fragment tells the browser to forget the copy of
- * the favourites a previous session left, lib/account-marks.ts LOGIN_MARK). `l` is the language of the page the login was asked from
+ * the favourites a previous session left, lib/account-marks.ts LOGIN_MARK). With `p=<registration id>` (the protocol mail's button, phase
+ * protocols) it goes to that protocol instead: /konto/protokoll#sisse&id=<id> (the mark first, the id after it, both in the fragment).
+ * `l` is the language of the page the login was asked from
  * (absent: Estonian; anything but "et" / "ru" is ignored): an account this link creates gets it, and the login page of that
  * language is where the link goes when it fails. A token that is unknown, used, expired or dead goes to
  * /konto/sisene#viga=link (/ru/konto/sisene#viga=link); a database failure to #viga=server (the link is still usable then,
@@ -338,7 +340,10 @@ async function verify(request: Request, url: URL, deps: AccountDeps): Promise<Re
   try {
     const session = await redeemClientLink(deps.db, url.searchParams.get("t") ?? "", deps.now, page);
     if (!session) return redirect(url, `${login}#viga=link`);
-    return redirect(url, `${session.locale === "ru" ? "/ru/konto" : "/konto"}#${LOGIN_MARK}`, sessionCookies(session.sessionRaw));
+    const home = session.locale === "ru" ? "/ru/konto" : "/konto";
+    // the protocol mail's button: its protocol, the id after the login mark (components/account/useAccount.ts takes the mark and keeps the id)
+    const protocolId = parseRowId(url.searchParams.get("p") ?? "");
+    return redirect(url, protocolId === null ? `${home}#${LOGIN_MARK}` : `${home}/protokoll#${LOGIN_MARK}&id=${protocolId}`, sessionCookies(session.sessionRaw));
   } catch (e) {
     logFailure("[account] verify failed", e); // never the message: it holds the token hash and the e-mail
     return redirect(url, `${login}#viga=server`);

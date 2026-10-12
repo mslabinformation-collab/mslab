@@ -138,6 +138,16 @@ describe("useAccount", () => {
     expect(localStorage.getItem("mslab-account-fav")).toBe('["mine"]');
   });
 
+  test("opened by the protocol mail's login (#sisse&id=42): the copy is forgotten and the mark leaves, the protocol's id stays (phase protocols)", async () => {
+    window.history.replaceState(null, "", "/konto/protokoll#sisse&id=42");
+    localStorage.setItem("mslab-account-fav", '["someone-elses"]');
+    fetchMock.mockImplementation(async () => json(500, { ok: false }));
+    await mount();
+    expect(localStorage.getItem("mslab-account-fav")).toBeNull();
+    expect(window.location.pathname).toBe("/konto/protokoll");
+    expect(window.location.hash).toBe("#id=42");
+  });
+
   test("a merge that fails keeps the browser's favourites for the next account load", async () => {
     document.cookie = "mslab_in=1; path=/";
     localStorage.setItem("mslab-fav", '["lami"]');
