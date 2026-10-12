@@ -39,11 +39,11 @@ export function sendMessage(result: SendOutcome, t: T): string | null {
 /**
  * The line for a protocol that is not sent because its text is not safely on the server, read from what the engine knows, in the words the
  * screen already has. A refusal (another device saved first) adopts that device's text and settles, so the status says "saved" although the
- * save failed: the open notice is what tells (Maria must look at it and the text, not try again). A protocol that is gone, signed out or too
- * long says so; no answer (offline, a server error) is "not saved yet".
+ * save failed: the open notice is what tells, and Maria's next step is to look at it and press "Selge", not to try again (a reload keeps the
+ * notice). A protocol that is gone, signed out or too long says so; no answer (offline, a server error) is "not saved yet".
  */
 export function unsavedMessage(e: Pick<Entry, "status" | "conflict">, t: T): string {
-  if (e.conflict) return t.sendErrors.stale;
+  if (e.conflict) return t.sendErrors.review;
   switch (e.status.kind) {
     case "gone":
       return t.sendErrors.notFound;
@@ -165,13 +165,13 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
   );
 }
 
-/** The summary of a "Saada kõik": who got one, and per reason (in a single "Saada"'s words) who did not. */
-type Summary = { sent: string[]; notSent: { reason: string; names: string[] }[] };
+/** The summary of a "Saada kõik": who got one, and per reason (in a single "Saada"'s words) who did not: each group is one line. */
+type Summary = { sent: string[]; notSent: { key: string; line: string }[] };
 
 /**
  * "Lukusta ja saada kõik" (spec §4, §8): the session screen's primary button. The first tap opens one confirmation that names who will get a
  * protocol, who is skipped because hers is empty, who has hers already, whose send is on its way already (left alone), and whose text is
- * another device's with its notice still open (left out, with the reason). "Saada" there saves
+ * another device's with its notice still open (left out until she has looked at it and pressed "Selge"). "Saada" there saves
  * each of those protocols on its own (read-only meanwhile), sends the ones whose save the server confirmed, each in its own transaction
  * (sendProtocolsAction), and leaves out and names one that could not be saved, under the reason of that (unsavedMessage): one student's failure
  * never stops the others. The summary says who got one and, per reason, who did not; every protocol that was to go is in it, one the server
@@ -219,9 +219,18 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
       const results: BulkResult[] =
         items.length === 0 ? [] : await sendProtocolsAction(items).catch(() => items.map((i) => ({ registrationId: i.registrationId, result: { kind: "failed" } as const })));
       const sent: string[] = [];
-      const notSent = new Map<string, string[]>();
-      const leftOut = (reason: string, id: number) => notSent.set(reason, [...(notSent.get(reason) ?? []), nameOf(id)]);
-      for (const id of will.filter((_, i) => !goes[i])) leftOut(unsavedMessage(engine.get(id)!, t), id);
+      // the groups of the ones not sent, one line each ("Vaata enne üle …" for those whose notice is open: Maria’s next step is "Selge"), and
+      // for each the reason under her own button, as a single "Saada" leaves it
+      const notSent = new Map<string, { review: boolean; reason: string; names: string[] }>();
+      const own = new Map<number, string>();
+      const leftOut = (reason: string, id: number, review = false) => {
+        const key = review ? "review" : reason;
+        const group = notSent.get(key) ?? { review, reason, names: [] };
+        group.names.push(nameOf(id));
+        notSent.set(key, group);
+        own.set(id, review ? t.sendErrors.review : reason);
+      };
+      for (const id of will.filter((_, i) => !goes[i])) leftOut(unsavedMessage(engine.get(id)!, t), id, engine.get(id)!.conflict !== null);
       for (const r of results) {
         if (r.result.kind === "sent" || r.result.kind === "already") {
           engine.markSent(r.registrationId, r.result.version, r.result.sentAt);
@@ -232,7 +241,12 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
       // (an answer that does not list a protocol that was sent for: no one is left unexplained)
       const answered = new Set(results.map((r) => r.registrationId));
       for (const item of items) if (!answered.has(item.registrationId)) leftOut(t.sendErrors.failed, item.registrationId);
-      setSummary(sent.length === 0 && notSent.size === 0 ? null : { sent, notSent: [...notSent].map(([reason, who]) => ({ reason, names: who })) });
+      for (const id of will) engine.setSendError(id, own.get(id) ?? null); // (one that went has no line left from an earlier try)
+      const lines = [...notSent].map(([key, g]) => ({
+        key,
+        line: g.review ? fill(t.confirm.review, { names: g.names.join(", ") }) : fill(t.result.notSent, { names: g.names.join(", "), reason: g.reason }),
+      }));
+      setSummary(sent.length === 0 && lines.length === 0 ? null : { sent, notSent: lines });
       close();
     } finally {
       for (const id of will) engine.setSending(id, false);
@@ -267,7 +281,7 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
           {plan.skipped.length > 0 && <p data-confirm-skipped="">{fill(t.confirm.skipped, { names: list(plan.skipped) })}</p>}
           {plan.already.length > 0 && <p data-confirm-already="">{fill(t.confirm.already, { names: list(plan.already) })}</p>}
           {plan.sending.length > 0 && <p data-confirm-sending="">{fill(t.confirm.onItsWay, { names: list(plan.sending) })}</p>}
-          {plan.review.length > 0 && <p data-confirm-review="">{fill(t.result.notSent, { names: list(plan.review), reason: t.sendErrors.stale })}</p>}
+          {plan.review.length > 0 && <p data-confirm-review="">{fill(t.confirm.review, { names: list(plan.review) })}</p>}
           <div className={styles.answers}>
             {plan.will.length > 0 && (
               <button type="button" className={ui.btn} aria-disabled={busy || undefined} onClick={() => void confirm()} data-confirm-send="">
@@ -295,8 +309,8 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
           </p>
         )}
         {summary?.notSent.map((group) => (
-          <p key={group.reason} className={ui.error} data-summary-failed="">
-            {fill(t.result.notSent, { names: group.names.join(", "), reason: group.reason })}
+          <p key={group.key} className={ui.error} data-summary-failed="">
+            {group.line}
           </p>
         ))}
       </div>

@@ -615,6 +615,7 @@ export class ProtocolAutosave {
     const e = this.entries.get(id);
     if (!e) return;
     e.conflict = null;
+    e.sendError = null; // (the line that told her to look at the notice goes with it)
     this.parts.delete(id);
     this.unkept.delete(id);
     removeKey(this.storage, conflictKey(id, this.keyTab));

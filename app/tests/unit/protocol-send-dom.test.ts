@@ -316,14 +316,15 @@ const conflictBody = (note: string) => ({
   protocol: { version: 3, stages: [{ title: TITLES[0], note }, { title: TITLES[1], note: "" }], generalNote: "", sentVersion: null, sentAt: null, updatedAt: "2026-10-12T15:00:00.000Z" },
 });
 const UNSAVED = "Kõik pole veel salvestatud. Saada uuesti, kui ühendus on tagasi.";
-const STALE = "Protokolli muudeti vahepeal mujal. Laadi leht uuesti ja vaata see üle.";
+const REVIEW = "Vaata enne saatmist üle teises seadmes tehtud muudatus ja vajuta „Selge“.";
+const reviewAll = (names: string) => `Vaata enne üle ja vajuta „Selge“: ${names}`;
 
-test("a save that another device's text refused is not sent, and the line says it was changed elsewhere, not that it is unsaved", async () => {
+test("a save that another device's text refused is not sent, and the line says to look at that text and press 'Selge', not that it is unsaved", async () => {
   fetchMock.mockImplementation(async () => json(409, conflictBody("Teisest seadmest")));
   await render({ single: true, students: [student(1, "Kati")] });
   await type("[data-note='0']", "Valmis!");
   await click("[data-send='first']");
-  expect($("[data-send-error]")!.textContent).toBe(STALE);
+  expect($("[data-send-error]")!.textContent).toBe(REVIEW);
   expect($("[data-conflict]")).not.toBeNull(); // (the notice with her words is on the screen too)
   expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Teisest seadmest");
   expect(actions.sendProtocolAction).not.toHaveBeenCalled();
@@ -368,7 +369,7 @@ test("'Lukusta ja saada kõik': the students whose save did not go through are n
   expect($("[data-summary-sent]")!.textContent).toBe("Saadetud: Dora.");
   expect($$("[data-summary-failed]").map((p) => p.textContent)).toEqual([
     `Ei saadetud: Eve, Hugo. ${UNSAVED}`,
-    `Ei saadetud: Fia. ${STALE}`,
+    reviewAll("Fia"),
     "Ei saadetud: Gert. Seda registreeringut ei leitud.",
   ]);
 });
@@ -521,7 +522,7 @@ test("a refusal that a save already on its way takes — Maria's tap blurs the b
     ($("[data-send='first']") as HTMLElement).click();
   });
   expect(fetchMock).toHaveBeenCalled(); // (the blur's save)
-  expect($("[data-send-error]")!.textContent).toBe(STALE);
+  expect($("[data-send-error]")!.textContent).toBe(REVIEW);
   expect($("[data-conflict]")).not.toBeNull();
   expect(actions.sendProtocolAction).not.toHaveBeenCalled();
 });
@@ -531,14 +532,15 @@ test("while the notice of a refusal is open the protocol is not sent: 'Selge' fi
   await render({ single: true, students: [student(1, "Kati")] });
   await type("[data-note='0']", "Valmis!");
   await click("[data-send='first']");
-  expect($("[data-send-error]")!.textContent).toBe(STALE);
+  expect($("[data-send-error]")!.textContent).toBe(REVIEW);
   fetchMock.mockClear();
   await click("[data-send='first']"); // (the notice is still open: she has not looked at it)
-  expect($("[data-send-error]")!.textContent).toBe(STALE);
+  expect($("[data-send-error]")!.textContent).toBe(REVIEW);
   expect(actions.sendProtocolAction).not.toHaveBeenCalled();
   expect(fetchMock).not.toHaveBeenCalled();
   actions.sendProtocolAction.mockResolvedValue({ kind: "sent", again: false, version: 3, sentAt: SENT_AT });
   await click("[data-conflict-dismiss]");
+  expect($("[data-send-error]")).toBeNull(); // ("Selge" takes the line with it)
   await click("[data-send='first']");
   expect(actions.sendProtocolAction).toHaveBeenCalledWith({ registrationId: 1, version: 3 });
   expect($("[data-send-error]")).toBeNull();
@@ -555,7 +557,7 @@ test("'Lukusta ja saada kõik' leaves a protocol with an open notice alone and n
   expect($("[data-student='5']")!.getAttribute("data-status")).toBe("draft");
   await click("[data-send-all-open]");
   expect($("[data-confirm-will]")!.textContent).toBe("Saavad protokolli: Dora");
-  expect($("[data-confirm-review]")!.textContent).toBe(`Ei saadetud: Eve. ${STALE}`);
+  expect($("[data-confirm-review]")!.textContent).toBe(reviewAll("Eve"));
   actions.sendProtocolsAction.mockResolvedValue([{ registrationId: 4, result: { kind: "sent", again: false, version: 1, sentAt: SENT_AT } }]);
   await click("[data-confirm-send]");
   expect(actions.sendProtocolsAction).toHaveBeenCalledWith([{ registrationId: 4, version: 1 }]);
@@ -587,5 +589,28 @@ test("'Lukusta ja saada kõik': a refusal that a save already on its way takes i
   await wait(0);
   expect(actions.sendProtocolsAction).toHaveBeenCalledWith([{ registrationId: 4, version: 1 }]);
   expect($("[data-summary-sent]")!.textContent).toBe("Saadetud: Dora.");
-  expect($$("[data-summary-failed]").map((p) => p.textContent)).toEqual([`Ei saadetud: Eve. ${STALE}`]);
+  expect($$("[data-summary-failed]").map((p) => p.textContent)).toEqual([reviewAll("Eve")]);
+  await click("[data-student='5']");
+  expect($("[data-send-error]")!.textContent).toBe(REVIEW); // (and under her own button: her notice is above)
+});
+
+// ---------- what a bulk leaves under each student's own button ----------
+
+test("a failed single 'Saada', then a bulk that sends her: no failure line is left under her now-sent protocol, and one the bulk could not send gets its reason under her own button", async () => {
+  actions.sendProtocolAction.mockResolvedValue({ kind: "failed" });
+  await render({ single: false, students: [student(1, "Anu"), student(2, "Berit")] });
+  await click("[data-send='first']");
+  expect($("[data-send-error]")!.textContent).toBe("Saatmine ei õnnestunud. Proovi uuesti.");
+  actions.sendProtocolsAction.mockResolvedValue([
+    { registrationId: 1, result: { kind: "sent", again: false, version: 1, sentAt: SENT_AT } },
+    { registrationId: 2, result: { kind: "cancelled" } },
+  ]);
+  await click("[data-send-all-open]");
+  await click("[data-confirm-send]");
+  expect($("[data-student='1']")!.getAttribute("data-status")).toBe("sent");
+  expect($("[data-send-error]")).toBeNull(); // (Anu's screen: the red line is gone with the send)
+  await click("[data-student='2']");
+  expect($("[data-send-error]")!.textContent).toBe("Registreering on tühistatud: protokolli ei saadeta.");
+  await click("[data-student='1']");
+  expect($("[data-send-error]")).toBeNull();
 });

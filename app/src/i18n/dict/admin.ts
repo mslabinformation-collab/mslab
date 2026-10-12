@@ -317,6 +317,8 @@ export const adminEt = {
       already: "Juba saadetud, uut pole: {names}",
       // a student whose own "Saada" is on its way: this send leaves her alone (NEW wording, for Dim's approval)
       onItsWay: "Saatmine juba käib: {names}",
+      // a student whose text is another device's, with its notice still open: left out until Maria has looked at it and pressed „Selge“ (NEW wording, for Dim's approval)
+      review: "Vaata enne üle ja vajuta „Selge“: {names}",
       nothing: "Pole midagi uut saata.",
       yes: "Saada",
       no: "Tagasi",
@@ -330,6 +332,8 @@ export const adminEt = {
       cancelled: "Registreering on tühistatud: protokolli ei saadeta.",
       notFound: "Seda registreeringut ei leitud.",
       failed: "Saatmine ei õnnestunud. Proovi uuesti.",
+      // a send stopped by the notice of a refusal (another device saved first): only "Selge" lets it go on (NEW wording, for Dim's approval)
+      review: "Vaata enne saatmist üle teises seadmes tehtud muudatus ja vajuta „Selge“.",
     },
   },
 

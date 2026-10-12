@@ -276,6 +276,18 @@ describe("two devices (Review Focus 2)", () => {
     expect(e.get(7)!.conflict).toBeNull();
   });
 
+  test("'Selge' takes the line under the send button with it: what was refused is sent clean once the notice is looked at", async () => {
+    const s = server();
+    const e = start([draft({ version: 1, content: { notes: ["vana", ""], generalNote: "" } })], s.send);
+    e.editNote(7, 0, "tahvel");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(refused(2, ["telefon", ""]));
+    await tick();
+    e.setSendError(7, "Vaata üle.");
+    e.dismissConflict(7);
+    expect(e.get(7)).toMatchObject({ conflict: null, sendError: null });
+  });
+
   test("a reload that finds the server moved on by another device: the kept text goes into the notice", async () => {
     localStorage.setItem(localKey(7), JSON.stringify({ version: 1, titles: TITLES, content: { notes: ["minu", ""], generalNote: "" }, sent: [] }));
     const e = start([draft({ version: 2, content: { notes: ["teine", ""], generalNote: "" } })], server().send);
