@@ -94,6 +94,7 @@ describe("admin guards are inherited by every admin entry point", () => {
         "server/actions/admin-lessons.ts",
         // protocols: the autosave
         "app/api/admin/protokoll/route.ts",
+        "server/actions/admin-protocols.ts",
       ]),
     );
     const broken = all.flatMap((f) => violations(f.path, f.source).map((v) => `${f.path}: ${v}`));
@@ -142,6 +143,11 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(lessonExports).toEqual(["addModule", "renameModule", "moveModuleInList", "deleteModule", "addLesson", "saveLesson", "moveLessonInList", "setLessonHidden", "setLessonKind", "deleteLesson", "deleteLessonFile", "createLessonVideo", "checkLessonVideo"]);
     expect(violations(lessonActions.path, lessonActions.source)).toEqual([]);
     expect([...strip(lessonActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(lessonExports);
+    const protocolActions = files().find((f) => f.path === "server/actions/admin-protocols.ts")!;
+    const protocolExports = [...strip(protocolActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
+    expect(protocolExports).toEqual(["sendProtocolAction", "sendProtocolsAction"]);
+    expect(violations(protocolActions.path, protocolActions.source)).toEqual([]);
+    expect([...strip(protocolActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(protocolExports);
     // It reads and scans every admin source file: about 2 s alone, but well past the 20 s default while the full run keeps every core
     // busy (seen at 38 s); the limit is for the machine's load, not for this test's work.
   }, 120_000);

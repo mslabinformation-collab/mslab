@@ -1,11 +1,18 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@/db/client";
 import { draftOf, type ProtocolDraft } from "@/db/queries/protocols";
-import { courses, protocols, registrations, type Protocol, type ProtocolStage } from "@/db/schema";
-import { overLimit, PROTOCOL_LIMITS, readStages } from "@/domain/protocols";
+import { lockRegistration } from "@/db/queries/seats";
+import { courses, courseSessions, protocols, registrations, type Protocol, type ProtocolStage } from "@/db/schema";
+import { isSampleAddress, normalizeEmail } from "@/domain/email";
+import { hasText, overLimit, PROTOCOL_LIMITS, readStages } from "@/domain/protocols";
+import type { I18n } from "@/i18n/field";
 import { storable } from "@/lib/storable";
+import { protocolMail, type SessionInfo } from "./account-mail";
+import { addClient } from "./admin-clients";
+import { issueClientLogin, lockAddress } from "./client-auth";
 import { logFailure } from "./log";
+import { mailConfigured, sendMail, type Env } from "./notify";
 
 // Maria's protocols on the course day (phase protocols, spec §3, §4, §8), without Next.js: the autosave (saveProtocol, and handleSave behind
 // app/api/admin/protokoll) and the sending (sendProtocol, Task 3). The admin session is checked by the callers (withAdmin, adminAction).
@@ -148,4 +155,136 @@ export async function handleSave(db: Db, request: Request, now: Date): Promise<R
     logFailure(`[protocols] registration ${input.registrationId}: the save failed`, e);
     return json({ ok: false, error: "server" }, 500);
   }
+}
+
+// ---------- sending (spec §4 "Saada", §6, §8) ----------
+
+export type SendDeps = {
+  db: Db;
+  /** The mail's settings (Resend). */
+  env: Env;
+  /** The base of the mail's links: the address Maria works on (mslab.ee), or SITE_URL. */
+  siteUrl: string;
+  now: Date;
+  /** Runs work after the answer: the mail (next/server after(); collected and awaited in the tests). */
+  later: (task: () => Promise<unknown>) => void;
+};
+
+/**
+ * What a send did. sent: frozen now (`again`: it had been sent before, so the mail says "uuendatud"); already: this version was sent before
+ * (a second tap, another device), nothing done; empty: nothing written, never sent; stale: the stored version is not the one the screen
+ * showed (`version`: the stored one); cancelled: the registration is cancelled, never sent; notFound: no registration of a contact course.
+ */
+export type SendResult =
+  | { kind: "sent"; again: boolean; version: number; sentAt: string }
+  | { kind: "already"; version: number; sentAt: string }
+  | { kind: "empty" }
+  | { kind: "stale"; version: number }
+  | { kind: "cancelled" }
+  | { kind: "notFound" };
+
+/** A send as the screen's actions answer it: failed when it threw (logged by the registration's id). */
+export type SendOutcome = SendResult | { kind: "failed" };
+
+/** The mail of a sent protocol, made after the commit: to whom, in which language, about which course. */
+type ProtocolMailJob = { registrationId: number; email: string; name: string; locale: "et" | "ru"; course: I18n; session: SessionInfo | null; again: boolean };
+
+/**
+ * "Saada" (spec §4, §8, D3): one student's protocol, at the `version` the screen showed, in one transaction:
+ * 1. the locks, in the order every writer of these rows takes them: the address (client-auth.ts lockAddress — the logins and addClient take
+ *    it and then write registrations, so taking the registration first would deadlock with a login at the same moment), then the
+ *    registration (db/queries/seats.ts lockRegistration), then the protocol row (FOR UPDATE: a save that comes meanwhile waits for the freeze);
+ * 2. the checks: a cancelled registration is never sent; nothing written is "empty"; another version than the screen's is "stale"; the
+ *    version sent already is "already" (two sends at once: the first sends, the second finds it sent);
+ * 3. the account: when the registration has none, the address's account is found or created as "Lisa õpilane" does it (admin-clients.ts
+ *    addClient, in a savepoint of this transaction) and the registration is linked to it;
+ * 4. the freeze: `sent` = the draft as it is, `sent_at`, `sent_version`.
+ * The mail goes out after the commit (`later`): a live login in its button, the feedback line on the first send. A mail that fails never
+ * undoes the send. A sample address is never mailed.
+ */
+export async function sendProtocol(deps: SendDeps, input: { registrationId: number; version: number }): Promise<SendResult> {
+  const [peek] = await deps.db.select({ email: registrations.email }).from(registrations).where(eq(registrations.id, input.registrationId)).limit(1);
+  if (!peek) return { kind: "notFound" };
+  const done = await deps.db.transaction(async (tx): Promise<{ result: SendResult; mail: ProtocolMailJob | null }> => {
+    const t = tx as unknown as Db;
+    const none = (result: SendResult) => ({ result, mail: null });
+    await lockAddress(t, normalizeEmail(peek.email));
+    await lockRegistration(tx, input.registrationId);
+    const [r] = await tx
+      .select({ registration: registrations, course: { type: courses.type, title: courses.title }, session: courseSessions })
+      .from(registrations)
+      .innerJoin(courses, eq(registrations.courseId, courses.id))
+      .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id))
+      .where(eq(registrations.id, input.registrationId))
+      .limit(1);
+    if (!r || r.course.type !== "contact") return none({ kind: "notFound" });
+    if (r.registration.status === "cancelled") return none({ kind: "cancelled" });
+    const [p] = await tx.select().from(protocols).where(eq(protocols.registrationId, input.registrationId)).for("update");
+    if (!p || !hasText(p)) return none({ kind: "empty" });
+    if (p.version !== input.version) return none({ kind: "stale", version: p.version });
+    if (p.sentAt !== null && p.sentVersion === p.version) return none({ kind: "already", version: p.version, sentAt: p.sentAt.toISOString() });
+    if (r.registration.clientId === null) {
+      const client = await addClient(t, r.registration.email);
+      if (client.ok)
+        await tx.update(registrations).set({ clientId: client.id }).where(and(eq(registrations.id, input.registrationId), isNull(registrations.clientId)));
+    }
+    await tx
+      .update(protocols)
+      .set({ sent: sql`jsonb_build_object('stages', ${protocols.stages}, 'generalNote', ${protocols.generalNote})`, sentAt: deps.now, sentVersion: p.version })
+      .where(eq(protocols.registrationId, input.registrationId));
+    const s = r.session;
+    const again = p.sentAt !== null;
+    return {
+      result: { kind: "sent", again, version: p.version, sentAt: deps.now.toISOString() },
+      mail: {
+        registrationId: input.registrationId,
+        email: r.registration.email,
+        name: r.registration.name,
+        locale: r.registration.locale === "ru" ? "ru" : "et",
+        course: r.course.title,
+        session: s ? { startsAt: s.startsAt, city: s.city, venue: s.venue } : null,
+        again,
+      },
+    };
+  });
+  if (done.result.kind === "sent") console.info(`[protocols] registration ${input.registrationId}: sent${done.result.again ? " again" : ""}`);
+  const job = done.mail;
+  if (job) deps.later(() => mailProtocol(deps, job));
+  return done.result;
+}
+
+/**
+ * The protocol's mail, after the commit: never to a sample address, not counted in the daily caps (it follows Maria's own send, a handful a
+ * course day). The login is a normal client login made only now (client-auth.ts issueClientLogin), so its 30 minutes start with the mail; an
+ * address that has its 3 already gets the mail without one. A failure is logged by the registration's id and never undoes the send.
+ */
+async function mailProtocol(deps: SendDeps, job: ProtocolMailJob): Promise<void> {
+  if (isSampleAddress(job.email) || !mailConfigured(deps.env)) return;
+  try {
+    const login = await issueClientLogin(deps.db, job.email, deps.now);
+    const sent = await sendMail(deps.env, protocolMail({ siteUrl: deps.siteUrl, ...job, login }));
+    console.info(`[protocols] registration ${job.registrationId}: the mail sent: ${sent}`);
+  } catch (e) {
+    logFailure(`[protocols] registration ${job.registrationId}: the mail failed`, e);
+  }
+}
+
+/** One student's outcome of "Lukusta ja saada kõik". */
+export type BulkResult = { registrationId: number; result: SendOutcome };
+
+/**
+ * "Lukusta ja saada kõik" (spec §4, §8): the protocols the confirmation listed, one after another, each in its own transaction (sendProtocol),
+ * so one that fails does not stop the others; a throw is "failed", logged by the registration's id.
+ */
+export async function sendProtocols(deps: SendDeps, items: readonly { registrationId: number; version: number }[]): Promise<BulkResult[]> {
+  const out: BulkResult[] = [];
+  for (const item of items) {
+    try {
+      out.push({ registrationId: item.registrationId, result: await sendProtocol(deps, item) });
+    } catch (e) {
+      logFailure(`[protocols] registration ${item.registrationId}: the send failed`, e);
+      out.push({ registrationId: item.registrationId, result: { kind: "failed" } });
+    }
+  }
+  return out;
 }
