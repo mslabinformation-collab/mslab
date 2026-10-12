@@ -561,6 +561,8 @@ export const et = {
       payHide: "Peida juhised",
       change: "Tühista või muuda aega",
       open: "Ava koolitus",
+      // a contact course's card once Maria has sent its protocol (phase protocols)
+      viewProtocol: "Vaata protokolli",
       empty: "Sul ei ole veel koolitusi.",
       browse: "Vaata koolitusi",
       // The dark "Pooleli" card at the top (components/account/ResumeCard.tsx) and the e-course cards' lessons (phase 2c): {module} and
@@ -691,6 +693,16 @@ export const et = {
       exitFullscreen: "Välju täisekraanist",
       video: "Video: {title}",
       seekLocked: "Edasi saab kerida kuni kohani, kuhu oled jõudnud.",
+    },
+    // The student's protocol /konto/protokoll#id=<registration> (components/account/ProtocolPage.tsx, phase protocols): the page's frame in
+    // her language; Maria's headings and notes are shown as she wrote them. {date} is the day it was sent.
+    protocol: {
+      title: "Koolituse protokoll",
+      practice: "Praktiline osa",
+      general: "Üldised märkused",
+      sent: "Saadetud {date}",
+      notFound: "Seda protokolli ei leitud.",
+      loading: "Laadin protokolli…",
     },
     // "Lemmikud" /konto/lemmikud (components/account/FavouritesTab.tsx): the hearted courses as the catalogue's cards, each with ♡ to
     // take it off. {title} is a course's title (the button's name for a screen reader, and what was taken off).

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
+import { studentProtocol } from "@/db/queries/protocols";
 import { readSetting } from "@/db/queries/public";
 import { clients } from "@/db/schema";
 import { isEmail, isSampleAddress, normalizeEmail } from "@/domain/email";
@@ -50,7 +51,7 @@ import { sha256 } from "./token";
 // GET /kursus/:slug/:lesson one lesson (an open one with a signed video URL; 403 terms or locked), POST …/:lesson/progress how far a video has
 // been watched, POST …/:lesson/tehtud "Märgi tehtuks" for a text lesson, GET …/:lesson/fail/:file a lesson file, GET /lemmikud the
 // favourites as course cards, POST /lemmikud and /lemmikud/merge favourites, PATCH /andmed the profile, POST /uudiskiri the newsletter, POST /muutmine a request to cancel or
-// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), POST /tingimused the e-course terms, POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
+// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), POST /tingimused the e-course terms, POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
 // Each one starts with requireClient and answers through clientResponse (a renewed session's cookies reach the browser); the
 // client is always the session's, never a value from the request. A body that is not what the endpoint expects is 400
 // { ok: false, error: "<field>" } (account-input.ts), a record that is not the client's is 404.
@@ -407,6 +408,9 @@ const lessonRef = (rawSlug: string, rawLesson: string): { slug: string; lessonId
   return slug === null || lessonId === null ? null : { slug, lessonId };
 };
 
+/** The registration id of a request's `?id=` (lib/row-id.ts), or null: the protocol's and the feedback form's endpoints read it so. */
+const queryId = (request: Request): number | null => parseRowId(new URL(request.url).searchParams.get("id") ?? "");
+
 /**
  * "Sinu MS LABi konto parool on muudetud." after the response (phase 2c), with Maria's address from Seaded when there is one (and without
  * it when Seaded cannot be read): never in development, never to a sample address. A failure is logged by `later` (route.ts), never the address.
@@ -672,6 +676,20 @@ async function payRegistration(request: Request, deps: AccountDeps): Promise<Res
 }
 
 /**
+ * GET /protokoll?id=<registration id> (phase protocols, spec §5): the protocol Maria sent for one of the client's own registrations (the
+ * dashboard's rule: linked to her account) — the course, its date and place, the stages with their notes and the general notes, as last sent,
+ * never the draft. 200 `{ ok: true, course, session, sentAt, stages, generalNote }`; 404 `{ ok: false }` for any other id, and for one with
+ * no sent protocol.
+ */
+async function protocol(request: Request, deps: AccountDeps): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const id = queryId(request);
+  const view = id === null ? null : await studentProtocol(deps.db, session.clientId, id);
+  return view ? clientResponse(session, { ok: true, ...view }) : clientResponse(session, { ok: false }, 404);
+}
+
+/**
  * POST /tingimused `{ slug, version }`: the client accepts the e-course terms, the version the page showed (`terms.version` of the e-course view).
  * 404 `{ error: "slug" }` without active access to that course; 409 `{ error: "version" }` when the terms have changed since the page was loaded
  * (nothing is stored: the page loads the course again and shows the new text).
@@ -722,6 +740,7 @@ async function dataRoute(request: Request, path: string, deps: AccountDeps): Pro
     case "DELETE /parool": return removePassword(request, deps);
     case "POST /muutmine": return changeRequest(request, deps);
     case "POST /maksa": return payRegistration(request, deps);
+    case "GET /protokoll": return protocol(request, deps);
     case "POST /tingimused": return terms(request, deps);
     case "POST /kustuta": return deleteAccount(request, deps);
   }

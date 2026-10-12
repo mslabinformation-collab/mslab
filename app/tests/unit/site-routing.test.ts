@@ -38,7 +38,7 @@ describe("routeSitePath", () => {
     };
     walk(root, "");
     expect(pages.sort()).toEqual(
-      ["", "/[...rest]", "/kontakt", "/konto", "/konto/andmed", "/konto/kursus/[slug]", "/konto/kursus/[slug]/[lesson]", "/konto/lemmikud", "/konto/sisene", "/koolitaja", "/koolitused", "/koolitused/[slug]", "/koolituskalender", "/makse", "/ostukorv", "/ostukorv/[kursus]", "/praktika", "/privaatsus", "/tingimused", "/uudised", "/uudised/[slug]"].sort(),
+      ["", "/[...rest]", "/kontakt", "/konto", "/konto/andmed", "/konto/kursus/[slug]", "/konto/kursus/[slug]/[lesson]", "/konto/lemmikud", "/konto/protokoll", "/konto/sisene", "/koolitaja", "/koolitused", "/koolitused/[slug]", "/koolituskalender", "/makse", "/ostukorv", "/ostukorv/[kursus]", "/praktika", "/privaatsus", "/tingimused", "/uudised", "/uudised/[slug]"].sort(),
     );
     for (const p of pages.filter((x) => !x.includes("["))) expect(isKnownPage(`/et${p}`), p).toBe(true);
     for (const p of ["/koolitused/x", "/uudised/y-2", "/ostukorv/whatever"]) expect(isKnownPage(`/ru${p}`), p).toBe(true);
@@ -47,10 +47,10 @@ describe("routeSitePath", () => {
 
   test("the client account's pages are known, in both locales; nothing deeper is (phase 2a Task 5)", () => {
     for (const locale of ["et", "ru"])
-      for (const p of ["/konto", "/konto/sisene", "/konto/lemmikud", "/konto/andmed", "/konto/kursus/kulmude-lami", "/konto/kursus/e-koolitus-2", "/konto/kursus/kulmude-lami/12"])
+      for (const p of ["/konto", "/konto/sisene", "/konto/lemmikud", "/konto/andmed", "/konto/protokoll", "/konto/kursus/kulmude-lami", "/konto/kursus/e-koolitus-2", "/konto/kursus/kulmude-lami/12"])
         expect(isKnownPage(`/${locale}${p}`), `/${locale}${p}`).toBe(true);
     for (const p of [
-      "/et/konto/x/y", "/et/konto/x", "/et/konto/kursus", "/et/konto/kursus/A", "/et/konto/kursus/x/y", "/ru/konto/sisene/x", "/et/konto/lemmikud/x",
+      "/et/konto/x/y", "/et/konto/x", "/et/konto/kursus", "/et/konto/kursus/A", "/et/konto/kursus/x/y", "/ru/konto/sisene/x", "/et/konto/lemmikud/x", "/et/konto/protokoll/5",
       // a lesson's id is parseRowId's (lib/row-id.ts): digits, no leading zero, at most 2 147 483 647; nothing below a lesson
       "/et/konto/kursus/x/0", "/et/konto/kursus/x/012", "/et/konto/kursus/x/12/y", "/et/konto/kursus/X/12", "/et/konto/kursus/x/2147483648",
       "/et/konto/kursus/x/-1", "/et/konto/kursus/x/1e3", "/et/konto/kursus/x/12345678901", "/et/konto/kursus/x/12/",
@@ -92,6 +92,10 @@ describe("routeSitePath", () => {
     expect(target("/konto/sisene", "viga=link&viga=server")).toBe("/konto/sisene#viga=link");
     expect(target("/konto/sisene", "email=" + "a".repeat(255))).toBe("/konto/sisene");
     expect(target("/konto/sisene", "viga=%23%26%3D x")).toBe("/konto/sisene#viga=%23%26%3D+x");
+    // the protocol's page (phase protocols): its registration moves into the fragment, after the others
+    expect(target("/konto/protokoll", "id=42")).toBe("/konto/protokoll#id=42");
+    expect(target("/ru/konto/protokoll", "utm=1&id=42")).toBe("/ru/konto/protokoll#id=42");
+    expect(route("/konto/protokoll?id=42")).toEqual({ kind: "shellRedirect", location: "/konto/protokoll#id=42" });
   });
 
   test("redirects, the hub, the API and everything served as it is", () => {

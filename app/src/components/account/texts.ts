@@ -55,3 +55,8 @@ export const favouritesTexts = (d: Dict): FavouritesTexts => ({ ...d.account.fav
 export const detailsTexts = (d: Dict): DetailsTexts => ({ ...d.account.details, loader: loaderTexts(d) });
 
 export const lessonTexts = (d: Dict): LessonTexts => ({ ...d.account.lesson, resume: d.account.ecourse.resume, lockedHint: d.account.ecourse.lockedHint, loader: loaderTexts(d) });
+
+/** The student's protocol page (phase protocols): account.protocol, the way back (Minu koolitused) and AccountLoader's. */
+export type ProtocolTexts = Dict["account"]["protocol"] & { back: string; loader: LoaderTexts };
+
+export const protocolTexts = (d: Dict): ProtocolTexts => ({ ...d.account.protocol, back: d.account.shell.courses, loader: loaderTexts(d) });

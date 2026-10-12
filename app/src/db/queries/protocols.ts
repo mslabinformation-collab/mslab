@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import type { Db } from "../client";
 import { courses, courseSessions, protocols, registrations, type CourseSession, type Protocol, type ProtocolStage, type Registration } from "../schema";
 import { tallinnFormParts } from "@/domain/calendar";
@@ -122,4 +122,38 @@ export async function todaySessions(db: Db, now: Date): Promise<TodaySession[]> 
     .orderBy(asc(courseSessions.startsAt), asc(courseSessions.id));
   const today = tallinnFormParts(now).date;
   return rows.filter((r) => tallinnFormParts(r.startsAt).date === today);
+}
+
+// ---------- the student's protocol (Task 7) ----------
+
+/** What the student's page shows (spec §5): the course, its session, when it was sent, and the copy Maria sent. Dates as ISO strings (JSON). */
+export type StudentProtocol = {
+  course: { slug: string; title: I18n };
+  session: { startsAt: string; city: string; venue: string } | null;
+  sentAt: string;
+  stages: ProtocolStage[];
+  generalNote: string;
+};
+
+/**
+ * The sent protocol of one of the client's own registrations (the dashboard's rule: registrations.client_id is hers), or null: not hers,
+ * no protocol, or none sent yet. Only `sent`, the frozen copy, is read: never the draft.
+ */
+export async function studentProtocol(db: Db, clientId: number, registrationId: number): Promise<StudentProtocol | null> {
+  const [r] = await db
+    .select({ slug: courses.slug, title: courses.title, startsAt: courseSessions.startsAt, city: courseSessions.city, venue: courseSessions.venue, sent: protocols.sent, sentAt: protocols.sentAt })
+    .from(registrations)
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .innerJoin(protocols, eq(protocols.registrationId, registrations.id))
+    .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id))
+    .where(and(eq(registrations.id, registrationId), eq(registrations.clientId, clientId), isNotNull(protocols.sentAt)))
+    .limit(1);
+  if (!r || !r.sent || !r.sentAt) return null;
+  return {
+    course: { slug: r.slug, title: r.title },
+    session: r.startsAt ? { startsAt: r.startsAt.toISOString(), city: r.city ?? "", venue: r.venue ?? "" } : null,
+    sentAt: r.sentAt.toISOString(),
+    stages: r.sent.stages,
+    generalNote: r.sent.generalNote,
+  };
 }

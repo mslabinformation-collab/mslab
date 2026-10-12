@@ -25,6 +25,16 @@ const BROWSER_FILES = [
   // what the screen pulls into the browser besides (Task 5's review)
   "src/i18n/format.ts",
   "src/i18n/dict/admin.ts",
+  // Task 7
+  "src/components/account/useHashId.ts",
+  "src/components/account/AccountNotFound.tsx",
+  "src/components/account/ProtocolPage.tsx",
+  // what the student's page pulls into the browser besides: the id parser, the language pick, the texts and the dictionaries they come from
+  "src/lib/row-id.ts",
+  "src/i18n/field.ts",
+  "src/components/account/texts.ts",
+  "src/i18n/dict/et.ts",
+  "src/i18n/dict/ru.ts",
 ];
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));
 const STORABLE_IMPORT = /from "(@\/lib\/storable|(\.\.?\/)+(lib\/)?storable)"/;

@@ -51,12 +51,12 @@ const ACCOUNT_SHELL = /^\/(et|ru)\/konto(\/|$)/;
 
 /**
  * The pages of app/[locale]/(site) without their locale (tests/unit/site-routing.test.ts checks them against the app),
- * with the client account's shells (/konto…, phase 2a: the login page, favourites and my details) and the payment's result page (/makse,
- * phase 2b: where the bank sends the payer back; its result is in the fragment). The pages with a slug or an
- * id are the patterns below: a course, a news item, an e-course in the account and (phase 3a) one lesson of it, a course's cart.
+ * with the client account's shells (/konto…, phase 2a: the login page, favourites and my details, and (phase protocols) a student's protocol)
+ * and the payment's result page (/makse, phase 2b: where the bank sends the payer back; its result is in the fragment). The pages with a
+ * slug or an id are the patterns below: a course, a news item, an e-course in the account and (phase 3a) one lesson of it, a course's cart.
  */
 const STATIC_PAGES = new Set([
-  "", "/kontakt", "/konto", "/konto/andmed", "/konto/lemmikud", "/konto/sisene", "/koolitaja", "/koolitused", "/koolituskalender", "/makse", "/ostukorv",
+  "", "/kontakt", "/konto", "/konto/andmed", "/konto/lemmikud", "/konto/protokoll", "/konto/sisene", "/koolitaja", "/koolitused", "/koolituskalender", "/makse", "/ostukorv",
   "/praktika", "/privaatsus", "/tingimused", "/uudised",
 ]);
 /** Pages with a slug of ours (lowercase letters, digits, dashes), an e-course in the account too; the cart takes whatever ?kursus= says (its own 404). */
@@ -107,14 +107,17 @@ export type SiteRoute =
   /** admin, /media, Next.js files and static files: served as they are */
   | { kind: "other" };
 
-/** The parameters of the account's pages that travel in the fragment: the browser reads them there (LoginForm), and a fragment never reaches a server, a log or a cache. */
-const FRAGMENT_PARAMS = ["viga", "korda", "email", "kood"] as const;
+/**
+ * The parameters of the account's pages that travel in the fragment: the browser reads them there (LoginForm), and a fragment never reaches a
+ * server, a log or a cache. `id` is the registration of the protocol's and the feedback form's pages (phase protocols; useHashId).
+ */
+const FRAGMENT_PARAMS = ["viga", "korda", "email", "kood", "id"] as const;
 /** A longer value is no e-mail address or flag of ours: dropped. */
 const FRAGMENT_VALUE_MAX = 254;
 
 /**
  * Where a request for the account shell `path` (a clean, known path such as "/konto/sisene" or "/ru/konto/kursus/x") that carries a
- * query is sent instead: the same path, with the parameters the page knows (viga, korda, email, kood; the first of each, URL-encoded) moved
+ * query is sent instead: the same path, with the parameters the page knows (viga, korda, email, kood, id; the first of each, URL-encoded) moved
  * into the fragment, and everything else dropped. Next.js keeps the address of the request that renders a page (path and query) in
  * the page it caches, for every later visitor; so no request with a query may reach a shell. Built from `path` and the query only.
  */

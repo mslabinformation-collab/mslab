@@ -65,6 +65,7 @@ function onlineDue(card: AccountCard, now: Date): Due {
  * - changeRequest → "Tühista või muuda aega" opens the dialog (after sending: "Saadetud. Maria võtab sinuga ühendust."); with online
  *   payments a confirmed card with a rest has "Maksa ülejäänud {summa}" as its main button and the change request as the text button;
  * - openCourse → "Ava koolitus" → /konto/kursus/{slug}.
+ * - a sent protocol (phase protocols) → "Vaata protokolli" → /konto/protokoll#id={registration}: the main button of a card that has none, else a text link under it.
  * "Maksa" posts /api/konto/maksa and the page goes on to Montonio; a refusal says why under the button. A refusal that says the card is
  * out of date (a 401, a 404, or "nothing to pay") also loads the cards again quietly (`onStale`), so the card shows what is true now: the
  * line is left for "nothing" (its sentence is true after the reload too) and for a reload that got no answer, and not for a 401 or a 404.
@@ -186,6 +187,31 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
         <Icon name="arrow" />
       </Link>
     );
+  }
+
+  // "Vaata protokolli" (phase protocols, spec §5): once Maria has sent it. The card's one button when it has none (a course that has been),
+  // else a text link under its button. Its registration in the fragment: an account page never has a query.
+  const protocolHref = (card.kind === "contact" || card.kind === "individual") && card.protocolSent ? `${href(locale, "/konto/protokoll")}#id=${card.registrationId}` : null;
+  if (protocolHref) {
+    const main = button === null;
+    const cls = main ? `${ui.btnOutline} ${styles.action}` : styles.second;
+    const link = readOnly ? (
+      <a className={cls} role="link" aria-disabled="true" data-card-protocol="">
+        {t.viewProtocol}
+      </a>
+    ) : (
+      <Link className={cls} href={protocolHref} data-card-protocol="">
+        {t.viewProtocol}
+      </Link>
+    );
+    if (main) button = link;
+    else
+      second = (
+        <>
+          {second}
+          {link}
+        </>
+      );
   }
 
   return (

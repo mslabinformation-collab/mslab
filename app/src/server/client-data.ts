@@ -4,7 +4,7 @@ import { courseCardData } from "@/components/site/course-card-data";
 import type { Db } from "@/db/client";
 import { listPublishedCourses, listUpcomingSessions, readSetting } from "@/db/queries/public";
 import {
-  clientFavourites, clientLoginTokens, clients, courseAccess, courses, courseSessions, pages, practicePackages, registrations, requests, subscribers,
+  clientFavourites, clientLoginTokens, clients, courseAccess, courses, courseSessions, pages, practicePackages, protocols, registrations, requests, subscribers,
   termsAcceptances,
 } from "@/db/schema";
 import { PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type EcourseCard, type PrepaymentInfo } from "@/domain/account-cards";
@@ -100,10 +100,12 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         city: courseSessions.city,
         venue: courseSessions.venue,
         sessionStatus: courseSessions.status,
+        protocolSentAt: protocols.sentAt,
       })
       .from(registrations)
       .innerJoin(courses, eq(registrations.courseId, courses.id))
       .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id))
+      .leftJoin(protocols, eq(protocols.registrationId, registrations.id))
       .where(eq(registrations.clientId, clientId)),
     // Individual and practice requests and waitlist entries; the payload's course (a slug), package (a code) and session (an id,
     // read only when it is all digits, so a odd value cannot fail the query) point at what the card names. A practice request's
@@ -164,7 +166,15 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
   for (const r of regRows) {
     const course = { slug: r.course.slug, title: r.course.title };
     if (r.startsAt === null) {
-      cards.push({ kind: "individual", registrationId: r.id, course, status: r.status, preferredPeriod: r.preferredPeriod, createdAt: iso(r.createdAt) });
+      cards.push({
+        kind: "individual",
+        registrationId: r.id,
+        course,
+        status: r.status,
+        preferredPeriod: r.preferredPeriod,
+        createdAt: iso(r.createdAt),
+        ...(r.protocolSentAt ? { protocolSent: true } : {}),
+      });
     } else {
       cards.push({
         kind: "contact",
@@ -176,6 +186,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         priceCents: registrationPrice(r.course, r.kind),
         paidCents: r.paidCents,
         createdAt: iso(r.createdAt),
+        ...(r.protocolSentAt ? { protocolSent: true } : {}),
       });
     }
   }
