@@ -61,11 +61,14 @@
   font: 500 14px/1.3 var(--font-body);
 }
 
-/* the radio covers its pill: a tap anywhere on it chooses it, and the focus ring is the pill's */
+/* the radio covers its pill, border and all: a tap anywhere on it chooses it, its own box is the pill's 44 px, and the focus ring is the pill's.
+   (inset alone leaves a radio its own 13 px, a positioned radio is not stretched; the pill's border is 1 px, which a percentage leaves out) */
 .score input,
 .option input {
   position: absolute;
-  inset: 0;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
   margin: 0;
   opacity: 0;
   cursor: pointer;
