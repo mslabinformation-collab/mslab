@@ -51,9 +51,9 @@ describe("writeStaleMark", () => {
       process.execPath,
       [
         "-e",
-        `const fs = require("fs"); const file = process.argv[1]; console.log("ready"); const end = Date.now() + 1200; let reads = 0, bad = 0;
-         while (Date.now() < end) { const t = fs.readFileSync(file, "utf8"); reads++; if (!/^[0-9]{13}$/.test(t)) bad++; }
-         console.log(JSON.stringify({ reads, bad }));`,
+        `const fs = require("fs"); const file = process.argv[1]; console.log("ready"); const end = Date.now() + 1200; let reads = 0, bad = 0; const seen = new Set();
+         while (Date.now() < end) { const t = fs.readFileSync(file, "utf8"); reads++; seen.add(t); if (!/^[0-9]{13}$/.test(t)) bad++; }
+         console.log(JSON.stringify({ reads, bad, distinct: seen.size }));`,
         file,
       ],
       { stdio: ["ignore", "pipe", "inherit"] },
@@ -74,9 +74,10 @@ describe("writeStaleMark", () => {
       writes++;
     }
     await done;
-    const seen = JSON.parse(out.slice(out.indexOf("{"))) as { reads: number; bad: number };
+    const seen = JSON.parse(out.slice(out.indexOf("{"))) as { reads: number; bad: number; distinct: number };
     expect(writes).toBeGreaterThan(20);
     expect(seen.reads).toBeGreaterThan(20);
+    expect(seen.distinct, "different times the reader saw: the reads and the writes overlapped").toBeGreaterThanOrEqual(2);
     expect(seen.bad, `reads of ${seen.reads} that found the file empty or not 13 digits`).toBe(0);
   });
 });
