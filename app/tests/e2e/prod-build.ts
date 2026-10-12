@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { PROD_BUILD, PROD_URL } from "./target";
 
@@ -35,5 +35,13 @@ export const PROD_ENV = {
 export function revalidateLocalPages(): void {
   if (!PROD_BUILD) return;
   mkdirSync(dirname(STALE_PAGES_FILE), { recursive: true });
-  writeFileSync(STALE_PAGES_FILE, String(Date.now()));
+  // The mark only moves forward: the workers write it side by side, and one that was late must not put an older time over a newer one. (The file is
+  // rewritten in place, which leaves it empty for a moment: page-cache.cjs reads an empty file again, and never takes it for "nothing revalidated".)
+  let newest = 0;
+  try {
+    newest = Number(readFileSync(STALE_PAGES_FILE, "utf8")) || 0;
+  } catch {
+    // none yet
+  }
+  writeFileSync(STALE_PAGES_FILE, String(Math.max(Date.now(), newest)));
 }
