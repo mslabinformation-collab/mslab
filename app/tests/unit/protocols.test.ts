@@ -194,4 +194,25 @@ describe("the questions' texts (Task 8)", () => {
     expect(answerText("ready", "mostly", feedbackQuestions(ru.account.feedback.questions))).toBe("Скорее да, нужно немного практики");
     expect(answerText("message", "Väga hea!", q)).toBe("Väga hea!");
   });
+
+  test("Russian typography: a no-break space (U+00A0) after the one-letter prepositions в, с, к, о, у in the protocol's and the feedback form's texts", () => {
+    // every string under a value, however deep (the questions' options too)
+    const strings = (value: unknown): string[] => (typeof value === "string" ? [value] : value !== null && typeof value === "object" ? Object.values(value).flatMap(strings) : []);
+    const ONE_LETTER_THEN_SPACE = /(^|\s)[вскоуВСКОУ] \S/;
+    const texts: Record<string, unknown> = {
+      "account.feedback": ru.account.feedback,
+      "account.dashboard.feedbackCard": ru.account.dashboard.feedbackCard,
+      "account.dashboard.viewProtocol": ru.account.dashboard.viewProtocol,
+      "account.protocol": ru.account.protocol,
+      "account.protocolMail": ru.account.protocolMail,
+    };
+    for (const [where, value] of Object.entries(texts)) {
+      const list = strings(value);
+      expect(list.length, where).toBeGreaterThan(0);
+      for (const text of list) expect(text, `${where}: ${text}`).not.toMatch(ONE_LETTER_THEN_SPACE);
+    }
+    // the guard sees a plain space and lets the no-break one through
+    expect("Нуждается в доработке").toMatch(ONE_LETTER_THEN_SPACE);
+    expect("Нуждается в доработке").not.toMatch(ONE_LETTER_THEN_SPACE);
+  });
 });

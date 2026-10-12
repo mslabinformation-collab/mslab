@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { Db } from "@/db/client";
+import type { Db, Tx } from "@/db/client";
 import { clients, clientSessions, courseFeedback, courseSessions, registrations } from "@/db/schema";
 import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
 import { loadDashboard } from "@/server/client-data";
+import { submitFeedback } from "@/server/course-feedback";
 import type { Env } from "@/server/notify";
 import { saveProtocol, sendProtocol } from "@/server/protocols";
 import { newToken, sha256 } from "@/server/token";
@@ -21,11 +22,14 @@ let db: Db;
 let net: ReturnType<typeof stubFetch>;
 /** Resend and Telegram "on" (the stubbed fetch answers them); a fresh rate-limit store each test (every test's client is id 1). */
 let env: Env;
+/** Everything the code under test logged (console.info and console.error: server/log.ts writes to those two), one line per call. */
+let logged: () => string;
 beforeEach(async () => {
   db = await makeTestDb();
   env = { KV: fakeKv(), MAIL_FROM: "MS LAB <info@send.example>", MARIA_EMAIL: "maria@example.test", SITE_URL: SITE, RESEND_API_KEY: "re_test", TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHAT_ID: "42" };
   net = stubFetch((url) => (url.includes("telegram") ? Response.json({ ok: true }) : Response.json({ id: "email_1" })));
-  for (const method of ["info", "error"] as const) vi.spyOn(console, method).mockImplementation(() => {});
+  const spies = (["info", "error"] as const).map((method) => vi.spyOn(console, method).mockImplementation(() => {}));
+  logged = () => spies.flatMap((spy) => spy.mock.calls).map((args) => args.map(String).join(" ")).join("\n");
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -108,6 +112,7 @@ describe("the submit", () => {
     expect(mail.text).toContain("Kas koolitus vastas sinu ootustele?\nVastas ootustele");
     expect(net.calls.some((c) => c.url.includes("telegram") && String((c.body as { text: string }).text).startsWith("Uus tagasiside: Mari Maasikas"))).toBe(true);
     expect(await answer(await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { score: 3 } }))).toEqual([409, { ok: false, error: "sent" }]);
+    expect(queued()).toBe(0); // the replay told nobody: Maria's notice goes out once only
     expect((await rows())[0].answers).toEqual({ score: 9, expectations: "met", ready: "mostly", message: "Aitäh!" });
     expect(await answer(await call(d, cookie, `/tagasiside?id=${mari.id}`))).toEqual([200, expect.objectContaining({ sent: true })]);
     expect((await loadDashboard(db, account.id, NOW))!).not.toHaveProperty("feedback");
@@ -156,6 +161,7 @@ describe("'Ei soovi'", () => {
     expect(queued()).toBe(0);
     expect((await loadDashboard(db, account.id, NOW))!).not.toHaveProperty("feedback");
     expect(await answer(await call(d, cookie, "/tagasiside/peida", { registrationId: mari.id }))).toEqual([200, { ok: true }]); // twice: the same
+    expect(queued()).toBe(0);
     expect((await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { score: 8 } })).status).toBe(200);
     expect((await rows())[0]).toMatchObject({ answers: { score: 8 }, submittedAt: NOW, dismissedAt: NOW });
   });
@@ -165,6 +171,54 @@ describe("'Ei soovi'", () => {
     const other = await student(db, course, session, "Teine");
     expect(await answer(await call(deps().d, cookie, "/tagasiside/peida", { registrationId: other.id }))).toEqual([404, { ok: false, error: "registration" }]);
     expect(await rows()).toEqual([]);
+  });
+});
+
+describe("another client's registration", () => {
+  test("open for its own owner, but for her: the form, the submit and 'Ei soovi' are 404, nothing is stored or told", async () => {
+    const { course, session, cookie } = await opened();
+    const [other] = await db.insert(clients).values({ email: "teine@example.com" }).returning();
+    const teine = await student(db, course, session, "Teine", { clientId: other.id, email: "teine@example.com" });
+    const nextDay = new Date("2026-10-13T08:00:00Z"); // the course day is over: every group registration's form is open
+    const { d, queued } = deps(nextDay);
+    expect((await call(d, await cookieOf(other.id), `/tagasiside?id=${teine.id}`)).status).toBe(200); // it is open for its owner
+    expect(await answer(await call(d, cookie, `/tagasiside?id=${teine.id}`))).toEqual([404, { ok: false }]);
+    expect(await answer(await call(d, cookie, "/tagasiside", { registrationId: teine.id, locale: "et", answers: { score: 9 } }))).toEqual([404, { ok: false, error: "registration" }]);
+    expect(await answer(await call(d, cookie, "/tagasiside/peida", { registrationId: teine.id }))).toEqual([404, { ok: false, error: "registration" }]);
+    expect(await rows()).toEqual([]);
+    expect(queued()).toBe(0);
+  });
+});
+
+describe("what is logged", () => {
+  test("registration ids only: no address, name or answer text, from the submit, the replay, the limit and Maria's notice", async () => {
+    const { mari, cookie } = await opened();
+    const { d, flush } = deps();
+    const secret = "Salajane vastus 7731";
+    await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { score: 9, message: secret } });
+    await flush();
+    await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { message: secret } }); // the replay: 409
+    for (let i = 0; i < 9; i++) await call(d, cookie, "/tagasiside/peida", { registrationId: mari.id });
+    expect((await call(d, cookie, "/tagasiside/peida", { registrationId: mari.id })).status).toBe(429);
+    const log = logged();
+    expect(log).toContain(`[feedback] registration ${mari.id}: submitted`);
+    expect(log).toContain(`[feedback] registration ${mari.id}: Maria notified`);
+    expect(log).toContain("[account] feedback rate limited");
+    for (const text of [secret, "Mari Maasikas", "Maasikas", "marimaasikas", "example.com", "maria@example.test", "re_test", "123:abc"]) expect(log, text).not.toContain(text);
+  });
+
+  test("a submit whose transaction does not commit stores nothing and is never logged as submitted", async () => {
+    const { mari, account } = await opened();
+    // the callback runs to its end, then the transaction fails: what the database does when the commit cannot be made
+    const failing = new Proxy(db, {
+      get: (target, prop) => (prop === "transaction" ? (work: (tx: Tx) => Promise<unknown>) => target.transaction(async (tx) => {
+        await work(tx);
+        throw new Error("commit failed");
+      }) : Reflect.get(target, prop, target)),
+    });
+    await expect(submitFeedback(failing, { clientId: account.id, registrationId: mari.id, answers: { score: 9 }, locale: "et" }, NOW)).rejects.toThrow("commit failed");
+    expect(await rows()).toEqual([]);
+    expect(logged()).not.toContain("submitted");
   });
 });
 

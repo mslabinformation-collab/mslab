@@ -85,7 +85,7 @@ export async function submitFeedback(
   input: { clientId: number; registrationId: number; answers: FeedbackAnswers; locale: "et" | "ru" },
   now: Date,
 ): Promise<SubmitResult> {
-  return db.transaction(async (tx): Promise<SubmitResult> => {
+  const result = await db.transaction(async (tx): Promise<SubmitResult> => {
     const r = await own(tx, input.clientId, input.registrationId, now, true);
     if (!r) return { kind: "notFound" };
     if (r.feedback?.submittedAt) return { kind: "sent" };
@@ -97,9 +97,11 @@ export async function submitFeedback(
       .where(and(eq(courseFeedback.registrationId, input.registrationId), isNull(courseFeedback.submittedAt)))
       .returning();
     if (!row) return { kind: "sent" };
-    console.info(`[feedback] registration ${input.registrationId}: submitted`);
     return { kind: "submitted", notice: { registrationId: r.registrationId, name: r.name, email: r.email, course: r.course.title.et, startsAt: r.startsAt, answers: input.answers } };
   });
+  // after the commit: a submit the database rolled back is never logged as stored
+  if (result.kind === "submitted") console.info(`[feedback] registration ${input.registrationId}: submitted`);
+  return result;
 }
 
 /** "Ei soovi" (spec §7): the dashboard's card is gone for good. false: not hers, or the form is not open (and nothing of hers is there). */

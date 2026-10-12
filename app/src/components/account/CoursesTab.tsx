@@ -98,9 +98,14 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
    */
   const focusAfterReload = useRef<{ key: string; until: number } | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  // the feedback forms' cards (phase protocols): one dismissed here ("Ei soovi") is gone at once
+  // the feedback forms' cards (phase protocols): one dismissed here ("Ei soovi") is gone at once, and the focus goes to the page's heading
+  // first (the card takes the button she pressed with it)
   const [dismissed, setDismissed] = useState<number[]>([]);
   const prompts = (data.feedback ?? []).filter((p) => !dismissed.includes(p.registrationId));
+  const dismissPrompt = (id: number) => {
+    heading.current?.focus();
+    setDismissed((list) => [...list, id]);
+  };
 
   // What no longer counts as sent (another date now, or a day old) is dropped from this tab's memory.
   useEffect(() => {
@@ -180,10 +185,10 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
           <p className={styles.lead}>{t.lead}</p>
           {resume && <ResumeCard card={resume.card} progress={resume.progress} locale={locale} t={t} readOnly={readOnly} />}
           {prompts.length > 0 && (
-            <ul className={styles.prompts} aria-label={t.feedbackCard.question} data-feedback-prompts="">
+            <ul className={styles.prompts} data-feedback-prompts="">
               {prompts.map((p) => (
                 <li key={p.registrationId}>
-                  <FeedbackCard prompt={p} locale={locale} t={t} readOnly={readOnly} onDismissed={(id) => setDismissed((list) => [...list, id])} />
+                  <FeedbackCard prompt={p} locale={locale} t={t} readOnly={readOnly} onDismissed={dismissPrompt} />
                 </li>
               ))}
             </ul>

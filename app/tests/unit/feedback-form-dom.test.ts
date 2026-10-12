@@ -124,6 +124,17 @@ describe("the form", () => {
     expect($("[data-feedback-form]")).toBeNull();
   });
 
+  test("a choice changed before sending: the last one is sent, and nothing else", async () => {
+    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(200, { ok: true }) : json(200, { ok: true, course: COURSE, sent: false })));
+    await form();
+    await click($("[data-question='score'] input[value='9']"));
+    await click($("[data-question='score'] input[value='7']"));
+    expect(($("[data-question='score'] input[value='9']") as HTMLInputElement).checked).toBe(false);
+    expect(($("[data-question='score'] input[value='7']") as HTMLInputElement).checked).toBe(true);
+    await click($("[data-feedback-submit]"));
+    expect(posts()).toEqual([["/api/konto/tagasiside", { registrationId: 42, locale: "et", answers: { score: 7 } }]]);
+  });
+
   test("an address without an id asks nothing and says the form is not open", async () => {
     window.history.replaceState(null, "", "/konto/tagasiside");
     await act(async () => root.render(createElement(FeedbackForm, { locale: "et", t: feedbackTexts(getDict("et")) })));
@@ -192,6 +203,20 @@ describe("the dashboard's card", () => {
     await click($("[data-feedback-dismiss]"));
     expect(posts().at(-1)).toEqual(["/api/konto/tagasiside/peida", { registrationId: 7 }]);
     expect($("[data-feedback-card='7']")).toBeNull();
+    // the card took its focused button with it: the page's heading has the focus now, not the page's top
+    expect(document.activeElement).toBe($("h1"));
+  });
+
+  test("two prompts, one of them dismissed: only the other is left, and the focus is on the heading", async () => {
+    const OTHER = { slug: "varvimine", title: { et: "Värvimine", ru: "Окрашивание" } };
+    await render(dashboard({ feedback: [{ registrationId: 7, course: COURSE }, { registrationId: 8, course: OTHER }] }));
+    expect($$("[data-feedback-card]").map((c) => c.getAttribute("data-feedback-card"))).toEqual(["7", "8"]);
+    fetchMock.mockResolvedValueOnce(json(200, { ok: true }));
+    await click($("[data-feedback-card='7'] [data-feedback-dismiss]"));
+    expect(posts()).toEqual([["/api/konto/tagasiside/peida", { registrationId: 7 }]]);
+    expect($$("[data-feedback-card]").map((c) => c.getAttribute("data-feedback-card"))).toEqual(["8"]);
+    expect($("[data-feedback-card='8']")!.textContent).toContain("Värvimine");
+    expect(document.activeElement).toBe($("h1"));
   });
 
   test("none: no card; read-only (the admin's view): the buttons do nothing", async () => {
