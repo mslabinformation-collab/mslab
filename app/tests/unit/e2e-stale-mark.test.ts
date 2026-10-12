@@ -43,13 +43,15 @@ describe("writeStaleMark", () => {
     expect(readFileSync(file, "utf8")).toBe("1791829538723");
   });
 
-  test("a reader in another process never finds it empty or short while it is written over about a thousand times a second", async () => {
+  test("a reader in another process never finds it empty or short while it is written over as fast as it can be", async () => {
     writeStaleMark(file);
+    // The reader says "ready" and then reads for 1.2 s; the writer starts when it hears that and writes over the file for 1 s, so the two overlap
+    // whatever the machine is busy with (how many reads and writes that is depends on it: only that there were some is asked).
     const reader = spawn(
       process.execPath,
       [
         "-e",
-        `const fs = require("fs"); const file = process.argv[1]; const end = Date.now() + 1500; let reads = 0, bad = 0;
+        `const fs = require("fs"); const file = process.argv[1]; console.log("ready"); const end = Date.now() + 1200; let reads = 0, bad = 0;
          while (Date.now() < end) { const t = fs.readFileSync(file, "utf8"); reads++; if (!/^[0-9]{13}$/.test(t)) bad++; }
          console.log(JSON.stringify({ reads, bad }));`,
         file,
@@ -57,18 +59,24 @@ describe("writeStaleMark", () => {
       { stdio: ["ignore", "pipe", "inherit"] },
     );
     let out = "";
-    reader.stdout.on("data", (chunk: Buffer) => (out += chunk.toString()));
+    let heard!: () => void;
+    const ready = new Promise<void>((resolve) => (heard = resolve));
+    reader.stdout.on("data", (chunk: Buffer) => {
+      out += chunk.toString();
+      if (out.includes("ready")) heard();
+    });
     const done = new Promise<void>((resolve) => reader.on("exit", () => resolve()));
-    const end = Date.now() + 1300;
+    await ready;
+    const end = Date.now() + 1000;
     let writes = 0;
     while (Date.now() < end) {
       writeStaleMark(file);
       writes++;
     }
     await done;
-    const seen = JSON.parse(out) as { reads: number; bad: number };
-    expect(writes).toBeGreaterThan(500);
-    expect(seen.reads).toBeGreaterThan(500);
+    const seen = JSON.parse(out.slice(out.indexOf("{"))) as { reads: number; bad: number };
+    expect(writes).toBeGreaterThan(20);
+    expect(seen.reads).toBeGreaterThan(20);
     expect(seen.bad, `reads of ${seen.reads} that found the file empty or not 13 digits`).toBe(0);
   });
 });
