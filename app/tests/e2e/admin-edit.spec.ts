@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { BrowserContext, Locator, Page, TestInfo } from "@playwright/test";
-import { submitsForms, test, expect } from "./test";
+import { test } from "./edit-lock";
+import { submitsForms, expect } from "./test";
 import { adminReady, signInAsAdmin } from "./admin-login";
 import {
   courseOrder,
