@@ -64,7 +64,7 @@
   - `deleteClient` keeps its order (address, registrations, …) and deletes the client, which cascades to access rows, attempts, protocols and photos;
   - the photo objects are removed from R2 after the commit (`server/practical.ts practicalKeys` read before);
   - a registration protocol's send keeps the protocols phase's order (address → registration → protocol).
-- **A passed step stays passed:** the test opens once the lessons were all done or an attempt exists; the practical work opens once the test is passed, or when the course has no questions; `completed_at` is set once (`where completed_at is null`) and never cleared.
+- **A passed step stays passed:** the test opens once the lessons were all done or an attempt exists; the practical work opens once the test is passed, or, for a course without questions, once the lessons are done; `completed_at` is set once (`where completed_at is null`) and never cleared.
 - **Only the sent copy is ever served to the student** (notes and verdicts as Maria sent them), never the draft. **No mail contains notes, answers or photos**, only links.
 - **Mails go out after the commit** (`later`), never undo what was saved, and skip sample addresses (`isSampleAddress`). Maria's notices DO go out for a sample student (her live check needs them).
 
@@ -82,7 +82,7 @@
 - **Each screen has one plain next-step sentence and at most one primary button** (phase 2a spec 2.1 rule 5): the test page's primary is "Esita test" (or "Saada uuesti"); the practical page's is "Saada hindamiseks" (or "Saada uuesti"); Maria's access screen's is "Saada hinnang".
 - **Design rules (Dim): simple in steps and words, not a new look.** Use the site's components, fonts (Jost/Manrope), colour tokens (`src/styles/tokens.css` only), `ui.btn`, `ui.btnOutline`, `Icon`, `Notice`. The admin uses its `ui.module.css` (a notice is the class `ui.notice`), `StatusPill`, `Pager`, `Drawer`.
 - **Touch targets ≥ 44 px. Widths 390 / 834 / 1194 / 1440 without horizontal overflow. Respect `prefers-reduced-motion`.** Every new `.module.css` is appended to `tests/unit/colour-tokens.test.ts`'s `COURSE_CSS`.
-- **Old iPads and phones:** no regular expression with a lookbehind in anything a browser file imports (`tests/unit/old-safari.test.ts` walks every `"use client"` file's imports; non-"use client" browser modules of this phase go into its `BROWSER_FILES`: `src/domain/completion.ts`, `src/lib/shrink-image.ts`, `src/components/account/photo-upload.ts`). `createImageBitmap` with options is missing before Safari 15: `shrink-image.ts` falls back to an `<img>` element.
+- **Old iPads and phones:** no regular expression with a lookbehind in anything a browser file imports (`tests/unit/old-safari.test.ts` walks every `"use client"` file's imports; non-"use client" browser modules of this phase go into its `BROWSER_FILES`: `src/domain/completion.ts`, `src/lib/shrink-image.ts`, `src/components/account/photo-upload.ts`, `src/components/admin/verdict-taps.ts`). `createImageBitmap` with options is missing before Safari 15: `shrink-image.ts` falls back to an `<img>` element.
 
 ### Admin and text rules
 
@@ -454,8 +454,8 @@ export type Verdict = "ok" | "fix";
 /** One option of a choice question; `correct` is the answer key, which never leaves the server for the student (domain/completion.ts publicQuestions). */
 export type ChoiceOption = { id: string; text: string; correct: boolean };
 /**
- * One question of a course's knowledge test (spec §3.1): plain text in the course's language, not translated. `id`s are 8 random base36
- * characters made when the question or option is added and never reused: attempts refer to questions and options by them.
+ * One question of a course's knowledge test (spec §3.1): plain text in the course's language, not translated. `id`s are 1–32 characters
+ * [0-9a-z] (newItemId makes 8 random ones when the question or option is added), never reused: attempts refer to questions and options by them.
  */
 export type TestQuestion =
   | { id: string; kind: "choice"; text: string; options: ChoiceOption[] }
@@ -2340,7 +2340,7 @@ describe("saveCourseForm: 'Teadmiste test' and the e-course's points (e-course c
 
 ```ts
 // @vitest-environment happy-dom
-import { act, createElement, useState } from "react";
+import { act, createElement, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { TestEditor, type TestErrors } from "@/components/admin/TestEditor";
@@ -2362,7 +2362,9 @@ let current: TestDraft;
 let mounts = 0;
 function Harness({ initial, errors }: { initial: TestDraft; errors: TestErrors }) {
   const [value, setValue] = useState(initial);
-  current = value;
+  useEffect(() => {
+    current = value; // (not during the render: react-hooks/globals; act() flushes the effect)
+  }, [value]);
   return createElement(TestEditor, { value, onChange: setValue, errors });
 }
 // a new key each time: a new editor, as the course editor's reload gives one
@@ -3314,7 +3316,7 @@ export async function storedCourseTest(courseId: number): Promise<{ questions: u
     await expect(page.locator("[data-test-editor] h3")).toHaveText("Teadmiste test");
 ```
 
-  and after line 229 (`await expect(page.locator("[data-protocol-stages] h3")).toHaveText("Protokolli punktid");`, the contact branch) add:
+  and in the contact branch, after the SECOND occurrence of `await expect(page.locator("[data-protocol-stages] h3")).toHaveText("Protokolli punktid");` (today's line 229, the one right after `await expect(page.locator('[data-list-editor="includes"] h3')).toHaveText("Koolitus sisaldab");`; the replacement above made the first occurrence), add:
 
 ```ts
     await expect(page.locator("[data-protocol-stages]")).toContainText("Koolituspäeva protokolli etapid");
@@ -3446,11 +3448,11 @@ The lesson paths have no transaction today: each is one upsert. `completeIfDone`
   - `type AccessRow = { id: number; clientId: number; courseId: number; expiresAt: Date; revokedAt: Date | null; extraTries: number; completedAt: Date | null }`; `type AccessWithCourse = AccessRow & { course: { id: number; slug: string; title: I18n } }`;
   - `accessFor(db: Db, clientId: number, slug: string): Promise<AccessWithCourse | null>`; `isActive: (a: Pick<AccessRow, "revokedAt" | "expiresAt">, now: Date) => boolean`; `lockAccess(tx: Db, accessId: number): Promise<AccessRow | null>`;
   - `type CourseSetup = { questions: TestQuestion[]; passPercent: number; tries: number; points: string[] }`; `courseSetup(db: Db, courseId: number): Promise<CourseSetup>`;
-  - `stepInputs(db: Db, access: AccessRow, setup?: CourseSetup): Promise<StepInputs>`; `loadSteps(db: Db, access: AccessRow): Promise<CourseSteps>`;
+  - `hasPointsOf(stages: readonly { title: string }[] | null, points: readonly string[]): boolean` (the protocol's own `stages` once a protocol exists, else the course's `points`); `stepInputs(db: Db, access: AccessRow, setup?: CourseSetup): Promise<StepInputs>`; `loadSteps(db: Db, access: AccessRow): Promise<CourseSteps>`;
   - `completeIfDone(db: Db, accessId: number, now: Date): Promise<boolean>`;
   - `type CompletionJob = { accessId: number; email: string; name: string; locale: "et" | "ru"; slug: string; course: I18n; hasPoints: boolean }`; `completionJob(db: Db, accessId: number): Promise<CompletionJob | null>`; `mailCompletion(env: Env, siteUrl: string, job: CompletionJob, kind: CompletionMailKind, fixCount?: number): Promise<void>`.
 - Produces (**added**): `queueCompletionMail(deps: { db: Db; env: Env; siteUrl: string; later: (task: () => Promise<unknown>) => void }, accessId: number): void` (the "completed" mail queued after the answer; the job is read then); `ProgressResult`'s and `DoneResult`'s `saved` variants gain `completed: boolean` **and `accessId: number`** (added: the handler's mail needs it); `activeAccess(…)` answers `{ id, course, expiresAt }` (the `id` added).
-- Note for Tasks 5 and 10: the protocol's points decide `hasPoints` once a protocol exists (its own `stages`, spec §3.4); the course's `protocol_stages` only before.
+- Note for Tasks 5 and 10: the protocol's points decide `hasPoints` once a protocol exists (its own `stages`, spec §3.4); the course's `protocol_stages` only before. The rule is `hasPointsOf`; Task 5 calls it rather than writing it again.
 
 - [ ] **Step 1: Write the failing test** `tests/db/completion-core.test.ts`:
 
@@ -3845,6 +3847,13 @@ export async function courseSetup(db: Db, courseId: number): Promise<CourseSetup
 }
 
 /**
+ * Has the practical work points? The protocol's own copy decides once a protocol exists (`stages`; spec §3.4: a later change of the course's
+ * points reaches only protocols not made yet), the course's `points` before (null `stages`: no protocol). The one place of this rule: the step
+ * inputs, the completion mail's job (here) and the test page's view (test-attempts.ts) all ask it.
+ */
+export const hasPointsOf = (stages: readonly { title: string }[] | null, points: readonly string[]): boolean => (stages ? stages.length > 0 : points.length > 0);
+
+/**
  * Everything courseSteps needs, read for one access: the lessons (courseOutline: the visible ones, as the e-course page counts them), the
  * attempts, the protocol. The points are the protocol's own copy once it exists (spec §3.4: a later change of the course's points reaches only
  * protocols not made yet), the course's before.
@@ -3861,7 +3870,7 @@ export async function stepInputs(db: Db, access: AccessRow, setup?: CourseSetup)
     lessonsTotal: outline.progress.total,
     hasQuestions: s.questions.length > 0,
     test: testState(attempts, triesAllowed(s.tries, access.extraTries)),
-    hasPoints: protocol ? protocol.stages.length > 0 : s.points.length > 0,
+    hasPoints: hasPointsOf(protocol?.stages ?? null, s.points),
     practical: practicalStatus(protocol ?? null),
     practicalRound: protocol?.round ?? 0,
     completedAt: access.completedAt,
@@ -3876,8 +3885,9 @@ export async function loadSteps(db: Db, access: AccessRow): Promise<CourseSteps>
 /**
  * Sets course_access.completed_at = now when every present step is done and it is still null (one UPDATE … where completed_at is null);
  * true when THIS call set it (the caller mails "completed"). Runs inside the caller's transaction when given one (`tx as unknown as Db`):
- * it is then committed or rolled back with the step that completed the course. Never for a revoked access; an expired one completes (Maria
- * may assess it, spec §8). Never cleared: a lesson or a question added later leaves it (spec §4.4).
+ * it is then committed or rolled back with the step that completed the course. Never for a revoked access (checked on the read and again in
+ * the UPDATE, so a revoke landing between the two completes nothing); an expired one completes (Maria may assess it, spec §8). Never
+ * cleared: a lesson or a question added later leaves it (spec §4.4).
  */
 export async function completeIfDone(db: Db, accessId: number, now: Date): Promise<boolean> {
   const [access] = await db.select(accessColumns).from(courseAccess).where(eq(courseAccess.id, accessId)).limit(1);
@@ -3886,7 +3896,7 @@ export async function completeIfDone(db: Db, accessId: number, now: Date): Promi
   const set = await db
     .update(courseAccess)
     .set({ completedAt: now })
-    .where(and(eq(courseAccess.id, accessId), isNull(courseAccess.completedAt)))
+    .where(and(eq(courseAccess.id, accessId), isNull(courseAccess.completedAt), isNull(courseAccess.revokedAt))) // a revoke between the read and here completes nothing
     .returning(); // (returning(fields) has no common overload on the Db union: the whole row)
   if (set.length === 0) return false;
   console.info(`[completion] access ${accessId}: completed`);
@@ -3913,7 +3923,7 @@ export async function completionJob(db: Db, accessId: number): Promise<Completio
     locale: row.locale === "ru" ? "ru" : "et",
     slug: row.slug,
     course: row.course,
-    hasPoints: row.stages ? row.stages.length > 0 : readStages(row.points).length > 0,
+    hasPoints: hasPointsOf(row.stages, readStages(row.points)),
   };
 }
 
@@ -4099,7 +4109,7 @@ Spec §3.3 (attempts, the frozen copy, grading, tries), §4.2 (the student's sta
 
 Every write is ONE transaction. It locks `course_access` first (`lockAccess`), then reads the attempts, so two submits at once run one after the other and the second sees the first. A submit carries the answers only. The server reads the course's CURRENT questions and refuses `changed` when the ids differ (Review Focus 3).
 
-**One try for a double tap.** The lock alone would let a second tap after a failed first one make attempt 2. So a submit is a repeat when its answers equal her newest attempt's and the course's questions equal that attempt's copy. Grading the same answers gives the same result, so a new attempt would only use a try. A repeat is answered with the view as it is and writes nothing (Review Focus 2). Different answers from a second device are a real second try while tries are left. While the first attempt waits for Maria, they are `closed`. The unique `(client, course, number)` index is the backstop: a write that raced past the lock throws, and nothing is saved.
+**One try for a double tap.** The lock alone would let a second tap after a failed first one make attempt 2. So a submit is a repeat when its answers equal her newest attempt's and the course's questions equal that attempt's copy, and, when that attempt failed, its score still fails the course's current pass mark (after Maria lowers the mark, the same answers are a new try that passes). Grading the same answers gives the same result, so a new attempt would only use a try. A repeat is answered with the view as it is and writes nothing (Review Focus 2). Different answers from a second device are a real second try while tries are left. While the first attempt waits for Maria, they are `closed`. The unique `(client, course, number)` index is the backstop: a write that raced past the lock throws, and nothing is saved.
 
 **Files:**
 - Create: `app/src/server/test-attempts.ts`
@@ -4109,12 +4119,13 @@ Every write is ONE transaction. It locks `course_access` first (`lockAccess`), t
 - Consumes (Task 1), from `src/db/schema.ts`: `testAttempts`, `courseTests`, `courseAccess` (`extraTries`, `completedAt`); `type TestAttempt`, `type TestQuestion`, `type TestAnswers = Record<string, string[] | string>`, `type OpenReview = Record<string, { verdict: Verdict; comment: string }>`, `type AttemptStatus = "failed" | "review" | "fix" | "passed"`.
 - Consumes (Task 1), from `src/domain/completion.ts`: `readQuestions`; `publicQuestions(questions): PublicQuestion[]`; `checkAnswers(questions, raw): { ok: true; answers: TestAnswers } | { ok: false; error: "changed" | "incomplete" | "tooLong" }`; `grade(questions, answers): { correct: number; total: number; wrong: number[] }`; `percentOf(correct, total): number`; `submitStatus(questions, correct, total, passPercent): AttemptStatus`; `checkReview(questions, raw): { ok: true; review: OpenReview } | { ok: false; error: "incomplete" | "comment" | "tooLong" }`; `reviewStatus(review): "passed" | "fix"`; `fixAnswers(review: OpenReview | null): string[]`; `triesAllowed(tries, extraTries)`; `testState(attempts, allowed): TestState`; `type PublicQuestion`, `type TestState`.
 - Consumes (Task 2): from `src/server/messages.ts` `type CompletionNotice = { accessId: number; name: string; email: string; course: string }`, `type Summary`, `testReviewSummary(n: CompletionNotice & { attemptId: number; number: number }, adminUrl: string): Summary`, `triesUsedSummary(n: CompletionNotice & { tries: number }, adminUrl: string): Summary`; from `src/server/account-mail.ts` `type CompletionMailKind` (kinds used: `"completed"`, `"testPassed"`, `"testFix"`, `"reopened"`); from `src/server/notify.ts` `notifyMaria(env, subject, text, { short, replyTo, siteUrl })`, `adminUrl(base)`, `type Env`.
-- Consumes (Task 4), from `src/server/completion.ts`: `accessFor`, `isActive`, `lockAccess`, `courseSetup`, `completeIfDone`, `completionJob`, `mailCompletion`; `type AccessWithCourse`, `type CourseSetup`, `type CompletionJob`.
-- Produces (the plan's, verbatim): `TestDeps`, `AttemptView`, `TestView`, `testView(db, clientId, slug, now): Promise<TestView | null>`, `SubmitResult`, `submitAttempt(deps, clientId, slug, raw)`, `resubmitAnswers(deps, clientId, slug, attemptId, raw)`, `ReviewResult`, `reviewAttempt(deps, adminEmail, attemptId, raw)`, `reopenTest(deps, adminEmail, accessId)`. `raw` is the request body's `answers` (Task 6) or the review form's `review` (Task 12), as sent.
+- Consumes (Task 4), from `src/server/completion.ts`: `accessFor`, `isActive`, `lockAccess`, `courseSetup`, `hasPointsOf`, `completeIfDone`, `completionJob`, `mailCompletion`; `type AccessWithCourse`, `type CourseSetup`, `type CompletionJob`.
+- Produces (the plan's, verbatim): `TestDeps`, `AttemptView`, `TestView`, `testView(db, clientId, slug, now): Promise<TestView | null>`, `SubmitResult`, `submitAttempt(deps, clientId, slug, raw)`, `resubmitAnswers(deps, clientId, slug, attemptId, raw)`, `ReviewResult`, `reviewAttempt(deps, adminEmail, attemptId, raw, shownSubmittedAt?: string)`, `reopenTest(deps, adminEmail, accessId)`. `raw` is the request body's `answers` (Task 6) or the review form's `review` (Task 12), as sent.
 - For Tasks 6 and 12, the meaning of the fields:
   - `TestView.tries` is the tries allowed (the course's plus `extra_tries`: "Katse 2/3"), and `triesLeft` is that minus the attempts made, at least 0.
   - `AttemptView.wrong` and `.questions` come from the attempt's own copy.
-  - A resubmission sets the attempt's `submittedAt` to its time (Hindamine's "sent at").
+  - A resubmission sets the attempt's `submittedAt` to its time (Hindamine's "sent at"). `reviewAttempt`'s `shownSubmittedAt` is that time (ISO) as the review page showed it: a review sent from a page older than the student's rewrite answers `stale` (Task 12 sends it).
+  - `reopenTest` on an access that has ended adds the tries but sends no "reopened" mail (her page is read-only until the access is extended).
 
 - [ ] **Step 1: Write the failing test** `tests/db/test-attempts.test.ts`:
 
@@ -4379,6 +4390,24 @@ describe("open answers: Maria's review and the rewrite", () => {
     await db.update(courseAccess).set({ revokedAt: NOW });
     expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "ok", comment: "" } })).toEqual({ kind: "notFound" });
   });
+
+  test("a review from a page older than her rewrite (Maria's other device) is stale: nothing stored for answers Maria never saw; the page that shows the rewrite reviews it", async () => {
+    const w = await world({ questions: [Q1, Q2, OPEN] });
+    const { d } = deps();
+    const answers = { ...RIGHT, [OPEN.id]: ANSWER };
+    viewOf(await submitAttempt(d, w.client.id, "e-kulm", answers));
+    const [attempt] = await stored(w.client.id);
+    const shown = attempt.submittedAt.toISOString(); // what both of Maria's devices read
+    expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "fix", comment: "Lisa puhastamine." } }, shown)).toEqual({ kind: "reviewed", status: "fix", completed: false });
+    const NEW = "Puhastan, kuivatan ja määran kuju.";
+    viewOf(await resubmitAnswers(deps(LATER).d, w.client.id, "e-kulm", attempt.id, { ...answers, [OPEN.id]: NEW })); // back in "review", submittedAt LATER
+    // her other device, still showing the first answers
+    expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "ok", comment: "" } }, shown)).toEqual({ kind: "stale" });
+    expect((await stored(w.client.id))[0]).toMatchObject({ status: "review", answers: { [OPEN.id]: NEW }, review: { [OPEN.id]: { verdict: "fix", comment: "Lisa puhastamine." } } });
+    expect(infoLog()).not.toContain(`[test] attempt ${attempt.id}: reviewed (passed)`);
+    // the page read after the rewrite
+    expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "ok", comment: "" } }, LATER.toISOString())).toEqual({ kind: "reviewed", status: "passed", completed: true });
+  });
 });
 
 describe("reopenTest", () => {
@@ -4400,6 +4429,22 @@ describe("reopenTest", () => {
     expect(await reopenTest(d, MARIA, 999_999)).toEqual({ kind: "notFound" });
     await db.update(courseAccess).set({ revokedAt: NOW });
     expect(await reopenTest(d, MARIA, w.access.id)).toEqual({ kind: "notFound" });
+  });
+
+  test("an expired access: tries added, no mail (her page is read-only until the access is extended)", async () => {
+    const w = await world({ tries: 1 });
+    const first = deps();
+    viewOf(await submitAttempt(first.d, w.client.id, "e-kulm", WRONG));
+    await first.flush(); // Maria's "Testi katsed otsas"
+    await db.update(courseAccess).set({ expiresAt: new Date(NOW.getTime() - 1000) }).where(eq(courseAccess.id, w.access.id));
+    const { d, queued, flush } = deps();
+    expect(await reopenTest(d, MARIA, w.access.id)).toEqual({ kind: "reopened", triesLeft: 1 });
+    expect((await accessRow(w.access.id)).extraTries).toBe(1);
+    expect(infoLog()).toContain(`[test] access ${w.access.id}: reopened`);
+    expect(queued()).toBe(0);
+    await flush();
+    expect(toKati()).toEqual([]);
+    expect(await testView(db, w.client.id, "e-kulm", NOW)).toMatchObject({ state: { kind: "open" }, tries: 2, triesLeft: 1, readOnly: true });
   });
 });
 
@@ -4440,6 +4485,16 @@ describe("Review Focus 2: two submits at once (a double tap, two devices)", () =
     expect(viewOf(b)).toMatchObject({ triesLeft: 2, last: { number: 1, status: "failed" } });
     expect(viewOf(await submitAttempt(d, w.client.id, "e-kulm", WRONG))).toMatchObject({ triesLeft: 2 });
     expect(await stored(w.client.id)).toHaveLength(1);
+  });
+
+  test("Maria lowers the pass mark after a failed attempt: the same answers sent again are a new try, graded against the mark as it is now", async () => {
+    const w = await world({ points: ["Kulmude kuju"] });
+    const { d } = deps();
+    viewOf(await submitAttempt(d, w.client.id, "e-kulm", WRONG)); // 50 %, under 80
+    expect(viewOf(await submitAttempt(d, w.client.id, "e-kulm", WRONG))).toMatchObject({ triesLeft: 2, last: { number: 1, status: "failed" } }); // still a repeat
+    await db.update(courseTests).set({ passPercent: 50 }).where(eq(courseTests.courseId, w.course.id));
+    expect(viewOf(await submitAttempt(d, w.client.id, "e-kulm", WRONG))).toMatchObject({ state: { kind: "passed" }, triesLeft: 1, last: { number: 2, status: "passed", percent: 50 } });
+    expect(await stored(w.client.id)).toMatchObject([{ number: 1, status: "failed" }, { number: 2, status: "passed" }]);
   });
 
   test("open answers: one attempt waiting for Maria and one notice; a second device's other answers are closed meanwhile", async () => {
@@ -4499,7 +4554,7 @@ import {
 } from "@/domain/completion";
 import { pick, type I18n } from "@/i18n/field";
 import type { CompletionMailKind } from "./account-mail";
-import { accessFor, completeIfDone, completionJob, courseSetup, isActive, lockAccess, mailCompletion, type AccessWithCourse, type CompletionJob, type CourseSetup } from "./completion";
+import { accessFor, completeIfDone, completionJob, courseSetup, hasPointsOf, isActive, lockAccess, mailCompletion, type AccessWithCourse, type CompletionJob, type CourseSetup } from "./completion";
 import { courseOutline } from "./lesson-outline";
 import { testReviewSummary, triesUsedSummary, type CompletionNotice, type Summary } from "./messages";
 import { adminUrl, notifyMaria, type Env } from "./notify";
@@ -4626,7 +4681,7 @@ async function buildView(db: Db, access: AccessWithCourse, setup: CourseSetup, n
     last: rows[0] ? attemptView(rows[0]) : null,
     locked: rows.length === 0 && outline.progress.done < outline.progress.total,
     readOnly: !isActive(access, now),
-    hasPoints: protocol ? protocol.stages.length > 0 : setup.points.length > 0,
+    hasPoints: hasPointsOf(protocol?.stages ?? null, setup.points),
   };
 }
 
@@ -4657,7 +4712,8 @@ export async function testView(db: Db, clientId: number, slug: string, now: Date
  * `changed`, no try, nothing written), then the state and the tries; grade, insert with the copy, and after the commit notify Maria when it
  * waits for her ("review") or when it was the last try ("used"), and mail "completed" when the pass completed the course. A repeat — the same
  * answers to the same questions as her newest attempt (a double tap, a second device, a retry whose answer was lost) — is answered with the view
- * as it is and writes nothing: the same answers grade the same, so a new attempt would only use a try (Review Focus 2). `raw`: the body's answers.
+ * as it is and writes nothing: the same answers grade the same, so a new attempt would only use a try (Review Focus 2). Not a repeat: a failed
+ * newest attempt whose score passes the course's pass mark as it is NOW (Maria lowered it since): that is a new try. `raw`: the body's answers.
  */
 export async function submitAttempt(deps: TestDeps, clientId: number, slug: string, raw: unknown): Promise<SubmitResult> {
   const peek = await accessFor(deps.db, clientId, slug);
@@ -4675,7 +4731,13 @@ export async function submitAttempt(deps: TestDeps, clientId: number, slug: stri
     if (!answers.ok) return stop(answers.error === "changed" ? { kind: "changed" } : { kind: "invalid", error: answers.error });
     const rows = await attemptsOf(t, access);
     const newest = rows[0];
-    if (newest && sameAnswers(newest.answers, answers.answers) && sameJson(readQuestions(newest.questions), setup.questions))
+    // a repeat; but a failed attempt whose answers would pass under the pass mark Maria has lowered since is a new try, graded as it is now
+    if (
+      newest &&
+      sameAnswers(newest.answers, answers.answers) &&
+      sameJson(readQuestions(newest.questions), setup.questions) &&
+      (newest.status !== "failed" || submitStatus(setup.questions, newest.correct, newest.total, setup.passPercent) === "failed")
+    )
       return stop({ kind: "submitted", view: await buildView(t, access, setup, deps.now) });
     const allowed = triesAllowed(setup.tries, access.extraTries);
     const state = testState(rows, allowed);
@@ -4765,9 +4827,11 @@ export async function resubmitAnswers(deps: TestDeps, clientId: number, slug: st
  * Maria's review of an attempt in "review" (spec §5.4), else `stale` (reviewed already, on her other device): lock the access, store the review,
  * when and by whom, and the status (every open answer "ok": passed, else fix); a pass may complete the course. After the commit the student's
  * mail: "completed" when it completed the course, "testFix" for a rewrite, "testPassed" when the practical work is next (a course with points).
- * An expired access is still reviewed (spec §8); a revoked one is notFound. `raw`: the review form's verdicts and comments.
+ * An expired access is still reviewed (spec §8); a revoked one is notFound. `raw`: the review form's verdicts and comments. `shownSubmittedAt`:
+ * the attempt's `submittedAt` (ISO) as the review page showed it; when given and the stored one differs, the student has rewritten her answers
+ * since that page was read (a screen on Maria's other device, older than the rewrite): `stale`, nothing stored for answers she never saw.
  */
-export async function reviewAttempt(deps: TestDeps, adminEmail: string, attemptId: number, raw: unknown): Promise<ReviewResult> {
+export async function reviewAttempt(deps: TestDeps, adminEmail: string, attemptId: number, raw: unknown, shownSubmittedAt?: string): Promise<ReviewResult> {
   const [peek] = await deps.db
     .select({ accessId: courseAccess.id })
     .from(testAttempts)
@@ -4783,6 +4847,7 @@ export async function reviewAttempt(deps: TestDeps, adminEmail: string, attemptI
     const [attempt] = await tx.select().from(testAttempts).where(eq(testAttempts.id, attemptId)).limit(1);
     if (!attempt) return stop({ kind: "notFound" });
     if (attempt.status !== "review") return stop({ kind: "stale" });
+    if (shownSubmittedAt !== undefined && shownSubmittedAt !== attempt.submittedAt.toISOString()) return stop({ kind: "stale" }); // rewritten since
     const review = checkReview(readQuestions(attempt.questions), raw);
     if (!review.ok) return stop({ kind: "invalid", error: review.error });
     const status = reviewStatus(review.review);
@@ -4800,7 +4865,9 @@ export async function reviewAttempt(deps: TestDeps, adminEmail: string, attemptI
 /**
  * "Ava test uuesti" (spec §5.2, D3): when every allowed try failed ("used"), extra_tries grows by the course's tries, and after the commit the
  * student gets "reopened"; otherwise `notNeeded`. Under the access lock, so two taps add the tries once (the second finds the test open). A
- * revoked access is notFound. `adminEmail`: the admin who asked (course_access has no column for it; the reopen shows as extra_tries).
+ * revoked access is notFound. An access that has ended (Hindamine still lists it) gets the tries all the same, for the day it is extended, but
+ * no "reopened" mail: her page is read-only and a submit answers `closed`, so the mail would promise a test she cannot take. `adminEmail`: the
+ * admin who asked (course_access has no column for it; the reopen shows as extra_tries).
  */
 export async function reopenTest(deps: TestDeps, adminEmail: string, accessId: number): Promise<ReopenResult> {
   const done = await deps.db.transaction(async (tx): Promise<Done<ReopenResult>> => {
@@ -4816,7 +4883,8 @@ export async function reopenTest(deps: TestDeps, adminEmail: string, accessId: n
     const job = await completionJob(t, accessId);
     return {
       result: { kind: "reopened", triesLeft: Math.max(0, allowed + setup.tries - rows.length) },
-      after: job ? [() => mailCompletion(deps.env, deps.siteUrl, job, "reopened")] : [],
+      // an ended access: the tries wait for an extension, and no mail invites her to a test she cannot take now
+      after: job && isActive(access, deps.now) ? [() => mailCompletion(deps.env, deps.siteUrl, job, "reopened")] : [],
     };
   });
   if (done.result.kind === "reopened") console.info(`[test] access ${accessId}: reopened`);
@@ -5348,7 +5416,7 @@ const TEST_PATH = /^\/kursus\/([^/]+)\/test(\/uuesti)?$/;
   const lessonPath = LESSON_PATH.exec(path);
 ```
 
-  9. **`tests/unit/account-guards.test.ts`.** In both handler lists (the first test's `toEqual([…])` and the `test.each([…])` array) add `"testPage", "submitTest", "resubmitTest",` after `"lessonFile",`. Replace the router test's title and its last two lines:
+  9. **`tests/unit/account-guards.test.ts`.** In both handler lists (the first test's `toEqual([…])` and the `test.each([…])` array) add `"testPage", "submitTest", "resubmitTest",` after `"lessonFile",`. Replace the router test's title, and after its last line add three lines (its existing assertions stay: Task 8 anchors on the `LESSON_PATH` one). The title
 
 ```ts
   test("the router sends every known path to a handler, and only GET /kursus/:slug and the lesson paths are matched by pattern", () => {
@@ -5977,7 +6045,8 @@ function TestBody({ data, slug, locale, t, reload }: { data: TestAnswer; slug: s
   const api = `/api/konto/kursus/${encodeURIComponent(slug)}/test`;
   const courseHref = href(locale, `/konto/kursus/${slug}`);
   const { last } = view;
-  const kind = view.locked ? "locked" : view.readOnly ? "readOnly" : view.state.kind;
+  // an ended access first: she can no longer finish the lessons, so "opens when the lessons are done" would be wrong
+  const kind = view.readOnly ? "readOnly" : view.locked ? "locked" : view.state.kind;
 
   useEffect(() => {
     if (!moved.current) return;
@@ -6710,10 +6779,10 @@ const TEST_SHELL = `${ECOURSE_SHELL}/test`;
   - `npm run build`: the route list shows `/[locale]/konto/kursus/[slug]/test` as prerendered on demand (●), never ƒ.
   - `docker start mslab-pg`, then `npx playwright test account-lessons account-ecourse` (the lessons still open: the test's paths come first) and `E2E_PROD_BUILD=1 npx playwright test cache` — PASS.
 
-- [ ] **Step 12: Commit.**
+- [ ] **Step 12: Commit** (from the repository root):
 
 ```bash
-git add app/src/server/account-api.ts app/src/server/test-attempts.ts "app/src/app/[locale]/(site)/konto/kursus/[slug]/test" app/src/components/account/TestPage.tsx app/src/components/account/TestPage.module.css app/src/components/account/texts.ts app/src/i18n/dict/et.ts app/src/i18n/dict/ru.ts app/src/lib/site-routing.ts app/tests/db/test-api.test.ts app/tests/unit/test-page-dom.test.ts app/tests/unit/account-guards.test.ts app/tests/unit/site-routing.test.ts app/tests/unit/site-gate.test.ts app/tests/unit/colour-tokens.test.ts app/tests/unit/old-safari.test.ts app/tests/unit/protocols.test.ts app/tests/e2e/cache.spec.ts
+git add app/src/server/account-api.ts "app/src/app/[locale]/(site)/konto/kursus/[slug]/test" app/src/components/account/TestPage.tsx app/src/components/account/TestPage.module.css app/src/components/account/texts.ts app/src/i18n/dict/et.ts app/src/i18n/dict/ru.ts app/src/lib/site-routing.ts app/tests/db/test-api.test.ts app/tests/unit/test-page-dom.test.ts app/tests/unit/account-guards.test.ts app/tests/unit/site-routing.test.ts app/tests/unit/site-gate.test.ts app/tests/unit/colour-tokens.test.ts app/tests/unit/old-safari.test.ts app/tests/unit/protocols.test.ts app/tests/e2e/cache.spec.ts
 git commit -m "feat(account): the student's knowledge test — GET|POST /api/konto/kursus/<slug>/test and …/test/uuesti before the lesson paths, the static /konto/kursus/<slug>/test shell, TestPage with its draft
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -7081,6 +7150,15 @@ describe("Review Focus 1: the server takes only a JPEG within the limits; a refu
     expect(await photosOf()).toHaveLength(1);
   });
 
+  test("a first photo for a point the course does not have makes no protocol: the drawer keeps 'Lisa protokoll' for a student who has sent nothing", async () => {
+    const w = await world();
+    expect(await add(w, 2)).toEqual({ kind: "invalid", error: "stage" }); // two points: 0 and 1
+    expect(await protocolOf(w.access.id)).toBeUndefined();
+    expect(w.store.objects.size).toBe(0); // its files, stored first, are removed again
+    expect(await add(w, 1)).toMatchObject({ kind: "added" });
+    expect((await protocolOf(w.access.id))!.stages.map((st) => st.title)).toEqual(["Ettevalmistus", "Tulemus"]);
+  });
+
   test("no store: storage, nothing written; a store that refuses the thumbnail: storage, and the full photo it took is removed again", async () => {
     const w = await world();
     expect(await addPhoto({ ...w.deps, files: null }, w.client.id, SLUG, photo(0))).toEqual({ kind: "storage" });
@@ -7101,6 +7179,8 @@ describe("Review Focus 1: the server takes only a JPEG within the limits; a refu
 });
 
 describe("Review Focus 2: two devices or a double tap — the cap and the send are decided under the access's lock", () => {
+  // These pin the outcome, not the lock: PGlite runs one transaction at a time, so they would pass without lockAccess too. Only
+  // tests/e2e/completion-race.spec.ts, on real Postgres, proves the lock (Task 14).
   test("three photos a point a round: four sent at once make three and one 'full', whose files are removed; another point has its own three", async () => {
     const w = await world();
     const results = await Promise.all([0, 1, 2, 3].map(() => add(w, 0)));
@@ -7508,9 +7588,10 @@ type Work = { kind: "open"; protocol: Protocol | null; status: "open" | "fix"; p
  * The access's work, under its lock: open (round 0, the step open: the test passed, or no questions and the lessons done) or fix → the
  * protocol (null before the first photo) and its number of points; review → already (a second "Saada" of the same round); passed, a step
  * still locked, no points → closed. `create`: the first photo makes the protocol with the course's points and no verdicts — or finds the one
- * Maria's first save made meanwhile (on conflict do nothing, then read).
+ * Maria's first save made meanwhile (on conflict do nothing, then read). `stage`: the point that first photo is for; a point the work does not
+ * have makes no row (the caller refuses the photo as `stage`), so a refused photo never leaves an empty protocol behind.
  */
-async function workOf(tx: Db, access: AccessRow, now: Date, create: boolean): Promise<Work> {
+async function workOf(tx: Db, access: AccessRow, now: Date, create: boolean, stage?: number): Promise<Work> {
   const setup = await courseSetup(tx, access.courseId);
   const [found] = await tx.select().from(protocols).where(eq(protocols.accessId, access.id)).for("update");
   const points = found ? found.stages.length : setup.points.length;
@@ -7519,7 +7600,7 @@ async function workOf(tx: Db, access: AccessRow, now: Date, create: boolean): Pr
   if (status === "review") return { kind: "already" };
   if (status === "passed") return { kind: "closed" };
   if (status === "open" && (await stepLocked(tx, access, setup))) return { kind: "closed" };
-  if (found || !create) return { kind: "open", protocol: found ?? null, status, points };
+  if (found || !create || (stage !== undefined && stage >= points)) return { kind: "open", protocol: found ?? null, status, points };
   await tx
     .insert(protocols)
     .values({ accessId: access.id, stages: stagesFrom(setup.points), verdicts: setup.points.map(() => null), createdAt: now, updatedAt: now })
@@ -7570,10 +7651,11 @@ export async function addPhoto(deps: PracticalDeps, clientId: number, slug: stri
       const access = await lockAccess(tx, known.id);
       if (!access || access.revokedAt !== null) return { kind: "notFound" };
       if (!isActive(access, deps.now)) return { kind: "closed" };
-      const work = await workOf(tx, access, deps.now, true);
-      if (work.kind !== "open" || !work.protocol) return { kind: "closed" };
+      const work = await workOf(tx, access, deps.now, true, input.stage);
+      if (work.kind !== "open") return { kind: "closed" };
+      if (input.stage >= work.points) return { kind: "invalid", error: "stage" }; // a point the work does not have: workOf made no row for it
       const p = work.protocol;
-      if (input.stage >= p.stages.length) return { kind: "invalid", error: "stage" };
+      if (!p) return { kind: "closed" };
       if (work.status === "fix" && !sentFixPoints(p.sent).includes(input.stage)) return { kind: "closed" }; // an approved point
       const round = p.round + 1;
       const [{ n }] = await tx
@@ -7969,7 +8051,7 @@ export const GET = withAdmin<Ctx>(async (request, ctx) => {
 
 - [ ] **Step 8: Run everything.** `npx vitest run` — all PASS (`tests/db/practical.test.ts`, `tests/unit/private-file.test.ts`, `tests/db/admin-photo-route.test.ts` among them); `npx tsc --noEmit`, then `npx eslint .` — clean. `npm run build` lists `/api/admin/foto/[id]` as ƒ (dynamic). No e2e spec changes in this task (the pages come in Task 8, the end-to-end runs in Task 14).
 
-- [ ] **Step 9: Commit.**
+- [ ] **Step 9: Commit** (from the repository root):
 
 ```bash
 git add app/src/server/private-file.ts app/src/server/practical.ts "app/src/app/api/admin/foto/[id]/route.ts" app/src/server/client-data.ts app/src/server/account-api.ts app/tests/unit/private-file.test.ts app/tests/db/practical.test.ts app/tests/db/admin-photo-route.test.ts app/tests/db/client-data.test.ts app/tests/db/protocols-edges.test.ts app/tests/unit/admin-guards.test.ts
@@ -8294,8 +8376,8 @@ export class ShrinkError extends Error {
  */
 export type ShrinkOptions = { maxEdge: number; quality: number; maxBytes: number; accept: readonly string[]; output: "jpeg" | "keep" };
 
-/** Larger originals are not even opened (a phone photo is 3–12 MB); the student's limit (PHOTO_LIMITS.sourceBytes) is the same. */
-export const MAX_SOURCE_BYTES = 60 * 1024 * 1024;
+/** Larger originals are not even opened (a phone photo is 3–12 MB): the student's limit (PHOTO_LIMITS.sourceBytes, 60 MB), the admin's too. */
+export const MAX_SOURCE_BYTES = PHOTO_LIMITS.sourceBytes;
 
 /** What "keep" may write: the browser's own type when it is one of these, else PNG. */
 const KEPT = ["image/jpeg", "image/png", "image/webp"];
@@ -8869,7 +8951,7 @@ describe("POST /kursus/:slug/praktiline/foto", () => {
     const w = await world();
     const png = await upload(w.kati.cookie, 0, { full: jpeg(PNG, "pilt.png", "image/png") });
     expect(png.status).toBe(400);
-    expect(["type", "content"]).toContain(((await png.json()) as { error: string }).error);
+    expect(((await png.json()) as { error: string }).error).toBe("type"); // Task 7 checks the type first: image/png is "type"
     const big = new Uint8Array(PHOTO_LIMITS.fullBytes + 1);
     big.set(JPEG);
     const tooBig = await upload(w.kati.cookie, 0, { full: jpeg(big) });
@@ -9033,10 +9115,10 @@ describe("GET /praktiline/foto/:id (R5)", () => {
   Expected: FAIL — every practical route answers 404 (the router does not know them; `GET …/praktiline` falls into `LESSON_PATH` with the lesson id "praktiline"); the guard lists lack the five handlers; `photoAnswer` is not found.
 
 - [ ] **Step 12: The routes** (`src/server/account-api.ts`).
-  1. **Imports.** Add `PHOTO_LIMITS` to the `@/domain/completion` import (Task 6 added one for `TEST_LIMITS`; without one, add `import { PHOTO_LIMITS } from "@/domain/completion";` after `import { isEmail, isSampleAddress, normalizeEmail } from "@/domain/email";`). After `import { PAY_STARTS_PER_IP, startRegistrationPayment } from "./payments/start";` add:
+  1. **Imports.** Add `PHOTO_LIMITS` to the `@/domain/completion` import (Task 6 added one for `TEST_LIMITS`; without one, add `import { PHOTO_LIMITS } from "@/domain/completion";` after `import { isEmail, isSampleAddress, normalizeEmail } from "@/domain/email";`). Task 7's line `import { removeKeys } from "./practical";` (after `import { PAY_STARTS_PER_IP, startRegistrationPayment } from "./payments/start";`) becomes one import from the module:
 
 ```ts
-import { addPhoto, photoFor, practicalView, removePhoto, submitPractical, type PhotoInput, type PracticalDeps } from "./practical";
+import { addPhoto, photoFor, practicalView, removeKeys, removePhoto, submitPractical, type PhotoInput, type PracticalDeps } from "./practical";
 ```
 
      and after `import { isPrefetch } from "./prefetch";` add:
@@ -9394,7 +9476,7 @@ export const practicalTexts = (d: Dict): PracticalTexts => ({
 });
 ```
 
-  4. **`tests/unit/protocols.test.ts`** ("Russian typography"): in `texts`, after `"account.protocolMail": ru.account.protocolMail,` add `"account.practical": ru.account.practical,`.
+  4. **`tests/unit/protocols.test.ts`** ("Russian typography"): in `texts`, after `"account.completionMail": ru.account.completionMail,` (Task 2's line, under its `// e-course completion (Task 2)` comment) add `"account.practical": ru.account.practical,`.
 
   Run `npx vitest run tests/unit/i18n.test.ts tests/unit/protocols.test.ts` — PASS.
 
@@ -10260,7 +10342,7 @@ function PracticalBody({ data, slug, locale, t, reload }: { data: PracticalAnswe
 
   const { status } = view;
   const canAct = status === "open" || status === "fix";
-  const editing = canAct && !view.readOnly;
+  const editing = canAct && !view.readOnly && !view.notesOnly; // a notes-only protocol (no points) has nothing to send
   /** A point that takes photos now: every point in the first round, the "Paranda" points in a fix round. */
   const takes = (p: PointView) => editing && (status === "open" || p.verdict === "fix");
   const needed = view.points.filter(takes);
@@ -10853,20 +10935,18 @@ export default async function PracticalShellPage({ params }: Props) {
 ```
 
 - [ ] **Step 20: The routing, gate, colour and old-Safari lists.**
-  1. **`tests/unit/site-routing.test.ts`.** In "the known pages are exactly the pages of app/[locale]/(site)", add `"/konto/kursus/[slug]/praktiline"` to the expected list (it is sorted by the test; the place does not matter). In "the client account's pages are known, …", after `expect(isKnownPage("/et/konto/kursus/x/2147483647")).toBe(true);` add `for (const locale of ["et", "ru"]) expect(isKnownPage(\`/${locale}/konto/kursus/kulmude-lami/praktiline\`), locale).toBe(true);`. In "only the account's shells answer a query with a redirect: …", add `"/konto/kursus/x/praktiline", "/ru/konto/kursus/x/praktiline"` to the first list (the paths that redirect).
+  1. **`tests/unit/site-routing.test.ts`.** In "the known pages are exactly the pages of app/[locale]/(site)", add `"/konto/kursus/[slug]/praktiline"` to the expected list (it is sorted by the test; the place does not matter). In "only the account's shells answer a query with a redirect: …", add `"/konto/kursus/x/praktiline"` to the first list (the paths that redirect). Nothing else: Task 6 already added `"/konto/kursus/kulmude-lami/praktiline"` to "the client account's pages are known, …", its wrong shapes, and `"/ru/konto/kursus/x/praktiline"` to the redirect list.
   2. **`tests/unit/site-gate.test.ts`.** In `GATED`, after `"/konto/kursus/x/12",` add `"/konto/kursus/x/praktiline",`, and after `"/api/konto/kursus/x/1/fail/2",` add `"/api/konto/kursus/x/praktiline",`, `"/api/konto/praktiline/foto/1",`.
   3. **`tests/unit/colour-tokens.test.ts`.** In `COURSE_CSS`, after `"src/components/account/FeedbackForm.module.css",` add `// the student's practical work (e-course completion)` and `"src/components/account/PracticalPage.module.css",`.
-  4. **`tests/unit/old-safari.test.ts`.** At the end of `BROWSER_FILES` (after `"src/components/site/NewsletterPopup.tsx",`) add:
+  4. **`tests/unit/old-safari.test.ts`.** At the end of `BROWSER_FILES` (before its closing `];`) add (Task 1 listed `src/domain/completion.ts` already):
 
 ```ts
-  // e-course completion, Task 8: the practical page, the shrink and the upload (and the rules they import, unless Task 1 listed them)
+  // e-course completion, Task 8: the practical page, the shrink and the upload
   "src/lib/shrink-image.ts",
   "src/components/account/photo-upload.ts",
   "src/components/account/PracticalPage.tsx",
   "src/components/account/PhotoSlot.tsx",
 ```
-
-     and, when `grep -n "src/domain/completion.ts" tests/unit/old-safari.test.ts` finds nothing, also `"src/domain/completion.ts",` under the same comment.
   5. **`tests/e2e/cache.spec.ts`.** After `const LESSON_SHELL = \`${ECOURSE_SHELL}/1\`;` (and after Task 6's test shell constant, when there is one) add `const PRACTICAL_SHELL = \`${ECOURSE_SHELL}/praktiline\`;`; append `PRACTICAL_SHELL, \`/ru${PRACTICAL_SHELL}\`,` as the last entries of `ACCOUNT_SHELLS`; in the test "an account shell asked for with a query is answered with a 303 …", raise the number in `test.setTimeout(…)` by `60_000` and the shell count in its comment by two.
 
   Run `npx vitest run tests/unit/site-routing.test.ts tests/unit/site-gate.test.ts tests/unit/middleware-gate.test.ts tests/unit/colour-tokens.test.ts tests/unit/old-safari.test.ts tests/unit/account-guards.test.ts` — expect PASS.
@@ -11143,6 +11223,8 @@ describe("Maria's read-only view of the course (Vaata tema vaadet)", () => {
   test("her copy carries the steps, and their links are inert, like 'Jätka'", async () => {
     const w = await world();
     await lessonsDone(w);
+    // the page reads the real clock (loadEcourse(…, new Date())): an access ending far ahead keeps this test from failing once NOW + 180 days has passed
+    await db.update(courseAccess).set({ expiresAt: new Date("2099-01-01T00:00:00Z") }).where(eq(courseAccess.id, w.access.id));
     const tree = await ViewCoursePage({ params: Promise.resolve({ id: String(w.kati.id), slug: "veebikursus" }) });
     const props = findView(tree);
     expect(props, "the EcourseView with the course").not.toBeNull();
@@ -11667,7 +11749,8 @@ export function CompletionSteps({ slug, steps, protocolSent, locale, t, readOnly
       state,
       name: c.steps.practical,
       line: practicalLine(state, steps.test !== null, c),
-      link: state === "locked" ? null : { to: `${base}/praktiline`, label: acts(state) ? c.openPractical : c.viewPractical, main: acts(state) && lessonsDone },
+      // at most one primary button: when the test is hers to act in too (Maria added questions while the work was at "fix"), the test's is it
+      link: state === "locked" ? null : { to: `${base}/praktiline`, label: acts(state) ? c.openPractical : c.viewPractical, main: acts(state) && lessonsDone && !rows.some((r) => r.link?.main) },
     });
   }
   rows.push({
@@ -11855,11 +11938,11 @@ export function CompletionSteps({ slug, steps, protocolSent, locale, t, readOnly
 
   3. **`src/components/account/EcourseView.tsx`.**
      - After `import { ProgressBar } from "./ProgressBar";` add `import { CompletionSteps } from "./CompletionSteps";`.
-     - In the component's doc comment, after the bullet "- without any lesson yet: the module titles and "Sisu lisandub peagi."", add the bullet "- below them, "Lõpetamine" (CompletionSteps, e-course completion): the path's steps, once the course has lessons (or is completed);".
+     - In the component's doc comment, after the bullet "- without any lesson yet: the module titles and "Sisu lisandub peagi."", add the bullet "- below them, "Lõpetamine" (CompletionSteps, e-course completion): the path's steps, once the course has lessons (or is completed, or Maria sent her notes: "Vaata protokolli");".
      - After the closing `)}` of `{total === 0 && ( <p … data-ecourse-soon=""> … </p> )}` and before the closing `</div>`, add:
 
 ```tsx
-      {(total > 0 || data.completion.completedAt !== null) && (
+      {(total > 0 || data.completion.completedAt !== null || data.completion.protocolSent) && (
         <CompletionSteps slug={slug} steps={data.completion} protocolSent={data.completion.protocolSent} locale={locale} t={t} readOnly={readOnly} />
       )}
 ```
@@ -12024,14 +12107,15 @@ Spec sections 3.4 (the access's protocol, the practical status), 5.3 (the screen
 - Modify: `app/src/db/queries/protocols.ts` (the imports, lines 1–9; `ScreenData`, lines 35–45; `screenStudents`, lines 47–62; `screenOf`, lines 67–79; `protocolScreen`, lines 81–111; new `AssessmentPhoto`, `AssessmentData`, `accessScreen`)
 - Modify: `app/src/server/protocols.ts` (the imports, line 6; the header comment, lines 18–27; `saveBody`, lines 29–44; new `Owner`, `ownerOf`, `builtOn`; `current`, lines 55–65; `saveProtocol`, lines 67–115; `handleSave`'s failure line, line 167; `handleRead`, lines 172–192)
 - Modify: `app/src/app/api/admin/protokoll/route.ts` (the GET's doc comment, line 15)
-- Create: `app/src/server/assessment.ts`, `app/src/app/api/admin/hinnang/route.ts`, `app/src/server/actions/admin-assessment.ts`
+- Create: `app/src/server/assessment.ts`, `app/src/app/api/admin/hinnang/route.ts`, `app/src/server/actions/admin-assessment.ts`, `app/src/server/send-deps.ts` (the admin actions' send deps, shared)
+- Modify: `app/src/server/actions/admin-protocols.ts` (the imports, lines 3–12; its local `deps()`, lines 26–36: the shared `adminSendDeps` instead)
 - Create (test helpers): `app/tests/db/assessment-fixtures.ts`
 - Test: `app/tests/db/protocols-access.test.ts`, `app/tests/db/assessment.test.ts`, `app/tests/unit/admin-assessment-action.test.ts` (new); `app/tests/unit/admin-guards.test.ts` (modified)
 
 **Interfaces:**
 - Consumes (Task 1, `src/db/schema.ts`): `protocols.registrationId` nullable; `protocols.accessId: number | null`, `verdicts: (Verdict | null)[]` (default `[]`), `round: number` (default 0), `submittedAt: Date | null`, `sentRound: number | null`; unique index `protocols_access`; `type Verdict = "ok" | "fix"`; `type SentProtocol = { stages: ProtocolStage[]; generalNote: string; verdicts?: (Verdict | null)[] }`; `practicalPhotos` (`id, protocolId, stage, round, key, thumbKey, size, width, height, createdAt`); `courseAccess.completedAt`, `courseAccess.extraTries`.
 - Consumes (Task 1, `src/domain/completion.ts`): `type PracticalStatus = "open" | "review" | "fix" | "passed"`; `practicalStatus(p: { round: number; sentRound: number | null; sent: SentProtocol | null } | null): PracticalStatus`.
-- Consumes (Task 2): `type CompletionMailKind = "assessed" | "completed" | "testPassed" | "testFix" | "reopened" | "protocol" | "protocolAgain"` (`src/server/account-mail.ts`); the texts `account.completionMail` (`assessedSubject` "Sinu praktiline töö on hinnatud", `fixCount` "Parandada: {n} punkti", `completedSubject` "Palju õnne! Koolitus „{title}“ on lõpetatud") and `account.protocolMail.subjectFirst/subjectAgain` (which the tests read through the mails). `mailCompletion` reads `job.hasPoints` itself (the protocol's own copy of the points once a protocol exists, Task 4), so this task passes only the kind and `fixCount`. (Task 4's `queueCompletionMail(deps, accessId)` queues the "completed" kind only; "Saada hinnang" picks among four kinds, so it queues `completionJob` + `mailCompletion` itself.)
+- Consumes (Task 2): `type CompletionMailKind = "assessed" | "completed" | "testPassed" | "testFix" | "reopened" | "protocol" | "protocolAgain"` (`src/server/account-mail.ts`); the texts `account.completionMail` (`assessedSubject` "Sinu praktiline töö on hinnatud", `fixCount` "Parandamist vajavaid punkte: {n}", `completedSubject` "Palju õnne! Koolitus „{title}“ on lõpetatud") and `account.protocolMail.subjectFirst/subjectAgain` (which the tests read through the mails). `mailCompletion` reads `job.hasPoints` itself (the protocol's own copy of the points once a protocol exists, Task 4), so this task passes only the kind and `fixCount`. (Task 4's `queueCompletionMail(deps, accessId)` queues the "completed" kind only; "Saada hinnang" picks among four kinds, so it queues `completionJob` + `mailCompletion` itself.)
 - Consumes (Task 4, `src/server/completion.ts`):
   ```ts
   export type AccessRow = { id: number; clientId: number; courseId: number; expiresAt: Date; revokedAt: Date | null; extraTries: number; completedAt: Date | null };
@@ -12068,6 +12152,7 @@ Spec sections 3.4 (the access's protocol, the practical status), 5.3 (the screen
   `missing` in `verdicts` / `comments` are the points' 0-based positions.
 - Produces: `POST /api/admin/hinnang` → 200 `{ ok: true, verdicts }` | 409 `{ ok: false, error: "closed" | "stale" }` | 404 `{ ok: false, error: "notFound" }` | 400 `{ ok: false, error: "body" }` | 413 `{ ok: false, error: "size" }` | 500 `{ ok: false, error: "server" }`; `maxDuration = 30`.
 - Produces (`src/server/actions/admin-assessment.ts`, `"use server"`): `export const sendAssessmentAction = adminAction(async (_admin, input: AssessmentInput): Promise<AssessmentResult | { kind: "failed" }> => …)`. Task 12 adds `reviewAttemptAction` and `reopenTestAction` to this file (and to its `admin-guards` pin).
+- Produces (`src/server/send-deps.ts`, a plain module): `export async function adminSendDeps(log: string): Promise<SendDeps>` — the database, the mail's settings, the links' base from the request, `now`, and `later` through `after()` (a failed mail logs `<log> a mail failed`). `admin-protocols.ts` and `admin-assessment.ts` both build their deps with it (Task 12's actions too; `TestDeps` accepts a `SendDeps`).
 - Produces (tests): `tests/db/assessment-fixtures.ts` — `POINTS`, `DAY`, `ecourse(db, over?)`, `learner(db, course, lesson, email, over?)`, `ecourseAccess(db, over?)`, `submitRound(db, accessId, points, at)` (Tasks 12–14 may reuse them).
 
 - [ ] **Step 1: The test helpers** — create `tests/db/assessment-fixtures.ts`:
@@ -12076,13 +12161,15 @@ Spec sections 3.4 (the access's protocol, the practical status), 5.3 (the screen
 import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { clients, courseAccess, courseModules, courses, lessonProgress, lessons, practicalPhotos, protocols, type Course, type Lesson, type Protocol } from "@/db/schema";
+import { practicalStatus, sentFixPoints } from "@/domain/completion";
 import { stagesFrom } from "@/domain/protocols";
 
 // An e-course with practical points and a student with access to it, for Maria's assessment (phase e-course completion, Tasks 10–14). The course
 // has one text lesson, which the student has done, and no test (no course_tests row): the practical work is her only step left, so an approving
 // send completes the course. `submitRound` writes what the student's "Saada hindamiseks" leaves (server/practical.ts submitPractical, Task 7)
 // without the photo files: the protocol her first photo made (the course's points, version 1, no text), a photo row per point named, round + 1,
-// submitted_at, and the "Paranda" verdicts back to null (R3; the notes' version is not touched).
+// submitted_at, and the verdicts of the points this round redoes back to null — the sent "Paranda" points after an assessment, every point in
+// the first round — exactly as submitPractical picks them (R3; the notes' version is not touched).
 
 export const POINTS = ["Ettevalmistus", "Kulmude kuju", "Värvimine"];
 /** The student's first submission. */
@@ -12152,7 +12239,9 @@ export async function submitRound(db: Db, accessId: number, points: readonly num
       width: 1600,
       height: 1200,
     });
-  const verdicts = p.stages.map((_, i) => (p.verdicts[i] === "fix" ? null : (p.verdicts[i] ?? null)));
+  // the points this round redoes, as submitPractical has them: the SENT "Paranda" points once Maria has assessed, else every point
+  const required = practicalStatus(p) === "fix" ? sentFixPoints(p.sent) : p.stages.map((_, i) => i);
+  const verdicts = p.stages.map((_, i) => (required.includes(i) ? null : (p.verdicts[i] ?? null)));
   const [after] = await db.update(protocols).set({ round, submittedAt: at, verdicts }).where(eq(protocols.id, p.id)).returning();
   return after;
 }
@@ -12914,7 +13003,7 @@ describe("Saada hinnang", () => {
     const [mail] = mails();
     expect([mail.to, mail.subject]).toEqual(["kati@example.com", "Sinu praktiline töö on hinnatud"]);
     expect(mail.text).toContain(`${SITE}/konto/kursus/kulmud-e/praktiline`);
-    expect(mail.text).toContain("Parandada: 1 punkti");
+    expect(mail.text).toContain("Parandamist vajavaid punkte: 1");
     for (const body of [mail.text, mail.html]) for (const note of ["Kuju on ebaühtlane", "Hea algus"]) expect(body).not.toContain(note);
 
     const again = deps(NEXT);
@@ -12928,7 +13017,7 @@ describe("Saada hinnang", () => {
     expect(await sendAssessment(fixed.d, { accessId: access.id, version: 3, protocolId: p.id })).toEqual({ kind: "sent", status: "fix", completed: false, version: 3, sentAt: NEXT.toISOString() });
     expect(await stored(access.id)).toMatchObject({ sentRound: 1, sent: { verdicts: ["fix", "fix", "ok"] } });
     await fixed.flush();
-    expect(mails()[1].text).toContain("Parandada: 2 punkti");
+    expect(mails()[1].text).toContain("Parandamist vajavaid punkte: 2");
   });
 
   test("R3: the student's second round (the Paranda verdict cleared, the notes' version untouched); Maria approves it: passed, completed_at set once, the 'completed' mail; then the verdicts are locked, changed notes go again alone (protocolAgain), nothing new is already", async () => {
@@ -13223,22 +13312,66 @@ export const maxDuration = 30;
 export const POST = withAdmin(async (request) => handleVerdict(getDb(), request, new Date()));
 ```
 
+  Create `src/server/send-deps.ts` (what every admin send needs; the protocols' actions and the assessment's build it the same way, so it is
+  written once here — a plain module, not `"use server"`: an action file may export only `adminAction`s, tests/unit/admin-guards.test.ts):
+
+```ts
+import { headers } from "next/headers";
+import { after } from "next/server";
+import { getDb } from "@/db/client";
+import { serverEnv } from "./env";
+import { serverKv } from "./kv";
+import { logFailure } from "./log";
+import type { SendDeps } from "./protocols";
+import { linkBase, requestOrigin } from "./site";
+
+// What an admin action's send needs (the protocol screen's sends, server/actions/admin-protocols.ts; Maria's assessment, the test review and
+// "Ava test uuesti", server/actions/admin-assessment.ts): the database, the mail's settings, the base of the mail's links (the address Maria
+// works on, mslab.ee, or SITE_URL), the time, and `later`, which runs the mail after the answer (next/server after()). Only a server action
+// calls it (it reads the request's headers).
+
+/** The send deps of one admin action; `log` prefixes the line of a mail that failed after the answer ("[protocols]", "[assessment]", …). */
+export async function adminSendDeps(log: string): Promise<SendDeps> {
+  const env = { ...serverEnv(), KV: serverKv() };
+  return {
+    db: getDb(),
+    env,
+    // the mail's links: the address Maria works on (mslab.ee), or SITE_URL
+    siteUrl: linkBase(requestOrigin(await headers()), env.SITE_URL),
+    now: new Date(),
+    later: (task) => after(() => task().catch((e) => logFailure(`${log} a mail failed`, e))),
+  };
+}
+```
+
+  In `src/server/actions/admin-protocols.ts`, the imports (lines 3–12) become:
+
+```ts
+import { z } from "zod";
+import { adminAction } from "../auth";
+import { logFailure } from "../log";
+import { sendProtocol, sendProtocols, type BulkResult, type SendInput, type SendOutcome } from "../protocols";
+import { adminSendDeps } from "../send-deps";
+```
+
+  and its `async function deps(): Promise<SendDeps> { … }` (lines 26–36) becomes:
+
+```ts
+const deps = () => adminSendDeps("[protocols]");
+```
+
+  (its two actions keep `await deps()`; `tests/unit/admin-protocols-action.test.ts` mocks `next/headers`, `next/server`, `@/db/client`, `@/server/env` and `@/server/kv`, which `send-deps.ts` now imports in its place, so it passes unchanged).
+
   Create `src/server/actions/admin-assessment.ts`:
 
 ```ts
 "use server";
 
-import { headers } from "next/headers";
-import { after } from "next/server";
 import { z } from "zod";
-import { getDb } from "@/db/client";
 import { sendAssessment, type AssessmentInput, type AssessmentResult } from "../assessment";
 import { adminAction } from "../auth";
-import { serverEnv } from "../env";
-import { serverKv } from "../kv";
 import { logFailure } from "../log";
-import type { SendDeps } from "../protocols";
-import { linkBase, requestOrigin } from "../site";
+import { adminSendDeps } from "../send-deps";
 
 // Maria's assessment (phase e-course completion, spec §5.3): every export is wrapped in adminAction (a signed-in admin, or a redirect to
 // /admin/login; tests/unit/admin-guards.test.ts fails otherwise), and Next.js refuses an action called from another origin. The work is in
@@ -13252,17 +13385,7 @@ const item = z.object({
   protocolId: z.number().int().positive().max(2_147_483_647).nullable(),
 });
 
-async function deps(): Promise<SendDeps> {
-  const env = { ...serverEnv(), KV: serverKv() };
-  return {
-    db: getDb(),
-    env,
-    // the mail's links: the address Maria works on (mslab.ee), or SITE_URL
-    siteUrl: linkBase(requestOrigin(await headers()), env.SITE_URL),
-    now: new Date(),
-    later: (task) => after(() => task().catch((e) => logFailure("[assessment] a mail failed", e))),
-  };
-}
+const deps = () => adminSendDeps("[assessment]");
 
 /** "Saada hinnang" (and an e-course's notes-only "Saada"): one access, at the version the screen confirmed; a throw is "failed", logged by the access's id. */
 export const sendAssessmentAction = adminAction(async (_admin, input: AssessmentInput): Promise<AssessmentResult | { kind: "failed" }> => {
@@ -13288,7 +13411,7 @@ export const sendAssessmentAction = adminAction(async (_admin, input: Assessment
         "server/actions/admin-assessment.ts",
 ```
 
-  2. In "every route under app/api/admin and app/admin is wrapped …", the list `["app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts"]` gains `"app/api/admin/hinnang/route.ts"` at its end.
+  2. In "every route under app/api/admin and app/admin is wrapped …", the list as Task 7 left it, `["app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts", "app/api/admin/foto/[id]/route.ts"]`, gains `"app/api/admin/hinnang/route.ts"` at its end, after `"app/api/admin/foto/[id]/route.ts"`.
   3. In "every admin page calls requireAdmin() itself and every admin action is wrapped", after the three `protocolActions` lines (before the comment `// It reads and scans every admin source file …`) add:
 
 ```ts
@@ -13309,7 +13432,12 @@ import { beforeEach, expect, test, vi } from "vitest";
 // any work. The work itself (server/assessment.ts) is tests/db/assessment.test.ts.
 
 const work = vi.hoisted(() => ({ sendAssessment: vi.fn() }));
+// the test review's work and the page refresh: the action file imports both once Task 12 has added its two actions (their tests are Task 12's)
+const tests = vi.hoisted(() => ({ reviewAttempt: vi.fn(), reopenTest: vi.fn() }));
+const cache = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("@/server/assessment", () => work);
+vi.mock("@/server/test-attempts", () => tests);
+vi.mock("next/cache", () => cache);
 vi.mock("@/server/auth", () => ({ adminAction: (fn: (admin: unknown, ...args: unknown[]) => unknown) => (...args: unknown[]) => fn({ email: "admin@example.test" }, ...args) }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers({ host: "mslab.example" }) }));
 vi.mock("next/server", () => ({ after: () => {} }));
@@ -13321,6 +13449,9 @@ const { sendAssessmentAction } = await import("@/server/actions/admin-assessment
 
 beforeEach(() => {
   work.sendAssessment.mockReset().mockResolvedValue({ kind: "stale", version: 3 });
+  tests.reviewAttempt.mockReset();
+  tests.reopenTest.mockReset();
+  cache.refresh.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -13348,16 +13479,16 @@ test("a send that throws is 'failed', logged by the access's id only", async () 
   - `npx tsc --noEmit`, then `npx eslint .`.
   - `npx playwright test protocols.spec.ts protocols-race.spec.ts` (the course day's save and send, and their lock order, against the local database; the access's screen comes in Task 11).
 
-- [ ] **Step 14: Commit.**
+- [ ] **Step 14: Commit** (from the repository root):
 
 ```bash
-git add app/src/domain/protocols.ts app/src/db/queries/protocols.ts app/src/server/protocols.ts app/src/server/assessment.ts app/src/app/api/admin/protokoll/route.ts app/src/app/api/admin/hinnang/route.ts app/src/server/actions/admin-assessment.ts app/tests/db/assessment-fixtures.ts app/tests/db/assessment.test.ts app/tests/db/protocols-access.test.ts app/tests/unit/admin-guards.test.ts app/tests/unit/admin-assessment-action.test.ts
+git add app/src/domain/protocols.ts app/src/db/queries/protocols.ts app/src/server/protocols.ts app/src/server/assessment.ts app/src/app/api/admin/protokoll/route.ts app/src/app/api/admin/hinnang/route.ts app/src/server/actions/admin-assessment.ts app/src/server/send-deps.ts app/src/server/actions/admin-protocols.ts app/tests/db/assessment-fixtures.ts app/tests/db/assessment.test.ts app/tests/db/protocols-access.test.ts app/tests/unit/admin-guards.test.ts app/tests/unit/admin-assessment-action.test.ts
 git commit -m "feat(assessment): Maria's assessment server — access protocols, verdict taps (POST /api/admin/hinnang), Saada hinnang with the frozen verdicts, completion and the student's mail
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-**Wording (for the appendix):** none — Task 10 adds no text. Its mails are Task 2's (`account.completionMail`, `account.protocolMail`); its logs are ids only (`[assessment] access N: sent (fix|passed[, completed])`, `… the verdict failed`, `… the send failed`, `[assessment] a mail failed`).
+**Wording (for the appendix):** none — Task 10 adds no text. Its mails are Task 2's (`account.completionMail`, `account.protocolMail`); its logs are ids only (`[assessment] access N: sent (fix|passed|open[, completed])`, `… the verdict failed`, `… the send failed`, `[assessment] a mail failed`).
 
 ---
 
@@ -13375,12 +13506,13 @@ Spec sections 5.3 (the header, under each point the photos, "Varasemad fotod", t
 
 **Files:**
 - Modify: `app/src/components/admin/protocol-autosave.ts` (the header comment, lines 9–10; `ServerDraft.registrationId`'s comment, line 58; the key builders, lines 126–131; `readCopies`, `readNotices`, `readLocal`, `readConflict`, lines 289–341; `SaveBody`, lines 392–393; the class's fields and constructor, lines 449–509; the key calls at lines 850, 897, 901, 907, 1129, 1166–1167, 1183, 1187, 1194–1195; `bodyOf`, lines 939–941; `ScreenSource` and `getScreen`, lines 1242–1264)
+- Modify: `app/src/components/admin/ProtocolSend.tsx` (`bounded`, line 97: exported, so `AssessmentSend.tsx` shares it)
 - Modify: `app/src/components/admin/ProtocolScreen.tsx` (the imports, lines 3 and 9; `ScreenView`, lines 16–20; `ProtocolScreen`'s signature and engine, lines 75–81; the `StudentEditor` call, lines 169–179; `StudentEditor`, lines 185–262; `NoteBox`, lines 268–314)
 - Modify: `app/src/app/admin/(panel)/protokollid/page.tsx` (whole file)
 - Modify: `app/src/components/admin/sections.ts` (the `Section` union, lines 6–21)
 - Modify: `app/src/i18n/dict/admin.ts` (`nav`, after `registrations` at line 101; new `assessment` after `protocols`, line 353)
 - Create: `app/src/components/admin/verdict-taps.ts`, `AssessmentScreen.tsx`, `AssessmentStage.tsx`, `PhotoViewer.tsx`, `AssessmentSend.tsx`, `Assessment.module.css`
-- Modify: `app/tests/unit/colour-tokens.test.ts` (`COURSE_CSS`)
+- Modify: `app/tests/unit/colour-tokens.test.ts` (`COURSE_CSS`), `app/tests/unit/old-safari.test.ts` (`BROWSER_FILES`: `verdict-taps.ts`)
 - Test: `app/tests/unit/protocol-autosave.test.ts` (additions), `app/tests/unit/protocol-page.test.ts` (additions); `app/tests/unit/verdict-taps.test.ts`, `app/tests/unit/photo-viewer-dom.test.ts`, `app/tests/unit/assessment-screen-dom.test.ts` (new)
 
 **Interfaces:**
@@ -13389,13 +13521,13 @@ Spec sections 5.3 (the header, under each point the photos, "Varasemad fotod", t
 - Consumes (Task 1): `type Verdict = "ok" | "fix"`; `type PracticalStatus = "open" | "review" | "fix" | "passed"`.
 - Produces (`protocol-autosave.ts`): `type ScreenOwner = "registration" | "access"`; `type OwnerKeys = { localKey(id, tab?); sentKey(id, tab); conflictKey(id, tab?) }`; `ownerKeys(owner: ScreenOwner): OwnerKeys`; `ProtocolAutosave` constructor options `{ tab?: string; owner?: ScreenOwner }`; `readLocal(storage, id, tab?, keys?)` and `readConflict(storage, id, tab?, keys?)` (an optional fourth argument, the registration's keys by default); `SaveBody = { registrationId?: number; accessId?: number; protocolId; version; titles; notes; generalNote }` (exactly one owner is sent); `ScreenSource = { sessioon: number } | { registreering: number } | { ligipaas: number }`.
 - Produces (`ProtocolScreen.tsx`): `ScreenView = { single: boolean; source: ScreenSource; students: ScreenStudentView[]; owner?: ScreenOwner }`; `type EditorState = { engine: ProtocolAutosave; entry: Entry; locked: boolean; frozen: boolean; unlocked: boolean; onUnlock(on: boolean): void }`; `ProtocolScreen({ view, read?, stageExtra?: (index: number, state: EditorState) => ReactNode, sendBar?: (entry: Entry, state: EditorState) => ReactNode, opened?: boolean })`.
-- Produces: `src/components/admin/verdict-taps.ts` — `VerdictBody`, `VerdictAnswer`, `PostVerdict`, `postVerdict(body)`, `TapsResult = "saved" | "unsaved" | "refused"`, `class VerdictTaps` (`shown(i)`, `unsaved(i)`, `take(verdicts)`, `tap(protocolId, i, verdict)`, `flush(protocolId)`, `subscribe`, `snapshot`).
+- Produces: `src/components/admin/verdict-taps.ts` — `VerdictBody`, `VerdictAnswer`, `PostVerdict`, `postVerdict(body)`, `isVerdicts(v: unknown): v is (Verdict | null)[]` (also `AssessmentScreen`'s check of a read), `TapsResult = "saved" | "unsaved" | "refused"`, `class VerdictTaps` (`shown(i)`, `unsaved(i)`, `take(verdicts)`, `tap(protocolId, i, verdict)`, `flush(protocolId)`, `subscribe`, `snapshot`).
 - Produces: `AssessmentScreen({ view, read?, post? })`, `readAssessment(value: unknown): AssessmentView | null` (`AssessmentScreen.tsx`); `AssessmentStage({ index, photos, verdict, unsaved, disabled, onVerdict, onOpen })` (`AssessmentStage.tsx`); `PhotoViewer({ photos, index, onIndex, onClose, label, returnTo? })`, `SWIPE_PX = 50`, `type Photo = AssessmentView["photos"][number][number]` (`PhotoViewer.tsx`); `AssessmentSend({ state, assessment, taps, onSent })`, `assessMessage(result, s, t)` (`AssessmentSend.tsx`).
 - Produces: `Section` gains `"assessment"` (Task 12 adds the `SECTIONS` entry); `adminEt.nav.assessment = "Hindamine"`; `adminEt.assessment.screen.*` (Task 12 adds its keys beside `screen`).
 - Produces (data attributes): `[data-assessment-screen]`, `[data-assess-status=<status>]`, `[data-assess-point=<i>]`, `[data-latest-photos]`, `[data-assess-photo=<id>]`, `[data-earlier-photos]`, `[data-no-photos]`, `[data-verdict=ok|fix]` (`aria-pressed`), `[data-verdict-unsaved]`, `[data-photo-viewer]`, `[data-viewer-prev|next|close]`, `[data-viewer-count]`, `[data-viewer-frame]`, `[data-assess-send]`, `[data-assess-confirm-box]` (the confirmation), `[data-assess-confirm]` (its "Saada" button: Task 14 clicks `[data-assess-send]` then `[data-assess-confirm]`), `[data-assess-confirm-no]`, `[data-assess-error]`, `[data-assess-sent]`, `[data-assess-waiting]`, `[data-assess-locked]`, `[data-edit]` / `[data-editing]` (as `StudentSend`'s); on the page `[data-protocol-course]`, `[data-assess-round]`, `[data-access-expired]`.
 
 - [ ] **Step 1: Write the failing owner tests** — in `tests/unit/protocol-autosave.test.ts`:
-  1. The import from `@/components/admin/protocol-autosave` (lines 3–6) gains `getScreen` and `ownerKeys`:
+  1. The import from `@/components/admin/protocol-autosave` gains `getScreen` and `ownerKeys`, and a `stubFetch` import follows the `PROTOCOL_LIMITS` one: lines 3–7 (the four lines of that import and `import { PROTOCOL_LIMITS } from "@/domain/protocols";`) become:
 
 ```ts
 import {
@@ -13751,7 +13883,8 @@ export async function postVerdict(body: VerdictBody): Promise<VerdictAnswer> {
   }
 }
 
-const isVerdicts = (v: unknown): v is (Verdict | null)[] => Array.isArray(v) && v.every((x) => x === "ok" || x === "fix" || x === null);
+/** A list of verdicts as the server sends them ("ok", "fix" or null per point); the screen's reads are checked with it too (AssessmentScreen.tsx). */
+export const isVerdicts = (v: unknown): v is (Verdict | null)[] => Array.isArray(v) && v.every((x) => x === "ok" || x === "fix" || x === null);
 
 /** How a flush ended: every tap stored; one got no answer (it and those behind it are kept); or one was refused (dropped: read the server again). */
 export type TapsResult = "saved" | "unsaved" | "refused";
@@ -15020,7 +15153,7 @@ export function AssessmentStage({
 }
 ```
 
-  2. Create `src/components/admin/AssessmentSend.tsx`:
+  2. The course day's send and this one wait for an action the same way: in `src/components/admin/ProtocolSend.tsx`, `function bounded<T>(work: Promise<T>): Promise<T | "timeout"> {` (line 97) becomes `export function bounded<T>(work: Promise<T>): Promise<T | "timeout"> {` (nothing else changes there). Then create `src/components/admin/AssessmentSend.tsx`:
 
 ```tsx
 "use client";
@@ -15034,7 +15167,7 @@ import { fill } from "@/i18n/format";
 import { sendAssessmentAction } from "@/server/actions/admin-assessment";
 import type { AssessmentResult } from "@/server/assessment";
 import type { EditorState } from "./ProtocolScreen";
-import { SEND_TIMEOUT_MS, unsavedMessage } from "./ProtocolSend";
+import { bounded, unsavedMessage } from "./ProtocolSend";
 import { sameContent, statusOf, written, type Content } from "./protocol-autosave";
 import type { VerdictTaps } from "./verdict-taps";
 import ui from "./ui.module.css";
@@ -15073,23 +15206,6 @@ export function assessMessage(result: Outcome, s: S, t: T): string | null {
     case "failed":
       return t.sendErrors.failed;
   }
-}
-
-/** The answer of `work`, or "timeout" when none came within SEND_TIMEOUT_MS (a hung action must not keep the protocol read-only). */
-function bounded<R>(work: Promise<R>): Promise<R | "timeout"> {
-  return new Promise<R | "timeout">((resolve, reject) => {
-    const timer = setTimeout(() => resolve("timeout"), SEND_TIMEOUT_MS);
-    work.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
 }
 
 /**
@@ -15353,13 +15469,11 @@ import { AssessmentSend } from "./AssessmentSend";
 import { AssessmentStage } from "./AssessmentStage";
 import { PhotoViewer, type Photo } from "./PhotoViewer";
 import { ProtocolScreen, type EditorState, type ScreenView } from "./ProtocolScreen";
-import { getScreen, readStudents, type Entry, type ReadScreen } from "./protocol-autosave";
-import { postVerdict, VerdictTaps, type PostVerdict } from "./verdict-taps";
+import { getScreen, readStudents, type Entry, type ReadScreen, type ScreenSource } from "./protocol-autosave";
+import { isVerdicts, postVerdict, VerdictTaps, type PostVerdict } from "./verdict-taps";
 import ui from "./ui.module.css";
 import styles from "./Assessment.module.css";
 
-const VERDICT = (v: unknown): boolean => v === null || v === "ok" || v === "fix";
-const verdictList = (v: unknown): boolean => Array.isArray(v) && v.every(VERDICT);
 const photoOf = (p: unknown): boolean => typeof p === "object" && p !== null && ["id", "round", "width", "height"].every((k) => typeof (p as Record<string, unknown>)[k] === "number");
 
 /** A read's practical work (server/protocols.ts handleRead: domain/protocols.ts AssessmentView), checked field by field; null for anything else. */
@@ -15373,8 +15487,8 @@ export function readAssessment(value: unknown): AssessmentView | null {
     (a.status === "open" || a.status === "review" || a.status === "fix" || a.status === "passed") &&
     typeof a.round === "number" &&
     (a.submittedAt === null || typeof a.submittedAt === "string") &&
-    verdictList(a.verdicts) &&
-    (a.sentVerdicts === null || verdictList(a.sentVerdicts)) &&
+    isVerdicts(a.verdicts) &&
+    (a.sentVerdicts === null || isVerdicts(a.sentVerdicts)) &&
     Array.isArray(a.photos) &&
     a.photos.every((point) => Array.isArray(point) && point.every(photoOf)) &&
     typeof a.locked === "boolean" &&
@@ -15400,7 +15514,7 @@ export function AssessmentScreen({ view, read = getScreen, post = postVerdict }:
   useSyncExternalStore(taps.subscribe, taps.snapshot, taps.snapshot);
   const [viewer, setViewer] = useState<{ photos: readonly Photo[]; index: number; label: string; from: HTMLElement } | null>(null);
   // the screen's own read, its answer's practical work taken on the way (one stable function: the screen restarts its reading for a new one)
-  const [reader] = useState<ReadScreen>(() => async (source) => {
+  const [reader] = useState<ReadScreen>(() => async (source: ScreenSource) => {
     const answer = await read(source);
     const next = answer && answer.status === 200 ? readAssessment(readStudents(answer.body)?.[0]?.assessment) : null;
     if (next) {
@@ -15758,11 +15872,18 @@ export default async function ProtocolsPage({ searchParams }: Props) {
 
   Run `npx vitest run tests/unit/protocol-page.test.ts` — expect PASS (the 300 s pin too).
 
-- [ ] **Step 9: The colour tokens.** In `tests/unit/colour-tokens.test.ts`, at the end of `COURSE_CSS` (before its closing `];`) add:
+- [ ] **Step 9: The colour tokens and the old-Safari list.** In `tests/unit/colour-tokens.test.ts`, at the end of `COURSE_CSS` (before its closing `];`) add:
 
 ```ts
   // Maria's assessment screen and its photo viewer (phase e-course completion, Task 11)
   "src/components/admin/Assessment.module.css",
+```
+
+  In `tests/unit/old-safari.test.ts`, at the end of `BROWSER_FILES` (before its closing `];`) add (a browser module without "use client": the Global Constraints list it by name, although `AssessmentScreen.tsx`'s walk reaches it too):
+
+```ts
+  // e-course completion, Task 11: Maria's verdict taps
+  "src/components/admin/verdict-taps.ts",
 ```
 
   Run `npx vitest run tests/unit/colour-tokens.test.ts tests/unit/old-safari.test.ts` — expect PASS (no colour literal, the colour mixes from tokens; the new "use client" files and `verdict-taps.ts` hold no lookbehind).
@@ -15773,10 +15894,10 @@ export default async function ProtocolsPage({ searchParams }: Props) {
   - `npx playwright test protocols.spec.ts protocols-autosave.spec.ts` (the course day's screen, its autosave offline and on Back, unchanged; against the local database).
   - By hand against `next dev` with the local database (an e-course with two points, a student who has sent one round: `tests/e2e/completion.ts` comes in Task 14, so seed it with `npx tsx` or psql): `/admin/protokollid?ligipaas=<id>` at 390, 834, 1194 and 1440 px shows no horizontal scroll; the thumbnails, the verdict buttons and "Saada hinnang" are at least 44 px; the photo opens full-screen, swipes on the phone width, and Esc returns the focus to the thumbnail. (Task 14's `completion.spec.ts` automates this.)
 
-- [ ] **Step 11: Commit.**
+- [ ] **Step 11: Commit** (from the repository root):
 
 ```bash
-git add app/src/components/admin/protocol-autosave.ts app/src/components/admin/ProtocolScreen.tsx app/src/components/admin/verdict-taps.ts app/src/components/admin/AssessmentScreen.tsx app/src/components/admin/AssessmentStage.tsx app/src/components/admin/PhotoViewer.tsx app/src/components/admin/AssessmentSend.tsx app/src/components/admin/Assessment.module.css app/src/components/admin/sections.ts "app/src/app/admin/(panel)/protokollid/page.tsx" app/src/i18n/dict/admin.ts app/tests/unit/protocol-autosave.test.ts app/tests/unit/protocol-page.test.ts app/tests/unit/verdict-taps.test.ts app/tests/unit/photo-viewer-dom.test.ts app/tests/unit/assessment-screen-dom.test.ts app/tests/unit/colour-tokens.test.ts
+git add app/src/components/admin/protocol-autosave.ts app/src/components/admin/ProtocolScreen.tsx app/src/components/admin/verdict-taps.ts app/src/components/admin/AssessmentScreen.tsx app/src/components/admin/AssessmentStage.tsx app/src/components/admin/PhotoViewer.tsx app/src/components/admin/AssessmentSend.tsx app/src/components/admin/Assessment.module.css app/src/components/admin/sections.ts "app/src/app/admin/(panel)/protokollid/page.tsx" app/src/i18n/dict/admin.ts app/tests/unit/protocol-autosave.test.ts app/tests/unit/protocol-page.test.ts app/tests/unit/verdict-taps.test.ts app/tests/unit/photo-viewer-dom.test.ts app/tests/unit/assessment-screen-dom.test.ts app/tests/unit/colour-tokens.test.ts app/tests/unit/old-safari.test.ts app/src/components/admin/ProtocolSend.tsx
 git commit -m "feat(assessment): Maria's assessment screen — ?ligipaas= on the protocol screen, the autosave's access owner, photos with a full-screen viewer, verdict taps, Saada hinnang
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -15852,22 +15973,24 @@ Spec §5.2 (the page, its three groups, the badge, the card), §5.4 (the test re
 **Files:**
 - Create: `app/src/db/queries/assessment.ts`
 - Modify: `app/src/db/queries/admin.ts` (`AdminCounts`, `adminCounts`: lines 440–471; one import)
+- Modify: `app/src/server/admin-clients.ts` (the `drizzle-orm` import, line 1; `NAME`, line 35: built by the new exported `clientNameSql`, which Hindamine's queries share)
 - Modify: `app/src/components/admin/sections.ts` (`SECTIONS`, after the `registrations` line 27), `app/src/components/admin/AdminIcon.tsx` (`PATHS`, after `arrow`, line 23), `app/src/components/admin/Shell.tsx` (the doc comment, `badges` lines 19–22, `total` line 35)
 - Create: `app/src/app/admin/(panel)/hindamine/page.tsx`, `app/src/app/admin/(panel)/hindamine/test/page.tsx`, `app/src/app/admin/(panel)/hindamine/assessment.module.css`
 - Create: `app/src/components/admin/TestReview.tsx`, `app/src/components/admin/TestReview.module.css`, `app/src/components/admin/ReopenTest.tsx`
 - Modify: `app/src/server/actions/admin-assessment.ts` (Task 10's file: two actions after `sendAssessmentAction`)
 - Modify: `app/src/app/admin/(panel)/page.tsx` (imports; the data loading, line 36; the card after the stats list, line 85), `app/src/app/admin/(panel)/overview.module.css` (appended)
 - Modify: `app/src/i18n/dict/admin.ts` (`shell.badgeAssessment`; `overview.assessment`; the `assessment` block beside Task 11's `screen`)
-- Test: create `app/tests/db/assessment-fixtures.ts`, `app/tests/db/assessment-queue.test.ts`, `app/tests/db/assessment-admin.test.ts`, `app/tests/unit/test-review-dom.test.ts`; modify `app/tests/db/admin.test.ts` (the two `adminCounts` pins), `app/tests/unit/admin.test.ts` (the menu), `app/tests/unit/admin-guards.test.ts` (the pages, the action file's exports), `app/tests/unit/colour-tokens.test.ts` (`COURSE_CSS`), `app/tests/e2e/admin-inbox.spec.ts` (`MENU`)
+- Test: create `app/tests/db/hindamine-fixtures.ts`, `app/tests/db/assessment-queue.test.ts`, `app/tests/db/assessment-admin.test.ts`, `app/tests/unit/test-review-dom.test.ts`; modify `app/tests/db/admin.test.ts` (the two `adminCounts` pins), `app/tests/unit/admin.test.ts` (the menu), `app/tests/unit/admin-guards.test.ts` (the pages, the action file's exports), `app/tests/unit/admin-assessment-action.test.ts` (the two actions' tests), `app/tests/unit/colour-tokens.test.ts` (`COURSE_CSS`), `app/tests/e2e/admin-inbox.spec.ts` (`MENU`)
 
 **Interfaces:**
 - Consumes:
   - Task 1 (`src/db/schema.ts`): `courseTests`, `testAttempts`, `protocols` (`accessId`, `round`, `sentRound`, `submittedAt`, `verdicts`), `courseAccess` (`extraTries`, `completedAt`), types `TestQuestion`, `TestAnswers`, `OpenReview`, `AttemptStatus`, `Verdict`, `TestAttempt`.
   - Task 1 (`src/domain/completion.ts`): `TEST_LIMITS`, `TEST_DEFAULTS`, `readQuestions(value: unknown): TestQuestion[]`, `percentOf(correct: number, total: number): number`, `triesAllowed(tries: number, extraTries: number): number`.
-  - Task 5 (`src/server/test-attempts.ts`): `type ReviewResult = { kind: "reviewed"; status: "passed" | "fix"; completed: boolean } | { kind: "invalid"; error: "incomplete" | "comment" | "tooLong" } | { kind: "stale" } | { kind: "notFound" }`; `reviewAttempt(deps: TestDeps, adminEmail: string, attemptId: number, raw: unknown): Promise<ReviewResult>`; `reopenTest(deps: TestDeps, adminEmail: string, accessId: number): Promise<{ kind: "reopened"; triesLeft: number } | { kind: "notNeeded" } | { kind: "notFound" }>`; `TestDeps = { db; env; siteUrl; now; later }`.
-  - Task 10 (`src/server/actions/admin-assessment.ts`): the file (`"use server"`, `sendAssessmentAction`) and its local `deps()` (it returns `SendDeps`, which `TestDeps` accepts).
+  - Task 5 (`src/server/test-attempts.ts`): `type ReviewResult = { kind: "reviewed"; status: "passed" | "fix"; completed: boolean } | { kind: "invalid"; error: "incomplete" | "comment" | "tooLong" } | { kind: "stale" } | { kind: "notFound" }`; `reviewAttempt(deps: TestDeps, adminEmail: string, attemptId: number, raw: unknown, shownSubmittedAt?: string): Promise<ReviewResult>` (`stale` too when `shownSubmittedAt` differs from the attempt's stored `submittedAt`: the student rewrote since the page was read); `reopenTest(deps: TestDeps, adminEmail: string, accessId: number): Promise<{ kind: "reopened"; triesLeft: number } | { kind: "notNeeded" } | { kind: "notFound" }>`; `TestDeps = { db; env; siteUrl; now; later }`.
+  - Task 10 (`src/server/actions/admin-assessment.ts`): the file (`"use server"`, `sendAssessmentAction`); Task 10 (`src/server/send-deps.ts`): `adminSendDeps(log: string): Promise<SendDeps>` (a `SendDeps` is what `TestDeps` accepts); Task 10's `tests/unit/admin-assessment-action.test.ts` with its `tests` (`reviewAttempt`, `reopenTest`) and `cache` (`refresh`) mocks.
   - Task 11: `Section` has `"assessment"`; `adminEt.nav.assessment = "Hindamine"`; `adminEt.assessment.screen` exists; the access screen `/admin/protokollid?ligipaas=<accessId>` with its way back to `/admin/hindamine`.
 - Produces:
+  - `src/server/admin-clients.ts`: `export function clientNameSql(fallback: SQL): SQL<string>` (the Õpilased list's name rule; the list passes `''`, Hindamine `clients.email`).
   - `src/db/queries/assessment.ts` (exactly the plan's):
     ```ts
     export type WaitingPractical = { accessId: number; name: string; course: I18n; round: number; submittedAt: Date };
@@ -15882,13 +16005,13 @@ Spec §5.2 (the page, its three groups, the badge, the card), §5.4 (the test re
     ```
   - `AdminCounts.assessment: number`; the menu entry `{ key: "assessment", href: "/admin/hindamine", icon: "check" }`; `AdminIconName` gains `"check"`; the Shell badge `data-badge="assessment"` and the mobile dot's total.
   - Pages `/admin/hindamine` (`[data-assessment-page]`, `[data-queue=practicals|tests|tries]`, `[data-queue-item=<accessId>]`, `[data-queue-empty]`; group anchors `#praktilised`, `#testid`, `#katsed`) and `/admin/hindamine/test` (`?id=<attemptId>`: the review; `?ligipaas=<accessId>`: the attempts, `[data-attempts=<accessId>]`, `[data-attempt=<attemptId>]`; `[data-test-review-page]`, `[data-attempt-status]`, `[data-review-score]`).
-  - `src/components/admin/TestReview.tsx` ("use client"): `export type ReviewTexts = AdminDict["assessment"]["review"]`; `export type ReviewedAttempt = { id: number; status: AttemptStatus; questions: TestQuestion[]; answers: TestAnswers; review: OpenReview | null }`; `export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: ReviewTexts })`. Data attributes: `[data-review-form=<attemptId>]` (an attempt in "review") or `[data-review-readonly=<attemptId>]`, `[data-review-question=<id>][data-review-right=true|false]`, `[data-review-option=<optionId>][data-picked][data-correct]`, `[data-review-answer=<questionId>]`, `[data-review-verdict=ok|fix]` (`aria-pressed`), `[data-review-comment]`, `[data-review-problem=verdict|comment|tooLong]`, `[data-review-shown=ok|fix]`, `[data-review-send]`, `[data-review-error]`, `[data-review-sent]`.
+  - `src/components/admin/TestReview.tsx` ("use client"): `export type ReviewTexts = AdminDict["assessment"]["review"]`; `export type ReviewedAttempt = { id: number; status: AttemptStatus; questions: TestQuestion[]; answers: TestAnswers; review: OpenReview | null; submittedAt: string }` (`submittedAt`: the attempt's, ISO; the review sends it back); `export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: ReviewTexts })`. Data attributes: `[data-review-form=<attemptId>]` (an attempt in "review") or `[data-review-readonly=<attemptId>]`, `[data-review-question=<id>][data-review-right=true|false]`, `[data-review-option=<optionId>][data-picked][data-correct]`, `[data-review-answer=<questionId>]`, `[data-review-verdict=ok|fix]` (`aria-pressed`), `[data-review-comment]`, `[data-review-problem=verdict|comment|tooLong]`, `[data-review-shown=ok|fix]`, `[data-review-send]`, `[data-review-error]`, `[data-review-sent]` (in either branch: the line stays when the page's refresh after a send shows the attempt read-only).
   - `src/components/admin/ReopenTest.tsx` ("use client"): `export type ReopenTexts = AdminDict["assessment"]["reopen"] & { saving: string; error: string }`; `export function ReopenTest({ accessId, course, used, t }: { accessId: number; course: string; used: boolean; t: ReopenTexts })` (Task 13 renders it in the drawer). Data attributes: `[data-reopen]` (the button), `[data-reopen-confirm]` (the step; its first button is "Jah, ava"), `[data-reopen-done]`.
-  - `src/server/actions/admin-assessment.ts`: `reviewAttemptAction(input: { attemptId: number; review: unknown }): Promise<ReviewResult | { kind: "failed" }>`; `reopenTestAction(input: { accessId: number }): Promise<{ kind: "reopened"; triesLeft: number } | { kind: "notNeeded" } | { kind: "notFound" } | { kind: "failed" }>`. Both `refresh()` the open admin page when they changed something.
+  - `src/server/actions/admin-assessment.ts`: `reviewAttemptAction(input: { attemptId: number; review: unknown; submittedAt: string }): Promise<ReviewResult | { kind: "failed" }>`; `reopenTestAction(input: { accessId: number }): Promise<{ kind: "reopened"; triesLeft: number } | { kind: "notNeeded" } | { kind: "notFound" } | { kind: "failed" }>`. Both `refresh()` the open admin page when they changed something.
   - The overview's `[data-overview-assessment]` card with `[data-overview-assessment-group=practicals|tests|tries]` rows.
   - Dictionary: `adminEt.shell.badgeAssessment`, `adminEt.overview.assessment.{title, open}`, `adminEt.assessment.{eyebrow, title, lead, empty, groups, round, sentAt, tryOf, best, attemptsMade, assess, viewAnswers, attempts, review.*, reopen.*}`.
 
-- [ ] **Step 1: The test fixtures** — create `tests/db/assessment-fixtures.ts`:
+- [ ] **Step 1: The test fixtures** — create `tests/db/hindamine-fixtures.ts` (a file of its own: Task 10's `tests/db/assessment-fixtures.ts` stays as it is, its tests import its `POINTS`, `DAY`, `ecourse`, `learner`, `ecourseAccess` and `submitRound`):
 
 ```ts
 import type { Db } from "@/db/client";
@@ -15988,7 +16111,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import type { Db } from "@/db/client";
 import { assessmentCount, assessmentQueue, attemptForReview, attemptsOf } from "@/db/queries/assessment";
 import { clients, courseAccess, courseTests, protocols, registrations } from "@/db/schema";
-import { ANSWERS, at, attempt, COURSE_TITLE, ecourse, LATER, practical, QUESTIONS, student } from "./assessment-fixtures";
+import { ANSWERS, at, attempt, COURSE_TITLE, ecourse, LATER, practical, QUESTIONS, student } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
 
 // "Hindamine" (e-course completion, spec §5.2, §8) on a real (PGlite) database: what waits for Maria — the practical work sent and not
@@ -16129,7 +16252,20 @@ describe("one attempt for Maria's review", () => {
 
 - [ ] **Step 3: Run it — expect FAIL.** `cd app && npx vitest run tests/db/assessment-queue.test.ts` fails: `@/db/queries/assessment` does not exist (a failed import).
 
-- [ ] **Step 4: The queries** — create `src/db/queries/assessment.ts`:
+- [ ] **Step 4: The queries.**
+  1. The student's name is the Õpilased list's rule, written once. In `src/server/admin-clients.ts`, the first import line gains `type SQL` (`import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";`), and the one line that starts `const NAME = sql<string>` (line 35, under the comment "Written out with the table's name …"; its fallback is `''`) becomes:
+
+```ts
+/** A student's NAME (above) as SQL over an unaliased `clients`, with `fallback` when she has no name anywhere (Hindamine's queries give her address). */
+export function clientNameSql(fallback: SQL): SQL<string> {
+  return sql<string>`coalesce(nullif(clients.name, ''), (select r.name from registrations r where r.client_id = clients.id order by r.created_at desc, r.id desc limit 1), ${fallback})`;
+}
+const NAME = clientNameSql(sql`''`);
+```
+
+  (The list's SQL is the same text as before: `tests/db/admin-clients.test.ts` passes unchanged.)
+
+  2. Create `src/db/queries/assessment.ts`:
 
 ```ts
 import { and, asc, count, desc, eq, gt, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
@@ -16137,6 +16273,7 @@ import type { Db } from "../client";
 import { clients, courseAccess, courses, courseTests, protocols, testAttempts, type AttemptStatus, type OpenReview, type TestAnswers, type TestAttempt, type TestQuestion } from "../schema";
 import { percentOf, readQuestions, TEST_DEFAULTS, triesAllowed } from "@/domain/completion";
 import type { I18n } from "@/i18n/field";
+import { clientNameSql } from "@/server/admin-clients";
 
 // "Hindamine" (e-course completion, spec §5.2, §5.4): what waits for Maria — the practical work sent and not yet assessed, the open answers
 // waiting for her review, the students out of tries — and an attempt as her review shows it. Callers have checked the admin session; nothing
@@ -16144,10 +16281,11 @@ import type { I18n } from "@/i18n/field";
 // §8); a completed one has nothing left to assess. One that ran out stays: Maria can still assess it (spec §8).
 
 /**
- * The student as the admin sees her (server/admin-clients.ts NAME): her own name, else her latest registration's, else her address. Written
- * with the table's name: every query below joins `clients` unaliased, and the subquery's own table is `r`.
+ * The student as the admin sees her (server/admin-clients.ts clientNameSql): her own name, else her latest registration's, else her address.
+ * Every query below joins `clients` unaliased. Built when a query runs, never at this module's top: server/admin-clients.ts imports
+ * db/queries/admin.ts, which imports this file (adminCounts), so while this module loads the builder may not be there yet.
  */
-const NAME = sql<string>`coalesce(nullif(clients.name, ''), (select r.name from registrations r where r.client_id = clients.id order by r.created_at desc, r.id desc limit 1), clients.email)`;
+const NAME = () => clientNameSql(sql`clients.email`);
 
 /** Not ended by an admin and not completed. */
 const LIVE = and(isNull(courseAccess.revokedAt), isNull(courseAccess.completedAt));
@@ -16165,7 +16303,7 @@ export type AssessmentQueue = { practicals: WaitingPractical[]; tests: WaitingTe
 
 async function waitingPracticals(db: Db): Promise<WaitingPractical[]> {
   const rows = await db
-    .select({ accessId: courseAccess.id, name: NAME, course: courses.title, round: protocols.round, submittedAt: protocols.submittedAt })
+    .select({ accessId: courseAccess.id, name: NAME(), course: courses.title, round: protocols.round, submittedAt: protocols.submittedAt })
     .from(protocols)
     .innerJoin(courseAccess, eq(protocols.accessId, courseAccess.id))
     .innerJoin(clients, eq(courseAccess.clientId, clients.id))
@@ -16180,7 +16318,7 @@ async function waitingTests(db: Db): Promise<WaitingTest[]> {
     .select({
       attemptId: testAttempts.id,
       accessId: courseAccess.id,
-      name: NAME,
+      name: NAME(),
       course: courses.title,
       number: testAttempts.number,
       tries: courseTests.tries,
@@ -16202,7 +16340,7 @@ async function triesUsedRows(db: Db): Promise<TriesUsed[]> {
   return db
     .select({
       accessId: courseAccess.id,
-      name: NAME,
+      name: NAME(),
       course: courses.title,
       best: sql<number>`max(case when ${testAttempts.total} = 0 then 100 else (${testAttempts.correct} * 100) / ${testAttempts.total} end)`.mapWith(Number),
       attempts: sql<number>`count(${testAttempts.id})`.mapWith(Number),
@@ -16257,15 +16395,15 @@ export type ReviewAttempt = {
 
 type ReviewRow = { attempt: TestAttempt; accessId: number; extraTries: number; name: string; course: I18n; tries: number | null; passPercent: number | null };
 
-const reviewFields = {
+const reviewFields = () => ({
   attempt: testAttempts,
   accessId: courseAccess.id,
   extraTries: courseAccess.extraTries,
-  name: NAME,
+  name: NAME(),
   course: courses.title,
   tries: courseTests.tries,
   passPercent: courseTests.passPercent,
-};
+});
 
 function reviewOf(r: ReviewRow): ReviewAttempt {
   const a = r.attempt;
@@ -16289,7 +16427,7 @@ function reviewOf(r: ReviewRow): ReviewAttempt {
 /** The attempt `attemptId` for Maria's review; null without one, or when its access was ended by an admin. */
 export async function attemptForReview(db: Db, attemptId: number): Promise<ReviewAttempt | null> {
   const [row] = await db
-    .select(reviewFields)
+    .select(reviewFields())
     .from(testAttempts)
     .innerJoin(courseAccess, ATTEMPT_ACCESS)
     .innerJoin(clients, eq(testAttempts.clientId, clients.id))
@@ -16303,7 +16441,7 @@ export async function attemptForReview(db: Db, attemptId: number): Promise<Revie
 /** Every attempt of the access `accessId`, newest first (spec §5.4, "Testi katsed"); null without the access, or when an admin ended it. */
 export async function attemptsOf(db: Db, accessId: number): Promise<{ name: string; course: I18n; attempts: ReviewAttempt[] } | null> {
   const [who] = await db
-    .select({ name: NAME, course: courses.title })
+    .select({ name: NAME(), course: courses.title })
     .from(courseAccess)
     .innerJoin(clients, eq(courseAccess.clientId, clients.id))
     .innerJoin(courses, eq(courseAccess.courseId, courses.id))
@@ -16311,7 +16449,7 @@ export async function attemptsOf(db: Db, accessId: number): Promise<{ name: stri
     .limit(1);
   if (!who) return null;
   const rows = await db
-    .select(reviewFields)
+    .select(reviewFields())
     .from(courseAccess)
     .innerJoin(testAttempts, ATTEMPT_ACCESS)
     .innerJoin(clients, eq(courseAccess.clientId, clients.id))
@@ -16323,7 +16461,7 @@ export async function attemptsOf(db: Db, accessId: number): Promise<{ name: stri
 }
 ```
 
-- [ ] **Step 5: Run** `npx vitest run tests/db/assessment-queue.test.ts` — expect PASS (6 tests).
+- [ ] **Step 5: Run** `npx vitest run tests/db/assessment-queue.test.ts tests/db/admin-clients.test.ts` — expect PASS (the queue's 6 tests; the Õpilased list's unchanged).
 
 - [ ] **Step 6: The badge's count in `adminCounts`.** In `tests/db/admin.test.ts`, the two `toEqual` pins of `adminCounts(db)` (lines 219 and 242) each gain `assessment: 0,` after `confirmedSubscribers: …,` (nothing in that test waits for an assessment; the count's own cases are in `assessment-queue.test.ts`). Run `npx vitest run tests/db/admin.test.ts` — expect FAIL: the object has no `assessment`. Then in `src/db/queries/admin.ts`:
   1. After `import { hasFreeSeat, takesSeat } from "./seats";` add `import { assessmentCount } from "./assessment";`.
@@ -16469,7 +16607,9 @@ export async function adminCounts(db: Db): Promise<AdminCounts> {
         incomplete: "Hinda iga vastus ja kirjuta igale „Paranda“ vastusele kommentaar.",
         comment: "Kirjuta igale „Paranda“ vastusele kommentaar.",
         tooLong: "Üks kommentaar on liiga pikk.",
-        stale: "Seda katset on vahepeal hinnatud või õpilane muutis vastuseid. Laadi leht uuesti.",
+        // stale: reviewed meanwhile (on her other device), or the student rewrote her "Paranda" answers after this page was read; nothing was
+        // stored, and the reload shows the answers as they are now
+        stale: "Seda katset on vahepeal hinnatud või õpilane muutis pärast selle lehe avamist vastuseid. Laadi leht uuesti, et näha praeguseid vastuseid.",
         notFound: "Seda katset ei leitud. Laadi leht uuesti.",
         failed: "Saatmine ei õnnestunud. Proovi uuesti.",
       },
@@ -16491,12 +16631,11 @@ export async function adminCounts(db: Db): Promise<AdminCounts> {
 ```
 
 - [ ] **Step 10: The two actions — failing guard first.** In `tests/unit/admin-guards.test.ts`:
-  1. In the first test's directory list (`...["registreerimised", "maksed", …].map(…)`), add `"hindamine"` after `"registreerimised"`; in the second `arrayContaining` list, after `"server/actions/admin-protocols.ts",` add:
+  1. In the first test's directory list (`...["registreerimised", "maksed", …].map(…)`), add `"hindamine"` after `"registreerimised"`; in the second `arrayContaining` list, after `"server/actions/admin-protocols.ts",` add (Task 10 already listed `"server/actions/admin-assessment.ts"`, a few lines further down; it is not added twice):
 
 ```ts
-        // e-course completion: Hindamine and its test review, the assessment's actions
+        // e-course completion: Hindamine's test review
         "app/admin/(panel)/hindamine/test/page.tsx",
-        "server/actions/admin-assessment.ts",
 ```
 
   2. In "every admin page calls requireAdmin() itself and every admin action is wrapped", the block Task 10 added for `server/actions/admin-assessment.ts` (it pins `["sendAssessmentAction"]`) is replaced by this one (add it after the `protocolActions` block if Task 10 did not pin the list):
@@ -16511,45 +16650,54 @@ export async function adminCounts(db: Db): Promise<AdminCounts> {
 
   Run `npx vitest run tests/unit/admin-guards.test.ts` — expect FAIL (no hindamine pages; one export).
 
-  3. In `src/server/actions/admin-assessment.ts` (Task 10's file), add to the imports (keep Task 10's; `z`, `adminAction` and `logFailure` are there already — add any that is not):
+  3. In `src/server/actions/admin-assessment.ts` (Task 10's file), add to the imports (keep Task 10's; `z`, `adminAction`, `logFailure` and `adminSendDeps` are there already — add any that is not):
 
 ```ts
 import { refresh } from "next/cache";
 import { reopenTest, reviewAttempt, type ReviewResult } from "../test-attempts";
 ```
 
+  In the file's header comment, the last sentences `The screen keeps its own state, so nothing is refreshed here. Task 12 adds the test review's actions to this file.` become `"Saada hinnang" refreshes nothing: the screen keeps its own state. The test review's "Saada" and "Ava test uuesti" refresh the open admin page once they changed something (the attempt is read-only now, Hindamine's badge has one less).`
+
   and after `sendAssessmentAction`:
 
 ```ts
-const attemptInput = z.object({ attemptId: z.number().int().positive().max(2_147_483_647), review: z.unknown() });
+const attemptInput = z.object({
+  attemptId: z.number().int().positive().max(2_147_483_647),
+  review: z.unknown(),
+  // the attempt's submittedAt (ISO) as the review page showed it: a review of answers the student has rewritten since is stale
+  submittedAt: z.string().min(1).max(64),
+});
 const accessInput = z.object({ accessId: z.number().int().positive().max(2_147_483_647) });
 
 /**
  * The test review's "Saada" (spec §5.4): Maria's verdicts and comments on the open answers of one attempt waiting for her (the checks are
- * server/test-attempts.ts reviewAttempt's); the student is mailed after the answer. The open page is refreshed: the attempt is read-only now,
- * and Hindamine's badge has one less.
+ * server/test-attempts.ts reviewAttempt's), for the answers the page showed (`submittedAt`; another time is `stale`); the student is mailed
+ * after the answer. The open page is refreshed once reviewed: the attempt is read-only now, and Hindamine's badge has one less.
  */
-export const reviewAttemptAction = adminAction(async ({ email }, input: { attemptId: number; review: unknown }): Promise<ReviewResult | { kind: "failed" }> => {
-  const parsed = attemptInput.safeParse(input);
-  if (!parsed.success) return { kind: "notFound" };
-  try {
-    const result = await reviewAttempt(await deps(), email, parsed.data.attemptId, parsed.data.review);
-    if (result.kind === "reviewed") refresh();
-    return result;
-  } catch (e) {
-    logFailure(`[test] attempt ${parsed.data.attemptId}: the review failed`, e);
-    return { kind: "failed" };
-  }
-});
+export const reviewAttemptAction = adminAction(
+  async ({ email }, input: { attemptId: number; review: unknown; submittedAt: string }): Promise<ReviewResult | { kind: "failed" }> => {
+    const parsed = attemptInput.safeParse(input);
+    if (!parsed.success) return { kind: "notFound" };
+    try {
+      const result = await reviewAttempt(await adminSendDeps("[test]"), email, parsed.data.attemptId, parsed.data.review, parsed.data.submittedAt);
+      if (result.kind === "reviewed") refresh();
+      return result;
+    } catch (e) {
+      logFailure(`[test] attempt ${parsed.data.attemptId}: the review failed`, e);
+      return { kind: "failed" };
+    }
+  },
+);
 
 type ReopenOutcome = Awaited<ReturnType<typeof reopenTest>> | { kind: "failed" };
 
-/** "Ava test uuesti" (spec §5.2, §5.5), after its confirmation: the course's tries once more for an access whose tries are used up; she is mailed. */
+/** "Ava test uuesti" (spec §5.2, §5.5), after its confirmation: the course's tries once more for an access whose tries are used up; she is mailed while her access runs. */
 export const reopenTestAction = adminAction(async ({ email }, input: { accessId: number }): Promise<ReopenOutcome> => {
   const parsed = accessInput.safeParse(input);
   if (!parsed.success) return { kind: "notFound" };
   try {
-    const result = await reopenTest(await deps(), email, parsed.data.accessId);
+    const result = await reopenTest(await adminSendDeps("[test]"), email, parsed.data.accessId);
     if (result.kind === "reopened") refresh();
     return result;
   } catch (e) {
@@ -16559,7 +16707,54 @@ export const reopenTestAction = adminAction(async ({ email }, input: { accessId:
 });
 ```
 
-  (`deps()` is the file's own, Task 10's; if Task 10 named it otherwise, use that name. A file of `"use server"` may hold a non-exported `type`.)
+  (`adminSendDeps` is Task 10's `src/server/send-deps.ts`; it answers a `SendDeps`, which `TestDeps` accepts. A file of `"use server"` may hold a non-exported `type`.)
+
+  4. The two actions' own tests: in `tests/unit/admin-assessment-action.test.ts` (Task 10's; its `tests` and `cache` mocks are there already), the import line `const { sendAssessmentAction } = await import("@/server/actions/admin-assessment");` becomes
+
+```ts
+const { reopenTestAction, reviewAttemptAction, sendAssessmentAction } = await import("@/server/actions/admin-assessment");
+```
+
+  and at the end of the file add:
+
+```ts
+test("the test review passes on the attempt, the review and the time the page showed; the page is refreshed only once reviewed; bad input is notFound; a throw is 'failed'", async () => {
+  const review = { qavatud1: { verdict: "fix", comment: "Lisa puhastamine." } };
+  const shown = "2026-10-19T07:00:00.000Z";
+  tests.reviewAttempt.mockResolvedValueOnce({ kind: "reviewed", status: "fix", completed: false });
+  expect(await reviewAttemptAction({ attemptId: 41, review, submittedAt: shown })).toEqual({ kind: "reviewed", status: "fix", completed: false });
+  expect(tests.reviewAttempt.mock.calls[0].slice(1)).toEqual(["admin@example.test", 41, review, shown]);
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  tests.reviewAttempt.mockResolvedValueOnce({ kind: "stale" }); // rewritten since, or reviewed on her other device: nothing changed
+  expect(await reviewAttemptAction({ attemptId: 41, review, submittedAt: shown })).toEqual({ kind: "stale" });
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  for (const bad of [{ attemptId: 0, review, submittedAt: shown }, { attemptId: 41, review }, { attemptId: 41, review, submittedAt: "" }])
+    expect(await reviewAttemptAction(bad as never), JSON.stringify(bad)).toEqual({ kind: "notFound" });
+  expect(tests.reviewAttempt).toHaveBeenCalledTimes(2);
+  tests.reviewAttempt.mockRejectedValueOnce(new TypeError("boom"));
+  expect(await reviewAttemptAction({ attemptId: 41, review, submittedAt: shown })).toEqual({ kind: "failed" });
+  expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain("[test] attempt 41: the review failed: TypeError");
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+});
+
+test("'Ava test uuesti' passes on the access; the page is refreshed only once reopened; bad input is notFound; a throw is 'failed'", async () => {
+  tests.reopenTest.mockResolvedValueOnce({ kind: "reopened", triesLeft: 3 });
+  expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "reopened", triesLeft: 3 });
+  expect(tests.reopenTest.mock.calls[0].slice(1)).toEqual(["admin@example.test", 9]);
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  tests.reopenTest.mockResolvedValueOnce({ kind: "notNeeded" });
+  expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "notNeeded" });
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  for (const bad of [{ accessId: 0 }, { accessId: 1.5 }, {}]) expect(await reopenTestAction(bad as never), JSON.stringify(bad)).toEqual({ kind: "notFound" });
+  expect(tests.reopenTest).toHaveBeenCalledTimes(2);
+  tests.reopenTest.mockRejectedValueOnce(new TypeError("boom"));
+  expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "failed" });
+  expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain("[test] access 9: the reopen failed: TypeError");
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+});
+```
+
+  Run `npx vitest run tests/unit/admin-assessment-action.test.ts` — expect PASS (4 tests). `admin-guards.test.ts` stays red until the pages of Steps 15–16 exist (Step 19 runs it again).
 
 - [ ] **Step 11: The two components — failing DOM tests first.** Create `tests/unit/test-review-dom.test.ts`:
 
@@ -16604,6 +16799,7 @@ const ANSWERS = { qvalik01: ["o1oige01"], qvalik02: ["o2oige01", "o2vale01"], qa
 const t = adminEt.assessment.review;
 const reopenTexts = { ...adminEt.assessment.reopen, saving: adminEt.common.saving, error: adminEt.common.saveError };
 const KEY = "mslab-review:41";
+const SUBMITTED = "2026-10-19T07:00:00.000Z";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -16613,7 +16809,7 @@ const settle = () =>
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   });
 const show = async (over: Partial<ReviewedAttempt> = {}) => {
-  await act(async () => root.render(createElement(TestReview, { attempt: { id: 41, status: "review", questions: QUESTIONS, answers: ANSWERS, review: null, ...over }, t })));
+  await act(async () => root.render(createElement(TestReview, { attempt: { id: 41, status: "review", questions: QUESTIONS, answers: ANSWERS, review: null, submittedAt: SUBMITTED, ...over }, t })));
   await settle();
 };
 /** The page loaded again: a new mount, the same browser storage. */
@@ -16700,7 +16896,7 @@ describe("TestReview", () => {
     expect(actions.review).not.toHaveBeenCalled();
   });
 
-  test("sent: every open answer's verdict and comment go to the server; the form says so, read-only, and the draft is gone", async () => {
+  test("sent: every open answer's verdict and comment go to the server with the answers' time the page showed; the form says so, read-only, the draft is gone, and the line stays after the page's refresh", async () => {
     actions.review.mockResolvedValue({ kind: "reviewed", status: "fix", completed: false });
     await show();
     await click(verdict("qavatud1", "ok"));
@@ -16712,6 +16908,7 @@ describe("TestReview", () => {
     expect(actions.review.mock.calls[0][0]).toEqual({
       attemptId: 41,
       review: { qavatud1: { verdict: "ok", comment: "" }, qavatud2: { verdict: "fix", comment: "Kirjuta, millal pöördud arsti poole." } },
+      submittedAt: SUBMITTED,
     });
     expect($("[data-review-sent]")!.textContent).toBe(t.sent.fix);
     expect(document.activeElement).toBe($("[data-review-sent]"));
@@ -16720,6 +16917,11 @@ describe("TestReview", () => {
     expect(answer("qavatud2").querySelector('[data-review-shown="fix"]')).not.toBeNull();
     expect(answer("qavatud2").textContent).toContain("Kirjuta, millal pöördud arsti poole.");
     expect(localStorage.getItem(KEY)).toBeNull();
+    // the action's refresh: the page hands over the attempt as the server holds it now, no longer in review
+    await show({ status: "fix", review: { qavatud1: { verdict: "ok", comment: "" }, qavatud2: { verdict: "fix", comment: "Kirjuta, millal pöördud arsti poole." } } });
+    expect($('[data-review-readonly="41"]')).not.toBeNull();
+    expect($("[data-review-sent]")!.textContent).toBe(t.sent.fix);
+    expect(document.activeElement).toBe($("[data-review-sent]"));
   });
 
   test("the server's refusals are said, and nothing is lost: the marks stay on the form and in this browser", async () => {
@@ -16825,7 +17027,7 @@ describe("ReopenTest", () => {
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import type { AttemptStatus, OpenReview, TestAnswers, TestQuestion, Verdict } from "@/db/schema";
-import { TEST_LIMITS } from "@/domain/completion";
+import { grade, TEST_LIMITS } from "@/domain/completion";
 import type { AdminDict } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { reviewAttemptAction } from "@/server/actions/admin-assessment";
@@ -16839,13 +17041,15 @@ import styles from "./TestReview.module.css";
 // sent, so a reload or a closed tab loses nothing. An attempt not waiting for her ("fix", "passed", "failed") shows her last review, read-only.
 
 export type ReviewTexts = AdminDict["assessment"]["review"];
-/** What the review shows of an attempt (db/queries/assessment.ts ReviewAttempt): its copy of the questions, with the key. */
-export type ReviewedAttempt = { id: number; status: AttemptStatus; questions: TestQuestion[]; answers: TestAnswers; review: OpenReview | null };
+/**
+ * What the review shows of an attempt (db/queries/assessment.ts ReviewAttempt): its copy of the questions, with the key. `submittedAt` (ISO) goes
+ * back with the review: answers the student rewrote after this page was read make the server answer `stale` (server/test-attempts.ts).
+ */
+export type ReviewedAttempt = { id: number; status: AttemptStatus; questions: TestQuestion[]; answers: TestAnswers; review: OpenReview | null; submittedAt: string };
 
 type Mark = { verdict: Verdict | null; comment: string };
 type Marks = Record<string, Mark>;
 type Problem = "verdict" | "comment" | "tooLong";
-type ChoiceQuestion = Extract<TestQuestion, { kind: "choice" }>;
 
 const draftKey = (attemptId: number) => `mslab-review:${attemptId}`;
 
@@ -16906,12 +17110,6 @@ function problemsOf(questions: readonly TestQuestion[], marks: Marks): Record<st
   return out;
 }
 
-/** A choice question is right when the picked options are exactly its correct ones (domain/completion.ts grade's rule). */
-function exactlyRight(q: ChoiceQuestion, picks: readonly string[]): boolean {
-  const correct = q.options.filter((o) => o.correct).map((o) => o.id);
-  return picks.length === correct.length && correct.every((id) => picks.includes(id));
-}
-
 export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: ReviewTexts }) {
   const uid = useId();
   const editable = attempt.status === "review";
@@ -16934,9 +17132,10 @@ export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: Review
     if (error) errorLine.current?.focus();
   }, [error]);
 
+  // and again when the page's refresh swaps the form for the read-only review: the line is a new element there
   useEffect(() => {
     if (sent) sentLine.current?.focus();
-  }, [sent]);
+  }, [sent, editable]);
 
   const change = (id: string, part: Partial<Mark>) => {
     const next = { ...marks, [id]: { ...marks[id], ...part } };
@@ -16957,7 +17156,7 @@ export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: Review
     setError("");
     const review: OpenReview = Object.fromEntries(Object.entries(marks).map(([id, m]) => [id, { verdict: m.verdict as Verdict, comment: m.comment }]));
     start(async () => {
-      const result = await reviewAttemptAction({ attemptId: attempt.id, review });
+      const result = await reviewAttemptAction({ attemptId: attempt.id, review, submittedAt: attempt.submittedAt });
       if (result.kind === "reviewed") {
         dropDraft(attempt.id);
         setSent(result.completed ? t.sent.completed : result.status === "passed" ? t.sent.passed : t.sent.fix);
@@ -16967,15 +17166,17 @@ export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: Review
     });
   };
 
-  // after a send the form shows what was sent (the page's refresh then shows what the server holds)
+  // after a send the form shows what was sent (the page's refresh then shows what the server holds, read-only, with the sent line kept)
   const locked = !editable || sent !== "";
+  // the wrong choice questions' 1-based positions, by domain/completion.ts grade's own rule (the picked set equals the correct set)
+  const wrong = grade(attempt.questions, attempt.answers).wrong;
   const list = (
     <ol className={styles.questions}>
       {attempt.questions.map((q, i) => {
         const raw = attempt.answers[q.id];
         if (q.kind === "choice") {
           const picks = Array.isArray(raw) ? raw : [];
-          const right = exactlyRight(q, picks);
+          const right = !wrong.includes(i + 1);
           return (
             <li key={q.id} className={styles.question} data-review-question={q.id} data-review-right={right}>
               <div className={styles.head}>
@@ -17065,6 +17266,12 @@ export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: Review
     return (
       <div className={styles.review} data-review-readonly={attempt.id}>
         {list}
+        {/* the refresh after Maria's send lands here (this component's state survives it): her confirmation stays */}
+        {sent && (
+          <p ref={sentLine} tabIndex={-1} role="status" className={`${ui.success} ${styles.line}`} data-review-sent="">
+            {sent}
+          </p>
+        )}
       </div>
     );
   return (
@@ -17365,7 +17572,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { courseAccess, courseTests } from "@/db/schema";
-import { at, attempt, ecourse, practical, student } from "./assessment-fixtures";
+import { at, attempt, ecourse, practical, student } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
 
 // Hindamine (e-course completion, spec §5.2, §5.4) and the overview's "Ootab hindamist" card (R4), rendered from a real (PGlite) database to
@@ -17706,7 +17913,7 @@ function OneAttempt({ a }: { a: ReviewAttempt }) {
           )}
         </div>
       </div>
-      <TestReview attempt={{ id: a.id, status: a.status, questions: a.questions, answers: a.answers, review: a.review }} t={t.review} />
+      <TestReview attempt={{ id: a.id, status: a.status, questions: a.questions, answers: a.answers, review: a.review, submittedAt: a.submittedAt.toISOString() }} t={t.review} />
       <p className={styles.more}>
         <Link className={ui.link} href={`/admin/hindamine/test?ligipaas=${a.accessId}`}>
           {t.attempts}
@@ -17893,17 +18100,17 @@ function AttemptList({ accessId, name, course, attempts }: { accessId: number; n
   "src/components/admin/TestReview.module.css",
 ```
 
-- [ ] **Step 19: Run** `npx vitest run tests/db/assessment-admin.test.ts tests/unit/test-review-dom.test.ts tests/unit/admin-guards.test.ts tests/unit/colour-tokens.test.ts tests/unit/old-safari.test.ts` — expect PASS (the two new "use client" files are in old-safari's walk by their directive).
+- [ ] **Step 19: Run** `npx vitest run tests/db/assessment-admin.test.ts tests/unit/test-review-dom.test.ts tests/unit/admin-guards.test.ts tests/unit/admin-assessment-action.test.ts tests/unit/colour-tokens.test.ts tests/unit/old-safari.test.ts` — expect PASS (the two new "use client" files are in old-safari's walk by their directive).
 
 - [ ] **Step 20: Run everything.**
   - `npx vitest run` — all green.
   - `npx tsc --noEmit`, then `npx eslint .` — clean.
   - `npx playwright test admin-inbox admin-clients` — expect PASS (the menu has "Hindamine" after "Registreerimised"; every menu target is still 44 px; the overview without anything waiting has no new card).
 
-- [ ] **Step 21: Commit.**
+- [ ] **Step 21: Commit** (from the repository root):
 
 ```bash
-git add app/src/db/queries/assessment.ts app/src/db/queries/admin.ts app/src/components/admin/sections.ts app/src/components/admin/AdminIcon.tsx app/src/components/admin/Shell.tsx "app/src/app/admin/(panel)/hindamine" app/src/components/admin/TestReview.tsx app/src/components/admin/TestReview.module.css app/src/components/admin/ReopenTest.tsx app/src/server/actions/admin-assessment.ts "app/src/app/admin/(panel)/page.tsx" "app/src/app/admin/(panel)/overview.module.css" app/src/i18n/dict/admin.ts app/tests/db/assessment-fixtures.ts app/tests/db/assessment-queue.test.ts app/tests/db/assessment-admin.test.ts app/tests/unit/test-review-dom.test.ts app/tests/db/admin.test.ts app/tests/unit/admin.test.ts app/tests/unit/admin-guards.test.ts app/tests/unit/colour-tokens.test.ts app/tests/e2e/admin-inbox.spec.ts
+git add app/src/db/queries/assessment.ts app/src/db/queries/admin.ts app/src/server/admin-clients.ts app/src/components/admin/sections.ts app/src/components/admin/AdminIcon.tsx app/src/components/admin/Shell.tsx "app/src/app/admin/(panel)/hindamine" app/src/components/admin/TestReview.tsx app/src/components/admin/TestReview.module.css app/src/components/admin/ReopenTest.tsx app/src/server/actions/admin-assessment.ts "app/src/app/admin/(panel)/page.tsx" "app/src/app/admin/(panel)/overview.module.css" app/src/i18n/dict/admin.ts app/tests/db/hindamine-fixtures.ts app/tests/db/assessment-queue.test.ts app/tests/db/assessment-admin.test.ts app/tests/unit/test-review-dom.test.ts app/tests/db/admin.test.ts app/tests/unit/admin.test.ts app/tests/unit/admin-guards.test.ts app/tests/unit/admin-assessment-action.test.ts app/tests/unit/colour-tokens.test.ts app/tests/e2e/admin-inbox.spec.ts
 git commit -m "feat(admin): Hindamine — the practical work, the open answers and the students out of tries in one queue; the test review; Ava test uuesti; the badge and the overview card
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -17959,7 +18166,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `adminEt.assessment.review.errors.incomplete` | Hinda iga vastus ja kirjuta igale „Paranda“ vastusele kommentaar. | Draft |
 | `adminEt.assessment.review.errors.comment` | Kirjuta igale „Paranda“ vastusele kommentaar. | Draft |
 | `adminEt.assessment.review.errors.tooLong` | Üks kommentaar on liiga pikk. | Draft |
-| `adminEt.assessment.review.errors.stale` | Seda katset on vahepeal hinnatud või õpilane muutis vastuseid. Laadi leht uuesti. | Draft |
+| `adminEt.assessment.review.errors.stale` | Seda katset on vahepeal hinnatud või õpilane muutis pärast selle lehe avamist vastuseid. Laadi leht uuesti, et näha praeguseid vastuseid. | Draft (a review from a page read before the student's rewrite is refused too) |
 | `adminEt.assessment.review.errors.notFound` | Seda katset ei leitud. Laadi leht uuesti. | Draft |
 | `adminEt.assessment.review.errors.failed` | Saatmine ei õnnestunud. Proovi uuesti. | Draft (the protocols' word) |
 | `adminEt.assessment.review.status.failed` | Läbimata | Draft |
@@ -17993,7 +18200,7 @@ Spec §5.5 (the student's profile: "the entry point Maria asked for") and §1 (o
 
 **Files:**
 - Create: `app/src/components/admin/step-line.ts`
-- Modify: `app/src/server/admin-clients.ts` (imports, lines 1–18; `ClientAccessRow`, lines 71–85; `ClientDetail.registrations`, line 103; `clientDetail`, lines 115–171)
+- Modify: `app/src/server/admin-clients.ts` (imports, lines 1–18; `ClientAccessRow`, lines 75–89; `ClientDetail.registrations`, line 107; `clientDetail`, lines 119–175 — today's lines plus the four Task 12 added with `clientNameSql`)
 - Modify: `app/src/components/admin/ClientDrawer.tsx` (imports; the doc comment; the access rows, lines 84–125; the registration rows, lines 149–162), `app/src/components/admin/ClientDrawer.module.css` (appended)
 - Modify: `app/src/i18n/dict/admin.ts` (`clients`, after `unlock`)
 - Modify: `app/tests/db/feedback-admin-pages.test.ts`, `app/tests/db/payments-admin-pages.test.ts` (the action mocks)
@@ -18006,7 +18213,7 @@ Spec §5.5 (the student's profile: "the entry point Maria asked for") and §1 (o
   - Task 12: `ReopenTest({ accessId, course, used, t }: { accessId: number; course: string; used: boolean; t: ReopenTexts })` and `ReopenTexts = AdminDict["assessment"]["reopen"] & { saving: string; error: string }` (`src/components/admin/ReopenTest.tsx`); `adminEt.assessment.reopen`; the page `/admin/hindamine/test?ligipaas=`; `reopenTestAction` in `src/server/actions/admin-assessment.ts` (with Task 10's `sendAssessmentAction` and Task 12's `reviewAttemptAction`).
   - Task 11: `/admin/protokollid?ligipaas=<accessId>`.
 - Produces:
-  - `src/server/admin-clients.ts`: `ClientAccessRow` gains `steps: CourseSteps`, `protocolId: number | null`, `testPercent: number | null` (**added**: her newest attempt's score, null before her first); `export type ClientRegistrationRow = RegistrationRow & { protocolId: number | null; contact: boolean }`; `ClientDetail.registrations: ClientRegistrationRow[]`.
+  - `src/server/admin-clients.ts`: `ClientAccessRow` gains `steps: CourseSteps`, `protocolId: number | null`, `testPercent: number | null` (**added**: her newest attempt's score, null before her first and for an attempt without choice questions), `hasAttempts: boolean` (**added**: the "Testi katsed" link's own flag); `export type ClientRegistrationRow = RegistrationRow & { protocolId: number | null; contact: boolean }`; `ClientDetail.registrations: ClientRegistrationRow[]`.
   - `src/components/admin/step-line.ts`: `export type StepLineTexts = { lessons: string; test: string; testScore: string; practical: string; completed: string; testStates: Record<StepState, string>; practicalStates: Record<Exclude<StepState, "used">, string> }`; `export function stepLine(steps: CourseSteps, t: StepLineTexts, percent?: number | null): string`.
   - The drawer's `[data-access-steps]`, `[data-access-protocol]`, `[data-access-attempts]`, `ReopenTest`'s `[data-reopen]` per access; `[data-registration-protocol]` per contact registration.
   - Dictionary: `adminEt.clients.steps.{lessons, test, testScore, practical, completed, testStates, practicalStates}`, `adminEt.clients.addProtocol`, `adminEt.clients.openProtocol`, `adminEt.clients.attempts`.
@@ -18119,7 +18326,8 @@ export type StepLineTexts = {
 
 /**
  * The line: "Lõpetatud <day in Tallinn>" for a completed course; else the lessons (when the course has any), the test (when it has questions)
- * with `percent` — her newest attempt's score, null before her first — and the practical work (when it has points), joined by " · ".
+ * with `percent` — her newest attempt's score, null before her first or when it had no choice questions — and the practical work (when it has
+ * points), joined by " · ".
  */
 export function stepLine(steps: CourseSteps, t: StepLineTexts, percent: number | null = null): string {
   if (steps.completedAt) return fill(t.completed, { date: formatDate(new Date(steps.completedAt), "et") });
@@ -18146,9 +18354,12 @@ export function stepLine(steps: CourseSteps, t: StepLineTexts, percent: number |
     await db.insert(courseTests).values({ courseId: ecourse.id, questions: [question], passPercent: 80, tries: 3 });
     const open = await access(kati.id);
     const done = await access(kati.id, { courseId: draftEcourse.id, completedAt: new Date("2026-10-01T10:00:00Z") });
+    const openOnly = { id: "qavatud1", kind: "open" as const, text: "Kirjelda." };
     await db.insert(testAttempts).values([
       { clientId: kati.id, courseId: ecourse.id, number: 1, questions: [question], answers: { qvalik01: ["o1vale01"] }, correct: 0, total: 1, status: "failed", submittedAt: new Date("2026-10-02T10:00:00Z") },
       { clientId: kati.id, courseId: ecourse.id, number: 2, questions: [question], answers: { qvalik01: ["o1oige01"] }, correct: 1, total: 1, status: "passed", submittedAt: new Date("2026-10-03T10:00:00Z") },
+      // open answers only: no score before Maria's review (percentOf(0, 0) would say 100)
+      { clientId: kati.id, courseId: draftEcourse.id, number: 1, questions: [openOnly], answers: { qavatud1: "Nii." }, correct: 0, total: 0, status: "review", submittedAt: new Date("2026-10-02T10:00:00Z") },
     ]);
     const [practical] = await db
       .insert(protocols)
@@ -18164,9 +18375,10 @@ export function stepLine(steps: CourseSteps, t: StepLineTexts, percent: number |
     expect(byAccess.get(open.id)).toMatchObject({
       protocolId: practical.id,
       testPercent: 100, // her newest attempt, the second
+      hasAttempts: true,
       steps: { lessons: { done: 0, total: 0 }, test: { state: "done" }, practical: { state: "review", round: 1 }, completedAt: null },
     });
-    expect(byAccess.get(done.id)).toMatchObject({ protocolId: null, testPercent: null, steps: { test: null, practical: null, completedAt: "2026-10-01T10:00:00.000Z" } });
+    expect(byAccess.get(done.id)).toMatchObject({ protocolId: null, testPercent: null, hasAttempts: true, steps: { test: null, practical: null, completedAt: "2026-10-01T10:00:00.000Z" } });
     const byReg = new Map(d.registrations.map((r) => [r.id, [r.contact, r.protocolId]]));
     expect(byReg.get(contactReg.id)).toEqual([true, dayProtocol.id]);
     expect(byReg.get(plainReg.id)).toEqual([true, null]);
@@ -18174,10 +18386,10 @@ export function stepLine(steps: CourseSteps, t: StepLineTexts, percent: number |
   });
 ```
 
-  Run `npx vitest run tests/db/admin-clients.test.ts` — expect FAIL: `steps`, `protocolId`, `testPercent` and `contact` are undefined.
+  Run `npx vitest run tests/db/admin-clients.test.ts` — expect FAIL: `steps`, `protocolId`, `testPercent`, `hasAttempts` and `contact` are undefined.
 
 - [ ] **Step 6: The data** — in `src/server/admin-clients.ts`:
-  1. The schema import gains `protocols` and `testAttempts`; after `import { getDict } from "@/i18n/locales";` add `import { percentOf, type CourseSteps } from "@/domain/completion";` (keep the imports sorted as the file has them: put it after `@/domain/client-access`), and after `import { courseOutline } from "./lesson-outline";` add `import { loadSteps } from "./completion";`.
+  1. The schema import gains `protocols` and `testAttempts`; after `import { accessState, defaultExpiryDate, grantExpiry, type AccessState } from "@/domain/client-access";` add `import { percentOf, type CourseSteps } from "@/domain/completion";` (the imports stay sorted as the file has them), and after `import { courseOutline } from "./lesson-outline";` add `import { loadSteps } from "./completion";`.
   2. `ClientAccessRow` gains, after `nextLocked: …;`:
 
 ```ts
@@ -18185,8 +18397,13 @@ export function stepLine(steps: CourseSteps, t: StepLineTexts, percent: number |
   steps: CourseSteps;
   /** The protocol of this access (her practical work and Maria's notes), or null before its first save or photo ("Lisa protokoll"). */
   protocolId: number | null;
-  /** Her newest test attempt's score (rounded down), or null before her first attempt (the step line's "(85 %)"). */
+  /**
+   * Her newest test attempt's score (rounded down; the step line's "(85 %)"), or null before her first attempt and for an attempt without choice
+   * questions (only open answers: no score to show, where percentOf would say 100 before Maria has read anything).
+   */
   testPercent: number | null;
+  /** She has made an attempt at the course's test ("Testi katsed"). */
+  hasAttempts: boolean;
 ```
 
   3. After `ClientAccessRow`, add:
@@ -18253,9 +18470,9 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
   ]);
   const accessProtocol = new Map(accessProtocols.map((p) => [p.accessId, p.id]));
   const registrationProtocol = new Map(registrationProtocols.map((p) => [p.registrationId, p.id]));
-  // her newest attempt at each course's test: its score is the step line's
-  const newest = new Map<number, { number: number; percent: number }>();
-  for (const t of attempts) if ((newest.get(t.courseId)?.number ?? 0) < t.number) newest.set(t.courseId, { number: t.number, percent: percentOf(t.correct, t.total) });
+  // her newest attempt at each course's test: its score is the step line's (none for an attempt of open answers only)
+  const newest = new Map<number, { number: number; percent: number | null }>();
+  for (const t of attempts) if ((newest.get(t.courseId)?.number ?? 0) < t.number) newest.set(t.courseId, { number: t.number, percent: t.total > 0 ? percentOf(t.correct, t.total) : null });
   return {
     client,
     registrations: regs.map((r) => ({ ...r, protocolId: registrationProtocol.get(r.id) ?? null, contact: r.course.type === "contact" })),
@@ -18270,6 +18487,7 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
         steps: steps[i],
         protocolId: accessProtocol.get(a.id) ?? null,
         testPercent: newest.get(a.courseId)?.percent ?? null,
+        hasAttempts: newest.has(a.courseId),
       };
     }),
     terms,
@@ -18468,7 +18686,7 @@ test("each contact registration: 'Lisa protokoll' before its first save, 'Ava pr
                       <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?ligipaas=${a.id}`} data-access-protocol="">
                         {a.protocolId === null ? adminEt.clients.addProtocol : adminEt.clients.openProtocol}
                       </Link>
-                      {a.testPercent !== null && (
+                      {a.hasAttempts && (
                         <Link className={ui.link} href={`/admin/hindamine/test?ligipaas=${a.id}`} data-access-attempts="">
                           {adminEt.clients.attempts}
                         </Link>
@@ -18536,7 +18754,7 @@ vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.f
   - `npx tsc --noEmit`, then `npx eslint .` — clean.
   - `npx playwright test admin-clients` — expect PASS (the drawer's existing flows: "Ava ligipääs", "Lõpeta ligipääs", "Ava järgmine õppetund"; the new buttons are 44 px: `ui.smallBtn` and `ui.link`).
 
-- [ ] **Step 12: Commit.**
+- [ ] **Step 12: Commit** (from the repository root):
 
 ```bash
 git add app/src/components/admin/step-line.ts app/src/server/admin-clients.ts app/src/components/admin/ClientDrawer.tsx app/src/components/admin/ClientDrawer.module.css app/src/i18n/dict/admin.ts app/tests/unit/step-line.test.ts app/tests/db/client-drawer-steps.test.ts app/tests/db/admin-clients.test.ts app/tests/db/feedback-admin-pages.test.ts app/tests/db/payments-admin-pages.test.ts
@@ -18575,7 +18793,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 Spec §9 "End to end" 1–8, "Real Postgres" and "Gate"; Review Focus 1 (the phone photo: 6000×4000 with GPS, sideways, a lost upload, a HEIC) and 2 (two devices or a double tap). Every flow runs under `next dev` and the production build (`E2E_PROD_BUILD=1`, with `MEDIA_LOCAL=1`: the photos go to `app/.media-local`); the gate's own run checks the new account routes stay gated.
 
-**The fixtures** (`tests/e2e/completion.ts`) write straight to the local database, as `lessons.ts` and `protocols.ts` do. Each test makes its own e-course (`e2e-konto-compl-<label>-<project>`, not published) with one text lesson, its `course_tests` row (when it has questions), Maria's points, a six-month access and the course terms of version "1" accepted (`takeTerms` sets that version and holds it for the test, as `account-lessons.spec.ts` does: the e-course page checks the terms). Every student is a sample address `e2e-client-compl-<label>-<project>@example.test` (never mailed); `removeClientRows` removes the account, the course and, by cascade, the access, the attempts, the protocol and the photo rows, and now also the photo files of the local store.
+**The fixtures** (`tests/e2e/completion.ts`) write straight to the local database, as `lessons.ts` and `protocols.ts` do. Each test makes its own e-course (`e2e-konto-compl-<label>-<project>`, not published) with one text lesson, its `course_tests` row (when it has questions), Maria's points, a six-month access and the course terms of version "1" accepted (`takeTerms` sets that version and holds it for the test, as `account-lessons.spec.ts` does: the e-course page checks the terms). Only the tests that open the e-course page or a lesson (1, 4 and 8) take that shared lock; the test and practical pages, their APIs and the admin pages do not check the terms, so the other tests never wait for it. Every student is a sample address `e2e-client-compl-<label>-<project>@example.test` (never mailed); `removeClientRows` removes the account, the course and, by cascade, the access, the attempts, the protocol and the photo rows, and now also the photo files of the local store.
 
 **The photo fixtures are made at run time, not committed.** The repository has no image library and is public, so no binary is added: `canvasJpeg` draws a synthetic picture (gradients, an arrow pointing up, a grain tile) on a canvas in the test's own browser and encodes it as JPEG; `withExif` (Node, byte by byte) puts a made-up EXIF block after its JFIF segment: a GPS position at sea (1°2′3″ N, 4°5′6″ E), and an orientation tag for the sideways one. `hasExif` walks a JPEG's segments up to the picture data. (An earlier outline named committed files `tests/e2e/fixtures/photo-*.jpg`; the controller's note chose run-time fixtures instead.)
 
@@ -18956,12 +19174,7 @@ export async function jpegSize(page: Page, jpeg: Buffer): Promise<{ width: numbe
     for (const p of photos) for (const key of [p.key, p.thumbKey]) await store.delete(key);
 ```
 
-  4. In the leftovers' sum, before the line `+ (select count(*) from courses where slug like ${courses})::int as n\``, add:
-
-```ts
-           + (select count(*) from course_tests where course_id in (select id from courses where slug like ${courses}))
-           + (select count(*) from test_attempts t join clients c on c.id = t.client_id where c.email like ${match})
-```
+  (The leftovers' sum gains nothing: by the time it is counted, the cascade has removed the attempts, the course's test and the photo rows with the account and the course.)
 
 - [ ] **Step 3: The flows** — create `tests/e2e/completion.spec.ts`:
 
@@ -18993,10 +19206,19 @@ let restoreTerms: (() => Promise<void>) | null = null;
 
 test.beforeEach(async ({}, info) => {
   submitsForms();
-  // the first view of each page under `next dev` compiles it; the wait for the shared course terms (another test may hold them) is this test's too
+  // the first view of each page under `next dev` compiles it
+  info.setTimeout(180_000);
+});
+
+/**
+ * The shared course terms of version "1", held for this test: only the tests that open the e-course page or a lesson (which check the terms)
+ * take them — the test and practical pages, their APIs and the admin pages do not — so the others never queue behind the shared lock. The
+ * wait for it (another spec may hold it) is this test's too.
+ */
+async function holdTerms(info: TestInfo): Promise<void> {
   info.setTimeout(180_000 + LOCK_WAIT_MS);
   restoreTerms = await takeTerms();
-});
+}
 
 test.afterEach(async () => {
   try {
@@ -19035,6 +19257,8 @@ const fileInput = (page: Page, i: number) => point(page, i).locator('[data-photo
 const storedOn = (page: Page, i: number) => point(page, i).locator("[data-photo]:not([data-photo-pending])");
 const assessPoint = (page: Page, i: number) => page.locator(`[data-assess-point="${i}"]`);
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+/** A radio's, a checkbox's or a file field's touch target is its label (the test's options, "Lisa foto"), as in admin-lessons.spec.ts. */
+const LABELLED = /^<input[^>]*\stype="(radio|checkbox|file)"/;
 
 /** A confirming step's "yes": the marked element itself when it is a button, else the step's first button (the "yes" comes first on every step). */
 async function confirmStep(marked: Locator): Promise<void> {
@@ -19078,6 +19302,7 @@ async function hindamine(page: Page, group: "practicals" | "tests" | "tries", ac
 }
 
 test("§9 e2e 1: the lessons done, the test opens; a fail with its score and its wrong numbers, 'Proovi uuesti', a pass; the answer key never reaches her", async ({ page }, info) => {
+  await holdTerms(info); // the e-course page and its lesson
   const s = await student("t1", info, { questions: E2E_QUESTIONS, points: [] });
   await signInAsClient(page, s.email);
   await page.goto(coursePage(s));
@@ -19095,7 +19320,7 @@ test("§9 e2e 1: the lessons done, the test opens; a fail with its score and its
   // the first try: the second answer wrong — 50 %, under 80 %; the step names the try
   await answer(page, { q1: ["a"], q2: ["b"] });
   await page.locator("[data-test-submit]").click();
-  await expect(page.getByText(/Katse 1\/3/).first()).toBeVisible();
+  await expect(page.locator("[data-test-confirm]")).toContainText(/Katse 1\/3/); // the confirmation itself, not the form's own line
   await page.locator('[data-test-page] [data-confirm="yes"]').first().click();
   await expect(testState(page)).toHaveAttribute("data-test-state", "open");
   await expect(page.locator("[data-test-result]").first()).toContainText(/Said 50\s%, vaja 80\s%/);
@@ -19146,6 +19371,9 @@ test("§9 e2e 2 — Review Focus 1: a 6000×4000 phone photo with GPS goes up un
   await fileInput(page, 1).setInputFiles({ name: "IMG_0002.HEIC", mimeType: "image/heic", buffer: Buffer.from("\0\0\0\u0018ftypheic\0\0\0\0", "latin1") });
   await expect(page.getByText("Seda pilti ei saa avada. Vali JPG või PNG pilt.").first()).toBeVisible();
   await expect(storedOn(page, 1)).toHaveCount(0);
+  // the refused one stays as a row until its × (Task 8 pins this), and "Saada hindamiseks" waits while it is there
+  await point(page, 1).locator('[data-photo-pending="decode"] [data-photo-remove]').click();
+  await expect(point(page, 1).locator("[data-photo-pending]")).toHaveCount(0);
   await fileInput(page, 1).setInputFiles({ name: "IMG_0003.jpg", mimeType: "image/jpeg", buffer: sideways });
   await expect(storedOn(page, 1)).toHaveCount(1, { timeout: 60_000 });
 
@@ -19218,6 +19446,7 @@ test("§9 e2e 3: Maria finds the work in 'Hindamine', marks one point 'Paranda' 
 });
 
 test("§9 e2e 4: she redoes only the 'Paranda' point and sends again; Maria approves; 'Lõpetatud' on her page, her course page and her card", async ({ page, context, visitorIp, browser }, info) => {
+  await holdTerms(info); // her course page at the end
   const s = await student("t4", info, { points: E2E_POINTS, lessonsDone: true });
   const { protocolId } = await insertPractical(s.accessId, E2E_POINTS, await canvasJpeg(page, 640, 480), {
     round: 1,
@@ -19231,7 +19460,8 @@ test("§9 e2e 4: she redoes only the 'Paranda' point and sends again; Maria appr
   await expect(point(sp, 1).locator("[data-point-note]")).toContainText("Tee uus foto päevavalges.");
   await expect(point(sp, 0).locator('input[type="file"]')).toHaveCount(0); // an approved point takes no photo
   await fileInput(sp, 1).setInputFiles({ name: "uus.jpg", mimeType: "image/jpeg", buffer: (await canvasJpeg(sp, 1200, 900)).bytes });
-  await expect.poll(async () => (await storedPhotos(protocolId)).filter((p) => p.round === 2).map((p) => p.stage), { timeout: 60_000 }).toEqual([1]);
+  await expect(storedOn(sp, 1)).toHaveCount(1, { timeout: 60_000 }); // stored as the page shows it: "Saada uuesti" goes by what the page holds
+  expect((await storedPhotos(protocolId)).filter((p) => p.round === 2).map((p) => p.stage)).toEqual([1]);
   await expect(point(sp, 1).locator("[data-earlier]")).toBeVisible(); // "Varasemad fotod": the first round's
   await sendPractical(sp);
   await expect(practicalStatus(sp)).toHaveAttribute("data-practical-status", "review");
@@ -19340,6 +19570,9 @@ test("§9 e2e 6: out of tries — her page says so; Maria reopens the test from 
 
   await her.page.reload();
   await expect(testState(her.page)).toHaveAttribute("data-test-state", "open");
+  // her last attempt failed: the page shows its result and "Proovi uuesti" first (Task 6), the form after it
+  await expect(her.page.locator("[data-test-retry]")).toContainText(/2 katset jäänud/);
+  await her.page.locator("[data-test-retry]").click();
   await expect(her.page.locator("[data-test-submit]")).toBeVisible();
   await her.close();
 });
@@ -19384,6 +19617,7 @@ test("§9 e2e 7: 'Lisa protokoll' from the student's drawer, for her e-course ac
 
 test("§9 e2e 8: the pages at 390, 834, 1194 and 1440 px — no sideways scroll, every target 44 px", async ({ page, context, visitorIp, browser, isMobile }, info) => {
   test.skip(isMobile, "sets its own widths: the desktop project only");
+  await holdTerms(info); // the e-course page's "Lõpetamine" is one of the screens
   const jpeg = await canvasJpeg(page, 640, 480);
   // A: a test to take; B: practical work being prepared (one photo); C: open answers waiting for Maria; D: practical work sent, waiting
   const a = await student("look-a", info, { questions: [...E2E_QUESTIONS, E2E_OPEN[0]], points: [], lessonsDone: true });
@@ -19414,7 +19648,8 @@ test("§9 e2e 8: the pages at 390, 834, 1194 and 1440 px — no sideways scroll,
       await expect(scope).toBeVisible();
       const where = `${v.url} at ${width} px`;
       expect(await noOverflow(v.page), where).toBe(true);
-      expect(await smallTargets(scope), where).toEqual([]);
+      // a radio, a checkbox or the file input is small by design: its label is the 44 px target (as admin-lessons.spec.ts filters them)
+      expect((await smallTargets(scope)).filter((h) => !LABELLED.test(h)), where).toEqual([]);
     }
   }
   await herA.close();
@@ -19602,13 +19837,13 @@ test("Review Focus 2: two submits of the same test answers at the same moment �
   1. In the first test's page list (`for (const path of ["/", "/koolitused", …])`), after `"/konto/tagasiside",` add `"/konto/kursus/x/test", "/konto/kursus/x/praktiline",`.
   2. In the second test's API list (`for (const path of ["/api/konto/me", …])`), after `"/api/konto/tagasiside?id=1",` add `"/api/konto/kursus/x/test",`.
 
-- [ ] **Step 6: Run** under `next dev`: `npx playwright test completion completion-race account-lessons account-ecourse admin-inbox admin-clients protocols` — expect PASS (both projects; the widths and the race spec on the desktop one). A failure names the part of the earlier task it exercises (the selector, the page or the server call): fix it there, not here.
+- [ ] **Step 6: Run** under `next dev`: `npx playwright test completion completion-race account-lessons account-ecourse admin-inbox admin-clients protocols` — expect PASS (both projects; the widths and the race spec on the desktop one). A failure names the part of the earlier task it exercises (the selector, the page or the server call): fix it there, not here — unless the earlier task's own tests pin that behaviour; then the e2e step is wrong, and it is fixed here (as the refused HEIC's × in test 2, "Proovi uuesti" before the form in test 6 and the labelled inputs in test 8 already are).
 
 - [ ] **Step 7: Run** the production build: `E2E_PROD_BUILD=1 npx playwright test completion completion-race account-ecourse admin-inbox` — expect PASS. Then the gate: `npx playwright test -c playwright.gate.config.ts` — expect PASS (the two new pages are the coming-soon page, `/api/konto/kursus/x/test` is 404 JSON without the preview cookie).
 
-- [ ] **Step 8: Run everything.** `npx vitest run` (`test-addresses.test.ts` scans the new files once they are added), `npx tsc --noEmit`, `npx eslint .`, and the whole `npx playwright test` once (the specs of the earlier phases share the database: nothing of this phase may leave a row they count; after the run, `app/.media-local/practical` holds no file of an `e2e-client-` address).
+- [ ] **Step 8: Run everything.** `npx vitest run` (`test-addresses.test.ts` scans the new files once they are added), `npx tsc --noEmit`, `npx eslint .`, and the whole `npx playwright test` once (the specs of the earlier phases share the database: nothing of this phase may leave a row they count; after the run, no file under `app/.media-local/practical` is left that no `practical_photos` row names: the files are named by UUID, not by address, so compare the folder's names with `select key, thumb_key from practical_photos` on the local database).
 
-- [ ] **Step 9: Commit.**
+- [ ] **Step 9: Commit** (from the repository root):
 
 ```bash
 git add app/tests/e2e/completion.ts app/tests/e2e/completion.spec.ts app/tests/e2e/completion-race.spec.ts app/tests/e2e/fixtures.ts app/tests/e2e/gate.spec.ts
@@ -19659,7 +19894,7 @@ An e-course ends on the platform: the lessons, Maria's knowledge test, the pract
    - The drop of `courses.modules` is migration 0009 (code first, then the migration, as planned in phase 3a).
 3. **The rules.**
    - **The test:**
-     - The test opens when every visible lesson is done. The practical work opens when the test is passed, or at once when the course has no questions. A step once passed stays passed, and `completed_at` is set once.
+     - The test opens when every visible lesson is done. The practical work opens when the test is passed, or, for a course without questions, once the lessons are done. A step once passed stays passed, and `completed_at` is set once.
      - A try is a submitted attempt. Rewriting the answers Maria marked "Paranda" uses none. A submit made from questions Maria changed meanwhile is refused and writes nothing.
      - The student never sees the answer key: only the score and the numbers of the wrong questions.
    - **The practical work:**
@@ -19676,7 +19911,7 @@ An e-course ends on the platform: the lessons, Maria's knowledge test, the pract
    - **To the student, in her language:** "Sinu praktiline töö on hinnatud" (with "Paranda" points), "Palju õnne! Koolitus „…“ on lõpetatud", "Test on sooritatud", "Vaata üle oma testi vastused", "Test on sinu jaoks uuesti avatud", and the protocol mails for an e-course without points.
    - **To Maria, by mail and Telegram:** "Praktiline töö hindamiseks: {nimi}, {kursus}" ("(2. kord)" on a later round), "Test ootab hindamist: …", "Testi katsed otsas: …". They are sent for a sample student too, as her live check needs.
    - **Reply-To:** every mail without its own Reply-To has `MARIA_EMAIL`, so a student's reply reaches Maria. The exception is a mail to Maria herself; her notices reply to the student.
-6. **The logs.** `[test] attempt N: submitted (failed|review|passed)`, `[test] attempt N: reviewed (passed|fix)`, `[test] access N: reopened`, `[practical] access N: photo added` / `submitted (round R)`, `[practical] access N: Maria notified by e-mail: …, Telegram: …`, `[practical] client N: a photo could not be removed: <error class>`, `[assessment] access N: sent (fix|passed|notes)`, `[completion] access N: completed`, `[completion] access N: the mail sent` (or `was not sent`). Never an answer, a note, a name, an address or an R2 key.
+6. **The logs.** `[test] attempt N: submitted (failed|review|passed)`, `[test] attempt N: rewritten (review)`, `[test] attempt N: reviewed (passed|fix)`, `[test] attempt N: Maria notified by e-mail: …, Telegram: …`, `[test] access N: reopened`; `[practical] access N: submitted (round R)`, `[practical] access N: Maria notified by e-mail: …, Telegram: …`, `[practical] access N: a photo file could not be removed: <error class>` (or `[practical] client N: …` after an account's deletion); `[assessment] access N: sent (fix|passed|open[, completed])`; `[completion] access N: completed`, `[completion] access N: the <kind> mail sent` (or `the <kind> mail was not sent`, `the <kind> mail failed: <error class>`). Never an answer, a note, a name, an address or an R2 key.
 7. **Rollback.** A rollback of the code past this phase leaves 0008's additions in place, and the older code ignores them. It has no test or practical pages: a mail's link lands on a 404 until the code is back.
    - **Account deletion:** the older code does not remove the R2 photos. They are deleted with the database rows, but their objects stay in the bucket. Delete them by hand afterwards: the keys are under `practical/` and no longer named by any `practical_photos` row.
    - **The test:** the older course editor does not show "Teadmiste test", and saving a course there leaves `course_tests` as it was.
@@ -19769,7 +20004,7 @@ The ledger is `.superpowers/sdd/2026-10-13-ecourse-completion/progress.md` (git-
   4. Railway, read-only: `select id from course_access where client_id = (select id from clients where email = 'kursus-proov-1310.naidis@example.test')` → note A (the access id) in the ledger.
 - [ ] **Step 8: The student's path behind the gate.** Sign her in as phase 2a Task 11 step 7 does: insert one `client_login_tokens` row for the exact address in Railway (`hash` = SHA-256 hex of a random 32-byte base64url token, `code_hash` = SHA-256 hex of `${hash}:<six digits>`, `expires_at` = now + 30 min), then open `https://mslab.ee/api/konto/verify?t=<token>` in the same browser. Then:
   1. `/konto/kursus/proov-naidis-kursus`: accept the terms if asked, then the lesson → "Märgi tehtuks". The "Lõpetamine" block shows the test as open.
-  2. The test: pick "Vale" on purpose, write a line → "Esita test" → "Said 0 %, vaja 50 %…", "Proovi uuesti (1 katset jäänud)". Then pick "Õige" → "Esita test" → "Ootab Maria hinnangut". Maria's "Test ootab hindamist: Proov (näidis), Proov (näidis)" mail arrives (ask her) and Dim's Telegram.
+  2. The test: pick "Vale" on purpose, write a line → "Esita test" → "Said 0 %, vaja 50 %…", "Proovi uuesti (1 katse jäänud)". Then pick "Õige" → "Esita test" → "Ootab Maria hinnangut". Maria's "Test ootab hindamist: Proov (näidis), Proov (näidis)" mail arrives (ask her) and Dim's Telegram.
   3. Admin → "Hindamine" (badge 1) → the test → the open answer "Kinnitatud" → "Saada". On her page: "Test on sooritatud", and the practical work is open.
   4. The practical work, on a phone if possible: one photo for "Vorm" and one for "Värv" (any photo of an object, no person) → "Saada hindamiseks" → "Ootab hindamist". Railway: `select round, sent_round from protocols where access_id = A` → `1 | null`; `select count(*) from practical_photos p join protocols r on r.id = p.protocol_id where r.access_id = A` → 2. Maria's "Praktiline töö hindamiseks: …" arrives.
   5. Admin → "Hindamine" → the work: both photos open full screen; "Vorm" Kinnitatud, "Värv" Paranda with the note "Proov: palun uus foto" → "Saada hinnang". Her page: "Värv" shows "Paranda" and the note; only "Värv" takes a photo.
@@ -19777,7 +20012,7 @@ The ledger is `.superpowers/sdd/2026-10-13-ecourse-completion/progress.md` (git-
   7. Õpilased → her drawer: the step line says "Lõpetatud …"; "Ava protokoll" opens the screen.
   - Vercel's runtime log has the `[test]`, `[practical]`, `[assessment]` and `[completion]` lines, with ids only.
 - [ ] **Step 9: Clean-up, of that exact address and that course only.**
-  1. In her session: Minu andmed → "Kustuta konto". Her rows go by cascade, and her photos are removed from R2 after the commit. Vercel's log has no `[practical] client N: a photo could not be removed` line.
+  1. In her session: Minu andmed → "Kustuta konto". Her rows go by cascade, and her photos are removed from R2 after the commit. Vercel's log has no `[practical] client N: a photo file could not be removed: <error class>` line (nor `[practical] client N: no file store, K photo files not removed`).
   2. Railway, after reading first (`select id from courses where slug = 'proov-naidis-kursus'` → one row; `select count(*) from registrations where course_id = <that id>` → 0):
 
 ```sql
@@ -20086,7 +20321,7 @@ admin texts, Estonian only (`src/i18n/dict/admin.ts`).
 | `adminEt.assessment.review.errors.incomplete` | Hinda iga vastus ja kirjuta igale „Paranda“ vastusele kommentaar. | Draft |
 | `adminEt.assessment.review.errors.comment` | Kirjuta igale „Paranda“ vastusele kommentaar. | Draft |
 | `adminEt.assessment.review.errors.tooLong` | Üks kommentaar on liiga pikk. | Draft |
-| `adminEt.assessment.review.errors.stale` | Seda katset on vahepeal hinnatud või õpilane muutis vastuseid. Laadi leht uuesti. | Draft |
+| `adminEt.assessment.review.errors.stale` | Seda katset on vahepeal hinnatud või õpilane muutis pärast selle lehe avamist vastuseid. Laadi leht uuesti, et näha praeguseid vastuseid. | Draft (a review from a page read before the student's rewrite is refused too) |
 | `adminEt.assessment.review.errors.notFound` | Seda katset ei leitud. Laadi leht uuesti. | Draft |
 | `adminEt.assessment.review.errors.failed` | Saatmine ei õnnestunud. Proovi uuesti. | Draft (the protocols' word) |
 | `adminEt.assessment.review.status.failed` | Läbimata | Draft |
@@ -20179,7 +20414,7 @@ admin texts, Estonian only (`src/i18n/dict/admin.ts`).
 | 6 | §4.3 quality 0.85, then 0.7 when over 2 MB | A very detailed photo can still be over 2 MB | **R6:** then 1600 px at 0.7 (Task 8). |
 | 7 | §6 the "completed" mail's button | `CompletionMailInput` could not tell a course with points from one without | **U1:** `hasPoints?` on the input; "completed" opens the practical page or the course page (Tasks 2, 4). |
 | 8 | §3.5 "the R2 keys are read before the delete" | A photo committed between that read and the delete would leave its objects in R2 | **U12:** `deleteClient` locks her access rows, reads the keys inside its own transaction and returns them as `photoKeys`; `deleteAccount` removes them after the answer (Task 7). |
-| 9 | §8 two devices: "a second submit of the same round answers 'already sent'" | The access lock serialises two test submits, but the second one, after a failed first, would be a new try | **U9:** a test submit whose answers and questions equal the newest attempt's is a repeat: it answers the current view and writes nothing (Task 5); the practical work's second submit answers `already` (Task 7). |
+| 9 | §8 two devices: "a second submit of the same round answers 'already sent'" | The access lock serialises two test submits, but the second one, after a failed first, would be a new try | **U9:** a test submit whose answers and questions equal the newest attempt's is a repeat: it answers the current view and writes nothing (Task 5), unless that attempt failed and its score passes the pass mark as it is now (Maria lowered it): then it is a new try; the practical work's second submit answers `already` (Task 7). |
 | 10 | §3.4 "later changes to the points reach only protocols not created yet" | Whether a course "has points" was read from the course in several places | **U8:** once a protocol exists, its own copy decides (`stepInputs`, `completionJob`, `testView`, `practicalView`, `sendAssessment`) (Tasks 4, 5, 7, 10). |
 | 11 | §4.2 passed: "the practical work opens"; §4.3 "Lõpetatud, with the date" | The views lacked the flags | **U11/U15:** `TestView.hasPoints`, `PracticalView.completedAt` (Tasks 5, 7). |
 | 12 | §5.3 "before the student submits, Maria may write notes" | The student's first photo creates the protocol row; a screen opened before it holds version 0 and no row, so its first save would be refused as a conflict | **U23:** that first save builds on the empty row (version 1, no text): nobody's words are in it (Task 10). |
@@ -20198,18 +20433,18 @@ The tasks were drafted against one binding interface contract. These names cross
 - **Task 1 → all:** `Verdict`, `TestQuestion`, `TestAnswers`, `OpenReview`, `AttemptStatus`, `courseTests`, `testAttempts`, `practicalPhotos`, `SentProtocol.verdicts`; `TEST_LIMITS`, `TEST_DEFAULTS`, `PHOTOS_PER_POINT`, `PHOTO_LIMITS`, `newItemId`, `readQuestions`, `checkQuestions`, `checkSettings`, `publicQuestions`, `PublicQuestion`, `checkAnswers`, `grade`, `choicePassed`, `percentOf`, `hasOpen`, `submitStatus`, `checkReview`, `reviewStatus`, `fixAnswers`, `triesAllowed`, `TestState`, `testState`, `PracticalStatus`, `practicalStatus`, `sentFixPoints`, `StepState`, `StepInputs`, `CourseSteps`, `courseSteps`, `isComplete`.
 - **Task 2 → 4, 5, 7, 10:** `defaultReplyTo`, `ecourseUrl`, `testUrl`, `practicalUrl`, `CompletionMailKind`, `CompletionMailInput` (with `hasPoints?`), `completionMail`, `CompletionNotice`, `practicalSubmittedSummary`, `testReviewSummary`, `triesUsedSummary`.
 - **Task 3 → 14:** `TestDraft`, `emptyTestDraft`, `FieldPlace`, `EditCourse`, `CourseTestFields`, `TestEditor`, `TestErrors`, `storedCourseTest`.
-- **Task 4 → 5, 7, 9, 10, 12, 13:** `AccessRow`, `AccessWithCourse`, `accessFor`, `isActive`, `lockAccess`, `CourseSetup`, `courseSetup`, `stepInputs`, `loadSteps`, `completeIfDone`, `CompletionJob`, `completionJob`, `mailCompletion`, `queueCompletionMail`; `activeAccess` returns `id`.
+- **Task 4 → 5, 7, 9, 10, 12, 13:** `AccessRow`, `AccessWithCourse`, `accessFor`, `isActive`, `lockAccess`, `CourseSetup`, `courseSetup`, `hasPointsOf`, `stepInputs`, `loadSteps`, `completeIfDone`, `CompletionJob`, `completionJob`, `mailCompletion`, `queueCompletionMail`; `activeAccess` returns `id`.
 - **Task 5 → 6, 12:** `TestDeps`, `AttemptView`, `TestView` (with `hasPoints`), `testView`, `SubmitResult`, `submitAttempt`, `resubmitAnswers`, `ReviewResult`, `reviewAttempt`, `reopenTest`.
 - **Task 6 → 8, 14:** `TEST_PATH`, `COURSE_STEP_PAGE`, `TestTexts`, `testTexts`, `TestPage`, `draftKey`; guard lists `"testPage", "submitTest", "resubmitTest"` after `"lessonFile"`.
 - **Task 7 → 8, 10, 14:** `privateFileAnswer`, `PracticalDeps`, `PhotoView`, `PointView`, `PracticalView` (with `completedAt`), `practicalView`, `PhotoInput`, `PhotoResult`, `addPhoto`, `removePhoto`, `SubmitPracticalResult`, `submitPractical`, `photoFor`, `practicalKeys`, `removeKeys`; `deleteClient` returns `{ email, locale, photoKeys }`.
 - **Task 8 → 14:** `PRACTICAL_PATH`, `PHOTO_PATH`, `photoAnswer`, `ShrinkError`, `ShrinkOptions`, `shrinkImage`, `PreparedPhoto`, `preparePhoto`, `uploadPhoto`, `PracticalTexts`, `practicalTexts`, `PracticalPage`, `PhotoSlot`; guard lists `"practicalPage", "uploadPhoto", "deletePhoto", "submitWork", "photo"` after `"resubmitTest"`.
 - **Task 9 → 13, 14:** `EcourseView.completion`, `EcourseCard.completedAt`, `CompletionSteps`.
-- **Task 10 → 11, 12, 13:** `saveBody` (registrationId XOR accessId), `Owner`, `ownerOf`, `ScreenData.kind "access"`, `AssessmentData`, `AssessmentView` (in `domain/protocols.ts`), `verdictBody`, `VerdictResult`, `saveVerdict`, `handleVerdict`, `AssessmentInput`, `AssessmentResult`, `sendAssessment`, `sendAssessmentAction`, `tests/db/assessment-fixtures.ts`.
-- **Task 11 → 12, 14:** `ScreenOwner`, `OwnerKeys`, `ownerKeys`, `ScreenSource { ligipaas }`, `ScreenView.owner?`, `EditorState`, `AssessmentScreen`, `readAssessment`, `AssessmentStage`, `PhotoViewer`, `Photo`, `AssessmentSend`, `VerdictTaps`, `postVerdict`; `Section` `"assessment"`; `[data-assess-send]`, `[data-assess-confirm]`.
-- **Task 12 → 13, 14:** `assessmentQueue`, `assessmentCount`, `ReviewAttempt`, `attemptForReview`, `attemptsOf`, `AdminCounts.assessment`, `reviewAttemptAction`, `reopenTestAction`, `TestReview`, `ReopenTest`.
-- **Task 13 → 14:** `ClientAccessRow.steps`, `.protocolId`, `.testPercent`; the registration rows' `protocolId` and `contact`; `stepLine`.
-- **`old-safari.test.ts` `BROWSER_FILES`:** `src/domain/completion.ts` (Task 1), `src/lib/shrink-image.ts` and `src/components/account/photo-upload.ts` (Task 8), `src/components/admin/verdict-taps.ts` (Task 11). Every "use client" file is walked automatically.
-- **`colour-tokens.test.ts` `COURSE_CSS`** gains every new stylesheet: `TestPage.module.css` (Task 6), the practical page's (Task 8), `CompletionSteps.module.css` (Task 9), `Assessment.module.css` (Task 11), `hindamine/assessment.module.css` (Task 12).
+- **Task 10 → 11, 12, 13:** `saveBody` (registrationId XOR accessId), `Owner`, `ownerOf`, `ScreenData.kind "access"`, `AssessmentData`, `AssessmentView` (in `domain/protocols.ts`), `verdictBody`, `VerdictResult`, `saveVerdict`, `handleVerdict`, `AssessmentInput`, `AssessmentResult`, `sendAssessment`, `sendAssessmentAction`, `adminSendDeps` (`server/send-deps.ts`), `tests/db/assessment-fixtures.ts`.
+- **Task 11 → 12, 14:** `ScreenOwner`, `OwnerKeys`, `ownerKeys`, `ScreenSource { ligipaas }`, `ScreenView.owner?`, `EditorState`, `AssessmentScreen`, `readAssessment`, `AssessmentStage`, `PhotoViewer`, `Photo`, `AssessmentSend`, `VerdictTaps`, `postVerdict`, `isVerdicts`; `ProtocolSend.tsx`'s `bounded` exported; `Section` `"assessment"`; `[data-assess-send]`, `[data-assess-confirm]`.
+- **Task 12 → 13, 14:** `clientNameSql` (`server/admin-clients.ts`), `assessmentQueue`, `assessmentCount`, `ReviewAttempt`, `attemptForReview`, `attemptsOf`, `AdminCounts.assessment`, `reviewAttemptAction`, `reopenTestAction`, `TestReview`, `ReopenTest`.
+- **Task 13 → 14:** `ClientAccessRow.steps`, `.protocolId`, `.testPercent`, `.hasAttempts`; the registration rows' `protocolId` and `contact`; `stepLine`.
+- **`old-safari.test.ts` `BROWSER_FILES`:** `src/domain/completion.ts` (Task 1), `src/components/admin/TestEditor.tsx` (Task 3), `src/components/account/TestPage.tsx` (Task 6), `src/lib/shrink-image.ts`, `src/components/account/photo-upload.ts`, `PracticalPage.tsx` and `PhotoSlot.tsx` (Task 8), `src/components/account/CompletionSteps.tsx` (Task 9), `src/components/admin/verdict-taps.ts` (Task 11, Step 9). Every "use client" file is walked automatically; the non-"use client" browser modules (`completion.ts`, `shrink-image.ts`, `photo-upload.ts`, `verdict-taps.ts`) are reached only through this list.
+- **`colour-tokens.test.ts` `COURSE_CSS`** gains every new stylesheet: `TestEditor.module.css` (Task 3), `TestPage.module.css` (Task 6), `PracticalPage.module.css` (Task 8), `CompletionSteps.module.css` (Task 9), `Assessment.module.css` (Task 11), `hindamine/assessment.module.css` and `TestReview.module.css` (Task 12).
 
 ### Review Focus check
 
