@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "../client";
-import { campaign, courseAccess, courseImages, courseModules, courseSessions, courses, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, registrations, requests, settings, subscribers } from "../schema";
-import type { Campaign, Course, CourseImage, CourseSession, FaqItem, GalleryItem, HeroSlide, Page, PopupKind, Post, PracticePackage, Registration, Request as RequestRow, Subscriber } from "../schema";
+import { campaign, courseAccess, courseImages, courseModules, courseSessions, courses, courseTests, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, registrations, requests, settings, subscribers } from "../schema";
+import type { Campaign, Course, CourseImage, CourseSession, CourseTest, FaqItem, GalleryItem, HeroSlide, Page, PopupKind, Post, PracticePackage, Registration, Request as RequestRow, Subscriber, TestQuestion } from "../schema";
 import { pageInfo, PAGE_SIZE, type PageInfo } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
 import type { I18n } from "@/i18n/field";
@@ -66,9 +66,16 @@ export async function listAllCourses(db: Db): Promise<AdminCourse[]> {
   return db.query.courses.findMany({ orderBy: [asc(courses.sort), asc(courses.id)], with: { images: { orderBy: imageOrder } } });
 }
 
+/** The course editor's course: the course with its images and its "Teadmiste test" row (null without one; e-course completion, R1). */
+export type EditCourse = AdminCourse & { test: CourseTest | null };
+
 /** One course for the editor (drafts included), or null. */
-export async function getCourseForEdit(db: Db, id: number): Promise<AdminCourse | null> {
-  return (await db.query.courses.findFirst({ where: eq(courses.id, id), with: { images: { orderBy: imageOrder } } })) ?? null;
+export async function getCourseForEdit(db: Db, id: number): Promise<EditCourse | null> {
+  const [course, [test]] = await Promise.all([
+    db.query.courses.findFirst({ where: eq(courses.id, id), with: { images: { orderBy: imageOrder } } }),
+    db.select().from(courseTests).where(eq(courseTests.courseId, id)).limit(1),
+  ]);
+  return course ? { ...course, test: test ?? null } : null;
 }
 
 /** Is `slug` used by a course other than `exceptId`? */
@@ -104,15 +111,18 @@ export async function courseUsage(db: Db, id: number): Promise<CourseUsage | nul
  */
 export const typeLocked = (u: CourseUsage | null): boolean => Boolean(u && (u.sessions > 0 || u.registrations > 0 || u.lessons > 0 || u.access > 0));
 
-/** The course fields the editor writes (everything but id, sort and updatedAt). */
-export type CourseFields = Omit<CourseInput, "id" | "sort">;
+/** "Teadmiste test" as the editor saves it (e-course completion, R1): a row of its own, so the answer key never rides on a courses row. */
+export type CourseTestFields = { questions: TestQuestion[]; passPercent: number; tries: number };
+/** The course fields the editor writes (everything but id, sort and updatedAt), and the e-course's test (null: none, its row is deleted). */
+export type CourseFields = Omit<CourseInput, "id" | "sort"> & { test: CourseTestFields | null };
 
 /**
- * The course editor's save: the course and its whole image list in ONE transaction.
+ * The course editor's save: the course, its whole image list and its "Teadmiste test" row in ONE transaction.
  * - `id` null: a new course, placed after the others (sort = last + 1).
  * - `id` set: an update, refused as "stale" when `expected` (the updatedAt the editor loaded) is no longer the stored
  *   one — someone saved the course in another window meanwhile — so a save never overwrites changes it did not see.
  *   Compared to the millisecond, as JavaScript dates carry no microseconds.
+ * - the test (e-course completion, R1): upserted into course_tests behind the same check, or its row deleted (a contact course).
  * `updatedAt` is set on every save. Returns the saved course with its images, "notFound" or "stale".
  */
 export async function saveCourseWithImages(
@@ -122,21 +132,28 @@ export async function saveCourseWithImages(
   images: ImageInput[],
 ): Promise<AdminCourse | "notFound" | "stale"> {
   return db.transaction(async (tx) => {
-    const values = { ...fields, updatedAt: new Date() };
+    const { test, ...row } = fields;
+    const values = { ...row, updatedAt: new Date() };
     let course: Course;
     if (target.id == null) {
       const [{ last }] = await tx.select({ last: sql<number | null>`max(${courses.sort})` }).from(courses);
       [course] = await tx.insert(courses).values({ ...values, sort: (last ?? 0) + 1 }).returning();
     } else {
       const same = target.expected ? sql`date_trunc('milliseconds', ${courses.updatedAt}) = ${target.expected.toISOString()}::timestamptz` : undefined;
-      const [row] = await tx.update(courses).set(values).where(and(eq(courses.id, target.id), same)).returning();
-      if (!row) {
+      const [updated] = await tx.update(courses).set(values).where(and(eq(courses.id, target.id), same)).returning();
+      if (!updated) {
         const [exists] = await tx.select({ id: courses.id }).from(courses).where(eq(courses.id, target.id));
         return exists ? "stale" : "notFound";
       }
-      course = row;
+      course = updated;
       await tx.delete(courseImages).where(eq(courseImages.courseId, course.id));
     }
+    if (test)
+      await tx
+        .insert(courseTests)
+        .values({ courseId: course.id, ...test, updatedAt: values.updatedAt })
+        .onConflictDoUpdate({ target: courseTests.courseId, set: { ...test, updatedAt: values.updatedAt } });
+    else await tx.delete(courseTests).where(eq(courseTests.courseId, course.id));
     const saved = images.length
       ? await tx
           .insert(courseImages)

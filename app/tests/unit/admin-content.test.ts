@@ -140,7 +140,12 @@ describe("drafts", () => {
       badge: { label: { et: "Uus" }, bg: "#DDD4DC", fg: "#222222" },
     });
     expect(draftFromCourse({ ...stored, language: "EN" }).language).toBe("ET"); // not one of the three: ET
-    expect(newCourseDraft()).toMatchObject({ id: null, version: null, type: "contact", published: false, isSample: false, badge: null, protocolStages: [] });
+    // "Teadmiste test" (e-course completion, R1): without a course_tests row (or before it existed) the defaults; a row's numbers become text as typed
+    expect(d.test).toEqual({ questions: [], passPercent: "80", tries: "3" });
+    const question = { id: "q0000001", kind: "open" as const, text: "Kirjelda ettevalmistust." };
+    expect(draftFromCourse({ ...stored, test: { questions: [question], passPercent: 90, tries: 2 } }).test).toEqual({ questions: [question], passPercent: "90", tries: "2" });
+    expect(draftFromCourse({ ...stored, test: null }).test).toEqual({ questions: [], passPercent: "80", tries: "3" });
+    expect(newCourseDraft()).toMatchObject({ id: null, version: null, type: "contact", published: false, isSample: false, badge: null, protocolStages: [], test: { questions: [], passPercent: "80", tries: "3" } });
   });
 
   test("moveItem moves one item and leaves the input alone", () => {

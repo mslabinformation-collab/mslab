@@ -2,11 +2,12 @@
 // (server/admin-content.ts): the draft the editor holds and sends, the badge choices of prototype D, and the limits.
 // Pure: no database, no React.
 
-import type { Badge, BadgeLabel, StoredBadge } from "@/db/schema";
+import type { Badge, BadgeLabel, StoredBadge, TestQuestion } from "@/db/schema";
 import { readBadge } from "./badge";
 import type { I18n } from "@/i18n/field";
 import { centsToInput } from "./money";
 import { readStages } from "./protocols";
+import { readQuestions, TEST_DEFAULTS } from "./completion";
 
 export type CourseType = "e_learning" | "contact";
 export type CourseLevel = "basic" | "advanced";
@@ -71,6 +72,11 @@ export const LIMITS = {
 
 export type DraftImage = { key: string; alt: I18n };
 
+/** The draft's "Teadmiste test": the questions as the editor holds them, the pass mark (%) and the tries as typed (the server parses them, as the price). */
+export type TestDraft = { questions: TestQuestion[]; passPercent: string; tries: string };
+/** No questions, the default pass mark and tries: a new course, a course without a course_tests row, and a draft from before the deploy. */
+export const emptyTestDraft = (): TestDraft => ({ questions: [], passPercent: String(TEST_DEFAULTS.passPercent), tries: String(TEST_DEFAULTS.tries) });
+
 /** What the editor holds and sends (JSON). Amounts and counts are the text as typed; the server parses them. */
 export type CourseDraft = {
   id: number | null;
@@ -85,8 +91,13 @@ export type CourseDraft = {
   body: I18n;
   outcomes: I18n[];
   includes: I18n[];
-  /** "Protokolli punktid" (phase protocols, spec §3): a contact course's stage headings, plain strings as typed; an e-course has none. */
+  /**
+   * "Protokolli punktid", plain strings as typed: a contact course's stage headings (phase protocols, spec §3); an e-course's practical points,
+   * the student adds 1–3 photos to each (e-course completion, spec §5.1).
+   */
   protocolStages: string[];
+  /** "Teadmiste test" (e-course completion, spec §5.1, R1): an e-course's questions, pass mark and tries; stored in course_tests, not on the course. */
+  test: TestDraft;
   price: string;
   priceGroup: string;
   priceIndividual: string;
@@ -121,6 +132,7 @@ export function newCourseDraft(): CourseDraft {
     outcomes: [],
     includes: [],
     protocolStages: [],
+    test: emptyTestDraft(),
     price: "",
     priceGroup: "",
     priceIndividual: "",
@@ -149,6 +161,8 @@ type StoredCourse = {
   outcomes: I18n[];
   includes: I18n[];
   protocolStages: string[];
+  /** Its course_tests row (getCourseForEdit), null without one; absent where a caller has none to give (the defaults then). */
+  test?: { questions: TestQuestion[]; passPercent: number; tries: number } | null;
   price: number | null;
   priceGroup: number | null;
   priceIndividual: number | null;
@@ -178,6 +192,7 @@ export function draftFromCourse(c: StoredCourse): CourseDraft {
     outcomes: c.outcomes.map(copy),
     includes: c.includes.map(copy),
     protocolStages: readStages(c.protocolStages),
+    test: c.test ? { questions: readQuestions(c.test.questions), passPercent: String(c.test.passPercent), tries: String(c.test.tries) } : emptyTestDraft(),
     price: amount(c.price),
     priceGroup: amount(c.priceGroup),
     priceIndividual: amount(c.priceIndividual),

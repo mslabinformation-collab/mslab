@@ -12,12 +12,27 @@ let rowCount = 0;
 const newKey = () => `stage-${++rowCount}`;
 
 /**
- * "Protokolli punktid" (phase protocols, spec §3): this contact course's stage headings for the course day's protocols, in the language Maria
- * writes in (one plain field each, no translation), in order: add, remove, ↑ / ↓; at most 30, each at most 120 characters. Saved with the
- * course ("Salvesta"); blank rows are dropped then. A change reaches only protocols not created yet (the hint says so). As ListEditor: the
- * arrows are aria-disabled at the ends, after adding a row its field gets the focus, after removing one the next row's field (or "Lisa punkt").
+ * "Protokolli punktid": a contact course's stage headings for the course day's protocols (phase protocols, spec §3), or an e-course's practical
+ * points, to each of which the student adds 1–3 photos (e-course completion, spec §5.1: `hint` and `empty` give the e-course's texts). In the
+ * language Maria writes in (one plain field each, no translation), in order: add, remove, ↑ / ↓; at most 30, each at most 120 characters. Saved
+ * with the course ("Salvesta"); blank rows are dropped then. A change reaches only protocols not created yet (the hint says so). As ListEditor:
+ * the arrows are aria-disabled at the ends, after adding a row its field gets the focus, after removing one the next row's field (or "Lisa punkt").
  */
-export function ProtocolStagesEditor({ items, onChange, error }: { items: string[]; onChange: (items: string[]) => void; error?: string }) {
+export function ProtocolStagesEditor({
+  items,
+  onChange,
+  error,
+  hint,
+  empty,
+}: {
+  items: string[];
+  onChange: (items: string[]) => void;
+  error?: string;
+  /** The hint under the title (default: the contact course's). */
+  hint?: string;
+  /** The line shown while there are none (default: the contact course's). */
+  empty?: string;
+}) {
   const t = adminEt.courseEditor;
   const l = adminEt.list;
   const uid = useId();
@@ -73,10 +88,10 @@ export function ProtocolStagesEditor({ items, onChange, error }: { items: string
         </h3>
       </div>
       <p id={`${uid}-hint`} className={ui.hint}>
-        {t.fields.protocolStagesHint}
+        {hint ?? t.fields.protocolStagesHint}
       </p>
       {items.length === 0 ? (
-        <p className={`${ui.muted} ${ui.small}`}>{t.fields.protocolStagesEmpty}</p>
+        <p className={`${ui.muted} ${ui.small}`}>{empty ?? t.fields.protocolStagesEmpty}</p>
       ) : (
         <ol className={styles.rows}>
           {items.map((item, i) => {

@@ -654,13 +654,20 @@ const SNAPSHOT_DIR = join(tmpdir(), "mslab-e2e-course-snapshots");
 const JSON_COLUMNS = ["title", "summary", "body", "outcomes", "includes", "duration_label", "next_discount", "badge", "recommendation_ids", "protocol_stages"] as const;
 const PLAIN_COLUMNS = ["slug", "type", "level", "language", "price", "price_group", "price_individual", "access_months", "video_count", "published", "sort", "is_sample", "updated_at"] as const;
 
-type CourseSnapshot = { id: number; row: Record<string, unknown>; images: { key: string; alt: unknown; sort: number }[] };
+type CourseSnapshot = {
+  id: number;
+  row: Record<string, unknown>;
+  images: { key: string; alt: unknown; sort: number }[];
+  /** Its "Teadmiste test" row (e-course completion, R1); absent in a snapshot written before course_tests existed: the course had none. */
+  test?: { questions: unknown; pass_percent: number; tries: number } | null;
+};
 
 async function readSnapshot(sql: postgres.Sql, slug: string): Promise<CourseSnapshot> {
   const [row] = await sql`select * from courses where slug = ${slug}`;
   if (!row) throw new Error(`e2e: course ${slug} not found — is the local DB seeded?`);
   const images = await sql<{ key: string; alt: unknown; sort: number }[]>`select key, alt, sort from course_images where course_id = ${row.id} order by sort, id`;
-  return { id: row.id as number, row: Object.fromEntries([...JSON_COLUMNS, ...PLAIN_COLUMNS].map((c) => [c, row[c]])), images: [...images] };
+  const [test] = await sql<{ questions: unknown; pass_percent: number; tries: number }[]>`select questions, pass_percent, tries from course_tests where course_id = ${row.id}`;
+  return { id: row.id as number, row: Object.fromEntries([...JSON_COLUMNS, ...PLAIN_COLUMNS].map((c) => [c, row[c]])), images: [...images], test: test ?? null };
 }
 
 async function writeBack(sql: postgres.Sql, s: CourseSnapshot): Promise<void> {
@@ -673,6 +680,9 @@ async function writeBack(sql: postgres.Sql, s: CourseSnapshot): Promise<void> {
     await tx`delete from course_images where course_id = ${s.id}`;
     for (const img of s.images)
       await tx`insert into course_images (course_id, key, alt, sort) values (${s.id}, ${img.key}, ${img.alt === null ? null : tx.json(img.alt as postgres.JSONValue)}, ${img.sort})`;
+    await tx`delete from course_tests where course_id = ${s.id}`;
+    if (s.test)
+      await tx`insert into course_tests (course_id, questions, pass_percent, tries) values (${s.id}, ${tx.json(s.test.questions as postgres.JSONValue)}, ${s.test.pass_percent}, ${s.test.tries})`;
   });
 }
 
@@ -721,6 +731,17 @@ export async function storedCourse(slug: string): Promise<StoredCourse> {
     const [c] = await sql<Omit<StoredCourse, "images">[]>`select id, title, badge, sort, updated_at as "updatedAt" from courses where slug = ${slug}`;
     const images = await sql<{ key: string }[]>`select key from course_images where course_id = ${c.id} order by sort, id`;
     return { ...c, images: images.map((i) => i.key) };
+  } finally {
+    await sql.end();
+  }
+}
+
+/** A course's "Teadmiste test" row as stored (e-course completion, R1), or null without one. */
+export async function storedCourseTest(courseId: number): Promise<{ questions: unknown; passPercent: number; tries: number } | null> {
+  const sql = connect(false);
+  try {
+    const [row] = await sql<{ questions: unknown; passPercent: number; tries: number }[]>`select questions, pass_percent as "passPercent", tries from course_tests where course_id = ${courseId}`;
+    return row ?? null;
   } finally {
     await sql.end();
   }

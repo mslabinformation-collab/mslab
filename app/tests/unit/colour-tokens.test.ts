@@ -63,6 +63,8 @@ const COURSE_CSS = [
   // the site's modal dialog (the campaign popup and the account's change request)
   "src/components/ui/modal.module.css",
   "src/components/site/CampaignPopup.module.css",
+  // the course editor's "Teadmiste test" (e-course completion, Task 3)
+  "src/components/admin/TestEditor.module.css",
 ];
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""); // comments aside

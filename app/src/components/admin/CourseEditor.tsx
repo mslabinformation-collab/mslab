@@ -18,6 +18,7 @@ import { GalleryEditor } from "./GalleryEditor";
 import { I18nInput } from "./I18nInput";
 import { ListEditor } from "./ListEditor";
 import { ProtocolStagesEditor } from "./ProtocolStagesEditor";
+import { TestEditor } from "./TestEditor";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import styles from "./CourseEditor.module.css";
@@ -306,10 +307,25 @@ export function CourseEditor({ initial, others, next, publicHref, created, typeL
             </section>
           )}
 
-          {/* "Protokolli punktid" (phase protocols): the headings of the course day's protocols, a contact course's only */}
-          {!online && (
-            <section className={ui.card} aria-label={t.sections.protocolStages}>
-              <ProtocolStagesEditor items={draft.protocolStages} onChange={(v) => set("protocolStages", v)} error={err("protocolStages")} />
+          {/* "Protokolli punktid": a contact course's protocol headings (phase protocols); an e-course's practical points with their own texts (e-course completion, spec §5.1) */}
+          <section className={ui.card} aria-label={t.sections.protocolStages}>
+            <ProtocolStagesEditor
+              items={draft.protocolStages}
+              onChange={(v) => set("protocolStages", v)}
+              error={err("protocolStages")}
+              hint={online ? f.protocolStagesHintOnline : undefined}
+              empty={online ? f.protocolStagesEmptyOnline : undefined}
+            />
+          </section>
+
+          {/* "Teadmiste test" (e-course completion, spec §5.1, R1): an e-course's questions, pass mark and tries, saved with the course */}
+          {online && (
+            <section className={ui.card} aria-label={t.sections.test}>
+              <TestEditor
+                value={draft.test}
+                onChange={(v) => set("test", v)}
+                errors={{ test: err("test"), testPassPercent: err("testPassPercent"), testTries: err("testTries"), at: state && !state.ok ? state.at : undefined }}
+              />
             </section>
           )}
 

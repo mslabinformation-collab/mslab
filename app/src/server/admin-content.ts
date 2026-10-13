@@ -1,15 +1,16 @@
 import { z } from "zod";
 import type { Db } from "@/db/client";
-import { courses } from "@/db/schema";
+import { courses, type TestQuestion } from "@/db/schema";
 import { inArray } from "drizzle-orm";
 import { courseUsage, typeLocked, deleteUnusedSession, getCourseForEdit, getSession, isSlugTaken, moveCourse, saveCourseWithImages, upsertSession, type CourseFields } from "@/db/queries/admin";
 import { tallinnInstant } from "@/domain/calendar";
-import { BADGE_MAX, badgeOf, COURSE_LANGUAGES, LIMITS, swatchOf, type CourseDraft } from "@/domain/course-editor";
+import { checkQuestions, checkSettings, PASS_RANGE, readQuestions, TRIES_RANGE, type QuestionProblem } from "@/domain/completion";
+import { BADGE_MAX, badgeOf, COURSE_LANGUAGES, emptyTestDraft, LIMITS, swatchOf, type CourseDraft } from "@/domain/course-editor";
 import { checkStages } from "@/domain/protocols";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
 import { toStorable } from "@/lib/to-storable";
-import { Check, field, invalid, isStorableImageKey, type EditResult } from "./edit-check";
+import { Check, field, invalid, isStorableImageKey, type EditResult, type FieldError, type FieldPlace } from "./edit-check";
 
 // The content editors' form handling (courses, calendar sessions). Callers have already checked the admin session
 // (server/actions/admin-content.ts wraps each in adminAction); these take a Db and run without Next.js
@@ -23,6 +24,18 @@ const ID_MAX = 2_147_483_647;
 const id = z.coerce.number().int().positive().max(ID_MAX);
 /** The JSON draft is at most this long (a course with 40-row lists in two languages is far below it). */
 const DRAFT_MAX = 400_000;
+
+/** The question list's problems (domain/completion.ts checkQuestions) as the field errors the editor shows under "Teadmiste test". */
+const TEST_ERRORS: Record<Exclude<QuestionProblem["error"], "duplicateId">, FieldError> = {
+  tooMany: "testTooMany",
+  empty: "testEmpty",
+  tooLong: "testTooLong",
+  options: "testOptions",
+  noCorrect: "testNoCorrect",
+};
+
+/** Where a question problem is, for the editor (EditResult.at): the question (-1: the list as a whole), and the option when it names one. */
+const placeOf = (p: QuestionProblem): FieldPlace => ("option" in p && p.option !== undefined ? { index: p.index, option: p.option } : { index: p.index });
 
 const i18n = z.object({ et: z.string().max(20_000), ru: z.string().max(20_000).optional() });
 const draftSchema = z.object({
@@ -39,6 +52,11 @@ const draftSchema = z.object({
   includes: z.array(i18n).max(200),
   // loose: the real limits are checkStages', with a field error; the default: an editor page loaded before the deploy posts no headings, and its save must not fail on them
   protocolStages: z.array(z.string().max(2000)).max(200).default([]),
+  // "Teadmiste test" (e-course completion, R1): loose here — the questions are typed as the draft's but read defensively (readQuestions) and checked
+  // after (checkQuestions, the settings), with field errors; the default: an editor page loaded before the deploy posts no test
+  test: z
+    .object({ questions: z.array(z.custom<TestQuestion>()).max(200), passPercent: z.string().max(10), tries: z.string().max(10) })
+    .default(emptyTestDraft),
   price: z.string().max(40),
   priceGroup: z.string().max(40),
   priceIndividual: z.string().max(40),
@@ -55,8 +73,10 @@ const draftSchema = z.object({
 
 /**
  * The course editor's save. Field `data`: the editor's draft as JSON (CourseDraft). Only the chosen type's own fields
- * are stored; the other type's are emptied (a course is e-learning or contact, never both). A new course (id null)
- * is created after the others; an existing one is refused as `stale` when it was saved elsewhere since `version`.
+ * are stored; the other type's are emptied (a course is e-learning or contact, never both). "Protokolli punktid" are
+ * both types': a contact course's protocol headings, an e-course's practical points. "Teadmiste test" is an e-course's
+ * (course_tests, R1); a contact course's row is deleted. A new course (id null) is created after the others; an existing
+ * one is refused as `stale` when it was saved elsewhere since `version`.
  */
 export async function saveCourseForm(db: Db, formData: FormData): Promise<EditResult> {
   const raw = field(formData, "data");
@@ -102,12 +122,36 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
   const priceIndividual = online ? null : c.amount("priceIndividual", d.priceIndividual);
   const durationLabel = online ? null : c.text("durationLabel", d.durationLabel, LIMITS.duration);
   const includes = online ? [] : c.list("includes", d.includes);
-  // "Protokolli punktid" (phase protocols): a contact course's headings, trimmed, no blank rows, at most 30 of at most 120 characters. A pasted
-  // heading is cleaned first (toStorable: control characters and broken surrogates go): Postgres refuses NUL in jsonb, and checkStages does not look;
-  // a heading is one line (its field is an input, which would drop a line break), so Word's line or page break in it is a space between the words
+  // "Protokolli punktid": a contact course's headings (phase protocols), an e-course's practical points (e-course completion, spec §5.1); trimmed,
+  // no blank rows, at most 30 of at most 120 characters. A pasted heading is cleaned first (toStorable: control characters and broken surrogates go):
+  // Postgres refuses NUL in jsonb, and checkStages does not look; a heading is one line (its field is an input, which would drop a line break), so
+  // Word's line or page break in it is a space between the words
   const heading = (s: string) => toStorable(s).replace(/[\r\n]+/g, " ");
-  const stages: ReturnType<typeof checkStages> = online ? { ok: true, stages: [] } : checkStages(d.protocolStages.map(heading));
+  const stages = checkStages(d.protocolStages.map(heading));
   if (!stages.ok) c.fail("protocolStages", stages.error);
+  // "Teadmiste test" (e-course completion, spec §3.1, §5.1, R1): an e-course's questions, pass mark and tries. A pasted question is cleaned as a
+  // heading is; its text may keep its lines (a text box), an option is one line (an input). A problem names the question (and the option) it is
+  // in, so the editor shows it there. The pass mark is 1–100 and the tries 1–10, whole numbers, never blank.
+  let test: CourseFields["test"] = null;
+  let testAt: FieldPlace | undefined;
+  if (online) {
+    const clean = (q: TestQuestion): TestQuestion =>
+      q.kind === "open" ? { ...q, text: toStorable(q.text) } : { ...q, text: toStorable(q.text), options: q.options.map((o) => ({ ...o, text: heading(o.text) })) };
+    const checked = checkQuestions(readQuestions(d.test.questions).map(clean));
+    if (!checked.ok) {
+      const { error } = checked.problem;
+      if (error === "duplicateId") return { ok: false, error: "invalid" }; // never from the editor (newItemId): not a draft it made
+      c.fail("test", TEST_ERRORS[error]);
+      testAt = placeOf(checked.problem);
+    }
+    const passPercent = c.whole("testPassPercent", d.test.passPercent, PASS_RANGE.min, PASS_RANGE.max) ?? c.fail("testPassPercent", "whole");
+    const tries = c.whole("testTries", d.test.tries, TRIES_RANGE.min, TRIES_RANGE.max) ?? c.fail("testTries", "whole");
+    if (passPercent !== null && tries !== null) {
+      const settings = checkSettings(passPercent, tries);
+      if (!settings.ok) c.fail(settings.error === "pass" ? "testPassPercent" : "testTries", "whole");
+      else if (checked.ok) test = { questions: checked.questions, passPercent, tries };
+    }
+  }
   // a published course must be buyable / bookable
   if (d.published && online && price == null && !c.errors.price) c.fail("price", "priceRequired");
   if (d.published && !online && priceGroup == null && priceIndividual == null && !c.errors.priceGroup && !c.errors.priceIndividual) c.fail("priceGroup", "priceRequired");
@@ -138,7 +182,7 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
   const existing = wanted.length ? new Set((await db.select({ id: courses.id }).from(courses).where(inArray(courses.id, wanted))).map((r) => r.id)) : new Set<number>();
   const recommendationIds = wanted.filter((x) => existing.has(x)).slice(0, LIMITS.recommendations);
 
-  if (!c.ok || !title) return invalid(c.errors);
+  if (!c.ok || !title) return invalid(c.errors, testAt);
 
   const fields: CourseFields = {
     slug,
@@ -162,6 +206,7 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
     recommendationIds,
     published: d.published,
     isSample: d.isSample,
+    test,
   };
   const saved = await saveCourseWithImages(db, { id: d.id, expected: expected ?? undefined }, fields, images);
   if (saved === "notFound" || saved === "stale") return { ok: false, error: saved };
