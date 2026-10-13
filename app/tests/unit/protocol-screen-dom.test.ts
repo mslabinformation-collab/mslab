@@ -18,6 +18,7 @@ vi.mock("@/server/actions/admin-protocols", () => ({ sendProtocolAction: vi.fn()
 const TITLES = ["Ettevalmistus", "Värvimine"];
 const student = (registrationId: number, name: string, over: Partial<ScreenStudentView> = {}): ScreenStudentView => ({
   registrationId,
+  protocolId: null,
   name,
   awaiting: false,
   version: 0,

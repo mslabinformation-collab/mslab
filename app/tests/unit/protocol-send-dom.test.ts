@@ -22,6 +22,7 @@ const TITLES = ["Ettevalmistus", "Värvimine"];
 const SENT_AT = "2026-10-12T15:00:00.000Z";
 const student = (registrationId: number, name: string, over: Partial<ScreenStudentView> = {}): ScreenStudentView => ({
   registrationId,
+  protocolId: null,
   name,
   awaiting: false,
   version: 1,

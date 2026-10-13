@@ -54,6 +54,11 @@ export type SaveStatus =
 /** A protocol as the server holds it (the page's, or a 409's). `version` 0: none yet. */
 export type ServerDraft = {
   registrationId: number;
+  /**
+   * The protocol's row; null: none yet (or a server that does not say). One deleted with the account and made again is another row, even at the
+   * same version: reconcile takes another row as newer.
+   */
+  protocolId: number | null;
   version: number;
   titles: string[];
   content: Content;
@@ -69,6 +74,8 @@ export type Conflict = { titles: string[]; lost: Content | null };
 /** One protocol on the screen: what the server confirmed (`confirmed` at `version`), what the screen shows (`content`), its save. */
 export type Entry = {
   registrationId: number;
+  /** The row the screen's text is of (ServerDraft.protocolId), learnt from a save's answer when its first save made it. */
+  protocolId: number | null;
   version: number;
   titles: string[];
   confirmed: Content;
@@ -365,6 +372,7 @@ export function readDraft(registrationId: number, value: unknown): ServerDraft |
   const typed = stages as { title: string; note: string }[];
   return {
     registrationId,
+    protocolId: typeof p.id === "number" ? p.id : null,
     version: p.version,
     titles: typed.map((s) => s.title),
     content: { notes: typed.map((s) => s.note), generalNote: p.generalNote },
@@ -411,6 +419,7 @@ const newTabName = (): string => `${Date.now().toString(36)}${Math.random().toSt
 /** A protocol as the screen starts with it: the server's text, saved. */
 const entryOf = (d: ServerDraft): Entry => ({
   registrationId: d.registrationId,
+  protocolId: d.protocolId,
   version: d.version,
   titles: [...d.titles],
   confirmed: copy(d.content),
@@ -528,7 +537,7 @@ export class ProtocolAutosave {
 
   /**
    * The server's text as GET /api/admin/protokoll has it now (the page's data, read again): for each protocol, newer than the one this screen builds on
-   * (a higher version, or other headings while none is written yet):
+   * (a higher version, other headings while none is written yet, or another row: the protocol deleted with the account and made again):
    * - nothing unsaved or unconfirmed here: the server's text, version and send marks are taken silently and the status says "saved";
    * - text of this screen's own that is not on the server: the refusal's path (conflict): the server's text is shown, this screen's words go into
    *   the notice, and a text this screen sent without an answer that the server holds is its own (saved on top, no notice);
@@ -582,7 +591,9 @@ export class ProtocolAutosave {
       if (!this.uncertain(e) && (e.status.kind === "checking" || e.status.kind === "saved" || e.status.kind === "signedOut")) this.set(e, { kind: "gone" });
       return;
     }
-    const newer = d.version > e.version || (d.version === e.version && !sameTitles(d.titles, e.titles));
+    // another row (deleted with the account and made again: its versions start again from 1) is newer, whatever its version
+    const otherRow = d.protocolId !== null && e.protocolId !== null && d.protocolId !== e.protocolId;
+    const newer = otherRow || d.version > e.version || (d.version === e.version && !sameTitles(d.titles, e.titles));
     if (newer) {
       if (this.uncertain(e)) void this.conflict(e, d, e.version, { resend: () => this.queue(id, false) });
       else {
@@ -598,6 +609,7 @@ export class ProtocolAutosave {
       void this.conflict(e, d, e.version, { words: true });
       return;
     }
+    if (d.version === e.version && e.protocolId === null) e.protocolId = d.protocolId; // (a row not known yet: an answer of a server that did not say)
     if (d.version === e.version && sentLater(d, e)) {
       e.sentVersion = d.sentVersion;
       e.sentAt = d.sentAt;
@@ -945,6 +957,7 @@ export class ProtocolAutosave {
       this.signedOutIds.delete(id);
       this.unanswered.delete(id);
       this.attempts.delete(id);
+      if (typeof reply.protocolId === "number") e.protocolId = reply.protocolId;
       e.version = reply.version;
       e.confirmed = payload;
       e.savedAt = typeof reply.savedAt === "string" ? Date.parse(reply.savedAt) : Date.now();
@@ -983,6 +996,7 @@ export class ProtocolAutosave {
     if (answer && answer.status === 200 && reply?.ok === true && typeof reply.version === "number") {
       this.unanswered.delete(id);
       this.attempts.delete(id);
+      if (typeof reply.protocolId === "number") e.protocolId = reply.protocolId;
       e.version = reply.version;
       e.confirmed = payload;
       e.savedAt = typeof reply.savedAt === "string" ? Date.parse(reply.savedAt) : Date.now();
@@ -1017,6 +1031,7 @@ export class ProtocolAutosave {
 
   /** The server's text as the screen's confirmed one (a refusal's, or one of a save whose answer was lost). */
   private adopt(e: Entry, stored: ServerDraft): void {
+    e.protocolId = stored.protocolId;
     e.version = stored.version;
     e.titles = [...stored.titles];
     e.confirmed = copy(stored.content);
@@ -1215,6 +1230,7 @@ export async function getScreen(source: ScreenSource): Promise<ScreenAnswer> {
 /** A student of the page's data as the engine takes her. */
 export const serverDraft = (s: ScreenStudentView): ServerDraft => ({
   registrationId: s.registrationId,
+  protocolId: s.protocolId ?? null,
   version: s.version,
   titles: s.titles,
   content: { notes: s.notes, generalNote: s.generalNote },
@@ -1233,6 +1249,7 @@ export function readStudents(body: unknown): ScreenStudentView[] | null {
     const v = s as Record<string, unknown>;
     return (
       typeof v.registrationId === "number" &&
+      (v.protocolId === undefined || v.protocolId === null || typeof v.protocolId === "number") &&
       typeof v.name === "string" &&
       typeof v.awaiting === "boolean" &&
       typeof v.version === "number" &&

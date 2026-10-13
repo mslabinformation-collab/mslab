@@ -188,9 +188,11 @@ export function feedbackOpenFor(
 /**
  * One student on the course day's screen as the page hands her over and GET /api/admin/protokoll answers: her protocol's draft, every date as text.
  * `awaiting`: her registration waits for its prepayment ("ootab ettemaksu"). `version` 0: no protocol yet (the course's headings, empty notes).
+ * `protocolId`: the protocol's row, null for none yet (one deleted with the account and made again is another row, even at the same version).
  */
 export type ScreenStudentView = {
   registrationId: number;
+  protocolId: number | null;
   name: string;
   awaiting: boolean;
   version: number;

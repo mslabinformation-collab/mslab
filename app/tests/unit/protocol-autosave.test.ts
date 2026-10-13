@@ -12,6 +12,7 @@ import { PROTOCOL_LIMITS } from "@/domain/protocols";
 const TITLES = ["Ettevalmistus", "Värvimine"];
 const draft = (over: Partial<ServerDraft> = {}): ServerDraft => ({
   registrationId: 7,
+  protocolId: null,
   version: 0,
   titles: TITLES,
   content: { notes: ["", ""], generalNote: "" },
@@ -1494,6 +1495,39 @@ describe("the final review's parked items", () => {
     s.calls[1].answer(ok(2));
     await tick();
     expect(e.get(7)).toMatchObject({ version: 2, status: { kind: "saved" } });
+  });
+
+  test("item 5: a protocol made again at the same version (deleted with the account, then saved anew elsewhere) is another row, so it is newer: taken when nothing is unsaved", () => {
+    const e = start([at(2, "Vana", { protocolId: 5 })], server().send);
+    e.awaitFresh();
+    e.reconcile([at(2, "Uus", { protocolId: 9 })]);
+    expect(e.get(7)).toMatchObject({ protocolId: 9, version: 2, content: { notes: ["Uus", ""] }, confirmed: { notes: ["Uus", ""] }, conflict: null, status: { kind: "saved" } });
+    e.reconcile([at(2, "Uus", { protocolId: 9 })]); // the same row read again: nothing changes
+    expect(e.get(7)).toMatchObject({ protocolId: 9, content: { notes: ["Uus", ""] }, conflict: null });
+  });
+
+  test("item 5: the row made again while her own words are not saved yet: its text is shown and her words go into the notice", async () => {
+    const s = server();
+    const e = start([at(2, "Vana", { protocolId: 5 })], s.send);
+    e.reconcile([at(2, "Vana", { protocolId: 5 })]); // read once already: not 'unread'
+    e.editNote(7, 0, "Vana, minu lisa");
+    e.reconcile([at(2, "Uus", { protocolId: 9 })]);
+    expect(e.get(7)).toMatchObject({ protocolId: 9, content: { notes: ["Uus", ""] }, conflict: { titles: TITLES, lost: { notes: ["Vana, minu lisa", ""] } } });
+    await tick(DEBOUNCE_MS * 2);
+    expect(s.calls).toHaveLength(0); // nothing saved over the new row
+  });
+
+  test("item 5: the screen learns its row from a save's answer (its first save made it), so the same row read later changes nothing", async () => {
+    const s = server();
+    const e = start([draft()], s.send);
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer({ status: 200, body: { ok: true, version: 1, savedAt: "2026-10-12T08:00:00.000Z", protocolId: 9 } });
+    await tick();
+    expect(e.get(7)!.protocolId).toBe(9);
+    e.editNote(7, 0, "AB"); // typed on, not saved yet
+    e.reconcile([at(1, "A", { protocolId: 9 })]);
+    expect(e.get(7)).toMatchObject({ content: { notes: ["AB", ""] }, conflict: null });
   });
 
   test("item 7c: a save answered 404 is the server's word, like a 200: a read kept for after that save is not taken", async () => {

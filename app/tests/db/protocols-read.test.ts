@@ -33,10 +33,12 @@ describe("handleRead", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = (await res.json()) as unknown;
     const students = readStudents(body)!; // the shape the browser takes it in
+    const [row] = await db.select().from(protocols);
     expect(students).toEqual([
-      { registrationId: anu.id, name: "Anu Aas", awaiting: true, version: 0, titles: HEADINGS, notes: notes(), generalNote: "", sentVersion: null, sentAt: null, savedAt: null },
+      { registrationId: anu.id, protocolId: null, name: "Anu Aas", awaiting: true, version: 0, titles: HEADINGS, notes: notes(), generalNote: "", sentVersion: null, sentAt: null, savedAt: null },
       {
         registrationId: mari.id,
+        protocolId: row.id,
         name: "Mari Maasikas",
         awaiting: false,
         version: 2,
@@ -56,6 +58,20 @@ describe("handleRead", () => {
     const res = await get(`?registreering=${kati.id}`);
     expect(res.status).toBe(200);
     expect(readStudents(await res.json())!.map((s) => [s.registrationId, s.version])).toEqual([[kati.id, 0]]);
+  });
+
+  test("a protocol deleted (with the account) and made again is another row: at the same version the read still tells them apart", async () => {
+    const { course, session } = await protocolCourse(db);
+    const mari = await student(db, course, session, "Mari Maasikas");
+    const write = (note: string, version: number) => saveProtocol(db, { registrationId: mari.id, version, titles: HEADINGS, notes: notes(note), generalNote: "" }, NOW);
+    await write("Vana", 0);
+    const before = readStudents(await (await get(`?sessioon=${session.id}`)).json())![0];
+    await db.delete(protocols);
+    await write("Uus", 0);
+    const after = readStudents(await (await get(`?sessioon=${session.id}`)).json())![0];
+    expect([before.version, after.version]).toEqual([1, 1]);
+    expect(after.protocolId).not.toBe(before.protocolId);
+    expect(after.notes[0]).toBe("Uus");
   });
 
   test("reading creates nothing: a student with no protocol stays without one (version 0, the course's headings)", async () => {

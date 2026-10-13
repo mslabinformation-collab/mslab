@@ -40,7 +40,8 @@ export const saveBody = z
   .refine((body) => body.notes.length === body.titles.length, { message: "one note for each heading", path: ["notes"] });
 export type SaveInput = z.infer<typeof saveBody>;
 
-export type SaveResult = { kind: "saved"; version: number; savedAt: Date } | { kind: "conflict"; protocol: ProtocolDraft } | { kind: "notFound" };
+/** saved: `protocolId` is the protocol's row (the screen tells a protocol made again from the one it had by it). */
+export type SaveResult = { kind: "saved"; protocolId: number; version: number; savedAt: Date } | { kind: "conflict"; protocol: ProtocolDraft } | { kind: "notFound" };
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 const titlesOf = (stages: readonly ProtocolStage[]): string[] => stages.map((s) => s.title);
@@ -87,16 +88,16 @@ export async function saveProtocol(db: Db, input: SaveInput, now: Date): Promise
         })
         .onConflictDoNothing({ target: protocols.registrationId })
         .returning();
-      if (created) return { kind: "saved", version: created.version, savedAt: now };
+      if (created) return { kind: "saved", protocolId: created.id, version: created.version, savedAt: now };
     } else {
-      if (holds(stored, input)) return { kind: "saved", version: stored.version, savedAt: stored.updatedAt };
+      if (holds(stored, input)) return { kind: "saved", protocolId: stored.id, version: stored.version, savedAt: stored.updatedAt };
       if (input.version !== stored.version || !sameList(titlesOf(stored.stages), input.titles)) return { kind: "conflict", protocol: draftOf(stored, headings) };
       const [updated] = await db
         .update(protocols)
         .set({ stages: stored.stages.map((s, i) => ({ title: s.title, note: input.notes[i] })), generalNote: input.generalNote, version: sql`${protocols.version} + 1`, updatedAt: now })
         .where(and(eq(protocols.registrationId, input.registrationId), eq(protocols.version, input.version)))
         .returning();
-      if (updated) return { kind: "saved", version: updated.version, savedAt: now };
+      if (updated) return { kind: "saved", protocolId: updated.id, version: updated.version, savedAt: now };
     }
     if (attempt >= 1) {
       const last = await current(db, input.registrationId);
@@ -115,6 +116,7 @@ const json = (body: unknown, status = 200): Response => Response.json(body, { st
 
 /** A draft as JSON: its dates as ISO strings. */
 export const draftJson = (d: ProtocolDraft) => ({
+  id: d.id,
   version: d.version,
   stages: d.stages,
   generalNote: d.generalNote,
@@ -125,7 +127,7 @@ export const draftJson = (d: ProtocolDraft) => ({
 
 /**
  * POST /api/admin/protokoll — one autosave (the route wraps this in withAdmin). The body is a SaveInput as JSON. 200 `{ ok: true, version,
- * savedAt }`; 409 `{ ok: false, error: "conflict", protocol }` (what is stored: the screen shows it); 404 `{ ok: false, error: "notFound" }`;
+ * savedAt, protocolId }`; 409 `{ ok: false, error: "conflict", protocol }` (what is stored: the screen shows it); 404 `{ ok: false, error: "notFound" }`;
  * 400 `{ error: "body" }` (not a save), `{ error: "text" }` (text Postgres cannot store: the screen cleans pasted text first) or
  * `{ error: "tooLong", places }` (a box over 10 000 characters: nothing is cut, the screen says so first); 413 `{ error: "size" }`; 500
  * `{ error: "server" }`, logged by the registration's id. Never cached.
@@ -149,7 +151,7 @@ export async function handleSave(db: Db, request: Request, now: Date): Promise<R
   if (places.length > 0) return json({ ok: false, error: "tooLong", places }, 400);
   try {
     const result = await saveProtocol(db, input, now);
-    if (result.kind === "saved") return json({ ok: true, version: result.version, savedAt: result.savedAt.toISOString() });
+    if (result.kind === "saved") return json({ ok: true, version: result.version, savedAt: result.savedAt.toISOString(), protocolId: result.protocolId });
     if (result.kind === "conflict") return json({ ok: false, error: "conflict", protocol: draftJson(result.protocol) }, 409);
     return json({ ok: false, error: "notFound" }, 404);
   } catch (e) {
