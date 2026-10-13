@@ -23,7 +23,9 @@ import { toStorable } from "@/lib/to-storable"; // (never lib/storable: this fil
 // - nothing is sent for a protocol whose boxes were never typed in: a first save creates the protocol ("Mustand"), so looking creates none;
 // - the tab hidden (another app, the tablet locked) sends a waiting save at once; the page put away (pagehide: the tab closed, the tablet's
 //   browser freezing it) sends it as a keepalive request when it is small enough, else leaves it to the copy; leaving the screen for another
-//   admin page sends it unanswered (stop);
+//   admin page (stop) sends a waiting save, and one queued behind the save on its way, once: after that save and never beside it, from the
+//   version that save got (its answer is still taken, quietly); the parting save's own answer is not taken: its text is remembered as sent,
+//   and the copy stays until a later visit finds it stored;
 // - while a send is on its way (setSending, counted) the protocol takes no edits;
 // - the screen may be shown from a server render older than the server's text (the browser's Back restores the page from the client router's
 //   copy): until the screen has read the server's text again (keepReading: GET /api/admin/protokoll, then reconcile) the status says "checking" and
@@ -468,8 +470,12 @@ export class ProtocolAutosave {
   private readonly deferred = new Map<number, ServerDraft | null>();
   /** The protocols whose read was refused (signed out): they say so instead of "saved", until the server takes a save of theirs again. */
   private readonly signedOutIds = new Set<number>();
+  /** The text of each protocol's parting save (part) since the screen was left: it goes once. */
+  private readonly parted = new Map<number, Content>();
   private storage: Storage | null = null;
   private running = false;
+  /** The screen was left (stop) and not started again: the saves queued meanwhile go once each, unanswered (part). */
+  private left = false;
   private resumed = false;
   private revision = 0;
   private keepaliveLeft = KEEPALIVE_MAX_BYTES;
@@ -587,6 +593,10 @@ export class ProtocolAutosave {
   /** A save is over (the chain of the protocol ended): a read it made wait is taken now, unless the save's own answer was the server's word on it. */
   private takeDeferred(id: number): void {
     if (!this.deferred.has(id)) return;
+    if (!this.running) {
+      this.deferred.delete(id); // (the screen was left: nothing is told, and a later visit reads the server again)
+      return;
+    }
     const d = this.deferred.get(id) ?? null;
     const e = this.entries.get(id);
     this.deferred.delete(id);
@@ -645,6 +655,8 @@ export class ProtocolAutosave {
     this.storage = storage;
     this.keyTab = storage && canList(storage) ? this.tab : "";
     this.running = true;
+    this.left = false;
+    this.parted.clear();
     window.addEventListener("online", this.onBack);
     window.addEventListener("pagehide", this.onPageHide);
     window.addEventListener("pageshow", this.onPageShow);
@@ -659,13 +671,17 @@ export class ProtocolAutosave {
   }
 
   /**
-   * Stops (the screen is left for another admin page): no timer runs on, and an answer still on its way is not applied (the text stays in
-   * this browser). A save still waiting for its 1.5 s goes now, unanswered and remembered as maybe stored: the server has the text when
-   * another device opens it, and this browser's copy stays until a later visit finds the text stored (resumeLocal).
+   * Stops (the screen is left for another admin page): no timer runs on, no status changes and nobody is told. A save on its way still has its
+   * answer taken, quietly (afterStop): the version and the text the server took, so what goes next goes from there. A save still waiting for its
+   * 1.5 s goes now, through the queue: after the save on its way (never beside it), like one queued behind it before (a blur), each once (part),
+   * its answer not taken and its text remembered as maybe stored: the server has the text when another device opens it, and this browser's copy
+   * stays until a later visit finds the text stored (resumeLocal). (A page put away is onPageHide's, with its keepalive budget: stop sends no
+   * keepalive request, the page lives on.)
    */
   stop(): void {
     const waiting = [...this.debounce.keys()];
     this.running = false;
+    this.left = true;
     window.removeEventListener("online", this.onBack);
     window.removeEventListener("pagehide", this.onPageHide);
     window.removeEventListener("pageshow", this.onPageShow);
@@ -673,14 +689,7 @@ export class ProtocolAutosave {
     for (const timer of [...this.debounce.values(), ...this.retry.values()]) clearTimeout(timer);
     this.debounce.clear();
     this.retry.clear();
-    for (const id of waiting) {
-      const e = this.entries.get(id);
-      if (!e || e.sending || !this.uncertain(e) || overLimit(e.content.notes, e.content.generalNote).length > 0) continue;
-      const body = this.bodyOf(e);
-      this.unanswered.set(id, remember(this.unanswered.get(id) ?? [], { notes: body.notes, generalNote: body.generalNote }));
-      this.keep(e);
-      void this.send(body).catch(() => null);
-    }
+    for (const id of waiting) void this.queue(id, false);
   }
 
   editNote(id: number, index: number, value: string): void {
@@ -864,7 +873,10 @@ export class ProtocolAutosave {
     return { registrationId: e.registrationId, version: e.version, titles: [...e.titles], notes: [...e.content.notes], generalNote: e.content.generalNote };
   }
 
-  /** One save after the one on its way. `keepalive`: the page is put away (onPageHide), and no save is on its way: it goes at once. */
+  /**
+   * One save after the one on its way. `keepalive`: the page is put away (onPageHide), and no save is on its way: it goes at once; so does a
+   * parting save (the screen left, stop) with none on its way.
+   */
   private queue(id: number, keepalive: boolean): Promise<boolean> {
     this.clearTimer(this.debounce, id);
     const before = this.chains.get(id);
@@ -873,8 +885,8 @@ export class ProtocolAutosave {
           () => this.sendIfNeeded(id),
           () => this.sendIfNeeded(id),
         )
-      : keepalive
-        ? this.sendIfNeeded(id, true)
+      : keepalive || !this.running
+        ? this.sendIfNeeded(id, keepalive)
         : Promise.resolve().then(() => this.sendIfNeeded(id));
     this.chains.set(id, next);
     void next.then(() => {
@@ -887,7 +899,8 @@ export class ProtocolAutosave {
 
   private async sendIfNeeded(id: number, keepalive = false): Promise<boolean> {
     const e = this.entries.get(id);
-    if (!e || !this.running || e.status.kind === "gone") return false;
+    if (!e || e.status.kind === "gone") return false;
+    if (!this.running) return this.left ? this.part(e) : false;
     if (!this.uncertain(e)) {
       this.settle(e);
       return true;
@@ -906,7 +919,7 @@ export class ProtocolAutosave {
     this.set(e, { kind: "saving" });
     const answer = await this.send(body, keepalive ? { keepalive: true } : undefined);
     this.flying.delete(id);
-    if (!this.running) return false;
+    if (!this.running) return this.afterStop(e, payload, answer);
     const reply = (answer?.body ?? null) as Record<string, unknown> | null;
     if (answer && answer.status === 200 && reply?.ok === true && typeof reply.version === "number") {
       this.awaiting.delete(id); // (the server took it from the version this screen had, so that was its current one)
@@ -935,6 +948,49 @@ export class ProtocolAutosave {
     // refusal tells); kept here, and tried again. Only the server's own refusals (400, 409, 413) are sure not to have stored it.
     if (!answer || !REFUSALS.has(answer.status)) this.unanswered.set(id, remember(this.unanswered.get(id) ?? [], payload));
     return this.failed(e, { kind: "retrying" });
+  }
+
+  /**
+   * The answer to a save sent before the screen was left (stop), taken quietly: no status, no timer, no notice, nobody told. The server took it:
+   * its version and text are the entry's (the parting save behind it goes from there). Any other answer leaves the text in this browser,
+   * remembered as sent when it may be stored (no answer, a server error); a refusal's text is shown by a later visit (resumeLocal, the notice).
+   */
+  private afterStop(e: Entry, payload: Content, answer: Answer): false {
+    const id = e.registrationId;
+    const reply = (answer?.body ?? null) as Record<string, unknown> | null;
+    if (answer && answer.status === 200 && reply?.ok === true && typeof reply.version === "number") {
+      this.unanswered.delete(id);
+      this.attempts.delete(id);
+      e.version = reply.version;
+      e.confirmed = payload;
+      e.savedAt = typeof reply.savedAt === "string" ? Date.parse(reply.savedAt) : Date.now();
+    } else if (!answer || !REFUSALS.has(answer.status)) this.unanswered.set(id, remember(this.unanswered.get(id) ?? [], payload));
+    if (this.uncertain(e) || this.unkept.has(id)) this.keep(e);
+    else this.dropCopy(e);
+    return false;
+  }
+
+  /**
+   * A save of the screen that was left (stop): one that waited for its 1.5 s, or one queued behind the save on its way. It goes after that save
+   * (the queue), from the version that save got, once (another one queued with the same text sends nothing). Its answer is not taken (the queue
+   * waits for it all the same, so a later save never flies beside it): its text is remembered as sent, here and in this browser's copy, so a
+   * later visit that finds it stored takes it as this browser's own (resumeLocal) and one that does not resumes it. Nothing is told. Never while
+   * a send is on its way, nor for a box over its limit.
+   */
+  private part(e: Entry): Promise<boolean> | false {
+    const id = e.registrationId;
+    if (e.sending || !this.uncertain(e) || overLimit(e.content.notes, e.content.generalNote).length > 0) return false;
+    const body = this.bodyOf(e);
+    const text: Content = { notes: body.notes, generalNote: body.generalNote };
+    const before = this.parted.get(id);
+    if (before && sameContent(before, text)) return false;
+    this.parted.set(id, text);
+    this.unanswered.set(id, remember(this.unanswered.get(id) ?? [], text));
+    this.keep(e);
+    return this.send(body).then(
+      () => false,
+      () => false,
+    );
   }
 
   /** The server's text as the screen's confirmed one (a refusal's, or one of a save whose answer was lost). */

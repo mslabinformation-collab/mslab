@@ -753,6 +753,9 @@ describe("two tabs, a full storage, and the rest (fix round 1)", () => {
     e.start(localStorage);
     e.editNote(7, 0, "jäi alles, lisa");
     await tick(DEBOUNCE_MS);
+    expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[0, "jäi alles"]]); // one save at a time: the next waits for the parting one
+    s.calls[0].answer(ok(1)); // stored as version 1; a parting save's answer is not taken (its text is remembered as sent)
+    await tick();
     expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[0, "jäi alles"], [0, "jäi alles, lisa"]]);
     s.calls[1].answer(refused(1, ["jäi alles", ""]));
     await tick();
@@ -1234,5 +1237,148 @@ describe("keepReading: refusals and a tab hidden for long (fix round 2 of Task 1
     expect(read).toHaveBeenCalledTimes(2);
     expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
     reading.stop();
+  });
+});
+
+// The final review's Important 1: the screen left (a menu link) while a save is on its way. The newest text must still reach the server, after
+// the save on its way and never beside it, from the version that save got; nothing is told and no timer runs after the screen is gone.
+describe("leaving the screen while a save is on its way (final review, Important 1)", () => {
+  /** A hand-answered server that also counts the saves on their way at once. */
+  function counted() {
+    const s = server();
+    let flying = 0;
+    let most = 0;
+    const send = (body: SaveBody, opts?: SendOptions) => {
+      flying++;
+      most = Math.max(most, flying);
+      return s.send(body, opts).finally(() => void flying--);
+    };
+    return { calls: s.calls, send, most: () => most, flying: () => flying };
+  }
+  const sent = (s: { calls: { body: SaveBody }[] }) => s.calls.map((c) => [c.body.version, c.body.notes[0]]);
+  /** Long enough for every retry a failed save would start (2 + 5 + 10 + 20 + 30 + 30 + … s). */
+  const RETRY_TOTAL = 120_000;
+
+  test("(a) the box loses focus: 'A' on its way, 'AB' waits behind it, the screen is left; 'AB' goes once after 'A' is answered, from the version 'A' got", async () => {
+    const s = counted();
+    const e = start([draft()], s.send);
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS); // POST v0 "A" on its way (slow Wi-Fi)
+    e.editNote(7, 0, "AB");
+    void e.save(7); // the blur: "AB" waits behind "A"
+    e.stop(); // the menu link
+    const told = vi.fn();
+    e.subscribe(told);
+    await tick(DEBOUNCE_MS * 4);
+    expect(sent(s)).toEqual([[0, "A"]]); // one save at a time
+    s.calls[0].answer(ok(1));
+    await tick();
+    expect(sent(s)).toEqual([[0, "A"], [1, "AB"]]); // the newest text, from the version "A" got
+    expect(readLocal(localStorage, 7)).toMatchObject({ version: 1, content: { notes: ["AB", ""] }, sent: [{ notes: ["AB", ""], generalNote: "" }] });
+    s.calls[1].answer(ok(2)); // not waited for: the screen is gone
+    await tick(RETRY_TOTAL);
+    expect(s.calls).toHaveLength(2);
+    expect(s.most()).toBe(1);
+    expect(told).not.toHaveBeenCalled();
+  });
+
+  test("(b) the box keeps the focus: 'A' on its way, 'AB' waiting for its 1.5 s, the screen is left; 'AB' never flies beside 'A' and goes once after it, from the version 'A' got", async () => {
+    const s = counted();
+    const e = start([draft()], s.send);
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    e.editNote(7, 0, "AB"); // waits for its 1.5 s
+    e.stop();
+    const told = vi.fn();
+    e.subscribe(told);
+    await tick();
+    expect(sent(s)).toEqual([[0, "A"]]); // nothing beside "A"
+    s.calls[0].answer(ok(1));
+    await tick();
+    expect(sent(s)).toEqual([[0, "A"], [1, "AB"]]);
+    s.calls[1].answer(ok(2));
+    await tick(RETRY_TOTAL);
+    expect(s.calls).toHaveLength(2);
+    expect(s.most()).toBe(1);
+    expect(told).not.toHaveBeenCalled();
+  });
+
+  test("a save queued by a blur and one waiting for its 1.5 s when the screen is left: the newest text goes once, after the save on its way", async () => {
+    const s = counted();
+    const e = start([draft()], s.send);
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    e.editNote(7, 0, "AB");
+    void e.save(7); // the blur: queued behind "A"
+    e.editNote(7, 0, "ABC"); // back in the box, typed on: waits for its 1.5 s
+    e.stop();
+    await tick();
+    expect(sent(s)).toEqual([[0, "A"]]);
+    s.calls[0].answer(ok(1));
+    await tick();
+    expect(sent(s)).toEqual([[0, "A"], [1, "ABC"]]);
+    s.calls[1].answer(null);
+    await tick(RETRY_TOTAL);
+    expect(s.calls).toHaveLength(2);
+    expect(s.most()).toBe(1);
+  });
+
+  test("the answer of the save on its way is lost after the screen is left: 'AB' still goes once after it, and this browser remembers both texts, so a later visit that finds 'A' stored resumes 'AB' with no notice", async () => {
+    const s = counted();
+    const e = start([draft()], s.send);
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    e.editNote(7, 0, "AB");
+    e.stop();
+    await tick();
+    s.calls[0].answer(null); // the server stored "A" as version 1; the answer never came
+    await tick();
+    expect(sent(s)).toEqual([[0, "A"], [0, "AB"]]); // one after the other, never together
+    expect(s.most()).toBe(1);
+    expect(readLocal(localStorage, 7)).toMatchObject({ version: 0, content: { notes: ["AB", ""] }, sent: [{ notes: ["A", ""], generalNote: "" }, { notes: ["AB", ""], generalNote: "" }] });
+    s.calls[1].answer(refused(1, ["A", ""])); // ignored: the screen is gone
+    await tick(RETRY_TOTAL);
+    expect(s.calls).toHaveLength(2);
+    const again = server();
+    const back = start([draft({ version: 1, content: { notes: ["A", ""], generalNote: "" } })], again.send);
+    await tick();
+    expect(again.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[1, "AB"]]);
+    again.calls[0].answer(ok(2));
+    await tick();
+    expect(back.get(7)).toMatchObject({ version: 2, conflict: null, status: { kind: "saved" } });
+  });
+
+  test("the save on its way is answered after the screen is left, nothing newer typed: its version and text are taken quietly and the copy goes; no timer, nobody told", async () => {
+    const s = counted();
+    const e = start([draft()], s.send);
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    e.stop();
+    const told = vi.fn();
+    e.subscribe(told);
+    s.calls[0].answer(ok(1));
+    await tick(RETRY_TOTAL);
+    expect(e.get(7)).toMatchObject({ version: 1, confirmed: { notes: ["A", ""], generalNote: "" } });
+    expect(readLocal(localStorage, 7)).toBeNull();
+    expect(s.calls).toHaveLength(1);
+    expect(told).not.toHaveBeenCalled();
+  });
+
+  test("the save on its way is refused after the screen is left (another device saved first): no notice, no timer; 'AB' goes once and the copy keeps it, so the next visit shows it in the notice", async () => {
+    const s = counted();
+    const e = start([draft()], s.send);
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    e.editNote(7, 0, "AB");
+    e.stop();
+    s.calls[0].answer(refused(1, ["telefon", ""]));
+    await tick();
+    expect(e.get(7)!.conflict).toBeNull();
+    expect(sent(s)).toEqual([[0, "A"], [0, "AB"]]);
+    s.calls[1].answer(refused(1, ["telefon", ""]));
+    await tick(RETRY_TOTAL);
+    expect(s.calls).toHaveLength(2);
+    const back = start([draft({ version: 1, content: { notes: ["telefon", ""], generalNote: "" } })], server().send);
+    expect(back.get(7)).toMatchObject({ content: { notes: ["telefon", ""] }, conflict: { titles: TITLES, lost: { notes: ["AB", ""], generalNote: "" } } });
   });
 });
