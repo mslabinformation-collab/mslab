@@ -20,18 +20,21 @@ import { mailConfigured, sendMail, type Env } from "./notify";
 // Logs carry the registration's id only: never a note, a name or an address.
 //
 // A protocol is created by its first save, with the course's headings as they are then (spec §3); until then the screen shows those headings
-// with empty boxes and the status is "none". Every save carries the version the screen has, and the headings it shows: a save from another
-// version, or for other headings, is refused with what is stored, so newer text is never overwritten and a note never lands under another
-// heading (spec §4, §9). A save that changes nothing raises nothing: a look at a protocol, or the repeat of a save whose answer was lost, is
-// answered with the version that holds that text.
+// with empty boxes and the status is "none". Every save carries the version the screen has, the row it builds on, and the headings it shows: a
+// save from another version, of another row (the protocol deleted with the account and made again: its versions start again from 1), or for
+// other headings, is refused with what is stored, so newer text is never overwritten and a note never lands under another heading (spec §4, §9).
+// A save that changes nothing raises nothing: a look at a protocol, or the repeat of a save whose answer was lost, is answered with the version
+// that holds that text.
 
 /**
- * What a save sends: the registration, the version the screen has (0: none yet), the headings it shows and the notes under them, one note
- * for each heading (a body with another count is not a save, so a `SaveInput` always has as many notes as titles).
+ * What a save sends: the registration, the protocol's row the screen's text is of (`protocolId`; null: none yet; absent: a screen from before
+ * the row was sent, checked by the version only), the version the screen has (0: none yet), the headings it shows and the notes under them,
+ * one note for each heading (a body with another count is not a save, so a `SaveInput` always has as many notes as titles).
  */
 export const saveBody = z
   .object({
     registrationId: z.number().int().positive().max(2_147_483_647),
+    protocolId: z.number().int().positive().max(2_147_483_647).nullable().optional(),
     version: z.number().int().min(0).max(2_147_483_647),
     titles: z.array(z.string().max(PROTOCOL_LIMITS.title)).max(PROTOCOL_LIMITS.stages),
     notes: z.array(z.string()).max(PROTOCOL_LIMITS.stages),
@@ -63,8 +66,9 @@ async function current(db: Db, registrationId: number): Promise<{ headings: stri
 
 /**
  * One save of the screen. A registration that is cancelled meanwhile still saves (spec §9: hidden and never sent, but nothing typed is lost).
- * The insert and the update are each one conditional statement; one that meets another save at the same moment reads again and decides on
- * what is stored then (twice at most, then the answer is a conflict with the protocol as it is).
+ * The insert and the update are each one conditional statement (the update only of the row read); one that meets another save at the same
+ * moment, or a protocol deleted and made again meanwhile, reads again and decides on what is stored then (twice at most, then the answer is a
+ * conflict with the protocol as it is).
  * The contract with the screen: a save from an older version whose text differs from what is stored is answered with a conflict and the
  * stored protocol, even when the stored text is the screen's own earlier save whose answer was lost. Recognising a lost answer of its own is
  * the client's job: the screen keeps every unacknowledged text it sent and treats a conflict whose stored text equals one of them as its own save.
@@ -74,8 +78,11 @@ export async function saveProtocol(db: Db, input: SaveInput, now: Date): Promise
     const found = await current(db, input.registrationId);
     if (!found) return { kind: "notFound" };
     const { headings, stored } = found;
+    // a save built on a row (protocolId) is refused by any other one, and by none: a protocol deleted with the account and made again starts
+    // again from version 1, so the version alone would let a screen of the old row overwrite the new one once it reached the same version
+    const otherRow = typeof input.protocolId === "number" && input.protocolId !== stored?.id;
     if (stored === null) {
-      if (input.version !== 0 || !sameList(headings, input.titles)) return { kind: "conflict", protocol: draftOf(null, headings) };
+      if (otherRow || input.version !== 0 || !sameList(headings, input.titles)) return { kind: "conflict", protocol: draftOf(null, headings) };
       const [created] = await db
         .insert(protocols)
         .values({
@@ -90,12 +97,13 @@ export async function saveProtocol(db: Db, input: SaveInput, now: Date): Promise
         .returning();
       if (created) return { kind: "saved", protocolId: created.id, version: created.version, savedAt: now };
     } else {
+      if (otherRow) return { kind: "conflict", protocol: draftOf(stored, headings) };
       if (holds(stored, input)) return { kind: "saved", protocolId: stored.id, version: stored.version, savedAt: stored.updatedAt };
       if (input.version !== stored.version || !sameList(titlesOf(stored.stages), input.titles)) return { kind: "conflict", protocol: draftOf(stored, headings) };
       const [updated] = await db
         .update(protocols)
         .set({ stages: stored.stages.map((s, i) => ({ title: s.title, note: input.notes[i] })), generalNote: input.generalNote, version: sql`${protocols.version} + 1`, updatedAt: now })
-        .where(and(eq(protocols.registrationId, input.registrationId), eq(protocols.version, input.version)))
+        .where(and(eq(protocols.id, stored.id), eq(protocols.version, input.version))) // (the row read: one made again meanwhile is not it)
         .returning();
       if (updated) return { kind: "saved", protocolId: updated.id, version: updated.version, savedAt: now };
     }
@@ -131,8 +139,9 @@ export const draftJson = (d: ProtocolDraft) => ({
  * 400 `{ error: "body" }` (not a save), `{ error: "text" }` (text Postgres cannot store: the screen cleans pasted text first) or
  * `{ error: "tooLong", places }` (a box over 10 000 characters: nothing is cut, the screen says so first); 413 `{ error: "size" }`; 500
  * `{ error: "server" }`, logged by the registration's id. Never cached.
- * A save from an older version whose text differs is answered 409 with the stored protocol. Recognising a lost answer of its own is the
- * client's job: the screen keeps every unacknowledged text it sent and treats a 409 whose stored text equals one of them as its own save.
+ * A save from an older version whose text differs, or one built on another row (`protocolId`), is answered 409 with the stored protocol.
+ * Recognising a lost answer of its own is the client's job: the screen keeps every unacknowledged text it sent and treats a 409 whose stored
+ * text equals one of them as its own save.
  */
 export async function handleSave(db: Db, request: Request, now: Date): Promise<Response> {
   let value: unknown;
