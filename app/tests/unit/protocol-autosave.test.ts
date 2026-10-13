@@ -329,10 +329,10 @@ describe("huge pasted text (Review Focus 4)", () => {
     expect(s.calls).toHaveLength(1);
   });
 
-  test("pasted control characters are dropped, the words, tabs and line breaks kept", () => {
+  test("pasted control characters are dropped, the words, tabs and line breaks kept; Word's line and page breaks become line breaks", () => {
     const e = start([draft()], server().send);
-    e.editNote(7, 0, "Kulmud\u000bhästi\u0000\tjah\r\nlõpp");
-    expect(e.get(7)!.content.notes[0]).toBe("Kulmudhästi\tjah\r\nlõpp");
+    e.editNote(7, 0, "Kulmud\u000bhästi\u0000\tjah\r\nlõpp\u000cuus leht");
+    expect(e.get(7)!.content.notes[0]).toBe("Kulmud\nhästi\tjah\r\nlõpp\nuus leht");
   });
 });
 

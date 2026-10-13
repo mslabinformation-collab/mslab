@@ -149,6 +149,14 @@ test("Review Focus 4: a paste over 10 000 characters is kept whole, the box says
   expect(($("[data-note='1']") as HTMLTextAreaElement).value).toHaveLength(10_001);
 });
 
+test("a paste from Word: its line and page breaks are saved as line breaks, never words run together; other control characters go", async () => {
+  await render({ single: true, students: [student(1, "Anu")] });
+  await type("[data-note='0']", "Kulmud\u000bhästi\u0000\u000cJärgmine leht");
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Kulmud\nhästi\nJärgmine leht");
+  await wait(1500);
+  expect(bodies().map((b) => b.notes[0])).toEqual(["Kulmud\nhästi\nJärgmine leht"]);
+});
+
 test("a sent protocol is shown read-only, with when it was sent; one student has no list", async () => {
   await render({ single: true, students: [student(3, "Kati", { version: 2, sentVersion: 2, sentAt: "2026-10-12T15:00:00.000Z", notes: ["Valmis", ""] })] });
   expect($("[data-students]")).toBeNull();

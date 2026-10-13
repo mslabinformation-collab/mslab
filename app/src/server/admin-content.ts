@@ -103,8 +103,10 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
   const durationLabel = online ? null : c.text("durationLabel", d.durationLabel, LIMITS.duration);
   const includes = online ? [] : c.list("includes", d.includes);
   // "Protokolli punktid" (phase protocols): a contact course's headings, trimmed, no blank rows, at most 30 of at most 120 characters. A pasted
-  // heading is cleaned first (toStorable: control characters and broken surrogates go): Postgres refuses NUL in jsonb, and checkStages does not look
-  const stages: ReturnType<typeof checkStages> = online ? { ok: true, stages: [] } : checkStages(d.protocolStages.map(toStorable));
+  // heading is cleaned first (toStorable: control characters and broken surrogates go): Postgres refuses NUL in jsonb, and checkStages does not look;
+  // a heading is one line (its field is an input, which would drop a line break), so Word's line or page break in it is a space between the words
+  const heading = (s: string) => toStorable(s).replace(/[\r\n]+/g, " ");
+  const stages: ReturnType<typeof checkStages> = online ? { ok: true, stages: [] } : checkStages(d.protocolStages.map(heading));
   if (!stages.ok) c.fail("protocolStages", stages.error);
   // a published course must be buyable / bookable
   if (d.published && online && price == null && !c.errors.price) c.fail("price", "priceRequired");

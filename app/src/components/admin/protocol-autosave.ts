@@ -34,7 +34,7 @@ import { toStorable } from "@/lib/to-storable"; // (this file runs on old iPads:
 //   a newer text of the server is taken silently by a protocol with nothing unsaved, and goes through the refusal's path (the notice, the
 //   words kept) when this screen has text of its own; a send waits for it (whenFresh) and is never made on text the screen has not shown;
 // - a box over 10 000 characters is never cut: nothing is sent until it is shortened, the status and the box say so;
-// - pasted control characters that Postgres cannot store are dropped (toStorable), the words kept.
+// - pasted control characters that Postgres cannot store are dropped (toStorable), the words kept: Word's line and page breaks become line breaks.
 // The server's side is server/protocols.ts saveProtocol behind POST /api/admin/protokoll.
 
 /** What the screen edits of a protocol: the notes under its headings, in order, and the general notes. */
