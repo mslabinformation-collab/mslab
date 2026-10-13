@@ -354,8 +354,15 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
           engine.markSent(r.registrationId, r.result.version, r.result.sentAt);
           onSent(r.registrationId);
           sent.push(nameOf(r.registrationId));
-        } else leftOut(sendMessage(r.result, t) ?? t.sendErrors.failed, r.registrationId);
-        if (r.result.kind === "stale") engine.recheck(r.registrationId); // (another device saved since: her text is read again, for the next send)
+        } else if (r.result.kind !== "stale") leftOut(sendMessage(r.result, t) ?? t.sendErrors.failed, r.registrationId);
+      }
+      // another device saved since: their text is read again (one read) and shown before the summary, as a single "Saada" does, so the next send
+      // goes at the version Maria then sees; a read that does not come in time leaves the line that says to reload
+      const stale = results.filter((r) => r.result.kind === "stale").map((r) => r.registrationId);
+      if (stale.length > 0) {
+        engine.recheck(...stale);
+        const reason = (await engine.whenFresh(stale)) ? t.sendErrors.refreshed : t.sendErrors.stale;
+        for (const id of stale) leftOut(reason, id);
       }
       // (an answer that does not list a protocol that was sent for, or no answer at all: no one is left unexplained)
       const answered = new Set(results.map((r) => r.registrationId));
