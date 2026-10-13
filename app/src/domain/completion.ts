@@ -276,12 +276,17 @@ export type PracticalStatus = "open" | "review" | "fix" | "passed";
 
 /**
  * spec §3.4's table; null row = open. open: no row, or round 0; review (Ootab hindamist): submitted, and Maria has not sent an assessment of
- * that round; fix (Paranda): her send of this round marked a point "fix"; passed (Kinnitatud): it marked none.
+ * that round; fix (Paranda): her send of this round marked a point "fix"; passed (Kinnitatud): every point of it is "ok".
+ *
+ * It fails closed: a sent copy without exactly one "ok" or "fix" per sent point (no `verdicts`, a shorter or longer array, a null) is not an
+ * assessment that can be read, so it stays "review". `passed` completes the course for good (completed_at is never cleared).
  */
 export function practicalStatus(p: { round: number; sentRound: number | null; sent: SentProtocol | null } | null): PracticalStatus {
   if (p === null || p.round === 0) return "open";
   if (p.sentRound === null || p.sentRound < p.round) return "review";
-  return (p.sent?.verdicts ?? []).includes("fix") ? "fix" : "passed";
+  const verdicts = p.sent?.verdicts;
+  if (!p.sent || !verdicts || verdicts.length !== p.sent.stages.length || verdicts.some((v) => v !== "ok" && v !== "fix")) return "review";
+  return verdicts.includes("fix") ? "fix" : "passed";
 }
 
 /** The points (0-based) the last sent assessment marked "fix". */

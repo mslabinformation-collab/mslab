@@ -389,10 +389,21 @@ describe("the practical status (spec §3.4's table)", () => {
     expect(practicalStatus({ round: 2, sentRound: 1, sent: sent(["ok", "fix"]) })).toBe("review");
   });
 
-  test("fix: this round's send marked a point 'fix'; passed: it marked none", () => {
+  test("fix: this round's send marked a point 'fix'; passed: every point of it is 'ok'", () => {
     expect(practicalStatus({ round: 1, sentRound: 1, sent: sent(["ok", "fix"]) })).toBe("fix");
     expect(practicalStatus({ round: 2, sentRound: 2, sent: sent(["ok", "ok"]) })).toBe("passed");
-    expect(practicalStatus({ round: 1, sentRound: 1, sent: { stages: [], generalNote: "" } })).toBe("passed"); // no verdicts in the copy
+  });
+
+  test("fails closed: a sent copy without a verdict for every point (missing array, shorter, a null) is never passed, only waiting for Maria", () => {
+    const stages = [{ title: "P0", note: "" }, { title: "P1", note: "" }];
+    // completed_at is a latch that is never cleared, so an unreadable assessment must not read as passed
+    expect(practicalStatus({ round: 1, sentRound: 1, sent: { stages: [], generalNote: "" } })).toBe("review"); // no verdicts in the copy
+    expect(practicalStatus({ round: 1, sentRound: 1, sent: { stages, generalNote: "" } })).toBe("review"); // points, but no verdicts array
+    expect(practicalStatus({ round: 1, sentRound: 1, sent: { stages, generalNote: "", verdicts: ["ok"] } })).toBe("review"); // shorter than the points
+    expect(practicalStatus({ round: 1, sentRound: 1, sent: { stages, generalNote: "", verdicts: ["ok", "ok", "ok"] } })).toBe("review"); // longer than the points
+    expect(practicalStatus({ round: 1, sentRound: 1, sent: sent(["ok", null]) })).toBe("review"); // a point with no verdict
+    expect(practicalStatus({ round: 1, sentRound: 1, sent: sent(["fix", null]) })).toBe("review"); // a "fix" does not excuse a missing one
+    expect(practicalStatus({ round: 1, sentRound: 1, sent: null })).toBe("review"); // sent round recorded, copy missing
   });
 
   test("sentFixPoints: the 0-based points the last send marked 'fix'", () => {

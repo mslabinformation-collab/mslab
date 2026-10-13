@@ -328,7 +328,10 @@ export const protocols = pgTable(
      * version check; a resubmission resets the "fix" ones to null (R3). A registration's protocol keeps `[]`.
      */
     verdicts: jsonb("verdicts").$type<(Verdict | null)[]>().notNull().default([]),
-    /** The student's submissions so far (0: none); photos being prepared belong to round + 1. Always 0 for a registration's protocol. */
+    /**
+     * The student's submissions so far (0: none); photos being prepared belong to round + 1. Always 0 for a registration's protocol.
+     * A resubmission raises `round` (and sets `submittedAt`) and resets the "fix" verdicts, but never the notes' `version` (ruling R3).
+     */
     round: integer("round").notNull().default(0),
     /** The last submission ("Saada hindamiseks" / "Saada uuesti"); null before the first. */
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
