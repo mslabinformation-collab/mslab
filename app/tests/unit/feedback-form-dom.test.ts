@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CoursesTab } from "@/components/account/CoursesTab";
 import { FeedbackForm } from "@/components/account/FeedbackForm";
 import { coursesTexts, feedbackTexts } from "@/components/account/texts";
+import { checkFeedback } from "@/domain/protocols";
 import { getDict, type Locale } from "@/i18n/locales";
 import type { Dashboard } from "@/server/client-data";
 
@@ -122,6 +123,28 @@ describe("the form", () => {
     await click($("[data-feedback-submit]"));
     expect($("[data-feedback-done='closed']")!.textContent).toContain("Sellele koolitusele ei saa praegu tagasisidet anda.");
     expect($("[data-feedback-form]")).toBeNull();
+  });
+
+  test("pasted control characters (Word's line break, a NUL) are left out of what is sent, as the server's check wants: the words go through, never a 'failed' line for good", async () => {
+    // the route's own check (domain/protocols.ts checkFeedback): a free text Postgres cannot store is refused
+    fetchMock.mockImplementation(async (_url, init) =>
+      init?.method === "POST" ? (checkFeedback(JSON.parse(String(init.body)).answers).ok ? json(200, { ok: true }) : json(400, { ok: false, error: "answers" })) : json(200, { ok: true, course: COURSE, sent: false }),
+    );
+    await form();
+    const type = async (key: string, text: string) =>
+      act(async () => {
+        const box = $(`[data-question='${key}'] textarea`) as HTMLTextAreaElement;
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, text);
+        box.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    const VT = String.fromCharCode(0x0b);
+    const NUL = String.fromCharCode(0);
+    await type("message", `Väga${VT}hea koolitus${NUL}, aitäh`);
+    await type("recommend", `${VT}${NUL}`); // nothing but control characters: not an answer
+    await click($("[data-feedback-submit]"));
+    expect(posts()).toEqual([["/api/konto/tagasiside", { registrationId: 42, locale: "et", answers: { message: "Vägahea koolitus, aitäh" } }]]);
+    expect($("[data-feedback-error]")).toBeNull();
+    expect($("[data-feedback-done='done']")).not.toBeNull();
   });
 
   test("a choice changed before sending: the last one is sent, and nothing else", async () => {

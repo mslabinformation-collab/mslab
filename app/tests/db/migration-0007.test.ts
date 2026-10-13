@@ -12,6 +12,16 @@ import { migrationsThrough } from "./helpers";
 // live code (which knows no protocol_stages), then 0007. The course gets no headings ([]), and the two new tables are there, empty, with their
 // rules: one protocol and one feedback row per registration, both deleted with their registration. Additive: nothing else changes.
 
+/** The statement fails on that very constraint (its name in the error), not on any other (as migration-0006.test.ts's). */
+async function violates(statement: PromiseLike<unknown>, constraint: string) {
+  const error = await Promise.resolve(statement).then(
+    () => null,
+    (e: unknown) => e as { message?: string; cause?: { message?: string } },
+  );
+  expect(error, `a failure on ${constraint}`).not.toBeNull();
+  expect(error!.cause?.message ?? error!.message).toContain(`"${constraint}"`);
+}
+
 test("0007 gives every course an empty protocol_stages and adds protocols and course_feedback, one per registration, deleted with it", async () => {
   const db = drizzle(new PGlite(), { schema });
   const through = async (tag: string) => {
@@ -39,10 +49,10 @@ test("0007 gives every course an empty protocol_stages and adds protocols and co
   const [p] = await db.insert(protocols).values({ registrationId: reg.id, stages: [{ title: "Ettevalmistus", note: "" }] }).returning();
   expect(p).toMatchObject({ generalNote: "", version: 1, sent: null, sentAt: null, sentVersion: null });
   expect(p.createdAt).toBeInstanceOf(Date);
-  await expect(db.insert(protocols).values({ registrationId: reg.id, stages: [] })).rejects.toThrow(); // one per registration
+  await violates(db.insert(protocols).values({ registrationId: reg.id, stages: [] }), "protocols_registration"); // one per registration
   const [f] = await db.insert(courseFeedback).values({ registrationId: reg.id }).returning();
   expect(f).toMatchObject({ answers: null, locale: null, submittedAt: null, dismissedAt: null });
-  await expect(db.insert(courseFeedback).values({ registrationId: reg.id })).rejects.toThrow();
+  await violates(db.insert(courseFeedback).values({ registrationId: reg.id }), "course_feedback_registration");
 
   await db.delete(registrations).where(eq(registrations.id, reg.id));
   expect(await db.select().from(protocols)).toEqual([]);

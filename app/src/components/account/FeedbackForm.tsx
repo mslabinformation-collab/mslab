@@ -9,6 +9,7 @@ import { fill } from "@/i18n/format";
 import { href } from "@/i18n/href";
 import type { Locale } from "@/i18n/locales";
 import { isDone, sendJson } from "@/lib/json-request";
+import { toStorable } from "@/lib/to-storable";
 import { AccountLoader } from "./AccountLoader";
 import { AccountNotFound } from "./AccountNotFound";
 import type { FeedbackTexts } from "./texts";
@@ -48,7 +49,9 @@ type Answers = Partial<Record<FeedbackKey, string | number>>;
  * Maria's paper form "Sinu kogemus MS LAB koolitusel" (spec §7), its ten questions in its order: the score (1–10, a row of number buttons), the
  * seven choices (a row of pills each), the two free texts (at most 2000 characters, the count under each). Nothing is required; "Saada
  * tagasiside" needs one answer. Sent: the closing line. Answered already (on load, or another tab's submit): it says so. The line that takes
- * the form's place takes the focus too when it comes from a send (the button she pressed is gone), and is announced as a status.
+ * the form's place takes the focus too when it comes from a send (the button she pressed is gone), and is announced as a status. The free
+ * texts go without what Postgres cannot store (toStorable: a pasted document's control characters, as the admin's screen does), which the
+ * server's check refuses: a pasted text would else fail every time.
  */
 function FeedbackBody({ registrationId, data, locale, t }: { registrationId: number; data: FormAnswer; locale: Locale; t: FeedbackTexts }) {
   const uid = useId();
@@ -63,7 +66,11 @@ function FeedbackBody({ registrationId, data, locale, t }: { registrationId: num
     setAnswers((a) => ({ ...a, [key]: value }));
     setError(null);
   };
-  const given = Object.fromEntries(Object.entries(answers).filter(([, v]) => typeof v === "number" || (typeof v === "string" && v.trim() !== "")));
+  const given = Object.fromEntries(
+    Object.entries(answers)
+      .map(([k, v]) => [k, typeof v === "string" ? toStorable(v) : v] as const)
+      .filter(([, v]) => typeof v === "number" || (typeof v === "string" && v.trim() !== "")),
+  );
 
   useEffect(() => {
     if (focusLine.current && (state === "done" || state === "sent" || state === "closed")) {
