@@ -84,7 +84,7 @@ describe("when a box saves, and what a save sends", () => {
     expect(e.get(7)!.status).toEqual({ kind: "pending" });
     expect(readLocal(localStorage, 7)?.content.notes).toEqual(["Ku", ""]); // kept until the server confirms it
     await tick(1);
-    expect(s.calls.map((c) => c.body)).toEqual([{ registrationId: 7, version: 0, titles: TITLES, notes: ["Ku", ""], generalNote: "" }]);
+    expect(s.calls.map((c) => c.body)).toEqual([{ registrationId: 7, protocolId: null, version: 0, titles: TITLES, notes: ["Ku", ""], generalNote: "" }]);
     expect(e.get(7)!.status).toEqual({ kind: "saving" });
     s.calls[0].answer(ok(1));
     await tick();
@@ -241,7 +241,7 @@ describe("a long day on flaky Wi-Fi (Review Focus 1)", () => {
     const e = start([draft({ version: 1, content: { notes: ["A", ""], generalNote: "" } })], s.send);
     expect(e.get(7)!.content.notes).toEqual(["AB", ""]);
     await tick();
-    expect(s.calls.map((c) => c.body)).toEqual([{ registrationId: 7, version: 1, titles: TITLES, notes: ["AB", ""], generalNote: "" }]);
+    expect(s.calls.map((c) => c.body)).toEqual([{ registrationId: 7, protocolId: null, version: 1, titles: TITLES, notes: ["AB", ""], generalNote: "" }]);
     expect(e.get(7)!.conflict).toBeNull();
   });
 
@@ -521,7 +521,7 @@ describe("looking creates nothing, and the lost answers that are ours", () => {
     const e = start([draft(), draft({ registrationId: 8 })], s.send);
     e.editNote(7, 0, "viimane lause");
     e.stop();
-    expect(s.calls.map((c) => c.body)).toEqual([{ registrationId: 7, version: 0, titles: TITLES, notes: ["viimane lause", ""], generalNote: "" }]);
+    expect(s.calls.map((c) => c.body)).toEqual([{ registrationId: 7, protocolId: null, version: 0, titles: TITLES, notes: ["viimane lause", ""], generalNote: "" }]);
     s.calls[0].answer(ok(1)); // not applied: the screen is gone
     await tick(DEBOUNCE_MS * 4);
     expect(s.calls).toHaveLength(1);
@@ -1571,5 +1571,88 @@ describe("the final review's parked items", () => {
     expect(e.checking(7)).toBe(false);
     await tick(120_000);
     expect(s.calls).toHaveLength(1);
+  });
+});
+
+// A protocol deleted with the account and made again is another row, its versions starting again from 1 (the reads tell it apart: item 5). The
+// saves carry the row too, so a screen or a browser copy built on the old row never saves over the new one once it has reached the same version.
+describe("a save built on another row: the protocol deleted with the account and made again", () => {
+  const at = (v: number, note: string, over: Partial<ServerDraft> = {}) => draft({ version: v, content: { notes: [note, ""], generalNote: "" }, ...over });
+  const refusedBy = (protocolId: number, version: number, note: string): Answer => ({
+    status: 409,
+    body: { ok: false, error: "conflict", protocol: { id: protocolId, version, stages: TITLES.map((title, i) => ({ title, note: i === 0 ? note : "" })), generalNote: "", sentVersion: null, sentAt: null, updatedAt: "2026-10-12T08:01:00.000Z" } },
+  });
+
+  test("a save carries the row its text is of (null before a first save made one), learnt from the first save's answer; the browser's copy keeps it", async () => {
+    const s = server();
+    const e = start([draft(), at(2, "Vana", { registrationId: 8, protocolId: 5 })], s.send);
+    e.editNote(7, 0, "A");
+    e.editNote(8, 0, "Vana, lisa");
+    expect(readLocal(localStorage, 8)).toMatchObject({ protocolId: 5, version: 2, content: { notes: ["Vana, lisa", ""] } });
+    await tick(DEBOUNCE_MS);
+    expect(s.calls.map((c) => [c.body.registrationId, c.body.protocolId, c.body.version])).toEqual([[7, null, 0], [8, 5, 2]]);
+    s.calls[0].answer({ status: 200, body: { ok: true, version: 1, savedAt: "2026-10-12T08:00:00.000Z", protocolId: 9 } });
+    s.calls[1].answer(ok(3));
+    await tick();
+    e.editNote(7, 0, "AB");
+    expect(readLocal(localStorage, 7)).toMatchObject({ protocolId: 9, version: 1 });
+    await tick(DEBOUNCE_MS);
+    expect(s.calls[2].body).toMatchObject({ registrationId: 7, protocolId: 9, version: 1, notes: ["AB", ""] });
+  });
+
+  test("a 409 for another row goes the refusal's way: the new row's text is shown, her words go into the notice (across a reload too), and nothing is saved over it", async () => {
+    const s = server();
+    const e = start([at(2, "Vana", { protocolId: 5 })], s.send);
+    e.editNote(7, 0, "Vana, minu lisa");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(refusedBy(9, 2, "Uus"));
+    await tick();
+    const words = { titles: TITLES, lost: { notes: ["Vana, minu lisa", ""], generalNote: "" } };
+    expect(e.get(7)).toMatchObject({ protocolId: 9, version: 2, content: { notes: ["Uus", ""] }, confirmed: { notes: ["Uus", ""] }, conflict: words, status: { kind: "saved" } });
+    await tick(DEBOUNCE_MS * 4);
+    expect(s.calls).toHaveLength(1);
+    expect(readConflict(localStorage, 7)).toEqual(words);
+    e.editNote(7, 0, "Uus, lisa"); // what she types now is the new row's
+    await tick(DEBOUNCE_MS);
+    expect(s.calls[1].body).toMatchObject({ protocolId: 9, version: 2, notes: ["Uus, lisa", ""] });
+  });
+
+  test("resumeLocal: a copy built on another row is lost, even at the version the server has; a copy of the same row, of no row yet, or of an older screen (no row kept) goes by the version", () => {
+    const server = { protocolId: 9, version: 2, titles: TITLES, content: { notes: ["Uus", ""], generalNote: "" } };
+    const text = (note: string): Content => ({ notes: [note, ""], generalNote: "" });
+    const local = (protocolId: number | null | undefined, version: number, note: string, sent: string[] = []) => ({
+      ...(protocolId === undefined ? {} : { protocolId }),
+      version,
+      titles: TITLES,
+      content: text(note),
+      sent: sent.map(text),
+    });
+    expect(resumeLocal(server, local(5, 2, "Vana, lisa"))).toEqual({ kind: "lost", titles: TITLES, content: text("Vana, lisa") });
+    expect(resumeLocal(server, local(5, 2, "Uus"))).toEqual({ kind: "none" }); // the same text: nothing of hers to keep
+    expect(resumeLocal(server, local(9, 2, "Uus, lisa"))).toEqual({ kind: "resume", content: text("Uus, lisa") });
+    expect(resumeLocal(server, local(undefined, 2, "Uus, lisa"))).toEqual({ kind: "resume", content: text("Uus, lisa") });
+    expect(resumeLocal({ ...server, version: 1 }, local(null, 0, "Uus, lisa", ["Uus"]))).toEqual({ kind: "resume", content: text("Uus, lisa") }); // its own first save made row 9
+  });
+
+  test("a reload that finds a copy of another row: her words go into the notice, never resumed onto the row made again, and nothing is saved over it", async () => {
+    const s = server();
+    const before = new ProtocolAutosave([at(2, "Vana", { protocolId: 5 })], s.send, { tab: "t1" });
+    before.start(localStorage);
+    before.editNote(7, 0, "Vana, minu lisa");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(null); // no answer: the tablet went offline, and the page was closed
+    await tick();
+    before.stop();
+    // meanwhile the account was deleted and the protocol made again elsewhere: row 9, at version 2 too
+    const s2 = server();
+    const after = new ProtocolAutosave([at(2, "Uus", { protocolId: 9 })], s2.send, { tab: "t2" });
+    engine = after;
+    after.start(localStorage);
+    await tick(DEBOUNCE_MS * 4);
+    expect(s2.calls).toHaveLength(0);
+    const words = { titles: TITLES, lost: { notes: ["Vana, minu lisa", ""], generalNote: "" } };
+    expect(after.get(7)).toMatchObject({ protocolId: 9, version: 2, content: { notes: ["Uus", ""] }, conflict: words, status: { kind: "saved" } });
+    expect(readConflict(localStorage, 7)).toEqual(words);
+    expect(readLocal(localStorage, 7)).toBeNull(); // the old copy went once its words were kept under the notice's key
   });
 });

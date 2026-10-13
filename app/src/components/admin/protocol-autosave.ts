@@ -12,7 +12,9 @@ import { toStorable } from "@/lib/to-storable"; // (this file runs on old iPads:
 //   screen's text, the others' words go into the notice, and those copies go only once their words are kept by this tab or on the server;
 // - a save that fails is tried again after 2, 5, 10, 20, then every 30 s, and at once when the browser is back online or the tab is shown
 //   again; the status says "Salvestamata — proovin uuesti";
-// - a save carries the version the server confirmed last. A refusal (409) brings what is stored: the screen's own text is simply saved; a
+// - a save carries the version the server confirmed last, and the row it is of (one deleted with the account and made again restarts at
+//   version 1: the server refuses a save of the old row, and a copy of the old row is never resumed onto the new one, its words go into the
+//   notice). A refusal (409) brings what is stored: the screen's own text is simply saved; a
 //   text this screen sent and never heard back about (the answer was lost on the way) was ours, and the newer text is saved on top of it with
 //   no notice; otherwise another device or tab saved first, its text is shown, and this screen's unsaved words go into the notice: newer text
 //   is never overwritten. The texts sent without an answer are kept once each, up to SENT_MAX_CHARS; the notice's words are kept until
@@ -97,10 +99,11 @@ export type Entry = {
 };
 
 /**
- * What this browser keeps of a protocol until the server confirms it: the version it builds on, the texts sent without an answer, when it was
- * written (ms: the newest of several tabs' copies is resumed), and the notice's words while they cannot be kept under their own key.
+ * What this browser keeps of a protocol until the server confirms it: the row and the version it builds on (`protocolId` null: no row yet;
+ * absent: a copy of an older screen, which did not keep it), the texts sent without an answer, when it was written (ms: the newest of several
+ * tabs' copies is resumed), and the notice's words while they cannot be kept under their own key.
  */
-export type LocalCopy = { version: number; titles: string[]; content: Content; sent: Content[]; at?: number; lost?: Conflict };
+export type LocalCopy = { protocolId?: number | null; version: number; titles: string[]; content: Content; sent: Content[]; at?: number; lost?: Conflict };
 
 export const DEBOUNCE_MS = 1500;
 /** How long a send waits for the server's text to be read again (a screen restored by Back) before it says the text is not confirmed. */
@@ -271,6 +274,7 @@ function parseCopy(raw: string | null): LocalCopy | null {
   if (c.sent !== undefined && !isContents(c.sent)) return null;
   const lost = parseConflict(c.lost);
   return {
+    ...(typeof c.protocolId === "number" || c.protocolId === null ? { protocolId: c.protocolId } : {}),
     version: c.version,
     titles: c.titles,
     content: c.content,
@@ -340,13 +344,16 @@ export function readConflict(storage: Storage | null, registrationId: number, ta
 export type Resume = { kind: "none" } | { kind: "resume"; content: Content } | { kind: "lost"; titles: string[]; content: Content };
 
 /**
- * A kept copy against what the server holds now: the same text is nothing to do; other headings, or a server that moved on by another
- * device, make it "lost" (the notice shows it); the same version, or a server that moved on by a save of this browser whose answer was lost
- * (its stored text is one this browser sent), resume it.
+ * A kept copy against what the server holds now: the same text is nothing to do; other headings, another row (the protocol deleted with the
+ * account and made again: its versions start again from 1, so the version cannot tell), or a server that moved on by another device, make it
+ * "lost" (the notice shows it); the same version, or a server that moved on by a save of this browser whose answer was lost (its stored text is
+ * one this browser sent), resume it. A copy of no row yet, or one that did not keep its row (an older screen's), goes by the version alone.
  */
-export function resumeLocal(server: { version: number; titles: string[]; content: Content }, local: LocalCopy | null): Resume {
+export function resumeLocal(server: { protocolId?: number | null; version: number; titles: string[]; content: Content }, local: LocalCopy | null): Resume {
   if (!local || sameContent(local.content, server.content)) return { kind: "none" };
   if (!sameTitles(local.titles, server.titles)) return { kind: "lost", titles: local.titles, content: local.content };
+  if (typeof local.protocolId === "number" && typeof server.protocolId === "number" && local.protocolId !== server.protocolId)
+    return { kind: "lost", titles: local.titles, content: local.content };
   if (local.version === server.version) return { kind: "resume", content: local.content };
   if (server.version > local.version && local.sent.some((c) => sameContent(c, server.content))) return { kind: "resume", content: local.content };
   return { kind: "lost", titles: local.titles, content: local.content };
@@ -382,8 +389,8 @@ export function readDraft(registrationId: number, value: unknown): ServerDraft |
   };
 }
 
-/** What a save sends (server/protocols.ts SaveInput). */
-export type SaveBody = { registrationId: number; version: number; titles: string[]; notes: string[]; generalNote: string };
+/** What a save sends (server/protocols.ts SaveInput): `protocolId` is the row the text builds on (null: none yet), refused by any other. */
+export type SaveBody = { registrationId: number; protocolId: number | null; version: number; titles: string[]; notes: string[]; generalNote: string };
 /** The server's answer to a save; null when none came (no connection, the 10 s ran out). */
 export type Answer = { status: number; body: unknown } | null;
 /** `keepalive`: the request outlives the page (sent while it is put away). */
@@ -881,7 +888,7 @@ export class ProtocolAutosave {
   private resume(e: Entry): void {
     const id = e.registrationId;
     const own = (key: string) => key === localKey(id, this.keyTab) || key === sentKey(id, this.keyTab) || key === conflictKey(id, this.keyTab);
-    const server = { version: e.version, titles: e.titles, content: e.confirmed };
+    const server = { protocolId: e.protocolId, version: e.version, titles: e.titles, content: e.confirmed };
     const taken: Held[] = [];
     const parts: Conflict[] = [];
     for (const notice of readNotices(this.storage, id, this.keyTab)) {
@@ -923,7 +930,7 @@ export class ProtocolAutosave {
   }
 
   private bodyOf(e: Entry): SaveBody {
-    return { registrationId: e.registrationId, version: e.version, titles: [...e.titles], notes: [...e.content.notes], generalNote: e.content.generalNote };
+    return { registrationId: e.registrationId, protocolId: e.protocolId, version: e.version, titles: [...e.titles], notes: [...e.content.notes], generalNote: e.content.generalNote };
   }
 
   /**
@@ -1169,7 +1176,7 @@ export class ProtocolAutosave {
     if (!this.running && this.storage && getRaw(this.storage, localKey(id, this.keyTab)) === null) return;
     if (this.unkept.has(id)) this.storeNotice(e);
     const notice = this.unkept.has(id) ? e.conflict : null;
-    const value = { version: e.version, titles: e.titles, content: e.content, at: Date.now(), ...(notice?.lost ? { lost: notice } : {}) };
+    const value = { protocolId: e.protocolId, version: e.version, titles: e.titles, content: e.content, at: Date.now(), ...(notice?.lost ? { lost: notice } : {}) };
     const copied = writeKey(this.storage, localKey(id, this.keyTab), value);
     const flying = this.flying.get(id);
     const unanswered = this.unanswered.get(id) ?? [];
