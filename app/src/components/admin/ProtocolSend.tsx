@@ -62,10 +62,36 @@ const copyOf = (c: Content): Content => ({ notes: [...c.notes], generalNote: c.g
 /**
  * How long a send waits for the server's answer (ms): a server action that hangs would else keep the protocol read-only for good. After it the
  * boxes are writable and the line says the send may not have gone through; a send again is safe, as the server answers "already" for a version
- * sent before. (The hung action is not stopped, and Next runs one server action at a time, so a send made meanwhile waits behind it: the line
- * says to reload the page if sending again does not work.)
+ * sent before. (The hung action is not stopped, and Next runs one server action at a time, so a send made meanwhile waits behind it; a reload of
+ * the page clears that.)
  */
 export const SEND_TIMEOUT_MS = 30_000;
+
+/**
+ * What a send names (server/protocols.ts SendInput): the version the server confirmed, and the protocol's row it is of when the screen knows it
+ * (a protocol deleted with the account and made again restarts at version 1, so the server answers "stale" for another row).
+ */
+const sendInput = (e: Pick<Entry, "registrationId" | "version" | "protocolId">) => ({
+  registrationId: e.registrationId,
+  version: e.version,
+  ...(e.protocolId !== null ? { protocolId: e.protocolId } : {}),
+});
+
+/**
+ * A send that got no answer in SEND_TIMEOUT_MS may have gone through: the server's text of these protocols is read again (engine.recheck, one read),
+ * and their send marks follow. One the read shows sent (nothing unsaved since) loses its line "Vastust ei tulnud …" and `onSent` is told, as for a
+ * send answered "sent": the screen shows "Saadetud …", and an edit after it is a "Saada uuesti" Maria chooses, never a second mail by mistake.
+ */
+function checkAfterTimeout(engine: ProtocolAutosave, ids: readonly number[], line: string, onSent: (id: number) => void): void {
+  engine.recheck(...ids);
+  for (const id of ids)
+    void engine.whenFresh([id]).then((read) => {
+      const e = engine.get(id);
+      if (!read || !e || e.sending || statusOf(e) !== "sent" || unsavedEntry(e)) return;
+      if (e.sendError === line) engine.setSendError(id, null);
+      onSent(id);
+    });
+}
 
 /** The answer of `work`, or "timeout" when none came within SEND_TIMEOUT_MS. */
 function bounded<T>(work: Promise<T>): Promise<T | "timeout"> {
@@ -185,9 +211,10 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
         engine.setSendError(id, unsavedMessage(after, t));
         return;
       }
-      const result = await bounded(sendProtocolAction({ registrationId: id, version: engine.get(id)!.version })).catch((): SendOutcome => ({ kind: "failed" }));
+      const result = await bounded(sendProtocolAction(sendInput(engine.get(id)!))).catch((): SendOutcome => ({ kind: "failed" }));
       if (result === "timeout") {
         engine.setSendError(id, t.sendErrors.timeout); // (the boxes open again: the finally below)
+        checkAfterTimeout(engine, [id], t.sendErrors.timeout, () => onUnlock(false));
         return;
       }
       if (result.kind === "sent" || result.kind === "already") {
@@ -302,7 +329,7 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
       const saved = await Promise.all(will.map((id) => engine.save(id)));
       // (one whose notice opened meanwhile is left out as an unsaved one: see StudentSend)
       const goes = will.map((id, i) => saved[i] && !engine.get(id)!.conflict);
-      const items = will.filter((_, i) => goes[i]).map((id) => ({ registrationId: id, version: engine.get(id)!.version }));
+      const items = will.filter((_, i) => goes[i]).map((id) => sendInput(engine.get(id)!));
       const answer =
         items.length === 0 ? [] : await bounded(sendProtocolsAction(items)).catch(() => items.map((i) => ({ registrationId: i.registrationId, result: { kind: "failed" } as const })));
       // no answer in SEND_TIMEOUT_MS: the ones sent for may have gone through (a send again is safe), and their boxes open again (the finally below)
@@ -327,14 +354,22 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
           engine.markSent(r.registrationId, r.result.version, r.result.sentAt);
           onSent(r.registrationId);
           sent.push(nameOf(r.registrationId));
-        } else leftOut(sendMessage(r.result, t) ?? t.sendErrors.failed, r.registrationId);
-        if (r.result.kind === "stale") engine.recheck(r.registrationId); // (another device saved since: her text is read again, for the next send)
+        } else if (r.result.kind !== "stale") leftOut(sendMessage(r.result, t) ?? t.sendErrors.failed, r.registrationId);
+      }
+      // another device saved since: their text is read again (one read) and shown before the summary, as a single "Saada" does, so the next send
+      // goes at the version Maria then sees; a read that does not come in time leaves the line that says to reload
+      const stale = results.filter((r) => r.result.kind === "stale").map((r) => r.registrationId);
+      if (stale.length > 0) {
+        engine.recheck(...stale);
+        const reason = (await engine.whenFresh(stale)) ? t.sendErrors.refreshed : t.sendErrors.stale;
+        for (const id of stale) leftOut(reason, id);
       }
       // (an answer that does not list a protocol that was sent for, or no answer at all: no one is left unexplained)
       const answered = new Set(results.map((r) => r.registrationId));
       for (const item of items)
         if (!answered.has(item.registrationId)) leftOut(timedOut ? t.sendErrors.timeout : t.sendErrors.failed, item.registrationId, timedOut ? "unknown" : "reason");
       for (const id of planned) engine.setSendError(id, own.get(id) ?? null); // (one that went has no line left from an earlier try)
+      if (timedOut) checkAfterTimeout(engine, items.map((i) => i.registrationId), t.sendErrors.timeout, onSent);
       const lines = [...notSent].map(([key, g]) => {
         const names = g.names.join(", ");
         return { key, line: g.kind === "review" ? fill(t.confirm.review, { names }) : g.kind === "unknown" ? fill(t.result.unknown, { names }) : fill(t.result.notSent, { names, reason: g.reason }) };

@@ -115,6 +115,24 @@ describe("sendProtocol", () => {
     expect([(await stored(mari.id)).sentAt, queued(), (await db.select().from(clients)).length]).toEqual([null, 0, 0]);
   });
 
+  test("the row the screen showed must be the stored one too: a protocol deleted with the account and made again at the same version is stale; a send without a row (an older screen) goes by the version", async () => {
+    const { mari } = await setup();
+    await write(mari.id, 0, "Vana");
+    const old = (await stored(mari.id)).id;
+    await db.delete(protocols).where(eq(protocols.registrationId, mari.id));
+    await write(mari.id, 0, "Uus"); // made again: version 1 again, another row
+    const now = (await stored(mari.id)).id;
+    expect(now).toBeGreaterThan(old);
+    const { d, queued } = deps();
+    expect(await sendProtocol(d, { registrationId: mari.id, version: 1, protocolId: old })).toEqual({ kind: "stale", version: 1 });
+    expect([(await stored(mari.id)).sentAt, queued()]).toEqual([null, 0]);
+    expect(await sendProtocols(d, [{ registrationId: mari.id, version: 1, protocolId: old }])).toEqual([{ registrationId: mari.id, result: { kind: "stale", version: 1 } }]);
+    expect((await stored(mari.id)).sentAt).toBeNull();
+    expect(await sendProtocol(d, { registrationId: mari.id, version: 1, protocolId: now })).toMatchObject({ kind: "sent", version: 1 });
+    const again = deps(new Date("2026-10-12T15:01:00Z"));
+    expect(await sendProtocol(again.d, { registrationId: mari.id, version: 1 })).toMatchObject({ kind: "already", version: 1 }); // (no row given: the version decides)
+  });
+
   test("nothing written is empty and never sent: no protocol yet, or only blank text", async () => {
     const { course, session, mari } = await setup();
     expect(await sendProtocol(deps().d, { registrationId: mari.id, version: 1 })).toEqual({ kind: "empty" });

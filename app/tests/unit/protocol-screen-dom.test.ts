@@ -94,7 +94,7 @@ test("the students with their marks; the first is open; a note saves 1.5 s after
   await wait(1499);
   expect(fetchMock).not.toHaveBeenCalled();
   await wait(1);
-  expect(bodies()).toEqual([{ registrationId: 1, version: 0, titles: TITLES, notes: ["Kulmud ühtlased", ""], generalNote: "" }]);
+  expect(bodies()).toEqual([{ registrationId: 1, protocolId: null, version: 0, titles: TITLES, notes: ["Kulmud ühtlased", ""], generalNote: "" }]);
   await wait(0);
   expect($("[data-save-status]")!.textContent).toBe("Salvestatud 11:00");
 });

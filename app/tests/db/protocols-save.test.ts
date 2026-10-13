@@ -26,6 +26,21 @@ const save = (registrationId: number, version: number, over: Partial<SaveInput> 
   saveProtocol(db, { registrationId, version, titles: HEADINGS, notes: notes(), generalNote: "", ...over }, at);
 const stored = async (registrationId: number) => (await db.select().from(protocols).where(eq(protocols.registrationId, registrationId)))[0];
 
+/** A query builder whose statement goes out only once `first` is done (something written between a save's read and its write). */
+function after<T extends object>(builder: T, first: Promise<unknown>): T {
+  return new Proxy(builder, {
+    get(target, prop) {
+      const value: unknown = Reflect.get(target, prop, target);
+      if (prop === "then") return (ok: (v: unknown) => unknown, ko: (e: unknown) => unknown) => first.then(() => (target as PromiseLike<unknown>).then(ok, ko));
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        const out: unknown = value.apply(target, args);
+        return typeof out === "object" && out !== null ? after(out, first) : out;
+      };
+    },
+  });
+}
+
 async function setup() {
   const { course, session } = await protocolCourse(db);
   return { course, session, mari: await student(db, course, session, "Mari Maasikas") };
@@ -119,6 +134,68 @@ describe("saveProtocol", () => {
     expect(await stored(mari.id)).toMatchObject({ version: 2, stages: [{ title: "Ettevalmistus", note: "tahvel" }, {}, {}, {}] });
   });
 
+  test("a save built on a protocol deleted with the account is refused by the protocol made again, even once that one has reached the same version: nothing is overwritten", async () => {
+    const { mari } = await setup();
+    await save(mari.id, 0, { notes: notes("Vana") });
+    const old = (await stored(mari.id)).id;
+    expect(await save(mari.id, 1, { protocolId: old, notes: notes("Vana, edasi") })).toMatchObject({ kind: "saved", protocolId: old, version: 2 });
+    await db.delete(protocols); // the account deleted (client-data.ts): her protocols go with it
+    await save(mari.id, 0, { notes: notes("Uus") }); // made again on another device: versions start again from 1
+    const made = (await stored(mari.id)).id;
+    await save(mari.id, 1, { protocolId: made, notes: notes("Uus, edasi") }, LATER);
+    // the tablet that never read again, still on the old row at version 2: its version matches, its row does not
+    const tablet = await save(mari.id, 2, { protocolId: old, notes: notes("Vana, edasi, tahvlist") });
+    expect(tablet).toMatchObject({ kind: "conflict", protocol: { id: made, version: 2, updatedAt: LATER } });
+    expect(tablet.kind === "conflict" && tablet.protocol.stages[0].note).toBe("Uus, edasi");
+    expect(await stored(mari.id)).toMatchObject({ id: made, version: 2, stages: [{ title: "Ettevalmistus", note: "Uus, edasi" }, {}, {}, {}] });
+    // the same text as the one stored, from the old row, is refused all the same (the protocol's answer is the new row's)
+    expect(await save(mari.id, 2, { protocolId: old, notes: notes("Uus, edasi") })).toMatchObject({ kind: "conflict", protocol: { id: made, version: 2 } });
+    // the new row's own screen saves on
+    expect(await save(mari.id, 2, { protocolId: made, notes: notes("Uus, veel") })).toMatchObject({ kind: "saved", protocolId: made, version: 3 });
+  });
+
+  test("a save built on a row while there is none (deleted with the account, not made again) is refused with the course's headings, and creates nothing", async () => {
+    const { mari } = await setup();
+    await save(mari.id, 0, { notes: notes("Vana") });
+    const old = (await stored(mari.id)).id;
+    await db.delete(protocols);
+    for (const version of [1, 0])
+      expect(await save(mari.id, version, { protocolId: old, notes: notes("Vana, edasi") }), String(version)).toEqual({
+        kind: "conflict",
+        protocol: { id: null, version: 0, stages: HEADINGS.map((title) => ({ title, note: "" })), generalNote: "", sentVersion: null, sentAt: null, updatedAt: null },
+      });
+    expect(await stored(mari.id)).toBeUndefined();
+    // a first save (version 0, no row yet: protocolId null) creates it, as before
+    expect(await save(mari.id, 0, { protocolId: null, notes: notes("Uus") })).toMatchObject({ kind: "saved", version: 1 });
+  });
+
+  test("a protocol deleted and made again between a save's read and its write: the write goes only to the row it read, so the save is refused, never stored over the new one", async () => {
+    const { mari } = await setup();
+    await save(mari.id, 0, { notes: notes("Vana") });
+    const old = (await stored(mari.id)).id;
+    let remade: Promise<unknown> | null = null;
+    // the account deleted and the protocol made again (version 1, as the save's) just as the save's update goes out
+    const meanwhile = () =>
+      (remade ??= db.delete(protocols).then(() => saveProtocol(db, { registrationId: mari.id, version: 0, titles: HEADINGS, notes: notes("Uus"), generalNote: "" }, LATER)));
+    const racing = new Proxy(db, {
+      get: (target, prop, receiver) => (prop === "update" ? (table: typeof protocols) => after(target.update(table), meanwhile()) : Reflect.get(target, prop, receiver)),
+    });
+    const tablet = await saveProtocol(racing, { registrationId: mari.id, protocolId: old, version: 1, titles: HEADINGS, notes: notes("Vana, edasi"), generalNote: "" }, NOW);
+    const made = await stored(mari.id);
+    expect(made.id).not.toBe(old);
+    expect(tablet).toMatchObject({ kind: "conflict", protocol: { id: made.id, version: 1 } });
+    expect(made).toMatchObject({ version: 1, stages: [{ title: "Ettevalmistus", note: "Uus" }, {}, {}, {}] });
+  });
+
+  test("a save without a row (an older screen's body) is checked by the version only, as before", async () => {
+    const { mari } = await setup();
+    await save(mari.id, 0, { notes: notes("Vana") });
+    await db.delete(protocols);
+    await save(mari.id, 0, { notes: notes("Uus") });
+    expect(await save(mari.id, 1, { notes: notes("Uus, edasi") })).toMatchObject({ kind: "saved", version: 2 });
+    expect(await save(mari.id, 1, { notes: notes("Vana, edasi") })).toMatchObject({ kind: "conflict", protocol: { version: 2 } });
+  });
+
   test("an e-course's registration, or none: notFound", async () => {
     const [ecourse] = await db.insert(courses).values({ slug: "e", type: "e_learning", level: "basic", title: { et: "E" }, summary: { et: "" }, body: { et: "" }, price: 9000 }).returning();
     const buyer = await student(db, ecourse, null, "Eva");
@@ -157,6 +234,19 @@ describe("POST /api/admin/protokoll (handleSave)", () => {
     expect(await answer(await post(body(999_999, 0)))).toEqual([404, { ok: false, error: "notFound" }, "no-store"]);
   });
 
+  test("409 for a save built on another row (the protocol deleted with the account and made again); a body without `protocolId` (an older screen) still saves", async () => {
+    const { mari } = await setup();
+    await post(body(mari.id, 0));
+    const [old] = await db.select().from(protocols);
+    await db.delete(protocols);
+    expect((await post(body(mari.id, 0, { protocolId: null, notes: notes("Uus") }))).status).toBe(200);
+    const [made] = await db.select().from(protocols);
+    const [status, json] = await answer(await post(body(mari.id, 1, { protocolId: old.id, notes: notes("Vana, edasi") })));
+    expect([status, json]).toMatchObject([409, { ok: false, error: "conflict", protocol: { id: made.id, version: 1, stages: [{ note: "Uus" }, {}, {}, {}] } }]);
+    expect(await answer(await post(body(mari.id, 1, { protocolId: made.id, notes: notes("Uus, edasi") })))).toEqual([200, { ok: true, version: 2, savedAt: NOW.toISOString(), protocolId: made.id }, "no-store"]);
+    expect(await answer(await post(body(mari.id, 2, { notes: notes("Uus, vanast ekraanist") })))).toEqual([200, { ok: true, version: 3, savedAt: NOW.toISOString(), protocolId: made.id }, "no-store"]);
+  });
+
   test("Review Focus 4: a box over 10 000 characters is refused with its place, so is text Postgres cannot store; nothing is stored", async () => {
     const { mari } = await setup();
     const long = "ä".repeat(PROTOCOL_LIMITS.note + 1);
@@ -170,6 +260,8 @@ describe("POST /api/admin/protokoll (handleSave)", () => {
     const { mari } = await setup();
     for (const bad of ["{", "[]", { registrationId: mari.id }, body(mari.id, -1), body(mari.id, 0, { notes: ["only one"] }), body(0, 0), body(mari.id, 0, { titles: ["x".repeat(121)], notes: [""] })])
       expect((await post(bad)).status, JSON.stringify(bad).slice(0, 80)).toBe(400);
+    for (const protocolId of ["1", 0, -1, 1.5, 2_147_483_648]) expect((await post(body(mari.id, 0, { protocolId }))).status, String(protocolId)).toBe(400);
+    expect(await stored(mari.id)).toBeUndefined();
     expect(await answer(await post("x".repeat(MAX_SAVE_CHARS + 1)))).toEqual([413, { ok: false, error: "size" }, "no-store"]);
   });
 

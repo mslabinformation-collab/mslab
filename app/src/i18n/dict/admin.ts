@@ -330,9 +330,10 @@ export const adminEt = {
     result: {
       sent: "Saadetud: {names}.",
       notSent: "Ei saadetud: {names}. {reason}",
-      // the server never answered the send (a hung request, given up after SEND_TIMEOUT_MS): it may have gone through, and a send again is safe —
-      // the server answers "already" for a version sent before (NEW wording, for Dim's approval)
-      unknown: "Vastust ei tulnud: {names}. Pole kindel, kas protokoll saadeti. Saada uuesti (kui ei õnnestu, laadi leht uuesti) — juba saadetud protokolli teist korda ei saadeta.",
+      // the server never answered the send (a hung request, given up after SEND_TIMEOUT_MS): it may have gone through, so the screen reads the
+      // server again (the marks follow), and a send again is safe — the server answers "already" for a version sent before; no button is named,
+      // as a draft's reads "Saada" and a changed one's "Saada uuesti" (NEW wording, for Dim's approval)
+      unknown: "Vastust ei tulnud: {names}. Kontrollin, kas protokollid saadeti. Juba saadetud protokolli teist korda ei saadeta.",
     },
     sendErrors: {
       empty: "Protokoll on tühi. Kirjuta midagi enne saatmist.",
@@ -345,8 +346,9 @@ export const adminEt = {
       review: "Vaata enne saatmist üle teises seadmes tehtud muudatus ja vajuta „Selge“.",
       // the screen was an older page and the server's text is newer: it is on the screen now, and was not sent unseen (NEW wording, for Dim's approval)
       refreshed: "Protokolli muudeti vahepeal mujal ja siin on nüüd uus tekst. Vaata see üle ja saada siis.",
-      // the server never answered the send (given up after SEND_TIMEOUT_MS): it may have gone through; a send again is safe (NEW wording, for Dim's approval)
-      timeout: "Vastust ei tulnud: pole kindel, kas protokoll saadeti. Saada uuesti (kui ei õnnestu, laadi leht uuesti) — juba saadetud protokolli teist korda ei saadeta.",
+      // the server never answered the send (given up after SEND_TIMEOUT_MS): it may have gone through, so the screen reads the server again; a send
+      // again is safe; no button is named (NEW wording, for Dim's approval)
+      timeout: "Vastust ei tulnud: kontrollin, kas protokoll saadeti. Juba saadetud protokolli teist korda ei saadeta.",
     },
   },
 
