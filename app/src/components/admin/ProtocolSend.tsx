@@ -62,8 +62,8 @@ const copyOf = (c: Content): Content => ({ notes: [...c.notes], generalNote: c.g
 /**
  * How long a send waits for the server's answer (ms): a server action that hangs would else keep the protocol read-only for good. After it the
  * boxes are writable and the line says the send may not have gone through; a send again is safe, as the server answers "already" for a version
- * sent before. (The hung action is not stopped, and Next runs one server action at a time, so a send made meanwhile waits behind it: the line
- * says to reload the page if sending again does not work.)
+ * sent before. (The hung action is not stopped, and Next runs one server action at a time, so a send made meanwhile waits behind it; a reload of
+ * the page clears that.)
  */
 export const SEND_TIMEOUT_MS = 30_000;
 

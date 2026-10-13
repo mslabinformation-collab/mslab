@@ -882,7 +882,7 @@ test("item 3: 'Lukusta ja saada kõik' answered 'stale' for one student reads th
   expect(actions.sendProtocolsAction).toHaveBeenLastCalledWith([{ registrationId: 2, version: 2 }]);
 });
 
-const TIMEOUT = "Vastust ei tulnud: pole kindel, kas protokoll saadeti. Saada uuesti (kui ei õnnestu, laadi leht uuesti) — juba saadetud protokolli teist korda ei saadeta.";
+const TIMEOUT = "Vastust ei tulnud: kontrollin, kas protokoll saadeti. Juba saadetud protokolli teist korda ei saadeta.";
 
 test("item 4: a 'Saada' the server never answers: after SEND_TIMEOUT_MS the boxes are writable and the line says it may not have gone; sent again, 'already' marks it sent", async () => {
   actions.sendProtocolAction.mockImplementationOnce(() => new Promise<SendOutcome>(() => {})); // a hung server action
@@ -914,7 +914,7 @@ test("item 4: a 'Lukusta ja saada kõik' the server never answers: after SEND_TI
   expect($("[data-send-confirm]")).toBeNull();
   expect($("[data-summary-sent]")).toBeNull();
   expect($$("[data-summary-failed]").map((p) => p.textContent)).toEqual([
-    "Vastust ei tulnud: Anu, Berit. Pole kindel, kas protokoll saadeti. Saada uuesti (kui ei õnnestu, laadi leht uuesti) — juba saadetud protokolli teist korda ei saadeta.",
+    "Vastust ei tulnud: Anu, Berit. Kontrollin, kas protokollid saadeti. Juba saadetud protokolli teist korda ei saadeta.",
   ]);
   expect($("[data-send-error]")!.textContent).toBe(TIMEOUT); // (Anu's own line)
   actions.sendProtocolsAction.mockResolvedValueOnce([
