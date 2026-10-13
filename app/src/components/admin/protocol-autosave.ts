@@ -566,7 +566,8 @@ export class ProtocolAutosave {
 
   /**
    * The server's text as GET /api/admin/protokoll has it now (the page's data, read again): for each protocol, newer than the one this screen builds on
-   * (a higher version, other headings while none is written yet, or another row: the protocol deleted with the account and made again):
+   * (a higher version, other headings while none is written yet, or a later row: the protocol deleted with the account and made again; a read of an
+   * earlier row than the one this screen knows was made before that, and is ignored):
    * - nothing unsaved or unconfirmed here: the server's text, version and send marks are taken silently and the status says "saved";
    * - text of this screen's own that is not on the server: the refusal's path (conflict): the server's text is shown, this screen's words go into
    *   the notice, and a text this screen sent without an answer that the server holds is its own (saved on top, no notice);
@@ -613,6 +614,9 @@ export class ProtocolAutosave {
       return;
     }
     this.deferred.delete(id);
+    // a row older than the one this screen knows (ids only grow): a read made before the protocol was deleted and made again, which answers late.
+    // It says nothing of the server now: ignored, and the protocol is still unread if it was
+    if (d !== null && d.protocolId !== null && e.protocolId !== null && d.protocolId < e.protocolId) return;
     const unread = this.awaiting.delete(id);
     if (d === null) {
       // not in the answer: cancelled or moved meanwhile. Text of hers that is not saved yet stays as it is (a cancelled registration still saves:
@@ -620,8 +624,8 @@ export class ProtocolAutosave {
       if (!this.uncertain(e) && (e.status.kind === "checking" || e.status.kind === "saved" || e.status.kind === "signedOut")) this.set(e, { kind: "gone" });
       return;
     }
-    // another row (deleted with the account and made again: its versions start again from 1) is newer, whatever its version
-    const otherRow = d.protocolId !== null && e.protocolId !== null && d.protocolId !== e.protocolId;
+    // a later row (deleted with the account and made again: its versions start again from 1) is newer, whatever its version
+    const otherRow = d.protocolId !== null && e.protocolId !== null && d.protocolId > e.protocolId;
     const newer = otherRow || d.version > e.version || (d.version === e.version && !sameTitles(d.titles, e.titles));
     if (newer) {
       if (this.uncertain(e)) void this.conflict(e, d, e.version, { resend: () => this.queue(id, false) });

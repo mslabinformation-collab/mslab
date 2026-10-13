@@ -1655,4 +1655,20 @@ describe("a save built on another row: the protocol deleted with the account and
     expect(readConflict(localStorage, 7)).toEqual(words);
     expect(readLocal(localStorage, 7)).toBeNull(); // the old copy went once its words were kept under the notice's key
   });
+
+  test("review: a late read of the OLDER row (made before the delete) after a 409 taught the new one is ignored: the new row's text stays, and the next save goes with the new row", async () => {
+    const s = server();
+    const e = start([at(2, "Vana", { protocolId: 5 })], s.send);
+    e.editNote(7, 0, "Vana, minu lisa");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(refusedBy(9, 1, "Uus")); // the 409 teaches row 9
+    await tick();
+    e.reconcile([at(2, "Vana", { protocolId: 5 })]); // a read made before the delete answers late; ids only grow, so row 5 is older
+    expect(e.get(7)).toMatchObject({ protocolId: 9, version: 1, content: { notes: ["Uus", ""] }, confirmed: { notes: ["Uus", ""] } });
+    e.reconcile([at(5, "Vana, viies", { protocolId: 5 })]); // (an older row at a higher version too)
+    expect(e.get(7)).toMatchObject({ protocolId: 9, version: 1, content: { notes: ["Uus", ""] } });
+    e.editNote(7, 0, "Uus, lisa");
+    await tick(DEBOUNCE_MS);
+    expect(s.calls[1].body).toMatchObject({ protocolId: 9, version: 1, notes: ["Uus, lisa", ""] });
+  });
 });
