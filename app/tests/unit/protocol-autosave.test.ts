@@ -1382,3 +1382,58 @@ describe("leaving the screen while a save is on its way (final review, Important
     expect(back.get(7)).toMatchObject({ content: { notes: ["telefon", ""] }, conflict: { titles: TITLES, lost: { notes: ["AB", ""], generalNote: "" } } });
   });
 });
+
+// The final review's parked items, fixed before the first real course day.
+describe("the final review's parked items", () => {
+  const notes = (s: { calls: { body: SaveBody }[] }) => s.calls.map((c) => [c.body.version, c.body.notes[0]]);
+  const at = (v: number, note: string, over: Partial<ServerDraft> = {}) => draft({ version: v, content: { notes: [note, ""], generalNote: "" }, ...over });
+  const keys = () => Object.keys(localStorage).filter((k) => k.includes(":7"));
+
+  test("item 1: a quick remount — the old screen's late answer never brings back the copy the new screen released, and the next visit has no notice", async () => {
+    const s = server();
+    const old = new ProtocolAutosave([draft()], s.send, { tab: "t1" });
+    old.start(localStorage);
+    old.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS); // POST v0 "A" on its way (slow Wi-Fi)
+    old.editNote(7, 0, "AB"); // waits for its 1.5 s
+    old.stop(); // the screen left, and opened again at once: the server has stored "A" as v1, its answer is still on its way
+    const s2 = server();
+    const back = new ProtocolAutosave([at(1, "A")], s2.send, { tab: "t2" });
+    engine = back;
+    back.start(localStorage);
+    await tick();
+    expect(notes(s2)).toEqual([[1, "AB"]]); // the old screen's copy resumed: "A" was its own, "AB" goes on top
+    s2.calls[0].answer(ok(2));
+    await tick();
+    expect(keys()).toEqual([]); // the new screen has it on the server: every copy released
+    s.calls[0].answer(ok(1)); // the old screen's answer, late
+    await tick();
+    expect(notes(s)).toEqual([[0, "A"], [1, "AB"]]); // its parting save still goes
+    s.calls[1].answer(ok(2));
+    await tick();
+    expect(keys()).toEqual([]); // no stray copy of the old screen
+    back.editNote(7, 0, "ABC");
+    await tick(DEBOUNCE_MS);
+    s2.calls[1].answer(ok(3));
+    await tick();
+    back.stop();
+    const next = new ProtocolAutosave([at(3, "ABC")], server().send, { tab: "t3" });
+    engine = next;
+    next.start(localStorage);
+    expect(next.get(7)).toMatchObject({ conflict: null, content: { notes: ["ABC", ""] }, status: { kind: "saved" } });
+  });
+
+  test("item 1: the screen left with nobody back — the late answer still updates the old screen's copy (its key still exists)", async () => {
+    const s = server();
+    const old = new ProtocolAutosave([draft()], s.send, { tab: "t1" });
+    old.start(localStorage);
+    old.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    old.editNote(7, 0, "AB");
+    old.stop();
+    s.calls[0].answer(ok(1));
+    await tick();
+    expect(readLocal(localStorage, 7, "t1")).toMatchObject({ version: 1, content: { notes: ["AB", ""] }, sent: [{ notes: ["AB", ""], generalNote: "" }] });
+    expect(notes(s)).toEqual([[0, "A"], [1, "AB"]]);
+  });
+});

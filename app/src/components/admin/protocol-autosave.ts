@@ -25,7 +25,8 @@ import { toStorable } from "@/lib/to-storable"; // (this file runs on old iPads:
 //   browser freezing it) sends it as a keepalive request when it is small enough, else leaves it to the copy; leaving the screen for another
 //   admin page (stop) sends a waiting save, and one queued behind the save on its way, once: after that save and never beside it, from the
 //   version that save got (its answer is still taken, quietly); the parting save's own answer is not taken: its text is remembered as sent,
-//   and the copy stays until a later visit finds it stored;
+//   and the copy stays until a later visit finds it stored (a screen opened again meanwhile takes the copy over and releases it: the screen
+//   left never writes it back);
 // - while a send is on its way (setSending, counted) the protocol takes no edits;
 // - the screen may be shown from a server render older than the server's text (the browser's Back restores the page from the client router's
 //   copy): until the screen has read the server's text again (keepReading: GET /api/admin/protokoll, then reconcile) the status says "checking" and
@@ -1101,9 +1102,13 @@ export class ProtocolAutosave {
    * Keeps the screen's text in this browser under this page's key (and the notice's words while they cannot be kept under their own), with
    * the texts that may be stored already (sent without an answer, or on their way) apart, written only when they change; `kept` says
    * whether that worked. The caller sets the status next, which tells the screen.
+   * After the screen was left (stop: afterStop, part) the copy is written only while this page's key still exists: a screen opened again at once
+   * resumes it, keeps its words under its own key and releases this one, and a write after that would bring back a copy nobody holds (a later
+   * visit would show its old text in a false notice).
    */
   private keep(e: Entry): void {
     const id = e.registrationId;
+    if (!this.running && this.storage && getRaw(this.storage, localKey(id, this.keyTab)) === null) return;
     if (this.unkept.has(id)) this.storeNotice(e);
     const notice = this.unkept.has(id) ? e.conflict : null;
     const value = { version: e.version, titles: e.titles, content: e.content, at: Date.now(), ...(notice?.lost ? { lost: notice } : {}) };
