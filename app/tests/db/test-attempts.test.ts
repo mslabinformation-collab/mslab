@@ -251,12 +251,49 @@ describe("open answers: Maria's review and the rewrite", () => {
     await db.update(courseAccess).set({ expiresAt: new Date(NOW.getTime() - 1000) });
     expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "ok", comment: "" } })).toEqual({ kind: "reviewed", status: "passed", completed: false });
     await flush();
-    expect(toKati()).toHaveLength(1);
-    expect(toKati()[0].subject).toBe("Test on sooritatud");
-    expect(toKati()[0].text).toContain(`${SITE}/konto/kursus/e-kulm/praktiline`);
+    expect(toKati()).toEqual([]); // her page is read-only until the access is extended: no mail invites her to the practical work now
+    expect((await stored(w.client.id))[0]).toMatchObject({ status: "passed", reviewedAt: NOW, reviewedBy: MARIA });
     expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "ok", comment: "" } })).toEqual({ kind: "stale" }); // reviewed already (her other device)
     await db.update(courseAccess).set({ revokedAt: NOW });
     expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "ok", comment: "" } })).toEqual({ kind: "notFound" });
+  });
+
+  test("an accepted review on a course with points mails 'Test on sooritatud' with the practical work's link while the access is active", async () => {
+    const w = await world({ questions: [Q1, Q2, OPEN], points: ["Kulmude kuju"] });
+    const { d, flush } = deps();
+    viewOf(await submitAttempt(d, w.client.id, "e-kulm", { ...RIGHT, [OPEN.id]: ANSWER }));
+    const [attempt] = await stored(w.client.id);
+    expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "ok", comment: "" } })).toEqual({ kind: "reviewed", status: "passed", completed: false });
+    await flush();
+    expect(toKati()).toHaveLength(1);
+    expect(toKati()[0].subject).toBe("Test on sooritatud");
+    expect(toKati()[0].text).toContain(`${SITE}/konto/kursus/e-kulm/praktiline`);
+  });
+
+  test("an ended access: a 'Paranda' review is stored but mails nobody (her rewrite would answer closed); a review that completes the course still mails 'completed'", async () => {
+    const ended = new Date(NOW.getTime() - 1000);
+    const fixing = await world({ questions: [Q1, Q2, OPEN] });
+    const first = deps();
+    viewOf(await submitAttempt(first.d, fixing.client.id, "e-kulm", { ...RIGHT, [OPEN.id]: ANSWER }));
+    const [attempt] = await stored(fixing.client.id);
+    await db.update(courseAccess).set({ expiresAt: ended });
+    expect(await reviewAttempt(first.d, MARIA, attempt.id, { [OPEN.id]: { verdict: "fix", comment: "Lisa puhastamine." } })).toEqual({ kind: "reviewed", status: "fix", completed: false });
+    await first.flush();
+    expect(toKati()).toEqual([]);
+    expect((await stored(fixing.client.id))[0]).toMatchObject({ status: "fix", reviewedAt: NOW });
+    expect(await resubmitAnswers(first.d, fixing.client.id, "e-kulm", attempt.id, { ...RIGHT, [OPEN.id]: "Uus vastus" })).toEqual({ kind: "closed" });
+
+    // a course without points: the accepted review completes it, an ended access or not
+    const other = await db.insert(clients).values({ email: "mari@example.com", name: "Mari Mänd" }).returning();
+    const [done] = await db.insert(courseAccess).values({ clientId: other[0].id, courseId: fixing.course.id, grantedBy: MARIA, expiresAt: ended }).returning();
+    await db.insert(lessonProgress).values({ clientId: other[0].id, lessonId: fixing.lesson.id, doneAt: NOW });
+    await db.insert(testAttempts).values({ clientId: other[0].id, courseId: fixing.course.id, number: 1, questions: [Q1, Q2, OPEN], answers: { ...RIGHT, [OPEN.id]: ANSWER }, correct: 2, total: 2, status: "review", submittedAt: NOW });
+    const [waiting] = await stored(other[0].id);
+    const second = deps();
+    expect(await reviewAttempt(second.d, MARIA, waiting.id, { [OPEN.id]: { verdict: "ok", comment: "" } })).toEqual({ kind: "reviewed", status: "passed", completed: true });
+    expect((await accessRow(done.id)).completedAt).toEqual(NOW);
+    await second.flush();
+    expect(mails().filter((m) => m.to === "mari@example.com").map((m) => m.subject)).toEqual([expect.stringContaining("Palju õnne!")]);
   });
 
   test("a review from a page older than her rewrite (Maria's other device) is stale: nothing stored for answers Maria never saw; the page that shows the rewrite reviews it", async () => {
@@ -314,6 +351,22 @@ describe("reopenTest", () => {
     expect(toKati()).toEqual([]);
     expect(await testView(db, w.client.id, "e-kulm", NOW)).toMatchObject({ state: { kind: "open" }, tries: 2, triesLeft: 1, readOnly: true });
   });
+
+  test("Maria lowered the course's tries below the attempts made: one reopen still opens the test, with the course's tries left, and the student is mailed once", async () => {
+    const w = await world(); // 3 tries
+    const { d, flush } = deps();
+    const failing: TestAnswers[] = [{ [Q1.id]: ["o0000011"], [Q2.id]: ["o0000021"] }, { [Q1.id]: ["o0000011"], [Q2.id]: ["o0000022"] }, WRONG];
+    for (const answers of failing) viewOf(await submitAttempt(d, w.client.id, "e-kulm", answers));
+    await flush(); // Maria's "Testi katsed otsas"
+    await db.update(courseTests).set({ tries: 1 }).where(eq(courseTests.courseId, w.course.id)); // 3 tries made, 1 allowed now
+    expect(await testView(db, w.client.id, "e-kulm", NOW)).toMatchObject({ state: { kind: "used" }, tries: 1, triesLeft: 0 });
+    expect(await reopenTest(d, MARIA, w.access.id)).toEqual({ kind: "reopened", triesLeft: 1 });
+    expect(await testView(db, w.client.id, "e-kulm", NOW)).toMatchObject({ state: { kind: "open" }, tries: 4, triesLeft: 1 }); // the allowance now exceeds the 3 made
+    await flush();
+    expect(toKati().map((m) => m.subject)).toEqual(["Test on sinu jaoks uuesti avatud"]);
+    expect(await reopenTest(d, MARIA, w.access.id)).toEqual({ kind: "notNeeded" });
+    expect(viewOf(await submitAttempt(d, w.client.id, "e-kulm", RIGHT)).last).toMatchObject({ number: 4, status: "passed" });
+  });
 });
 
 describe("completion by the test (spec §4.4)", () => {
@@ -353,6 +406,21 @@ describe("Review Focus 2: two submits at once (a double tap, two devices)", () =
     expect(viewOf(b)).toMatchObject({ triesLeft: 2, last: { number: 1, status: "failed" } });
     expect(viewOf(await submitAttempt(d, w.client.id, "e-kulm", WRONG))).toMatchObject({ triesLeft: 2 });
     expect(await stored(w.client.id)).toHaveLength(1);
+  });
+
+  test("the same answers sent again after the test is passed are a repeat: the current view, nothing written, nobody told", async () => {
+    const w = await world({ points: ["Kulmude kuju"] }); // a course with points: the pass completes nothing, so it mails nobody
+    const { d, queued } = deps();
+    const first = viewOf(await submitAttempt(d, w.client.id, "e-kulm", RIGHT));
+    expect(first.state).toEqual({ kind: "passed" });
+    const before = await stored(w.client.id);
+    const again = await submitAttempt(d, w.client.id, "e-kulm", RIGHT);
+    expect(again.kind).toBe("submitted");
+    expect(viewOf(again)).toEqual(first);
+    expect(viewOf(again)).toMatchObject({ state: { kind: "passed" }, triesLeft: 2, last: { number: 1, status: "passed" } });
+    expect(await stored(w.client.id)).toEqual(before);
+    expect(queued()).toBe(0);
+    expect(infoLog().match(/submitted \(passed\)/g)).toHaveLength(1);
   });
 
   test("Maria lowers the pass mark after a failed attempt: the same answers sent again are a new try, graded against the mark as it is now", async () => {

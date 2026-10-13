@@ -65,7 +65,7 @@ export type SubmitResult =
 
 export type ReviewResult = { kind: "reviewed"; status: "passed" | "fix"; completed: boolean } | { kind: "invalid"; error: "incomplete" | "comment" | "tooLong" } | { kind: "stale" } | { kind: "notFound" };
 
-type ReopenResult = { kind: "reopened"; triesLeft: number } | { kind: "notNeeded" } | { kind: "notFound" };
+export type ReopenResult = { kind: "reopened"; triesLeft: number } | { kind: "notNeeded" } | { kind: "notFound" };
 
 /** Work for after the commit: Maria's notice, the student's mail. */
 type Task = () => Promise<void>;
@@ -280,7 +280,9 @@ export async function resubmitAnswers(deps: TestDeps, clientId: number, slug: st
  * Maria's review of an attempt in "review" (spec §5.4), else `stale` (reviewed already, on her other device): lock the access, store the review,
  * when and by whom, and the status (every open answer "ok": passed, else fix); a pass may complete the course. After the commit the student's
  * mail: "completed" when it completed the course, "testFix" for a rewrite, "testPassed" when the practical work is next (a course with points).
- * An expired access is still reviewed (spec §8); a revoked one is notFound. `raw`: the review form's verdicts and comments. `shownSubmittedAt`:
+ * An expired access is still reviewed (spec §8) and the review is stored, but its "testFix" and "testPassed" mails are not sent: her pages are
+ * read-only until the access is extended (a rewrite answers `closed`), so they would invite her to what she cannot do (as with `reopenTest`);
+ * "completed" still goes, it only tells her the course is done. A revoked access is notFound. `raw`: the review form's verdicts and comments. `shownSubmittedAt`:
  * the attempt's `submittedAt` (ISO) as the review page showed it; when given and the stored one differs, the student has rewritten her answers
  * since that page was read (a screen on Maria's other device, older than the rewrite): `stale`, nothing stored for answers she never saw.
  */
@@ -307,7 +309,8 @@ export async function reviewAttempt(deps: TestDeps, adminEmail: string, attemptI
     await tx.update(testAttempts).set({ review: review.review, status, reviewedAt: deps.now, reviewedBy: adminEmail }).where(eq(testAttempts.id, attemptId));
     const completed = status === "passed" && (await completeIfDone(t, access.id, deps.now));
     const job = await completionJob(t, access.id);
-    const kind: CompletionMailKind | null = completed ? "completed" : status === "fix" ? "testFix" : job?.hasPoints ? "testPassed" : null;
+    const active = isActive(access, deps.now); // an ended access: no mail sends her to a page she can only read
+    const kind: CompletionMailKind | null = completed ? "completed" : !active ? null : status === "fix" ? "testFix" : job?.hasPoints ? "testPassed" : null;
     return { result: { kind: "reviewed", status, completed }, after: job && kind ? [() => mailCompletion(deps.env, deps.siteUrl, job, kind)] : [] };
   });
   if (done.result.kind === "reviewed") console.info(`[test] attempt ${attemptId}: reviewed (${done.result.status})`);
@@ -316,11 +319,13 @@ export async function reviewAttempt(deps: TestDeps, adminEmail: string, attemptI
 }
 
 /**
- * "Ava test uuesti" (spec §5.2, D3): when every allowed try failed ("used"), extra_tries grows by the course's tries, and after the commit the
- * student gets "reopened"; otherwise `notNeeded`. Under the access lock, so two taps add the tries once (the second finds the test open). A
- * revoked access is notFound. An access that has ended (Hindamine still lists it) gets the tries all the same, for the day it is extended, but
- * no "reopened" mail: her page is read-only and a submit answers `closed`, so the mail would promise a test she cannot take. `adminEmail`: the
- * admin who asked (course_access has no column for it; the reopen shows as extra_tries).
+ * "Ava test uuesti" (spec §5.2, D3): when every allowed try failed ("used"), the allowance becomes the attempts made plus the course's tries
+ * (extra_tries grows by the course's tries, but at least up to the attempts made: when Maria has lowered the course's tries below them, the
+ * plain addition would leave it "used"), and after the commit the student gets "reopened"; otherwise `notNeeded`. Under the access lock, so
+ * two taps add the tries once (the second finds the test open). A revoked access is notFound. An access that has ended (Hindamine still lists
+ * it) gets the tries all the same, for the day it is extended, but no "reopened" mail: her page is read-only and a submit answers `closed`, so
+ * the mail would promise a test she cannot take. `adminEmail`: the admin who asked (course_access has no column for it; the reopen shows as
+ * extra_tries).
  */
 export async function reopenTest(deps: TestDeps, adminEmail: string, accessId: number): Promise<ReopenResult> {
   const done = await deps.db.transaction(async (tx): Promise<Done<ReopenResult>> => {
@@ -332,10 +337,12 @@ export async function reopenTest(deps: TestDeps, adminEmail: string, accessId: n
     const rows = await attemptsOf(t, access);
     const allowed = triesAllowed(setup.tries, access.extraTries);
     if (testState(rows, allowed).kind !== "used") return stop({ kind: "notNeeded" });
-    await tx.update(courseAccess).set({ extraTries: access.extraTries + setup.tries }).where(eq(courseAccess.id, accessId));
+    // the new allowance is setup.tries + extraTries: at least the attempts made (rows.length) plus the course's tries
+    const extraTries = Math.max(access.extraTries + setup.tries, rows.length);
+    await tx.update(courseAccess).set({ extraTries }).where(eq(courseAccess.id, accessId));
     const job = await completionJob(t, accessId);
     return {
-      result: { kind: "reopened", triesLeft: Math.max(0, allowed + setup.tries - rows.length) },
+      result: { kind: "reopened", triesLeft: Math.max(0, triesAllowed(setup.tries, extraTries) - rows.length) },
       // an ended access: the tries wait for an extension, and no mail invites her to a test she cannot take now
       after: job && isActive(access, deps.now) ? [() => mailCompletion(deps.env, deps.siteUrl, job, "reopened")] : [],
     };
