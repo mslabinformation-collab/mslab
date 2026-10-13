@@ -526,13 +526,16 @@ export class ProtocolAutosave {
    * server again now (keepReading, told through onRecheck), and it says "checking" until it comes; whenFresh tells when it has, so the next send goes
    * at the version read.
    */
-  recheck(id: number): void {
-    const e = this.entries.get(id);
-    if (!e) return;
-    this.awaiting.add(id);
-    if (e.status.kind === "saved") e.status = { kind: "checking" };
+  recheck(...ids: number[]): void {
+    const known = ids.filter((id) => this.entries.has(id));
+    if (known.length === 0) return;
+    for (const id of known) {
+      const e = this.entries.get(id)!;
+      this.awaiting.add(id);
+      if (e.status.kind === "saved") e.status = { kind: "checking" };
+    }
     this.changed();
-    for (const read of [...this.readers]) read();
+    for (const read of [...this.readers]) read(); // (one read for them all)
   }
 
   /** keepReading: `read` is told when the server's text is wanted now (recheck). Returns the call that stops it. */

@@ -77,6 +77,22 @@ const sendInput = (e: Pick<Entry, "registrationId" | "version" | "protocolId">) 
   ...(e.protocolId !== null ? { protocolId: e.protocolId } : {}),
 });
 
+/**
+ * A send that got no answer in SEND_TIMEOUT_MS may have gone through: the server's text of these protocols is read again (engine.recheck, one read),
+ * and their send marks follow. One the read shows sent (nothing unsaved since) loses its line "Vastust ei tulnud …" and `onSent` is told, as for a
+ * send answered "sent": the screen shows "Saadetud …", and an edit after it is a "Saada uuesti" Maria chooses, never a second mail by mistake.
+ */
+function checkAfterTimeout(engine: ProtocolAutosave, ids: readonly number[], line: string, onSent: (id: number) => void): void {
+  engine.recheck(...ids);
+  for (const id of ids)
+    void engine.whenFresh([id]).then((read) => {
+      const e = engine.get(id);
+      if (!read || !e || e.sending || statusOf(e) !== "sent" || unsavedEntry(e)) return;
+      if (e.sendError === line) engine.setSendError(id, null);
+      onSent(id);
+    });
+}
+
 /** The answer of `work`, or "timeout" when none came within SEND_TIMEOUT_MS. */
 function bounded<T>(work: Promise<T>): Promise<T | "timeout"> {
   return new Promise<T | "timeout">((resolve, reject) => {
@@ -198,6 +214,7 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
       const result = await bounded(sendProtocolAction(sendInput(engine.get(id)!))).catch((): SendOutcome => ({ kind: "failed" }));
       if (result === "timeout") {
         engine.setSendError(id, t.sendErrors.timeout); // (the boxes open again: the finally below)
+        checkAfterTimeout(engine, [id], t.sendErrors.timeout, () => onUnlock(false));
         return;
       }
       if (result.kind === "sent" || result.kind === "already") {
@@ -345,6 +362,7 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
       for (const item of items)
         if (!answered.has(item.registrationId)) leftOut(timedOut ? t.sendErrors.timeout : t.sendErrors.failed, item.registrationId, timedOut ? "unknown" : "reason");
       for (const id of planned) engine.setSendError(id, own.get(id) ?? null); // (one that went has no line left from an earlier try)
+      if (timedOut) checkAfterTimeout(engine, items.map((i) => i.registrationId), t.sendErrors.timeout, onSent);
       const lines = [...notSent].map(([key, g]) => {
         const names = g.names.join(", ");
         return { key, line: g.kind === "review" ? fill(t.confirm.review, { names }) : g.kind === "unknown" ? fill(t.result.unknown, { names }) : fill(t.result.notSent, { names, reason: g.reason }) };

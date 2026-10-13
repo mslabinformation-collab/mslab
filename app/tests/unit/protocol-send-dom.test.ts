@@ -895,6 +895,7 @@ test("item 4: a 'Saada' the server never answers: after SEND_TIMEOUT_MS the boxe
   expect(($("[data-note='0']") as HTMLTextAreaElement).readOnly).toBe(false);
   expect($("[data-send='first']")!.textContent).toBe("Saada");
   expect($("[data-send-error]")!.textContent).toBe(TIMEOUT);
+  await answered(answer([student(1, "Kati")])); // (the read the timeout asked for: not sent yet, as far as the server's text says)
   actions.sendProtocolAction.mockResolvedValueOnce({ kind: "already", version: 1, sentAt: SENT_AT }); // (the first one went through after all)
   await click("[data-send='first']");
   expect(actions.sendProtocolAction).toHaveBeenLastCalledWith({ registrationId: 1, version: 1 });
@@ -917,6 +918,7 @@ test("item 4: a 'Lukusta ja saada kõik' the server never answers: after SEND_TI
     "Vastust ei tulnud: Anu, Berit. Kontrollin, kas protokollid saadeti. Juba saadetud protokolli teist korda ei saadeta.",
   ]);
   expect($("[data-send-error]")!.textContent).toBe(TIMEOUT); // (Anu's own line)
+  await answered(answer([student(1, "Anu"), student(2, "Berit")])); // (the read the timeout asked for)
   actions.sendProtocolsAction.mockResolvedValueOnce([
     { registrationId: 1, result: { kind: "already", version: 1, sentAt: SENT_AT } },
     { registrationId: 2, result: { kind: "already", version: 1, sentAt: SENT_AT } },
@@ -943,4 +945,39 @@ test("review: a send names the protocol's row the screen shows (a protocol delet
     { registrationId: 2, version: 1, protocolId: 11 },
     { registrationId: 3, version: 1 }, // (no row known: the version decides)
   ]);
+});
+
+test("review: a 'Saada' that went through but whose answer never came: after the timeout the screen reads the server again and shows it 'Saadetud …', with no second send", async () => {
+  actions.sendProtocolAction.mockImplementationOnce(() => new Promise<SendOutcome>(() => {})); // (the server sent it; the answer is lost)
+  await render({ single: true, students: [student(1, "Kati")] });
+  await click("[data-send='first']");
+  await wait(SEND_TIMEOUT_MS);
+  expect($("[data-send-error]")!.textContent).toBe(TIMEOUT);
+  expect(read).toHaveBeenCalledTimes(2); // read again at once
+  await answered(answer([student(1, "Kati", { sentVersion: 1, sentAt: SENT_AT })]));
+  expect($("[data-locked]")!.textContent).toBe("Saadetud 12.10.2026 18:00. Õpilane näeb seda versiooni.");
+  expect(($("[data-note='0']") as HTMLTextAreaElement).readOnly).toBe(true); // ("Muuda" first, as after any send)
+  expect($("[data-send-error]")).toBeNull();
+  expect(actions.sendProtocolAction).toHaveBeenCalledTimes(1);
+});
+
+test("review: a bulk send that went through for one student but whose answer never came: after the timeout each student's marks follow the server's read", async () => {
+  actions.sendProtocolsAction.mockImplementationOnce(() => new Promise(() => {}));
+  await render({ single: false, students: [student(1, "Anu"), student(2, "Berit")] });
+  await click("[data-send-all-open]");
+  await click("[data-confirm-send]");
+  await wait(SEND_TIMEOUT_MS);
+  expect(read).toHaveBeenCalledTimes(2); // read again at once
+  await answered(answer([student(1, "Anu", { sentVersion: 1, sentAt: SENT_AT }), student(2, "Berit")])); // Anu's went, Berit's did not
+  await wait(0);
+  expect(read).toHaveBeenCalledTimes(2); // (one read for them all)
+  expect($("[data-student='1']")!.getAttribute("data-status")).toBe("sent");
+  expect($("[data-student='2']")!.getAttribute("data-status")).toBe("draft");
+  expect($("[data-locked]")).not.toBeNull(); // (Anu's screen)
+  expect($("[data-send-error]")).toBeNull();
+  await click("[data-student='2']");
+  expect($("[data-send-error]")!.textContent).toBe(TIMEOUT); // Berit's line stays
+  await click("[data-send-all-open]");
+  expect($("[data-confirm-will]")!.textContent).toBe("Saavad protokolli: Berit");
+  expect($("[data-confirm-already]")!.textContent).toBe("Juba saadetud, uut pole: Anu");
 });
