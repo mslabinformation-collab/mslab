@@ -1241,6 +1241,31 @@ describe("keepReading: refusals and a tab hidden for long (fix round 2 of Task 1
     expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
     reading.stop();
   });
+
+  test("item 6: after a refused read (401) the tab shown again or focused reads again, never on a timer; signed in, the protocols say 'saved'", async () => {
+    const e = start([at(1, "x")], server().send);
+    e.awaitFresh();
+    let status = 401;
+    const read = vi.fn(async () => (status === 200 ? { status, body: { ok: true, students: [wire(at(1, "x"))] } } : { status, body: { ok: false, error: "unauthorized" } }));
+    const reading = keepReading(e, { sessioon: 5 }, read, () => {});
+    await tick();
+    expect(e.get(7)!.status).toEqual({ kind: "signedOut" });
+    show("hidden");
+    show("visible"); // still signed out: asked again, refused again
+    await tick();
+    expect(read).toHaveBeenCalledTimes(2);
+    await tick(120_000);
+    expect(read).toHaveBeenCalledTimes(2);
+    status = 200; // signed in again in another tab, and back to this one
+    window.dispatchEvent(new Event("focus"));
+    await tick();
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
+    window.dispatchEvent(new Event("focus")); // signed in and read: a focus asks nothing more
+    await tick();
+    expect(read).toHaveBeenCalledTimes(3);
+    reading.stop();
+  });
 });
 
 // The final review's Important 1: the screen left (a menu link) while a save is on its way. The newest text must still reach the server, after
@@ -1438,5 +1463,51 @@ describe("the final review's parked items", () => {
     await tick();
     expect(readLocal(localStorage, 7, "t1")).toMatchObject({ version: 1, content: { notes: ["AB", ""] }, sent: [{ notes: ["AB", ""], generalNote: "" }] });
     expect(notes(s)).toEqual([[0, "A"], [1, "AB"]]);
+  });
+
+  test("item 7b: a successful read after a refused one ends 'signed out': each protocol says 'saved' again, a student it drops is gone", async () => {
+    const s = server();
+    const e = start([at(1, "x"), at(1, "y", { registrationId: 8 })], s.send);
+    e.awaitFresh();
+    e.signedOut();
+    expect([e.get(7)!.status.kind, e.get(8)!.status.kind]).toEqual(["signedOut", "signedOut"]);
+    e.reconcile([at(1, "x")]);
+    expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
+    expect(e.get(8)!.status).toEqual({ kind: "gone" });
+    void e.save(7); // nothing to save: 'saved', not the old 'signed out'
+    await tick();
+    expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
+    expect(s.calls).toHaveLength(0);
+  });
+
+  test("item 7b: a save refused as signed out, then a successful read: her text is saved at once, without waiting for the retry", async () => {
+    const s = server();
+    const e = start([at(1, "x")], s.send);
+    e.editNote(7, 0, "x2");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer({ status: 401, body: { ok: false, error: "auth" } });
+    await tick();
+    expect(e.get(7)!.status).toEqual({ kind: "signedOut" });
+    e.reconcile([at(1, "x")]); // signed in again: the read went through
+    await tick();
+    expect(notes(s)).toEqual([[1, "x2"], [1, "x2"]]);
+    s.calls[1].answer(ok(2));
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 2, status: { kind: "saved" } });
+  });
+
+  test("item 7c: a save answered 404 is the server's word, like a 200: a read kept for after that save is not taken", async () => {
+    const s = server();
+    const e = start([at(1, "E")], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS); // its save on its way
+    e.reconcile([at(2, "Teisest seadmest")]); // a read made before the registration went: kept for after the save
+    s.calls[0].answer({ status: 404, body: { ok: false, error: "notFound" } });
+    await tick();
+    expect(e.get(7)).toMatchObject({ status: { kind: "gone" }, version: 1, content: { notes: ["A", ""] }, conflict: null });
+    expect(e.checking(7)).toBe(false);
+    await tick(120_000);
+    expect(s.calls).toHaveLength(1);
   });
 });

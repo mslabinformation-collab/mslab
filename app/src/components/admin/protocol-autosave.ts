@@ -536,8 +536,10 @@ export class ProtocolAutosave {
    * a protocol with a save queued or on its way is left alone until that save is over: its answer is the server's word (a read that comes
    * meanwhile would see the save half done, and a second save of the same protocol must never fly beside it); a student the answer does not list
    * (cancelled or moved meanwhile) says she is gone, unless text of hers is not saved yet; a student the screen did not have is added.
+   * A read that went through means she is signed in: "signed out" ends, and a text a save could not store while she was signed out goes at once.
    */
   reconcile(drafts: readonly ServerDraft[]): void {
+    this.signedOutIds.clear();
     const listed = new Set<number>();
     for (const d of drafts) {
       listed.add(d.registrationId);
@@ -565,7 +567,7 @@ export class ProtocolAutosave {
     if (d === null) {
       // not in the answer: cancelled or moved meanwhile. Text of hers that is not saved yet stays as it is (a cancelled registration still saves:
       // nothing typed is lost); else she says she is gone, and it is not "checking" for good
-      if (!this.uncertain(e) && (e.status.kind === "checking" || e.status.kind === "saved")) this.set(e, { kind: "gone" });
+      if (!this.uncertain(e) && (e.status.kind === "checking" || e.status.kind === "saved" || e.status.kind === "signedOut")) this.set(e, { kind: "gone" });
       return;
     }
     const newer = d.version > e.version || (d.version === e.version && !sameTitles(d.titles, e.titles));
@@ -588,7 +590,11 @@ export class ProtocolAutosave {
       e.sentVersion = d.sentVersion;
       e.sentAt = d.sentAt;
     }
-    if (e.status.kind === "checking") this.settle(e);
+    if (e.status.kind === "signedOut" && this.uncertain(e)) {
+      // a save refused while she was signed out: she is signed in again, so it goes now, not at its retry
+      this.attempts.delete(id);
+      void this.save(id);
+    } else if (e.status.kind === "checking" || e.status.kind === "signedOut") this.settle(e);
   }
 
   /** A save is over (the chain of the protocol ended): a read it made wait is taken now, unless the save's own answer was the server's word on it. */
@@ -942,6 +948,9 @@ export class ProtocolAutosave {
     }
     if (answer && (answer.status === 401 || answer.status === 403)) return this.failed(e, { kind: "signedOut" });
     if (answer && answer.status === 404) {
+      // the server's own word, like a 200: a read kept for after this save (takeDeferred) is older than it, and is not taken
+      this.awaiting.delete(id);
+      this.signedOutIds.delete(id);
       this.set(e, { kind: "gone" });
       return false;
     }
@@ -1235,12 +1244,16 @@ export const HIDDEN_RECHECK_MS = 5 * 60_000;
  * 30 s, like a failed save), when the network is back, when the tab is shown again, and when the whole page comes back from the browser's cache
  * (pageshow, persisted: the text is then unread again; so is a tab shown again after HIDDEN_RECHECK_MS hidden). An answer is reconciled into the
  * engine (and `onStudents` told, for the list of students). An answer that trying again cannot change ends it: signed out (401, 403: the engine says
- * so, engine.signedOut) and no such session (404: none of the students is listed). `stop` ends it (the screen is left).
+ * so, engine.signedOut) and no such session (404: none of the students is listed). Signed out, it is not tried again on a timer, but it reads again
+ * when the tab is shown or focused (or the network is back): she may have signed in again in another tab meanwhile, and the answer that goes through
+ * ends "signed out". `stop` ends it (the screen is left).
  */
 export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read: ReadScreen, onStudents: (students: ScreenStudentView[]) => void): { stop(): void } {
   let alive = true;
   let reading = false;
   let attempts = 0;
+  /** The last answer was 401 or 403: read again when she may have signed in (the tab shown or focused), until one goes through. */
+  let refused = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   const visible = () => typeof document === "undefined" || document.visibilityState !== "hidden";
   const clear = () => {
@@ -1257,11 +1270,15 @@ export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read
     const students = answer && answer.status === 200 ? readStudents(answer.body) : null;
     if (students) {
       attempts = 0;
+      refused = false;
       engine.reconcile(students.map(serverDraft));
       onStudents(students);
       return;
     }
-    if (answer && (answer.status === 401 || answer.status === 403)) return engine.signedOut();
+    if (answer && (answer.status === 401 || answer.status === 403)) {
+      refused = true;
+      return engine.signedOut();
+    }
     if (answer && answer.status === 404) return engine.reconcile([]);
     timer = setTimeout(() => {
       timer = null;
@@ -1269,7 +1286,7 @@ export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read
     }, RETRY_MS[Math.min(attempts++, RETRY_MS.length - 1)]);
   }
   const again = () => {
-    if (!engine.checking()) return;
+    if (!engine.checking() && !refused) return;
     attempts = 0;
     void ask();
   };
@@ -1289,6 +1306,7 @@ export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read
     again();
   };
   window.addEventListener("online", again);
+  window.addEventListener("focus", again);
   window.addEventListener("pageshow", shown);
   document.addEventListener("visibilitychange", seen);
   void ask();
@@ -1297,6 +1315,7 @@ export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read
       alive = false;
       clear();
       window.removeEventListener("online", again);
+      window.removeEventListener("focus", again);
       window.removeEventListener("pageshow", shown);
       document.removeEventListener("visibilitychange", seen);
     },
