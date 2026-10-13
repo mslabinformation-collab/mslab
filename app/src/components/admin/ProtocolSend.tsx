@@ -67,6 +67,16 @@ const copyOf = (c: Content): Content => ({ notes: [...c.notes], generalNote: c.g
  */
 export const SEND_TIMEOUT_MS = 30_000;
 
+/**
+ * What a send names (server/protocols.ts SendInput): the version the server confirmed, and the protocol's row it is of when the screen knows it
+ * (a protocol deleted with the account and made again restarts at version 1, so the server answers "stale" for another row).
+ */
+const sendInput = (e: Pick<Entry, "registrationId" | "version" | "protocolId">) => ({
+  registrationId: e.registrationId,
+  version: e.version,
+  ...(e.protocolId !== null ? { protocolId: e.protocolId } : {}),
+});
+
 /** The answer of `work`, or "timeout" when none came within SEND_TIMEOUT_MS. */
 function bounded<T>(work: Promise<T>): Promise<T | "timeout"> {
   return new Promise<T | "timeout">((resolve, reject) => {
@@ -185,7 +195,7 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
         engine.setSendError(id, unsavedMessage(after, t));
         return;
       }
-      const result = await bounded(sendProtocolAction({ registrationId: id, version: engine.get(id)!.version })).catch((): SendOutcome => ({ kind: "failed" }));
+      const result = await bounded(sendProtocolAction(sendInput(engine.get(id)!))).catch((): SendOutcome => ({ kind: "failed" }));
       if (result === "timeout") {
         engine.setSendError(id, t.sendErrors.timeout); // (the boxes open again: the finally below)
         return;
@@ -302,7 +312,7 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
       const saved = await Promise.all(will.map((id) => engine.save(id)));
       // (one whose notice opened meanwhile is left out as an unsaved one: see StudentSend)
       const goes = will.map((id, i) => saved[i] && !engine.get(id)!.conflict);
-      const items = will.filter((_, i) => goes[i]).map((id) => ({ registrationId: id, version: engine.get(id)!.version }));
+      const items = will.filter((_, i) => goes[i]).map((id) => sendInput(engine.get(id)!));
       const answer =
         items.length === 0 ? [] : await bounded(sendProtocolsAction(items)).catch(() => items.map((i) => ({ registrationId: i.registrationId, result: { kind: "failed" } as const })));
       // no answer in SEND_TIMEOUT_MS: the ones sent for may have gone through (a send again is safe), and their boxes open again (the finally below)

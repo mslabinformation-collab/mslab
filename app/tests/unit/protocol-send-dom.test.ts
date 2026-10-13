@@ -927,3 +927,20 @@ test("item 4: a 'Lukusta ja saada kõik' the server never answers: after SEND_TI
   expect($("[data-summary-sent]")!.textContent).toBe("Saadetud: Anu, Berit.");
   expect($("[data-send-error]")).toBeNull();
 });
+
+// ---------- the review of #3 + #4 ----------
+
+test("review: a send names the protocol's row the screen shows (a protocol deleted with the account and made again is 'stale' on the server), single and bulk", async () => {
+  actions.sendProtocolAction.mockResolvedValueOnce({ kind: "sent", again: false, version: 1, sentAt: SENT_AT });
+  await render({ single: true, students: [student(1, "Kati", { protocolId: 9 })] });
+  await click("[data-send='first']");
+  expect(actions.sendProtocolAction).toHaveBeenCalledWith({ registrationId: 1, version: 1, protocolId: 9 });
+  await render({ single: false, students: [student(2, "Anu", { protocolId: 11 }), student(3, "Berit")] });
+  actions.sendProtocolsAction.mockResolvedValueOnce([]);
+  await click("[data-send-all-open]");
+  await click("[data-confirm-send]");
+  expect(actions.sendProtocolsAction).toHaveBeenCalledWith([
+    { registrationId: 2, version: 1, protocolId: 11 },
+    { registrationId: 3, version: 1 }, // (no row known: the version decides)
+  ]);
+});

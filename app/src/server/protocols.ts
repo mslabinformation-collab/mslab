@@ -233,22 +233,26 @@ type ProtocolMailJob = { registrationId: number; email: string; name: string; lo
  * 1. the locks, in the order every writer of these rows takes them: the address (client-auth.ts lockAddress — the logins and addClient take
  *    it and then write registrations, so taking the registration first would deadlock with a login at the same moment), then the
  *    registration (db/queries/seats.ts lockRegistration), then the protocol row (FOR UPDATE: a save that comes meanwhile waits for the freeze);
- * 2. the checks: a cancelled registration is never sent; nothing written is "empty"; another version than the screen's is "stale"; the
- *    version sent already is "already" (two sends at once: the first sends, the second finds it sent);
+ * 2. the checks: a cancelled registration is never sent; nothing written is "empty"; another version than the screen's, or another row
+ *    (`protocolId`: the protocol deleted with the account and made again restarts at version 1; absent, an older screen's send, the version
+ *    alone decides), is "stale"; the version sent already is "already" (two sends at once: the first sends, the second finds it sent);
  * 3. the account: when the registration has none, the address's account is found or created as "Lisa õpilane" does it (admin-clients.ts
  *    addClient, in a savepoint of this transaction) and the registration is linked to it;
  * 4. the freeze: `sent` = the draft as it is, `sent_at`, `sent_version`.
  * The mail goes out after the commit (`later`): a live login in its button, the feedback line on the first send. A mail that fails never
  * undoes the send. A sample address is never mailed.
  */
-export async function sendProtocol(deps: SendDeps, input: { registrationId: number; version: number }): Promise<SendResult> {
+export async function sendProtocol(deps: SendDeps, input: SendInput): Promise<SendResult> {
   const { result, mail } = await freezeProtocol(deps, input);
   if (mail) deps.later(() => mailProtocols(deps, [mail]));
   return result;
 }
 
+/** What a send names: the registration, the version the screen showed and the protocol's row it is of (absent or null: the version alone decides). */
+export type SendInput = { registrationId: number; version: number; protocolId?: number | null };
+
 /** The transaction of sendProtocol; it answers with the mail still to go instead of queuing it, so a bulk send can queue all of its mails as one task. */
-async function freezeProtocol(deps: SendDeps, input: { registrationId: number; version: number }): Promise<{ result: SendResult; mail: ProtocolMailJob | null }> {
+async function freezeProtocol(deps: SendDeps, input: SendInput): Promise<{ result: SendResult; mail: ProtocolMailJob | null }> {
   const [peek] = await deps.db.select({ email: registrations.email }).from(registrations).where(eq(registrations.id, input.registrationId)).limit(1);
   if (!peek) return { result: { kind: "notFound" }, mail: null };
   const done = await deps.db.transaction(async (tx): Promise<{ result: SendResult; mail: ProtocolMailJob | null }> => {
@@ -267,7 +271,7 @@ async function freezeProtocol(deps: SendDeps, input: { registrationId: number; v
     if (r.registration.status === "cancelled") return none({ kind: "cancelled" });
     const [p] = await tx.select().from(protocols).where(eq(protocols.registrationId, input.registrationId)).for("update");
     if (!p || !hasText(p)) return none({ kind: "empty" });
-    if (p.version !== input.version) return none({ kind: "stale", version: p.version });
+    if (p.version !== input.version || (typeof input.protocolId === "number" && p.id !== input.protocolId)) return none({ kind: "stale", version: p.version });
     if (p.sentAt !== null && p.sentVersion === p.version) return none({ kind: "already", version: p.version, sentAt: p.sentAt.toISOString() });
     if (r.registration.clientId === null) {
       const client = await addClient(t, r.registration.email);
@@ -347,7 +351,7 @@ export type BulkResult = { registrationId: number; result: SendOutcome };
  * sendProtocol), so one that fails does not stop the others; a throw is "failed", logged by the registration's id. The mails of the ones
  * sent go out as one task after the last transaction, one after another (mailProtocols).
  */
-export async function sendProtocols(deps: SendDeps, items: readonly { registrationId: number; version: number }[]): Promise<BulkResult[]> {
+export async function sendProtocols(deps: SendDeps, items: readonly SendInput[]): Promise<BulkResult[]> {
   const out: BulkResult[] = [];
   const mails: ProtocolMailJob[] = [];
   for (const item of items) {
