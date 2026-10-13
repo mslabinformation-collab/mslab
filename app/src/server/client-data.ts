@@ -255,11 +255,11 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
 /**
  * The e-course the client has access to right now (not revoked, not expired), or null. Whether the course is still published does not
  * matter: access is granted to the client and stays until it ends; only the favourites are limited to published courses.
- * Also the lesson endpoints' first check (lesson-data.ts).
+ * Also the lesson endpoints' first check (lesson-data.ts), whose write may complete the access by its `id` (e-course completion).
  */
 export async function activeAccess(db: Db, clientId: number, slug: string, now: Date) {
   const [row] = await db
-    .select({ course: { id: courses.id, slug: courses.slug, title: courses.title }, expiresAt: courseAccess.expiresAt })
+    .select({ id: courseAccess.id, course: { id: courses.id, slug: courses.slug, title: courses.title }, expiresAt: courseAccess.expiresAt })
     .from(courseAccess)
     .innerJoin(courses, eq(courseAccess.courseId, courses.id))
     .where(and(eq(courseAccess.clientId, clientId), eq(courses.slug, slug), isNull(courseAccess.revokedAt), gt(courseAccess.expiresAt, now)))

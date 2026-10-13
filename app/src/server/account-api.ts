@@ -23,6 +23,7 @@ import {
   acceptTerms, createChangeRequest, deleteClient, loadDashboard, loadEcourse, loadFavouriteCards, mergeFavourites, setFavourite, setNewsletter, updateProfile,
 } from "./client-data";
 import { removeClientPassword, setClientPassword } from "./client-password";
+import { queueCompletionMail } from "./completion";
 import { feedbackState, hideFeedback, notifyFeedback, submitFeedback } from "./course-feedback";
 import { PgKv } from "./kv";
 import { lessonFileFor, loadLesson, markTextLessonDone, saveProgress } from "./lesson-data";
@@ -493,7 +494,8 @@ async function lesson(request: Request, deps: AccountDeps, rawSlug: string, rawL
  * pause and end). Kept at its highest; at 90 % of the length the lesson is done. 200 `{ ok, done, next }`; 400 `{ error: "watchedSec" }`
  * (no number, or past the length + 5 s); 403 locked; 404; 409 `{ error: "video" }` (a text lesson, or a video lesson still waiting for its
  * video: it cannot be completed, so the next lesson stays locked); 429 `{ error: "rate" }` after
- * 12 in one clock minute (a fixed window, so the player's steady report every 15 s always fits).
+ * 12 in one clock minute (a fixed window, so the player's steady report every 15 s always fits). The report that makes the course's last lesson
+ * done may complete the course (completion.ts): its "completed" mail goes after the answer.
  */
 async function progress(request: Request, deps: AccountDeps, rawSlug: string, rawLesson: string): Promise<Response> {
   const session = await requireClient(request, deps);
@@ -507,20 +509,26 @@ async function progress(request: Request, deps: AccountDeps, rawSlug: string, ra
     return clientResponse(session, { ok: false, error: "rate" }, 429);
   }
   const result = await saveProgress(deps.db, session.clientId, ref.slug, ref.lessonId, input.data.watchedSec, deps.now);
-  if (result.kind === "saved") return clientResponse(session, { ok: true, done: result.done, next: result.next });
+  if (result.kind === "saved") {
+    if (result.completed) queueCompletionMail(deps, result.accessId); // the course's last step (e-course completion, spec §4.4, §6)
+    return clientResponse(session, { ok: true, done: result.done, next: result.next });
+  }
   if (result.kind === "locked") return clientResponse(session, { ok: false, error: "locked", next: result.next }, 403);
   if (result.kind === "video") return clientResponse(session, { ok: false, error: "video" }, 409);
   if (result.kind === "range") return badInput(session, "watchedSec");
   return clientResponse(session, { ok: false }, 404); // notFound (terms is never asked for here)
 }
 
-/** POST /kursus/:slug/:lesson/tehtud: "Märgi tehtuks" for a text lesson (kind "text"). 200 `{ ok, done: true, next }`; 403 locked; 404; 409 `{ error: "video" }` (a video lesson). */
+/** POST /kursus/:slug/:lesson/tehtud: "Märgi tehtuks" for a text lesson (kind "text"). 200 `{ ok, done: true, next }` (the course's last step queues its "completed" mail after the answer); 403 locked; 404; 409 `{ error: "video" }` (a video lesson). */
 async function lessonDone(request: Request, deps: AccountDeps, rawSlug: string, rawLesson: string): Promise<Response> {
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const ref = lessonRef(rawSlug, rawLesson);
   const result = ref ? await markTextLessonDone(deps.db, session.clientId, ref.slug, ref.lessonId, deps.now) : null;
-  if (result?.kind === "saved") return clientResponse(session, { ok: true, done: true, next: result.next });
+  if (result?.kind === "saved") {
+    if (result.completed) queueCompletionMail(deps, result.accessId); // the course's last step (e-course completion, spec §4.4, §6)
+    return clientResponse(session, { ok: true, done: true, next: result.next });
+  }
   if (result?.kind === "locked") return clientResponse(session, { ok: false, error: "locked", next: result.next }, 403);
   if (result?.kind === "video") return clientResponse(session, { ok: false, error: "video" }, 409);
   return clientResponse(session, { ok: false }, 404);
