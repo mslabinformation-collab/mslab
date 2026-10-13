@@ -1084,6 +1084,9 @@ describe("a read that comes while a save is queued or on its way, and the answer
     e.reconcile([at(2, "A")]);
     await tick();
     expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[1, "A"], [2, "AB"]]);
+    // the resend held across the 1.5 s (and the lost answer's retry): it went through the queue, so its waiting save is gone and nothing flies beside it
+    await tick(DEBOUNCE_MS * 3);
+    expect(s.calls).toHaveLength(2);
     s.calls[1].answer(ok(3));
     await tick(DEBOUNCE_MS * 3);
     expect(s.calls).toHaveLength(2); // (and the retry of the lost answer's save found nothing left to send)
