@@ -327,7 +327,13 @@ export const adminEt = {
       no: "Tagasi",
     },
     // the summary after "Saada": who got one, and per reason (sendErrors' words) who did not
-    result: { sent: "Saadetud: {names}.", notSent: "Ei saadetud: {names}. {reason}" },
+    result: {
+      sent: "Saadetud: {names}.",
+      notSent: "Ei saadetud: {names}. {reason}",
+      // the server never answered the send (a hung request, given up after SEND_TIMEOUT_MS): it may have gone through, and a send again is safe —
+      // the server answers "already" for a version sent before (NEW wording, for Dim's approval)
+      unknown: "Vastust ei tulnud: {names}. Pole kindel, kas protokoll saadeti. Saada uuesti (kui ei õnnestu, laadi leht uuesti) — juba saadetud protokolli teist korda ei saadeta.",
+    },
     sendErrors: {
       empty: "Protokoll on tühi. Kirjuta midagi enne saatmist.",
       unsaved: "Kõik pole veel salvestatud. Saada uuesti, kui ühendus on tagasi.",
@@ -339,6 +345,8 @@ export const adminEt = {
       review: "Vaata enne saatmist üle teises seadmes tehtud muudatus ja vajuta „Selge“.",
       // the screen was an older page and the server's text is newer: it is on the screen now, and was not sent unseen (NEW wording, for Dim's approval)
       refreshed: "Protokolli muudeti vahepeal mujal ja siin on nüüd uus tekst. Vaata see üle ja saada siis.",
+      // the server never answered the send (given up after SEND_TIMEOUT_MS): it may have gone through; a send again is safe (NEW wording, for Dim's approval)
+      timeout: "Vastust ei tulnud: pole kindel, kas protokoll saadeti. Saada uuesti (kui ei õnnestu, laadi leht uuesti) — juba saadetud protokolli teist korda ei saadeta.",
     },
   },
 

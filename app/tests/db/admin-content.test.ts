@@ -373,4 +373,10 @@ describe("saveCourseForm: 'Protokolli punktid' (phase protocols, spec §3)", () 
     expect((await getCourseForEdit(db, contact.id))!.protocolStages).toEqual(["Ettevalmistus", "Värvimine 😀", "x".repeat(120), "Rea\u0009vahe"]);
     expect(fieldsOf(await save({ ...draft, protocolStages: [`${"x".repeat(121)}\u0000`] }))).toEqual({ protocolStages: "tooLong" });
   });
+
+  test("a pasted heading with Word's line or page break keeps its words apart: a heading is one line, so the break is a space", async () => {
+    const draft = await load(contact.id);
+    expect(await save({ ...draft, protocolStages: ["Ette\u000bvalmistus", "Värvi\u000cmine", "Kolmas\r\npunkt"] })).toMatchObject({ ok: true });
+    expect((await getCourseForEdit(db, contact.id))!.protocolStages).toEqual(["Ette valmistus", "Värvi mine", "Kolmas punkt"]);
+  });
 });

@@ -159,15 +159,15 @@ describe("the feedback answers (spec §7)", () => {
 });
 
 describe("toStorable", () => {
-  test("drops the control characters and lone surrogates Postgres refuses, keeps the words, tabs and line breaks", () => {
+  test("drops the control characters and lone surrogates Postgres refuses, keeps the words, tabs and line breaks; Word's line break is a line break", () => {
     const pasted = "Kulmud\u000bhästi\u0000\tjah\r\nlõpp\ud800";
     expect(storable(pasted)).toBe(false);
-    expect(toStorable(pasted)).toBe("Kulmudhästi\tjah\r\nlõpp");
+    expect(toStorable(pasted)).toBe("Kulmud\nhästi\tjah\r\nlõpp");
     expect(storable(toStorable(pasted))).toBe(true);
     expect(toStorable("Привет 👋")).toBe("Привет 👋");
   });
 
-  test("storable.ts's rule, character by character: what storable refuses toStorable drops, and nothing else", () => {
+  test("storable.ts's rule, character by character: what storable refuses toStorable drops (or maps: VT, FF), and nothing else", () => {
     for (let c = 0; c <= 0x7f; c++) {
       const s = `a${String.fromCharCode(c)}b`;
       expect(toStorable(s) === s, `U+${c.toString(16)}`).toBe(storable(s));

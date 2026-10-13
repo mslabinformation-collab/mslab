@@ -34,7 +34,7 @@ async function setup() {
 describe("saveProtocol", () => {
   test("the first save creates the protocol with the course's headings as they are now, version 1", async () => {
     const { mari } = await setup();
-    expect(await save(mari.id, 0, { notes: notes("Kulmud ühtlased") })).toEqual({ kind: "saved", version: 1, savedAt: NOW });
+    expect(await save(mari.id, 0, { notes: notes("Kulmud ühtlased") })).toEqual({ kind: "saved", protocolId: expect.any(Number), version: 1, savedAt: NOW });
     expect(await stored(mari.id)).toMatchObject({
       version: 1,
       stages: [{ title: "Ettevalmistus", note: "Kulmud ühtlased" }, { title: "Kulmude analüüs", note: "" }, { title: "Vormi määramine", note: "" }, { title: "Värvimine", note: "" }],
@@ -48,9 +48,10 @@ describe("saveProtocol", () => {
   test("each saved change raises the version; a save that changes nothing raises nothing (a look, a 'Muuda' without an edit)", async () => {
     const { mari } = await setup();
     await save(mari.id, 0, { notes: notes("A") });
-    expect(await save(mari.id, 1, { notes: notes("AB") }, LATER)).toEqual({ kind: "saved", version: 2, savedAt: LATER });
+    const row = (await stored(mari.id)).id;
+    expect(await save(mari.id, 1, { notes: notes("AB") }, LATER)).toEqual({ kind: "saved", protocolId: row, version: 2, savedAt: LATER });
     expect(await save(mari.id, 2, { notes: notes("AB"), generalNote: "Üldiselt hästi" })).toMatchObject({ kind: "saved", version: 3 });
-    expect(await save(mari.id, 3, { notes: notes("AB"), generalNote: "Üldiselt hästi" }, new Date("2026-10-12T09:00:00Z"))).toEqual({ kind: "saved", version: 3, savedAt: NOW });
+    expect(await save(mari.id, 3, { notes: notes("AB"), generalNote: "Üldiselt hästi" }, new Date("2026-10-12T09:00:00Z"))).toEqual({ kind: "saved", protocolId: row, version: 3, savedAt: NOW });
     expect((await stored(mari.id)).version).toBe(3);
   });
 
@@ -70,11 +71,11 @@ describe("saveProtocol", () => {
     const { course, mari } = await setup();
     await save(mari.id, 0, { notes: notes("A") });
     await save(mari.id, 1, { notes: notes("AB") }, LATER); // stored as 2, but the answer never reached the tablet
-    expect(await save(mari.id, 1, { notes: notes("AB") })).toEqual({ kind: "saved", version: 2, savedAt: LATER });
+    expect(await save(mari.id, 1, { notes: notes("AB") })).toEqual({ kind: "saved", protocolId: (await stored(mari.id)).id, version: 2, savedAt: LATER });
     // the same for a first save whose answer was lost
     const anu = await student(db, course, null, "Anu Aas");
     await save(anu.id, 0, { notes: notes("Esimene") });
-    expect(await save(anu.id, 0, { notes: notes("Esimene") })).toEqual({ kind: "saved", version: 1, savedAt: NOW });
+    expect(await save(anu.id, 0, { notes: notes("Esimene") })).toEqual({ kind: "saved", protocolId: (await stored(anu.id)).id, version: 1, savedAt: NOW });
   });
 
   test("a first save made for headings the course no longer has is refused with the headings now; a created protocol keeps its own (spec §9)", async () => {
@@ -84,7 +85,7 @@ describe("saveProtocol", () => {
     const anu = await student(db, course, session, "Anu Aas");
     expect(await save(anu.id, 0, { notes: notes("Anu") })).toEqual({
       kind: "conflict",
-      protocol: { version: 0, stages: [{ title: "Uus punkt", note: "" }], generalNote: "", sentVersion: null, sentAt: null, updatedAt: null },
+      protocol: { id: null, version: 0, stages: [{ title: "Uus punkt", note: "" }], generalNote: "", sentVersion: null, sentAt: null, updatedAt: null },
     });
     expect(await stored(anu.id)).toBeUndefined();
     expect(await save(anu.id, 0, { titles: ["Uus punkt"], notes: ["Anu"] })).toMatchObject({ kind: "saved", version: 1 });
@@ -106,8 +107,8 @@ describe("saveProtocol", () => {
     const { mari } = await setup();
     // a first save sent twice at once (a double tap; a retry overtaking its first try): one row, and both are answered with version 1
     expect(await Promise.all([save(mari.id, 0, { notes: notes("A") }), save(mari.id, 0, { notes: notes("A") })])).toEqual([
-      { kind: "saved", version: 1, savedAt: NOW },
-      { kind: "saved", version: 1, savedAt: NOW },
+      { kind: "saved", protocolId: expect.any(Number), version: 1, savedAt: NOW },
+      { kind: "saved", protocolId: expect.any(Number), version: 1, savedAt: NOW },
     ]);
     expect(await db.select().from(protocols).where(eq(protocols.registrationId, mari.id))).toHaveLength(1);
     // two devices saving from version 1 at once: one wins, the other is refused with the winner's text
@@ -132,18 +133,26 @@ describe("POST /api/admin/protokoll (handleSave)", () => {
   const answer = async (res: Response) => [res.status, await res.json(), res.headers.get("cache-control")];
   const body = (registrationId: number, version: number, over: Record<string, unknown> = {}) => ({ registrationId, version, titles: HEADINGS, notes: notes("Hea"), generalNote: "", ...over });
 
-  test("200 with the new version and when it was saved; never kept by a cache", async () => {
+  test("200 with the new version, when it was saved and the protocol's row (a protocol made again is another row); never kept by a cache", async () => {
     const { mari } = await setup();
-    expect(await answer(await post(body(mari.id, 0)))).toEqual([200, { ok: true, version: 1, savedAt: NOW.toISOString() }, "no-store"]);
+    const [status, json, cache] = await answer(await post(body(mari.id, 0)));
+    const [row] = await db.select().from(protocols);
+    expect([status, json, cache]).toEqual([200, { ok: true, version: 1, savedAt: NOW.toISOString(), protocolId: row.id }, "no-store"]);
+    expect(await answer(await post(body(mari.id, 1, { notes: notes("Hea, edasi") })))).toEqual([200, { ok: true, version: 2, savedAt: NOW.toISOString(), protocolId: row.id }, "no-store"]);
   });
 
-  test("409 with the stored protocol, its dates as text; 404 for a registration that is not there", async () => {
+  test("409 with the stored protocol (its row too), its dates as text; 404 for a registration that is not there", async () => {
     const { mari } = await setup();
     await post(body(mari.id, 0));
+    const [row] = await db.select().from(protocols);
     const [status, json] = await answer(await post(body(mari.id, 0, { notes: notes("teine seade") })));
     expect([status, json]).toEqual([
       409,
-      { ok: false, error: "conflict", protocol: { version: 1, stages: HEADINGS.map((title, i) => ({ title, note: i === 0 ? "Hea" : "" })), generalNote: "", sentVersion: null, sentAt: null, updatedAt: NOW.toISOString() } },
+      {
+        ok: false,
+        error: "conflict",
+        protocol: { id: row.id, version: 1, stages: HEADINGS.map((title, i) => ({ title, note: i === 0 ? "Hea" : "" })), generalNote: "", sentVersion: null, sentAt: null, updatedAt: NOW.toISOString() },
+      },
     ]);
     expect(await answer(await post(body(999_999, 0)))).toEqual([404, { ok: false, error: "notFound" }, "no-store"]);
   });

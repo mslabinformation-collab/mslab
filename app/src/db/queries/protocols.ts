@@ -13,6 +13,8 @@ import { paged, type Paged } from "./admin";
 
 /** A protocol as the screen edits it. `version` 0: none yet — the course's headings with empty notes. */
 export type ProtocolDraft = {
+  /** The protocol's row; null: none yet. One deleted (with the account) and made again is another row, even at the same version. */
+  id: number | null;
   version: number;
   stages: ProtocolStage[];
   generalNote: string;
@@ -24,8 +26,8 @@ export type ProtocolDraft = {
 
 /** The draft of a stored protocol, or of none yet with the course's `headings`. */
 export function draftOf(row: Protocol | null, headings: readonly string[]): ProtocolDraft {
-  if (!row) return { version: 0, stages: stagesFrom(headings), generalNote: "", sentVersion: null, sentAt: null, updatedAt: null };
-  return { version: row.version, stages: row.stages, generalNote: row.generalNote, sentVersion: row.sentVersion, sentAt: row.sentAt, updatedAt: row.updatedAt };
+  if (!row) return { id: null, version: 0, stages: stagesFrom(headings), generalNote: "", sentVersion: null, sentAt: null, updatedAt: null };
+  return { id: row.id, version: row.version, stages: row.stages, generalNote: row.generalNote, sentVersion: row.sentVersion, sentAt: row.sentAt, updatedAt: row.updatedAt };
 }
 
 export type ScreenStudent = { registrationId: number; name: string; status: RegStatus; protocol: ProtocolDraft; state: ProtocolStatus };
@@ -46,6 +48,7 @@ export type ScreenData = {
 export function screenStudents(screen: ScreenData): ScreenStudentView[] {
   return screen.students.map((s) => ({
     registrationId: s.registrationId,
+    protocolId: s.protocol.id,
     name: s.name,
     awaiting: s.status === "awaiting_prepayment",
     version: s.protocol.version,

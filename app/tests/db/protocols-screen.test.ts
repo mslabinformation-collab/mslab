@@ -27,7 +27,7 @@ test("a session: its confirmed and awaiting students by name with their status; 
     ["Anu Aas", "awaiting_prepayment", "none", 0],
     ["Mari Maasikas", "confirmed", "draft", 2],
   ]);
-  expect(screen.students[0].protocol).toEqual({ version: 0, stages: HEADINGS.map((title) => ({ title, note: "" })), generalNote: "", sentVersion: null, sentAt: null, updatedAt: null });
+  expect(screen.students[0].protocol).toEqual({ id: null, version: 0, stages: HEADINGS.map((title) => ({ title, note: "" })), generalNote: "", sentVersion: null, sentAt: null, updatedAt: null });
   // a created protocol keeps its own copy of the headings
   expect(screen.students[1].protocol.stages).toEqual([{ title: "Vana pealkiri", note: "Hea algus" }]);
 });

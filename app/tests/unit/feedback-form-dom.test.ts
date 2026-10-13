@@ -125,7 +125,7 @@ describe("the form", () => {
     expect($("[data-feedback-form]")).toBeNull();
   });
 
-  test("pasted control characters (Word's line break, a NUL) are left out of what is sent, as the server's check wants: the words go through, never a 'failed' line for good", async () => {
+  test("pasted control characters (a NUL) are left out of what is sent and Word's line and page breaks become line breaks, as the server's check wants: the words go through, never a 'failed' line for good", async () => {
     // the route's own check (domain/protocols.ts checkFeedback): a free text Postgres cannot store is refused
     fetchMock.mockImplementation(async (_url, init) =>
       init?.method === "POST" ? (checkFeedback(JSON.parse(String(init.body)).answers).ok ? json(200, { ok: true }) : json(400, { ok: false, error: "answers" })) : json(200, { ok: true, course: COURSE, sent: false }),
@@ -138,11 +138,12 @@ describe("the form", () => {
         box.dispatchEvent(new Event("input", { bubbles: true }));
       });
     const VT = String.fromCharCode(0x0b);
+    const FF = String.fromCharCode(0x0c);
     const NUL = String.fromCharCode(0);
-    await type("message", `Väga${VT}hea koolitus${NUL}, aitäh`);
-    await type("recommend", `${VT}${NUL}`); // nothing but control characters: not an answer
+    await type("message", `Väga${VT}hea koolitus${NUL}, aitäh${FF}Mari`);
+    await type("recommend", `${VT}${NUL}${FF}`); // nothing but control characters and line breaks: not an answer
     await click($("[data-feedback-submit]"));
-    expect(posts()).toEqual([["/api/konto/tagasiside", { registrationId: 42, locale: "et", answers: { message: "Vägahea koolitus, aitäh" } }]]);
+    expect(posts()).toEqual([["/api/konto/tagasiside", { registrationId: 42, locale: "et", answers: { message: "Väga\nhea koolitus, aitäh\nMari" } }]]);
     expect($("[data-feedback-error]")).toBeNull();
     expect($("[data-feedback-done='done']")).not.toBeNull();
   });

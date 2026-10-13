@@ -67,7 +67,8 @@ export function statusLine(s: SaveStatus, t: T): { text: string; failing: boolea
  * The browser's Back restores this page from the client router's copy of the visit's server render, older than what was saved since: so the
  * screen never takes its text for the server's. It says "Kontrollin …" instead of "Salvestatud" until it has read the server's text again (GET
  * /api/admin/protokoll when the screen is shown, and again when the page comes back from the browser's cache, when a tab hidden for over five
- * minutes is shown, and while the text is still unread when the tab is shown or the network is back: protocol-autosave.ts keepReading), and the
+ * minutes is shown, while the text is still unread when the tab is shown or the network is back, and after a refused read (signed out) when the tab
+ * is shown or focused: protocol-autosave.ts keepReading), and the
  * engine then reconciles each student with it (reconcile). A student the answer no longer lists stays on the screen, saying she is gone. `read` is
  * the reading, replaceable for the tests.
  */

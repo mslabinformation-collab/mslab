@@ -59,6 +59,31 @@ export function unsavedMessage(e: Pick<Entry, "status" | "conflict">, t: T): str
 /** The text on the screen as it is now (the engine changes the entry's own arrays). */
 const copyOf = (c: Content): Content => ({ notes: [...c.notes], generalNote: c.generalNote });
 
+/**
+ * How long a send waits for the server's answer (ms): a server action that hangs would else keep the protocol read-only for good. After it the
+ * boxes are writable and the line says the send may not have gone through; a send again is safe, as the server answers "already" for a version
+ * sent before. (The hung action is not stopped, and Next runs one server action at a time, so a send made meanwhile waits behind it: the line
+ * says to reload the page if sending again does not work.)
+ */
+export const SEND_TIMEOUT_MS = 30_000;
+
+/** The answer of `work`, or "timeout" when none came within SEND_TIMEOUT_MS. */
+function bounded<T>(work: Promise<T>): Promise<T | "timeout"> {
+  return new Promise<T | "timeout">((resolve, reject) => {
+    const timer = setTimeout(() => resolve("timeout"), SEND_TIMEOUT_MS);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 /** What "Lukusta ja saada kõik" would do with each protocol (planSendAll). */
 export type SendPlan = { will: number[]; skipped: number[]; already: number[]; sending: number[]; review: number[] };
 
@@ -72,8 +97,10 @@ export function planSendAll(engine: ProtocolAutosave, shown?: ReadonlyMap<number
   const out: SendPlan = { will: [], skipped: [], already: [], sending: [], review: [] };
   for (const id of engine.ids()) {
     if (shown && !shown.has(id)) continue; // (a student the screen no longer lists: not one of this send)
+    // cancelled or moved meanwhile, as the server's last read or answer said: nothing to send (one the read left out may still be saving her text)
+    if (engine.dropped(id)) continue;
     const e = engine.get(id)!;
-    if (e.status.kind === "gone") continue; // (cancelled or moved meanwhile, as the server's last answer said: nothing to send)
+    if (e.status.kind === "gone") continue;
     if (e.sending) {
       out.sending.push(id);
       continue;
@@ -158,10 +185,21 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
         engine.setSendError(id, unsavedMessage(after, t));
         return;
       }
-      const result = await sendProtocolAction({ registrationId: id, version: engine.get(id)!.version }).catch((): SendOutcome => ({ kind: "failed" }));
+      const result = await bounded(sendProtocolAction({ registrationId: id, version: engine.get(id)!.version })).catch((): SendOutcome => ({ kind: "failed" }));
+      if (result === "timeout") {
+        engine.setSendError(id, t.sendErrors.timeout); // (the boxes open again: the finally below)
+        return;
+      }
       if (result.kind === "sent" || result.kind === "already") {
         engine.markSent(id, result.version, result.sentAt);
         onUnlock(false);
+      }
+      if (result.kind === "stale") {
+        // another device saved since: the server's text is read again and shown (still read-only meanwhile), so the next "Saada" sends the version
+        // Maria then sees; a read that does not come in time leaves the line that says to reload
+        engine.recheck(id);
+        engine.setSendError(id, (await engine.whenFresh([id])) ? t.sendErrors.refreshed : t.sendErrors.stale);
+        return;
       }
       engine.setSendError(id, sendMessage(result, t));
     } finally {
@@ -265,37 +303,42 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
       // (one whose notice opened meanwhile is left out as an unsaved one: see StudentSend)
       const goes = will.map((id, i) => saved[i] && !engine.get(id)!.conflict);
       const items = will.filter((_, i) => goes[i]).map((id) => ({ registrationId: id, version: engine.get(id)!.version }));
-      const results: BulkResult[] =
-        items.length === 0 ? [] : await sendProtocolsAction(items).catch(() => items.map((i) => ({ registrationId: i.registrationId, result: { kind: "failed" } as const })));
+      const answer =
+        items.length === 0 ? [] : await bounded(sendProtocolsAction(items)).catch(() => items.map((i) => ({ registrationId: i.registrationId, result: { kind: "failed" } as const })));
+      // no answer in SEND_TIMEOUT_MS: the ones sent for may have gone through (a send again is safe), and their boxes open again (the finally below)
+      const timedOut = answer === "timeout";
+      const results: BulkResult[] = timedOut ? [] : answer;
       const sent: string[] = [];
-      // the groups of the ones not sent, one line each ("Vaata enne üle …" for those whose notice is open: Maria’s next step is "Selge"), and
-      // for each the reason under her own button, as a single "Saada" leaves it
-      const notSent = new Map<string, { review: boolean; reason: string; names: string[] }>();
+      // the groups of the ones not sent, one line each ("Vaata enne üle …" for those whose notice is open: Maria’s next step is "Selge"; "Vastust ei
+      // tulnud …" for those the server never answered), and for each the reason under her own button, as a single "Saada" leaves it
+      const notSent = new Map<string, { kind: "reason" | "review" | "unknown"; reason: string; names: string[] }>();
       const own = new Map<number, string>();
-      const leftOut = (reason: string, id: number, review = false) => {
-        const key = review ? "review" : reason;
-        const group = notSent.get(key) ?? { review, reason, names: [] };
+      const leftOut = (reason: string, id: number, kind: "reason" | "review" | "unknown" = "reason") => {
+        const key = kind === "reason" ? reason : kind;
+        const group = notSent.get(key) ?? { kind, reason, names: [] };
         group.names.push(nameOf(id));
         notSent.set(key, group);
-        own.set(id, review ? t.sendErrors.review : reason);
+        own.set(id, kind === "review" ? t.sendErrors.review : kind === "unknown" ? t.sendErrors.timeout : reason);
       };
-      for (const [id, why] of held) leftOut(why.reason, id, why.review);
-      for (const id of will.filter((_, i) => !goes[i])) leftOut(unsavedMessage(engine.get(id)!, t), id, engine.get(id)!.conflict !== null);
+      for (const [id, why] of held) leftOut(why.reason, id, why.review ? "review" : "reason");
+      for (const id of will.filter((_, i) => !goes[i])) leftOut(unsavedMessage(engine.get(id)!, t), id, engine.get(id)!.conflict !== null ? "review" : "reason");
       for (const r of results) {
         if (r.result.kind === "sent" || r.result.kind === "already") {
           engine.markSent(r.registrationId, r.result.version, r.result.sentAt);
           onSent(r.registrationId);
           sent.push(nameOf(r.registrationId));
         } else leftOut(sendMessage(r.result, t) ?? t.sendErrors.failed, r.registrationId);
+        if (r.result.kind === "stale") engine.recheck(r.registrationId); // (another device saved since: her text is read again, for the next send)
       }
-      // (an answer that does not list a protocol that was sent for: no one is left unexplained)
+      // (an answer that does not list a protocol that was sent for, or no answer at all: no one is left unexplained)
       const answered = new Set(results.map((r) => r.registrationId));
-      for (const item of items) if (!answered.has(item.registrationId)) leftOut(t.sendErrors.failed, item.registrationId);
+      for (const item of items)
+        if (!answered.has(item.registrationId)) leftOut(timedOut ? t.sendErrors.timeout : t.sendErrors.failed, item.registrationId, timedOut ? "unknown" : "reason");
       for (const id of planned) engine.setSendError(id, own.get(id) ?? null); // (one that went has no line left from an earlier try)
-      const lines = [...notSent].map(([key, g]) => ({
-        key,
-        line: g.review ? fill(t.confirm.review, { names: g.names.join(", ") }) : fill(t.result.notSent, { names: g.names.join(", "), reason: g.reason }),
-      }));
+      const lines = [...notSent].map(([key, g]) => {
+        const names = g.names.join(", ");
+        return { key, line: g.kind === "review" ? fill(t.confirm.review, { names }) : g.kind === "unknown" ? fill(t.result.unknown, { names }) : fill(t.result.notSent, { names, reason: g.reason }) };
+      });
       setSummary(sent.length === 0 && lines.length === 0 ? null : { sent, notSent: lines });
       close();
     } finally {

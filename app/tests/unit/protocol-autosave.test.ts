@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   DEBOUNCE_MS, FRESH_WAIT_MS, HIDDEN_RECHECK_MS, keepReading, localKey, NOTICE_MAX_CHARS, ProtocolAutosave, readConflict, readLocal, remember, resumeLocal, SENT_MAX_CHARS, sentKey, statusOf,
-  type Answer, type Content, type SaveBody, type SendOptions, type ServerDraft,
+  type Answer, type Content, type SaveBody, type ScreenAnswer, type SendOptions, type ServerDraft,
 } from "@/components/admin/protocol-autosave";
 import { PROTOCOL_LIMITS } from "@/domain/protocols";
 
@@ -12,6 +12,7 @@ import { PROTOCOL_LIMITS } from "@/domain/protocols";
 const TITLES = ["Ettevalmistus", "Värvimine"];
 const draft = (over: Partial<ServerDraft> = {}): ServerDraft => ({
   registrationId: 7,
+  protocolId: null,
   version: 0,
   titles: TITLES,
   content: { notes: ["", ""], generalNote: "" },
@@ -329,10 +330,10 @@ describe("huge pasted text (Review Focus 4)", () => {
     expect(s.calls).toHaveLength(1);
   });
 
-  test("pasted control characters are dropped, the words, tabs and line breaks kept", () => {
+  test("pasted control characters are dropped, the words, tabs and line breaks kept; Word's line and page breaks become line breaks", () => {
     const e = start([draft()], server().send);
-    e.editNote(7, 0, "Kulmud\u000bhästi\u0000\tjah\r\nlõpp");
-    expect(e.get(7)!.content.notes[0]).toBe("Kulmudhästi\tjah\r\nlõpp");
+    e.editNote(7, 0, "Kulmud\u000bhästi\u0000\tjah\r\nlõpp\u000cuus leht");
+    expect(e.get(7)!.content.notes[0]).toBe("Kulmud\nhästi\tjah\r\nlõpp\nuus leht");
   });
 });
 
@@ -1084,6 +1085,9 @@ describe("a read that comes while a save is queued or on its way, and the answer
     e.reconcile([at(2, "A")]);
     await tick();
     expect(s.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[1, "A"], [2, "AB"]]);
+    // the resend held across the 1.5 s (and the lost answer's retry): it went through the queue, so its waiting save is gone and nothing flies beside it
+    await tick(DEBOUNCE_MS * 3);
+    expect(s.calls).toHaveLength(2);
     s.calls[1].answer(ok(3));
     await tick(DEBOUNCE_MS * 3);
     expect(s.calls).toHaveLength(2); // (and the retry of the lost answer's save found nothing left to send)
@@ -1238,6 +1242,59 @@ describe("keepReading: refusals and a tab hidden for long (fix round 2 of Task 1
     expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
     reading.stop();
   });
+
+  test("item 6: after a refused read (401) the tab shown again or focused reads again, never on a timer; signed in, the protocols say 'saved'", async () => {
+    const e = start([at(1, "x")], server().send);
+    e.awaitFresh();
+    let status = 401;
+    const read = vi.fn(async () => (status === 200 ? { status, body: { ok: true, students: [wire(at(1, "x"))] } } : { status, body: { ok: false, error: "unauthorized" } }));
+    const reading = keepReading(e, { sessioon: 5 }, read, () => {});
+    await tick();
+    expect(e.get(7)!.status).toEqual({ kind: "signedOut" });
+    show("hidden");
+    show("visible"); // still signed out: asked again, refused again
+    await tick();
+    expect(read).toHaveBeenCalledTimes(2);
+    await tick(120_000);
+    expect(read).toHaveBeenCalledTimes(2);
+    status = 200; // signed in again in another tab, and back to this one
+    window.dispatchEvent(new Event("focus"));
+    await tick();
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
+    window.dispatchEvent(new Event("focus")); // signed in and read: a focus asks nothing more
+    await tick();
+    expect(read).toHaveBeenCalledTimes(3);
+    reading.stop();
+  });
+
+  test("item 3: recheck (a send answered 'stale') reads the server's text at once, 'checking' until it comes; asked while a read is on its way, it reads again after it", async () => {
+    const e = start([at(1, "x")], server().send);
+    const answers: ((a: ScreenAnswer) => void)[] = [];
+    const read = vi.fn(() => new Promise<ScreenAnswer>((resolve) => answers.push(resolve)));
+    const reading = keepReading(e, { sessioon: 5 }, read, () => {});
+    answers.shift()!({ status: 200, body: { ok: true, students: [wire(at(1, "x"))] } });
+    await tick();
+    e.recheck(7);
+    expect(e.get(7)!.status).toEqual({ kind: "checking" });
+    expect(read).toHaveBeenCalledTimes(2);
+    answers.shift()!({ status: 200, body: { ok: true, students: [wire(at(2, "y"))] } });
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 2, content: { notes: ["y", ""] }, status: { kind: "saved" } });
+    // a read already on its way when the recheck comes may be older than what made the send stale: another read follows it
+    e.awaitFresh();
+    window.dispatchEvent(new Event("focus"));
+    expect(read).toHaveBeenCalledTimes(3);
+    e.recheck(7);
+    expect(read).toHaveBeenCalledTimes(3);
+    answers.shift()!({ status: 200, body: { ok: true, students: [wire(at(2, "y"))] } });
+    await tick();
+    expect(read).toHaveBeenCalledTimes(4);
+    answers.shift()!({ status: 200, body: { ok: true, students: [wire(at(3, "z"))] } });
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 3, content: { notes: ["z", ""] } });
+    reading.stop();
+  });
 });
 
 // The final review's Important 1: the screen left (a menu link) while a save is on its way. The newest text must still reach the server, after
@@ -1380,5 +1437,139 @@ describe("leaving the screen while a save is on its way (final review, Important
     expect(s.calls).toHaveLength(2);
     const back = start([draft({ version: 1, content: { notes: ["telefon", ""], generalNote: "" } })], server().send);
     expect(back.get(7)).toMatchObject({ content: { notes: ["telefon", ""] }, conflict: { titles: TITLES, lost: { notes: ["AB", ""], generalNote: "" } } });
+  });
+});
+
+// The final review's parked items, fixed before the first real course day.
+describe("the final review's parked items", () => {
+  const notes = (s: { calls: { body: SaveBody }[] }) => s.calls.map((c) => [c.body.version, c.body.notes[0]]);
+  const at = (v: number, note: string, over: Partial<ServerDraft> = {}) => draft({ version: v, content: { notes: [note, ""], generalNote: "" }, ...over });
+  const keys = () => Object.keys(localStorage).filter((k) => k.includes(":7"));
+
+  test("item 1: a quick remount — the old screen's late answer never brings back the copy the new screen released, and the next visit has no notice", async () => {
+    const s = server();
+    const old = new ProtocolAutosave([draft()], s.send, { tab: "t1" });
+    old.start(localStorage);
+    old.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS); // POST v0 "A" on its way (slow Wi-Fi)
+    old.editNote(7, 0, "AB"); // waits for its 1.5 s
+    old.stop(); // the screen left, and opened again at once: the server has stored "A" as v1, its answer is still on its way
+    const s2 = server();
+    const back = new ProtocolAutosave([at(1, "A")], s2.send, { tab: "t2" });
+    engine = back;
+    back.start(localStorage);
+    await tick();
+    expect(notes(s2)).toEqual([[1, "AB"]]); // the old screen's copy resumed: "A" was its own, "AB" goes on top
+    s2.calls[0].answer(ok(2));
+    await tick();
+    expect(keys()).toEqual([]); // the new screen has it on the server: every copy released
+    s.calls[0].answer(ok(1)); // the old screen's answer, late
+    await tick();
+    expect(notes(s)).toEqual([[0, "A"], [1, "AB"]]); // its parting save still goes
+    s.calls[1].answer(ok(2));
+    await tick();
+    expect(keys()).toEqual([]); // no stray copy of the old screen
+    back.editNote(7, 0, "ABC");
+    await tick(DEBOUNCE_MS);
+    s2.calls[1].answer(ok(3));
+    await tick();
+    back.stop();
+    const next = new ProtocolAutosave([at(3, "ABC")], server().send, { tab: "t3" });
+    engine = next;
+    next.start(localStorage);
+    expect(next.get(7)).toMatchObject({ conflict: null, content: { notes: ["ABC", ""] }, status: { kind: "saved" } });
+  });
+
+  test("item 1: the screen left with nobody back — the late answer still updates the old screen's copy (its key still exists)", async () => {
+    const s = server();
+    const old = new ProtocolAutosave([draft()], s.send, { tab: "t1" });
+    old.start(localStorage);
+    old.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    old.editNote(7, 0, "AB");
+    old.stop();
+    s.calls[0].answer(ok(1));
+    await tick();
+    expect(readLocal(localStorage, 7, "t1")).toMatchObject({ version: 1, content: { notes: ["AB", ""] }, sent: [{ notes: ["AB", ""], generalNote: "" }] });
+    expect(notes(s)).toEqual([[0, "A"], [1, "AB"]]);
+  });
+
+  test("item 7b: a successful read after a refused one ends 'signed out': each protocol says 'saved' again, a student it drops is gone", async () => {
+    const s = server();
+    const e = start([at(1, "x"), at(1, "y", { registrationId: 8 })], s.send);
+    e.awaitFresh();
+    e.signedOut();
+    expect([e.get(7)!.status.kind, e.get(8)!.status.kind]).toEqual(["signedOut", "signedOut"]);
+    e.reconcile([at(1, "x")]);
+    expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
+    expect(e.get(8)!.status).toEqual({ kind: "gone" });
+    void e.save(7); // nothing to save: 'saved', not the old 'signed out'
+    await tick();
+    expect(e.get(7)!.status).toMatchObject({ kind: "saved" });
+    expect(s.calls).toHaveLength(0);
+  });
+
+  test("item 7b: a save refused as signed out, then a successful read: her text is saved at once, without waiting for the retry", async () => {
+    const s = server();
+    const e = start([at(1, "x")], s.send);
+    e.editNote(7, 0, "x2");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer({ status: 401, body: { ok: false, error: "auth" } });
+    await tick();
+    expect(e.get(7)!.status).toEqual({ kind: "signedOut" });
+    e.reconcile([at(1, "x")]); // signed in again: the read went through
+    await tick();
+    expect(notes(s)).toEqual([[1, "x2"], [1, "x2"]]);
+    s.calls[1].answer(ok(2));
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 2, status: { kind: "saved" } });
+  });
+
+  test("item 5: a protocol made again at the same version (deleted with the account, then saved anew elsewhere) is another row, so it is newer: taken when nothing is unsaved", () => {
+    const e = start([at(2, "Vana", { protocolId: 5 })], server().send);
+    e.awaitFresh();
+    e.reconcile([at(2, "Uus", { protocolId: 9 })]);
+    expect(e.get(7)).toMatchObject({ protocolId: 9, version: 2, content: { notes: ["Uus", ""] }, confirmed: { notes: ["Uus", ""] }, conflict: null, status: { kind: "saved" } });
+    e.reconcile([at(2, "Uus", { protocolId: 9 })]); // the same row read again: nothing changes
+    expect(e.get(7)).toMatchObject({ protocolId: 9, content: { notes: ["Uus", ""] }, conflict: null });
+  });
+
+  test("item 5: the row made again while her own words are not saved yet: its text is shown and her words go into the notice", async () => {
+    const s = server();
+    const e = start([at(2, "Vana", { protocolId: 5 })], s.send);
+    e.reconcile([at(2, "Vana", { protocolId: 5 })]); // read once already: not 'unread'
+    e.editNote(7, 0, "Vana, minu lisa");
+    e.reconcile([at(2, "Uus", { protocolId: 9 })]);
+    expect(e.get(7)).toMatchObject({ protocolId: 9, content: { notes: ["Uus", ""] }, conflict: { titles: TITLES, lost: { notes: ["Vana, minu lisa", ""] } } });
+    await tick(DEBOUNCE_MS * 2);
+    expect(s.calls).toHaveLength(0); // nothing saved over the new row
+  });
+
+  test("item 5: the screen learns its row from a save's answer (its first save made it), so the same row read later changes nothing", async () => {
+    const s = server();
+    const e = start([draft()], s.send);
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer({ status: 200, body: { ok: true, version: 1, savedAt: "2026-10-12T08:00:00.000Z", protocolId: 9 } });
+    await tick();
+    expect(e.get(7)!.protocolId).toBe(9);
+    e.editNote(7, 0, "AB"); // typed on, not saved yet
+    e.reconcile([at(1, "A", { protocolId: 9 })]);
+    expect(e.get(7)).toMatchObject({ content: { notes: ["AB", ""] }, conflict: null });
+  });
+
+  test("item 7c: a save answered 404 is the server's word, like a 200: a read kept for after that save is not taken", async () => {
+    const s = server();
+    const e = start([at(1, "E")], s.send);
+    e.awaitFresh();
+    e.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS); // its save on its way
+    e.reconcile([at(2, "Teisest seadmest")]); // a read made before the registration went: kept for after the save
+    s.calls[0].answer({ status: 404, body: { ok: false, error: "notFound" } });
+    await tick();
+    expect(e.get(7)).toMatchObject({ status: { kind: "gone" }, version: 1, content: { notes: ["A", ""] }, conflict: null });
+    expect(e.checking(7)).toBe(false);
+    await tick(120_000);
+    expect(s.calls).toHaveLength(1);
   });
 });

@@ -18,6 +18,7 @@ vi.mock("@/server/actions/admin-protocols", () => ({ sendProtocolAction: vi.fn()
 const TITLES = ["Ettevalmistus", "Värvimine"];
 const student = (registrationId: number, name: string, over: Partial<ScreenStudentView> = {}): ScreenStudentView => ({
   registrationId,
+  protocolId: null,
   name,
   awaiting: false,
   version: 0,
@@ -147,6 +148,14 @@ test("Review Focus 4: a paste over 10 000 characters is kept whole, the box says
   expect($("[data-note='1']")!.getAttribute("aria-invalid")).toBe("true");
   expect($("[data-save-status]")!.textContent).toBe("Salvestamata — üks tekst on liiga pikk");
   expect(($("[data-note='1']") as HTMLTextAreaElement).value).toHaveLength(10_001);
+});
+
+test("a paste from Word: its line and page breaks are saved as line breaks, never words run together; other control characters go", async () => {
+  await render({ single: true, students: [student(1, "Anu")] });
+  await type("[data-note='0']", "Kulmud\u000bhästi\u0000\u000cJärgmine leht");
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Kulmud\nhästi\nJärgmine leht");
+  await wait(1500);
+  expect(bodies().map((b) => b.notes[0])).toEqual(["Kulmud\nhästi\nJärgmine leht"]);
 });
 
 test("a sent protocol is shown read-only, with when it was sent; one student has no list", async () => {
