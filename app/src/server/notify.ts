@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { normalizeEmail } from "@/domain/email";
 import { errorSummary } from "./log";
 import type { TextKv } from "./ratelimit";
 
@@ -56,11 +57,23 @@ const rateLimited = (e: { name?: string | null; statusCode?: number | null }): b
   e.name === "rate_limit_exceeded" || (e.statusCode === 429 && !/quota/.test(e.name ?? ""));
 
 /**
+ * Maria's inbox for a mail that has no Reply-To of its own, unless the mail goes to her (spec D8): a student who answers a mail from the
+ * sending-only send.mslab.ee address reaches Maria. The addresses are compared trimmed and in lower case; undefined when MARIA_EMAIL is empty.
+ */
+export function defaultReplyTo(env: Pick<Env, "MARIA_EMAIL">, to: string): string | undefined {
+  const maria = env.MARIA_EMAIL.trim();
+  if (!maria || normalizeEmail(maria) === normalizeEmail(to)) return undefined;
+  return maria;
+}
+
+/**
  * Sends one e-mail: plain text, plus HTML when `mail.html` is set. true = Resend accepted it. When Resend answers that it is being asked
  * too often (429; its default limit is about 2 requests a second) the send is tried once more after RATE_LIMIT_RETRY_MS, never a third time.
+ * The Reply-To is the mail's own, else Maria's inbox (defaultReplyTo), else none.
  */
 export async function sendMail(env: Env, mail: Mail): Promise<boolean> {
   if (!mailConfigured(env)) return false;
+  const replyTo = mail.replyTo ?? defaultReplyTo(env, mail.to);
   try {
     const send = () =>
       withTimeout(
@@ -70,7 +83,7 @@ export async function sendMail(env: Env, mail: Mail): Promise<boolean> {
           subject: mail.subject,
           text: mail.text,
           ...(mail.html ? { html: mail.html } : {}),
-          ...(mail.replyTo ? { replyTo: mail.replyTo } : {}),
+          ...(replyTo ? { replyTo } : {}),
         }),
         NOTIFY_TIMEOUT_MS,
       );

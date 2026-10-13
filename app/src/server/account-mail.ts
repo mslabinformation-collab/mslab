@@ -16,6 +16,7 @@ import type { Mail } from "./notify";
 // requestConfirmationMail) are the same card again: what was received, the next step and one button, "Ava minu konto" or,
 // when the visitor ticked "Loo mulle kohe konto", the live login code with "Logi sisse" in its place.
 // After an online payment (phase 2b) the same card says what was paid (registrationPaidMail) or that an e-course is open (ecourseOpenMail).
+// The e-course completion (completionMail) uses the protocol mail's card without a login: one line, the course, one button to the page.
 
 /**
  * The link in the login e-mail: it signs in the device that opens it (api/konto verify). `pageLocale` is the language of
@@ -579,6 +580,86 @@ export function protocolMail(input: ProtocolMailInput): Mail {
         ]
       : []),
     ...(form ? [row(`padding:20px 28px 0;${textStyle(14)}`, `<a href="${esc(form)}" style="color:${INK};text-decoration:underline;">${esc(m.feedback)}</a>`)] : []),
+    signatureRow(mail),
+  ]);
+  return { to: input.email, subject, text, html };
+}
+
+// ---------- the e-course completion's mails (phase e-course completion, spec §6) ----------
+
+/** The e-course's page in the account: /konto/kursus/<slug> (the course in the path: an account page never has a query). */
+export const ecourseUrl = (siteUrl: string, locale: Locale, slug: string): string =>
+  `${siteUrl.replace(/\/+$/, "")}${href(locale, `/konto/kursus/${encodeURIComponent(slug)}`)}`;
+
+/** The e-course's knowledge test: /konto/kursus/<slug>/test. */
+export const testUrl = (siteUrl: string, locale: Locale, slug: string): string => `${ecourseUrl(siteUrl, locale, slug)}/test`;
+
+/** The e-course's practical work: /konto/kursus/<slug>/praktiline (for a course without points: Maria's sent notes only). */
+export const practicalUrl = (siteUrl: string, locale: Locale, slug: string): string => `${ecourseUrl(siteUrl, locale, slug)}/praktiline`;
+
+export type CompletionMailKind =
+  | "assessed" // Maria's assessment with "Paranda" points
+  | "completed" // the course completed (any path)
+  | "testPassed" // Maria accepted the open answers; practical work next
+  | "testFix" // Maria asked to rewrite open answers
+  | "reopened" // Maria reopened the test
+  | "protocol" // a notes-only protocol of an e-course without points, first send
+  | "protocolAgain"; // the same, sent again, or an approved assessment's notes re-sent
+
+export type CompletionMailInput = {
+  siteUrl: string;
+  email: string;
+  name: string;
+  /** The account's language (clients.locale). */
+  locale: Locale;
+  slug: string;
+  course: I18n;
+  kind: CompletionMailKind;
+  /** "assessed": how many points Maria marked "Paranda" (the box says it; absent or 0: no line). */
+  fixCount?: number;
+  /** "completed": the course has practical points, so the button opens the practical work (all "Kinnitatud"); else the e-course's page. */
+  hasPoints?: boolean;
+};
+
+/**
+ * The student's mails of the e-course completion (spec §6): the greeting, one line, the course in its box (an assessment adds how many points
+ * to fix), and one button to the page it is about, written out under it. No login code: the button opens the page, and she signs in there if
+ * she must. Never a note, an answer or a photo, only the link. The test's and practical work's links follow the kind (assessed,
+ * protocol, protocolAgain and testPassed → the practical work; testFix and reopened → the test; completed → the practical work of a course with
+ * points, else the e-course's page). Plain text and HTML; the caller never sends it to a sample address.
+ */
+export function completionMail(input: CompletionMailInput): Mail {
+  const dict = getDict(input.locale);
+  const m = dict.account.completionMail;
+  const p = dict.account.protocolMail;
+  const mail = dict.account.mail;
+  const title = pick(input.course, input.locale);
+  const practical = practicalUrl(input.siteUrl, input.locale, input.slug);
+  const test = testUrl(input.siteUrl, input.locale, input.slug);
+  const parts: Record<CompletionMailKind, { subject: string; lead: string; button: string; link: string }> = {
+    assessed: { subject: m.assessedSubject, lead: m.assessedLead, button: m.assessedButton, link: practical },
+    completed: {
+      subject: oneLine(fill(m.completedSubject, { title })),
+      lead: m.completedLead,
+      button: m.completedButton,
+      link: input.hasPoints ? practical : ecourseUrl(input.siteUrl, input.locale, input.slug),
+    },
+    testPassed: { subject: m.testPassedSubject, lead: m.testPassedLead, button: m.testPassedButton, link: practical },
+    testFix: { subject: m.testFixSubject, lead: m.testFixLead, button: m.testFixButton, link: test },
+    reopened: { subject: m.reopenedSubject, lead: m.reopenedLead, button: m.reopenedButton, link: test },
+    protocol: { subject: p.subjectFirst, lead: p.leadFirst, button: p.button, link: practical },
+    protocolAgain: { subject: p.subjectAgain, lead: p.leadAgain, button: p.button, link: practical },
+  };
+  const { subject, lead, button, link } = parts[input.kind];
+  const greeting = hello(dict.account.dashboard, input.name);
+  const lines = input.kind === "assessed" && input.fixCount ? [fill(m.fixCount, { n: input.fixCount })] : [];
+  const text = [greeting, "", lead, "", title, ...lines, "", `${button}:`, link, "", mail.signature].join("\n");
+  const html = mailCard(subject, input.locale, [
+    greetingRow(greeting),
+    paragraphRow(lead),
+    boxRow(`<div style="font:600 18px/1.4 ${FONT};color:${INK};">${esc(title)}</div>` + lines.map((line) => `<div>${esc(line)}</div>`).join(""), 12),
+    buttonRow(link, button),
+    linkRow(link),
     signatureRow(mail),
   ]);
   return { to: input.email, subject, text, html };

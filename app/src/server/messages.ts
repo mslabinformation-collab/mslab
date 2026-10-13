@@ -435,3 +435,40 @@ export function feedbackSummary(f: FeedbackNotice, adminUrl: string): Summary {
   ].join("\n");
   return { subject, text, short: subject };
 }
+
+// ---------- the e-course completion (spec §6: Maria's notices, each with a link to its item) ----------
+
+/** Who and which e-course, for Maria's notices of this phase. `course` is the course's Estonian title. */
+export type CompletionNotice = { accessId: number; name: string; email: string; course: string };
+
+/** The rows every notice of this phase starts with: who, her address (the mail's Reply-To too), the course. */
+const completionRows = (n: CompletionNotice): Row[] => [
+  ["Õpilane", n.name],
+  ["E-post", n.email],
+  ["Koolitus", n.course],
+];
+
+/**
+ * "Praktiline töö hindamiseks: {nimi}, {kursus}" (spec §6), with " (2. kord)" from the second submission on: the student sent her practical
+ * work, or the points Maria asked her to redo. The link opens its assessment, the protocol screen of the access.
+ */
+export function practicalSubmittedSummary(n: CompletionNotice & { round: number }, adminUrl: string): Summary {
+  const subject = `Praktiline töö hindamiseks: ${n.name}, ${n.course}${n.round > 1 ? ` (${n.round}. kord)` : ""}`;
+  return { subject, text: body(subject, [...completionRows(n), ["Saadetud", `${n.round}. kord`]], `${adminUrl}/protokollid?ligipaas=${n.accessId}`), short: subject };
+}
+
+/** "Test ootab hindamist: {nimi}, {kursus}" (spec §6): an attempt passed its choice part and its open answers wait for Maria (or were rewritten). */
+export function testReviewSummary(n: CompletionNotice & { attemptId: number; number: number }, adminUrl: string): Summary {
+  const subject = `Test ootab hindamist: ${n.name}, ${n.course}`;
+  return { subject, text: body(subject, [...completionRows(n), ["Katse", `${n.number}.`]], `${adminUrl}/hindamine/test?id=${n.attemptId}`), short: subject };
+}
+
+/** "Testi katsed otsas: {nimi}, {kursus}" (spec §6): every allowed try failed; "Ava test uuesti" in Hindamine gives her the course's tries again. */
+export function triesUsedSummary(n: CompletionNotice & { tries: number }, adminUrl: string): Summary {
+  const subject = `Testi katsed otsas: ${n.name}, ${n.course}`;
+  return {
+    subject,
+    text: body(subject, [...completionRows(n), ["Katseid tehtud", String(n.tries)]], `${adminUrl}/hindamine`, "Uued katsed annab nupp „Ava test uuesti“ lehel Hindamine."),
+    short: subject,
+  };
+}

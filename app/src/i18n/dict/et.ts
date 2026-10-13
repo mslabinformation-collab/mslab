@@ -514,6 +514,27 @@ export const et = {
       valid: "Kood ja nupp kehtivad 30 minutit. Hiljem leiad protokolli Minu koolituste lehelt.",
       feedback: "Soovi korral jäta meile tagasisidet",
     },
+    // The e-course completion's mails to the student (server/account-mail.ts completionMail, phase e-course completion, spec §6): each kind
+    // has its subject, its one line and its button, which opens the page (she signs in there when she must). {title} is the course, {n} the
+    // points to fix. Maria's notes-only protocol of an e-course without points takes `protocolMail`'s texts. No mail holds a note or an answer.
+    completionMail: {
+      assessedSubject: "Sinu praktiline töö on hinnatud",
+      assessedLead: "Maria on sinu praktilise töö üle vaadanud. Paranda märgitud punktid: lisa neile uued fotod ja saada töö uuesti.",
+      assessedButton: "Vaata hinnangut",
+      fixCount: "Parandamist vajavaid punkte: {n}",
+      completedSubject: "Palju õnne! Koolitus „{title}“ on lõpetatud",
+      completedLead: "Oled kõik koolituse sammud läbinud.",
+      completedButton: "Vaata koolitust",
+      testPassedSubject: "Test on sooritatud",
+      testPassedLead: "Praktiline töö on nüüd avatud.",
+      testPassedButton: "Ava praktiline töö",
+      testFixSubject: "Vaata üle oma testi vastused",
+      testFixLead: "Maria palub mõne vastuse ümber kirjutada. Tema kommentaarid on testi lehel.",
+      testFixButton: "Ava test",
+      reopenedSubject: "Test on sinu jaoks uuesti avatud",
+      reopenedLead: "Maria andis sulle uued katsed. Saad testi uuesti teha.",
+      reopenedButton: "Ava test",
+    },
     // The one sentence on each course card (domain/account-cards.ts nextStep): `{amount}` and `{rest}` are euros ("175 €"),
     // `{date}` the last day of an e-course access ("22.03.2027"). A session's date, time and place are on the card's own
     // line, so the sentences do not repeat them.

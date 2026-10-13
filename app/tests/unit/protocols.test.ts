@@ -233,6 +233,8 @@ describe("the questions' texts (Task 8)", () => {
       "account.dashboard.viewProtocol": ru.account.dashboard.viewProtocol,
       "account.protocol": ru.account.protocol,
       "account.protocolMail": ru.account.protocolMail,
+      // e-course completion (Task 2)
+      "account.completionMail": ru.account.completionMail,
     };
     for (const [where, value] of Object.entries(texts)) {
       const list = strings(value);

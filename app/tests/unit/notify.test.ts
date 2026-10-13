@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { notifyMaria, RATE_LIMIT_RETRY_MS, sendMail, sendTelegram, type Env } from "@/server/notify";
+import { defaultReplyTo, notifyMaria, RATE_LIMIT_RETRY_MS, sendMail, sendTelegram, type Env } from "@/server/notify";
 import { fakeKv, stubFetch } from "../fakes";
 
 const env = (extra: Partial<Env> = {}, kv = fakeKv()): Env => ({
@@ -190,5 +190,45 @@ describe("Telegram", () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     await sendTelegram(env({ TELEGRAM_BOT_TOKEN: "t" }, fakeKv({ "tg:chat": "1" })), "x".repeat(5000));
     expect((f.calls[0].body as { text: string }).text).toHaveLength(3900);
+  });
+});
+
+describe("Reply-To (spec D8): Maria's inbox for every mail without one of its own", () => {
+  test("defaultReplyTo: MARIA_EMAIL, unless the mail goes to her (trimmed, any case) or it is not set", () => {
+    expect(defaultReplyTo({ MARIA_EMAIL: "maria@example.com" }, "kati@example.com")).toBe("maria@example.com");
+    expect(defaultReplyTo({ MARIA_EMAIL: " maria@example.com " }, "kati@example.com")).toBe("maria@example.com");
+    expect(defaultReplyTo({ MARIA_EMAIL: "maria@example.com" }, "maria@example.com")).toBeUndefined();
+    expect(defaultReplyTo({ MARIA_EMAIL: "Maria@Example.com" }, " maria@example.COM ")).toBeUndefined();
+    expect(defaultReplyTo({ MARIA_EMAIL: "" }, "kati@example.com")).toBeUndefined();
+    expect(defaultReplyTo({ MARIA_EMAIL: "   " }, "kati@example.com")).toBeUndefined();
+  });
+
+  test("sendMail: a student's mail replies to Maria; a mail's own Reply-To wins; a mail to Maria gets none of hers", async () => {
+    const f = stubFetch(() => Response.json({ id: "email_1" }));
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const key = env({ RESEND_API_KEY: "re_test" });
+    await sendMail(key, { to: "kati@example.com", subject: "S", text: "T" });
+    await sendMail(key, { to: "kati@example.com", subject: "S", text: "T", replyTo: "other@example.com" });
+    await sendMail(key, { to: "maria@example.com", subject: "S", text: "T" });
+    const bodies = f.calls.map((c) => c.body as Record<string, unknown>);
+    expect(bodies.map((b) => b.reply_to)).toEqual(["maria@example.com", "other@example.com", undefined]);
+    expect(Object.keys(bodies[2])).not.toContain("reply_to");
+  });
+
+  test("notifyMaria: the student's address when the notice names her, none of its own otherwise", async () => {
+    const f = stubFetch(() => Response.json({ id: "email_1" }));
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const key = env({ RESEND_API_KEY: "re_test" });
+    await notifyMaria(key, "Teema", "Tekst", { replyTo: "kati@example.com" });
+    await notifyMaria(key, "Teema", "Tekst");
+    const bodies = f.calls.filter((c) => c.url.includes("resend")).map((c) => c.body as Record<string, unknown>);
+    expect(bodies.map((b) => [b.to, b.reply_to])).toEqual([["maria@example.com", "kati@example.com"], ["maria@example.com", undefined]]);
+  });
+
+  test("without MARIA_EMAIL no Reply-To is added", async () => {
+    const f = stubFetch(() => Response.json({ id: "email_1" }));
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    await sendMail(env({ RESEND_API_KEY: "re_test", MARIA_EMAIL: "" }), { to: "kati@example.com", subject: "S", text: "T" });
+    expect(Object.keys(f.calls[0].body as object)).not.toContain("reply_to");
   });
 });
