@@ -55,6 +55,8 @@ const BROWSER_FILES = [
   "src/domain/completion.ts",
   // e-course completion, Task 3: the course editor's "Teadmiste test" (it pulls domain/completion.ts into the browser)
   "src/components/admin/TestEditor.tsx",
+  // e-course completion, Task 6: the student's test (a "use client" file, walked anyway: listed as the phase's entry point)
+  "src/components/account/TestPage.tsx",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

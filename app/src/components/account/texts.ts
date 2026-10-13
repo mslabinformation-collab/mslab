@@ -71,3 +71,14 @@ export const feedbackTexts = (d: Dict): FeedbackTexts => ({
   failed: d.forms.errorGeneric,
   loader: loaderTexts(d),
 });
+
+/** The knowledge test's page (e-course completion): account.test, the way back to the course (account.lesson.back), the two failure lines and AccountLoader's. */
+export type TestTexts = Dict["account"]["test"] & { back: string; loader: LoaderTexts; rate: string; failed: string };
+
+export const testTexts = (d: Dict): TestTexts => ({
+  ...d.account.test,
+  back: d.account.lesson.back,
+  rate: d.forms.errorTooMany,
+  failed: d.forms.errorGeneric,
+  loader: loaderTexts(d),
+});

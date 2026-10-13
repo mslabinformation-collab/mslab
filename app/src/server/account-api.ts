@@ -3,6 +3,7 @@ import type { Db } from "@/db/client";
 import { studentProtocol } from "@/db/queries/protocols";
 import { readSetting } from "@/db/queries/public";
 import { clients } from "@/db/schema";
+import { TEST_LIMITS } from "@/domain/completion";
 import { isEmail, isSampleAddress, normalizeEmail } from "@/domain/email";
 import { FEEDBACK_TEXT_MAX } from "@/domain/protocols";
 import type { Locale } from "@/i18n/locales";
@@ -37,6 +38,7 @@ import type { Montonio } from "./payments/montonio";
 import { PAY_STARTS_PER_IP, startRegistrationPayment } from "./payments/start";
 import { isPrefetch } from "./prefetch";
 import { belowLimit, clientIp, countFailure, rateKey, rateLimit, releaseSlot, reserveSlot, windowKey } from "./ratelimit";
+import { resubmitAnswers, submitAttempt, testView, type SubmitResult } from "./test-attempts";
 import { sha256 } from "./token";
 
 // The client account's JSON API (/api/konto/*) without Next.js: app/api/konto/[[...path]]/route.ts builds the dependencies
@@ -53,7 +55,7 @@ import { sha256 } from "./token";
 //
 // Behind a session (the data endpoints, at the bottom): GET / the dashboard, GET /kursus/:slug an e-course with its lessons and their states,
 // GET /kursus/:slug/:lesson one lesson (an open one with a signed video URL; 403 terms or locked), POST …/:lesson/progress how far a video has
-// been watched, POST …/:lesson/tehtud "Märgi tehtuks" for a text lesson, GET …/:lesson/fail/:file a lesson file, GET /lemmikud the
+// been watched, POST …/:lesson/tehtud "Märgi tehtuks" for a text lesson, GET …/:lesson/fail/:file a lesson file, GET /kursus/:slug/test the knowledge test with POST /kursus/:slug/test an attempt and POST …/test/uuesti the "Paranda" answers rewritten (e-course completion), GET /lemmikud the
 // favourites as course cards, POST /lemmikud and /lemmikud/merge favourites, PATCH /andmed the profile, POST /uudiskiri the newsletter, POST /muutmine a request to cancel or
 // move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
 // Each one starts with requireClient and answers through clientResponse (a renewed session's cookies reach the browser); the
@@ -101,11 +103,22 @@ const PASSWORD_CHANGES_PER_HOUR = 5;
 const FEEDBACK_PER_HOUR = 10;
 /** A feedback body: two free texts at their limit, JSON-escaped, and the rest. */
 const FEEDBACK_BODY_CHARS = 2 * FEEDBACK_TEXT_MAX * 2 + 2048;
+/** Test submits and rewrites a student may send per hour, together (e-course completion, spec §7): each one is graded at once. */
+const TEST_SUBMITS_PER_HOUR = 10;
+/** A test's body: every question's answer at its limit (an open one JSON-escaped, or a choice's option ids) and the rest. */
+const TEST_BODY_CHARS = TEST_LIMITS.questions * (TEST_LIMITS.answer * 2 + 512) + 2048;
 
 /** The feedback's own limit, the submits and the "Ei soovi"s together: null within it, else the 429 to answer. */
 async function feedbackLimited(deps: AccountDeps, session: ClientSession): Promise<Response | null> {
   if (await withinClientLimit(deps, session.clientId, "client-feedback", FEEDBACK_PER_HOUR, 60 * 60)) return null;
   logNote("[account] feedback rate limited");
+  return clientResponse(session, { ok: false, error: "rate" }, 429);
+}
+
+/** The test's own limit, the submits and the rewrites together: null within it, else the 429 to answer. */
+async function testLimited(deps: AccountDeps, session: ClientSession): Promise<Response | null> {
+  if (await withinClientLimit(deps, session.clientId, "client-test", TEST_SUBMITS_PER_HOUR, 60 * 60)) return null;
+  logNote("[account] test submits rate limited");
   return clientResponse(session, { ok: false, error: "rate" }, 429);
 }
 
@@ -427,6 +440,27 @@ const lessonRef = (rawSlug: string, rawLesson: string): { slug: string; lessonId
 const queryId = (request: Request): number | null => parseRowId(new URL(request.url).searchParams.get("id") ?? "");
 
 /**
+ * The answer to a test submit or rewrite (test-attempts.ts SubmitResult): 200 `{ ok: true, ...TestView }` with the outcome; 409 `changed` (the
+ * questions changed since the page loaded) or `closed`; 400 `incomplete` or `tooLong`; 404.
+ */
+function testAnswer(session: ClientSession, result: SubmitResult): Response {
+  switch (result.kind) {
+    case "submitted":
+      return clientResponse(session, { ok: true, ...result.view });
+    case "changed":
+    case "closed":
+      return clientResponse(session, { ok: false, error: result.kind }, 409);
+    case "invalid":
+      return clientResponse(session, { ok: false, error: result.error }, 400);
+    default:
+      return clientResponse(session, { ok: false }, 404);
+  }
+}
+
+/** The attempt id of a rewrite's body: a positive integer the database can hold, or null. */
+const attemptIdOf = (value: unknown): number | null => (typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 2_147_483_647 ? value : null);
+
+/**
  * "Sinu MS LABi konto parool on muudetud." after the response (phase 2c), with Maria's address from Seaded when there is one (and without
  * it when Seaded cannot be read): never in development, never to a sample address. A failure is logged by `later` (route.ts), never the address.
  */
@@ -544,6 +578,58 @@ async function lessonFile(request: Request, deps: AccountDeps, rawSlug: string, 
   if (file?.kind === "locked") return clientResponse(session, { ok: false, error: "locked" }, 403);
   const answer = file?.kind === "file" && deps.files ? await fileAnswer(session, deps.files, file) : null;
   return answer ?? clientResponse(session, { ok: false }, 404);
+}
+
+/**
+ * GET /kursus/:slug/test (e-course completion, spec §4.2): the student's knowledge test (test-attempts.ts TestView) — the course's questions
+ * without their answer key, the state and the tries left, her newest attempt (its own copy of the questions, her answers, the score, the
+ * numbers of the choice questions she got wrong, Maria's review). 404 without the access (a revoked one too), for a contact course and for
+ * a course without questions.
+ */
+async function testPage(request: Request, deps: AccountDeps, rawSlug: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const slug = parseSlug(rawSlug);
+  const view = slug === null ? null : await testView(deps.db, session.clientId, slug, deps.now);
+  return view ? clientResponse(session, { ok: true, ...view }) : clientResponse(session, { ok: false }, 404);
+}
+
+/**
+ * POST /kursus/:slug/test `{ answers }` (spec §4.2): a new attempt, graded at once (test-attempts.ts submitAttempt, under the access's lock:
+ * a double tap or a second device makes one try; the newest attempt's own answers sent again to unchanged questions are that attempt: its
+ * view, nothing written). 200 `{ ok: true, ...TestView }` with the outcome; 409 `{ error: "changed" }` (Maria changed
+ * the questions since the page loaded: no try used, nothing stored) or `{ error: "closed" }` (locked, waiting for Maria, passed, out of
+ * tries, or the access has ended); 400 `{ error: "incomplete" | "tooLong" | "answers" }`; 429 `{ error: "rate" }` after 10 in an hour; 404.
+ */
+async function submitTest(request: Request, deps: AccountDeps, rawSlug: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const slug = parseSlug(rawSlug);
+  if (slug === null) return clientResponse(session, { ok: false }, 404);
+  const body = await readObject(request, TEST_BODY_CHARS);
+  if (body === null) return badInput(session, "answers");
+  const limited = await testLimited(deps, session);
+  if (limited) return limited;
+  return testAnswer(session, await submitAttempt(deps, session.clientId, slug, body.answers));
+}
+
+/**
+ * POST /kursus/:slug/test/uuesti `{ attemptId, answers }` (spec §4.2): the answers Maria marked "Paranda" rewritten (test-attempts.ts
+ * resubmitAnswers: the same attempt back to her review, no try used). The answers as POST /kursus/:slug/test's, and 400 `{ error:
+ * "attemptId" }`.
+ */
+async function resubmitTest(request: Request, deps: AccountDeps, rawSlug: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const slug = parseSlug(rawSlug);
+  if (slug === null) return clientResponse(session, { ok: false }, 404);
+  const body = await readObject(request, TEST_BODY_CHARS);
+  if (body === null) return badInput(session, "answers");
+  const attemptId = attemptIdOf(body.attemptId);
+  if (attemptId === null) return badInput(session, "attemptId");
+  const limited = await testLimited(deps, session);
+  if (limited) return limited;
+  return testAnswer(session, await resubmitAnswers(deps, session.clientId, slug, attemptId, body.answers));
 }
 
 /**
@@ -795,6 +881,8 @@ async function deleteAccount(request: Request, deps: AccountDeps): Promise<Respo
 const COURSE_PATH = /^\/kursus\/([^/]+)$/;
 /** A lesson's paths: /kursus/<slug>/<lesson>, …/progress, …/tehtud, …/fail/<file>. */
 const LESSON_PATH = /^\/kursus\/([^/]+)\/([^/]+)(?:\/(progress|tehtud)|\/fail\/([^/]+))?$/;
+/** The knowledge test's paths (e-course completion): /kursus/<slug>/test and …/test/uuesti. Tried before LESSON_PATH, which would read "test" as a lesson id. */
+const TEST_PATH = /^\/kursus\/([^/]+)\/test(\/uuesti)?$/;
 
 /** The endpoints behind a session; any other method and path is unknown (404, with or without a session). */
 async function dataRoute(request: Request, path: string, deps: AccountDeps): Promise<Response> {
@@ -818,6 +906,14 @@ async function dataRoute(request: Request, path: string, deps: AccountDeps): Pro
   }
   const course = request.method === "GET" ? COURSE_PATH.exec(path) : null;
   if (course) return ecourse(request, deps, course[1]);
+  const testPath = TEST_PATH.exec(path);
+  if (testPath) {
+    const [, slug, rewrite] = testPath;
+    if (request.method === "GET" && rewrite === undefined) return testPage(request, deps, slug);
+    if (request.method === "POST" && rewrite === undefined) return submitTest(request, deps, slug);
+    if (request.method === "POST" && rewrite !== undefined) return resubmitTest(request, deps, slug);
+    return accountResponse({ ok: false }, 404); // never on to the lessons
+  }
   const lessonPath = LESSON_PATH.exec(path);
   if (lessonPath) {
     const [, slug, id, action, file] = lessonPath;

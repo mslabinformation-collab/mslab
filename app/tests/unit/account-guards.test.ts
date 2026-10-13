@@ -20,10 +20,10 @@ describe("the data endpoints of the account API", () => {
   test("the section and its handlers are found", () => {
     expect(SOURCE.indexOf(START)).toBeGreaterThan(0);
     expect(SOURCE.indexOf(END)).toBeGreaterThan(SOURCE.indexOf(START));
-    expect(handlers.map(nameOf)).toEqual(["dashboard", "ecourse", "lesson", "progress", "lessonDone", "lessonFile", "favouriteCourses", "favourite", "mergeFavouriteList", "profile", "newsletter", "setPassword", "removePassword", "changeRequest", "payRegistration", "protocol", "feedbackForm", "sendFeedback", "dismissFeedback", "terms", "deleteAccount"]);
+    expect(handlers.map(nameOf)).toEqual(["dashboard", "ecourse", "lesson", "progress", "lessonDone", "lessonFile", "testPage", "submitTest", "resubmitTest", "favouriteCourses", "favourite", "mergeFavouriteList", "profile", "newsletter", "setPassword", "removePassword", "changeRequest", "payRegistration", "protocol", "feedbackForm", "sendFeedback", "dismissFeedback", "terms", "deleteAccount"]);
   });
 
-  test.each(["dashboard", "ecourse", "lesson", "progress", "lessonDone", "lessonFile", "favouriteCourses", "favourite", "mergeFavouriteList", "profile", "newsletter", "setPassword", "removePassword", "changeRequest", "payRegistration", "protocol", "feedbackForm", "sendFeedback", "dismissFeedback", "terms", "deleteAccount"])(
+  test.each(["dashboard", "ecourse", "lesson", "progress", "lessonDone", "lessonFile", "testPage", "submitTest", "resubmitTest", "favouriteCourses", "favourite", "mergeFavouriteList", "profile", "newsletter", "setPassword", "removePassword", "changeRequest", "payRegistration", "protocol", "feedbackForm", "sendFeedback", "dismissFeedback", "terms", "deleteAccount"])(
     "%s starts with requireClient and hands a refusal back unchanged",
     (name) => {
       const body = handlers.find((h) => nameOf(h) === name)!.split("{\n").slice(1).join("{\n");
@@ -54,7 +54,7 @@ describe("the data endpoints of the account API", () => {
     expect(section.slice(0, section.indexOf("\n\n"))).toContain("clientResponse(session, { ok: false, error: field }, 400)");
   });
 
-  test("the router sends every known path to a handler, and only GET /kursus/:slug and the lesson paths are matched by pattern", () => {
+  test("the router sends every known path to a handler, and only GET /kursus/:slug, the test's paths and the lesson paths are matched by pattern", () => {
     const router = SOURCE.slice(SOURCE.indexOf(END), SOURCE.indexOf("/** The router: `null`"));
     const cases = [...router.matchAll(/case "(\w+) ([^"]+)": return (\w+)\(request, deps\);/g)].map((m) => `${m[1]} ${m[2]} ${m[3]}`);
     expect(cases).toEqual([
@@ -63,6 +63,9 @@ describe("the data endpoints of the account API", () => {
     ]);
     expect(router).toContain('request.method === "GET" ? COURSE_PATH.exec(path) : null');
     expect(router).toContain("LESSON_PATH.exec(path)");
+    // e-course completion: the test's paths come first, else "test" would be read as a lesson id
+    expect(router).toContain("TEST_PATH.exec(path)");
+    expect(router.indexOf("TEST_PATH.exec(path)")).toBeLessThan(router.indexOf("LESSON_PATH.exec(path)"));
   });
 });
 

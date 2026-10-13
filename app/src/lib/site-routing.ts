@@ -75,6 +75,17 @@ const isLessonPage = (rest: string): boolean => {
 };
 
 /**
+ * An e-course's completion steps in the account (e-course completion): /konto/kursus/<slug>/test, the knowledge test, and
+ * /konto/kursus/<slug>/praktiline, the practical work. The slug is isSlug's, as a lesson's; nothing deeper is a page.
+ */
+const COURSE_STEP_PAGE = /^\/konto\/kursus\/([^/]+)\/(test|praktiline)$/;
+
+const isCourseStepPage = (rest: string): boolean => {
+  const m = COURSE_STEP_PAGE.exec(rest);
+  return m !== null && isSlug(m[1]);
+};
+
+/**
  * Every address without a page of its own is served from this one page per locale (app/[locale]/(site)/[...rest] →
  * not-found.tsx, status 404): rendered once and cached like any page, instead of a render per unknown address (a scan
  * of /wp-admin, /.env and the like would otherwise cost a render each, and could not fill the cache either).
@@ -84,7 +95,7 @@ export const NOT_FOUND_SEGMENT = "leidmata";
 /** Does `page` ("/et/koolitused/x") name a page of the site? false: it is served from the locale's 404 page. */
 export function isKnownPage(page: string): boolean {
   const rest = page.replace(/^\/(et|ru)(?=\/|$)/, "");
-  return STATIC_PAGES.has(rest) || SLUG_PAGE.test(rest) || CART_PAGE.test(rest) || isLessonPage(rest);
+  return STATIC_PAGES.has(rest) || SLUG_PAGE.test(rest) || CART_PAGE.test(rest) || isLessonPage(rest) || isCourseStepPage(rest);
 }
 
 /** The 404 page of a locale ("/et/leidmata"). */

@@ -760,6 +760,44 @@ export const et = {
       notOpen: "Sellele koolitusele ei saa praegu tagasisidet anda.",
       loading: "Laadin…",
     },
+    // The knowledge test /konto/kursus/<slug>/test (components/account/TestPage.tsx, e-course completion, spec §4.2): the page's frame in her
+    // language; Maria's questions, options and comments are shown as she wrote them. {n}/{max}: the try and the tries she has; {pass} and
+    // {percent}: the pass mark and her score (rounded down); {list}: the numbers of the choice questions answered wrong ("3, 7"); `count`:
+    // an open answer's length and its limit.
+    test: {
+      title: "Teadmiste test",
+      loading: "Laadin testi…",
+      notFound: "Seda testi ei leitud.",
+      locked: "Avaneb, kui kõik õppetunnid on tehtud.",
+      lead: "Vasta kõigile küsimustele ja vajuta „Esita test“.",
+      attempt: "Katse {n}/{max}",
+      need: "Läbimiseks on vaja vähemalt {pass} % õigeid vastuseid.",
+      multiple: "Vali kõik õiged",
+      count: "{n} / {max}",
+      submit: "Esita test",
+      confirm: "Kas esitad testi? Katse {n}/{max}.",
+      confirmYes: "Jah, esita",
+      confirmNo: "Tagasi",
+      sending: "Saadan…",
+      incomplete: "Vasta kõigile küsimustele.",
+      tooLong: "Vastus on liiga pikk: kuni {max} tähemärki.",
+      changed: "Test on vahepeal muutunud, laadi leht uuesti",
+      reload: "Laadi uuesti",
+      result: "Said {percent} %, vaja {pass} %. Valesti vastatud: {list}.",
+      retry: "Proovi uuesti ({n} katset jäänud)",
+      retryOne: "Proovi uuesti (1 katse jäänud)",
+      used: "Katsed on otsas. Maria sai teate ja avab testi sulle uuesti.",
+      review: "Ootab Maria hinnangut",
+      reviewLead: "Maria loeb sinu vastused läbi. Saad e-kirja, kui hinnang on valmis.",
+      fix: "Maria palub mõned vastused üle vaadata.",
+      fixLead: "Kirjuta märgitud vastused uuesti ja vajuta „Saada uuesti“. See ei kuluta katset.",
+      comment: "Maria kommentaar",
+      resubmit: "Saada uuesti",
+      passed: "Test on sooritatud",
+      practical: "Ava praktiline töö",
+      readOnly: "Ligipääs on lõppenud: tulemusi saad vaadata, uut katset esitada ei saa.",
+      answers: "Sinu vastused",
+    },
     // "Lemmikud" /konto/lemmikud (components/account/FavouritesTab.tsx): the hearted courses as the catalogue's cards, each with ♡ to
     // take it off. {title} is a course's title (the button's name for a screen reader, and what was taken off).
     favourites: {
