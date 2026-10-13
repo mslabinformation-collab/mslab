@@ -473,6 +473,8 @@ export class ProtocolAutosave {
   private readonly awaiting = new Set<number>();
   /** Calls waiting for `awaiting` to empty (whenFresh): told after every change. */
   private readonly freshWaiters = new Set<() => void>();
+  /** Told when the server's text is wanted now (recheck): keepReading reads. */
+  private readonly readers = new Set<() => void>();
   /**
    * What a read brought for a protocol with a save queued or on its way (null: she was not in the answer): taken when that save is over, if it did
    * not read the server's text itself (its answer is the server's word, and newer than the read).
@@ -510,6 +512,26 @@ export class ProtocolAutosave {
       if (e.status.kind === "saved") e.status = { kind: "checking" };
     }
     this.changed();
+  }
+
+  /**
+   * A send was answered "stale" (another device saved since): the version this screen has is not the server's. The protocol's text is read from the
+   * server again now (keepReading, told through onRecheck), and it says "checking" until it comes; whenFresh tells when it has, so the next send goes
+   * at the version read.
+   */
+  recheck(id: number): void {
+    const e = this.entries.get(id);
+    if (!e) return;
+    this.awaiting.add(id);
+    if (e.status.kind === "saved") e.status = { kind: "checking" };
+    this.changed();
+    for (const read of [...this.readers]) read();
+  }
+
+  /** keepReading: `read` is told when the server's text is wanted now (recheck). Returns the call that stops it. */
+  onRecheck(read: () => void): () => void {
+    this.readers.add(read);
+    return () => void this.readers.delete(read);
   }
 
   /** Is this protocol's text (any protocol, without an id) not yet read from the server since the screen was shown? */
@@ -1283,6 +1305,8 @@ export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read
   let attempts = 0;
   /** The last answer was 401 or 403: read again when she may have signed in (the tab shown or focused), until one goes through. */
   let refused = false;
+  /** A recheck came while a read was on its way (made, maybe, before what the recheck is about): another read follows it. */
+  let queued = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   const visible = () => typeof document === "undefined" || document.visibilityState !== "hidden";
   const clear = () => {
@@ -1296,6 +1320,10 @@ export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read
     const answer = await read(source);
     reading = false;
     if (!alive) return;
+    if (queued) {
+      queued = false;
+      void Promise.resolve().then(ask); // (after this answer is taken)
+    }
     const students = answer && answer.status === 200 ? readStudents(answer.body) : null;
     if (students) {
       attempts = 0;
@@ -1334,6 +1362,11 @@ export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read
     hiddenAt = null;
     again();
   };
+  const wanted = () => {
+    if (reading) queued = true;
+    else again();
+  };
+  const unwanted = engine.onRecheck(wanted);
   window.addEventListener("online", again);
   window.addEventListener("focus", again);
   window.addEventListener("pageshow", shown);
@@ -1343,6 +1376,7 @@ export function keepReading(engine: ProtocolAutosave, source: ScreenSource, read
     stop() {
       alive = false;
       clear();
+      unwanted();
       window.removeEventListener("online", again);
       window.removeEventListener("focus", again);
       window.removeEventListener("pageshow", shown);

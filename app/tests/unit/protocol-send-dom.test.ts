@@ -120,7 +120,6 @@ test("an empty protocol is refused at once, nothing sent; each refusal says why"
   await render({ single: true, students: [student(2, "Mari")] });
   for (const [answer, line] of [
     [{ kind: "cancelled" }, "Registreering on tühistatud: protokolli ei saadeta."],
-    [{ kind: "stale", version: 4 }, "Protokolli muudeti vahepeal mujal. Laadi leht uuesti ja vaata see üle."],
     [{ kind: "failed" }, "Saatmine ei õnnestunud. Proovi uuesti."],
   ] as const) {
     actions.sendProtocolAction.mockResolvedValueOnce(answer);
@@ -831,4 +830,53 @@ test("item 7a: a student the read no longer lists is not one of 'Lukusta ja saad
   await click("[data-confirm-send]");
   expect(actions.sendProtocolsAction).toHaveBeenCalledWith([{ registrationId: 1, version: 1 }]);
   expect($("[data-summary-failed]")).toBeNull();
+});
+
+const REFRESHED = "Protokolli muudeti vahepeal mujal ja siin on nüüd uus tekst. Vaata see üle ja saada siis.";
+const STALE = "Protokolli muudeti vahepeal mujal. Laadi leht uuesti ja vaata see üle.";
+
+test("item 3: 'Saada' answered 'stale' (another device saved since): the server's text is read again and shown, the line says so, and the next 'Saada' sends the current version", async () => {
+  actions.sendProtocolAction.mockResolvedValueOnce({ kind: "stale", version: 2 });
+  await render({ single: true, students: [OLD] });
+  await click("[data-send='first']");
+  expect(read).toHaveBeenCalledTimes(2); // read again at once
+  expect($("[data-send='first']")!.textContent).toBe("Saadan…"); // waiting for it, the boxes read-only
+  expect(($("[data-note='0']") as HTMLTextAreaElement).readOnly).toBe(true);
+  await answered(answer([NEW]));
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Teine.");
+  expect($("[data-send-error]")!.textContent).toBe(REFRESHED);
+  expect(($("[data-note='0']") as HTMLTextAreaElement).readOnly).toBe(false);
+  actions.sendProtocolAction.mockResolvedValueOnce({ kind: "sent", again: false, version: 2, sentAt: SENT_AT });
+  await click("[data-send='first']");
+  expect(actions.sendProtocolAction).toHaveBeenLastCalledWith({ registrationId: 1, version: 2 });
+  expect($("[data-send-error]")).toBeNull();
+  expect(fetchMock).not.toHaveBeenCalled(); // (nothing saved over the server's text)
+});
+
+test("item 3: 'Saada' answered 'stale' and the read never comes: after 10 s the line says to reload, and the boxes are writable", async () => {
+  actions.sendProtocolAction.mockResolvedValueOnce({ kind: "stale", version: 2 });
+  await render({ single: true, students: [OLD] });
+  await click("[data-send='first']");
+  await wait(10_000);
+  expect($("[data-send-error]")!.textContent).toBe(STALE);
+  expect(($("[data-note='0']") as HTMLTextAreaElement).readOnly).toBe(false);
+});
+
+test("item 3: 'Lukusta ja saada kõik' answered 'stale' for one student reads the server's text again, so the next send sends her current version", async () => {
+  await render({ single: false, students: [student(1, "Anu"), student(2, "Berit")] });
+  actions.sendProtocolsAction.mockResolvedValueOnce([
+    { registrationId: 1, result: { kind: "sent", again: false, version: 1, sentAt: SENT_AT } },
+    { registrationId: 2, result: { kind: "stale", version: 2 } },
+  ]);
+  await click("[data-send-all-open]");
+  await click("[data-confirm-send]");
+  expect($$("[data-summary-failed]").map((p) => p.textContent)).toEqual([`Ei saadetud: Berit. ${STALE}`]);
+  expect(read).toHaveBeenCalledTimes(2); // read again at once
+  await answered(answer([student(1, "Anu", { sentVersion: 1, sentAt: SENT_AT }), student(2, "Berit", { version: 2, notes: ["Teine.", ""] })]));
+  await click("[data-student='2']");
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Teine.");
+  actions.sendProtocolsAction.mockResolvedValueOnce([{ registrationId: 2, result: { kind: "sent", again: false, version: 2, sentAt: SENT_AT } }]);
+  await click("[data-send-all-open]");
+  await click("[data-confirm-send]");
+  expect(actions.sendProtocolsAction).toHaveBeenLastCalledWith([{ registrationId: 2, version: 2 }]);
 });

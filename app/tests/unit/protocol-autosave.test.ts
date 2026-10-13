@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   DEBOUNCE_MS, FRESH_WAIT_MS, HIDDEN_RECHECK_MS, keepReading, localKey, NOTICE_MAX_CHARS, ProtocolAutosave, readConflict, readLocal, remember, resumeLocal, SENT_MAX_CHARS, sentKey, statusOf,
-  type Answer, type Content, type SaveBody, type SendOptions, type ServerDraft,
+  type Answer, type Content, type SaveBody, type ScreenAnswer, type SendOptions, type ServerDraft,
 } from "@/components/admin/protocol-autosave";
 import { PROTOCOL_LIMITS } from "@/domain/protocols";
 
@@ -1265,6 +1265,34 @@ describe("keepReading: refusals and a tab hidden for long (fix round 2 of Task 1
     window.dispatchEvent(new Event("focus")); // signed in and read: a focus asks nothing more
     await tick();
     expect(read).toHaveBeenCalledTimes(3);
+    reading.stop();
+  });
+
+  test("item 3: recheck (a send answered 'stale') reads the server's text at once, 'checking' until it comes; asked while a read is on its way, it reads again after it", async () => {
+    const e = start([at(1, "x")], server().send);
+    const answers: ((a: ScreenAnswer) => void)[] = [];
+    const read = vi.fn(() => new Promise<ScreenAnswer>((resolve) => answers.push(resolve)));
+    const reading = keepReading(e, { sessioon: 5 }, read, () => {});
+    answers.shift()!({ status: 200, body: { ok: true, students: [wire(at(1, "x"))] } });
+    await tick();
+    e.recheck(7);
+    expect(e.get(7)!.status).toEqual({ kind: "checking" });
+    expect(read).toHaveBeenCalledTimes(2);
+    answers.shift()!({ status: 200, body: { ok: true, students: [wire(at(2, "y"))] } });
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 2, content: { notes: ["y", ""] }, status: { kind: "saved" } });
+    // a read already on its way when the recheck comes may be older than what made the send stale: another read follows it
+    e.awaitFresh();
+    window.dispatchEvent(new Event("focus"));
+    expect(read).toHaveBeenCalledTimes(3);
+    e.recheck(7);
+    expect(read).toHaveBeenCalledTimes(3);
+    answers.shift()!({ status: 200, body: { ok: true, students: [wire(at(2, "y"))] } });
+    await tick();
+    expect(read).toHaveBeenCalledTimes(4);
+    answers.shift()!({ status: 200, body: { ok: true, students: [wire(at(3, "z"))] } });
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 3, content: { notes: ["z", ""] } });
     reading.stop();
   });
 });

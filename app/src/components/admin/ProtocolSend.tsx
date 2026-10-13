@@ -165,6 +165,13 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
         engine.markSent(id, result.version, result.sentAt);
         onUnlock(false);
       }
+      if (result.kind === "stale") {
+        // another device saved since: the server's text is read again and shown (still read-only meanwhile), so the next "Saada" sends the version
+        // Maria then sees; a read that does not come in time leaves the line that says to reload
+        engine.recheck(id);
+        engine.setSendError(id, (await engine.whenFresh([id])) ? t.sendErrors.refreshed : t.sendErrors.stale);
+        return;
+      }
       engine.setSendError(id, sendMessage(result, t));
     } finally {
       engine.setSending(id, false);
@@ -289,6 +296,7 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
           onSent(r.registrationId);
           sent.push(nameOf(r.registrationId));
         } else leftOut(sendMessage(r.result, t) ?? t.sendErrors.failed, r.registrationId);
+        if (r.result.kind === "stale") engine.recheck(r.registrationId); // (another device saved since: her text is read again, for the next send)
       }
       // (an answer that does not list a protocol that was sent for: no one is left unexplained)
       const answered = new Set(results.map((r) => r.registrationId));
