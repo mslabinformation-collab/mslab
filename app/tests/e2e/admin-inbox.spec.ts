@@ -21,7 +21,7 @@ import {
 // fixtures.ts, an unpublished fixture course with its own session) and deletes again. The guard tests are GET-only and
 // also run against a deployment.
 
-const MENU = ["Ülevaade", "Koolitused", "Kalender", "Registreerimised", "Maksed", "Õpilased", "Päringud", "Praktika", "Avaleht", "Koolitaja", "Uudised", "Hüpikaken", "Uudiskiri", "Seaded"];
+const MENU = ["Ülevaade", "Koolitused", "Kalender", "Registreerimised", "Maksed", "Tagasiside", "Õpilased", "Päringud", "Praktika", "Avaleht", "Koolitaja", "Uudised", "Hüpikaken", "Uudiskiri", "Seaded"];
 
 const created = { tokens: new Set<string>(), sessions: new Set<string>() };
 let fx: AdminFixtures | null = null;
@@ -158,6 +158,9 @@ test.describe("signed in", () => {
     await expect(page).toHaveURL(new RegExp(`vorm=k&id=${f.registration.id}$`));
     const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
     await expect(drawer).toBeVisible();
+    // a contact course's registration: one tap to its protocol (phase protocols)
+    await expect(drawer.locator("[data-registration-protocol]")).toHaveText("Ava protokoll");
+    await expect(drawer.locator("[data-registration-protocol]")).toHaveAttribute("href", `/admin/protokollid?registreering=${f.registration.id}`);
     await expect(drawer).toContainText("350 €");
     await expect(drawer).toContainText("175 €");
     await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");

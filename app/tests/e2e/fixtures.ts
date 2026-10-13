@@ -46,6 +46,15 @@ const connect = (marksPages = true) => {
   return Object.assign(sql, { end: async (...args: Parameters<typeof end>) => { await end(...args); revalidateLocalPages(); } });
 };
 
+/**
+ * The local test database's address, checked to be local (local-db.ts), for a test that needs connections of its own: protocols-race.spec.ts
+ * runs the app's own sendProtocol on a pool of it (two connections at once, which onLocalDb's single one cannot be).
+ */
+export function localDatabaseUrl(): string {
+  if (!isLocalDbUrl(DB_URL)) assertLocalDatabases([{ source: "E2E_DATABASE_URL", url: DB_URL }]);
+  return DB_URL;
+}
+
 /** Removes this suite's rows; returns how many are left afterwards (0 when clean). */
 async function clear(sql: postgres.Sql): Promise<number> {
   await sql`delete from registrations where note = ${FIXTURE_NOTE}`;
@@ -642,7 +651,7 @@ export const NEW_COURSE_SLUG_PREFIX = "e2e-uus-";
 const EDIT_EMAIL_PATTERN = "e2e-edit-%@example.com";
 const SNAPSHOT_DIR = join(tmpdir(), "mslab-e2e-course-snapshots");
 
-const JSON_COLUMNS = ["title", "summary", "body", "outcomes", "includes", "duration_label", "next_discount", "badge", "recommendation_ids"] as const;
+const JSON_COLUMNS = ["title", "summary", "body", "outcomes", "includes", "duration_label", "next_discount", "badge", "recommendation_ids", "protocol_stages"] as const;
 const PLAIN_COLUMNS = ["slug", "type", "level", "language", "price", "price_group", "price_individual", "access_months", "video_count", "published", "sort", "is_sample", "updated_at"] as const;
 
 type CourseSnapshot = { id: number; row: Record<string, unknown>; images: { key: string; alt: unknown; sort: number }[] };

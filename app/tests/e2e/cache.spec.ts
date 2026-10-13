@@ -133,6 +133,7 @@ const ECOURSE_SHELL = `/konto/kursus/${SEED_ECOURSE_SLUG}`;
 const LESSON_SHELL = `${ECOURSE_SHELL}/1`;
 const ACCOUNT_SHELLS = [
   "/konto", "/ru/konto", "/konto/sisene", "/ru/konto/sisene", "/konto/lemmikud", "/ru/konto/lemmikud", "/konto/andmed", "/ru/konto/andmed",
+  "/konto/protokoll", "/ru/konto/protokoll", "/konto/tagasiside", "/ru/konto/tagasiside",
   ECOURSE_SHELL, `/ru${ECOURSE_SHELL}`, LESSON_SHELL, `/ru${LESSON_SHELL}`,
 ];
 
@@ -232,7 +233,7 @@ const leak = (text: string): string => {
 };
 
 test("an account shell asked for with a query is answered with a 303 to the fragment, by every method, and the cached shell never holds the query", async ({ request }) => {
-  test.setTimeout(360_000); // twelve shells
+  test.setTimeout(480_000); // sixteen shells
   for (const path of ACCOUNT_SHELLS) {
     revalidateLocalPages(); // the first request that reaches a shell now renders it: it must not be one with a query
     for (const method of ["GET", "HEAD", "POST", "PUT", "DELETE"]) {
@@ -261,6 +262,19 @@ test("an account shell asked for with a query is answered with a 303 to the frag
     // and the clean address is answered from the cache, by a request without a query (asked again, as everywhere here, when another
     // test's fixture has just marked every page stale: the first request then renders it, cleanly, and the next is a HIT)
     expect((await fromCache(request, path)).headers()["x-nextjs-cache"], path).toBe("HIT");
+  }
+});
+
+test("the protocol's and the feedback form's address with an id in a query (a typed or an old link) is answered with a 303 to the fragment, the id kept (phase protocols)", async ({ request }) => {
+  for (const path of ["/konto/protokoll", "/ru/konto/protokoll", "/konto/tagasiside", "/ru/konto/tagasiside"]) {
+    const res = await request.get(`${path}?id=42`, { maxRedirects: 0, failOnStatusCode: false });
+    expect(res.status(), path).toBe(303);
+    expect(res.headers()["location"], path).toBe(`${path}#id=42`);
+    expect(res.headers()["cache-control"], path).toBe("no-store");
+  }
+  for (const path of ["/api/konto/protokoll?id=42", "/api/konto/tagasiside?id=42"]) {
+    const api = await request.get(path, { failOnStatusCode: false });
+    expect([api.status(), api.headers()["cache-control"], api.headers()["x-nextjs-cache"]], path).toEqual([401, "private, no-store", undefined]);
   }
 });
 

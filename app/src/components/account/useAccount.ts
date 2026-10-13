@@ -81,14 +81,18 @@ export function forgetAccountMemory(): void {
 }
 
 /**
- * Minu koolitused opened by the login link (/konto#sisse, server/account-api.ts verify): this browser forgets the copy of the
- * favourites a previous session left here before the new account's own list is loaded, and the mark leaves the address (a reload
- * must not repeat it). A login with the code does the same in the login form.
+ * An account page opened by the login link (/konto#sisse, server/account-api.ts verify; the protocol mail's /konto/protokoll#sisse&id=<n>):
+ * this browser forgets the copy of the favourites a previous session left here before the new account's own list is loaded, and the mark
+ * leaves the address (a reload must not repeat it); what follows it in the fragment (the protocol's id) stays. A login with the code does the
+ * same in the login form.
  */
 function takeLoginMark(): void {
-  if (window.location.hash !== `#${LOGIN_MARK}`) return;
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  if (!params.has(LOGIN_MARK)) return;
   forgetAccountFavourites();
-  window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+  params.delete(LOGIN_MARK);
+  const rest = params.toString();
+  window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search + (rest ? `#${rest}` : ""));
 }
 
 /** The login page of a locale: "/konto/sisene" or "/ru/konto/sisene" (without one, the locale of the address shown). */

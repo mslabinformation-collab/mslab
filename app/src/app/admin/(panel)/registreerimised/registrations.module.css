@@ -65,6 +65,14 @@
   margin-top: 16px;
 }
 
+/* the feedback form's answers (phase protocols) */
+.feedback {
+  display: grid;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
 .dl,
 .moneyList {
   display: grid;

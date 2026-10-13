@@ -20,10 +20,11 @@ import type { Mail } from "./notify";
 /**
  * The link in the login e-mail: it signs in the device that opens it (api/konto verify). `pageLocale` is the language of
  * the login page: "ru" adds `&l=ru` (a new account is Russian, a failed link opens the Russian login page); Estonian adds
- * nothing, as before.
+ * nothing, as before. `protocolId` (the protocol mail, phase protocols) adds `&p=<registration>`: after the login the link
+ * opens that protocol instead of Minu koolitused.
  */
-export const verifyLink = (siteUrl: string, token: string, pageLocale: Locale = "et"): string =>
-  `${siteUrl.replace(/\/+$/, "")}/api/konto/verify?t=${encodeURIComponent(token)}${pageLocale === "ru" ? "&l=ru" : ""}`;
+export const verifyLink = (siteUrl: string, token: string, pageLocale: Locale = "et", protocolId?: number): string =>
+  `${siteUrl.replace(/\/+$/, "")}/api/konto/verify?t=${encodeURIComponent(token)}${pageLocale === "ru" ? "&l=ru" : ""}${protocolId === undefined ? "" : `&p=${protocolId}`}`;
 
 /**
  * "Ava minu konto": the login page of `locale` with the address filled in (components/account/login-address.ts reads it once).
@@ -504,4 +505,81 @@ export function requestConfirmationMail(input: RequestConfirmationInput): Mail {
     sections: [],
     login: input.login ?? null,
   });
+}
+
+// ---------- the protocol's mails (phase protocols, spec §6) ----------
+
+/** The student's protocol page: /konto/protokoll#id=<registration> (the id in the fragment: an account page never has a query). */
+export const protocolUrl = (siteUrl: string, locale: Locale, registrationId: number): string =>
+  `${siteUrl.replace(/\/+$/, "")}${href(locale, "/konto/protokoll")}#id=${registrationId}`;
+
+/** A registration's feedback form: /konto/tagasiside#id=<registration>. */
+export const feedbackUrl = (siteUrl: string, locale: Locale, registrationId: number): string =>
+  `${siteUrl.replace(/\/+$/, "")}${href(locale, "/konto/tagasiside")}#id=${registrationId}`;
+
+export type ProtocolMailInput = {
+  siteUrl: string;
+  email: string;
+  name: string;
+  /** The registration's language (spec §6). */
+  locale: Locale;
+  registrationId: number;
+  course: I18n;
+  session: SessionInfo | null;
+  /** Sent before ("Saada uuesti"): "… on uuendatud", and no feedback line. */
+  again: boolean;
+  /**
+   * A live login (client-auth.ts issueClientLogin): the button signs her in on the device that opens it and shows the protocol. null (she has
+   * 3 live ones already): the button opens the page, which asks her to sign in.
+   */
+  login: LoginCode | null;
+};
+
+/**
+ * "Sinu koolituse protokoll on valmis" / "… on uuendatud" (spec §6): the greeting, one line, the course with its date and place, one button
+ * "Vaata protokolli" (with a login: verifyLink with the protocol as its target, written out under the button, then the six-digit code, how long
+ * both work, and the small link to type the code on the login page, as ecourseOpenMail has them), and on the first send the line "Soovi korral
+ * jäta meile tagasisidet", a text link to the form. No note of the protocol is in it: only the link.
+ * Plain text and HTML. The caller (server/protocols.ts) never sends it to a sample address.
+ */
+export function protocolMail(input: ProtocolMailInput): Mail {
+  const dict = getDict(input.locale);
+  const m = dict.account.protocolMail;
+  const mail = dict.account.mail;
+  const title = pick(input.course, input.locale);
+  const subject = input.again ? m.subjectAgain : m.subjectFirst;
+  const lead = input.again ? m.leadAgain : m.leadFirst;
+  const greeting = hello(dict.account.dashboard, input.name);
+  const link = input.login ? verifyLink(input.siteUrl, input.login.token, input.locale, input.registrationId) : protocolUrl(input.siteUrl, input.locale, input.registrationId);
+  const lines = input.session ? sessionLines(input.session, input.locale) : [];
+  const form = input.again ? null : feedbackUrl(input.siteUrl, input.locale, input.registrationId);
+  // the code under the button (an owner default): its link opens the login page at the code step
+  const codeLink = accountLink(input.siteUrl, input.email, input.locale, true);
+  const text = [
+    greeting, "",
+    lead, "",
+    title, ...lines, "",
+    `${m.button}:`, link,
+    ...(input.login ? ["", mail.codeIntro, "", input.login.code, "", m.valid, "", mail.confirm.codeHere, codeLink] : []),
+    ...(form ? ["", `${m.feedback}:`, form] : []),
+    "", mail.signature,
+  ].join("\n");
+  const html = mailCard(subject, input.locale, [
+    greetingRow(greeting),
+    paragraphRow(lead),
+    boxRow(`<div style="font:600 18px/1.4 ${FONT};color:${INK};">${esc(title)}</div>` + lines.map((line) => `<div>${esc(line)}</div>`).join(""), 12),
+    buttonRow(link, m.button),
+    linkRow(link),
+    ...(input.login
+      ? [
+          paragraphRow(mail.codeIntro, 24),
+          codeRow(input.login.code),
+          row(`padding:16px 28px 0;${textStyle(14)}`, esc(m.valid)),
+          row(`padding:12px 28px 0;${textStyle(14)}`, `${esc(mail.confirm.codeHere)} <a href="${esc(codeLink)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.codeLink)}</a>`),
+        ]
+      : []),
+    ...(form ? [row(`padding:20px 28px 0;${textStyle(14)}`, `<a href="${esc(form)}" style="color:${INK};text-decoration:underline;">${esc(m.feedback)}</a>`)] : []),
+    signatureRow(mail),
+  ]);
+  return { to: input.email, subject, text, html };
 }

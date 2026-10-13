@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { notifyMaria, sendMail, sendTelegram, type Env } from "@/server/notify";
+import { notifyMaria, RATE_LIMIT_RETRY_MS, sendMail, sendTelegram, type Env } from "@/server/notify";
 import { fakeKv, stubFetch } from "../fakes";
 
 const env = (extra: Partial<Env> = {}, kv = fakeKv()): Env => ({
@@ -65,6 +65,58 @@ describe("e-mail (Resend)", () => {
     const logged = error.mock.calls.flat().join(" ");
     expect(logged).toContain("validation_error (status 422)");
     expect(logged).not.toContain("private@example.com");
+  });
+
+  describe("Resend's rate limit (429)", () => {
+    const limited = () => Response.json({ name: "rate_limit_exceeded", message: "Too many requests to private@example.com.", statusCode: 429 }, { status: 429 });
+    const key = () => env({ RESEND_API_KEY: "re_test" });
+    const mail = { to: "private@example.com", subject: "S", text: "T" };
+
+    afterEach(() => vi.useRealTimers());
+
+    test("a 429 is tried once more after about a second, and a 200 then sends it", async () => {
+      vi.useFakeTimers();
+      const info = vi.spyOn(console, "info").mockImplementation(() => {});
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      let n = 0;
+      const f = stubFetch(() => (++n === 1 ? limited() : Response.json({ id: "email_2" })));
+      const sent = sendMail(key(), mail);
+      await vi.advanceTimersByTimeAsync(RATE_LIMIT_RETRY_MS - 1);
+      expect(f.calls).toHaveLength(1); // not before the pause
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await sent).toBe(true);
+      expect(f.calls).toHaveLength(2);
+      expect(f.calls[1].body).toEqual(f.calls[0].body); // the same mail
+      const logged = [...info.mock.calls, ...error.mock.calls].flat().join(" ");
+      expect(logged).not.toContain("private@example.com"); // the provider's message can quote the recipient
+    });
+
+    test("only once: a second 429 is a failure, and its log has the error name and status only", async () => {
+      vi.useFakeTimers();
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const f = stubFetch(() => limited());
+      const sent = sendMail(key(), mail);
+      await vi.advanceTimersByTimeAsync(RATE_LIMIT_RETRY_MS);
+      expect(await sent).toBe(false);
+      expect(f.calls).toHaveLength(2);
+      expect(error.mock.calls.flat().join(" ")).toContain("rate_limit_exceeded (status 429)");
+      expect(error.mock.calls.flat().join(" ")).not.toContain("private@example.com");
+    });
+
+    test("nothing else is tried again: another rejection, a daily quota, a failed request", async () => {
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const f = stubFetch(() => Response.json({ name: "validation_error", message: "no", statusCode: 422 }, { status: 422 }));
+      expect(await sendMail(key(), mail)).toBe(false);
+      const quota = stubFetch(() => Response.json({ name: "daily_quota_exceeded", message: "no", statusCode: 429 }, { status: 429 }));
+      expect(await sendMail(key(), mail)).toBe(false);
+      const down = stubFetch(() => {
+        throw new Error("network down");
+      });
+      expect(await sendMail(key(), mail)).toBe(false);
+      expect([f.calls.length, quota.calls.length, down.calls.length]).toEqual([1, 1, 1]);
+    });
   });
 
   test("a hung Resend call gives up after 8 s", async () => {

@@ -15,15 +15,30 @@ if (process.env.NEXT_RUNTIME === "edge") {
   const { readFileSync } = require("node:fs");
   const FileSystemCache = require("next/dist/server/lib/incremental-cache/file-system-cache.js").default;
 
-  /** The time written by the last revalidation of every page, or 0 (none yet, or no switch file configured). */
+  /** The newest time read from the file so far: the mark only moves forward (a writer that was late with an older time cannot undo a newer one). */
+  let seen = 0;
+
+  /**
+   * The time written by the last revalidation of every page, or 0 (none yet, or no switch file configured).
+   * The workers write the file side by side (prod-build.ts writeStaleMark: a time of a fixed width over the old one, in place, never truncated),
+   * and once a build's first mark is being created a read can still find it empty. That read must not count as "nothing was ever revalidated":
+   * every page would pass as fresh for that request, and a page stored before a test's change would be served after it (it was, when the file
+   * was truncated and written again by every write: the newsletter popup test failed in about one run in three). An empty or unreadable file is
+   * read again a moment later; if it stays so, the newest time seen before stands.
+   */
   const staleBefore = () => {
     const file = process.env.E2E_PAGE_CACHE;
     if (!file) return 0;
-    try {
-      return Number(readFileSync(file, "utf8")) || 0;
-    } catch {
-      return 0;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const at = Number(readFileSync(file, "utf8"));
+        if (at > 0) return (seen = Math.max(seen, at));
+      } catch (e) {
+        if (e && e.code === "ENOENT") return seen; // no revalidation yet
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2); // (the writer is between truncating and writing: a moment)
     }
+    return seen;
   };
 
   module.exports = class E2EPageCache extends FileSystemCache {

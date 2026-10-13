@@ -5,6 +5,8 @@ import type { PaymentKind } from "@/db/schema";
 import { formatEUR } from "@/domain/money";
 import { paymentMethodLabel } from "@/domain/payments";
 import { formatDate } from "@/i18n/format";
+import { answerText, FEEDBACK_ORDER, feedbackQuestions, type FeedbackAnswers } from "@/domain/protocols";
+import { et } from "@/i18n/dict/et";
 
 export type Summary = { subject: string; text: string; short: string };
 
@@ -406,4 +408,30 @@ export function paymentAlertSummary(a: PaymentAlert, adminUrl: string): Summary 
     ),
     short: subject,
   };
+}
+
+// ---------- the course feedback form (phase protocols, spec §6, §7) ----------
+
+/** A student's answers, for Maria's notice. `course` is the course's Estonian title; `startsAt` its session's start (null: an individual course). */
+export type FeedbackNotice = { registrationId: number; name: string; email: string; course: string; startsAt: Date | null; answers: FeedbackAnswers };
+
+/**
+ * "Uus tagasiside: {nimi}, {koolitus}, {score}/10" (spec §6; without the score part when none was given): who answered, the course and its
+ * day, then every answered question with its answer in Maria's own wording (the form's Estonian texts, et.ts account.feedback, the one place
+ * they are written), whatever language the student answered in; the free texts as she wrote them.
+ */
+export function feedbackSummary(f: FeedbackNotice, adminUrl: string): Summary {
+  const q = feedbackQuestions(et.account.feedback.questions);
+  const subject = `Uus tagasiside: ${f.name}, ${f.course}${f.answers.score !== undefined ? `, ${f.answers.score}/10` : ""}`;
+  const answered = FEEDBACK_ORDER.flatMap((key) => {
+    const value = f.answers[key];
+    return value === undefined ? [] : [q[key].label, answerText(key, value, q), ""];
+  });
+  const text = [
+    subject, "",
+    `Õpilane: ${f.name}`, `E-post: ${f.email}`, `Koolitus: ${f.startsAt ? `${f.course}, ${formatDate(f.startsAt, "et")}` : f.course}`, "",
+    ...answered,
+    `Admin: ${adminUrl}/tagasiside`, "",
+  ].join("\n");
+  return { subject, text, short: subject };
 }

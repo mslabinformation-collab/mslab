@@ -503,6 +503,17 @@ export const et = {
       notYou: "Kui see polnud sina, kirjuta kohe Mariale.",
       notYouAt: "Kui see polnud sina, kirjuta kohe Mariale: {email}",
     },
+    // The protocol's mails (server/account-mail.ts protocolMail, phase protocols): "Saada" sends the first, "Saada uuesti" the second. The
+    // button opens the protocol (with a live login it signs her in first); the first mail adds the feedback line, a link to the form.
+    protocolMail: {
+      subjectFirst: "Sinu koolituse protokoll on valmis",
+      subjectAgain: "Sinu koolituse protokolli on uuendatud",
+      leadFirst: "Sinu koolituse protokoll on valmis.",
+      leadAgain: "Sinu koolituse protokolli on uuendatud.",
+      button: "Vaata protokolli",
+      valid: "Kood ja nupp kehtivad 30 minutit. Hiljem leiad protokolli Minu koolituste lehelt.",
+      feedback: "Soovi korral jäta meile tagasisidet",
+    },
     // The one sentence on each course card (domain/account-cards.ts nextStep): `{amount}` and `{rest}` are euros ("175 €"),
     // `{date}` the last day of an e-course access ("22.03.2027"). A session's date, time and place are on the card's own
     // line, so the sentences do not repeat them.
@@ -550,6 +561,10 @@ export const et = {
       payHide: "Peida juhised",
       change: "Tühista või muuda aega",
       open: "Ava koolitus",
+      // a contact course's card once Maria has sent its protocol (phase protocols)
+      viewProtocol: "Vaata protokolli",
+      // the feedback form's card (components/account/FeedbackCard.tsx, phase protocols, spec §7): once the form opens; "Ei soovi" hides it for good
+      feedbackCard: { question: "Kuidas koolitus läks?", open: "Jäta tagasiside", dismiss: "Ei soovi", dismissFailed: "Ei õnnestunud. Proovi uuesti." },
       empty: "Sul ei ole veel koolitusi.",
       browse: "Vaata koolitusi",
       // The dark "Pooleli" card at the top (components/account/ResumeCard.tsx) and the e-course cards' lessons (phase 2c): {module} and
@@ -680,6 +695,49 @@ export const et = {
       exitFullscreen: "Välju täisekraanist",
       video: "Video: {title}",
       seekLocked: "Edasi saab kerida kuni kohani, kuhu oled jõudnud.",
+    },
+    // The student's protocol /konto/protokoll#id=<registration> (components/account/ProtocolPage.tsx, phase protocols): the page's frame in
+    // her language; Maria's headings and notes are shown as she wrote them. {date} is the day it was sent.
+    protocol: {
+      title: "Koolituse protokoll",
+      practice: "Praktiline osa",
+      general: "Üldised märkused",
+      sent: "Saadetud {date}",
+      notFound: "Seda protokolli ei leitud.",
+      loading: "Laadin protokolli…",
+    },
+    // The feedback form /konto/tagasiside#id=<registration> (components/account/FeedbackForm.tsx, phase protocols, spec §7): Maria's paper form
+    // "Sinu kogemus MS LAB koolitusel", its questions and options as she wrote them (the keys: domain/protocols.ts FEEDBACK_ORDER). Nothing is
+    // required, at least one answer is. `thanks` is the line after sending. {n} and {max}: a free text's length and its limit.
+    feedback: {
+      title: "Sinu kogemus MS LAB koolitusel",
+      lead: "Vasta neile küsimustele, millele soovid.",
+      questions: {
+        score: { label: "Kuidas hindad koolitust tervikuna skaalal 1–10?" },
+        expectations: { label: "Kas koolitus vastas sinu ootustele?", options: { exceeded: "Ületas ootusi", met: "Vastas ootustele", not_met: "Ei vastanud ootustele" } },
+        clarity: { label: "Kas koolituse sisu oli arusaadav ja loogiliselt üles ehitatud?", options: { very_clear: "Väga selge", fairly_clear: "Pigem selge", needs_work: "Vajaks parandamist" } },
+        balance: { label: "Kas teooria ja praktika tasakaal oli sinu jaoks sobiv?", options: { ideal: "Jah, ideaalne", more_practice: "Sooviksin rohkem praktikat", more_theory: "Sooviksin rohkem teooriat" } },
+        ready: {
+          label: "Kas tunned, et oled valmis peale koolitust iseseisvalt teenust pakkuma?",
+          options: { fully: "Jah, täiesti", mostly: "Pigem jah, natuke harjutamist vajab", rather_not: "Pigem ei", no: "Ei" },
+        },
+        trainer: {
+          label: "Kuidas hindad koolitaja juhendamisoskust ja selgitusi?",
+          options: { excellent: "Väga professionaalne ja toetav", good: "Hea", satisfactory: "Rahuldav", needs_growth: "Vajaks arengut" },
+        },
+        safe: { label: "Kas tundsid end koolitusel turvaliselt ja toetatuna?", options: { very: "Jah, väga", rather_yes: "Pigem jah", rather_not: "Pigem ei" } },
+        materials: { label: "Kas õppematerjalid olid piisavad ja arusaadavad?", options: { yes: "Jah", rather_yes: "Pigem jah", rather_not: "Pigem ei", no: "Ei" } },
+        recommend: { label: "Kas soovitaksid seda koolitust ka teistele? Miks?" },
+        message: { label: "Soovi korral jäta meile väike tagasiside või sõnum:" },
+      },
+      count: "{n} / {max}",
+      submit: "Saada tagasiside",
+      sending: "Saadan…",
+      empty: "Vasta vähemalt ühele küsimusele.",
+      thanks: "Aitäh, et oled osa MS LAB koolituskeskuse algusest ja kasvust. Sinu tagasiside aitab meil saada veel paremaks!",
+      sent: "Tagasiside on juba saadetud. Aitäh!",
+      notOpen: "Sellele koolitusele ei saa praegu tagasisidet anda.",
+      loading: "Laadin…",
     },
     // "Lemmikud" /konto/lemmikud (components/account/FavouritesTab.tsx): the hearted courses as the catalogue's cards, each with ♡ to
     // take it off. {title} is a course's title (the button's name for a screen reader, and what was taken off).

@@ -23,3 +23,30 @@
     padding-left: 0;
   }
 }
+
+/* "Täna" (phase protocols): today's sessions, each with its "Protokollid" */
+.today {
+  margin-bottom: 25px;
+}
+
+.todayRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  min-height: 44px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.todayRow:last-child {
+  border-bottom: 0;
+}
+
+.todayWhat {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

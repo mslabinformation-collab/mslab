@@ -1,0 +1,283 @@
+import { and, asc, count, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import type { Db } from "../client";
+import { courseFeedback, courses, courseSessions, protocols, registrations, type CourseSession, type Protocol, type ProtocolStage, type Registration } from "../schema";
+import { tallinnFormParts } from "@/domain/calendar";
+import { PAGE_SIZE } from "@/domain/paging";
+import { protocolStatus, readStages, stagesFrom, summarizeFeedback, type FeedbackAnswers, type FeedbackSummary, type ProtocolStatus, type ScreenStudentView } from "@/domain/protocols";
+import type { RegStatus } from "@/domain/registration";
+import type { I18n } from "@/i18n/field";
+import { paged, type Paged } from "./admin";
+
+// The protocols' reads (phase protocols, spec §8): the course day's screen (Task 2), today's sessions (Task 5), the student's page (Task 7) and
+// the admin's feedback page (Task 9). Callers have checked the session (admin or client); nothing here does authorization.
+
+/** A protocol as the screen edits it. `version` 0: none yet — the course's headings with empty notes. */
+export type ProtocolDraft = {
+  version: number;
+  stages: ProtocolStage[];
+  generalNote: string;
+  sentVersion: number | null;
+  sentAt: Date | null;
+  /** The last saved change; null before the first. */
+  updatedAt: Date | null;
+};
+
+/** The draft of a stored protocol, or of none yet with the course's `headings`. */
+export function draftOf(row: Protocol | null, headings: readonly string[]): ProtocolDraft {
+  if (!row) return { version: 0, stages: stagesFrom(headings), generalNote: "", sentVersion: null, sentAt: null, updatedAt: null };
+  return { version: row.version, stages: row.stages, generalNote: row.generalNote, sentVersion: row.sentVersion, sentAt: row.sentAt, updatedAt: row.updatedAt };
+}
+
+export type ScreenStudent = { registrationId: number; name: string; status: RegStatus; protocol: ProtocolDraft; state: ProtocolStatus };
+
+/**
+ * The course day's screen (spec §4): "session" lists every registration of one session that is not cancelled (confirmed, and awaiting the
+ * prepayment), "registration" one registration (an individual course). `hidden`: the cancelled ones left out.
+ */
+export type ScreenData = {
+  kind: "session" | "registration";
+  course: { id: number; title: I18n };
+  session: { id: number; startsAt: Date; city: string; venue: string; cancelled: boolean } | null;
+  students: ScreenStudent[];
+  hidden: number;
+};
+
+/** The screen's students for the browser (the page's props, and GET /api/admin/protokoll's answer): every date as text. */
+export function screenStudents(screen: ScreenData): ScreenStudentView[] {
+  return screen.students.map((s) => ({
+    registrationId: s.registrationId,
+    name: s.name,
+    awaiting: s.status === "awaiting_prepayment",
+    version: s.protocol.version,
+    titles: s.protocol.stages.map((x) => x.title),
+    notes: s.protocol.stages.map((x) => x.note),
+    generalNote: s.protocol.generalNote,
+    sentVersion: s.protocol.sentVersion,
+    sentAt: s.protocol.sentAt?.toISOString() ?? null,
+    savedAt: s.protocol.updatedAt?.toISOString() ?? null,
+  }));
+}
+
+const courseFields = { id: courses.id, title: courses.title, type: courses.type, protocolStages: courses.protocolStages };
+const sessionOf = (s: CourseSession) => ({ id: s.id, startsAt: s.startsAt, city: s.city, venue: s.venue, cancelled: s.status === "cancelled" });
+
+function screenOf(
+  kind: ScreenData["kind"],
+  course: { id: number; title: I18n; protocolStages: string[] },
+  session: ScreenData["session"],
+  rows: { registration: Registration; protocol: Protocol | null }[],
+): ScreenData {
+  const headings = readStages(course.protocolStages);
+  const listed = rows.filter((r) => r.registration.status !== "cancelled");
+  const students = listed
+    .map((r) => ({ registrationId: r.registration.id, name: r.registration.name, status: r.registration.status, protocol: draftOf(r.protocol, headings), state: protocolStatus(r.protocol) }))
+    .sort((a, b) => a.name.localeCompare(b.name, "et") || a.registrationId - b.registrationId);
+  return { kind, course: { id: course.id, title: course.title }, session, students, hidden: rows.length - listed.length };
+}
+
+/**
+ * The screen of one session (`sessionId`: its students, a called-off session's too, for the record) or of one registration; null when there
+ * is no such session or registration, or it is not of a contact course (protocols are for contact courses only: spec assumption 1).
+ */
+export async function protocolScreen(db: Db, target: { sessionId: number } | { registrationId: number }): Promise<ScreenData | null> {
+  if ("sessionId" in target) {
+    const [s] = await db
+      .select({ session: courseSessions, course: courseFields })
+      .from(courseSessions)
+      .innerJoin(courses, eq(courseSessions.courseId, courses.id))
+      .where(eq(courseSessions.id, target.sessionId))
+      .limit(1);
+    if (!s || s.course.type !== "contact") return null;
+    const rows = await db
+      .select({ registration: registrations, protocol: protocols })
+      .from(registrations)
+      .leftJoin(protocols, eq(protocols.registrationId, registrations.id))
+      .where(eq(registrations.courseSessionId, target.sessionId));
+    return screenOf("session", s.course, sessionOf(s.session), rows);
+  }
+  const [r] = await db
+    .select({ registration: registrations, protocol: protocols, course: courseFields, session: courseSessions })
+    .from(registrations)
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id))
+    .leftJoin(protocols, eq(protocols.registrationId, registrations.id))
+    .where(eq(registrations.id, target.registrationId))
+    .limit(1);
+  if (!r || r.course.type !== "contact") return null;
+  return screenOf("registration", r.course, r.session ? sessionOf(r.session) : null, [{ registration: r.registration, protocol: r.protocol }]);
+}
+
+// ---------- the overview's "Täna" (Task 5) ----------
+
+/** One of today's sessions: its course, when and where, and how many students are listed on its screen (not cancelled). */
+export type TodaySession = { id: number; startsAt: Date; city: string; venue: string; title: I18n; students: number };
+
+/**
+ * Today's sessions in Tallinn (spec §4: the overview's "Täna" card), scheduled ones of contact courses, earliest first. A window of two days
+ * either side is read and each session's Tallinn date compared with today's: the same on the two days the clocks change.
+ */
+export async function todaySessions(db: Db, now: Date): Promise<TodaySession[]> {
+  const DAY = 86_400_000;
+  const rows = await db
+    .select({
+      id: courseSessions.id,
+      startsAt: courseSessions.startsAt,
+      city: courseSessions.city,
+      venue: courseSessions.venue,
+      title: courses.title,
+      students: sql<number>`(select count(*) from registrations r where r.course_session_id = ${courseSessions.id} and r.status <> 'cancelled')`.mapWith(Number),
+    })
+    .from(courseSessions)
+    .innerJoin(courses, eq(courseSessions.courseId, courses.id))
+    .where(
+      and(
+        eq(courseSessions.status, "scheduled"),
+        eq(courses.type, "contact"),
+        gte(courseSessions.startsAt, new Date(now.getTime() - 2 * DAY)),
+        lt(courseSessions.startsAt, new Date(now.getTime() + 2 * DAY)),
+      ),
+    )
+    .orderBy(asc(courseSessions.startsAt), asc(courseSessions.id));
+  const today = tallinnFormParts(now).date;
+  return rows.filter((r) => tallinnFormParts(r.startsAt).date === today);
+}
+
+// ---------- the student's protocol (Task 7) ----------
+
+/** What the student's page shows (spec §5): the course, its session, when it was sent, and the copy Maria sent. Dates as ISO strings (JSON). */
+export type StudentProtocol = {
+  course: { slug: string; title: I18n };
+  session: { startsAt: string; city: string; venue: string } | null;
+  sentAt: string;
+  stages: ProtocolStage[];
+  generalNote: string;
+};
+
+/**
+ * The sent protocol of one of the client's own registrations (the dashboard's rule: registrations.client_id is hers), or null: not hers,
+ * no protocol, or none sent yet. Only `sent`, the frozen copy, is read: never the draft.
+ */
+export async function studentProtocol(db: Db, clientId: number, registrationId: number): Promise<StudentProtocol | null> {
+  const [r] = await db
+    .select({ slug: courses.slug, title: courses.title, startsAt: courseSessions.startsAt, city: courseSessions.city, venue: courseSessions.venue, sent: protocols.sent, sentAt: protocols.sentAt })
+    .from(registrations)
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .innerJoin(protocols, eq(protocols.registrationId, registrations.id))
+    .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id))
+    .where(and(eq(registrations.id, registrationId), eq(registrations.clientId, clientId), isNotNull(protocols.sentAt)))
+    .limit(1);
+  if (!r || !r.sent || !r.sentAt) return null;
+  return {
+    course: { slug: r.slug, title: r.title },
+    session: r.startsAt ? { startsAt: r.startsAt.toISOString(), city: r.city ?? "", venue: r.venue ?? "" } : null,
+    sentAt: r.sentAt.toISOString(),
+    stages: r.sent.stages,
+    generalNote: r.sent.generalNote,
+  };
+}
+
+// ---------- the admin's Tagasiside and the drawers (Task 9) ----------
+
+/** One answered feedback form, for Maria (spec §7): who, which course and day, the answers as keys, the language she answered in, when. */
+export type FeedbackRow = {
+  id: number;
+  registrationId: number;
+  clientId: number | null;
+  name: string;
+  email: string;
+  course: { id: number; title: I18n };
+  startsAt: Date | null;
+  answers: FeedbackAnswers;
+  locale: "et" | "ru";
+  submittedAt: Date;
+};
+
+/** An answer, not an "Ei soovi" (that row has no submitted_at). */
+const ANSWERED = isNotNull(courseFeedback.submittedAt);
+
+function feedbackRows(db: Db) {
+  return db
+    .select({
+      id: courseFeedback.id,
+      registrationId: courseFeedback.registrationId,
+      clientId: registrations.clientId,
+      name: registrations.name,
+      email: registrations.email,
+      courseId: courses.id,
+      courseTitle: courses.title,
+      startsAt: courseSessions.startsAt,
+      answers: courseFeedback.answers,
+      locale: courseFeedback.locale,
+      submittedAt: courseFeedback.submittedAt,
+    })
+    .from(courseFeedback)
+    .innerJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id));
+}
+
+type FeedbackSelect = Awaited<ReturnType<typeof feedbackRows>>[number];
+
+// (answers, locale and submitted_at are set together by the submit, server/course-feedback.ts; every read here has ANSWERED)
+const toFeedbackRow = (r: FeedbackSelect): FeedbackRow => ({
+  id: r.id,
+  registrationId: r.registrationId,
+  clientId: r.clientId,
+  name: r.name,
+  email: r.email,
+  course: { id: r.courseId, title: r.courseTitle },
+  startsAt: r.startsAt,
+  answers: r.answers ?? {},
+  locale: r.locale === "ru" ? "ru" : "et",
+  submittedAt: r.submittedAt!,
+});
+
+const NEWEST = [desc(courseFeedback.submittedAt), desc(courseFeedback.id)] as const;
+
+/** Tagasiside's list: the answers, newest first, `size` a page; `courseId` keeps one course's. */
+export async function pageFeedback(db: Db, courseId: number | null, page: number, size: number = PAGE_SIZE): Promise<Paged<FeedbackRow>> {
+  const where = courseId === null ? ANSWERED : and(ANSWERED, eq(registrations.courseId, courseId));
+  return paged(
+    page,
+    size,
+    async () => Number((await db.select({ n: count() }).from(courseFeedback).innerJoin(registrations, eq(courseFeedback.registrationId, registrations.id)).where(where))[0].n),
+    async (range) => (await feedbackRows(db).where(where).orderBy(...NEWEST).limit(range.limit).offset(range.offset)).map(toFeedbackRow),
+  );
+}
+
+/** One answer (the page's drawer, ?id=); null when there is none, or it is an "Ei soovi". */
+export async function feedbackById(db: Db, id: number): Promise<FeedbackRow | null> {
+  const [row] = await feedbackRows(db).where(and(ANSWERED, eq(courseFeedback.id, id))).limit(1);
+  return row ? toFeedbackRow(row) : null;
+}
+
+/** The answers in a registration's drawer (at most one), or in a student's (those of her registrations), newest first. */
+export async function feedbackOf(db: Db, of: { registrationId: number } | { clientId: number }): Promise<FeedbackRow[]> {
+  const whose = "registrationId" in of ? eq(courseFeedback.registrationId, of.registrationId) : eq(registrations.clientId, of.clientId);
+  return (await feedbackRows(db).where(and(ANSWERED, whose)).orderBy(...NEWEST)).map(toFeedbackRow);
+}
+
+/** A course's answers in numbers (domain/protocols.ts summarizeFeedback). */
+export type CourseFeedbackStats = { course: { id: number; title: I18n }; summary: FeedbackSummary };
+
+/**
+ * Every course that has answers, by its Estonian title, with its numbers: the average score and the count of every option of every choice
+ * question (spec §7). All the answered rows are read (a few hundred a year) and summed here.
+ */
+export async function feedbackStats(db: Db): Promise<CourseFeedbackStats[]> {
+  const rows = await db
+    .select({ courseId: courses.id, title: courses.title, answers: courseFeedback.answers })
+    .from(courseFeedback)
+    .innerJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .where(ANSWERED);
+  const byCourse = new Map<number, { title: I18n; answers: FeedbackAnswers[] }>();
+  for (const r of rows) {
+    const entry = byCourse.get(r.courseId) ?? { title: r.title, answers: [] };
+    entry.answers.push(r.answers ?? {});
+    byCourse.set(r.courseId, entry);
+  }
+  return [...byCourse]
+    .map(([id, { title, answers }]) => ({ course: { id, title }, summary: summarizeFeedback(answers) }))
+    .sort((x, y) => x.course.title.et.localeCompare(y.course.title.et, "et") || x.course.id - y.course.id);
+}

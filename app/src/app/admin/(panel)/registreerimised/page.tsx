@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getAdminCounts } from "@/components/admin/data";
 import { Drawer } from "@/components/admin/Drawer";
+import { FeedbackAnswers } from "@/components/admin/FeedbackAnswers";
 import { Pager } from "@/components/admin/Pager";
 import { PaymentLines } from "@/components/admin/PaymentLines";
 import { RegistrationForms } from "@/components/admin/RegistrationForms";
@@ -13,6 +14,7 @@ import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { getRegistration, pageRegistrations, type RegistrationFilter, type RegistrationRow } from "@/db/queries/admin";
 import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
+import { feedbackOf, type FeedbackRow } from "@/db/queries/protocols";
 import { formatEUR } from "@/domain/money";
 import { parsePage } from "@/domain/paging";
 import { prepaymentDue, registrationPrice, type RegStatus } from "@/domain/registration";
@@ -83,10 +85,11 @@ export default async function RegistrationsPage({ searchParams }: Props) {
   const db = getDb();
   const filter: RegistrationFilter = { type: view.vorm ? FORMS[view.vorm] : undefined, status: view.staatus ?? undefined };
   // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
-  const [list, open, online] = await Promise.all([
+  const [list, open, online, answers] = await Promise.all([
     pageRegistrations(db, filter, view.leht),
     view.id ? getRegistration(db, view.id) : null,
     view.id ? listPaymentsOf(db, { registrationId: view.id }) : [],
+    view.id ? feedbackOf(db, { registrationId: view.id }) : [],
     getAdminCounts(),
   ]);
   const rows = list.rows;
@@ -214,14 +217,14 @@ export default async function RegistrationsPage({ searchParams }: Props) {
           closeLabel={t.drawer.close}
           returnFocus={open ? `reg-${open.id}` : undefined}
         >
-          {open ? <RegistrationDetail r={open} payments={online} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}
+          {open ? <RegistrationDetail r={open} payments={online} feedback={answers[0] ?? null} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}
         </Drawer>
       )}
     </Shell>
   );
 }
 
-function RegistrationDetail({ r, payments }: { r: RegistrationRow; payments: PaymentRow[] }) {
+function RegistrationDetail({ r, payments, feedback }: { r: RegistrationRow; payments: PaymentRow[]; feedback: FeedbackRow | null }) {
   const t = adminEt.registrations.drawer;
   const yesNo = (v: boolean) => (v ? adminEt.common.yes : adminEt.common.no);
   const total = registrationPrice(r.course, r.kind);
@@ -248,6 +251,12 @@ function RegistrationDetail({ r, payments }: { r: RegistrationRow; payments: Pay
         <StatusPill status={r.status} />
         <h2 className={ui.h2}>{r.name}</h2>
         <p className={ui.muted}>{pick(r.course.title, "et")}</p>
+        {/* the protocol of a contact course's registration (phase protocols, spec §4): one tap to its screen */}
+        {r.course.type === "contact" && r.status !== "cancelled" && (
+          <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?registreering=${r.id}`} data-registration-protocol="">
+            {adminEt.protocols.openOne}
+          </Link>
+        )}
       </div>
 
       <section className={styles.money} aria-label={t.priceTitle}>
@@ -281,6 +290,14 @@ function RegistrationDetail({ r, payments }: { r: RegistrationRow; payments: Pay
           </div>
         )}
       </section>
+
+      {/* her answers to the course feedback form (phase protocols, spec §7): none, or the one */}
+      {feedback && (
+        <section className={styles.feedback} aria-label={adminEt.feedback.section} data-registration-feedback="">
+          <h3 className={ui.h3}>{adminEt.feedback.section}</h3>
+          <FeedbackAnswers answers={feedback.answers} locale={feedback.locale} submittedAt={feedback.submittedAt} />
+        </section>
+      )}
 
       <RegistrationForms
         id={r.id}

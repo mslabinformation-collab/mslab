@@ -100,6 +100,7 @@ export const adminEt = {
     calendar: "Kalender",
     registrations: "Registreerimised",
     payments: "Maksed",
+    feedback: "Tagasiside",
     clients: "Õpilased",
     requests: "Päringud",
     practice: "Praktika",
@@ -146,6 +147,11 @@ export const adminEt = {
       city: "Linn",
       seats: "Vabu kohti",
       empty: "Kalendris pole tulevasi koolitusi.",
+    },
+    // today's sessions in Tallinn, each with "Protokollid" (phase protocols, spec §4); the card is hidden on a day with none
+    today: {
+      title: "Täna",
+      students: "Õpilasi: {n}",
     },
     inbox: {
       title: "Päringud",
@@ -257,6 +263,110 @@ export const adminEt = {
     online: "Veebimaksed",
     // the Õpilased drawer
     noneForClient: "Makseid pole.",
+  },
+
+  // The course day's protocols (phase protocols, spec §4): /admin/protokollid?sessioon=<id> | ?registreering=<id> (ProtocolScreen.tsx and its
+  // autosave). The status marks are spec §3's. {time} is "HH:MM" in Tallinn, {n} a count, {max} the box's limit, {date} a day and a time.
+  protocols: {
+    eyebrow: "Koolituspäev",
+    title: "Protokollid",
+    // the entry points: the Kalender session drawer and the overview's "Täna" (open), the Registreerimised drawer (openOne)
+    open: "Protokollid",
+    openOne: "Ava protokoll",
+    notFound: "Seda toimumist või registreeringut ei leitud, või pole see kontaktkoolitus.",
+    toCalendar: "Kalendrisse",
+    toRegistration: "Registreeringu juurde",
+    individual: "Individuaalkoolitus",
+    sessionCancelled: "Toimumine on tühistatud",
+    hidden: "Tühistatud registreeringuid peidetud: {n}",
+    empty: "Sellel toimumisel pole õpilasi.",
+    cancelledOne: "Registreering on tühistatud: protokolli ei näidata ega saadeta.",
+    students: "Õpilased",
+    awaiting: "ootab ettemaksu",
+    mark: { draft: "Mustand", sent: "Saadetud", changed: "Muudetud" },
+    // on a student's chip while her text is not confirmed by the server (it is in this browser all the same)
+    unsavedMark: "Salvestamata",
+    practice: "Praktiline osa",
+    general: "Üldised märkused",
+    noStages: "Koolitusel pole protokolli punkte. Lisa need koolituse juures („Protokolli punktid“); seni on siin ainult üldised märkused.",
+    saved: "Salvestatud {time}",
+    pending: "Salvestamata muudatused",
+    saving: "Salvestan…",
+    // the screen shown from a page the browser kept (Back): what the server holds is read again before it says "Salvestatud" (NEW wording, for Dim's approval)
+    checking: "Kontrollin salvestatud teksti…",
+    retrying: "Salvestamata — proovin uuesti",
+    tooLongStatus: "Salvestamata — üks tekst on liiga pikk",
+    signedOut: "Salvestamata — logi uuesti sisse. Tekst on selles seadmes alles.",
+    gone: "Seda registreeringut enam ei ole. Tekst on selles seadmes alles.",
+    // the browser could not keep the unsaved text (its storage full or blocked): shown on that protocol until the server has the text
+    notKept: "Seda teksti ei saa selles seadmes hoida (brauseri mälu on täis või suletud). Ära sulge lehte enne, kui see on salvestatud.",
+    tooLong: "Liiga pikk: {n} / {max} märki. Lühenda, siis salvestan.",
+    conflict: "Seda protokolli muudeti vahepeal teises seadmes või aknas. Näed nüüd salvestatud teksti; selle ekraani salvestamata tekst on allpool.",
+    conflictLost: "Selle ekraani salvestamata tekst",
+    dismiss: "Selge",
+    locked: "Saadetud {date}. Õpilane näeb seda versiooni.",
+    send: "Saada",
+    sending: "Saadan…",
+    edit: "Muuda",
+    resend: "Saada uuesti",
+    sendAll: "Lukusta ja saada kõik",
+    // a sent protocol opened with "Muuda": the first saved edit makes it "Muudetud", which offers "Saada uuesti"
+    editing: "Muuda teksti — salvestan ise. Siis saad selle uuesti saata.",
+    // the confirmation of "Lukusta ja saada kõik" (spec §4): who gets a protocol, who is skipped because hers is empty, who has hers already
+    confirm: {
+      title: "Lukustan ja saadan protokollid",
+      will: "Saavad protokolli: {names}",
+      skipped: "Jäävad vahele, sest protokoll on tühi: {names}",
+      already: "Juba saadetud, uut pole: {names}",
+      // a student whose own "Saada" is on its way: this send leaves her alone (NEW wording, for Dim's approval)
+      onItsWay: "Saatmine juba käib: {names}",
+      // a student whose text is another device's, with its notice still open: left out until Maria has looked at it and pressed „Selge“ (NEW wording, for Dim's approval)
+      review: "Vaata enne üle ja vajuta „Selge“: {names}",
+      nothing: "Pole midagi uut saata.",
+      yes: "Saada",
+      no: "Tagasi",
+    },
+    // the summary after "Saada": who got one, and per reason (sendErrors' words) who did not
+    result: { sent: "Saadetud: {names}.", notSent: "Ei saadetud: {names}. {reason}" },
+    sendErrors: {
+      empty: "Protokoll on tühi. Kirjuta midagi enne saatmist.",
+      unsaved: "Kõik pole veel salvestatud. Saada uuesti, kui ühendus on tagasi.",
+      stale: "Protokolli muudeti vahepeal mujal. Laadi leht uuesti ja vaata see üle.",
+      cancelled: "Registreering on tühistatud: protokolli ei saadeta.",
+      notFound: "Seda registreeringut ei leitud.",
+      failed: "Saatmine ei õnnestunud. Proovi uuesti.",
+      // a send stopped by the notice of a refusal (another device saved first): only "Selge" lets it go on (NEW wording, for Dim's approval)
+      review: "Vaata enne saatmist üle teises seadmes tehtud muudatus ja vajuta „Selge“.",
+      // the screen was an older page and the server's text is newer: it is on the screen now, and was not sent unseen (NEW wording, for Dim's approval)
+      refreshed: "Protokolli muudeti vahepeal mujal ja siin on nüüd uus tekst. Vaata see üle ja saada siis.",
+    },
+  },
+
+  // Tagasiside (phase protocols, spec §7): the answers to the course feedback form. /admin/tagasiside, ?koolitus=<course id> (the filter),
+  // ?leht=<n>, ?id=<answer> (the drawer). The questions and options are the form's own words (et.ts account.feedback), never written here.
+  // {n} a count, {score} an average ("7,5"), {date} a day and a time.
+  feedback: {
+    eyebrow: "Õpilased",
+    title: "Tagasiside",
+    lead: "Õpilaste vastused koolituse tagasiside vormile, uuemad eespool. Vali koolitus, et näha selle keskmist hinnet ja iga vastusevariandi arvu.",
+    filterLabel: "Koolitus",
+    all: "Kõik koolitused",
+    byCourse: "Koolituste kaupa",
+    count: "Vastuseid: {n}",
+    scored: "Hindeid: {n}",
+    average: "Keskmine hinne: {score} / 10",
+    noScore: "Hinnet pole antud",
+    empty: "Tagasisidet pole veel antud.",
+    emptyFiltered: "Selle koolituse kohta pole tagasisidet.",
+    col: { date: "Kuupäev", student: "Õpilane", course: "Koolitus", score: "Hinne", answers: "Vastuseid", average: "Keskmine hinne" },
+    drawer: { label: "Tagasiside: {name}", close: "Sulge", notFound: "Seda tagasisidet ei leitud." },
+    submitted: "Saadetud {date}",
+    inRussian: "Vastas vene keeles",
+    toStudent: "Õpilase juurde",
+    toRegistration: "Registreeringu juurde",
+    // the Õpilased and Registreerimised drawers
+    section: "Tagasiside",
+    none: "Tagasisidet pole antud.",
   },
 
   requests: {
@@ -494,6 +604,7 @@ export const adminEt = {
       outcomes: "Õpiväljundid",
       modulesC: "Programm",
       includes: "Koolitus sisaldab",
+      protocolStages: "Protokolli punktid",
       gallery: "Galerii",
       recommendations: "Soovitused",
       publish: "Avaldamine",
@@ -528,6 +639,12 @@ export const adminEt = {
       modulesCHint: "Koolituse sisu järjekorras.",
       includes: "Punkt",
       includesHint: "Lehel plokis „Koolitus sisaldab“.",
+      // "Protokolli punktid" (phase protocols): the headings of the course day's protocol, in the language Maria writes in
+      protocolStage: "Punkt",
+      protocolStagesHint: "Koolituspäeva protokolli etapid selles järjekorras, nt Ettevalmistus, Kulmude analüüs. Kirjuta need keeles, milles protokolli kirjutad. Muudatus kehtib protokollidele, mida pole veel alustatud.",
+      protocolStagesEmpty: "Punkte veel pole: protokollis on siis ainult üldised märkused.",
+      protocolStagesAdd: "Lisa punkt",
+      protocolStagesFull: "Rohkem kui 30 punkti ei saa lisada.",
       galleryHint: "Esimene pilt on põhipilt (kaardil ja galerii alguses). Muuda järjekorda nooltega või lohista pilti.",
       main: "Põhipilt",
       image: "Pilt {n}",

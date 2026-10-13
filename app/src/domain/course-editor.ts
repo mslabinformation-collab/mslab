@@ -6,6 +6,7 @@ import type { Badge, BadgeLabel, StoredBadge } from "@/db/schema";
 import { readBadge } from "./badge";
 import type { I18n } from "@/i18n/field";
 import { centsToInput } from "./money";
+import { readStages } from "./protocols";
 
 export type CourseType = "e_learning" | "contact";
 export type CourseLevel = "basic" | "advanced";
@@ -84,6 +85,8 @@ export type CourseDraft = {
   body: I18n;
   outcomes: I18n[];
   includes: I18n[];
+  /** "Protokolli punktid" (phase protocols, spec §3): a contact course's stage headings, plain strings as typed; an e-course has none. */
+  protocolStages: string[];
   price: string;
   priceGroup: string;
   priceIndividual: string;
@@ -117,6 +120,7 @@ export function newCourseDraft(): CourseDraft {
     body: empty(),
     outcomes: [],
     includes: [],
+    protocolStages: [],
     price: "",
     priceGroup: "",
     priceIndividual: "",
@@ -144,6 +148,7 @@ type StoredCourse = {
   body: I18n;
   outcomes: I18n[];
   includes: I18n[];
+  protocolStages: string[];
   price: number | null;
   priceGroup: number | null;
   priceIndividual: number | null;
@@ -172,6 +177,7 @@ export function draftFromCourse(c: StoredCourse): CourseDraft {
     body: copy(c.body),
     outcomes: c.outcomes.map(copy),
     includes: c.includes.map(copy),
+    protocolStages: readStages(c.protocolStages),
     price: amount(c.price),
     priceGroup: amount(c.priceGroup),
     priceIndividual: amount(c.priceIndividual),

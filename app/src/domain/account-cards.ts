@@ -42,6 +42,8 @@ export type ContactCard = {
   priceCents: number | null;
   paidCents: number;
   createdAt: string;
+  /** Maria has sent this registration's protocol (phase protocols, spec §5): the card offers "Vaata protokolli". Absent until then. */
+  protocolSent?: boolean;
 };
 
 /** A registration without a session (an individual course): Maria agrees the time with the student. */
@@ -52,6 +54,8 @@ export type IndividualCard = {
   status: RegStatus;
   preferredPeriod: string;
   createdAt: string;
+  /** Maria has sent this registration's protocol (phase protocols, spec §5): the card offers "Vaata protokolli". Absent until then. */
+  protocolSent?: boolean;
 };
 
 /** An individual-course or practice request. `title` is the course or the practice package (null when it is gone). */
@@ -93,6 +97,9 @@ export type EcourseCard = {
 };
 
 export type AccountCard = ContactCard | IndividualCard | RequestCard | WaitlistCard | EcourseCard;
+
+/** A feedback form that is open and has no answer (phase protocols, spec §7): the dashboard's "Kuidas koolitus läks?" card. */
+export type FeedbackPrompt = { registrationId: number; course: CourseRef };
 
 export type NextStepKey =
   | "cancelled"

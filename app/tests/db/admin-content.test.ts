@@ -337,3 +337,40 @@ describe("calendar sessions", () => {
     expect(await listAdminSessions(db, { ids: [] })).toEqual([]);
   });
 });
+
+describe("saveCourseForm: 'Protokolli punktid' (phase protocols, spec §3)", () => {
+  test("a contact course keeps its headings trimmed, without blank rows, in their order; an e-course keeps none", async () => {
+    const draft = await load(contact.id);
+    expect(draft.protocolStages).toEqual([]);
+    expect(await save({ ...draft, protocolStages: [" Ettevalmistus ", "", "Kulmude analüüs", "Värvimine"] })).toMatchObject({ ok: true });
+    expect((await getCourseForEdit(db, contact.id))!.protocolStages).toEqual(["Ettevalmistus", "Kulmude analüüs", "Värvimine"]);
+    expect((await load(contact.id)).protocolStages).toEqual(["Ettevalmistus", "Kulmude analüüs", "Värvimine"]);
+    const e = await load(online.id);
+    expect(await save({ ...e, protocolStages: ["Ei kuulu siia"] })).toMatchObject({ ok: true });
+    expect((await getCourseForEdit(db, online.id))!.protocolStages).toEqual([]);
+  });
+
+  test("more than 30 headings, or one over 120 characters, is refused on its field and nothing is saved", async () => {
+    const draft = await load(contact.id);
+    expect(fieldsOf(await save({ ...draft, protocolStages: Array.from({ length: 31 }, (_, i) => `Punkt ${i + 1}`) }))).toEqual({ protocolStages: "tooMany" });
+    expect(fieldsOf(await save({ ...draft, protocolStages: ["x".repeat(121)] }))).toEqual({ protocolStages: "tooLong" });
+    expect((await getCourseForEdit(db, contact.id))!.protocolStages).toEqual([]);
+    expect(await save({ ...draft, protocolStages: Array.from({ length: 30 }, (_, i) => `Punkt ${i + 1}`) })).toMatchObject({ ok: true });
+  });
+
+  test("a draft without the headings (an editor page opened before the deploy) still saves, with none", async () => {
+    const older: Partial<CourseDraft> = { ...(await load(contact.id)) };
+    delete older.protocolStages;
+    expect(await saveCourseForm(db, form({ data: JSON.stringify(older) }))).toMatchObject({ ok: true });
+    expect((await getCourseForEdit(db, contact.id))!.protocolStages).toEqual([]);
+  });
+
+  test("a pasted heading with a control character, NUL or a lone surrogate is cleaned, not refused (Postgres refuses NUL in jsonb)", async () => {
+    const draft = await load(contact.id);
+    const pasted = ["Ette\u0000valmis\ud800tus", " Värvimine 😀 \udc00", "\u0000 \u0001 \u007f", `${"x".repeat(120)}\u0000`, "Rea\u0009vahe"];
+    expect(await save({ ...draft, protocolStages: pasted })).toMatchObject({ ok: true });
+    // the all-control heading is blank once cleaned and dropped; a valid pair (the emoji) and a tab stay; the 120 characters are counted after the cleaning
+    expect((await getCourseForEdit(db, contact.id))!.protocolStages).toEqual(["Ettevalmistus", "Värvimine 😀", "x".repeat(120), "Rea\u0009vahe"]);
+    expect(fieldsOf(await save({ ...draft, protocolStages: [`${"x".repeat(121)}\u0000`] }))).toEqual({ protocolStages: "tooLong" });
+  });
+});

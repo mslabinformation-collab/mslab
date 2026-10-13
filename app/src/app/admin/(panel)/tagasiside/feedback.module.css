@@ -1,0 +1,89 @@
+/* Tagasiside (phase protocols): a course's numbers, the courses' small table and the answers' list (the shared admin list,
+   components/admin/list-table.module.css), and the drawer's head. Tokens only. */
+
+.block {
+  margin-bottom: 25px;
+}
+
+.count {
+  margin-bottom: 6px;
+}
+
+.sub {
+  display: block;
+  font-size: 12px;
+}
+
+.numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 8px 0 20px;
+  font-size: 14px;
+}
+
+.questions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 20px 28px;
+}
+
+.question {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.counts {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.counts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.counts li:last-child {
+  border-bottom: 0;
+}
+
+.detail {
+  display: grid;
+  gap: 22px;
+}
+
+/* room for the drawer's close button at the top right */
+.detailHead {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding-right: 56px;
+}
+
+.detailHead h2 {
+  overflow-wrap: anywhere;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+/* the course's day next to its title once the row is a block (the shared list's narrow card) */
+@container (max-width: 980px) {
+  .sub {
+    display: inline;
+    margin-left: 6px;
+  }
+}

@@ -1,0 +1,44 @@
+/* One student's feedback (phase protocols): each answered question in Maria's wording with the answer under it, then when it was sent.
+   Tokens only. */
+
+.answers {
+  display: grid;
+  gap: 12px;
+}
+
+.list {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+
+.list > div {
+  display: grid;
+  gap: 3px;
+}
+
+.list dt {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.list dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* the two free texts: as she wrote them, with her line breaks */
+.list dd.text {
+  font-weight: 400;
+  white-space: pre-wrap;
+}
+
+.meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}

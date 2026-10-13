@@ -27,6 +27,9 @@ export const TG_CHAT_KEY = "tg:chat";
 /** A hung provider call must not hold the function after the response (next/server after()). */
 export const NOTIFY_TIMEOUT_MS = 8000;
 
+/** How long sendMail waits before trying once more after Resend answered 429 (its default limit is about 2 requests a second). */
+export const RATE_LIMIT_RETRY_MS = 1000;
+
 class TimeoutError extends Error {}
 
 /** Resolves or rejects like `p`, or rejects with a TimeoutError after `ms`. */
@@ -48,21 +51,36 @@ export function mailConfigured(env: Env): boolean {
   return false;
 }
 
-/** Sends one e-mail: plain text, plus HTML when `mail.html` is set. true = Resend accepted it. */
+/** Did Resend refuse this send for sending too fast? (A used-up daily or monthly quota is also a 429, and waiting a second does not help it.) */
+const rateLimited = (e: { name?: string | null; statusCode?: number | null }): boolean =>
+  e.name === "rate_limit_exceeded" || (e.statusCode === 429 && !/quota/.test(e.name ?? ""));
+
+/**
+ * Sends one e-mail: plain text, plus HTML when `mail.html` is set. true = Resend accepted it. When Resend answers that it is being asked
+ * too often (429; its default limit is about 2 requests a second) the send is tried once more after RATE_LIMIT_RETRY_MS, never a third time.
+ */
 export async function sendMail(env: Env, mail: Mail): Promise<boolean> {
   if (!mailConfigured(env)) return false;
   try {
-    const { data, error } = await withTimeout(
-      new Resend(env.RESEND_API_KEY).emails.send({
-        from: env.MAIL_FROM,
-        to: mail.to,
-        subject: mail.subject,
-        text: mail.text,
-        ...(mail.html ? { html: mail.html } : {}),
-        ...(mail.replyTo ? { replyTo: mail.replyTo } : {}),
-      }),
-      NOTIFY_TIMEOUT_MS,
-    );
+    const send = () =>
+      withTimeout(
+        new Resend(env.RESEND_API_KEY).emails.send({
+          from: env.MAIL_FROM,
+          to: mail.to,
+          subject: mail.subject,
+          text: mail.text,
+          ...(mail.html ? { html: mail.html } : {}),
+          ...(mail.replyTo ? { replyTo: mail.replyTo } : {}),
+        }),
+        NOTIFY_TIMEOUT_MS,
+      );
+    let result = await send();
+    if (result.error && rateLimited(result.error)) {
+      console.info("[notify] Resend asks for fewer requests: the e-mail is tried once more");
+      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_MS));
+      result = await send();
+    }
+    const { data, error } = result;
     if (error) {
       // error.message can quote the recipient: only the error name and HTTP status are logged.
       console.error(`[notify] Resend rejected the e-mail: ${errorSummary(error)}`);

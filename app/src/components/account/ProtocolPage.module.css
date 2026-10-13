@@ -1,0 +1,52 @@
+/* The student's protocol (phase protocols, spec §5): the day and place, the practice part's headings with Maria's notes as she wrote them
+   (line breaks kept), the general notes, when it was sent. The page, its column and its title are AccountPage.module.css's. Tokens only. */
+
+.eyebrow {
+  margin: 0;
+  color: var(--muted);
+  font: 500 13px/1.4 var(--font-body);
+}
+
+.when {
+  margin: 0;
+  color: var(--muted-2);
+  font: 400 15px/1.55 var(--font-body);
+}
+
+.part {
+  display: grid;
+  gap: 14px;
+  justify-self: stretch;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.partTitle {
+  margin: 0;
+  font: 400 24px/1.25 var(--font-display);
+}
+
+.stage {
+  display: grid;
+  gap: 4px;
+}
+
+.stageTitle {
+  margin: 0;
+  font: 600 16px/1.4 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin: 0;
+  color: var(--ink-soft);
+  font: 400 16px/1.6 var(--font-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sent {
+  margin: 0;
+  color: var(--muted-2);
+  font: 400 13px/1.5 var(--font-body);
+}

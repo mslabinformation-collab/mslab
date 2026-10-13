@@ -79,7 +79,7 @@
   - `BUNNY_FAKE_URL` exists for the e2e run only and is ignored when `VERCEL` is set.
   - Without the three Bunny settings, the admin shows "Video seadistamata" and students see "Video lisandub peagi".
 - **`courses.modules` stays** in `schema.ts` and in the database through 3a. After Task 1 no code reads or writes it.
-  - Migration `0007` drops it in Task 12, **code first, then the migration**. Drizzle selects every column it knows, so dropping the column before the code stops knowing it would break every course query.
+  - Migration `0008` drops it in Task 12, **code first, then the migration**. Drizzle selects every column it knows, so dropping the column before the code stops knowing it would break every course query.
 - **No Railway writes, no deploys and no push before Task 12.**
   - Migration `0003_lessons.sql` is generated in Task 1 and applied **locally only** (`npm run db:migrate` against `localhost`).
   - Tests and tools never write to Railway (the e2e run refuses non-local databases, `tests/e2e/local-db.ts`).
@@ -189,7 +189,7 @@ test("lesson tables: modules, lessons, files and progress, with their defaults, 
 - [ ] **Step 3: Add the schema.** In `src/db/schema.ts`, put these after `mailQuota` (they reference `courses` and `clients`, which are declared above). Leave `courses.modules` where it is and add a comment line above it:
 
 ```ts
-  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0007 drops it after the 3a deploy.
+  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0008 drops it after the 3a deploy.
   modules: jsonb("modules").$type<I18n[]>().notNull().default([]),
 ```
 
@@ -304,7 +304,7 @@ import { courseModules, courses } from "@/db/schema";
 // Migration 0003 copies every course's module titles (courses.modules, jsonb) into course_modules, in their order, and keeps the
 // column (the live code reads it until the 3a deploy). Checked as the Railway database goes through it: 0000–0002 applied, courses
 // with titles, then 0003. courses.modules is written and read by plain SQL, and the test stops at 0003, so it stays true after
-// migration 0007 drops the column from the schema and the database (Task 12).
+// migration 0008 drops the column from the schema and the database (Task 12).
 
 /** A copy of ./drizzle whose journal ends with `tag` (the migrator applies what the journal lists, by its time stamps). */
 function migrationsThrough(tag: string): string {
@@ -458,7 +458,7 @@ export async function listModuleTitles(db: Db, courseId: number): Promise<I18n[]
 
     - The `select id, title, modules from courses` becomes `select id, title from courses`, followed by `const modules = await sql<{ title: { et: string; ru?: string } }[]>\`select title from course_modules where course_id = ${course.id} order by position, id\``.
     - Return `modules: modules.map(({ title: m }) => ({ et: m.et, ru: m.ru ?? m.et }))`.
-  - **`tests/e2e/fixtures.ts`:** remove `"modules"` from `JSON_COLUMNS`. No e2e test edits a seed course's modules any more, and the column goes in 0007.
+  - **`tests/e2e/fixtures.ts`:** remove `"modules"` from `JSON_COLUMNS`. No e2e test edits a seed course's modules any more, and the column goes in 0008.
   - **`tests/e2e/admin-edit.spec.ts`:**
     - Delete the two assertions on `[data-list-editor="modules"] h3`, and drop "modules" from the comment above them.
     - In the test "lists (ET/RU rows, ↑ ↓, add, remove) are saved in their order", use the outcomes list instead: `const modules = page.locator('[data-list-editor="outcomes"]');` (rename the variable to `outcomes`). Type `E2E õpiväljund` / `E2E результат`.
@@ -4497,7 +4497,7 @@ Maria may record lessons upright on a phone, or mix shapes. The player and the w
 - Test: `app/tests/unit/lessons.test.ts`, `app/tests/unit/bunny.test.ts`, `app/tests/db/lesson-videos.test.ts` (or where settle writes are tested), `app/tests/db/lesson-api.test.ts`, `app/tests/unit/lesson-player.test.ts`, `app/tests/e2e/lesson-player.spec.ts`
 
 **Rules:**
-1. Migration 0004 is additive only (two nullable integer columns). It is applied on Railway before the deploy (Task 12); the drop of `courses.modules` becomes migration 0007 after the deploy (Task 12 text is updated by the controller).
+1. Migration 0004 is additive only (two nullable integer columns). It is applied on Railway before the deploy (Task 12); the drop of `courses.modules` becomes migration 0008 after the deploy (Task 12 text is updated by the controller).
 2. Shape = `{ width, height }` of the video that PLAYS. `settleVideo(v, videoId, status, lengthSec, shape?)`: on a transition to `ready`, store the shape when both are integers 1…10000, else store null for both. While a replacement uploads/processes, the old (playing) video's stored shape stays untouched; when the new one settles ready, its shape replaces it. `dropVideo` sets both to null. `abandonUpload` keeps the stored shape (it belongs to the replaced video that keeps playing) — and for a first upload there is none.
 3. `getVideo` parses `width`/`height` as numbers (missing/invalid → 0); it does not throw for a missing shape (older or still-processing videos).
 4. API: `video: { embedUrl, expires, resumeAt, shape: { width, height } | null }` for a ready video. Nothing else changes.
@@ -5201,7 +5201,7 @@ Spec sections 7, 8 and 10. The daily cron also gives up Bunny uploads stuck for 
 ```
 - [ ] Dim creates the Bunny Stream library and sets the three variables BUNNY_LIBRARY_ID, BUNNY_API_KEY, BUNNY_TOKEN_KEY (+ the optional BUNNY_WEBHOOK_SECRET) in Vercel (deploy.md §10) before the 3a deploy.
 - [ ] mslab.ee launch: add mslab.ee to the Bunny library's allowed domains (deploy.md §10) and the webhook URL's host.
-- [ ] Migration 0007 (drop courses.modules) after 3a has run without a rollback for a few days — code first, then the migration (plan 2026-10-05-phase3a, Task 12).
+- [ ] Migration 0008 (drop courses.modules) after 3a has run without a rollback for a few days — code first, then the migration (plan 2026-10-05-phase3a, Task 12).
 - [ ] Watch the Bunny bill monthly, and Vercel's function invocations (progress reports: about 240 an hour of watching).
 - [ ] Accepted limits: iPhone's native video fullscreen shows no watermark; a student can fake progress (it only opens her own lessons).
 - [ ] Bunny's embed host is player.mediadelivery.net (the old iframe.mediadelivery.net player goes in early 2027): nothing to do, noted.
@@ -5218,13 +5218,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 12: Deploy, live checks and migration 0007 (controller)
+### Task 12: Deploy, live checks and migration 0008 (controller)
 
 Spec section 10. This task is run by the controller, not a subagent. It is the first that writes to Railway, pushes, or deploys.
 
 **Files:**
 - Modify: `tools/cache-smoke.mjs` (repo root). Add `/konto/kursus/kulmumeistri-e-koolitus/1` to part C's list of shells. Commit it on the branch before the merge.
-- Later (step 11): `app/src/db/schema.ts`, `app/src/db/seed-data.ts`, `app/drizzle/0007_*.sql`.
+- Later (step 11): `app/src/db/schema.ts`, `app/src/db/seed-data.ts`, `app/drizzle/0008_*.sql`.
 
 - [ ] **Step 1 (read-only): Railway before.** Put the public TCP proxy URL in the shell only (`docs/deploy.md` section 6). Read:
   - `select count(*) from drizzle.__drizzle_migrations` → 3 (0000–0002);
@@ -5297,8 +5297,8 @@ end $$;
      - "Lõpeta ligipääs";
      - then delete the client's login tokens and the client row by SQL (phase 2a Task 11 step 7).
 - [ ] **Step 10: Durations.** From the runtime logs, note the max and median duration of `/api/konto/kursus/*` (the lesson GET, `progress`, `fail`) in the ledger.
-- [ ] **Step 11 (later — at least a few days after step 6, with no rollback planned): migration 0007 drops `courses.modules`.**
-  - (Phase 2c took 0005 and phase 2b 0006 for their own additive migrations; the drop is 0007.)
+- [ ] **Step 11 (later — at least a few days after step 6, with no rollback planned): migration 0008 drops `courses.modules`.**
+  - (Phase 2c took 0005, phase 2b 0006 and the protocols 0007 for their own additive migrations; the drop is 0008.)
   - **The order is code first, then the migration.** Drizzle names every column it knows in its selects; a live deployment still knowing `modules` would fail once the column is gone.
   1. A branch `chore/drop-courses-modules` from `main`:
      - remove `modules` (and its legacy comment) from `courses` in `src/db/schema.ts`;
@@ -5307,5 +5307,5 @@ end $$;
   2. `npx drizzle-kit generate --name drop_course_modules`. The SQL must be exactly `ALTER TABLE "courses" DROP COLUMN "modules";`.
   3. Run `npx vitest run`, `tsc` and `next build`, and the e2e under `next dev`. Apply locally with `npm run db:migrate`.
   4. Merge into `main` and push (deploy). Wait for READY: the live code no longer knows the column.
-  5. **Then** apply 0007 on Railway (`npm run db:migrate` with the Railway URL). Check that `select column_name from information_schema.columns where table_name = 'courses' and column_name = 'modules'` returns nothing, and that the migrations count is 8.
+  5. **Then** apply 0008 on Railway (`npm run db:migrate` with the Railway URL). Check that `select column_name from information_schema.columns where table_name = 'courses' and column_name = 'modules'` returns nothing, and that the migrations count is 9.
   6. Run `node tools/cache-smoke.mjs` again. Record the outcome in the ledger.

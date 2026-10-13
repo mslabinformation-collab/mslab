@@ -1,13 +1,15 @@
 import { adminEt } from "@/i18n/dict/admin";
 import type { AdminIconName } from "./AdminIcon";
 
-// The admin menu (prototype B sidebar, Maria's A1), in this order. Every section has its page (Tasks 12 and 13; Õpilased: phase 2a).
+// The admin menu (prototype B sidebar, Maria's A1), in this order. Every section has its page (Tasks 12 and 13; Õpilased: phase 2a;
+// Tagasiside: phase protocols, after Maksed).
 export type Section =
   | "overview"
   | "courses"
   | "calendar"
   | "registrations"
   | "payments"
+  | "feedback"
   | "clients"
   | "requests"
   | "practice"
@@ -24,6 +26,7 @@ export const SECTIONS: readonly { key: Section; href: string; icon: AdminIconNam
   { key: "calendar", href: "/admin/kalender", icon: "calendar" },
   { key: "registrations", href: "/admin/registreerimised", icon: "clipboard" },
   { key: "payments", href: "/admin/maksed", icon: "card" },
+  { key: "feedback", href: "/admin/tagasiside", icon: "chat" },
   { key: "clients", href: "/admin/opilased", icon: "users" },
   { key: "requests", href: "/admin/paringud", icon: "inbox" },
   { key: "practice", href: "/admin/praktika", icon: "flower" },

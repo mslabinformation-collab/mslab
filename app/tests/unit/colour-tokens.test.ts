@@ -40,6 +40,10 @@ const COURSE_CSS = [
   // the dashboard's progress (phase 2c)
   "src/components/account/ProgressBar.module.css",
   "src/components/account/ResumeCard.module.css",
+  // the student's protocol (phase protocols)
+  "src/components/account/AccountPage.module.css",
+  "src/components/account/ProtocolPage.module.css",
+  "src/components/account/FeedbackForm.module.css",
   // the admin's Õpilased and its read-only "view as client" (phase 2a Task 9)
   "src/components/admin/ClientDrawer.module.css",
   "src/components/admin/list-table.module.css",
@@ -49,6 +53,11 @@ const COURSE_CSS = [
   // the admin's Maksed (phase 2b)
   "src/components/admin/PaymentLines.module.css",
   "src/app/admin/(panel)/maksed/payments.module.css",
+  // the course day's protocols (phase protocols)
+  "src/components/admin/ProtocolScreen.module.css",
+  "src/components/admin/FeedbackAnswers.module.css",
+  "src/app/admin/(panel)/tagasiside/feedback.module.css",
+  "src/app/admin/(panel)/overview.module.css",
   // the course editor's "Moodulid ja õppetunnid" and the lesson drawer (phase 3a Task 5)
   "src/components/admin/LessonsEditor.module.css",
   // the site's modal dialog (the campaign popup and the account's change request)

@@ -4,14 +4,15 @@ import { courseCardData } from "@/components/site/course-card-data";
 import type { Db } from "@/db/client";
 import { listPublishedCourses, listUpcomingSessions, readSetting } from "@/db/queries/public";
 import {
-  clientFavourites, clientLoginTokens, clients, courseAccess, courses, courseSessions, pages, practicePackages, registrations, requests, subscribers,
-  termsAcceptances,
+  clientFavourites, clientLoginTokens, clients, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols, registrations, requests,
+  subscribers, termsAcceptances,
 } from "@/db/schema";
-import { PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type EcourseCard, type PrepaymentInfo } from "@/domain/account-cards";
+import { PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type EcourseCard, type FeedbackPrompt, type PrepaymentInfo } from "@/domain/account-cards";
 import { upcomingFrom } from "@/domain/calendar";
 import { DEFAULT_TERMS_VERSION, TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
 import { nextSessionByCourse } from "@/domain/home";
 import type { CourseProgress } from "@/domain/lessons";
+import { feedbackOpenFor } from "@/domain/protocols";
 import { registrationPrice } from "@/domain/registration";
 import { normalizeEmail } from "@/domain/email";
 import type { I18n } from "@/i18n/field";
@@ -53,6 +54,8 @@ export type Dashboard = {
    * dashboard), never by loadDashboard: the admin's read-only view shows the cards without it.
    */
   payOnline?: boolean;
+  /** The feedback forms open for her and not answered or dismissed (phase protocols, spec §7), the latest first; absent when there is none. */
+  feedback?: FeedbackPrompt[];
 };
 
 export type EcourseView = {
@@ -100,10 +103,14 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         city: courseSessions.city,
         venue: courseSessions.venue,
         sessionStatus: courseSessions.status,
+        protocolSentAt: protocols.sentAt,
+        feedbackId: courseFeedback.id,
       })
       .from(registrations)
       .innerJoin(courses, eq(registrations.courseId, courses.id))
       .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id))
+      .leftJoin(protocols, eq(protocols.registrationId, registrations.id))
+      .leftJoin(courseFeedback, eq(courseFeedback.registrationId, registrations.id))
       .where(eq(registrations.clientId, clientId)),
     // Individual and practice requests and waitlist entries; the payload's course (a slug), package (a code) and session (an id,
     // read only when it is all digits, so a odd value cannot fail the query) point at what the card names. A practice request's
@@ -164,7 +171,15 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
   for (const r of regRows) {
     const course = { slug: r.course.slug, title: r.course.title };
     if (r.startsAt === null) {
-      cards.push({ kind: "individual", registrationId: r.id, course, status: r.status, preferredPeriod: r.preferredPeriod, createdAt: iso(r.createdAt) });
+      cards.push({
+        kind: "individual",
+        registrationId: r.id,
+        course,
+        status: r.status,
+        preferredPeriod: r.preferredPeriod,
+        createdAt: iso(r.createdAt),
+        ...(r.protocolSentAt ? { protocolSent: true } : {}),
+      });
     } else {
       cards.push({
         kind: "contact",
@@ -176,9 +191,15 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         priceCents: registrationPrice(r.course, r.kind),
         paidCents: r.paidCents,
         createdAt: iso(r.createdAt),
+        ...(r.protocolSentAt ? { protocolSent: true } : {}),
       });
     }
   }
+  // the feedback forms' cards (phase protocols, spec §7): a contact course's registration whose form is open and has no row yet
+  const feedback: FeedbackPrompt[] = regRows
+    .filter((r) => r.course.type === "contact" && r.feedbackId === null && feedbackOpenFor(r, now))
+    .sort((a, b) => (b.startsAt ?? b.createdAt).getTime() - (a.startsAt ?? a.createdAt).getTime() || b.id - a.id)
+    .map((r) => ({ registrationId: r.id, course: { slug: r.course.slug, title: r.course.title } }));
   for (const r of requestRows) {
     if (r.kind === "waitlist") {
       cards.push({
@@ -225,6 +246,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
     favourites,
     prepayment: parsePrepayment(prepayment),
     resume: resumeSlug(sorted, lastAt, now),
+    ...(feedback.length ? { feedback } : {}),
   };
 }
 
@@ -474,8 +496,11 @@ export async function createChangeRequest(
 /**
  * Deletes the client with its sessions, favourites, terms acceptances and course access, the login codes and links still waiting for its
  * address (they are keyed by address, so no cascade reaches them; a live one would otherwise sign in again and re-create the account), and the
- * newsletter subscription of the address. Registrations and requests stay with Maria, their name and e-mail as given, only unlinked
+ * newsletter subscription of the address. Her protocols and her course feedback go too (phase protocols, spec §3): those of the registrations linked to her.
+ * Registrations and requests stay with Maria, their name and e-mail as given, only unlinked
  * (client_id null). Takes the address lock the logins take, so a login in flight finishes before this runs or finds nothing after it.
+ * Then her registrations, FOR UPDATE, before their protocols and feedback: the order a send takes (the address, the registration, the protocol), so a send or a
+ * feedback answer on one of them finishes first, or finds it no longer hers after.
  * Returns the address and language the confirmation mail goes to; null when the client was already gone.
  */
 export async function deleteClient(db: Db, clientId: number): Promise<{ email: string; locale: "et" | "ru" } | null> {
@@ -484,6 +509,12 @@ export async function deleteClient(db: Db, clientId: number): Promise<{ email: s
     if (!existing) return null;
     const address = normalizeEmail(existing.email);
     await lockAddress(tx as unknown as Db, address);
+    // her protocols and feedback (phase protocols): the registrations themselves stay with Maria, unlinked below (ON DELETE SET NULL)
+    const mine = (await tx.select({ id: registrations.id }).from(registrations).where(eq(registrations.clientId, clientId)).for("update")).map((r) => r.id);
+    if (mine.length > 0) {
+      await tx.delete(protocols).where(inArray(protocols.registrationId, mine));
+      await tx.delete(courseFeedback).where(inArray(courseFeedback.registrationId, mine));
+    }
     const [row] = await tx.delete(clients).where(eq(clients.id, clientId)).returning(); // (returning(fields) has no common overload on the Db union)
     if (!row) return null;
     await tx.delete(clientLoginTokens).where(eq(clientLoginTokens.email, address));

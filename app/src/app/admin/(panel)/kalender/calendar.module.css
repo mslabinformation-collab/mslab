@@ -62,6 +62,11 @@
   padding-right: 56px;
 }
 
+/* "Protokollid" (phase protocols): a button of its own width, as in the registration's drawer, not the drawer's */
+.protocols {
+  justify-self: start;
+}
+
 @container (max-width: 900px) {
   .table thead {
     position: absolute;

@@ -6,12 +6,13 @@ import { adminTitle } from "@/components/admin/sections";
 import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
+import { todaySessions } from "@/db/queries/protocols";
 import { listUpcomingSessions } from "@/db/queries/public";
 import { startOfDayTallinn } from "@/domain/calendar";
 import { seatsLeft } from "@/domain/sessions";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
-import { fill, formatDate, formatLongDate } from "@/i18n/format";
+import { fill, formatDate, formatLongDate, formatTime } from "@/i18n/format";
 import { adminName, requireAdmin } from "@/server/auth";
 import styles from "./overview.module.css";
 
@@ -31,7 +32,8 @@ export default async function Overview() {
   const email = await requireAdmin();
   const name = adminName(email);
   const now = new Date();
-  const [counts, sessions] = await Promise.all([getAdminCounts(), listUpcomingSessions(getDb(), startOfDayTallinn(now))]);
+  const db = getDb();
+  const [counts, sessions, today] = await Promise.all([getAdminCounts(), listUpcomingSessions(db, startOfDayTallinn(now)), todaySessions(db, now)]);
   const scheduled = sessions.filter((s) => s.status === "scheduled");
   const soon = scheduled.filter((s) => s.startsAt.getTime() < now.getTime() + 30 * DAY).length;
   const open = counts.openRequests;
@@ -81,6 +83,30 @@ export default async function Overview() {
             </li>
           ))}
         </ul>
+
+        {/* "Täna" (phase protocols, spec §4): today's sessions, each with one tap to its protocols; hidden on a day with none */}
+        {today.length > 0 && (
+          <section className={`${ui.card} ${styles.today}`} aria-labelledby="today-title" data-today="">
+            <h2 id="today-title" className={ui.h2}>
+              {t.today.title}
+            </h2>
+            <ul className={ui.rows}>
+              {today.map((s) => (
+                <li key={s.id} className={styles.todayRow} data-today-session={s.id}>
+                  <span className={styles.todayWhat}>
+                    <strong>{pick(s.title, "et")}</strong>
+                    <span className={ui.muted}>
+                      {formatTime(s.startsAt, "et")} · {[s.city, s.venue].filter(Boolean).join(", ")} · {fill(t.today.students, { n: s.students })}
+                    </span>
+                  </span>
+                  <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?sessioon=${s.id}`}>
+                    {adminEt.protocols.open}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <div className={ui.columns}>
           <section className={ui.card} aria-labelledby="upcoming-title">

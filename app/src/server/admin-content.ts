@@ -5,8 +5,10 @@ import { inArray } from "drizzle-orm";
 import { courseUsage, typeLocked, deleteUnusedSession, getCourseForEdit, getSession, isSlugTaken, moveCourse, saveCourseWithImages, upsertSession, type CourseFields } from "@/db/queries/admin";
 import { tallinnInstant } from "@/domain/calendar";
 import { BADGE_MAX, badgeOf, COURSE_LANGUAGES, LIMITS, swatchOf, type CourseDraft } from "@/domain/course-editor";
+import { checkStages } from "@/domain/protocols";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
+import { toStorable } from "@/lib/to-storable";
 import { Check, field, invalid, isStorableImageKey, type EditResult } from "./edit-check";
 
 // The content editors' form handling (courses, calendar sessions). Callers have already checked the admin session
@@ -35,6 +37,8 @@ const draftSchema = z.object({
   body: i18n,
   outcomes: z.array(i18n).max(200),
   includes: z.array(i18n).max(200),
+  // loose: the real limits are checkStages', with a field error; the default: an editor page loaded before the deploy posts no headings, and its save must not fail on them
+  protocolStages: z.array(z.string().max(2000)).max(200).default([]),
   price: z.string().max(40),
   priceGroup: z.string().max(40),
   priceIndividual: z.string().max(40),
@@ -98,6 +102,10 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
   const priceIndividual = online ? null : c.amount("priceIndividual", d.priceIndividual);
   const durationLabel = online ? null : c.text("durationLabel", d.durationLabel, LIMITS.duration);
   const includes = online ? [] : c.list("includes", d.includes);
+  // "Protokolli punktid" (phase protocols): a contact course's headings, trimmed, no blank rows, at most 30 of at most 120 characters. A pasted
+  // heading is cleaned first (toStorable: control characters and broken surrogates go): Postgres refuses NUL in jsonb, and checkStages does not look
+  const stages: ReturnType<typeof checkStages> = online ? { ok: true, stages: [] } : checkStages(d.protocolStages.map(toStorable));
+  if (!stages.ok) c.fail("protocolStages", stages.error);
   // a published course must be buyable / bookable
   if (d.published && online && price == null && !c.errors.price) c.fail("price", "priceRequired");
   if (d.published && !online && priceGroup == null && priceIndividual == null && !c.errors.priceGroup && !c.errors.priceIndividual) c.fail("priceGroup", "priceRequired");
@@ -140,6 +148,7 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
     body,
     outcomes,
     includes,
+    protocolStages: stages.ok ? stages.stages : [],
     price,
     priceGroup,
     priceIndividual,
