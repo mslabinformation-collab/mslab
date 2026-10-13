@@ -51,6 +51,8 @@ const BROWSER_FILES = [
   "src/components/site/FavouriteButton.tsx",
   "src/components/site/CampaignPopup.tsx",
   "src/components/site/NewsletterPopup.tsx",
+  // e-course completion, Task 1: the rules the test and practical pages and the course editor share
+  "src/domain/completion.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));
