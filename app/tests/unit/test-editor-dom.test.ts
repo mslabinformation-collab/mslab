@@ -80,8 +80,9 @@ test("'Lisa küsimus' adds a choice question with two options, its text takes th
   expect(current.questions).toEqual([
     { id: q.id, kind: "choice", text: "Mitu kihti värvi kanname?", options: [{ id: q.options[0].id, text: "Ühe", correct: false }, { id: q.options[1].id, text: "Kaks", correct: true }] },
   ]);
-  expect(text.maxLength).toBe(500);
-  expect($<HTMLInputElement>('[data-question="0"] [data-option="0"] [data-option-text]')!.maxLength).toBe(200);
+  // no browser cut: a pasted text over the limit is refused by the save with a field error in place (testTooLong), never silently shortened
+  expect(text.hasAttribute("maxlength")).toBe(false);
+  expect($('[data-question="0"] [data-option="0"] [data-option-text]')!.hasAttribute("maxlength")).toBe(false);
 });
 
 test("a choice question has 2–6 options: × is off at two, '+ Lisa vastusevariant' is off at six; a new option's field takes the focus", async () => {

@@ -202,7 +202,6 @@ export function TestEditor({ value, onChange, errors }: { value: TestDraft; onCh
                       id={id}
                       className={ui.textarea}
                       rows={2}
-                      maxLength={TEST_LIMITS.text}
                       value={q.text}
                       onChange={(e) => update(i, { ...q, text: e.target.value })}
                       aria-describedby={error ? `${id}-error` : undefined}
@@ -225,7 +224,6 @@ export function TestEditor({ value, onChange, errors }: { value: TestDraft; onCh
                                 id={oid}
                                 className={ui.input}
                                 type="text"
-                                maxLength={TEST_LIMITS.option}
                                 autoComplete="off"
                                 value={o.text}
                                 onChange={(e) => setOptions(i, q.options.map((x, k) => (k === j ? { ...x, text: e.target.value } : x)))}
