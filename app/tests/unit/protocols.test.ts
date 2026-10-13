@@ -175,6 +175,34 @@ describe("toStorable", () => {
     for (const s of ["👋", "\ud800", "\udc00", "\udc00\ud800", "a\ud800b\udc00c", "\ud83d👋"]) expect(toStorable(s) === s, JSON.stringify(s)).toBe(storable(s));
     expect(toStorable("\ud83d👋")).toBe("👋"); // a lone high surrogate before a pair: only it goes
   });
+
+  // The final review: storable.ts had a lookbehind (its lone-surrogate rule), which stops the whole script on iOS Safari before 16.4, and
+  // lib/favourites brings it to every account page. It is now `toStorable(s) === s`; this is its old rule, word for word (the tests run on
+  // Node, which has lookbehinds), and storable must answer exactly as it did.
+  const CONTROL_BEFORE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+  const LONE_SURROGATE_BEFORE = new RegExp(["[\\ud800-\\udbff](?![\\udc00-\\udfff])|(?<", "![\\ud800-\\udbff])[\\udc00-\\udfff]"].join(""));
+  const storableBefore = (s: string): boolean => !CONTROL_BEFORE.test(s) && !LONE_SURROGATE_BEFORE.test(s);
+
+  test("storable answers as its old rule did: every UTF-16 code unit on its own and between letters", () => {
+    expect(storableBefore("a\udc00")).toBe(false); // (the oracle is the old rule)
+    expect(storableBefore("👋")).toBe(true);
+    for (let c = 0; c <= 0xffff; c++) {
+      const ch = String.fromCharCode(c);
+      for (const s of [ch, `a${ch}b`]) if (storable(s) !== storableBefore(s)) expect(storable(s), `U+${c.toString(16)} in ${JSON.stringify(s)}`).toBe(storableBefore(s));
+    }
+  });
+
+  test("storable answers as its old rule did: every string of up to four of the code units that matter (surrogates, controls, letters)", () => {
+    const units = ["a", "õ", "\t", "\n", "\r", "\u0000", "\u000b", "\u001f", "\u007f", "\u0080", "\ud800", "\udbff", "\udc00", "\udfff", "\ud83d", "\udc4b", "\uffff", "😀"];
+    let count = 0;
+    const walk = (s: string, depth: number) => {
+      count++;
+      if (storable(s) !== storableBefore(s)) expect(storable(s), JSON.stringify(s)).toBe(storableBefore(s));
+      if (depth < 4) for (const u of units) walk(s + u, depth + 1);
+    };
+    walk("", 0);
+    expect(count).toBe(1 + 18 + 18 ** 2 + 18 ** 3 + 18 ** 4);
+  });
 });
 
 describe("the questions' texts (Task 8)", () => {

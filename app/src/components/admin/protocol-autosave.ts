@@ -1,5 +1,5 @@
 import { hasText, overLimit, protocolStatus, type NotePlace, type ProtocolStatus, type ScreenStudentView } from "@/domain/protocols";
-import { toStorable } from "@/lib/to-storable"; // (never lib/storable: this file runs on old iPads, tests/unit/old-safari.test.ts)
+import { toStorable } from "@/lib/to-storable"; // (this file runs on old iPads: no lookbehind here nor in what it imports, tests/unit/old-safari.test.ts)
 
 // The protocol screen's autosave (phase protocols, spec §4), without React: ProtocolScreen.tsx renders what it holds and tells it what Maria
 // types. Nothing typed is lost:

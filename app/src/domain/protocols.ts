@@ -3,7 +3,7 @@
 // answers' check, and when the form opens. No database, no React: the admin's screen, the account's pages and the server share them.
 
 import type { ProtocolStage } from "@/db/schema";
-import { toStorable } from "@/lib/to-storable"; // (never lib/storable here: this file runs in the browser too, tests/unit/old-safari.test.ts)
+import { toStorable } from "@/lib/to-storable"; // (this file runs in the browser too: no lookbehind here nor in what it imports, tests/unit/old-safari.test.ts)
 import { tallinnFormParts } from "./calendar";
 import type { RegStatus } from "./registration";
 

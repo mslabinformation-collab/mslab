@@ -12,8 +12,8 @@ import styles from "./ProtocolScreen.module.css";
 
 // The sends of the course day's screen (phase protocols, spec §4, §8, D4). Every send saves first and sends the version the server confirmed,
 // with the protocol read-only meanwhile (ProtocolAutosave.setSending), so the student gets exactly what Maria sees and her own typing can
-// never make a send "stale". This file runs on old iPads: no regular expression with a lookbehind, and no import of lib/storable.ts
-// (tests/unit/old-safari.test.ts).
+// never make a send "stale". This file runs on old iPads: no regular expression with a lookbehind, here or in anything it imports
+// (tests/unit/old-safari.test.ts follows the imports).
 
 type T = typeof adminEt.protocols;
 
