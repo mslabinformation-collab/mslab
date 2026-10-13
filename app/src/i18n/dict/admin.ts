@@ -292,7 +292,7 @@ export const adminEt = {
     saved: "Salvestatud {time}",
     pending: "Salvestamata muudatused",
     saving: "Salvestan…",
-    // the screen shown from a page the browser kept (Back): what the server holds is read again before it says "Salvestatud" (NEW wording, for Dim's approval)
+    // the screen shown from a page the browser kept (Back): what the server holds is read again before it says "Salvestatud" (wording approved by Dim 13.10.2026)
     checking: "Kontrollin salvestatud teksti…",
     retrying: "Salvestamata — proovin uuesti",
     tooLongStatus: "Salvestamata — üks tekst on liiga pikk",
@@ -318,9 +318,9 @@ export const adminEt = {
       will: "Saavad protokolli: {names}",
       skipped: "Jäävad vahele, sest protokoll on tühi: {names}",
       already: "Juba saadetud, uut pole: {names}",
-      // a student whose own "Saada" is on its way: this send leaves her alone (NEW wording, for Dim's approval)
+      // a student whose own "Saada" is on its way: this send leaves her alone (wording approved by Dim 13.10.2026)
       onItsWay: "Saatmine juba käib: {names}",
-      // a student whose text is another device's, with its notice still open: left out until Maria has looked at it and pressed „Selge“ (NEW wording, for Dim's approval)
+      // a student whose text is another device's, with its notice still open: left out until Maria has looked at it and pressed „Selge“ (wording approved by Dim 13.10.2026)
       review: "Vaata enne üle ja vajuta „Selge“: {names}",
       nothing: "Pole midagi uut saata.",
       yes: "Saada",
@@ -332,7 +332,7 @@ export const adminEt = {
       notSent: "Ei saadetud: {names}. {reason}",
       // the server never answered the send (a hung request, given up after SEND_TIMEOUT_MS): it may have gone through, so the screen reads the
       // server again (the marks follow), and a send again is safe — the server answers "already" for a version sent before; no button is named,
-      // as a draft's reads "Saada" and a changed one's "Saada uuesti" (NEW wording, for Dim's approval)
+      // as a draft's reads "Saada" and a changed one's "Saada uuesti" (wording approved by Dim 13.10.2026)
       unknown: "Vastust ei tulnud: {names}. Kontrollin, kas protokollid saadeti. Juba saadetud protokolli teist korda ei saadeta.",
     },
     sendErrors: {
@@ -342,12 +342,12 @@ export const adminEt = {
       cancelled: "Registreering on tühistatud: protokolli ei saadeta.",
       notFound: "Seda registreeringut ei leitud.",
       failed: "Saatmine ei õnnestunud. Proovi uuesti.",
-      // a send stopped by the notice of a refusal (another device saved first): only "Selge" lets it go on (NEW wording, for Dim's approval)
+      // a send stopped by the notice of a refusal (another device saved first): only "Selge" lets it go on (wording approved by Dim 13.10.2026)
       review: "Vaata enne saatmist üle teises seadmes tehtud muudatus ja vajuta „Selge“.",
-      // the screen was an older page and the server's text is newer: it is on the screen now, and was not sent unseen (NEW wording, for Dim's approval)
+      // the screen was an older page and the server's text is newer: it is on the screen now, and was not sent unseen (wording approved by Dim 13.10.2026)
       refreshed: "Protokolli muudeti vahepeal mujal ja siin on nüüd uus tekst. Vaata see üle ja saada siis.",
       // the server never answered the send (given up after SEND_TIMEOUT_MS): it may have gone through, so the screen reads the server again; a send
-      // again is safe; no button is named (NEW wording, for Dim's approval)
+      // again is safe; no button is named (wording approved by Dim 13.10.2026)
       timeout: "Vastust ei tulnud: kontrollin, kas protokoll saadeti. Juba saadetud protokolli teist korda ei saadeta.",
     },
   },
