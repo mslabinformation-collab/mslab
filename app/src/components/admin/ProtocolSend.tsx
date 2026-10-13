@@ -72,8 +72,10 @@ export function planSendAll(engine: ProtocolAutosave, shown?: ReadonlyMap<number
   const out: SendPlan = { will: [], skipped: [], already: [], sending: [], review: [] };
   for (const id of engine.ids()) {
     if (shown && !shown.has(id)) continue; // (a student the screen no longer lists: not one of this send)
+    // cancelled or moved meanwhile, as the server's last read or answer said: nothing to send (one the read left out may still be saving her text)
+    if (engine.dropped(id)) continue;
     const e = engine.get(id)!;
-    if (e.status.kind === "gone") continue; // (cancelled or moved meanwhile, as the server's last answer said: nothing to send)
+    if (e.status.kind === "gone") continue;
     if (e.sending) {
       out.sending.push(id);
       continue;

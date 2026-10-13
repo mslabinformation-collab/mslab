@@ -814,3 +814,20 @@ test("a student the read no longer lists says she is gone: 'Saada' says so, and 
   expect($("[data-confirm-will]")!.textContent).toBe("Saavad protokolli: Anu");
   expect($("[data-confirm-skipped]")).toBeNull();
 });
+
+// ---------- the final review's parked items ----------
+
+test("item 7a: a student the read no longer lists is not one of 'Lukusta ja saada kõik', even with text of hers not saved yet", async () => {
+  fetchMock.mockImplementation(() => new Promise<Response>(() => {})); // (her save hangs: her text stays unconfirmed)
+  await renderOnly({ single: false, students: [student(1, "Anu"), student(2, "Berit")] });
+  await click("[data-student='2']");
+  await type("[data-note='0']", "Valmis, Berit.");
+  await answered(answer([student(1, "Anu")])); // Berit cancelled meanwhile: her text stays, still saving
+  expect($("[data-student='2']")).not.toBeNull();
+  await click("[data-send-all-open]");
+  expect($("[data-confirm-will]")!.textContent).toBe("Saavad protokolli: Anu");
+  actions.sendProtocolsAction.mockResolvedValue([{ registrationId: 1, result: { kind: "sent", again: false, version: 1, sentAt: SENT_AT } }]);
+  await click("[data-confirm-send]");
+  expect(actions.sendProtocolsAction).toHaveBeenCalledWith([{ registrationId: 1, version: 1 }]);
+  expect($("[data-summary-failed]")).toBeNull();
+});

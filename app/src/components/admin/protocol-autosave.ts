@@ -471,6 +471,8 @@ export class ProtocolAutosave {
   private readonly deferred = new Map<number, ServerDraft | null>();
   /** The protocols whose read was refused (signed out): they say so instead of "saved", until the server takes a save of theirs again. */
   private readonly signedOutIds = new Set<number>();
+  /** The students the last read did not list (cancelled or moved meanwhile): on the screen with their text, but no longer the session's. */
+  private readonly unlisted = new Set<number>();
   /** The text of each protocol's parting save (part) since the screen was left: it goes once. */
   private readonly parted = new Map<number, Content>();
   private storage: Storage | null = null;
@@ -540,6 +542,7 @@ export class ProtocolAutosave {
    */
   reconcile(drafts: readonly ServerDraft[]): void {
     this.signedOutIds.clear();
+    this.unlisted.clear();
     const listed = new Set<number>();
     for (const d of drafts) {
       listed.add(d.registrationId);
@@ -551,8 +554,17 @@ export class ProtocolAutosave {
       }
       this.take(e, d);
     }
-    for (const e of [...this.entries.values()]) if (!listed.has(e.registrationId)) this.take(e, null);
+    for (const e of [...this.entries.values()])
+      if (!listed.has(e.registrationId)) {
+        this.unlisted.add(e.registrationId);
+        this.take(e, null);
+      }
     this.changed();
+  }
+
+  /** Did the last read leave this student out (cancelled or moved meanwhile)? She stays on the screen, but a send of the session is not hers. */
+  dropped(id: number): boolean {
+    return this.unlisted.has(id);
   }
 
   /** One protocol of a read: `d` is the server's text of it, null when the answer did not list her (see reconcile). */
