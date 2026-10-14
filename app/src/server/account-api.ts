@@ -109,7 +109,11 @@ const FEEDBACK_BODY_CHARS = 2 * FEEDBACK_TEXT_MAX * 2 + 2048;
 const TEST_SUBMITS_PER_HOUR = 10;
 /** A test's body: every question's answer at its limit (an open one JSON-escaped, or a choice's option ids) and the rest. */
 const TEST_BODY_CHARS = TEST_LIMITS.questions * (TEST_LIMITS.answer * 2 + 512) + 2048;
-/** Photo uploads a student may send per hour (e-course completion, spec §7): 1–3 photos for each point, retries and removals' new picks included. */
+/**
+ * Photo uploads a student may send per hour (e-course completion, spec §7): 1–3 photos for each point, retries and removals' new picks included.
+ * Counted in a fixed hour (withinClientWindow): a student working steadily through a long course starts again each hour, never locked out
+ * until she pauses.
+ */
 const PHOTOS_PER_HOUR = 120;
 /** "Saada hindamiseks" / "Saada uuesti" per hour: each one that is accepted mails Maria. */
 const PRACTICAL_SUBMITS_PER_HOUR = 20;
@@ -723,7 +727,7 @@ async function uploadPhoto(request: Request, deps: AccountDeps, rawSlug: string)
   const slug = parseSlug(rawSlug);
   if (slug === null) return clientResponse(session, { ok: false }, 404);
   if (Number(request.headers.get("content-length") ?? 0) > PHOTO_BODY_BYTES) return clientResponse(session, { ok: false, error: "size" }, 413);
-  if (!(await withinClientLimit(deps, session.clientId, "client-photo", PHOTOS_PER_HOUR, 60 * 60))) {
+  if (!(await withinClientWindow(deps, session.clientId, "client-photo", PHOTOS_PER_HOUR, 60 * 60))) {
     logNote("[account] photo uploads rate limited");
     return clientResponse(session, { ok: false, error: "rate" }, 429);
   }

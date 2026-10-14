@@ -5,6 +5,7 @@ import { clients, clientSessions, courseAccess, courseModules, courses, lessonPr
 import { PHOTO_LIMITS } from "@/domain/completion";
 import { handleAccountApi, sessionCookies, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
+import { rateKey, windowKey } from "@/server/ratelimit";
 import { newToken, sha256 } from "@/server/token";
 import { fakeKv, fakeMediaStore } from "../fakes";
 import { makeTestDb } from "./helpers";
@@ -94,6 +95,8 @@ function photoForm(stage: number, over: FormOver = {}): FormData {
 const upload = (cookie: string, stage: number, over: FormOver = {}, d: AccountDeps = deps()) => call(cookie, "POST", `${PRACTICAL}/foto`, { body: photoForm(stage, over) }, d);
 const photoIdOf = async (res: Response): Promise<number> => ((await res.json()) as { photo: { id: number } }).photo.id;
 const storedPhotos = () => db.select().from(practicalPhotos);
+/** The KV key that counts a student's photo uploads in the hour `at` falls in (account-api.ts uploadPhoto: withinClientWindow). */
+const photoHour = (clientId: number, at: Date) => windowKey(rateKey("client-photo", String(clientId)), at, 60 * 60);
 
 describe("GET /kursus/:slug/praktiline", () => {
   test("her practical work: the points in order, open, nothing locked; private and never cached", async () => {
@@ -223,7 +226,7 @@ describe("POST /kursus/:slug/praktiline/foto", () => {
 
   test("120 uploads an hour per student, then 429 'rate' (nothing read, nothing stored); no store: 503 'storage'; cross-site: 403", async () => {
     const w = await world();
-    kv.store.set(`rl:client-photo:${w.kati.id}`, "120");
+    kv.store.set(photoHour(w.kati.id, NOW), "120");
     const limited = await upload(w.kati.cookie, 0);
     expect([limited.status, await limited.json()]).toEqual([429, { ok: false, error: "rate" }]);
     expect(store.objects.size).toBe(0);
@@ -233,6 +236,18 @@ describe("POST /kursus/:slug/praktiline/foto", () => {
     const cross = await call(w.kati.cookie, "POST", `${PRACTICAL}/foto`, { body: photoForm(0), headers: { origin: "https://evil.example" } });
     expect(cross.status).toBe(403);
     expect(await storedPhotos()).toEqual([]);
+  });
+
+  test("the 120 are counted in a fixed hour (withinClientWindow): uploads all through an hour do not carry the limit on; the next hour takes them again", async () => {
+    const w = await world();
+    const at = (minutes: number) => deps({ now: new Date(NOW.getTime() + minutes * 60_000) });
+    kv.store.set(photoHour(w.kati.id, NOW), "119");
+    expect((await upload(w.kati.cookie, 0, {}, at(30))).status).toBe(200); // the hour's 120th
+    const limited = await upload(w.kati.cookie, 0, {}, at(59));
+    expect([limited.status, await limited.json()]).toEqual([429, { ok: false, error: "rate" }]);
+    expect((await upload(w.kati.cookie, 0, {}, at(60))).status).toBe(200); // the next hour
+    expect(kv.store.get(photoHour(w.kati.id, new Date(NOW.getTime() + 60 * 60_000)))).toBe("1");
+    expect((await storedPhotos()).length).toBe(2);
   });
 
   test("without a session: 401, and nothing is stored", async () => {
