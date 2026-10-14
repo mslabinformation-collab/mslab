@@ -64,6 +64,8 @@ const BROWSER_FILES = [
   "src/components/account/PhotoSlot.tsx",
   // e-course completion, Task 9: the e-course page's steps
   "src/components/account/CompletionSteps.tsx",
+  // e-course completion, Task 11: Maria's verdict taps
+  "src/components/admin/verdict-taps.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

@@ -105,6 +105,7 @@ export const adminEt = {
     courses: "Koolitused",
     calendar: "Kalender",
     registrations: "Registreerimised",
+    assessment: "Hindamine",
     payments: "Maksed",
     feedback: "Tagasiside",
     clients: "Õpilased",
@@ -355,6 +356,64 @@ export const adminEt = {
       // the server never answered the send (given up after SEND_TIMEOUT_MS): it may have gone through, so the screen reads the server again; a send
       // again is safe; no button is named (wording approved by Dim 13.10.2026)
       timeout: "Vastust ei tulnud: kontrollin, kas protokoll saadeti. Juba saadetud protokolli teist korda ei saadeta.",
+    },
+  },
+
+  // Maria's assessment of an e-course's practical work (phase e-course completion, spec §5.3): /admin/protokollid?ligipaas=<access id>, the
+  // protocol screen with each point's photos and verdicts (AssessmentScreen.tsx and its parts). Task 12 adds the Hindamine page's texts beside
+  // `screen`. {n} a count or a round, {point} a point's number (1-based), {points} a list of them, {title} a point's title, {date} a day.
+  assessment: {
+    screen: {
+      // the page's line under "{course} · {name}"
+      round: "Praktiline töö, {n}. kord",
+      notSubmitted: "Praktiline töö: õpilane ei ole veel saatnud",
+      notesOnly: "Protokoll",
+      back: "Hindamisse",
+      notFound: "Sellist e-kursuse ligipääsu ei leitud, või see on tühistatud.",
+      // the access has ended: Maria can still assess (spec §8); a "Paranda" round needs it extended
+      expired: "Ligipääs lõppes {date}. Hinnata ja saata saad ikka; kui midagi tuleb parandada, pikenda enne ligipääsu (Õpilased).",
+      status: { open: "Ootab õpilase tööd", review: "Ootab hindamist", fix: "Paranda", passed: "Kinnitatud" },
+      ok: "Kinnitatud",
+      fix: "Paranda",
+      verdictOf: "Punkti {point} hinnang",
+      photosOf: "Punkti {point} fotod",
+      photoAlt: "Punkt {point}, {round}. kord, foto {n}",
+      noPhotos: "Selle punkti juures fotot ei ole.",
+      earlier: "Varasemad fotod",
+      roundOf: "{n}. kord",
+      // the full-screen photo: its name, the photo's text, where it is
+      viewer: "Punkt {point}: {title}",
+      viewerAlt: "{label}, foto {n}",
+      viewerCount: "{n} / {of}",
+      previous: "Eelmine foto",
+      next: "Järgmine foto",
+      close: "Sulge",
+      waiting: "Hinnangu nupud avanevad, kui õpilane on töö hindamiseks saatnud. Märkusi võid kirjutada juba enne.",
+      lockedPassed: "Kõik punktid on kinnitatud: hinnangud on lukus. Märkusi saad muuta ja uuesti saata.",
+      send: "Saada hinnang",
+      // the one confirmation (spec §5.3)
+      confirmTitle: "Saadan hinnangu õpilasele",
+      confirmCounts: "Kinnitatud: {ok} · Paranda: {fix}",
+      confirmPassed: "Kõik punktid on kinnitatud: praktiline töö on sooritatud.",
+      confirmNotes: "Saadan uuendatud märkused. Hinnangud jäävad samaks.",
+      confirmYes: "Saada",
+      confirmNo: "Tagasi",
+      // after the send
+      sentFix: "Hinnang saadetud. Paranda-punktid: {points}.",
+      sentPassed: "Hinnang saadetud. Kõik punktid on kinnitatud.",
+      sentCompleted: "Hinnang saadetud. Koolitus on lõpetatud.",
+      sentNotes: "Märkused saadetud.",
+      already: "See hinnang on juba saadetud.",
+      errors: {
+        notSubmitted: "Õpilane ei ole tööd veel hindamiseks saatnud.",
+        verdicts: "Vali hinnang ka punktidele: {points}.",
+        comments: "Lisa märkus Paranda-punktidele: {points}.",
+        unsavedVerdicts: "Kõik hinnangud ei ole veel salvestatud. Proovi uuesti, kui ühendus on tagasi.",
+        verdictRefused: "Hinnangut ei salvestatud: töö seis muutus vahepeal. Vaata punktid üle.",
+        // a tap or "Saada hinnang" named an older round than the server's: the screen reads the new round and shows it, nothing was stored or sent
+        newRound: "Õpilane saatis vahepeal uue vooru. Vaata see üle.",
+        notFound: "Seda ligipääsu enam ei ole (see on tühistatud).",
+      },
     },
   },
 

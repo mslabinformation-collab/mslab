@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AssessmentScreen } from "@/components/admin/AssessmentScreen";
 import { ProtocolScreen, type ScreenView } from "@/components/admin/ProtocolScreen";
 import styles from "@/components/admin/ProtocolScreen.module.css";
 import { adminTitle, type Section } from "@/components/admin/sections";
@@ -27,26 +28,38 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
 
-/** The screen's data for the browser: every date as text; `source` is where it asks for it again (GET /api/admin/protokoll). */
+/** The screen's data for the browser: every date as text; `source` is where it asks for it again (GET /api/admin/protokoll); an access's screen says whose it is. */
 function viewOf(screen: ScreenData, source: ScreenView["source"]): ScreenView {
-  return { single: screen.kind === "registration", source, students: screenStudents(screen) };
+  return { single: screen.kind !== "session", source, students: screenStudents(screen), ...(screen.kind === "access" ? { owner: "access" as const } : {}) };
 }
 
 /**
  * Protokollid (phase protocols, spec §4): the course day's screen. ?sessioon=<id>: every listed registration of one session (from Kalender
  * and the overview's "Täna"); ?registreering=<id>: one registration (from Registreerimised: an individual course, or one group student). The
- * header names the course, the day and the place, with the way back; the screen is ProtocolScreen (its autosave runs in the browser). Behind
- * requireAdmin like every admin page; nothing is written by opening it (a protocol is created by its first save).
+ * header names the course, the day and the place, with the way back; the screen is ProtocolScreen (its autosave runs in the browser).
+ * ?ligipaas=<id> (phase e-course completion, spec §5.3): one e-course access — Maria's assessment of the student's practical work (from
+ * Hindamine, the student's drawer and Maria's notice): the header names the course, the student and the round, the way back is Hindamine, an
+ * ended access says Maria can still assess, and the screen is AssessmentScreen. The first of the three in the address wins. Behind requireAdmin
+ * like every admin page; nothing is written by opening it (a protocol is created by its first save, or by the student's first photo).
  */
 export default async function ProtocolsPage({ searchParams }: Props) {
   const email = await requireAdmin();
   const sp = await searchParams;
   const sessionId = parseRowId(one(sp.sessioon) ?? "");
   const registrationId = sessionId === null ? parseRowId(one(sp.registreering) ?? "") : null;
+  const accessId = sessionId === null && registrationId === null ? parseRowId(one(sp.ligipaas) ?? "") : null;
   const t = adminEt.protocols;
+  const a = adminEt.assessment.screen;
   const db = getDb();
-  const screen = sessionId !== null ? await protocolScreen(db, { sessionId }) : registrationId !== null ? await protocolScreen(db, { registrationId }) : null;
-  const active: Section = registrationId !== null ? "registrations" : "calendar";
+  const screen =
+    sessionId !== null
+      ? await protocolScreen(db, { sessionId })
+      : registrationId !== null
+        ? await protocolScreen(db, { registrationId })
+        : accessId !== null
+          ? await protocolScreen(db, { accessId })
+          : null;
+  const active: Section = accessId !== null ? "assessment" : registrationId !== null ? "registrations" : "calendar";
 
   if (!screen) {
     return (
@@ -54,16 +67,49 @@ export default async function ProtocolsPage({ searchParams }: Props) {
         <div className={ui.page}>
           <div className={ui.heading}>
             <div>
-              <p className={ui.eyebrow}>{t.eyebrow}</p>
+              <p className={ui.eyebrow}>{accessId !== null ? adminEt.nav.assessment : t.eyebrow}</p>
               <h1 className={ui.h1}>{t.title}</h1>
             </div>
           </div>
           <section className={ui.card}>
-            <p className={ui.empty}>{t.notFound}</p>
-            <Link className={ui.link} href="/admin/kalender">
-              {t.toCalendar}
+            <p className={ui.empty}>{accessId !== null ? a.notFound : t.notFound}</p>
+            <Link className={ui.link} href={accessId !== null ? "/admin/hindamine" : "/admin/kalender"}>
+              {accessId !== null ? a.back : t.toCalendar}
             </Link>
           </section>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (screen.kind === "access" && screen.assessment && accessId !== null) {
+    const student = screen.students[0];
+    const work = screen.assessment;
+    const lead = student.protocol.stages.length === 0 ? a.notesOnly : work.round === 0 ? a.notSubmitted : fill(a.round, { n: work.round });
+    const now = new Date();
+    return (
+      <Shell email={email} active={active}>
+        <div className={ui.page}>
+          <div className={ui.heading}>
+            <div className={styles.head}>
+              <p className={ui.eyebrow}>{adminEt.nav.assessment}</p>
+              <h1 className={ui.h1} data-protocol-course="">
+                {`${pick(screen.course.title, "et")} · ${student.name}`}
+              </h1>
+              <p className={ui.lead} data-assess-round="">
+                {lead}
+              </p>
+            </div>
+            <Link className={ui.link} href="/admin/hindamine">
+              {a.back}
+            </Link>
+          </div>
+          {work.expiresAt <= now && (
+            <p className={ui.notice} data-access-expired="">
+              {fill(a.expired, { date: formatDate(work.expiresAt, "et") })}
+            </p>
+          )}
+          <AssessmentScreen view={viewOf(screen, { ligipaas: accessId })} />
         </div>
       </Shell>
     );

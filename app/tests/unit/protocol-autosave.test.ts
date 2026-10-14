@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  DEBOUNCE_MS, FRESH_WAIT_MS, HIDDEN_RECHECK_MS, keepReading, localKey, NOTICE_MAX_CHARS, ProtocolAutosave, readConflict, readLocal, remember, resumeLocal, SENT_MAX_CHARS, sentKey, statusOf,
+  DEBOUNCE_MS, FRESH_WAIT_MS, getScreen, HIDDEN_RECHECK_MS, keepReading, localKey, NOTICE_MAX_CHARS, ownerKeys, ProtocolAutosave, readConflict, readLocal, remember, resumeLocal,
+  SENT_MAX_CHARS, sentKey, statusOf,
   type Answer, type Content, type SaveBody, type ScreenAnswer, type SendOptions, type ServerDraft,
 } from "@/components/admin/protocol-autosave";
 import { PROTOCOL_LIMITS } from "@/domain/protocols";
+import { stubFetch } from "../fakes";
 
 // The protocol screen's autosave (spec §4): when a box saves, what a save sends, the browser's copy until the server confirms it, the
 // retries, the version check's refusal, and the lost answer that is ours. The server is answered by hand: every save waits for the test.
@@ -1670,5 +1672,81 @@ describe("a save built on another row: the protocol deleted with the account and
     e.editNote(7, 0, "Uus, lisa");
     await tick(DEBOUNCE_MS);
     expect(s.calls[1].body).toMatchObject({ protocolId: 9, version: 1, notes: ["Uus, lisa", ""] });
+  });
+});
+
+describe("the owner: an e-course access's protocol (phase e-course completion)", () => {
+  const ACCESS = ownerKeys("access");
+
+  test("ownerKeys: a registration's keys are the ones before (mslab-protocol…); an access's are its own (mslab-practical…)", () => {
+    const registration = ownerKeys("registration");
+    expect([registration.localKey(7), registration.localKey(7, "t1"), registration.sentKey(7, "t1"), registration.conflictKey(7), registration.conflictKey(7, "t1")]).toEqual([
+      "mslab-protocol:7",
+      "mslab-protocol:7:t1",
+      "mslab-protocol-sent:7:t1",
+      "mslab-protocol-conflict:7",
+      "mslab-protocol-conflict:7:t1",
+    ]);
+    expect([localKey(7, "t1"), sentKey(7, "t1")]).toEqual(["mslab-protocol:7:t1", "mslab-protocol-sent:7:t1"]);
+    expect([ACCESS.localKey(7), ACCESS.localKey(7, "t1"), ACCESS.sentKey(7, "t1"), ACCESS.conflictKey(7), ACCESS.conflictKey(7, "t1")]).toEqual([
+      "mslab-practical:7",
+      "mslab-practical:7:t1",
+      "mslab-practical-sent:7:t1",
+      "mslab-practical-conflict:7",
+      "mslab-practical-conflict:7:t1",
+    ]);
+  });
+
+  test("a registration's save is as before, field by field and in order; an access's names the access and never a registration", async () => {
+    const s = server();
+    const registration = start([draft()], s.send);
+    registration.editNote(7, 0, "A");
+    await tick(DEBOUNCE_MS);
+    expect(Object.keys(s.calls[0].body)).toEqual(["registrationId", "protocolId", "version", "titles", "notes", "generalNote"]);
+    registration.stop();
+    const a = server();
+    engine = new ProtocolAutosave([draft()], a.send, { owner: "access" });
+    engine.start(localStorage);
+    engine.editNote(7, 0, "Foto on terav");
+    await tick(DEBOUNCE_MS);
+    expect(a.calls.map((c) => c.body)).toEqual([{ accessId: 7, protocolId: null, version: 0, titles: TITLES, notes: ["Foto on terav", ""], generalNote: "" }]);
+    expect(Object.keys(a.calls[0].body)).toEqual(["accessId", "protocolId", "version", "titles", "notes", "generalNote"]);
+    a.calls[0].answer({ status: 200, body: { ok: true, version: 1, savedAt: "2026-11-11T09:00:00.000Z", protocolId: 4 } });
+    await tick();
+    expect(engine.get(7)).toMatchObject({ protocolId: 4, version: 1, status: { kind: "saved" } });
+  });
+
+  test("an access's copy is kept under its own keys: registration 7's copy in the same browser is never resumed by access 7's screen, nor touched", async () => {
+    const s = server();
+    const registration = new ProtocolAutosave([draft()], s.send, { tab: "r" });
+    registration.start(localStorage);
+    registration.editNote(7, 0, "Kontaktkoolitus");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(null); // no answer: kept in this browser
+    await tick();
+    registration.stop();
+    const a = server();
+    engine = new ProtocolAutosave([draft()], a.send, { tab: "a", owner: "access" });
+    engine.start(localStorage);
+    await tick(DEBOUNCE_MS * 2);
+    expect(a.calls).toHaveLength(0);
+    expect(engine.get(7)).toMatchObject({ content: { notes: ["", ""] }, conflict: null });
+    engine.editNote(7, 1, "Värv sobib");
+    expect(localStorage.getItem("mslab-practical:7:a")).not.toBeNull();
+    expect(readLocal(localStorage, 7, undefined, ACCESS)?.content.notes).toEqual(["", "Värv sobib"]);
+    expect(readLocal(localStorage, 7)?.content.notes).toEqual(["Kontaktkoolitus", ""]); // the registration's own, as it was
+  });
+
+  test("getScreen reads an access's screen by ?ligipaas=, a registration's and a session's as before", async () => {
+    const f = stubFetch(() => Response.json({ ok: true, students: [] }));
+    expect(await getScreen({ ligipaas: 4 })).toEqual({ status: 200, body: { ok: true, students: [] } });
+    await getScreen({ registreering: 7 });
+    await getScreen({ sessioon: 5 });
+    expect(f.calls.map((c) => [c.method, c.url])).toEqual([
+      ["GET", "/api/admin/protokoll?ligipaas=4"],
+      ["GET", "/api/admin/protokoll?registreering=7"],
+      ["GET", "/api/admin/protokoll?sessioon=5"],
+    ]);
+    f.restore();
   });
 });

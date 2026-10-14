@@ -70,6 +70,8 @@ const COURSE_CSS = [
   "src/components/site/CampaignPopup.module.css",
   // the course editor's "Teadmiste test" (e-course completion, Task 3)
   "src/components/admin/TestEditor.module.css",
+  // Maria's assessment screen and its photo viewer (phase e-course completion, Task 11)
+  "src/components/admin/Assessment.module.css",
 ];
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""); // comments aside

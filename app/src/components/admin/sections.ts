@@ -8,6 +8,8 @@ export type Section =
   | "courses"
   | "calendar"
   | "registrations"
+  // Hindamine (phase e-course completion): the protocol screen of an access (Task 11) marks it; its page and menu entry are Task 12's
+  | "assessment"
   | "payments"
   | "feedback"
   | "clients"

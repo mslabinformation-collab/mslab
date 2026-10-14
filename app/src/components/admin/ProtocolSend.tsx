@@ -94,7 +94,7 @@ function checkAfterTimeout(engine: ProtocolAutosave, ids: readonly number[], lin
 }
 
 /** The answer of `work`, or "timeout" when none came within SEND_TIMEOUT_MS. */
-function bounded<T>(work: Promise<T>): Promise<T | "timeout"> {
+export function bounded<T>(work: Promise<T>): Promise<T | "timeout"> {
   return new Promise<T | "timeout">((resolve, reject) => {
     const timer = setTimeout(() => resolve("timeout"), SEND_TIMEOUT_MS);
     work.then(
