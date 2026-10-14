@@ -16,11 +16,13 @@ const item = z.object({
   version: z.number().int().min(0).max(2_147_483_647),
   // the protocol's row the screen showed (null: none yet): a zod object drops a key it does not list, so it is listed
   protocolId: z.number().int().positive().max(2_147_483_647).nullable(),
+  // the student's round the screen showed: a new submission since then is "stale" (R3 leaves the version)
+  round: z.number().int().min(0).max(2_147_483_647),
 });
 
 const deps = () => adminSendDeps("[assessment]");
 
-/** "Saada hinnang" (and an e-course's notes-only "Saada"): one access, at the version the screen confirmed; a throw is "failed", logged by the access's id. */
+/** "Saada hinnang" (and an e-course's notes-only "Saada"): one access, at the version and round the screen showed; a throw is "failed", logged by the access's id. */
 export const sendAssessmentAction = adminAction(async (_admin, input: AssessmentInput): Promise<AssessmentResult | { kind: "failed" }> => {
   const parsed = item.safeParse(input);
   if (!parsed.success) return { kind: "notFound" };

@@ -85,13 +85,17 @@ export async function handleVerdict(db: Db, request: Request, now: Date): Promis
   }
 }
 
-/** What "Saada hinnang" names: the access, the notes' version the screen confirmed, and the protocol's row it shows (null: none yet). */
-export type AssessmentInput = { accessId: number; version: number; protocolId: number | null };
+/**
+ * What "Saada hinnang" names: the access, the notes' version the screen confirmed, the protocol's row it shows (null: none yet), and the
+ * student's round it showed (AssessmentView.round; 0: none submitted). The screen passes the round it showed: a resubmission never raises the
+ * version (R3), so only the round tells a screen of an older submission from the stored one.
+ */
+export type AssessmentInput = { accessId: number; version: number; protocolId: number | null; round: number };
 
 /**
  * sent: frozen now (`status` after it; `completed`: this send completed the course); notSubmitted: the course has points and the student has
  * sent nothing yet; verdicts / comments: the points (0-based) without a verdict, or "Paranda" without a note; already: nothing new since the
- * last send; stale: the stored version or row is not the screen's (`version`: the stored one); empty: notes only and nothing written;
+ * last send; stale: the stored version, row or round is not the screen's (`version`: the stored one); empty: notes only and nothing written;
  * notFound: no such access to an e-course, or a revoked one.
  */
 export type AssessmentResult =
@@ -114,7 +118,8 @@ const sameVerdicts = (a: readonly (Verdict | null)[] | undefined, b: readonly (V
 /**
  * "Saada hinnang" (spec §5.3, §8; R2), in one transaction:
  * 1. the locks: the access (revoked: notFound; ended: still assessed), then the protocol row;
- * 2. the checks: no protocol (nothing submitted, nothing written); another version or row than the screen's: stale;
+ * 2. the checks: no protocol (nothing submitted, nothing written); another version, row or round than the screen's: stale (the round: the
+ *    student sent a new one since the screen was read — R3 leaves the version as it was — so Maria never approves photos she has not seen);
  * 3. an e-course without points (the protocol's own copy has none): the notes-only protocol, sent as a contact course's ("protocol", then
  *    "protocolAgain"); with points: nothing submitted yet (round 0), a point without a verdict, a "Paranda" without a note are refused; approved
  *    and sent before: the verdicts are locked, changed notes go again alone; the same round, version and verdicts as the last send: already;
@@ -133,7 +138,7 @@ export async function sendAssessment(deps: SendDeps, input: AssessmentInput): Pr
     if (!course || course.type !== "e_learning") return none({ kind: "notFound" });
     const [p] = await tx.select().from(protocols).where(eq(protocols.accessId, input.accessId)).for("update");
     if (!p) return none(readStages(course.points).length > 0 ? { kind: "notSubmitted" } : { kind: "empty" });
-    if (p.version !== input.version || (input.protocolId !== null && p.id !== input.protocolId)) return none({ kind: "stale", version: p.version });
+    if (p.version !== input.version || (input.protocolId !== null && p.id !== input.protocolId) || p.round !== input.round) return none({ kind: "stale", version: p.version });
     const verdicts = p.stages.map((_, i) => p.verdicts[i] ?? null);
     const freeze = async (frozen: (Verdict | null)[]): Promise<SentProtocol> => {
       const sent: SentProtocol = { stages: p.stages, generalNote: p.generalNote, verdicts: frozen };
