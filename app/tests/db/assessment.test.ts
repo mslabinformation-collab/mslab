@@ -317,4 +317,36 @@ describe("Saada hinnang", () => {
     expect(await stored(gone.id)).toMatchObject({ version: 1, verdicts: [null, null, null], sentAt: null });
     expect(queued()).toBe(0);
   });
+
+  test("Review Focus 4: an ended access gets no 'assessed' mail (a Paranda she cannot redo, or an approval while another step is open); its 'completed' mail still goes", async () => {
+    const { course, lesson } = await ecourse(db);
+    const ended = new Date("2026-11-01T00:00:00Z");
+    // Kati: a Paranda — sent and frozen, no mail
+    const { access: kati } = await learner(db, course, lesson, "kati@example.com", { expiresAt: ended });
+    const p = await submitRound(db, kati.id, [0, 1, 2], new Date("2026-10-30T10:00:00Z"));
+    await write(kati.id, 1, p.id, ["", "Kuju on ebaühtlane", ""]);
+    for (const [stage, verdict] of [[0, "ok"], [1, "fix"], [2, "ok"]] as const) await tap(kati.id, p.id, 1, stage, verdict);
+    const fix = deps(MARIA);
+    expect(await sendAssessment(fix.d, { accessId: kati.id, version: 2, protocolId: p.id, round: 1 })).toMatchObject({ kind: "sent", status: "fix", completed: false });
+    expect(await stored(kati.id)).toMatchObject({ sentRound: 1, sent: { verdicts: ["ok", "fix", "ok"] } });
+    expect(fix.queued()).toBe(0);
+    // Mari: every point ok while a test Maria added is still open — passed, not completed, no mail
+    const { access: mari } = await learner(db, course, lesson, "mari@example.com", { expiresAt: ended });
+    const q = await submitRound(db, mari.id, [0, 1, 2], new Date("2026-10-30T10:00:00Z"));
+    for (const stage of [0, 1, 2]) await tap(mari.id, q.id, 1, stage, "ok");
+    const question = { id: "q1", kind: "choice" as const, text: "Mis on esimene samm?", options: [{ id: "a", text: "Ettevalmistus", correct: true }, { id: "b", text: "Värvimine", correct: false }] };
+    await db.insert(courseTests).values({ courseId: course.id, questions: [question] });
+    const open = deps(MARIA);
+    expect(await sendAssessment(open.d, { accessId: mari.id, version: 1, protocolId: q.id, round: 1 })).toMatchObject({ kind: "sent", status: "passed", completed: false });
+    expect(open.queued()).toBe(0);
+    // the test gone again (Maria removed it): Liis's approval completes her course, and "Palju õnne!" goes although the access has ended
+    await db.delete(courseTests).where(eq(courseTests.courseId, course.id));
+    const { access: liis } = await learner(db, course, lesson, "liis@example.com", { expiresAt: ended });
+    const r = await submitRound(db, liis.id, [0, 1, 2], new Date("2026-10-30T10:00:00Z"));
+    for (const stage of [0, 1, 2]) await tap(liis.id, r.id, 1, stage, "ok");
+    const done = deps(MARIA);
+    expect(await sendAssessment(done.d, { accessId: liis.id, version: 1, protocolId: r.id, round: 1 })).toMatchObject({ kind: "sent", status: "passed", completed: true });
+    await done.flush();
+    expect(mails().map((m) => [m.to, m.subject])).toEqual([["liis@example.com", "Palju õnne! Koolitus „Kulmude e-kursus“ on lõpetatud"]]);
+  });
 });

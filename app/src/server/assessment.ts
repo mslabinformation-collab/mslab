@@ -5,7 +5,7 @@ import { courses, protocols, type SentProtocol, type Verdict } from "@/db/schema
 import { practicalStatus, type PracticalStatus } from "@/domain/completion";
 import { hasText, PROTOCOL_LIMITS, readStages } from "@/domain/protocols";
 import type { CompletionMailKind } from "./account-mail";
-import { completeIfDone, completionJob, lockAccess, mailCompletion } from "./completion";
+import { completeIfDone, completionJob, isActive, lockAccess, mailCompletion } from "./completion";
 import { logFailure } from "./log";
 import type { SendDeps } from "./protocols";
 
@@ -132,7 +132,8 @@ const sameVerdicts = (a: readonly (Verdict | null)[] | undefined, b: readonly (V
  * 4. the freeze: `sent` = { stages, generalNote, verdicts }, sent_at, sent_version, sent_round = round; every point ok: completeIfDone
  *    (completed_at once, in this transaction).
  * The mail goes after the commit (`later`): see the table in the plan's Task 10; it never carries a note, and a sample address is never mailed
- * (mailCompletion). A mail that fails never undoes the send.
+ * (mailCompletion). An access that has ended (the locked row's expires_at) gets no "assessed" mail, as she can no longer redo a "Paranda"
+ * point; "completed" and the notes-only protocol mails still go. A mail that fails never undoes the send.
  */
 export async function sendAssessment(deps: SendDeps, input: AssessmentInput): Promise<AssessmentResult> {
   const done = await deps.db.transaction(async (tx): Promise<{ result: AssessmentResult; mail: AssessmentMail | null }> => {
@@ -175,10 +176,11 @@ export async function sendAssessment(deps: SendDeps, input: AssessmentInput): Pr
     if (bare.length > 0) return none({ kind: "comments", missing: bare });
     if (p.sentAt !== null && p.sentRound === p.round && p.sentVersion === p.version && sameVerdicts(p.sent?.verdicts, verdicts)) return none(already(p.sentAt));
     await freeze(verdicts);
+    const active = isActive(access, deps.now); // (an ended access: no "assessed" mail)
     const fixCount = verdicts.filter((v) => v === "fix").length;
-    if (fixCount > 0) return { result: sentAs("fix", false), mail: { kind: "assessed", fixCount } };
+    if (fixCount > 0) return { result: sentAs("fix", false), mail: active ? { kind: "assessed", fixCount } : null };
     const completed = await completeIfDone(t, access.id, deps.now);
-    return { result: sentAs("passed", completed), mail: { kind: completed ? "completed" : "assessed" } };
+    return { result: sentAs("passed", completed), mail: completed ? { kind: "completed" } : active ? { kind: "assessed" } : null };
   });
   if (done.result.kind === "sent") console.info(`[assessment] access ${input.accessId}: sent (${done.result.status}${done.result.completed ? ", completed" : ""})`);
   const mail = done.mail;
