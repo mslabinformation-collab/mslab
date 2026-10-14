@@ -283,6 +283,23 @@ describe("completion on the page load (the student's GET /kursus/:slug)", () => 
     expect((await accessRow(w)).completedAt).toBeNull();
   });
 
+  test("a course with no visible lesson but a test and points is not empty: its test passed and its practical work approved, it completes (here on the page load, one mail)", async () => {
+    const w = await world();
+    await db.update(lessons).set({ hidden: true });
+    await db.insert(testAttempts).values({
+      clientId: w.kati.id, courseId: w.course.id, number: 1, questions: [QUESTION], answers: { [QUESTION.id]: ["o1aaaaaa"] }, correct: 1, total: 1, status: "passed", submittedAt: NOW,
+    });
+    const stages = POINTS.map((title) => ({ title, note: "" }));
+    const verdicts = POINTS.map(() => "ok" as const);
+    await db.insert(protocols).values({ accessId: w.access.id, stages, verdicts, round: 1, submittedAt: NOW, sent: { stages, generalNote: "", verdicts }, sentAt: NOW, sentVersion: 1, sentRound: 1 });
+    expect(await completionOf(w)).toMatchObject({ lessons: { total: 0, state: "done" }, test: { state: "done" }, practical: { state: "done" }, completedAt: null });
+    const s = await signedIn(w);
+    expect((await (await s.get("/kursus/veebikursus")).json()).completion.completedAt).toBe(NOW.toISOString());
+    expect((await accessRow(w)).completedAt).toEqual(NOW);
+    expect(s.queued()).toBe(1);
+    expect(await completeIfDone(db, w.access.id, NOW)).toBe(false); // set once
+  });
+
   test("a check that fails does not fail the page: it shows as before, the failure logged by the access's id", async () => {
     const w = await world({ questions: false, points: [] });
     await lessonsDone(w);

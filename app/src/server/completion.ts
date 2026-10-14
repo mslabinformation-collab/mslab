@@ -105,15 +105,16 @@ export async function loadSteps(db: Db, access: AccessRow): Promise<CourseSteps>
  * Sets course_access.completed_at = now when every present step is done and it is still null (one UPDATE … where completed_at is null);
  * true when THIS call set it (the caller mails "completed"). Runs inside the caller's transaction when given one (`tx as unknown as Db`):
  * it is then committed or rolled back with the step that completed the course. Never for a revoked access (checked on the read and again in
- * the UPDATE, so a revoke landing between the two completes nothing); an expired one completes (Maria may assess it, spec §8). Never for a
- * course without a visible lesson (an empty course is not "done", and the student's page load asks this of every access still without a
- * date). Never cleared: a lesson or a question added later leaves it (spec §4.4).
+ * the UPDATE, so a revoke landing between the two completes nothing); an expired one completes (Maria may assess it, spec §8). Never for an
+ * empty course — no visible lesson, no question and no point: it is not "done", and the student's page load asks this of every access still
+ * without a date; a course without a visible lesson whose test or practical work there is completes once those are done. Never cleared: a
+ * lesson or a question added later leaves it (spec §4.4).
  */
 export async function completeIfDone(db: Db, accessId: number, now: Date): Promise<boolean> {
   const [access] = await db.select(accessColumns).from(courseAccess).where(eq(courseAccess.id, accessId)).limit(1);
   if (!access || access.completedAt !== null || access.revokedAt !== null) return false;
   const inputs = await stepInputs(db, access);
-  if (inputs.lessonsTotal === 0 || !isComplete(inputs)) return false;
+  if ((inputs.lessonsTotal === 0 && !inputs.hasQuestions && !inputs.hasPoints) || !isComplete(inputs)) return false;
   const set = await db
     .update(courseAccess)
     .set({ completedAt: now })
