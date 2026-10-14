@@ -11,6 +11,7 @@ import { pick } from "@/i18n/field";
 import { href } from "@/i18n/href";
 import type { Locale } from "@/i18n/locales";
 import type { EcourseView as EcourseData } from "@/server/client-data";
+import { CompletionSteps } from "./CompletionSteps";
 import { ProgressBar } from "./ProgressBar";
 import type { EcourseTexts } from "./texts";
 import page from "./EcoursePage.module.css";
@@ -33,7 +34,9 @@ const WIDE = "(min-width: 768px)";
  * - the numbered modules (the public course page's look), each with its lessons: ✓ done and ▶ open ones link to their pages, a
  *   locked one is plain text with a lock, and "Avaneb, kui eelmine õppetund on tehtud." stands under the first locked lesson. On a
  *   phone the modules are folded, and the module of the next lesson starts open; on a wider screen every module starts open;
- * - without any lesson yet: the module titles and "Sisu lisandub peagi."
+ * - without any lesson yet: the module titles and "Sisu lisandub peagi.";
+ * - below them, "Lõpetamine" (CompletionSteps, e-course completion): the path's steps, once the course has lessons (or is completed, or Maria
+ *   sent her notes: "Vaata protokolli").
  * `focusHeading`: the notice has just been accepted, so the title takes the focus. `readOnly` (the admin's "view as client", rendered
  * by a server component too): nothing is a link, the button and the lesson titles are aria-disabled, and every module is open.
  */
@@ -160,6 +163,9 @@ export function EcourseView({
         <p className={styles.soon} data-ecourse-soon="">
           {t.soon}
         </p>
+      )}
+      {(total > 0 || data.completion.completedAt !== null || data.completion.protocolSent) && (
+        <CompletionSteps slug={slug} steps={data.completion} protocolSent={data.completion.protocolSent} locale={locale} t={t} readOnly={readOnly} />
       )}
     </div>
   );

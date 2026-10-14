@@ -2,9 +2,10 @@
 // course copies into a new protocol and their limits, what a save may hold, the feedback form's fixed questions and their stored keys, the
 // answers' check, and when the form opens. No database, no React: the admin's screen, the account's pages and the server share them.
 
-import type { ProtocolStage } from "@/db/schema";
+import type { ProtocolStage, Verdict } from "@/db/schema";
 import { toStorable } from "@/lib/to-storable"; // (this file runs in the browser too: no lookbehind here nor in what it imports, tests/unit/old-safari.test.ts)
 import { tallinnFormParts } from "./calendar";
+import type { PracticalStatus } from "./completion";
 import type { RegStatus } from "./registration";
 
 /** At most 30 headings of at most 120 characters; every note and the general notes at most 10 000 characters (spec §3). */
@@ -186,9 +187,12 @@ export function feedbackOpenFor(
 }
 
 /**
- * One student on the course day's screen as the page hands her over and GET /api/admin/protokoll answers: her protocol's draft, every date as text.
+ * One student on the protocol screen as the page hands her over and GET /api/admin/protokoll answers: her protocol's draft, every date as text.
+ * `registrationId`: her registration's id — on an e-course access's screen (?ligipaas=, phase e-course completion) the ACCESS's id: the screen
+ * and its autosave key everything by this number, and the screen's owner (ProtocolScreen.tsx ScreenView.owner) says which table it is of.
  * `awaiting`: her registration waits for its prepayment ("ootab ettemaksu"). `version` 0: no protocol yet (the course's headings, empty notes).
  * `protocolId`: the protocol's row, null for none yet (one deleted with the account and made again is another row, even at the same version).
+ * `assessment`: on an access's screen only, the practical work Maria assesses.
  */
 export type ScreenStudentView = {
   registrationId: number;
@@ -202,4 +206,25 @@ export type ScreenStudentView = {
   sentVersion: number | null;
   sentAt: string | null;
   savedAt: string | null;
+  assessment?: AssessmentView;
+};
+
+/**
+ * An e-course access's practical work on Maria's screen (phase e-course completion, spec §5.3; db/queries/protocols.ts AssessmentData with its
+ * dates as text): the status (spec §3.4's table), the student's submissions so far (`round`) and the last one's time, the verdicts of the draft
+ * (one per point, saved per tap: R2) and of the copy last sent, each point's submitted photos (newest round first), `locked` once every point is
+ * approved and sent (the verdicts can no longer change), and when the access ends (an ended one is still assessed: spec §8).
+ */
+export type AssessmentView = {
+  accessId: number;
+  clientId: number;
+  email: string;
+  status: PracticalStatus;
+  round: number;
+  submittedAt: string | null;
+  verdicts: (Verdict | null)[];
+  sentVerdicts: (Verdict | null)[] | null;
+  photos: { id: number; round: number; width: number; height: number }[][];
+  locked: boolean;
+  expiresAt: string;
 };

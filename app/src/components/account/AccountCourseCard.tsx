@@ -9,7 +9,7 @@ import {
 } from "@/domain/account-cards";
 import { formatEUR } from "@/domain/money";
 import { amountDue, type Due } from "@/domain/payments";
-import { fill } from "@/i18n/format";
+import { fill, formatDate } from "@/i18n/format";
 import { href } from "@/i18n/href";
 import type { Locale } from "@/i18n/locales";
 import { isDone, sendJson } from "@/lib/json-request";
@@ -71,6 +71,7 @@ function onlineDue(card: AccountCard, now: Date): Due {
  * line is left for "nothing" (its sentence is true after the reload too) and for a reload that got no answer, and not for a 401 or a 404.
  * If the browser comes back to this page from its back-forward cache (the payer pressed Back), the button is ready again.
  * An open e-course with lessons shows '{done} / {total}' with the e-course page's bar, or 'Läbitud ✓' (phase 2c).
+ * A completed e-course says 'Lõpetatud {date}' (e-course completion), also after its access has ended.
  * `readOnly`: the buttons are there but aria-disabled, and do nothing.
  */
 export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale }: CardProps) {
@@ -82,6 +83,8 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
   const when = cardWhen(card, locale);
   const action = step.action;
   const progress = card.kind === "ecourse" && !isPastCard(card, now) ? (card.progress ?? null) : null;
+  // "Lõpetatud {date}" (e-course completion, spec §4.1): once the course is completed, also after its access has ended
+  const completedAt = card.kind === "ecourse" ? (card.completedAt ?? null) : null;
   const due = payOnline ? onlineDue(card, now) : ({ kind: "none" } as const);
   // the main button is "Maksa …" when the step is a payment and an amount can be paid online now
   const online = due.kind !== "none" && (action.kind === "pay" || step.key === "confirmedRest") ? due : null;
@@ -249,6 +252,12 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
             </>
           )}
         </div>
+      )}
+      {completedAt && (
+        <p className={styles.completed} data-card-completed="">
+          <Icon name="check" size={18} />
+          {fill(t.completed, { date: formatDate(new Date(completedAt), locale) })}
+        </p>
       )}
       {button && <div className={styles.foot}>{button}</div>}
       {paying.error && (

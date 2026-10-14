@@ -10,7 +10,7 @@ import styles from "./Shell.module.css";
 /**
  * Prototype B `adminShell()`: the dark sidebar on the left, the main column with the top line ("MS LAB ·
  * Halduskeskkond" and who is signed in) and the page. Every admin page renders it (pages call requireAdmin() first and
- * pass the e-mail), so the menu badges are fresh on every page: open registrations and requests.
+ * pass the e-mail), so the menu badges are fresh on every page: open registrations and requests, and what waits in Hindamine.
  */
 export async function Shell({ email, active, children }: { email: string; active: Section; children: React.ReactNode }) {
   const counts = await getAdminCounts();
@@ -18,6 +18,7 @@ export async function Shell({ email, active, children }: { email: string; active
   const openRequests = Object.values(counts.openRequests).reduce((a, b) => a + b, 0);
   const badges: Partial<Record<Section, NavItem["badge"]>> = {
     registrations: counts.awaitingPrepayment ? { n: counts.awaitingPrepayment, label: fill(t.badgeRegistrations, { n: counts.awaitingPrepayment }) } : undefined,
+    assessment: counts.assessment ? { n: counts.assessment, label: fill(t.badgeAssessment, { n: counts.assessment }) } : undefined,
     requests: openRequests ? { n: openRequests, label: fill(t.badgeRequests, { n: openRequests }) } : undefined,
   };
   const items: NavItem[] = SECTIONS.map((s) => ({ ...s, label: adminEt.nav[s.key], badge: badges[s.key] }));
@@ -32,7 +33,7 @@ export async function Shell({ email, active, children }: { email: string; active
       <Sidebar
         items={items}
         active={active}
-        total={counts.awaitingPrepayment + openRequests}
+        total={counts.awaitingPrepayment + openRequests + counts.assessment}
         t={{
           label: t.label,
           nav: t.nav,

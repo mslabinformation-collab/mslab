@@ -222,6 +222,7 @@ describe("adminCounts", () => {
       openPurchaseInterest: 0,
       subscribers: 0,
       confirmedSubscribers: 0,
+      assessment: 0,
     });
     await register();
     await register({ status: "confirmed" });
@@ -245,6 +246,7 @@ describe("adminCounts", () => {
       openPurchaseInterest: 1,
       subscribers: 2,
       confirmedSubscribers: 1,
+      assessment: 0,
     });
   });
 });

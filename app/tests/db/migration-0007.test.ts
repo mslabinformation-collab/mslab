@@ -40,21 +40,28 @@ test("0007 gives every course an empty protocol_stages and adds protocols and co
 
   await through("0007_protocols");
 
+  // The protocols' columns as 0007 made them, and raw SQL for their inserts: this test stops at 0007, and drizzle would name the columns
+  // migration 0008 adds (access_id, verdicts, round, submitted_at, sent_round).
+  const v0007 = {
+    id: protocols.id, registrationId: protocols.registrationId, stages: protocols.stages, generalNote: protocols.generalNote, version: protocols.version,
+    sent: protocols.sent, sentAt: protocols.sentAt, sentVersion: protocols.sentVersion, createdAt: protocols.createdAt,
+  };
   const [course] = await db.select().from(courses);
   expect(course.protocolStages).toEqual([]);
-  expect(await db.select().from(protocols)).toEqual([]);
+  expect(await db.select(v0007).from(protocols)).toEqual([]);
   expect(await db.select().from(courseFeedback)).toEqual([]);
   const [reg] = await db.select({ id: registrations.id }).from(registrations);
 
-  const [p] = await db.insert(protocols).values({ registrationId: reg.id, stages: [{ title: "Ettevalmistus", note: "" }] }).returning();
-  expect(p).toMatchObject({ generalNote: "", version: 1, sent: null, sentAt: null, sentVersion: null });
+  await db.execute(sql`insert into protocols (registration_id, stages) values (${reg.id}, '[{"title":"Ettevalmistus","note":""}]')`);
+  const [p] = await db.select(v0007).from(protocols);
+  expect(p).toMatchObject({ registrationId: reg.id, stages: [{ title: "Ettevalmistus", note: "" }], generalNote: "", version: 1, sent: null, sentAt: null, sentVersion: null });
   expect(p.createdAt).toBeInstanceOf(Date);
-  await violates(db.insert(protocols).values({ registrationId: reg.id, stages: [] }), "protocols_registration"); // one per registration
+  await violates(db.execute(sql`insert into protocols (registration_id, stages) values (${reg.id}, '[]')`), "protocols_registration"); // one per registration
   const [f] = await db.insert(courseFeedback).values({ registrationId: reg.id }).returning();
   expect(f).toMatchObject({ answers: null, locale: null, submittedAt: null, dismissedAt: null });
   await violates(db.insert(courseFeedback).values({ registrationId: reg.id }), "course_feedback_registration");
 
   await db.delete(registrations).where(eq(registrations.id, reg.id));
-  expect(await db.select().from(protocols)).toEqual([]);
+  expect(await db.select(v0007).from(protocols)).toEqual([]);
   expect(await db.select().from(courseFeedback)).toEqual([]);
 });

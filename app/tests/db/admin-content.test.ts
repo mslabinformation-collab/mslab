@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { eq, inArray, sql } from "drizzle-orm";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
-import { clients, courseAccess, courseImages, courseModules, courses, courseSessions, lessons, posts, registrations, requests } from "@/db/schema";
+import { clients, courseAccess, courseImages, courseModules, courses, courseSessions, courseTests, lessons, posts, registrations, requests, type TestQuestion } from "@/db/schema";
 import { courseUsage, typeLocked, getCourseForEdit, listAdminSessions, listAllCourses, listAllPosts, listContactCourses } from "@/db/queries/admin";
 import { listUpcomingSessions } from "@/db/queries/public";
 import { draftFromCourse, newCourseDraft, type CourseDraft } from "@/domain/course-editor";
-import { deleteSessionForm, moveCourseForm, saveCourseForm, saveSessionForm, type EditResult } from "@/server/admin-content";
+import { deleteSessionForm, moveCourseForm, saveCourseForm, saveSessionForm, type EditResult, type FieldError } from "@/server/admin-content";
 
 // Task 13: the course editor's and the calendar's form handling and queries on a real (PGlite) database.
 
@@ -339,15 +339,16 @@ describe("calendar sessions", () => {
 });
 
 describe("saveCourseForm: 'Protokolli punktid' (phase protocols, spec §3)", () => {
-  test("a contact course keeps its headings trimmed, without blank rows, in their order; an e-course keeps none", async () => {
+  test("a contact course keeps its headings trimmed, without blank rows, in their order; an e-course keeps its practical points the same way (e-course completion)", async () => {
     const draft = await load(contact.id);
     expect(draft.protocolStages).toEqual([]);
     expect(await save({ ...draft, protocolStages: [" Ettevalmistus ", "", "Kulmude analüüs", "Värvimine"] })).toMatchObject({ ok: true });
     expect((await getCourseForEdit(db, contact.id))!.protocolStages).toEqual(["Ettevalmistus", "Kulmude analüüs", "Värvimine"]);
     expect((await load(contact.id)).protocolStages).toEqual(["Ettevalmistus", "Kulmude analüüs", "Värvimine"]);
     const e = await load(online.id);
-    expect(await save({ ...e, protocolStages: ["Ei kuulu siia"] })).toMatchObject({ ok: true });
-    expect((await getCourseForEdit(db, online.id))!.protocolStages).toEqual([]);
+    expect(await save({ ...e, protocolStages: [" Kulmude kuju ", "", "Värvimine"] })).toMatchObject({ ok: true });
+    expect((await getCourseForEdit(db, online.id))!.protocolStages).toEqual(["Kulmude kuju", "Värvimine"]);
+    expect((await load(online.id)).protocolStages).toEqual(["Kulmude kuju", "Värvimine"]);
   });
 
   test("more than 30 headings, or one over 120 characters, is refused on its field and nothing is saved", async () => {
@@ -378,5 +379,127 @@ describe("saveCourseForm: 'Protokolli punktid' (phase protocols, spec §3)", () 
     const draft = await load(contact.id);
     expect(await save({ ...draft, protocolStages: ["Ette\u000bvalmistus", "Värvi\u000cmine", "Kolmas\r\npunkt"] })).toMatchObject({ ok: true });
     expect((await getCourseForEdit(db, contact.id))!.protocolStages).toEqual(["Ette valmistus", "Värvi mine", "Kolmas punkt"]);
+  });
+});
+
+describe("saveCourseForm: 'Teadmiste test' and the e-course's points (e-course completion, spec §3.1, §5.1, R1)", () => {
+  const qid = (n: number) => `q${String(n).padStart(7, "0")}`;
+  const oid = (n: number, j: number) => `o${String(n * 10 + j).padStart(7, "0")}`;
+  const choice = (n: number, text: string, options: [string, boolean][]): TestQuestion => ({
+    id: qid(n),
+    kind: "choice",
+    text,
+    options: options.map(([t, correct], j) => ({ id: oid(n, j), text: t, correct })),
+  });
+  const open = (n: number, text: string): TestQuestion => ({ id: qid(n), kind: "open", text });
+  const storedTest = async (id: number) => (await db.select().from(courseTests).where(eq(courseTests.courseId, id)))[0] ?? null;
+  /** The e-course's draft as stored, with `test` changed (and `over` on top). */
+  const withTest = async (test: Partial<CourseDraft["test"]>, over: Partial<CourseDraft> = {}) => {
+    const d = await load(online.id);
+    return save({ ...d, ...over, test: { ...d.test, ...test } });
+  };
+  const ok = choice(1, "Mitu kihti värvi kanname?", [["Ühe", false], ["Kaks", true]]);
+
+  test("an e-course stores its questions in order, trimmed, with the pass mark and tries in course_tests; the editor gets them back; the key stays off the courses rows", async () => {
+    const questions = [
+      choice(1, " Mitu kihti värvi kanname? ", [[" Ühe ", false], ["Kaks", true]]),
+      open(2, "Kirjelda, kuidas valmistad kulmud ette."),
+      choice(3, "Vali kõik, mis kuulub ettevalmistusse", [["Tsüanoakrülaadi kontroll", true], ["Värvimine", false], ["Puhastamine", true]]),
+    ];
+    expect(await withTest({ questions, passPercent: "90", tries: "2" })).toMatchObject({ ok: true });
+    expect(await storedTest(online.id)).toMatchObject({
+      passPercent: 90,
+      tries: 2,
+      questions: [
+        { id: qid(1), kind: "choice", text: "Mitu kihti värvi kanname?", options: [{ id: oid(1, 0), text: "Ühe", correct: false }, { id: oid(1, 1), text: "Kaks", correct: true }] },
+        { id: qid(2), kind: "open", text: "Kirjelda, kuidas valmistad kulmud ette." },
+        { id: qid(3), kind: "choice" },
+      ],
+    });
+    expect((await load(online.id)).test).toMatchObject({ passPercent: "90", tries: "2", questions: [{ id: qid(1), text: "Mitu kihti värvi kanname?" }, { id: qid(2), kind: "open" }, { id: qid(3), kind: "choice" }] });
+    // R1: the answer key is never on a courses row (listAllCourses reads whole rows, as the public queries do)
+    expect(JSON.stringify(await listAllCourses(db))).not.toContain("Tsüanoakrülaadi kontroll");
+    // saved again without questions: the row keeps its settings, the questions are gone
+    expect(await withTest({ questions: [] })).toMatchObject({ ok: true });
+    expect(await storedTest(online.id)).toMatchObject({ questions: [], passPercent: 90, tries: 2 });
+  });
+
+  test("each problem is refused on the field 'test' with the question (and the option) it is in; nothing is stored", async () => {
+    const cases: [TestQuestion[], FieldError, { index: number; option?: number }][] = [
+      [[ok, choice(2, "  ", [["A", true], ["B", false]])], "testEmpty", { index: 1 }],
+      [[ok, choice(2, "Mis?", [["A", true], [" ", false]])], "testEmpty", { index: 1, option: 1 }],
+      [[open(1, "x".repeat(501))], "testTooLong", { index: 0 }],
+      [[choice(1, "Mis?", [["A", true], ["y".repeat(201), false]])], "testTooLong", { index: 0, option: 1 }],
+      [[choice(1, "Mis?", [["A", true]])], "testOptions", { index: 0 }],
+      [[choice(1, "Mis?", ["A", "B", "C", "D", "E", "F", "G"].map((t, j): [string, boolean] => [t, j === 0]))], "testOptions", { index: 0 }],
+      [[ok, choice(2, "Mis?", [["A", false], ["B", false]])], "testNoCorrect", { index: 1 }],
+      [Array.from({ length: 51 }, (_, i) => open(i + 1, `Küsimus ${i + 1}`)), "testTooMany", { index: -1 }],
+    ];
+    for (const [questions, code, at] of cases) expect(await withTest({ questions }), code).toEqual({ ok: false, error: "invalid", fields: { test: code }, at });
+    expect(await storedTest(online.id)).toBeNull();
+    // the limits themselves are fine
+    expect(await withTest({ questions: [open(1, "x".repeat(500)), choice(2, "Mis?", [["y".repeat(200), true], ["B", false], ["C", false], ["D", false], ["E", false], ["F", false]])] })).toMatchObject({ ok: true });
+    expect(await withTest({ questions: Array.from({ length: 50 }, (_, i) => open(i + 1, `Küsimus ${i + 1}`)) })).toMatchObject({ ok: true });
+  });
+
+  test("the pass mark is 1–100 and the tries 1–10, whole numbers, never blank: each refused on its own field", async () => {
+    const cases = [
+      ["0", "3", { testPassPercent: "whole" }],
+      ["101", "3", { testPassPercent: "whole" }],
+      ["", "3", { testPassPercent: "whole" }],
+      ["80,5", "3", { testPassPercent: "whole" }],
+      ["80", "0", { testTries: "whole" }],
+      ["80", "11", { testTries: "whole" }],
+      ["80", "kolm", { testTries: "whole" }],
+      ["", "", { testPassPercent: "whole", testTries: "whole" }],
+    ] as const;
+    for (const [passPercent, tries, fields] of cases) expect(fieldsOf(await withTest({ questions: [ok], passPercent, tries })), `${passPercent} / ${tries}`).toEqual(fields);
+    expect(await storedTest(online.id)).toBeNull();
+    expect(await withTest({ questions: [ok], passPercent: "1", tries: "10" })).toMatchObject({ ok: true });
+    expect(await withTest({ questions: [ok], passPercent: "100", tries: "1" })).toMatchObject({ ok: true });
+    expect(await storedTest(online.id)).toMatchObject({ passPercent: 100, tries: 1 });
+  });
+
+  test("a contact course has no test: a draft's test is not stored, and switching an e-course to contact deletes its row", async () => {
+    expect(await withTest({ questions: [ok] })).toMatchObject({ ok: true });
+    expect(await storedTest(online.id)).not.toBeNull();
+    expect(await save({ ...(await load(online.id)), type: "contact", priceGroup: "100" })).toMatchObject({ ok: true });
+    expect(await storedTest(online.id)).toBeNull();
+    expect((await getCourseForEdit(db, online.id))!.test).toBeNull();
+    expect(await save({ ...(await load(contact.id)), test: { questions: [ok], passPercent: "80", tries: "3" } })).toMatchObject({ ok: true });
+    expect(await storedTest(contact.id)).toBeNull();
+    // back to an e-course: the test it is saved with is stored again
+    expect(await save({ ...(await load(online.id)), type: "e_learning", price: "95", test: { questions: [ok], passPercent: "80", tries: "3" } })).toMatchObject({ ok: true });
+    expect(await storedTest(online.id)).toMatchObject({ questions: [{ id: qid(1) }], passPercent: 80, tries: 3 });
+  });
+
+  test("a draft without the test (an editor page opened before the deploy) still saves: the e-course gets the defaults, no questions", async () => {
+    const older: Partial<CourseDraft> = { ...(await load(online.id)) };
+    delete older.test;
+    expect(await saveCourseForm(db, form({ data: JSON.stringify(older) }))).toMatchObject({ ok: true });
+    expect(await storedTest(online.id)).toMatchObject({ questions: [], passPercent: 80, tries: 3 });
+  });
+
+  test("a pasted question or option is cleaned (control characters, NUL): a question keeps its lines, an option is one line", async () => {
+    const pasted: TestQuestion = {
+      id: qid(1),
+      kind: "choice",
+      text: "Esimene\u0000 rida\nTeine rida",
+      options: [
+        { id: oid(1, 0), text: "Ük\u000bs", correct: true },
+        { id: oid(1, 1), text: "Ka\r\nks", correct: false },
+      ],
+    };
+    expect(await withTest({ questions: [pasted] })).toMatchObject({ ok: true });
+    expect((await storedTest(online.id))!.questions).toEqual([
+      { id: qid(1), kind: "choice", text: "Esimene rida\nTeine rida", options: [{ id: oid(1, 0), text: "Ük s", correct: true }, { id: oid(1, 1), text: "Ka ks", correct: false }] },
+    ]);
+  });
+
+  test("an e-course's points have the headings' limits: more than 30, or one over 120 characters, is refused on its field", async () => {
+    const e = await load(online.id);
+    expect(fieldsOf(await save({ ...e, protocolStages: Array.from({ length: 31 }, (_, i) => `Punkt ${i + 1}`) }))).toEqual({ protocolStages: "tooMany" });
+    expect(fieldsOf(await save({ ...e, protocolStages: ["x".repeat(121)] }))).toEqual({ protocolStages: "tooLong" });
+    expect((await getCourseForEdit(db, online.id))!.protocolStages).toEqual([]);
   });
 });

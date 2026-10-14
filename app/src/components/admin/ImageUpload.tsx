@@ -3,6 +3,7 @@
 import { useId, useRef, useState } from "react";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
+import { ShrinkError, shrinkImage, type ShrinkOptions, type ShrinkProblem } from "@/lib/shrink-image";
 import ui from "./ui.module.css";
 import styles from "./editor.module.css";
 
@@ -11,51 +12,18 @@ export const MAX_EDGE = 2400;
 const ACCEPT = ["image/jpeg", "image/png", "image/webp"];
 /** The server's limit (MAX_IMAGE_BYTES; Vercel refuses request bodies over 4.5 MB); checked here too so a hopeless upload is not sent. */
 const MAX_BYTES = 4 * 1024 * 1024;
-/** Larger originals are not even opened (a phone photo is 3–12 MB). */
-const MAX_SOURCE_BYTES = 60 * 1024 * 1024;
 const QUALITY = 0.86;
+/**
+ * The admin's images (lib/shrink-image.ts, moved there in the e-course completion phase): at most 2400 px, JPEG stays JPEG at 0.86, PNG and
+ * WebP become WebP (PNG where the browser cannot write WebP), at most 4 MB; originals over 60 MB are not opened.
+ */
+const SHRINK: ShrinkOptions = { maxEdge: MAX_EDGE, quality: QUALITY, maxBytes: MAX_BYTES, accept: ACCEPT, output: "keep" };
 
-type Problem = "type" | "size" | "decode" | "session" | "storage" | "server";
+type Problem = ShrinkProblem | "session" | "storage" | "server";
 class UploadProblem extends Error {
   constructor(readonly problem: Problem) {
     super(problem);
   }
-}
-
-/**
- * Draws the image on a canvas at most MAX_EDGE px on its longest side and encodes it again: JPEG stays JPEG, PNG and
- * WebP become WebP (transparency kept; a browser that cannot write WebP gives PNG). A canvas holds pixels only, so the
- * new file has no EXIF data (camera, GPS position) or other metadata. createImageBitmap applies the EXIF orientation
- * first, so portrait photos stay upright.
- */
-export async function shrinkImage(file: File): Promise<File> {
-  if (!ACCEPT.includes(file.type)) throw new UploadProblem("type");
-  if (file.size > MAX_SOURCE_BYTES) throw new UploadProblem("size");
-  let bitmap: ImageBitmap;
-  try {
-    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-  } catch {
-    throw new UploadProblem("decode");
-  }
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new UploadProblem("decode");
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
-  const wanted = file.type === "image/jpeg" ? "image/jpeg" : "image/webp";
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, wanted, QUALITY));
-  if (!blob) throw new UploadProblem("decode");
-  const type = ACCEPT.includes(blob.type) ? blob.type : "image/png";
-  if (blob.size > MAX_BYTES) throw new UploadProblem("size");
-  const ext = type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png";
-  // a neutral name: the visitor's file name (often a date, a person's name) is not sent
-  return new File([blob], `pilt.${ext}`, { type });
 }
 
 /** Sends one prepared image to /api/admin/upload; its key. */
@@ -80,7 +48,7 @@ async function send(file: File): Promise<string> {
 type Status = { kind: "idle" } | { kind: "busy"; text: string } | { kind: "done"; text: string } | { kind: "error"; text: string };
 
 /**
- * "Lisa pilte": picks images, makes each smaller and metadata-free in the browser (shrinkImage) and uploads it; the
+ * "Lisa pilte": picks images, makes each smaller and metadata-free in the browser (lib/shrink-image.ts shrinkImage) and uploads it; the
  * keys of the stored images go to `onUploaded` in the order picked. The server checks type, size and content again.
  */
 export function ImageUpload({ onUploaded, multiple = false, label }: { onUploaded: (keys: string[]) => void; multiple?: boolean; label?: string }) {
@@ -98,11 +66,11 @@ export function ImageUpload({ onUploaded, multiple = false, label }: { onUploade
       const file = queue.current.shift()!;
       setStatus({ kind: "busy", text: p.total > 1 ? fill(t.uploading, { n: p.done + 1, total: p.total }) : t.preparing });
       try {
-        const key = await send(await shrinkImage(file));
+        const key = await send(await shrinkImage(file, SHRINK));
         p.added++;
         onUploaded([key]); // one by one, in the order picked; the gallery adds to its list as it is by then
       } catch (e) {
-        p.problem = e instanceof UploadProblem ? e.problem : "server";
+        p.problem = e instanceof UploadProblem || e instanceof ShrinkError ? e.problem : "server";
       }
       p.done++;
     }

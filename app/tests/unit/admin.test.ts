@@ -129,6 +129,7 @@ describe("admin menu (prototype B sidebar, A1)", () => {
       "Koolitused",
       "Kalender",
       "Registreerimised",
+      "Hindamine",
       "Maksed",
       "Tagasiside",
       "Õpilased",
@@ -145,6 +146,9 @@ describe("admin menu (prototype B sidebar, A1)", () => {
     for (const s of SECTIONS) expect(s.href).toMatch(/^\/admin(\/[a-z]+)?$/);
     expect(adminEt.shell.viewSite).toBe("Vaata lehte");
     expect(adminEt.shell.logout).toBe("Logi välja");
+    // Hindamine (e-course completion, spec §5.2): its own address, its badge's words for a screen reader
+    expect(SECTIONS.find((s) => s.key === "assessment")).toEqual({ key: "assessment", href: "/admin/hindamine", icon: "check" });
+    expect(adminEt.shell.badgeAssessment).toBe("{n} ootab hindamist");
   });
   test("the status labels are Maria's words; the old 'e-learning purchases will come with the payments' note is gone (they show on Maksed and in the student's drawer)", () => {
     expect(adminEt.registrations.status).toEqual({ awaiting_prepayment: "Ootab ettemaksu", confirmed: "Kinnitatud", cancelled: "Tühistatud" });

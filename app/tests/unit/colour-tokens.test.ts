@@ -44,6 +44,11 @@ const COURSE_CSS = [
   "src/components/account/AccountPage.module.css",
   "src/components/account/ProtocolPage.module.css",
   "src/components/account/FeedbackForm.module.css",
+  // the student's practical work (e-course completion)
+  "src/components/account/PracticalPage.module.css",
+  "src/components/account/CompletionSteps.module.css",
+  // the student's knowledge test (e-course completion, Task 6)
+  "src/components/account/TestPage.module.css",
   // the admin's Õpilased and its read-only "view as client" (phase 2a Task 9)
   "src/components/admin/ClientDrawer.module.css",
   "src/components/admin/list-table.module.css",
@@ -60,9 +65,16 @@ const COURSE_CSS = [
   "src/app/admin/(panel)/overview.module.css",
   // the course editor's "Moodulid ja õppetunnid" and the lesson drawer (phase 3a Task 5)
   "src/components/admin/LessonsEditor.module.css",
+  // Hindamine and the test review (e-course completion)
+  "src/app/admin/(panel)/hindamine/assessment.module.css",
+  "src/components/admin/TestReview.module.css",
   // the site's modal dialog (the campaign popup and the account's change request)
   "src/components/ui/modal.module.css",
   "src/components/site/CampaignPopup.module.css",
+  // the course editor's "Teadmiste test" (e-course completion, Task 3)
+  "src/components/admin/TestEditor.module.css",
+  // Maria's assessment screen and its photo viewer (phase e-course completion, Task 11)
+  "src/components/admin/Assessment.module.css",
 ];
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""); // comments aside

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { PROTOCOL_LIMITS, type ProtocolStatus, type ScreenStudentView } from "@/domain/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { GrowingText } from "./GrowingText";
 import { SendAll, StudentSend } from "./ProtocolSend";
-import { getScreen, keepReading, ProtocolAutosave, serverDraft, statusOf, type Conflict, type Entry, type ReadScreen, type SaveStatus, type ScreenSource } from "./protocol-autosave";
+import { getScreen, keepReading, postSave, ProtocolAutosave, serverDraft, statusOf, type Conflict, type Entry, type ReadScreen, type SaveStatus, type ScreenOwner, type ScreenSource } from "./protocol-autosave";
 import ui from "./ui.module.css";
 import styles from "./ProtocolScreen.module.css";
 
@@ -14,10 +14,18 @@ import styles from "./ProtocolScreen.module.css";
 export type { ScreenStudentView };
 
 /**
- * The screen's students. `single`: one registration's screen (an individual course): its "Saada" is the primary button (Task 6). `source`: the
- * address the page was made from, which the screen reads its data from again (GET /api/admin/protokoll).
+ * The screen's students. `single`: one registration's or one access's screen: its send is the primary button (Task 6). `source`: the address the
+ * page was made from, which the screen reads its data from again (GET /api/admin/protokoll). `owner`: whose protocols they are — absent, a contact
+ * course's registrations (the course day); "access", one e-course access (Maria's assessment, phase e-course completion: its saves name the
+ * access, and this browser keeps its copies under keys of its own).
  */
-export type ScreenView = { single: boolean; source: ScreenSource; students: ScreenStudentView[] };
+export type ScreenView = { single: boolean; source: ScreenSource; students: ScreenStudentView[]; owner?: ScreenOwner };
+
+/**
+ * What a screen's own parts (the assessment's: AssessmentScreen.tsx) get of the protocol they sit in: the engine and its entry, whether the boxes
+ * are read-only — `locked` (sent, until "Muuda" or `opened`), `frozen` (locked, or a send on its way) — and the "Muuda" state.
+ */
+export type EditorState = { engine: ProtocolAutosave; entry: Entry; locked: boolean; frozen: boolean; unlocked: boolean; onUnlock(on: boolean): void };
 
 type T = typeof adminEt.protocols;
 
@@ -70,12 +78,26 @@ export function statusLine(s: SaveStatus, t: T): { text: string; failing: boolea
  * minutes is shown, while the text is still unread when the tab is shown or the network is back, and after a refused read (signed out) when the tab
  * is shown or focused: protocol-autosave.ts keepReading), and the
  * engine then reconciles each student with it (reconcile). A student the answer no longer lists stays on the screen, saying she is gone. `read` is
- * the reading, replaceable for the tests.
+ * the reading, replaceable for the tests. For an e-course access (AssessmentScreen.tsx) three optional props: `stageExtra` under each stage's
+ * heading (the photos and the verdicts), `sendBar` instead of the protocol's own sends ("Saada hinnang"), and `opened` (a sent protocol shows open
+ * without "Muuda": the access's new round waits for Maria).
  */
-export function ProtocolScreen({ view, read = getScreen }: { view: ScreenView; read?: ReadScreen }) {
+export function ProtocolScreen({
+  view,
+  read = getScreen,
+  stageExtra,
+  sendBar,
+  opened = false,
+}: {
+  view: ScreenView;
+  read?: ReadScreen;
+  stageExtra?: (index: number, state: EditorState) => ReactNode;
+  sendBar?: (entry: Entry, state: EditorState) => ReactNode;
+  opened?: boolean;
+}) {
   const t = adminEt.protocols;
   const [engine] = useState(() => {
-    const made = new ProtocolAutosave(view.students.map(serverDraft));
+    const made = new ProtocolAutosave(view.students.map(serverDraft), postSave, { owner: view.owner ?? "registration" });
     made.awaitFresh();
     return made;
   });
@@ -175,6 +197,9 @@ export function ProtocolScreen({ view, read = getScreen }: { view: ScreenView; r
             primary={view.single}
             unlocked={unlocked.has(entry.registrationId)}
             onUnlock={(on) => unlock(entry.registrationId, on)}
+            opened={opened}
+            stageExtra={stageExtra}
+            sendBar={sendBar}
           />
         )}
       </div>
@@ -182,7 +207,7 @@ export function ProtocolScreen({ view, read = getScreen }: { view: ScreenView; r
   );
 }
 
-/** One student's protocol: her name and the save's status, a conflict's notice, the practice part's boxes, the general notes. */
+/** One student's protocol: her name and the save's status, a conflict's notice, the practice part's boxes, the general notes, the sends. */
 function StudentEditor({
   engine,
   entry,
@@ -190,6 +215,9 @@ function StudentEditor({
   primary,
   unlocked,
   onUnlock,
+  opened,
+  stageExtra,
+  sendBar,
 }: {
   engine: ProtocolAutosave;
   entry: Entry;
@@ -197,14 +225,18 @@ function StudentEditor({
   primary: boolean;
   unlocked: boolean;
   onUnlock(on: boolean): void;
+  opened: boolean;
+  stageExtra?: (index: number, state: EditorState) => ReactNode;
+  sendBar?: (entry: Entry, state: EditorState) => ReactNode;
 }) {
   const t = adminEt.protocols;
   const uid = useId();
   const id = entry.registrationId;
-  // a sent protocol is read-only until "Muuda"
-  const locked = statusOf(entry) === "sent" && !unlocked;
+  // a sent protocol is read-only until "Muuda" (or `opened`: an access's new round)
+  const locked = statusOf(entry) === "sent" && !unlocked && !opened;
   // read-only while it is sent, and while a send is on its way (its text must stay the one sent)
   const frozen = locked || entry.sending;
+  const state: EditorState = { engine, entry, locked, frozen, unlocked, onUnlock };
   const line = statusLine(entry.status, t);
   const sentAt = entry.sentAt ? new Date(entry.sentAt) : null;
   // "Muuda" pressed: its button is gone (the hint takes its place), so the focus goes to the first box, or to the general notes when the
@@ -250,13 +282,14 @@ function StudentEditor({
             note={i}
             onChange={(v) => engine.editNote(id, i, v)}
             onBlur={() => void engine.save(id)}
+            extra={stageExtra?.(i, state)}
           />
         ))}
       </div>
       <div className={styles.part}>
         <NoteBox id={`${uid}-general`} label={t.general} heading value={entry.content.generalNote} readOnly={frozen} onChange={(v) => engine.editGeneral(id, v)} onBlur={() => void engine.save(id)} />
       </div>
-      <StudentSend engine={engine} id={id} primary={primary} unlocked={unlocked} onUnlock={onUnlock} />
+      {sendBar ? sendBar(entry, state) : <StudentSend engine={engine} id={id} primary={primary} unlocked={unlocked} onUnlock={onUnlock} />}
     </section>
   );
 }
@@ -274,6 +307,7 @@ function NoteBox({
   onBlur,
   note,
   heading = false,
+  extra,
 }: {
   id: string;
   label: string;
@@ -284,6 +318,8 @@ function NoteBox({
   /** The stage's index (data-note); none: the general notes (data-general). */
   note?: number;
   heading?: boolean;
+  /** Under the label (the stage's heading), above the box: an access's photos and verdicts of the stage. */
+  extra?: ReactNode;
 }) {
   const t = adminEt.protocols;
   const over = value.length > PROTOCOL_LIMITS.note;
@@ -292,6 +328,7 @@ function NoteBox({
       <label htmlFor={id} className={heading ? styles.generalLabel : undefined}>
         {label}
       </label>
+      {extra}
       <GrowingText
         id={id}
         className={`${ui.textarea} ${styles.note}`}

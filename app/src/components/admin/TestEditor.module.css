@@ -1,0 +1,44 @@
+/* The course editor's "Teadmiste test" (e-course completion, spec §5.1): the parts of a question card, and an option's row (its field | "Õige" | ×).
+   Built on editor.module.css's list rows (.item, .num, .tools, .iconBtn) and its checkbox row (.check); no colour of its own. */
+
+.body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.options {
+  display: grid;
+  gap: 8px;
+}
+
+.optionList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.correct {
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+/* a phone: the option's field on its own line, "Õige" and × under it */
+@media (max-width: 640px) {
+  .option {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .option > input[type="text"] {
+    grid-column: 1 / -1;
+  }
+}

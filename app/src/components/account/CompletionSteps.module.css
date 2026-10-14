@@ -1,0 +1,116 @@
+/* "Lõpetamine" under the e-course's modules (e-course completion, spec §4.1): the path's steps as a numbered column between thin lines (the
+   modules' rows): a round mark (the step's number while it is ahead, ✓ done, a lock while it waits), the step's name, its state in one line,
+   and the way in — the page's one button for the step she acts in, a text link otherwise. Every row and link is at least 44 px. The page is
+   EcoursePage.module.css's. Tokens only; nothing moves. */
+
+.block {
+  max-width: 750px;
+  margin-top: clamp(32px, 4vw, 48px);
+}
+
+.title {
+  margin: 0;
+  font: 400 clamp(26px, 3vw, 34px) / 1.15 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.steps {
+  margin: 16px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 14px;
+  min-height: 44px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted-2);
+  font: 400 13px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.step[data-step-state="open"] .mark,
+.step[data-step-state="review"] .mark,
+.step[data-step-state="fix"] .mark {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.step[data-step-state="used"] .mark {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.step[data-step-state="done"] .mark {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.body {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  color: var(--ink);
+  font: 600 16px/1.4 var(--font-body);
+}
+
+.line {
+  margin: 0;
+  color: var(--ink-soft);
+  font: 400 15px/1.5 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.step[data-step-state="locked"] .name,
+.step[data-step-state="locked"] .line {
+  color: var(--muted);
+}
+
+.step[data-step-state="fix"] .line,
+.step[data-step-state="used"] .line {
+  color: var(--warn);
+}
+
+.step[data-step-state="done"] .line {
+  color: var(--ok);
+}
+
+.action {
+  margin-top: 10px;
+}
+
+.protocol {
+  margin: 18px 0 0;
+}
+
+@media (max-width: 640px) {
+  /* a whole-width button: the easiest target on a phone */
+  .main {
+    width: 100%;
+  }
+
+  /* its label wraps on a 360 px phone ("Открыть практическую работу" and the arrow) instead of running off it; two classes outweigh ui.btn's
+     nowrap whichever stylesheet comes first */
+  .step .main {
+    white-space: normal;
+    text-align: center;
+  }
+}

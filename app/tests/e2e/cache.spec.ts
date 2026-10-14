@@ -131,10 +131,15 @@ test("per-visitor addresses share the one cached page, and nothing of the query 
 // address: the shell knows nothing of the lesson, which comes from /api/konto/kursus/<slug>/<lesson> after the page has loaded).
 const ECOURSE_SHELL = `/konto/kursus/${SEED_ECOURSE_SLUG}`;
 const LESSON_SHELL = `${ECOURSE_SHELL}/1`;
+// e-course completion: a course's knowledge test (/konto/kursus/<slug>/test), the same kind of shell
+const TEST_SHELL = `${ECOURSE_SHELL}/test`;
+// e-course completion: a course's practical work (/konto/kursus/<slug>/praktiline), the same kind of shell
+const PRACTICAL_SHELL = `${ECOURSE_SHELL}/praktiline`;
 const ACCOUNT_SHELLS = [
   "/konto", "/ru/konto", "/konto/sisene", "/ru/konto/sisene", "/konto/lemmikud", "/ru/konto/lemmikud", "/konto/andmed", "/ru/konto/andmed",
   "/konto/protokoll", "/ru/konto/protokoll", "/konto/tagasiside", "/ru/konto/tagasiside",
-  ECOURSE_SHELL, `/ru${ECOURSE_SHELL}`, LESSON_SHELL, `/ru${LESSON_SHELL}`,
+  ECOURSE_SHELL, `/ru${ECOURSE_SHELL}`, LESSON_SHELL, `/ru${LESSON_SHELL}`, TEST_SHELL, `/ru${TEST_SHELL}`,
+  PRACTICAL_SHELL, `/ru${PRACTICAL_SHELL}`,
 ];
 
 test("the account's pages come from the cache with no Set-Cookie, for a signed-in browser too; /api/konto/me never does (phase 2a)", async ({ request }) => {
@@ -233,7 +238,7 @@ const leak = (text: string): string => {
 };
 
 test("an account shell asked for with a query is answered with a 303 to the fragment, by every method, and the cached shell never holds the query", async ({ request }) => {
-  test.setTimeout(480_000); // sixteen shells
+  test.setTimeout(600_000); // twenty shells
   for (const path of ACCOUNT_SHELLS) {
     revalidateLocalPages(); // the first request that reaches a shell now renders it: it must not be one with a query
     for (const method of ["GET", "HEAD", "POST", "PUT", "DELETE"]) {

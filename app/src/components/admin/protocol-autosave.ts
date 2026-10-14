@@ -7,7 +7,8 @@ import { toStorable } from "@/lib/to-storable"; // (this file runs on old iPads:
 // - until the server confirms a text, this browser keeps it (localStorage), and a reload or a new tab resumes it (start); a browser that
 //   cannot keep it (storage full or blocked) says so (Entry.kept);
 // - each tab of the browser keeps its own copy (`mslab-protocol:<registration>:<tab>`, the texts it sent without an answer apart in
-//   `mslab-protocol-sent:…`, written only when they change) and its own notice (`mslab-protocol-conflict:<registration>:<tab>`): a tab never
+//   `mslab-protocol-sent:…`, written only when they change; an e-course access's protocol, the owner "access", under `mslab-practical…` instead)
+//   and its own notice (`mslab-protocol-conflict:<registration>:<tab>`): a tab never
 //   removes or overwrites another tab's. A new tab resumes every copy it finds (a closed tab's, or one of no tab): the newest one is the
 //   screen's text, the others' words go into the notice, and those copies go only once their words are kept by this tab or on the server;
 // - a save that fails is tried again after 2, 5, 10, 20, then every 30 s, and at once when the browser is back online or the tab is shown
@@ -55,6 +56,7 @@ export type SaveStatus =
 
 /** A protocol as the server holds it (the page's, or a 409's). `version` 0: none yet. */
 export type ServerDraft = {
+  /** The registration's id; on an access's screen (owner "access") the access's. */
   registrationId: number;
   /**
    * The protocol's row; null: none yet (or a server that does not say). One deleted with the account and made again is another row, even at the
@@ -123,12 +125,37 @@ export const KEEPALIVE_MAX_BYTES = 64_000;
 /** The answers that say a save was not stored: the route's refusals (not a save, the version check, too big) and its sign-in check. */
 const REFUSALS: ReadonlySet<number> = new Set([400, 401, 403, 404, 409, 413]);
 
-/** A tab's copy of a protocol (`tab`), or one of no tab (an older one, kept by an older screen): both are resumed. */
-export const localKey = (registrationId: number, tab?: string): string => `mslab-protocol:${registrationId}${tab ? `:${tab}` : ""}`;
+/**
+ * Whose protocols a screen edits: a contact course's registrations (the course day), or an e-course access (Maria's assessment, phase e-course
+ * completion). Their ids are of two tables, so one number can be both: their saves name the owner (bodyOf), and this browser keeps their copies
+ * under keys of their own (ownerKeys).
+ */
+export type ScreenOwner = "registration" | "access";
+
+/** The keys of one owner's protocols in this browser's storage (see localKey, sentKey and conflictKey below). */
+export type OwnerKeys = {
+  localKey: (id: number, tab?: string) => string;
+  sentKey: (id: number, tab: string) => string;
+  conflictKey: (id: number, tab?: string) => string;
+};
+
+/** A registration's keys are `mslab-protocol…`, as before the access owner came; an access's are `mslab-practical…`. */
+export function ownerKeys(owner: ScreenOwner): OwnerKeys {
+  const prefix = owner === "access" ? "mslab-practical" : "mslab-protocol";
+  return {
+    localKey: (id, tab) => `${prefix}:${id}${tab ? `:${tab}` : ""}`,
+    sentKey: (id, tab) => `${prefix}-sent:${id}:${tab}`,
+    conflictKey: (id, tab) => `${prefix}-conflict:${id}${tab ? `:${tab}` : ""}`,
+  };
+}
+
+const REGISTRATION_KEYS = ownerKeys("registration");
+/** A tab's copy of a registration's protocol (`tab`), or one of no tab (an older one, kept by an older screen): both are resumed. */
+export const localKey = REGISTRATION_KEYS.localKey;
 /** The texts a tab sent without an answer, apart from its copy: written when they change, not with every keystroke. */
-export const sentKey = (registrationId: number, tab: string): string => `mslab-protocol-sent:${registrationId}:${tab}`;
+export const sentKey = REGISTRATION_KEYS.sentKey;
 /** A tab's notice text (or one of no tab), kept until "Selge". */
-export const conflictKey = (registrationId: number, tab?: string): string => `mslab-protocol-conflict:${registrationId}${tab ? `:${tab}` : ""}`;
+export const conflictKey = REGISTRATION_KEYS.conflictKey;
 
 const copy = (c: Content): Content => ({ notes: [...c.notes], generalNote: c.generalNote });
 
@@ -287,16 +314,16 @@ function parseCopy(raw: string | null): LocalCopy | null {
 type FoundCopy = { copy: LocalCopy; held: Held[] };
 
 /** Every copy of a protocol in this browser (every tab's, and one of no tab), oldest first; `own`: a tab's key read even when not listed. */
-function readCopies(storage: Storage | null, registrationId: number, own?: string): FoundCopy[] {
+function readCopies(storage: Storage | null, registrationId: number, own?: string, keys: OwnerKeys = REGISTRATION_KEYS): FoundCopy[] {
   if (!storage) return [];
-  const base = localKey(registrationId);
+  const base = keys.localKey(registrationId);
   const out: FoundCopy[] = [];
-  for (const key of keysOf(storage, base, own ? [localKey(registrationId, own)] : [])) {
+  for (const key of keysOf(storage, base, own ? [keys.localKey(registrationId, own)] : [])) {
     const raw = getRaw(storage, key);
     const found = parseCopy(raw);
     if (!found || raw === null) continue;
     const held: Held[] = [{ key, raw }];
-    const tabSent = sentKey(registrationId, key === base ? "" : key.slice(base.length + 1));
+    const tabSent = keys.sentKey(registrationId, key === base ? "" : key.slice(base.length + 1));
     const sentRaw = getRaw(storage, tabSent);
     const sent = parseJson(sentRaw);
     if (sentRaw !== null && isContents(sent)) {
@@ -311,10 +338,10 @@ function readCopies(storage: Storage | null, registrationId: number, own?: strin
 type FoundNotice = { parts: Part[]; held: Held };
 
 /** Every notice of a protocol in this browser (every tab's, and one of no tab), each with its parts. */
-function readNotices(storage: Storage | null, registrationId: number, own?: string): FoundNotice[] {
+function readNotices(storage: Storage | null, registrationId: number, own?: string, keys: OwnerKeys = REGISTRATION_KEYS): FoundNotice[] {
   if (!storage) return [];
   const out: FoundNotice[] = [];
-  for (const key of keysOf(storage, conflictKey(registrationId), own ? [conflictKey(registrationId, own)] : [])) {
+  for (const key of keysOf(storage, keys.conflictKey(registrationId), own ? [keys.conflictKey(registrationId, own)] : [])) {
     const raw = getRaw(storage, key);
     const value = parseJson(raw);
     const whole = parseConflict(value);
@@ -326,17 +353,17 @@ function readNotices(storage: Storage | null, registrationId: number, own?: stri
   return out;
 }
 
-/** A copy this browser kept of a protocol: `tab`'s, or without it the newest of all; null: none, storage blocked, or not a copy of this code. */
-export function readLocal(storage: Storage | null, registrationId: number, tab?: string): LocalCopy | null {
-  const all = readCopies(storage, registrationId, tab);
-  const wanted = tab ? all.filter((c) => c.held[0].key === localKey(registrationId, tab)) : all;
+/** A copy this browser kept of a protocol: `tab`'s, or without it the newest of all; null: none, storage blocked, or not a copy of this code. `keys`: the owner's (a registration's by default). */
+export function readLocal(storage: Storage | null, registrationId: number, tab?: string, keys: OwnerKeys = REGISTRATION_KEYS): LocalCopy | null {
+  const all = readCopies(storage, registrationId, tab, keys);
+  const wanted = tab ? all.filter((c) => c.held[0].key === keys.localKey(registrationId, tab)) : all;
   return wanted.length > 0 ? wanted[wanted.length - 1].copy : null;
 }
 
 /** A notice this browser kept (its words, until "Selge"): `tab`'s, or without it every tab's as one; null: none, or not one of this code. */
-export function readConflict(storage: Storage | null, registrationId: number, tab?: string): Conflict | null {
-  const all = readNotices(storage, registrationId, tab);
-  const wanted = tab ? all.filter((n) => n.held.key === conflictKey(registrationId, tab)) : all;
+export function readConflict(storage: Storage | null, registrationId: number, tab?: string, keys: OwnerKeys = REGISTRATION_KEYS): Conflict | null {
+  const all = readNotices(storage, registrationId, tab, keys);
+  const wanted = tab ? all.filter((n) => n.held.key === keys.conflictKey(registrationId, tab)) : all;
   return combine(capParts(wanted.flatMap((n) => n.parts)));
 }
 
@@ -389,8 +416,11 @@ export function readDraft(registrationId: number, value: unknown): ServerDraft |
   };
 }
 
-/** What a save sends (server/protocols.ts SaveInput): `protocolId` is the row the text builds on (null: none yet), refused by any other. */
-export type SaveBody = { registrationId: number; protocolId: number | null; version: number; titles: string[]; notes: string[]; generalNote: string };
+/**
+ * What a save sends (server/protocols.ts SaveInput): its owner — `registrationId`, or `accessId` for an access's screen, never both — and
+ * `protocolId`, the row the text builds on (null: none yet), refused by any other.
+ */
+export type SaveBody = { registrationId?: number; accessId?: number; protocolId: number | null; version: number; titles: string[]; notes: string[]; generalNote: string };
 /** The server's answer to a save; null when none came (no connection, the 10 s ran out). */
 export type Answer = { status: number; body: unknown } | null;
 /** `keepalive`: the request outlives the page (sent while it is put away). */
@@ -450,6 +480,9 @@ export class ProtocolAutosave {
   private readonly entries = new Map<number, Entry>();
   private readonly order: number[];
   private readonly send: Send;
+  /** Whose protocols these are: their saves name it, and their copies are under its keys. */
+  private readonly owner: ScreenOwner;
+  private readonly keys: OwnerKeys;
   /** This page's name for its own keys in the browser's storage (each page load has its own, so a duplicated tab never shares them). */
   private readonly tab: string;
   /**
@@ -501,9 +534,12 @@ export class ProtocolAutosave {
   private revision = 0;
   private keepaliveLeft = KEEPALIVE_MAX_BYTES;
 
-  constructor(drafts: readonly ServerDraft[], send: Send = postSave, options: { tab?: string } = {}) {
+  /** `owner`: whose protocols these are (absent: registrations); `tab`: this page's name for its keys (a test gives one). */
+  constructor(drafts: readonly ServerDraft[], send: Send = postSave, options: { tab?: string; owner?: ScreenOwner } = {}) {
     this.send = send;
     this.tab = options.tab ?? newTabName();
+    this.owner = options.owner ?? "registration";
+    this.keys = ownerKeys(this.owner);
     this.order = drafts.map((d) => d.registrationId);
     for (const d of drafts) this.entries.set(d.registrationId, entryOf(d));
   }
@@ -847,7 +883,7 @@ export class ProtocolAutosave {
     e.sendError = null; // (the line that told her to look at the notice goes with it)
     this.parts.delete(id);
     this.unkept.delete(id);
-    removeKey(this.storage, conflictKey(id, this.keyTab));
+    removeKey(this.storage, this.keys.conflictKey(id, this.keyTab));
     if (this.uncertain(e)) this.keep(e);
     else this.dropCopy(e);
     this.changed();
@@ -894,17 +930,17 @@ export class ProtocolAutosave {
    */
   private resume(e: Entry): void {
     const id = e.registrationId;
-    const own = (key: string) => key === localKey(id, this.keyTab) || key === sentKey(id, this.keyTab) || key === conflictKey(id, this.keyTab);
+    const own = (key: string) => key === this.keys.localKey(id, this.keyTab) || key === this.keys.sentKey(id, this.keyTab) || key === this.keys.conflictKey(id, this.keyTab);
     const server = { protocolId: e.protocolId, version: e.version, titles: e.titles, content: e.confirmed };
     const taken: Held[] = [];
     const parts: Conflict[] = [];
-    for (const notice of readNotices(this.storage, id, this.keyTab)) {
+    for (const notice of readNotices(this.storage, id, this.keyTab, this.keys)) {
       taken.push(notice.held);
       parts.push(...notice.parts);
     }
     let chosen: LocalCopy | null = null;
     let sent: Content[] = [];
-    for (const found of readCopies(this.storage, id, this.keyTab)) {
+    for (const found of readCopies(this.storage, id, this.keyTab, this.keys)) {
       taken.push(...found.held);
       if (found.copy.lost) parts.push(found.copy.lost);
       const plan = resumeLocal(server, found.copy);
@@ -936,8 +972,10 @@ export class ProtocolAutosave {
     return unsavedEntry(e) || this.unanswered.has(e.registrationId) || this.flying.has(e.registrationId);
   }
 
+  /** A save of the screen's text, naming its owner: a registration's exactly as before (the same fields in the same order), an access's by `accessId`. */
   private bodyOf(e: Entry): SaveBody {
-    return { registrationId: e.registrationId, protocolId: e.protocolId, version: e.version, titles: [...e.titles], notes: [...e.content.notes], generalNote: e.content.generalNote };
+    const text = { protocolId: e.protocolId, version: e.version, titles: [...e.titles], notes: [...e.content.notes], generalNote: e.content.generalNote };
+    return this.owner === "access" ? { accessId: e.registrationId, ...text } : { registrationId: e.registrationId, ...text };
   }
 
   /**
@@ -1126,7 +1164,7 @@ export class ProtocolAutosave {
   private storeNotice(e: Entry): boolean {
     const id = e.registrationId;
     const parts = this.parts.get(id) ?? [];
-    if (parts.length === 0 || writeKey(this.storage, conflictKey(id, this.keyTab), { ...combine(parts), parts })) {
+    if (parts.length === 0 || writeKey(this.storage, this.keys.conflictKey(id, this.keyTab), { ...combine(parts), parts })) {
       this.unkept.delete(id);
       return true;
     }
@@ -1163,8 +1201,8 @@ export class ProtocolAutosave {
   /** Nothing is left to keep: this page's copy goes, and so do the closed tabs' keys it took over. */
   private dropCopy(e: Entry): void {
     const id = e.registrationId;
-    removeKey(this.storage, localKey(id, this.keyTab));
-    removeKey(this.storage, sentKey(id, this.keyTab));
+    removeKey(this.storage, this.keys.localKey(id, this.keyTab));
+    removeKey(this.storage, this.keys.sentKey(id, this.keyTab));
     this.sentWritten.delete(id);
     e.kept = true;
     this.release(id);
@@ -1180,19 +1218,19 @@ export class ProtocolAutosave {
    */
   private keep(e: Entry): void {
     const id = e.registrationId;
-    if (!this.running && this.storage && getRaw(this.storage, localKey(id, this.keyTab)) === null) return;
+    if (!this.running && this.storage && getRaw(this.storage, this.keys.localKey(id, this.keyTab)) === null) return;
     if (this.unkept.has(id)) this.storeNotice(e);
     const notice = this.unkept.has(id) ? e.conflict : null;
     const value = { protocolId: e.protocolId, version: e.version, titles: e.titles, content: e.content, at: Date.now(), ...(notice?.lost ? { lost: notice } : {}) };
-    const copied = writeKey(this.storage, localKey(id, this.keyTab), value);
+    const copied = writeKey(this.storage, this.keys.localKey(id, this.keyTab), value);
     const flying = this.flying.get(id);
     const unanswered = this.unanswered.get(id) ?? [];
     const sent = flying ? remember(unanswered, flying) : unanswered;
     let sentKept = true;
     const last = this.sentWritten.get(id);
     if (!last || !sameList(last, sent)) {
-      if (sent.length === 0) removeKey(this.storage, sentKey(id, this.keyTab));
-      else sentKept = writeKey(this.storage, sentKey(id, this.keyTab), sent);
+      if (sent.length === 0) removeKey(this.storage, this.keys.sentKey(id, this.keyTab));
+      else sentKept = writeKey(this.storage, this.keys.sentKey(id, this.keyTab), sent);
       if (sentKept) this.sentWritten.set(id, sent);
     }
     e.kept = copied && sentKept && !this.unkept.has(id);
@@ -1239,8 +1277,11 @@ export class ProtocolAutosave {
 
 // ---------- reading the server's text again ----------
 
-/** Where the screen reads its data again: the session it shows (`?sessioon=`) or the one registration (`?registreering=`), as the page's address has it. */
-export type ScreenSource = { sessioon: number } | { registreering: number };
+/**
+ * Where the screen reads its data again, as the page's address has it: the session it shows (`?sessioon=`), the one registration
+ * (`?registreering=`), or the one e-course access (`?ligipaas=`, Maria's assessment).
+ */
+export type ScreenSource = { sessioon: number } | { registreering: number } | { ligipaas: number };
 /** The route's answer to a read; null when none came (no connection, the 10 s ran out). */
 export type ScreenAnswer = { status: number; body: unknown } | null;
 export type ReadScreen = (source: ScreenSource) => Promise<ScreenAnswer>;
@@ -1252,7 +1293,7 @@ export type ReadScreen = (source: ScreenSource) => Promise<ScreenAnswer>;
 export async function getScreen(source: ScreenSource): Promise<ScreenAnswer> {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), SAVE_TIMEOUT_MS);
-  const query = "sessioon" in source ? `sessioon=${source.sessioon}` : `registreering=${source.registreering}`;
+  const query = "sessioon" in source ? `sessioon=${source.sessioon}` : "registreering" in source ? `registreering=${source.registreering}` : `ligipaas=${source.ligipaas}`;
   try {
     const res = await fetch(`/api/admin/protokoll?${query}`, { credentials: "same-origin", headers: { accept: "application/json" }, cache: "no-store", signal: abort.signal });
     return { status: res.status, body: await res.json().catch(() => null) };

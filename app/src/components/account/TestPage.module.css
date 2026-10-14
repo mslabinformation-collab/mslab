@@ -1,0 +1,211 @@
+/* The student's knowledge test (e-course completion, spec §4.2): Maria's questions in one column, numbered; each choice a row with its own
+   radio or checkbox (the whole row is the 44 px target); the open answers with their count; the outcome's line, the inline confirmation and
+   Maria's comments. The page, its column and its title are AccountPage.module.css's. Tokens only; nothing moves. */
+
+.eyebrow {
+  margin: 0;
+  color: var(--muted);
+  font: 500 13px/1.4 var(--font-body);
+}
+
+.lead {
+  margin: 0;
+  color: var(--ink-soft);
+  font: 400 16px/1.55 var(--font-body);
+}
+
+.meta {
+  margin: 0;
+  color: var(--muted-2);
+  font: 500 14px/1.45 var(--font-body);
+}
+
+.status {
+  margin: 0;
+  font: 400 20px/1.45 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.form,
+.answers {
+  display: grid;
+  gap: 18px;
+  justify-self: stretch;
+  min-width: 0;
+}
+
+.questions {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.question {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 18px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.label {
+  padding: 0;
+  font: 600 16px/1.45 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font: 500 13px/1.4 var(--font-body);
+}
+
+.options {
+  display: grid;
+  gap: 8px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--heather);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 15px/1.4 var(--font-body);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.option input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+
+.option:has(input:checked) {
+  border-color: var(--ink);
+}
+
+.option:has(input:focus-visible) {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.question:disabled .option,
+.question:disabled .option input {
+  color: var(--ink-soft);
+  cursor: default;
+}
+
+.text {
+  width: 100%;
+  min-height: 110px;
+  padding: 12px 15px;
+  border: 1px solid var(--heather);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 16px/1.5 var(--font-body);
+  resize: vertical;
+}
+
+.text:read-only {
+  background: var(--canvas);
+  color: var(--ink-soft);
+  resize: none;
+}
+
+.text:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.count {
+  margin: 0;
+  justify-self: end;
+  color: var(--muted-2);
+  font: 400 12px/1.4 var(--font-body);
+}
+
+/* over the limit: the count in the warning colour, heavier (not colour alone), and the box's border to match */
+.countOver {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.text[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+
+.comment {
+  margin: 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--warn);
+  background: var(--canvas);
+  font: 400 15px/1.55 var(--font-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.commentLabel {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font: 600 13px/1.4 var(--font-body);
+}
+
+.problem {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.problemText {
+  margin: 0;
+  color: var(--bad);
+  font: 500 14px/1.45 var(--font-body);
+}
+
+.confirm {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.confirmText {
+  margin: 0;
+  font: 600 16px/1.45 var(--font-body);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.answersTitle {
+  margin: 0;
+  font: 400 24px/1.25 var(--font-display);
+}
+
+@media (max-width: 640px) {
+  /* the long primary buttons ("Попробовать ещё раз (осталось попыток: 2)", "Открыть практическую работу") wrap on a 360 px phone instead of
+     running off it; the element in the selector outweighs ui.btn's nowrap whichever stylesheet comes first */
+  button.long,
+  a.long {
+    white-space: normal;
+    text-align: center;
+  }
+}

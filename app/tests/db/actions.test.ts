@@ -706,7 +706,7 @@ describe("confirmation e-mails to the visitor (phase 2a Task 10)", () => {
     expect(mails()[0].to).toBe("maria@example.com"); // Maria's notification is the first of the two
     const [mail] = to(mails(), "test@example.com");
     expect(mail.subject).toBe("Registreering on vastu võetud — Kulmude baaskoolitus");
-    expect(mail.reply_to).toBeUndefined();
+    expect(mail.reply_to).toBe("maria@example.com"); // her answer reaches Maria's inbox (e-course completion, spec D8)
     for (const line of ["Tere, Test!", "Registreering on vastu võetud.", "Kulmude baaskoolitus", "14.11.2026 · 10:00", "Pärnu, MS LAB stuudio", "Koht kinnitatakse pärast vähemalt 50% ettemaksu laekumist.", "Ava minu konto:", "https://mslab.example/konto/sisene#email=test%40example.com"])
       expect(mail.text.split("\n"), line).toContain(line);
     // no prepayment setting: Maria sends an invoice
@@ -1017,7 +1017,8 @@ describe("confirmation e-mails to the visitor (phase 2a Task 10)", () => {
   test("a failing visitor e-mail never fails the submission or Maria's notification; the log holds no address, name or text", async () => {
     const [error, warn, info, log] = logs();
     const f = stubFetch((url, init) =>
-      url.includes("resend") && !String(init?.body).includes("maria@example.com") ? new Response("{}", { status: 500 }) : Response.json({ id: "email_1" }),
+      // by the recipient: the visitor's mail names Maria too, as its Reply-To (spec D8)
+      url.includes("resend") && !String(init?.body).includes('"to":"maria@example.com"') ? new Response("{}", { status: 500 }) : Response.json({ id: "email_1" }),
     );
     const { deps, flush } = setup({ secrets: true });
     expect(await handleRegistration(deps, group({ locale: "et", account: "on" }))).toEqual({ ok: true });

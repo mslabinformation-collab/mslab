@@ -51,6 +51,21 @@ const BROWSER_FILES = [
   "src/components/site/FavouriteButton.tsx",
   "src/components/site/CampaignPopup.tsx",
   "src/components/site/NewsletterPopup.tsx",
+  // e-course completion, Task 1: the rules the test and practical pages and the course editor share
+  "src/domain/completion.ts",
+  // e-course completion, Task 3: the course editor's "Teadmiste test" (it pulls domain/completion.ts into the browser)
+  "src/components/admin/TestEditor.tsx",
+  // e-course completion, Task 6: the student's test (a "use client" file, walked anyway: listed as the phase's entry point)
+  "src/components/account/TestPage.tsx",
+  // e-course completion, Task 8: the practical page, the shrink and the upload
+  "src/lib/shrink-image.ts",
+  "src/components/account/photo-upload.ts",
+  "src/components/account/PracticalPage.tsx",
+  "src/components/account/PhotoSlot.tsx",
+  // e-course completion, Task 9: the e-course page's steps
+  "src/components/account/CompletionSteps.tsx",
+  // e-course completion, Task 11: Maria's verdict taps
+  "src/components/admin/verdict-taps.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

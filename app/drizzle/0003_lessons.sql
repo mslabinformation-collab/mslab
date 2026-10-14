@@ -52,7 +52,7 @@ CREATE INDEX "lesson_progress_lesson" ON "lesson_progress" USING btree ("lesson_
 CREATE INDEX "lessons_module" ON "lessons" USING btree ("module_id","position");--> statement-breakpoint
 CREATE UNIQUE INDEX "lessons_video" ON "lessons" USING btree ("video_id");
 --> statement-breakpoint
--- Data step (drizzle-kit does not generate it): copy every course's module titles into course_modules, in order. courses.modules stays (migration 0008 drops it after the 3a deploy).
+-- Data step (drizzle-kit does not generate it): copy every course's module titles into course_modules, in order. courses.modules stays (migration 0009 drops it after the 3a deploy).
 INSERT INTO "course_modules" ("course_id", "position", "title")
 SELECT c."id", m.ord::int, m.value
 FROM "courses" c

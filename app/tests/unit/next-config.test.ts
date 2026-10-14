@@ -95,6 +95,18 @@ describe("next.config.ts headers()", () => {
       expect(valueFor(rules, path, "referrer-policy"), path).toBe("strict-origin-when-cross-origin");
   });
 
+  test("a practical photo's redirect sends no Referer to R2, the photo and its thumbnail; the practical work's other paths keep the global value (e-course completion, R5)", async () => {
+    const rules = (await (await config()).headers!()) as Rule[];
+    for (const path of ["/api/konto/praktiline/foto/12", "/api/konto/praktiline/foto/12/pisi"]) {
+      expect(valueFor(rules, path, "referrer-policy"), path).toBe("no-referrer");
+      expect(valueFor(rules, path, "cache-control"), path).toBe("private, no-store");
+      expect(valueFor(rules, path, "x-robots-tag"), path).toBe("noindex, nofollow");
+    }
+    // the upload's POST and the page's own reads keep the site's value (a POST from the page must keep its Origin)
+    for (const path of ["/api/konto/kursus/veebikursus/praktiline", "/api/konto/kursus/veebikursus/praktiline/foto", "/api/konto/kursus/veebikursus/praktiline/saada", "/api/konto/praktiline"])
+      expect(valueFor(rules, path, "referrer-policy"), path).toBe("strict-origin-when-cross-origin");
+  });
+
   test("the pay page's button POST keeps its Origin: /maksa/<token> is same-origin, never no-referrer; nothing else changes (phase 2b)", async () => {
     const rules = (await (await config()).headers!()) as Rule[];
     expect(valueFor(rules, "/maksa/abc", "referrer-policy")).toBe("same-origin");

@@ -32,7 +32,7 @@ export const courses = pgTable("courses", {
   body: jsonb("body").$type<I18n>().notNull(),
   outcomes: jsonb("outcomes").$type<I18n[]>().notNull().default([]),
   includes: jsonb("includes").$type<I18n[]>().notNull().default([]),
-  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0008 drops it after the 3a deploy (code first).
+  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0009 drops it after the 3a deploy (code first).
   modules: jsonb("modules").$type<I18n[]>().notNull().default([]),
   language: text("language").notNull().default("ET"),        // "ET" | "RU" | "ET / RU"
   price: integer("price"),                                     // e-learning, cents
@@ -226,6 +226,13 @@ export const courseAccess = pgTable("course_access", {
   grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  /** "Ava test uuesti" (e-course completion, spec §3.2): each reopen adds the course's tries; the tries allowed are course_tests.tries + this. */
+  extraTries: integer("extra_tries").notNull().default(0),
+  /**
+   * When the last required step passed (spec §4.4: the last lesson, a passed test, or Maria's approving assessment): set once by
+   * server/completion.ts completeIfDone (`where completed_at is null`) and never cleared, also when the access later ends.
+   */
+  completedAt: timestamp("completed_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("course_access_client_course").on(t.clientId, t.courseId)]);
 
 export const termsAcceptances = pgTable("terms_acceptances", {
@@ -289,8 +296,11 @@ export const payments = pgTable(
 
 /** One stage of a protocol: Maria's heading (copied from the course) and her note under it. */
 export type ProtocolStage = { title: string; note: string };
-/** What the student sees: the copy "Saada" froze (server/protocols.ts sendProtocol). */
-export type SentProtocol = { stages: ProtocolStage[]; generalNote: string };
+/**
+ * What the student sees: the copy "Saada" froze (server/protocols.ts sendProtocol), or "Saada hinnang" of an e-course's practical work, which
+ * also freezes Maria's verdicts, aligned with `stages` (server/assessment.ts). A registration's copy has no `verdicts`.
+ */
+export type SentProtocol = { stages: ProtocolStage[]; generalNote: string; verdicts?: (Verdict | null)[] };
 
 /**
  * A registration's protocol (spec §3, D1): the practice part (`stages`) and the training part (`generalNote`), written by Maria on the course
@@ -303,17 +313,38 @@ export const protocols = pgTable(
   "protocols",
   {
     id: serial("id").primaryKey(),
-    registrationId: integer("registration_id").notNull().references(() => registrations.id, { onDelete: "cascade" }),
+    /** A contact registration's protocol; null for an e-course access's (`accessId`). Exactly one of the two (protocols_one_owner). */
+    registrationId: integer("registration_id").references(() => registrations.id, { onDelete: "cascade" }),
+    /** An e-course access's protocol: its practical work and Maria's assessment (e-course completion, spec §3.4, D6); one per access. */
+    accessId: integer("access_id").references(() => courseAccess.id, { onDelete: "cascade" }),
     stages: jsonb("stages").$type<ProtocolStage[]>().notNull(),
     generalNote: text("general_note").notNull().default(""),
     version: integer("version").notNull().default(1),
     sent: jsonb("sent").$type<SentProtocol>(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     sentVersion: integer("sent_version"),
+    /**
+     * Maria's draft verdict per point, aligned with `stages` (ruling R2): saved at once per tap (POST /api/admin/hinnang), outside the notes'
+     * version check; a resubmission resets the "fix" ones to null (R3). A registration's protocol keeps `[]`.
+     */
+    verdicts: jsonb("verdicts").$type<(Verdict | null)[]>().notNull().default([]),
+    /**
+     * The student's submissions so far (0: none); photos being prepared belong to round + 1. Always 0 for a registration's protocol.
+     * A resubmission raises `round` (and sets `submittedAt`) and resets the "fix" verdicts, but never the notes' `version` (ruling R3).
+     */
+    round: integer("round").notNull().default(0),
+    /** The last submission ("Saada hindamiseks" / "Saada uuesti"); null before the first. */
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    /** The round Maria's last "Saada hinnang" assessed; null before (domain/completion.ts practicalStatus). */
+    sentRound: integer("sent_round"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("protocols_registration").on(t.registrationId)],
+  (t) => [
+    uniqueIndex("protocols_registration").on(t.registrationId),
+    uniqueIndex("protocols_access").on(t.accessId),
+    check("protocols_one_owner", sql`(${t.registrationId} is null) <> (${t.accessId} is null)`),
+  ],
 );
 
 /**
@@ -409,6 +440,86 @@ export const lessonProgress = pgTable("lesson_progress", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.clientId, t.lessonId] }), index("lesson_progress_lesson").on(t.lessonId)]);
 
+// ---------- e-course completion: the knowledge test, the practical work ----------
+
+/** Maria's verdict on one practical point ("Kinnitatud" / "Paranda") or on one open answer. */
+export type Verdict = "ok" | "fix";
+/** One option of a choice question; `correct` is the answer key, which never leaves the server for the student (domain/completion.ts publicQuestions). */
+export type ChoiceOption = { id: string; text: string; correct: boolean };
+/**
+ * One question of a course's knowledge test (spec §3.1): plain text in the course's language, not translated. `id`s are 1–32 characters
+ * [0-9a-z] (newItemId makes 8 random ones when the question or option is added), never reused: attempts refer to questions and options by them.
+ */
+export type TestQuestion =
+  | { id: string; kind: "choice"; text: string; options: ChoiceOption[] }
+  | { id: string; kind: "open"; text: string };
+/** A student's answers by question id: the picked option ids of a choice question, the text of an open one. */
+export type TestAnswers = Record<string, string[] | string>;
+/** Maria's review of the open answers, by question id. */
+export type OpenReview = Record<string, { verdict: Verdict; comment: string }>;
+/** failed: the choice part under the mark; review: open answers wait for Maria; fix: she asked to rewrite some; passed. */
+export type AttemptStatus = "failed" | "review" | "fix" | "passed";
+
+/**
+ * An e-course's knowledge test (spec §3.1, ruling R1): a table of its own, not columns on `courses`, because whole `courses` rows ride on
+ * the public pages' course objects (db/queries/public.ts) and the answer key must not. No row: the course has no questions (the pass mark
+ * and the tries then default to 80 and 3). Saved with the course editor (db/queries/admin.ts saveCourseWithImages).
+ */
+export const courseTests = pgTable("course_tests", {
+  courseId: integer("course_id").primaryKey().references(() => courses.id, { onDelete: "cascade" }),
+  questions: jsonb("questions").$type<TestQuestion[]>().notNull().default([]),
+  passPercent: integer("pass_percent").notNull().default(80),
+  tries: integer("tries").notNull().default(3),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  check("course_tests_pass_percent", sql`${t.passPercent} between 1 and 100`),
+  check("course_tests_tries", sql`${t.tries} between 1 and 10`),
+]);
+
+/**
+ * One submitted try of the knowledge test (spec §3.3): `number` 1, 2, … per student and course; `questions` the frozen copy of the
+ * course's questions it answered (Maria's later edits never change it); `correct` of `total` the choice questions answered exactly right.
+ * Rewriting "Paranda" answers updates the same row (no new try). Deleted with the account and with the course.
+ */
+export const testAttempts = pgTable("test_attempts", {
+  id: serial("id").primaryKey(),
+  clientId: integer("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  number: integer("number").notNull(),
+  questions: jsonb("questions").$type<TestQuestion[]>().notNull(),
+  answers: jsonb("answers").$type<TestAnswers>().notNull(),
+  correct: integer("correct").notNull(),
+  total: integer("total").notNull(),
+  status: text("status").$type<AttemptStatus>().notNull(),
+  review: jsonb("review").$type<OpenReview>(),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull(),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  /** The admin's address of the last review. */
+  reviewedBy: text("reviewed_by"),
+}, (t) => [
+  uniqueIndex("test_attempts_number").on(t.clientId, t.courseId, t.number),
+  index("test_attempts_status").on(t.status, t.submittedAt),
+]);
+
+/**
+ * One photo of the practical work (spec §3.5): point `stage` (0-based) of an access's protocol, in submission `round` (protocols.round + 1
+ * while being prepared). `key` and `thumbKey` are private R2 objects `practical/<uuid>.jpg` and `practical/<uuid>-t.jpg`. Earlier rounds stay,
+ * so Maria can compare after a "Paranda". Deleted with the protocol (and so with the access and the account); the R2 objects are removed
+ * after the account's deletion commits (server/practical.ts practicalKeys).
+ */
+export const practicalPhotos = pgTable("practical_photos", {
+  id: serial("id").primaryKey(),
+  protocolId: integer("protocol_id").notNull().references(() => protocols.id, { onDelete: "cascade" }),
+  stage: integer("stage").notNull(),
+  round: integer("round").notNull(),
+  key: text("key").notNull(),
+  thumbKey: text("thumb_key").notNull(),
+  size: integer("size").notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("practical_photos_protocol").on(t.protocolId, t.stage, t.round)]);
+
 /** text compared byte by byte (collation "C"): the KV keys sort as in Cloudflare KV, and a LIKE 'prefix%' can use the primary key index. */
 const byteText = customType<{ data: string }>({ dataType: () => 'text COLLATE "C"' });
 
@@ -471,3 +582,6 @@ export type PaymentKind = Payment["kind"];
 export type PaymentStatus = Payment["status"];
 export type Protocol = typeof protocols.$inferSelect;
 export type CourseFeedback = typeof courseFeedback.$inferSelect;
+export type CourseTest = typeof courseTests.$inferSelect;
+export type TestAttempt = typeof testAttempts.$inferSelect;
+export type PracticalPhoto = typeof practicalPhotos.$inferSelect;

@@ -1,5 +1,5 @@
 // Line icons of the admin menu: prototype B's set (24px grid, 1.4 stroke, currentColor) plus the few the real menu
-// needs that B's demo did not have (inbox, home, tag, settings, logout, card, chat).
+// needs that B's demo did not have (inbox, home, tag, settings, logout, card, chat, check).
 const PATHS = {
   grid: ["M3 3h7v7H3z", "M14 3h7v7h-7z", "M3 14h7v7H3z", "M14 14h7v7h-7z"],
   book: ["M12 5v15M3 4c4-1 6 0 9 2 3-2 5-3 9-2v15c-4-1-6 0-9 2-3-2-5-3-9-2V4Z"],
@@ -21,6 +21,7 @@ const PATHS = {
   menu: ["M4 8h16M4 16h16"],
   close: ["m6 6 12 12M6 18 18 6"],
   arrow: ["M4 12h15m-6-6 6 6-6 6"],
+  check: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z", "m8 12.4 2.7 2.7L16.2 9.4"],
 } as const;
 
 export type AdminIconName = keyof typeof PATHS;

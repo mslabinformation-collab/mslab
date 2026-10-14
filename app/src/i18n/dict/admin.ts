@@ -28,6 +28,12 @@ const fieldErrors = {
   imageRequired: "Lisa pilt.",
   localeHref: "Kirjuta lehe aadress ilma keeleta, nt /koolitused: vene lehel lisatakse /ru ise.",
   iban: "Kontrolli IBANi: kaks tähte, kaks numbrit ja konto number, nt EE38 2200 2210 2014 5685.",
+  // "Teadmiste test" (e-course completion): shown in the card of the question the save names
+  testTooMany: "Testis saab olla kuni 50 küsimust.",
+  testEmpty: "Täida küsimuse tekst ja iga vastusevariant.",
+  testTooLong: "Küsimuse tekst võib olla kuni 500 ja vastusevariant kuni 200 märki.",
+  testOptions: "Valikvastustega küsimusel peab olema 2–6 vastusevarianti.",
+  testNoCorrect: "Märgi vähemalt üks vastus õigeks.",
 };
 
 export const adminEt = {
@@ -92,6 +98,8 @@ export const adminEt = {
     signedInAs: "Sisse logitud: {email}",
     badgeRegistrations: "{n} ootab ettemaksu",
     badgeRequests: "{n} tegemata",
+    // Hindamine's badge (e-course completion, spec §5.2): practical work, open answers and students out of tries, together
+    badgeAssessment: "{n} ootab hindamist",
   },
 
   nav: {
@@ -99,6 +107,7 @@ export const adminEt = {
     courses: "Koolitused",
     calendar: "Kalender",
     registrations: "Registreerimised",
+    assessment: "Hindamine",
     payments: "Maksed",
     feedback: "Tagasiside",
     clients: "Õpilased",
@@ -152,6 +161,11 @@ export const adminEt = {
     today: {
       title: "Täna",
       students: "Õpilasi: {n}",
+    },
+    // "Ootab hindamist" (e-course completion, spec §5.2, R4): what waits in Hindamine, per group; the card is hidden when nothing waits
+    assessment: {
+      title: "Ootab hindamist: {n}",
+      open: "Ava hindamine",
     },
     inbox: {
       title: "Päringud",
@@ -352,6 +366,136 @@ export const adminEt = {
     },
   },
 
+  // Maria's assessment of an e-course's practical work (phase e-course completion, spec §5.3): /admin/protokollid?ligipaas=<access id>, the
+  // protocol screen with each point's photos and verdicts (AssessmentScreen.tsx and its parts); the Hindamine page's texts follow `screen`.
+  // `screen`: {n} a count or a round, {point} a point's number (1-based), {points} a list of them, {title} a point's title, {date} a day.
+  assessment: {
+    screen: {
+      // the screen's first line, under the page's "{course} · {name}" (AssessmentScreen: it follows the screen's reads)
+      round: "Praktiline töö, {n}. kord",
+      notSubmitted: "Praktiline töö: õpilane ei ole veel saatnud",
+      notesOnly: "Protokoll",
+      back: "Hindamisse",
+      notFound: "Sellist e-kursuse ligipääsu ei leitud, või see on tühistatud.",
+      // the access has ended: Maria can still assess (spec §8); a "Paranda" round needs it extended
+      expired: "Ligipääs lõppes {date}. Hinnata ja saata saad ikka; kui midagi tuleb parandada, pikenda enne ligipääsu (Õpilased).",
+      status: { open: "Ootab õpilase tööd", review: "Ootab hindamist", fix: "Paranda", passed: "Kinnitatud" },
+      ok: "Kinnitatud",
+      fix: "Paranda",
+      verdictOf: "Punkti {point} hinnang",
+      photosOf: "Punkti {point} fotod",
+      photoAlt: "Punkt {point}, {round}. kord, foto {n}",
+      noPhotos: "Selle punkti juures fotot ei ole.",
+      earlier: "Varasemad fotod",
+      roundOf: "{n}. kord",
+      // the full-screen photo: its name, the photo's text, where it is
+      viewer: "Punkt {point}: {title}",
+      viewerAlt: "{label}, foto {n}",
+      viewerCount: "{n} / {of}",
+      // the photo in a tab of its own, where the tablet's own viewer zooms and pans it (a draft, not on the wording sheet)
+      viewerFull: "Ava täissuuruses",
+      previous: "Eelmine foto",
+      next: "Järgmine foto",
+      close: "Sulge",
+      waiting: "Hinnangu nupud avanevad, kui õpilane on töö hindamiseks saatnud. Märkusi võid kirjutada juba enne.",
+      lockedPassed: "Kõik punktid on kinnitatud: hinnangud on lukus. Märkusi saad muuta ja uuesti saata.",
+      send: "Saada hinnang",
+      // the one confirmation (spec §5.3)
+      confirmTitle: "Saadan hinnangu õpilasele",
+      confirmCounts: "Kinnitatud: {ok} · Paranda: {fix}",
+      confirmPassed: "Kõik punktid on kinnitatud: praktiline töö on sooritatud.",
+      confirmNotes: "Saadan uuendatud märkused. Hinnangud jäävad samaks.",
+      confirmYes: "Saada",
+      confirmNo: "Tagasi",
+      // after the send
+      sentFix: "Hinnang saadetud. Paranda-punktid: {points}.",
+      sentPassed: "Hinnang saadetud. Kõik punktid on kinnitatud.",
+      sentCompleted: "Hinnang saadetud. Koolitus on lõpetatud.",
+      sentNotes: "Märkused saadetud.",
+      already: "See hinnang on juba saadetud.",
+      errors: {
+        notSubmitted: "Õpilane ei ole tööd veel hindamiseks saatnud.",
+        verdicts: "Vali hinnang ka punktidele: {points}.",
+        comments: "Lisa märkus Paranda-punktidele: {points}.",
+        unsavedVerdicts: "Kõik hinnangud ei ole veel salvestatud. Proovi uuesti, kui ühendus on tagasi.",
+        verdictRefused: "Hinnangut ei salvestatud: töö seis muutus vahepeal. Vaata punktid üle.",
+        // a tap or "Saada hinnang" named an older round than the server's: the screen reads the new round and shows it, nothing was stored or sent
+        newRound: "Õpilane saatis vahepeal uue vooru. Vaata see üle.",
+        notFound: "Seda ligipääsu enam ei ole (see on tühistatud).",
+      },
+    },
+    // "Hindamine" (spec §5.2): /admin/hindamine, what waits for Maria in three groups, oldest first. {n} a count or a number, {max} the tries
+    // she has, {date} a day and a time, {course} a course's title
+    eyebrow: "E-õpe",
+    title: "Hindamine",
+    lead: "Mis ootab sinu hinnangut, vanemad eespool: praktilised tööd, testide avatud vastused ja õpilased, kelle testikatsed on otsas.",
+    empty: "Kõik on hinnatud.",
+    groups: { practicals: "Praktilised tööd", tests: "Testi vastused", triesUsed: "Katsed otsas" },
+    round: "{n}. kord",
+    sentAt: "saadetud {date}",
+    tryOf: "Katse {n}/{max}",
+    best: "parim tulemus {n} %",
+    attemptsMade: "katseid {n}",
+    assess: "Hinda",
+    viewAnswers: "Vaata vastuseid",
+    attempts: "Testi katsed",
+    // the test review (spec §5.4): /admin/hindamine/test?id=<attempt>, and every attempt of a student, ?ligipaas=<access>. {percent} and
+    // {pass} percentages, {text} Maria's earlier comment
+    review: {
+      back: "Hindamine",
+      notFound: "Seda katset ei leitud.",
+      notFoundAccess: "Selle õpilase teste ei leitud.",
+      score: "Valikküsimused: {percent} % (vaja {pass} %)",
+      right: "Õige",
+      wrong: "Vale",
+      pickedRight: "valis, õige",
+      pickedWrong: "valis, vale",
+      missed: "õige, jäi valimata",
+      noAnswer: "Vastust pole.",
+      verdictLabel: "Hinnang vastusele {n}",
+      ok: "Kinnitatud",
+      fix: "Paranda",
+      comment: "Kommentaar",
+      commentHint: "„Paranda“ vajab kommentaari: õpilane näeb seda oma vastuse juures.",
+      previous: "Eelmine kommentaar: {text}",
+      notReviewed: "Hindamata",
+      send: "Saada",
+      sending: "Saadan…",
+      sent: {
+        passed: "Saadetud: test on sooritatud. Õpilane saab kirja.",
+        fix: "Saadetud: õpilane parandab „Paranda“ vastused. Ta saab kirja.",
+        completed: "Saadetud: test on sooritatud ja koolitus lõpetatud. Õpilane saab kirja.",
+      },
+      // under one answer, before anything is sent
+      problems: { verdict: "Vali „Kinnitatud“ või „Paranda“.", comment: "Kirjuta, mida parandada.", tooLong: "Liiga pikk: {n} / {max} märki." },
+      // above "Saada": the form's own check, then the server's answers
+      errors: {
+        incomplete: "Hinda iga vastus ja kirjuta igale „Paranda“ vastusele kommentaar.",
+        comment: "Kirjuta igale „Paranda“ vastusele kommentaar.",
+        tooLong: "Üks kommentaar on liiga pikk.",
+        // stale: reviewed meanwhile (on her other device), or the student rewrote her "Paranda" answers after this page was read; nothing was
+        // stored, and the reload shows the answers as they are now
+        stale: "Seda katset on vahepeal hinnatud või õpilane muutis pärast selle lehe avamist vastuseid. Laadi leht uuesti, et näha praeguseid vastuseid.",
+        notFound: "Seda katset ei leitud. Laadi leht uuesti.",
+        failed: "Saatmine ei õnnestunud. Proovi uuesti.",
+      },
+      status: { failed: "Läbimata", review: "Ootab hindamist", fix: "Parandamisel", passed: "Sooritatud" },
+      list: "Testi katsed",
+      view: "Vaata",
+      noAttempts: "Katseid pole veel.",
+      percent: "{n} %",
+    },
+    // "Ava test uuesti" (spec §5.2, §5.5): the course's tries once more, with one confirming step
+    reopen: {
+      button: "Ava test uuesti",
+      confirm: "Kas avan testi „{course}“ uuesti? Õpilane saab sama palju katseid juurde ja kirja.",
+      yes: "Jah, ava",
+      no: "Ei",
+      done: "Test on uuesti avatud: katseid jäänud {n}.",
+      notNeeded: "Test on juba avatud.",
+    },
+  },
+
   // Tagasiside (phase protocols, spec §7): the answers to the course feedback form. /admin/tagasiside, ?koolitus=<course id> (the filter),
   // ?leht=<n>, ?id=<answer> (the drawer). The questions and options are the form's own words (et.ts account.feedback), never written here.
   // {n} a count, {score} an average ("7,5"), {date} a day and a time.
@@ -506,6 +650,22 @@ export const adminEt = {
       no: "Ei",
       done: "Õppetund „{lesson}“ on avatud.",
     },
+    // the drawer's line about each e-course access (e-course completion, spec §5.5): {done}/{total} her lessons, {state} a step's state in the
+    // words below, {percent} her newest test score, {date} the day the course was completed
+    steps: {
+      lessons: "Õppetunnid {done}/{total}",
+      test: "Test: {state}",
+      testScore: "Test: {state} ({percent} %)",
+      practical: "Praktiline töö: {state}",
+      completed: "Lõpetatud {date}",
+      testStates: { locked: "lukus", open: "avatud", review: "ootab hindamist", fix: "parandamisel", done: "läbitud", used: "katsed otsas" },
+      practicalStates: { locked: "lukus", open: "avatud", review: "ootab hindamist", fix: "parandamisel", done: "kinnitatud" },
+    },
+    // the protocol of an e-course access (?ligipaas=) or of a contact registration (?registreering=): "Lisa" before its first save, then "Ava"
+    addProtocol: "Lisa protokoll",
+    openProtocol: "Ava protokoll",
+    // her test attempts (/admin/hindamine/test?ligipaas=), once she has one
+    attempts: "Testi katsed",
   },
 
   // /admin/opilased/<id>/vaade: the student's own "Minu koolitused", read-only
@@ -615,6 +775,7 @@ export const adminEt = {
       modulesC: "Programm",
       includes: "Koolitus sisaldab",
       protocolStages: "Protokolli punktid",
+      test: "Teadmiste test",
       gallery: "Galerii",
       recommendations: "Soovitused",
       publish: "Avaldamine",
@@ -655,6 +816,31 @@ export const adminEt = {
       protocolStagesEmpty: "Punkte veel pole: protokollis on siis ainult üldised märkused.",
       protocolStagesAdd: "Lisa punkt",
       protocolStagesFull: "Rohkem kui 30 punkti ei saa lisada.",
+      // an e-course's "Protokolli punktid" are its practical points (e-course completion, spec §5.1)
+      protocolStagesHintOnline: "E-kursusel on need praktilise töö punktid: õpilane lisab iga punkti juurde 1–3 fotot.",
+      protocolStagesEmptyOnline: "Punkte veel pole: siis praktilist tööd ei ole.",
+      // "Teadmiste test" (e-course completion, spec §5.1): {n} is the question's number, {q} and {n} in an option's label the question's and the option's
+      testHint: "Muudatused kehtivad uutele katsetele; tehtud katsed jäävad nii, nagu need esitati.",
+      testPass: "Läbimise piir (%)",
+      testPassHint: "1–100. Nii mitu protsenti valikvastustega küsimustest peab olema õigesti vastatud.",
+      testTries: "Katseid",
+      testTriesHint: "1–10. Kui katsed saavad otsa, saad testi lehel „Hindamine“ uuesti avada.",
+      testEmpty: "Küsimusi veel pole: siis testi ei ole ja õpilane jätkab õppetundidelt otse praktilise tööga.",
+      testQuestion: "Küsimus {n}",
+      testKind: "Küsimuse {n} liik",
+      testKindChoice: "Valikvastustega",
+      testKindOpen: "Vaba vastusega",
+      testOption: "Küsimuse {q} vastusevariant {n}",
+      testCorrect: "Õige",
+      testChoiceHint: "Märgi õigeks üks või mitu vastust. Kui õigeid on mitu, peab õpilane valima kõik õiged.",
+      testOpenHint: "Õpilane kirjutab vastuse ise. Sina loed selle läbi ja kinnitad lehel „Hindamine“.",
+      testOptionAdd: "Lisa vastusevariant",
+      testOptionRemove: "Eemalda küsimuse {q} vastusevariant {n}",
+      testAdd: "Lisa küsimus",
+      testFull: "Rohkem kui 50 küsimust ei saa lisada.",
+      testUp: "Liiguta küsimus {n} üles",
+      testDown: "Liiguta küsimus {n} alla",
+      testRemove: "Eemalda küsimus {n}",
       galleryHint: "Esimene pilt on põhipilt (kaardil ja galerii alguses). Muuda järjekorda nooltega või lohista pilti.",
       main: "Põhipilt",
       image: "Pilt {n}",

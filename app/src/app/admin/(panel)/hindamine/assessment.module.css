@@ -1,0 +1,58 @@
+/* Hindamine (e-course completion, spec §5.2, §5.4): the three groups of what waits, each row who and what with its one way on; the test
+   review's page head and the attempts list. Rows wrap on a phone; every button and link is the admin's 44 px one. Tokens only. */
+
+.groups {
+  display: grid;
+  gap: 25px;
+}
+
+.items {
+  display: grid;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  min-height: 44px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.item:last-child {
+  border-bottom: 0;
+}
+
+.what {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* "Testi katsed" and "Ava test uuesti" (with its confirming step under them on a narrow row) */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+.back {
+  margin: 0 0 18px;
+}
+
+.score {
+  margin: 10px 0 0;
+  font-weight: 600;
+}
+
+.more {
+  margin: 20px 0 0;
+}

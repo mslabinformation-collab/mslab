@@ -8,6 +8,7 @@ import { TERMS_PAGE_KEY } from "../../src/domain/course-terms";
 import { LOCAL_REFERENCE_PREFIX, orderReference } from "../../src/domain/payments";
 import { revalidateLocalPages } from "./prod-build";
 import { assertLocalDatabases, isLocalDbUrl } from "./local-db";
+import { localStore } from "../../src/server/media-local";
 import { PROD_BUILD, TARGET } from "./target";
 
 // Test-owned seat fixtures for the calendar e2e tests. The seed never contains registrations (the real database will
@@ -379,6 +380,14 @@ export async function removeClientRows(email?: string): Promise<number> {
   const courses = email ? accountCourseSlug(email) : `${ACCOUNT_COURSE_PREFIX}%`;
   const sql = connect(false); // clients and their unpublished courses: no public page shows them
   try {
+    // the practical work's photos (e-course completion): their rows go with the account and the course (on delete cascade: access → protocol
+    // → photos; course → attempts and its test), so their files in the local store of the e2e run's server are read first and deleted after
+    const photos = await sql<{ key: string; thumbKey: string }[]>`
+      select p.key, p.thumb_key as "thumbKey" from practical_photos p
+      join protocols pr on pr.id = p.protocol_id
+      join course_access a on a.id = pr.access_id
+      join clients c on c.id = a.client_id
+      where c.email like ${match} or a.course_id in (select id from courses where slug like ${courses})`;
     await sql`delete from registrations where email like ${match} or course_id in (select id from courses where slug like ${courses})`;
     await sql`delete from requests where payload->>'email' like ${match}`;
     await sql`delete from courses where slug like ${courses}`; // on delete cascade: its sessions
@@ -386,6 +395,8 @@ export async function removeClientRows(email?: string): Promise<number> {
     await sql`delete from subscribers where email like ${match}`; // "Saada mulle uudiskirja" in Minu andmed
     await sql`delete from clients where email like ${match}`; // on delete cascade: sessions, favourites, access, terms
     await sql`delete from payments where email like ${match}`; // the online payments of the test address (phase 2b)
+    const store = localStore(join(process.cwd(), ".media-local"));
+    for (const p of photos) for (const key of [p.key, p.thumbKey]) await store.delete(key);
     const [{ n }] = await sql<{ n: number }[]>`
       select (select count(*) from client_login_tokens where email like ${match})
            + (select count(*) from subscribers where email like ${match})
@@ -654,13 +665,20 @@ const SNAPSHOT_DIR = join(tmpdir(), "mslab-e2e-course-snapshots");
 const JSON_COLUMNS = ["title", "summary", "body", "outcomes", "includes", "duration_label", "next_discount", "badge", "recommendation_ids", "protocol_stages"] as const;
 const PLAIN_COLUMNS = ["slug", "type", "level", "language", "price", "price_group", "price_individual", "access_months", "video_count", "published", "sort", "is_sample", "updated_at"] as const;
 
-type CourseSnapshot = { id: number; row: Record<string, unknown>; images: { key: string; alt: unknown; sort: number }[] };
+type CourseSnapshot = {
+  id: number;
+  row: Record<string, unknown>;
+  images: { key: string; alt: unknown; sort: number }[];
+  /** Its "Teadmiste test" row (e-course completion, R1); absent in a snapshot written before course_tests existed: the course had none. */
+  test?: { questions: unknown; pass_percent: number; tries: number } | null;
+};
 
 async function readSnapshot(sql: postgres.Sql, slug: string): Promise<CourseSnapshot> {
   const [row] = await sql`select * from courses where slug = ${slug}`;
   if (!row) throw new Error(`e2e: course ${slug} not found — is the local DB seeded?`);
   const images = await sql<{ key: string; alt: unknown; sort: number }[]>`select key, alt, sort from course_images where course_id = ${row.id} order by sort, id`;
-  return { id: row.id as number, row: Object.fromEntries([...JSON_COLUMNS, ...PLAIN_COLUMNS].map((c) => [c, row[c]])), images: [...images] };
+  const [test] = await sql<{ questions: unknown; pass_percent: number; tries: number }[]>`select questions, pass_percent, tries from course_tests where course_id = ${row.id}`;
+  return { id: row.id as number, row: Object.fromEntries([...JSON_COLUMNS, ...PLAIN_COLUMNS].map((c) => [c, row[c]])), images: [...images], test: test ?? null };
 }
 
 async function writeBack(sql: postgres.Sql, s: CourseSnapshot): Promise<void> {
@@ -673,6 +691,9 @@ async function writeBack(sql: postgres.Sql, s: CourseSnapshot): Promise<void> {
     await tx`delete from course_images where course_id = ${s.id}`;
     for (const img of s.images)
       await tx`insert into course_images (course_id, key, alt, sort) values (${s.id}, ${img.key}, ${img.alt === null ? null : tx.json(img.alt as postgres.JSONValue)}, ${img.sort})`;
+    await tx`delete from course_tests where course_id = ${s.id}`;
+    if (s.test)
+      await tx`insert into course_tests (course_id, questions, pass_percent, tries) values (${s.id}, ${tx.json(s.test.questions as postgres.JSONValue)}, ${s.test.pass_percent}, ${s.test.tries})`;
   });
 }
 
@@ -721,6 +742,17 @@ export async function storedCourse(slug: string): Promise<StoredCourse> {
     const [c] = await sql<Omit<StoredCourse, "images">[]>`select id, title, badge, sort, updated_at as "updatedAt" from courses where slug = ${slug}`;
     const images = await sql<{ key: string }[]>`select key from course_images where course_id = ${c.id} order by sort, id`;
     return { ...c, images: images.map((i) => i.key) };
+  } finally {
+    await sql.end();
+  }
+}
+
+/** A course's "Teadmiste test" row as stored (e-course completion, R1), or null without one. */
+export async function storedCourseTest(courseId: number): Promise<{ questions: unknown; passPercent: number; tries: number } | null> {
+  const sql = connect(false);
+  try {
+    const [row] = await sql<{ questions: unknown; passPercent: number; tries: number }[]>`select questions, pass_percent as "passPercent", tries from course_tests where course_id = ${courseId}`;
+    return row ?? null;
   } finally {
     await sql.end();
   }

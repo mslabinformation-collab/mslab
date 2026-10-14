@@ -16,6 +16,7 @@ import {
   snapshotCourse,
   snapshotOrder,
   storedCourse,
+  storedCourseTest,
   storedSession,
 } from "./fixtures";
 import { laterSaturday } from "./seed-sessions";
@@ -219,7 +220,10 @@ test.describe("course editor", () => {
     for (const name of ["Ligipääs (kuud)", "Videotunde", /^Soodustus järgmiselt koolituselt/]) await expect(field(name)).toHaveCount(1);
     for (const name of ["Grupikoolituse hind (€)", "Individuaalkoolituse hind (€)", /^Kestus/]) await expect(field(name)).toHaveCount(0);
     await expect(page.locator('[data-list-editor="includes"]')).toHaveCount(0);
-    await expect(page.locator("[data-protocol-stages]")).toHaveCount(0); // "Protokolli punktid" are a contact course's only
+    // "Protokolli punktid" are an e-course's practical points too, with their own hint; "Teadmiste test" is an e-course's only (e-course completion)
+    await expect(page.locator("[data-protocol-stages] h3")).toHaveText("Protokolli punktid");
+    await expect(page.locator("[data-protocol-stages]")).toContainText("E-kursusel on need praktilise töö punktid: õpilane lisab iga punkti juurde 1–3 fotot.");
+    await expect(page.locator("[data-test-editor] h3")).toHaveText("Teadmiste test");
     await expect(page.getByText(/hübriid/i)).toHaveCount(0); // no third type anywhere
 
     await typeSwitch.getByRole("radio", { name: "Kontaktõpe" }).check();
@@ -227,6 +231,8 @@ test.describe("course editor", () => {
     for (const name of ["Hind (€)", "Ligipääs (kuud)", "Videotunde", /^Soodustus/]) await expect(field(name)).toHaveCount(0);
     await expect(page.locator('[data-list-editor="includes"] h3')).toHaveText("Koolitus sisaldab");
     await expect(page.locator("[data-protocol-stages] h3")).toHaveText("Protokolli punktid");
+    await expect(page.locator("[data-protocol-stages]")).toContainText("Koolituspäeva protokolli etapid");
+    await expect(page.locator("[data-test-editor]")).toHaveCount(0);
     await typeSwitch.getByRole("radio", { name: "E-õpe" }).check();
     await expect(page.getByLabel("Hind (€)")).toHaveValue(c.price); // switching back keeps what was there
 
@@ -528,6 +534,40 @@ test.describe("course editor", () => {
     await page.getByRole("button", { name: `Liiguta alla: ${c.title}` }).click();
     await expect.poll(seedOrder).toEqual(order);
     await expect(page.getByRole("button", { name: `Liiguta alla: ${c.title}` })).toBeFocused();
+  });
+
+  test("'Teadmiste test' (e-course completion): a question without a right answer is marked in its card and nothing is saved; with one it saves with the course", async ({ page, context, visitorIp }, info) => {
+    const c = mine(info);
+    const id = await changing(c.slug);
+    const before = await storedCourseTest(id);
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/koolitused/${id}`);
+    await adminReady(page);
+
+    const editor = page.locator("[data-test-editor]");
+    await expect(editor).toContainText("Muudatused kehtivad uutele katsetele; tehtud katsed jäävad nii, nagu need esitati.");
+    await editor.locator("[data-question-add]").click();
+    const question = editor.locator('[data-question="0"]');
+    await expect(question.locator("[data-question-text]")).toBeFocused();
+    await question.locator("[data-question-text]").fill("Mitu kihti värvi kanname?");
+    await question.locator('[data-option="0"] [data-option-text]').fill("Ühe");
+    await question.locator('[data-option="1"] [data-option-text]').fill("Kaks");
+    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
+    await expect(status(page)).toHaveText("Kontrolli märgitud välju.");
+    await expect(question).toHaveAttribute("data-invalid", "");
+    await expect(question).toContainText("Märgi vähemalt üks vastus õigeks.");
+    await expect(question).toBeFocused();
+    expect(await storedCourseTest(id)).toEqual(before);
+
+    await question.locator('[data-option="1"] [data-option-correct]').check();
+    await editor.locator("[data-test-pass]").fill("90");
+    await save(page);
+    expect(await storedCourseTest(id)).toMatchObject({
+      passPercent: 90,
+      tries: 3,
+      questions: [{ kind: "choice", text: "Mitu kihti värvi kanname?", options: [{ text: "Ühe", correct: false }, { text: "Kaks", correct: true }] }],
+    });
+    expect(await noOverflow(page)).toBe(true);
   });
 });
 

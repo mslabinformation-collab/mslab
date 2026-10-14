@@ -9,7 +9,9 @@ import type { ClientDetail, ClientRequestRow, EcourseOption } from "@/server/adm
 import { GrantAccessForm, RevokeAccess, UnlockNextLesson } from "./ClientForms";
 import { FeedbackAnswers } from "./FeedbackAnswers";
 import { PaymentLines } from "./PaymentLines";
+import { ReopenTest } from "./ReopenTest";
 import { StatusPill } from "./StatusPill";
+import { stepLine } from "./step-line";
 import ui from "./ui.module.css";
 import styles from "./ClientDrawer.module.css";
 
@@ -29,13 +31,17 @@ function requestLabel(q: ClientRequestRow): string {
  * One student in the Õpilased drawer: who she is and "Vaata tema vaadet" (her account page, read-only); her e-courses
  * with "Ava ligipääs" right there (the reason Maria most often opens a student) and, on each open one, "Lõpeta ligipääs",
  * her lessons done ("5/24 tehtud"), her page of that course (read-only) and "Ava järgmine õppetund" while a lesson is still
- * locked for her (an e-course without lessons shows none of these three); then her registrations (each with a link to its own drawer),
- * her online payments (phase 2b), her requests and the e-course terms she has accepted.
+ * locked for her (an e-course without lessons shows none of these three); on each e-course (e-course completion, spec §5.5) her steps
+ * ("Õppetunnid 8/8 · Test: läbitud (85 %) · Praktiline töö: ootab hindamist", or "Lõpetatud 14.11.2026"), "Lisa protokoll" / "Ava protokoll",
+ * "Testi katsed" and, while her tries are used up, "Ava test uuesti" (an access an admin ended keeps only its line); then her registrations
+ * (each with a link to its own drawer, a contact course's with its protocol), her online payments (phase 2b), her requests and the e-course
+ * terms she has accepted.
  */
 export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDetail; ecourses: EcourseOption[]; now: Date }) {
   const t = adminEt.clients.drawer;
   const g = adminEt.clients.grant;
   const r = adminEt.clients.revoke;
+  const reopen = { ...adminEt.assessment.reopen, saving: adminEt.common.saving, error: adminEt.common.saveError };
   const c = detail.client;
   const open = new Map(detail.access.filter((a) => a.state === "active").map((a) => [a.courseId, a.expiresAt]));
   // the first e-course she cannot open now: the likeliest one to grant
@@ -84,6 +90,9 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
             {detail.access.map((a) => {
               const title = pick(a.title, "et");
               const until = formatDate(a.state === "revoked" && a.revokedAt ? a.revokedAt : a.expiresAt, "et");
+              const line = stepLine(a.steps, adminEt.clients.steps, a.testPercent);
+              // an access an admin ended keeps its line (her history); its screens answer "not found", so nothing opens from it
+              const live = a.state !== "revoked";
               return (
                 <li key={a.id} className={styles.row} data-access={a.courseId} data-access-state={a.state}>
                   <div className={styles.rowHead}>
@@ -98,12 +107,32 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
                       {fill(t.progress, a.progress)}
                     </p>
                   )}
+                  {/* her steps of the course (e-course completion, spec §5.5): lessons, test, practical work, or "Lõpetatud" with its day */}
+                  {line && (
+                    <p className={styles.meta} data-access-steps="">
+                      {line}
+                    </p>
+                  )}
                   {/* her page of the course answers 404 without active access, as her own does: no link to it otherwise */}
                   {a.state === "active" && a.progress.total > 0 && (
                     <Link className={ui.link} href={`/admin/opilased/${c.id}/vaade/${a.slug}`} aria-label={fill(t.viewCourseLabel, { course: title })} data-view-course={a.courseId}>
                       {t.viewCourse}
                     </Link>
                   )}
+                  {/* her practical work's protocol (Maria may write it before the student sends: "Lisa protokoll") and her test attempts */}
+                  {live && (
+                    <div className={styles.links}>
+                      <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?ligipaas=${a.id}`} data-access-protocol="">
+                        {a.protocolId === null ? adminEt.clients.addProtocol : adminEt.clients.openProtocol}
+                      </Link>
+                      {a.hasAttempts && (
+                        <Link className={ui.link} href={`/admin/hindamine/test?ligipaas=${a.id}`} data-access-attempts="">
+                          {adminEt.clients.attempts}
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                  {live && a.steps.test && <ReopenTest accessId={a.id} course={title} used={a.steps.test.state === "used"} t={reopen} />}
                   {a.state === "active" && (
                     <UnlockNextLesson
                       clientId={c.id}
@@ -158,6 +187,13 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
                   <Link className={ui.link} href={`/admin/registreerimised?id=${reg.id}`}>
                     {t.openRegistration}
                   </Link>
+                  {/* the course day's protocol of a contact registration (e-course completion, spec §5.5: the entry point Maria asked for); the
+                      condition is the Registreerimised drawer's */}
+                  {reg.contact && reg.status !== "cancelled" && (
+                    <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?registreering=${reg.id}`} data-registration-protocol="">
+                      {reg.protocolId === null ? adminEt.clients.addProtocol : adminEt.clients.openProtocol}
+                    </Link>
+                  )}
                 </li>
               );
             })}

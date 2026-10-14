@@ -232,7 +232,13 @@ describe("the questions' texts (Task 8)", () => {
       "account.dashboard.feedbackCard": ru.account.dashboard.feedbackCard,
       "account.dashboard.viewProtocol": ru.account.dashboard.viewProtocol,
       "account.protocol": ru.account.protocol,
+      // e-course completion, Task 6: the knowledge test's page
+      "account.test": ru.account.test,
       "account.protocolMail": ru.account.protocolMail,
+      // e-course completion (Task 2)
+      "account.completionMail": ru.account.completionMail,
+      "account.practical": ru.account.practical,
+      "account.completion": ru.account.completion,
     };
     for (const [where, value] of Object.entries(texts)) {
       const list = strings(value);
