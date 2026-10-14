@@ -44,7 +44,7 @@ const mails = () => resend.calls.filter((c) => c.url.includes("resend")).map((c)
 const infoLog = () => vi.mocked(console.info).mock.calls.flat().join("\n");
 const write = (accessId: number, version: number, protocolId: number | null, notes: string[], generalNote = "", at = MARIA) =>
   saveProtocol(db, { accessId, protocolId, version, titles: POINTS, notes, generalNote }, at);
-const tap = (accessId: number, protocolId: number, stage: number, verdict: Verdict | null) => saveVerdict(db, { accessId, protocolId, stage, verdict }, MARIA);
+const tap = (accessId: number, protocolId: number, round: number, stage: number, verdict: Verdict | null) => saveVerdict(db, { accessId, protocolId, round, stage, verdict }, MARIA);
 const stored = async (accessId: number) => (await db.select().from(protocols).where(eq(protocols.accessId, accessId)))[0];
 const completedAt = async (accessId: number) => (await db.select({ at: courseAccess.completedAt }).from(courseAccess).where(eq(courseAccess.id, accessId)))[0].at;
 
@@ -53,31 +53,43 @@ async function assessed() {
   const { access } = await ecourseAccess(db);
   const p = await submitRound(db, access.id, [0, 1, 2], DAY);
   await write(access.id, 1, p.id, ["", "Kuju on ebaühtlane", ""], "Hea algus");
-  for (const [stage, verdict] of [[0, "ok"], [1, "fix"], [2, "ok"]] as const) await tap(access.id, p.id, stage, verdict);
+  for (const [stage, verdict] of [[0, "ok"], [1, "fix"], [2, "ok"]] as const) await tap(access.id, p.id, 1, stage, verdict);
   return { access, p };
 }
 
 describe("the verdict taps (R2)", () => {
   test("before the student has sent her work a tap is closed — no protocol yet, or Maria's early notes (round 0); after it each tap is stored at once, the others kept, the notes' version untouched", async () => {
     const { access } = await ecourseAccess(db);
-    expect(await tap(access.id, 1, 0, "ok")).toEqual({ kind: "closed" });
+    expect(await tap(access.id, 1, 0, 0, "ok")).toEqual({ kind: "closed" });
     await write(access.id, 0, null, ["Vaata valgust", "", ""]); // "Lisa protokoll" early: Maria's first save makes the row
     const early = await stored(access.id);
-    expect(await tap(access.id, early.id, 0, "ok")).toEqual({ kind: "closed" });
+    expect(await tap(access.id, early.id, 0, 0, "ok")).toEqual({ kind: "closed" });
     await submitRound(db, access.id, [0, 1, 2], DAY);
-    expect(await tap(access.id, early.id, 1, "fix")).toEqual({ kind: "saved", verdicts: [null, "fix", null] });
-    expect(await tap(access.id, early.id, 0, "ok")).toEqual({ kind: "saved", verdicts: ["ok", "fix", null] });
-    expect(await tap(access.id, early.id, 1, null)).toEqual({ kind: "saved", verdicts: ["ok", null, null] }); // the pressed one tapped again
+    expect(await tap(access.id, early.id, 1, 1, "fix")).toEqual({ kind: "saved", verdicts: [null, "fix", null] });
+    expect(await tap(access.id, early.id, 1, 0, "ok")).toEqual({ kind: "saved", verdicts: ["ok", "fix", null] });
+    expect(await tap(access.id, early.id, 1, 1, null)).toEqual({ kind: "saved", verdicts: ["ok", null, null] }); // the pressed one tapped again
     expect(await stored(access.id)).toMatchObject({ version: 1, verdicts: ["ok", null, null], sentAt: null, stages: [{ note: "Vaata valgust" }, {}, {}] });
   });
 
   test("a tap of another row, or of a point the protocol does not have, is stale; an access that is not there is notFound; nothing is written", async () => {
     const { access } = await ecourseAccess(db);
     const p = await submitRound(db, access.id, [0, 1, 2], DAY);
-    expect(await tap(access.id, p.id + 1, 0, "ok")).toEqual({ kind: "stale" });
-    expect(await tap(access.id, p.id, 3, "ok")).toEqual({ kind: "stale" });
-    expect(await tap(999_999, p.id, 0, "ok")).toEqual({ kind: "notFound" });
+    expect(await tap(access.id, p.id + 1, 1, 0, "ok")).toEqual({ kind: "stale" });
+    expect(await tap(access.id, p.id, 1, 3, "ok")).toEqual({ kind: "stale" });
+    expect(await tap(999_999, p.id, 1, 0, "ok")).toEqual({ kind: "notFound" });
     expect((await stored(access.id)).verdicts).toEqual([null, null, null]);
+  });
+
+  test("a tap from a screen of an older round is stale: the student sent a new round since (R3 leaves the version), so Maria cannot judge photos she has not seen; the verdicts stay as they are", async () => {
+    const { access, p } = await assessed();
+    expect(await sendAssessment(deps(MARIA).d, { accessId: access.id, version: 2, protocolId: p.id, round: 1 })).toMatchObject({ kind: "sent", status: "fix" });
+    // round 2: point 2 redone, its verdict back to null; Maria's screen still shows round 1
+    expect(await submitRound(db, access.id, [1], NEXT)).toMatchObject({ round: 2, version: 2, verdicts: ["ok", null, "ok"] });
+    expect(await tap(access.id, p.id, 1, 1, "ok")).toEqual({ kind: "stale" });
+    expect(await tap(access.id, p.id, 1, 0, "fix")).toEqual({ kind: "stale" });
+    expect((await stored(access.id)).verdicts).toEqual(["ok", null, "ok"]);
+    // the screen read again shows round 2: its tap is stored
+    expect(await tap(access.id, p.id, 2, 1, "ok")).toEqual({ kind: "saved", verdicts: ["ok", "ok", "ok"] });
   });
 
   test("POST /api/admin/hinnang (handleVerdict): 200 with the stored verdicts, 409 closed or stale, 404, 400 for what is not a tap, 413 for a body far too long; never cached", async () => {
@@ -85,13 +97,15 @@ describe("the verdict taps (R2)", () => {
     const post = (body: unknown) =>
       handleVerdict(db, new Request(`${SITE}/api/admin/hinnang`, { method: "POST", headers: { "content-type": "application/json" }, body: typeof body === "string" ? body : JSON.stringify(body) }), MARIA);
     const answer = async (res: Response) => [res.status, await res.json(), res.headers.get("cache-control")];
-    expect(await answer(await post({ accessId: access.id, protocolId: 1, stage: 0, verdict: "ok" }))).toEqual([409, { ok: false, error: "closed" }, "no-store"]);
+    expect(await answer(await post({ accessId: access.id, protocolId: 1, round: 0, stage: 0, verdict: "ok" }))).toEqual([409, { ok: false, error: "closed" }, "no-store"]);
     const p = await submitRound(db, access.id, [0, 1, 2], DAY);
-    expect(await answer(await post({ accessId: access.id, protocolId: p.id, stage: 2, verdict: "fix" }))).toEqual([200, { ok: true, verdicts: [null, null, "fix"] }, "no-store"]);
-    expect(await answer(await post({ accessId: access.id, protocolId: p.id, stage: 5, verdict: "ok" }))).toEqual([409, { ok: false, error: "stale" }, "no-store"]);
-    expect(await answer(await post({ accessId: 999_999, protocolId: p.id, stage: 0, verdict: "ok" }))).toEqual([404, { ok: false, error: "notFound" }, "no-store"]);
-    const tapOf = (over: Record<string, unknown>) => ({ accessId: access.id, protocolId: p.id, stage: 0, verdict: "ok", ...over });
-    for (const bad of ["{", "[]", { accessId: access.id }, tapOf({ stage: -1 }), tapOf({ stage: 30 }), tapOf({ stage: 1.5 }), tapOf({ verdict: "maybe" }), tapOf({ protocolId: 0 }), tapOf({ accessId: "1" })])
+    expect(await answer(await post({ accessId: access.id, protocolId: p.id, round: 1, stage: 2, verdict: "fix" }))).toEqual([200, { ok: true, verdicts: [null, null, "fix"] }, "no-store"]);
+    expect(await answer(await post({ accessId: access.id, protocolId: p.id, round: 1, stage: 5, verdict: "ok" }))).toEqual([409, { ok: false, error: "stale" }, "no-store"]);
+    expect(await answer(await post({ accessId: access.id, protocolId: p.id, round: 0, stage: 0, verdict: "ok" }))).toEqual([409, { ok: false, error: "stale" }, "no-store"]); // a screen read before her submission
+    expect(await answer(await post({ accessId: 999_999, protocolId: p.id, round: 1, stage: 0, verdict: "ok" }))).toEqual([404, { ok: false, error: "notFound" }, "no-store"]);
+    const tapOf = (over: Record<string, unknown>) => ({ accessId: access.id, protocolId: p.id, round: 1, stage: 0, verdict: "ok", ...over });
+    const noRound = { accessId: access.id, protocolId: p.id, stage: 0, verdict: "ok" };
+    for (const bad of ["{", "[]", { accessId: access.id }, noRound, tapOf({ round: -1 }), tapOf({ round: 1.5 }), tapOf({ stage: -1 }), tapOf({ stage: 30 }), tapOf({ stage: 1.5 }), tapOf({ verdict: "maybe" }), tapOf({ protocolId: 0 }), tapOf({ accessId: "1" })])
       expect((await post(bad)).status, JSON.stringify(bad)).toBe(400);
     expect(await answer(await post("x".repeat(MAX_VERDICT_CHARS + 1)))).toEqual([413, { ok: false, error: "size" }, "no-store"]);
     expect((await stored(access.id)).verdicts).toEqual([null, null, "fix"]);
@@ -109,10 +123,10 @@ describe("Saada hinnang", () => {
     expect(await send(0)).toEqual({ kind: "notSubmitted" });
     await submitRound(db, access.id, [0, 1, 2], DAY);
     expect(await send(1)).toEqual({ kind: "verdicts", missing: [0, 1, 2] });
-    await tap(access.id, p.id, 0, "ok");
-    await tap(access.id, p.id, 1, "fix");
+    await tap(access.id, p.id, 1, 0, "ok");
+    await tap(access.id, p.id, 1, 1, "fix");
     expect(await send(1)).toEqual({ kind: "verdicts", missing: [2] });
-    await tap(access.id, p.id, 2, "fix");
+    await tap(access.id, p.id, 1, 2, "fix");
     expect(await send(1)).toEqual({ kind: "comments", missing: [2] }); // point 2 has its note ("Jälgi kuju"), point 3 none
     expect([(await stored(access.id)).sentAt, queued()]).toEqual([null, 0]);
   });
@@ -153,7 +167,7 @@ describe("Saada hinnang", () => {
     expect(again.queued()).toBe(0);
 
     // "Muuda" and a correction of the same round (spec §8): point 1 needs fixing too; the new copy replaces the old, the status follows it
-    await tap(access.id, p.id, 0, "fix");
+    await tap(access.id, p.id, 1, 0, "fix");
     await write(access.id, 2, p.id, ["Valgus on liiga hele", "Kuju on ebaühtlane", ""], "Hea algus");
     const fixed = deps(NEXT);
     expect(await sendAssessment(fixed.d, { accessId: access.id, version: 3, protocolId: p.id, round: 1 })).toEqual({ kind: "sent", status: "fix", completed: false, version: 3, sentAt: NEXT.toISOString() });
@@ -170,7 +184,7 @@ describe("Saada hinnang", () => {
     expect(await submitRound(db, access.id, [1], NEXT)).toMatchObject({ round: 2, verdicts: ["ok", null, "ok"], version: 2 });
     const { d, flush } = deps(AGAIN);
     expect(await sendAssessment(d, { accessId: access.id, version: 2, protocolId: p.id, round: 2 })).toEqual({ kind: "verdicts", missing: [1] });
-    await tap(access.id, p.id, 1, "ok");
+    await tap(access.id, p.id, 2, 1, "ok");
     expect(await sendAssessment(d, { accessId: access.id, version: 2, protocolId: p.id, round: 2 })).toEqual({ kind: "sent", status: "passed", completed: true, version: 2, sentAt: AGAIN.toISOString() });
     expect(await stored(access.id)).toMatchObject({ round: 2, sentRound: 2, sent: { verdicts: ["ok", "ok", "ok"] } });
     expect(await completedAt(access.id)).toEqual(AGAIN);
@@ -180,7 +194,7 @@ describe("Saada hinnang", () => {
     expect(done.subject).toContain("Kulmude e-kursus");
 
     // approved and sent: the verdicts are locked
-    expect(await tap(access.id, p.id, 1, "fix")).toEqual({ kind: "closed" });
+    expect(await tap(access.id, p.id, 2, 1, "fix")).toEqual({ kind: "closed" });
     expect(await sendAssessment(deps(LAST).d, { accessId: access.id, version: 2, protocolId: p.id, round: 2 })).toEqual({ kind: "already", version: 2, sentAt: AGAIN.toISOString() });
     // changed notes go again, and only they: the verdicts and completed_at stay; the mail is the protocol's "uuendatud"
     await write(access.id, 2, p.id, ["", "Kuju on nüüd ühtlane", ""], "Hea algus. Tubli!", LAST);
@@ -198,7 +212,7 @@ describe("Saada hinnang", () => {
     const p = await submitRound(db, access.id, [0, 1, 2], DAY);
     const question = { id: "q1", kind: "choice" as const, text: "Mis on esimene samm?", options: [{ id: "a", text: "Ettevalmistus", correct: true }, { id: "b", text: "Värvimine", correct: false }] };
     await db.insert(courseTests).values({ courseId: course.id, questions: [question] }); // the test step is open: no attempt yet
-    for (const stage of [0, 1, 2]) await tap(access.id, p.id, stage, "ok");
+    for (const stage of [0, 1, 2]) await tap(access.id, p.id, 1, stage, "ok");
     const { d, queued, flush } = deps(MARIA);
     expect(await sendAssessment(d, { accessId: access.id, version: 1, protocolId: p.id, round: 1 })).toEqual({ kind: "sent", status: "passed", completed: false, version: 1, sentAt: MARIA.toISOString() });
     expect(await stored(access.id)).toMatchObject({ sentRound: 1, sent: { verdicts: ["ok", "ok", "ok"] } });
@@ -217,7 +231,7 @@ describe("Saada hinnang", () => {
     const [extra] = await db.insert(lessons).values({ moduleId: lesson.moduleId, position: 2, title: { et: "Lisatund" }, kind: "text" }).returning(); // not done by Kati
     const p = await submitRound(db, access.id, [0, 1, 2], DAY);
     await write(access.id, 1, p.id, ["", "", ""], "Hea töö");
-    for (const stage of [0, 1, 2]) await tap(access.id, p.id, stage, "ok");
+    for (const stage of [0, 1, 2]) await tap(access.id, p.id, 1, stage, "ok");
     const first = deps(MARIA);
     expect(await sendAssessment(first.d, { accessId: access.id, version: 2, protocolId: p.id, round: 1 })).toEqual({ kind: "sent", status: "passed", completed: false, version: 2, sentAt: MARIA.toISOString() });
     await first.flush();
@@ -239,7 +253,7 @@ describe("Saada hinnang", () => {
   test("the version and the row the screen showed must be the stored ones: stale, nothing frozen; an access that is not there: notFound", async () => {
     const { access } = await ecourseAccess(db);
     const p = await submitRound(db, access.id, [0, 1, 2], DAY);
-    for (const stage of [0, 1, 2]) await tap(access.id, p.id, stage, "ok");
+    for (const stage of [0, 1, 2]) await tap(access.id, p.id, 1, stage, "ok");
     await write(access.id, 1, p.id, ["Hea", "", ""]); // version 2: another device's save
     const { d, queued } = deps();
     expect(await sendAssessment(d, { accessId: access.id, version: 1, protocolId: p.id, round: 1 })).toEqual({ kind: "stale", version: 2 });
@@ -248,14 +262,15 @@ describe("Saada hinnang", () => {
     expect([(await stored(access.id)).sentAt, queued()]).toEqual([null, 0]);
   });
 
-  test("a screen of an older round is stale: the student sent a new round meanwhile (R3 leaves the version), so Maria's 'ok' on the round she saw approves nothing — nothing frozen, not completed, no mail", async () => {
+  test("a send from a screen of an older round is stale: the student sent a new round meanwhile (R3 leaves the version) — even with every verdict set, it approves nothing: nothing frozen, not completed, no mail", async () => {
     const { access, p } = await assessed();
     const first = deps(MARIA);
     expect(await sendAssessment(first.d, { accessId: access.id, version: 2, protocolId: p.id, round: 1 })).toMatchObject({ kind: "sent", status: "fix" });
     await first.flush();
-    // round 2: point 2 redone, its verdict back to null, the notes' version still 2; Maria's screen still shows round 1
+    // round 2: point 2 redone, its verdict back to null, the notes' version still 2; one screen of Maria's still shows round 1
     expect(await submitRound(db, access.id, [1], NEXT)).toMatchObject({ round: 2, version: 2, verdicts: ["ok", null, "ok"] });
-    expect(await tap(access.id, p.id, 1, "ok")).toEqual({ kind: "saved", verdicts: ["ok", "ok", "ok"] });
+    // every verdict is set (here by her other screen, which shows round 2: the stale screen's own tap is refused, see "the verdict taps")
+    expect(await tap(access.id, p.id, 2, 1, "ok")).toEqual({ kind: "saved", verdicts: ["ok", "ok", "ok"] });
     const stale = deps(AGAIN);
     expect(await sendAssessment(stale.d, { accessId: access.id, version: 2, protocolId: p.id, round: 1 })).toEqual({ kind: "stale", version: 2 });
     expect(await stored(access.id)).toMatchObject({ round: 2, sentRound: 1, sentVersion: 2, sentAt: MARIA, sent: { verdicts: ["ok", "fix", "ok"] } });
@@ -288,14 +303,14 @@ describe("Saada hinnang", () => {
     const { access: ended } = await learner(db, course, lesson, "kati@example.com", { expiresAt: new Date("2026-11-01T00:00:00Z") });
     const p = await submitRound(db, ended.id, [0, 1, 2], new Date("2026-10-30T10:00:00Z"));
     expect(await write(ended.id, 1, p.id, ["", "", ""], "Hea töö")).toMatchObject({ kind: "saved", version: 2 });
-    for (const stage of [0, 1, 2]) expect(await tap(ended.id, p.id, stage, "ok")).toMatchObject({ kind: "saved" });
+    for (const stage of [0, 1, 2]) expect(await tap(ended.id, p.id, 1, stage, "ok")).toMatchObject({ kind: "saved" });
     expect(await sendAssessment(deps().d, { accessId: ended.id, version: 2, protocolId: p.id, round: 1 })).toMatchObject({ kind: "sent", status: "passed" });
 
     const { access: gone } = await learner(db, course, lesson, "mari@example.com");
     const q = await submitRound(db, gone.id, [0, 1, 2], DAY);
     await db.update(courseAccess).set({ revokedAt: DAY }).where(eq(courseAccess.id, gone.id));
     expect(await write(gone.id, 1, q.id, ["x", "", ""])).toEqual({ kind: "notFound" });
-    expect(await tap(gone.id, q.id, 0, "ok")).toEqual({ kind: "notFound" });
+    expect(await tap(gone.id, q.id, 1, 0, "ok")).toEqual({ kind: "notFound" });
     const { d, queued } = deps();
     expect(await sendAssessment(d, { accessId: gone.id, version: 1, protocolId: q.id, round: 1 })).toEqual({ kind: "notFound" });
     expect(await protocolScreen(db, { accessId: gone.id })).toBeNull();

@@ -18,10 +18,15 @@ import type { SendDeps } from "./protocols";
 // deadlock with another, and a tap or a send never meets the student's submit half done. Logs carry the access's id only: never a note, a name
 // or an address.
 
-/** One tap: the access, the protocol's row the screen shows, the point (0-based) and its verdict (null: cleared, the pressed button tapped again). */
+/**
+ * One tap: the access, the protocol's row the screen shows, the student's round it shows (AssessmentView.round), the point (0-based) and its
+ * verdict (null: cleared, the pressed button tapped again). Task 11's tap sends the round its screen shows: a resubmission never raises the
+ * version (R3), so only the round tells a screen of an older submission from the stored one.
+ */
 export const verdictBody = z.object({
   accessId: z.number().int().positive().max(2_147_483_647),
   protocolId: z.number().int().positive().max(2_147_483_647),
+  round: z.number().int().min(0).max(2_147_483_647),
   stage: z.number().int().min(0).max(PROTOCOL_LIMITS.stages - 1),
   verdict: z.enum(["ok", "fix"]).nullable(),
 });
@@ -29,8 +34,8 @@ export type VerdictInput = z.infer<typeof verdictBody>;
 
 /**
  * saved: the verdicts as stored now (one per point); closed: nothing was sent by the student yet (no protocol, or round 0), or every point is
- * approved and sent (the verdicts are locked: spec §8); stale: the screen's row is not the stored one, or the point is not the protocol's;
- * notFound: no such access, or a revoked one.
+ * approved and sent (the verdicts are locked: spec §8); stale: the screen's row is not the stored one, the point is not the protocol's, or the
+ * student sent a new round since the screen was read (Maria would judge photos she has not seen); notFound: no such access, or a revoked one.
  */
 export type VerdictResult = { kind: "saved"; verdicts: (Verdict | null)[] } | { kind: "closed" } | { kind: "stale" } | { kind: "notFound" };
 
@@ -47,6 +52,7 @@ export async function saveVerdict(db: Db, input: VerdictInput, now: Date): Promi
     if (!p) return { kind: "closed" }; // (her first photo makes the protocol: none, nothing sent)
     if (p.id !== input.protocolId || input.stage >= p.stages.length) return { kind: "stale" };
     if (p.round === 0 || practicalStatus(p) === "passed") return { kind: "closed" };
+    if (p.round !== input.round) return { kind: "stale" }; // (after "closed": not submitted or locked is the lasting answer)
     const verdicts = p.stages.map((_, i) => (i === input.stage ? input.verdict : (p.verdicts[i] ?? null)));
     await tx.update(protocols).set({ verdicts, updatedAt: now }).where(eq(protocols.id, p.id));
     return { kind: "saved", verdicts };
