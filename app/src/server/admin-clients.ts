@@ -5,8 +5,9 @@ import { listRegistrations, paged, type Paged, type RegistrationRow } from "@/db
 import { clientNameSql } from "@/db/queries/client-name";
 import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
 import { feedbackOf, type FeedbackRow } from "@/db/queries/protocols";
-import { clients, courseAccess, courses, lessonProgress, practicePackages, registrations, requests, termsAcceptances } from "@/db/schema";
+import { clients, courseAccess, courses, lessonProgress, practicePackages, protocols, registrations, requests, termsAcceptances, testAttempts } from "@/db/schema";
 import { accessState, defaultExpiryDate, grantExpiry, type AccessState } from "@/domain/client-access";
+import { percentOf, type CourseSteps } from "@/domain/completion";
 import { isEmail, normalizeEmail } from "@/domain/email";
 import { containsPattern, PAGE_SIZE } from "@/domain/paging";
 import { registrationHeading } from "@/domain/registration-card";
@@ -14,6 +15,7 @@ import { pick, type I18n } from "@/i18n/field";
 import { getDict } from "@/i18n/locales";
 import { parseRowId } from "@/lib/row-id";
 import { linkClientRecords, lockAddress } from "./client-auth";
+import { loadSteps } from "./completion";
 import { field } from "./edit-check";
 import { courseOutline } from "./lesson-outline";
 import { newsletterState, type NewsletterState } from "./newsletter";
@@ -84,7 +86,20 @@ export type ClientAccessRow = {
   progress: { done: number; total: number };
   /** The first lesson she cannot open yet ("Ava järgmine õppetund"), or null when none is locked. */
   nextLocked: { id: number; title: I18n } | null;
+  /** Her steps of the e-course (e-course completion, spec §5.5): lessons, test, practical work, completion — as her own page shows them. */
+  steps: CourseSteps;
+  /** The protocol of this access (her practical work and Maria's notes), or null before its first save or photo ("Lisa protokoll"). */
+  protocolId: number | null;
+  /**
+   * Her newest test attempt's score (rounded down; the step line's "(85 %)"), or null before her first attempt and for an attempt without choice
+   * questions (only open answers: no score to show, where percentOf would say 100 before Maria has read anything).
+   */
+  testPercent: number | null;
+  /** She has made an attempt at the course's test ("Testi katsed"). */
+  hasAttempts: boolean;
 };
+/** One of her registrations in the drawer: a contact course's carries its course day's protocol ("Lisa protokoll" / "Ava protokoll", spec §5.5). */
+export type ClientRegistrationRow = RegistrationRow & { protocolId: number | null; contact: boolean };
 /**
  * One of her requests as Päringud names it: `interest` (a contact request from the e-learning cart: "E-õppe huvi"), `wish`
  * (a change request: cancel or change), and `subject`: what it is about, in Estonian — the course (individual, waitlist,
@@ -102,7 +117,7 @@ export type ClientRequestRow = {
 };
 export type ClientDetail = {
   client: { id: number; email: string; name: string; ownName: string; phone: string; locale: "et" | "ru"; createdAt: Date };
-  registrations: RegistrationRow[];
+  registrations: ClientRegistrationRow[];
   requests: ClientRequestRow[];
   access: ClientAccessRow[];
   terms: { courseTitle: I18n; version: string; acceptedAt: Date }[];
@@ -134,6 +149,8 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
         grantedAt: courseAccess.grantedAt,
         expiresAt: courseAccess.expiresAt,
         revokedAt: courseAccess.revokedAt,
+        extraTries: courseAccess.extraTries,
+        completedAt: courseAccess.completedAt,
       })
       .from(courseAccess)
       .innerJoin(courses, eq(courseAccess.courseId, courses.id))
@@ -150,11 +167,27 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
   ]);
   if (!client) return null;
   const newsletter = await newsletterState(db, client.email);
-  // each e-course's lessons for her: done of total, and the first lesson she cannot open yet ("Ava järgmine õppetund")
-  const outlines = await Promise.all(access.map((a) => courseOutline(db, a.courseId, id)));
+  // each e-course's lessons for her: done of total, and the first lesson she cannot open yet ("Ava järgmine õppetund"); and (e-course
+  // completion, spec §5.5) each access's steps as her own page reads them, the protocols of her accesses and registrations, her attempts
+  const [outlines, steps, accessProtocols, registrationProtocols, attempts] = await Promise.all([
+    Promise.all(access.map((a) => courseOutline(db, a.courseId, id))),
+    Promise.all(
+      access.map((a) =>
+        loadSteps(db, { id: a.id, clientId: id, courseId: a.courseId, expiresAt: a.expiresAt, revokedAt: a.revokedAt, extraTries: a.extraTries, completedAt: a.completedAt }),
+      ),
+    ),
+    access.length ? db.select({ id: protocols.id, accessId: protocols.accessId }).from(protocols).where(inArray(protocols.accessId, access.map((a) => a.id))) : [],
+    regs.length ? db.select({ id: protocols.id, registrationId: protocols.registrationId }).from(protocols).where(inArray(protocols.registrationId, regs.map((r) => r.id))) : [],
+    db.select({ courseId: testAttempts.courseId, number: testAttempts.number, correct: testAttempts.correct, total: testAttempts.total }).from(testAttempts).where(eq(testAttempts.clientId, id)),
+  ]);
+  const accessProtocol = new Map(accessProtocols.map((p) => [p.accessId, p.id]));
+  const registrationProtocol = new Map(registrationProtocols.map((p) => [p.registrationId, p.id]));
+  // her newest attempt at each course's test: its score is the step line's (none for an attempt of open answers only)
+  const newest = new Map<number, { number: number; percent: number | null }>();
+  for (const t of attempts) if ((newest.get(t.courseId)?.number ?? 0) < t.number) newest.set(t.courseId, { number: t.number, percent: t.total > 0 ? percentOf(t.correct, t.total) : null });
   return {
     client,
-    registrations: regs,
+    registrations: regs.map((r) => ({ ...r, protocolId: registrationProtocol.get(r.id) ?? null, contact: r.course.type === "contact" })),
     requests: await requestRows(db, reqs),
     access: access.map((a, i) => {
       const locked = outlines[i].lessons.find((l) => l.state === "locked");
@@ -163,6 +196,10 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
         state: accessState(a, now),
         progress: { done: outlines[i].progress.done, total: outlines[i].progress.total },
         nextLocked: locked ? { id: locked.id, title: locked.title } : null,
+        steps: steps[i],
+        protocolId: accessProtocol.get(a.id) ?? null,
+        testPercent: newest.get(a.courseId)?.percent ?? null,
+        hasAttempts: newest.has(a.courseId),
       };
     }),
     terms,

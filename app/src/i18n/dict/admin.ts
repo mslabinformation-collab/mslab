@@ -648,6 +648,22 @@ export const adminEt = {
       no: "Ei",
       done: "Õppetund „{lesson}“ on avatud.",
     },
+    // the drawer's line about each e-course access (e-course completion, spec §5.5): {done}/{total} her lessons, {state} a step's state in the
+    // words below, {percent} her newest test score, {date} the day the course was completed
+    steps: {
+      lessons: "Õppetunnid {done}/{total}",
+      test: "Test: {state}",
+      testScore: "Test: {state} ({percent} %)",
+      practical: "Praktiline töö: {state}",
+      completed: "Lõpetatud {date}",
+      testStates: { locked: "lukus", open: "avatud", review: "ootab hindamist", fix: "parandamisel", done: "läbitud", used: "katsed otsas" },
+      practicalStates: { locked: "lukus", open: "avatud", review: "ootab hindamist", fix: "parandamisel", done: "kinnitatud" },
+    },
+    // the protocol of an e-course access (?ligipaas=) or of a contact registration (?registreering=): "Lisa" before its first save, then "Ava"
+    addProtocol: "Lisa protokoll",
+    openProtocol: "Ava protokoll",
+    // her test attempts (/admin/hindamine/test?ligipaas=), once she has one
+    attempts: "Testi katsed",
   },
 
   // /admin/opilased/<id>/vaade: the student's own "Minu koolitused", read-only

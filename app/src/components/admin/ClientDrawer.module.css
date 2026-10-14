@@ -189,3 +189,12 @@
   outline: 2px solid var(--rose);
   outline-offset: 2px;
 }
+
+/* an e-course's "Lisa protokoll" / "Ava protokoll" and "Testi katsed" (e-course completion): side by side, wrapping on a phone */
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 6px;
+}

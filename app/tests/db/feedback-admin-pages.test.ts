@@ -24,6 +24,7 @@ vi.mock("@/components/admin/Drawer", async () => {
 });
 vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), saveRegistrationPayment: vi.fn(), saveRegistrationStatus: vi.fn() }));
 vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn() }));
+vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 
 import RegistrationsPage from "@/app/admin/(panel)/registreerimised/page";
 import FeedbackPage from "@/app/admin/(panel)/tagasiside/page";
