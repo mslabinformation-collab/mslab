@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import type { Verdict } from "@/db/schema";
 import type { PracticalStatus } from "@/domain/completion";
 import type { AssessmentView } from "@/domain/protocols";
@@ -42,16 +42,19 @@ const TONE: Record<PracticalStatus, string> = { open: "", review: ui.warn, fix: 
 /**
  * Maria's assessment of one e-course access's practical work (phase e-course completion, spec §5.3): the protocol screen (ProtocolScreen,
  * single, its autosave's owner the access) with, under each point's heading, its photos and verdict buttons (AssessmentStage), "Saada
- * hinnang" instead of the course day's sends (AssessmentSend), the status above, and the full-screen viewer (PhotoViewer). The verdicts are
- * this screen's (verdict-taps.ts: each tap stored at once, R2), not the autosave's. The screen's reads (`read`, the same GET as the notes')
- * bring the practical work too: the photos, the verdicts and the round of a new submission (R3) are taken from each. Every tap and the send name
- * the round the screen shows; a tap the server finds of an older round ("stale": the student sent a new one meanwhile) is read again and the line
- * says so. An e-course without points is the plain notes protocol with its "Saada". `read` and `post` are replaceable for the tests.
+ * hinnang" instead of the course day's sends (AssessmentSend), the round and the status above, and the full-screen viewer (PhotoViewer). The
+ * verdicts are this screen's (verdict-taps.ts: each tap stored at once, R2), not the autosave's. The screen's reads (`read`, the same GET as the
+ * notes') bring the practical work too: the photos, the verdicts, the status and the round of a new submission (R3) are taken from each, so the
+ * round line ("Praktiline töö, 2. kord") follows them. Every tap and the send name the round the screen shows; a tap the server finds of an older
+ * round ("stale": the student sent a new one meanwhile) is read again and the line says so. An e-course without points is the plain notes
+ * protocol with its "Saada". `read` and `post` are replaceable for the tests.
  */
 export function AssessmentScreen({ view, read = getScreen, post = postVerdict }: { view: ScreenView; read?: ReadScreen; post?: PostVerdict }) {
   const s = adminEt.assessment.screen;
   const first = view.students[0];
   const [assessment, setAssessment] = useState<AssessmentView | null>(first?.assessment ?? null);
+  /** The practical work as the last read or send left it, for a send's check that runs after an await (AssessmentSend's `current`). */
+  const latest = useRef<AssessmentView | null>(first?.assessment ?? null);
   const [taps] = useState(() => new VerdictTaps(first?.registrationId ?? 0, first?.assessment?.verdicts ?? [], first?.assessment?.round ?? 0, post));
   useSyncExternalStore(taps.subscribe, taps.snapshot, taps.snapshot);
   const [viewer, setViewer] = useState<{ photos: readonly Photo[]; index: number; label: string; from: HTMLElement } | null>(null);
@@ -61,6 +64,7 @@ export function AssessmentScreen({ view, read = getScreen, post = postVerdict }:
     const next = answer && answer.status === 200 ? readAssessment(readStudents(answer.body)?.[0]?.assessment) : null;
     if (next) {
       taps.take(next.verdicts, next.round);
+      latest.current = next;
       setAssessment(next);
     }
     return answer;
@@ -68,11 +72,14 @@ export function AssessmentScreen({ view, read = getScreen, post = postVerdict }:
 
   if (!assessment) return <ProtocolScreen view={view} read={reader} />; // (an access's page always hands it over)
   const notesOnly = (first?.titles.length ?? 0) === 0;
+  const roundLine = notesOnly ? s.notesOnly : assessment.round === 0 ? s.notSubmitted : fill(s.round, { n: assessment.round });
 
   const onSent = (status: PracticalStatus | null, verdicts: (Verdict | null)[]) => {
-    if (status === null) return;
+    const a = latest.current;
+    if (status === null || !a) return;
     taps.take(verdicts, taps.round);
-    setAssessment((a) => (a ? { ...a, status, locked: status === "passed", verdicts, sentVerdicts: verdicts } : a));
+    latest.current = { ...a, status, locked: status === "passed", verdicts, sentVerdicts: verdicts };
+    setAssessment(latest.current);
   };
 
   const stageExtra = (i: number, state: EditorState) => {
@@ -99,17 +106,22 @@ export function AssessmentScreen({ view, read = getScreen, post = postVerdict }:
       />
     );
   };
-  const sendBar = (_entry: Entry, state: EditorState) => <AssessmentSend state={state} assessment={assessment} taps={taps} onSent={onSent} />;
+  const sendBar = (_entry: Entry, state: EditorState) => (
+    <AssessmentSend state={state} assessment={assessment} current={() => latest.current} taps={taps} onSent={onSent} />
+  );
 
   return (
     <div className={styles.screen} data-assessment-screen="">
-      {!notesOnly && (
-        <p className={styles.statusLine}>
+      <p className={styles.statusLine}>
+        <span className={ui.lead} data-assess-round="">
+          {roundLine}
+        </span>
+        {!notesOnly && (
           <span className={`${ui.tag} ${TONE[assessment.status]}`} data-assess-status={assessment.status}>
             {s.status[assessment.status]}
           </span>
-        </p>
-      )}
+        )}
+      </p>
       <ProtocolScreen view={view} read={reader} stageExtra={notesOnly ? undefined : stageExtra} sendBar={sendBar} opened={!notesOnly && assessment.status === "review"} />
       {viewer && (
         <PhotoViewer

@@ -38,9 +38,10 @@ function viewOf(screen: ScreenData, source: ScreenView["source"]): ScreenView {
  * and the overview's "Täna"); ?registreering=<id>: one registration (from Registreerimised: an individual course, or one group student). The
  * header names the course, the day and the place, with the way back; the screen is ProtocolScreen (its autosave runs in the browser).
  * ?ligipaas=<id> (phase e-course completion, spec §5.3): one e-course access — Maria's assessment of the student's practical work (from
- * Hindamine, the student's drawer and Maria's notice): the header names the course, the student and the round, the way back is Hindamine, an
- * ended access says Maria can still assess, and the screen is AssessmentScreen. The first of the three in the address wins. Behind requireAdmin
- * like every admin page; nothing is written by opening it (a protocol is created by its first save, or by the student's first photo).
+ * Hindamine, the student's drawer and Maria's notice): the header names the course and the student, the way back is Hindamine, an ended
+ * access says Maria can still assess, and the screen is AssessmentScreen (its first line the round, which follows the screen's reads). The
+ * first of the three in the address wins. Behind requireAdmin like every admin page; nothing is written by opening it (a protocol is created
+ * by its first save, or by the student's first photo).
  */
 export default async function ProtocolsPage({ searchParams }: Props) {
   const email = await requireAdmin();
@@ -85,7 +86,6 @@ export default async function ProtocolsPage({ searchParams }: Props) {
   if (screen.kind === "access" && screen.assessment && accessId !== null) {
     const student = screen.students[0];
     const work = screen.assessment;
-    const lead = student.protocol.stages.length === 0 ? a.notesOnly : work.round === 0 ? a.notSubmitted : fill(a.round, { n: work.round });
     const now = new Date();
     return (
       <Shell email={email} active={active}>
@@ -96,9 +96,6 @@ export default async function ProtocolsPage({ searchParams }: Props) {
               <h1 className={ui.h1} data-protocol-course="">
                 {`${pick(screen.course.title, "et")} · ${student.name}`}
               </h1>
-              <p className={ui.lead} data-assess-round="">
-                {lead}
-              </p>
             </div>
             <Link className={ui.link} href="/admin/hindamine">
               {a.back}

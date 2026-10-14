@@ -79,13 +79,13 @@ const reset = (screen: ScreenData | null) => {
   seen.views.length = 0;
 };
 
-test("?ligipaas=<id>: the header names the course and the student and the round, the way back is Hindamine, the menu marks Hindamine, and the screen is the access's", async () => {
+test("?ligipaas=<id>: the header names the course and the student (the round is the screen's own line, which follows its reads), the way back is Hindamine, the menu marks Hindamine, and the screen is the access's", async () => {
   reset(accessScreen());
   const html = await render({ ligipaas: "4" });
   expect(seen.targets).toEqual([{ accessId: 4 }]);
   expect(html).toContain('data-shell-active="assessment"');
   expect(html).toMatch(/data-protocol-course="">Kulmude e-kursus · Kati Kask</);
-  expect(html).toMatch(/data-assess-round="">Praktiline töö, 2\. kord</);
+  expect(html).not.toContain("data-assess-round"); // AssessmentScreen's (tests/unit/assessment-screen-dom.test.ts)
   expect(html).toContain('href="/admin/hindamine"');
   expect(html).not.toContain("data-access-expired");
   expect(seen.views).toEqual([expect.objectContaining({ single: true, owner: "access", source: { ligipaas: 4 } })]);
@@ -93,13 +93,7 @@ test("?ligipaas=<id>: the header names the course and the student and the round,
   expect(view.students.map((s) => [s.registrationId, s.assessment?.submittedAt])).toEqual([[4, "2026-11-10T09:00:00.000Z"]]);
 });
 
-test("nothing submitted yet, and the notes-only protocol of an e-course without points, say so in the header; an ended access says Maria can still assess", async () => {
-  reset(accessScreen({ round: 0, status: "open", submittedAt: null }));
-  expect(await render({ ligipaas: "4" })).toContain("Praktiline töö: õpilane ei ole veel saatnud");
-  const notesOnly = accessScreen({ round: 0, status: "open", submittedAt: null, verdicts: [], photos: [] });
-  notesOnly.students[0].protocol.stages = [];
-  reset(notesOnly);
-  expect(await render({ ligipaas: "4" })).toMatch(/data-assess-round="">Protokoll</);
+test("an ended access says Maria can still assess", async () => {
   reset(accessScreen({ expiresAt: new Date("2026-01-01T00:00:00Z") }));
   const ended = await render({ ligipaas: "4" });
   expect(ended).toContain("data-access-expired");

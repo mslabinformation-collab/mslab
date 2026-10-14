@@ -217,6 +217,7 @@ test("before the student has sent her work: the verdict buttons are off and 'Saa
   expect($$("[data-no-photos]")).toHaveLength(3);
   expect($("[data-assess-waiting]")).not.toBeNull();
   expect($("[data-assess-status]")!.textContent).toBe("Ootab õpilase tööd");
+  expect($("[data-assess-round]")!.textContent).toBe("Praktiline töö: õpilane ei ole veel saatnud");
   await click("[data-assess-send]");
   expect($("[data-assess-error]")!.textContent).toBe("Õpilane ei ole tööd veel hindamiseks saatnud.");
   expect(action.sendAssessmentAction).not.toHaveBeenCalled();
@@ -302,6 +303,7 @@ test("an e-course without points: the plain notes protocol, sent with 'Saada' as
   action.sendAssessmentAction.mockResolvedValue({ kind: "sent", status: "open", completed: false, version: 2, sentAt: SENT_AT });
   await render(student({ titles: [], notes: [], assessment: assessment({ status: "open", round: 0, submittedAt: null, verdicts: [], photos: [] }) }));
   expect([$("[data-assess-point]"), $("[data-verdict]"), $("[data-assess-status]")]).toEqual([null, null, null]);
+  expect($("[data-assess-round]")!.textContent).toBe("Protokoll");
   expect($("[data-assess-send]")!.textContent).toBe("Saada");
   await click("[data-assess-send]");
   expect($("[data-assess-error]")!.textContent).toBe("Protokoll on tühi. Kirjuta midagi enne saatmist.");
@@ -326,4 +328,104 @@ test("R3: coming back to the window reads the server again, and the student's ne
   expect($("[data-edit]")).toBeNull();
   expect(($("[data-note='1']") as HTMLTextAreaElement).readOnly).toBe(false);
   expect(allOff()).toBe(false);
+});
+
+// ---------- a screen left open "between other work" (final review I2): what it shows follows the server ----------
+
+const TIMEOUT_LINE = "Vastust ei tulnud: kontrollin, kas protokoll saadeti. Juba saadetud protokolli teist korda ei saadeta.";
+const ALL_OK: ("ok" | "fix" | null)[] = ["ok", "ok", "ok"];
+/** "Saada hinnang" and its confirmation's "Saada". */
+const sendAndConfirm = async () => {
+  await click("[data-assess-send]");
+  await click("[data-assess-confirm]");
+};
+/** The window comes back (focus): the screen reads the server again, answered with `s`. */
+const backToWindow = async (s: ScreenStudentView) => {
+  await act(async () => void window.dispatchEvent(new Event("focus")));
+  await answered(answer([s]));
+};
+
+test("the round line is the screen's: 'Praktiline töö, 1. kord', and a read that brings the student's new round says '2. kord'", async () => {
+  await render(student());
+  expect($("[data-assess-round]")!.textContent).toBe("Praktiline töö, 1. kord");
+  await backToWindow(student({ assessment: assessment({ round: 2, photos: [[photo(41, 2), photo(11)], [photo(13)], [photo(14)]] }) }));
+  expect($("[data-assess-round]")!.textContent).toBe("Praktiline töö, 2. kord");
+  expect(ids("[data-assess-point='0'] [data-latest-photos] [data-assess-photo]")).toEqual(["41"]);
+});
+
+test("a send with no answer: 'Vastust ei tulnud …', the server read again; the read shows it sent — the line goes and the screen locks with the server's status", async () => {
+  action.sendAssessmentAction.mockReturnValue(new Promise(() => {})); // never answered
+  await render(student({ assessment: assessment({ verdicts: ALL_OK }) }));
+  await sendAndConfirm();
+  expect(action.sendAssessmentAction.mock.calls).toEqual([[{ accessId: 4, version: 1, protocolId: 9, round: 1 }]]);
+  const reads = read.mock.calls.length;
+  await wait(30_000); // SEND_TIMEOUT_MS
+  expect($("[data-assess-error]")!.textContent).toBe(TIMEOUT_LINE);
+  expect(read.mock.calls.length).toBe(reads + 1);
+  await answered(answer([student({ sentVersion: 1, sentAt: SENT_AT, assessment: assessment({ status: "passed", locked: true, verdicts: ALL_OK, sentVerdicts: ALL_OK }) })]));
+  expect($("[data-assess-error]")).toBeNull();
+  expect($("[data-assess-status]")!.getAttribute("data-assess-status")).toBe("passed");
+  expect([$("[data-edit]") !== null, allOff(), ($("[data-note='0']") as HTMLTextAreaElement).readOnly]).toEqual([true, true, true]);
+  expect(action.sendAssessmentAction).toHaveBeenCalledTimes(1);
+});
+
+test("a send with no answer that the read shows NOT sent: the line stays, the screen stays open, and a send again is Maria's", async () => {
+  action.sendAssessmentAction.mockReturnValue(new Promise(() => {}));
+  await render(student({ assessment: assessment({ verdicts: ALL_OK }) }));
+  await sendAndConfirm();
+  await wait(30_000);
+  await answered(answer([student({ assessment: assessment({ verdicts: ALL_OK }) })]));
+  expect($("[data-assess-error]")!.textContent).toBe(TIMEOUT_LINE);
+  expect($("[data-assess-status]")!.getAttribute("data-assess-status")).toBe("review");
+  expect([$("[data-edit]"), allOff()]).toEqual([null, false]);
+  expect($("[data-assess-send]")!.getAttribute("aria-disabled")).toBeNull();
+});
+
+test("'already' (sent from another device meanwhile): the screen reads the server again and takes its status — locked, not 'Ootab hindamist' with the boxes open", async () => {
+  action.sendAssessmentAction.mockResolvedValue({ kind: "already", version: 1, sentAt: SENT_AT });
+  await render(student({ assessment: assessment({ verdicts: ALL_OK }) }));
+  const reads = read.mock.calls.length;
+  await sendAndConfirm();
+  expect($("[data-assess-sent]")!.textContent).toBe("See hinnang on juba saadetud.");
+  expect(read.mock.calls.length).toBe(reads + 1);
+  await answered(answer([student({ sentVersion: 1, sentAt: SENT_AT, assessment: assessment({ status: "passed", locked: true, verdicts: ALL_OK, sentVerdicts: ALL_OK }) })]));
+  expect($("[data-assess-status]")!.getAttribute("data-assess-status")).toBe("passed");
+  expect([$("[data-edit]") !== null, allOff(), $("[data-assess-locked]") !== null]).toEqual([true, true, true]);
+});
+
+test("the confirmation closes when a read brings the student's new round (its counts were of the round before); the focus goes back to 'Saada hinnang'", async () => {
+  await render(student({ assessment: assessment({ verdicts: ALL_OK }) }));
+  await click("[data-assess-send]");
+  expect($("[data-assess-confirm-box]")!.textContent).toContain("Kinnitatud: 3 · Paranda: 0");
+  expect($("[data-assess-send]")!.getAttribute("aria-expanded")).toBe("true");
+  await backToWindow(student({ assessment: assessment({ round: 2, verdicts: ["ok", null, "ok"], photos: [[photo(11)], [photo(31, 2), photo(13)], [photo(14)]] }) }));
+  expect($("[data-assess-confirm-box]")).toBeNull();
+  expect($("[data-assess-send]")!.getAttribute("aria-expanded")).toBe("false");
+  expect(document.activeElement).toBe($("[data-assess-send]"));
+  expect(action.sendAssessmentAction).not.toHaveBeenCalled();
+  // a new confirmation counts the new round
+  held = ["ok", null, "ok"]; // (the server's verdicts of round 2)
+  await click("[data-assess-point='1'] [data-verdict='fix']");
+  await type("[data-note='1']", "Kuju on ebaühtlane");
+  await click("[data-assess-send]");
+  expect($("[data-assess-confirm-box]")!.textContent).toContain("Kinnitatud: 2 · Paranda: 1");
+});
+
+test("after a stale send and the read of the student's new round, the next 'Saada hinnang' names round 2 (and so does its tap)", async () => {
+  action.sendAssessmentAction
+    .mockResolvedValueOnce({ kind: "stale", version: 1 })
+    .mockResolvedValueOnce({ kind: "sent", status: "passed", completed: true, version: 1, sentAt: SENT_AT });
+  await render(student({ assessment: assessment({ verdicts: ALL_OK }) }));
+  await sendAndConfirm();
+  await answered(answer([student({ assessment: assessment({ round: 2, verdicts: ["ok", null, "ok"], photos: [[photo(11)], [photo(31, 2), photo(13)], [photo(14)]] }) })]));
+  expect($("[data-assess-error]")!.textContent).toBe(NEW_ROUND);
+  held = ["ok", null, "ok"]; // (the server's verdicts of round 2)
+  await click("[data-assess-point='1'] [data-verdict='ok']");
+  expect(posted("/api/admin/hinnang")).toEqual([{ accessId: 4, protocolId: 9, round: 2, stage: 1, verdict: "ok" }]);
+  await sendAndConfirm();
+  expect(action.sendAssessmentAction.mock.calls).toEqual([
+    [{ accessId: 4, version: 1, protocolId: 9, round: 1 }],
+    [{ accessId: 4, version: 1, protocolId: 9, round: 2 }],
+  ]);
+  expect($("[data-assess-sent]")!.textContent).toBe("Hinnang saadetud. Koolitus on lõpetatud.");
 });

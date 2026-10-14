@@ -10,7 +10,7 @@ import { sendAssessmentAction } from "@/server/actions/admin-assessment";
 import type { AssessmentResult } from "@/server/assessment";
 import type { EditorState } from "./ProtocolScreen";
 import { bounded, unsavedMessage } from "./ProtocolSend";
-import { sameContent, statusOf, written, type Content } from "./protocol-autosave";
+import { sameContent, statusOf, unsavedEntry, written, type Content } from "./protocol-autosave";
 import type { VerdictTaps } from "./verdict-taps";
 import ui from "./ui.module.css";
 import screen from "./ProtocolScreen.module.css";
@@ -28,6 +28,9 @@ type Outcome = AssessmentResult | { kind: "failed" };
 
 /** Points (0-based) in Maria's words: "2, 4". */
 const list = (points: readonly number[]): string => points.map((i) => i + 1).join(", ");
+
+/** Two verdict lists alike point by point (none is never alike). */
+const sameVerdicts = (a: readonly (Verdict | null)[] | null, b: readonly (Verdict | null)[]): boolean => a !== null && a.length === b.length && a.every((v, i) => v === b[i]);
 
 /** The line a send leaves under its button: null when it went through (sent now, or already). */
 export function assessMessage(result: Outcome, s: S, t: T): string | null {
@@ -58,16 +61,21 @@ export function assessMessage(result: Outcome, s: S, t: T): string | null {
  * point has a verdict, every "Paranda" has a note — and says what is missing; then one confirmation with the counts; its "Saada" saves the
  * notes, stores every tap, and sends (sendAssessmentAction) with the round the screen shows. After an approval the button sends the changed notes
  * again ("Saada uuesti"). R3: coming back to the window reads the server again (engine.recheck), so the student's new round reaches a screen left
- * open; a send or a tap the server finds of an older round reads it too, and the line says she sent a new one.
+ * open; a send or a tap the server finds of an older round reads it too, and the line says she sent a new one. A read that brings another round
+ * closes the confirmation (its counts were of the round before). An "already" answer reads the server again, so the screen takes its status; a
+ * send that got no answer reads it too, and the line "Vastust ei tulnud …" goes when the read shows the send done.
  */
 export function AssessmentSend({
   state,
   assessment,
+  current,
   taps,
   onSent,
 }: {
   state: EditorState;
   assessment: AssessmentView;
+  /** The practical work as the screen's last read or send left it (`assessment` is the render's: a check after an await asks this). */
+  current(): AssessmentView | null;
   taps: VerdictTaps;
   /** A send went through: the status it made (null: only the notes went, or it was sent already) and the verdicts it sent. */
   onSent(status: PracticalStatus | null, verdicts: (Verdict | null)[]): void;
@@ -78,13 +86,20 @@ export function AssessmentSend({
   const { engine, entry, locked, onUnlock } = state;
   const id = entry.registrationId;
   const notesOnly = entry.titles.length === 0;
-  const [asking, setAsking] = useState(false);
+  // the round the confirmation was opened on: it shows only while the screen shows that round, so a read that brings the student's new round
+  // closes it (its counts were of the round before, and the server would refuse its send as stale)
+  const [askedOn, setAskedOn] = useState<number | null>(null);
+  const asking = askedOn !== null && askedOn === assessment.round;
   const [done, setDone] = useState<string | null>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const question = useRef<HTMLParagraphElement>(null);
   const box = useRef<HTMLDivElement>(null);
+  const wasAsking = useRef(false);
   useEffect(() => {
     if (asking) question.current?.focus();
+    // closed by a new round, the focused button gone with it: the focus returns to "Saada hinnang" (close() moves it itself)
+    else if (wasAsking.current && (document.activeElement === null || document.activeElement === document.body)) opener.current?.focus();
+    wasAsking.current = asking;
   }, [asking]);
   useEffect(() => {
     if (notesOnly) return;
@@ -119,14 +134,34 @@ export function AssessmentSend({
     }
     const line = why();
     engine.setSendError(id, line);
-    if (!line) setAsking(true);
+    if (!line) setAskedOn(assessment.round);
   }
 
   /** Closes the confirmation; its focused button goes with it, so the focus returns to "Saada hinnang" (unless Maria has gone elsewhere). */
   function close() {
     const active = document.activeElement;
     if (!active || active === document.body || box.current?.contains(active)) opener.current?.focus();
-    setAsking(false);
+    setAskedOn(null);
+  }
+
+  /**
+   * A send that got no answer in SEND_TIMEOUT_MS may have gone through (as ProtocolSend.tsx checkAfterTimeout): the server is read again, and when
+   * the read shows this send done — the notes' version sent with nothing unsaved since, and with points the round sent, assessed with exactly the
+   * verdicts sent — the line "Vastust ei tulnud …" goes and the screen locks as after a send answered "sent". Otherwise the line stays; a send again
+   * is safe (the server answers "already" for what it has sent).
+   */
+  function checkAfterTimeout(line: string, round: number, sent: readonly (Verdict | null)[]) {
+    engine.recheck(id);
+    void engine.whenFresh([id]).then((read) => {
+      const e = engine.get(id);
+      if (!read || !e || e.sending || statusOf(e) !== "sent" || unsavedEntry(e)) return;
+      const a = current();
+      const assessed = a !== null && a.round === round && (a.status === "fix" || a.status === "passed") && sameVerdicts(a.sentVerdicts, sent);
+      if (!notesOnly && !assessed) return;
+      if (e.sendError === line) engine.setSendError(id, null);
+      onUnlock(false);
+      onSent(notesOnly || !a ? null : a.status, [...sent]);
+    });
   }
 
   /** The line after a send that went through. */
@@ -192,8 +227,8 @@ export function AssessmentSend({
       const sent = after.titles.map((_, i) => taps.shown(i));
       const result = await bounded(sendAssessmentAction({ accessId: id, version: after.version, protocolId: after.protocolId, round })).catch((): Outcome => ({ kind: "failed" }));
       if (result === "timeout") {
-        engine.setSendError(id, t.sendErrors.timeout);
-        engine.recheck(id); // (it may have gone through: the read shows the sent marks; a send again is "already")
+        engine.setSendError(id, t.sendErrors.timeout); // (the boxes open again: the finally below)
+        checkAfterTimeout(t.sendErrors.timeout, round, sent);
         return;
       }
       if (result.kind === "sent" || result.kind === "already") {
@@ -201,6 +236,9 @@ export function AssessmentSend({
         onUnlock(false);
         onSent(result.kind === "sent" && !notesOnly ? result.status : null, sent);
         setDone(doneLine(result, sent));
+        // sent before (another device, or a send whose answer was lost): the screen still shows what it had, so the server's status, sent
+        // verdicts and round are read and shown
+        if (result.kind === "already") engine.recheck(id);
         return;
       }
       if (result.kind === "stale") {

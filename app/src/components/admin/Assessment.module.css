@@ -1,6 +1,6 @@
-/* Maria's assessment of an e-course's practical work (phase e-course completion, spec §5.3): the status line above the protocol screen; under
-   each point its photos (the newest round's, the earlier ones folded and smaller), the verdict buttons and the "Salvestamata" mark; and the
-   full-screen photo viewer. Tokens only (tests/unit/colour-tokens.test.ts); every target at least 44 px; no animation, so
+/* Maria's assessment of an e-course's practical work (phase e-course completion, spec §5.3): the round and the status above the protocol
+   screen; under each point its photos (the newest round's, the earlier ones folded and smaller), the verdict buttons and the "Salvestamata"
+   mark; and the full-screen photo viewer. Tokens only (tests/unit/colour-tokens.test.ts); every target at least 44 px; no animation, so
    prefers-reduced-motion has nothing to turn off. */
 
 .screen {
@@ -8,7 +8,12 @@
   gap: 14px;
 }
 
+/* the round ("Praktiline töö, 2. kord") and the status: they follow the screen's reads */
 .statusLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
   margin: 0;
 }
 
