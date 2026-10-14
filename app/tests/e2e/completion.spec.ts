@@ -76,9 +76,24 @@ const fileInput = (page: Page, i: number) => point(page, i).locator('[data-photo
 /** A point's stored photos (not one on its way). */
 const storedOn = (page: Page, i: number) => point(page, i).locator("[data-photo]:not([data-photo-pending])");
 const assessPoint = (page: Page, i: number) => page.locator(`[data-assess-point="${i}"]`);
+/** The start of an EXIF block (APP1): "Exif" and two zero bytes. */
+const EXIF_BYTES = Buffer.from("Exif\0\0", "latin1");
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 /** A radio's, a checkbox's or a file field's touch target is its label (the test's options, "Lisa foto"), as in admin-lessons.spec.ts. */
 const LABELLED = /^<input[^>]*\stype="(radio|checkbox|file)"/;
+const LABELLED_INPUTS = 'input[type="radio"]:visible, input[type="checkbox"]:visible, input[type="file"]:visible';
+/**
+ * The radios, checkboxes and file fields in `scope` whose touch target, their label, is under 44 px tall or missing: the label around the input
+ * or the one naming it (`label[for=id]`; the input's own `labels` list holds both), the tallest one counted. The start of each input's HTML
+ * with the height found (0: no label), for the failure message.
+ */
+const smallLabels = (scope: Locator): Promise<string[]> =>
+  scope.locator(LABELLED_INPUTS).evaluateAll((els) =>
+    els
+      .map((el) => ({ el, height: Math.max(0, ...Array.from((el as HTMLInputElement).labels ?? []).map((l) => l.getBoundingClientRect().height)) }))
+      .filter(({ height }) => height < 44)
+      .map(({ el, height }) => `${el.outerHTML.slice(0, 120)} (label ${Math.round(height)} px)`),
+  );
 
 /** A confirming step's "yes": the marked element itself when it is a button, else the step's first button (the "yes" comes first on every step). */
 async function confirmStep(marked: Locator): Promise<void> {
@@ -177,6 +192,8 @@ test("§9 e2e 2 — Review Focus 1: a 6000×4000 phone photo with GPS goes up un
   const sideways = withExif((await canvasJpeg(page, 600, 400)).bytes, { orientation: 6 });
   expect([hasExif(big), hasExif(sideways)]).toEqual([true, true]);
   test.info().annotations.push({ type: "fixture", description: `6000×4000 with GPS: ${big.length} bytes` });
+  // larger than a stored photo may be: the page has to make it smaller (lib/shrink-image.ts), it cannot just pass it on
+  expect(big.length, "the 6000×4000 fixture is over PHOTO_LIMITS.fullBytes").toBeGreaterThan(PHOTO_LIMITS.fullBytes);
 
   // 1. point 1: the big photo, its first upload lost on the way (a weak signal); only that photo offers "Proovi uuesti"
   let posts = 0;
@@ -210,6 +227,9 @@ test("§9 e2e 2 — Review Focus 1: a 6000×4000 phone photo with GPS goes up un
     expect([...full.subarray(0, 3)], p.key).toEqual([0xff, 0xd8, 0xff]);
     expect(hasExif(full), `${p.key} has no EXIF`).toBe(false);
     expect(hasExif(thumb), `${p.thumbKey} has no EXIF`).toBe(false);
+    // nor the EXIF block's bytes anywhere in the file (not only among the segments hasExif walks)
+    expect(full.includes(EXIF_BYTES), `${p.key} holds no "Exif" block bytes`).toBe(false);
+    expect(thumb.includes(EXIF_BYTES), `${p.thumbKey} holds no "Exif" block bytes`).toBe(false);
     expect(full.length).toBeLessThanOrEqual(PHOTO_LIMITS.fullBytes);
     expect(thumb.length).toBeLessThanOrEqual(PHOTO_LIMITS.thumbBytes);
     expect(p.size).toBe(full.length);
@@ -459,11 +479,12 @@ test("§9 e2e 8: the pages at 390, 834, 1194 and 1440 px — no sideways scroll,
   const herB = await studentPage(browser, b.email, visitorIp);
   /** Hindamine's items: one in each group, the out-of-tries one with its "Ava test uuesti". */
   const queued = [`[data-queue="practicals"] [data-queue-item="${d.accessId}"]`, `[data-queue="tests"] [data-queue-item="${c.accessId}"]`, `[data-queue="tries"] [data-queue-item="${e.accessId}"] [data-reopen]`];
-  // `shows`: what the screen must show before it is measured (its items, the review's buttons, the photos and verdicts)
+  // `shows`: what the screen must show before it is measured (the options and the file field whose labels are measured, its items, the
+  // review's buttons, the photos and verdicts)
   const screens: { page: Page; url: string; scope: string; admin: boolean; shows?: string[] }[] = [
-    { page: herA.page, url: testPage(a), scope: "[data-test-page]", admin: false },
+    { page: herA.page, url: testPage(a), scope: "[data-test-page]", admin: false, shows: ["[data-answer-option]"] },
     { page: herA.page, url: coursePage(a), scope: "[data-completion]", admin: false },
-    { page: herB.page, url: practicalPage(b), scope: "[data-practical-page]", admin: false, shows: ["[data-photo]", "[data-photo-add]"] },
+    { page: herB.page, url: practicalPage(b), scope: "[data-practical-page]", admin: false, shows: ["[data-photo]", '[data-photo-add] input[type="file"]'] },
     { page, url: "/admin", scope: "[data-overview-assessment]", admin: true, shows: ['[data-overview-assessment-group="practicals"]', '[data-overview-assessment-group="tests"]', '[data-overview-assessment-group="tries"]'] },
     { page, url: "/admin/hindamine", scope: "[data-assessment-page]", admin: true, shows: queued },
     { page, url: `/admin/hindamine/test?id=${attemptId}`, scope: "[data-test-review-page]", admin: true, shows: ["[data-review-verdict]", "[data-review-send]"] },
@@ -481,6 +502,8 @@ test("§9 e2e 8: the pages at 390, 834, 1194 and 1440 px — no sideways scroll,
       expect(await noOverflow(v.page), where).toBe(true);
       // a radio, a checkbox or the file input is small by design: its label is the 44 px target (as admin-lessons.spec.ts filters them)
       expect((await smallTargets(scope)).filter((h) => !LABELLED.test(h)), where).toEqual([]);
+      // … and so its label is measured instead: 44 px or taller, and there
+      expect(await smallLabels(scope), `${where}: the labels of its radios, checkboxes and file fields`).toEqual([]);
     }
   }
   await herA.close();

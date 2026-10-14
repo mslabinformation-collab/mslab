@@ -25,6 +25,8 @@ import { expect, submitsForms, test } from "./test";
 // - the lock order, by a test that never misses: another connection holds her access row, and a submit waits for it with her protocol's row
 //   still free (access, then protocol: a submit that took the protocol first would hold it while it waited);
 // - two submits of the same test answers at the same moment give one attempt: one try (the second is the same submission, Task 5).
+// "At the same moment" is proven, not hoped for (atOnce): another connection holds her access row while both calls start, and lets it go only
+// once this pool shows both waiting for it.
 // And through the e2e run's server (Task 7's ruling): photo uploads alongside the student's own account deletion, POST /api/konto/kustuta —
 // with her access row held, one photo waits before the deletion and one after it — and no practical/ file is left in the server's local
 // store (app/.media-local) that no row names, and no row without its files.
@@ -111,6 +113,39 @@ async function course(label: string, info: TestInfo, opts: Parameters<typeof ins
   return insertCompletionCourse(email, opts);
 }
 
+/**
+ * Two calls (or more) of the app's, at the same moment for certain: another connection holds her access row, which each of them locks first
+ * (server/completion.ts lockAccess), while `calls` starts them; the test waits until this pool shows every one of them waiting for it, and only
+ * then lets the row go. A call that ran its whole transaction before the other one began would never be seen waiting beside it, so the outcome
+ * that follows is the lock's, not the timing's. Their results, in the order started.
+ */
+async function atOnce<T>(accessId: number, calls: () => Promise<T>[]): Promise<T[]> {
+  let running: Promise<T>[] = [];
+  let settled = 0;
+  try {
+    await onLocalDb(
+      (sql) =>
+        sql.begin(async (tx) => {
+          await tx`select 1 from course_access where id = ${accessId} for update`;
+          running = calls();
+          for (const r of running)
+            void r.then(
+              () => settled++,
+              () => settled++,
+            );
+          const waiting = await lockWaits(running.length, () => settled > 0);
+          expect(settled, "a call went past her access row's lock while it was held").toBe(0);
+          expect(waiting, "this pool's backends that wait for a lock: every call").toHaveLength(running.length);
+          for (const w of waiting) expect(w.query, "what each call waits at (server/completion.ts lockAccess)").toMatch(/from "?course_access"?[\s\S]*\bfor update\b/i);
+        }),
+      { marksPages: false },
+    );
+  } finally {
+    await Promise.allSettled(running); // a failure above lets the row go too: what is on its way finishes before the clean-up
+  }
+  return Promise.all(running);
+}
+
 /** …with a photo on each point: ready to send. */
 async function ready(label: string, info: TestInfo): Promise<CompletionCourse> {
   const s = await course(label, info);
@@ -121,7 +156,7 @@ async function ready(label: string, info: TestInfo): Promise<CompletionCourse> {
 test("Review Focus 2: two 'Saada hindamiseks' at the same moment — one round, one notice to Maria; the other finds it sent", async ({}, info) => {
   const s = await ready("send", info);
   const jobs: Job[] = [];
-  const results = await Promise.all([submitPractical(deps(jobs), s.clientId, s.slug), submitPractical(deps(jobs), s.clientId, s.slug)]);
+  const results = await atOnce(s.accessId, () => [submitPractical(deps(jobs), s.clientId, s.slug), submitPractical(deps(jobs), s.clientId, s.slug)]);
   expect(results.map((r) => r.kind).sort()).toEqual(["already", "submitted"]);
   expect(jobs, "the notices queued: one").toHaveLength(1);
   expect(await storedProtocolOf(s.accessId)).toMatchObject({ round: 1 });
@@ -130,7 +165,7 @@ test("Review Focus 2: two 'Saada hindamiseks' at the same moment — one round, 
 test("Review Focus 2: the 3rd and a 4th photo of one point at the same moment — three photos; the 4th refused as full, its stored objects removed", async ({}, info) => {
   const s = await course("cap", info);
   for (let i = 0; i < 2; i++) expect(await addPhoto(deps([]), s.clientId, s.slug, photo(0))).toMatchObject({ kind: "added" });
-  const results = await Promise.all([addPhoto(deps([]), s.clientId, s.slug, photo(0)), addPhoto(deps([]), s.clientId, s.slug, photo(0))]);
+  const results = await atOnce(s.accessId, () => [addPhoto(deps([]), s.clientId, s.slug, photo(0)), addPhoto(deps([]), s.clientId, s.slug, photo(0))]);
   expect(results.map((r) => r.kind).sort()).toEqual(["added", "full"]);
   const protocol = (await storedProtocolOf(s.accessId))!;
   expect((await storedPhotos(protocol.id)).filter((p) => p.stage === 0)).toHaveLength(3);
@@ -169,7 +204,7 @@ test("the lock order: a submit waits while another transaction holds her access 
 test("Review Focus 2: two submits of the same test answers at the same moment — one attempt, one try", async ({}, info) => {
   const s = await course("test", info, { questions: E2E_QUESTIONS, points: [], lessonsDone: true });
   const answers = { q1: ["a"], q2: ["b"] }; // one wrong: the test stays open for another try, so only the repeat rule keeps it at one
-  const results = await Promise.all([submitAttempt(deps([]), s.clientId, s.slug, answers), submitAttempt(deps([]), s.clientId, s.slug, answers)]);
+  const results = await atOnce(s.accessId, () => [submitAttempt(deps([]), s.clientId, s.slug, answers), submitAttempt(deps([]), s.clientId, s.slug, answers)]);
   expect(results.map((r) => r.kind)).toEqual(["submitted", "submitted"]);
   expect((await storedAttempts(s.clientId)).map((a) => [a.number, a.status])).toEqual([[1, "failed"]]);
 });
