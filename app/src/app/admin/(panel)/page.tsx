@@ -6,6 +6,7 @@ import { adminTitle } from "@/components/admin/sections";
 import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
+import { assessmentQueue } from "@/db/queries/assessment";
 import { todaySessions } from "@/db/queries/protocols";
 import { listUpcomingSessions } from "@/db/queries/public";
 import { startOfDayTallinn } from "@/domain/calendar";
@@ -26,14 +27,19 @@ const UPCOMING_ROWS = 5;
 /**
  * Overview (prototype B `adminHome()`): greeting, the four numbers Maria acts on (registrations waiting for their
  * prepayment, open requests, sessions in the next 30 days, confirmed newsletter subscribers), the next sessions, the
- * open requests per kind and quick links.
+ * open requests per kind and quick links; and, while anything waits in Hindamine, "Ootab hindamist" with its three groups (e-course completion).
  */
 export default async function Overview() {
   const email = await requireAdmin();
   const name = adminName(email);
   const now = new Date();
   const db = getDb();
-  const [counts, sessions, today] = await Promise.all([getAdminCounts(), listUpcomingSessions(db, startOfDayTallinn(now)), todaySessions(db, now)]);
+  const [counts, sessions, today, waiting] = await Promise.all([
+    getAdminCounts(),
+    listUpcomingSessions(db, startOfDayTallinn(now)),
+    todaySessions(db, now),
+    assessmentQueue(db),
+  ]);
   const scheduled = sessions.filter((s) => s.status === "scheduled");
   const soon = scheduled.filter((s) => s.startsAt.getTime() < now.getTime() + 30 * DAY).length;
   const open = counts.openRequests;
@@ -54,6 +60,14 @@ export default async function Overview() {
     { key: "practice", label: tabs.praktika, n: open.practice, href: "/admin/paringud?liik=praktika", icon: "flower" },
     { key: "waitlist", label: tabs.ootenimekiri, n: open.waitlist, href: "/admin/paringud?liik=ootenimekiri", icon: "calendar" },
   ];
+  // "Ootab hindamist" (e-course completion, spec §5.2, R4): what waits in Hindamine, per group, each to its group on that page
+  const assessment = adminEt.assessment.groups;
+  const waitingGroups: { key: string; n: number; label: string; href: string }[] = [
+    { key: "practicals", n: waiting.practicals.length, label: assessment.practicals, href: "/admin/hindamine#praktilised" },
+    { key: "tests", n: waiting.tests.length, label: assessment.tests, href: "/admin/hindamine#testid" },
+    { key: "tries", n: waiting.triesUsed.length, label: assessment.triesUsed, href: "/admin/hindamine#katsed" },
+  ];
+  const waitingTotal = waitingGroups.reduce((sum, g) => sum + g.n, 0);
 
   return (
     <Shell email={email} active="overview">
@@ -83,6 +97,31 @@ export default async function Overview() {
             </li>
           ))}
         </ul>
+
+        {/* "Ootab hindamist" (e-course completion, spec §5.2, R4): the three groups of Hindamine with their counts; hidden when nothing waits */}
+        {waitingTotal > 0 && (
+          <section className={`${ui.card} ${styles.assessment}`} aria-labelledby="assessment-title" data-overview-assessment="">
+            <div className={`${ui.cardHead} ${styles.assessmentHead}`}>
+              <h2 id="assessment-title" className={ui.h2}>
+                {fill(t.assessment.title, { n: waitingTotal })}
+              </h2>
+              <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/admin/hindamine">
+                {t.assessment.open}
+              </Link>
+            </div>
+            <ul className={ui.rows}>
+              {waitingGroups.map((g) => (
+                <li key={g.key}>
+                  <Link className={ui.row} href={g.href} data-overview-assessment-group={g.key}>
+                    <AdminIcon name="check" />
+                    <span className={ui.rowLabel}>{g.label}</span>
+                    <span className={`${ui.tag} ${g.n > 0 ? ui.warn : ""}`}>{g.n}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* "Täna" (phase protocols, spec §4): today's sessions, each with one tap to its protocols; hidden on a day with none */}
         {today.length > 0 && (

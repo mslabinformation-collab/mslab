@@ -27,6 +27,8 @@ export const SECTIONS: readonly { key: Section; href: string; icon: AdminIconNam
   { key: "courses", href: "/admin/koolitused", icon: "book" },
   { key: "calendar", href: "/admin/kalender", icon: "calendar" },
   { key: "registrations", href: "/admin/registreerimised", icon: "clipboard" },
+  // e-course completion (spec §5.2): what waits for Maria's assessment, after Registreerimised
+  { key: "assessment", href: "/admin/hindamine", icon: "check" },
   { key: "payments", href: "/admin/maksed", icon: "card" },
   { key: "feedback", href: "/admin/tagasiside", icon: "chat" },
   { key: "clients", href: "/admin/opilased", icon: "users" },

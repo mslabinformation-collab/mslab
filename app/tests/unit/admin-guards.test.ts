@@ -68,7 +68,7 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/admin/login/page.tsx",
         "app/admin/layout.tsx",
         // Task 12: the inboxes; Task 13: every content section of the menu; phase 2b Task 9: Maksed
-        ...["registreerimised", "maksed", "protokollid", "tagasiside", "paringud", "uudiskiri", "koolitused", "kalender", "praktika", "avaleht", "koolitaja", "uudised", "kampaania", "seaded"].map(
+        ...["registreerimised", "hindamine", "maksed", "protokollid", "tagasiside", "paringud", "uudiskiri", "koolitused", "kalender", "praktika", "avaleht", "koolitaja", "uudised", "kampaania", "seaded"].map(
           (dir) => `app/admin/(panel)/${dir}/page.tsx`,
         ),
       ]),
@@ -95,6 +95,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         // protocols: the autosave
         "app/api/admin/protokoll/route.ts",
         "server/actions/admin-protocols.ts",
+        // e-course completion: Hindamine's test review
+        "app/admin/(panel)/hindamine/test/page.tsx",
         // e-course completion: Maria's verdict taps and "Saada hinnang"
         "app/api/admin/hinnang/route.ts",
         "server/actions/admin-assessment.ts",
@@ -153,7 +155,7 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect([...strip(protocolActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(protocolExports);
     const assessmentActions = files().find((f) => f.path === "server/actions/admin-assessment.ts")!;
     const assessmentExports = [...strip(assessmentActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    expect(assessmentExports).toEqual(["sendAssessmentAction"]); // (Task 12 adds reviewAttemptAction and reopenTestAction)
+    expect(assessmentExports).toEqual(["sendAssessmentAction", "reviewAttemptAction", "reopenTestAction"]);
     expect(violations(assessmentActions.path, assessmentActions.source)).toEqual([]);
     expect([...strip(assessmentActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(assessmentExports);
     // It reads and scans every admin source file: about 2 s alone, but well past the 20 s default while the full run keeps every core

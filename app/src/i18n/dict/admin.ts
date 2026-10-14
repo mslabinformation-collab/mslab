@@ -98,6 +98,8 @@ export const adminEt = {
     signedInAs: "Sisse logitud: {email}",
     badgeRegistrations: "{n} ootab ettemaksu",
     badgeRequests: "{n} tegemata",
+    // Hindamine's badge (e-course completion, spec §5.2): practical work, open answers and students out of tries, together
+    badgeAssessment: "{n} ootab hindamist",
   },
 
   nav: {
@@ -159,6 +161,11 @@ export const adminEt = {
     today: {
       title: "Täna",
       students: "Õpilasi: {n}",
+    },
+    // "Ootab hindamist" (e-course completion, spec §5.2, R4): what waits in Hindamine, per group; the card is hidden when nothing waits
+    assessment: {
+      title: "Ootab hindamist: {n}",
+      open: "Ava hindamine",
     },
     inbox: {
       title: "Päringud",
@@ -360,8 +367,8 @@ export const adminEt = {
   },
 
   // Maria's assessment of an e-course's practical work (phase e-course completion, spec §5.3): /admin/protokollid?ligipaas=<access id>, the
-  // protocol screen with each point's photos and verdicts (AssessmentScreen.tsx and its parts). Task 12 adds the Hindamine page's texts beside
-  // `screen`. {n} a count or a round, {point} a point's number (1-based), {points} a list of them, {title} a point's title, {date} a day.
+  // protocol screen with each point's photos and verdicts (AssessmentScreen.tsx and its parts); the Hindamine page's texts follow `screen`.
+  // `screen`: {n} a count or a round, {point} a point's number (1-based), {points} a list of them, {title} a point's title, {date} a day.
   assessment: {
     screen: {
       // the page's line under "{course} · {name}"
@@ -414,6 +421,76 @@ export const adminEt = {
         newRound: "Õpilane saatis vahepeal uue vooru. Vaata see üle.",
         notFound: "Seda ligipääsu enam ei ole (see on tühistatud).",
       },
+    },
+    // "Hindamine" (spec §5.2): /admin/hindamine, what waits for Maria in three groups, oldest first. {n} a count or a number, {max} the tries
+    // she has, {date} a day and a time, {course} a course's title
+    eyebrow: "E-õpe",
+    title: "Hindamine",
+    lead: "Mis ootab sinu hinnangut, vanemad eespool: praktilised tööd, testide avatud vastused ja õpilased, kelle testikatsed on otsas.",
+    empty: "Kõik on hinnatud.",
+    groups: { practicals: "Praktilised tööd", tests: "Testi vastused", triesUsed: "Katsed otsas" },
+    round: "{n}. kord",
+    sentAt: "saadetud {date}",
+    tryOf: "Katse {n}/{max}",
+    best: "parim tulemus {n} %",
+    attemptsMade: "katseid {n}",
+    assess: "Hinda",
+    viewAnswers: "Vaata vastuseid",
+    attempts: "Testi katsed",
+    // the test review (spec §5.4): /admin/hindamine/test?id=<attempt>, and every attempt of a student, ?ligipaas=<access>. {percent} and
+    // {pass} percentages, {text} Maria's earlier comment
+    review: {
+      back: "Hindamine",
+      notFound: "Seda katset ei leitud.",
+      notFoundAccess: "Selle õpilase teste ei leitud.",
+      score: "Valikküsimused: {percent} % (vaja {pass} %)",
+      right: "Õige",
+      wrong: "Vale",
+      pickedRight: "valis, õige",
+      pickedWrong: "valis, vale",
+      missed: "õige, jäi valimata",
+      noAnswer: "Vastust pole.",
+      verdictLabel: "Hinnang vastusele {n}",
+      ok: "Kinnitatud",
+      fix: "Paranda",
+      comment: "Kommentaar",
+      commentHint: "„Paranda“ vajab kommentaari: õpilane näeb seda oma vastuse juures.",
+      previous: "Eelmine kommentaar: {text}",
+      notReviewed: "Hindamata",
+      send: "Saada",
+      sending: "Saadan…",
+      sent: {
+        passed: "Saadetud: test on sooritatud. Õpilane saab kirja.",
+        fix: "Saadetud: õpilane parandab „Paranda“ vastused. Ta saab kirja.",
+        completed: "Saadetud: test on sooritatud ja koolitus lõpetatud. Õpilane saab kirja.",
+      },
+      // under one answer, before anything is sent
+      problems: { verdict: "Vali „Kinnitatud“ või „Paranda“.", comment: "Kirjuta, mida parandada.", tooLong: "Liiga pikk: {n} / {max} märki." },
+      // above "Saada": the form's own check, then the server's answers
+      errors: {
+        incomplete: "Hinda iga vastus ja kirjuta igale „Paranda“ vastusele kommentaar.",
+        comment: "Kirjuta igale „Paranda“ vastusele kommentaar.",
+        tooLong: "Üks kommentaar on liiga pikk.",
+        // stale: reviewed meanwhile (on her other device), or the student rewrote her "Paranda" answers after this page was read; nothing was
+        // stored, and the reload shows the answers as they are now
+        stale: "Seda katset on vahepeal hinnatud või õpilane muutis pärast selle lehe avamist vastuseid. Laadi leht uuesti, et näha praeguseid vastuseid.",
+        notFound: "Seda katset ei leitud. Laadi leht uuesti.",
+        failed: "Saatmine ei õnnestunud. Proovi uuesti.",
+      },
+      status: { failed: "Läbimata", review: "Ootab hindamist", fix: "Parandamisel", passed: "Sooritatud" },
+      list: "Testi katsed",
+      view: "Vaata",
+      noAttempts: "Katseid pole veel.",
+      percent: "{n} %",
+    },
+    // "Ava test uuesti" (spec §5.2, §5.5): the course's tries once more, with one confirming step
+    reopen: {
+      button: "Ava test uuesti",
+      confirm: "Kas avan testi „{course}“ uuesti? Õpilane saab sama palju katseid juurde ja kirja.",
+      yes: "Jah, ava",
+      no: "Ei",
+      done: "Test on uuesti avatud: katseid jäänud {n}.",
+      notNeeded: "Test on juba avatud.",
     },
   },
 

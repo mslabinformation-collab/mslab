@@ -5,6 +5,7 @@ import type { Campaign, Course, CourseImage, CourseSession, CourseTest, FaqItem,
 import { pageInfo, PAGE_SIZE, type PageInfo } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
 import type { I18n } from "@/i18n/field";
+import { assessmentCount } from "./assessment";
 import { hasFreeSeat, takesSeat } from "./seats";
 
 // Admin (write) queries. Callers must already have checked the admin session; nothing here does authorization.
@@ -463,11 +464,13 @@ export type AdminCounts = {
   openPurchaseInterest: number;
   subscribers: number;
   confirmedSubscribers: number;
+  /** What waits in Hindamine (e-course completion, spec §5.2): practical work to assess, open answers to review, students out of tries. */
+  assessment: number;
 };
 
 /** The numbers of the overview and the menu badges. */
 export async function adminCounts(db: Db): Promise<AdminCounts> {
-  const [[awaiting], byKind, [interest], [subs]] = await Promise.all([
+  const [[awaiting], byKind, [interest], [subs], assessment] = await Promise.all([
     db.select({ n: count() }).from(registrations).where(eq(registrations.status, "awaiting_prepayment")),
     db.select({ kind: requests.kind, n: count() }).from(requests).where(eq(requests.handled, false)).groupBy(requests.kind),
     db
@@ -475,6 +478,7 @@ export async function adminCounts(db: Db): Promise<AdminCounts> {
       .from(requests)
       .where(and(eq(requests.kind, "contact"), eq(requests.handled, false), sql`${requests.payload}->>'intent' = 'purchase'`)),
     db.select({ total: count(), confirmed: count(subscribers.confirmedAt) }).from(subscribers),
+    assessmentCount(db),
   ]);
   const openRequests: Record<RequestKind, number> = { contact: 0, individual: 0, practice: 0, waitlist: 0, change_request: 0 };
   for (const row of byKind) openRequests[row.kind] = Number(row.n);
@@ -484,6 +488,7 @@ export async function adminCounts(db: Db): Promise<AdminCounts> {
     openPurchaseInterest: Number(interest.n),
     subscribers: Number(subs.total),
     confirmedSubscribers: Number(subs.confirmed),
+    assessment,
   };
 }
 

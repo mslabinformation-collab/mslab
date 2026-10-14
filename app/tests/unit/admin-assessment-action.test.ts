@@ -18,7 +18,7 @@ vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
 vi.mock("@/server/env", () => ({ serverEnv: () => ({ SITE_URL: "https://mslab.example" }) }));
 vi.mock("@/server/kv", () => ({ serverKv: () => ({}) }));
 
-const { sendAssessmentAction } = await import("@/server/actions/admin-assessment");
+const { reopenTestAction, reviewAttemptAction, sendAssessmentAction } = await import("@/server/actions/admin-assessment");
 
 beforeEach(() => {
   work.sendAssessment.mockReset().mockResolvedValue({ kind: "stale", version: 3 });
@@ -50,4 +50,39 @@ test("a send that throws is 'failed', logged by the access's id only", async () 
   work.sendAssessment.mockRejectedValue(new TypeError("boom"));
   expect(await sendAssessmentAction({ accessId: 4, version: 2, protocolId: 9, round: 1 })).toEqual({ kind: "failed" });
   expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain("[assessment] access 4: the send failed: TypeError");
+});
+
+test("the test review passes on the attempt, the review and the time the page showed; the page is refreshed only once reviewed; bad input is notFound; a throw is 'failed'", async () => {
+  const review = { qavatud1: { verdict: "fix", comment: "Lisa puhastamine." } };
+  const shown = "2026-10-19T07:00:00.000Z";
+  tests.reviewAttempt.mockResolvedValueOnce({ kind: "reviewed", status: "fix", completed: false });
+  expect(await reviewAttemptAction({ attemptId: 41, review, submittedAt: shown })).toEqual({ kind: "reviewed", status: "fix", completed: false });
+  expect(tests.reviewAttempt.mock.calls[0].slice(1)).toEqual(["admin@example.test", 41, review, shown]);
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  tests.reviewAttempt.mockResolvedValueOnce({ kind: "stale" }); // rewritten since, or reviewed on her other device: nothing changed
+  expect(await reviewAttemptAction({ attemptId: 41, review, submittedAt: shown })).toEqual({ kind: "stale" });
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  for (const bad of [{ attemptId: 0, review, submittedAt: shown }, { attemptId: 41, review }, { attemptId: 41, review, submittedAt: "" }])
+    expect(await reviewAttemptAction(bad as never), JSON.stringify(bad)).toEqual({ kind: "notFound" });
+  expect(tests.reviewAttempt).toHaveBeenCalledTimes(2);
+  tests.reviewAttempt.mockRejectedValueOnce(new TypeError("boom"));
+  expect(await reviewAttemptAction({ attemptId: 41, review, submittedAt: shown })).toEqual({ kind: "failed" });
+  expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain("[test] attempt 41: the review failed: TypeError");
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+});
+
+test("'Ava test uuesti' passes on the access; the page is refreshed only once reopened; bad input is notFound; a throw is 'failed'", async () => {
+  tests.reopenTest.mockResolvedValueOnce({ kind: "reopened", triesLeft: 3 });
+  expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "reopened", triesLeft: 3 });
+  expect(tests.reopenTest.mock.calls[0].slice(1)).toEqual(["admin@example.test", 9]);
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  tests.reopenTest.mockResolvedValueOnce({ kind: "notNeeded" });
+  expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "notNeeded" });
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  for (const bad of [{ accessId: 0 }, { accessId: 1.5 }, {}]) expect(await reopenTestAction(bad as never), JSON.stringify(bad)).toEqual({ kind: "notFound" });
+  expect(tests.reopenTest).toHaveBeenCalledTimes(2);
+  tests.reopenTest.mockRejectedValueOnce(new TypeError("boom"));
+  expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "failed" });
+  expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain("[test] access 9: the reopen failed: TypeError");
+  expect(cache.refresh).toHaveBeenCalledTimes(1);
 });

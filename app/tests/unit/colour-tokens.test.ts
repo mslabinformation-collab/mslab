@@ -65,6 +65,9 @@ const COURSE_CSS = [
   "src/app/admin/(panel)/overview.module.css",
   // the course editor's "Moodulid ja õppetunnid" and the lesson drawer (phase 3a Task 5)
   "src/components/admin/LessonsEditor.module.css",
+  // Hindamine and the test review (e-course completion)
+  "src/app/admin/(panel)/hindamine/assessment.module.css",
+  "src/components/admin/TestReview.module.css",
   // the site's modal dialog (the campaign popup and the account's change request)
   "src/components/ui/modal.module.css",
   "src/components/site/CampaignPopup.module.css",

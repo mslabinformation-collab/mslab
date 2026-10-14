@@ -50,3 +50,12 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* "Ootab hindamist" (e-course completion): what waits in Hindamine, per group; its head wraps on a phone */
+.assessment {
+  margin-bottom: 25px;
+}
+
+.assessmentHead {
+  flex-wrap: wrap;
+}
