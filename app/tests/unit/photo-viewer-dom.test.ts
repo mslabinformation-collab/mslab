@@ -100,6 +100,46 @@ test("a swipe of 50 px or more goes to the next or the previous photo; a shorter
   expect(count()).toBe("2 / 3");
 });
 
+test("pinched in (the visual viewport's scale over 1): the frame says so, a one-finger drag is no swipe; back at the normal size it swipes again", async () => {
+  // the browser's visual viewport, as a stand-in: its scale and its resize event (happy-dom's window has none of its own to pinch)
+  const viewport = Object.assign(new EventTarget(), { scale: 1 });
+  const own = Object.getOwnPropertyDescriptor(window, "visualViewport");
+  Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+  try {
+    await show(PHOTOS, 0);
+    const frame = $("[data-viewer-frame]")!;
+    expect(frame.hasAttribute("data-zoomed")).toBe(false);
+    viewport.scale = 2.5;
+    await act(async () => void viewport.dispatchEvent(new Event("resize")));
+    expect(frame.hasAttribute("data-zoomed")).toBe(true);
+    await swipe([[1, 300, "down"], [1, 300 - 4 * SWIPE_PX, "up"]]);
+    expect([src(), count()]).toEqual(["/api/admin/foto/11", "1 / 3"]);
+    viewport.scale = 1;
+    await act(async () => void viewport.dispatchEvent(new Event("resize")));
+    expect(frame.hasAttribute("data-zoomed")).toBe(false);
+    await swipe([[1, 300, "down"], [1, 300 - SWIPE_PX, "up"]]);
+    expect(count()).toBe("2 / 3");
+    // closed: the viewer stops listening, with the listener it added
+    const added = vi.spyOn(viewport, "addEventListener");
+    const removed = vi.spyOn(viewport, "removeEventListener");
+    await key("Escape");
+    expect($("[data-photo-viewer]")).toBeNull();
+    expect(added).not.toHaveBeenCalled();
+    expect(removed.mock.calls.map(([type]) => type)).toEqual(["resize"]);
+  } finally {
+    if (own) Object.defineProperty(window, "visualViewport", own);
+    else delete (window as { visualViewport?: unknown }).visualViewport;
+  }
+});
+
+test("'Ava täissuuruses': the photo shown, in a tab of its own (the device's own viewer zooms and pans it)", async () => {
+  await show(PHOTOS, 1);
+  const link = () => $("[data-viewer-full]") as HTMLAnchorElement;
+  expect([link().textContent, link().getAttribute("href"), link().target, link().rel]).toEqual(["Ava täissuuruses", "/api/admin/foto/12", "_blank", "noopener"]);
+  await key("ArrowRight");
+  expect(link().getAttribute("href")).toBe("/api/admin/foto/13");
+});
+
 test("one photo: no previous or next, and the arrows and a swipe do nothing", async () => {
   await show(PHOTOS.slice(0, 1), 0);
   expect([$("[data-viewer-prev]"), $("[data-viewer-next]")]).toEqual([null, null]);

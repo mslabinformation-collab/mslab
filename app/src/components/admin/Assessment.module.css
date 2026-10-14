@@ -107,7 +107,7 @@
 }
 
 /* the viewer: a modal <dialog> over the whole screen. The photo fits it; the browser's own pinch zoom enlarges it (touch-action on its box),
-   and a one-finger swipe is read from the pointer events (PhotoViewer.tsx). */
+   one finger then pans it (data-zoomed), and a one-finger swipe at the normal size is read from the pointer events (PhotoViewer.tsx). */
 .viewer {
   position: fixed;
   inset: 0;
@@ -145,6 +145,29 @@
   letter-spacing: 0.04em;
 }
 
+.viewerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* "Ava täissuuruses": the photo in a tab of its own (the device's own viewer) */
+.fullLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--paper);
+  font: 600 13px/1.2 var(--font-body);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.fullLink:focus-visible {
+  outline: 2px solid var(--paper);
+  outline-offset: 3px;
+}
+
 .frame {
   position: relative;
   display: grid;
@@ -153,6 +176,11 @@
   overflow: hidden;
   padding: 0 16px 16px;
   touch-action: pinch-zoom;
+}
+
+/* pinched in: one finger looks round the photo (a swipe is not read meanwhile) */
+.frame[data-zoomed] {
+  touch-action: pan-x pan-y pinch-zoom;
 }
 
 .image {

@@ -392,6 +392,8 @@ export const adminEt = {
       viewer: "Punkt {point}: {title}",
       viewerAlt: "{label}, foto {n}",
       viewerCount: "{n} / {of}",
+      // the photo in a tab of its own, where the tablet's own viewer zooms and pans it (a draft, not on the wording sheet)
+      viewerFull: "Ava täissuuruses",
       previous: "Eelmine foto",
       next: "Järgmine foto",
       close: "Sulge",
