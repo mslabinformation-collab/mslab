@@ -36,6 +36,7 @@ import { clientNewsletter, sendWelcome } from "./newsletter";
 import { adminUrl, notifyMaria, sendMail, type Env } from "./notify";
 import type { Montonio } from "./payments/montonio";
 import { PAY_STARTS_PER_IP, startRegistrationPayment } from "./payments/start";
+import { removeKeys } from "./practical";
 import { isPrefetch } from "./prefetch";
 import { belowLimit, clientIp, countFailure, rateKey, rateLimit, releaseSlot, reserveSlot, windowKey } from "./ratelimit";
 import { resubmitAnswers, submitAttempt, testView, type SubmitResult } from "./test-attempts";
@@ -862,7 +863,8 @@ async function terms(request: Request, deps: AccountDeps): Promise<Response> {
 /**
  * POST /kustuta `{ confirm: true }`: deletes the account (client-data.ts deleteClient: registrations stay with Maria) and answers with
  * both cookies cleared, the one answer that does not go through clientResponse. The confirmation e-mail goes out after the
- * response, never to a sample address (`@example.test`) and never in development.
+ * response, never to a sample address (`@example.test`) and never in development. Her practical work's photo files (e-course completion,
+ * listed by deleteClient) leave the store after the response too.
  */
 async function deleteAccount(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
@@ -870,6 +872,11 @@ async function deleteAccount(request: Request, deps: AccountDeps): Promise<Respo
   const input = parseDeletion(await readObject(request));
   if (!input.ok) return badInput(session, input.error);
   const gone = await deleteClient(deps.db, session.clientId);
+  // her practical work's photo files (e-course completion): listed in the deletion's transaction, removed from the store after the answer
+  if (gone && gone.photoKeys.length > 0) {
+    const keys = gone.photoKeys;
+    deps.later(() => removeKeys(deps.files ?? null, keys, `[practical] client ${session.clientId}`));
+  }
   if (gone && !deps.dev && !isSampleAddress(gone.email)) {
     const mail = deletionMail(gone.email, gone.locale);
     deps.later(() => sendMail(deps.env, mail));

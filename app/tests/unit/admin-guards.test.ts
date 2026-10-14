@@ -111,7 +111,7 @@ describe("admin guards are inherited by every admin entry point", () => {
   test("every route under app/api/admin and app/admin is wrapped (the CSV export, and the future ones)", () => {
     const routes = files().filter((f) => /^app\/(api\/)?admin\/(.*\/)?route\.tsx?$/.test(f.path));
     expect(routes.map((r) => r.path)).toEqual(
-      expect.arrayContaining(["app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts"]),
+      expect.arrayContaining(["app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts", "app/api/admin/foto/[id]/route.ts"]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);
   });

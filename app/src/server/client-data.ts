@@ -20,6 +20,7 @@ import { href } from "@/i18n/href";
 import { getDict, type Locale } from "@/i18n/locales";
 import { lockAddress } from "./client-auth";
 import { courseOutline, ecourseProgress, progressActivity, type OutlineModule } from "./lesson-outline";
+import { practicalKeys } from "./practical";
 import { newToken } from "./token";
 
 // What a signed-in client sees and may change, for the JSON endpoints under /api/konto (account-api.ts) and the admin's
@@ -501,9 +502,13 @@ export async function createChangeRequest(
  * (client_id null). Takes the address lock the logins take, so a login in flight finishes before this runs or finds nothing after it.
  * Then her registrations, FOR UPDATE, before their protocols and feedback: the order a send takes (the address, the registration, the protocol), so a send or a
  * feedback answer on one of them finishes first, or finds it no longer hers after.
- * Returns the address and language the confirmation mail goes to; null when the client was already gone.
+ * Her e-course work (e-course completion, spec §3.5): the access rows, the attempts, the access protocols and their photo rows go by cascade.
+ * Her access rows are locked first (the order a photo upload takes: the access, then its protocol), then her photo files are listed: an
+ * upload in flight is either in the list or, after this commit, finds the access gone and removes its own files. The caller removes the
+ * listed files from the store after the commit (account-api.ts deleteAccount).
+ * Returns the address and language the confirmation mail goes to, and the photo files to remove; null when the client was already gone.
  */
-export async function deleteClient(db: Db, clientId: number): Promise<{ email: string; locale: "et" | "ru" } | null> {
+export async function deleteClient(db: Db, clientId: number): Promise<{ email: string; locale: "et" | "ru"; photoKeys: string[] } | null> {
   return db.transaction(async (tx) => {
     const [existing] = await tx.select({ email: clients.email }).from(clients).where(eq(clients.id, clientId)).limit(1);
     if (!existing) return null;
@@ -515,10 +520,13 @@ export async function deleteClient(db: Db, clientId: number): Promise<{ email: s
       await tx.delete(protocols).where(inArray(protocols.registrationId, mine));
       await tx.delete(courseFeedback).where(inArray(courseFeedback.registrationId, mine));
     }
+    // her practical work's photo files (e-course completion): listed under her access rows' lock, removed by the caller after the commit
+    await tx.select({ id: courseAccess.id }).from(courseAccess).where(eq(courseAccess.clientId, clientId)).for("update");
+    const photoKeys = await practicalKeys(tx as unknown as Db, clientId);
     const [row] = await tx.delete(clients).where(eq(clients.id, clientId)).returning(); // (returning(fields) has no common overload on the Db union)
     if (!row) return null;
     await tx.delete(clientLoginTokens).where(eq(clientLoginTokens.email, address));
     await tx.delete(subscribers).where(sql`lower(${subscribers.email}) = ${address}`);
-    return { email: row.email, locale: row.locale };
+    return { email: row.email, locale: row.locale, photoKeys };
   });
 }

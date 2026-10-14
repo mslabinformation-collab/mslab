@@ -653,7 +653,7 @@ describe("deleteClient", () => {
     await db.insert(clientSessions).values({ idHash: "h1", clientId: kati.id, expiresAt: at(100) });
     await db.insert(subscribers).values([{ email: "Kati@example.test", token: "t1", confirmedAt: NOW, clientId: kati.id }, { email: "mari@example.test", token: "t2", clientId: mari.id }]);
 
-    expect(await deleteClient(db, kati.id)).toEqual({ email: "kati@example.test", locale: "ru" });
+    expect(await deleteClient(db, kati.id)).toEqual({ email: "kati@example.test", locale: "ru", photoKeys: [] });
 
     expect((await db.select().from(clients)).map((c) => c.email)).toEqual(["mari@example.test"]);
     expect(await db.select().from(clientSessions)).toEqual([]);
@@ -677,7 +677,7 @@ describe("deleteClient", () => {
     const other = (await issueClientLogin(db, "mari@example.test", T0))!;
     expect(await db.select().from(clientLoginTokens)).toHaveLength(4); // the used one and three live ones, one for Mari
 
-    expect(await deleteClient(db, kati.clientId)).toEqual({ email: "kati@example.test", locale: "et" });
+    expect(await deleteClient(db, kati.clientId)).toEqual({ email: "kati@example.test", locale: "et", photoKeys: [] });
 
     expect((await db.select().from(clientLoginTokens)).map((t) => t.email)).toEqual(["mari@example.test"]);
     expect(await redeemClientCode(db, "kati@example.test", resent.code, NOW)).toBeNull();
