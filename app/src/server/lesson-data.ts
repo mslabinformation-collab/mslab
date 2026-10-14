@@ -7,6 +7,7 @@ import { EMBED_TTL_SEC, signedEmbedUrl, type BunnyConfig } from "./bunny";
 import { activeAccess, termsState } from "./client-data";
 import { completeIfDone } from "./completion";
 import { courseOutline, type CourseOutline } from "./lesson-outline";
+import { logFailure } from "./log";
 
 // The lesson endpoints' work (spec 3a sections 5 and 6), for account-api.ts: one lesson, progress, "Märgi tehtuks", a file. The
 // client is always the session's. Each starts with openLesson, the one place of the checks' binding order: active access to the
@@ -18,6 +19,8 @@ import { courseOutline, type CourseOutline } from "./lesson-outline";
 // (spec 2c section 3).
 // A lesson done just now may be the course's last step (e-course completion, spec §4.4): completion.ts completeIfDone runs after the write. No
 // transaction here: its UPDATE … where completed_at is null sets the date once, and of two lessons marked at once the later read sees both done.
+// A check that fails never fails the lesson that was saved (completeAfterLesson); the student's next page load completes the course
+// (client-data.ts loadEcourse).
 
 export type LessonVideo =
   /** `shape`: the picture size in pixels of the video that plays (the player's frame takes its shape); null: unknown, the player assumes 16:9. */
@@ -139,6 +142,19 @@ async function startClock(db: Db, clientId: number, row: LessonRow, now: Date): 
     });
 }
 
+/**
+ * completeIfDone after a lesson write. The lesson is saved already: a check that throws is logged by the access's id (never the error's
+ * message) and answered as "not completed", so the student's saved lesson is not turned into a 500; the page load completes the course later.
+ */
+async function completeAfterLesson(db: Db, accessId: number, now: Date): Promise<boolean> {
+  try {
+    return await completeIfDone(db, accessId, now);
+  } catch (e) {
+    logFailure(`[completion] access ${accessId}: the check failed`, e);
+    return false;
+  }
+}
+
 /** GET a lesson (spec 6): the only endpoint with the terms check. */
 export async function loadLesson(db: Db, bunny: BunnyConfig | null, clientId: number, slug: string, lessonId: number, now: Date): Promise<LessonResult> {
   const opened = await openLesson(db, clientId, slug, lessonId, now, { terms: true });
@@ -194,7 +210,7 @@ export async function saveProgress(db: Db, clientId: number, slug: string, lesso
     .returning(); // (returning(fields) has no common overload on the Db union: the whole row)
   const done = saved.doneAt !== null;
   // done by this report (it was not when the lesson was read): maybe the course's last step
-  const completed = done && !row.done ? await completeIfDone(db, access.id, now) : false;
+  const completed = done && !row.done ? await completeAfterLesson(db, access.id, now) : false;
   return { kind: "saved", done, next: nextLessonAfter(outline.lessons, lessonId), completed, accessId: access.id };
 }
 
@@ -211,7 +227,7 @@ export async function markTextLessonDone(db: Db, clientId: number, slug: string,
     .insert(lessonProgress)
     .values({ clientId, lessonId, doneAt: now, updatedAt: now })
     .onConflictDoUpdate({ target: [lessonProgress.clientId, lessonProgress.lessonId], set: { doneAt: sql`coalesce(${lessonProgress.doneAt}, excluded.done_at)`, updatedAt: now } });
-  const completed = row.done ? false : await completeIfDone(db, access.id, now);
+  const completed = row.done ? false : await completeAfterLesson(db, access.id, now);
   return { kind: "saved", next: nextLessonAfter(outline.lessons, lessonId), completed, accessId: access.id };
 }
 

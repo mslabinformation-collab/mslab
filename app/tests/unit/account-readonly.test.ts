@@ -30,7 +30,7 @@ const dashboard: Dashboard = {
   cards: [
     contact(7, { status: "awaiting_prepayment", paymentChoice: "half", paidCents: 0 }),
     contact(8),
-    { kind: "ecourse", course: { slug: "kulmumeistri-e-koolitus", title: { et: "Kulmumeistri e-koolitus" } }, grantedAt: NOW, expiresAt: "2027-04-03T10:00:00.000Z", revoked: false },
+    { kind: "ecourse", course: { slug: "kulmumeistri-e-koolitus", title: { et: "Kulmumeistri e-koolitus" } }, grantedAt: NOW, expiresAt: "2027-04-03T10:00:00.000Z", revoked: false, completedAt: "2026-10-01T10:00:00.000Z" },
   ],
   favourites: [],
   prepayment: { receiver: "MS LAB OÜ", iban: "EE00 0000 0000 0000 0000", bank: "", referencePrefix: "MS" },
@@ -84,6 +84,8 @@ describe("read-only: a click does nothing", () => {
     expect(location.href).toBe(before);
     // the cards are all still there, unchanged
     expect(container.querySelectorAll("[data-card]")).toHaveLength(3);
+    // a completed e-course's line is a line, not a target (e-course completion): the count of targets above is unchanged
+    expect(container.querySelector("[data-card-completed]")?.textContent).toBe("Lõpetatud 01.10.2026");
   });
 
   test("the same clicks on the student's own view do act: the instructions open, the dialog opens", async () => {

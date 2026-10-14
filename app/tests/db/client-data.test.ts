@@ -242,7 +242,7 @@ describe("loadDashboard", () => {
     // open ones newest grant first, then over ones the most recent first
     expect(cards.map((c) => c.kind === "ecourse" && c.course.slug)).toEqual(["peidus-kursus", "veebikursus", "kolmas-kursus", "teine-kursus"]);
     expect(cards.map((c) => nextStep(c, NOW, null).key)).toEqual(["openCourse", "openCourse", "accessEnded", "accessEnded"]);
-    expect(cards[1]).toEqual({ kind: "ecourse", course: { slug: "veebikursus", title: { et: "Veebikursus" } }, grantedAt: at(-10).toISOString(), expiresAt: at(170).toISOString(), revoked: false, progress: null });
+    expect(cards[1]).toEqual({ kind: "ecourse", course: { slug: "veebikursus", title: { et: "Veebikursus" } }, grantedAt: at(-10).toISOString(), expiresAt: at(170).toISOString(), revoked: false, progress: null, completedAt: null });
     expect(cards[2]).toMatchObject({ revoked: true });
   });
 
@@ -452,6 +452,7 @@ describe("e-course and terms", () => {
       access: { expiresAt: at(170).toISOString() },
       terms: { version: "1", accepted: false, text: TERMS.body },
       progress: { done: 0, total: 0, next: null },
+      completion: { lessons: { done: 0, total: 0, state: "done" }, test: null, practical: null, completedAt: null, protocolSent: false },
     });
     await setting("courseTermsVersion", V2);
     expect((await loadEcourse(db, kati.id, "veebikursus", NOW))!.terms.version).toBe(V2);

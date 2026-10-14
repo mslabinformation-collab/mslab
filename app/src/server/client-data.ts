@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { CourseCardData } from "@/components/site/CourseCard";
 import { courseCardData } from "@/components/site/course-card-data";
 import type { Db } from "@/db/client";
@@ -9,6 +9,7 @@ import {
 } from "@/db/schema";
 import { PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type EcourseCard, type FeedbackPrompt, type PrepaymentInfo } from "@/domain/account-cards";
 import { upcomingFrom } from "@/domain/calendar";
+import type { CourseSteps } from "@/domain/completion";
 import { DEFAULT_TERMS_VERSION, TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
 import { nextSessionByCourse } from "@/domain/home";
 import type { CourseProgress } from "@/domain/lessons";
@@ -19,7 +20,9 @@ import type { I18n } from "@/i18n/field";
 import { href } from "@/i18n/href";
 import { getDict, type Locale } from "@/i18n/locales";
 import { lockAddress } from "./client-auth";
+import { accessFor, completeIfDone, isActive, loadSteps } from "./completion";
 import { courseOutline, ecourseProgress, progressActivity, type OutlineModule } from "./lesson-outline";
+import { logFailure } from "./log";
 import { practicalKeys } from "./practical";
 import { newToken } from "./token";
 
@@ -71,6 +74,11 @@ export type EcourseView = {
   terms: { version: string; accepted: boolean; text: I18n | null };
   /** "5 / 24 õppetundi tehtud" and where "Jätka" goes (domain/lessons.ts courseProgress). */
   progress: CourseProgress;
+  /**
+   * "Lõpetamine" (e-course completion, spec §4.1): the path's steps (server/completion.ts loadSteps), and `protocolSent`: an e-course
+   * without points whose notes-only protocol Maria has sent (spec §4.3 last bullet: the block links to it, "Vaata protokolli").
+   */
+  completion: CourseSteps & { protocolSent: boolean };
 };
 
 const iso = (d: Date): string => d.toISOString();
@@ -143,7 +151,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       )
       .where(and(eq(requests.clientId, clientId), inArray(requests.kind, ["individual", "practice", "waitlist"]))),
     db
-      .select({ courseId: courseAccess.courseId, grantedAt: courseAccess.grantedAt, expiresAt: courseAccess.expiresAt, revokedAt: courseAccess.revokedAt, slug: courses.slug, title: courses.title })
+      .select({ courseId: courseAccess.courseId, grantedAt: courseAccess.grantedAt, expiresAt: courseAccess.expiresAt, revokedAt: courseAccess.revokedAt, completedAt: courseAccess.completedAt, slug: courses.slug, title: courses.title })
       .from(courseAccess)
       .innerJoin(courses, eq(courseAccess.courseId, courses.id))
       .where(eq(courseAccess.clientId, clientId)),
@@ -228,7 +236,14 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
   const [outlines, activity] = await Promise.all([Promise.all(open.map((a) => courseOutline(db, a.courseId, clientId))), progressActivity(db, clientId)]);
   const progressOf = new Map(open.map((a, i) => [a.slug, ecourseProgress(outlines[i])]));
   for (const a of accessRows) {
-    const card: EcourseCard = { kind: "ecourse", course: { slug: a.slug, title: a.title }, grantedAt: iso(a.grantedAt), expiresAt: iso(a.expiresAt), revoked: a.revokedAt !== null };
+    const card: EcourseCard = {
+      kind: "ecourse",
+      course: { slug: a.slug, title: a.title },
+      grantedAt: iso(a.grantedAt),
+      expiresAt: iso(a.expiresAt),
+      revoked: a.revokedAt !== null,
+      completedAt: a.completedAt ? iso(a.completedAt) : null,
+    };
     if (progressOf.has(a.slug)) card.progress = progressOf.get(a.slug) ?? null;
     cards.push(card);
   }
@@ -300,21 +315,51 @@ export async function termsState(db: Db, clientId: number, courseId: number): Pr
 }
 
 /**
- * The e-course page's data: null without active access (none, revoked or expired), with its modules, the visible lessons and their
- * states, and the counts. The terms notice shows while `terms.accepted` is false;
+ * completeIfDone for the student's page load: a check that fails is logged by the access's id and the page shows as it was (false), so a
+ * read never fails for the sake of a heal; the next load tries again.
+ */
+async function completeOnLoad(db: Db, accessId: number, now: Date): Promise<boolean> {
+  try {
+    return await completeIfDone(db, accessId, now);
+  } catch (e) {
+    logFailure(`[completion] access ${accessId}: the check failed`, e); // ids only
+    return false;
+  }
+}
+
+/**
+ * The e-course page's data: null without active access (none, revoked or expired: the access row is read in any state,
+ * server/completion.ts accessFor, and must be active, isActive), with its modules, the visible lessons and their states, the counts, and
+ * the path's steps ("Lõpetamine", e-course completion). The terms notice shows while `terms.accepted` is false;
  * the page then sends back `terms.version` with the acceptance. The version is read BEFORE the text: an admin save that lands
  * in between then pairs the old version with the new text (the next visit shows the notice again), never a new version with
  * text the student did not see. The client's acceptances are read alongside.
+ *
+ * `onCompleted` is given by the student's own page (account-api.ts) and by nobody else (Maria's read-only view only reads): the load then
+ * completes an access whose steps are all done and `completed_at` is still null (completeIfDone, before the steps are read: the view shows
+ * it done), and calls `onCompleted(accessId)` once, for the call that set it, so the handler queues the "completed" mail. It heals the
+ * accesses whose steps were done before the completion existed, and a check that failed once after a lesson write.
  */
-export async function loadEcourse(db: Db, clientId: number, slug: string, now: Date): Promise<EcourseView | null> {
-  const access = await activeAccess(db, clientId, slug, now);
-  if (!access) return null;
-  const [terms, outline] = await Promise.all([termsState(db, clientId, access.course.id), courseOutline(db, access.course.id, clientId)]);
+export async function loadEcourse(db: Db, clientId: number, slug: string, now: Date, onCompleted?: (accessId: number) => void): Promise<EcourseView | null> {
+  let access = await accessFor(db, clientId, slug);
+  if (!access || !isActive(access, now)) return null;
+  if (onCompleted && access.completedAt === null && (await completeOnLoad(db, access.id, now))) {
+    access = { ...access, completedAt: now };
+    onCompleted(access.id);
+  }
+  const [terms, outline, steps, sent] = await Promise.all([
+    termsState(db, clientId, access.course.id),
+    courseOutline(db, access.course.id, clientId),
+    loadSteps(db, access),
+    // a notes-only protocol of this access that Maria has sent (only read for a course without points, but one small read either way)
+    db.select({ id: protocols.id }).from(protocols).where(and(eq(protocols.accessId, access.id), isNotNull(protocols.sentAt))).limit(1),
+  ]);
   return {
     course: { slug: access.course.slug, title: access.course.title, modules: outline.modules },
     access: { expiresAt: iso(access.expiresAt) },
     terms,
     progress: outline.progress,
+    completion: { ...steps, protocolSent: steps.practical === null && sent.length > 0 },
   };
 }
 

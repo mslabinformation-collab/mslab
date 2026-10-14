@@ -14,6 +14,8 @@ export type CoursesTexts = Dict["account"]["dashboard"] & {
   loader: LoaderTexts;
   /** The pay button's texts (phase 2b). */
   online: PayTexts;
+  /** An e-course card's "Lõpetatud {date}" (e-course completion: account.completion.completedOn). */
+  completed: string;
 };
 
 /** "Lemmikud": the account.favourites strings and AccountLoader's. */
@@ -22,8 +24,8 @@ export type FavouritesTexts = Dict["account"]["favourites"] & { loader: LoaderTe
 /** "Minu andmed": the account.details strings and AccountLoader's. */
 export type DetailsTexts = Dict["account"]["details"] & { loader: LoaderTexts };
 
-/** The e-course page's: the account.ecourse strings, the modules' lock label (course.locked), AccountLoader's. */
-export type EcourseTexts = Dict["account"]["ecourse"] & { locked: string; loader: LoaderTexts };
+/** The e-course page's: the account.ecourse strings, the modules' lock label (course.locked), AccountLoader's, and "Lõpetamine" (account.completion). */
+export type EcourseTexts = Dict["account"]["ecourse"] & { locked: string; loader: LoaderTexts; completion: Dict["account"]["completion"] };
 
 /** One lesson's page: the account.lesson strings, "Jätka" and the lock sentence (account.ecourse), AccountLoader's. */
 export type LessonTexts = Dict["account"]["lesson"] & { resume: string; lockedHint: string; loader: LoaderTexts };
@@ -46,9 +48,9 @@ export const shellTexts = (d: Dict): ShellTexts => d.account.shell;
 
 export const loaderTexts = (d: Dict): LoaderTexts => d.account.loader;
 
-export const ecourseTexts = (d: Dict): EcourseTexts => ({ ...d.account.ecourse, locked: d.course.locked, loader: loaderTexts(d) });
+export const ecourseTexts = (d: Dict): EcourseTexts => ({ ...d.account.ecourse, locked: d.course.locked, loader: loaderTexts(d), completion: d.account.completion });
 
-export const coursesTexts = (d: Dict): CoursesTexts => ({ ...d.account.dashboard, next: d.account.next, loader: loaderTexts(d), online: payTexts(d) });
+export const coursesTexts = (d: Dict): CoursesTexts => ({ ...d.account.dashboard, next: d.account.next, loader: loaderTexts(d), online: payTexts(d), completed: d.account.completion.completedOn });
 
 export const favouritesTexts = (d: Dict): FavouritesTexts => ({ ...d.account.favourites, loader: loaderTexts(d) });
 

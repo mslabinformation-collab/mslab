@@ -46,13 +46,24 @@ const MODULES: EcourseView["course"]["modules"] = [
 ];
 const PROGRESS: EcourseView["progress"] = { done: 1, total: 4, next: 12 };
 
+/** A course without a test or points, nothing completed: the "Lõpetamine" block (e-course completion) shows the lessons and the end only, with no link. */
+const COMPLETION: EcourseView["completion"] = { lessons: { done: 1, total: 4, state: "open" }, test: null, practical: null, completedAt: null, protocolSent: false };
+
 const view = (
-  over: { accepted?: boolean; version?: string; text?: EcourseView["terms"]["text"]; modules?: EcourseView["course"]["modules"]; progress?: EcourseView["progress"] } = {},
+  over: {
+    accepted?: boolean;
+    version?: string;
+    text?: EcourseView["terms"]["text"];
+    modules?: EcourseView["course"]["modules"];
+    progress?: EcourseView["progress"];
+    completion?: EcourseView["completion"];
+  } = {},
 ): EcourseView => ({
   course: { slug: "veebikursus", title: { et: "Veebikursus", ru: "Онлайн-курс" }, modules: over.modules ?? MODULES },
   access: { expiresAt: EXPIRES },
   terms: { version: over.version ?? V1, accepted: over.accepted ?? false, text: over.accepted ? null : "text" in over ? (over.text ?? null) : { et: "Esimene lõik.\n\nTeine lõik.", ru: "Первый абзац." } },
   progress: over.progress ?? PROGRESS,
+  completion: over.completion ?? COMPLETION,
 });
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });

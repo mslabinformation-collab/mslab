@@ -846,6 +846,34 @@ export const et = {
       general: "Üldised märkused",
       sent: "Saadetud {date}",
     },
+    // "Lõpetamine" on the e-course page (components/account/CompletionSteps.tsx; e-course completion, spec §4.1) and the course card's
+    // "Lõpetatud {date}" (AccountCourseCard.tsx): the path's four steps, each with its state in one line and, once open, the way in. {done}
+    // and {total} count the lessons, {n} the test's tries left, {date} the day the course was completed.
+    completion: {
+      title: "Lõpetamine",
+      steps: { lessons: "Õppetunnid", test: "Teadmiste test", practical: "Praktiline töö", done: "Lõpetatud" },
+      lessonsOpen: "{done} / {total} tehtud",
+      lessonsDone: "Kõik õppetunnid on tehtud",
+      lockedLessons: "Avaneb, kui kõik õppetunnid on tehtud.",
+      lockedTest: "Avaneb, kui test on sooritatud.",
+      open: "Avatud",
+      testOpen: "Avatud. Katseid jäänud: {n}",
+      testReview: "Ootab Maria hinnangut",
+      testFix: "Paranda vastused",
+      testDone: "Sooritatud",
+      testUsed: "Katsed on otsas. Maria sai teate ja avab testi sulle uuesti.",
+      practicalOpen: "Lisa fotod ja saada hindamiseks",
+      practicalReview: "Ootab hindamist",
+      practicalFix: "Paranda märgitud punktid",
+      practicalDone: "Kinnitatud",
+      doneLocked: "Kui kõik sammud on tehtud",
+      completedOn: "Lõpetatud {date}",
+      openTest: "Ava test",
+      viewResult: "Vaata tulemust",
+      openPractical: "Ava praktiline töö",
+      viewPractical: "Vaata praktilist tööd",
+      viewProtocol: "Vaata protokolli",
+    },
     // "Lemmikud" /konto/lemmikud (components/account/FavouritesTab.tsx): the hearted courses as the catalogue's cards, each with ♡ to
     // take it off. {title} is a course's title (the button's name for a screen reader, and what was taken off).
     favourites: {

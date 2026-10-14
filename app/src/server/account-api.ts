@@ -557,12 +557,16 @@ async function dashboard(request: Request, deps: AccountDeps): Promise<Response>
   return data ? clientResponse(session, deps.montonio ? { ...data, payOnline: true } : data) : unauthorized("none");
 }
 
-/** GET /kursus/:slug: the e-course page's data (`EcourseView`), or 404 without active access (or for a slug that cannot be one). */
+/**
+ * GET /kursus/:slug: the e-course page's data (`EcourseView`), or 404 without active access (or for a slug that cannot be one). The load
+ * completes an access whose steps are all done and whose date is still unset (e-course completion: it heals a completion that was missed);
+ * the "completed" mail of the load that did it goes after the answer.
+ */
 async function ecourse(request: Request, deps: AccountDeps, rawSlug: string): Promise<Response> {
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const slug = parseSlug(rawSlug);
-  const view = slug === null ? null : await loadEcourse(deps.db, session.clientId, slug, deps.now);
+  const view = slug === null ? null : await loadEcourse(deps.db, session.clientId, slug, deps.now, (accessId) => queueCompletionMail(deps, accessId));
   return view ? clientResponse(session, view) : clientResponse(session, { ok: false }, 404);
 }
 

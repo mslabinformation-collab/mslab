@@ -300,7 +300,7 @@ describe("e-course access", () => {
     await grantAccess(db, { clientId: summer.id, courseId: ecourse.id, until: "2027-07-01", by: ADMIN, now: NOW });
     expect((await db.select().from(courseAccess).where(eq(courseAccess.clientId, summer.id)))[0].expiresAt.toISOString()).toBe("2027-07-01T20:59:59.999Z"); // UTC+3
     const dash = (await loadDashboard(db, kati.id, NOW))!;
-    expect(dash.cards).toEqual([{ kind: "ecourse", course: { slug: "e-kulm", title: { et: "Kulmumeistri e-koolitus" } }, grantedAt: NOW.toISOString(), expiresAt: "2027-04-04T20:59:59.999Z", revoked: false, progress: null }]);
+    expect(dash.cards).toEqual([{ kind: "ecourse", course: { slug: "e-kulm", title: { et: "Kulmumeistri e-koolitus" } }, grantedAt: NOW.toISOString(), expiresAt: "2027-04-04T20:59:59.999Z", revoked: false, progress: null, completedAt: null }]);
     // a draft e-course can be granted (bought before it is published)
     expect(await grantAccess(db, { clientId: kati.id, courseId: draftEcourse.id, until: "2026-10-04", by: ADMIN, now: NOW })).toEqual({ ok: true });
   });

@@ -94,6 +94,11 @@ export type EcourseCard = {
   revoked: boolean;
   /** Present for an active access: its lessons (null without visible lessons); absent for an access that has ended. */
   progress?: EcourseProgress | null;
+  /**
+   * When the course was completed (e-course completion, spec §4.1: course_access.completed_at, ISO), null before. Present on every card
+   * loadDashboard makes, also after the access ended: the card says "Lõpetatud {date}". Optional so cards built elsewhere keep compiling.
+   */
+  completedAt?: string | null;
 };
 
 export type AccountCard = ContactCard | IndividualCard | RequestCard | WaitlistCard | EcourseCard;

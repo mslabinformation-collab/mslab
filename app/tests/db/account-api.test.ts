@@ -812,6 +812,7 @@ describe("GET /api/konto/kursus/:slug: an e-course", () => {
       access: { expiresAt: at(180).toISOString() },
       terms: { version: "1", accepted: false, text: { et: "Ligipääs on isiklik." } },
       progress: { done: 0, total: 0, next: null },
+      completion: { lessons: { done: 0, total: 0, state: "done" }, test: null, practical: null, completedAt: null, protocolSent: false },
     });
   });
 

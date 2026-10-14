@@ -74,6 +74,20 @@
   font: 600 14px/1.5 var(--font-body);
 }
 
+/* a completed e-course (e-course completion): "Lõpetatud {date}", also once the access has ended */
+.completed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  color: var(--ok);
+  font: 600 14px/1.5 var(--font-body);
+}
+
+.completed svg {
+  flex: none;
+}
+
 .foot {
   margin-top: 20px;
 }
