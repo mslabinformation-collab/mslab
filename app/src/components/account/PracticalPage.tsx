@@ -289,10 +289,15 @@ function PracticalBody({ data, slug, locale, t, reload }: { data: PracticalAnswe
   const moving = items.some((p) => !stopped(p.state));
   const ready = needed.length > 0 && needed.every((p) => p.photos.length > 0) && items.length === 0;
   const hint = ready ? "" : moving ? t.waitUploads : items.length > 0 ? t.clearFailed : status === "fix" ? t.needFixPhotos : t.needPhotos;
+  // read-only with the course completed before her work began (Maria added the points after it, server/practical.ts completedBefore):
+  // "Lõpetatud" says why nothing is asked of her, and "Ligipääs on lõppenud" would not be true
+  const completedBefore = view.readOnly && canAct && view.completedAt !== null;
   const leadText = view.notesOnly
     ? null
     : view.readOnly && canAct
-      ? t.readOnly
+      ? completedBefore
+        ? null
+        : t.readOnly
       : status === "open"
         ? t.leadOpen
         : status === "review"
@@ -311,7 +316,7 @@ function PracticalBody({ data, slug, locale, t, reload }: { data: PracticalAnswe
             {leadText}
           </p>
         )}
-        {status === "passed" && view.completedAt && (
+        {(status === "passed" || completedBefore) && view.completedAt && (
           <p className={styles.completed} data-practical-completed="">
             <Icon name="check" size={18} />
             {fill(t.completed, { date: formatDate(new Date(view.completedAt), locale) })}

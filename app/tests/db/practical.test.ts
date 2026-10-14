@@ -408,6 +408,28 @@ describe("when the practical work opens (D5)", () => {
     expect(await add(w, 0)).toMatchObject({ kind: "added" });
   });
 
+  test("completed before her work had a protocol (Maria added the points after the completion): her page is read-only, a photo and a send are closed, nothing is made; with a protocol made before, the work goes on as before", async () => {
+    const w = await world();
+    await db.update(courseAccess).set({ completedAt: NOW }).where(eq(courseAccess.id, w.access.id));
+    const v = (await view(w))!;
+    expect(v).toMatchObject({ status: "open", round: 0, locked: false, readOnly: true, completedAt: NOW.toISOString() });
+    expect(v.points.map((p) => p.canAdd)).toEqual([false, false]);
+    expect(await add(w, 0)).toEqual({ kind: "closed" });
+    expect([w.store.objects.size, w.store.deleted.length]).toEqual([0, 2]); // the files it stored are removed again
+    expect(await submit(w)).toEqual({ kind: "closed" });
+    expect(await db.select().from(protocols)).toEqual([]);
+    expect(w.tasks).toHaveLength(0); // no notice to Maria
+
+    // Mari: completed too, but Maria's "Lisa protokoll" made her protocol before: her work is open as it was
+    const mari = await w.enrol("mari@example.test", "Mari Maasikas");
+    await db.insert(protocols).values({ accessId: mari.access.id, stages: [{ title: "Ettevalmistus", note: "" }, { title: "Tulemus", note: "" }], verdicts: [null, null] });
+    await db.update(courseAccess).set({ completedAt: NOW }).where(eq(courseAccess.id, mari.access.id));
+    expect(await practicalView(db, mari.client.id, SLUG, NOW)).toMatchObject({ status: "open", readOnly: false, points: [{ canAdd: true }, { canAdd: true }] });
+    expect(await addPhoto(w.deps, mari.client.id, SLUG, photo(0))).toMatchObject({ kind: "added" });
+    expect(await addPhoto(w.deps, mari.client.id, SLUG, photo(1))).toMatchObject({ kind: "added" });
+    expect(await submitPractical(w.deps, mari.client.id, SLUG)).toMatchObject({ kind: "submitted", view: { status: "review", round: 1 } });
+  });
+
   test("a course without points: no practical page, nothing to add or send — unless Maria sent a notes-only protocol (spec §4.3)", async () => {
     const w = await world({ points: [] });
     expect(await view(w)).toBeNull();

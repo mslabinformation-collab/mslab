@@ -49,7 +49,7 @@ export type PracticalView = {
   sentAt: string | null;
   /** The step is not open yet (the test not passed / the lessons not done). */
   locked: boolean;
-  /** The access has expired. */
+  /** Nothing can be added or sent: the access has expired, or the course was completed before her work had a protocol (points added after it). */
   readOnly: boolean;
   /** No points: only Maria's sent notes (spec §4.3, last bullet). */
   notesOnly: boolean;
@@ -93,9 +93,17 @@ async function stepLocked(db: Db, access: AccessRow, setup: CourseSetup): Promis
 }
 
 /**
+ * A course completed while her work had no protocol (Maria added the points after it: the page-load heal completes a lessons-only finisher)
+ * takes no practical work: "Hindamine" never lists a completed access, so a round sent now would wait for nobody (spec §4.4: a completed
+ * course stays completed). A protocol made before the completion keeps the work as it is.
+ */
+const completedBefore = (access: Pick<AccessRow, "completedAt">, protocol: Protocol | null | undefined): boolean => access.completedAt !== null && !protocol;
+
+/**
  * Her practical page (spec §4.3): the points (the protocol's copy, or the course's before there is one) with their photos and Maria's sent
- * verdicts and notes, the status, the round. Only the sent copy is read for what Maria wrote, never the draft. null: no access (a revoked
- * one), a contact course, or an e-course without points with no notes-only protocol sent.
+ * verdicts and notes, the status, the round. Only the sent copy is read for what Maria wrote, never the draft. Read-only when the access has
+ * ended, or the course was completed before her work had a protocol (completedBefore). null: no access (a revoked one), a contact course, or
+ * an e-course without points with no notes-only protocol sent.
  */
 export async function practicalView(db: Db, clientId: number, slug: string, now: Date): Promise<PracticalView | null> {
   const access = await accessFor(db, clientId, slug);
@@ -108,7 +116,7 @@ export async function practicalView(db: Db, clientId: number, slug: string, now:
   const status = statusOf(p);
   const round = p?.round ?? 0;
   const locked = !notesOnly && status === "open" && (await stepLocked(db, access, setup));
-  const readOnly = !isActive(access, now);
+  const readOnly = !isActive(access, now) || completedBefore(access, p);
   const rows = p ? await db.select().from(practicalPhotos).where(eq(practicalPhotos.protocolId, p.id)).orderBy(desc(practicalPhotos.round), asc(practicalPhotos.id)) : [];
   const fix = sentFixPoints(p?.sent ?? null);
   const points = titles.map((title, index): PointView => {
@@ -147,15 +155,17 @@ type Work = { kind: "open"; protocol: Protocol | null; status: "open" | "fix"; p
 /**
  * The access's work, under its lock: open (round 0, the step open: the test passed, or no questions and the lessons done) or fix → the
  * protocol (null before the first photo) and its number of points; review → already (a second "Saada" of the same round); passed, a step
- * still locked, no points → closed. `create`: the first photo makes the protocol with the course's points and no verdicts — or finds the one
- * Maria's first save made meanwhile (on conflict do nothing, then read). `stage`: the point that first photo is for; a point the work does not
- * have makes no row (the caller refuses the photo as `stage`), so a refused photo never leaves an empty protocol behind.
+ * still locked, no points, a course completed before the work had a protocol (completedBefore) → closed. `create`: the first photo makes the
+ * protocol with the course's points and no verdicts — or finds the one Maria's first save made meanwhile (on conflict do nothing, then read).
+ * `stage`: the point that first photo is for; a point the work does not have makes no row (the caller refuses the photo as `stage`), so a
+ * refused photo never leaves an empty protocol behind.
  */
 async function workOf(tx: Db, access: AccessRow, now: Date, create: boolean, stage?: number): Promise<Work> {
   const setup = await courseSetup(tx, access.courseId);
   const [found] = await tx.select().from(protocols).where(eq(protocols.accessId, access.id)).for("update");
   const points = found ? found.stages.length : setup.points.length;
   if (points === 0) return { kind: "closed" }; // an e-course without points has no practical work (spec §4.3)
+  if (completedBefore(access, found)) return { kind: "closed" };
   const status = statusOf(found);
   if (status === "review") return { kind: "already" };
   if (status === "passed") return { kind: "closed" };

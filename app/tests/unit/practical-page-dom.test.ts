@@ -374,6 +374,15 @@ describe("the other states of the page", () => {
     for (const gone of ["[data-practical-submit]", "[data-photo-add]", "[data-photo-remove]"]) expect($(gone), gone).toBeNull();
   });
 
+  test("the course was completed before her work began (Maria added the points after it): 'Lõpetatud' with the date, nothing to add or send, and no 'Ligipääs on lõppenud'", async () => {
+    reads = [view({ readOnly: true, completedAt: "2026-11-14T10:00:00.000Z", points: [point(0, { canAdd: false }), point(1, { canAdd: false })] })];
+    await mount();
+    expect($("[data-practical-completed]")!.textContent).toBe("Lõpetatud 14.11.2026");
+    expect($("[data-practical-lead]")).toBeNull();
+    expect(container.textContent).not.toContain("Ligipääs on lõppenud");
+    for (const gone of ["[data-practical-submit]", "[data-photo-add]", "[data-photo-remove]"]) expect($(gone), gone).toBeNull();
+  });
+
   test("not open yet, or not there for her: one sentence and the way back to the course", async () => {
     reads = [view({ locked: true })];
     await mount();
