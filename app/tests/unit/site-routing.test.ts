@@ -38,7 +38,7 @@ describe("routeSitePath", () => {
     };
     walk(root, "");
     expect(pages.sort()).toEqual(
-      ["", "/[...rest]", "/kontakt", "/konto", "/konto/andmed", "/konto/kursus/[slug]", "/konto/kursus/[slug]/[lesson]", "/konto/kursus/[slug]/test", "/konto/lemmikud", "/konto/protokoll", "/konto/sisene", "/konto/tagasiside", "/koolitaja", "/koolitused", "/koolitused/[slug]", "/koolituskalender", "/makse", "/ostukorv", "/ostukorv/[kursus]", "/praktika", "/privaatsus", "/tingimused", "/uudised", "/uudised/[slug]"].sort(),
+      ["", "/[...rest]", "/kontakt", "/konto", "/konto/andmed", "/konto/kursus/[slug]", "/konto/kursus/[slug]/[lesson]", "/konto/kursus/[slug]/praktiline", "/konto/kursus/[slug]/test", "/konto/lemmikud", "/konto/protokoll", "/konto/sisene", "/konto/tagasiside", "/koolitaja", "/koolitused", "/koolitused/[slug]", "/koolituskalender", "/makse", "/ostukorv", "/ostukorv/[kursus]", "/praktika", "/privaatsus", "/tingimused", "/uudised", "/uudised/[slug]"].sort(),
     );
     for (const p of pages.filter((x) => !x.includes("["))) expect(isKnownPage(`/et${p}`), p).toBe(true);
     for (const p of ["/koolitused/x", "/uudised/y-2", "/ostukorv/whatever"]) expect(isKnownPage(`/ru${p}`), p).toBe(true);
@@ -83,7 +83,7 @@ describe("routeSitePath", () => {
   });
 
   test("only the account's shells answer a query with a redirect: not the public pages, the cart, an unknown address under /konto", () => {
-    for (const p of ["/konto", "/ru/konto", "/konto/sisene", "/ru/konto/sisene", "/konto/lemmikud", "/konto/andmed", "/konto/kursus/x", "/ru/konto/kursus/x", "/konto/kursus/x/1", "/ru/konto/kursus/x/1", "/konto/kursus/x/test", "/ru/konto/kursus/x/praktiline"]) expect(route(p + "?a=1"), p).toMatchObject({ kind: "shellRedirect" });
+    for (const p of ["/konto", "/ru/konto", "/konto/sisene", "/ru/konto/sisene", "/konto/lemmikud", "/konto/andmed", "/konto/kursus/x", "/ru/konto/kursus/x", "/konto/kursus/x/1", "/ru/konto/kursus/x/1", "/konto/kursus/x/test", "/konto/kursus/x/praktiline", "/ru/konto/kursus/x/praktiline"]) expect(route(p + "?a=1"), p).toMatchObject({ kind: "shellRedirect" });
     for (const p of ["/", "/ru", "/koolitused", "/koolitused/x?sessioon=1", "/kontakt", "/ru/kontakt", "/makse", "/ru/makse", "/ostukorv?kursus=x", "/konto/x/y", "/konto/kursus", "/kontoo", "/konto/kursus/x/0", "/konto/kursus/x/1/y"])
       expect(route(p.includes("?") ? p : p + "?a=1"), p).not.toMatchObject({ kind: "shellRedirect" });
   });

@@ -82,3 +82,14 @@ export const testTexts = (d: Dict): TestTexts => ({
   failed: d.forms.errorGeneric,
   loader: loaderTexts(d),
 });
+
+/** The practical work's page (e-course completion): account.practical, the way back to the course, the two failure lines and AccountLoader's. */
+export type PracticalTexts = Dict["account"]["practical"] & { back: string; loader: LoaderTexts; rate: string; failed: string };
+
+export const practicalTexts = (d: Dict): PracticalTexts => ({
+  ...d.account.practical,
+  back: d.account.lesson.back,
+  loader: loaderTexts(d),
+  rate: d.forms.errorTooMany,
+  failed: d.forms.errorGeneric,
+});

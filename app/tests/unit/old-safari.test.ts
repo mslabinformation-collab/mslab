@@ -57,6 +57,11 @@ const BROWSER_FILES = [
   "src/components/admin/TestEditor.tsx",
   // e-course completion, Task 6: the student's test (a "use client" file, walked anyway: listed as the phase's entry point)
   "src/components/account/TestPage.tsx",
+  // e-course completion, Task 8: the practical page, the shrink and the upload
+  "src/lib/shrink-image.ts",
+  "src/components/account/photo-upload.ts",
+  "src/components/account/PracticalPage.tsx",
+  "src/components/account/PhotoSlot.tsx",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

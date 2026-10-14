@@ -3,7 +3,7 @@ import type { Db } from "@/db/client";
 import { studentProtocol } from "@/db/queries/protocols";
 import { readSetting } from "@/db/queries/public";
 import { clients } from "@/db/schema";
-import { TEST_LIMITS } from "@/domain/completion";
+import { PHOTO_LIMITS, TEST_LIMITS } from "@/domain/completion";
 import { isEmail, isSampleAddress, normalizeEmail } from "@/domain/email";
 import { FEEDBACK_TEXT_MAX } from "@/domain/protocols";
 import type { Locale } from "@/i18n/locales";
@@ -36,8 +36,9 @@ import { clientNewsletter, sendWelcome } from "./newsletter";
 import { adminUrl, notifyMaria, sendMail, type Env } from "./notify";
 import type { Montonio } from "./payments/montonio";
 import { PAY_STARTS_PER_IP, startRegistrationPayment } from "./payments/start";
-import { removeKeys } from "./practical";
+import { addPhoto, photoFor, practicalView, removeKeys, removePhoto, submitPractical, type PhotoInput, type PracticalDeps } from "./practical";
 import { isPrefetch } from "./prefetch";
+import { privateFileAnswer } from "./private-file";
 import { belowLimit, clientIp, countFailure, rateKey, rateLimit, releaseSlot, reserveSlot, windowKey } from "./ratelimit";
 import { resubmitAnswers, submitAttempt, testView, type SubmitResult } from "./test-attempts";
 import { sha256 } from "./token";
@@ -58,7 +59,7 @@ import { sha256 } from "./token";
 // GET /kursus/:slug/:lesson one lesson (an open one with a signed video URL; 403 terms or locked), POST …/:lesson/progress how far a video has
 // been watched, POST …/:lesson/tehtud "Märgi tehtuks" for a text lesson, GET …/:lesson/fail/:file a lesson file, GET /kursus/:slug/test the knowledge test with POST /kursus/:slug/test an attempt and POST …/test/uuesti the "Paranda" answers rewritten (e-course completion), GET /lemmikud the
 // favourites as course cards, POST /lemmikud and /lemmikud/merge favourites, PATCH /andmed the profile, POST /uudiskiri the newsletter, POST /muutmine a request to cancel or
-// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
+// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, GET /kursus/:slug/praktiline the practical work of an e-course (e-course completion: her points, her photos and Maria's sent assessment), POST …/praktiline/foto one photo (multipart, made smaller in the browser), DELETE …/praktiline/foto/:id one photo of the round being prepared, POST …/praktiline/saada "Saada hindamiseks" / "Saada uuesti", GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
 // Each one starts with requireClient and answers through clientResponse (a renewed session's cookies reach the browser); the
 // client is always the session's, never a value from the request. A body that is not what the endpoint expects is 400
 // { ok: false, error: "<field>" } (account-input.ts), a record that is not the client's is 404.
@@ -108,6 +109,14 @@ const FEEDBACK_BODY_CHARS = 2 * FEEDBACK_TEXT_MAX * 2 + 2048;
 const TEST_SUBMITS_PER_HOUR = 10;
 /** A test's body: every question's answer at its limit (an open one JSON-escaped, or a choice's option ids) and the rest. */
 const TEST_BODY_CHARS = TEST_LIMITS.questions * (TEST_LIMITS.answer * 2 + 512) + 2048;
+/** Photo uploads a student may send per hour (e-course completion, spec §7): 1–3 photos for each point, retries and removals' new picks included. */
+const PHOTOS_PER_HOUR = 120;
+/** "Saada hindamiseks" / "Saada uuesti" per hour: each one that is accepted mails Maria. */
+const PRACTICAL_SUBMITS_PER_HOUR = 20;
+/** Room for the multipart boundaries and the three small fields around the two files (as the admin's upload routes). */
+const PHOTO_ENVELOPE = 64 * 1024;
+/** The largest photo upload: both files at their limits and the envelope. One announced larger is 413 unread (Vercel refuses 4.5 MB). */
+const PHOTO_BODY_BYTES = PHOTO_LIMITS.fullBytes + PHOTO_LIMITS.thumbBytes + PHOTO_ENVELOPE;
 
 /** The feedback's own limit, the submits and the "Ei soovi"s together: null within it, else the 429 to answer. */
 async function feedbackLimited(deps: AccountDeps, session: ClientSession): Promise<Response | null> {
@@ -430,6 +439,56 @@ async function fileAnswer(session: ClientSession, store: FileStore, file: { key:
   return res;
 }
 
+/**
+ * A practical work's photo for its owner (e-course completion, R5): private-file.ts privateFileAnswer's 302 to a 5-minute signed R2
+ * address, or, from the local folder of `next dev` and the e2e run, the JPEG itself shown inline. `private, no-store`, not for search
+ * engines, and no Referer passed on to R2 (next.config.ts has the same rule for these paths: a header set there replaces this one); the
+ * cookies of a renewed session go with it, as with clientResponse. null when the store does not have the object.
+ */
+async function photoAnswer(session: ClientSession, store: FileStore, key: string): Promise<Response | null> {
+  const res = await privateFileAnswer(store, key, { contentType: "image/jpeg", headers: { ...BASE_HEADERS, "referrer-policy": "no-referrer" } });
+  if (!res) return null;
+  for (const cookie of session.cookies) res.headers.append("set-cookie", cookie);
+  return res;
+}
+
+/** The practical work's server (server/practical.ts) gets the account's own dependencies; no store means no photos (503 "storage"). */
+const practicalDeps = (deps: AccountDeps): PracticalDeps => ({
+  db: deps.db,
+  env: deps.env,
+  siteUrl: deps.siteUrl,
+  now: deps.now,
+  later: deps.later,
+  files: deps.files ?? null,
+});
+
+/** A number field of the photo form: digits without a leading zero (0 itself is one), at most five; null for anything else. */
+function formNumber(form: FormData, name: string): number | null {
+  const value = form.get(name);
+  return typeof value === "string" && /^(0|[1-9][0-9]{0,4})$/.test(value) ? Number(value) : null;
+}
+
+/**
+ * The fields of a photo upload (multipart, e-course completion spec §7): `stage` (the point, 0-based), `width` and `height` of the full
+ * photo, and the two JPEG files `full` and `thumb`. The body is read here, once; what the files hold, their sizes, the point's range and the
+ * photo's shape are server/practical.ts addPhoto's checks. A body that is no form is "form"; a missing or unreadable field is its name.
+ */
+async function readPhotoForm(request: Request): Promise<{ ok: true; data: PhotoInput } | { ok: false; error: string }> {
+  const form = await request.formData().catch(() => null);
+  if (!form) return { ok: false, error: "form" };
+  const stage = formNumber(form, "stage");
+  const width = formNumber(form, "width");
+  const height = formNumber(form, "height");
+  const full = form.get("full");
+  const thumb = form.get("thumb");
+  if (stage === null) return { ok: false, error: "stage" };
+  if (width === null) return { ok: false, error: "width" };
+  if (height === null) return { ok: false, error: "height" };
+  if (!(full instanceof File)) return { ok: false, error: "full" };
+  if (!(thumb instanceof File)) return { ok: false, error: "thumb" };
+  return { ok: true, data: { stage, width, height, full, thumb } };
+}
+
 /** The slug and lesson id of a lesson path (the one parse step of the four lesson handlers); null when either cannot be one (404). */
 const lessonRef = (rawSlug: string, rawLesson: string): { slug: string; lessonId: number } | null => {
   const slug = parseSlug(rawSlug);
@@ -631,6 +690,106 @@ async function resubmitTest(request: Request, deps: AccountDeps, rawSlug: string
   const limited = await testLimited(deps, session);
   if (limited) return limited;
   return testAnswer(session, await resubmitAnswers(deps, session.clientId, slug, attemptId, body.answers));
+}
+
+/**
+ * GET /kursus/:slug/praktiline (e-course completion, spec §4.3): the practical work of one of her e-courses (server/practical.ts
+ * PracticalView): the points with Maria's sent verdicts and notes, the photos of the round being prepared and the earlier ones, the status.
+ * 200 `{ ok: true, ...PracticalView }`; 404 `{ ok: false }` without access (a revoked one too), for a contact course, and for an e-course
+ * without points whose notes Maria has not sent.
+ */
+async function practicalPage(request: Request, deps: AccountDeps, rawSlug: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const slug = parseSlug(rawSlug);
+  const view = slug === null ? null : await practicalView(deps.db, session.clientId, slug, deps.now);
+  return view ? clientResponse(session, { ok: true, ...view }) : clientResponse(session, { ok: false }, 404);
+}
+
+/**
+ * POST /kursus/:slug/praktiline/foto (spec §4.3, §7): one photo for a point, as multipart `stage`, `width`, `height`, `full` (a JPEG of at
+ * most 2 MB) and `thumb` (at most 200 KB), made smaller in the browser (lib/shrink-image.ts). A body announced larger than both files and
+ * the envelope is 413 `{ error: "size" }` before it is read. 200 `{ ok: true, photo }`; 400 `{ error }` (a field of the form, or
+ * server/practical.ts's refusal: type, size, content, stage, shape); 409 `{ error: "full" }` (3 on that point in this round) or "closed"
+ * (not open for photos now); 429 `{ error: "rate" }` after 120 in an hour; 503 `{ error: "storage" }`; 404.
+ */
+async function uploadPhoto(request: Request, deps: AccountDeps, rawSlug: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const slug = parseSlug(rawSlug);
+  if (slug === null) return clientResponse(session, { ok: false }, 404);
+  if (Number(request.headers.get("content-length") ?? 0) > PHOTO_BODY_BYTES) return clientResponse(session, { ok: false, error: "size" }, 413);
+  if (!(await withinClientLimit(deps, session.clientId, "client-photo", PHOTOS_PER_HOUR, 60 * 60))) {
+    logNote("[account] photo uploads rate limited");
+    return clientResponse(session, { ok: false, error: "rate" }, 429);
+  }
+  const input = await readPhotoForm(request);
+  if (!input.ok) return badInput(session, input.error);
+  const result = await addPhoto(practicalDeps(deps), session.clientId, slug, input.data);
+  switch (result.kind) {
+    case "added":
+      return clientResponse(session, { ok: true, photo: result.photo });
+    case "full":
+    case "closed":
+      return clientResponse(session, { ok: false, error: result.kind }, 409);
+    case "invalid":
+      return badInput(session, result.error);
+    case "storage":
+      return clientResponse(session, { ok: false, error: "storage" }, 503);
+    default:
+      return clientResponse(session, { ok: false }, 404);
+  }
+}
+
+/** DELETE /kursus/:slug/praktiline/foto/:id: one of her photos of the round being prepared. 200 `{ ok: true }`; 409 `{ error: "closed" }` (sent, or an approved point); 404. */
+async function deletePhoto(request: Request, deps: AccountDeps, rawSlug: string, rawId: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const slug = parseSlug(rawSlug);
+  const id = parseRowId(rawId);
+  const result = slug !== null && id !== null ? await removePhoto(practicalDeps(deps), session.clientId, slug, id) : null;
+  if (result?.kind === "removed") return clientResponse(session, { ok: true });
+  if (result?.kind === "closed") return clientResponse(session, { ok: false, error: "closed" }, 409);
+  return clientResponse(session, { ok: false }, 404);
+}
+
+/**
+ * POST /kursus/:slug/praktiline/saada: "Saada hindamiseks" (every point has a photo of the new round) or "Saada uuesti" (every "Paranda"
+ * point has one); Maria is told after the response (server/practical.ts). 200 `{ ok: true, ...PracticalView }` (waiting); 409 `{ error:
+ * "missing", points }` (0-based), `{ error: "already" }` (sent already: another device, a double tap) or `{ error: "closed" }`; 429 `{ error:
+ * "rate" }` after 20 in an hour; 404.
+ */
+async function submitWork(request: Request, deps: AccountDeps, rawSlug: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const slug = parseSlug(rawSlug);
+  if (slug === null) return clientResponse(session, { ok: false }, 404);
+  if (!(await withinClientLimit(deps, session.clientId, "client-practical", PRACTICAL_SUBMITS_PER_HOUR, 60 * 60))) {
+    logNote("[account] practical submits rate limited");
+    return clientResponse(session, { ok: false, error: "rate" }, 429);
+  }
+  const result = await submitPractical(practicalDeps(deps), session.clientId, slug);
+  switch (result.kind) {
+    case "submitted":
+      return clientResponse(session, { ok: true, ...result.view });
+    case "missing":
+      return clientResponse(session, { ok: false, error: "missing", points: result.points }, 409);
+    case "already":
+    case "closed":
+      return clientResponse(session, { ok: false, error: result.kind }, 409);
+    default:
+      return clientResponse(session, { ok: false }, 404);
+  }
+}
+
+/** GET /praktiline/foto/:id and …/:id/pisi (R5): one of her practical photos, or its thumbnail (photoAnswer: a signed address or the bytes). 404 for any other id. */
+async function photo(request: Request, deps: AccountDeps, rawId: string, thumb: boolean): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const id = parseRowId(rawId);
+  const keys = id === null ? null : await photoFor(deps.db, { clientId: session.clientId }, id);
+  const answer = keys && deps.files ? await photoAnswer(session, deps.files, thumb ? keys.thumbKey : keys.key) : null;
+  return answer ?? clientResponse(session, { ok: false }, 404);
 }
 
 /**
@@ -890,6 +1049,10 @@ const COURSE_PATH = /^\/kursus\/([^/]+)$/;
 const LESSON_PATH = /^\/kursus\/([^/]+)\/([^/]+)(?:\/(progress|tehtud)|\/fail\/([^/]+))?$/;
 /** The knowledge test's paths (e-course completion): /kursus/<slug>/test and …/test/uuesti. Tried before LESSON_PATH, which would read "test" as a lesson id. */
 const TEST_PATH = /^\/kursus\/([^/]+)\/test(\/uuesti)?$/;
+/** The practical work of one e-course (e-course completion): /kursus/<slug>/praktiline, …/foto, …/foto/<id>, …/saada. */
+const PRACTICAL_PATH = /^\/kursus\/([^/]+)\/praktiline(?:\/(foto|saada)(?:\/([^/]+))?)?$/;
+/** One of her practical photos (R5: the id in the path, never a query): /praktiline/foto/<id>, its thumbnail …/<id>/pisi. */
+const PHOTO_PATH = /^\/praktiline\/foto\/([^/]+)(\/pisi)?$/;
 
 /** The endpoints behind a session; any other method and path is unknown (404, with or without a session). */
 async function dataRoute(request: Request, path: string, deps: AccountDeps): Promise<Response> {
@@ -921,6 +1084,18 @@ async function dataRoute(request: Request, path: string, deps: AccountDeps): Pro
     if (request.method === "POST" && rewrite !== undefined) return resubmitTest(request, deps, slug);
     return accountResponse({ ok: false }, 404); // never on to the lessons
   }
+  // the practical work's paths (e-course completion): before the lesson paths, which would read "praktiline" as a lesson (and answer 404)
+  const practical = PRACTICAL_PATH.exec(path);
+  if (practical) {
+    const [, slug, part, id] = practical;
+    if (request.method === "GET" && part === undefined) return practicalPage(request, deps, slug);
+    if (request.method === "POST" && part === "foto" && id === undefined) return uploadPhoto(request, deps, slug);
+    if (request.method === "DELETE" && part === "foto" && id !== undefined) return deletePhoto(request, deps, slug, id);
+    if (request.method === "POST" && part === "saada" && id === undefined) return submitWork(request, deps, slug);
+    return accountResponse({ ok: false }, 404);
+  }
+  const photoPath = request.method === "GET" ? PHOTO_PATH.exec(path) : null;
+  if (photoPath) return photo(request, deps, photoPath[1], photoPath[2] !== undefined);
   const lessonPath = LESSON_PATH.exec(path);
   if (lessonPath) {
     const [, slug, id, action, file] = lessonPath;

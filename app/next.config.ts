@@ -77,6 +77,9 @@ const nextConfig: NextConfig = {
       { source: "/maksa/:token", headers: [{ key: "Referrer-Policy", value: "same-origin" }, { key: "Cache-Control", value: "no-store" }] },
       // a lesson file: the 302 to R2 (server/account-api.ts fileAnswer) must not pass the lesson's address on as a Referer
       { source: "/api/konto/kursus/:slug/:lesson/fail/:file", headers: [{ key: "Referrer-Policy", value: "no-referrer" }] },
+      // a practical work's photo (e-course completion, R5): the 302 to R2 (server/account-api.ts photoAnswer) must not pass the page's
+      // address on as a Referer; the full photo and its thumbnail (…/pisi)
+      { source: "/api/konto/praktiline/foto/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }] },
     ];
   },
 };

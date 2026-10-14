@@ -44,6 +44,8 @@ const COURSE_CSS = [
   "src/components/account/AccountPage.module.css",
   "src/components/account/ProtocolPage.module.css",
   "src/components/account/FeedbackForm.module.css",
+  // the student's practical work (e-course completion)
+  "src/components/account/PracticalPage.module.css",
   // the student's knowledge test (e-course completion, Task 6)
   "src/components/account/TestPage.module.css",
   // the admin's Õpilased and its read-only "view as client" (phase 2a Task 9)

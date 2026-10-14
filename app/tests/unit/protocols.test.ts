@@ -237,6 +237,7 @@ describe("the questions' texts (Task 8)", () => {
       "account.protocolMail": ru.account.protocolMail,
       // e-course completion (Task 2)
       "account.completionMail": ru.account.completionMail,
+      "account.practical": ru.account.practical,
     };
     for (const [where, value] of Object.entries(texts)) {
       const list = strings(value);
