@@ -208,6 +208,31 @@ describe("a new attempt", () => {
     expect($("[data-test-error]")!.textContent).toBe("Midagi läks valesti. Proovi uuesti.");
   });
 
+  test("an open answer over 2000 characters is never cut: the box keeps it all, the count says so, and the submit is refused before any request; shortened, it goes through", async () => {
+    serve(view());
+    await render();
+    await click($("[data-answer-option='o1wrong0']"));
+    await click($("[data-answer-option='o2a00000']"));
+    await click($("[data-answer-option='o2b00000']"));
+    await type("[data-question='q3open00'] textarea", "x".repeat(2001));
+    const box = $("[data-question='q3open00'] textarea") as HTMLTextAreaElement;
+    expect(box.hasAttribute("maxlength")).toBe(false); // a pasted text is not cut by the browser
+    expect(box.value).toHaveLength(2001);
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+    expect($("[data-question='q3open00']")!.textContent).toContain("2001 / 2000");
+    await click($("[data-test-submit]"));
+    expect($("[data-test-error]")!.getAttribute("data-test-error")).toBe("tooLong");
+    expect($("[data-test-error]")!.textContent).toBe("Vastus on liiga pikk: kuni 2000 tähemärki.");
+    expect($("[data-test-confirm]")).toBeNull();
+    expect(document.activeElement).toBe(box);
+    expect(posts()).toEqual([]);
+    await type("[data-question='q3open00'] textarea", "Puhastan, siis värvin.");
+    expect($("[data-test-error]")).toBeNull(); // shortening it takes the line away
+    expect(box.getAttribute("aria-invalid")).toBeNull();
+    await sendIt();
+    expect(posts()).toEqual([[API, { answers: ANSWERS }]]);
+  });
+
   test("Review Focus 3: Maria changed the test meanwhile — refused, no try used, the answers stay; the reload keeps those of the questions still there", async () => {
     serve(view(), [409, { ok: false, error: "changed" }]);
     await render();
@@ -327,6 +352,27 @@ describe("Maria's 'Paranda'", () => {
     ]);
     expect(stateOf()).toBe("review");
     expect($("[data-test-result]")!.textContent).toBe("Ootab Maria hinnangut");
+  });
+
+  test("a rewritten answer over 2000 characters is not cut either: refused before any request with the answer in focus; shortened, it is sent", async () => {
+    serve(FIX, [200, view({ state: { kind: "review" }, triesLeft: 2, last: attempt({ status: "review", percent: 100, wrong: [] }) })]);
+    await render();
+    await type("[data-question='q3open00'] textarea", "y".repeat(2001));
+    const box = $("[data-question='q3open00'] textarea") as HTMLTextAreaElement;
+    expect(box.hasAttribute("maxlength")).toBe(false);
+    expect(box.value).toHaveLength(2001);
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+    await click($("[data-test-submit]"));
+    expect($("[data-test-error]")!.getAttribute("data-test-error")).toBe("tooLong");
+    expect($("[data-test-error]")!.textContent).toBe("Vastus on liiga pikk: kuni 2000 tähemärki.");
+    expect(document.activeElement).toBe(box);
+    expect(posts()).toEqual([]);
+    await type("[data-question='q3open00'] textarea", "Puhastan seebivaba puhastiga.");
+    expect($("[data-test-error]")).toBeNull();
+    await click($("[data-test-submit]"));
+    expect(posts()).toHaveLength(1);
+    expect(posts()[0][0]).toBe(`${API}/uuesti`);
+    expect(stateOf()).toBe("review");
   });
 });
 

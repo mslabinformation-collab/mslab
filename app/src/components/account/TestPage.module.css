@@ -136,6 +136,16 @@
   font: 400 12px/1.4 var(--font-body);
 }
 
+/* over the limit: the count in the warning colour, heavier (not colour alone), and the box's border to match */
+.countOver {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.text[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+
 .comment {
   margin: 0;
   padding: 12px 14px;

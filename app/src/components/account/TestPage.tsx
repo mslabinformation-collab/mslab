@@ -86,6 +86,27 @@ function fitting(questions: readonly PublicQuestion[], from: TestAnswers): TestA
 
 const answered = (q: PublicQuestion, a: string[] | string | undefined): boolean => (q.kind === "open" ? typeof a === "string" && a.trim() !== "" : Array.isArray(a) && a.length > 0);
 
+/** An open answer over its limit. The box never cuts a pasted text (nothing is cut silently): the count turns red and a submit is refused with a line. */
+const overLimit = (q: PublicQuestion, a: string[] | string | undefined): boolean => q.kind === "open" && typeof a === "string" && a.length > TEST_LIMITS.answer;
+
+/** The first question, in order, whose answer cannot be sent: none given, or an open one over the limit (the order the server reads them in). null: all can go. */
+function firstProblem(questions: readonly PublicQuestion[], answers: TestAnswers): { id: string; problem: "incomplete" | "tooLong" } | null {
+  for (const q of questions) {
+    if (!answered(q, answers[q.id])) return { id: q.id, problem: "incomplete" };
+    if (overLimit(q, answers[q.id])) return { id: q.id, problem: "tooLong" };
+  }
+  return null;
+}
+
+/** Puts the cursor in a question's first input, the answer that needs her attention. */
+function focusAnswer(form: HTMLFormElement | null, id: string): void {
+  form?.querySelector<HTMLElement>(`[data-question="${id}"] input, [data-question="${id}"] textarea`)?.focus();
+}
+
+/** Does a change of her answers settle the line under the questions? "Vasta kõigile" at once, "liiga pikk" when no answer is over the limit any more. */
+const settles = (problem: Problem | null, questions: readonly PublicQuestion[], answers: TestAnswers): boolean =>
+  problem === "incomplete" || (problem === "tooLong" && !questions.some((q) => overLimit(q, answers[q.id])));
+
 /** What the questions and the state are: a new answer that changes them starts the page's body afresh (its form reads the draft again). */
 const shapeOf = (v: TestView): string =>
   [v.state.kind, v.last?.id ?? 0, ...v.questions.map((q) => (q.kind === "choice" ? `${q.id}:${q.options.map((o) => o.id).join(".")}` : q.id))].join(",");
@@ -338,15 +359,15 @@ function AttemptForm({ view, slug, api, t, reload, onAccepted }: { view: TestAns
     const next = { ...answers, [id]: value };
     setAnswers(next);
     writeDraft(slug, next);
-    if (problem === "incomplete") setProblem(null);
+    if (settles(problem, questions, next)) setProblem(null);
   };
   const ask = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const missing = questions.find((q) => !answered(q, answers[q.id]));
-    if (missing) {
+    const found = firstProblem(questions, answers);
+    if (found) {
       setConfirming(false);
-      setProblem("incomplete");
-      form.current?.querySelector<HTMLElement>(`[data-question="${missing.id}"] input, [data-question="${missing.id}"] textarea`)?.focus();
+      setProblem(found.problem);
+      focusAnswer(form.current, found.id);
       return;
     }
     setProblem(null);
@@ -399,7 +420,9 @@ function AttemptForm({ view, slug, api, t, reload, onAccepted }: { view: TestAns
 function FixForm({ attempt, slug, api, t, reload, onAccepted }: { attempt: AttemptView; slug: string; api: string; t: TestTexts; reload: Reload; onAccepted: (next: TestAnswer) => void }) {
   const uid = useId();
   const review = attempt.review ?? {};
-  const toFix = attempt.questions.filter((q) => review[q.id]?.verdict === "fix").map((q) => q.id);
+  const fixing = attempt.questions.filter((q) => review[q.id]?.verdict === "fix");
+  const toFix = fixing.map((q) => q.id);
+  const form = useRef<HTMLFormElement>(null);
   const [answers, setAnswers] = useState<TestAnswers>(() => {
     const draft = readDraft(slug);
     const out: TestAnswers = { ...attempt.answers };
@@ -415,23 +438,21 @@ function FixForm({ attempt, slug, api, t, reload, onAccepted }: { attempt: Attem
     const next = { ...answers, [id]: value };
     setAnswers(next);
     writeDraft(slug, next);
-    if (problem === "incomplete") setProblem(null);
+    if (settles(problem, fixing, next)) setProblem(null);
   };
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const blank = toFix.find((id) => {
-      const a = answers[id];
-      return typeof a !== "string" || a.trim() === "";
-    });
-    if (blank) {
-      setProblem("incomplete");
+    const found = firstProblem(fixing, answers);
+    if (found) {
+      setProblem(found.problem);
+      focusAnswer(form.current, found.id);
       return;
     }
     void send(`${api}/uuesti`, { attemptId: attempt.id, answers });
   };
 
   return (
-    <form className={styles.form} onSubmit={submit} noValidate>
+    <form ref={form} className={styles.form} onSubmit={submit} noValidate>
       <p className={styles.lead}>{t.fixLead}</p>
       <div className={styles.questions}>
         {attempt.questions.map((q, i) => {
@@ -529,6 +550,8 @@ function QuestionField({
     );
   }
   const text = typeof value === "string" ? value : "";
+  // no maxLength on the box: a pasted text is never cut silently; over the limit the count turns red and the submit is refused (overLimit)
+  const over = !locked && overLimit(q, text);
   return (
     <div className={styles.question} data-question={q.id}>
       <label htmlFor={name} className={styles.label}>
@@ -538,15 +561,15 @@ function QuestionField({
         id={name}
         className={styles.text}
         rows={4}
-        maxLength={TEST_LIMITS.answer}
         value={text}
         readOnly={locked}
         onChange={(e) => onChange?.(e.target.value)}
         aria-describedby={locked ? undefined : `${name}-count`}
+        aria-invalid={over || undefined}
         data-answer-open=""
       />
       {!locked && (
-        <p id={`${name}-count`} className={styles.count}>
+        <p id={`${name}-count`} className={over ? `${styles.count} ${styles.countOver}` : styles.count}>
           {fill(t.count, { n: text.length, max: TEST_LIMITS.answer })}
         </p>
       )}
