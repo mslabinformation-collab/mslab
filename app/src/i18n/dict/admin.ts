@@ -371,7 +371,7 @@ export const adminEt = {
   // `screen`: {n} a count or a round, {point} a point's number (1-based), {points} a list of them, {title} a point's title, {date} a day.
   assessment: {
     screen: {
-      // the page's line under "{course} · {name}"
+      // the screen's first line, under the page's "{course} · {name}" (AssessmentScreen: it follows the screen's reads)
       round: "Praktiline töö, {n}. kord",
       notSubmitted: "Praktiline töö: õpilane ei ole veel saatnud",
       notesOnly: "Protokoll",

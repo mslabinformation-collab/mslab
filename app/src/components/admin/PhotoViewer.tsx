@@ -50,8 +50,8 @@ export function PhotoViewer({
   const down = useRef(new Map<number, number>());
   /** A second pointer went down since none was: no swipe until every one is up (the browser's pinch). */
   const pinch = useRef(false);
-  /** The page is pinched in: one finger pans the photo (the frame's touch-action), never a swipe. */
-  const [zoomed, setZoomed] = useState(false);
+  /** The page is pinched in: one finger pans the photo (the frame's touch-action), never a swipe. (It may be already when the viewer opens.) */
+  const [zoomed, setZoomed] = useState(() => typeof window !== "undefined" && zoomedIn());
   const n = photos.length;
   const go = (i: number) => onIndex((i + n) % n);
 

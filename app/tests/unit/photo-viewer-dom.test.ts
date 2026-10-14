@@ -126,6 +126,12 @@ test("pinched in (the visual viewport's scale over 1): the frame says so, a one-
     expect($("[data-photo-viewer]")).toBeNull();
     expect(added).not.toHaveBeenCalled();
     expect(removed.mock.calls.map(([type]) => type)).toEqual(["resize"]);
+    // opened while the page is already pinched in: the frame says so at once, and a drag is no swipe
+    viewport.scale = 2;
+    await act(async () => root.render(createElement(Harness, { key: "again", photos: PHOTOS, start: 0 })));
+    expect($("[data-viewer-frame]")!.hasAttribute("data-zoomed")).toBe(true);
+    await swipe([[1, 300, "down"], [1, 300 - 4 * SWIPE_PX, "up"]]);
+    expect(count()).toBe("1 / 3");
   } finally {
     if (own) Object.defineProperty(window, "visualViewport", own);
     else delete (window as { visualViewport?: unknown }).visualViewport;
