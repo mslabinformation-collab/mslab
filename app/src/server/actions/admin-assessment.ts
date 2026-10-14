@@ -10,7 +10,10 @@ import { reopenTest, reviewAttempt, type ReviewResult } from "../test-attempts";
 
 // Maria's assessment (phase e-course completion, spec §5.3): every export is wrapped in adminAction (a signed-in admin, or a redirect to
 // /admin/login; tests/unit/admin-guards.test.ts fails otherwise), and Next.js refuses an action called from another origin. The work is in
-// ../assessment.ts. "Saada hinnang" refreshes nothing: the screen keeps its own state. The test review's "Saada" and "Ava test uuesti" refresh the open admin page once they changed something (the attempt is read-only now, Hindamine's badge has one less).
+// ../assessment.ts. "Saada hinnang" refreshes nothing: the screen keeps its own state. The test review's "Saada" refreshes the open admin page once
+// reviewed (the attempt is read-only now, Hindamine's badge has one less). "Ava test uuesti" refreshes nothing either: its row leaves Hindamine's
+// "Katsed otsas" once the test is open, and a refresh would take the confirmation (and the mail's notice) away with it; the page is right again on
+// the next load.
 
 const item = z.object({
   accessId: z.number().int().positive().max(2_147_483_647),
@@ -66,14 +69,16 @@ export const reviewAttemptAction = adminAction(
 
 type ReopenOutcome = Awaited<ReturnType<typeof reopenTest>> | { kind: "failed" };
 
-/** "Ava test uuesti" (spec §5.2, §5.5), after its confirmation: the course's tries once more for an access whose tries are used up; she is mailed while her access runs. */
+/**
+ * "Ava test uuesti" (spec §5.2, §5.5), after its confirmation: the course's tries once more for an access whose tries are used up; she is mailed
+ * while her access runs. The open page is NOT refreshed: the row would leave Hindamine's "Katsed otsas" and ReopenTest, with the line that tells
+ * Maria the test is open, would unmount. The row stays with that line until the next load.
+ */
 export const reopenTestAction = adminAction(async ({ email }, input: { accessId: number }): Promise<ReopenOutcome> => {
   const parsed = accessInput.safeParse(input);
   if (!parsed.success) return { kind: "notFound" };
   try {
-    const result = await reopenTest(await adminSendDeps("[test]"), email, parsed.data.accessId);
-    if (result.kind === "reopened") refresh();
-    return result;
+    return await reopenTest(await adminSendDeps("[test]"), email, parsed.data.accessId);
   } catch (e) {
     logFailure(`[test] access ${parsed.data.accessId}: the reopen failed`, e);
     return { kind: "failed" };

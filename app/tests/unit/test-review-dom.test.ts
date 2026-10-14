@@ -195,6 +195,30 @@ describe("TestReview", () => {
     expect(comment("qavatud2")!.value).toBe("");
   });
 
+  test("a draft belongs to the answers it was written for: after the student rewrote them (a stale refusal, a reload) it is not restored, and it is removed", async () => {
+    await show();
+    await click(verdict("qavatud2", "fix"));
+    await type(comment("qavatud2"), "Lisa allergiatest.");
+    expect(JSON.parse(localStorage.getItem(KEY)!).submittedAt).toBe(SUBMITTED);
+    // she sends, the server says stale (the student rewrote meanwhile); the reload brings the new answers with their new time
+    const REWRITTEN = "2026-10-19T09:30:00.000Z";
+    await reload({ submittedAt: REWRITTEN, answers: { ...ANSWERS, qavatud2: "Jätkan tööd, aga küsin enne arsti käest." } });
+    expect(verdict("qavatud2", "fix")!.getAttribute("aria-pressed")).toBe("false");
+    expect(comment("qavatud2")!.value).toBe("");
+    expect(answer("qavatud2").textContent).toContain("küsin enne arsti käest");
+    expect(localStorage.getItem(KEY)).toBeNull();
+    // what she marks on the new answers is kept for those
+    await click(verdict("qavatud1", "ok"));
+    expect(JSON.parse(localStorage.getItem(KEY)!).submittedAt).toBe(REWRITTEN);
+    await reload({ submittedAt: REWRITTEN });
+    expect(verdict("qavatud1", "ok")!.getAttribute("aria-pressed")).toBe("true");
+    // a draft that names no answers' time at all (not one of this form's) is left aside too
+    localStorage.setItem(KEY, JSON.stringify({ marks: { qavatud1: { verdict: "fix", comment: "Vana." } }, at: 1 }));
+    await reload({ submittedAt: REWRITTEN });
+    expect(verdict("qavatud1", "fix")!.getAttribute("aria-pressed")).toBe("false");
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
   test("a rewrite back for review: an accepted answer stays accepted; a 'Paranda' one opens again, her last comment shown", async () => {
     await show({ review: { qavatud1: { verdict: "ok", comment: "Hea." }, qavatud2: { verdict: "fix", comment: "Lisa allergiatest." } } });
     expect(verdict("qavatud1", "ok")!.getAttribute("aria-pressed")).toBe("true");
@@ -242,6 +266,27 @@ describe("ReopenTest", () => {
     await showReopen(false); // the page's refresh: the test is open now
     expect($("[data-reopen]")).toBeNull();
     expect($("[data-reopen-done]")!.textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
+  });
+
+  test("the page is not refreshed by the action, so the test still reads as used up: the line stays on the row, the button does not come back (Hindamine, the drawer)", async () => {
+    actions.reopen.mockResolvedValue({ kind: "reopened", triesLeft: 3 });
+    await showReopen(true);
+    await click($("[data-reopen]"));
+    await click(button("Jah, ava"));
+    expect($("[data-reopen-done]")!.textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
+    expect(document.activeElement).toBe($("[data-reopen-done]"));
+    expect($("[data-reopen]")).toBeNull(); // (`used` is still true here: nothing re-read the page)
+    expect($("[data-reopen-confirm]")).toBeNull();
+    expect(actions.reopen).toHaveBeenCalledTimes(1);
+    // reopened elsewhere meanwhile: said the same way, no second button
+    actions.reopen.mockResolvedValue({ kind: "notNeeded" });
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await showReopen(true);
+    await click($("[data-reopen]"));
+    await click(button("Jah, ava"));
+    expect($("[data-reopen-done]")!.textContent).toBe("Test on juba avatud.");
+    expect($("[data-reopen]")).toBeNull();
   });
 
   test("a failed answer stays in the step with the error; not used up: no button and no step", async () => {

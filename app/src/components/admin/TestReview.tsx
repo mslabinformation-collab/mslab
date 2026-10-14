@@ -13,7 +13,9 @@ import styles from "./TestReview.module.css";
 // student saw them. The choice part is read-only: each option she picked is marked right (✓) or wrong (✗) against the key, and a correct one she
 // left out is named. Each open answer takes "Kinnitatud" or "Paranda" and a comment (required for "Paranda"); "Saada" sends them all
 // (reviewAttemptAction). A plain form: what Maria marks and writes is kept in this browser (localStorage `mslab-review:<attemptId>`) until it is
-// sent, so a reload or a closed tab loses nothing. An attempt not waiting for her ("fix", "passed", "failed") shows her last review, read-only.
+// sent, so a reload or a closed tab loses nothing. The draft belongs to the answers it was written for (their `submittedAt`): after the student
+// rewrote them it is dropped, never put onto answers Maria has not seen. An attempt not waiting for her ("fix", "passed", "failed") shows her
+// last review, read-only.
 
 export type ReviewTexts = AdminDict["assessment"]["review"];
 /**
@@ -39,12 +41,21 @@ function startMarks(a: ReviewedAttempt): Marks {
   return marks;
 }
 
-/** The draft this browser kept, read defensively (the storage may hold anything, or be blocked): this attempt's open answers only. */
+/**
+ * The draft this browser kept, read defensively (the storage may hold anything, or be blocked): this attempt's open answers only, and only if it
+ * was written for the answers the page shows now (`submittedAt`). A draft of older answers (the student rewrote since: the server refused the
+ * review as stale), or one that names none, is removed and the form starts afresh.
+ */
 function readDraft(a: ReviewedAttempt): Marks | null {
   try {
     const raw = localStorage.getItem(draftKey(a.id));
     if (!raw) return null;
-    const kept = (JSON.parse(raw) as { marks?: Record<string, { verdict?: unknown; comment?: unknown } | undefined> }).marks ?? {};
+    const draft = JSON.parse(raw) as { submittedAt?: unknown; marks?: Record<string, { verdict?: unknown; comment?: unknown } | undefined> };
+    if (draft.submittedAt !== a.submittedAt) {
+      dropDraft(a.id);
+      return null;
+    }
+    const kept = draft.marks ?? {};
     const marks = startMarks(a);
     for (const id of Object.keys(marks)) {
       const m = kept[id];
@@ -56,9 +67,9 @@ function readDraft(a: ReviewedAttempt): Marks | null {
   }
 }
 
-function writeDraft(attemptId: number, marks: Marks): void {
+function writeDraft(attemptId: number, submittedAt: string, marks: Marks): void {
   try {
-    localStorage.setItem(draftKey(attemptId), JSON.stringify({ marks, at: Date.now() }));
+    localStorage.setItem(draftKey(attemptId), JSON.stringify({ marks, at: Date.now(), submittedAt }));
   } catch {
     // the storage is full or blocked: the form still works, its text is just not kept
   }
@@ -115,7 +126,7 @@ export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: Review
   const change = (id: string, part: Partial<Mark>) => {
     const next = { ...marks, [id]: { ...marks[id], ...part } };
     setMarks(next);
-    writeDraft(attempt.id, next);
+    writeDraft(attempt.id, attempt.submittedAt, next);
     if (problems[id]) setProblems(Object.fromEntries(Object.entries(problems).filter(([key]) => key !== id)));
     setError("");
   };

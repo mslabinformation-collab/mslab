@@ -43,15 +43,27 @@ describe("assessmentQueue", () => {
     const juta = await student(db, course.id, "Juta");
     await attempt(db, juta, course.id, 1, "failed", at(1), { correct: 0 });
     await attempt(db, juta, course.id, 2, "passed", at(2), { correct: 2 });
+    // a second row in the test and tries groups, written AFTER the first and older: the order is the time, not the row's id (the practical
+    // group's Anu and Berit are the same check)
+    const kaja = await student(db, course.id, "Kaja");
+    const kajaWaiting = await attempt(db, kaja, course.id, 1, "review", at(3));
+    const karin = await student(db, course.id, "Karin");
+    for (const n of [1, 2]) await attempt(db, karin, course.id, n, "failed", at(n), { correct: 0 }); // her last attempt (at 2) is older than Gea's (at 3)
 
     const q = await assessmentQueue(db);
     expect(q.practicals).toEqual([
       { accessId: berit.access.id, name: "Berit", course: COURSE_TITLE, round: 2, submittedAt: at(6) },
       { accessId: anu.access.id, name: "Anu", course: COURSE_TITLE, round: 1, submittedAt: at(8) },
     ]);
-    expect(q.tests).toEqual([{ attemptId: waiting.id, accessId: eve.access.id, name: "Eve", course: COURSE_TITLE, number: 1, allowed: 2, submittedAt: at(7) }]);
-    expect(q.triesUsed).toEqual([{ accessId: gea.access.id, name: "Gea", course: COURSE_TITLE, best: 50, attempts: 2 }]);
-    expect(await assessmentCount(db)).toBe(4);
+    expect(q.tests).toEqual([
+      { attemptId: kajaWaiting.id, accessId: kaja.access.id, name: "Kaja", course: COURSE_TITLE, number: 1, allowed: 2, submittedAt: at(3) },
+      { attemptId: waiting.id, accessId: eve.access.id, name: "Eve", course: COURSE_TITLE, number: 1, allowed: 2, submittedAt: at(7) },
+    ]);
+    expect(q.triesUsed).toEqual([
+      { accessId: karin.access.id, name: "Karin", course: COURSE_TITLE, best: 0, attempts: 2 },
+      { accessId: gea.access.id, name: "Gea", course: COURSE_TITLE, best: 50, attempts: 2 },
+    ]);
+    expect(await assessmentCount(db)).toBe(6);
   });
 
   test("Review Focus 4: an access an admin ended leaves Hindamine; one that ran out stays (Maria can still assess it); a completed one is never listed", async () => {

@@ -71,18 +71,18 @@ test("the test review passes on the attempt, the review and the time the page sh
   expect(cache.refresh).toHaveBeenCalledTimes(1);
 });
 
-test("'Ava test uuesti' passes on the access; the page is refreshed only once reopened; bad input is notFound; a throw is 'failed'", async () => {
+test("'Ava test uuesti' passes on the access and never refreshes the page (its row, with the confirmation, stays until the next load); bad input is notFound; a throw is 'failed'", async () => {
   tests.reopenTest.mockResolvedValueOnce({ kind: "reopened", triesLeft: 3 });
   expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "reopened", triesLeft: 3 });
   expect(tests.reopenTest.mock.calls[0].slice(1)).toEqual(["admin@example.test", 9]);
-  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  expect(cache.refresh).not.toHaveBeenCalled(); // a refresh would take the row out of "Katsed otsas" and its "Test on uuesti avatud" line with it
   tests.reopenTest.mockResolvedValueOnce({ kind: "notNeeded" });
   expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "notNeeded" });
-  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  expect(cache.refresh).not.toHaveBeenCalled();
   for (const bad of [{ accessId: 0 }, { accessId: 1.5 }, {}]) expect(await reopenTestAction(bad as never), JSON.stringify(bad)).toEqual({ kind: "notFound" });
   expect(tests.reopenTest).toHaveBeenCalledTimes(2);
   tests.reopenTest.mockRejectedValueOnce(new TypeError("boom"));
   expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "failed" });
   expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain("[test] access 9: the reopen failed: TypeError");
-  expect(cache.refresh).toHaveBeenCalledTimes(1);
+  expect(cache.refresh).not.toHaveBeenCalled();
 });

@@ -3,19 +3,15 @@ import type { Db } from "../client";
 import { clients, courseAccess, courses, courseTests, protocols, testAttempts, type AttemptStatus, type OpenReview, type TestAnswers, type TestAttempt, type TestQuestion } from "../schema";
 import { percentOf, readQuestions, TEST_DEFAULTS, triesAllowed } from "@/domain/completion";
 import type { I18n } from "@/i18n/field";
-import { clientNameSql } from "@/server/admin-clients";
+import { clientNameSql } from "./client-name";
 
 // "Hindamine" (e-course completion, spec §5.2, §5.4): what waits for Maria — the practical work sent and not yet assessed, the open answers
 // waiting for her review, the students out of tries — and an attempt as her review shows it. Callers have checked the admin session; nothing
 // here does authorization. An access an admin ended (revoked) is left out everywhere: her pages answer 404 and her items leave the list (spec
 // §8); a completed one has nothing left to assess. One that ran out stays: Maria can still assess it (spec §8).
 
-/**
- * The student as the admin sees her (server/admin-clients.ts clientNameSql): her own name, else her latest registration's, else her address.
- * Every query below joins `clients` unaliased. Built when a query runs, never at this module's top: server/admin-clients.ts imports
- * db/queries/admin.ts, which imports this file (adminCounts), so while this module loads the builder may not be there yet.
- */
-const NAME = () => clientNameSql(sql`clients.email`);
+/** The student as the admin sees her (client-name.ts): her own name, else her latest registration's, else her address. Every query below joins `clients` unaliased. */
+const NAME = clientNameSql(sql`clients.email`);
 
 /** Not ended by an admin and not completed. */
 const LIVE = and(isNull(courseAccess.revokedAt), isNull(courseAccess.completedAt));
@@ -33,7 +29,7 @@ export type AssessmentQueue = { practicals: WaitingPractical[]; tests: WaitingTe
 
 async function waitingPracticals(db: Db): Promise<WaitingPractical[]> {
   const rows = await db
-    .select({ accessId: courseAccess.id, name: NAME(), course: courses.title, round: protocols.round, submittedAt: protocols.submittedAt })
+    .select({ accessId: courseAccess.id, name: NAME, course: courses.title, round: protocols.round, submittedAt: protocols.submittedAt })
     .from(protocols)
     .innerJoin(courseAccess, eq(protocols.accessId, courseAccess.id))
     .innerJoin(clients, eq(courseAccess.clientId, clients.id))
@@ -48,7 +44,7 @@ async function waitingTests(db: Db): Promise<WaitingTest[]> {
     .select({
       attemptId: testAttempts.id,
       accessId: courseAccess.id,
-      name: NAME(),
+      name: NAME,
       course: courses.title,
       number: testAttempts.number,
       tries: courseTests.tries,
@@ -70,7 +66,7 @@ async function triesUsedRows(db: Db): Promise<TriesUsed[]> {
   return db
     .select({
       accessId: courseAccess.id,
-      name: NAME(),
+      name: NAME,
       course: courses.title,
       best: sql<number>`max(case when ${testAttempts.total} = 0 then 100 else (${testAttempts.correct} * 100) / ${testAttempts.total} end)`.mapWith(Number),
       attempts: sql<number>`count(${testAttempts.id})`.mapWith(Number),
@@ -125,15 +121,15 @@ export type ReviewAttempt = {
 
 type ReviewRow = { attempt: TestAttempt; accessId: number; extraTries: number; name: string; course: I18n; tries: number | null; passPercent: number | null };
 
-const reviewFields = () => ({
+const reviewFields = {
   attempt: testAttempts,
   accessId: courseAccess.id,
   extraTries: courseAccess.extraTries,
-  name: NAME(),
+  name: NAME,
   course: courses.title,
   tries: courseTests.tries,
   passPercent: courseTests.passPercent,
-});
+};
 
 function reviewOf(r: ReviewRow): ReviewAttempt {
   const a = r.attempt;
@@ -157,7 +153,7 @@ function reviewOf(r: ReviewRow): ReviewAttempt {
 /** The attempt `attemptId` for Maria's review; null without one, or when its access was ended by an admin. */
 export async function attemptForReview(db: Db, attemptId: number): Promise<ReviewAttempt | null> {
   const [row] = await db
-    .select(reviewFields())
+    .select(reviewFields)
     .from(testAttempts)
     .innerJoin(courseAccess, ATTEMPT_ACCESS)
     .innerJoin(clients, eq(testAttempts.clientId, clients.id))
@@ -171,7 +167,7 @@ export async function attemptForReview(db: Db, attemptId: number): Promise<Revie
 /** Every attempt of the access `accessId`, newest first (spec §5.4, "Testi katsed"); null without the access, or when an admin ended it. */
 export async function attemptsOf(db: Db, accessId: number): Promise<{ name: string; course: I18n; attempts: ReviewAttempt[] } | null> {
   const [who] = await db
-    .select({ name: NAME(), course: courses.title })
+    .select({ name: NAME, course: courses.title })
     .from(courseAccess)
     .innerJoin(clients, eq(courseAccess.clientId, clients.id))
     .innerJoin(courses, eq(courseAccess.courseId, courses.id))
@@ -179,7 +175,7 @@ export async function attemptsOf(db: Db, accessId: number): Promise<{ name: stri
     .limit(1);
   if (!who) return null;
   const rows = await db
-    .select(reviewFields())
+    .select(reviewFields)
     .from(courseAccess)
     .innerJoin(testAttempts, ATTEMPT_ACCESS)
     .innerJoin(clients, eq(courseAccess.clientId, clients.id))

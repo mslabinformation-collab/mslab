@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@/db/client";
 import { listRegistrations, paged, type Paged, type RegistrationRow } from "@/db/queries/admin";
+import { clientNameSql } from "@/db/queries/client-name";
 import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
 import { feedbackOf, type FeedbackRow } from "@/db/queries/protocols";
 import { clients, courseAccess, courses, lessonProgress, practicePackages, registrations, requests, termsAcceptances } from "@/db/schema";
@@ -32,10 +33,7 @@ export type ClientListRow = { id: number; email: string; name: string; createdAt
 
 // Written out with the table's name: in a single-table query Drizzle prints a column without its table, which inside these
 // subqueries would be the subquery's own column (registrations.id, not the client's).
-/** A student's NAME (above) as SQL over an unaliased `clients`, with `fallback` when she has no name anywhere (Hindamine's queries give her address). */
-export function clientNameSql(fallback: SQL): SQL<string> {
-  return sql<string>`coalesce(nullif(clients.name, ''), (select r.name from registrations r where r.client_id = clients.id order by r.created_at desc, r.id desc limit 1), ${fallback})`;
-}
+// (NAME is db/queries/client-name.ts clientNameSql with no fallback; Hindamine's queries give the address.)
 const NAME = clientNameSql(sql`''`);
 const COURSES = sql<number>`((select count(*) from registrations r where r.client_id = clients.id and r.status <> 'cancelled') + (select count(*) from course_access a where a.client_id = clients.id and a.revoked_at is null))::int`;
 const HAS_ACCESS = sql`exists (select 1 from course_access a where a.client_id = clients.id)`;
