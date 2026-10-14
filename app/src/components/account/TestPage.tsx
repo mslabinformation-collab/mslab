@@ -224,7 +224,7 @@ function TestBody({ data, slug, locale, t, reload }: { data: TestAnswer; slug: s
         ) : (
           <>
             {failedLine(last)}
-            <button type="button" className={ui.btn} onClick={() => setRetrying(true)} data-test-retry="">
+            <button type="button" className={`${ui.btn} ${styles.long}`} onClick={() => setRetrying(true)} data-test-retry="">
               {view.triesLeft === 1 ? t.retryOne : fill(t.retry, { n: view.triesLeft })}
             </button>
             {back(false)}
@@ -265,7 +265,7 @@ function TestBody({ data, slug, locale, t, reload }: { data: TestAnswer; slug: s
         <>
           {outcome(t.passed)}
           {view.hasPoints ? (
-            <Link className={ui.btn} href={href(locale, `/konto/kursus/${slug}/praktiline`)} data-test-next="">
+            <Link className={`${ui.btn} ${styles.long}`} href={href(locale, `/konto/kursus/${slug}/praktiline`)} data-test-next="">
               {t.practical}
               <Icon name="arrow" />
             </Link>
@@ -405,7 +405,7 @@ function AttemptForm({ view, slug, api, t, reload, onAccepted }: { view: TestAns
           </div>
         </div>
       ) : (
-        <button type="submit" className={ui.btn} data-test-submit="">
+        <button type="submit" className={`${ui.btn} ${styles.long}`} data-test-submit="">
           {t.submit}
         </button>
       )}
@@ -474,7 +474,7 @@ function FixForm({ attempt, slug, api, t, reload, onAccepted }: { attempt: Attem
       </div>
       {problem && <ProblemLine problem={problem} t={t} reload={reload} />}
       {problem !== "changed" && (
-        <button type="submit" className={ui.btn} aria-disabled={sending || undefined} data-test-submit="">
+        <button type="submit" className={`${ui.btn} ${styles.long}`} aria-disabled={sending || undefined} data-test-submit="">
           {sending ? t.sending : t.resubmit}
         </button>
       )}

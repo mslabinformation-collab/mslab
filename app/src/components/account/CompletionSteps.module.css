@@ -106,4 +106,11 @@
   .main {
     width: 100%;
   }
+
+  /* its label wraps on a 360 px phone ("Открыть практическую работу" and the arrow) instead of running off it; two classes outweigh ui.btn's
+     nowrap whichever stylesheet comes first */
+  .step .main {
+    white-space: normal;
+    text-align: center;
+  }
 }

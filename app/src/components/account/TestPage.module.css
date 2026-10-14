@@ -199,3 +199,13 @@
   margin: 0;
   font: 400 24px/1.25 var(--font-display);
 }
+
+@media (max-width: 640px) {
+  /* the long primary buttons ("Попробовать ещё раз (осталось попыток: 2)", "Открыть практическую работу") wrap on a 360 px phone instead of
+     running off it; the element in the selector outweighs ui.btn's nowrap whichever stylesheet comes first */
+  button.long,
+  a.long {
+    white-space: normal;
+    text-align: center;
+  }
+}
