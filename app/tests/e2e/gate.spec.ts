@@ -37,7 +37,7 @@ async function noHorizontalOverflow(page: Page): Promise<boolean> {
 
 test.describe("a visitor", () => {
   test("every address of the site is the coming-soon page (200, the address kept, noindex), in its language", async ({ page }) => {
-    for (const path of ["/", "/koolitused", "/koolitused/kulmude-lami", "/koolituskalender", "/konto", "/konto/sisene?viga=link", "/konto/protokoll", "/konto/tagasiside", "/uudised", "/guide/", "/p/d/", "/olematu-leht", "/et/koolitused"]) {
+    for (const path of ["/", "/koolitused", "/koolitused/kulmude-lami", "/koolituskalender", "/konto", "/konto/sisene?viga=link", "/konto/protokoll", "/konto/tagasiside", "/konto/kursus/x/test", "/konto/kursus/x/praktiline", "/uudised", "/guide/", "/p/d/", "/olematu-leht", "/et/koolitused"]) {
       const res = await page.goto(path);
       expect(res?.status(), path).toBe(200);
       expect(res?.headers()["x-robots-tag"], path).toBe("noindex, nofollow");
@@ -54,7 +54,7 @@ test.describe("a visitor", () => {
   });
 
   test("the account's API and the review comments answer 404 without the page; the admin login, robots.txt and the logo are there", async ({ page, request }) => {
-    for (const path of ["/api/konto/me", "/api/konto/protokoll?id=1", "/api/konto/tagasiside?id=1", "/api/feedback"]) {
+    for (const path of ["/api/konto/me", "/api/konto/protokoll?id=1", "/api/konto/tagasiside?id=1", "/api/konto/kursus/x/test", "/api/konto/praktiline/foto/1", "/api/feedback"]) {
       const res = await request.get(path);
       expect(res.status(), path).toBe(404);
       expect(await res.json(), path).toEqual({ ok: false, error: "not_found" });

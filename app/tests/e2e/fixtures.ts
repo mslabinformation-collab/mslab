@@ -8,6 +8,7 @@ import { TERMS_PAGE_KEY } from "../../src/domain/course-terms";
 import { LOCAL_REFERENCE_PREFIX, orderReference } from "../../src/domain/payments";
 import { revalidateLocalPages } from "./prod-build";
 import { assertLocalDatabases, isLocalDbUrl } from "./local-db";
+import { localStore } from "../../src/server/media-local";
 import { PROD_BUILD, TARGET } from "./target";
 
 // Test-owned seat fixtures for the calendar e2e tests. The seed never contains registrations (the real database will
@@ -379,6 +380,14 @@ export async function removeClientRows(email?: string): Promise<number> {
   const courses = email ? accountCourseSlug(email) : `${ACCOUNT_COURSE_PREFIX}%`;
   const sql = connect(false); // clients and their unpublished courses: no public page shows them
   try {
+    // the practical work's photos (e-course completion): their rows go with the account and the course (on delete cascade: access → protocol
+    // → photos; course → attempts and its test), so their files in the local store of the e2e run's server are read first and deleted after
+    const photos = await sql<{ key: string; thumbKey: string }[]>`
+      select p.key, p.thumb_key as "thumbKey" from practical_photos p
+      join protocols pr on pr.id = p.protocol_id
+      join course_access a on a.id = pr.access_id
+      join clients c on c.id = a.client_id
+      where c.email like ${match} or a.course_id in (select id from courses where slug like ${courses})`;
     await sql`delete from registrations where email like ${match} or course_id in (select id from courses where slug like ${courses})`;
     await sql`delete from requests where payload->>'email' like ${match}`;
     await sql`delete from courses where slug like ${courses}`; // on delete cascade: its sessions
@@ -386,6 +395,8 @@ export async function removeClientRows(email?: string): Promise<number> {
     await sql`delete from subscribers where email like ${match}`; // "Saada mulle uudiskirja" in Minu andmed
     await sql`delete from clients where email like ${match}`; // on delete cascade: sessions, favourites, access, terms
     await sql`delete from payments where email like ${match}`; // the online payments of the test address (phase 2b)
+    const store = localStore(join(process.cwd(), ".media-local"));
+    for (const p of photos) for (const key of [p.key, p.thumbKey]) await store.delete(key);
     const [{ n }] = await sql<{ n: number }[]>`
       select (select count(*) from client_login_tokens where email like ${match})
            + (select count(*) from subscribers where email like ${match})
