@@ -12,5 +12,5 @@ export const maxDuration = 30;
  */
 export const POST = withAdmin(async (request) => handleSave(getDb(), request, new Date()));
 
-/** GET /api/admin/protokoll?sessioon=<id> | ?registreering=<id> — the screen's data again, for a screen the browser restored from its cache (handleRead). */
+/** GET /api/admin/protokoll?sessioon=<id> | ?registreering=<id> | ?ligipaas=<access id> — the screen's data again, for a screen the browser restored from its cache (handleRead). */
 export const GET = withAdmin(async (request) => handleRead(getDb(), request));

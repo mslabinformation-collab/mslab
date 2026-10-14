@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Db } from "@/db/client";
 import { draftOf, protocolScreen, screenStudents, type ProtocolDraft } from "@/db/queries/protocols";
 import { lockRegistration } from "@/db/queries/seats";
-import { courses, courseSessions, protocols, registrations, type Protocol, type ProtocolStage } from "@/db/schema";
+import { courseAccess, courses, courseSessions, protocols, registrations, type Protocol, type ProtocolStage } from "@/db/schema";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import { hasText, overLimit, PROTOCOL_LIMITS, readStages } from "@/domain/protocols";
 import type { I18n } from "@/i18n/field";
@@ -25,26 +25,39 @@ import { mailConfigured, sendMail, type Env } from "./notify";
 // other headings, is refused with what is stored, so newer text is never overwritten and a note never lands under another heading (spec §4, §9).
 // A save that changes nothing raises nothing: a look at a protocol, or the repeat of a save whose answer was lost, is answered with the version
 // that holds that text.
+//
+// Phase e-course completion: a protocol belongs to a registration (the course day) or to an e-course access (Maria's assessment of the practical
+// work, spec §5.3, D6). The save names exactly one owner (saveBody); an access's headings are its course's practical points, and a revoked
+// access is not saved to (an ended one is: Maria can still assess). The verdicts are not part of a save: they are server/assessment.ts's (R2).
 
 /**
- * What a save sends: the registration, the protocol's row the screen's text is of (`protocolId`; null: none yet; absent: a screen from before
- * the row was sent, checked by the version only), the version the screen has (0: none yet), the headings it shows and the notes under them,
- * one note for each heading (a body with another count is not a save, so a `SaveInput` always has as many notes as titles).
+ * What a save sends: its owner — the registration (`registrationId`) or the e-course access (`accessId`), exactly one of them — the protocol's
+ * row the screen's text is of (`protocolId`; null: none yet; absent: a screen from before the row was sent, checked by the version only), the
+ * version the screen has (0: none yet), the headings it shows and the notes under them, one note for each heading (a body with another count
+ * is not a save, so a `SaveInput` always has as many notes as titles).
  */
 export const saveBody = z
   .object({
-    registrationId: z.number().int().positive().max(2_147_483_647),
+    registrationId: z.number().int().positive().max(2_147_483_647).optional(),
+    accessId: z.number().int().positive().max(2_147_483_647).optional(),
     protocolId: z.number().int().positive().max(2_147_483_647).nullable().optional(),
     version: z.number().int().min(0).max(2_147_483_647),
     titles: z.array(z.string().max(PROTOCOL_LIMITS.title)).max(PROTOCOL_LIMITS.stages),
     notes: z.array(z.string()).max(PROTOCOL_LIMITS.stages),
     generalNote: z.string(),
   })
-  .refine((body) => body.notes.length === body.titles.length, { message: "one note for each heading", path: ["notes"] });
+  .refine((body) => body.notes.length === body.titles.length, { message: "one note for each heading", path: ["notes"] })
+  .refine((body) => (body.registrationId === undefined) !== (body.accessId === undefined), { message: "one owner", path: ["registrationId"] });
 export type SaveInput = z.infer<typeof saveBody>;
 
 /** saved: `protocolId` is the protocol's row (the screen tells a protocol made again from the one it had by it). */
 export type SaveResult = { kind: "saved"; protocolId: number; version: number; savedAt: Date } | { kind: "conflict"; protocol: ProtocolDraft } | { kind: "notFound" };
+
+/** Whose protocol a save is: a contact course's registration, or an e-course access (phase e-course completion). */
+export type Owner = { registrationId: number } | { accessId: number };
+
+/** The owner a save names (saveBody lets exactly one through; a direct call names one too). */
+export const ownerOf = (input: SaveInput): Owner => (input.accessId !== undefined ? { accessId: input.accessId } : { registrationId: input.registrationId! });
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 const titlesOf = (stages: readonly ProtocolStage[]): string[] => stages.map((s) => s.title);
@@ -52,30 +65,57 @@ const titlesOf = (stages: readonly ProtocolStage[]): string[] => stages.map((s) 
 const holds = (p: Protocol, input: SaveInput): boolean =>
   sameList(titlesOf(p.stages), input.titles) && sameList(p.stages.map((s) => s.note), input.notes) && p.generalNote === input.generalNote;
 
-/** A registration's course headings and its protocol; null when there is no such registration of a contact course. */
-async function current(db: Db, registrationId: number): Promise<{ headings: string[]; stored: Protocol | null } | null> {
+/**
+ * The owner's headings and protocol; null when there is no such registration of a contact course, or no such access to an e-course. A revoked
+ * access is not Maria's to assess any more (spec §8, Review Focus 4): null; an ended one still is. An access's headings are its course's
+ * practical points (`courses.protocol_stages`, D6), copied into the protocol when it is made.
+ */
+async function current(db: Db, owner: Owner): Promise<{ headings: string[]; stored: Protocol | null } | null> {
+  if ("accessId" in owner) {
+    const [row] = await db
+      .select({ type: courses.type, headings: courses.protocolStages, revokedAt: courseAccess.revokedAt, protocol: protocols })
+      .from(courseAccess)
+      .innerJoin(courses, eq(courseAccess.courseId, courses.id))
+      .leftJoin(protocols, eq(protocols.accessId, courseAccess.id))
+      .where(eq(courseAccess.id, owner.accessId))
+      .limit(1);
+    return row && row.type === "e_learning" && row.revokedAt === null ? { headings: readStages(row.headings), stored: row.protocol } : null;
+  }
   const [row] = await db
     .select({ type: courses.type, headings: courses.protocolStages, protocol: protocols })
     .from(registrations)
     .innerJoin(courses, eq(registrations.courseId, courses.id))
     .leftJoin(protocols, eq(protocols.registrationId, registrations.id))
-    .where(eq(registrations.id, registrationId))
+    .where(eq(registrations.id, owner.registrationId))
     .limit(1);
   return row && row.type === "contact" ? { headings: readStages(row.headings), stored: row.protocol } : null;
 }
 
 /**
- * One save of the screen. A registration that is cancelled meanwhile still saves (spec §9: hidden and never sent, but nothing typed is lost).
+ * The version a save builds on: the one it carries — except the first save of an access's screen that showed no protocol yet (version 0, no row)
+ * when the stored row is the one the student's first photo made (server/practical.ts addPhoto: the course's points, version 1, no text). That
+ * row holds nobody's words, so the save builds on it (nothing is overwritten) instead of a conflict whose notice would take Maria's first words.
+ */
+function builtOn(owner: Owner, stored: Protocol, input: SaveInput): number {
+  const unseen = "accessId" in owner && input.version === 0 && typeof input.protocolId !== "number" && stored.version === 1 && !hasText(stored);
+  return unseen ? 1 : input.version;
+}
+
+/**
+ * One save of the screen. A registration that is cancelled meanwhile still saves (spec §9: hidden and never sent, but nothing typed is lost);
+ * so does an access that has ended (Maria can still assess); a revoked access does not (notFound).
  * The insert and the update are each one conditional statement (the update only of the row read); one that meets another save at the same
  * moment, or a protocol deleted and made again meanwhile, reads again and decides on what is stored then (twice at most, then the answer is a
- * conflict with the protocol as it is).
+ * conflict with the protocol as it is). No lock is taken: a send's (or an access's verdict tap's) lock on the row makes the update wait, and
+ * its version check then decides.
  * The contract with the screen: a save from an older version whose text differs from what is stored is answered with a conflict and the
  * stored protocol, even when the stored text is the screen's own earlier save whose answer was lost. Recognising a lost answer of its own is
  * the client's job: the screen keeps every unacknowledged text it sent and treats a conflict whose stored text equals one of them as its own save.
  */
 export async function saveProtocol(db: Db, input: SaveInput, now: Date): Promise<SaveResult> {
+  const owner = ownerOf(input);
   for (let attempt = 0; ; attempt++) {
-    const found = await current(db, input.registrationId);
+    const found = await current(db, owner);
     if (!found) return { kind: "notFound" };
     const { headings, stored } = found;
     // a save built on a row (protocolId) is refused by any other one, and by none: a protocol deleted with the account and made again starts
@@ -86,29 +126,30 @@ export async function saveProtocol(db: Db, input: SaveInput, now: Date): Promise
       const [created] = await db
         .insert(protocols)
         .values({
-          registrationId: input.registrationId,
+          ...("accessId" in owner ? { accessId: owner.accessId } : { registrationId: owner.registrationId }),
           stages: input.titles.map((title, i) => ({ title, note: input.notes[i] })),
           generalNote: input.generalNote,
           version: 1,
           createdAt: now,
           updatedAt: now,
         })
-        .onConflictDoNothing({ target: protocols.registrationId })
+        .onConflictDoNothing({ target: "accessId" in owner ? protocols.accessId : protocols.registrationId })
         .returning();
       if (created) return { kind: "saved", protocolId: created.id, version: created.version, savedAt: now };
     } else {
       if (otherRow) return { kind: "conflict", protocol: draftOf(stored, headings) };
       if (holds(stored, input)) return { kind: "saved", protocolId: stored.id, version: stored.version, savedAt: stored.updatedAt };
-      if (input.version !== stored.version || !sameList(titlesOf(stored.stages), input.titles)) return { kind: "conflict", protocol: draftOf(stored, headings) };
+      const from = builtOn(owner, stored, input);
+      if (from !== stored.version || !sameList(titlesOf(stored.stages), input.titles)) return { kind: "conflict", protocol: draftOf(stored, headings) };
       const [updated] = await db
         .update(protocols)
         .set({ stages: stored.stages.map((s, i) => ({ title: s.title, note: input.notes[i] })), generalNote: input.generalNote, version: sql`${protocols.version} + 1`, updatedAt: now })
-        .where(and(eq(protocols.id, stored.id), eq(protocols.version, input.version))) // (the row read: one made again meanwhile is not it)
+        .where(and(eq(protocols.id, stored.id), eq(protocols.version, from))) // (the row read: one made again meanwhile is not it)
         .returning();
       if (updated) return { kind: "saved", protocolId: updated.id, version: updated.version, savedAt: now };
     }
     if (attempt >= 1) {
-      const last = await current(db, input.registrationId);
+      const last = await current(db, owner);
       return last ? { kind: "conflict", protocol: draftOf(last.stored, last.headings) } : { kind: "notFound" };
     }
   }
@@ -134,7 +175,7 @@ export const draftJson = (d: ProtocolDraft) => ({
 });
 
 /**
- * POST /api/admin/protokoll — one autosave (the route wraps this in withAdmin). The body is a SaveInput as JSON. 200 `{ ok: true, version,
+ * POST /api/admin/protokoll — one autosave of a registration's or an access's protocol (the route wraps this in withAdmin). The body is a SaveInput as JSON. 200 `{ ok: true, version,
  * savedAt, protocolId }`; 409 `{ ok: false, error: "conflict", protocol }` (what is stored: the screen shows it); 404 `{ ok: false, error: "notFound" }`;
  * 400 `{ error: "body" }` (not a save), `{ error: "text" }` (text Postgres cannot store: the screen cleans pasted text first) or
  * `{ error: "tooLong", places }` (a box over 10 000 characters: nothing is cut, the screen says so first); 413 `{ error: "size" }`; 500
@@ -164,29 +205,35 @@ export async function handleSave(db: Db, request: Request, now: Date): Promise<R
     if (result.kind === "conflict") return json({ ok: false, error: "conflict", protocol: draftJson(result.protocol) }, 409);
     return json({ ok: false, error: "notFound" }, 404);
   } catch (e) {
-    logFailure(`[protocols] registration ${input.registrationId}: the save failed`, e);
+    const owner = ownerOf(input);
+    logFailure(`[protocols] ${"accessId" in owner ? `access ${owner.accessId}` : `registration ${owner.registrationId}`}: the save failed`, e);
     return json({ ok: false, error: "server" }, 500);
   }
 }
 
 /**
- * GET /api/admin/protokoll?sessioon=<id> | ?registreering=<id> — the protocol screen's data again (the route wraps this in withAdmin): what the page
- * handed the screen when it was rendered, read now. A screen the browser restored from its cache (the Back button) shows the render of the visit,
- * older than what was saved since, so it asks for this and takes the server's text (protocol-autosave.ts reconcile). 200 `{ ok: true, students }`
- * (domain/protocols.ts ScreenStudentView, the page's own); 400 `{ error: "body" }` without a valid id; 404 `{ error: "notFound" }` for no such session
- * or registration of a contact course; 500 `{ error: "server" }`, logged by the id. Never cached. Reads only: nothing is created by looking.
+ * GET /api/admin/protokoll?sessioon=<id> | ?registreering=<id> | ?ligipaas=<access id> — the protocol screen's data again (the route wraps this
+ * in withAdmin): what the page handed the screen when it was rendered, read now (the first of the three in the address wins). A screen the
+ * browser restored from its cache (the Back button) shows the render of the visit, older than what was saved since, so it asks for this and
+ * takes the server's text (protocol-autosave.ts reconcile); an access's screen also takes the practical work from it (AssessmentScreen.tsx).
+ * 200 `{ ok: true, students }` (domain/protocols.ts ScreenStudentView, the page's own); 400 `{ error: "body" }` without a valid id; 404
+ * `{ error: "notFound" }` for no such session or registration of a contact course, or no such access to an e-course (or a revoked one); 500
+ * `{ error: "server" }`, logged by the id. Never cached. Reads only: nothing is created by looking.
  */
 export async function handleRead(db: Db, request: Request): Promise<Response> {
   const query = new URL(request.url).searchParams;
   const sessionId = parseRowId(query.get("sessioon") ?? "");
   const registrationId = sessionId === null ? parseRowId(query.get("registreering") ?? "") : null;
-  if (sessionId === null && registrationId === null) return json({ ok: false, error: "body" }, 400);
+  const accessId = sessionId === null && registrationId === null ? parseRowId(query.get("ligipaas") ?? "") : null;
+  const target = sessionId !== null ? { sessionId } : registrationId !== null ? { registrationId } : accessId !== null ? { accessId } : null;
+  if (!target) return json({ ok: false, error: "body" }, 400);
   try {
-    const screen = sessionId !== null ? await protocolScreen(db, { sessionId }) : await protocolScreen(db, { registrationId: registrationId! });
+    const screen = await protocolScreen(db, target);
     if (!screen) return json({ ok: false, error: "notFound" }, 404);
     return json({ ok: true, students: screenStudents(screen) });
   } catch (e) {
-    logFailure(`[protocols] ${sessionId !== null ? "session" : "registration"} ${sessionId ?? registrationId}: the screen could not be read`, e);
+    const which = sessionId !== null ? `session ${sessionId}` : registrationId !== null ? `registration ${registrationId}` : `access ${accessId}`;
+    logFailure(`[protocols] ${which}: the screen could not be read`, e);
     return json({ ok: false, error: "server" }, 500);
   }
 }

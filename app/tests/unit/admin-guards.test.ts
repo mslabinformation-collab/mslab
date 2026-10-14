@@ -95,6 +95,9 @@ describe("admin guards are inherited by every admin entry point", () => {
         // protocols: the autosave
         "app/api/admin/protokoll/route.ts",
         "server/actions/admin-protocols.ts",
+        // e-course completion: Maria's verdict taps and "Saada hinnang"
+        "app/api/admin/hinnang/route.ts",
+        "server/actions/admin-assessment.ts",
       ]),
     );
     const broken = all.flatMap((f) => violations(f.path, f.source).map((v) => `${f.path}: ${v}`));
@@ -111,7 +114,7 @@ describe("admin guards are inherited by every admin entry point", () => {
   test("every route under app/api/admin and app/admin is wrapped (the CSV export, and the future ones)", () => {
     const routes = files().filter((f) => /^app\/(api\/)?admin\/(.*\/)?route\.tsx?$/.test(f.path));
     expect(routes.map((r) => r.path)).toEqual(
-      expect.arrayContaining(["app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts", "app/api/admin/foto/[id]/route.ts"]),
+      expect.arrayContaining(["app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts", "app/api/admin/foto/[id]/route.ts", "app/api/admin/hinnang/route.ts"]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);
   });
@@ -148,6 +151,11 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(protocolExports).toEqual(["sendProtocolAction", "sendProtocolsAction"]);
     expect(violations(protocolActions.path, protocolActions.source)).toEqual([]);
     expect([...strip(protocolActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(protocolExports);
+    const assessmentActions = files().find((f) => f.path === "server/actions/admin-assessment.ts")!;
+    const assessmentExports = [...strip(assessmentActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
+    expect(assessmentExports).toEqual(["sendAssessmentAction"]); // (Task 12 adds reviewAttemptAction and reopenTestAction)
+    expect(violations(assessmentActions.path, assessmentActions.source)).toEqual([]);
+    expect([...strip(assessmentActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(assessmentExports);
     // It reads and scans every admin source file: about 2 s alone, but well past the 20 s default while the full run keeps every core
     // busy (seen at 38 s); the limit is for the machine's load, not for this test's work.
   }, 120_000);

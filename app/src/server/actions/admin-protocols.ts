@@ -1,15 +1,10 @@
 "use server";
 
-import { headers } from "next/headers";
-import { after } from "next/server";
 import { z } from "zod";
-import { getDb } from "@/db/client";
 import { adminAction } from "../auth";
-import { serverEnv } from "../env";
-import { serverKv } from "../kv";
 import { logFailure } from "../log";
-import { sendProtocol, sendProtocols, type BulkResult, type SendDeps, type SendInput, type SendOutcome } from "../protocols";
-import { linkBase, requestOrigin } from "../site";
+import { sendProtocol, sendProtocols, type BulkResult, type SendInput, type SendOutcome } from "../protocols";
+import { adminSendDeps } from "../send-deps";
 
 // The protocol screen's sends (phase protocols, spec §4, §8): every export is wrapped in adminAction (a signed-in admin, or a redirect to
 // /admin/login; tests/unit/admin-guards.test.ts fails otherwise), and Next.js refuses an action called from another origin. The work is in
@@ -23,17 +18,7 @@ const item = z.object({
 });
 const items = z.array(item).min(1).max(100);
 
-async function deps(): Promise<SendDeps> {
-  const env = { ...serverEnv(), KV: serverKv() };
-  return {
-    db: getDb(),
-    env,
-    // the mail's links: the address Maria works on (mslab.ee), or SITE_URL
-    siteUrl: linkBase(requestOrigin(await headers()), env.SITE_URL),
-    now: new Date(),
-    later: (task) => after(() => task().catch((e) => logFailure("[protocols] a mail failed", e))),
-  };
-}
+const deps = () => adminSendDeps("[protocols]");
 
 /** "Saada" / "Saada uuesti": one student's protocol, at the version the screen showed (after its last save was confirmed). */
 export const sendProtocolAction = adminAction(async (_admin, input: SendInput): Promise<SendOutcome> => {
