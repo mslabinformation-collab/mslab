@@ -126,7 +126,8 @@ describe("readCertificateSettings: the stored setting read defensively", () => {
 
   test("a well-formed setting as it is, its texts trimmed", () => {
     const stored = { place: " Tallinn ", registryCode: "12345678", practicalLine: "Praktiline töö", trainerName: "Maria", nextYear: 2026, nextSeq: 14 };
-    expect(readCertificateSettings(stored, now)).toEqual({ ...stored, place: "Tallinn" });  });
+    expect(readCertificateSettings(stored, now)).toEqual({ ...stored, place: "Tallinn" });
+  });
 
   test("each malformed text is its default: missing, not a string, blank, or over its limit", () => {
     expect(readCertificateSettings({ place: "   ", registryCode: 16346048, trainerName: "x".repeat(61), practicalLine: "y".repeat(201) }, now)).toEqual(defaults);

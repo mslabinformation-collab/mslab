@@ -3,7 +3,7 @@ import { join } from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import { decodePDFRawStream, PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { describe, expect, test } from "vitest";
-import { checkCertificateName } from "@/domain/certificate";
+import { checkCertificateName, readCertificateSettings } from "@/domain/certificate";
 import { CERT_FONT_DIR, CERT_FONTS, loadCertificateAssets, renderCertificate, type CertificateAssets, type CertificateContent } from "@/server/certificate-pdf";
 
 // The certificate's PDF (phase 3d, spec §7, §10 "PDF", Review Focus 2): rendered from a fixture and read back the way a PDF reader reads
@@ -65,7 +65,11 @@ const imagesOf = (page: { node: { Resources(): PDFDict | undefined } }): string[
   return xobjects instanceof PDFDict ? xobjects.keys().map((k) => k.decodeText()) : [];
 };
 
-/** The PDF read back: its one page, the text runs (each Tj with its font's family, size, letter spacing in em, position and letters), the embedded fonts' names and the page's operators. */
+/**
+ * The PDF read back: its one page, the text runs (each Tj with its font's family, size, letter spacing in em, position and letters), the filled
+ * circles (the competency bullets: pdf-lib draws a circle as four Bézier curves, whose end points are its four extremes; centre, diameter and
+ * the fill colour), the embedded fonts' names and the page's operators.
+ */
 async function readPdf(bytes: Uint8Array) {
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
   const pages = doc.getPages();
@@ -80,10 +84,14 @@ async function readPdf(bytes: Uint8Array) {
   const ops = (contents instanceof PDFArray ? contents.asArray().map((ref) => doc.context.lookup(ref)) : [contents]).map(streamText).join("\n");
 
   const runs: Run[] = [];
+  const circles: { x: number; y: number; diameter: number; color: string }[] = [];
   let font = "";
   let size = 0;
   let spacing = 0;
   let at = [0, 0];
+  let fill = "";
+  let path: number[][] = [];
+  let curves = 0;
   let args: string[] = [];
   for (const token of ops.match(/\/[^\s/<>[\]()]+|<[0-9A-Fa-f]*>|[-+]?(?:\d+\.?\d*|\.\d+)|[A-Za-z*'"]+|\[|\]/g) ?? []) {
     if (!/^[A-Za-z*'"]+$/.test(token)) {
@@ -97,11 +105,19 @@ async function readPdf(bytes: Uint8Array) {
       const f = fonts.get(font)!;
       const glyphs = args[0].slice(1, -1).match(/.{4}/g) ?? [];
       runs.push({ font: family(f.name), size, spacing: spacing / size, x: at[0], y: at[1], text: glyphs.map((g) => f.unicode.get(g.toUpperCase()) ?? "�").join("") });
+    } else if (token === "rg") fill = args.map(Number).join(" ");
+    else if (token === "m") [path, curves] = [[[Number(args[0]), Number(args[1])]], 0];
+    else if (token === "c") {
+      path.push([Number(args[4]), Number(args[5])]);
+      curves++;
+    } else if (token === "f" && curves === 4) {
+      const [xs, ys] = [path.map((p) => p[0]), path.map((p) => p[1])];
+      circles.push({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, diameter: Math.max(...xs) - Math.min(...xs), color: fill });
     }
     args = [];
   }
   const fontNames = [...new Set([...fonts.values()].map((f) => f.name))].sort();
-  return { doc, pages, page, runs, fontNames, ops };
+  return { doc, pages, page, runs, circles, fontNames, ops };
 }
 
 /** A run's width as pdf-lib measured it when it laid the page out: the glyphs' advances (no kerning) plus the spacing between them. */
@@ -238,6 +254,19 @@ describe("renderCertificate: the page (spec §7)", () => {
     expect(runsIn(runs, SCRIPT_FAMILY).map((r) => r.text).sort()).toEqual(["Kertu Õunapuu", "Maria Sosnina"]);
   });
 
+  test("the typographic apostrophe is drawn straight in the trainer's name too: the setting and the content keep it as written, the PDF reads back '", async () => {
+    const trainerName = "Maria D’Arcy";
+    expect(checkCertificateName(trainerName)).toEqual({ ok: true, name: trainerName });
+    expect(readCertificateSettings({ trainerName }, FIXTURE.issuedAt).trainerName).toBe(trainerName); // the stored setting is not rewritten
+    const content = { ...FIXTURE, trainerName };
+    const { runs } = await readPdf(await renderCertificate(content, ASSETS));
+    expect(content.trainerName).toBe(trainerName); // nor the content the PDF was drawn from
+    const signed = one(runs, "Maria D'Arcy");
+    expect([signed.font, signed.size, signed.y]).toEqual([SCRIPT_FAMILY, 40, 96]);
+    near(signed.x + widthOf(signed) / 2, 706);
+    expect(runs.filter((r) => r.text.includes("’"))).toEqual([]); // the font has no ’: it would be an empty box
+  });
+
   test("a long trainer's name shrinks to fit the 170 pt column; the worst letters stay clear of KOOLITAJA", async () => {
     const trainerName = "Anna-Maria Kristiina Elisabeth Õunapuu";
     const long = one((await readPdf(await renderCertificate({ ...FIXTURE, trainerName }, ASSETS))).runs, trainerName);
@@ -280,10 +309,14 @@ describe("renderCertificate: the page (spec §7)", () => {
     }
   });
 
-  test("the competency lines: two columns of bullets, the left one filled first, 9.5 pt; 8.5 pt above 12 lines; a long line wraps under its bullet", async () => {
+  test("the competency lines: two columns of round bullets, the left one filled first, 9.5 pt; 8.5 pt above 12 lines; a long line wraps under its bullet", async () => {
     const six = await readPdf(await renderCertificate(FIXTURE, ASSETS));
-    const rows = (runs: Run[]) => runs.filter((r) => r.font === SANS_FAMILY && r.y <= 290 && r.y > 160 && r.text !== "•");
-    const bullets = (runs: Run[]) => runs.filter((r) => r.text === "•");
+    const rows = (runs: Run[]) => runs.filter((r) => r.font === SANS_FAMILY && r.y <= 290 && r.y > 160);
+    // a bullet is a filled white circle (Jost's "•" is a 1 pt dot set high): 0.275 em across (2.6 pt at 9.5 pt), its left edge at the column's x,
+    // its centre 0.25 em over the baseline (the middle of the lowercase letters, whose height is 0.46 em)
+    const bulletAt = (left: number, baseline: number, fontSize: number) => ({ x: left + (0.275 * fontSize) / 2, y: baseline + 0.25 * fontSize, diameter: 0.275 * fontSize, color: "1 1 1" });
+    const bullets = (circles: { x: number; y: number; diameter: number; color: string }[]) => circles.map((c) => ({ x: expect.closeTo(c.x, 3), y: expect.closeTo(c.y, 3), diameter: expect.closeTo(c.diameter, 3), color: c.color }));
+    expect(six.runs.filter((r) => r.text.includes("•"))).toEqual([]); // no bullet glyph is written
     expect(rows(six.runs).map((r) => [r.text, r.x, r.y, r.size])).toEqual([
       ["Kulmude kuju analüüs", 107.4, 290, 9.5],
       ["Värvi valik ja segamine", 107.4, 274.8, 9.5],
@@ -292,11 +325,16 @@ describe("renderCertificate: the page (spec §7)", () => {
       ["Hügieen ja ohutus", 445.4, 274.8, 9.5],
       ["Kliendi nõustamine", 445.4, 259.6, 9.5],
     ].map(([text, x, y, size]) => [text, expect.closeTo(x as number, 5), expect.closeTo(y as number, 5), size]));
-    expect(bullets(six.runs).map((r) => [r.x, r.y])).toEqual([[96, 290], [96, 274.8], [96, 259.6], [434, 290], [434, 274.8], [434, 259.6]].map(([x, y]) => [expect.closeTo(x, 5), expect.closeTo(y, 5)]));
+    expect(six.circles).toEqual(bullets([[96, 290], [96, 274.8], [96, 259.6], [434, 290], [434, 274.8], [434, 259.6]].map(([x, y]) => bulletAt(x, y, 9.5))));
+    near(six.circles[0].diameter, 2.6); // "about 2.6 pt"
+    // the text gap is unchanged: the text starts 1.2 em after the bullet's origin (96 + 11.4), 8.8 pt after the circle's right edge
+    near(rows(six.runs)[0].x - (six.circles[0].x + six.circles[0].diameter / 2), 1.2 * 9.5 - 0.275 * 9.5);
 
     const thirteen = await readPdf(await renderCertificate({ ...FIXTURE, skills: Array.from({ length: 13 }, (_, i) => `Oskus ${i + 1}`) }, ASSETS));
     expect(rows(thirteen.runs).map((r) => r.text)).toEqual(Array.from({ length: 13 }, (_, i) => `Oskus ${i + 1}`));
     expect(new Set(rows(thirteen.runs).map((r) => r.size))).toEqual(new Set([8.5]));
+    expect(thirteen.circles).toHaveLength(13);
+    for (const c of thirteen.circles) expect(c.diameter).toBeCloseTo(0.275 * 8.5, 2); // the bullets scale with the text
     expect(rows(thirteen.runs).filter((r) => r.x > 400).map((r) => r.text)).toEqual(["Oskus 8", "Oskus 9", "Oskus 10", "Oskus 11", "Oskus 12", "Oskus 13"]);
 
     const long = "Kulmude kuju analüüs, mõõtmine ja kujundamine vastavalt näo proportsioonidele ning kliendi soovidele ja eelistustele";
@@ -304,15 +342,16 @@ describe("renderCertificate: the page (spec §7)", () => {
     const left = rows(wrapped.runs).filter((r) => r.x < 400);
     expect(left.length).toBeGreaterThan(1);
     expect(left.map((r) => r.text).join(" ")).toBe(long);
-    expect(bullets(wrapped.runs)).toHaveLength(2);
+    expect(wrapped.circles).toHaveLength(2); // one bullet per line, none on the wrapped rows
     for (const r of left) expect(r.x + widthOf(r)).toBeLessThanOrEqual(96 + 312 + 0.01);
   });
 
   test("16 lines of 120 characters still stay above the practical line", async () => {
     const skills = Array.from({ length: 16 }, (_, i) => `${i + 1}. ${"Kulmude kuju analüüs ja värvimine ".repeat(4)}`.slice(0, 120));
-    const { runs } = await readPdf(await renderCertificate({ ...FIXTURE, skills }, ASSETS));
-    const rows = runs.filter((r) => r.font === SANS_FAMILY && r.y <= 290 && r.y > 150 && r.text !== "•");
+    const { runs, circles } = await readPdf(await renderCertificate({ ...FIXTURE, skills }, ASSETS));
+    const rows = runs.filter((r) => r.font === SANS_FAMILY && r.y <= 290 && r.y > 150);
     expect(Math.min(...rows.map((r) => r.y))).toBeGreaterThanOrEqual(172);
+    expect(circles).toHaveLength(16);
     expect(rows.map((r) => r.text).join(" ")).toBe(skills.map((s) => s.trim()).join(" "));
   });
 });
