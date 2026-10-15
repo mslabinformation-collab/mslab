@@ -156,7 +156,7 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
 ## 10. Testing
 
 - **Unit:**
-  - the name rules (Estonian letters, Cyrillic refused, length);
+  - the name rules (Estonian and Cyrillic letters accepted, letters the font cannot draw refused, length);
   - the number format and padding;
   - next-number with year rollover;
   - the skills fallback.
