@@ -71,7 +71,7 @@
   - are registered in `tests/unit/account-guards.test.ts`;
   - are matched before `LESSON_PATH`;
   - are gated (`/api/konto*` is already).
-- **The PDF answer headers:** `content-type: application/pdf`, `content-disposition: attachment; filename="MS-LAB-tunnistus-{year}-{nn}.pdf"`, `cache-control: private, no-store`, `x-content-type-options: nosniff`.
+- **The PDF answer headers:** `content-type: application/pdf`, `content-disposition: attachment; filename="MS-LAB-tunnistus-{year}-{nn}.pdf"`, `cache-control: private, no-store`, `x-content-type-options: nosniff`. Written once: Task 4 adds `certificateDownloadHeaders(year, seq)` to `src/domain/certificate.ts` (the type, the disposition and nosniff); the student's route adds `cache-control` through `BASE_HEADERS`, Maria's route its own `"cache-control": "private, no-store"`.
 
 ### Simplicity and design
 - **One primary button per screen; 44 px targets; widths 390/834/1194/1440 without overflow; colour tokens only.** Every new `.module.css` goes into `tests/unit/colour-tokens.test.ts` COURSE_CSS.
@@ -2666,6 +2666,7 @@ Spec §5 (the student's side: the row before and after the issue, the name rules
 **The download limit.** The spec rate-limits both routes at 10 an hour per client. The issue counts in `client-certificate` , and the download in its own `client-certificate-pdf`, because each download renders the PDF. A 404 for another student's id counts as well, so ids cannot be probed.
 
 **Files:**
+- Modify: `app/src/domain/certificate.ts` (Task 1's file): `certificateDownloadHeaders`, after `certificateFileName`.
 - Modify: `app/src/server/account-api.ts`:
   - the header comment, line 62;
   - imports, after lines 5 and 18;
@@ -2709,7 +2710,8 @@ Spec §5 (the student's side: the row before and after the issue, the name rules
   - `certificateOfAccess(db: Db, accessId: number): Promise<CertificateView | null>`;
   - `certificatePdf(db: Db, store: FileStore | null, cert: Certificate, now: Date): Promise<Uint8Array>`.
 - Produces:
-  - routes `POST /api/konto/kursus/<slug>/tunnistus` (handler `issueCertificateRoute`) and `GET /api/konto/tunnistus/<id>` (handler `certificateFile`, answered by `pdfAnswer(session, bytes, fileName)` above the START marker);
+  - in `src/domain/certificate.ts` (Step 8, item 4): `certificateDownloadHeaders(year: number, seq: number): { "content-type": string; "content-disposition": string; "x-content-type-options": string }` — the PDF answer's three fixed headers, used by `pdfAnswer` here and by Task 5's admin route;
+  - routes `POST /api/konto/kursus/<slug>/tunnistus` (handler `issueCertificateRoute`) and `GET /api/konto/tunnistus/<id>` (handler `certificateFile`, answered by `pdfAnswer(session, bytes, cert)` above the START marker);
   - `const CERT_PATH = /^\/kursus\/([^/]+)\/tunnistus$/`, `const CERT_FILE_PATH = /^\/tunnistus\/([^/]+)$/`;
   - the answers 200 `{ ok:true, certificate }`, 409 `{ ok:false, error:"already", certificate }`, 409 `{ ok:false, error:"notCompleted" }`, 400 `{ ok:false, error:"name", reason }`, 404 `{ ok:false }`, 429 `{ ok:false, error:"rate" }`;
   - `EcourseView.completion: CourseSteps & { protocolSent: boolean; certificate: CertificateView | null; certificateName: string }`;
@@ -3252,7 +3254,8 @@ const HANDLERS = [
     expect(helper).toBeGreaterThan(0);
     expect(helper).toBeLessThan(SOURCE.indexOf(START));
     const body = SOURCE.slice(helper, SOURCE.indexOf("\n}\n", helper));
-    for (const part of ['"content-type": "application/pdf"', "attachment; filename=", '"x-content-type-options": "nosniff"', "BASE_HEADERS", "session.cookies"]) expect(body, part).toContain(part);
+    // the type, the file name and nosniff come from certificateDownloadHeaders (domain/certificate.ts), pinned by both routes' header tests
+    for (const part of ["certificateDownloadHeaders(", "BASE_HEADERS", "session.cookies"]) expect(body, part).toContain(part);
     expect(handlers.find((h) => nameOf(h) === "certificateFile")).toContain("pdfAnswer(session, ");
   });
 ```
@@ -3519,9 +3522,9 @@ export async function loadEcourse(db: Db, clientId: number, slug: string, now: D
      - `tests/unit/account-ecourse.test.ts`, line 50: `COMPLETION` becomes `{ lessons: { done: 1, total: 4, state: "open" }, test: null, practical: null, completedAt: null, protocolSent: false, certificate: null, certificateName: "" }`.
      - `tests/unit/completion-steps-dom.test.ts`, line 47: `  completion: { ...s, protocolSent },` becomes `  completion: { ...s, protocolSent, certificate: null, certificateName: "" },`.
 
-- [ ] **Step 8: The two routes** (`src/server/account-api.ts`).
+- [ ] **Step 8: The two routes** (`src/domain/certificate.ts` and `src/server/account-api.ts`).
   1. In the header comment (line 62), `GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kustuta account deletion` becomes `GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kursus/:slug/tunnistus the certificate of her completed e-course with the name she confirmed and GET /tunnistus/:id its PDF (phase 3d), POST /kustuta account deletion`.
-  2. After `import { clients } from "@/db/schema";` add `import { certificateFileName } from "@/domain/certificate";`. After `import type { BunnyConfig } from "./bunny";` add `import { certificateForStudent, certificatePdf, issueCertificate } from "./certificates";`.
+  2. After `import { clients } from "@/db/schema";` add `import { certificateDownloadHeaders } from "@/domain/certificate";`. After `import type { BunnyConfig } from "./bunny";` add `import { certificateForStudent, certificatePdf, issueCertificate } from "./certificates";`.
   3. After `const PHOTO_BODY_BYTES = PHOTO_LIMITS.fullBytes + PHOTO_LIMITS.thumbBytes + PHOTO_ENVELOPE;` add:
 
 ```ts
@@ -3533,17 +3536,32 @@ const CERTIFICATE_FILES_PER_HOUR = 10;
 const CERTIFICATE_BODY_CHARS = 1024;
 ```
 
-  4. After `photoAnswer` (its closing `}` follows `  for (const cookie of session.cookies) res.headers.append("set-cookie", cookie);\n  return res;`, line 457) add:
+  4. The PDF answer's headers are written once, here, and Task 5's admin route reuses them. First, in `src/domain/certificate.ts` (Task 1's file), after `certificateFileName` add:
 
 ```ts
 /**
- * A certificate's PDF for its owner (phase 3d, spec §5, §7): the bytes as a download named `fileName`, `private, no-store`, not for search
- * engines, nosniff; the cookies of a renewed session go with it, as with clientResponse. The handlers never build a Response of their own.
+ * The three headers every certificate download carries (spec §7), whoever asks: the type, the file name by its number, nosniff. The
+ * caller adds `cache-control: private, no-store` (the student's route through BASE_HEADERS, Maria's route by itself).
+ */
+export const certificateDownloadHeaders = (year: number, seq: number) => ({
+  "content-type": "application/pdf",
+  "content-disposition": `attachment; filename="${certificateFileName(year, seq)}"`,
+  "x-content-type-options": "nosniff",
+});
+```
+
+  Then, in `src/server/account-api.ts`, after `photoAnswer` (its closing `}` follows `  for (const cookie of session.cookies) res.headers.append("set-cookie", cookie);\n  return res;`, line 457) add:
+
+```ts
+/**
+ * A certificate's PDF for its owner (phase 3d, spec §5, §7): the bytes as a download named by her certificate's number (domain/certificate.ts
+ * certificateDownloadHeaders), `private, no-store` and not for search engines (BASE_HEADERS), nosniff; the cookies of a renewed session go
+ * with it, as with clientResponse. The handlers never build a Response of their own.
  * (The cast: the PDF's bytes are a Uint8Array<ArrayBufferLike>, which TypeScript does not take as a BlobPart as it stands.)
  */
-function pdfAnswer(session: ClientSession, bytes: Uint8Array, fileName: string): Response {
+function pdfAnswer(session: ClientSession, bytes: Uint8Array, cert: { year: number; seq: number }): Response {
   const res = new Response(new Blob([bytes as BlobPart], { type: "application/pdf" }), {
-    headers: { ...BASE_HEADERS, "content-type": "application/pdf", "content-disposition": `attachment; filename="${fileName}"`, "x-content-type-options": "nosniff" },
+    headers: { ...BASE_HEADERS, ...certificateDownloadHeaders(cert.year, cert.seq) },
   });
   for (const cookie of session.cookies) res.headers.append("set-cookie", cookie);
   return res;
@@ -3606,7 +3624,7 @@ async function certificateFile(request: Request, deps: AccountDeps, rawId: strin
   const cert = await certificateForStudent(deps.db, session.clientId, id);
   if (!cert) return clientResponse(session, { ok: false }, 404);
   const bytes = await certificatePdf(deps.db, deps.files ?? null, cert, deps.now);
-  return pdfAnswer(session, bytes, certificateFileName(cert.year, cert.seq));
+  return pdfAnswer(session, bytes, cert);
 }
 ```
 
@@ -4189,7 +4207,7 @@ export function CompletionSteps({
 - [ ] **Step 13: Commit** (from the repository root):
 
 ```bash
-git add app/src/server/account-api.ts app/src/server/client-data.ts app/src/domain/account-cards.ts app/src/server/account-mail.ts \
+git add app/src/domain/certificate.ts app/src/server/account-api.ts app/src/server/client-data.ts app/src/domain/account-cards.ts app/src/server/account-mail.ts \
   app/src/components/account/CompletionSteps.tsx app/src/components/account/CompletionSteps.module.css app/src/components/account/EcourseView.tsx \
   app/src/components/account/AccountCourseCard.tsx app/src/components/account/texts.ts app/src/i18n/dict/et.ts app/src/i18n/dict/ru.ts \
   app/tests/db/certificate-api.test.ts app/tests/unit/certificate-row-dom.test.ts app/tests/unit/account-guards.test.ts app/tests/unit/site-gate.test.ts \
@@ -4249,7 +4267,7 @@ Spec §6 (the course editor's card, Seaded's card, the signature), §3 (the two 
 
 **Interfaces:**
 - Consumes:
-  - Task 1 (`src/domain/certificate.ts`): `CERT_LIMITS = { nameMin: 2, nameMax: 80, skills: 16, skill: 120, volume: 80, place: 60, registryCode: 20, practicalLine: 200, trainerName: 60 }`; `type CertificateSettings = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: number; nextSeq: number; signatureKey: string | null }`; `CERT_DEFAULTS`; `tallinnYear(d: Date): number`; `certificateFileName(year: number, seq: number): string`. From `src/db/schema.ts`: `certificates` (columns `accessId, number, year, seq, name, courseTitle, skills, volume, practicalLine, place, registryCode, issuedAt, reissuedAt`), `type Certificate`, `courses.certificateSkills: string[]` (default `[]`), `courses.certificateVolume: string` (default `""`).
+  - Task 1 (`src/domain/certificate.ts`): `CERT_LIMITS = { nameMin: 2, nameMax: 80, skills: 16, skill: 120, volume: 80, place: 60, registryCode: 20, practicalLine: 200, trainerName: 60 }`; `type CertificateSettings = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: number; nextSeq: number; signatureKey: string | null }`; `CERT_DEFAULTS`; `tallinnYear(d: Date): number`; `certificateDownloadHeaders(year: number, seq: number): { "content-type": string; "content-disposition": string; "x-content-type-options": string }` (added by Task 4). From `src/db/schema.ts`: `certificates` (columns `accessId, number, year, seq, name, courseTitle, skills, volume, practicalLine, place, registryCode, issuedAt, reissuedAt`), `type Certificate`, `courses.certificateSkills: string[]` (default `[]`), `courses.certificateVolume: string` (default `""`).
   - Task 2/3 (`src/server/certificates.ts`): `getCertificateSettings(db: Db, now: Date): Promise<CertificateSettings>`; `saveCertificateSettings(db: Db, raw: unknown, now: Date): Promise<{ ok: true; settings: CertificateSettings } | { ok: false; fields: Record<string, string> }>` (raw as the interface note; the codes `type CertificateFieldError = "required" | "tooLong" | "invalid" | "taken"`, exported by Task 3; it takes the number lock before rewriting the setting); `setSignatureKey(db: Db, key: string | null, now: Date): Promise<string | null>` (returns the previous key); `lastIssued(db: Db, year: number): Promise<string | null>`; `certificateForAdmin(db: Db, certificateId: number): Promise<(Certificate & { revoked: boolean }) | null>`; `certificatePdf(db: Db, store: FileStore | null, cert: Certificate, now: Date): Promise<Uint8Array>`.
   - Existing: `withAdmin`, `adminAction` (`src/server/auth.ts`); `mediaStore()` (`src/server/media-store.ts`); `hasImageSignature`, `type FileStore` (`src/server/media.ts`); `privateFileAnswer(store, key, { contentType, headers })` (`src/server/private-file.ts`); `parseRowId` (`src/lib/row-id.ts`); `fitWithin`, `MAX_SOURCE_BYTES` (`src/lib/shrink-image.ts`); `logFailure`, `logNote` (`src/server/log.ts`).
 - Produces:
@@ -5616,7 +5634,7 @@ export const DELETE = withAdmin(async () => {
 
 ```ts
 import { getDb } from "@/db/client";
-import { certificateFileName } from "@/domain/certificate";
+import { certificateDownloadHeaders } from "@/domain/certificate";
 import { parseRowId } from "@/lib/row-id";
 import { withAdmin } from "@/server/auth";
 import { certificateForAdmin, certificatePdf } from "@/server/certificates";
@@ -5647,12 +5665,8 @@ export const GET = withAdmin<Ctx>(async (_request, ctx) => {
     if (!cert) return json({ ok: false, error: "notFound" }, 404);
     const bytes = await certificatePdf(db, mediaStore(), cert, new Date());
     return new Response(new Blob([bytes as BlobPart], { type: "application/pdf" }), {
-      headers: {
-        "content-type": "application/pdf",
-        "content-disposition": `attachment; filename="${certificateFileName(cert.year, cert.seq)}"`,
-        "cache-control": "private, no-store",
-        "x-content-type-options": "nosniff",
-      },
+      // the type, the file name and nosniff are Task 4's (domain/certificate.ts); the answer is never kept
+      headers: { ...certificateDownloadHeaders(cert.year, cert.seq), "cache-control": "private, no-store" },
     });
   } catch (e) {
     logFailure(`[certificate] ${id}: the admin's download failed`, e);
@@ -6361,7 +6375,7 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
                   type="text"
                   inputMode="numeric"
                   autoComplete="off"
-                  maxLength={4}
+                  maxLength={5}
                   value={draft.nextSeq}
                   onChange={change("nextSeq")}
                   {...aria("nextSeq")}
@@ -6721,7 +6735,7 @@ export default async function SettingsEditPage() {
   "src/components/admin/CertificateSettings.module.css",
 ```
 
-  3. `tests/unit/old-safari.test.ts`: at the end of `BROWSER_FILES`, after `"src/components/admin/verdict-taps.ts",` add:
+  3. `tests/unit/old-safari.test.ts`: at the end of `BROWSER_FILES`, after Task 1's `"src/domain/certificate.ts",` (the last entry) add:
 
 ```ts
   // phase 3d, Task 5: the signature's white ink (Seaded's card is a "use client" file, walked anyway)
@@ -6815,7 +6829,8 @@ Spec §6 (the drawer: "Tunnistus MS LAB 2026-03 · {date}" with "Laada alla", "P
 **The register** `/admin/tunnistused` (`[data-certificate-register]`, a row `[data-register-row="<id>"]`): the admin lists' table (`list-table.module.css`: a narrow screen shows each row as label + value lines), the name a link to her drawer (`/admin/opilased?id=<client>`), each row's "Laada alla" (`[data-register-download]`), the re-issue day and "ligipääs tühistatud" under the date; 50 a page (`?leht=`, `Pager`); "← Hindamisse" back. The shell marks "Hindamine" (it is reached from there). Hindamine's heading gets "Väljastatud tunnistused" (`[data-to-register]`), whether anything waits or not.
 
 **Files:**
-- Modify: `app/src/server/admin-clients.ts` (the schema import, line 8; a type import; `ClientAccessRow`, lines 75–100; `clientDetail`, lines 175–216)
+- Modify: `app/src/server/certificates.ts` (Task 3's file: `viewOf` becomes `export const viewOf`, so the drawer does not repeat it)
+- Modify: `app/src/server/admin-clients.ts` (the schema import, line 8; an import of `viewOf` and `type CertificateView` from `./certificates`; `ClientAccessRow`, lines 75–100; `clientDetail`, lines 175–216)
 - Modify: `app/src/components/admin/ClientDrawer.tsx` (imports; the doc comment of `ClientDetailView`; its first lines; the access row after the step line, lines 103–107), `app/src/components/admin/ClientDrawer.module.css` (appended)
 - Create: `app/src/components/admin/ReissueCertificate.tsx`
 - Modify: `app/src/server/actions/admin-certificates.ts` (whole file below)
@@ -6827,10 +6842,11 @@ Spec §6 (the drawer: "Tunnistus MS LAB 2026-03 · {date}" with "Laada alla", "P
 **Interfaces:**
 - Consumes:
   - Task 1: `certificates` (`src/db/schema.ts`: `id, accessId, number, name, issuedAt, reissuedAt`, …); `CERT_LIMITS.nameMax` (80) (`src/domain/certificate.ts`).
-  - Task 3 (`src/server/certificates.ts`): `type CertificateView = { id: number; number: string; name: string; issuedAt: string; reissuedAt: string | null }`; `reissueCertificate(db: Db, certificateId: number, rawName: string, now: Date): Promise<{ kind: "reissued"; certificate: CertificateView } | { kind: "invalid"; error: "length" | "letters" } | { kind: "notFound" }>`; `type RegisterRow = { id: number; number: string; name: string; course: string; issuedAt: Date; reissuedAt: Date | null; revoked: boolean; clientId: number }`; `listCertificates(db: Db, page: number): Promise<Paged<RegisterRow>>` (newest first, 50 a page).
+  - Task 3 (`src/server/certificates.ts`): `type CertificateView = { id: number; number: string; name: string; issuedAt: string; reissuedAt: string | null }`; `viewOf(c: Pick<Certificate, "id" | "number" | "name" | "issuedAt" | "reissuedAt">): CertificateView` (private in Task 3, exported here in Step 5); `reissueCertificate(db: Db, certificateId: number, rawName: string, now: Date): Promise<{ kind: "reissued"; certificate: CertificateView } | { kind: "invalid"; error: "length" | "letters" } | { kind: "notFound" }>`; `type RegisterRow = { id: number; number: string; name: string; course: string; issuedAt: Date; reissuedAt: Date | null; revoked: boolean; clientId: number }`; `listCertificates(db: Db, page: number): Promise<Paged<RegisterRow>>` (newest first, 50 a page).
   - Task 5: `src/server/actions/admin-certificates.ts` with `saveCertificateSettingsAction`; `adminEt.certificates.settings`; `GET /api/admin/tunnistus/<id>`.
   - Existing: `clientDetail`, `ClientAccessRow` (`src/server/admin-clients.ts`); `ClientDetailView` (`src/components/admin/ClientDrawer.tsx`) with `stepLine` and `CourseSteps.completedAt: string | null`; `Pager`, `list-table.module.css`, `parsePage`, `adminTitle`, `Shell`, `getAdminCounts`; `ecourse`, `student`, `at`, `LATER` (`tests/db/hindamine-fixtures.ts`).
 - Produces:
+  - `src/server/certificates.ts`: `export const viewOf` (the same function Task 3 wrote, now exported; no new code).
   - `ClientAccessRow.certificate: (CertificateView & { revoked: boolean }) | null` (contract).
   - `reissueCertificateAction = adminAction(async (_admin, input: { certificateId: number; name: string }) => …)` answering `reissueCertificate`'s result or `{ kind: "failed" }` (bad input: `{ kind: "notFound" }`).
   - `src/components/admin/ReissueCertificate.tsx`: `export type ReissueTexts = AdminDict["certificates"]["reissue"] & { saving: string; error: string }`; `export function ReissueCertificate({ certificateId, name, t }: { certificateId: number; name: string; t: ReissueTexts })`. Hooks `[data-reissue]`, `[data-reissue-name]`, `[data-reissue-save]`, `[data-reissue-done]` (contract); **added**: `[data-reissue-form]`, `[data-reissue-error]`.
@@ -7155,7 +7171,7 @@ describe("ReissueCertificate", () => {
     action.mockResolvedValueOnce({ kind: "invalid", error: "length" });
     await type(field(), "K");
     await submit();
-    expect($("[data-reissue-error]")!.textContent).toBe("Nimi peab olema 2–80 märki.");
+    expect($("[data-reissue-error]")!.textContent).toBe("Nimi peab olema 2–80 tähemärki pikk");
     expect($("[data-reissue-done]")!.textContent).toBe("");
   });
 
@@ -7213,17 +7229,19 @@ test("'Paranda nimi' passes on the certificate and the name as typed; re-issued,
 
 - [ ] **Step 4: Run them — expect FAIL.** `cd app && npx vitest run tests/db/certificate-admin.test.ts tests/unit/reissue-certificate-dom.test.ts tests/unit/admin-certificates-action.test.ts`: the first two cannot import (`Failed to resolve import "@/app/admin/(panel)/tunnistused/page"`, `…/ReissueCertificate"`); the action test fails with `reissueCertificateAction is not a function`.
 
-- [ ] **Step 5: The drawer's data** (`src/server/admin-clients.ts`).
+- [ ] **Step 5: The drawer's data** (`src/server/certificates.ts` and `src/server/admin-clients.ts`).
 
-  1. The schema import (line 8) gains `certificates`:
+  1. In `src/server/certificates.ts` (Task 3's file), the declaration `const viewOf = (c: Pick<Certificate, "id" | "number" | "name" | "issuedAt" | "reissuedAt">): CertificateView => ({` becomes `export const viewOf = (c: Pick<Certificate, "id" | "number" | "name" | "issuedAt" | "reissuedAt">): CertificateView => ({`. Nothing else in that file changes; the drawer below uses it, so there is one mapping from a row to a view.
+
+  2. The schema import (line 8) gains `certificates`:
 
 ```ts
 import { certificates, clients, courseAccess, courses, lessonProgress, practicePackages, protocols, registrations, requests, termsAcceptances, testAttempts } from "@/db/schema";
 ```
 
-  and after `import { loadSteps } from "./completion";` add `import type { CertificateView } from "./certificates";`.
+  and after `import { loadSteps } from "./completion";` add `import { viewOf, type CertificateView } from "./certificates";` (a value import now; `certificates.ts` imports nothing from `admin-clients`).
 
-  2. In `ClientAccessRow`, after `hasAttempts: boolean;` add:
+  3. In `ClientAccessRow`, after `hasAttempts: boolean;` add:
 
 ```ts
   /**
@@ -7233,16 +7251,16 @@ import { certificates, clients, courseAccess, courses, lessonProgress, practiceP
   certificate: (CertificateView & { revoked: boolean }) | null;
 ```
 
-  3. Before `/** Everything the student's drawer shows, …` (the doc comment of `clientDetail`) add:
+  4. Before `/** Everything the student's drawer shows, …` (the doc comment of `clientDetail`) add:
 
 ```ts
-/** A certificate row as the drawer shows it (server/certificates.ts CertificateView), with whether an admin ended her access. */
+/** A certificate row as the drawer shows it (server/certificates.ts viewOf), with whether an admin ended her access. */
 const certificateView = (c: { id: number; number: string; name: string; issuedAt: Date; reissuedAt: Date | null } | undefined, revoked: boolean): ClientAccessRow["certificate"] =>
-  c ? { id: c.id, number: c.number, name: c.name, issuedAt: c.issuedAt.toISOString(), reissuedAt: c.reissuedAt?.toISOString() ?? null, revoked } : null;
+  c ? { ...viewOf(c), revoked } : null;
 
 ```
 
-  4. In `clientDetail`, the line
+  5. In `clientDetail`, the line
 
 ```ts
   const [outlines, steps, accessProtocols, registrationProtocols, attempts] = await Promise.all([
@@ -7266,13 +7284,13 @@ const certificateView = (c: { id: number; number: string; name: string; issuedAt
       : [],
 ```
 
-  5. After `const registrationProtocol = new Map(registrationProtocols.map((p) => [p.registrationId, p.id]));` add:
+  6. After `const registrationProtocol = new Map(registrationProtocols.map((p) => [p.registrationId, p.id]));` add:
 
 ```ts
   const certificateOf = new Map(issued.map((c) => [c.accessId, c]));
 ```
 
-  6. In the access map's returned object, after `hasAttempts: newest.has(a.courseId),` add:
+  7. In the access map's returned object, after `hasAttempts: newest.has(a.courseId),` add:
 
 ```ts
         certificate: certificateView(certificateOf.get(a.id), a.revokedAt !== null),
@@ -7579,6 +7597,8 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
   // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
   const [list] = await Promise.all([listCertificates(getDb(), parsePage((await searchParams).leht)), getAdminCounts()]);
   const t = adminEt.certificates.register;
+  // the register says "nimi parandatud", "ligipääs tühistatud" and "Laada alla" in the drawer's words: one set of texts
+  const d = adminEt.certificates.drawer;
 
   return (
     <Shell email={email} active="assessment">
@@ -7628,17 +7648,17 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
                     <td data-label={t.col.issued}>
                       <span className={styles.issued}>
                         <span className={ui.nowrap}>{formatDate(r.issuedAt, "et")}</span>
-                        {r.reissuedAt && <span className={styles.note}>{fill(t.reissued, { date: formatDate(r.reissuedAt, "et") })}</span>}
+                        {r.reissuedAt && <span className={styles.note}>{fill(d.reissued, { date: formatDate(r.reissuedAt, "et") })}</span>}
                         {r.revoked && (
                           <span className={`${ui.tag} ${ui.bad}`} data-register-revoked="">
-                            {t.revoked}
+                            {d.revoked}
                           </span>
                         )}
                       </span>
                     </td>
                     <td data-label={t.col.file}>
-                      <a className={ui.link} href={`/api/admin/tunnistus/${r.id}`} aria-label={fill(t.downloadLabel, { number: r.number })} data-register-download="">
-                        {t.download}
+                      <a className={ui.link} href={`/api/admin/tunnistus/${r.id}`} aria-label={fill(d.downloadLabel, { number: r.number })} data-register-download="">
+                        {d.download}
                       </a>
                     </td>
                   </tr>
@@ -7741,7 +7761,7 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
       cancel: "Katkesta",
       done: "Tunnistus {number} on uuesti väljastatud nimega {name}.",
       errors: {
-        length: "Nimi peab olema 2–80 märki.",
+        length: "Nimi peab olema 2–80 tähemärki pikk",
         letters: "Kasuta nimes ainult tähti, tühikuid ja sidekriipse",
         notFound: "Seda tunnistust ei leitud. Laadi leht uuesti.",
       },
@@ -7756,11 +7776,8 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
       count: "Tunnistusi: {n}",
       empty: "Tunnistusi pole veel väljastatud.",
       col: { number: "Number", name: "Nimi", course: "Koolitus", issued: "Väljastatud", file: "Tunnistus" },
-      reissued: "nimi parandatud {date}",
-      revoked: "ligipääs tühistatud",
+      // the re-issue note, the "ligipääs tühistatud" mark and the download link are the drawer's (certificates.drawer.reissued, .revoked, .download, .downloadLabel)
       openStudent: "Ava õpilane {name}",
-      download: "Laada alla",
-      downloadLabel: "Laada alla tunnistus {number}",
     },
 ```
 
@@ -7797,7 +7814,7 @@ vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsA
 - [ ] **Step 16: Commit** (from the repository root).
 
 ```bash
-git add app/src/server/admin-clients.ts app/src/components/admin/ClientDrawer.tsx app/src/components/admin/ClientDrawer.module.css app/src/components/admin/ReissueCertificate.tsx app/src/server/actions/admin-certificates.ts "app/src/app/admin/(panel)/tunnistused/page.tsx" "app/src/app/admin/(panel)/tunnistused/register.module.css" "app/src/app/admin/(panel)/hindamine/page.tsx" app/src/i18n/dict/admin.ts app/tests/db/certificate-admin.test.ts app/tests/unit/reissue-certificate-dom.test.ts app/tests/unit/admin-certificates-action.test.ts app/tests/unit/admin-guards.test.ts app/tests/unit/colour-tokens.test.ts app/tests/db/client-drawer-steps.test.ts app/tests/db/feedback-admin-pages.test.ts app/tests/db/payments-admin-pages.test.ts
+git add app/src/server/certificates.ts app/src/server/admin-clients.ts app/src/components/admin/ClientDrawer.tsx app/src/components/admin/ClientDrawer.module.css app/src/components/admin/ReissueCertificate.tsx app/src/server/actions/admin-certificates.ts "app/src/app/admin/(panel)/tunnistused/page.tsx" "app/src/app/admin/(panel)/tunnistused/register.module.css" "app/src/app/admin/(panel)/hindamine/page.tsx" app/src/i18n/dict/admin.ts app/tests/db/certificate-admin.test.ts app/tests/unit/reissue-certificate-dom.test.ts app/tests/unit/admin-certificates-action.test.ts app/tests/unit/admin-guards.test.ts app/tests/unit/colour-tokens.test.ts app/tests/db/client-drawer-steps.test.ts app/tests/db/feedback-admin-pages.test.ts app/tests/db/payments-admin-pages.test.ts
 git commit -m "feat(admin): the certificate in the student's drawer, 'Paranda nimi' under the same number, the register /admin/tunnistused from Hindamine
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -7820,7 +7837,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `adminEt.certificates.reissue.save` | Väljasta uuesti | Draft |
 | `adminEt.certificates.reissue.cancel` | Katkesta | Draft |
 | `adminEt.certificates.reissue.done` | Tunnistus {number} on uuesti väljastatud nimega {name}. | Draft |
-| `adminEt.certificates.reissue.errors.length` | Nimi peab olema 2–80 märki. | Draft |
+| `adminEt.certificates.reissue.errors.length` | Nimi peab olema 2–80 tähemärki pikk | Draft |
 | `adminEt.certificates.reissue.errors.letters` | Kasuta nimes ainult tähti, tühikuid ja sidekriipse | Spec (§5) |
 | `adminEt.certificates.reissue.errors.notFound` | Seda tunnistust ei leitud. Laadi leht uuesti. | Draft |
 | `adminEt.certificates.register.fromAssessment` | Väljastatud tunnistused | Draft |
@@ -7831,10 +7848,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `adminEt.certificates.register.count` | Tunnistusi: {n} | Draft |
 | `adminEt.certificates.register.empty` | Tunnistusi pole veel väljastatud. | Draft |
 | `adminEt.certificates.register.col.*` | Number · Nimi · Koolitus · Väljastatud · Tunnistus | Spec (§6 "number, name, course and issue date") + Draft (the download column's name) |
-| `adminEt.certificates.register.reissued` | nimi parandatud {date} | Draft |
-| `adminEt.certificates.register.revoked` | ligipääs tühistatud | Spec (§9) |
 | `adminEt.certificates.register.openStudent` | Ava õpilane {name} | Draft |
-| `adminEt.certificates.register.download` / `downloadLabel` | Laada alla / Laada alla tunnistus {number} | Spec (§6) / Draft |
+| (the register's re-issue note, "ligipääs tühistatud" mark and download link) | read from `adminEt.certificates.drawer.reissued`, `.revoked`, `.download` and `.downloadLabel` above: one set of texts, no keys of their own | — |
 
 ---
 
@@ -7849,7 +7864,7 @@ Spec §10 ("Real Postgres (e2e)": two accesses issuing at the same moment get tw
 
 **Files:**
 - Create: `app/tests/e2e/certificate.ts`, `app/tests/e2e/certificate.spec.ts`, `app/tests/e2e/certificate-race.spec.ts`
-- Modify: `docs/deploy.md` (§6, the migrations count, line 112; a new §14 at the end), `docs/launch-checklist.md` (a new §13 at the end)
+- Modify: `docs/deploy.md` (a new §14 at the end; the migrations count in §6 was already changed by Task 1, Step 17), `docs/launch-checklist.md` (a new §13 at the end)
 
 **Interfaces:**
 - Consumes:
@@ -8503,19 +8518,7 @@ test("the student's row, Seaded's card, the drawer's line and the register at 39
   - `E2E_PROD_BUILD=1 npx playwright test certificate` — expect PASS (the fonts are read from `assets/fonts` by the local `next start`; the signature goes to `app/.media-local` with `MEDIA_LOCAL=1`).
   - A failure names the earlier task's part it exercises (a selector, a route, a text): fix it there, not here — unless the earlier task's own tests pin that behaviour; then the e2e step is wrong and is fixed here.
 
-- [ ] **Step 6: The migrations count** — in `docs/deploy.md` §6 (line 112), the text
-
-```md
-9 after the e-course completion's 0008).
-```
-
-  becomes
-
-```md
-9 after the e-course completion's 0008, 10 after the certificate's 0009).
-```
-
-- [ ] **Step 7: The runbook** — at the end of `docs/deploy.md` add:
+- [ ] **Step 6: The runbook** — at the end of `docs/deploy.md` add (the migrations count in §6, line 112, is Task 1 Step 17's; do not touch it here):
 
 ```md
 
@@ -8527,7 +8530,7 @@ When an e-course is "Lõpetatud", the student confirms her name once and downloa
    - **The student:** the "Tunnistus" row of "Lõpetamine" on `/konto/kursus/<slug>` ("Nimi tunnistusel", "Kinnita ja koosta tunnistus", then "Laadi tunnistus alla (PDF)"), and the quiet link "Laadi tunnistus alla" on the dashboard card of an ended access. Her routes are `POST /api/konto/kursus/<slug>/tunnistus` (`{ name }`) and `GET /api/konto/tunnistus/<id>` (the PDF): `private, no-store`, at most 10 issues and 10 downloads an hour per student, and behind the coming-soon gate until the launch, like every account route.
    - **Maria's pages:** the course editor's "Tunnistus" card on e-courses ("Oskused tunnistusel", "Maht"); Seaded → "Tunnistus" (a card of its own under the settings' save bar: "Koht", "Registrikood", "Praktilise töö rida", "Koolitaja nimi", "Järgmine number" with the year's last issued number, "Allkiri"); the Õpilased drawer's line "Tunnistus MS LAB 2026-03 · {date}" with "Laada alla" and "Paranda nimi"; the register `/admin/tunnistused` (from Hindamine's "Väljastatud tunnistused", not in the menu; 50 a page, newest first).
    - **Maria's endpoints:** `GET /api/admin/tunnistus/<id>` (any certificate, a revoked access's too) and `POST|GET|DELETE /api/admin/allkiri` (the signature image), behind `withAdmin`, all `maxDuration = 30`. The settings' save and "Paranda nimi" are server actions (`src/server/actions/admin-certificates.ts`).
-   - **Configuration:** no new variable, no cron. The fonts are files of the repository (`app/assets/fonts/`: Jost and Great Vibes with their OFL texts, checked by SHA-256 in the tests); `next.config.ts` traces them into the two functions that render (`outputFileTracingIncludes` for `/api/konto/[[...path]]` and `/api/admin/tunnistus/[id]`). The only new packages are `pdf-lib@1.17.1` and `@pdf-lib/fontkit@1.1.1`, pinned exactly.
+   - **Configuration:** no new variable, no cron. The fonts are files of the repository (`app/assets/fonts/`: Jost and Great Vibes with their OFL texts, checked by SHA-256 in the tests); `next.config.ts` traces them into the two functions that render (`outputFileTracingIncludes` keys `/api/konto/**` and `/api/admin/tunnistus/**`, the folders of `/api/konto/[[...path]]` and `/api/admin/tunnistus/[id]`; bracketed keys trace nothing under Turbopack). The only new packages are `pdf-lib@1.17.1` and `@pdf-lib/fontkit@1.1.1`, pinned exactly.
 2. **The data.** Migration `0009_certificates` is additive. It runs on Railway before the deploy (section 6), and the live code does not name what it adds.
    - `certificates`: one row per completed access (unique `access_id`, deleted with the access and so with the account), the number "MS LAB {year}-{nn}" with `year` and `seq` (unique together, `seq` ≥ 1), and the frozen copy: the name as confirmed, the course's Estonian title, the skills, the volume, the practical line, the place, the registry code and `issued_at` (the date printed); `reissued_at` after "Paranda nimi".
    - `courses.certificate_skills` (jsonb lines, `[]`) and `courses.certificate_volume` (text, `''`): the course editor's card. With no lines, the course's "Õpiväljundid" (Estonian) are printed, at most 16.
@@ -8565,7 +8568,7 @@ grep -rhoE '\[certificate\][^"`]*|\[account\][^"`]*certificat[^"`]*' src | sort 
 
   Every label it prints must be in item 7 in the form above (`N` for an id, `<number>` for a number, `<error class>` for a summary). Task 4's labels of the student's routes and of their rate limits go where the item says "the student's routes' (`src/server/account-api.ts`)", in the same form, and that pointer is then removed.
 
-- [ ] **Step 8: The launch list** — at the end of `docs/launch-checklist.md` add:
+- [ ] **Step 7: The launch list** — at the end of `docs/launch-checklist.md` add:
 
 ```md
 
@@ -8591,12 +8594,12 @@ grep -rhoE '\[certificate\][^"`]*|\[account\][^"`]*certificat[^"`]*' src | sort 
   - Contact courses stay on paper (Maria's answer of 12.10.2026).
 ```
 
-- [ ] **Step 9: Run everything.** From `app/`:
+- [ ] **Step 8: Run everything.** From `app/`:
   - `npx vitest run` (`tests/unit/test-addresses.test.ts` scans the new files and the docs: only `@example.test` and the listed public addresses), `npx tsc --noEmit`, `npx eslint .` — green and clean;
   - the whole `npx playwright test` once under `next dev` (the specs of the earlier phases share the database: nothing of this phase may leave a row they count; afterwards `docker exec mslab-pg psql -U postgres -d mslab -c "select count(*) from certificates c join course_access a on a.id = c.access_id join clients k on k.id = a.client_id where k.email like 'e2e-client-%'"` → 0, and no file is left under `app/.media-local/certificate/` that the setting does not name: `docker exec mslab-pg psql -U postgres -d mslab -c "select value->>'signatureKey' from settings where key = 'certificate'"` names the only one, or none);
   - `E2E_PROD_BUILD=1 npx playwright test certificate completion account-ecourse admin-clients` and the gate: `npx playwright test -c playwright.gate.config.ts` — PASS.
 
-- [ ] **Step 10: Commit** (from the repository root).
+- [ ] **Step 9: Commit** (from the repository root).
 
 ```bash
 git add app/tests/e2e/certificate.ts app/tests/e2e/certificate.spec.ts app/tests/e2e/certificate-race.spec.ts docs/deploy.md docs/launch-checklist.md
@@ -8619,7 +8622,41 @@ The ledger is `.superpowers/sdd/2026-10-15-certificate/progress.md` (git-ignored
 
 **Files:** none (the database, the deployment, the ledger).
 
-- [ ] **Step 1: Branch checks.** Run the whole `npx vitest run`, `npx tsc --noEmit` and `npx eslint .`. Run `npm run build` and confirm the account routes are still prerendered and `/api/admin/tunnistus/[id]` is listed as ƒ. Run the e2e `certificate` specs under `next dev` and with `E2E_PROD_BUILD=1`, and the gate run. Finally, `git status` must be clean on `feat/certificate`.
+- [ ] **Step 1: Branch checks.** From `app/`:
+  - Run the whole `npx vitest run`, `npx tsc --noEmit` and `npx eslint .`.
+  - Run `npm run build` and confirm the account routes are still prerendered and `/api/admin/tunnistus/[id]` is listed as ƒ.
+  - **The fonts are in the build's traces.** Straight after that `npm run build` (before any e2e run that may rebuild `.next`), check that the two functions' trace manifests list both fonts. Vercel bundles each function from the same traces, so a font missing here is a font missing on mslab.ee:
+
+```bash
+node -e '
+const fs = require("fs");
+const manifests = ["app/api/konto/[[...path]]/route.js.nft.json", "app/api/admin/tunnistus/[id]/route.js.nft.json"];
+const fonts = ["assets/fonts/GreatVibes-Regular.ttf", "assets/fonts/Jost[wght].ttf"];
+let missing = 0;
+for (const m of manifests) {
+  const files = JSON.parse(fs.readFileSync(".next/server/" + m, "utf8")).files;
+  for (const f of fonts) {
+    const found = files.some((p) => p === f || p.endsWith("/" + f));
+    console.log(found ? "ok     " : "MISSING", m, f);
+    if (!found) missing++;
+  }
+}
+process.exit(missing ? 1 : 0);
+'
+```
+
+  Expected: exit code 0 and four lines, each starting with `ok`:
+
+```text
+ok      app/api/konto/[[...path]]/route.js.nft.json assets/fonts/GreatVibes-Regular.ttf
+ok      app/api/konto/[[...path]]/route.js.nft.json assets/fonts/Jost[wght].ttf
+ok      app/api/admin/tunnistus/[id]/route.js.nft.json assets/fonts/GreatVibes-Regular.ttf
+ok      app/api/admin/tunnistus/[id]/route.js.nft.json assets/fonts/Jost[wght].ttf
+```
+
+  If any line says `MISSING`, or `readFileSync` throws `ENOENT` (a manifest is not where it should be), **the deploy stops here**: nothing in Steps 2–7 is run. Fix `next.config.ts` (Task 1: the keys are `"/api/konto/**"` and `"/api/admin/tunnistus/**"`, never the bracketed routes), rebuild and repeat this check.
+  - Run the e2e `certificate` specs under `next dev` and with `E2E_PROD_BUILD=1`, and the gate run.
+  - Finally, `git status` must be clean on `feat/certificate`.
 - [ ] **Step 2 (read-only): Railway before.** Pull Maria's production env into the scratchpad (`vercel --global-config ~/.vercel-mslabinformation --cwd <scratchpad>/maria-link-rclg env pull <scratchpad>/rw.env --environment=production --yes`). Read `DATABASE_URL` only inside a node script, which prints counts only (read-only transaction):
   - `select count(*) from drizzle.__drizzle_migrations` → 9;
   - `select to_regclass('public.certificates') is null` → `t`.
@@ -8634,6 +8671,12 @@ The ledger is `.superpowers/sdd/2026-10-15-certificate/progress.md` (git-ignored
   - `curl -s https://mslab.ee/api/konto/tunnistus/1` → `{"ok":false,"error":"not_found"}` (the gate);
   - `curl -s -w ' %{http_code}' https://mslab.ee/api/admin/tunnistus/1` → `{"ok":false,"error":"unauthorized"} 401` (the new route is live);
   - `curl -s -w ' %{http_code}' https://mslab.ee/api/admin/allkiri` → 401.
+  - **The renderer on the deployment** (the one deploy-specific risk: the fonts are read from `assets/fonts` inside the function, and the smoke above only reaches the 401 and gate answers). Right after the deploy, Dim, signed in as admin, runs the launch list's sample try on mslab.ee (`docs/launch-checklist.md` §13, Maria's setup, item 3), or downloads one certificate that exists through `/api/admin/tunnistus/<id>`. Check:
+    - the saved file starts with `%PDF-` (and is under 300 KB);
+    - the function's runtime log (Vercel dashboard → Logs, or `vercel --global-config ~/.vercel-mslabinformation logs`) has no `ENOENT … assets/fonts` for that request.
+    - A failure here is a font missing from the function (Step 1's manifest check passed locally): fix the tracing in `next.config.ts` and push again; do not tell Maria to start (Step 6) before it is fixed.
+    - The sample try takes a real number of the series: its cleanup (the sample account and course, then "Järgmine number" set again) is §13.3's.
+    - Record the result in the ledger: counts and statuses only ("PDF rendered, N KB, no ENOENT"), never a URL or an address.
 - [ ] **Step 6: Tell Maria (through Dim) what to set up.** The list is `docs/launch-checklist.md` §13:
   1. Seaded → Tunnistus: the signature, the next number after her last paper certificate, and the wording of the practical line.
   2. Each e-course's "Tunnistus" card: the skills (or leave it empty to use "Mida õpid") and the volume.
@@ -8768,7 +8811,7 @@ the admin is Estonian only.
 | `adminEt.certificates.reissue.save` | Väljasta uuesti | Draft |
 | `adminEt.certificates.reissue.cancel` | Katkesta | Draft |
 | `adminEt.certificates.reissue.done` | Tunnistus {number} on uuesti väljastatud nimega {name}. | Draft |
-| `adminEt.certificates.reissue.errors.length` | Nimi peab olema 2–80 märki. | Draft |
+| `adminEt.certificates.reissue.errors.length` | Nimi peab olema 2–80 tähemärki pikk | Draft |
 | `adminEt.certificates.reissue.errors.letters` | Kasuta nimes ainult tähti, tühikuid ja sidekriipse | Spec (§5) |
 | `adminEt.certificates.reissue.errors.notFound` | Seda tunnistust ei leitud. Laadi leht uuesti. | Draft |
 | `adminEt.certificates.register.fromAssessment` | Väljastatud tunnistused | Draft |
@@ -8779,10 +8822,8 @@ the admin is Estonian only.
 | `adminEt.certificates.register.count` | Tunnistusi: {n} | Draft |
 | `adminEt.certificates.register.empty` | Tunnistusi pole veel väljastatud. | Draft |
 | `adminEt.certificates.register.col.*` | Number · Nimi · Koolitus · Väljastatud · Tunnistus | Spec (§6 "number, name, course and issue date") + Draft (the download column's name) |
-| `adminEt.certificates.register.reissued` | nimi parandatud {date} | Draft |
-| `adminEt.certificates.register.revoked` | ligipääs tühistatud | Spec (§9) |
 | `adminEt.certificates.register.openStudent` | Ava õpilane {name} | Draft |
-| `adminEt.certificates.register.download` / `downloadLabel` | Laada alla / Laada alla tunnistus {number} | Spec (§6) / Draft |
+| (the register's re-issue note, "ligipääs tühistatud" mark and download link) | read from `adminEt.certificates.drawer.reissued`, `.revoked`, `.download` and `.downloadLabel` above: one set of texts, no keys of their own | — |
 
 ---
 
