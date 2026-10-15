@@ -531,10 +531,10 @@ export const practicalPhotos = pgTable("practical_photos", {
 
 /**
  * One e-course certificate (phase 3d, spec §3): one per completed access, made when the student confirms her name
- * (server/certificates.ts issueCertificate). It holds a frozen copy of everything the PDF prints, so a later change of the course or of
- * Seaded → Tunnistus never alters it; Maria's "Paranda nimi" changes only `name` and `reissuedAt`, under the same number. The PDF is drawn
- * from this row on every download (server/certificate-pdf.ts); only the signature image is not frozen. Deleted with the access, and so with
- * the account; its number is never given again (the series then has a gap).
+ * (server/certificates.ts issueCertificate). It holds a frozen copy of everything the PDF prints but Maria's signature (her name, typed in
+ * the script font: the trainer's name in Seaded), so a later change of the course or of Seaded → Tunnistus never alters it; Maria's
+ * "Paranda nimi" changes only `name` and `reissuedAt`, under the same number. The PDF is drawn from this row on every download
+ * (server/certificate-pdf.ts). Deleted with the access, and so with the account; its number is never given again (the series then has a gap).
  */
 export const certificates = pgTable("certificates", {
   id: serial("id").primaryKey(),
@@ -582,7 +582,7 @@ export const kvEntries = pgTable(
 );
 export const settings = pgTable("settings", { key: text("key").primaryKey(), value: jsonb("value").notNull() });
 // keys: "contact" {email, phone, address, instagram, facebook}, "newsletter" {discountLabel, welcomeCode}, "trainer" {portraitKey, name, role: I18n, stats: [{value,label:I18n}]}, "prepayment" {receiver, iban, bank, referencePrefix},
-// "certificate" {place, registryCode, practicalLine, trainerName, nextYear, nextSeq, signatureKey} (phase 3d: domain/certificate.ts readCertificateSettings)
+// "certificate" {place, registryCode, practicalLine, trainerName, nextYear, nextSeq} (phase 3d: domain/certificate.ts readCertificateSettings)
 
 export const authTokens = pgTable("auth_tokens", { hash: text("hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), usedAt: timestamp("used_at", { withTimezone: true }) });
 export const adminSessions = pgTable("admin_sessions", { idHash: text("id_hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull() });

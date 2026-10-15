@@ -1,60 +1,27 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { deflateSync } from "node:zlib";
 import fontkit from "@pdf-lib/fontkit";
 import { decodePDFRawStream, PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { describe, expect, test } from "vitest";
 import { checkCertificateName } from "@/domain/certificate";
-import { CERT_FONT_DIR, loadCertificateAssets, renderCertificate, type CertificateAssets, type CertificateContent } from "@/server/certificate-pdf";
-import { fakeMediaStore } from "../fakes";
+import { CERT_FONT_DIR, CERT_FONTS, loadCertificateAssets, renderCertificate, type CertificateAssets, type CertificateContent } from "@/server/certificate-pdf";
 
 // The certificate's PDF (phase 3d, spec §7, §10 "PDF", Review Focus 2): rendered from a fixture and read back the way a PDF reader reads
-// it. pdf-lib embeds each font as a subset and writes glyph ids, not letters, into the page (the name is never in the file as text), but
-// it also writes each font's ToUnicode map: readPdf below decodes the page's content stream, follows every text-showing operator (Tf, Tc,
-// Tm, Tj) and turns its glyph ids back into letters through that map. That is real text extraction (a reader's copy and search use the same
-// map), so it checks at once that the right letters were drawn, in which font and size, and where. Positions are PDF points from the
-// bottom left of the 842 × 595 page.
+// it. pdf-lib embeds each font as glyph ids, not letters, into the page (the name is never in the file as text), but it also writes each
+// font's ToUnicode map: readPdf below decodes the page's content stream, follows every text-showing operator (Tf, Tc, Tm, Tj) and turns its
+// glyph ids back into letters through that map. That is real text extraction (a reader's copy and search use the same map), so it checks at
+// once that the right letters were drawn, in which font and size, and where. Positions are PDF points from the bottom left of the 842 × 595
+// page. The script font, Revive 80 Signature, has tall capitals with long swashes and a tiny lowercase: its ink (the glyphs' bounding box,
+// not the advance widths) is checked against the title above the name and the competency lines below it.
 
-const SANS = new Uint8Array(readFileSync(join(CERT_FONT_DIR, "Jost[wght].ttf")));
-const SCRIPT = new Uint8Array(readFileSync(join(CERT_FONT_DIR, "GreatVibes-Regular.ttf")));
+const SANS = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.sans)));
+const SCRIPT = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.script)));
 const jost = fontkit.create(SANS);
-const greatVibes = fontkit.create(SCRIPT);
-
-/** The CRC-32 of a PNG chunk. */
-function crc32(bytes: Uint8Array): number {
-  let c = ~0;
-  for (const b of bytes) {
-    c ^= b;
-    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
-  }
-  return ~c >>> 0;
-}
-
-/** An RGBA PNG of white ink: `ink(x, y)` is each pixel's alpha (as Seaded's upload makes the signature: white on transparent). */
-function pngOf(width: number, height: number, ink: (x: number, y: number) => number): Uint8Array {
-  const raw = new Uint8Array(height * (width * 4 + 1)); // each row: filter 0, then RGBA
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) raw.set([255, 255, 255, ink(x, y)], y * (width * 4 + 1) + 1 + x * 4);
-  const chunk = (type: string, data: Uint8Array) => {
-    const out = new Uint8Array(12 + data.length);
-    const view = new DataView(out.buffer);
-    view.setUint32(0, data.length);
-    out.set(new TextEncoder().encode(type), 4);
-    out.set(data, 8);
-    view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
-    return out;
-  };
-  const header = new Uint8Array(13);
-  new DataView(header.buffer).setUint32(0, width);
-  new DataView(header.buffer).setUint32(4, height);
-  header.set([8, 6, 0, 0, 0], 8); // 8 bits, RGBA
-  const parts = [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", new Uint8Array())];
-  const png = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-  parts.reduce((at, p) => (png.set(p, at), at + p.length), 0);
-  return png;
-}
-
-/** A scanned signature's size after Seaded's conversion (at most 1200 px wide): a wavy stroke of ink. */
-const SIGNATURE = pngOf(1200, 400, (x, y) => (Math.abs(y - (200 + 120 * Math.sin(x / 90))) < 9 ? 255 : 0));
+const revive = fontkit.create(SCRIPT);
+/** The fonts' families as the PDF names them (the PostScript name without "-Regular" and pdf-lib's random "-1234" suffix). */
+const family = (postscriptName: string | null) => (postscriptName ?? "").replace(/-\d+$/, "").replace(/-Regular$/, "");
+const SANS_FAMILY = family(jost.postscriptName);
+const SCRIPT_FAMILY = family(revive.postscriptName);
 
 const FIXTURE: CertificateContent = {
   number: "MS LAB 2026-03",
@@ -68,8 +35,10 @@ const FIXTURE: CertificateContent = {
   issuedAt: new Date("2026-10-15T09:00:00Z"),
   trainerName: "Maria Sosnina",
 };
-const ASSETS: CertificateAssets = { sans: SANS, script: SCRIPT, signature: SIGNATURE };
-const NO_SIGNATURE: CertificateAssets = { ...ASSETS, signature: null };
+const ASSETS: CertificateAssets = { sans: SANS, script: SCRIPT };
+
+/** The name's band: its ink stays under the course title (whose second line, when it wraps, stands on 428) and 6 pt over the first competency line (letters up to 297). */
+const INK_BAND = { bottom: 303, top: 425 } as const;
 
 type Run = { font: string; size: number; spacing: number; x: number; y: number; text: string };
 
@@ -90,10 +59,13 @@ function toUnicode(cmap: string): Map<string, string> {
   return map;
 }
 
-/**
- * The PDF read back: its one page, the text runs (each Tj with its font's family, size, letter spacing in em, position and letters), the
- * embedded fonts' names, and each image drawn (its pixel size and the rectangle it is drawn into).
- */
+/** The names of the page's images (XObjects): pdf-lib leaves an empty dictionary when nothing is drawn. */
+const imagesOf = (page: { node: { Resources(): PDFDict | undefined } }): string[] => {
+  const xobjects = page.node.Resources()!.lookup(PDFName.of("XObject"));
+  return xobjects instanceof PDFDict ? xobjects.keys().map((k) => k.decodeText()) : [];
+};
+
+/** The PDF read back: its one page, the text runs (each Tj with its font's family, size, letter spacing in em, position and letters), the embedded fonts' names and the page's operators. */
 async function readPdf(bytes: Uint8Array) {
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
   const pages = doc.getPages();
@@ -104,24 +76,14 @@ async function readPdf(bytes: Uint8Array) {
     const font = doc.context.lookup(ref, PDFDict);
     fonts.set(key.decodeText(), { name: font.lookup(PDFName.of("BaseFont"), PDFName).decodeText(), unicode: toUnicode(streamText(font.lookup(PDFName.of("ToUnicode")))) });
   }
-  const xobjects = resources.lookup(PDFName.of("XObject"));
-  const images = new Map<string, { width: number; height: number }>();
-  if (xobjects instanceof PDFDict)
-    for (const [key, ref] of xobjects.entries()) {
-      const dict = rawStream(doc.context.lookup(ref)).dict;
-      if (dict.get(PDFName.of("Subtype"))?.toString() === "/Image")
-        images.set(key.decodeText(), { width: Number(dict.get(PDFName.of("Width"))!.toString()), height: Number(dict.get(PDFName.of("Height"))!.toString()) });
-    }
   const contents = page.node.Contents();
   const ops = (contents instanceof PDFArray ? contents.asArray().map((ref) => doc.context.lookup(ref)) : [contents]).map(streamText).join("\n");
 
   const runs: Run[] = [];
-  const drawn: { width: number; height: number; x: number; y: number; pixels: { width: number; height: number } }[] = [];
   let font = "";
   let size = 0;
   let spacing = 0;
   let at = [0, 0];
-  let matrices: number[][] = [];
   let args: string[] = [];
   for (const token of ops.match(/\/[^\s/<>[\]()]+|<[0-9A-Fa-f]*>|[-+]?(?:\d+\.?\d*|\.\d+)|[A-Za-z*'"]+|\[|\]/g) ?? []) {
     if (!/^[A-Za-z*'"]+$/.test(token)) {
@@ -134,29 +96,28 @@ async function readPdf(bytes: Uint8Array) {
     else if (token === "Tj") {
       const f = fonts.get(font)!;
       const glyphs = args[0].slice(1, -1).match(/.{4}/g) ?? [];
-      runs.push({ font: f.name.replace(/-Regular-\d+$/, ""), size, spacing: spacing / size, x: at[0], y: at[1], text: glyphs.map((g) => f.unicode.get(g.toUpperCase()) ?? "�").join("") });
-    } else if (token === "q") matrices = [];
-    else if (token === "cm") matrices.push(args.map(Number));
-    else if (token === "Do" && images.has(args[0].slice(1))) {
-      // pdf-lib draws an image as: translate to its corner, then scale the unit square to its size
-      const corner = matrices.find((m) => m[0] === 1 && m[3] === 1 && (m[4] !== 0 || m[5] !== 0))!;
-      const scale = matrices.find((m) => m[0] !== 1 || m[3] !== 1)!;
-      drawn.push({ width: scale[0], height: scale[3], x: corner[4], y: corner[5], pixels: images.get(args[0].slice(1))! });
+      runs.push({ font: family(f.name), size, spacing: spacing / size, x: at[0], y: at[1], text: glyphs.map((g) => f.unicode.get(g.toUpperCase()) ?? "�").join("") });
     }
     args = [];
   }
   const fontNames = [...new Set([...fonts.values()].map((f) => f.name))].sort();
-  return { doc, pages, page, runs, fontNames, drawn, ops };
+  return { doc, pages, page, runs, fontNames, ops };
 }
 
 /** A run's width as pdf-lib measured it when it laid the page out: the glyphs' advances (no kerning) plus the spacing between them. */
 function widthOf(run: Run): number {
-  const font = run.font === "GreatVibes" ? greatVibes : jost;
+  const font = run.font === SCRIPT_FAMILY ? revive : jost;
   const glyphs = font.layout(run.text).glyphs;
   return (glyphs.reduce((sum, g) => sum + g.advanceWidth, 0) / font.unitsPerEm) * run.size + run.spacing * run.size * Math.max(0, glyphs.length - 1);
 }
 
-const runsIn = (runs: Run[], family: string) => runs.filter((r) => r.font === family);
+/** Where a script run's ink lies, from the font's glyph outlines: its lowest and highest points on the page (the swashes and the carons count). */
+function inkOf(run: Run): { bottom: number; top: number } {
+  const box = revive.layout(run.text).bbox;
+  return { bottom: run.y + (box.minY / revive.unitsPerEm) * run.size, top: run.y + (box.maxY / revive.unitsPerEm) * run.size };
+}
+
+const runsIn = (runs: Run[], fontFamily: string) => runs.filter((r) => r.font === fontFamily);
 const one = (runs: Run[], text: string): Run => {
   const found = runs.filter((r) => r.text === text);
   expect(found.map((r) => r.text), text).toEqual([text]);
@@ -165,30 +126,40 @@ const one = (runs: Run[], text: string): Run => {
 const near = (actual: number, expected: number) => expect(actual).toBeCloseTo(expected, 1);
 
 describe("renderCertificate: the page (spec §7)", () => {
-  test("one A4 landscape page, black, both fonts embedded as subsets, under 300 KB with a full-size signature", async () => {
+  test("one A4 landscape page, black, Jost a subset and the script font whole, no image, under 300 KB", async () => {
     const bytes = await renderCertificate(FIXTURE, ASSETS);
     expect(bytes.length).toBeLessThan(300 * 1024);
     expect(new TextDecoder().decode(bytes.subarray(0, 5))).toBe("%PDF-");
     const { doc, pages, page, fontNames, ops } = await readPdf(bytes);
     expect(pages).toHaveLength(1);
     expect(page.getSize()).toEqual({ width: 842, height: 595 });
-    expect(fontNames).toHaveLength(2);
-    expect(fontNames[0]).toMatch(/^GreatVibes-Regular-\d+$/);
-    expect(fontNames[1]).toMatch(/^Jost-Regular-\d+$/);
-    // the whole page is filled black first
+    expect(fontNames.map(family)).toEqual([SANS_FAMILY, SCRIPT_FAMILY].sort());
+    // the whole page is filled black first; the texts and the lines are white
     expect(ops.trimStart().startsWith("q\n0 0 0 rg")).toBe(true);
     expect(ops).toContain("0 0 m\n0 595 l\n842 595 l\n842 0 l\nh\nf");
-    // each font's file is in the PDF (Type0 font → its CID font → the descriptor → FontFile2), a subset: much smaller than the font
+    expect(ops).toContain("1 1 1 rg");
+    expect(ops).toContain("1 1 1 RG");
+    // no signature image (the trainer's name is typed in the script font), nothing but the two fonts as resources
+    expect(imagesOf(page)).toEqual([]);
+    // each font's file is in the PDF (Type0 font → its CID font → the descriptor → FontFile2 for TrueType, FontFile3 for CFF): Jost a subset, much
+    // smaller than the font; Revive 80 Signature whole (pdf-lib's subset of this CFF font is a file MuPDF rejects, so the viewer would draw a
+    // substitute sans), its stream about the font file's size
     const fontDicts = doc.context.enumerateIndirectObjects().flatMap(([, o]) => (o instanceof PDFDict && o.get(PDFName.of("Subtype"))?.toString() === "/Type0" ? [o] : []));
     expect(fontDicts).toHaveLength(2);
+    const fileSizes = new Map<string, number>();
     for (const font of fontDicts) {
       const cid = doc.context.lookup(font.lookup(PDFName.of("DescendantFonts"), PDFArray).get(0), PDFDict);
-      const file = cid.lookup(PDFName.of("FontDescriptor"), PDFDict).lookup(PDFName.of("FontFile2"));
-      expect(decodePDFRawStream(rawStream(file)).decode().length).toBeLessThan(SANS.length / 2);
+      const descriptor = cid.lookup(PDFName.of("FontDescriptor"), PDFDict);
+      const file = descriptor.lookup(PDFName.of("FontFile2")) ?? descriptor.lookup(PDFName.of("FontFile3"));
+      fileSizes.set(family(font.lookup(PDFName.of("BaseFont"), PDFName).decodeText()), decodePDFRawStream(rawStream(file)).decode().length);
     }
+    expect(fileSizes.get(SANS_FAMILY)!).toBeLessThan(SANS.length / 2);
+    expect(fileSizes.get(SCRIPT_FAMILY)!).toBeGreaterThan(SCRIPT.length * 0.95);
+    expect(fileSizes.get(SCRIPT_FAMILY)!).toBeLessThan(SCRIPT.length * 1.05);
     // neutral metadata, dated by the issue
     expect([doc.getTitle(), doc.getAuthor(), doc.getProducer(), doc.getCreator()]).toEqual(["Tunnistus MS LAB 2026-03", "MS LAB", "MS LAB", "MS LAB"]);
     expect(doc.getCreationDate()).toEqual(FIXTURE.issuedAt);
+    expect(doc.getModificationDate()).toEqual(FIXTURE.issuedAt);
   });
 
   test("the same certificate gives the same file on every download", async () => {
@@ -198,20 +169,20 @@ describe("renderCertificate: the page (spec §7)", () => {
   test("the texts, their fonts, sizes and places: the heading, the title in spaced capitals, the name over the line, the foot", async () => {
     const { runs, ops } = await readPdf(await renderCertificate(FIXTURE, ASSETS));
     const heading = one(runs, "TUNNISTUS");
-    expect([heading.font, heading.size, heading.y]).toEqual(["Jost", 54, 478]);
+    expect([heading.font, heading.size, heading.y]).toEqual([SANS_FAMILY, 54, 478]);
     near(heading.x + widthOf(heading) / 2, 421);
     const title = one(runs, "KULMUDE KUJUNDAMISE E-KOOLITUS");
-    expect([title.font, title.size, title.y]).toEqual(["Jost", 18, 440]);
+    expect([title.font, title.size, title.y]).toEqual([SANS_FAMILY, 18, 440]);
     near(title.spacing, 0.35);
     near(title.x + widthOf(title) / 2, 421);
     const name = one(runs, "Kertu Õunapuu");
-    expect([name.font, name.size, name.y]).toEqual(["GreatVibes", 54, 334]);
+    expect([name.font, name.size, name.y]).toEqual([SCRIPT_FAMILY, 88, 331]);
     near(name.x + widthOf(name) / 2, 421);
     // the thin line under the name: 70 % of the width, centred
     expect(ops).toMatch(/126\.3\d* 316 m\n715\.7 316 l\nS/);
     // the practical line at the left and the volume at the right, on one baseline, in capitals
     const practical = one(runs, "PRAKTILINE TÖÖ FOTODEL, KOOLITAJA POOLT HINNATUD ISESEISEV PROTSEDUURI TEOSTAMINE");
-    expect([practical.font, practical.size, practical.x, practical.y]).toEqual(["Jost", 8, 56, 148]);
+    expect([practical.font, practical.size, practical.x, practical.y]).toEqual([SANS_FAMILY, 8, 56, 148]);
     const volume = one(runs, "10 AKADEEMILIST TUNDI");
     expect([volume.size, volume.y]).toEqual([8, 148]);
     near(volume.x + widthOf(volume), 786);
@@ -222,10 +193,10 @@ describe("renderCertificate: the page (spec §7)", () => {
     near(small.x + widthOf(small) / 2, 131);
     expect(one(runs, "REGISTRIKOOD: 16346048")).toMatchObject({ x: 56, y: 58, size: 7.5 });
     expect(one(runs, "Tunnistuse nr. MS LAB 2026-03")).toMatchObject({ x: 56, y: 46, size: 7.5 });
-    // bottom right: "KOOLITAJA" and the place with the Tallinn date of the issue, centred under the signature
+    // bottom right: "KOOLITAJA" and the place with the Tallinn date of the issue, centred under the trainer's name
     for (const [text, y] of [["KOOLITAJA", 58], ["Pärnu linn 15.10.2026", 46]] as const) {
       const run = one(runs, text);
-      expect([run.font, run.size, run.y]).toEqual(["Jost", 8, y]);
+      expect([run.font, run.size, run.y]).toEqual([SANS_FAMILY, 8, y]);
       near(run.x + widthOf(run) / 2, 706);
     }
   });
@@ -253,29 +224,54 @@ describe("renderCertificate: the page (spec §7)", () => {
     }
   });
 
-  test("the signature image in its box at the bottom right; without one, the trainer's name in the script font there", async () => {
-    const signed = await readPdf(await renderCertificate(FIXTURE, ASSETS));
-    expect(signed.drawn).toHaveLength(1);
-    const [image] = signed.drawn;
-    expect(image.pixels).toEqual({ width: 1200, height: 400 });
-    // scaled to fit 170 × 56, keeping its proportions, standing on y 72, centred on 706
-    near(image.height, 56);
-    near(image.width, 168);
-    near(image.y, 72);
-    near(image.x + image.width / 2, 706);
-    expect(runsIn(signed.runs, "GreatVibes").map((r) => r.text)).toEqual(["Kertu Õunapuu"]);
-
-    const unsigned = await readPdf(await renderCertificate(FIXTURE, NO_SIGNATURE));
-    expect(unsigned.drawn).toEqual([]);
-    const trainer = one(unsigned.runs, "Maria Sosnina");
-    expect([trainer.font, trainer.size, trainer.y]).toEqual(["GreatVibes", 26, 78]);
+  test("Maria's signature is the trainer's name typed in the script font at the bottom right, above KOOLITAJA, and there is never an image", async () => {
+    const { runs, page } = await readPdf(await renderCertificate(FIXTURE, ASSETS));
+    expect(imagesOf(page)).toEqual([]);
+    const trainer = one(runs, "Maria Sosnina");
+    expect([trainer.font, trainer.size, trainer.y]).toEqual([SCRIPT_FAMILY, 40, 96]);
     near(trainer.x + widthOf(trainer) / 2, 706);
+    // its ink (the M's swash reaches below the baseline) stays clear of "KOOLITAJA" (capitals 5.6 pt high on baseline 58) and of the practical line (148)
+    const ink = inkOf(trainer);
+    expect(ink.bottom).toBeGreaterThan(58 + 8 * 0.7 + 4);
+    expect(ink.top).toBeLessThan(148 - 6);
+    // the name and the trainer's name are the only script texts
+    expect(runsIn(runs, SCRIPT_FAMILY).map((r) => r.text).sort()).toEqual(["Kertu Õunapuu", "Maria Sosnina"]);
+  });
+
+  test("a long trainer's name shrinks to fit the 170 pt column; the worst letters stay clear of KOOLITAJA", async () => {
+    const trainerName = "Anna-Maria Kristiina Elisabeth Õunapuu";
+    const long = one((await readPdf(await renderCertificate({ ...FIXTURE, trainerName }, ASSETS))).runs, trainerName);
+    expect(long.size).toBeLessThan(40);
+    near(widthOf(long), 170);
+    near(long.x + widthOf(long) / 2, 706);
+    const worst = one((await readPdf(await renderCertificate({ ...FIXTURE, trainerName: "Yrjö Ÿvonne" }, ASSETS))).runs, "Yrjö Ÿvonne");
+    expect(inkOf(worst).bottom).toBeGreaterThan(58 + 8 * 0.7 + 1);
+  });
+
+  test("the place and the date are fitted to the signature column; a place of 60 characters stays inside the page", async () => {
+    const place = "Pärnu linn, Pärnumaa, Eesti Vabariik, Euroopa Liit, Maailm.".padEnd(60, "x");
+    expect(Array.from(place)).toHaveLength(60);
+    for (const text of [place, "M".repeat(60)]) {
+      const { runs } = await readPdf(await renderCertificate({ ...FIXTURE, place: text }, ASSETS));
+      const line = one(runs, `${text} 15.10.2026`);
+      expect(line.y).toBe(46);
+      expect(line.size).toBeLessThan(8);
+      expect(line.size).toBeGreaterThan(3);
+      near(line.x + widthOf(line) / 2, 706);
+      expect(line.x).toBeGreaterThan(560);
+      expect(line.x + widthOf(line)).toBeLessThanOrEqual(806 + 0.01);
+    }
+    // down to a floor (5 pt) a place is fitted to the 170 pt column, a short one is not touched
+    const medium = one((await readPdf(await renderCertificate({ ...FIXTURE, place: "Tallinn, Harju maakond, Eesti Vabariik, Euroopa" }, ASSETS))).runs, "Tallinn, Harju maakond, Eesti Vabariik, Euroopa 15.10.2026");
+    expect(medium.size).toBeLessThan(8);
+    expect(medium.size).toBeGreaterThanOrEqual(5);
+    expect(widthOf(medium)).toBeLessThanOrEqual(170 + 0.01);
   });
 
   test("a long course title wraps to two lines at 14 pt", async () => {
     const courseTitle = "Kulmude ja ripsmete kujundamise, värvimise ning laminatsiooni põhjalik e-koolitus algajatele";
     const { runs } = await readPdf(await renderCertificate({ ...FIXTURE, courseTitle }, ASSETS));
-    const lines = runs.filter((r) => r.font === "Jost" && r.y > 400 && r.text !== "TUNNISTUS");
+    const lines = runs.filter((r) => r.font === SANS_FAMILY && r.y > 400 && r.text !== "TUNNISTUS");
     expect(lines.map((r) => [r.size, r.y])).toEqual([[14, 448], [14, 428]]);
     expect(lines.map((r) => r.text).join(" ")).toBe(courseTitle.toLocaleUpperCase("et"));
     for (const line of lines) {
@@ -286,7 +282,7 @@ describe("renderCertificate: the page (spec §7)", () => {
 
   test("the competency lines: two columns of bullets, the left one filled first, 9.5 pt; 8.5 pt above 12 lines; a long line wraps under its bullet", async () => {
     const six = await readPdf(await renderCertificate(FIXTURE, ASSETS));
-    const rows = (runs: Run[]) => runs.filter((r) => r.font === "Jost" && r.y <= 290 && r.y > 160 && r.text !== "•");
+    const rows = (runs: Run[]) => runs.filter((r) => r.font === SANS_FAMILY && r.y <= 290 && r.y > 160 && r.text !== "•");
     const bullets = (runs: Run[]) => runs.filter((r) => r.text === "•");
     expect(rows(six.runs).map((r) => [r.text, r.x, r.y, r.size])).toEqual([
       ["Kulmude kuju analüüs", 107.4, 290, 9.5],
@@ -315,18 +311,19 @@ describe("renderCertificate: the page (spec §7)", () => {
   test("16 lines of 120 characters still stay above the practical line", async () => {
     const skills = Array.from({ length: 16 }, (_, i) => `${i + 1}. ${"Kulmude kuju analüüs ja värvimine ".repeat(4)}`.slice(0, 120));
     const { runs } = await readPdf(await renderCertificate({ ...FIXTURE, skills }, ASSETS));
-    const rows = runs.filter((r) => r.font === "Jost" && r.y <= 290 && r.y > 150 && r.text !== "•");
+    const rows = runs.filter((r) => r.font === SANS_FAMILY && r.y <= 290 && r.y > 150 && r.text !== "•");
     expect(Math.min(...rows.map((r) => r.y))).toBeGreaterThanOrEqual(172);
     expect(rows.map((r) => r.text).join(" ")).toBe(skills.map((s) => s.trim()).join(" "));
   });
 });
 
 describe("Review Focus 2: a name the fonts or the layout cannot take", () => {
-  const nameRuns = async (name: string) => runsIn((await readPdf(await renderCertificate({ ...FIXTURE, name }, ASSETS))).runs, "GreatVibes");
+  const nameRuns = async (name: string, title?: string) =>
+    runsIn((await readPdf(await renderCertificate({ ...FIXTURE, name, ...(title ? { courseTitle: title } : {}) }, ASSETS))).runs, SCRIPT_FAMILY).filter((r) => r.text !== "Maria Sosnina");
   /** Two lines of a name read back as one: a break after a hyphen keeps it, a break at a space drops it. */
   const joined = (lines: Run[]) => lines.reduce((s, r) => (s === "" ? r.text : s.endsWith("-") ? s + r.text : `${s} ${r.text}`), "");
 
-  test("an 80-character name with a double surname wraps to two lines at 30 pt or smaller, each within the line and centred", async () => {
+  test("an 80-character name with a double surname wraps to two lines at 44 pt or smaller, each within the line and centred", async () => {
     const name = "Anna-Maria Kristiina Elisabeth Õunapuu-Šmidt von Liivalaid-Kuusemäe Tammsaar-Ots";
     expect(checkCertificateName(name)).toEqual({ ok: true, name });
     expect(Array.from(name)).toHaveLength(80);
@@ -334,31 +331,52 @@ describe("Review Focus 2: a name the fonts or the layout cannot take", () => {
     expect(lines).toHaveLength(2);
     expect(joined(lines)).toBe(name);
     expect(lines[0].size).toBe(lines[1].size);
-    expect(lines[0].size).toBeLessThanOrEqual(30);
-    expect(lines[0].size).toBeGreaterThan(20);
-    expect(lines.map((r) => r.y)).toEqual([expect.closeTo(330 + lines[0].size * 1.15, 5), 330]);
+    expect(lines[0].size).toBeLessThanOrEqual(44);
+    expect(lines[0].size).toBeGreaterThan(30);
+    expect(lines[0].y - lines[1].y).toBeCloseTo(lines[0].size * 1.1, 5);
+    expect(lines[1].y).toBeGreaterThanOrEqual(331);
     for (const r of lines) {
-      expect(widthOf(r)).toBeLessThanOrEqual(570 + 0.01);
+      expect(widthOf(r)).toBeLessThanOrEqual(540 + 0.01);
       near(r.x + widthOf(r) / 2, 421);
     }
   });
 
-  test("a long name shrinks to fit the line on one line while it can stay at 30 pt or more", async () => {
+  test("a long name shrinks to fit the line on one line while it can stay at 44 pt or more", async () => {
     const [line, ...rest] = await nameRuns("Kristiina-Elisabeth Õunapuu-Liivalaid");
     expect(rest).toEqual([]);
     expect(line.text).toBe("Kristiina-Elisabeth Õunapuu-Liivalaid");
-    expect(line.size).toBeLessThan(54);
-    expect(line.size).toBeGreaterThanOrEqual(30);
-    near(widthOf(line), 570);
-    expect(line.y).toBe(334);
+    expect(line.size).toBeLessThan(88);
+    expect(line.size).toBeGreaterThanOrEqual(44);
+    near(widthOf(line), 540);
+    expect(line.y).toBeGreaterThanOrEqual(331);
   });
 
-  test("a Cyrillic name prints in the script font, and the text extraction finds it", async () => {
-    for (const name of ["Мария Соснина", "Анастасия Владимировна Соколова-Кузнецова", "Олеся Ґудзь-Їжакевич"]) {
+  test("names in Latin letters print in the script font, and the text extraction finds them: every Estonian letter, and the other languages' letters", async () => {
+    const names = [
+      "Õie-Mai Šõrmus-Žukova",
+      "Ülle Äär Öövel Tõnisson",
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ ÕÄÖÜŠŽ",
+      "abcdefghijklmnopqrstuvwxyz õäöüšž",
+      "Åsa Çelik-Þórunn Œdipe Ÿvonne Ægir Weiß",
+      "François Müller-Weiß",
+    ];
+    for (const name of names) {
+      expect(checkCertificateName(name), name).toEqual({ ok: true, name });
       const lines = await nameRuns(name);
       expect(joined(lines), name).toBe(name);
-      for (const r of lines) expect(widthOf(r)).toBeLessThanOrEqual(570 + 0.01);
+      for (const r of lines) {
+        expect(r.font).toBe(SCRIPT_FAMILY);
+        expect(widthOf(r)).toBeLessThanOrEqual(540 + 0.01);
+      }
     }
+  });
+
+  test("an apostrophe prints as the straight one (the script font has no ’): the name is read back with it", async () => {
+    expect(checkCertificateName("Siobhan O’Neill")).toEqual({ ok: true, name: "Siobhan O’Neill" });
+    expect(joined(await nameRuns("Siobhan O’Neill"))).toBe("Siobhan O'Neill");
+    expect(joined(await nameRuns("D'Artagnan"))).toBe("D'Artagnan");
+    expect(revive.hasGlyphForCodePoint("'".codePointAt(0)!)).toBe(true);
+    expect(revive.hasGlyphForCodePoint("’".codePointAt(0)!)).toBe(false);
   });
 
   test("a name with nowhere to break stays on one line, as small as it must be", async () => {
@@ -366,57 +384,57 @@ describe("Review Focus 2: a name the fonts or the layout cannot take", () => {
     const [line, ...rest] = await nameRuns(name);
     expect(rest).toEqual([]);
     expect(line.text).toBe(name);
-    expect(line.size).toBeLessThan(30);
-    near(widthOf(line), 570);
+    expect(line.size).toBeLessThan(44);
+    near(widthOf(line), 540);
+  });
+
+  test("the name's ink never touches the title above or the competency lines below: carons and tildes up, swashes down, one line or two", async () => {
+    const names = ["Kertu Rannak", "Õie-Mai Šõrmus-Žukova", "Yrjö Gunnar", "Ÿvonne Ýlva", "Åsa Jüri-Hjalmar", "Gerda Johanna Helene Fanny", "Anna-Maria Kristiina Elisabeth Õunapuu-Šmidt von Liivalaid-Kuusemäe Tammsaar-Ots", "Åsa Ÿ-Ÿ Åke Ýrjö-Ýrjö Ÿvonne Åsa Ÿ-Ÿ Åke Ýrjö-Ýrjö Ÿvonne Hjalmar Jürgen Gunnar"];
+    for (const name of names) {
+      for (const title of [undefined, "Kulmude ja ripsmete kujundamise, värvimise ning laminatsiooni põhjalik e-koolitus algajatele"]) {
+        const lines = await nameRuns(name, title);
+        expect(lines.length, name).toBeLessThanOrEqual(2);
+        const lowest = inkOf(lines[lines.length - 1]).bottom;
+        const highest = inkOf(lines[0]).top;
+        expect(lowest, `${name}: lowest ink`).toBeGreaterThanOrEqual(INK_BAND.bottom - 0.01);
+        expect(highest, `${name}: highest ink`).toBeLessThanOrEqual(INK_BAND.top + 0.01);
+      }
+    }
+  });
+
+  test("a name whose capitals reach far below the baseline (Y, G, J, H) is lifted so that the ink stays above the competency lines", async () => {
+    const [plain] = await nameRuns("Kertu Rannak");
+    expect(plain.y).toBe(331); // its swash (0.31 em) already clears the lines
+    for (const name of ["Yrjö Ylva", "Gerda Helene"]) {
+      const [line] = await nameRuns(name);
+      expect(line.y, name).toBeGreaterThan(331);
+      near(inkOf(line).bottom, INK_BAND.bottom);
+      expect(line.size, name).toBe(88); // lifted, not shrunk
+    }
   });
 
   test("every letter the name rules accept has a glyph in the script font (none prints as an empty box)", () => {
-    const missing: string[] = [];
-    let letters = 0;
+    const letters = new Set<string>();
     for (let cp = 0; cp <= 0xffff; cp++) {
       if (cp >= 0xd800 && cp <= 0xdfff) continue;
       const r = checkCertificateName(String.fromCodePoint(cp).repeat(2));
-      if (!r.ok) continue;
-      for (const c of new Set(Array.from(r.name))) {
-        letters++;
-        if (!greatVibes.hasGlyphForCodePoint(c.codePointAt(0)!)) missing.push(c);
-      }
+      if (r.ok) for (const c of Array.from(r.name)) letters.add(c);
     }
-    expect(letters).toBeGreaterThan(400);
-    expect(missing).toEqual([]);
-    // and the joiners between them
-    for (const c of " -'’.") expect(greatVibes.hasGlyphForCodePoint(c.codePointAt(0)!), c).toBe(true);
+    expect(letters.size).toBe(120);
+    expect([...letters].filter((c) => !revive.hasGlyphForCodePoint(c.codePointAt(0)!))).toEqual([]);
+    // and the joiners between them (the typographic apostrophe is drawn as the straight one)
+    for (const c of " -'.") expect(revive.hasGlyphForCodePoint(c.codePointAt(0)!), c).toBe(true);
   });
 });
 
 describe("loadCertificateAssets", () => {
   test("the two fonts from app/assets/fonts, read once per process", async () => {
-    const a = await loadCertificateAssets(null, null);
+    const a = await loadCertificateAssets();
+    expect(Object.keys(a).sort()).toEqual(["sans", "script"]);
     expect(Buffer.from(a.sans).equals(Buffer.from(SANS))).toBe(true);
     expect(Buffer.from(a.script).equals(Buffer.from(SCRIPT))).toBe(true);
-    const b = await loadCertificateAssets(null, null);
+    const b = await loadCertificateAssets();
     expect([b.sans, b.script]).toEqual([a.sans, a.script]);
     expect(b.sans).toBe(a.sans); // the same bytes, not read again
-  });
-
-  test("the signature from the store; null without a key, a store or the object", async () => {
-    const key = "certificate/signature-0b5e8f2a.png";
-    const store = fakeMediaStore({ [key]: { bytes: Array.from(SIGNATURE), contentType: "image/png" } });
-    expect(Buffer.from((await loadCertificateAssets(store, key)).signature!).equals(Buffer.from(SIGNATURE))).toBe(true);
-    expect((await loadCertificateAssets(store, "certificate/signature-gone.png")).signature).toBeNull();
-    expect((await loadCertificateAssets(null, key)).signature).toBeNull();
-    store.requested.length = 0;
-    expect((await loadCertificateAssets(store, null)).signature).toBeNull();
-    expect(store.requested).toEqual([]); // no key: the store is not asked
-  });
-
-  test("a store that cannot be reached fails the download (never a certificate without the signature it has)", async () => {
-    const store = { ...fakeMediaStore(), get: async () => Promise.reject(new Error("R2 down")) };
-    await expect(loadCertificateAssets(store, "certificate/signature-x.png")).rejects.toThrow("R2 down");
-  });
-
-  test("an ArrayBuffer body works as well as a stream", async () => {
-    const store = { ...fakeMediaStore(), get: async () => ({ body: SIGNATURE.slice().buffer as ArrayBuffer }) };
-    expect(Buffer.from((await loadCertificateAssets(store, "certificate/signature-x.png")).signature!).equals(Buffer.from(SIGNATURE))).toBe(true);
   });
 });

@@ -58,9 +58,14 @@ describe("Review Focus 2: the name rules (spec §5)", () => {
       expect(checkCertificateName(name), name).toEqual({ ok: true, name });
   });
 
-  test("Cyrillic and other European letters print, so they are accepted", () => {
-    for (const name of ["Мария Соснина", "Ёлкина Анна", "Олеся Ґудзь-Їжакевич", "Ўладзімір Шчэрба", "Zoë Brontë", "Łucja Wąsik", "Ștefan Țepeș", "Ægir Ørsted", "Nguyễn Thị Ánh"])
+  test("Finnish, German, French, Scandinavian, Spanish, Portuguese and Italian names print too, so they are accepted", () => {
+    for (const name of ["Päivi Hämäläinen", "Jürgen Weiß", "François Müller-Weiß", "Chloé Dubois", "Åsa Lindqvist", "Søren Ørsted", "Ægir Þórunn", "Zoë Brontë", "José Peña", "Cañizares", "João Gonçalves", "Niccolò Alighieri", "Œdipe Ÿvonne"])
       expect(checkCertificateName(name), name).toEqual({ ok: true, name });
+  });
+
+  test("a name is written in Latin letters, as in the passport: Cyrillic and the letters of Latvian, Lithuanian, Polish, Czech, Romanian and Icelandic are refused", () => {
+    for (const name of ["Мария Соснина", "Ёлкина Анна", "Олеся Ґудзь-Їжакевич", "Jānis Bērziņš", "Łukasz Wąsik", "Čapek Šimek", "Ștefan Țepeș", "Žilvinas Ūdra", "Nguyễn Thị Ánh", "Guðrún", "Dagþór", "Đorđe"])
+      expect(checkCertificateName(name), name).toEqual({ ok: false, error: "letters" });
   });
 
   test("cleaned first: NFC, trimmed, every run of white space one space", () => {
@@ -86,26 +91,33 @@ describe("Review Focus 2: the name rules (spec §5)", () => {
     for (const name of ["--", "A.", "' '", "A -"]) expect(checkCertificateName(name), name).toEqual({ ok: false, error: "letters" });
   });
 
-  test("a Latin or Cyrillic letter the script font cannot draw is refused like a digit (it would print as an empty box)", () => {
-    for (const name of ["Қайрат", "Әлия", "Ａnna", "ſara", "ʃana", "Ƿynn", "Ѳеодор"]) expect(checkCertificateName(name), name).toEqual({ ok: false, error: "letters" });
-    for (const name of ["Αθηνά", "王芳", "שרה", "Ann̲a"]) expect(checkCertificateName(name), name).toEqual({ ok: false, error: "letters" }); // Greek, Chinese, Hebrew, a combining mark
+  test("a letter the script font cannot draw is refused like a digit (it would print as an empty box)", () => {
+    for (const name of ["Ａnna", "ſara", "ʃana", "Ƿynn", "Kŵsi", "×Anna", "Anna÷Mari", "Aª", "Mº"]) expect(checkCertificateName(name), name).toEqual({ ok: false, error: "letters" });
+    for (const name of ["Αθηνά", "Қайрат", "王芳", "שרה", "Ann̲a"]) expect(checkCertificateName(name), name).toEqual({ ok: false, error: "letters" }); // Greek, Kazakh, Chinese, Hebrew, a combining mark
   });
 
-  test("every letter the rule accepts is a Latin or Cyrillic letter (\\p{L}, Script=Latin or Cyrillic)", () => {
-    const accepted: string[] = [];
+  test("the letters the rule accepts are exactly the Latin ones Revive 80 Signature draws: A–Z a–z À–Ö Ø–ï ñ–ö ø–ý ÿ ı Œ œ Š š Ÿ Ž ž (120)", () => {
+    const accepted = new Set<string>();
     for (let cp = 0; cp <= 0xffff; cp++) {
       if (cp >= 0xd800 && cp <= 0xdfff) continue;
       const r = checkCertificateName(String.fromCodePoint(cp).repeat(2));
-      if (r.ok) accepted.push(...Array.from(r.name));
+      if (r.ok) for (const c of Array.from(r.name)) accepted.add(c);
     }
-    expect(accepted.length).toBeGreaterThan(400);
-    expect(accepted.filter((c) => !/^\p{L}$/u.test(c) || !/^[\p{Script=Latin}\p{Script=Cyrillic}]$/u.test(c))).toEqual([]);
+    const expected = new Set<string>();
+    for (const [from, to] of [[0x41, 0x5a], [0x61, 0x7a], [0xc0, 0xd6], [0xd8, 0xef], [0xf1, 0xf6], [0xf8, 0xfd], [0xff, 0xff], [0x131, 0x131], [0x152, 0x153], [0x160, 0x161], [0x178, 0x178], [0x17d, 0x17e]])
+      for (let cp = from; cp <= to; cp++) expected.add(String.fromCodePoint(cp));
+    expect(expected.size).toBe(120);
+    expect([...accepted].sort()).toEqual([...expected].sort());
+    // every one is a Latin letter; ð (U+00F0) and þ (U+00FE), which the font lacks, and º (a sign, not a name letter) are out
+    expect([...accepted].filter((c) => !/^\p{L}$/u.test(c) || !/^\p{Script=Latin}$/u.test(c))).toEqual([]);
+    expect(["ð", "þ", "º", "ª", "×", "÷"].filter((c) => accepted.has(c))).toEqual([]);
+    expect(["Ð", "Þ", "ß", "ı"].filter((c) => !accepted.has(c))).toEqual([]);
   });
 });
 
 describe("readCertificateSettings: the stored setting read defensively", () => {
   const now = new Date("2026-10-15T09:00:00Z");
-  const defaults = { ...CERT_DEFAULTS, nextYear: 2026, nextSeq: 1, signatureKey: null };
+  const defaults = { ...CERT_DEFAULTS, nextYear: 2026, nextSeq: 1 };
 
   test("nothing stored, or not an object: the defaults, this Tallinn year and 1", () => {
     for (const value of [null, undefined, "x", 5, [], true]) expect(readCertificateSettings(value, now)).toEqual(defaults);
@@ -113,9 +125,8 @@ describe("readCertificateSettings: the stored setting read defensively", () => {
   });
 
   test("a well-formed setting as it is, its texts trimmed", () => {
-    const stored = { place: " Tallinn ", registryCode: "12345678", practicalLine: "Praktiline töö", trainerName: "Maria", nextYear: 2026, nextSeq: 14, signatureKey: "certificate/signature-0b5e.png" };
-    expect(readCertificateSettings(stored, now)).toEqual({ ...stored, place: "Tallinn" });
-  });
+    const stored = { place: " Tallinn ", registryCode: "12345678", practicalLine: "Praktiline töö", trainerName: "Maria", nextYear: 2026, nextSeq: 14 };
+    expect(readCertificateSettings(stored, now)).toEqual({ ...stored, place: "Tallinn" });  });
 
   test("each malformed text is its default: missing, not a string, blank, or over its limit", () => {
     expect(readCertificateSettings({ place: "   ", registryCode: 16346048, trainerName: "x".repeat(61), practicalLine: "y".repeat(201) }, now)).toEqual(defaults);
@@ -133,8 +144,15 @@ describe("readCertificateSettings: the stored setting read defensively", () => {
     expect(readCertificateSettings({ nextYear: 2025, nextSeq: 31 }, now)).toMatchObject({ nextYear: 2025, nextSeq: 31 }); // nextNumber then starts 2026 at 1
   });
 
-  test("the signature key counts only under certificate/", () => {
-    for (const signatureKey of ["img/0b5e.png", "practical/a.jpg", "", 5, null]) expect(readCertificateSettings({ signatureKey }, now).signatureKey).toBeNull();
+  test("the trainer's name is kept only when it can be printed: the name rules accept it (cleaned: NFC, trimmed, one space), else Maria's own", () => {
+    expect(readCertificateSettings({ trainerName: "  Maria   Sosnina " }, now).trainerName).toBe("Maria Sosnina");
+    expect(readCertificateSettings({ trainerName: "Õie-Mai Šõrmus" }, now).trainerName).toBe("Õie-Mai Šõrmus");
+    // Cyrillic, a digit, an emoji, a single letter, a letter the font lacks, not a string, blank: the default
+    for (const trainerName of ["Мария Соснина", "Maria 2", "Maria 🌸", "M", "Jānis Ozols", 5, null, "", "   "])
+      expect(readCertificateSettings({ trainerName }, now).trainerName, String(trainerName)).toBe(CERT_DEFAULTS.trainerName);
+    // longer than the trainer's limit (60) though within a name's (80): the default as well
+    expect(readCertificateSettings({ trainerName: "A".repeat(61) }, now).trainerName).toBe(CERT_DEFAULTS.trainerName);
+    expect(readCertificateSettings({ trainerName: "A".repeat(60) }, now).trainerName).toBe("A".repeat(60));
   });
 });
 

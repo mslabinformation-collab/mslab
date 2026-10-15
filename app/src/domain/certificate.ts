@@ -16,13 +16,11 @@ export type CertificateSettings = {
   place: string;
   registryCode: string;
   practicalLine: string;
-  /** Written in the script font where the signature goes, while there is no signature image. */
+  /** Maria's signature: her name typed in the script font where the signature goes (there is no signature image). Printable: the name rules accept it. */
   trainerName: string;
   /** The next certificate of `nextYear` gets `nextSeq` (nextNumber); another year starts at 1. */
   nextYear: number;
   nextSeq: number;
-  /** The private R2 object `certificate/signature-<uuid>.png` (white ink on transparent), or null. */
-  signatureKey: string | null;
 };
 
 /** Before Maria saves Seaded → Tunnistus (spec §3). The practical line is a draft for her. */
@@ -48,44 +46,45 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const wholeIn = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 
 /**
- * The stored setting read defensively (jsonb: anything). Each text is trimmed; a missing, blank or over-long one is the default. The next
- * number is a pair: a whole year 2000–9999 and a whole number from 1, else both are the default (this Tallinn year, 1). The signature key
- * counts only under "certificate/": the PDF never reads any other object of the store.
+ * The stored setting read defensively (jsonb: anything). Each text is trimmed; a missing, blank or over-long one is the default. The trainer's
+ * name is Maria's signature, drawn in the script font, so it is kept only when it can be printed: the name rules accept it (checkCertificateName)
+ * and it is within the trainer's limit; it is read as the rules clean it (NFC, one space between words), else it is the default. The next
+ * number is a pair: a whole year 2000–9999 and a whole number from 1, else both are the default (this Tallinn year, 1).
  */
 export function readCertificateSettings(value: unknown, now: Date): CertificateSettings {
   const v = isObject(value) ? value : {};
-  const text = (key: keyof typeof CERT_DEFAULTS, max: number): string => {
+  const text = (key: "place" | "registryCode" | "practicalLine", max: number): string => {
     const s = typeof v[key] === "string" ? (v[key] as string).trim() : "";
     return s && s.length <= max ? s : CERT_DEFAULTS[key];
   };
   const numbered = wholeIn(v.nextYear, 2000, 9999) && wholeIn(v.nextSeq, 1, Number.MAX_SAFE_INTEGER);
-  const key = v.signatureKey;
+  const trainer = typeof v.trainerName === "string" ? checkCertificateName(v.trainerName) : null;
   return {
     place: text("place", CERT_LIMITS.place),
     registryCode: text("registryCode", CERT_LIMITS.registryCode),
     practicalLine: text("practicalLine", CERT_LIMITS.practicalLine),
-    trainerName: text("trainerName", CERT_LIMITS.trainerName),
+    trainerName: trainer?.ok && Array.from(trainer.name).length <= CERT_LIMITS.trainerName ? trainer.name : CERT_DEFAULTS.trainerName,
     nextYear: numbered ? (v.nextYear as number) : tallinnYear(now),
     nextSeq: numbered ? (v.nextSeq as number) : 1,
-    signatureKey: typeof key === "string" && key.startsWith("certificate/") ? key : null,
   };
 }
 
 /**
- * The letters a name may hold: the Latin and Cyrillic letters (\p{Script=Latin} / \p{Script=Cyrillic}) that the script font, Great Vibes,
- * draws. That is A–Z, the Latin-1 letters, Latin Extended-A but ŉ and ſ, Romanian Ș ș Ț ț, Latin Extended Additional (Vietnamese) but
- * the few it lacks, and Cyrillic А–я with Ѐ–Џ, ѐ–џ and Ґ ґ (Russian, Ukrainian, Belarusian, Serbian, Macedonian, Bulgarian). A Latin or
- * Cyrillic letter outside it (IPA, most of Latin Extended-B, Kazakh Қ, fullwidth Ａ) would print as an empty box, so it is refused like a
- * digit (tests/unit/certificate-pdf.test.ts asks the font for every letter accepted here).
+ * The letters a name may hold: the Latin letters that the certificate's script font, Revive 80 Signature, draws, and no others (a letter it
+ * lacks would print as an empty box): A–Z a–z, the Latin-1 letters À–Ö Ø–ï ñ–ö ø–ý ÿ (so not × ÷, the signs ª º, nor ð and þ, which the font
+ * lacks; Ð and Þ it has), ı, Œ œ, Š š, Ÿ and Ž ž. That is the Estonian õ ä ö ü š ž and the names of Finland, Germany, France, Scandinavia,
+ * Spain, Portugal and Italy. A name is written in Latin letters, as in the passport: Cyrillic is refused, and so are the letters of Latvian,
+ * Lithuanian, Polish, Czech, Romanian and the like (Č Ł Ā Ę …), like a digit. tests/unit/certificate-pdf.test.ts asks the font for every
+ * letter accepted here.
  */
-const LETTER = /^[A-Za-zÀ-ÖØ-öø-ňŊ-žȘ-țЀ-џҐґḀ-ẕẞẠ-ỹ]$/;
-/** Between the letters: a space, a hyphen, an apostrophe (' or ’) or a dot. */
+const LETTER = /^[A-Za-zÀ-ÖØ-ïñ-öø-ýÿıŒœŠšŸŽž]$/;
+/** Between the letters: a space, a hyphen, an apostrophe (' or ’; the PDF draws both as ', the font has no ’) or a dot. */
 const JOINERS = " -'’.";
 
 /**
  * The name on the certificate (spec §5): NFC, trimmed, every run of white space one space; 2–80 characters ("length"); then only letters
- * (LETTER) and joiners, with at least two letters ("letters": "Kasuta nimes ainult tähti, tühikuid ja sidekriipse"). A digit, an emoji or a
- * letter the font lacks is refused before anything is stored.
+ * (LETTER) and joiners, with at least two letters ("letters": "Kasuta nimes ainult tähti, tühikuid ja sidekriipse"). A digit, an emoji, a
+ * Cyrillic letter or any letter the font lacks is refused before anything is stored.
  */
 export function checkCertificateName(raw: string): { ok: true; name: string } | { ok: false; error: "length" | "letters" } {
   const name = raw.normalize("NFC").replace(/\s+/g, " ").trim();
