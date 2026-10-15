@@ -64,6 +64,27 @@ describe("completionMail (Estonian)", () => {
     expect(completionMail(input({ kind: "completed", course: { et: "Kulmud\n  ja   ripsmed" } })).subject).toBe("Palju õnne! Koolitus „Kulmud ja ripsmed“ on lõpetatud");
   });
 
+  test("completed: one more line, 'Kinnita oma nimi ja laadi tunnistus alla:' with the e-course's page, where the certificate is (phase 3d); a link, never an attachment; no other kind has it", () => {
+    const page = `${BASE}/konto/kursus/kulmude-e-kursus`;
+    const withPoints = completionMail(input({ kind: "completed", hasPoints: true }));
+    expect(withPoints.text).toBe(
+      [
+        "Tere, Kati!", "",
+        "Oled kõik koolituse sammud läbinud.", "",
+        "Kulmude e-kursus", "",
+        "Vaata koolitust:", `${page}/praktiline`, "",
+        "Kinnita oma nimi ja laadi tunnistus alla:", page, "",
+        "MS LAB Koolituskeskus",
+      ].join("\n"),
+    );
+    expect(withPoints.html).toContain(`Kinnita oma nimi ja laadi tunnistus alla:<br><a href="${page}"`);
+    expect((withPoints.html!.match(/mso-padding-alt/g) ?? []).length).toBe(1); // still one button: the line is a text link
+    expect(withPoints).not.toHaveProperty("attachments");
+    expect(completionMail(input({ kind: "completed" })).text).toContain(`Vaata koolitust:\n${page}\n\nKinnita oma nimi ja laadi tunnistus alla:\n${page}\n\nMS LAB Koolituskeskus`);
+    for (const kind of KINDS.filter((k) => k !== "completed")) expect(completionMail(input({ kind })).text, kind).not.toContain("tunnistus");
+    expect(completionMail(input({ kind: "completed", locale: "ru" })).text).toContain(`Подтвердите своё имя и скачайте сертификат:\n${BASE}/ru/konto/kursus/kulmude-e-kursus\n`);
+  });
+
   test("testPassed, testFix and reopened: the spec's subjects; the practical work after a passed test, the test otherwise", () => {
     const passed = completionMail(input({ kind: "testPassed" }));
     expect(passed.subject).toBe("Test on sooritatud");

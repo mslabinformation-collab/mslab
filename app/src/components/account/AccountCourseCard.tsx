@@ -72,6 +72,7 @@ function onlineDue(card: AccountCard, now: Date): Due {
  * If the browser comes back to this page from its back-forward cache (the payer pressed Back), the button is ready again.
  * An open e-course with lessons shows '{done} / {total}' with the e-course page's bar, or 'Läbitud ✓' (phase 2c).
  * A completed e-course says 'Lõpetatud {date}' (e-course completion), also after its access has ended.
+ * An ended e-course with a certificate links its PDF, "Laadi tunnistus alla" (phase 3d), a quiet text link: the course page has closed.
  * `readOnly`: the buttons are there but aria-disabled, and do nothing.
  */
 export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale }: CardProps) {
@@ -215,6 +216,27 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
           {link}
         </>
       );
+  }
+
+  // "Laadi tunnistus alla" (phase 3d, spec §5): an ended access's way back to its certificate, since the e-course page needs an active access.
+  // A revoked access has none (certificateId is null). A plain link: the API answers with the PDF as a download, named by its number.
+  const certificateId = card.kind === "ecourse" && !card.revoked && isPastCard(card, now) ? (card.certificateId ?? null) : null;
+  if (certificateId !== null) {
+    const link = readOnly ? (
+      <a className={styles.second} role="link" aria-disabled="true" data-card-certificate="">
+        {t.certificate}
+      </a>
+    ) : (
+      <a className={styles.second} href={`/api/konto/tunnistus/${certificateId}`} download data-card-certificate="">
+        {t.certificate}
+      </a>
+    );
+    second = (
+      <>
+        {second}
+        {link}
+      </>
+    );
   }
 
   return (

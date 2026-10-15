@@ -111,6 +111,16 @@ export function certificateFileName(year: number, seq: number): string {
 }
 
 /**
+ * The three headers every certificate download carries (spec §7), whoever asks: the type, the file name by its number, nosniff. The
+ * caller adds `cache-control: private, no-store` (the student's route through BASE_HEADERS, Maria's route by itself).
+ */
+export const certificateDownloadHeaders = (year: number, seq: number) => ({
+  "content-type": "application/pdf",
+  "content-disposition": `attachment; filename="${certificateFileName(year, seq)}"`,
+  "x-content-type-options": "nosniff",
+});
+
+/**
  * The number a certificate issued in `year` (its Tallinn year, tallinnYear) takes, and the setting after it (spec §4): the setting's
  * `nextSeq` when its `nextYear` is that year, else 1, so each year starts again at 1; then the setting is that year and the next number.
  */

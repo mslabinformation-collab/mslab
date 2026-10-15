@@ -624,9 +624,13 @@ export type CompletionMailInput = {
 /**
  * The student's mails of the e-course completion (spec §6): the greeting, one line, the course in its box (an assessment adds how many points
  * to fix), and one button to the page it is about, written out under it. No login code: the button opens the page, and she signs in there if
- * she must. Never a note, an answer or a photo, only the link. The test's and practical work's links follow the kind (assessed,
- * protocol, protocolAgain and testPassed → the practical work; testFix and reopened → the test; completed → the practical work of a course with
- * points, else the e-course's page). Plain text and HTML; the caller never sends it to a sample address.
+ * she must. Never a note, an answer or a photo, only the link. The test's and practical work's links follow the kind:
+ * - assessed, protocol, protocolAgain and testPassed: the practical work;
+ * - testFix and reopened: the test;
+ * - completed: the practical work of a course with points, else the e-course's page.
+ * "completed" adds one line under the button (phase 3d, spec §5): "Kinnita oma nimi ja laadi tunnistus alla:" with the e-course's page, where
+ * its "Tunnistus" row is. It is a text link, so the mail keeps its one button, and never an attachment. Plain text and HTML; the caller never
+ * sends it to a sample address.
  */
 export function completionMail(input: CompletionMailInput): Mail {
   const dict = getDict(input.locale);
@@ -653,13 +657,30 @@ export function completionMail(input: CompletionMailInput): Mail {
   const { subject, lead, button, link } = parts[input.kind];
   const greeting = hello(dict.account.dashboard, input.name);
   const lines = input.kind === "assessed" && input.fixCount ? [fill(m.fixCount, { n: input.fixCount })] : [];
-  const text = [greeting, "", lead, "", title, ...lines, "", `${button}:`, link, "", mail.signature].join("\n");
+  // the certificate (phase 3d): her name to confirm and the PDF to download, on the e-course's page
+  const certificate = input.kind === "completed" ? ecourseUrl(input.siteUrl, input.locale, input.slug) : null;
+  const text = [
+    greeting, "",
+    lead, "",
+    title, ...lines, "",
+    `${button}:`, link,
+    ...(certificate ? ["", m.completedCertificate, certificate] : []),
+    "", mail.signature,
+  ].join("\n");
   const html = mailCard(subject, input.locale, [
     greetingRow(greeting),
     paragraphRow(lead),
     boxRow(`<div style="font:600 18px/1.4 ${FONT};color:${INK};">${esc(title)}</div>` + lines.map((line) => `<div>${esc(line)}</div>`).join(""), 12),
     buttonRow(link, button),
     linkRow(link),
+    ...(certificate
+      ? [
+          row(
+            `padding:20px 28px 0;${textStyle(14)}`,
+            `${esc(m.completedCertificate)}<br><a href="${esc(certificate)}" style="color:${INK};text-decoration:underline;word-break:break-all;">${esc(certificate)}</a>`,
+          ),
+        ]
+      : []),
     signatureRow(mail),
   ]);
   return { to: input.email, subject, text, html };

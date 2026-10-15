@@ -517,6 +517,7 @@ export const et = {
     // The e-course completion's mails to the student (server/account-mail.ts completionMail, phase e-course completion, spec §6): each kind
     // has its subject, its one line and its button, which opens the page (she signs in there when she must). {title} is the course, {n} the
     // points to fix. Maria's notes-only protocol of an e-course without points takes `protocolMail`'s texts. No mail holds a note or an answer.
+    // "completed" adds `completedCertificate` with the e-course's page (phase 3d): her name to confirm and the certificate, a link only.
     completionMail: {
       assessedSubject: "Sinu praktiline töö on hinnatud",
       assessedLead: "Maria on sinu praktilise töö üle vaadanud. Paranda märgitud punktid: lisa neile uued fotod ja saada töö uuesti.",
@@ -525,6 +526,7 @@ export const et = {
       completedSubject: "Palju õnne! Koolitus „{title}“ on lõpetatud",
       completedLead: "Oled kõik koolituse sammud läbinud.",
       completedButton: "Vaata koolitust",
+      completedCertificate: "Kinnita oma nimi ja laadi tunnistus alla:",
       testPassedSubject: "Test on sooritatud",
       testPassedLead: "Praktiline töö on nüüd avatud.",
       testPassedButton: "Ava praktiline töö",
@@ -873,6 +875,25 @@ export const et = {
       openPractical: "Ava praktiline töö",
       viewPractical: "Vaata praktilist tööd",
       viewProtocol: "Vaata protokolli",
+    },
+    // "Tunnistus" in "Lõpetamine" (components/account/CompletionSteps.tsx; phase 3d, spec §5) once the course is completed, and an ended
+    // access's card link (AccountCourseCard.tsx). The certificate itself is Estonian only; these are the page's words around it. {number} is
+    // "MS LAB 2026-03". `letters` and `length` are the name rules' refusals (domain/certificate.ts checkCertificateName): the script font
+    // draws Latin letters only, so `letters` asks for the name in Latin letters as in her passport (Cyrillic is refused). `nameHint` says the
+    // same under the field before she submits, always visible: her account's name may be in Cyrillic and would be refused only on submit.
+    certificate: {
+      title: "Tunnistus",
+      check: "Kontrolli, kuidas su nimi tunnistusel kirjas on",
+      nameLabel: "Nimi tunnistusel",
+      nameHint: "Ladina tähtedega, nagu passis.",
+      issue: "Kinnita ja koosta tunnistus",
+      issuing: "Koostan tunnistust…",
+      letters: "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).",
+      length: "Nimi peab olema 2–80 tähemärki pikk",
+      number: "Tunnistus nr. {number}",
+      download: "Laadi tunnistus alla (PDF)",
+      fixName: "Kui nimes on viga, kirjuta meile",
+      cardLink: "Laadi tunnistus alla",
     },
     // "Lemmikud" /konto/lemmikud (components/account/FavouritesTab.tsx): the hearted courses as the catalogue's cards, each with ♡ to
     // take it off. {title} is a course's title (the button's name for a screen reader, and what was taken off).

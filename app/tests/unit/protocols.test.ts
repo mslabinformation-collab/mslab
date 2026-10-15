@@ -239,6 +239,8 @@ describe("the questions' texts (Task 8)", () => {
       "account.completionMail": ru.account.completionMail,
       "account.practical": ru.account.practical,
       "account.completion": ru.account.completion,
+      // the certificate (phase 3d, Task 4)
+      "account.certificate": ru.account.certificate,
     };
     for (const [where, value] of Object.entries(texts)) {
       const list = strings(value);

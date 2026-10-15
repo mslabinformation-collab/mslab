@@ -47,7 +47,7 @@ const MODULES: EcourseView["course"]["modules"] = [
 const PROGRESS: EcourseView["progress"] = { done: 1, total: 4, next: 12 };
 
 /** A course without a test or points, nothing completed: the "Lõpetamine" block (e-course completion) shows the lessons and the end only, with no link. */
-const COMPLETION: EcourseView["completion"] = { lessons: { done: 1, total: 4, state: "open" }, test: null, practical: null, completedAt: null, protocolSent: false };
+const COMPLETION: EcourseView["completion"] = { lessons: { done: 1, total: 4, state: "open" }, test: null, practical: null, completedAt: null, protocolSent: false, certificate: null, certificateName: "" };
 
 const view = (
   over: {

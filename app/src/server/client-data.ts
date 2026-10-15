@@ -4,7 +4,7 @@ import { courseCardData } from "@/components/site/course-card-data";
 import type { Db } from "@/db/client";
 import { listPublishedCourses, listUpcomingSessions, readSetting } from "@/db/queries/public";
 import {
-  clientFavourites, clientLoginTokens, clients, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols, registrations, requests,
+  certificates, clientFavourites, clientLoginTokens, clients, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols, registrations, requests,
   subscribers, termsAcceptances,
 } from "@/db/schema";
 import { PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type EcourseCard, type FeedbackPrompt, type PrepaymentInfo } from "@/domain/account-cards";
@@ -19,6 +19,7 @@ import { normalizeEmail } from "@/domain/email";
 import type { I18n } from "@/i18n/field";
 import { href } from "@/i18n/href";
 import { getDict, type Locale } from "@/i18n/locales";
+import { certificateOfAccess, type CertificateView } from "./certificates";
 import { lockAddress } from "./client-auth";
 import { accessFor, completeIfDone, isActive, loadSteps } from "./completion";
 import { courseOutline, ecourseProgress, progressActivity, type OutlineModule } from "./lesson-outline";
@@ -77,8 +78,10 @@ export type EcourseView = {
   /**
    * "Lõpetamine" (e-course completion, spec §4.1): the path's steps (server/completion.ts loadSteps), and `protocolSent`: an e-course
    * without points whose notes-only protocol Maria has sent (spec §4.3 last bullet: the block links to it, "Vaata protokolli").
+   * "Tunnistus" (phase 3d, spec §5), read once the course is completed: `certificate` is its view (null before it is issued), and
+   * `certificateName` her account's name, the first value of "Nimi tunnistusel". Before the completion they are null and "".
    */
-  completion: CourseSteps & { protocolSent: boolean };
+  completion: CourseSteps & { protocolSent: boolean; certificate: CertificateView | null; certificateName: string };
 };
 
 const iso = (d: Date): string => d.toISOString();
@@ -151,9 +154,19 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       )
       .where(and(eq(requests.clientId, clientId), inArray(requests.kind, ["individual", "practice", "waitlist"]))),
     db
-      .select({ courseId: courseAccess.courseId, grantedAt: courseAccess.grantedAt, expiresAt: courseAccess.expiresAt, revokedAt: courseAccess.revokedAt, completedAt: courseAccess.completedAt, slug: courses.slug, title: courses.title })
+      .select({
+        courseId: courseAccess.courseId,
+        grantedAt: courseAccess.grantedAt,
+        expiresAt: courseAccess.expiresAt,
+        revokedAt: courseAccess.revokedAt,
+        completedAt: courseAccess.completedAt,
+        certificateId: certificates.id,
+        slug: courses.slug,
+        title: courses.title,
+      })
       .from(courseAccess)
       .innerJoin(courses, eq(courseAccess.courseId, courses.id))
+      .leftJoin(certificates, eq(certificates.accessId, courseAccess.id))
       .where(eq(courseAccess.clientId, clientId)),
     favouriteSlugs(db, clientId),
     db
@@ -243,6 +256,8 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       expiresAt: iso(a.expiresAt),
       revoked: a.revokedAt !== null,
       completedAt: a.completedAt ? iso(a.completedAt) : null,
+      // the certificate (phase 3d): its id while the access is not revoked, so an ended access's card links it; a revoked one's never
+      certificateId: a.revokedAt === null ? a.certificateId : null,
     };
     if (progressOf.has(a.slug)) card.progress = progressOf.get(a.slug) ?? null;
     cards.push(card);
@@ -333,7 +348,8 @@ async function completeOnLoad(db: Db, accessId: number, now: Date): Promise<bool
  * the path's steps ("Lõpetamine", e-course completion). The terms notice shows while `terms.accepted` is false;
  * the page then sends back `terms.version` with the acceptance. The version is read BEFORE the text: an admin save that lands
  * in between then pairs the old version with the new text (the next visit shows the notice again), never a new version with
- * text the student did not see. The client's acceptances are read alongside.
+ * text the student did not see. The client's acceptances are read alongside. Once the course is completed, its certificate and her
+ * account's name are read for the "Tunnistus" row (phase 3d); before, nothing is read for it.
  *
  * `onCompleted` is given by the student's own page (account-api.ts) and by nobody else (Maria's read-only view only reads): the load then
  * completes an access whose steps are all done and `completed_at` is still null (completeIfDone, before the steps are read: the view shows
@@ -347,19 +363,23 @@ export async function loadEcourse(db: Db, clientId: number, slug: string, now: D
     access = { ...access, completedAt: now };
     onCompleted(access.id);
   }
-  const [terms, outline, steps, sent] = await Promise.all([
+  const completed = access.completedAt !== null;
+  const [terms, outline, steps, sent, certificate, certificateName] = await Promise.all([
     termsState(db, clientId, access.course.id),
     courseOutline(db, access.course.id, clientId),
     loadSteps(db, access),
     // a notes-only protocol of this access that Maria has sent (only read for a course without points, but one small read either way)
     db.select({ id: protocols.id }).from(protocols).where(and(eq(protocols.accessId, access.id), isNotNull(protocols.sentAt))).limit(1),
+    // "Tunnistus" (phase 3d): only a completed course has the row
+    completed ? certificateOfAccess(db, access.id) : null,
+    completed ? db.select({ name: clients.name }).from(clients).where(eq(clients.id, clientId)).limit(1).then(([c]) => c?.name ?? "") : "",
   ]);
   return {
     course: { slug: access.course.slug, title: access.course.title, modules: outline.modules },
     access: { expiresAt: iso(access.expiresAt) },
     terms,
     progress: outline.progress,
-    completion: { ...steps, protocolSent: steps.practical === null && sent.length > 0 },
+    completion: { ...steps, protocolSent: steps.practical === null && sent.length > 0, certificate, certificateName },
   };
 }
 

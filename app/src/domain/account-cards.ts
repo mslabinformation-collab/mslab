@@ -99,6 +99,12 @@ export type EcourseCard = {
    * loadDashboard makes, also after the access ended: the card says "Lõpetatud {date}". Optional so cards built elsewhere keep compiling.
    */
   completedAt?: string | null;
+  /**
+   * Her certificate's id (phase 3d, spec §5): null without one, and for a revoked access (Maria revoked it: it is hers no more). Present on
+   * every card loadDashboard makes. An ended access's card links GET /api/konto/tunnistus/<id> ("Laadi tunnistus alla"), the one way back to
+   * it once the course page has closed. Optional so cards built elsewhere keep compiling.
+   */
+  certificateId?: number | null;
 };
 
 export type AccountCard = ContactCard | IndividualCard | RequestCard | WaitlistCard | EcourseCard;
