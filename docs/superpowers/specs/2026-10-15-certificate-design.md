@@ -44,11 +44,12 @@ The planned drop of `courses.modules` moves to `0010` (code first, then the migr
 - **`courses.certificate_skills`**: jsonb text[], default `[]`. These are the certificate's competency lines, plain text in Estonian; at most 16, each at most 120 characters. When the list is empty, the course's `outcomes` (Estonian) are used, up to the limit.
 - **`courses.certificate_volume`**: text, default `''`, for example "10 akadeemilist tundi". It is left out of the PDF when empty.
 - **Settings** (the existing `settings` key-value table), key `certificate`:
-  - `{ place, registryCode, practicalLine, nextYear, nextSeq, signatureKey }`.
+  - `{ place, registryCode, practicalLine, trainerName, nextYear, nextSeq, signatureKey }`.
   - Defaults:
     - place: "Pärnu linn";
     - registryCode: "16346048";
     - practicalLine: "Praktiline töö fotodel, koolitaja poolt hinnatud iseseisev protseduuri teostamine" (a draft for Maria);
+    - trainerName: "Maria Sosnina" (written in the script font when there is no signature image);
     - nextYear: the current year, nextSeq: 1;
     - signatureKey: null.
   - `signatureKey` is a private R2 object `certificate/signature-<uuid>.png`.
@@ -70,7 +71,7 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
   - the text "Kontrolli, kuidas su nimi tunnistusel kirjas on";
   - a field "Nimi tunnistusel", filled with her account name;
   - one primary button "Kinnita ja koosta tunnistus".
-  - **Name rules** (trimmed): 2–80 characters, at least two letters; only Latin letters (Estonian and common European letters included), spaces, hyphens, apostrophes and dots. Anything else is refused with "Kirjuta nimi ladina tähtedega, nagu passis". The script font has no Cyrillic.
+  - **Name rules** (trimmed, NFC): 2–80 characters, at least two letters. Letters may be Latin (Estonian and other European letters included) or Cyrillic, both of which the fonts cover. Spaces, hyphens, apostrophes and dots are also allowed. Anything else is refused with "Kasuta nimes ainult tähti, tühikuid ja sidekriipse". (A spike on 15.10 showed that both Great Vibes and Jost cover Cyrillic, so the planned Latin-only rule was dropped.)
 - **Issued:**
   - "Tunnistus nr. MS LAB 2026-03";
   - the link "Laadi tunnistus alla (PDF)", pointing to `GET /api/konto/tunnistus/<id>` (owner only), which answers with `Content-Disposition: attachment; filename="MS-LAB-tunnistus-2026-03.pdf"`;
@@ -94,8 +95,11 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
   - "Koht" and "Registrikood";
   - "Praktilise töö rida";
   - "Järgmine number" (year and number, with the last issued number shown);
-  - "Allkiri": upload a photo or scan.
-    - The browser makes it white ink on a transparent background: pixels darker than a threshold become white, the rest transparent. It is then shrunk to at most 1200 px wide and sent as PNG.
+  - "Allkiri": upload a photo, a scan, or the signature from Maria's Canva certificate document exported as PNG (Dim, 15.10.2026: it exists there already). The image is never committed to the public repository.
+    - The browser makes it white ink on a transparent background. It handles two inputs:
+      - **dark ink on a light background:** pixels darker than a threshold become white, the rest transparent;
+      - **an export that is already light ink on transparent:** kept as white, with its own transparency.
+    - It is cropped to the ink, shrunk to at most 1200 px wide, and sent as PNG.
     - It is stored privately, and a preview is shown on a black box.
     - Without a signature, the certificate shows Maria's name in the script font instead, and Seaded says so.
 - **Õpilased drawer**, for each completed access:
@@ -115,14 +119,14 @@ On the e-course page, once `completedAt` is set, the "Lõpetamine" block gets a 
   - **Skills:** two columns of "• line", about 9.5 pt, letter-spaced, filled left column first. With more than 12 lines the font shrinks to 8.5 pt.
   - **The practical-work line:** upper case, about 8 pt, at the left. The volume (upper case) is at the right on the same baseline.
   - **Bottom left:**
-    - the MS LAB logo (the site's `public/brand/logo.png`, drawn white on black);
+    - the MS LAB logo, drawn as vector shapes in white: a thin frame, "MS LAB" in Jost light and "KOOLITUSKESKUS" small and letter-spaced, as the site's `public/brand/logo.png` looks. That PNG is dark on transparent, so it cannot be placed on black.
     - "REGISTRIKOOD: {code}";
     - "Tunnistuse nr. {number}".
   - **Bottom right:**
     - the signature image (or the script name);
     - "KOOLITAJA";
     - "{place} {dd.mm.yyyy}" (the Tallinn date of `issued_at`).
-- **Fonts:** a geometric sans close to the sample's title (Jost, OFL) and a handwritten script (Great Vibes, OFL, with Latin Extended glyphs; Jost and Great Vibes are the decided fonts). Both are committed under `app/assets/fonts/` with their licence files and embedded as subsets.
+- **Fonts:** Jost (OFL, the variable font `Jost[wght].ttf` from google/fonts, embedded at its default weight of 400) and Great Vibes (OFL, `GreatVibes-Regular.ttf`). Both are committed under `app/assets/fonts/` with their OFL texts and embedded as subsets. The spike of 15.10 confirmed both embed with pdf-lib 1.17.1 and @pdf-lib/fontkit 1.1.1 and cover Estonian and Cyrillic. The font files are listed in `next.config.ts`'s `outputFileTracingIncludes`, so the Vercel functions that render have them.
 - **Generation:** on each download, from the frozen row, the settings' signature and the logo, in a few tens of milliseconds. Nothing is stored in R2 except the signature. The answer is `private, no-store`.
 - **Old Safari:** the PDF is generated on the server only, so the browser bundles nothing new.
 
