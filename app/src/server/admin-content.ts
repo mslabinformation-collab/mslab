@@ -4,6 +4,7 @@ import { courses, type TestQuestion } from "@/db/schema";
 import { inArray } from "drizzle-orm";
 import { courseUsage, typeLocked, deleteUnusedSession, getCourseForEdit, getSession, isSlugTaken, moveCourse, saveCourseWithImages, upsertSession, type CourseFields } from "@/db/queries/admin";
 import { tallinnInstant } from "@/domain/calendar";
+import { CERT_LIMITS } from "@/domain/certificate";
 import { checkQuestions, checkSettings, PASS_RANGE, readQuestions, TRIES_RANGE, type QuestionProblem } from "@/domain/completion";
 import { BADGE_MAX, badgeOf, COURSE_LANGUAGES, emptyTestDraft, LIMITS, swatchOf, type CourseDraft } from "@/domain/course-editor";
 import { checkStages } from "@/domain/protocols";
@@ -57,6 +58,9 @@ const draftSchema = z.object({
   test: z
     .object({ questions: z.array(z.custom<TestQuestion>()).max(200), passPercent: z.string().max(10), tries: z.string().max(10) })
     .default(emptyTestDraft),
+  // "Tunnistus" (phase 3d): loose here, the real limits after (with field errors); the defaults: an editor page loaded before the deploy posts neither
+  certificateSkills: z.array(z.string().max(2000)).max(200).default([]),
+  certificateVolume: z.string().max(2000).default(""),
   price: z.string().max(40),
   priceGroup: z.string().max(40),
   priceIndividual: z.string().max(40),
@@ -75,8 +79,9 @@ const draftSchema = z.object({
  * The course editor's save. Field `data`: the editor's draft as JSON (CourseDraft). Only the chosen type's own fields
  * are stored; the other type's are emptied (a course is e-learning or contact, never both). "Protokolli punktid" are
  * both types': a contact course's protocol headings, an e-course's practical points. "Teadmiste test" is an e-course's
- * (course_tests, R1); a contact course's row is deleted. A new course (id null) is created after the others; an existing
- * one is refused as `stale` when it was saved elsewhere since `version`.
+ * (course_tests, R1); a contact course's row is deleted. So is "Tunnistus" (phase 3d): a contact course stores no lines and no
+ * volume. A new course (id null) is created after the others; an existing one is refused as `stale` when it was saved elsewhere
+ * since `version`.
  */
 export async function saveCourseForm(db: Db, formData: FormData): Promise<EditResult> {
   const raw = field(formData, "data");
@@ -152,6 +157,17 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
       else if (checked.ok) test = { questions: checked.questions, passPercent, tries };
     }
   }
+  // "Tunnistus" (phase 3d, spec §6): an e-course's certificate lines and volume, each cleaned as a heading is (one line), trimmed, blank lines
+  // dropped; at most 16 lines of at most 120 characters, the volume at most 80. A contact course has no certificate: it stores none.
+  let certificateSkills: string[] = [];
+  let certificateVolume = "";
+  if (online) {
+    const lines = d.certificateSkills.map((s) => heading(s).trim()).filter(Boolean);
+    if (lines.length > CERT_LIMITS.skills) c.fail("certificateSkills", "tooMany");
+    else if (lines.some((s) => s.length > CERT_LIMITS.skill)) c.fail("certificateSkills", "tooLong");
+    else certificateSkills = lines;
+    certificateVolume = c.plain("certificateVolume", heading(d.certificateVolume), CERT_LIMITS.volume);
+  }
   // a published course must be buyable / bookable
   if (d.published && online && price == null && !c.errors.price) c.fail("price", "priceRequired");
   if (d.published && !online && priceGroup == null && priceIndividual == null && !c.errors.priceGroup && !c.errors.priceIndividual) c.fail("priceGroup", "priceRequired");
@@ -207,6 +223,8 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
     published: d.published,
     isSample: d.isSample,
     test,
+    certificateSkills,
+    certificateVolume,
   };
   const saved = await saveCourseWithImages(db, { id: d.id, expected: expected ?? undefined }, fields, images);
   if (saved === "notFound" || saved === "stale") return { ok: false, error: saved };

@@ -114,8 +114,12 @@ export const typeLocked = (u: CourseUsage | null): boolean => Boolean(u && (u.se
 
 /** "Teadmiste test" as the editor saves it (e-course completion, R1): a row of its own, so the answer key never rides on a courses row. */
 export type CourseTestFields = { questions: TestQuestion[]; passPercent: number; tries: number };
-/** The course fields the editor writes (everything but id, sort and updatedAt), and the e-course's test (null: none, its row is deleted). */
-export type CourseFields = Omit<CourseInput, "id" | "sort"> & { test: CourseTestFields | null };
+/**
+ * The course fields the editor writes (everything but id, sort and updatedAt), and the e-course's test (null: none, its row is deleted). The
+ * certificate's lines and volume (phase 3d) are required here although the columns have defaults: every save writes them (a contact course
+ * `[]` and `""`), so a save that forgot them could not leave an old e-course's lines behind.
+ */
+export type CourseFields = Omit<CourseInput, "id" | "sort"> & { test: CourseTestFields | null; certificateSkills: string[]; certificateVolume: string };
 
 /**
  * The course editor's save: the course, its whole image list and its "Teadmiste test" row in ONE transaction.

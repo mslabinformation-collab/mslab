@@ -59,6 +59,13 @@
   margin-bottom: 22px;
 }
 
+/* "Tunnistus" (phase 3d): the card's lead, its lines and its volume, one under another */
+.certificate {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+}
+
 .typeSwitch {
   margin-bottom: 22px;
 }

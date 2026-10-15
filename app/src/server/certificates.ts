@@ -281,6 +281,21 @@ export async function lastIssued(db: Db, year: number): Promise<string | null> {
 }
 
 /**
+ * Seaded's "Tunnistus" card (spec §4, §6): the stored setting and the number last issued in the year the card shows. An issue moves the
+ * stored next number on, so in January, until the year's first issue, it can still be last year's. An issue does not use it then (nextNumber:
+ * another year starts at 1; and never at or below the year's highest, as issueCertificate), so the card shows the number the next issue will
+ * really take: this Tallinn year, 1 or its highest + 1. A next number for this year or a later one (Maria's preset) is shown as she saved it.
+ */
+export async function certificateCard(db: Db, now: Date): Promise<{ settings: CertificateSettings; last: string | null }> {
+  const stored = await getCertificateSettings(db, now);
+  const year = tallinnYear(now);
+  if (stored.nextYear >= year) return { settings: stored, last: await lastIssued(db, stored.nextYear) };
+  const [{ top }] = await db.select({ top: max(certificates.seq) }).from(certificates).where(eq(certificates.year, year));
+  const seq = Math.max(nextNumber(stored, year).seq, (top ?? 0) + 1); // issueCertificate's rule
+  return { settings: { ...stored, nextYear: year, nextSeq: seq }, last: await lastIssued(db, year) };
+}
+
+/**
  * The PDF of a certificate row, rendered on each download (spec §7). It uses the row's frozen copy, and from Seaded as it is now the trainer's
  * name, which the renderer writes in the script font as Maria's signature (one the font cannot draw reads as "Maria Sosnina":
  * readCertificateSettings). The fonts come from assets/fonts (certificate-pdf.ts loadCertificateAssets); no store, no image. Nothing is stored.

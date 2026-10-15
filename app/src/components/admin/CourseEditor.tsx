@@ -5,6 +5,7 @@ import { startTransition, useActionState, useEffect, useId, useMemo, useRef, use
 import { courseCardData } from "@/components/site/course-card-data";
 import type { CourseCardData } from "@/components/site/CourseCard";
 import type { CourseWithImages } from "@/db/queries/public";
+import { CERT_LIMITS } from "@/domain/certificate";
 import { COURSE_LANGUAGES, LIMITS, type CourseDraft, type CourseLanguage, type CourseLevel, type CourseType } from "@/domain/course-editor";
 import { parseEuroCents } from "@/domain/money";
 import { adminEt } from "@/i18n/dict/admin";
@@ -326,6 +327,27 @@ export function CourseEditor({ initial, others, next, publicHref, created, typeL
                 onChange={(v) => set("test", v)}
                 errors={{ test: err("test"), testPassPercent: err("testPassPercent"), testTries: err("testTries"), at: state && !state.ok ? state.at : undefined }}
               />
+            </section>
+          )}
+
+          {/* "Tunnistus" (phase 3d, spec §6): an e-course certificate's lines (none: its "Õpiväljundid" are printed) and its volume, saved with the course */}
+          {online && (
+            <section className={ui.card} aria-labelledby={`${uid}-certificate`} data-certificate-card="">
+              <h2 id={`${uid}-certificate`} className={`${ui.h2} ${styles.cardTitle}`}>
+                {t.sections.certificate}
+              </h2>
+              <div className={styles.certificate}>
+                <p className={ui.muted}>{f.certificateLead}</p>
+                <ProtocolStagesEditor
+                  kind="skills"
+                  items={draft.certificateSkills}
+                  onChange={(v) => set("certificateSkills", v)}
+                  error={err("certificateSkills")}
+                  hint={f.certificateSkillsHint}
+                  empty={f.certificateSkillsEmpty}
+                />
+                {plain("certificateVolume", f.certificateVolume, { hint: f.certificateVolumeHint, maxLength: CERT_LIMITS.volume })}
+              </div>
             </section>
           )}
 
