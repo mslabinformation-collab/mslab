@@ -2,17 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** When an e-course is "Lõpetatud", the student confirms her name once and downloads a PDF certificate that looks like Maria's paper ones and continues their number series. Maria manages the certificate settings (signature, next number, place) in Seaded, corrects a name and re-issues it from the student's drawer, and sees every certificate in one register.
+**Goal:** When an e-course is "Lõpetatud", the student confirms her name once and downloads a PDF certificate that looks like Maria's paper ones and continues their number series. Maria manages the certificate settings (her name as she signs, next number, place) in Seaded, corrects a name and re-issues it from the student's drawer, and sees every certificate in one register.
+
+> **Amended 15.10 (owner, Dim):** the script font is Maria's Canva font **Revive 80 Signature** (licensed to MS LAB, not open source; Great Vibes is gone); Maria's signature is her name (`trainerName`) typed in that font, with no signature image anywhere (no upload, no route, no R2 object, no PNG in the PDF); a name is written in Latin letters as in the passport, so Cyrillic is refused. The GitHub repository must be private before Task 8's push. Tasks 1 and 2 were built before this and are changed by the fix round `.superpowers/sdd/2026-10-15-certificate/task-2-fix-1.md`; Tasks 3–8 below are written for the amended design.
 
 **Architecture:**
 - **Data:** one additive migration, `0009_certificates.sql`.
   - A `certificates` table holds one row per completed access with a frozen copy of everything printed: the number "MS LAB {year}-{nn}", year and seq, name, course title, skills, volume, practical line, place, registry code and issue date.
   - `courses.certificate_skills` and `courses.certificate_volume` hold the per-course text.
-  - The `settings` key `certificate` holds the place, the registry code, the practical line, the trainer's name, the next number and the private signature image key.
+  - The `settings` key `certificate` holds the place, the registry code, the practical line, the trainer's name (her signature) and the next number.
   - The `courses.modules` drop moves to `0010`.
 - **Rules:** the name rules, the number format, next-number with year rollover and the skills fallback are pure, in `src/domain/certificate.ts`.
 - **Issuing:** `src/server/certificates.ts` issues in one transaction. It locks the access row first, then a transaction-scoped advisory lock for the number series, then reads and advances the setting. Re-issue keeps the number.
-- **PDF:** `src/server/certificate-pdf.ts` renders the certificate on every download from the frozen row with `pdf-lib` and `@pdf-lib/fontkit`. The committed fonts are Jost and Great Vibes, and Maria's signature PNG comes from private R2. The output is A4 landscape, black, laid out like Maria's sample.
+- **PDF:** `src/server/certificate-pdf.ts` renders the certificate on every download from the frozen row with `pdf-lib` and `@pdf-lib/fontkit`. The fonts are files of the repository: Jost (OFL, embedded as a subset) and Revive 80 Signature (licensed, embedded whole). The trainer's name from Seaded is written in the script font as the signature. The output is A4 landscape, black, laid out like Maria's sample.
 - **Student:**
   - **E-course page:** the "Lõpetamine" block gets a "Tunnistus" row with "Nimi tunnistusel", then "Kinnita ja koosta tunnistus", then "Laadi tunnistus alla (PDF)".
   - **Routes:** `POST /api/konto/kursus/<slug>/tunnistus` and `GET /api/konto/tunnistus/<id>`.
@@ -20,7 +22,7 @@
   - **Mail:** the "completed" mail gets one line asking her to confirm her name and download it.
 - **Admin:**
   - **Course editor:** a "Tunnistus" card on e-courses (skills, volume).
-  - **Seaded:** a "Tunnistus" card. The signature upload turns the scan into white ink on transparent in the browser and stores it privately through `POST /api/admin/allkiri`.
+  - **Seaded:** a "Tunnistus" card: place, registry code, practical line, the trainer's name (written as the signature, checked with the student's name rules) and the next number.
   - **Downloads and corrections:** Maria downloads through `GET /api/admin/tunnistus/<id>`, and the Õpilased drawer has "Paranda nimi".
   - **Register:** `/admin/tunnistused`, linked from Hindamine.
 
@@ -29,20 +31,19 @@
 - Drizzle 0.45 + postgres.js 3.4 (Railway); PGlite for DB tests.
 - Vitest (+ happy-dom), Playwright.
 - **New and pinned exactly:** `pdf-lib@1.17.1` and `@pdf-lib/fontkit@1.1.1` (MIT, pure JavaScript).
-- R2 for the signature image.
-- Hosting: Vercel Hobby, project `mslab` (fra1).
+- Hosting: Vercel Hobby, project `mslab` (fra1). Nothing of this phase is stored in R2.
 
-**Spec:** `docs/superpowers/specs/2026-10-15-certificate-design.md` (decisions D1–D6, amended 15.10 after the font spike). Read all of it before starting; the section your task names is binding.
+**Spec:** `docs/superpowers/specs/2026-10-15-certificate-design.md` (decisions D1–D6, amended 15.10 after the font spike and again by the owner's decisions of 15.10: Revive 80 Signature, the typed signature, Latin names). Read all of it before starting; the section your task names is binding.
 
 ## Global Constraints
 
 ### Platform and dependencies
-- **Vercel Hobby only.** The PDF is rendered on request in the account API (`maxDuration` 30) and in `GET /api/admin/tunnistus/[id]` (`maxDuration = 30`). It is under 300 KB and takes tens of milliseconds. The signature upload is at most 1 MB, well under the 4.5 MB body limit.
+- **Vercel Hobby only.** The PDF is rendered on request in the account API (`maxDuration` 30) and in `GET /api/admin/tunnistus/[id]` (`maxDuration = 30`). It is under 300 KB (about 160–180 KB, almost all of it the whole script font) and takes tens of milliseconds.
 - **The only new dependencies:** `pdf-lib@1.17.1` and `@pdf-lib/fontkit@1.1.1`, exact versions in `app/package.json` (no caret). No other new package.
-- **Font files:** committed exactly as downloaded, checked by SHA-256:
-  - `app/assets/fonts/GreatVibes-Regular.ttf` (`8d509802186f1b51572531ecf313e8098f9a5bfdfaca93f0c9b34467f9982d15`, from `https://raw.githubusercontent.com/google/fonts/main/ofl/greatvibes/GreatVibes-Regular.ttf`);
-  - `app/assets/fonts/Jost[wght].ttf` (`6343b70971000b04c5d401c96ae08ce371086135e999d5e1e1413039c0213076`, from `https://raw.githubusercontent.com/google/fonts/main/ofl/jost/Jost%5Bwght%5D.ttf`);
-  - their licences `app/assets/fonts/OFL-GreatVibes.txt` (`61093a21f5e63dedf54222b3c09997e54c0fe43e3851d21386e02ddcbc246d49`) and `app/assets/fonts/OFL-Jost.txt` (`1af3438a4d5f0ed2bdbc5751a5a67ebf6d537334161184b7fbb68503ef0ea0c5`), from the same folders' `OFL.txt`.
+- **Font files:** exactly three files in `app/assets/fonts/`, checked by SHA-256 (`tests/unit/certificate-fonts.test.ts`):
+  - `Jost[wght].ttf` (`6343b70971000b04c5d401c96ae08ce371086135e999d5e1e1413039c0213076`, from `https://raw.githubusercontent.com/google/fonts/main/ofl/jost/Jost%5Bwght%5D.ttf`) and its licence `OFL-Jost.txt` (`1af3438a4d5f0ed2bdbc5751a5a67ebf6d537334161184b7fbb68503ef0ea0c5`, the same folder's `OFL.txt`);
+  - `Revive80Signature.otf` (307944 bytes, `f864b644c4382edf7d30a67d8b345b64e0a8bb632b76c6b2091249c384556bba`): Maria's Canva font Revive 80 Signature (© Tom Chalky / Inspiration Hut), a CFF OpenType font (1000 units/em, ascent 839, descent −540, cap height 706, x-height 178). MS LAB holds the licence for its certificates (owner, 15.10.2026). It is **not open source**: never copied out of that folder, never printed, never attached anywhere.
+  - The PDF embeds Jost as a subset and Revive 80 Signature **whole** (`subset: false`): pdf-lib 1.17.1 with @pdf-lib/fontkit 1.1.1 subsets this CFF font into a file viewers reject (MuPDF: "unknown file format"), while the whole font renders correctly. `CERT_FONTS = { sans: "Jost[wght].ttf", script: "Revive80Signature.otf" }` (`src/server/certificate-pdf.ts`) names the two files once.
 - **Font tracing and line endings:**
   - `next.config.ts` lists `./assets/fonts/**` in `outputFileTracingIncludes` under the keys `"/api/konto/**"` and `"/api/admin/tunnistus/**"`. Under Turbopack in Next 16.3.8, bracketed route keys trace nothing.
   - `.vercelignore` gets `!/app/assets`.
@@ -52,10 +53,13 @@
 
 ### The rules of this phase (spec §3–§7)
 - **Numbering:** `"MS LAB " + year + "-" + seq` with `seq` zero-padded to at least 2 digits. The year is the Tallinn year of the issue moment. A new year starts at 1. Two certificates never share a number: the access row is locked, then `pg_advisory_xact_lock(hashtext('certificate-number'))` is taken, and the unique (`year`, `seq`) index is the backstop.
-- **Frozen copy:** an issued certificate prints only what its row holds. Later course or settings changes never alter it, except the signature image, which is not frozen. A re-issue changes only `name` and `reissued_at`.
+- **Frozen copy:** an issued certificate prints only what its row holds. Later course or settings changes never alter it. The one thing not in the row is the trainer's name, Maria's typed signature, which each download reads from Seaded. A re-issue changes only `name` and `reissued_at`.
+- **The signature:** the trainer's name (`trainerName` in Seaded, default "Maria Sosnina") written in the script font at the bottom right, as on Maria's Canva certificates. There is no signature image anywhere: no upload, no route, no R2 object, no PNG in the PDF.
 - **Name rules** (`checkCertificateName`): NFC, trimmed, inner whitespace collapsed; 2–80 characters; at least 2 letters.
-  - Allowed letters are only those Great Vibes can draw: Estonian, other European Latin, and Russian, Ukrainian and Belarusian Cyrillic. Task 2's test checks every accepted letter against the font.
+  - Allowed letters are exactly the Latin letters Revive 80 Signature draws (`LETTER` in `src/domain/certificate.ts`): `A–Z a–z À–Ö Ø–ï ñ–ö ø–ý ÿ ı Œ œ Š š Ÿ Ž ž`. That covers Estonian, Finnish, German, French, Scandinavian, Spanish, Portuguese and Italian names. The student writes her name in Latin letters as in her passport. Cyrillic is refused, and so are Č Ł Ā Ę and the like (the font has none of them). Task 2's test checks every accepted letter against the font.
   - Spaces, hyphens, apostrophes (' and ’) and dots are also allowed.
+  - The "letters" error says so: ET «Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).», RU «Напишите имя латинскими буквами, как в паспорте (можно также пробел, дефис и апостроф).» (with the no-break space after "в").
+  - The trainer's name follows the same rules: Seaded's save refuses one `checkCertificateName` refuses ("letters" / "length" on `trainerName`), and `readCertificateSettings` keeps a stored one only when `checkCertificateName` accepts it, else "Maria Sosnina".
   - No lookbehind.
 - **Who may download:**
   - **The student:** only her own access's certificate, and only while the access is not revoked. Expiry does not matter.
@@ -75,11 +79,11 @@
 
 ### Simplicity and design
 - **One primary button per screen; 44 px targets; widths 390/834/1194/1440 without overflow; colour tokens only.** Every new `.module.css` goes into `tests/unit/colour-tokens.test.ts` COURSE_CSS.
-- **Old Safari:** no lookbehind in any browser file. `src/domain/certificate.ts` and `src/lib/signature-ink.ts` go into `tests/unit/old-safari.test.ts` BROWSER_FILES.
-- **Texts:** student strings in `et.ts` and `ru.ts` (parity, placeholders, Cyrillic; the `account.certificate` block joins the Russian-typography list in `tests/unit/protocols.test.ts`). Admin strings in `admin.ts`, Estonian only. Every new text is in the task's Wording table, marked Spec or Draft.
+- **Old Safari:** no lookbehind in any browser file. `src/domain/certificate.ts` goes into `tests/unit/old-safari.test.ts` BROWSER_FILES.
+- **Texts:** student strings in `et.ts` and `ru.ts` (parity, placeholders, the Russian strings in Russian script; the `account.certificate` block joins the Russian-typography list in `tests/unit/protocols.test.ts`). Admin strings in `admin.ts`, Estonian only. Every new text is in the task's Wording table, marked Spec or Draft.
 
 ### Repository, database, commits
-- **The repository is PUBLIC.** No real address or secret anywhere. Tests use `@example.test`. Maria's reference certificate (in the git-ignored `Assets/`) is never committed or published. The registry code "16346048" is the company's public register code, which may appear.
+- **The repository is public on GitHub until Dim makes it private, and it must be private before Task 8's push** (the licensed script font is committed; owner, 15.10). Task 8 checks it; no task pushes before that. Either way: no real address or secret anywhere. Tests use `@example.test`. Maria's reference certificate (in the git-ignored `Assets/`) is never committed or published. The registry code "16346048" is the company's public register code, which may appear.
 - **Migration `0009_certificates.sql`** is additive, generated with `npx drizzle-kit generate --name certificates` and reviewed. The texts that call the `courses.modules` drop 0009 become **0010**:
   - `src/db/schema.ts`;
   - `drizzle/0003_lessons.sql` (a comment);
@@ -97,19 +101,20 @@
    - Task 7 `certificate-race.spec.ts` (two accesses issuing at once on real Postgres get consecutive numbers).
 2. **A name the fonts or the layout cannot take:**
    - a very long name, or a double surname with a hyphen;
-   - Cyrillic, or letters such as õ, š, ž;
+   - letters such as õ, š, ž, or a name in Cyrillic or with Č, Ł, Ā;
    - an emoji or digits.
-   Allowed letters print. The long name shrinks to fit the line, then wraps to two lines. An emoji or digits are refused with the field error before anything is stored. Tests:
+   Allowed letters print. The long name shrinks to fit the line, then wraps to two lines. Cyrillic, a Latin letter the script font lacks, an emoji or digits are refused with the field error ("Latin letters as in the passport") before anything is stored. Tests:
    - Task 1 `certificate-rules.test.ts` "Review Focus 2";
-   - Task 2 `certificate-pdf.test.ts` "Review Focus 2" (an 80-character name and a Cyrillic name render, and the text extraction finds them).
+   - Task 2 `certificate-pdf.test.ts` "Review Focus 2" (an 80-character name and a name with every Estonian letter render in Revive 80 Signature, and the text extraction finds them);
+   - Task 4 (the student's row: a Cyrillic name refused in her words, ET and RU).
 3. **The year turns** at Tallinn midnight on 31.12: a certificate issued at 22:30 UTC on 31.12 is already the next year's in Tallinn, so it starts at 1. Maria's "next number" for the old year does not carry over. Tests:
    - Task 1 "Review Focus 3" (`nextNumber`, `tallinnYear`);
    - Task 3 "Review Focus 3".
 4. **Maria changes the settings after certificates exist:**
    - a new place or registry code: old certificates keep theirs;
-   - a new signature: shown on every download;
+   - a new trainer's name (her typed signature): written on every later download, old certificates' too; one the script font cannot draw is refused;
    - a "next number" at or below an issued one in the same year: refused with a field error.
-   Tests: Task 3 "Review Focus 4"; Task 5 `certificate-settings-dom.test.ts`.
+   Tests: Task 3 "Review Focus 4"; Task 5 `certificate-settings-dom.test.ts` and `admin-certificate-route.test.ts`.
 5. **The access is revoked after the certificate was issued:**
    - the student's download answers 404;
    - the dashboard link disappears;
@@ -123,22 +128,20 @@
 ```
 app/
   package.json, package-lock.json              pdf-lib@1.17.1, @pdf-lib/fontkit@1.1.1 (Task 1)
-  assets/fonts/GreatVibes-Regular.ttf, Jost[wght].ttf, OFL-GreatVibes.txt, OFL-Jost.txt   (Task 1)
+  assets/fonts/Jost[wght].ttf, OFL-Jost.txt, Revive80Signature.otf (licensed)   (Task 1; the script font by Task 2's fix round)
   next.config.ts                                outputFileTracingIncludes for the fonts (Task 1)
   drizzle/0009_certificates.sql                 certificates; courses.certificate_skills/_volume (Task 1)
   src/db/schema.ts                              certificates, Certificate, the two course columns (Task 1)
   src/domain/certificate.ts                     pure: name rules, number format, next number, skills fallback, settings reader (Task 1)
-  src/server/certificate-pdf.ts                 loadCertificateAssets, renderCertificate (Task 2)
-  src/server/certificates.ts                    issue, re-issue, reads, settings, signature key, register (Task 3)
+  src/server/certificate-pdf.ts                 CERT_FONTS, loadCertificateAssets, renderCertificate (Task 2)
+  src/server/certificates.ts                    issue, re-issue, reads, settings, register, certificatePdf (Task 3)
   src/server/account-api.ts                     POST /kursus/:slug/tunnistus, GET /tunnistus/:id, pdfAnswer (Task 4)
   src/server/client-data.ts                     EcourseView.completion.certificate, EcourseCard.certificateId (Task 4)
   src/components/account/CompletionSteps.tsx (+css), AccountCourseCard.tsx   the "Tunnistus" row, the card link (Task 4)
   src/server/account-mail.ts, src/i18n/dict/et.ts, ru.ts                     the completed mail's line, account.certificate (Task 4)
   src/domain/course-editor.ts, src/server/admin-content.ts, src/db/queries/admin.ts, src/components/admin/CourseEditor.tsx
                                                 the course editor's "Tunnistus" card (Task 5)
-  src/lib/signature-ink.ts                      the browser's white-ink conversion of the signature scan (Task 5)
   src/components/admin/CertificateSettings.tsx (+css), src/app/admin/(panel)/seaded/page.tsx   Seaded → Tunnistus (Task 5)
-  src/app/api/admin/allkiri/route.ts            POST/GET/DELETE the signature image (Task 5)
   src/app/api/admin/tunnistus/[id]/route.ts     Maria's download (Task 5)
   src/server/actions/admin-certificates.ts      saveCertificateSettingsAction (Task 5), reissueCertificateAction (Task 6)
   src/server/admin-clients.ts, src/components/admin/ClientDrawer.tsx, src/components/admin/ReissueCertificate.tsx
@@ -149,9 +152,17 @@ app/
 docs/deploy.md, docs/launch-checklist.md        0010 renumbering (Task 1); §14 runbook, §13 list (Task 7)
 ```
 
+There is no signature file anywhere (owner, 15.10): no browser conversion, no upload route, no stored key; the signature is the trainer's name typed in the script font.
+
 ---
 
 ### Task 1: pdf-lib and the fonts, their tracing, migration 0009 (`certificates`, the course's certificate lines and volume), the pure rules (`domain/certificate.ts`); the drop of `courses.modules` becomes 0010
+
+> **Amended 15.10 (owner):** this task was implemented (59dd6a6) before the owner's decisions; its text and code below are kept as built and are superseded where they differ. The fix round `.superpowers/sdd/2026-10-15-certificate/task-2-fix-1.md` (sections 1 and 3) changes three of its files:
+> - **Fonts:** `GreatVibes-Regular.ttf` and `OFL-GreatVibes.txt` are deleted; `Revive80Signature.otf` (licensed to MS LAB, not open source, SHA-256 `f864b644…556bba`) joins Jost and `OFL-Jost.txt`. `certificate-fonts.test.ts` checks exactly those three files and only Jost's OFL text.
+> - **Name rule:** `LETTER` is exactly the Latin letters Revive 80 Signature draws (`A–Z a–z À–Ö Ø–ï ñ–ö ø–ý ÿ ı Œ œ Š š Ÿ Ž ž`); Cyrillic is refused, and so are Č Ł Ā Ę and the like. The tests flip accordingly ("Мария", "Jānis", "Łukasz", "Čapek" refused with `letters`).
+> - **Settings:** `signatureKey` is removed from `CertificateSettings`, `CERT_DEFAULTS`, `readCertificateSettings` and the `settings` comment in `src/db/schema.ts`; the setting has six keys. `readCertificateSettings` keeps a stored `trainerName` only when `checkCertificateName` accepts it (stored as cleaned), else "Maria Sosnina".
+> - The "Spec conflict" line below is void: the amended spec refuses Cyrillic.
 
 **Scope.**
 - **Spec:** §3 (the data and the settings' defaults), §4 (numbering), §5 (the name rules), §7 (the fonts), §10 (unit tests); decisions D2, D3 and D5.
@@ -994,6 +1005,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 2: The certificate's PDF — `src/server/certificate-pdf.ts` (`loadCertificateAssets`, `renderCertificate`)
 
+> **Amended 15.10 (owner):** this task was implemented (c480c60) before the owner's decisions; its text and code below are kept as built and are superseded where they differ. The fix round `.superpowers/sdd/2026-10-15-certificate/task-2-fix-1.md` (section 2) changes it to:
+> - **Interface:** `export const CERT_FONTS = { sans: "Jost[wght].ttf", script: "Revive80Signature.otf" } as const`; `export type CertificateAssets = { sans: Uint8Array; script: Uint8Array }`; `export async function loadCertificateAssets(): Promise<CertificateAssets>` (no arguments: the two fonts, read once per process; no store, no key). `CertificateContent` and `renderCertificate(c, assets)` keep their signatures.
+> - **The signature:** `renderCertificate` always writes `trainerName` in the script font at the bottom right, above "KOOLITAJA". No PNG, no image: the signature fixtures and the store tests are gone.
+> - **Fonts:** the script font is Revive 80 Signature, embedded **whole** (`subset: false`); Jost stays a subset. pdf-lib 1.17.1 + @pdf-lib/fontkit 1.1.1 subset this CFF font into a file viewers reject (MuPDF: "unknown file format"); the whole font renders correctly and the page stays under 300 KB (about 160–180 KB). The name's and the trainer's sizes and baselines are re-tuned to this font (the fix round's report has the values); the place-and-date line is fitted to its column.
+> - **Review Focus 2** renders the 80-character name and a name with every Estonian letter (no Cyrillic) and reads them back; the letter test asks Revive 80 Signature for every letter `LETTER` accepts.
+
 **Scope.**
 - **Spec:** §7 (the page, the layout, the fonts, the generation), §9 ("Long course titles") and §10 ("PDF"); decisions D4, D5 and D6.
 - **Global Constraints:** "Platform and dependencies" (under 300 KB, tens of milliseconds, the fonts read with `fs` from `path.join(process.cwd(), "assets", "fonts")`) and "Frozen copy" (the PDF prints only what the row holds; the signature image is not frozen).
@@ -1799,15 +1816,17 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: The certificate's server — `src/server/certificates.ts` (issue, re-issue, reads, Seaded's settings, the signature key, the register, `certificatePdf`)
+### Task 3: The certificate's server — `src/server/certificates.ts` (issue, re-issue, reads, Seaded's settings, the register, `certificatePdf`)
 
-Spec §3 (the frozen copy, the `settings` key `certificate` and its defaults), §4 (numbering, no duplicate numbers, Maria's "Järgmine number"), §6 ("Paranda nimi" re-issues under the same number, the register), §9 (completion is never undone, revoked hides it from her, deletion cascades with a gap in the series, settings changed after issue, course renamed after issue, the Tallinn year), D2, D3, D4. Review Focus 1, 3, 4 and 5. Rulings (this plan's Global Constraints): the number lock order — the access row first (`lockAccess`), then `pg_advisory_xact_lock(hashtext('certificate-number'))`, then the `certificate` setting read and moved on; an expired access CAN issue (she completed it), a revoked one is `notFound`; logs carry ids and numbers only.
+Spec §3 (the frozen copy, the `settings` key `certificate` and its defaults), §4 (numbering, no duplicate numbers, Maria's "Järgmine number"), §5 (the name rules, which the trainer's name follows too), §6 ("Paranda nimi" re-issues under the same number, the register), §9 (completion is never undone, revoked hides it from her, deletion cascades with a gap in the series, settings changed after issue, course renamed after issue, the Tallinn year), D2, D3, D4 (the signature is the trainer's name typed in the script font). Review Focus 1, 3, 4 and 5. Rulings (this plan's Global Constraints): the number lock order — the access row first (`lockAccess`), then `pg_advisory_xact_lock(hashtext('certificate-number'))`, then the `certificate` setting read and moved on; an expired access CAN issue (she completed it), a revoked one is `notFound`; logs carry ids and numbers only.
 
 **Where the refusals sit between the two locks.** `issueCertificate` checks the name before anything is read. In its transaction it locks the access row, then answers `notFound` (revoked), `notCompleted` or `already` (a certificate exists) **before** it takes the number lock: the access lock alone already serialises every issue of that access, so a double tap never waits for the whole series. Only an issue that will write a certificate takes the number lock, after the access lock, so the order is always access → series and no two writes can wait for each other the other way round. The Task 7 race spec relies on this: two different accesses both get past their own access locks and queue at the number lock.
 
-**Every writer of the setting holds the number lock.** `saveCertificateSettings` and `setSignatureKey` rewrite the whole `certificate` setting. Without the lock, one of them could cross an issue's "next number" move and undo it (or undo the signature). Both therefore take the same transaction lock before they read the setting.
+**Every writer of the setting holds the number lock.** Besides an issue, `saveCertificateSettings` is the only writer, and it rewrites the whole `certificate` setting. Without the lock it could cross an issue's "next number" move and undo it, so it takes the same transaction lock before it reads the setting.
 
-**What is not frozen.** The signature image and the trainer's name are read from Seaded on every download (`certificatePdf`). Everything else printed comes from the certificate's own row.
+**What is not frozen.** The trainer's name, Maria's signature typed in the script font, is read from Seaded on every download (`certificatePdf`). Everything else printed comes from the certificate's own row. No picture of a signature exists: `certificatePdf` reads no store, and `loadCertificateAssets()` gives the two fonts only.
+
+**The trainer's name is printable.** It is Maria's signature, so it follows the student's name rules: `saveCertificateSettings` refuses a name `checkCertificateName` refuses ("letters" or "length" on `trainerName`, beside "required" and "tooLong") and stores the cleaned name; `readCertificateSettings` (Task 1, as amended) reads a stored name it would refuse as "Maria Sosnina".
 
 **Files:**
 - Create: `app/src/server/certificates.ts`
@@ -1817,26 +1836,25 @@ Spec §3 (the frozen copy, the `settings` key `certificate` and its defaults), �
 - Consumes (Task 1), from `src/db/schema.ts`: `certificates` (`id, accessId, number, year, seq, name, courseTitle, skills, volume, practicalLine, place, registryCode, issuedAt, reissuedAt, createdAt`; unique `certificates_access`, `certificates_number`, `certificates_year_seq`; check `certificates_seq_positive`), `type Certificate = typeof certificates.$inferSelect`, `courses.certificateSkills: string[]` (default `[]`), `courses.certificateVolume: string` (default `""`).
 - Consumes (Task 1), from `src/domain/certificate.ts`:
   - `CERT_LIMITS = { nameMin: 2, nameMax: 80, skills: 16, skill: 120, volume: 80, place: 60, registryCode: 20, practicalLine: 200, trainerName: 60 }`;
-  - `type CertificateSettings = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: number; nextSeq: number; signatureKey: string | null }`;
+  - `type CertificateSettings = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: number; nextSeq: number }` (as amended: no signature key);
   - `CERT_DEFAULTS = { place: "Pärnu linn", registryCode: "16346048", practicalLine: "Praktiline töö fotodel, koolitaja poolt hinnatud iseseisev protseduuri teostamine", trainerName: "Maria Sosnina" }`;
   - `tallinnYear(d: Date): number`;
-  - `readCertificateSettings(value: unknown, now: Date): CertificateSettings`;
+  - `readCertificateSettings(value: unknown, now: Date): CertificateSettings` (a stored `trainerName` that `checkCertificateName` refuses reads as "Maria Sosnina");
   - `checkCertificateName(raw: string): { ok: true; name: string } | { ok: false; error: "length" | "letters" }`;
   - `formatCertificateNumber(year: number, seq: number): string`;
   - `nextNumber(s: { nextYear: number; nextSeq: number }, year: number): { year: number; seq: number; next: { nextYear: number; nextSeq: number } }`;
   - `certificateSkills(course: { certificateSkills: readonly string[]; outcomes: readonly { et: string }[] }): string[]`.
-- Consumes (Task 2), from `src/server/certificate-pdf.ts`:
-  - `type CertificateAssets = { sans: Uint8Array; script: Uint8Array; signature: Uint8Array | null }`;
-  - `loadCertificateAssets(store: FileStore | null, signatureKey: string | null): Promise<CertificateAssets>`;
+- Consumes (Task 2, as amended by its fix round), from `src/server/certificate-pdf.ts`:
+  - `type CertificateAssets = { sans: Uint8Array; script: Uint8Array }`;
+  - `loadCertificateAssets(): Promise<CertificateAssets>` (the two fonts, read once per process);
   - `type CertificateContent = Pick<Certificate, "number" | "name" | "courseTitle" | "skills" | "volume" | "practicalLine" | "place" | "registryCode" | "issuedAt"> & { trainerName: string }`;
-  - `renderCertificate(c: CertificateContent, assets: CertificateAssets): Promise<Uint8Array>`.
+  - `renderCertificate(c: CertificateContent, assets: CertificateAssets): Promise<Uint8Array>` (it writes `trainerName` in the script font as the signature).
 - Consumes (existing):
   - `accessFor(db, clientId, slug)` and `lockAccess(tx, accessId)` (`src/server/completion.ts`);
   - `readSetting(q: Q, key)` (`src/db/queries/public.ts`);
   - `setSetting(db: Q, key, value)`, `paged`, `type Paged` (`src/db/queries/admin.ts`);
   - `PAGE_SIZE` (`src/domain/paging.ts`);
-  - `toStorable` (`src/lib/to-storable.ts`);
-  - `type FileStore` (`src/server/media.ts`).
+  - `toStorable` (`src/lib/to-storable.ts`).
 - Produces, from `src/server/certificates.ts` :
   - `type CertificateView = { id: number; number: string; name: string; issuedAt: string; reissuedAt: string | null }`;
   - `type IssueResult = { kind: "issued"; certificate: CertificateView } | { kind: "already"; certificate: CertificateView } | { kind: "notCompleted" } | { kind: "invalid"; error: "length" | "letters" } | { kind: "notFound" }`;
@@ -1846,16 +1864,16 @@ Spec §3 (the frozen copy, the `settings` key `certificate` and its defaults), �
   - `certificateForAdmin(db: Db, certificateId: number): Promise<(Certificate & { revoked: boolean }) | null>`;
   - `certificateOfAccess(db: Db, accessId: number): Promise<CertificateView | null>`;
   - `getCertificateSettings(db: Db, now: Date): Promise<CertificateSettings>`;
-  - `saveCertificateSettings(db: Db, raw: unknown, now: Date): Promise<{ ok: true; settings: CertificateSettings } | { ok: false; fields: Record<string, string> }>`;
-  - `setSignatureKey(db: Db, key: string | null, now: Date): Promise<string | null>`;
+  - `saveCertificateSettings(db: Db, raw: unknown): Promise<{ ok: true; settings: CertificateSettings } | { ok: false; fields: Record<string, string> }>` (no `now`: the save rewrites the whole setting from the form, nothing from the clock);
   - `type RegisterRow = { id: number; number: string; name: string; course: string; issuedAt: Date; reissuedAt: Date | null; revoked: boolean; clientId: number }`;
   - `listCertificates(db: Db, page: number): Promise<Paged<RegisterRow>>`;
   - `lastIssued(db: Db, year: number): Promise<string | null>`;
-  - `certificatePdf(db: Db, store: FileStore | null, cert: Certificate, now: Date): Promise<Uint8Array>`.
-- Produces (**added**, for Task 5's field texts): `type CertificateFieldError = "required" | "tooLong" | "invalid" | "taken"`. These are the values of `saveCertificateSettings`'s `fields`:
+  - `certificatePdf(db: Db, cert: Certificate, now: Date): Promise<Uint8Array>` (no store: there is nothing to read but the fonts).
+- Produces (**added**, for Task 5's field texts): `type CertificateFieldError = "required" | "tooLong" | "invalid" | "taken" | "letters" | "length"`. These are the values of `saveCertificateSettings`'s `fields`:
   - `place`, `registryCode`, `practicalLine`, `trainerName`: `"required"` (empty after trimming) or `"tooLong"` (over its `CERT_LIMITS`);
+  - `trainerName` also `checkCertificateName`'s refusal: `"letters"` (a character outside the rule's letters and joiners, Cyrillic included, or fewer than two letters) or `"length"` (a single character: within 60 characters, "length" only ever means too short);
   - `nextSeq`: `"invalid"` (the year is not a whole number 2000–2099, or the number is not 1–99 999; the year has no key of its own) or `"taken"` (at or below the highest number issued in `nextYear`).
-- The setting's stored shape is exactly `CertificateSettings` (all seven keys), under the `settings` key `"certificate"`. Inputs to `saveCertificateSettings`: `{ place, registryCode, practicalLine, trainerName, nextYear, nextSeq }`. The texts are made storable (`toStorable`), with their white space collapsed to one space and trimmed. The numbers may be numbers or digit strings. The signature key is never changed by this save.
+- The setting's stored shape is exactly `CertificateSettings` (all six keys), under the `settings` key `"certificate"`. Inputs to `saveCertificateSettings`: `{ place, registryCode, practicalLine, trainerName, nextYear, nextSeq }`. The texts are made storable (`toStorable`), with their white space collapsed to one space and trimmed; the trainer's name is stored as `checkCertificateName` cleans it (NFC). The numbers may be numbers or digit strings.
 
 - [ ] **Step 1: Write the failing test** `tests/db/certificates.test.ts`:
 
@@ -1874,15 +1892,15 @@ import { CERT_DEFAULTS } from "@/domain/certificate";
 import { renderCertificate } from "@/server/certificate-pdf";
 import {
   certificateForAdmin, certificateForStudent, certificateOfAccess, certificatePdf, getCertificateSettings, issueCertificate, lastIssued, listCertificates,
-  reissueCertificate, saveCertificateSettings, setSignatureKey, type IssueResult,
+  reissueCertificate, saveCertificateSettings, type IssueResult,
 } from "@/server/certificates";
-import { fakeMediaStore } from "../fakes";
 import { makeTestDb } from "./helpers";
 
 // The e-course certificate's server (phase 3d, spec §3, §4, §6, §9) against a real (PGlite) database: the issue (the name rules first, then
 // under the access's lock and the number series' lock; one per access; the number from Seaded, moved on; the frozen copy), the re-issue under
-// the same number, the student's and Maria's reads, Seaded's settings and the signature key, the register, and the PDF of a row rendered with
-// Seaded's signature and trainer name. The renderer is the real one (Task 2), wrapped so a test can see what it was given.
+// the same number, the student's and Maria's reads, Seaded's settings (the trainer's name, her typed signature, under the student's name
+// rules), the register, and the PDF of a row rendered with the fonts and Seaded's trainer's name. The renderer is the real one (Task 2),
+// wrapped so a test can see what it was given.
 
 vi.mock("@/server/certificate-pdf", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/server/certificate-pdf")>();
@@ -1891,11 +1909,8 @@ vi.mock("@/server/certificate-pdf", async (importOriginal) => {
 
 const NOW = new Date("2026-10-20T10:00:00Z");
 const DAY = 86_400_000;
-/** A valid 1 × 1 PNG (the renderer embeds it). `PNG_B` is another file of the same picture: a PNG reader stops at IEND, the byte after it is not read. */
-const PNG_A = [...Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64")];
-const PNG_B = [...PNG_A, 0];
 /** Seaded as these tests store it unless one says otherwise: the defaults, 2026, the next number 3. */
-const SETTING = { ...CERT_DEFAULTS, nextYear: 2026, nextSeq: 3, signatureKey: null };
+const SETTING = { ...CERT_DEFAULTS, nextYear: 2026, nextSeq: 3 };
 /** A save of Seaded's card that passes. */
 const VALID = { place: "Pärnu linn", registryCode: "16346048", practicalLine: CERT_DEFAULTS.practicalLine, trainerName: "Maria Sosnina", nextYear: 2026, nextSeq: 1 };
 
@@ -1985,7 +2000,7 @@ describe("issueCertificate (spec §4, §5)", () => {
     const kati = await student("kati@example.test", c.id);
     expect((await issued(kati.client.id, "Kati Kask")).number).toBe("MS LAB 2026-01");
     expect((await rows())[0]).toMatchObject({ skills: ["Kulmude kuju", "Hooldus"], volume: "", place: "Pärnu linn", registryCode: "16346048", practicalLine: CERT_DEFAULTS.practicalLine });
-    expect(await stored()).toEqual({ ...CERT_DEFAULTS, nextYear: 2026, nextSeq: 2, signatureKey: null });
+    expect(await stored()).toEqual({ ...CERT_DEFAULTS, nextYear: 2026, nextSeq: 2 });
   });
 
   test("the refusals: a name the rules refuse, a course not completed yet, a revoked access, no access or a contact course — nothing stored; an expired completed access issues (she completed it)", async () => {
@@ -2196,49 +2211,51 @@ describe("who reads a certificate", () => {
 });
 
 describe("Seaded → Tunnistus (spec §3, §4)", () => {
-  test("getCertificateSettings: the defaults before anything is stored (this year, number 1, no signature); what was stored after", async () => {
-    expect(await getCertificateSettings(db, NOW)).toEqual({ ...CERT_DEFAULTS, nextYear: 2026, nextSeq: 1, signatureKey: null });
+  test("getCertificateSettings: the defaults before anything is stored (this year, number 1, Maria Sosnina); what was stored after; a stored trainer's name the script font cannot draw reads as the default", async () => {
+    expect(await getCertificateSettings(db, NOW)).toEqual({ ...CERT_DEFAULTS, nextYear: 2026, nextSeq: 1 });
     await setSetting(db, "certificate", { ...SETTING, place: "Tallinn" });
     expect(await getCertificateSettings(db, NOW)).toEqual({ ...SETTING, place: "Tallinn" });
+    await setSetting(db, "certificate", { ...SETTING, trainerName: "Мария Соснина" });
+    expect((await getCertificateSettings(db, NOW)).trainerName).toBe("Maria Sosnina");
   });
 
-  test("saveCertificateSettings: the texts on one line and trimmed, the numbers as numbers (a form's digit strings too); the signature key kept", async () => {
-    await setSignatureKey(db, "certificate/signature-a.png", NOW);
-    const saved = await saveCertificateSettings(
-      db,
-      { place: "  Tallinn ", registryCode: " 16346048 ", practicalLine: "Praktiline töö\n fotodel ", trainerName: "Maria  Sosnina", nextYear: "2026", nextSeq: "12" },
-      NOW,
-    );
-    const settings = { place: "Tallinn", registryCode: "16346048", practicalLine: "Praktiline töö fotodel", trainerName: "Maria Sosnina", nextYear: 2026, nextSeq: 12, signatureKey: "certificate/signature-a.png" };
+  test("saveCertificateSettings: the texts on one line and trimmed, the trainer's name cleaned as the name rules clean it (NFC), the numbers as numbers (a form's digit strings too)", async () => {
+    // "Mari" + U+0301 (a combining acute) + "a" is "María" once it is NFC
+    const raw = { place: "  Tallinn ", registryCode: " 16346048 ", practicalLine: "Praktiline töö\n fotodel ", trainerName: " Mari\u0301a  Sosnina ", nextYear: "2026", nextSeq: "12" };
+    const saved = await saveCertificateSettings(db, raw);
+    const settings = { place: "Tallinn", registryCode: "16346048", practicalLine: "Praktiline töö fotodel", trainerName: "María Sosnina", nextYear: 2026, nextSeq: 12 };
     expect(saved).toEqual({ ok: true, settings });
     expect(await stored()).toEqual(settings);
   });
 
   test("its refusals, each by its field: empty or too long, a year or a number that is none; nothing is stored", async () => {
-    expect(await saveCertificateSettings(db, { place: " ", registryCode: "1".repeat(21), practicalLine: "x".repeat(201), trainerName: "", nextYear: 2026, nextSeq: 0 }, NOW)).toEqual({
+    expect(await saveCertificateSettings(db, { place: " ", registryCode: "1".repeat(21), practicalLine: "x".repeat(201), trainerName: "", nextYear: 2026, nextSeq: 0 })).toEqual({
       ok: false,
       fields: { place: "required", registryCode: "tooLong", practicalLine: "tooLong", trainerName: "required", nextSeq: "invalid" },
     });
     const numbers: [unknown, unknown][] = [[1999, 1], [2100, 1], ["20x6", 1], [2026, 1.5], [2026, -1], [2026, "-1"], [2026, 100_000], [2026, null], [null, 1]];
     for (const [nextYear, nextSeq] of numbers)
-      expect(await saveCertificateSettings(db, { ...VALID, nextYear, nextSeq }, NOW), `${String(nextYear)} ${String(nextSeq)}`).toEqual({ ok: false, fields: { nextSeq: "invalid" } });
-    for (const raw of [null, "x", [], 7]) expect((await saveCertificateSettings(db, raw, NOW)).ok, JSON.stringify(raw)).toBe(false);
+      expect(await saveCertificateSettings(db, { ...VALID, nextYear, nextSeq }), `${String(nextYear)} ${String(nextSeq)}`).toEqual({ ok: false, fields: { nextSeq: "invalid" } });
+    for (const raw of [null, "x", [], 7]) expect((await saveCertificateSettings(db, raw)).ok, JSON.stringify(raw)).toBe(false);
     expect(await stored()).toBeNull();
-    expect(await saveCertificateSettings(db, VALID, NOW)).toEqual({ ok: true, settings: { ...VALID, signatureKey: null } });
+    expect(await saveCertificateSettings(db, VALID)).toEqual({ ok: true, settings: VALID });
   });
 
-  test("setSignatureKey: the previous key back (the caller removes that object), the other settings kept; only a certificate/ key", async () => {
-    await setSetting(db, "certificate", SETTING);
-    expect(await setSignatureKey(db, "certificate/signature-a.png", NOW)).toBeNull();
-    expect(await setSignatureKey(db, "certificate/signature-b.png", NOW)).toBe("certificate/signature-a.png");
-    expect(await stored()).toEqual({ ...SETTING, signatureKey: "certificate/signature-b.png" });
-    expect(await setSignatureKey(db, null, NOW)).toBe("certificate/signature-b.png");
-    expect(await stored()).toEqual(SETTING);
-    await expect(setSignatureKey(db, "img/x.png", NOW)).rejects.toThrow();
-    expect(await stored()).toEqual(SETTING);
+  test("the trainer's name is Maria's signature in the script font: the student's name rules (Latin letters as in the passport) — Cyrillic, a letter the font lacks or a digit is 'letters', one character 'length', over 60 'tooLong'; nothing is stored", async () => {
+    const refused = [
+      ["Мария Соснина", "letters"],
+      ["Łucja Nowak", "letters"],
+      ["Maria Sosnina 2", "letters"],
+      ["M", "length"],
+      ["M".repeat(61), "tooLong"],
+    ] as const;
+    for (const [trainerName, error] of refused)
+      expect(await saveCertificateSettings(db, { ...VALID, trainerName }), trainerName).toEqual({ ok: false, fields: { trainerName: error } });
+    expect(await stored()).toBeNull();
+    expect(await saveCertificateSettings(db, { ...VALID, trainerName: "Õie-Mai Šõrmus" })).toMatchObject({ ok: true, settings: { trainerName: "Õie-Mai Šõrmus" } });
   });
 
-  test("Review Focus 4: Maria changes Seaded after certificates exist: they keep their place, registry code and practical line (and their course's title and lines); a next number at or below an issued one of that year is refused; a new signature is on every download, old certificates' too", async () => {
+  test("Review Focus 4: Maria changes Seaded after certificates exist: they keep their place, registry code and practical line (and their course's title and lines); a next number at or below an issued one of that year is refused; a new trainer's name (her signature) is on every download, old certificates' too", async () => {
     const c = await ecourse();
     const kati = await student("kati@example.test", c.id);
     const mari = await student("mari@example.test", c.id);
@@ -2246,10 +2263,10 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
     await issued(kati.client.id, "Kati Kask"); // MS LAB 2026-01
     await issued(mari.client.id, "Mari Maasikas"); // MS LAB 2026-02
     const changed = { place: "Tallinn", registryCode: "12345678", practicalLine: "Uus rida", trainerName: "Maria S.", nextYear: 2026 };
-    for (const nextSeq of [1, 2]) expect(await saveCertificateSettings(db, { ...changed, nextSeq }, NOW), String(nextSeq)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
+    for (const nextSeq of [1, 2]) expect(await saveCertificateSettings(db, { ...changed, nextSeq }), String(nextSeq)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
     expect(await stored()).toMatchObject({ place: "Pärnu linn", nextSeq: 3 }); // nothing stored
-    expect(await saveCertificateSettings(db, { ...changed, nextYear: 2027, nextSeq: 1 }, NOW)).toMatchObject({ ok: true }); // nothing issued in 2027 yet
-    expect(await saveCertificateSettings(db, { ...changed, nextSeq: 3 }, NOW)).toMatchObject({ ok: true });
+    expect(await saveCertificateSettings(db, { ...changed, nextYear: 2027, nextSeq: 1 })).toMatchObject({ ok: true }); // nothing issued in 2027 yet
+    expect(await saveCertificateSettings(db, { ...changed, nextSeq: 3 })).toMatchObject({ ok: true });
     await db.update(courses).set({ title: { et: "Kulmud 2.0" }, certificateSkills: ["Uus oskus"], certificateVolume: "12 tundi" }).where(eq(courses.id, c.id));
     await issued(liis.client.id, "Liis Lill"); // MS LAB 2026-03
     const [k, m, l] = await rows();
@@ -2264,15 +2281,12 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
       });
     expect(l).toMatchObject({ number: "MS LAB 2026-03", place: "Tallinn", registryCode: "12345678", practicalLine: "Uus rida", courseTitle: "Kulmud 2.0", skills: ["Uus oskus"], volume: "12 tundi" });
 
-    // the signature is not frozen: each download reads Seaded's, an old certificate's too; so is the trainer's name
-    const store = fakeMediaStore({ "certificate/signature-a.png": { bytes: PNG_A, contentType: "image/png" }, "certificate/signature-b.png": { bytes: PNG_B, contentType: "image/png" } });
+    // the trainer's name (her signature, typed in the script font) is not in the row: each download reads Seaded's, an old certificate's too
     const render = vi.mocked(renderCertificate);
-    await setSignatureKey(db, "certificate/signature-a.png", NOW);
-    await certificatePdf(db, store, k, NOW);
-    await setSignatureKey(db, "certificate/signature-b.png", NOW);
-    const pdf = await certificatePdf(db, store, k, NOW);
-    expect(store.requested).toEqual(["certificate/signature-a.png", "certificate/signature-b.png"]);
-    expect(render.mock.calls.map(([, assets]) => [...(assets.signature ?? [])])).toEqual([PNG_A, PNG_B]);
+    await certificatePdf(db, k, NOW);
+    expect(await saveCertificateSettings(db, { ...changed, trainerName: "Maria Sosnina", nextSeq: 4 })).toMatchObject({ ok: true });
+    const pdf = await certificatePdf(db, k, NOW);
+    expect(render.mock.calls.map(([content]) => content.trainerName)).toEqual(["Maria S.", "Maria Sosnina"]);
     expect(render.mock.calls[1][0]).toEqual({
       number: "MS LAB 2026-01",
       name: "Kati Kask",
@@ -2283,22 +2297,27 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
       place: "Pärnu linn",
       registryCode: "16346048",
       issuedAt: NOW,
-      trainerName: "Maria S.",
+      trainerName: "Maria Sosnina",
     });
     expect(Buffer.from(pdf.subarray(0, 5)).toString("latin1")).toBe("%PDF-");
   });
 
-  test("certificatePdf without a store, or with a key whose object is gone: no signature (the trainer's name is written instead), no failure; a PDF under 300 KB", async () => {
+  test("certificatePdf: the renderer gets the two fonts and nothing else (no image, no store); a PDF under 300 KB; a stored trainer's name the script font cannot draw prints as Maria Sosnina", async () => {
     const c = await ecourse();
     const kati = await student("kati@example.test", c.id);
     await issued(kati.client.id, "Kati Kask");
     const [k] = await rows();
-    const pdf = await certificatePdf(db, null, k, NOW);
+    const pdf = await certificatePdf(db, k, NOW);
     expect(Buffer.from(pdf.subarray(0, 5)).toString("latin1")).toBe("%PDF-");
     expect(pdf.byteLength).toBeLessThan(300 * 1024);
-    await setSignatureKey(db, "certificate/signature-gone.png", NOW);
-    await certificatePdf(db, fakeMediaStore(), k, NOW);
-    expect(vi.mocked(renderCertificate).mock.calls.map(([, assets]) => assets.signature)).toEqual([null, null]);
+    await setSetting(db, "certificate", { ...SETTING, trainerName: "Мария Соснина" });
+    await certificatePdf(db, k, NOW);
+    const calls = vi.mocked(renderCertificate).mock.calls;
+    expect(calls.map(([, assets]) => Object.keys(assets).sort())).toEqual([
+      ["sans", "script"],
+      ["sans", "script"],
+    ]);
+    expect(calls.map(([content]) => content.trainerName)).toEqual(["Maria Sosnina", "Maria Sosnina"]);
   });
 });
 ```
@@ -2322,17 +2341,17 @@ import { PAGE_SIZE } from "@/domain/paging";
 import { toStorable } from "@/lib/to-storable";
 import { loadCertificateAssets, renderCertificate } from "./certificate-pdf";
 import { accessFor, lockAccess } from "./completion";
-import type { FileStore } from "./media";
 
 // The e-course certificate (phase 3d, spec §3–§7), without Next.js: the issue (one per completed access, numbered in Maria's own series), the
 // re-issue under the same number ("Paranda nimi"), the student's and Maria's reads, Seaded → Tunnistus (the settings key `certificate`) and
-// the register. Every write of the number series — an issue, Seaded's save, the signature — holds the transaction lock `certificate-number`
+// the register. Every write of the number series — an issue, Seaded's save — holds the transaction lock `certificate-number`
 // (pg_advisory_xact_lock), and an issue locks its access row before it (completion.ts lockAccess, the first lock of every write about one
 // access): two issues of one access go one after the other and the second finds the first's certificate; two of different accesses get two
 // numbers; the unique (year, seq) is the backstop. A certificate prints its own frozen copy, never the course or Seaded as they are now,
-// except the signature image and the trainer's name, which each download reads. Logs carry ids and numbers only, never a name.
+// except the trainer's name — Maria's signature, typed in the script font — which each download reads. No picture of a signature is drawn.
+// Logs carry ids and numbers only, never a name.
 
-/** The settings key of Seaded → Tunnistus: CertificateSettings, all seven keys. */
+/** The settings key of Seaded → Tunnistus: CertificateSettings, all six keys. */
 const SETTING_KEY = "certificate";
 /** The number series' transaction lock (hashtext of this): every write that reads and rewrites the setting holds it. */
 const NUMBER_LOCK = "certificate-number";
@@ -2354,9 +2373,10 @@ export type RegisterRow = { id: number; number: string; name: string; course: st
 
 /**
  * Seaded's refusal of one field (saveCertificateSettings): "required" empty, "tooLong" over its CERT_LIMITS, "invalid" no year 2000–2099
- * or no number 1–99 999 (both under `nextSeq`), "taken" a number at or below one already issued in that year.
+ * or no number 1–99 999 (both under `nextSeq`), "taken" a number at or below one already issued in that year; on `trainerName` also the
+ * name rules' "letters" and "length" (checkCertificateName: the trainer's name is the signature the script font writes).
  */
-export type CertificateFieldError = "required" | "tooLong" | "invalid" | "taken";
+export type CertificateFieldError = "required" | "tooLong" | "invalid" | "taken" | "letters" | "length";
 
 type SaveResult = { ok: true; settings: CertificateSettings } | { ok: false; fields: Record<string, string> };
 
@@ -2485,7 +2505,7 @@ export async function certificateOfAccess(db: Db, accessId: number): Promise<Cer
   return row ? viewOf(row) : null;
 }
 
-/** Seaded → Tunnistus as stored, or its defaults (this year, number 1, no signature). */
+/** Seaded → Tunnistus as stored, or its defaults (this year, number 1, Maria Sosnina). */
 export async function getCertificateSettings(db: Db, now: Date): Promise<CertificateSettings> {
   return readSettings(db, now);
 }
@@ -2500,15 +2520,17 @@ function wholeNumber(value: unknown): number | null {
 }
 
 /**
- * Seaded → Tunnistus "Salvesta" (spec §3, §4), apart from the signature, which has its own route.
+ * Seaded → Tunnistus "Salvesta" (spec §3, §4, §6).
  * - The four texts are kept on one line and trimmed; each is required and within its CERT_LIMITS.
+ * - The trainer's name is Maria's signature, written in the script font: it also passes the student's name rules (checkCertificateName:
+ *   "letters" or "length" on `trainerName`) and is stored as they clean it, so the PDF never prints a letter the font lacks.
  * - "Järgmine number" is a year 2000–2099 and a number 1–99 999.
  * - Under the number series' lock, a number at or below the highest one issued in that year is refused (`nextSeq: "taken"`). Two certificates
  *   must never share a number, and a student's issue between Maria's loading the page and her save moves the series on.
  * Field errors (CertificateFieldError) are keyed place, registryCode, practicalLine, trainerName and nextSeq (a bad year is reported under
- * nextSeq too); nothing is stored when there is one. The signature key is kept as it is.
+ * nextSeq too); nothing is stored when there is one.
  */
-export async function saveCertificateSettings(db: Db, raw: unknown, now: Date): Promise<SaveResult> {
+export async function saveCertificateSettings(db: Db, raw: unknown): Promise<SaveResult> {
   const input = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const fields: Record<string, CertificateFieldError> = {};
   const text = (key: "place" | "registryCode" | "practicalLine" | "trainerName"): string => {
@@ -2520,7 +2542,12 @@ export async function saveCertificateSettings(db: Db, raw: unknown, now: Date): 
   const place = text("place");
   const registryCode = text("registryCode");
   const practicalLine = text("practicalLine");
-  const trainerName = text("trainerName");
+  let trainerName = text("trainerName");
+  if (!fields.trainerName) {
+    const signer = checkCertificateName(trainerName);
+    if (signer.ok) trainerName = signer.name;
+    else fields.trainerName = signer.error;
+  }
   const nextYear = wholeNumber(input.nextYear);
   const nextSeq = wholeNumber(input.nextSeq);
   if (nextYear === null || nextYear < YEAR_MIN || nextYear > YEAR_MAX || nextSeq === null || nextSeq < 1 || nextSeq > SEQ_MAX) fields.nextSeq = "invalid";
@@ -2531,26 +2558,9 @@ export async function saveCertificateSettings(db: Db, raw: unknown, now: Date): 
     await lockNumbers(tx);
     const [{ top }] = await tx.select({ top: max(certificates.seq) }).from(certificates).where(eq(certificates.year, nextYear));
     if (top !== null && nextSeq <= top) return { ok: false, fields: { nextSeq: "taken" } };
-    const current = await readSettings(tx, now);
-    const settings: CertificateSettings = { place, registryCode, practicalLine, trainerName, nextYear, nextSeq, signatureKey: current.signatureKey };
+    const settings: CertificateSettings = { place, registryCode, practicalLine, trainerName, nextYear, nextSeq };
     await setSetting(tx, SETTING_KEY, settings);
     return { ok: true, settings };
-  });
-}
-
-/**
- * The signature image's key (POST and DELETE /api/admin/allkiri): a `certificate/…` key, or null. It is written under the number series'
- * lock, because the setting is rewritten whole and must not cross an issue's move of the number. Returns the key it replaces: the caller
- * removes that object from the store after the commit. A key outside certificate/ is a programming error: thrown, nothing stored.
- */
-export async function setSignatureKey(db: Db, key: string | null, now: Date): Promise<string | null> {
-  if (key !== null && !key.startsWith("certificate/")) throw new Error("[certificate] a signature key starts with certificate/");
-  return db.transaction(async (t): Promise<string | null> => {
-    const tx = t as unknown as Db;
-    await lockNumbers(tx);
-    const current = await readSettings(tx, now);
-    await setSetting(tx, SETTING_KEY, { ...current, signatureKey: key });
-    return current.signatureKey;
   });
 }
 
@@ -2588,12 +2598,11 @@ export async function lastIssued(db: Db, year: number): Promise<string | null> {
 
 /**
  * The PDF of a certificate row, rendered on each download (spec §7). It uses the row's frozen copy, and from Seaded as it is now the trainer's
- * name and the signature image, which the store gives (certificate-pdf.ts loadCertificateAssets: none without a store, a key or the object;
- * the trainer's name in the script font is drawn then). Nothing is stored.
+ * name, which the renderer writes in the script font as Maria's signature (one the font cannot draw reads as "Maria Sosnina":
+ * readCertificateSettings). The fonts come from assets/fonts (certificate-pdf.ts loadCertificateAssets); no store, no image. Nothing is stored.
  */
-export async function certificatePdf(db: Db, store: FileStore | null, cert: Certificate, now: Date): Promise<Uint8Array> {
-  const settings = await getCertificateSettings(db, now);
-  const assets = await loadCertificateAssets(store, settings.signatureKey);
+export async function certificatePdf(db: Db, cert: Certificate, now: Date): Promise<Uint8Array> {
+  const [settings, assets] = await Promise.all([getCertificateSettings(db, now), loadCertificateAssets()]);
   return renderCertificate(
     {
       number: cert.number,
@@ -2625,7 +2634,7 @@ export async function certificatePdf(db: Db, store: FileStore | null, cert: Cert
 
 ```bash
 git add app/src/server/certificates.ts app/tests/db/certificates.test.ts
-git commit -m "feat(certificate): issue under the access's lock and the number series' lock, re-issue, the reads, Seaded's settings and the register
+git commit -m "feat(certificate): issue under the access's lock and the number series' lock, re-issue, the reads, Seaded's settings (the trainer's name under the name rules) and the register
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -2708,7 +2717,7 @@ Spec §5 (the student's side: the row before and after the issue, the name rules
   - `issueCertificate(db: Db, clientId: number, slug: string, rawName: string, now: Date): Promise<IssueResult>`;
   - `certificateForStudent(db: Db, clientId: number, certificateId: number): Promise<Certificate | null>`;
   - `certificateOfAccess(db: Db, accessId: number): Promise<CertificateView | null>`;
-  - `certificatePdf(db: Db, store: FileStore | null, cert: Certificate, now: Date): Promise<Uint8Array>`.
+  - `certificatePdf(db: Db, cert: Certificate, now: Date): Promise<Uint8Array>`.
 - Produces:
   - in `src/domain/certificate.ts` (Step 8, item 4): `certificateDownloadHeaders(year: number, seq: number): { "content-type": string; "content-disposition": string; "x-content-type-options": string }` — the PDF answer's three fixed headers, used by `pdfAnswer` here and by Task 5's admin route;
   - routes `POST /api/konto/kursus/<slug>/tunnistus` (handler `issueCertificateRoute`) and `GET /api/konto/tunnistus/<id>` (handler `certificateFile`, answered by `pdfAnswer(session, bytes, cert)` above the START marker);
@@ -2757,7 +2766,7 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-/** The account API's dependencies: a store with no signature in it, `later` dropping its tasks (nothing is mailed here). */
+/** The account API's dependencies: an empty store (the certificate reads none), `later` dropping its tasks (nothing is mailed here). */
 const deps = (over: Partial<AccountDeps> = {}): AccountDeps => ({
   db,
   env: { KV: kv, MAIL_FROM: "MS LAB <info@send.example>", MARIA_EMAIL: "maria@example.test", SITE_URL: SITE },
@@ -2829,7 +2838,8 @@ describe("POST /kursus/:slug/tunnistus", () => {
 
   test("the refusals: the name rules (400 with the reason, nothing stored), not completed (409), revoked or not hers (404); the path is never read as a lesson; no session (401)", async () => {
     const w = await world();
-    for (const [name, reason] of [["Kati 2", "letters"], ["A".repeat(81), "length"], ["", "length"]] as const) {
+    // Cyrillic is refused like a digit: the script font has no Cyrillic, so she writes her name in Latin letters as in her passport
+    for (const [name, reason] of [["Kati 2", "letters"], ["Катя Каск", "letters"], ["A".repeat(81), "length"], ["", "length"]] as const) {
       const res = await call(w.kati.cookie, "POST", ISSUE, { name });
       expect([res.status, await res.json()], name).toEqual([400, { ok: false, error: "name", reason }]);
     }
@@ -3056,16 +3066,19 @@ describe("the 'Tunnistus' row", () => {
     expect($("[data-certificate-download]")).toBeNull();
   });
 
-  test("the name is checked here first, with the server's own rule: digits or an emoji, or too long, is the field's error and nothing is sent", async () => {
+  test("the name is checked here first, with the server's own rule: digits, an emoji, Cyrillic (Latin letters as in the passport), or too long, is the field's error and nothing is sent", async () => {
     await show(data());
     await type("Kati 2");
     await press();
-    expect(errorText()).toBe("Kasuta nimes ainult tähti, tühikuid ja sidekriipse");
+    expect(errorText()).toBe("Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).");
     expect(field()!.getAttribute("aria-invalid")).toBe("true");
     expect(field()!.getAttribute("aria-describedby")).toBe($("[data-certificate-error]")!.id);
     await type("Kati 😀");
     await press();
-    expect(errorText()).toBe("Kasuta nimes ainult tähti, tühikuid ja sidekriipse");
+    expect(errorText()).toBe("Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).");
+    await type("Катя Каск");
+    await press();
+    expect(errorText()).toBe("Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).");
     await type("A".repeat(81));
     await press();
     expect(errorText()).toBe("Nimi peab olema 2–80 tähemärki pikk");
@@ -3106,7 +3119,7 @@ describe("the 'Tunnistus' row", () => {
     await press();
     expect($("[data-certificate-number]")!.textContent).toBe("Tunnistus nr. MS LAB 2026-03");
     const cases: [() => Promise<Response>, string][] = [
-      [async () => json(400, { ok: false, error: "name", reason: "letters" }), "Kasuta nimes ainult tähti, tühikuid ja sidekriipse"],
+      [async () => json(400, { ok: false, error: "name", reason: "letters" }), "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma)."],
       [async () => json(400, { ok: false, error: "name", reason: "length" }), "Nimi peab olema 2–80 tähemärki pikk"],
       [async () => json(429, { ok: false, error: "rate" }), "Liiga palju katseid. Proovi mõne minuti pärast."],
       [async () => json(409, { ok: false, error: "notCompleted" }), "Midagi läks valesti. Proovi uuesti."],
@@ -3163,7 +3176,7 @@ describe("the 'Tunnistus' row", () => {
     }
   });
 
-  test("Russian: the row in Russian, a Cyrillic name taken, the contact page under /ru", async () => {
+  test("Russian: the row in Russian, a Cyrillic name refused in her words (Latin letters as in the passport) and nothing sent, the Latin one taken, the contact page under /ru", async () => {
     fetchMock.mockResolvedValueOnce(json(200, { ok: true, certificate: ISSUED }));
     await show(data(), "ru");
     const row = $("[data-certificate]")!;
@@ -3171,12 +3184,16 @@ describe("the 'Tunnistus' row", () => {
     expect(row.textContent).toContain("Проверьте, как ваше имя будет написано в\u00a0сертификате");
     expect(row.querySelector("label")!.textContent).toBe("Имя в\u00a0сертификате");
     expect($("[data-certificate-issue]")!.textContent).toBe("Подтвердить и создать сертификат");
-    await type("Kati 2");
+    // her account's name may be in Cyrillic: the script font has none, so the rule asks for Latin letters as in her passport
+    for (const name of ["Kati 2", "Катя Каск"]) {
+      await type(name);
+      await press();
+      expect(errorText(), name).toBe("Напишите имя латинскими буквами, как в\u00a0паспорте (можно также пробел, дефис и апостроф).");
+    }
+    expect(posts()).toHaveLength(0);
+    await type("Katja Kask");
     await press();
-    expect(errorText()).toBe("Используйте в\u00a0имени только буквы, пробелы и дефисы");
-    await type("Катя Каск");
-    await press();
-    expect(JSON.parse(String(posts()[0][1]!.body))).toEqual({ name: "Катя Каск" });
+    expect(JSON.parse(String(posts()[0][1]!.body))).toEqual({ name: "Katja Kask" });
     expect($("[data-certificate-number]")!.textContent).toBe("Сертификат № MS LAB 2026-03");
     expect($("[data-certificate-download]")!.textContent).toBe("Скачать сертификат (PDF)");
     expect($("[data-certificate-contact]")!.getAttribute("href")).toBe("/ru/kontakt");
@@ -3323,14 +3340,15 @@ const HANDLERS = [
 ```ts
     // "Tunnistus" in "Lõpetamine" (components/account/CompletionSteps.tsx; phase 3d, spec §5) once the course is completed, and an ended
     // access's card link (AccountCourseCard.tsx). The certificate itself is Estonian only; these are the page's words around it. {number} is
-    // "MS LAB 2026-03". `letters` and `length` are the name rules' refusals (domain/certificate.ts checkCertificateName).
+    // "MS LAB 2026-03". `letters` and `length` are the name rules' refusals (domain/certificate.ts checkCertificateName): the script font
+    // draws Latin letters only, so `letters` asks for the name in Latin letters as in her passport (Cyrillic is refused).
     certificate: {
       title: "Tunnistus",
       check: "Kontrolli, kuidas su nimi tunnistusel kirjas on",
       nameLabel: "Nimi tunnistusel",
       issue: "Kinnita ja koosta tunnistus",
       issuing: "Koostan tunnistust…",
-      letters: "Kasuta nimes ainult tähti, tühikuid ja sidekriipse",
+      letters: "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).",
       length: "Nimi peab olema 2–80 tähemärki pikk",
       number: "Tunnistus nr. {number}",
       download: "Laadi tunnistus alla (PDF)",
@@ -3350,7 +3368,7 @@ const HANDLERS = [
       nameLabel: "Имя в\u00a0сертификате",
       issue: "Подтвердить и создать сертификат",
       issuing: "Создаю сертификат…",
-      letters: "Используйте в\u00a0имени только буквы, пробелы и дефисы",
+      letters: "Напишите имя латинскими буквами, как в\u00a0паспорте (можно также пробел, дефис и апостроф).",
       length: "Имя должно быть длиной от 2 до 80 символов",
       number: "Сертификат № {number}",
       download: "Скачать сертификат (PDF)",
@@ -3623,7 +3641,7 @@ async function certificateFile(request: Request, deps: AccountDeps, rawId: strin
   }
   const cert = await certificateForStudent(deps.db, session.clientId, id);
   if (!cert) return clientResponse(session, { ok: false }, 404);
-  const bytes = await certificatePdf(deps.db, deps.files ?? null, cert, deps.now);
+  const bytes = await certificatePdf(deps.db, cert, deps.now);
   return pdfAnswer(session, bytes, cert);
 }
 ```
@@ -4227,7 +4245,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `account.certificate.nameLabel` | Nimi tunnistusel | Имя в сертификате | Spec (ET); RU Draft |
 | `account.certificate.issue` | Kinnita ja koosta tunnistus | Подтвердить и создать сертификат | Spec (ET); RU Draft |
 | `account.certificate.issuing` | Koostan tunnistust… | Создаю сертификат… | Draft |
-| `account.certificate.letters` | Kasuta nimes ainult tähti, tühikuid ja sidekriipse | Используйте в имени только буквы, пробелы и дефисы | Spec (ET); RU Draft |
+| `account.certificate.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Напишите имя латинскими буквами, как в паспорте (можно также пробел, дефис и апостроф). | Owner (15.10: Latin letters as in the passport) |
 | `account.certificate.length` | Nimi peab olema 2–80 tähemärki pikk | Имя должно быть длиной от 2 до 80 символов | Draft |
 | `account.certificate.number` | Tunnistus nr. {number} | Сертификат № {number} | Spec (ET); RU Draft |
 | `account.certificate.download` | Laadi tunnistus alla (PDF) | Скачать сертификат (PDF) | Spec (ET); RU Draft |
@@ -4235,19 +4253,18 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `account.certificate.cardLink` | Laadi tunnistus alla | Скачать сертификат | Spec (ET); RU Draft |
 | `account.completionMail.completedCertificate` | Kinnita oma nimi ja laadi tunnistus alla: | Подтвердите своё имя и скачайте сертификат: | Spec (ET); RU Draft |
 
-(In the code, the Russian strings write the no-break space after the one-letter preposition "в" as `\u00a0`: `в\u00a0сертификате`, `в\u00a0имени`. The other words keep a plain space.)
+(In the code, the Russian strings write the no-break space after the one-letter preposition "в" as `\u00a0`: `в\u00a0сертификате`, `в\u00a0паспорте`, `в\u00a0имени`. The other words keep a plain space.)
 
 ---
 
-### Task 5: Admin settings and course text — the course editor's "Tunnistus" card, Seaded → "Tunnistus" with the signature, Maria's download
+### Task 5: Admin settings and course text — the course editor's "Tunnistus" card, Seaded → "Tunnistus" (the trainer's name as the signature), Maria's download
 
-Spec §6 (the course editor's card, Seaded's card, the signature), §3 (the two course columns, the setting's keys), §4 (Maria's "Järgmine number" with the last issued number; a number at or below an issued one refused), §7 (the signature is white on black), D4. Rulings applied: the controller's update of 15.10 (the signature comes from Maria's Canva document as a PNG, light ink on transparency or dark ink on white: `inkSignature` handles both), the interface note above (the card's draft and Task 3's error codes), and this task's own decisions, below.
+Spec §6 (the course editor's card, Seaded's card), §3 (the two course columns, the setting's keys), §4 (Maria's "Järgmine number" with the last issued number; a number at or below an issued one refused), §5 (the name rules, which the trainer's name follows), §7 (the trainer's name is written in the script font as the signature), D4. Rulings applied: the owner's decisions of 15.10 (the signature is `trainerName` typed in Revive 80 Signature; no signature image anywhere), the interface note above (the card's draft and Task 3's error codes), and this task's own decisions, below.
 
 **Decisions (read before coding):**
 - **Seaded's card is a form of its own, after the settings' form.** Seaded's page today is one form (`SettingsEditor`, its parts saved together through `saveSettingsForm`, with a sticky save bar). The certificate settings are not a part of it: they have their own server action (`saveCertificateSettingsAction`) and a "next number" rule the parts cannot express, and a form inside a form is invalid HTML. So the page renders `<CertificateSettings>` after `<SettingsEditor>` in the shell: its own `<section id="tunnistus">` card with its own `<form>`, its own button "Salvesta tunnistuse andmed" (secondary: the page's one primary button stays the save bar's "Salvesta") and its own status line (`[data-cert-status]`, never `[data-save-status]`, which the Seaded e2e reads). The card does not refresh the page: it keeps its own state, as Hindamine's actions do.
-- **The signature is not an action but a route** (`POST|GET|DELETE /api/admin/allkiri`): a file is a multipart upload, and the preview `<img>` needs a GET. The browser makes the PNG (`src/lib/signature-ink.ts`); the server checks it again (PNG signature, at most 1 MB), stores it under `certificate/signature-<uuid>.png` with the media store's `put`, points the setting at it (`setSignatureKey`, which returns the old key) and only then removes the old object; a failed removal is logged by its label, never the key. The key never reaches the browser: the card knows only whether there is a signature, and its preview is `/api/admin/allkiri?v=<n>` (a new `n` after each upload, so the `<img>` loads the new one).
+- **The signature is the trainer's name** (owner, 15.10). The card has five things: "Koht", "Registrikood", "Praktilise töö rida", "Koolitaja nimi" and "Järgmine number". There is no upload, no picture, no preview and no route for a signature: the PDF writes "Koolitaja nimi" in the script font where Maria signs. Its hint says so. The name is checked on the server (Task 3's `saveCertificateSettings`: the student's name rules, "letters" or "length" on `trainerName`, besides "required" and "tooLong"), and the card puts each code in words on the field, as it does for the others.
 - **`ProtocolStagesEditor` gets `kind?: "stages" | "skills"`.** Reusing it for "Oskused tunnistusel"  needs its own title, row label, "add" text, limit (16 lines, `CERT_LIMITS.skills`) and its own data hooks: with the stages' hooks, an e-course's editor would have two `[data-protocol-stages]`, and `tests/e2e/admin-edit.spec.ts` (`page.locator("[data-protocol-stages] h3")`) would break. `kind="skills"` uses `[data-certificate-skills]`, `[data-certificate-skill]`, `[data-add-skill]`; the hint and the empty line come through the existing `hint` / `empty` props.
-- **`inkSignature` knows two kinds of picture** (the controller's update). "light": more than 20 % of the pixels transparent (alpha < 16) and the other pixels' mean luminance > 160 — every pixel stays white with alpha = its alpha × luminance / 255. Otherwise "dark": each pixel's grey on white (a transparent part is paper) below the threshold 140 becomes white with an alpha from its darkness (full at half the threshold), the rest transparent. Either way: crop to the box of the pixels with alpha ≥ 64 (a speck of the paper's grain must not widen it) plus 4 px, at most 1200 px wide, PNG. The picture is read at most 2400 px on its longest side (twice the result: a phone photo of 4000 px is not read as 12 million pixels).
 - **The course columns:** `CourseDraft` gains `certificateSkills: string[]` and `certificateVolume: string` (zod `.default([])` / `.default("")`, so an editor page loaded before the deploy still saves). Each line and the volume is cleaned as a heading is (`toStorable`, a line break becomes a space), trimmed, blank lines dropped; at most 16 lines of at most 120 characters, the volume at most 80 (`tooMany` / `tooLong` on `certificateSkills`, `tooLong` on `certificateVolume`). A contact course stores `[]` and `""`. `CourseFields` makes the two required, so the save cannot forget them.
 
 **Files:**
@@ -4256,449 +4273,30 @@ Spec §6 (the course editor's card, Seaded's card, the signature), §3 (the two 
 - Modify: `app/src/db/queries/admin.ts` (`CourseFields`, lines 117–118)
 - Modify: `app/src/components/admin/ProtocolStagesEditor.tsx` (whole file below)
 - Modify: `app/src/components/admin/CourseEditor.tsx` (imports, lines 8–24; after the "Teadmiste test" card, lines 321–330), `app/src/components/admin/CourseEditor.module.css` (one rule after `.cardTitle`, line 60)
-- Modify: `app/src/lib/shrink-image.ts` (`Decoded` and `decode` exported)
-- Create: `app/src/lib/signature-ink.ts`
-- Create: `app/src/app/api/admin/allkiri/route.ts`, `app/src/app/api/admin/tunnistus/[id]/route.ts`
+- Create: `app/src/app/api/admin/tunnistus/[id]/route.ts`
 - Create: `app/src/server/actions/admin-certificates.ts`
 - Create: `app/src/components/admin/CertificateSettings.tsx`, `app/src/components/admin/CertificateSettings.module.css`
 - Modify: `app/src/app/admin/(panel)/seaded/page.tsx` (whole file below)
 - Modify: `app/src/i18n/dict/admin.ts` (`courseEditor.sections`, `courseEditor.fields`; a new top-level `certificates` block after `clients`' closing `},` at line 670, before `// /admin/opilased/<id>/vaade` )
-- Test: create `app/tests/unit/signature-ink.test.ts`, `app/tests/unit/certificate-settings-dom.test.ts`, `app/tests/unit/admin-certificates-action.test.ts`, `app/tests/db/admin-signature-route.test.ts`, `app/tests/db/admin-certificate-route.test.ts`, `app/tests/db/seaded-certificate-page.test.ts`; modify `app/tests/unit/protocol-stages-dom.test.ts` (whole file below), `app/tests/unit/admin-content.test.ts` (the "drafts" test), `app/tests/db/admin-content.test.ts` (a new `describe` at the end), `app/tests/unit/admin-guards.test.ts`, `app/tests/unit/colour-tokens.test.ts`, `app/tests/unit/old-safari.test.ts`
+- Test: create `app/tests/unit/certificate-settings-dom.test.ts`, `app/tests/unit/admin-certificates-action.test.ts`, `app/tests/db/admin-certificate-route.test.ts`, `app/tests/db/seaded-certificate-page.test.ts`; modify `app/tests/unit/protocol-stages-dom.test.ts` (whole file below), `app/tests/unit/admin-content.test.ts` (the "drafts" test), `app/tests/db/admin-content.test.ts` (a new `describe` at the end), `app/tests/unit/admin-guards.test.ts`, `app/tests/unit/colour-tokens.test.ts`
+- Nothing for a picture of a signature (owner, 15.10): no browser conversion, no upload route, no change to `src/lib/shrink-image.ts`, no new entry in `tests/unit/old-safari.test.ts` (the card is a "use client" file, which that test walks anyway).
 
 **Interfaces:**
 - Consumes:
-  - Task 1 (`src/domain/certificate.ts`): `CERT_LIMITS = { nameMin: 2, nameMax: 80, skills: 16, skill: 120, volume: 80, place: 60, registryCode: 20, practicalLine: 200, trainerName: 60 }`; `type CertificateSettings = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: number; nextSeq: number; signatureKey: string | null }`; `CERT_DEFAULTS`; `tallinnYear(d: Date): number`; `certificateDownloadHeaders(year: number, seq: number): { "content-type": string; "content-disposition": string; "x-content-type-options": string }` (added by Task 4). From `src/db/schema.ts`: `certificates` (columns `accessId, number, year, seq, name, courseTitle, skills, volume, practicalLine, place, registryCode, issuedAt, reissuedAt`), `type Certificate`, `courses.certificateSkills: string[]` (default `[]`), `courses.certificateVolume: string` (default `""`).
-  - Task 2/3 (`src/server/certificates.ts`): `getCertificateSettings(db: Db, now: Date): Promise<CertificateSettings>`; `saveCertificateSettings(db: Db, raw: unknown, now: Date): Promise<{ ok: true; settings: CertificateSettings } | { ok: false; fields: Record<string, string> }>` (raw as the interface note; the codes `type CertificateFieldError = "required" | "tooLong" | "invalid" | "taken"`, exported by Task 3; it takes the number lock before rewriting the setting); `setSignatureKey(db: Db, key: string | null, now: Date): Promise<string | null>` (returns the previous key); `lastIssued(db: Db, year: number): Promise<string | null>`; `certificateForAdmin(db: Db, certificateId: number): Promise<(Certificate & { revoked: boolean }) | null>`; `certificatePdf(db: Db, store: FileStore | null, cert: Certificate, now: Date): Promise<Uint8Array>`.
-  - Existing: `withAdmin`, `adminAction` (`src/server/auth.ts`); `mediaStore()` (`src/server/media-store.ts`); `hasImageSignature`, `type FileStore` (`src/server/media.ts`); `privateFileAnswer(store, key, { contentType, headers })` (`src/server/private-file.ts`); `parseRowId` (`src/lib/row-id.ts`); `fitWithin`, `MAX_SOURCE_BYTES` (`src/lib/shrink-image.ts`); `logFailure`, `logNote` (`src/server/log.ts`).
+  - Task 1 (`src/domain/certificate.ts`, as amended): `CERT_LIMITS = { nameMin: 2, nameMax: 80, skills: 16, skill: 120, volume: 80, place: 60, registryCode: 20, practicalLine: 200, trainerName: 60 }`; `type CertificateSettings = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: number; nextSeq: number }`; `CERT_DEFAULTS`; `tallinnYear(d: Date): number`; `certificateDownloadHeaders(year: number, seq: number): { "content-type": string; "content-disposition": string; "x-content-type-options": string }` (added by Task 4). From `src/db/schema.ts`: `certificates` (columns `accessId, number, year, seq, name, courseTitle, skills, volume, practicalLine, place, registryCode, issuedAt, reissuedAt`), `type Certificate`, `courses.certificateSkills: string[]` (default `[]`), `courses.certificateVolume: string` (default `""`).
+  - Task 2/3 (`src/server/certificates.ts`): `getCertificateSettings(db: Db, now: Date): Promise<CertificateSettings>`; `saveCertificateSettings(db: Db, raw: unknown): Promise<{ ok: true; settings: CertificateSettings } | { ok: false; fields: Record<string, string> }>` (raw as the interface note; the codes `type CertificateFieldError = "required" | "tooLong" | "invalid" | "taken" | "letters" | "length"`, exported by Task 3, "letters" and "length" on `trainerName` only; it takes the number lock before rewriting the setting); `lastIssued(db: Db, year: number): Promise<string | null>`; `certificateForAdmin(db: Db, certificateId: number): Promise<(Certificate & { revoked: boolean }) | null>`; `certificatePdf(db: Db, cert: Certificate, now: Date): Promise<Uint8Array>`.
+  - Existing: `withAdmin`, `adminAction` (`src/server/auth.ts`); `parseRowId` (`src/lib/row-id.ts`); `logFailure` (`src/server/log.ts`).
 - Produces:
   - `src/domain/course-editor.ts`: `CourseDraft.certificateSkills: string[]`, `CourseDraft.certificateVolume: string`; `StoredCourse` accepts optional `certificateSkills?: string[]`, `certificateVolume?: string`.
   - `src/db/queries/admin.ts`: `CourseFields = Omit<CourseInput, "id" | "sort"> & { test: CourseTestFields | null; certificateSkills: string[]; certificateVolume: string }`.
   - `src/components/admin/ProtocolStagesEditor.tsx`: prop `kind?: "stages" | "skills"` (**added**); hooks `[data-certificate-skills]`, `[data-certificate-skill="<i>"]`, `[data-add-skill]` (**added**).
   - The course editor's card `[data-certificate-card]`; its volume input `[data-field="certificateVolume"]`.
-  - `src/lib/shrink-image.ts`: `export type Decoded`, `export async function decode(file: Blob): Promise<Decoded>` (**added exports**).
-  - `src/lib/signature-ink.ts`: `export async function inkSignature(file: File, opts?: { maxWidth?: number; threshold?: number }): Promise<Blob>` (contract); **added**: `SIGNATURE_MAX_BYTES = 1024 * 1024`, `INK = { maxWidth: 1200, threshold: 140, pad: 4 }`, `class InkError extends Error { problem: "decode" | "empty" }`, `type InkMode = "dark" | "light"`, `inkAlpha(gray: number, threshold: number): number`, `inkMode(data: Uint8ClampedArray): InkMode`, `type InkBox = { left: number; top: number; right: number; bottom: number }`, `whiten(data: Uint8ClampedArray, width: number, height: number, mode: InkMode, threshold: number): InkBox | null`.
-  - `POST /api/admin/allkiri` (multipart `file`: 200 `{ ok: true }`; 400 `missing` | `empty`; 413 `size`; 415 `type` | `content`; 503 `storage`; 500 `server`), `GET /api/admin/allkiri` (the image: local bytes inline as `image/png`, or a 302 to a signed R2 address; 404 `notFound`), `DELETE /api/admin/allkiri` (200 `{ ok: true }`); all `maxDuration = 30`.
   - `GET /api/admin/tunnistus/<id>`: 200 `application/pdf`, `content-disposition: attachment; filename="MS-LAB-tunnistus-{year}-{nn}.pdf"`, `cache-control: private, no-store`, `x-content-type-options: nosniff`; 404 `notFound`; 500 `server`; `maxDuration = 30`.
-  - `src/server/actions/admin-certificates.ts`: `saveCertificateSettingsAction = adminAction(async (_admin, raw: unknown) => …)` answering `{ ok: true; settings: Omit<CertificateSettings, "signatureKey">; last: string | null } | { ok: false; fields: Record<string, string> } | { ok: false; error: "server" }`.
-  - `src/components/admin/CertificateSettings.tsx`: `export type CertificateSettingsInitial = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: number; nextSeq: number; last: string | null; hasSignature: boolean }`; `export function CertificateSettings({ initial }: { initial: CertificateSettingsInitial })`. Hooks: `[data-certificate-settings]` (the card, `id="tunnistus"`), `[data-cert-form]`, `[data-cert-place]`, `[data-cert-registry]`, `[data-cert-practical]`, `[data-cert-trainer]`, `[data-cert-next-year]`, `[data-cert-next-seq]`, `[data-cert-last]`, `[data-cert-save]`, `[data-cert-status]`, `[data-cert-signature]` (the black preview: an `<img>` or the "no signature" line), `[data-cert-signature-file]`, `[data-cert-signature-remove]`, **added**: `[data-cert-signature-confirm]` (the removal's question; its first button is "Jah, eemalda"), `[data-cert-signature-status]`.
+  - `src/server/actions/admin-certificates.ts`: `saveCertificateSettingsAction = adminAction(async (_admin, raw: unknown) => …)` answering `{ ok: true; settings: CertificateSettings; last: string | null } | { ok: false; fields: Record<string, string> } | { ok: false; error: "server" }`.
+  - `src/components/admin/CertificateSettings.tsx`: `export type CertificateSettingsInitial = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: number; nextSeq: number; last: string | null }`; `export function CertificateSettings({ initial }: { initial: CertificateSettingsInitial })`. Hooks: `[data-certificate-settings]` (the card, `id="tunnistus"`), `[data-cert-form]`, `[data-cert-place]`, `[data-cert-registry]`, `[data-cert-practical]`, `[data-cert-trainer]` (the trainer's name: the signature the PDF writes), `[data-cert-next-year]`, `[data-cert-next-seq]`, `[data-cert-last]`, `[data-cert-save]`, `[data-cert-status]`.
   - Dictionary: `adminEt.courseEditor.sections.certificate`, `adminEt.courseEditor.fields.certificate*`, `adminEt.certificates.settings.*` (Task 6 adds `certificates.drawer`, `.reissue`, `.register`).
 
-- [ ] **Step 1: Write the failing signature test** — create `tests/unit/signature-ink.test.ts`:
-
-```ts
-// @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { INK, InkError, inkAlpha, inkMode, inkSignature, SIGNATURE_MAX_BYTES, whiten } from "@/lib/signature-ink";
-
-// lib/signature-ink.ts (phase 3d, spec §6, D4; the controller's update of 15.10: two kinds of picture) in a browser-like document. The pure
-// parts — a grey's alpha, which kind a picture is, the white ink and its box — are checked on pixel lists; inkSignature with the decoder and
-// the canvases as stand-ins that record what is asked of them (happy-dom has no canvas), so the crop, the size and the PNG are seen exactly.
-// What a real browser's canvas makes of a real picture is the end-to-end run's (tests/e2e/certificate.spec.ts).
-
-type Rgba = [number, number, number, number];
-const WHITE: Rgba = [255, 255, 255, 255];
-const BLACK: Rgba = [0, 0, 0, 255];
-const CLEAR: Rgba = [0, 0, 0, 0];
-
-/** The RGBA pixels of a width × height picture, painted by `paint`. */
-function pixels(width: number, height: number, paint: (x: number, y: number) => Rgba): Uint8ClampedArray {
-  const data = new Uint8ClampedArray(width * height * 4);
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) data.set(paint(x, y), (y * width + x) * 4);
-  return data;
-}
-/** One pixel of `data` (a picture `width` wide). */
-const at = (data: Uint8ClampedArray, width: number, x: number, y: number) => [...data.subarray((y * width + x) * 4, (y * width + x) * 4 + 4)];
-/** `ink` inside x0…x1 × y0…y1 (inclusive), `outside` elsewhere. */
-const block =
-  (x0: number, x1: number, y0: number, y1: number, ink: Rgba, outside: Rgba) =>
-  (x: number, y: number): Rgba =>
-    x >= x0 && x <= x1 && y >= y0 && y <= y1 ? ink : outside;
-
-describe("the pure parts", () => {
-  test("a grey's alpha: none at the threshold and lighter, full at half of it and darker, in proportion between", () => {
-    expect([inkAlpha(255, 140), inkAlpha(140, 140), inkAlpha(139, 140)]).toEqual([0, 0, 4]);
-    expect([inkAlpha(70, 140), inkAlpha(0, 140), inkAlpha(100, 140), inkAlpha(120, 140)]).toEqual([255, 255, 146, 73]);
-  });
-
-  test("which kind a picture is: light ink on transparency (more than 20 % transparent, the rest light on average), else dark ink", () => {
-    // Maria's signature exported from Canva: white ink on a transparent background
-    expect(inkMode(pixels(10, 10, block(2, 7, 4, 5, WHITE, CLEAR)))).toBe("light");
-    // a scan or a photo: dark ink on white paper, nothing transparent
-    expect(inkMode(pixels(10, 10, block(2, 7, 4, 5, BLACK, WHITE)))).toBe("dark");
-    // dark ink on a transparent background: transparent enough, but its ink is dark
-    expect(inkMode(pixels(10, 10, block(2, 7, 4, 5, BLACK, CLEAR)))).toBe("dark");
-    // exactly 20 % transparent is not more than 20 %
-    expect(inkMode(pixels(10, 10, (_x, y) => (y < 2 ? CLEAR : WHITE)))).toBe("dark");
-    expect(inkMode(pixels(10, 10, (_x, y) => (y < 3 ? CLEAR : WHITE)))).toBe("light");
-    // nearly transparent counts as transparent (alpha under 16); light grey ink of luminance 150 is not light enough
-    expect(inkMode(pixels(10, 10, block(2, 7, 4, 5, [255, 255, 255, 200], [0, 0, 0, 15])))).toBe("light");
-    expect(inkMode(pixels(10, 10, block(2, 7, 4, 5, [150, 150, 150, 255], CLEAR)))).toBe("dark");
-  });
-
-  test("dark ink: every pixel white, its alpha from its grey on white (a transparent part is paper); the box holds the strokes, not a faint speck", () => {
-    // 6 × 4: a stroke on row 1 (black at x 1, grey 100 at x 2), a faint grey 135 speck at (5, 3), a transparent black pixel at (0, 3)
-    const paint = (x: number, y: number): Rgba =>
-      y === 1 && x === 1 ? BLACK : y === 1 && x === 2 ? [100, 100, 100, 255] : x === 5 && y === 3 ? [135, 135, 135, 255] : x === 0 && y === 3 ? CLEAR : WHITE;
-    const data = pixels(6, 4, paint);
-    expect(whiten(data, 6, 4, "dark", INK.threshold)).toEqual({ left: 1, top: 1, right: 2, bottom: 1 });
-    expect(at(data, 6, 1, 1)).toEqual([255, 255, 255, 255]);
-    expect(at(data, 6, 2, 1)).toEqual([255, 255, 255, 146]);
-    expect(at(data, 6, 5, 3)).toEqual([255, 255, 255, 18]); // ink, but too faint to widen the box
-    expect(at(data, 6, 0, 3)).toEqual([255, 255, 255, 0]); // transparent: paper
-    expect(at(data, 6, 0, 0)).toEqual([255, 255, 255, 0]);
-    // a lower threshold: grey 100 is paper now
-    expect(whiten(pixels(6, 4, paint), 6, 4, "dark", 90)).toEqual({ left: 1, top: 1, right: 1, bottom: 1 });
-    // nothing darker than the threshold: no box
-    expect(whiten(pixels(6, 4, () => [200, 200, 200, 255]), 6, 4, "dark", INK.threshold)).toBeNull();
-  });
-
-  test("light ink: every pixel white, its own alpha times its luminance; the box holds what shows", () => {
-    // 6 × 4 on transparency: white at (1, 1), half-transparent white at (2, 1), light grey 200 at (3, 2), a faint white (alpha 40) at (5, 3)
-    const paint = (x: number, y: number): Rgba =>
-      x === 1 && y === 1 ? WHITE : x === 2 && y === 1 ? [255, 255, 255, 128] : x === 3 && y === 2 ? [200, 200, 200, 255] : x === 5 && y === 3 ? [255, 255, 255, 40] : CLEAR;
-    const data = pixels(6, 4, paint);
-    expect(whiten(data, 6, 4, "light", INK.threshold)).toEqual({ left: 1, top: 1, right: 3, bottom: 2 });
-    expect(at(data, 6, 1, 1)).toEqual([255, 255, 255, 255]);
-    expect(at(data, 6, 2, 1)).toEqual([255, 255, 255, 128]);
-    expect(at(data, 6, 3, 2)).toEqual([255, 255, 255, 200]);
-    expect(at(data, 6, 5, 3)).toEqual([255, 255, 255, 40]);
-    expect(at(data, 6, 0, 0)).toEqual([255, 255, 255, 0]);
-  });
-
-  test("the limits: the server takes at most 1 MB; the result is at most 1200 px wide, ink below grey 140, 4 px around it", () => {
-    expect(SIGNATURE_MAX_BYTES).toBe(1024 * 1024);
-    expect(INK).toEqual({ maxWidth: 1200, threshold: 140, pad: 4 });
-  });
-});
-
-describe("inkSignature", () => {
-  /** A stand-in canvas: what is drawn on it, what is put back on it, and each encode (its size when asked, the type wanted). */
-  type FakeCanvas = {
-    width: number;
-    height: number;
-    draws: unknown[][];
-    puts: Uint8ClampedArray[];
-    encodes: { width: number; height: number; type: string }[];
-    getContext: () => unknown;
-    toBlob: (done: (blob: Blob | null) => void, type: string) => void;
-  };
-  let canvases: FakeCanvas[];
-  let bitmaps: { width: number; height: number; close: ReturnType<typeof vi.fn> }[];
-  /** What the picture is, in the working canvas's pixels (getImageData paints it at the size asked). */
-  let paint: (x: number, y: number) => Rgba;
-  const realCreate = document.createElement.bind(document);
-
-  function fakeCanvas(): FakeCanvas {
-    const canvas: FakeCanvas = {
-      width: 0,
-      height: 0,
-      draws: [],
-      puts: [],
-      encodes: [],
-      getContext: () => context,
-      toBlob(done, type) {
-        canvas.encodes.push({ width: canvas.width, height: canvas.height, type });
-        setTimeout(() => done(new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type })), 0);
-      },
-    };
-    const context = {
-      imageSmoothingQuality: "low",
-      drawImage: (...args: unknown[]) => void canvas.draws.push(args),
-      getImageData: (_x: number, _y: number, w: number, h: number) => ({ data: pixels(w, h, paint), width: w, height: h }),
-      putImageData: (image: { data: Uint8ClampedArray }) => void canvas.puts.push(new Uint8ClampedArray(image.data)),
-    };
-    canvases.push(canvas);
-    return canvas;
-  }
-  /** An <img> that fails a moment after its address is set (the fallback decoder of a picture this browser cannot open). */
-  function failingImg() {
-    const img = {
-      naturalWidth: 0,
-      naturalHeight: 0,
-      onload: null as null | (() => void),
-      onerror: null as null | (() => void),
-      set src(_url: string) {
-        setTimeout(() => img.onerror?.(), 0);
-      },
-    };
-    return img;
-  }
-  /** createImageBitmap decoding every file as width × height. */
-  function decodesAs(width: number, height: number) {
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(async () => {
-        const bitmap = { width, height, close: vi.fn() };
-        bitmaps.push(bitmap);
-        return bitmap;
-      }),
-    );
-  }
-  const scan = new File([new Uint8Array(16)], "allkiri.jpg", { type: "image/jpeg" });
-
-  beforeEach(() => {
-    canvases = [];
-    bitmaps = [];
-    vi.spyOn(document, "createElement").mockImplementation(((tag: string, options?: ElementCreationOptions) =>
-      tag === "canvas" ? fakeCanvas() : tag === "img" ? failingImg() : realCreate(tag, options)) as typeof document.createElement);
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:allkiri");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  });
-
-  test("dark ink on paper (a scan): read at its size, made white ink, cut to the ink with 4 px around it, encoded as PNG; the picture and the canvases are freed", async () => {
-    decodesAs(30, 12);
-    paint = block(10, 19, 2, 9, [30, 30, 60, 255], [240, 236, 228, 255]);
-    const png = await inkSignature(scan);
-    expect(png.type).toBe("image/png");
-    const [work, out] = canvases;
-    expect(work.draws[0]).toEqual([bitmaps[0], 0, 0, 30, 12]);
-    expect(at(work.puts[0], 30, 10, 2)).toEqual([255, 255, 255, 255]); // ink
-    expect(at(work.puts[0], 30, 0, 0)).toEqual([255, 255, 255, 0]); // paper
-    // the box 10…19 × 2…9 with 4 px around it, inside the picture: 6…23 × 0…11
-    expect(out.draws[0]).toEqual([work, 6, 0, 18, 12, 0, 0, 18, 12]);
-    expect(out.encodes).toEqual([{ width: 18, height: 12, type: "image/png" }]);
-    expect(bitmaps[0].close).toHaveBeenCalledTimes(1);
-    expect([work.width, work.height, out.width, out.height]).toEqual([0, 0, 0, 0]);
-  });
-
-  test("light ink on transparency (Maria's signature exported from Canva as PNG): each pixel keeps its own alpha, scaled by its luminance", async () => {
-    decodesAs(30, 12);
-    const canva = new File([new Uint8Array(16)], "allkiri.png", { type: "image/png" });
-    paint = (x, y) => (x >= 4 && x <= 25 && y >= 5 && y <= 6 ? (x === 4 ? [255, 255, 255, 128] : [250, 250, 250, 255]) : CLEAR);
-    await inkSignature(canva);
-    const [work, out] = canvases;
-    expect(at(work.puts[0], 30, 10, 5)).toEqual([255, 255, 255, 250]);
-    expect(at(work.puts[0], 30, 4, 5)).toEqual([255, 255, 255, 128]);
-    expect(at(work.puts[0], 30, 0, 0)).toEqual([255, 255, 255, 0]);
-    // the box 4…25 × 5…6 with 4 px around it: 0…29 × 1…10
-    expect(out.draws[0]).toEqual([work, 0, 1, 30, 10, 0, 0, 30, 10]);
-    expect(out.encodes[0]).toEqual({ width: 30, height: 10, type: "image/png" });
-  });
-
-  test("a wide picture: read at twice the widest result at most, and the crop made at most `maxWidth` wide (1200 by default)", async () => {
-    decodesAs(40, 20);
-    paint = block(2, 17, 2, 7, BLACK, WHITE);
-    await inkSignature(scan, { maxWidth: 10 });
-    expect(canvases[0].draws[0]).toEqual([bitmaps[0], 0, 0, 20, 10]);
-    expect(canvases[1].draws[0]).toEqual([canvases[0], 0, 0, 20, 10, 0, 0, 10, 5]);
-
-    // a phone photo of the paper, 4000 × 1000: read at 2400 × 600, the ink 100…2299 × 100…499, cut at 96…2303 × 96…503, 1200 px wide
-    canvases = [];
-    decodesAs(4000, 1000);
-    paint = block(100, 2299, 100, 499, BLACK, WHITE);
-    await inkSignature(scan);
-    expect(canvases[0].draws[0]).toEqual([bitmaps[1], 0, 0, 2400, 600]);
-    expect(canvases[1].draws[0]).toEqual([canvases[0], 96, 96, 2208, 408, 0, 0, 1200, 222]);
-  });
-
-  test("the threshold is the caller's: grey 145 is paper at the default 140 (no ink: InkError 'empty', nothing encoded) and ink at 200", async () => {
-    decodesAs(10, 10);
-    paint = block(3, 6, 3, 6, [145, 145, 145, 255], WHITE);
-    const empty = await inkSignature(scan).catch((e: unknown) => e);
-    expect(empty).toBeInstanceOf(InkError);
-    expect(empty).toMatchObject({ problem: "empty" });
-    expect(canvases.flatMap((c) => c.encodes)).toEqual([]);
-    expect(bitmaps[0].close).toHaveBeenCalledTimes(1);
-    canvases = [];
-    await inkSignature(scan, { threshold: 200 });
-    expect(canvases[1].draws[0]).toEqual([canvases[0], 0, 0, 10, 10, 0, 0, 10, 10]);
-  });
-
-  test("a picture this browser cannot open (createImageBitmap and the <img> both fail): InkError 'decode', no canvas made", async () => {
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(async () => {
-        throw new Error("unsupported");
-      }),
-    );
-    const heic = new File([new Uint8Array(16)], "allkiri.heic", { type: "image/heic" });
-    const e = await inkSignature(heic).catch((x: unknown) => x);
-    expect(e).toBeInstanceOf(InkError);
-    expect(e).toMatchObject({ problem: "decode" });
-    expect(canvases).toEqual([]);
-  });
-});
-```
-
-- [ ] **Step 2: Run it — expect FAIL.** `cd app && npx vitest run tests/unit/signature-ink.test.ts` fails to import: `Failed to resolve import "@/lib/signature-ink"` (the file does not exist yet).
-
-- [ ] **Step 3: Export the decoder** — in `src/lib/shrink-image.ts`, the lines
-
-```ts
-/** A decoded image, upright: what the canvas draws from, its size, and what to free afterwards. */
-type Decoded = { source: CanvasImageSource; width: number; height: number; close(): void };
-```
-
-become
-
-```ts
-/** A decoded image, upright: what the canvas draws from, its size, and what to free afterwards (lib/signature-ink.ts uses it too). */
-export type Decoded = { source: CanvasImageSource; width: number; height: number; close(): void };
-```
-
-and the lines
-
-```ts
-/** The image upright (the EXIF orientation applied): createImageBitmap where it reads the file with its options, else an <img>. */
-async function decode(file: Blob): Promise<Decoded> {
-```
-
-become
-
-```ts
-/**
- * The image upright (the EXIF orientation applied): createImageBitmap where it reads the file with its options, else an <img>. ShrinkError
- * "decode" when this browser cannot open it. Also the signature's decoder (lib/signature-ink.ts, phase 3d).
- */
-export async function decode(file: Blob): Promise<Decoded> {
-```
-
-- [ ] **Step 4: Write the signature's conversion** — create `src/lib/signature-ink.ts`:
-
-```ts
-import { decode, fitWithin } from "./shrink-image";
-
-// Maria's signature for the e-course certificate (phase 3d, spec §6, D4), made ready in the browser: the certificate is black (spec §7), so
-// its signature is white ink on a transparent picture. Two kinds of picture come in (the controller's update of 15.10):
-// - "light": a PNG that is light ink on transparency already — Maria's signature exported from her Canva certificate document. It is one
-//   when more than 20 % of its pixels are transparent (alpha under 16) and its other pixels are light (mean luminance above 160). Each pixel
-//   stays white, with its own alpha scaled by its luminance.
-// - "dark": anything else — a photo or a scan of dark ink on light paper, or a PNG of dark ink on white or on transparency. Each pixel's grey
-//   on white (a transparent part counts as paper) decides: darker than the threshold (140) is ink, white with an alpha that grows with its
-//   darkness (full at half the threshold and below, so a stroke's soft edge stays soft); lighter is paper, transparent.
-// Either way the picture is cut to the ink's box with a 4 px margin (the box counts the pixels of alpha 64 and up: a speck of the paper's
-// grain is not a stroke), made at most 1200 px wide and encoded as PNG (a canvas holds pixels only: no metadata). The picture is read at most
-// twice that size on its longest side: a phone photo of 4000 px is not read as 12 million pixels. The server checks the PNG again
-// (api/admin/allkiri). Browser only (document, canvas); no lookbehind anywhere (tests/unit/old-safari.test.ts).
-
-/** The largest PNG the server takes (api/admin/allkiri); a signature of 1200 px is far below it. */
-export const SIGNATURE_MAX_BYTES = 1024 * 1024;
-/** maxWidth: the widest result; threshold: the grey (0–255) under which a pixel of a "dark" picture is ink; pad: the margin around the ink. */
-export const INK = { maxWidth: 1200, threshold: 140, pad: 4 } as const;
-/** A pixel counts toward the ink's box from this alpha on. */
-const BOX_ALPHA = 64;
-/** A "light" picture: more than `share` of its pixels under `alpha` (transparent), and its other pixels' mean luminance above `luminance`. */
-const LIGHT = { share: 0.2, alpha: 16, luminance: 160 } as const;
-
-export type InkProblem = "decode" | "empty";
-
-/** decode: this browser cannot open the picture (a HEIC in Chrome); empty: no ink on it. */
-export class InkError extends Error {
-  constructor(readonly problem: InkProblem) {
-    super(problem);
-    this.name = "InkError";
-  }
-}
-
-export type InkMode = "dark" | "light";
-/** The ink's box, in pixels, both ends included. */
-export type InkBox = { left: number; top: number; right: number; bottom: number };
-
-/** The luminance (0–255) of the pixel at byte `i` of RGBA data. */
-const luminance = (data: Uint8ClampedArray, i: number) => 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-
-/** A "dark" picture's pixel of grey `gray` (0 black … 255 white): alpha 0 at the threshold and lighter, 255 at half of it and darker, linear between. */
-export function inkAlpha(gray: number, threshold: number): number {
-  if (gray >= threshold) return 0;
-  return Math.min(255, Math.round((510 * (threshold - gray)) / threshold));
-}
-
-/** Which kind of picture RGBA `data` is (see the top of this file). */
-export function inkMode(data: Uint8ClampedArray): InkMode {
-  let transparent = 0;
-  let opaque = 0;
-  let sum = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < LIGHT.alpha) transparent++;
-    else {
-      opaque++;
-      sum += luminance(data, i);
-    }
-  }
-  const all = data.length / 4;
-  return all > 0 && transparent > all * LIGHT.share && opaque > 0 && sum / opaque > LIGHT.luminance ? "light" : "dark";
-}
-
-/** RGBA `data` made white ink in place, as `mode` says; the box of its pixels of alpha BOX_ALPHA and up, or null when there are none. */
-export function whiten(data: Uint8ClampedArray, width: number, height: number, mode: InkMode, threshold: number): InkBox | null {
-  let left = width;
-  let top = height;
-  let right = -1;
-  let bottom = -1;
-  for (let y = 0; y < height; y++)
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      const lum = luminance(data, i);
-      const alpha = mode === "light" ? Math.round((data[i + 3] * lum) / 255) : inkAlpha(255 - (255 - lum) * (data[i + 3] / 255), threshold);
-      data[i] = 255;
-      data[i + 1] = 255;
-      data[i + 2] = 255;
-      data[i + 3] = alpha;
-      if (alpha >= BOX_ALPHA) {
-        if (x < left) left = x;
-        if (x > right) right = x;
-        if (y < top) top = y;
-        if (y > bottom) bottom = y;
-      }
-    }
-  return right < 0 ? null : { left, top, right, bottom };
-}
-
-/**
- * The signature's PNG, ready to send (see the top of this file). InkError "decode" when this browser cannot open the picture, "empty" when
- * there is no ink on it. `maxWidth` (default 1200) and `threshold` (default 140) are for the tests.
- */
-export async function inkSignature(file: File, opts: { maxWidth?: number; threshold?: number } = {}): Promise<Blob> {
-  const maxWidth = opts.maxWidth ?? INK.maxWidth;
-  const threshold = opts.threshold ?? INK.threshold;
-  const image = await decode(file).catch(() => {
-    throw new InkError("decode");
-  });
-  const work = document.createElement("canvas");
-  const out = document.createElement("canvas");
-  try {
-    const size = fitWithin(image.width, image.height, 2 * maxWidth);
-    work.width = size.width;
-    work.height = size.height;
-    const ctx = work.getContext("2d", { willReadFrequently: true });
-    if (!ctx) throw new InkError("decode");
-    ctx.drawImage(image.source, 0, 0, size.width, size.height);
-    const picture = ctx.getImageData(0, 0, size.width, size.height);
-    const box = whiten(picture.data, size.width, size.height, inkMode(picture.data), threshold);
-    if (!box) throw new InkError("empty");
-    ctx.putImageData(picture, 0, 0);
-    const left = Math.max(0, box.left - INK.pad);
-    const top = Math.max(0, box.top - INK.pad);
-    const width = Math.min(size.width, box.right + 1 + INK.pad) - left;
-    const height = Math.min(size.height, box.bottom + 1 + INK.pad) - top;
-    const scale = Math.min(1, maxWidth / width);
-    out.width = Math.max(1, Math.round(width * scale));
-    out.height = Math.max(1, Math.round(height * scale));
-    const o = out.getContext("2d");
-    if (!o) throw new InkError("decode");
-    o.imageSmoothingQuality = "high";
-    o.drawImage(work, left, top, width, height, 0, 0, out.width, out.height);
-    const png = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, "image/png"));
-    if (!png || png.type !== "image/png") throw new InkError("decode");
-    return png;
-  } finally {
-    image.close();
-    // the canvases' memory back at once: iOS Safari has a small budget for all canvases together
-    work.width = 0;
-    work.height = 0;
-    out.width = 0;
-    out.height = 0;
-  }
-}
-```
-
-- [ ] **Step 5: Run it — expect PASS.** `cd app && npx vitest run tests/unit/signature-ink.test.ts tests/unit/shrink-image.test.ts` — both green (the shrink tests are unchanged: only two exports were added).
-
-- [ ] **Step 6: Write the failing course-editor tests.**
+- [ ] **Step 1: Write the failing course-editor tests.**
 
   1. `tests/unit/admin-content.test.ts`, in the test "a stored course becomes a draft with euro amounts as typed and empty optional texts", after the line `expect(newCourseDraft()).toMatchObject({ id: null, version: null, type: "contact", published: false, isSample: false, badge: null, protocolStages: [], test: { questions: [], passPercent: "80", tries: "3" } });` add:
 
@@ -4861,9 +4459,9 @@ test("the certificate's lines (kind 'skills'): their own title, labels and hooks
 });
 ```
 
-- [ ] **Step 7: Run them — expect FAIL.** `cd app && npx vitest run tests/unit/admin-content.test.ts tests/db/admin-content.test.ts tests/unit/protocol-stages-dom.test.ts`: the drafts have no `certificateSkills` (`expected undefined to deeply equal []`), the saves store nothing (`certificateSkills: []` where the lines were expected; the 17 lines are not refused), and the skills test finds no `[data-certificate-skills]` (`Cannot read properties of null`). The first two protocol-stages tests still pass.
+- [ ] **Step 2: Run them — expect FAIL.** `cd app && npx vitest run tests/unit/admin-content.test.ts tests/db/admin-content.test.ts tests/unit/protocol-stages-dom.test.ts`: the drafts have no `certificateSkills` (`expected undefined to deeply equal []`), the saves store nothing (`certificateSkills: []` where the lines were expected; the 17 lines are not refused), and the skills test finds no `[data-certificate-skills]` (`Cannot read properties of null`). The first two protocol-stages tests still pass.
 
-- [ ] **Step 8: The draft** (`src/domain/course-editor.ts`).
+- [ ] **Step 3: The draft** (`src/domain/course-editor.ts`).
 
   1. In `CourseDraft`, after the `test: TestDraft;` member add:
 
@@ -4900,7 +4498,7 @@ test("the certificate's lines (kind 'skills'): their own title, labels and hooks
     certificateVolume: c.certificateVolume ?? "",
 ```
 
-- [ ] **Step 9: The save** (`src/server/admin-content.ts`, `src/db/queries/admin.ts`).
+- [ ] **Step 4: The save** (`src/server/admin-content.ts`, `src/db/queries/admin.ts`).
 
   1. `src/db/queries/admin.ts`: the lines
 
@@ -4955,7 +4553,7 @@ export type CourseFields = Omit<CourseInput, "id" | "sort"> & { test: CourseTest
 
   6. The doc comment of `saveCourseForm`: the sentence `"Teadmiste test" is an e-course's (course_tests, R1); a contact course's row is deleted.` becomes `"Teadmiste test" is an e-course's (course_tests, R1); a contact course's row is deleted. So is "Tunnistus" (phase 3d): a contact course stores no lines and no volume.`
 
-- [ ] **Step 10: The list editor's second kind** — replace `src/components/admin/ProtocolStagesEditor.tsx` with:
+- [ ] **Step 5: The list editor's second kind** — replace `src/components/admin/ProtocolStagesEditor.tsx` with:
 
 ```tsx
 "use client";
@@ -5126,7 +4724,7 @@ export function ProtocolStagesEditor({
 }
 ```
 
-- [ ] **Step 11: The course editor's card.**
+- [ ] **Step 6: The course editor's card.**
 
   1. `src/components/admin/CourseEditor.tsx`: after `import type { CourseWithImages } from "@/db/queries/public";` add `import { CERT_LIMITS } from "@/domain/certificate";`.
 
@@ -5176,7 +4774,7 @@ export function ProtocolStagesEditor({
 }
 ```
 
-- [ ] **Step 12: The course editor's texts** (`src/i18n/dict/admin.ts`). In `courseEditor.sections`, after `test: "Teadmiste test",` add `certificate: "Tunnistus",`. In `courseEditor.fields`, after `testRemove: "Eemalda küsimus {n}",` add:
+- [ ] **Step 7: The course editor's texts** (`src/i18n/dict/admin.ts`). In `courseEditor.sections`, after `test: "Teadmiste test",` add `certificate: "Tunnistus",`. In `courseEditor.fields`, after `testRemove: "Eemalda küsimus {n}",` add:
 
 ```ts
       // "Tunnistus" (phase 3d, spec §6): an e-course certificate's lines and volume (the list is ProtocolStagesEditor's kind "skills")
@@ -5191,200 +4789,9 @@ export function ProtocolStagesEditor({
       certificateVolumeHint: "nt 10 akadeemilist tundi. Tühjaks jättes tunnistusel ei näidata.",
 ```
 
-- [ ] **Step 13: Run the course-editor tests — expect PASS.** `cd app && npx vitest run tests/unit/admin-content.test.ts tests/db/admin-content.test.ts tests/unit/protocol-stages-dom.test.ts` — green.
+- [ ] **Step 8: Run the course-editor tests — expect PASS.** `cd app && npx vitest run tests/unit/admin-content.test.ts tests/db/admin-content.test.ts tests/unit/protocol-stages-dom.test.ts` — green.
 
-- [ ] **Step 14: Write the failing route tests.**
-
-  1. Create `tests/db/admin-signature-route.test.ts`:
-
-```ts
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { Db } from "@/db/client";
-import { createSession } from "@/server/auth";
-import { getCertificateSettings } from "@/server/certificates";
-import { fakeMediaStore } from "../fakes";
-import { makeTestDb } from "./helpers";
-
-// POST|GET|DELETE /api/admin/allkiri (phase 3d, spec §6, D4): Maria's signature for the certificates, a private object of the store — signed-in
-// admins only (a cross-site upload or removal is 403). The upload takes one PNG of at most 1 MB (its first bytes checked), stores it as
-// certificate/signature-<uuid>.png, points the setting at it and removes the old object only after that; the GET answers the image (the local
-// folder's bytes, or a 302 to a signed R2 address); the DELETE clears the setting and removes the object. The route runs with the database
-// (PGlite), the admin's session cookie (next/headers) and the store faked, as tests/db/admin-photo-route.test.ts runs Maria's photo route.
-
-const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined, store: null as unknown }));
-vi.mock("next/headers", () => ({
-  cookies: async () => ({
-    get: (name: string) => (name === "__Host-mslab_admin" && state.cookie !== undefined ? { name, value: state.cookie } : undefined),
-  }),
-}));
-vi.mock("@/db/client", () => ({ getDb: () => state.db }));
-vi.mock("@/server/media-store", () => ({ mediaStore: () => state.store }));
-
-import { DELETE, GET, maxDuration, POST } from "@/app/api/admin/allkiri/route";
-
-const ORIGIN = "https://mslab.example";
-const URL_ = `${ORIGIN}/api/admin/allkiri`;
-const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13];
-const KEY = /^certificate\/signature-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/;
-
-let db: Db;
-beforeEach(async () => {
-  db = await makeTestDb(); // a fresh database each time: the setting is one row
-  state.db = db;
-  state.cookie = undefined;
-  state.store = fakeMediaStore();
-  vi.stubEnv("ADMIN_EMAILS", "admin@example.test");
-  vi.spyOn(console, "error").mockImplementation(() => {});
-});
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.restoreAllMocks();
-});
-
-const store = () => state.store as ReturnType<typeof fakeMediaStore>;
-const signIn = async () => {
-  state.cookie = await createSession(db, "admin@example.test");
-};
-const signatureKey = async () => (await getCertificateSettings(db, new Date("2026-10-20T09:00:00Z"))).signatureKey;
-const upload = (bytes: ArrayLike<number>, type = "image/png", headers: Record<string, string> = {}) => {
-  const form = new FormData();
-  form.set("file", new File([new Uint8Array(Array.from(bytes))], "allkiri.png", { type }));
-  return POST(new Request(URL_, { method: "POST", body: form, headers }), {});
-};
-const get = () => GET(new Request(URL_), {});
-const remove = (headers: Record<string, string> = {}) => DELETE(new Request(URL_, { method: "DELETE", headers }), {});
-const answer = async (res: Response) => [res.status, await res.json()];
-
-describe("/api/admin/allkiri", () => {
-  test("without an admin's session: 401 for each method and nothing stored; a cross-site upload or removal is 403", async () => {
-    expect(await answer(await upload(PNG))).toEqual([401, { ok: false, error: "unauthorized" }]);
-    expect((await get()).status).toBe(401);
-    expect((await remove()).status).toBe(401);
-    state.cookie = await createSession(db, "former.admin@example.com");
-    expect((await upload(PNG)).status).toBe(401);
-    await signIn();
-    expect((await upload(PNG, "image/png", { origin: "https://evil.example" })).status).toBe(403);
-    expect((await remove({ origin: "https://evil.example" })).status).toBe(403);
-    expect(store().objects.size).toBe(0);
-    expect(await signatureKey()).toBeNull();
-  });
-
-  test("a PNG: stored privately as certificate/signature-<uuid>.png (image/png), the setting names it; a second one replaces it and the first object goes after", async () => {
-    await signIn();
-    expect(await answer(await upload(PNG))).toEqual([200, { ok: true }]);
-    const first = await signatureKey();
-    expect(first).toMatch(KEY);
-    expect(store().objects.get(first!)?.contentType).toBe("image/png");
-    expect([...store().objects.get(first!)!.bytes]).toEqual(PNG);
-    expect(store().deleted).toEqual([]);
-    expect((await upload([...PNG, 1, 2, 3])).status).toBe(200);
-    const second = await signatureKey();
-    expect(second).toMatch(KEY);
-    expect(second).not.toBe(first);
-    expect(store().deleted).toEqual([first]);
-    expect([...store().objects.keys()]).toEqual([second]);
-  });
-
-  test("GET: the local folder's bytes inline as image/png, never kept; on R2 a 302 to a signed address; 404 without a signature, the object or a store", async () => {
-    await signIn();
-    expect(await answer(await get())).toEqual([404, { ok: false, error: "notFound" }]);
-    await upload(PNG);
-    const key = (await signatureKey())!;
-    const local = await get();
-    expect(local.status).toBe(200);
-    expect(local.headers.get("content-type")).toBe("image/png");
-    expect(local.headers.get("cache-control")).toBe("private, no-store");
-    expect(local.headers.get("x-content-type-options")).toBe("nosniff");
-    expect([...new Uint8Array(await local.arrayBuffer())]).toEqual(PNG);
-    const signedGetUrl = vi.fn(async (k: string) => `https://r2.example/${k}?X-Amz-Expires=300`);
-    state.store = { ...store(), signedGetUrl };
-    const signed = await get();
-    expect([signed.status, signed.headers.get("location"), signed.headers.get("referrer-policy")]).toEqual([302, `https://r2.example/${key}?X-Amz-Expires=300`, "no-referrer"]);
-    state.store = fakeMediaStore(); // the setting names an object this folder does not have
-    expect((await get()).status).toBe(404);
-    state.store = null;
-    expect((await get()).status).toBe(404);
-  });
-
-  test("refused, nothing stored and the setting unchanged: no file, an empty one, one over 1 MB (or a body announced over it), not a PNG by its type or by its first bytes", async () => {
-    await signIn();
-    expect(await answer(await POST(new Request(URL_, { method: "POST", body: new FormData() }), {}))).toEqual([400, { ok: false, error: "missing" }]);
-    expect(await answer(await upload([]))).toEqual([400, { ok: false, error: "empty" }]);
-    const big = new Uint8Array(1024 * 1024 + 1);
-    big.set(PNG);
-    expect(await answer(await upload(big))).toEqual([413, { ok: false, error: "size" }]);
-    const announced = new Request(URL_, { method: "POST", body: new FormData(), headers: { "content-length": String(2 * 1024 * 1024) } });
-    expect(await answer(await POST(announced, {}))).toEqual([413, { ok: false, error: "size" }]);
-    expect(await answer(await upload(PNG, "image/jpeg"))).toEqual([415, { ok: false, error: "type" }]);
-    expect(await answer(await upload([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]))).toEqual([415, { ok: false, error: "content" }]);
-    expect(store().objects.size).toBe(0);
-    expect(await signatureKey()).toBeNull();
-  });
-
-  test("no file store (production without the R2 variables): 503 'storage', said in the log by the variables' names", async () => {
-    await signIn();
-    state.store = null;
-    expect(await answer(await upload(PNG))).toEqual([503, { ok: false, error: "storage" }]);
-    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain("R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET");
-    expect(await signatureKey()).toBeNull();
-  });
-
-  test("the setting cannot be saved: the new object is removed again and the answer is 500; the log has the label, never the key", async () => {
-    await signIn();
-    // the session is read as always; the setting's write (a transaction: setSignatureKey takes the number lock) fails as a restarting database does
-    state.db = new Proxy(db, {
-      get: (target, name, receiver) =>
-        name === "transaction"
-          ? async () => {
-              throw Object.assign(new Error("database down"), { code: "57P01" });
-            }
-          : Reflect.get(target, name, receiver),
-    });
-    expect(await answer(await upload(PNG))).toEqual([500, { ok: false, error: "server" }]);
-    expect(store().objects.size).toBe(0);
-    expect(store().deleted).toHaveLength(1);
-    expect(store().deleted[0]).toMatch(KEY);
-    const logged = vi.mocked(console.error).mock.calls.flat().join("\n");
-    expect(logged).toContain("[certificate] the signature setting could not be saved: Error (code 57P01)");
-    expect(logged).not.toContain("certificate/signature-");
-  });
-
-  test("a store that cannot remove the old object: the new signature is in place all the same; the failure is logged by its label, never the key", async () => {
-    await signIn();
-    await upload(PNG);
-    const first = await signatureKey();
-    state.store = {
-      ...store(),
-      delete: async () => {
-        throw new TypeError(`cannot delete ${first}`);
-      },
-    };
-    expect((await upload(PNG)).status).toBe(200);
-    expect(await signatureKey()).not.toBe(first);
-    const logged = vi.mocked(console.error).mock.calls.flat().join("\n");
-    expect(logged).toContain("[certificate] the old signature image could not be removed: TypeError");
-    expect(logged).not.toContain("certificate/signature-");
-  });
-
-  test("DELETE: the setting cleared and the object removed; again: nothing to remove, still ok", async () => {
-    await signIn();
-    await upload(PNG);
-    const key = await signatureKey();
-    expect(await answer(await remove())).toEqual([200, { ok: true }]);
-    expect(await signatureKey()).toBeNull();
-    expect(store().deleted).toEqual([key]);
-    expect(store().objects.size).toBe(0);
-    expect(await answer(await remove())).toEqual([200, { ok: true }]);
-    expect(store().deleted).toEqual([key]);
-  });
-
-  test("a hung call does not hold the function: maxDuration 30", () => {
-    expect(maxDuration).toBe(30);
-  });
-});
-```
-
-  2. Create `tests/db/admin-certificate-route.test.ts`:
+- [ ] **Step 9: Write the failing route test** — create `tests/db/admin-certificate-route.test.ts`:
 
 ```ts
 import { eq } from "drizzle-orm";
@@ -5392,30 +4799,25 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vi
 import type { Db } from "@/db/client";
 import { certificates, courseAccess, settings } from "@/db/schema";
 import { createSession } from "@/server/auth";
-import { fakeMediaStore } from "../fakes";
 import { at, ecourse, student } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
 
 // GET /api/admin/tunnistus/<id> (phase 3d, spec §6): Maria's download of any certificate, a revoked access's too — signed-in admins only; the
-// PDF rendered from the frozen row (server/certificates.ts certificatePdf, the real fonts of assets/fonts), as a download named after its
-// number, private and never kept; the signature from the store when the setting names one. The database is PGlite, the session cookie
-// (next/headers) and the store are faked, as in tests/db/admin-photo-route.test.ts.
+// PDF rendered from the frozen row (server/certificates.ts certificatePdf, the real fonts of assets/fonts) with Seaded's trainer's name typed
+// in the script font as the signature (no image), as a download named after its number, private and never kept. The database is PGlite and
+// the session cookie (next/headers) is faked, as in tests/db/admin-photo-route.test.ts.
 
-const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined, store: null as unknown }));
+const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => (name === "__Host-mslab_admin" && state.cookie !== undefined ? { name, value: state.cookie } : undefined),
   }),
 }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
-vi.mock("@/server/media-store", () => ({ mediaStore: () => state.store }));
 
 import { GET, maxDuration } from "@/app/api/admin/tunnistus/[id]/route";
 
 const ORIGIN = "https://mslab.example";
-const SIGNATURE = "certificate/signature-0f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.png";
-/** A valid 1 × 1 PNG (RGBA): what pdf-lib embeds as an image. */
-const PIXEL = [...Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64")];
 
 let db: Db;
 let certId: number;
@@ -5447,7 +4849,6 @@ beforeAll(async () => {
 beforeEach(() => {
   state.db = db;
   state.cookie = undefined;
-  state.store = fakeMediaStore();
   vi.stubEnv("ADMIN_EMAILS", "admin@example.test");
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -5463,13 +4864,12 @@ const signIn = async () => {
 const bytesOf = async (res: Response) => Buffer.from(await res.arrayBuffer());
 
 describe("GET /api/admin/tunnistus/<id>", () => {
-  test("without an admin's session: 401, and nothing is rendered or read from the store", async () => {
+  test("without an admin's session: 401, nothing rendered", async () => {
     const res = await download(String(certId));
     expect([res.status, await res.json()]).toEqual([401, { ok: false, error: "unauthorized" }]);
-    expect((state.store as ReturnType<typeof fakeMediaStore>).requested).toEqual([]);
   });
 
-  test("the PDF as a download named after its number, private and never kept, nosniff; without a signature no image in it", async () => {
+  test("the PDF as a download named after its number, private and never kept, nosniff; no image in it (the signature is typed)", async () => {
     await signIn();
     const res = await download(String(certId));
     expect(res.status).toBe(200);
@@ -5483,14 +4883,15 @@ describe("GET /api/admin/tunnistus/<id>", () => {
     expect(pdf.includes("/Subtype /Image")).toBe(false);
   });
 
-  test("Review Focus 4: the signature the setting names is drawn on every download (an image in the PDF), read from the store", async () => {
+  test("Review Focus 4: the trainer's name is read from Seaded on every download — the same row and Seaded give the same bytes, another name another PDF; never an image", async () => {
     await signIn();
-    await db.insert(settings).values({ key: "certificate", value: { signatureKey: SIGNATURE } });
-    state.store = fakeMediaStore({ [SIGNATURE]: { bytes: PIXEL, contentType: "image/png" } });
+    const before = await bytesOf(await download(String(certId)));
+    expect((await bytesOf(await download(String(certId)))).equals(before)).toBe(true); // the PDF is deterministic (Task 2)
+    await db.insert(settings).values({ key: "certificate", value: { trainerName: "Maria S." } });
     try {
-      const pdf = await bytesOf(await download(String(certId)));
-      expect(pdf.includes("/Subtype /Image")).toBe(true);
-      expect((state.store as ReturnType<typeof fakeMediaStore>).requested).toContain(SIGNATURE);
+      const after = await bytesOf(await download(String(certId)));
+      expect(after.equals(before)).toBe(false);
+      expect(after.includes("/Subtype /Image")).toBe(false);
     } finally {
       await db.delete(settings).where(eq(settings.key, "certificate"));
     }
@@ -5520,117 +4921,9 @@ describe("GET /api/admin/tunnistus/<id>", () => {
 });
 ```
 
-- [ ] **Step 15: Run them — expect FAIL.** `cd app && npx vitest run tests/db/admin-signature-route.test.ts tests/db/admin-certificate-route.test.ts` — both fail to import (`Failed to resolve import "@/app/api/admin/allkiri/route"`, and `…/tunnistus/[id]/route`).
+- [ ] **Step 10: Run it — expect FAIL.** `cd app && npx vitest run tests/db/admin-certificate-route.test.ts` — it fails to import (`Failed to resolve import "@/app/api/admin/tunnistus/[id]/route"`).
 
-- [ ] **Step 16: The signature's route** — create `src/app/api/admin/allkiri/route.ts`:
-
-```ts
-import { getDb } from "@/db/client";
-import { SIGNATURE_MAX_BYTES } from "@/lib/signature-ink";
-import { withAdmin } from "@/server/auth";
-import { getCertificateSettings, setSignatureKey } from "@/server/certificates";
-import { logFailure, logNote } from "@/server/log";
-import { hasImageSignature, type FileStore } from "@/server/media";
-import { mediaStore } from "@/server/media-store";
-import { privateFileAnswer } from "@/server/private-file";
-
-export const dynamic = "force-dynamic";
-// R2 is given 10 s to answer (server/r2.ts); whatever else holds a request up ends after 30 s, not after the default 300 s
-export const maxDuration = 30;
-
-const json = (body: unknown, status: number) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
-/** Room for the multipart boundaries and headers around the file. */
-const ENVELOPE = 64 * 1024;
-/** The image's answer is one admin's, never kept; Seaded's address is not passed on to R2. */
-const HEADERS = { "cache-control": "private, no-store", "referrer-policy": "no-referrer" };
-
-/**
- * The object of a replaced or removed signature, removed once the setting no longer names it. A failure is logged by its label only (never
- * the key): the object stays in the bucket with no setting naming it, to be deleted by hand (docs/deploy.md section 14).
- */
-async function removeObject(store: FileStore | null, key: string | null): Promise<void> {
-  if (!key) return;
-  if (!store) return logNote("[certificate] no file store: the old signature image was not removed");
-  try {
-    await store.delete(key);
-  } catch (e) {
-    logFailure("[certificate] the old signature image could not be removed", e);
-  }
-}
-
-/**
- * POST /api/admin/allkiri (phase 3d, spec §6, D4): Maria's signature as multipart field `file`, the PNG her browser made of her scan or her
- * Canva export (lib/signature-ink.ts: white ink on transparency). Signed-in admins only; a cross-site POST is 403. The server trusts none of
- * the browser's work: one PNG by its type and its first bytes, 1 B to 1 MB. It is stored as a new private object
- * certificate/signature-<uuid>.png, the setting is pointed at it (server/certificates.ts setSignatureKey), and only then is the old object
- * removed: a certificate downloaded meanwhile has one signature or the other, never none. 200 `{ ok: true }`; 400 missing | empty; 413
- * size; 415 type | content; 503 storage (no store: the four R2 variables); 500 server (the new object is removed again when the setting
- * cannot be saved).
- */
-export const POST = withAdmin(async (request) => {
-  if (Number(request.headers.get("content-length") ?? 0) > SIGNATURE_MAX_BYTES + ENVELOPE) return json({ ok: false, error: "size" }, 413);
-  const form = await request.formData().catch(() => null);
-  const file = form?.get("file");
-  if (!(file instanceof File)) return json({ ok: false, error: "missing" }, 400);
-  if (file.size === 0) return json({ ok: false, error: "empty" }, 400);
-  if (file.size > SIGNATURE_MAX_BYTES) return json({ ok: false, error: "size" }, 413);
-  if (file.type !== "image/png") return json({ ok: false, error: "type" }, 415);
-  const store = mediaStore();
-  if (!store) {
-    logNote("[certificate] signature refused: no file store (production needs R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET)");
-    return json({ ok: false, error: "storage" }, 503);
-  }
-  const key = `certificate/signature-${crypto.randomUUID()}.png`;
-  try {
-    const bytes = await file.arrayBuffer();
-    if (!hasImageSignature("image/png", new Uint8Array(bytes, 0, Math.min(8, bytes.byteLength)))) return json({ ok: false, error: "content" }, 415);
-    await store.put(key, bytes, "image/png");
-  } catch (e) {
-    logFailure("[certificate] the signature could not be stored", e);
-    return json({ ok: false, error: "server" }, 500);
-  }
-  let old: string | null;
-  try {
-    old = await setSignatureKey(getDb(), key, new Date());
-  } catch (e) {
-    logFailure("[certificate] the signature setting could not be saved", e);
-    await removeObject(store, key); // no setting names it
-    return json({ ok: false, error: "server" }, 500);
-  }
-  if (old !== key) await removeObject(store, old);
-  return json({ ok: true }, 200);
-});
-
-/**
- * GET /api/admin/allkiri: the signature the setting names, for Seaded's preview on black — a 302 to a 5-minute signed R2 address, or the
- * local folder's bytes (server/private-file.ts). 404 `notFound` without a signature, a store or the object; 500 `server` (logged).
- */
-export const GET = withAdmin(async () => {
-  try {
-    const store = mediaStore();
-    const { signatureKey } = await getCertificateSettings(getDb(), new Date());
-    if (!store || !signatureKey) return json({ ok: false, error: "notFound" }, 404);
-    return (await privateFileAnswer(store, signatureKey, { contentType: "image/png", headers: HEADERS })) ?? json({ ok: false, error: "notFound" }, 404);
-  } catch (e) {
-    logFailure("[certificate] the signature could not be read", e);
-    return json({ ok: false, error: "server" }, 500);
-  }
-});
-
-/** DELETE /api/admin/allkiri ("Eemalda allkiri"): the setting cleared, then the object removed. 200 `{ ok: true }` (also when there was none); 500 `server`. */
-export const DELETE = withAdmin(async () => {
-  try {
-    const old = await setSignatureKey(getDb(), null, new Date());
-    await removeObject(mediaStore(), old);
-    return json({ ok: true }, 200);
-  } catch (e) {
-    logFailure("[certificate] the signature could not be removed", e);
-    return json({ ok: false, error: "server" }, 500);
-  }
-});
-```
-
-- [ ] **Step 17: Maria's download** — create `src/app/api/admin/tunnistus/[id]/route.ts`:
+- [ ] **Step 11: Maria's download** — create `src/app/api/admin/tunnistus/[id]/route.ts`:
 
 ```ts
 import { getDb } from "@/db/client";
@@ -5639,10 +4932,9 @@ import { parseRowId } from "@/lib/row-id";
 import { withAdmin } from "@/server/auth";
 import { certificateForAdmin, certificatePdf } from "@/server/certificates";
 import { logFailure } from "@/server/log";
-import { mediaStore } from "@/server/media-store";
 
 export const dynamic = "force-dynamic";
-// the PDF takes tens of milliseconds (spec §7) and R2 is given 10 s for the signature: a hung call ends after 30 s, not the default 300 s.
+// the PDF takes tens of milliseconds (spec §7): a hung database call ends after 30 s, not the default 300 s.
 // next.config.ts traces assets/fonts into this function (outputFileTracingIncludes, Task 1).
 export const maxDuration = 30;
 
@@ -5652,9 +4944,10 @@ const json = (body: unknown, status: number) => Response.json(body, { status, he
 
 /**
  * GET /api/admin/tunnistus/<id> (phase 3d, spec §6): any certificate as Maria downloads it from the Õpilased drawer or the register — a
- * revoked access's too (Review Focus 5). Rendered from its frozen row with the signature of now (server/certificates.ts certificatePdf), as
- * `attachment; filename="MS-LAB-tunnistus-{year}-{nn}.pdf"`, private and never kept. Signed-in admins only (withAdmin: 401 otherwise). 404
- * `notFound` for an id that is no certificate; 500 `server` (logged by the certificate's id).
+ * revoked access's too (Review Focus 5). Rendered from its frozen row with Seaded's trainer's name of now, typed in the script font as the
+ * signature (server/certificates.ts certificatePdf), as `attachment; filename="MS-LAB-tunnistus-{year}-{nn}.pdf"`, private and never kept.
+ * Signed-in admins only (withAdmin: 401 otherwise). 404 `notFound` for an id that is no certificate; 500 `server` (logged by the
+ * certificate's id).
  */
 export const GET = withAdmin<Ctx>(async (_request, ctx) => {
   const id = parseRowId((await ctx.params).id);
@@ -5663,7 +4956,7 @@ export const GET = withAdmin<Ctx>(async (_request, ctx) => {
     const db = getDb();
     const cert = await certificateForAdmin(db, id);
     if (!cert) return json({ ok: false, error: "notFound" }, 404);
-    const bytes = await certificatePdf(db, mediaStore(), cert, new Date());
+    const bytes = await certificatePdf(db, cert, new Date());
     return new Response(new Blob([bytes as BlobPart], { type: "application/pdf" }), {
       // the type, the file name and nosniff are Task 4's (domain/certificate.ts); the answer is never kept
       headers: { ...certificateDownloadHeaders(cert.year, cert.seq), "cache-control": "private, no-store" },
@@ -5675,16 +4968,16 @@ export const GET = withAdmin<Ctx>(async (_request, ctx) => {
 });
 ```
 
-- [ ] **Step 18: Run them — expect PASS.** `cd app && npx vitest run tests/db/admin-signature-route.test.ts tests/db/admin-certificate-route.test.ts` — green.
+- [ ] **Step 12: Run it — expect PASS.** `cd app && npx vitest run tests/db/admin-certificate-route.test.ts` — green.
 
-- [ ] **Step 19: Write the failing action test** — create `tests/unit/admin-certificates-action.test.ts`:
+- [ ] **Step 13: Write the failing action test** — create `tests/unit/admin-certificates-action.test.ts`:
 
 ```ts
 import { beforeEach, expect, test, vi } from "vitest";
 
 // Seaded's "Salvesta tunnistuse andmed" (server/actions/admin-certificates.ts, phase 3d, spec §6, §4): the card's fields go on as they came
-// (server/certificates.ts saveCertificateSettings checks them; tests/db/certificates.test.ts); saved, the browser gets the settings without the
-// signature's key and the saved year's last number; a refusal's field errors as they came; a throw is { ok: false, error: "server" }.
+// (server/certificates.ts saveCertificateSettings checks them; tests/db/certificates.test.ts); saved, the browser gets the settings as stored
+// and the saved year's last number; a refusal's field errors as they came; a throw is { ok: false, error: "server" }.
 
 const work = vi.hoisted(() => ({ saveCertificateSettings: vi.fn(), lastIssued: vi.fn(), reissueCertificate: vi.fn() }));
 const cache = vi.hoisted(() => ({ refresh: vi.fn() }));
@@ -5706,21 +4999,19 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
-test("the card's fields go on as they came; saved: the settings without the signature's key, and the saved year's last number", async () => {
-  work.saveCertificateSettings.mockResolvedValue({ ok: true, settings: { ...STORED, signatureKey: "certificate/signature-0f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.png" } });
+test("the card's fields go on as they came; saved: the settings as stored, and the saved year's last number", async () => {
+  work.saveCertificateSettings.mockResolvedValue({ ok: true, settings: STORED });
   work.lastIssued.mockResolvedValue("MS LAB 2026-14");
   const result = await saveCertificateSettingsAction(RAW);
   expect(result).toEqual({ ok: true, settings: STORED, last: "MS LAB 2026-14" });
-  expect(JSON.stringify(result)).not.toContain("certificate/");
   expect(work.saveCertificateSettings.mock.calls[0][1]).toBe(RAW);
-  expect(work.saveCertificateSettings.mock.calls[0][2]).toBeInstanceOf(Date);
   expect(work.lastIssued.mock.calls[0][1]).toBe(2026);
   expect(cache.refresh).not.toHaveBeenCalled(); // the card keeps its own state
 });
 
-test("refused: the field errors as they came, nothing else read", async () => {
-  work.saveCertificateSettings.mockResolvedValue({ ok: false, fields: { nextSeq: "taken", place: "required" } });
-  expect(await saveCertificateSettingsAction(RAW)).toEqual({ ok: false, fields: { nextSeq: "taken", place: "required" } });
+test("refused: the field errors as they came (a trainer's name in Cyrillic is 'letters'), nothing else read", async () => {
+  work.saveCertificateSettings.mockResolvedValue({ ok: false, fields: { nextSeq: "taken", place: "required", trainerName: "letters" } });
+  expect(await saveCertificateSettingsAction({ ...RAW, trainerName: "Мария Соснина" })).toEqual({ ok: false, fields: { nextSeq: "taken", place: "required", trainerName: "letters" } });
   expect(work.lastIssued).not.toHaveBeenCalled();
 });
 
@@ -5733,9 +5024,9 @@ test("a throw is { ok: false, error: 'server' }, logged by its label only", asyn
 });
 ```
 
-- [ ] **Step 20: Run it — expect FAIL.** `cd app && npx vitest run tests/unit/admin-certificates-action.test.ts` — `Failed to resolve import "@/server/actions/admin-certificates"`.
+- [ ] **Step 14: Run it — expect FAIL.** `cd app && npx vitest run tests/unit/admin-certificates-action.test.ts` — `Failed to resolve import "@/server/actions/admin-certificates"`.
 
-- [ ] **Step 21: The action file** — create `src/server/actions/admin-certificates.ts`:
+- [ ] **Step 15: The action file** — create `src/server/actions/admin-certificates.ts`:
 
 ```ts
 "use server";
@@ -5747,23 +5038,21 @@ import { logFailure } from "../log";
 
 // The e-course certificate's admin actions (phase 3d, spec §6): every export is wrapped in adminAction (a signed-in admin, or a redirect to
 // /admin/login; tests/unit/admin-guards.test.ts fails otherwise), and Next.js refuses an action called from another origin. The work is in
-// ../certificates.ts. Seaded's "Tunnistus" card keeps its own state, so its save refreshes nothing. The signature is not an action but a route
-// (app/api/admin/allkiri): a file is a multipart upload, and its preview needs a GET.
+// ../certificates.ts. Seaded's "Tunnistus" card keeps its own state, so its save refreshes nothing. There is no signature to upload: the
+// signature is the trainer's name, one of the card's fields (owner, 15.10).
 
 /**
  * Seaded → "Tunnistus" → "Salvesta tunnistuse andmed": the card's fields as typed (`{ place, registryCode, practicalLine, trainerName, nextYear,
- * nextSeq }`, the two numbers as text), checked by saveCertificateSettings (a next number at or below one already issued in that year is
- * refused on `nextSeq`, "taken": Review Focus 4). Saved: the settings as stored without the signature's key (it never goes to the browser) and
- * the number last issued in the saved year. A throw is { ok: false, error: "server" }, logged by its label only.
+ * nextSeq }`, the two numbers as text), checked by saveCertificateSettings (the trainer's name by the student's name rules, "letters" or
+ * "length"; a next number at or below one already issued in that year is refused on `nextSeq`, "taken": Review Focus 4). Saved: the settings
+ * as stored and the number last issued in the saved year. A throw is { ok: false, error: "server" }, logged by its label only.
  */
 export const saveCertificateSettingsAction = adminAction(async (_admin, raw: unknown) => {
   try {
     const db = getDb();
-    const result = await saveCertificateSettings(db, raw, new Date());
+    const result = await saveCertificateSettings(db, raw);
     if (!result.ok) return { ok: false as const, fields: result.fields };
-    const s = result.settings;
-    // named one by one: the signature's key is left behind on purpose
-    const settings = { place: s.place, registryCode: s.registryCode, practicalLine: s.practicalLine, trainerName: s.trainerName, nextYear: s.nextYear, nextSeq: s.nextSeq };
+    const { settings } = result;
     return { ok: true as const, settings, last: await lastIssued(db, settings.nextYear) };
   } catch (e) {
     logFailure("[certificate] the settings save failed", e);
@@ -5772,10 +5061,9 @@ export const saveCertificateSettingsAction = adminAction(async (_admin, raw: unk
 });
 ```
 
+- [ ] **Step 16: Run it — expect PASS.** `cd app && npx vitest run tests/unit/admin-certificates-action.test.ts` — green.
 
-- [ ] **Step 22: Run it — expect PASS.** `cd app && npx vitest run tests/unit/admin-certificates-action.test.ts` — green.
-
-- [ ] **Step 23: Write the failing card tests.**
+- [ ] **Step 17: Write the failing card tests.**
 
   1. Create `tests/unit/certificate-settings-dom.test.ts`:
 
@@ -5784,12 +5072,11 @@ export const saveCertificateSettingsAction = adminAction(async (_admin, raw: unk
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { stubFetch } from "../fakes";
 
-// Seaded → "Tunnistus" (phase 3d, spec §6, §4; Review Focus 4) in a browser-like document (happy-dom), with the server action answered here,
-// the signature's conversion (lib/signature-ink.ts, its own test) a stand-in and fetch stubbed: the stored values in their fields, the save
-// as typed, a next number at or below an issued one refused on its field with the last issued number beside it, a new signature sent as PNG
-// and shown anew on black, its refusals, and "Eemalda allkiri" with its one question.
+// Seaded → "Tunnistus" (phase 3d, spec §6, §4; Review Focus 4) in a browser-like document (happy-dom), with the server action answered here:
+// the stored values in their fields, the save as typed, a next number at or below an issued one refused on its field with the last issued
+// number beside it, and the trainer's name — Maria's signature, typed in the script font (owner, 15.10) — refused in words when the name
+// rules refuse it. No picture and no file field anywhere: the signature is typed.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -5798,11 +5085,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const action = vi.hoisted(() => vi.fn());
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: action }));
-const ink = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/signature-ink", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/signature-ink")>()), inkSignature: ink }));
 
 import { CertificateSettings, type CertificateSettingsInitial } from "@/components/admin/CertificateSettings";
-import { InkError } from "@/lib/signature-ink";
 
 const PRACTICAL = "Praktiline töö fotodel, koolitaja poolt hinnatud iseseisev protseduuri teostamine";
 const INITIAL: CertificateSettingsInitial = {
@@ -5813,9 +5097,7 @@ const INITIAL: CertificateSettingsInitial = {
   nextYear: 2026,
   nextSeq: 15,
   last: "MS LAB 2026-14",
-  hasSignature: false,
 };
-const PNG = () => new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" });
 
 let container: HTMLDivElement;
 let root: Root;
@@ -5831,34 +5113,19 @@ const show = async (initial: CertificateSettingsInitial = INITIAL) => {
 };
 const input = (hook: string) => $<HTMLInputElement>(`[data-cert-${hook}]`)!;
 const errorOf = (hook: string) => document.getElementById(`${input(hook).id}-error`)?.textContent ?? null;
+const hintOf = (hook: string) => document.getElementById(`${input(hook).id}-hint`)?.textContent ?? null;
 const type = async (el: HTMLInputElement, value: string) =>
   act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, value);
     el.dispatchEvent(new Event("input", { bubbles: true }));
   });
-const click = async (el: Element | null) => {
-  expect(el, "the element to click").not.toBeNull();
-  await act(async () => (el as HTMLElement).click());
-  await settle();
-};
-const button = (name: string) => [...container.querySelectorAll("button")].find((b) => b.textContent === name) ?? null;
 const submit = async () => {
   await act(async () => $<HTMLFormElement>("[data-cert-form]")!.requestSubmit());
   await settle();
 };
-/** The signature's file field picks `file`. */
-const pick = async (file: File) => {
-  const field = input("signature-file");
-  Object.defineProperty(field, "files", { configurable: true, value: [file] });
-  await act(async () => field.dispatchEvent(new Event("change", { bubbles: true })));
-  await settle();
-};
-const signatureLine = () => $("[data-cert-signature-status]")!.textContent;
-const fileLabel = () => container.querySelector(`label[for="${input("signature-file").id}"]`)!.textContent;
 
 beforeEach(() => {
   action.mockReset();
-  ink.mockReset();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -5866,18 +5133,16 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
-  vi.unstubAllGlobals();
 });
 
 describe("CertificateSettings", () => {
-  test("the stored values in their fields; the last issued number beside the next one; without a signature, the card says the name is written instead", async () => {
+  test("the stored values in their fields; the last issued number beside the next one; the trainer's name is the signature, as its hint says; no picture, no file field", async () => {
     await show();
     expect(["place", "registry", "practical", "trainer", "next-year", "next-seq"].map((h) => input(h).value)).toEqual(["Pärnu linn", "16346048", PRACTICAL, "Maria Sosnina", "2026", "15"]);
     expect($("[data-cert-last]")!.textContent).toBe("Viimati väljastatud: MS LAB 2026-14");
-    expect($("[data-cert-signature] img")).toBeNull();
-    expect($("[data-cert-signature]")!.textContent).toBe("Allkirja pole: tunnistusel on koolitaja nimi käekirjas.");
-    expect($("[data-cert-signature-remove]")).toBeNull();
-    expect(fileLabel()).toBe("Lae allkiri üles");
+    expect(hintOf("trainer")).toBe("Allkiri tunnistusel: see nimi kirjutatakse käekirjas alla paremale. Ladina tähtedega.");
+    expect(input("trainer").getAttribute("aria-describedby")).toContain(`${input("trainer").id}-hint`);
+    expect(container.querySelector('img, input[type="file"]')).toBeNull();
     expect($("[data-cert-save]")!.textContent).toBe("Salvesta tunnistuse andmed");
     await show({ ...INITIAL, last: null });
     expect($("[data-cert-last]")!.textContent).toBe("Sel aastal pole veel tunnistusi väljastatud.");
@@ -5927,75 +5192,25 @@ describe("CertificateSettings", () => {
     expect($("[data-cert-status]")!.textContent).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
   });
 
-  test("Review Focus 4: a new signature — the picture becomes white ink (inkSignature), goes as PNG to POST /api/admin/allkiri, and the preview on black loads it anew", async () => {
-    ink.mockImplementation(async () => PNG());
-    const net = stubFetch(() => Response.json({ ok: true }));
+  test("the trainer's name in Cyrillic or of one letter is refused on its field in words (Latin letters as in the passport), which takes the focus; what she typed stays", async () => {
+    action.mockResolvedValue({ ok: false, fields: { trainerName: "letters" } });
     await show();
-    const scan = new File([new Uint8Array(32)], "IMG_0042.jpg", { type: "image/jpeg" });
-    await pick(scan);
-    expect(ink).toHaveBeenCalledWith(scan);
-    expect(net.calls.map((c) => [c.url, c.method])).toEqual([["/api/admin/allkiri", "POST"]]);
-    const sent = (net.calls[0].body as FormData).get("file") as File;
-    expect([sent.name, sent.type, sent.size]).toEqual(["allkiri.png", "image/png", 8]);
-    const img = $<HTMLImageElement>("[data-cert-signature] img")!;
-    expect(img.getAttribute("src")).toBe("/api/admin/allkiri?v=2");
-    expect(img.getAttribute("alt")).toBe("Allkiri, nagu see tunnistusel paistab");
-    expect(signatureLine()).toBe("Allkiri on salvestatud. See on nüüd kõigil tunnistustel, ka varem väljastatutel.");
-    expect(fileLabel()).toBe("Vaheta allkiri");
-    // another one (Maria's Canva export) replaces it: a new address, so the browser never shows the old picture
-    await pick(new File([new Uint8Array(32)], "allkiri-canva.png", { type: "image/png" }));
-    expect($("[data-cert-signature] img")!.getAttribute("src")).toBe("/api/admin/allkiri?v=3");
-    net.restore();
-  });
-
-  test("a picture without ink, one the browser cannot open, a refused or too big upload says why; nothing is shown as saved", async () => {
-    const net = stubFetch(() => Response.json({ ok: false, error: "storage" }, { status: 503 }));
-    await show();
-    const file = () => new File([new Uint8Array(32)], "valge.jpg", { type: "image/jpeg" });
-    ink.mockRejectedValueOnce(new InkError("empty"));
-    await pick(file());
-    expect(signatureLine()).toBe("Pildilt ei leitud allkirja. Vali pilt, kus on tume allkiri heledal taustal või hele allkiri läbipaistval taustal.");
-    ink.mockRejectedValueOnce(new InkError("decode"));
-    await pick(file());
-    expect(signatureLine()).toBe("Seda pilti ei saa avada. Vali JPG- või PNG-pilt.");
-    expect(net.calls).toEqual([]);
-    ink.mockResolvedValueOnce(PNG());
-    await pick(file());
-    expect(signatureLine()).toBe("Failide salvestamine pole seadistatud — anna arendajale teada.");
-    ink.mockResolvedValueOnce(new Blob([new Uint8Array(1024 * 1024 + 1)], { type: "image/png" }));
-    await pick(file());
-    expect(signatureLine()).toBe("Allkirja pilt on liiga suur.");
-    expect(net.calls).toHaveLength(1); // the too big one never left the browser
-    expect($("[data-cert-signature] img")).toBeNull();
-    expect($("[data-cert-signature-status]")!.className).toContain("error");
-    net.restore();
-  });
-
-  test("'Eemalda allkiri' asks once; 'Ei' keeps it; 'Jah, eemalda' sends DELETE and the card says the name is written instead", async () => {
-    const net = stubFetch(() => Response.json({ ok: true }));
-    await show({ ...INITIAL, hasSignature: true });
-    expect($("[data-cert-signature] img")!.getAttribute("src")).toBe("/api/admin/allkiri?v=1");
-    expect(fileLabel()).toBe("Vaheta allkiri");
-    await click($("[data-cert-signature-remove]"));
-    const question = $("[data-cert-signature-confirm] p")!;
-    expect(question.textContent).toBe("Kas eemaldan allkirja? Tunnistustel on siis koolitaja nimi käekirjas.");
-    expect(document.activeElement).toBe(question);
-    await click(button("Ei"));
-    expect($("[data-cert-signature-confirm]")).toBeNull();
-    expect(net.calls).toEqual([]);
-    await click($("[data-cert-signature-remove]"));
-    await click(button("Jah, eemalda"));
-    expect(net.calls.map((c) => [c.url, c.method])).toEqual([["/api/admin/allkiri", "DELETE"]]);
-    expect($("[data-cert-signature] img")).toBeNull();
-    expect($("[data-cert-signature]")!.textContent).toBe("Allkirja pole: tunnistusel on koolitaja nimi käekirjas.");
-    expect(signatureLine()).toBe("Allkiri on eemaldatud.");
-    expect($("[data-cert-signature-remove]")).toBeNull();
-    net.restore();
+    await type(input("trainer"), "Мария Соснина");
+    await submit();
+    expect(action.mock.calls[0][0]).toMatchObject({ trainerName: "Мария Соснина" });
+    expect(input("trainer").getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(input("trainer"));
+    expect(errorOf("trainer")).toBe("Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).");
+    expect(input("trainer").getAttribute("aria-describedby")).toContain(`${input("trainer").id}-error`);
+    expect(input("trainer").value).toBe("Мария Соснина");
+    expect($("[data-cert-status]")!.textContent).toBe("Kontrolli märgitud välju.");
+    action.mockResolvedValue({ ok: false, fields: { trainerName: "length" } });
+    await type(input("trainer"), "M");
+    await submit();
+    expect(errorOf("trainer")).toBe("Nimi on liiga lühike.");
   });
 });
 ```
-
-  (A CSS module's class name keeps its own name in vitest, as `tests/unit/account-details-dom.test.ts` reads `className` with `/error/`.)
 
   2. Create `tests/db/seaded-certificate-page.test.ts`:
 
@@ -6009,9 +5224,9 @@ import { at, ecourse, student } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
 
 // Seaded with its "Tunnistus" card (phase 3d, spec §6, §4), rendered from a real (PGlite) database to HTML: the card is a form of its own
-// after the settings' form (never a form inside a form), it shows the stored setting (or the defaults), the number last issued in the next
-// number's year, and the signature's preview through the admin route — never the signature's key. The shell and the server actions are
-// stand-ins (they need a browser or a request).
+// after the settings' form (never a form inside a form), it shows the stored setting (or the defaults) and the number last issued in the next
+// number's year. The trainer's name is the signature (owner, 15.10): the card has no picture and no file field. The shell and the server
+// actions are stand-ins (they need a browser or a request).
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
@@ -6024,8 +5239,6 @@ vi.mock("@/server/actions/admin-site", () => ({ saveSettings: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn() }));
 
 import SettingsEditPage from "@/app/admin/(panel)/seaded/page";
-
-const KEY = "certificate/signature-0f8b6c2e-3d4a-4b5c-8d9e-0a1b2c3d4e5f.png";
 
 let db: Db;
 beforeEach(async () => {
@@ -6042,7 +5255,7 @@ const valueOf = (html: string, hook: string) => {
   return /\svalue="([^"]*)"/.exec(tag)?.[1] ?? null;
 };
 
-test("without a setting: the defaults, this year's number 1, nothing issued yet, no signature; the card is a form of its own after the settings' form", async () => {
+test("without a setting: the defaults (Maria Sosnina signs), this year's number 1, nothing issued yet; the card is a form of its own after the settings' form, with no picture or file field", async () => {
   const html = await page();
   expect(html).toContain('data-shell-active="settings"');
   const card = html.indexOf("data-certificate-settings");
@@ -6057,11 +5270,10 @@ test("without a setting: the defaults, this year's number 1, nothing issued yet,
   expect(valueOf(html, "next-year")).toBe(String(tallinnYear(new Date())));
   expect(valueOf(html, "next-seq")).toBe("1");
   expect(html).toContain("Sel aastal pole veel tunnistusi väljastatud.");
-  expect(html).toContain("Allkirja pole: tunnistusel on koolitaja nimi käekirjas.");
-  expect(html).not.toContain("/api/admin/allkiri");
+  expect(html.slice(card)).not.toMatch(/<img|type="file"/);
 });
 
-test("a stored setting: its values, the year's last issued number beside the next, and the signature's preview from the admin route (its key never in the page)", async () => {
+test("a stored setting: its values, the trainer's name as stored, and the year's last issued number beside the next", async () => {
   const course = await ecourse(db, { test: null });
   const kati = await student(db, course.id, "Kati", { completedAt: at(8) });
   await db.insert(certificates).values({
@@ -6080,20 +5292,17 @@ test("a stored setting: its values, the year's last issued number beside the nex
   });
   await db.insert(settings).values({
     key: "certificate",
-    value: { place: "Tallinn", registryCode: "16346048", practicalLine: "Praktiline töö fotodel", trainerName: "Maria Sosnina", nextYear: 2026, nextSeq: 15, signatureKey: KEY },
+    value: { place: "Tallinn", registryCode: "16346048", practicalLine: "Praktiline töö fotodel", trainerName: "Maria S.", nextYear: 2026, nextSeq: 15 },
   });
   const html = await page();
-  expect([valueOf(html, "place"), valueOf(html, "next-year"), valueOf(html, "next-seq")]).toEqual(["Tallinn", "2026", "15"]);
+  expect([valueOf(html, "place"), valueOf(html, "trainer"), valueOf(html, "next-year"), valueOf(html, "next-seq")]).toEqual(["Tallinn", "Maria S.", "2026", "15"]);
   expect(html).toContain("Viimati väljastatud: MS LAB 2026-14");
-  expect(html).toContain('src="/api/admin/allkiri?v=1"');
-  expect(html).not.toContain(KEY);
-  expect(html).not.toContain("Allkirja pole");
 });
 ```
 
-- [ ] **Step 24: Run them — expect FAIL.** `cd app && npx vitest run tests/unit/certificate-settings-dom.test.ts tests/db/seaded-certificate-page.test.ts` — `Failed to resolve import "@/components/admin/CertificateSettings"`.
+- [ ] **Step 18: Run them — expect FAIL.** `cd app && npx vitest run tests/unit/certificate-settings-dom.test.ts tests/db/seaded-certificate-page.test.ts` — `Failed to resolve import "@/components/admin/CertificateSettings"`.
 
-- [ ] **Step 25: The card** — create `src/components/admin/CertificateSettings.tsx`:
+- [ ] **Step 19: The card** — create `src/components/admin/CertificateSettings.tsx`:
 
 ```tsx
 "use client";
@@ -6102,8 +5311,6 @@ import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type
 import { CERT_LIMITS } from "@/domain/certificate";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
-import { MAX_SOURCE_BYTES } from "@/lib/shrink-image";
-import { InkError, inkSignature, SIGNATURE_MAX_BYTES } from "@/lib/signature-ink";
 import { saveCertificateSettingsAction } from "@/server/actions/admin-certificates";
 import type { CertificateFieldError } from "@/server/certificates";
 import ui from "./ui.module.css";
@@ -6111,23 +5318,23 @@ import ed from "./editor.module.css";
 import site from "./site-editor.module.css";
 import styles from "./CertificateSettings.module.css";
 
-/** What the Seaded page reads for the card (server/certificates.ts getCertificateSettings and lastIssued); the signature's key stays on the server. */
+/** What the Seaded page reads for the card (server/certificates.ts getCertificateSettings and lastIssued). */
 export type CertificateSettingsInitial = {
   place: string;
   registryCode: string;
   practicalLine: string;
+  /** Maria's signature on the certificate: the PDF writes it in the script font (owner, 15.10). */
   trainerName: string;
   nextYear: number;
   nextSeq: number;
   /** The number last issued in `nextYear` ("MS LAB 2026-14"), or null. */
   last: string | null;
-  hasSignature: boolean;
 };
 
 /** The fields as typed: the two numbers too (the server parses them, as the course editor's). */
 type Draft = { place: string; registryCode: string; practicalLine: string; trainerName: string; nextYear: string; nextSeq: string };
 type Field = keyof Draft;
-type Stored = Omit<CertificateSettingsInitial, "last" | "hasSignature">;
+type Stored = Omit<CertificateSettingsInitial, "last">;
 
 const draftOf = (s: Stored): Draft => ({
   place: s.place,
@@ -6138,48 +5345,19 @@ const draftOf = (s: Stored): Draft => ({
   nextSeq: String(s.nextSeq),
 });
 
-type SignatureProblem = keyof (typeof adminEt)["certificates"]["settings"]["signatureErrors"];
-/** A status line: empty, on its way, done or refused. */
+/** The status line: empty, on its way, done or refused. */
 type Line = { tone: "idle" | "busy" | "done" | "error"; text: string };
 const IDLE: Line = { tone: "idle", text: "" };
 const toneClass = (tone: Line["tone"]) => (tone === "error" ? ui.error : tone === "done" ? ui.success : ui.hint);
 
-/** The signature's PNG to POST /api/admin/allkiri; "ok" or why it was refused. */
-async function sendSignature(png: Blob): Promise<"ok" | SignatureProblem> {
-  const body = new FormData();
-  body.set("file", new File([png], "allkiri.png", { type: "image/png" }));
-  let res: Response;
-  try {
-    res = await fetch("/api/admin/allkiri", { method: "POST", body, credentials: "same-origin" });
-  } catch {
-    return "server";
-  }
-  if (res.ok) return "ok";
-  if (res.status === 401) return "session";
-  if (res.status === 413) return "size";
-  const json = (await res.json().catch(() => null)) as { error?: string } | null;
-  return res.status === 503 && json?.error === "storage" ? "storage" : "server";
-}
-
-/** DELETE /api/admin/allkiri; "ok" or why not. */
-async function deleteSignature(): Promise<"ok" | "session" | "server"> {
-  try {
-    const res = await fetch("/api/admin/allkiri", { method: "DELETE", credentials: "same-origin" });
-    return res.ok ? "ok" : res.status === 401 ? "session" : "server";
-  } catch {
-    return "server";
-  }
-}
-
 /**
  * Seaded → "Tunnistus" (phase 3d, spec §6, §4): what every new e-course certificate prints besides the student's name and her course — the
- * place, the registry code, the practical work's line and the trainer's name (written in the script font when there is no signature) — and
- * "Järgmine number" (year and number), with the number last issued in that year beside it. A form of its own after the settings' form, with
- * its own "Salvesta tunnistuse andmed" (a secondary button: the page's primary one is the settings' save bar); a refused field is marked and
- * the first one takes the focus (Review Focus 4: a next number at or below one already issued is "taken"). The signature is uploaded at once
- * when a picture is picked: the browser makes it white ink on transparency (lib/signature-ink.ts: a scan of dark ink, or Maria's Canva export
- * of light ink), POST /api/admin/allkiri stores it, and the preview on black loads it anew (a new `v`). "Eemalda allkiri" asks once first.
- * The card keeps its own state; the page is not refreshed.
+ * place, the registry code, the practical work's line and the trainer's name, which the PDF writes in the script font as Maria's signature
+ * (owner, 15.10: no picture) — and "Järgmine number" (year and number), with the number last issued in that year beside it. A form
+ * of its own after the settings' form, with its own "Salvesta tunnistuse andmed" (a secondary button: the page's primary one is the
+ * settings' save bar); a refused field is marked in words and the first one takes the focus (Review Focus 4: a next number at or below one
+ * already issued is "taken"; a trainer's name the name rules refuse is "letters" or "length"). The card keeps its own state; the page is not
+ * refreshed.
  */
 export function CertificateSettings({ initial }: { initial: CertificateSettingsInitial }) {
   const t = adminEt.certificates.settings;
@@ -6190,21 +5368,11 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
   const [fields, setFields] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Line>(IDLE);
   const [pending, start] = useTransition();
-  const [hasSignature, setHasSignature] = useState(initial.hasSignature);
-  const [version, setVersion] = useState(1);
-  const [sig, setSig] = useState<Line>(IDLE);
-  const [confirming, setConfirming] = useState(false);
-  const question = useRef<HTMLParagraphElement>(null);
-  const remover = useRef<HTMLButtonElement>(null);
-  const busy = sig.tone === "busy";
 
   // a refused save: the first marked field takes the focus
   useEffect(() => {
     if (Object.keys(fields).length > 0) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [fields]);
-  useEffect(() => {
-    if (confirming) question.current?.focus();
-  }, [confirming]);
 
   const id = (name: Field) => `${uid}-${name}`;
   const change = (name: Field) => (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [name]: e.target.value }));
@@ -6254,35 +5422,6 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
         setStatus({ tone: "error", text: t.invalid });
       } else setStatus({ tone: "error", text: t.error });
     });
-  };
-
-  const pick = async (file: File | undefined) => {
-    if (!file || busy) return;
-    setConfirming(false);
-    if (file.size > MAX_SOURCE_BYTES) return setSig({ tone: "error", text: t.signatureErrors.size });
-    setSig({ tone: "busy", text: t.preparing });
-    let png: Blob;
-    try {
-      png = await inkSignature(file);
-    } catch (e) {
-      return setSig({ tone: "error", text: t.signatureErrors[e instanceof InkError ? e.problem : "decode"] });
-    }
-    if (png.size > SIGNATURE_MAX_BYTES) return setSig({ tone: "error", text: t.signatureErrors.size });
-    const sent = await sendSignature(png);
-    if (sent !== "ok") return setSig({ tone: "error", text: t.signatureErrors[sent] });
-    setHasSignature(true);
-    setVersion((v) => v + 1);
-    setSig({ tone: "done", text: t.uploaded });
-  };
-
-  const remove = async () => {
-    if (busy) return;
-    setSig({ tone: "busy", text: t.removing });
-    const done = await deleteSignature();
-    setConfirming(false);
-    if (done !== "ok") return setSig({ tone: "error", text: t.signatureErrors[done] });
-    setHasSignature(false);
-    setSig({ tone: "done", text: t.removed });
   };
 
   return (
@@ -6400,79 +5539,6 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
           </button>
         </div>
       </form>
-
-      <div className={styles.signature} role="group" aria-labelledby={`${uid}-sig`} aria-busy={busy || undefined}>
-        <h3 id={`${uid}-sig`} className={ui.h3}>
-          {t.signature}
-        </h3>
-        <p id={`${uid}-sig-hint`} className={ui.hint}>
-          {t.signatureHint}
-        </p>
-        <div className={styles.preview} data-cert-signature="">
-          {hasSignature ? (
-            // eslint-disable-next-line @next/next/no-img-element -- a private image of the admin API, shown as it is: no optimisation
-            <img src={`/api/admin/allkiri?v=${version}`} alt={t.signatureAlt} />
-          ) : (
-            <p className={styles.none}>{t.signatureNone}</p>
-          )}
-        </div>
-        <div className={styles.tools}>
-          <input
-            id={`${uid}-file`}
-            className={styles.file}
-            type="file"
-            accept="image/*"
-            disabled={busy}
-            aria-describedby={`${uid}-sig-hint ${uid}-sig-status`}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = ""; // the same picture can be picked again
-              void pick(file);
-            }}
-            data-cert-signature-file=""
-          />
-          <label htmlFor={`${uid}-file`} className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}>
-            {hasSignature ? t.replace : t.upload}
-          </label>
-          {hasSignature && !confirming && (
-            <button
-              ref={remover}
-              type="button"
-              className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`}
-              aria-disabled={busy || undefined}
-              onClick={() => !busy && setConfirming(true)}
-              data-cert-signature-remove=""
-            >
-              {t.remove}
-            </button>
-          )}
-        </div>
-        {confirming && (
-          <div className={styles.confirm} role="group" aria-labelledby={`${uid}-q`} data-cert-signature-confirm="">
-            <p id={`${uid}-q`} ref={question} tabIndex={-1} className={ui.notice}>
-              {t.removeConfirm}
-            </p>
-            <div className={styles.tools}>
-              <button type="button" className={`${ui.btn} ${ui.smallBtn}`} aria-disabled={busy || undefined} onClick={() => void remove()}>
-                {t.removeYes}
-              </button>
-              <button
-                type="button"
-                className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}
-                onClick={() => {
-                  setConfirming(false);
-                  requestAnimationFrame(() => remover.current?.focus());
-                }}
-              >
-                {t.removeNo}
-              </button>
-            </div>
-          </div>
-        )}
-        <p id={`${uid}-sig-status`} role="status" className={toneClass(sig.tone)} data-cert-signature-status={sig.tone}>
-          {sig.text}
-        </p>
-      </div>
     </section>
   );
 }
@@ -6482,8 +5548,7 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
 
 ```css
 /* Seaded → "Tunnistus" (phase 3d, spec §6): a card of its own after the settings' form and its save bar; the next number's two short fields side
-   by side; the signature's preview on black, as the certificate shows it (white ink on a transparent picture), with its upload and removal.
-   Every control is the admin's 44 px one; colours from tokens.css only. */
+   by side. Every control is the admin's 44 px one; colours from tokens.css only. */
 
 .card {
   margin-top: 25px;
@@ -6509,77 +5574,6 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
   margin: 0;
 }
 
-.signature {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-  margin-top: 28px;
-  padding-top: 24px;
-  border-top: 1px solid var(--line);
-}
-
-.preview {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  max-width: 520px;
-  min-height: 120px;
-  padding: 20px;
-  border-radius: 12px;
-  background: var(--ink);
-}
-
-.preview img {
-  display: block;
-  max-width: 100%;
-  max-height: 160px;
-  height: auto;
-}
-
-.none {
-  margin: 0;
-  color: var(--paper);
-  font-size: 13px;
-  text-align: center;
-}
-
-.tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-/* the file field itself is hidden; its label is the 44 px button (as ImageUpload's) */
-.file {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
-.file:focus-visible + label {
-  outline: 2px solid var(--rose);
-  outline-offset: 3px;
-}
-
-.confirm {
-  display: grid;
-  gap: 10px;
-  max-width: 520px;
-}
-
-.confirm p {
-  margin: 0;
-}
-
-.confirm p:focus {
-  outline: 2px solid var(--rose);
-  outline-offset: 2px;
-}
-
 @media (max-width: 640px) {
   .actions button {
     flex: 1 1 100%;
@@ -6587,7 +5581,7 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
 }
 ```
 
-- [ ] **Step 26: The page** — replace `src/app/admin/(panel)/seaded/page.tsx` with:
+- [ ] **Step 20: The page** — replace `src/app/admin/(panel)/seaded/page.tsx` with:
 
 ```tsx
 import type { Metadata } from "next";
@@ -6607,8 +5601,8 @@ export const metadata: Metadata = { title: adminTitle(adminEt.nav.settings) };
 
 /**
  * Seaded: contact details, social links, newsletter discount, legal pages; the admin addresses read-only (Task 13B). Then the e-course
- * certificate's card (phase 3d, spec §6): a form of its own after the settings' form, with its own save and its signature upload (a form
- * cannot sit inside another, and its rules are not a settings part's). The signature's key stays here: the card gets only whether there is one.
+ * certificate's card (phase 3d, spec §6): a form of its own after the settings' form, with its own save (a form cannot sit inside another,
+ * and its rules are not a settings part's). Its "Koolitaja nimi" is the signature the PDF writes in the script font.
  */
 export default async function SettingsEditPage() {
   const email = await requireAdmin();
@@ -6632,7 +5626,6 @@ export default async function SettingsEditPage() {
           nextYear: certificate.nextYear,
           nextSeq: certificate.nextSeq,
           last,
-          hasSignature: certificate.signatureKey !== null,
         }}
       />
     </Shell>
@@ -6640,7 +5633,7 @@ export default async function SettingsEditPage() {
 }
 ```
 
-- [ ] **Step 27: The card's texts** — `src/i18n/dict/admin.ts`, after the `clients` block's closing `},` (the line after `attempts: "Testi katsed",` and its `},`), before the comment `// /admin/opilased/<id>/vaade: the student's own "Minu koolitused", read-only`, add:
+- [ ] **Step 21: The card's texts** — `src/i18n/dict/admin.ts`, after the `clients` block's closing `},` (the line after `attempts: "Testi katsed",` and its `},`), before the comment `// /admin/opilased/<id>/vaade: the student's own "Minu koolitused", read-only`, add:
 
 ```ts
 
@@ -6649,14 +5642,14 @@ export default async function SettingsEditPage() {
   certificates: {
     settings: {
       title: "Tunnistus",
-      lead: "Need andmed lähevad igale uuele e-kursuse tunnistusele. Väljastatud tunnistus jääb selliseks, nagu see väljastati; ainult allkiri on igal allalaadimisel praegune.",
+      lead: "Need andmed lähevad igale uuele e-kursuse tunnistusele. Väljastatud tunnistus jääb selliseks, nagu see väljastati; ainult koolitaja nimi, mis on tunnistusel allkirjaks, on igal allalaadimisel praegune.",
       place: "Koht",
       placeHint: "Kuupäeva ees, nt Pärnu linn.",
       registryCode: "Registrikood",
       practicalLine: "Praktilise töö rida",
       practicalLineHint: "Tunnistuse allservas vasakul, suurtähtedega.",
       trainerName: "Koolitaja nimi",
-      trainerNameHint: "Kirjutatakse tunnistusele käekirjas, kui allkirja pole.",
+      trainerNameHint: "Allkiri tunnistusel: see nimi kirjutatakse käekirjas alla paremale. Ladina tähtedega.",
       nextNumber: "Järgmine number",
       nextYear: "Aasta",
       nextSeq: "Number",
@@ -6668,56 +5661,35 @@ export default async function SettingsEditPage() {
       saved: "Tunnistuse andmed on salvestatud.",
       invalid: "Kontrolli märgitud välju.",
       error: "Salvestamine ei õnnestunud. Proovi uuesti.",
-      // server/certificates.ts CertificateFieldError (a bad year is reported on the number, "invalid"); `other` for a code this list does not know
+      // server/certificates.ts CertificateFieldError (a bad year is reported on the number, "invalid"; `letters` and `length` are the name
+      // rules' refusals of the trainer's name); `other` for a code this list does not know
       errors: {
         required: "Täida see väli.",
         tooLong: "Tekst on liiga pikk.",
         invalid: "Kontrolli aastat (2000–2099) ja numbrit (1–99 999).",
         taken: "See number on juba väljastatud. Vali suurem number kui viimati väljastatud.",
+        letters: "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).",
+        length: "Nimi on liiga lühike.",
         other: "Kontrolli seda välja.",
-      },
-      signature: "Allkiri",
-      signatureHint:
-        "Lae üles allkirja PNG-pilt (nt Canvast: hele allkiri läbipaistval taustal või tume allkiri valgel taustal) või tumeda pastakaga valgele paberile kirjutatud allkirja foto. Brauser teeb sellest valge allkirja läbipaistval taustal, nagu see tunnistusel paistab.",
-      signatureAlt: "Allkiri, nagu see tunnistusel paistab",
-      signatureNone: "Allkirja pole: tunnistusel on koolitaja nimi käekirjas.",
-      upload: "Lae allkiri üles",
-      replace: "Vaheta allkiri",
-      remove: "Eemalda allkiri",
-      removeConfirm: "Kas eemaldan allkirja? Tunnistustel on siis koolitaja nimi käekirjas.",
-      removeYes: "Jah, eemalda",
-      removeNo: "Ei",
-      preparing: "Valmistan allkirja ette…",
-      removing: "Eemaldan…",
-      uploaded: "Allkiri on salvestatud. See on nüüd kõigil tunnistustel, ka varem väljastatutel.",
-      removed: "Allkiri on eemaldatud.",
-      signatureErrors: {
-        decode: "Seda pilti ei saa avada. Vali JPG- või PNG-pilt.",
-        empty: "Pildilt ei leitud allkirja. Vali pilt, kus on tume allkiri heledal taustal või hele allkiri läbipaistval taustal.",
-        size: "Allkirja pilt on liiga suur.",
-        session: "Sessioon on aegunud. Logi uuesti sisse ja proovi siis uuesti.",
-        storage: "Failide salvestamine pole seadistatud — anna arendajale teada.",
-        server: "Allkirja salvestamine ei õnnestunud. Proovi uuesti.",
       },
     },
   },
 ```
 
-- [ ] **Step 28: Run the card tests — expect PASS.** `cd app && npx vitest run tests/unit/certificate-settings-dom.test.ts tests/db/seaded-certificate-page.test.ts` — green.
+- [ ] **Step 22: Run the card tests — expect PASS.** `cd app && npx vitest run tests/unit/certificate-settings-dom.test.ts tests/db/seaded-certificate-page.test.ts` — green.
 
-- [ ] **Step 29: The guards and the lists.**
+- [ ] **Step 23: The guards and the lists.**
 
   1. `tests/unit/admin-guards.test.ts`:
      - in the second `expect(all.map((f) => f.path)).toEqual(expect.arrayContaining([ … ]))` list, after `"server/actions/admin-assessment.ts",` add:
 
 ```ts
-        // phase 3d: Maria's certificate download, the signature, and the certificate's actions
+        // phase 3d: Maria's certificate download and the certificate's actions
         "app/api/admin/tunnistus/[id]/route.ts",
-        "app/api/admin/allkiri/route.ts",
         "server/actions/admin-certificates.ts",
 ```
 
-     - in the test "every route under app/api/admin and app/admin is wrapped", the list `["app/api/admin/subscribers.csv/route.ts", … "app/api/admin/hinnang/route.ts"]` gains `"app/api/admin/allkiri/route.ts", "app/api/admin/tunnistus/[id]/route.ts"` at its end;
+     - in the test "every route under app/api/admin and app/admin is wrapped", the list `["app/api/admin/subscribers.csv/route.ts", … "app/api/admin/hinnang/route.ts"]` gains `"app/api/admin/tunnistus/[id]/route.ts"` at its end;
      - in the test "every admin page calls requireAdmin() itself and every admin action is wrapped", after the three `assessmentActions` lines (before the comment `// It reads and scans every admin source file: …`) add:
 
 ```ts
@@ -6735,23 +5707,18 @@ export default async function SettingsEditPage() {
   "src/components/admin/CertificateSettings.module.css",
 ```
 
-  3. `tests/unit/old-safari.test.ts`: at the end of `BROWSER_FILES`, after Task 1's `"src/domain/certificate.ts",` (the last entry) add:
+  (`tests/unit/old-safari.test.ts` needs no new entry: Seaded's card is a "use client" file, which it walks with its imports.)
 
-```ts
-  // phase 3d, Task 5: the signature's white ink (Seaded's card is a "use client" file, walked anyway)
-  "src/lib/signature-ink.ts",
-```
-
-- [ ] **Step 30: Run the task's checks.** From `app/`:
+- [ ] **Step 24: Run the task's checks.** From `app/`:
   - `npx vitest run` — all green (the new files, the guards, the tokens, the old-Safari walk, the course editor's tests);
   - `npx tsc --noEmit` and `npx eslint .` — clean;
   - E2E (`docker start mslab-pg` if it is not running; migration 0009 is applied locally since Task 1; stop any dev server you started): `npx playwright test admin-edit admin-site` — green on both edit projects. The e-course's type switch still finds one `[data-protocol-stages]` (the skills list has its own hooks); Seaded at 390 px has no sideways scroll and every control of the new card is 44 px tall; the settings' "Salvesta" and `[data-save-status]` are still the only ones of their names.
 
-- [ ] **Step 31: Commit** (from the repository root).
+- [ ] **Step 25: Commit** (from the repository root).
 
 ```bash
-git add app/src/domain/course-editor.ts app/src/server/admin-content.ts app/src/db/queries/admin.ts app/src/components/admin/ProtocolStagesEditor.tsx app/src/components/admin/CourseEditor.tsx app/src/components/admin/CourseEditor.module.css app/src/lib/shrink-image.ts app/src/lib/signature-ink.ts app/src/app/api/admin/allkiri/route.ts "app/src/app/api/admin/tunnistus/[id]/route.ts" app/src/server/actions/admin-certificates.ts app/src/components/admin/CertificateSettings.tsx app/src/components/admin/CertificateSettings.module.css "app/src/app/admin/(panel)/seaded/page.tsx" app/src/i18n/dict/admin.ts app/tests/unit/signature-ink.test.ts app/tests/unit/certificate-settings-dom.test.ts app/tests/unit/admin-certificates-action.test.ts app/tests/db/admin-signature-route.test.ts app/tests/db/admin-certificate-route.test.ts app/tests/db/seaded-certificate-page.test.ts app/tests/unit/protocol-stages-dom.test.ts app/tests/unit/admin-content.test.ts app/tests/db/admin-content.test.ts app/tests/unit/admin-guards.test.ts app/tests/unit/colour-tokens.test.ts app/tests/unit/old-safari.test.ts
-git commit -m "feat(admin): the certificate's settings — the course editor's Tunnistus card, Seaded → Tunnistus with the signature as white ink, Maria's PDF download
+git add app/src/domain/course-editor.ts app/src/server/admin-content.ts app/src/db/queries/admin.ts app/src/components/admin/ProtocolStagesEditor.tsx app/src/components/admin/CourseEditor.tsx app/src/components/admin/CourseEditor.module.css "app/src/app/api/admin/tunnistus/[id]/route.ts" app/src/server/actions/admin-certificates.ts app/src/components/admin/CertificateSettings.tsx app/src/components/admin/CertificateSettings.module.css "app/src/app/admin/(panel)/seaded/page.tsx" app/src/i18n/dict/admin.ts app/tests/unit/certificate-settings-dom.test.ts app/tests/unit/admin-certificates-action.test.ts app/tests/db/admin-certificate-route.test.ts app/tests/db/seaded-certificate-page.test.ts app/tests/unit/protocol-stages-dom.test.ts app/tests/unit/admin-content.test.ts app/tests/db/admin-content.test.ts app/tests/unit/admin-guards.test.ts app/tests/unit/colour-tokens.test.ts
+git commit -m "feat(admin): the certificate's settings — the course editor's Tunnistus card, Seaded → Tunnistus with the trainer's name as the signature, Maria's PDF download
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -6771,14 +5738,14 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `adminEt.courseEditor.fields.certificateVolume` | Maht | Spec (§6) |
 | `adminEt.courseEditor.fields.certificateVolumeHint` | nt 10 akadeemilist tundi. Tühjaks jättes tunnistusel ei näidata. | Spec (the example, §6) + Draft (the second sentence, §3) |
 | `adminEt.certificates.settings.title` | Tunnistus | Spec (§6) |
-| `adminEt.certificates.settings.lead` | Need andmed lähevad igale uuele e-kursuse tunnistusele. Väljastatud tunnistus jääb selliseks, nagu see väljastati; ainult allkiri on igal allalaadimisel praegune. | Draft |
+| `adminEt.certificates.settings.lead` | Need andmed lähevad igale uuele e-kursuse tunnistusele. Väljastatud tunnistus jääb selliseks, nagu see väljastati; ainult koolitaja nimi, mis on tunnistusel allkirjaks, on igal allalaadimisel praegune. | Draft |
 | `adminEt.certificates.settings.place` | Koht | Spec (§6) |
 | `adminEt.certificates.settings.placeHint` | Kuupäeva ees, nt Pärnu linn. | Draft |
 | `adminEt.certificates.settings.registryCode` | Registrikood | Spec (§6) |
 | `adminEt.certificates.settings.practicalLine` | Praktilise töö rida | Spec (§6) |
 | `adminEt.certificates.settings.practicalLineHint` | Tunnistuse allservas vasakul, suurtähtedega. | Draft |
 | `adminEt.certificates.settings.trainerName` | Koolitaja nimi | Draft |
-| `adminEt.certificates.settings.trainerNameHint` | Kirjutatakse tunnistusele käekirjas, kui allkirja pole. | Draft |
+| `adminEt.certificates.settings.trainerNameHint` | Allkiri tunnistusel: see nimi kirjutatakse käekirjas alla paremale. Ladina tähtedega. | Draft (owner, 15.10: the signature is the trainer's name in the script font) |
 | `adminEt.certificates.settings.nextNumber` | Järgmine number | Spec (§4, §6) |
 | `adminEt.certificates.settings.nextYear` / `nextSeq` | Aasta / Number | Draft |
 | `adminEt.certificates.settings.nextHint` | Jätka oma paberil tunnistuste numbreid. Uue aasta esimene tunnistus saab numbri 1. | Draft |
@@ -6793,31 +5760,15 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `adminEt.certificates.settings.errors.tooLong` | Tekst on liiga pikk. | Draft (as the editors') |
 | `adminEt.certificates.settings.errors.invalid` | Kontrolli aastat (2000–2099) ja numbrit (1–99 999). | Draft (Task 3's ranges) |
 | `adminEt.certificates.settings.errors.taken` | See number on juba väljastatud. Vali suurem number kui viimati väljastatud. | Draft (§4's rule) |
+| `adminEt.certificates.settings.errors.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Owner (15.10), as the student's `account.certificate.letters` |
+| `adminEt.certificates.settings.errors.length` | Nimi on liiga lühike. | Draft (the trainer's name of one character; over 60 is `tooLong`) |
 | `adminEt.certificates.settings.errors.other` | Kontrolli seda välja. | Draft |
-| `adminEt.certificates.settings.signature` | Allkiri | Spec (§6) |
-| `adminEt.certificates.settings.signatureHint` | Lae üles allkirja PNG-pilt (nt Canvast: hele allkiri läbipaistval taustal või tume allkiri valgel taustal) või tumeda pastakaga valgele paberile kirjutatud allkirja foto. Brauser teeb sellest valge allkirja läbipaistval taustal, nagu see tunnistusel paistab. | Draft (§6, and the controller's update of 15.10: Maria's Canva export) |
-| `adminEt.certificates.settings.signatureAlt` | Allkiri, nagu see tunnistusel paistab | Draft |
-| `adminEt.certificates.settings.signatureNone` | Allkirja pole: tunnistusel on koolitaja nimi käekirjas. | Draft (§6 "Seaded says so") |
-| `adminEt.certificates.settings.upload` / `replace` | Lae allkiri üles / Vaheta allkiri | Draft |
-| `adminEt.certificates.settings.remove` | Eemalda allkiri | Draft |
-| `adminEt.certificates.settings.removeConfirm` | Kas eemaldan allkirja? Tunnistustel on siis koolitaja nimi käekirjas. | Draft |
-| `adminEt.certificates.settings.removeYes` / `removeNo` | Jah, eemalda / Ei | Draft (as the drawer's confirmations) |
-| `adminEt.certificates.settings.preparing` | Valmistan allkirja ette… | Draft |
-| `adminEt.certificates.settings.removing` | Eemaldan… | Draft |
-| `adminEt.certificates.settings.uploaded` | Allkiri on salvestatud. See on nüüd kõigil tunnistustel, ka varem väljastatutel. | Draft (§9: the signature is not frozen) |
-| `adminEt.certificates.settings.removed` | Allkiri on eemaldatud. | Draft |
-| `adminEt.certificates.settings.signatureErrors.decode` | Seda pilti ei saa avada. Vali JPG- või PNG-pilt. | Draft |
-| `adminEt.certificates.settings.signatureErrors.empty` | Pildilt ei leitud allkirja. Vali pilt, kus on tume allkiri heledal taustal või hele allkiri läbipaistval taustal. | Draft |
-| `adminEt.certificates.settings.signatureErrors.size` | Allkirja pilt on liiga suur. | Draft |
-| `adminEt.certificates.settings.signatureErrors.session` | Sessioon on aegunud. Logi uuesti sisse ja proovi siis uuesti. | Draft (as `upload.session`) |
-| `adminEt.certificates.settings.signatureErrors.storage` | Failide salvestamine pole seadistatud — anna arendajale teada. | Draft |
-| `adminEt.certificates.settings.signatureErrors.server` | Allkirja salvestamine ei õnnestunud. Proovi uuesti. | Draft |
 
 ---
 
 ### Task 6: Maria's side of an issued certificate — the Õpilased drawer's line, "Paranda nimi", the register `/admin/tunnistused`
 
-Spec §6 (the drawer: "Tunnistus MS LAB 2026-03 · {date}" with "Laada alla", "Paranda nimi", and "Tunnistus: õpilane pole veel nime kinnitanud" before she confirms; the register linked from Hindamine, not in the menu, number, name, course and issue date, newest first, 50 a page, each with its download), §9 (a revoked access: Maria's drawer still shows the certificate, marked "ligipääs tühistatud"), D3 (Maria corrects a name and re-issues under the same number). Review Focus 5 (Maria still sees and downloads a revoked access's certificate) and Review Focus 2 (a name with an emoji or digits is refused with the field error before anything is stored).
+Spec §6 (the drawer: "Tunnistus MS LAB 2026-03 · {date}" with "Laada alla", "Paranda nimi", and "Tunnistus: õpilane pole veel nime kinnitanud" before she confirms; the register linked from Hindamine, not in the menu, number, name, course and issue date, newest first, 50 a page, each with its download), §9 (a revoked access: Maria's drawer still shows the certificate, marked "ligipääs tühistatud"), D3 (Maria corrects a name and re-issues under the same number). Review Focus 5 (Maria still sees and downloads a revoked access's certificate) and Review Focus 2 (a name with an emoji, digits or Cyrillic is refused with the field error before anything is stored: Latin letters as in the passport).
 
 **What the drawer shows, per e-course access:**
 - **With a certificate** (`[data-access-certificate="<id>"]`): "Tunnistus MS LAB 2026-03 · 19.10.2026" (the Tallinn date of `issued_at`), "nimi parandatud {date}" after a re-issue, "Nimi tunnistusel: {name}", Maria's link "Laada alla" (`[data-certificate-admin-download]`, `/api/admin/tunnistus/<id>`) and `ReissueCertificate` ("Paranda nimi").
@@ -7163,7 +6114,7 @@ describe("ReissueCertificate", () => {
     await click($("[data-reissue]"));
     await type(field(), "Kati 😀");
     await submit();
-    expect($("[data-reissue-error]")!.textContent).toBe("Kasuta nimes ainult tähti, tühikuid ja sidekriipse");
+    expect($("[data-reissue-error]")!.textContent).toBe("Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).");
     expect(field().getAttribute("aria-invalid")).toBe("true");
     expect(field().getAttribute("aria-describedby")).toContain($("[data-reissue-error]")!.id);
     expect(field().value).toBe("Kati 😀");
@@ -7314,8 +6265,9 @@ export type ReissueTexts = AdminDict["certificates"]["reissue"] & { saving: stri
 
 /**
  * "Paranda nimi" (phase 3d, spec §6, D3) on a certificate in a student's drawer: a small form in place with the name as it is printed; the
- * same rules as hers (server/certificates.ts reissueCertificate: 2–80 characters, letters of the Latin or Cyrillic script, spaces, hyphens,
- * apostrophes and dots; Review Focus 2: an emoji or digits are refused on the field, nothing stored). "Väljasta uuesti" re-issues it under
+ * same rules as hers (server/certificates.ts reissueCertificate: 2–80 characters, the Latin letters the script font draws — the name as in
+ * her passport; Cyrillic is refused —, spaces, hyphens, apostrophes and dots; Review Focus 2: an emoji or digits are refused on the field,
+ * nothing stored). "Väljasta uuesti" re-issues it under
  * the same number, sets its re-issue day and mails nobody; the page is refreshed (the drawer's line and the register show the new name), and
  * the line that says what was done stays and takes the focus. "Katkesta" closes the form with the focus back on the button.
  */
@@ -7437,23 +6389,21 @@ import { logFailure } from "../log";
 // The e-course certificate's admin actions (phase 3d, spec §6): every export is wrapped in adminAction (a signed-in admin, or a redirect to
 // /admin/login; tests/unit/admin-guards.test.ts fails otherwise), and Next.js refuses an action called from another origin. The work is in
 // ../certificates.ts. Seaded's "Tunnistus" card keeps its own state, so its save refreshes nothing; "Paranda nimi" refreshes the open page (the
-// drawer's line and the register show the new name). The signature is not an action but a route (app/api/admin/allkiri): a file is a
-// multipart upload, and its preview needs a GET.
+// drawer's line and the register show the new name). There is no signature to upload: the signature is the trainer's name, one of the card's
+// fields (owner, 15.10).
 
 /**
  * Seaded → "Tunnistus" → "Salvesta tunnistuse andmed": the card's fields as typed (`{ place, registryCode, practicalLine, trainerName, nextYear,
- * nextSeq }`, the two numbers as text), checked by saveCertificateSettings (a next number at or below one already issued in that year is
- * refused on `nextSeq`, "taken": Review Focus 4). Saved: the settings as stored without the signature's key (it never goes to the browser) and
- * the number last issued in the saved year. A throw is { ok: false, error: "server" }, logged by its label only.
+ * nextSeq }`, the two numbers as text), checked by saveCertificateSettings (the trainer's name by the student's name rules, "letters" or
+ * "length"; a next number at or below one already issued in that year is refused on `nextSeq`, "taken": Review Focus 4). Saved: the settings
+ * as stored and the number last issued in the saved year. A throw is { ok: false, error: "server" }, logged by its label only.
  */
 export const saveCertificateSettingsAction = adminAction(async (_admin, raw: unknown) => {
   try {
     const db = getDb();
-    const result = await saveCertificateSettings(db, raw, new Date());
+    const result = await saveCertificateSettings(db, raw);
     if (!result.ok) return { ok: false as const, fields: result.fields };
-    const s = result.settings;
-    // named one by one: the signature's key is left behind on purpose
-    const settings = { place: s.place, registryCode: s.registryCode, practicalLine: s.practicalLine, trainerName: s.trainerName, nextYear: s.nextYear, nextSeq: s.nextSeq };
+    const { settings } = result;
     return { ok: true as const, settings, last: await lastIssued(db, settings.nextYear) };
   } catch (e) {
     logFailure("[certificate] the settings save failed", e);
@@ -7731,7 +6681,7 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
 - [ ] **Step 11: The texts** — `src/i18n/dict/admin.ts`, in `certificates`, the end of the `settings` block
 
 ```ts
-        server: "Allkirja salvestamine ei õnnestunud. Proovi uuesti.",
+        other: "Kontrolli seda välja.",
       },
     },
 ```
@@ -7739,7 +6689,7 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
   becomes
 
 ```ts
-        server: "Allkirja salvestamine ei õnnestunud. Proovi uuesti.",
+        other: "Kontrolli seda välja.",
       },
     },
     // the Õpilased drawer's line about an access's certificate (components/admin/ClientDrawer.tsx); {date}: dd.mm.yyyy in Tallinn
@@ -7762,7 +6712,7 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
       done: "Tunnistus {number} on uuesti väljastatud nimega {name}.",
       errors: {
         length: "Nimi peab olema 2–80 tähemärki pikk",
-        letters: "Kasuta nimes ainult tähti, tühikuid ja sidekriipse",
+        letters: "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).",
         notFound: "Seda tunnistust ei leitud. Laadi leht uuesti.",
       },
     },
@@ -7838,7 +6788,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `adminEt.certificates.reissue.cancel` | Katkesta | Draft |
 | `adminEt.certificates.reissue.done` | Tunnistus {number} on uuesti väljastatud nimega {name}. | Draft |
 | `adminEt.certificates.reissue.errors.length` | Nimi peab olema 2–80 tähemärki pikk | Draft |
-| `adminEt.certificates.reissue.errors.letters` | Kasuta nimes ainult tähti, tühikuid ja sidekriipse | Spec (§5) |
+| `adminEt.certificates.reissue.errors.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Owner (15.10), as the student's `account.certificate.letters` |
 | `adminEt.certificates.reissue.errors.notFound` | Seda tunnistust ei leitud. Laadi leht uuesti. | Draft |
 | `adminEt.certificates.register.fromAssessment` | Väljastatud tunnistused | Draft |
 | `adminEt.certificates.register.eyebrow` | Hindamine | Draft (the section it is reached from) |
@@ -7855,11 +6805,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 7: End to end — the whole path in a real browser, two issues at once on real Postgres; the runbook and the launch list
 
-Spec §10 ("Real Postgres (e2e)": two accesses issuing at the same moment get two different numbers; "End to end": complete → confirm the name → download (`%PDF`, filename); Maria's drawer shows it and "Paranda nimi" re-issues it; the register lists it; widths 390/834/1194/1440), §11 (rollout), §5–§7. Review Focus 1 (on real Postgres), 2 (the emoji refused in the browser), 4 (a new signature on old certificates), 5 (revoked: hers 404, Maria's still there). Rulings: Task 3's lock order (the access row, then the refusals — an existing certificate answers `already` without the number lock —, then `pg_advisory_xact_lock(hashtext('certificate-number'))`; `saveCertificateSettings` and `setSignatureKey` take the same lock), and the controller's update of 15.10 (Maria's signature comes from her Canva document as a PNG, uploaded once in Seaded and never committed; the e2e draws its own signatures).
+Spec §10 ("Real Postgres (e2e)": two accesses issuing at the same moment get two different numbers; "End to end": complete → confirm the name → download (`%PDF`, filename); Maria's drawer shows it and "Paranda nimi" re-issues it; the register lists it; widths 390/834/1194/1440), §11 (rollout), §5–§7. Review Focus 1 (on real Postgres), 2 (an emoji and a Cyrillic name refused in the browser), 5 (revoked: hers 404, Maria's still there); Review Focus 4's trainer's name is Task 3's and Task 5's (no e2e saves Seaded). Rulings: Task 3's lock order (the access row, then the refusals — an existing certificate answers `already` without the number lock —, then `pg_advisory_xact_lock(hashtext('certificate-number'))`; `saveCertificateSettings` takes the same lock), and the owner's decisions of 15.10 (the signature is the trainer's name typed in Revive 80 Signature: there is nothing to upload; names in Latin letters as in the passport; the repository private before the deploy).
 
 **What the e2e shares with other tests, and how it stays out of their way:**
 - **The number series is the whole database's.** Every test here that issues a certificate through the app holds the e2e lock `e2e-certificate-number` (`holdLocalLock`) while it does, so the race spec's two numbers are consecutive whatever runs beside it. Certificates a test only needs to look at are written straight to the database with the year 1999 and the access's id as their number (`MS LAB 1999-<id>`): no app's certificate ever has it.
-- **The signature is the whole site's.** Only one test changes it, in the desktop project only, under the e2e lock `e2e-certificate-signature`; it ends by removing it ("Eemalda allkiri"). It never saves Seaded's other fields: another test may issue a number meanwhile, and a stale "Järgmine number" would be refused (rightly).
+- **Seaded's setting is the whole site's.** No test saves it: another test may issue a number meanwhile, and a stale "Järgmine number" would be refused (rightly). The one Seaded test, in the desktop project only, sends a save the server refuses (a trainer's name in Cyrillic), which stores nothing.
 - **The rows:** every student is a sample address `e2e-client-cert-…@example.test` (never mailed) on an e-course of her own (`tests/e2e/completion.ts insertCompletionCourse`, then `completed_at` set), removed after each test with everything she has (`removeClientRows`; her certificate goes with her access). The e-course page needs the shared course terms (`takeTerms`), held only while a test is on that page.
 
 **Files:**
@@ -7871,15 +6821,14 @@ Spec §10 ("Real Postgres (e2e)": two accesses issuing at the same moment get tw
   - Task 1 (`src/domain/certificate.ts`): `readCertificateSettings(value: unknown, now: Date): CertificateSettings`; `nextNumber(s: { nextYear: number; nextSeq: number }, year: number): { year: number; seq: number; next: { nextYear: number; nextSeq: number } }`; `tallinnYear(d: Date): number`; `formatCertificateNumber(year: number, seq: number): string`; `certificateFileName(year: number, seq: number): string`. The tables `certificates`, `settings` (key `certificate`), `courses.certificate_skills` / `certificate_volume`.
   - Task 3 (`src/server/certificates.ts`): `issueCertificate(db: Db, clientId: number, slug: string, rawName: string, now: Date): Promise<IssueResult>`; `type IssueResult` (`issued` | `already` with `certificate: CertificateView`, …).
   - Task 4: `POST /api/konto/kursus/<slug>/tunnistus`, `GET /api/konto/tunnistus/<id>` (10 downloads an hour per student); the row `[data-certificate]`, `[data-certificate-name]`, `[data-certificate-issue]`, `[data-certificate-number]`, `[data-certificate-download]`, `[data-certificate-error]`; the dashboard card's `[data-card-certificate]`.
-  - Task 5: `[data-certificate-card]`, `[data-certificate-skills]`, `[data-certificate-skill]`, `[data-add-skill]`, `[data-field="certificateVolume"]`; Seaded's `[data-certificate-settings]`, `[data-cert-save]`, `[data-cert-signature]`, `[data-cert-signature-file]`, `[data-cert-signature-status]`, `[data-cert-signature-remove]`, `[data-cert-signature-confirm]`; `GET|DELETE /api/admin/allkiri`; `GET /api/admin/tunnistus/<id>`.
+  - Task 5: `[data-certificate-card]`, `[data-certificate-skills]`, `[data-certificate-skill]`, `[data-add-skill]`, `[data-field="certificateVolume"]`; Seaded's `[data-certificate-settings]`, `[data-cert-trainer]`, `[data-cert-save]`, `[data-cert-status]`; `GET /api/admin/tunnistus/<id>`.
   - Task 6: `[data-access-certificate]`, `[data-certificate-admin-download]`, `[data-certificate-revoked]`, `[data-reissue]`, `[data-reissue-name]`, `[data-reissue-save]`, `[data-reissue-done]`; `/admin/tunnistused` with `[data-certificate-register]`, `[data-register-row]`, `[data-register-download]`; Hindamine's `[data-to-register]`.
   - Existing e2e helpers: `insertCompletionCourse`, `type CompletionCourse` (`tests/e2e/completion.ts`); `clientEmail`, `takeTerms` (`account.ts`); `signInAsAdmin`, `adminReady`, `type CreatedRows` (`admin-login.ts`); `holdLocalLock`, `LOCK_WAIT_MS`, `localDatabaseUrl`, `onLocalDb`, `removeAdminRows`, `removeClientRows` (`fixtures.ts`); `runName`, `studentPage` (`protocols.ts`); `smallTargets` (`targets.ts`); `expect`, `submitsForms`, `test` (`test.ts`).
-- Produces (`tests/e2e/certificate.ts`): `NUMBER_LOCK`, `SIGNATURE_LOCK`, `E2E_YEAR`; `completedCourse(email: string, name?: string): Promise<CompletionCourse>`; `type StoredCertificate`; `storedCertificate(accessId: number): Promise<StoredCertificate | null>`; `insertCertificate(accessId: number, name: string): Promise<{ id: number; number: string }>`; `storedCertificateSetting(): Promise<Record<string, unknown> | null>`; `storedCourseCertificate(courseId: number): Promise<{ skills: string[]; volume: string }>`; `signaturePng(page: Page, kind: "paper" | "canva"): Promise<Buffer>`; `inkStats(page: Page, png: Buffer): Promise<{ width: number; height: number; corner: number; ink: number; white: boolean }>`.
+- Produces (`tests/e2e/certificate.ts`): `NUMBER_LOCK`, `E2E_YEAR`; `completedCourse(email: string, name?: string): Promise<CompletionCourse>`; `type StoredCertificate`; `storedCertificate(accessId: number): Promise<StoredCertificate | null>`; `insertCertificate(accessId: number, name: string): Promise<{ id: number; number: string }>`; `storedCertificateSetting(): Promise<Record<string, unknown> | null>`; `storedCourseCertificate(courseId: number): Promise<{ skills: string[]; volume: string }>`.
 
 - [ ] **Step 1: The e2e rows** — create `tests/e2e/certificate.ts`:
 
 ```ts
-import type { Page } from "@playwright/test";
 import { insertCompletionCourse, type CompletionCourse } from "./completion";
 import { onLocalDb } from "./fixtures";
 
@@ -7887,8 +6836,7 @@ import { onLocalDb } from "./fixtures";
 // (completion.ts insertCompletionCourse: no test, no points, its one lesson done; completed an hour ago), a certificate written straight to the
 // database (the year 1999 and the access's id as its number: no certificate of the app's ever has it), and the stored `certificate` setting.
 // Every address is a sample one (`e2e-client-cert-…@example.test`, never mailed) that fixtures.ts removeClientRows removes with its course; a
-// certificate goes with its access (on delete cascade). And the signature fixtures, drawn on a canvas in the test's own browser: no binary in
-// the repository, and never Maria's signature (it comes from her Canva document, is uploaded once by hand in Seaded and is never committed).
+// certificate goes with its access (on delete cascade). There is no signature fixture: the signature is the trainer's name in the script font.
 
 /** The local database for rows no public page shows. */
 const localDb = <T>(work: Parameters<typeof onLocalDb<T>>[0]): Promise<T> => onLocalDb(work, { marksPages: false });
@@ -7898,8 +6846,6 @@ const localDb = <T>(work: Parameters<typeof onLocalDb<T>>[0]): Promise<T> => onL
  * spec's two numbers are consecutive only if no other test takes one between them.
  */
 export const NUMBER_LOCK = "e2e-certificate-number";
-/** Held by the one test that changes the signature: the setting is the whole site's. */
-export const SIGNATURE_LOCK = "e2e-certificate-signature";
 /** The year of the certificates written straight: no real certificate has it, so their numbers never meet the app's. */
 export const E2E_YEAR = 1999;
 
@@ -7962,80 +6908,6 @@ export async function storedCourseCertificate(courseId: number): Promise<{ skill
     (sql) => sql<{ skills: string[]; volume: string }[]>`select certificate_skills as skills, certificate_volume as volume from courses where id = ${courseId}`,
   );
   return row;
-}
-
-/**
- * A signature drawn in `page`'s browser as a PNG of 1600 × 600: "paper", dark blue ink on paper lit by a lamp, with the paper's grain (light
- * specks, all lighter than the ink's threshold), as a photo or a scan of a signature is; "canva", white ink on a transparent background, as
- * Maria's signature exported from her Canva certificate is. The same strokes in both: a signature about 960 px wide.
- */
-export async function signaturePng(page: Page, kind: "paper" | "canva"): Promise<Buffer> {
-  const dataUrl = await page.evaluate(async (kind) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1600;
-    canvas.height = 600;
-    const g = canvas.getContext("2d")!;
-    if (kind === "paper") {
-      g.fillStyle = "#efebe4";
-      g.fillRect(0, 0, 1600, 600);
-      let seed = 11;
-      for (let i = 0; i < 4000; i++) {
-        seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
-        g.fillStyle = seed & 1 ? "#d8d2c8" : "#f7f4ef";
-        g.fillRect(seed % 1600, (seed >>> 11) % 600, 2, 2);
-      }
-    }
-    g.strokeStyle = kind === "paper" ? "#1d2440" : "#ffffff";
-    g.lineWidth = 7;
-    g.lineCap = "round";
-    g.lineJoin = "round";
-    g.beginPath();
-    g.moveTo(300, 380);
-    g.bezierCurveTo(360, 160, 440, 160, 470, 360);
-    g.bezierCurveTo(500, 520, 560, 200, 640, 300);
-    g.bezierCurveTo(720, 400, 780, 240, 860, 330);
-    g.bezierCurveTo(940, 420, 1040, 260, 1180, 310);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(420, 440);
-    g.lineTo(1250, 410);
-    g.stroke();
-    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("the canvas gave no PNG"))), "image/png"));
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    });
-  }, kind);
-  return Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64");
-}
-
-/**
- * A stored signature as `page`'s browser decodes it: its size, the alpha of its top left pixel (the margin around the ink: transparent), how
- * many pixels show (alpha 128 and up) and whether every one of those is white.
- */
-export async function inkStats(page: Page, png: Buffer): Promise<{ width: number; height: number; corner: number; ink: number; white: boolean }> {
-  return page.evaluate(async (base64) => {
-    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }), { premultiplyAlpha: "none" });
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const g = canvas.getContext("2d")!;
-    g.drawImage(bitmap, 0, 0);
-    const { data } = g.getImageData(0, 0, bitmap.width, bitmap.height);
-    let ink = 0;
-    let white = true;
-    for (let i = 0; i < data.length; i += 4)
-      if (data[i + 3] >= 128) {
-        ink++;
-        if (data[i] < 245 || data[i + 1] < 245 || data[i + 2] < 245) white = false;
-      }
-    const stats = { width: bitmap.width, height: bitmap.height, corner: data[3], ink, white };
-    bitmap.close();
-    return stats;
-  }, png.toString("base64"));
 }
 ```
 
@@ -8202,15 +7074,12 @@ test("Review Focus 1: one student confirming on two devices at the same moment �
 - [ ] **Step 4: The whole path** — create `tests/e2e/certificate.spec.ts`:
 
 ```ts
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import type { Locator, Page, TestInfo } from "@playwright/test";
 import { certificateFileName, formatCertificateNumber, nextNumber, readCertificateSettings, tallinnYear, type CertificateSettings } from "../../src/domain/certificate";
 import { clientEmail, takeTerms } from "./account";
 import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
-import {
-  completedCourse, inkStats, insertCertificate, NUMBER_LOCK, SIGNATURE_LOCK, signaturePng, storedCertificate, storedCertificateSetting, storedCourseCertificate, type StoredCertificate,
-} from "./certificate";
+import { completedCourse, insertCertificate, NUMBER_LOCK, storedCertificate, storedCertificateSetting, storedCourseCertificate, type StoredCertificate } from "./certificate";
 import type { CompletionCourse } from "./completion";
 import { holdLocalLock, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
 import { runName, studentPage } from "./protocols";
@@ -8218,15 +7087,14 @@ import { smallTargets } from "./targets";
 import { expect, submitsForms, test } from "./test";
 
 // The e-course certificate (phase 3d, spec §10 "End to end"): Maria fills an e-course's "Tunnistus" card; the student, her course completed,
-// confirms her name on the course page (an emoji refused first: Review Focus 2) and downloads the PDF (`%PDF`, its file name); Maria's drawer
-// shows it with her download, "Paranda nimi" re-issues it under the same number, the register lists it; the ended access's dashboard card
-// links it, and once the access is revoked her link goes and her download is 404 while Maria's drawer keeps it, marked (Review Focus 5).
-// Seaded → "Tunnistus": a signature photographed on paper and one exported from Canva (light ink on transparency) each become white ink on
-// transparency, stored privately, shown on black and drawn on the certificates; "Eemalda allkiri" takes it off (Review Focus 4). And the
-// screens at 390, 834, 1194 and 1440 px. Every student is a sample address (`e2e-client-cert-…@example.test`, never mailed) on an e-course of
-// the test's own; all of it is removed after each test. Under `next dev` and the production build (E2E_PROD_BUILD=1); Maria signs in as Dim
-// (admin-login.ts). The number series and the signature are the whole database's: see the locks in certificate.ts. The locks of the issue
-// itself on real Postgres are certificate-race.spec.ts.
+// confirms her name on the course page (an emoji and a Cyrillic name refused first: Review Focus 2, Latin letters as in the passport) and
+// downloads the PDF (`%PDF`, its file name); Maria's drawer shows it with her download, "Paranda nimi" re-issues it under the same number, the
+// register lists it; the ended access's dashboard card links it, and once the access is revoked her link goes and her download is 404 while
+// Maria's drawer keeps it, marked (Review Focus 5). Seaded → "Tunnistus": the trainer's name is the signature (no picture to upload), and one
+// in Cyrillic is refused on its field with nothing stored. And the screens at 390, 834, 1194 and 1440 px. Every student is a sample address
+// (`e2e-client-cert-…@example.test`, never mailed) on an e-course of the test's own; all of it is removed after each test. Under `next dev`
+// and the production build (E2E_PROD_BUILD=1); Maria signs in as Dim (admin-login.ts). The number series and Seaded's setting are the whole
+// database's: see the lock in certificate.ts. The locks of the issue itself on real Postgres are certificate-race.spec.ts.
 
 const made = new Set<string>();
 const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
@@ -8280,10 +7148,11 @@ const onAccess = (accessId: number, change: "ended" | "revoked") =>
     { marksPages: false },
   );
 const pdfHead = (bytes: Buffer) => bytes.subarray(0, 5).toString("latin1");
-const localFile = (key: string) => join(process.cwd(), ".media-local", ...key.split("/"));
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-/** A file field's touch target is its label (Seaded's "Lae allkiri üles"), as in completion.spec.ts. */
+/** A radio's, a checkbox's or a file field's touch target is its label, as in completion.spec.ts (these screens have none of their own). */
 const LABELLED = /^<input[^>]*\stype="(radio|checkbox|file)"/;
+/** "letters" in Estonian: the name in Latin letters as in the passport (account.certificate.letters). */
+const LETTERS_ET = "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).";
 /** The file fields in `scope` whose label is under 44 px tall or missing (the start of each one's HTML with the height found). */
 const smallLabels = (scope: Locator): Promise<string[]> =>
   scope.locator('input[type="file"]:visible').evaluateAll((els) =>
@@ -8293,7 +7162,7 @@ const smallLabels = (scope: Locator): Promise<string[]> =>
       .map(({ el, height }) => `${el.outerHTML.slice(0, 120)} (label ${Math.round(height)} px)`),
   );
 
-test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoji refused first) and downloads the PDF; Maria's drawer, 'Paranda nimi', the register; the ended access's card; revoked: hers 404, Maria's still there, marked", async ({ page, context, visitorIp, browser }, info) => {
+test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoji and Cyrillic refused first) and downloads the PDF; Maria's drawer, 'Paranda nimi', the register; the ended access's card; revoked: hers 404, Maria's still there, marked", async ({ page, context, visitorIp, browser }, info) => {
   info.setTimeout(240_000 + LOCK_WAIT_MS); // the number series may be held by another test (and holdTerms adds the terms' wait)
   const s = await student("main", info);
   const lines = ["Kulmude kuju ja proportsioonid", "Värvi valik ja segamine"];
@@ -8319,10 +7188,12 @@ test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoj
   await her.page.goto(coursePage(s));
   const row = her.page.locator("[data-certificate]");
   await expect(row.locator("[data-certificate-name]")).toHaveValue("Kati Kask");
-  // Review Focus 2: an emoji is refused with the field's error before anything is stored
-  await row.locator("[data-certificate-name]").fill("Kati 😀");
-  await row.locator("[data-certificate-issue]").click();
-  await expect(row.locator("[data-certificate-error]")).toContainText("Kasuta nimes ainult tähti, tühikuid ja sidekriipse");
+  // Review Focus 2: an emoji, and a name in Cyrillic (the script font has none), are refused with the field's error before anything is stored
+  for (const name of ["Kati 😀", "Катя Каск"]) {
+    await row.locator("[data-certificate-name]").fill(name);
+    await row.locator("[data-certificate-issue]").click();
+    await expect(row.locator("[data-certificate-error]"), name).toHaveText(LETTERS_ET);
+  }
   expect(await storedCertificate(s.accessId)).toBeNull();
 
   // her name with Estonian letters and a double surname: issued with the series' next number, the setting one further (no other test issues meanwhile)
@@ -8418,62 +7289,25 @@ test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoj
   await her.close();
 });
 
-test("§6 Seaded → Tunnistus: a signature on paper and one exported from Canva each become white ink on transparency, stored privately, shown on black and on the certificates; 'Eemalda allkiri' takes it off", async ({ page, context, visitorIp, request, isMobile }, info) => {
-  test.skip(isMobile, "the signature is the whole site's: the desktop project changes it, once");
-  info.setTimeout(180_000 + LOCK_WAIT_MS);
-  const unlock = await holdLocalLock(SIGNATURE_LOCK);
-  try {
-    const s = await student("sig", info);
-    const cert = await insertCertificate(s.accessId, "Kati Kask");
-    await signInAsAdmin(page, context, visitorIp, created);
-    await page.goto("/admin/seaded");
-    await adminReady(page);
-    const card = page.locator("[data-certificate-settings]");
-    await expect(card.locator("[data-cert-save]")).toHaveText("Salvesta tunnistuse andmed");
-    const status = card.locator("[data-cert-signature-status]");
-    const keys: string[] = [];
-    // a photo of the signature on paper, then Maria's kind: the Canva export (light ink on transparency), which replaces it
-    for (const [kind, name] of [
-      ["paper", "IMG_0042.png"],
-      ["canva", "allkiri-canva.png"],
-    ] as const) {
-      await card.locator("[data-cert-signature-file]").setInputFiles({ name, mimeType: "image/png", buffer: await signaturePng(page, kind) });
-      await expect(status).toHaveAttribute("data-cert-signature-status", "done", { timeout: 30_000 });
-      await expect(status).toHaveText("Allkiri on salvestatud. See on nüüd kõigil tunnistustel, ka varem väljastatutel.");
-      await expect(card.locator("[data-cert-signature] img")).toBeVisible();
-      const key = String((await storedCertificateSetting())?.signatureKey ?? "");
-      expect(key, kind).toMatch(/^certificate\/signature-[0-9a-f-]{36}\.png$/);
-      expect(keys, kind).not.toContain(key);
-      const png = readFileSync(localFile(key));
-      expect(png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), kind).toBe(true);
-      // white ink on transparency, cut to the ink with its margin (the strokes are about 960 px wide), at most 1200 px wide
-      const ink = await inkStats(page, png);
-      expect(ink.width, kind).toBeGreaterThan(900);
-      expect(ink.width, kind).toBeLessThanOrEqual(1200);
-      expect(ink.corner, kind).toBe(0);
-      expect(ink.ink, kind).toBeGreaterThan(1000);
-      expect(ink.white, kind).toBe(true);
-      keys.push(key);
-      // a replaced signature's file goes once the setting names the new one
-      if (keys.length === 2) await expect.poll(() => existsSync(localFile(keys[0])), { timeout: 15_000 }).toBe(false);
-    }
-    // private: Maria's GET answers it, a visitor's is 401; Review Focus 4: the certificate issued before it shows it now (an image in the PDF)
-    const own = await page.request.get("/api/admin/allkiri");
-    expect([own.status(), own.headers()["content-type"]]).toEqual([200, "image/png"]);
-    expect((await request.get("/api/admin/allkiri")).status()).toBe(401);
-    expect((await (await page.request.get(`/api/admin/tunnistus/${cert.id}`)).body()).includes("/Subtype /Image")).toBe(true);
-
-    // "Eemalda allkiri", after its one question: the setting cleared, the file gone, the certificate without an image
-    await card.locator("[data-cert-signature-remove]").click();
-    await card.locator("[data-cert-signature-confirm] button").first().click();
-    await expect(card.locator("[data-cert-signature]")).toHaveText("Allkirja pole: tunnistusel on koolitaja nimi käekirjas.");
-    expect((await storedCertificateSetting())?.signatureKey ?? null).toBeNull();
-    await expect.poll(() => existsSync(localFile(keys[1])), { timeout: 15_000 }).toBe(false);
-    expect((await page.request.get("/api/admin/allkiri")).status()).toBe(404);
-    expect((await (await page.request.get(`/api/admin/tunnistus/${cert.id}`)).body()).includes("/Subtype /Image")).toBe(false);
-  } finally {
-    await unlock();
-  }
+test("§6 Seaded → Tunnistus: the trainer's name is the signature (no picture to upload); one in Cyrillic is refused on its field and nothing is stored", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "Seaded's setting is the whole site's: the desktop project looks at it, once");
+  info.setTimeout(120_000);
+  const before = await storedCertificateSetting();
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.goto("/admin/seaded");
+  await adminReady(page);
+  const card = page.locator("[data-certificate-settings]");
+  await expect(card.locator("[data-cert-save]")).toHaveText("Salvesta tunnistuse andmed");
+  await expect(card.locator('img, input[type="file"]')).toHaveCount(0);
+  const trainer = card.locator("[data-cert-trainer]");
+  await expect(trainer).toHaveValue(readCertificateSettings(before, new Date()).trainerName);
+  // the server refuses it before its lock and stores nothing, so no other test's number is touched
+  await trainer.fill("Мария Соснина");
+  await card.locator("[data-cert-save]").click();
+  await expect(trainer).toHaveAttribute("aria-invalid", "true", { timeout: 30_000 });
+  await expect(card).toContainText(LETTERS_ET);
+  await expect(card.locator("[data-cert-status]")).toHaveText("Kontrolli märgitud välju.");
+  expect((await storedCertificateSetting())?.trainerName ?? null).toBe(before?.trainerName ?? null);
 });
 
 test("the student's row, Seaded's card, the drawer's line and the register at 390, 834, 1194 and 1440 px — no sideways scroll, every target 44 px", async ({ page, context, visitorIp, browser, isMobile }, info) => {
@@ -8489,7 +7323,7 @@ test("the student's row, Seaded's card, the drawer's line and the register at 39
   const screens: { page: Page; url: string; scope: string; admin: boolean; shows: string[] }[] = [
     { page: herA.page, url: coursePage(a), scope: "[data-certificate]", admin: false, shows: ["[data-certificate-name]", "[data-certificate-issue]"] },
     { page: herB.page, url: coursePage(b), scope: "[data-certificate]", admin: false, shows: ["[data-certificate-number]", "[data-certificate-download]"] },
-    { page, url: "/admin/seaded", scope: "[data-certificate-settings]", admin: true, shows: ["[data-cert-save]", "[data-cert-signature]"] },
+    { page, url: "/admin/seaded", scope: "[data-certificate-settings]", admin: true, shows: ["[data-cert-save]", "[data-cert-trainer]"] },
     { page, url: `/admin/opilased?id=${b.clientId}`, scope: `[data-access="${b.courseId}"]`, admin: true, shows: ["[data-access-certificate]", "[data-reissue]"] },
     { page, url: "/admin/tunnistused", scope: "[data-certificate-register]", admin: true, shows: [`[data-register-row="${cert.id}"]`] },
   ];
@@ -8514,8 +7348,8 @@ test("the student's row, Seaded's card, the drawer's line and the register at 39
 ```
 
 - [ ] **Step 5: Run it under `next dev` and the production build.** From `app/` (`docker start mslab-pg` first; stop any dev server you started):
-  - `npx playwright test certificate` — expect PASS: the whole path on both projects, the Seaded test and the widths on the desktop one, the race spec's two tests on the desktop one.
-  - `E2E_PROD_BUILD=1 npx playwright test certificate` — expect PASS (the fonts are read from `assets/fonts` by the local `next start`; the signature goes to `app/.media-local` with `MEDIA_LOCAL=1`).
+  - `npx playwright test certificate` — expect PASS: the whole path on both projects, the Seaded test (the trainer's name refused, nothing stored) and the widths on the desktop one, the race spec's two tests on the desktop one.
+  - `E2E_PROD_BUILD=1 npx playwright test certificate` — expect PASS (the fonts are read from `assets/fonts` by the local `next start`).
   - A failure names the earlier task's part it exercises (a selector, a route, a text): fix it there, not here — unless the earlier task's own tests pin that behaviour; then the e2e step is wrong and is fixed here.
 
 - [ ] **Step 6: The runbook** — at the end of `docs/deploy.md` add (the migrations count in §6, line 112, is Task 1 Step 17's; do not touch it here):
@@ -8528,36 +7362,31 @@ When an e-course is "Lõpetatud", the student confirms her name once and downloa
 
 1. **What runs where.**
    - **The student:** the "Tunnistus" row of "Lõpetamine" on `/konto/kursus/<slug>` ("Nimi tunnistusel", "Kinnita ja koosta tunnistus", then "Laadi tunnistus alla (PDF)"), and the quiet link "Laadi tunnistus alla" on the dashboard card of an ended access. Her routes are `POST /api/konto/kursus/<slug>/tunnistus` (`{ name }`) and `GET /api/konto/tunnistus/<id>` (the PDF): `private, no-store`, at most 10 issues and 10 downloads an hour per student, and behind the coming-soon gate until the launch, like every account route.
-   - **Maria's pages:** the course editor's "Tunnistus" card on e-courses ("Oskused tunnistusel", "Maht"); Seaded → "Tunnistus" (a card of its own under the settings' save bar: "Koht", "Registrikood", "Praktilise töö rida", "Koolitaja nimi", "Järgmine number" with the year's last issued number, "Allkiri"); the Õpilased drawer's line "Tunnistus MS LAB 2026-03 · {date}" with "Laada alla" and "Paranda nimi"; the register `/admin/tunnistused` (from Hindamine's "Väljastatud tunnistused", not in the menu; 50 a page, newest first).
-   - **Maria's endpoints:** `GET /api/admin/tunnistus/<id>` (any certificate, a revoked access's too) and `POST|GET|DELETE /api/admin/allkiri` (the signature image), behind `withAdmin`, all `maxDuration = 30`. The settings' save and "Paranda nimi" are server actions (`src/server/actions/admin-certificates.ts`).
-   - **Configuration:** no new variable, no cron. The fonts are files of the repository (`app/assets/fonts/`: Jost and Great Vibes with their OFL texts, checked by SHA-256 in the tests); `next.config.ts` traces them into the two functions that render (`outputFileTracingIncludes` keys `/api/konto/**` and `/api/admin/tunnistus/**`, the folders of `/api/konto/[[...path]]` and `/api/admin/tunnistus/[id]`; bracketed keys trace nothing under Turbopack). The only new packages are `pdf-lib@1.17.1` and `@pdf-lib/fontkit@1.1.1`, pinned exactly.
+   - **Maria's pages:** the course editor's "Tunnistus" card on e-courses ("Oskused tunnistusel", "Maht"); Seaded → "Tunnistus" (a card of its own under the settings' save bar: "Koht", "Registrikood", "Praktilise töö rida", "Koolitaja nimi" — her signature —, "Järgmine number" with the year's last issued number); the Õpilased drawer's line "Tunnistus MS LAB 2026-03 · {date}" with "Laada alla" and "Paranda nimi"; the register `/admin/tunnistused` (from Hindamine's "Väljastatud tunnistused", not in the menu; 50 a page, newest first).
+   - **Maria's endpoint:** `GET /api/admin/tunnistus/<id>` (any certificate, a revoked access's too), behind `withAdmin`, `maxDuration = 30`. The settings' save and "Paranda nimi" are server actions (`src/server/actions/admin-certificates.ts`).
+   - **Configuration:** no new variable, no cron, nothing in R2. The fonts are files of the repository (`app/assets/fonts/`: Jost with its OFL text, and Revive 80 Signature, checked by SHA-256 in the tests); `next.config.ts` traces them into the two functions that render (`outputFileTracingIncludes` keys `/api/konto/**` and `/api/admin/tunnistus/**`, the folders of `/api/konto/[[...path]]` and `/api/admin/tunnistus/[id]`; bracketed keys trace nothing under Turbopack). The only new packages are `pdf-lib@1.17.1` and `@pdf-lib/fontkit@1.1.1`, pinned exactly.
+   - **The script font's licence:** `Revive80Signature.otf` is Maria's Canva font Revive 80 Signature (© Tom Chalky / Inspiration Hut), licensed to MS LAB for its certificates. It is not open source: it is never copied out of `app/assets/fonts/` or attached anywhere, and **the GitHub repository must stay private** (it was made private before this phase's deploy). Making the repository public again would publish the font: don't.
 2. **The data.** Migration `0009_certificates` is additive. It runs on Railway before the deploy (section 6), and the live code does not name what it adds.
    - `certificates`: one row per completed access (unique `access_id`, deleted with the access and so with the account), the number "MS LAB {year}-{nn}" with `year` and `seq` (unique together, `seq` ≥ 1), and the frozen copy: the name as confirmed, the course's Estonian title, the skills, the volume, the practical line, the place, the registry code and `issued_at` (the date printed); `reissued_at` after "Paranda nimi".
    - `courses.certificate_skills` (jsonb lines, `[]`) and `courses.certificate_volume` (text, `''`): the course editor's card. With no lines, the course's "Õpiväljundid" (Estonian) are printed, at most 16.
-   - The `settings` row `certificate`: `{ place, registryCode, practicalLine, trainerName, nextYear, nextSeq, signatureKey }`. Without it, the defaults: Pärnu linn, 16346048, the plan's practical line, Maria Sosnina, this year, 1, no signature.
-   - The signature: one private R2 object `certificate/signature-<uuid>.png`, never served by `/media`.
+   - The `settings` row `certificate`: `{ place, registryCode, practicalLine, trainerName, nextYear, nextSeq }`. Without it, the defaults: Pärnu linn, 16346048, the plan's practical line, Maria Sosnina, this year, 1. A stored `trainerName` the name rules refuse reads as Maria Sosnina.
    - The drop of `courses.modules` is migration 0010 (code first, then the migration, as planned in phase 3a).
 3. **The rules.**
-   - **Numbering:** a certificate issued in Tallinn year Y takes `nextSeq` when the setting's `nextYear` is Y, else 1; the setting then becomes Y and the number after it. The year turns at Tallinn midnight on 31.12. The issue runs in one transaction: the access row (`FOR UPDATE`), then the refusals (a revoked access is "not found", one not completed "not completed", one with a certificate answers "already" with it), then the transaction's advisory lock `pg_advisory_xact_lock(hashtext('certificate-number'))`, then the setting is read and advanced and the row written; the unique (`year`, `seq`) is the backstop. Two students at the same moment get two numbers, one after the other; one student on two devices gets one certificate, and the second answer is "already" with the same number (`tests/e2e/certificate-race.spec.ts`). Seaded's save and the signature take the same lock before they rewrite the setting.
+   - **Numbering:** a certificate issued in Tallinn year Y takes `nextSeq` when the setting's `nextYear` is Y, else 1; the setting then becomes Y and the number after it. The year turns at Tallinn midnight on 31.12. The issue runs in one transaction: the access row (`FOR UPDATE`), then the refusals (a revoked access is "not found", one not completed "not completed", one with a certificate answers "already" with it), then the transaction's advisory lock `pg_advisory_xact_lock(hashtext('certificate-number'))`, then the setting is read and advanced and the row written; the unique (`year`, `seq`) is the backstop. Two students at the same moment get two numbers, one after the other; one student on two devices gets one certificate, and the second answer is "already" with the same number (`tests/e2e/certificate-race.spec.ts`). Seaded's save takes the same lock before it rewrites the setting.
    - **One series with paper:** Maria's paper certificates (contact courses) share the series. When she writes one on paper, she takes the number Seaded shows as next and raises "Järgmine number" by one ("Salvesta tunnistuse andmed"); otherwise the site can issue the same number. Seaded refuses a next number at or below one already issued in its year ("See number on juba väljastatud. …") and a year outside 2000–2099.
-   - **The frozen copy:** a certificate prints only what its row holds. A later change of the course (its title, its card) or of Seaded's place, registry code or practical line never changes an issued certificate. Not frozen: the signature (a new one appears on every later download, old certificates included) and the trainer's name written in the script font when there is no signature (read from Seaded at each download).
-   - **The name:** NFC, trimmed, inner spaces collapsed; 2–80 characters with at least 2 letters; Latin or Cyrillic letters, spaces, hyphens, apostrophes (' and ’) and dots. Anything else (digits, an emoji) is refused with "Kasuta nimes ainult tähti, tühikuid ja sidekriipse" before anything is stored. A long name shrinks to 30 pt on the PDF, then wraps to two lines.
+   - **The frozen copy:** a certificate prints only what its row holds. A later change of the course (its title, its card) or of Seaded's place, registry code or practical line never changes an issued certificate. The one thing read at each download is "Koolitaja nimi", Maria's signature (a new one appears on every later download, old certificates included).
+   - **The name:** NFC, trimmed, inner spaces collapsed; 2–80 characters with at least 2 letters; the Latin letters the script font draws (`A–Z a–z À–Ö Ø–ï ñ–ö ø–ý ÿ ı Œ œ Š š Ÿ Ž ž`: Estonian, Finnish, German, French, Scandinavian, Spanish, Portuguese, Italian), spaces, hyphens, apostrophes (' and ’) and dots. The student writes her name in Latin letters as in her passport: Cyrillic is refused, and so are Č, Ł, Ā, Ę and the like, digits and emoji, with "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma)." (in Russian: "Напишите имя латинскими буквами, как в паспорте (можно также пробел, дефис и апостроф).") before anything is stored. "Koolitaja nimi" in Seaded follows the same rules. A long name shrinks on the PDF, then wraps to two lines.
    - **Who may download:** the student her own certificate while her access is not revoked (expiry does not matter); a revoked access answers 404, and its card link goes. Maria every certificate, a revoked access's too, marked "ligipääs tühistatud" in the drawer and the register.
    - **"Paranda nimi":** the student's rules; it keeps the number and the issue date, changes the name and sets `reissued_at`, and mails nobody. The student cannot change her name once it is issued: her row says "Kui nimes on viga, kirjuta meile".
    - **Deletion:** the account's deletion takes its certificates (cascade); their numbers are not reused, so the series has a gap.
-4. **The PDF.** Rendered on every download from the frozen row (`src/server/certificate-pdf.ts`): A4 landscape (842 × 595 pt), black, white text, Jost and Great Vibes embedded as subsets, the MS LAB logo drawn as vector shapes, the signature image (or the trainer's name in the script font); tens of milliseconds, under 300 KB. Nothing but the signature is stored. The answer is `attachment; filename="MS-LAB-tunnistus-{year}-{nn}.pdf"`, `private, no-store`, nosniff (Maria's `/api/admin/…` answers get `Cache-Control: no-store` from `next.config.ts`). A function log saying a font is missing (`ENOENT … assets/fonts`) means the tracing of `next.config.ts` did not include it: check the deployment's function files.
-5. **The signature.**
-   - **Where it comes from:** Maria's signature is in her Canva certificate document. Dim exports it from Canva as a PNG (light ink on a transparent background, or dark ink on white) and uploads it once in Seaded → Tunnistus → "Allkiri". It is never committed (the repository is public) and never sent by mail. A photo or a scan of her signature on white paper works the same way.
-   - **In the browser:** the picture becomes white ink on a transparent background (`src/lib/signature-ink.ts`). A picture more than 20 % transparent whose other pixels are light (a Canva export) keeps each pixel's alpha, scaled by its luminance; any other picture's pixels darker than grey 140 become white, with an alpha from their darkness, and the rest transparent. It is cut to the ink with a 4 px margin, made at most 1200 px wide and sent as PNG. A picture without ink says so; nothing is sent.
-   - **On the server:** `POST /api/admin/allkiri` takes one PNG (its first bytes checked) of at most 1 MB, stores it as a new private object, points the setting at it, and then removes the old object. A failed removal is logged (item 7) and the old object stays in the bucket with no setting naming it: delete it by hand (its key is under `certificate/`; the setting's `signatureKey` names the one in use). Without a store (the four `R2_*` variables) the upload answers 503 "storage".
-   - **"Eemalda allkiri"** clears the setting and then removes the object; the certificates then show the trainer's name in the script font.
+4. **The PDF.** Rendered on every download from the frozen row (`src/server/certificate-pdf.ts`): A4 landscape (842 × 595 pt), black, white text, the MS LAB logo drawn as vector shapes, the student's name and "Koolitaja nimi" (the signature, bottom right above "KOOLITAJA") in Revive 80 Signature; tens of milliseconds, under 300 KB (about 160–180 KB). Jost is embedded as a subset and Revive 80 Signature whole: pdf-lib 1.17.1 with @pdf-lib/fontkit 1.1.1 subsets this CFF font into a file PDF viewers reject (MuPDF: "unknown file format"), and the whole font renders correctly. Nothing is stored. The answer is `attachment; filename="MS-LAB-tunnistus-{year}-{nn}.pdf"`, `private, no-store`, nosniff (Maria's `/api/admin/…` answers get `Cache-Control: no-store` from `next.config.ts`). A function log saying a font is missing (`ENOENT … assets/fonts`) means the tracing of `next.config.ts` did not include it: check the deployment's function files.
+5. **The signature.** Maria's signature is her name typed in Revive 80 Signature, as on her Canva certificates: Seaded → Tunnistus → "Koolitaja nimi" (default "Maria Sosnina"), written as she wants it signed, in Latin letters. There is no picture to upload and none is stored anywhere. A changed name appears on every later download, old certificates included.
 6. **The mails.** The "Palju õnne!" mail of a completed e-course has one more line, "Kinnita oma nimi ja laadi tunnistus alla:", with the course page's link; no attachment. Nothing else mails: the issue and "Paranda nimi" send nothing.
 7. **The logs.** A failure is written at error level; `<error class>` is the class, the code and the HTTP status only (section 12, item 7).
    - **The issue:** `[certificate] access N: issued <number>`, `[certificate] N: re-issued`; failures `[certificate] N: the re-issue failed: <error class>` and the student's routes' (`src/server/account-api.ts`).
    - **Maria's download and the settings:** `[certificate] N: the admin's download failed: <error class>`, `[certificate] the settings save failed: <error class>`.
-   - **The signature:** `[certificate] signature refused: no file store (…)` (it names the four `R2_*` variables), `[certificate] the signature could not be stored: <error class>`, `[certificate] the signature setting could not be saved: <error class>` (the new object is removed again), `[certificate] the old signature image could not be removed: <error class>`, `[certificate] no file store: the old signature image was not removed`, `[certificate] the signature could not be read: <error class>`, `[certificate] the signature could not be removed: <error class>`.
-   - Never a name, an address or an R2 key.
-8. **Rollback.** A rollback of the code past this phase leaves 0009's additions in place, and the older code ignores them: the student's routes, the "Tunnistus" row and the register are gone (the completed mail's link lands on her course page without the row), and no certificate can be downloaded until the code is back. The older course editor saves a course without touching its two certificate columns, and the signature object stays in R2.
+   - Never a name or an address.
+8. **Rollback.** A rollback of the code past this phase leaves 0009's additions in place, and the older code ignores them: the student's routes, the "Tunnistus" row and the register are gone (the completed mail's link lands on her course page without the row), and no certificate can be downloaded until the code is back. The older course editor saves a course without touching its two certificate columns. The repository stays private either way (the font is in its history).
 ```
 
   Before you write item 7, list the labels the code logs (from `app/`):
@@ -8573,10 +7402,11 @@ grep -rhoE '\[certificate\][^"`]*|\[account\][^"`]*certificat[^"`]*' src | sort 
 ```md
 
 ## 13. The e-course certificate (phase 3d)
-- [ ] Go-live behind the coming-soon gate (plan 2026-10-15-certificate, Task 8), in this order: migration 0009 on Railway first (the count in `drizzle.__drizzle_migrations` goes from 9 to 10, `docs/deploy.md` section 6), then the deploy, then the smoke check (`/api/admin/tunnistus/1` and `/api/admin/allkiri` answer 401 without a session).
-- [ ] Maria's signature comes from her Canva certificate document: Dim exports it from Canva as a PNG (light ink on a transparent background, or dark ink on white) and uploads it once in Seaded → Tunnistus → "Allkiri". It is never committed (the repository is public) and never mailed; the preview on black shows what the certificate will show.
+- [ ] The GitHub repository `mslabinformation-collab/mslab` is private before the deploy (the certificate's script font, Revive 80 Signature, is licensed to MS LAB and not open source): `curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/mslabinformation-collab/mslab` prints 404. If it prints 200, Dim makes it private (GitHub → Settings → Change visibility) before anything is pushed. It stays private from then on.
+- [ ] Go-live behind the coming-soon gate (plan 2026-10-15-certificate, Task 8), in this order: migration 0009 on Railway first (the count in `drizzle.__drizzle_migrations` goes from 9 to 10, `docs/deploy.md` section 6), then the private-repository check above, then the deploy, then the smoke check (`/api/admin/tunnistus/1` answers 401 without a session).
+- [ ] Maria's signature is her name typed in Revive 80 Signature, as on her Canva certificates: she sets Seaded → Tunnistus → "Koolitaja nimi" as she wants it signed (Latin letters; "Maria Sosnina" until she changes it). There is no picture to upload.
 - [ ] Maria's setup, before the first real student completes an e-course (Dim passes it on):
-  1. Seaded → Tunnistus: the signature (the item above); "Järgmine number": the year and the number after her last paper certificate ("Viimati väljastatud" beside it shows the site's last one); "Praktilise töö rida": the plan's wording "Praktiline töö fotodel, koolitaja poolt hinnatud iseseisev protseduuri teostamine" is a draft, she confirms or rewrites it; and she checks "Koht" (Pärnu linn), "Registrikood" (16346048) and "Koolitaja nimi" (Maria Sosnina).
+  1. Seaded → Tunnistus: "Koolitaja nimi", her name as she signs (the item above); "Järgmine number": the year and the number after her last paper certificate ("Viimati väljastatud" beside it shows the site's last one); "Praktilise töö rida": the plan's wording "Praktiline töö fotodel, koolitaja poolt hinnatud iseseisev protseduuri teostamine" is a draft, she confirms or rewrites it; and she checks "Koht" (Pärnu linn) and "Registrikood" (16346048).
   2. Each e-course's "Tunnistus" card (Koolitused → the course): "Oskused tunnistusel", the lines the certificate lists (empty: the course's "Õpiväljundid" are printed), and "Maht", e.g. "10 akadeemilist tundi" (empty: left out).
   3. One try with a sample student (`<label>.naidis@example.test`, "Proov (näidis)") on a temporary unpublished sample e-course "Proov (näidis)", completed by hand: confirm the name, download the PDF, open it on her tablet and on a phone, try "Paranda nimi". The try takes a real number of the series. Afterwards delete the sample account and the sample course by that exact address and that course only (never with the pattern `like '%.naidis@example.test'`, section 11; the certificate goes with the account), then set "Järgmine number" again to the number after her last paper certificate.
 - [ ] From the go-live on, every paper certificate takes its number from Seaded: Maria writes the number Seaded shows as next and raises "Järgmine number" by one. The site refuses a next number at or below one it has issued that year, but it cannot know her paper ones.
@@ -8586,7 +7416,8 @@ grep -rhoE '\[certificate\][^"`]*|\[account\][^"`]*certificat[^"`]*' src | sort 
 - [ ] Maria's own certificate, the design's reference, stays in the git-ignored `Assets/` (it carries a real student's name): never committed or published.
 - [ ] Until the coming-soon gate is removed, students cannot reach the "Tunnistus" row or the PDF: real certificates after the public launch.
 - [ ] Owner notes (Dim decides; nothing is changed until he does):
-  - The signature is not frozen: a new signature appears on old certificates too (Maria's real signature in either case), and so does a new trainer's name when there is no signature.
+  - "Koolitaja nimi" is not frozen: a changed name appears on old certificates too at their next download.
+  - A name is written in Latin letters as in the passport: a student whose account name is in Cyrillic is asked to write it in Latin letters (the script font has no Cyrillic).
   - A deleted account takes its certificate with it, and its number is not reused: the series has a gap.
   - A student who never confirms her name has no certificate ("Tunnistus: õpilane pole veel nime kinnitanud" in the drawer); Maria cannot issue one for her.
   - The student cannot correct her own name once issued; she writes to Maria ("Kui nimes on viga, kirjuta meile"), who uses "Paranda nimi" (no mail goes; Maria tells her).
@@ -8596,7 +7427,7 @@ grep -rhoE '\[certificate\][^"`]*|\[account\][^"`]*certificat[^"`]*' src | sort 
 
 - [ ] **Step 8: Run everything.** From `app/`:
   - `npx vitest run` (`tests/unit/test-addresses.test.ts` scans the new files and the docs: only `@example.test` and the listed public addresses), `npx tsc --noEmit`, `npx eslint .` — green and clean;
-  - the whole `npx playwright test` once under `next dev` (the specs of the earlier phases share the database: nothing of this phase may leave a row they count; afterwards `docker exec mslab-pg psql -U postgres -d mslab -c "select count(*) from certificates c join course_access a on a.id = c.access_id join clients k on k.id = a.client_id where k.email like 'e2e-client-%'"` → 0, and no file is left under `app/.media-local/certificate/` that the setting does not name: `docker exec mslab-pg psql -U postgres -d mslab -c "select value->>'signatureKey' from settings where key = 'certificate'"` names the only one, or none);
+  - the whole `npx playwright test` once under `next dev` (the specs of the earlier phases share the database: nothing of this phase may leave a row they count; afterwards `docker exec mslab-pg psql -U postgres -d mslab -c "select count(*) from certificates c join course_access a on a.id = c.access_id join clients k on k.id = a.client_id where k.email like 'e2e-client-%'"` → 0);
   - `E2E_PROD_BUILD=1 npx playwright test certificate completion account-ecourse admin-clients` and the gate: `npx playwright test -c playwright.gate.config.ts` — PASS.
 
 - [ ] **Step 9: Commit** (from the repository root).
@@ -8618,6 +7449,8 @@ Spec section 11. The controller runs this, not a subagent. mslab.ee is staging (
 
 The order is "the additive migration first, then the push". The live code never names `certificates` or the two new course columns, and the new columns have defaults, so 0009 cannot disturb it.
 
+**The repository is private before the push** (owner, 15.10): the branch commits `app/assets/fonts/Revive80Signature.otf`, Maria's licensed Canva font, which is not open source. Step 4 checks it; nothing is pushed while the repository is public.
+
 The ledger is `.superpowers/sdd/2026-10-15-certificate/progress.md` (git-ignored). Record counts and statuses only, never a URL, a key, a token or an address.
 
 **Files:** none (the database, the deployment, the ledger).
@@ -8631,7 +7464,7 @@ The ledger is `.superpowers/sdd/2026-10-15-certificate/progress.md` (git-ignored
 node -e '
 const fs = require("fs");
 const manifests = ["app/api/konto/[[...path]]/route.js.nft.json", "app/api/admin/tunnistus/[id]/route.js.nft.json"];
-const fonts = ["assets/fonts/GreatVibes-Regular.ttf", "assets/fonts/Jost[wght].ttf"];
+const fonts = ["assets/fonts/Revive80Signature.otf", "assets/fonts/Jost[wght].ttf"];
 let missing = 0;
 for (const m of manifests) {
   const files = JSON.parse(fs.readFileSync(".next/server/" + m, "utf8")).files;
@@ -8648,13 +7481,13 @@ process.exit(missing ? 1 : 0);
   Expected: exit code 0 and four lines, each starting with `ok`:
 
 ```text
-ok      app/api/konto/[[...path]]/route.js.nft.json assets/fonts/GreatVibes-Regular.ttf
+ok      app/api/konto/[[...path]]/route.js.nft.json assets/fonts/Revive80Signature.otf
 ok      app/api/konto/[[...path]]/route.js.nft.json assets/fonts/Jost[wght].ttf
-ok      app/api/admin/tunnistus/[id]/route.js.nft.json assets/fonts/GreatVibes-Regular.ttf
+ok      app/api/admin/tunnistus/[id]/route.js.nft.json assets/fonts/Revive80Signature.otf
 ok      app/api/admin/tunnistus/[id]/route.js.nft.json assets/fonts/Jost[wght].ttf
 ```
 
-  If any line says `MISSING`, or `readFileSync` throws `ENOENT` (a manifest is not where it should be), **the deploy stops here**: nothing in Steps 2–7 is run. Fix `next.config.ts` (Task 1: the keys are `"/api/konto/**"` and `"/api/admin/tunnistus/**"`, never the bracketed routes), rebuild and repeat this check.
+  If any line says `MISSING`, or `readFileSync` throws `ENOENT` (a manifest is not where it should be), **the deploy stops here**: nothing in Steps 2–8 is run. Fix `next.config.ts` (Task 1: the keys are `"/api/konto/**"` and `"/api/admin/tunnistus/**"`, never the bracketed routes), rebuild and repeat this check.
   - Run the e2e `certificate` specs under `next dev` and with `E2E_PROD_BUILD=1`, and the gate run.
   - Finally, `git status` must be clean on `feat/certificate`.
 - [ ] **Step 2 (read-only): Railway before.** Pull Maria's production env into the scratchpad (`vercel --global-config ~/.vercel-mslabinformation --cwd <scratchpad>/maria-link-rclg env pull <scratchpad>/rw.env --environment=production --yes`). Read `DATABASE_URL` only inside a node script, which prints counts only (read-only transaction):
@@ -8665,23 +7498,29 @@ ok      app/api/admin/tunnistus/[id]/route.js.nft.json assets/fonts/Jost[wght].t
   - `select count(*) from certificates` → 0;
   - `select count(*) from courses where certificate_volume <> '' or certificate_skills <> '[]'::jsonb` → 0.
   Then delete `rw.env`.
-- [ ] **Step 4: Merge and push.** Run `git switch main`, `git pull --ff-only` and `git merge --no-ff feat/certificate`. Run the whole `npx vitest run` on the merged result, then `git push origin main` (this deploys mslab.ee) and `git branch -d feat/certificate`.
-- [ ] **Step 5: READY and smoke.** Check `vercel --global-config ~/.vercel-mslabinformation ls mslab` until the newest deployment is Ready. Then:
+- [ ] **Step 4: The repository is private** (owner, 15.10; before anything is pushed). Run:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/mslabinformation-collab/mslab
+```
+
+  It must print `404` (an anonymous request cannot see a private repository). If it prints `200`, the repository is public: **stop here** and ask Dim to make it private (GitHub → the repository → Settings → Change visibility → Make private), then run the check again. Any other answer (a `403` rate limit, `000` without a network) also stops the push until the check prints `404`. Record the answer in the ledger ("repository private: 404").
+- [ ] **Step 5: Merge and push.** Run `git switch main`, `git pull --ff-only` and `git merge --no-ff feat/certificate`. Run the whole `npx vitest run` on the merged result, then, with Step 4's `404` in hand, `git push origin main` (this deploys mslab.ee) and `git branch -d feat/certificate`.
+- [ ] **Step 6: READY and smoke.** Check `vercel --global-config ~/.vercel-mslabinformation ls mslab` until the newest deployment is Ready (no new deployment after the push: the Git integration may have lost access when the repository became private; Dim checks it in Vercel → the project → Settings → Git). Then:
   - `curl -s -o /dev/null -w '%{http_code}' https://mslab.ee/` → 200;
   - `curl -s https://mslab.ee/api/konto/tunnistus/1` → `{"ok":false,"error":"not_found"}` (the gate);
   - `curl -s -w ' %{http_code}' https://mslab.ee/api/admin/tunnistus/1` → `{"ok":false,"error":"unauthorized"} 401` (the new route is live);
-  - `curl -s -w ' %{http_code}' https://mslab.ee/api/admin/allkiri` → 401.
   - **The renderer on the deployment** (the one deploy-specific risk: the fonts are read from `assets/fonts` inside the function, and the smoke above only reaches the 401 and gate answers). Right after the deploy, Dim, signed in as admin, runs the launch list's sample try on mslab.ee (`docs/launch-checklist.md` §13, Maria's setup, item 3), or downloads one certificate that exists through `/api/admin/tunnistus/<id>`. Check:
-    - the saved file starts with `%PDF-` (and is under 300 KB);
+    - the saved file starts with `%PDF-` (and is under 300 KB); opened in a PDF viewer, the student's name and "Koolitaja nimi" at the bottom right are in the script font, not a substitute sans (the script font is embedded whole);
     - the function's runtime log (Vercel dashboard → Logs, or `vercel --global-config ~/.vercel-mslabinformation logs`) has no `ENOENT … assets/fonts` for that request.
-    - A failure here is a font missing from the function (Step 1's manifest check passed locally): fix the tracing in `next.config.ts` and push again; do not tell Maria to start (Step 6) before it is fixed.
+    - A failure here is a font missing from the function (Step 1's manifest check passed locally): fix the tracing in `next.config.ts` and push again; do not tell Maria to start (Step 7) before it is fixed.
     - The sample try takes a real number of the series: its cleanup (the sample account and course, then "Järgmine number" set again) is §13.3's.
     - Record the result in the ledger: counts and statuses only ("PDF rendered, N KB, no ENOENT"), never a URL or an address.
-- [ ] **Step 6: Tell Maria (through Dim) what to set up.** The list is `docs/launch-checklist.md` §13:
-  1. Seaded → Tunnistus: the signature, the next number after her last paper certificate, and the wording of the practical line.
+- [ ] **Step 7: Tell Maria (through Dim) what to set up.** The list is `docs/launch-checklist.md` §13:
+  1. Seaded → Tunnistus: "Koolitaja nimi", her name as she wants it signed (typed in the script font; Latin letters), the next number after her last paper certificate, and the wording of the practical line.
   2. Each e-course's "Tunnistus" card: the skills (or leave it empty to use "Mida õpid") and the volume.
   3. One try with a sample student on a sample e-course.
-- [ ] **Step 7: Memory and ledger.** Record the deployment in the ledger and in the project memory (`mslab-next-phase-pending.md`). Migration 0010 (the drop of `courses.modules`) stays as planned: code first, then the migration.
+- [ ] **Step 8: Memory and ledger.** Record the deployment in the ledger and in the project memory (`mslab-next-phase-pending.md`). Migration 0010 (the drop of `courses.modules`) stays as planned: code first, then the migration.
 
 ---
 
@@ -8723,7 +7562,7 @@ no dictionary key. The fixed texts printed on the certificate, in `src/server/ce
 | `account.certificate.nameLabel` | Nimi tunnistusel | Имя в сертификате | Spec (ET); RU Draft |
 | `account.certificate.issue` | Kinnita ja koosta tunnistus | Подтвердить и создать сертификат | Spec (ET); RU Draft |
 | `account.certificate.issuing` | Koostan tunnistust… | Создаю сертификат… | Draft |
-| `account.certificate.letters` | Kasuta nimes ainult tähti, tühikuid ja sidekriipse | Используйте в имени только буквы, пробелы и дефисы | Spec (ET); RU Draft |
+| `account.certificate.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Напишите имя латинскими буквами, как в паспорте (можно также пробел, дефис и апостроф). | Owner (15.10: Latin letters as in the passport) |
 | `account.certificate.length` | Nimi peab olema 2–80 tähemärki pikk | Имя должно быть длиной от 2 до 80 символов | Draft |
 | `account.certificate.number` | Tunnistus nr. {number} | Сертификат № {number} | Spec (ET); RU Draft |
 | `account.certificate.download` | Laadi tunnistus alla (PDF) | Скачать сертификат (PDF) | Spec (ET); RU Draft |
@@ -8731,9 +7570,9 @@ no dictionary key. The fixed texts printed on the certificate, in `src/server/ce
 | `account.certificate.cardLink` | Laadi tunnistus alla | Скачать сертификат | Spec (ET); RU Draft |
 | `account.completionMail.completedCertificate` | Kinnita oma nimi ja laadi tunnistus alla: | Подтвердите своё имя и скачайте сертификат: | Spec (ET); RU Draft |
 
-(In the code, the Russian strings write the no-break space after the one-letter preposition "в" as `\u00a0`: `в\u00a0сертификате`, `в\u00a0имени`. The other words keep a plain space.)
+(In the code, the Russian strings write the no-break space after the one-letter preposition "в" as `\u00a0`: `в\u00a0сертификате`, `в\u00a0паспорте`, `в\u00a0имени`. The other words keep a plain space.)
 
-### Task 5: Admin settings and course text — the course editor's "Tunnistus" card, Seaded → "Tunnistus" with the signature, Maria's download
+### Task 5: Admin settings and course text — the course editor's "Tunnistus" card, Seaded → "Tunnistus" (the trainer's name as the signature), Maria's download
 
 the admin is Estonian only.
 
@@ -8750,14 +7589,14 @@ the admin is Estonian only.
 | `adminEt.courseEditor.fields.certificateVolume` | Maht | Spec (§6) |
 | `adminEt.courseEditor.fields.certificateVolumeHint` | nt 10 akadeemilist tundi. Tühjaks jättes tunnistusel ei näidata. | Spec (the example, §6) + Draft (the second sentence, §3) |
 | `adminEt.certificates.settings.title` | Tunnistus | Spec (§6) |
-| `adminEt.certificates.settings.lead` | Need andmed lähevad igale uuele e-kursuse tunnistusele. Väljastatud tunnistus jääb selliseks, nagu see väljastati; ainult allkiri on igal allalaadimisel praegune. | Draft |
+| `adminEt.certificates.settings.lead` | Need andmed lähevad igale uuele e-kursuse tunnistusele. Väljastatud tunnistus jääb selliseks, nagu see väljastati; ainult koolitaja nimi, mis on tunnistusel allkirjaks, on igal allalaadimisel praegune. | Draft |
 | `adminEt.certificates.settings.place` | Koht | Spec (§6) |
 | `adminEt.certificates.settings.placeHint` | Kuupäeva ees, nt Pärnu linn. | Draft |
 | `adminEt.certificates.settings.registryCode` | Registrikood | Spec (§6) |
 | `adminEt.certificates.settings.practicalLine` | Praktilise töö rida | Spec (§6) |
 | `adminEt.certificates.settings.practicalLineHint` | Tunnistuse allservas vasakul, suurtähtedega. | Draft |
 | `adminEt.certificates.settings.trainerName` | Koolitaja nimi | Draft |
-| `adminEt.certificates.settings.trainerNameHint` | Kirjutatakse tunnistusele käekirjas, kui allkirja pole. | Draft |
+| `adminEt.certificates.settings.trainerNameHint` | Allkiri tunnistusel: see nimi kirjutatakse käekirjas alla paremale. Ladina tähtedega. | Draft (owner, 15.10: the signature is the trainer's name in the script font) |
 | `adminEt.certificates.settings.nextNumber` | Järgmine number | Spec (§4, §6) |
 | `adminEt.certificates.settings.nextYear` / `nextSeq` | Aasta / Number | Draft |
 | `adminEt.certificates.settings.nextHint` | Jätka oma paberil tunnistuste numbreid. Uue aasta esimene tunnistus saab numbri 1. | Draft |
@@ -8772,25 +7611,9 @@ the admin is Estonian only.
 | `adminEt.certificates.settings.errors.tooLong` | Tekst on liiga pikk. | Draft (as the editors') |
 | `adminEt.certificates.settings.errors.invalid` | Kontrolli aastat (2000–2099) ja numbrit (1–99 999). | Draft (Task 3's ranges) |
 | `adminEt.certificates.settings.errors.taken` | See number on juba väljastatud. Vali suurem number kui viimati väljastatud. | Draft (§4's rule) |
+| `adminEt.certificates.settings.errors.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Owner (15.10), as the student's `account.certificate.letters` |
+| `adminEt.certificates.settings.errors.length` | Nimi on liiga lühike. | Draft (the trainer's name of one character; over 60 is `tooLong`) |
 | `adminEt.certificates.settings.errors.other` | Kontrolli seda välja. | Draft |
-| `adminEt.certificates.settings.signature` | Allkiri | Spec (§6) |
-| `adminEt.certificates.settings.signatureHint` | Lae üles allkirja PNG-pilt (nt Canvast: hele allkiri läbipaistval taustal või tume allkiri valgel taustal) või tumeda pastakaga valgele paberile kirjutatud allkirja foto. Brauser teeb sellest valge allkirja läbipaistval taustal, nagu see tunnistusel paistab. | Draft (§6, and the controller's update of 15.10: Maria's Canva export) |
-| `adminEt.certificates.settings.signatureAlt` | Allkiri, nagu see tunnistusel paistab | Draft |
-| `adminEt.certificates.settings.signatureNone` | Allkirja pole: tunnistusel on koolitaja nimi käekirjas. | Draft (§6 "Seaded says so") |
-| `adminEt.certificates.settings.upload` / `replace` | Lae allkiri üles / Vaheta allkiri | Draft |
-| `adminEt.certificates.settings.remove` | Eemalda allkiri | Draft |
-| `adminEt.certificates.settings.removeConfirm` | Kas eemaldan allkirja? Tunnistustel on siis koolitaja nimi käekirjas. | Draft |
-| `adminEt.certificates.settings.removeYes` / `removeNo` | Jah, eemalda / Ei | Draft (as the drawer's confirmations) |
-| `adminEt.certificates.settings.preparing` | Valmistan allkirja ette… | Draft |
-| `adminEt.certificates.settings.removing` | Eemaldan… | Draft |
-| `adminEt.certificates.settings.uploaded` | Allkiri on salvestatud. See on nüüd kõigil tunnistustel, ka varem väljastatutel. | Draft (§9: the signature is not frozen) |
-| `adminEt.certificates.settings.removed` | Allkiri on eemaldatud. | Draft |
-| `adminEt.certificates.settings.signatureErrors.decode` | Seda pilti ei saa avada. Vali JPG- või PNG-pilt. | Draft |
-| `adminEt.certificates.settings.signatureErrors.empty` | Pildilt ei leitud allkirja. Vali pilt, kus on tume allkiri heledal taustal või hele allkiri läbipaistval taustal. | Draft |
-| `adminEt.certificates.settings.signatureErrors.size` | Allkirja pilt on liiga suur. | Draft |
-| `adminEt.certificates.settings.signatureErrors.session` | Sessioon on aegunud. Logi uuesti sisse ja proovi siis uuesti. | Draft (as `upload.session`) |
-| `adminEt.certificates.settings.signatureErrors.storage` | Failide salvestamine pole seadistatud — anna arendajale teada. | Draft |
-| `adminEt.certificates.settings.signatureErrors.server` | Allkirja salvestamine ei õnnestunud. Proovi uuesti. | Draft |
 
 ### Task 6: Maria's side of an issued certificate — the Õpilased drawer's line, "Paranda nimi", the register `/admin/tunnistused`
 
@@ -8812,7 +7635,7 @@ the admin is Estonian only.
 | `adminEt.certificates.reissue.cancel` | Katkesta | Draft |
 | `adminEt.certificates.reissue.done` | Tunnistus {number} on uuesti väljastatud nimega {name}. | Draft |
 | `adminEt.certificates.reissue.errors.length` | Nimi peab olema 2–80 tähemärki pikk | Draft |
-| `adminEt.certificates.reissue.errors.letters` | Kasuta nimes ainult tähti, tühikuid ja sidekriipse | Spec (§5) |
+| `adminEt.certificates.reissue.errors.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Owner (15.10), as the student's `account.certificate.letters` |
 | `adminEt.certificates.reissue.errors.notFound` | Seda tunnistust ei leitud. Laadi leht uuesti. | Draft |
 | `adminEt.certificates.register.fromAssessment` | Väljastatud tunnistused | Draft |
 | `adminEt.certificates.register.eyebrow` | Hindamine | Draft (the section it is reached from) |
@@ -8837,32 +7660,34 @@ the admin is Estonian only.
 | 3 Data: `certificates`, the two course columns, the `certificate` setting (with `trainerName`) | 1 (schema, migration, `readCertificateSettings`), 3 (reads and writes) |
 | 4 Numbering: the format, year rollover, Maria's next number, no duplicates | 1 (`formatCertificateNumber`, `nextNumber`, `tallinnYear`), 3 (locks, unique backstop, "taken" refusal), 7 (race) |
 | 5 The student: the "Tunnistus" row, name rules, issue, download after expiry, revoked 404, the ended card's link, the API, the mail line | 1 (`checkCertificateName`), 3 (`issueCertificate`, `certificateForStudent`), 4 (routes, row, card, mail) |
-| 6 Maria: course card, Seaded card with the signature (Canva PNG or scan → white ink), drawer line with "Paranda nimi", register | 5, 6 |
-| 7 The PDF: layout, fonts, vector logo, on-demand rendering, no-store | 1 (fonts, tracing), 2 (renderer), 3 (`certificatePdf`) |
+| 6 Maria: course card, Seaded card (the trainer's name as the typed signature, under the name rules), drawer line with "Paranda nimi", register | 3 (`saveCertificateSettings`), 5, 6 |
+| 7 The PDF: layout, fonts (Jost subset, Revive 80 Signature whole), the typed signature, vector logo, on-demand rendering, no-store | 1 (fonts, tracing; amended by Task 2's fix round), 2 (renderer, as amended), 3 (`certificatePdf`) |
 | 8 Building blocks | 1–6 |
 | 9 Edge cases | revoked: 3, 4, 6; deletion cascade: 1 (migration test), 3; two devices: 3, 7; settings changed: 3, 5; course renamed: 3 (frozen copy); year rollover: 1, 3; long titles and names: 2 |
 | 10 Testing | each task's tests; 7 (e2e, race) |
-| 11 Rollout (staging) | 8 |
+| 11 Rollout (staging): the repository private, then the deploy | 8 (Step 4: the private-repository gate) |
 | 12 Out of scope | nothing built for them |
 
 ### Spec against the code
 
 | # | The spec says | The plan |
 |---|---|---|
-| 1 | Name rules: Latin or Cyrillic (as amended after the spike) | Only the letters Great Vibes can draw, so a name never prints as empty boxes. The signature and errors are unchanged (Task 1, tested against the font in Task 2). |
+| 1 | Name rules: Latin letters as in the passport (owner, 15.10) | Exactly the Latin letters Revive 80 Signature draws, so a name never prints as empty boxes; Cyrillic is refused. The "letters" error tells her to write the name in Latin letters as in her passport (Task 1 as amended by the fix round, tested against the font in Task 2; the words in Tasks 4 and 6). The trainer's name follows the same rules (Tasks 1, 3, 5). |
 | 2 | Fonts in `outputFileTracingIncludes` | Keys `/api/konto/**` and `/api/admin/tunnistus/**`. Bracketed keys trace nothing under Turbopack. Also `.vercelignore` `!/app/assets` and `.gitattributes` `-text` for the fonts (Task 1). |
 | 3 | §5 rate-limits "both" student routes at 10 an hour | Separate buckets: `client-certificate` (issue) and `client-certificate-pdf` (download) (Task 4). |
 | 4 | §6 Seaded card | Its own form and action beside the settings form, so the existing Seaded tests are unaffected (Task 5). |
 | 5 | §6 skills list | `ProtocolStagesEditor` gains `kind="skills"` with its own data hooks, so an e-course editor never shows two `[data-protocol-stages]` lists (Task 5). |
-| 6 | §6 "the signature from Maria's Canva document" (Dim, 15.10) | `inkSignature` handles a light-on-transparent export and a dark-on-light scan. The file is never committed; it is uploaded once after the deploy (Tasks 5, 8). |
+| 6 | §6, §7 the signature is the trainer's name typed in the script font (owner, 15.10) | No upload, no route, no R2 object, no PNG in the PDF: `CertificateSettings` has six keys, `loadCertificateAssets()` gives the two fonts, `certificatePdf(db, cert, now)` reads no store, Seaded's card has no picture (Tasks 2 fix round, 3, 5). |
+| 7 | §7 the script font is licensed, not open source (owner, 15.10) | Revive 80 Signature is embedded whole (`subset: false`): pdf-lib's subset of this CFF font is rejected by viewers. The file never leaves `app/assets/fonts/`, and the repository is private before the push (Task 8, Step 4). |
 
 ### Placeholder scan
 No "TBD", "TODO", "implement later" or "similar to Task N". Every code step has its code, every test its assertions, and every command its expected result.
 
 ### For the owner (Dim, and Maria where named)
 1. **The practical line** (Maria): "Praktiline töö fotodel, koolitaja poolt hinnatud iseseisev protseduuri teostamine" (a draft; editable in Seaded).
-2. **The signature** (Dim): export it from Maria's Canva document as PNG into `Assets/`; the controller uploads it after the deploy.
+2. **The signature** (Maria): her name as she wants it signed, in Seaded → Tunnistus → "Koolitaja nimi" (default "Maria Sosnina"; Latin letters). There is no picture to export or upload.
 3. **The next number** (Maria): set "Järgmine number" to follow her last paper certificate before the first e-course completes.
 4. **The Draft texts** in the Wording appendix (Dim), and the Russian native-speaker check.
 5. **Re-issue mails nothing:** a corrected name is not announced to the student (spec §6).
+6. **The repository private** (Dim): `mslabinformation-collab/mslab` is made private on GitHub before Task 8's push, and stays private (the licensed script font is in its history).
 
