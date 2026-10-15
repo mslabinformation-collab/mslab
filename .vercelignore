@@ -8,6 +8,7 @@
 /app/*
 !/app/src
 !/app/public
+!/app/assets
 !/app/drizzle
 !/app/package.json
 !/app/package-lock.json

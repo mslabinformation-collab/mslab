@@ -1,7 +1,9 @@
 /* "Lõpetamine" under the e-course's modules (e-course completion, spec §4.1): the path's steps as a numbered column between thin lines (the
    modules' rows): a round mark (the step's number while it is ahead, ✓ done, a lock while it waits), the step's name, its state in one line,
-   and the way in — the page's one button for the step she acts in, a text link otherwise. Every row and link is at least 44 px. The page is
-   EcoursePage.module.css's. Tokens only; nothing moves. */
+   and the way in — the page's one button for the step she acts in, a text link otherwise. Once the course is completed, "Tunnistus" (phase
+   3d) is the last row: the name field (the login's B .field look) with its hint and its error under it and its button, then the number, the
+   download and the contact link. Every row, field and link is at least 44 px. The page is EcoursePage.module.css's. Tokens only; nothing
+   moves. */
 
 .block {
   max-width: 750px;
@@ -101,6 +103,78 @@
   margin: 18px 0 0;
 }
 
+/* "Tunnistus" (phase 3d, spec §5): before the certificate is made, the line, the name field with its hint and its error under it, and the button */
+.certificate {
+  display: grid;
+  justify-items: start;
+  justify-self: stretch;
+  gap: 2px;
+  max-width: 440px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  justify-self: stretch;
+  margin: 12px 0 0;
+  font: 600 13px/1.3 var(--font-body);
+}
+
+.field label {
+  margin: 0 0 8px;
+}
+
+.field input {
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 16px;
+  border: 1px solid var(--heather);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 17px/1.4 var(--font-body);
+}
+
+.field input:focus {
+  border-color: var(--rose);
+}
+
+.field input:disabled {
+  color: var(--muted);
+}
+
+.field [aria-invalid="true"] {
+  border-color: var(--bad);
+}
+
+/* "Ladina tähtedega, nagu passis.": the rule before she submits, always shown under the field and named by its aria-describedby; the
+   error below it is a separate line */
+.hint {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font: 400 14px/1.5 var(--font-body);
+}
+
+.error {
+  margin: 8px 0 0;
+  color: var(--bad);
+  font: 500 14px/1.45 var(--font-body);
+}
+
+.error:empty {
+  margin: 0;
+}
+
+/* the number takes the focus once the certificate is made (a screen reader hears it): no ring for a line of text */
+.number:focus {
+  outline: none;
+}
+
+/* "Kui nimes on viga, kirjuta meile": ui.link's look, its words wrapping on a phone (two classes outweigh ui.link's nowrap) */
+.body .fix {
+  white-space: normal;
+}
+
 @media (max-width: 640px) {
   /* a whole-width button: the easiest target on a phone */
   .main {
@@ -108,8 +182,9 @@
   }
 
   /* its label wraps on a 360 px phone ("Открыть практическую работу" and the arrow) instead of running off it; two classes outweigh ui.btn's
-     nowrap whichever stylesheet comes first */
-  .step .main {
+     nowrap whichever stylesheet comes first. The name form's button too, also on an ended access's course card (CertificateForm.tsx). */
+  .step .main,
+  .certificate .main {
     white-space: normal;
     text-align: center;
   }

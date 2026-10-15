@@ -30,6 +30,14 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_REVIEW_TOOLS: "1",
   },
   ...e2ePageCache,
+  // The certificate's fonts (phase 3d): server/certificate-pdf.ts reads app/assets/fonts with fs on every download, so `next build` must put
+  // the folder into the two functions that render the PDF, the account API (/api/konto/[[...path]]) and Maria's download
+  // (/api/admin/tunnistus/[id]). Turbopack matches these keys by glob against the route's name: "/**" works, the bracketed route names do
+  // not (checked with a build on 15.10.2026), so each key names the route's folder.
+  outputFileTracingIncludes: {
+    "/api/konto/**": ["./assets/fonts/**"],
+    "/api/admin/tunnistus/**": ["./assets/fonts/**"],
+  },
   // Every answer (pages, API, /media and the static files of public/, the hub included):
   // - the whole host stays out of search engines until launch on mslab.ee;
   // - pages may be framed by this site's own pages only (the hub /guide/ shows the prototypes /p/<dir>/ in a

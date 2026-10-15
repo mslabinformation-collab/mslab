@@ -1,20 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useId } from "react";
+import { useId, useState } from "react";
 import { Icon } from "@/components/site/Icon";
 import ui from "@/components/site/ui.module.css";
 import type { CourseSteps, StepState } from "@/domain/completion";
 import { fill, formatDate } from "@/i18n/format";
 import { href } from "@/i18n/href";
 import type { Locale } from "@/i18n/locales";
-import type { EcourseTexts } from "./texts";
+import type { CertificateView } from "@/server/certificates";
+import { CertificateForm } from "./CertificateForm";
+import type { CertificateTexts, EcourseTexts } from "./texts";
 import styles from "./CompletionSteps.module.css";
 
 type CompletionTexts = EcourseTexts["completion"];
 type StepKey = "lessons" | "test" | "practical" | "done";
 /** One row: the step, its state, its name, its one line, and where it leads (nothing while it is locked, nor for the lessons and the end). */
 type Row = { key: StepKey; state: StepState; name: string; line: string; link: { to: string; label: string; main: boolean } | null };
+
+/** A ref that focuses its element once, when it appears (stable, so a later render does not focus it again). */
+const focusOnMount = (el: HTMLElement | null) => el?.focus();
 
 /** A step she has to act in now: its link opens it ("Ava …"); otherwise the link shows her results. */
 const acts = (state: StepState): boolean => state === "open" || state === "fix";
@@ -54,14 +59,102 @@ function practicalLine(state: StepState, hasTest: boolean, c: CompletionTexts): 
 }
 
 /**
+ * "Tunnistus" (phase 3d, spec §5), the row after "Lõpetatud" once the course is completed.
+ * - **Before the certificate is made:** the name form (CertificateForm.tsx: "Nimi tunnistusel" with her account's name to start with, its
+ *   hint, "Kinnita ja koosta tunnistus").
+ * - **Once it is made**, here or by another of her devices first ("already"): "Tunnistus nr. {number}" (which takes the focus), "Laadi
+ *   tunnistus alla (PDF)" (a plain download link; the API names the file) and "Kui nimes on viga, kirjuta meile", to the contact page; the
+ *   name is hers to change no more.
+ * - **Its button** is the page's one primary (every step is done by now), unless "Jätka" is on the page (`quiet`: a lesson added after the
+ *   completion); it is then an outline one.
+ * `readOnly` (the admin's view as client): the same row, nothing to type, press or follow.
+ */
+function CertificateRow({ slug, mark, certificate, startName, locale, t, readOnly, quiet }: {
+  slug: string;
+  /** The row's number in the list, shown in its mark until the certificate is made. */
+  mark: number;
+  certificate: CertificateView | null;
+  startName: string;
+  locale: Locale;
+  t: CertificateTexts;
+  readOnly: boolean;
+  quiet: boolean;
+}) {
+  const [made, setMade] = useState<CertificateView | null>(null);
+  const issued = made ?? certificate;
+  const button = `${quiet ? ui.btnOutline : ui.btn} ${styles.action} ${styles.main}`;
+
+  return (
+    <li className={styles.step} data-step-state={issued ? "done" : "open"} data-certificate="">
+      <span className={styles.mark} aria-hidden="true">
+        {issued ? <Icon name="check" size={16} /> : mark}
+      </span>
+      <div className={styles.body}>
+        <p className={styles.name}>{t.title}</p>
+        {issued ? (
+          <>
+            <p ref={made ? focusOnMount : undefined} className={`${styles.line} ${styles.number}`} tabIndex={-1} data-certificate-number="">
+              {fill(t.number, { number: issued.number })}
+            </p>
+            {readOnly ? (
+              <span className={button} aria-disabled="true" data-certificate-download="">
+                {t.download}
+              </span>
+            ) : (
+              <a className={button} href={`/api/konto/tunnistus/${issued.id}`} download data-certificate-download="">
+                {t.download}
+              </a>
+            )}
+            {readOnly ? (
+              <span className={`${ui.link} ${styles.fix}`} aria-disabled="true" data-certificate-contact="">
+                {t.fixName}
+              </span>
+            ) : (
+              <Link className={`${ui.link} ${styles.fix}`} href={href(locale, "/kontakt")} data-certificate-contact="">
+                {t.fixName}
+              </Link>
+            )}
+          </>
+        ) : (
+          <CertificateForm slug={slug} startName={startName} t={t} readOnly={readOnly} quiet={quiet} onIssued={setMade} />
+        )}
+      </div>
+    </li>
+  );
+}
+
+/**
  * "Lõpetamine" on the e-course page (e-course completion, spec §4.1), below the modules: Õppetunnid → Teadmiste test → Praktiline töö →
  * Lõpetatud. Each step: a round mark (its number while ahead, ✓ done, a lock while it waits), its name, its state in one line (a locked
  * step says why), and once open the way in — the test's page, the practical work's page. A step the course does not have (`steps.test` /
  * `steps.practical` null) is not shown. The link of the step she acts in is the page's one button once the lessons are done ("Jätka" is
  * gone by then); every other link is a text link. `protocolSent` (an e-course without points whose notes Maria sent, spec §4.3): "Vaata
  * protokolli", to the practical page that shows her notes. `readOnly` (the admin's view as client): the links are there and do nothing.
+ * Once the course is completed the "Tunnistus" row follows "Lõpetatud" (CertificateRow, phase 3d): `certificate` once made, else her
+ * account's name in its field (`certificateName`). Every step is done by then, so its button is the page's one primary, unless "Jätka" is
+ * on the page (`resumeShown`: a lesson added after the completion).
  */
-export function CompletionSteps({ slug, steps, protocolSent, locale, t, readOnly }: { slug: string; steps: CourseSteps; protocolSent: boolean; locale: Locale; t: EcourseTexts; readOnly: boolean }) {
+export function CompletionSteps({
+  slug,
+  steps,
+  protocolSent,
+  certificate,
+  certificateName,
+  resumeShown = false,
+  locale,
+  t,
+  readOnly,
+}: {
+  slug: string;
+  steps: CourseSteps;
+  protocolSent: boolean;
+  certificate: CertificateView | null;
+  certificateName: string;
+  resumeShown?: boolean;
+  locale: Locale;
+  t: EcourseTexts;
+  readOnly: boolean;
+}) {
   const c = t.completion;
   const headingId = useId();
   const base = `/konto/kursus/${slug}`;
@@ -146,6 +239,18 @@ export function CompletionSteps({ slug, steps, protocolSent, locale, t, readOnly
             </div>
           </li>
         ))}
+        {steps.completedAt !== null && (
+          <CertificateRow
+            slug={slug}
+            mark={rows.length + 1}
+            certificate={certificate}
+            startName={certificateName}
+            locale={locale}
+            t={t.certificate}
+            readOnly={readOnly}
+            quiet={resumeShown}
+          />
+        )}
       </ol>
       {protocolSent && (
         <p className={styles.protocol}>

@@ -125,12 +125,26 @@ export async function completeIfDone(db: Db, accessId: number, now: Date): Promi
   return true;
 }
 
-export type CompletionJob = { accessId: number; email: string; name: string; locale: "et" | "ru"; slug: string; course: I18n; hasPoints: boolean };
+export type CompletionJob = { accessId: number; email: string; name: string; locale: "et" | "ru"; slug: string; course: I18n; hasPoints: boolean; active: boolean };
 
-/** Who to mail about an access (the client's address, name and language; the course, and whether it has points: the protocol's copy decides once it exists). */
-export async function completionJob(db: Db, accessId: number): Promise<CompletionJob | null> {
+/**
+ * Who to mail about an access (the client's address, name and language; the course, and whether it has points: the protocol's copy decides
+ * once it exists), and whether the access is active at `now` (isActive): the "completed" mail of one that is not sends her certificate's line
+ * to the dashboard (phase 3d), as the e-course's page is closed to her.
+ */
+export async function completionJob(db: Db, accessId: number, now: Date): Promise<CompletionJob | null> {
   const [row] = await db
-    .select({ email: clients.email, name: clients.name, locale: clients.locale, slug: courses.slug, course: courses.title, points: courses.protocolStages, stages: protocols.stages })
+    .select({
+      email: clients.email,
+      name: clients.name,
+      locale: clients.locale,
+      slug: courses.slug,
+      course: courses.title,
+      points: courses.protocolStages,
+      stages: protocols.stages,
+      expiresAt: courseAccess.expiresAt,
+      revokedAt: courseAccess.revokedAt,
+    })
     .from(courseAccess)
     .innerJoin(clients, eq(courseAccess.clientId, clients.id))
     .innerJoin(courses, eq(courseAccess.courseId, courses.id))
@@ -146,6 +160,7 @@ export async function completionJob(db: Db, accessId: number): Promise<Completio
     slug: row.slug,
     course: row.course,
     hasPoints: hasPointsOf(row.stages, readStages(row.points)),
+    active: isActive(row, now),
   };
 }
 
@@ -165,6 +180,7 @@ export async function mailCompletion(env: Env, siteUrl: string, job: CompletionJ
       course: job.course,
       kind,
       hasPoints: job.hasPoints,
+      accessActive: job.active,
       ...(fixCount !== undefined ? { fixCount } : {}),
     });
     if (await sendMail(env, mail)) console.info(`[completion] access ${job.accessId}: the ${kind} mail sent`);
@@ -175,9 +191,9 @@ export async function mailCompletion(env: Env, siteUrl: string, job: CompletionJ
 }
 
 /** The "completed" mail of an access, queued after the answer (`later`): who and what are read then, so the answer never waits for the mail. */
-export function queueCompletionMail(deps: { db: Db; env: Env; siteUrl: string; later: (task: () => Promise<unknown>) => void }, accessId: number): void {
+export function queueCompletionMail(deps: { db: Db; env: Env; siteUrl: string; now: Date; later: (task: () => Promise<unknown>) => void }, accessId: number): void {
   deps.later(async () => {
-    const job = await completionJob(deps.db, accessId);
+    const job = await completionJob(deps.db, accessId, deps.now);
     if (job) await mailCompletion(deps.env, deps.siteUrl, job, "completed");
   });
 }

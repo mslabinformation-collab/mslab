@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { moveItem } from "@/domain/course-editor";
+import { CERT_LIMITS, outcomesTooLong } from "@/domain/certificate";
 import { PROTOCOL_LIMITS } from "@/domain/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
@@ -17,6 +18,10 @@ const newKey = () => `stage-${++rowCount}`;
  * language Maria writes in (one plain field each, no translation), in order: add, remove, ↑ / ↓; at most 30, each at most 120 characters. Saved
  * with the course ("Salvesta"); blank rows are dropped then. A change reaches only protocols not created yet (the hint says so). As ListEditor:
  * the arrows are aria-disabled at the ends, after adding a row its field gets the focus, after removing one the next row's field (or "Lisa punkt").
+ * `kind` "skills": the same editor for the e-course certificate's lines ("Oskused tunnistusel", phase 3d, spec §6), with their own title, row
+ * label, limit (16 lines of 120 characters, CERT_LIMITS) and data hooks, so an e-course's editor tells its two lists apart. With no line of
+ * its own the certificate prints the course's `outcomes`; one of them too long for a certificate line is warned of under the list
+ * (domain/certificate.ts outcomesTooLong; final review M-4), and nothing is cut.
  */
 export function ProtocolStagesEditor({
   items,
@@ -24,17 +29,43 @@ export function ProtocolStagesEditor({
   error,
   hint,
   empty,
+  kind = "stages",
+  outcomes,
 }: {
   items: string[];
   onChange: (items: string[]) => void;
   error?: string;
-  /** The hint under the title (default: the contact course's). */
+  /** The hint under the title (default: the kind's own: the contact course's protocol, or the certificate's lines'). */
   hint?: string;
-  /** The line shown while there are none (default: the contact course's). */
+  /** The line shown while there are none (default: the kind's own). */
   empty?: string;
+  /** stages (default): "Protokolli punktid"; skills: the certificate's lines (phase 3d). */
+  kind?: "stages" | "skills";
+  /** kind "skills": the course's outcomes ("Õpiväljundid"), which the certificate prints while the list has no line. */
+  outcomes?: readonly { et: string }[];
 }) {
   const t = adminEt.courseEditor;
   const l = adminEt.list;
+  const skills = kind === "skills";
+  const words = skills
+    ? {
+        title: t.fields.certificateSkills,
+        item: t.fields.certificateSkill,
+        add: t.fields.certificateSkillsAdd,
+        full: t.fields.certificateSkillsFull,
+        hint: t.fields.certificateSkillsHint,
+        empty: t.fields.certificateSkillsEmpty,
+      }
+    : {
+        title: t.sections.protocolStages,
+        item: t.fields.protocolStage,
+        add: t.fields.protocolStagesAdd,
+        full: t.fields.protocolStagesFull,
+        hint: t.fields.protocolStagesHint,
+        empty: t.fields.protocolStagesEmpty,
+      };
+  const most = skills ? CERT_LIMITS.skills : PROTOCOL_LIMITS.stages;
+  const longest = skills ? CERT_LIMITS.skill : PROTOCOL_LIMITS.title;
   const uid = useId();
   const [keys, setKeys] = useState<string[]>(() => items.map(newKey));
   // the list was replaced from outside (the editor reloads the saved course): new rows, new keys
@@ -55,7 +86,8 @@ export function ProtocolStagesEditor({
     setKeys(k);
     onChange(list);
   };
-  const full = items.length >= PROTOCOL_LIMITS.stages;
+  const full = items.length >= most;
+  const tooLong = skills && outcomes !== undefined && outcomesTooLong({ certificateSkills: items, outcomes });
   const add = () => {
     if (full) return;
     set([...items, ""], [...keys, newKey()]);
@@ -75,23 +107,28 @@ export function ProtocolStagesEditor({
     <div
       ref={root}
       className={styles.list}
-      data-protocol-stages=""
+      {...(skills ? { "data-certificate-skills": "" } : { "data-protocol-stages": "" })}
       role="group"
       aria-labelledby={`${uid}-title`}
-      aria-describedby={error ? `${uid}-hint ${uid}-error` : `${uid}-hint`}
+      aria-describedby={[`${uid}-hint`, tooLong ? `${uid}-long` : "", error ? `${uid}-error` : ""].filter(Boolean).join(" ")}
       data-invalid={error ? "" : undefined}
       tabIndex={error ? -1 : undefined}
     >
       <div className={styles.listHead}>
         <h3 id={`${uid}-title`} className={ui.h3}>
-          {t.sections.protocolStages}
+          {words.title}
         </h3>
       </div>
       <p id={`${uid}-hint`} className={ui.hint}>
-        {hint ?? t.fields.protocolStagesHint}
+        {hint ?? words.hint}
       </p>
+      {tooLong && (
+        <p id={`${uid}-long`} className={styles.warning} data-certificate-long="">
+          {t.fields.certificateSkillsLong}
+        </p>
+      )}
       {items.length === 0 ? (
-        <p className={`${ui.muted} ${ui.small}`}>{empty ?? t.fields.protocolStagesEmpty}</p>
+        <p className={`${ui.muted} ${ui.small}`}>{empty ?? words.empty}</p>
       ) : (
         <ol className={styles.rows}>
           {items.map((item, i) => {
@@ -104,17 +141,17 @@ export function ProtocolStagesEditor({
                 </span>
                 <div>
                   <label htmlFor={id} className={ui.sr}>
-                    {`${t.fields.protocolStage} ${n}`}
+                    {`${words.item} ${n}`}
                   </label>
                   <input
                     id={id}
                     className={ui.input}
                     type="text"
                     value={item}
-                    maxLength={PROTOCOL_LIMITS.title}
+                    maxLength={longest}
                     autoComplete="off"
                     onChange={(e) => onChange(items.map((x, j) => (j === i ? e.target.value : x)))}
-                    data-protocol-stage={i}
+                    {...(skills ? { "data-certificate-skill": i } : { "data-protocol-stage": i })}
                   />
                 </div>
                 <span className={styles.tools}>
@@ -138,10 +175,17 @@ export function ProtocolStagesEditor({
           {error}
         </p>
       )}
-      <button ref={addBtn} type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.addBtn}`} aria-disabled={full || undefined} onClick={add} data-add-stage="">
-        + {t.fields.protocolStagesAdd}
+      <button
+        ref={addBtn}
+        type="button"
+        className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.addBtn}`}
+        aria-disabled={full || undefined}
+        onClick={add}
+        {...(skills ? { "data-add-skill": "" } : { "data-add-stage": "" })}
+      >
+        + {words.add}
       </button>
-      {full && <p className={ui.hint}>{t.fields.protocolStagesFull}</p>}
+      {full && <p className={ui.hint}>{words.full}</p>}
     </div>
   );
 }

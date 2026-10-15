@@ -88,6 +88,13 @@
   flex: none;
 }
 
+/* an ended e-course completed without its certificate (phase 3d): the e-course page's name form (CertificateForm, CompletionSteps.module.css),
+   the card's width */
+.certificate {
+  align-self: stretch;
+  margin-top: 16px;
+}
+
 .foot {
   margin-top: 20px;
 }

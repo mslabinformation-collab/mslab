@@ -1,0 +1,3 @@
+# The certificate's fonts and their licences are committed byte for byte as downloaded (app/tests/unit/certificate-fonts.test.ts checks
+# their SHA-256): no line-ending conversion on any checkout (this machine has core.autocrlf=true, which would make the OFL texts CRLF).
+app/assets/fonts/** -text

@@ -9,6 +9,7 @@ import type { ClientDetail, ClientRequestRow, EcourseOption } from "@/server/adm
 import { GrantAccessForm, RevokeAccess, UnlockNextLesson } from "./ClientForms";
 import { FeedbackAnswers } from "./FeedbackAnswers";
 import { PaymentLines } from "./PaymentLines";
+import { ReissueCertificate } from "./ReissueCertificate";
 import { ReopenTest } from "./ReopenTest";
 import { StatusPill } from "./StatusPill";
 import { stepLine } from "./step-line";
@@ -33,7 +34,9 @@ function requestLabel(q: ClientRequestRow): string {
  * her lessons done ("5/24 tehtud"), her page of that course (read-only) and "Ava järgmine õppetund" while a lesson is still
  * locked for her (an e-course without lessons shows none of these three); on each e-course (e-course completion, spec §5.5) her steps
  * ("Õppetunnid 8/8 · Test: läbitud (85 %) · Praktiline töö: ootab hindamist", or "Lõpetatud 14.11.2026"), "Lisa protokoll" / "Ava protokoll",
- * "Testi katsed" and, while her tries are used up, "Ava test uuesti" (an access an admin ended keeps only its line); then her registrations
+ * "Testi katsed" and, while her tries are used up, "Ava test uuesti" (an access an admin ended keeps only its line); her certificate (phase 3d, spec §6): its
+ * number and day with Maria's download and "Paranda nimi", or, on a completed access, that she has not confirmed her name yet (an ended access keeps the
+ * certificate's line and download, marked "ligipääs tühistatud"); then her registrations
  * (each with a link to its own drawer, a contact course's with its protocol), her online payments (phase 2b), her requests and the e-course
  * terms she has accepted.
  */
@@ -42,6 +45,8 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
   const g = adminEt.clients.grant;
   const r = adminEt.clients.revoke;
   const reopen = { ...adminEt.assessment.reopen, saving: adminEt.common.saving, error: adminEt.common.saveError };
+  const ct = adminEt.certificates.drawer;
+  const reissue = { ...adminEt.certificates.reissue, saving: adminEt.common.saving, error: adminEt.common.saveError };
   const c = detail.client;
   const open = new Map(detail.access.filter((a) => a.state === "active").map((a) => [a.courseId, a.expiresAt]));
   // the first e-course she cannot open now: the likeliest one to grant
@@ -112,6 +117,39 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
                     <p className={styles.meta} data-access-steps="">
                       {line}
                     </p>
+                  )}
+                  {/* her certificate (phase 3d, spec §6): the number and day, the name printed, Maria's download and "Paranda nimi"; an access an
+                      admin ended keeps the line and the download, marked (Review Focus 5); a completed access without one says she has not
+                      confirmed her name yet */}
+                  {a.certificate ? (
+                    <div className={styles.certificate} data-access-certificate={a.certificate.id}>
+                      <p className={styles.meta}>
+                        <span>{fill(ct.line, { number: a.certificate.number, date: formatDate(new Date(a.certificate.issuedAt), "et") })}</span>
+                        {a.certificate.reissuedAt && <span>{fill(ct.reissued, { date: formatDate(new Date(a.certificate.reissuedAt), "et") })}</span>}
+                        {a.certificate.revoked && (
+                          <span className={`${ui.tag} ${ui.bad}`} data-certificate-revoked="">
+                            {ct.revoked}
+                          </span>
+                        )}
+                      </p>
+                      <p className={styles.meta}>{fill(ct.name, { name: a.certificate.name })}</p>
+                      <a
+                        className={ui.link}
+                        href={`/api/admin/tunnistus/${a.certificate.id}`}
+                        aria-label={fill(ct.downloadLabel, { number: a.certificate.number })}
+                        data-certificate-admin-download=""
+                      >
+                        {ct.download}
+                      </a>
+                      {live && <ReissueCertificate certificateId={a.certificate.id} name={a.certificate.name} t={reissue} />}
+                    </div>
+                  ) : (
+                    live &&
+                    a.steps.completedAt && (
+                      <p className={styles.meta} data-access-certificate="">
+                        {ct.notYet}
+                      </p>
+                    )
                   )}
                   {/* her page of the course answers 404 without active access, as her own does: no link to it otherwise */}
                   {a.state === "active" && a.progress.total > 0 && (

@@ -16,14 +16,21 @@ const section = SOURCE.slice(SOURCE.indexOf(START), SOURCE.indexOf(END));
 const handlers = section.split(/\n(?=\/\*\*[^\n]*\n(?:[^\n]*\n)*?(?:export )?async function )/).filter((chunk) => /async function (\w+)/.test(chunk));
 const nameOf = (chunk: string) => /async function (\w+)/.exec(chunk)![1];
 
+/** The data endpoints in their order in the source; every one starts with requireClient. */
+const HANDLERS = [
+  "dashboard", "ecourse", "lesson", "progress", "lessonDone", "lessonFile", "testPage", "submitTest", "resubmitTest", "practicalPage", "uploadPhoto", "deletePhoto", "submitWork", "photo",
+  "issueCertificateRoute", "certificateFile", "favouriteCourses", "favourite", "mergeFavouriteList", "profile", "newsletter", "setPassword", "removePassword", "changeRequest", "payRegistration",
+  "protocol", "feedbackForm", "sendFeedback", "dismissFeedback", "terms", "deleteAccount",
+];
+
 describe("the data endpoints of the account API", () => {
   test("the section and its handlers are found", () => {
     expect(SOURCE.indexOf(START)).toBeGreaterThan(0);
     expect(SOURCE.indexOf(END)).toBeGreaterThan(SOURCE.indexOf(START));
-    expect(handlers.map(nameOf)).toEqual(["dashboard", "ecourse", "lesson", "progress", "lessonDone", "lessonFile", "testPage", "submitTest", "resubmitTest", "practicalPage", "uploadPhoto", "deletePhoto", "submitWork", "photo", "favouriteCourses", "favourite", "mergeFavouriteList", "profile", "newsletter", "setPassword", "removePassword", "changeRequest", "payRegistration", "protocol", "feedbackForm", "sendFeedback", "dismissFeedback", "terms", "deleteAccount"]);
+    expect(handlers.map(nameOf)).toEqual(HANDLERS);
   });
 
-  test.each(["dashboard", "ecourse", "lesson", "progress", "lessonDone", "lessonFile", "testPage", "submitTest", "resubmitTest", "practicalPage", "uploadPhoto", "deletePhoto", "submitWork", "photo", "favouriteCourses", "favourite", "mergeFavouriteList", "profile", "newsletter", "setPassword", "removePassword", "changeRequest", "payRegistration", "protocol", "feedbackForm", "sendFeedback", "dismissFeedback", "terms", "deleteAccount"])(
+  test.each(HANDLERS)(
     "%s starts with requireClient and hands a refusal back unchanged",
     (name) => {
       const body = handlers.find((h) => nameOf(h) === name)!.split("{\n").slice(1).join("{\n");
@@ -62,7 +69,17 @@ describe("the data endpoints of the account API", () => {
     expect(handlers.find((h) => nameOf(h) === "photo")).toContain("photoAnswer(session, ");
   });
 
-  test("the router sends every known path to a handler, and only GET /kursus/:slug, the test's paths and the lesson paths are matched by pattern", () => {
+  test("a certificate's PDF is built above the handlers (pdfAnswer: the bytes, the PDF's headers, the session's cookies), never by the handler itself", () => {
+    const helper = SOURCE.indexOf("function pdfAnswer(");
+    expect(helper).toBeGreaterThan(0);
+    expect(helper).toBeLessThan(SOURCE.indexOf(START));
+    const body = SOURCE.slice(helper, SOURCE.indexOf("\n}\n", helper));
+    // the type, the file name and nosniff come from certificateDownloadHeaders (domain/certificate.ts), pinned by both routes' header tests
+    for (const part of ["certificateDownloadHeaders(", "BASE_HEADERS", "session.cookies"]) expect(body, part).toContain(part);
+    expect(handlers.find((h) => nameOf(h) === "certificateFile")).toContain("pdfAnswer(session, ");
+  });
+
+  test("the router sends every known path to a handler, and only GET /kursus/:slug, the test's, the practical work's, the certificate's and the lesson paths are matched by pattern", () => {
     const router = SOURCE.slice(SOURCE.indexOf(END), SOURCE.indexOf("/** The router: `null`"));
     const cases = [...router.matchAll(/case "(\w+) ([^"]+)": return (\w+)\(request, deps\);/g)].map((m) => `${m[1]} ${m[2]} ${m[3]}`);
     expect(cases).toEqual([
@@ -78,6 +95,10 @@ describe("the data endpoints of the account API", () => {
     // e-course completion: the test's paths come first, else "test" would be read as a lesson id
     expect(router).toContain("TEST_PATH.exec(path)");
     expect(router.indexOf("TEST_PATH.exec(path)")).toBeLessThan(router.indexOf("LESSON_PATH.exec(path)"));
+    // the certificate (phase 3d): its POST path before the lesson paths, which would read "tunnistus" as a lesson; its PDF by GET only
+    expect(router).toContain("CERT_PATH.exec(path)");
+    expect(router.indexOf("CERT_PATH.exec(path)")).toBeLessThan(router.indexOf("LESSON_PATH.exec(path)"));
+    expect(router).toContain('request.method === "GET" ? CERT_FILE_PATH.exec(path) : null');
   });
 });
 

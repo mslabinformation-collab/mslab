@@ -66,6 +66,8 @@ const BROWSER_FILES = [
   "src/components/account/CompletionSteps.tsx",
   // e-course completion, Task 11: Maria's verdict taps
   "src/components/admin/verdict-taps.ts",
+  // the certificate, Task 1: the name rules the student's name field and Seaded share (it pulls domain/calendar.ts, listed above)
+  "src/domain/certificate.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

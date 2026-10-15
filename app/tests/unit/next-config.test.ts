@@ -139,3 +139,15 @@ describe("next.config.ts headers()", () => {
     expect((await config({ E2E_PAGE_CACHE: "/tmp/stale", VERCEL: "" })).cacheHandler).toMatch(/page-cache\.cjs$/);
   });
 });
+
+describe("next.config.ts outputFileTracingIncludes (the certificate, phase 3d)", () => {
+  // The PDF is drawn in two functions, the account API and Maria's download, from fonts read with fs (server/certificate-pdf.ts), so the
+  // folder goes with both. The keys are globs matched against each route's name. Turbopack (Next 16.3.8, `next build`'s bundler) matches
+  // "/api/konto/**", but neither the literal "/api/konto/[[...path]]" nor a backslash-escaped one: checked with a build on 15.10.2026.
+  test("the fonts go with the two functions that render the certificate, named by their folders", async () => {
+    expect((await config()).outputFileTracingIncludes).toEqual({
+      "/api/konto/**": ["./assets/fonts/**"],
+      "/api/admin/tunnistus/**": ["./assets/fonts/**"],
+    });
+  });
+});

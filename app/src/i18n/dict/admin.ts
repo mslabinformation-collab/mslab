@@ -668,6 +668,83 @@ export const adminEt = {
     attempts: "Testi katsed",
   },
 
+  // The e-course certificate (phase 3d, spec §6): Seaded → "Tunnistus" (components/admin/CertificateSettings.tsx), the Õpilased drawer's line,
+  // "Paranda nimi" and the register /admin/tunnistused.
+  certificates: {
+    settings: {
+      title: "Tunnistus",
+      lead: "Need andmed lähevad igale uuele e-kursuse tunnistusele. Väljastatud tunnistus jääb selliseks, nagu see väljastati; ainult koolitaja nimi, mis on tunnistusel allkirjaks, on igal allalaadimisel praegune.",
+      place: "Koht",
+      placeHint: "Kuupäeva ees, nt Pärnu linn.",
+      registryCode: "Registrikood",
+      practicalLine: "Praktilise töö rida",
+      practicalLineHint: "Tunnistuse allservas vasakul, suurtähtedega.",
+      trainerName: "Koolitaja nimi",
+      trainerNameHint: "Allkiri tunnistusel: see nimi kirjutatakse käekirjas alla paremale. Ladina tähtedega.",
+      nextNumber: "Järgmine number",
+      nextYear: "Aasta",
+      nextSeq: "Number",
+      nextHint: "Jätka oma paberil tunnistuste numbreid. Uue aasta esimene tunnistus saab numbri 1.",
+      last: "Viimati väljastatud: {number}",
+      // {year}: the year the card is about (the next number's year: this year, or the later year of Maria's preset)
+      lastNone: "{year}. aastal pole veel tunnistusi väljastatud.",
+      save: "Salvesta tunnistuse andmed",
+      saving: "Salvestan…",
+      saved: "Tunnistuse andmed on salvestatud.",
+      invalid: "Kontrolli märgitud välju.",
+      error: "Salvestamine ei õnnestunud. Proovi uuesti.",
+      // server/certificates.ts CertificateFieldError (`letters` and `length` are the name rules' refusals of the trainer's name); `other` for a
+      // code this list does not know. "invalid" on the year (not this Tallinn year or the next) has its own words, `year`; on the number, `invalid`
+      errors: {
+        required: "Täida see väli.",
+        tooLong: "Tekst on liiga pikk.",
+        invalid: "Kontrolli numbrit (1–99 999).",
+        year: "Aasta peab olema käesolev või järgmine.",
+        taken: "See number on juba väljastatud. Vali suurem number kui viimati väljastatud.",
+        letters: "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).",
+        length: "Nimi on liiga lühike.",
+        other: "Kontrolli seda välja.",
+      },
+    },
+    // the Õpilased drawer's line about an access's certificate (components/admin/ClientDrawer.tsx); {date}: dd.mm.yyyy in Tallinn
+    drawer: {
+      line: "Tunnistus {number} · {date}",
+      reissued: "nimi parandatud {date}",
+      name: "Nimi tunnistusel: {name}",
+      download: "Laada alla",
+      downloadLabel: "Laada alla tunnistus {number}",
+      notYet: "Tunnistus: õpilane pole veel nime kinnitanud",
+      revoked: "ligipääs tühistatud",
+    },
+    // "Paranda nimi" (components/admin/ReissueCertificate.tsx): the student's rules, the same number, no mail
+    reissue: {
+      button: "Paranda nimi",
+      label: "Nimi tunnistusel",
+      hint: "Tunnistus väljastatakse uuesti sama numbriga. Õpilasele kirja ei saadeta.",
+      save: "Väljasta uuesti",
+      cancel: "Katkesta",
+      done: "Tunnistus {number} on uuesti väljastatud nimega {name}.",
+      errors: {
+        length: "Nimi peab olema 2–80 tähemärki pikk.",
+        letters: "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).",
+        notFound: "Seda tunnistust ei leitud. Laadi leht uuesti.",
+      },
+    },
+    // /admin/tunnistused, from Hindamine's heading ("Väljastatud tunnistused")
+    register: {
+      fromAssessment: "Väljastatud tunnistused",
+      eyebrow: "Hindamine",
+      title: "Tunnistused",
+      lead: "Kõik väljastatud e-kursuse tunnistused, uusimad eespool.",
+      back: "Hindamisse",
+      count: "Tunnistusi: {n}",
+      empty: "Tunnistusi pole veel väljastatud.",
+      col: { number: "Number", name: "Nimi", course: "Koolitus", issued: "Väljastatud", file: "Tunnistus" },
+      // the re-issue note, the "ligipääs tühistatud" mark and the download link are the drawer's (certificates.drawer.reissued, .revoked, .download, .downloadLabel)
+      openStudent: "Ava õpilane {name}",
+    },
+  },
+
   // /admin/opilased/<id>/vaade: the student's own "Minu koolitused", read-only
   viewAs: {
     title: "Õpilase vaade",
@@ -776,6 +853,7 @@ export const adminEt = {
       includes: "Koolitus sisaldab",
       protocolStages: "Protokolli punktid",
       test: "Teadmiste test",
+      certificate: "Tunnistus",
       gallery: "Galerii",
       recommendations: "Soovitused",
       publish: "Avaldamine",
@@ -841,6 +919,18 @@ export const adminEt = {
       testUp: "Liiguta küsimus {n} üles",
       testDown: "Liiguta küsimus {n} alla",
       testRemove: "Eemalda küsimus {n}",
+      // "Tunnistus" (phase 3d, spec §6): an e-course certificate's lines and volume (the list is ProtocolStagesEditor's kind "skills")
+      certificateLead: "E-kursuse tunnistuse tekst. Juba väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
+      certificateSkills: "Oskused tunnistusel",
+      certificateSkill: "Rida",
+      certificateSkillsHint: "Tühjana kasutatakse „Õpiväljundid“ ridu",
+      certificateSkillsEmpty: "Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read.",
+      // no line of its own, and an outcome the certificate would print is over 120 characters (domain/certificate.ts outcomesTooLong)
+      certificateSkillsLong: "Tunnistusele lähevad õpiväljundid. Mõni neist on üle 120 tähemärgi ega mahu tunnistusele: lisa siia lühemad read.",
+      certificateSkillsAdd: "Lisa rida",
+      certificateSkillsFull: "Rohkem kui 16 rida ei saa lisada.",
+      certificateVolume: "Maht",
+      certificateVolumeHint: "nt 10 akadeemilist tundi. Tühjaks jättes tunnistusel ei näidata.",
       galleryHint: "Esimene pilt on põhipilt (kaardil ja galerii alguses). Muuda järjekorda nooltega või lohista pilti.",
       main: "Põhipilt",
       image: "Pilt {n}",

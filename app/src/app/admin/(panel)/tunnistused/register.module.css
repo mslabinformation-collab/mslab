@@ -1,0 +1,18 @@
+/* The certificate register (phase 3d, spec §6): the way back to Hindamine, and in a row's issue cell the re-issue day and the "ligipääs
+   tühistatud" mark under the date. The table is the admin lists' (components/admin/list-table.module.css: on a narrow screen each row is a
+   block of label + value lines). Colours from tokens.css only. */
+
+.back {
+  margin: 0 0 18px;
+}
+
+.issued {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+
+.note {
+  color: var(--muted);
+  font-size: 12px;
+}

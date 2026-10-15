@@ -190,6 +190,6 @@ export async function sendAssessment(deps: SendDeps, input: AssessmentInput): Pr
 
 /** The student's mail of a send, after the commit: to whom and in which language is Task 4's completionJob, the sending mailCompletion (logged by the access's id). */
 async function mailAssessment(deps: SendDeps, accessId: number, mail: AssessmentMail): Promise<void> {
-  const job = await completionJob(deps.db, accessId);
+  const job = await completionJob(deps.db, accessId, deps.now);
   if (job) await mailCompletion(deps.env, deps.siteUrl, job, mail.kind, mail.fixCount);
 }

@@ -16,6 +16,11 @@ export type CoursesTexts = Dict["account"]["dashboard"] & {
   online: PayTexts;
   /** An e-course card's "Lõpetatud {date}" (e-course completion: account.completion.completedOn). */
   completed: string;
+  /**
+   * An ended e-course card's certificate (phase 3d): its link "Laadi tunnistus alla" (`cardLink`), and the name form of an access completed
+   * without one yet, in the e-course page's own words.
+   */
+  certificate: CertificateTexts;
 };
 
 /** "Lemmikud": the account.favourites strings and AccountLoader's. */
@@ -24,8 +29,20 @@ export type FavouritesTexts = Dict["account"]["favourites"] & { loader: LoaderTe
 /** "Minu andmed": the account.details strings and AccountLoader's. */
 export type DetailsTexts = Dict["account"]["details"] & { loader: LoaderTexts };
 
-/** The e-course page's: the account.ecourse strings, the modules' lock label (course.locked), AccountLoader's, and "Lõpetamine" (account.completion). */
-export type EcourseTexts = Dict["account"]["ecourse"] & { locked: string; loader: LoaderTexts; completion: Dict["account"]["completion"] };
+/** The certificate's texts (phase 3d): account.certificate, with the two failure lines of the issue (too many tries, anything else). */
+export type CertificateTexts = Dict["account"]["certificate"] & { rate: string; failed: string };
+
+/**
+ * The e-course page's: the account.ecourse strings, the modules' lock label (course.locked), AccountLoader's, "Lõpetamine" (account.completion)
+ * and its "Tunnistus" row (CertificateTexts), and "Minu konto" (nav.account), the no-access notice's way to the dashboard.
+ */
+export type EcourseTexts = Dict["account"]["ecourse"] & {
+  locked: string;
+  toAccount: string;
+  loader: LoaderTexts;
+  completion: Dict["account"]["completion"];
+  certificate: CertificateTexts;
+};
 
 /** One lesson's page: the account.lesson strings, "Jätka" and the lock sentence (account.ecourse), AccountLoader's. */
 export type LessonTexts = Dict["account"]["lesson"] & { resume: string; lockedHint: string; loader: LoaderTexts };
@@ -48,9 +65,25 @@ export const shellTexts = (d: Dict): ShellTexts => d.account.shell;
 
 export const loaderTexts = (d: Dict): LoaderTexts => d.account.loader;
 
-export const ecourseTexts = (d: Dict): EcourseTexts => ({ ...d.account.ecourse, locked: d.course.locked, loader: loaderTexts(d), completion: d.account.completion });
+const certificateTexts = (d: Dict): CertificateTexts => ({ ...d.account.certificate, rate: d.forms.errorTooMany, failed: d.forms.errorGeneric });
 
-export const coursesTexts = (d: Dict): CoursesTexts => ({ ...d.account.dashboard, next: d.account.next, loader: loaderTexts(d), online: payTexts(d), completed: d.account.completion.completedOn });
+export const ecourseTexts = (d: Dict): EcourseTexts => ({
+  ...d.account.ecourse,
+  locked: d.course.locked,
+  toAccount: d.nav.account,
+  loader: loaderTexts(d),
+  completion: d.account.completion,
+  certificate: certificateTexts(d),
+});
+
+export const coursesTexts = (d: Dict): CoursesTexts => ({
+  ...d.account.dashboard,
+  next: d.account.next,
+  loader: loaderTexts(d),
+  online: payTexts(d),
+  completed: d.account.completion.completedOn,
+  certificate: certificateTexts(d),
+});
 
 export const favouritesTexts = (d: Dict): FavouritesTexts => ({ ...d.account.favourites, loader: loaderTexts(d) });
 

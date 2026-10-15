@@ -3,6 +3,7 @@ import type { Db } from "@/db/client";
 import { studentProtocol } from "@/db/queries/protocols";
 import { readSetting } from "@/db/queries/public";
 import { clients } from "@/db/schema";
+import { certificateDownloadHeaders } from "@/domain/certificate";
 import { PHOTO_LIMITS, TEST_LIMITS } from "@/domain/completion";
 import { isEmail, isSampleAddress, normalizeEmail } from "@/domain/email";
 import { FEEDBACK_TEXT_MAX } from "@/domain/protocols";
@@ -16,6 +17,7 @@ import {
 } from "./account-input";
 import { isCrossSite } from "./auth";
 import type { BunnyConfig } from "./bunny";
+import { certificateForStudent, certificatePdf, issueCertificate } from "./certificates";
 import {
   CLIENT_COOKIE, CLIENT_SESSION_TTL_MS, HINT_COOKIE, endClientSession, getClientSession, issueClientLogin, redeemClientCode,
   redeemClientLink, redeemClientPassword, reserveLoginMail, type PasswordGate,
@@ -59,7 +61,7 @@ import { sha256 } from "./token";
 // GET /kursus/:slug/:lesson one lesson (an open one with a signed video URL; 403 terms or locked), POST …/:lesson/progress how far a video has
 // been watched, POST …/:lesson/tehtud "Märgi tehtuks" for a text lesson, GET …/:lesson/fail/:file a lesson file, GET /kursus/:slug/test the knowledge test with POST /kursus/:slug/test an attempt and POST …/test/uuesti the "Paranda" answers rewritten (e-course completion), GET /lemmikud the
 // favourites as course cards, POST /lemmikud and /lemmikud/merge favourites, PATCH /andmed the profile, POST /uudiskiri the newsletter, POST /muutmine a request to cancel or
-// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, GET /kursus/:slug/praktiline the practical work of an e-course (e-course completion: her points, her photos and Maria's sent assessment), POST …/praktiline/foto one photo (multipart, made smaller in the browser), DELETE …/praktiline/foto/:id one photo of the round being prepared, POST …/praktiline/saada "Saada hindamiseks" / "Saada uuesti", GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
+// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, GET /kursus/:slug/praktiline the practical work of an e-course (e-course completion: her points, her photos and Maria's sent assessment), POST …/praktiline/foto one photo (multipart, made smaller in the browser), DELETE …/praktiline/foto/:id one photo of the round being prepared, POST …/praktiline/saada "Saada hindamiseks" / "Saada uuesti", GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kursus/:slug/tunnistus the certificate of her completed e-course with the name she confirmed and GET /tunnistus/:id its PDF (phase 3d), POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
 // Each one starts with requireClient and answers through clientResponse (a renewed session's cookies reach the browser); the
 // client is always the session's, never a value from the request. A body that is not what the endpoint expects is 400
 // { ok: false, error: "<field>" } (account-input.ts), a record that is not the client's is 404.
@@ -121,6 +123,12 @@ const PRACTICAL_SUBMITS_PER_HOUR = 20;
 const PHOTO_ENVELOPE = 64 * 1024;
 /** The largest photo upload: both files at their limits and the envelope. One announced larger is 413 unread (Vercel refuses 4.5 MB). */
 const PHOTO_BODY_BYTES = PHOTO_LIMITS.fullBytes + PHOTO_LIMITS.thumbBytes + PHOTO_ENVELOPE;
+/** Certificate issues a student may ask for per hour (phase 3d, spec §5): one is enough, a double tap or a retry after a refused name more. */
+const CERTIFICATE_ISSUES_PER_HOUR = 10;
+/** Certificate downloads per hour (spec §5): each one renders the PDF, about a tenth of a second of the function. */
+const CERTIFICATE_FILES_PER_HOUR = 10;
+/** The issue's body, `{ name }`: a name of at most 80 characters, with room for its JSON escapes. */
+const CERTIFICATE_BODY_CHARS = 1024;
 
 /** The feedback's own limit, the submits and the "Ei soovi"s together: null within it, else the 429 to answer. */
 async function feedbackLimited(deps: AccountDeps, session: ClientSession): Promise<Response | null> {
@@ -452,6 +460,20 @@ async function fileAnswer(session: ClientSession, store: FileStore, file: { key:
 async function photoAnswer(session: ClientSession, store: FileStore, key: string): Promise<Response | null> {
   const res = await privateFileAnswer(store, key, { contentType: "image/jpeg", headers: { ...BASE_HEADERS, "referrer-policy": "no-referrer" } });
   if (!res) return null;
+  for (const cookie of session.cookies) res.headers.append("set-cookie", cookie);
+  return res;
+}
+
+/**
+ * A certificate's PDF for its owner (phase 3d, spec §5, §7): the bytes as a download named by her certificate's number (domain/certificate.ts
+ * certificateDownloadHeaders), `private, no-store` and not for search engines (BASE_HEADERS), nosniff; the cookies of a renewed session go
+ * with it, as with clientResponse. The handlers never build a Response of their own.
+ * (The cast: the PDF's bytes are a Uint8Array<ArrayBufferLike>, which TypeScript does not take as a BlobPart as it stands.)
+ */
+function pdfAnswer(session: ClientSession, bytes: Uint8Array, cert: { year: number; seq: number }): Response {
+  const res = new Response(new Blob([bytes as BlobPart], { type: "application/pdf" }), {
+    headers: { ...BASE_HEADERS, ...certificateDownloadHeaders(cert.year, cert.seq) },
+  });
   for (const cookie of session.cookies) res.headers.append("set-cookie", cookie);
   return res;
 }
@@ -801,6 +823,68 @@ async function photo(request: Request, deps: AccountDeps, rawId: string, thumb: 
 }
 
 /**
+ * POST /kursus/:slug/tunnistus `{ name }` (phase 3d, spec §5): the certificate of her completed e-course, with the name she confirmed. It is
+ * made by certificates.ts issueCertificate, under the access's lock and then the number series' lock, one per access.
+ * - 200 `{ ok: true, certificate }`.
+ * - 409 `{ error: "already", certificate }`: made already, by a double tap or another device; the answer is the one there is.
+ * - 409 `{ error: "notCompleted" }`.
+ * - 400 `{ error: "name", reason: "length" | "letters" }`: the name rules. A body that is no `{ name }` counts as an empty name.
+ * - 429 `{ error: "rate" }` after 10 in an hour.
+ * - 404 without the access (a revoked one too), and for a contact course.
+ */
+async function issueCertificateRoute(request: Request, deps: AccountDeps, rawSlug: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const slug = parseSlug(rawSlug);
+  if (slug === null) return clientResponse(session, { ok: false }, 404);
+  const body = await readObject(request, CERTIFICATE_BODY_CHARS);
+  if (!(await withinClientLimit(deps, session.clientId, "client-certificate", CERTIFICATE_ISSUES_PER_HOUR, 60 * 60))) {
+    logNote("[account] certificate issues rate limited");
+    return clientResponse(session, { ok: false, error: "rate" }, 429);
+  }
+  const result = await issueCertificate(deps.db, session.clientId, slug, typeof body?.name === "string" ? body.name : "", deps.now);
+  switch (result.kind) {
+    case "issued":
+      return clientResponse(session, { ok: true, certificate: result.certificate });
+    case "already":
+      return clientResponse(session, { ok: false, error: "already", certificate: result.certificate }, 409);
+    case "notCompleted":
+      return clientResponse(session, { ok: false, error: "notCompleted" }, 409);
+    case "invalid":
+      return clientResponse(session, { ok: false, error: "name", reason: result.error }, 400);
+    default:
+      return clientResponse(session, { ok: false }, 404);
+  }
+}
+
+/**
+ * GET /tunnistus/:id (phase 3d, spec §5, §7): her certificate as a PDF (certificates.ts certificatePdf, rendered from the frozen row on each
+ * download), via pdfAnswer as `attachment; filename="MS-LAB-tunnistus-{year}-{nn}.pdf"`. Only her own access's certificate, and only while
+ * that access is not revoked; an ended (expired) access keeps it. 404 `{ ok: false }` for any other id; 429 `{ error: "rate" }` after 10
+ * in an hour (a 404 counts too, so ids cannot be probed). A render that fails is 500 `{ error: "server" }`, logged by the certificate's id.
+ */
+async function certificateFile(request: Request, deps: AccountDeps, rawId: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const id = parseRowId(rawId);
+  if (id === null) return clientResponse(session, { ok: false }, 404);
+  if (!(await withinClientLimit(deps, session.clientId, "client-certificate-pdf", CERTIFICATE_FILES_PER_HOUR, 60 * 60))) {
+    logNote("[account] certificate downloads rate limited");
+    return clientResponse(session, { ok: false, error: "rate" }, 429);
+  }
+  const cert = await certificateForStudent(deps.db, session.clientId, id);
+  if (!cert) return clientResponse(session, { ok: false }, 404);
+  let bytes: Uint8Array;
+  try {
+    bytes = await certificatePdf(deps.db, cert, deps.now);
+  } catch (e) {
+    logFailure(`[certificate] ${cert.id}: the student's download failed`, e); // its id and the error's class only
+    return clientResponse(session, { ok: false, error: "server" }, 500);
+  }
+  return pdfAnswer(session, bytes, cert);
+}
+
+/**
  * GET /lemmikud?l=<et|ru>: the Lemmikud tab, `{ ok, favourites, cards }` (client-data.ts FavouriteCards): the client's published favourites
  * as the catalogue's course cards, newest first, in the page's language `l` (anything but "ru" is Estonian).
  */
@@ -1061,6 +1145,10 @@ const TEST_PATH = /^\/kursus\/([^/]+)\/test(\/uuesti)?$/;
 const PRACTICAL_PATH = /^\/kursus\/([^/]+)\/praktiline(?:\/(foto|saada)(?:\/([^/]+))?)?$/;
 /** One of her practical photos (R5: the id in the path, never a query): /praktiline/foto/<id>, its thumbnail …/<id>/pisi. */
 const PHOTO_PATH = /^\/praktiline\/foto\/([^/]+)(\/pisi)?$/;
+/** The certificate of one e-course (phase 3d): POST /kursus/<slug>/tunnistus. Tried before LESSON_PATH, which would read "tunnistus" as a lesson id. */
+const CERT_PATH = /^\/kursus\/([^/]+)\/tunnistus$/;
+/** A certificate's PDF (phase 3d; the id in the path, never a query): GET /tunnistus/<id>. */
+const CERT_FILE_PATH = /^\/tunnistus\/([^/]+)$/;
 
 /** The endpoints behind a session; any other method and path is unknown (404, with or without a session). */
 async function dataRoute(request: Request, path: string, deps: AccountDeps): Promise<Response> {
@@ -1104,6 +1192,11 @@ async function dataRoute(request: Request, path: string, deps: AccountDeps): Pro
   }
   const photoPath = request.method === "GET" ? PHOTO_PATH.exec(path) : null;
   if (photoPath) return photo(request, deps, photoPath[1], photoPath[2] !== undefined);
+  // the certificate (phase 3d): its path before the lesson paths, which would read "tunnistus" as a lesson; POST only
+  const certPath = CERT_PATH.exec(path);
+  if (certPath) return request.method === "POST" ? issueCertificateRoute(request, deps, certPath[1]) : accountResponse({ ok: false }, 404);
+  const certFile = request.method === "GET" ? CERT_FILE_PATH.exec(path) : null;
+  if (certFile) return certificateFile(request, deps, certFile[1]);
   const lessonPath = LESSON_PATH.exec(path);
   if (lessonPath) {
     const [, slug, id, action, file] = lessonPath;

@@ -46,7 +46,7 @@ test("0007 gives every course an empty protocol_stages and adds protocols and co
     id: protocols.id, registrationId: protocols.registrationId, stages: protocols.stages, generalNote: protocols.generalNote, version: protocols.version,
     sent: protocols.sent, sentAt: protocols.sentAt, sentVersion: protocols.sentVersion, createdAt: protocols.createdAt,
   };
-  const [course] = await db.select().from(courses);
+  const [course] = await db.select({ protocolStages: courses.protocolStages }).from(courses); // only 0007's column: drizzle would name 0009's (certificate_skills, certificate_volume)
   expect(course.protocolStages).toEqual([]);
   expect(await db.select(v0007).from(protocols)).toEqual([]);
   expect(await db.select().from(courseFeedback)).toEqual([]);

@@ -36,7 +36,7 @@ const WIDE = "(min-width: 768px)";
  *   phone the modules are folded, and the module of the next lesson starts open; on a wider screen every module starts open;
  * - without any lesson yet: the module titles and "Sisu lisandub peagi.";
  * - below them, "Lõpetamine" (CompletionSteps, e-course completion): the path's steps, once the course has lessons (or is completed, or Maria
- *   sent her notes: "Vaata protokolli").
+ *   sent her notes: "Vaata protokolli"); once completed, its "Tunnistus" row (phase 3d), whose button gives way to "Jätka" when that is shown.
  * `focusHeading`: the notice has just been accepted, so the title takes the focus. `readOnly` (the admin's "view as client", rendered
  * by a server component too): nothing is a link, the button and the lesson titles are aria-disabled, and every module is open.
  */
@@ -165,7 +165,17 @@ export function EcourseView({
         </p>
       )}
       {(total > 0 || data.completion.completedAt !== null || data.completion.protocolSent) && (
-        <CompletionSteps slug={slug} steps={data.completion} protocolSent={data.completion.protocolSent} locale={locale} t={t} readOnly={readOnly} />
+        <CompletionSteps
+          slug={slug}
+          steps={data.completion}
+          protocolSent={data.completion.protocolSent}
+          certificate={data.completion.certificate}
+          certificateName={data.completion.certificateName}
+          resumeShown={total > 0 && next !== null}
+          locale={locale}
+          t={t}
+          readOnly={readOnly}
+        />
       )}
     </div>
   );

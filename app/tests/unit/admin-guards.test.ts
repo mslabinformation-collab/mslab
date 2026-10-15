@@ -100,6 +100,11 @@ describe("admin guards are inherited by every admin entry point", () => {
         // e-course completion: Maria's verdict taps and "Saada hinnang"
         "app/api/admin/hinnang/route.ts",
         "server/actions/admin-assessment.ts",
+        // phase 3d: Maria's certificate download and the certificate's actions
+        "app/api/admin/tunnistus/[id]/route.ts",
+        "server/actions/admin-certificates.ts",
+        // phase 3d, Task 6: the certificate register (from Hindamine)
+        "app/admin/(panel)/tunnistused/page.tsx",
       ]),
     );
     const broken = all.flatMap((f) => violations(f.path, f.source).map((v) => `${f.path}: ${v}`));
@@ -116,14 +121,14 @@ describe("admin guards are inherited by every admin entry point", () => {
   test("every route under app/api/admin and app/admin is wrapped (the CSV export, and the future ones)", () => {
     const routes = files().filter((f) => /^app\/(api\/)?admin\/(.*\/)?route\.tsx?$/.test(f.path));
     expect(routes.map((r) => r.path)).toEqual(
-      expect.arrayContaining(["app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts", "app/api/admin/foto/[id]/route.ts", "app/api/admin/hinnang/route.ts"]),
+      expect.arrayContaining(["app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts", "app/api/admin/foto/[id]/route.ts", "app/api/admin/hinnang/route.ts", "app/api/admin/tunnistus/[id]/route.ts"]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);
   });
 
   test("every admin page calls requireAdmin() itself and every admin action is wrapped", () => {
     const pages = files().filter((f) => /^app\/admin\/\(panel\)\/(.*\/)?page\.tsx$/.test(f.path));
-    expect(pages.length).toBeGreaterThanOrEqual(16);
+    expect(pages.length).toBeGreaterThanOrEqual(23);
     for (const p of pages) expect(strip(p.source), p.path).toMatch(/await requireAdmin\(\)/);
     const actions = files().find((f) => f.path === "server/actions/admin.ts")!;
     const exported = [...strip(actions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
@@ -158,6 +163,11 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(assessmentExports).toEqual(["sendAssessmentAction", "reviewAttemptAction", "reopenTestAction"]);
     expect(violations(assessmentActions.path, assessmentActions.source)).toEqual([]);
     expect([...strip(assessmentActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(assessmentExports);
+    const certificateActions = files().find((f) => f.path === "server/actions/admin-certificates.ts")!;
+    const certificateExports = [...strip(certificateActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
+    expect(certificateExports).toEqual(["saveCertificateSettingsAction", "reissueCertificateAction"]);
+    expect(violations(certificateActions.path, certificateActions.source)).toEqual([]);
+    expect([...strip(certificateActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(certificateExports);
     // It reads and scans every admin source file: about 2 s alone, but well past the 20 s default while the full run keeps every core
     // busy (seen at 38 s); the limit is for the machine's load, not for this test's work.
   }, 120_000);

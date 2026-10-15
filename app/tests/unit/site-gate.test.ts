@@ -88,6 +88,8 @@ const GATED = [
   "/api/konto/kursus/x/praktiline",
   "/api/konto/praktiline/foto/1",
   "/api/konto/kursus/x/test",
+  "/api/konto/kursus/x/tunnistus", // the certificate (phase 3d)
+  "/api/konto/tunnistus/1",
   "/api/konto/protokoll",
   "/api/konto/tagasiside",
   "/api/konto/tagasiside/peida",

@@ -44,7 +44,7 @@ const data = (s: CourseSteps = steps(), protocolSent = false, progress: EcourseD
   access: { expiresAt: "2027-04-03T10:00:00.000Z" },
   terms: { version: "1", accepted: true, text: null },
   progress,
-  completion: { ...s, protocolSent },
+  completion: { ...s, protocolSent, certificate: null, certificateName: "" },
 });
 
 let container: HTMLDivElement;

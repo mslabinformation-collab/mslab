@@ -104,7 +104,7 @@ From the final review of phase 2a (04.10.2026); the merge-blocking items were fi
 - [ ] Bunny library → allowed domains: replace the stale `mslab-five.vercel.app` with the project's current `*.vercel.app` address (or remove it).
 - [x] Done: the library is on Maria's Bunny account from the start (08.10.2026).
 - [ ] After the first month read Bunny's bill (the estimate is about €5–15 a month at 500 hours watched) and Vercel's function invocations (a watching student makes about 240 progress calls an hour).
-- [ ] Migration 0009 (drops `courses.modules`) only after 3a has run for a few days with no rollback planned: the code first, then the migration (plan 2026-10-05-phase3a, Task 12 step 11).
+- [ ] Migration 0010 (drops `courses.modules`) only after 3a has run for a few days with no rollback planned: the code first, then the migration (plan 2026-10-05-phase3a, Task 12 step 11).
 - [ ] Accepted limit: the iPhone's own full-screen video player shows no watermark (the page's "Täisekraan" keeps it).
 - [ ] Accepted limit, narrowed in phase 2c: the player takes back a forward jump past what she has watched, and the server keeps at most twice the real time since the lesson was opened plus 30 s, so a video lesson cannot be completed in less than about half its length. A script can still report steadily at 2× without watching: "done" means "the time was spent with the lesson open", not "watched".
 - [ ] Accepted limit: the player's height is capped to leave room for the buttons below it (about 400 px reserved, 240 to 540 px high), so on a small laptop screen, with a 4:3 video or a lesson title that runs to two lines, "Täisekraan" can sit below the fold.
@@ -160,7 +160,7 @@ From the final review of phase 2a (04.10.2026); the merge-blocking items were fi
   - A protocol sent to a registration that is cancelled later stays visible to the student (the spec allows it; there is no "unsend", and cancelling does not hide it).
   - A registration still awaiting its prepayment whose group session has passed also gets the feedback card (the rule is "not cancelled"; to change it, edit `feedbackOpen` in `src/domain/protocols.ts`).
   - A lost protocol mail cannot be re-sent for the same version; Maria edits the protocol and sends it with "Saada uuesti" (`docs/deploy.md` section 12, item 5).
-- [ ] Migration 0009 (drops `courses.modules`; the e-course completion took 0008) stays as planned in phase 3a: the code first, then the migration (section 8); the migrations count afterwards is 10.
+- [ ] Migration 0010 (drops `courses.modules`; the e-course completion took 0008 and the certificate 0009) stays as planned in phase 3a: the code first, then the migration (section 8); the migrations count afterwards is 11.
 - [ ] Accepted: a student signed in under another address than her registration's sees neither the protocol nor the feedback card until Maria links them (as the dashboard today).
 - [ ] Accepted: after a student deletes her account, her registration stays on Maria's screen with nothing written; a new send to it makes a new account (Maria decides whether to send).
 - [ ] Accepted: the protocol mails are not counted in the daily login-mail cap; a course day sends a handful (they count in Resend's 100 a day).
@@ -193,3 +193,26 @@ From the final review of phase 2a (04.10.2026); the merge-blocking items were fi
   - No "Sinu praktiline töö on hinnatud" mail goes to an access that has ended, as she can no longer redo a "Paranda" point; Maria's assessment is saved and frozen as usual. The "Palju õnne!" mail and the notes-only protocol mails still go.
   - Points added to a course after a student has completed it do not reach her: with no protocol yet, her practical page is read-only ("Lõpetatud") and takes no photos ("Hindamine" lists no completed access).
   - A very large account deletion removes its photo files one by one after the answer (two files a photo), which could be cut off by the function's time limit (30 s) on slow storage. A file left behind stays in the bucket with no row naming it: delete it by hand (`docs/deploy.md` section 13, item 3).
+
+## 13. The e-course certificate (phase 3d)
+- [x] The certificate's script font, Revive 80 Signature, is licensed to MS LAB and not open source. Dim confirmed the approval of Canva and Tom Chalky and waived the private-repository gate on 15.10.2026: the repository may stay public.
+- [ ] Go-live behind the coming-soon gate (plan 2026-10-15-certificate, Task 8; `docs/deploy.md` section 14, item 9), in this order: migration 0009 on Railway (the count in `drizzle.__drizzle_migrations` goes from 9 to 10, `docs/deploy.md` section 6), then the deploy, then the smoke check (`/api/admin/tunnistus/1` answers 401 without a session).
+- [ ] Maria's signature is her name typed in Revive 80 Signature, as on her Canva certificates: she sets Seaded → Tunnistus → "Koolitaja nimi" as she wants it signed (Latin letters; "Maria Sosnina" until she changes it). There is no picture to upload.
+- [ ] Maria's setup, before the first real student completes an e-course (Dim passes it on):
+  1. Seaded → Tunnistus: "Koolitaja nimi", her name as she signs (the item above); "Järgmine number": the year and the number after her last paper certificate ("Viimati väljastatud" beside it shows the site's last one); "Praktilise töö rida": the plan's wording "Praktiline töö fotodel, koolitaja poolt hinnatud iseseisev protseduuri teostamine" is a draft, she confirms or rewrites it; and she checks "Koht" (Pärnu linn) and "Registrikood" (16346048).
+  2. Each e-course's "Tunnistus" card (Koolitused → the course): "Oskused tunnistusel", the lines the certificate lists (empty: the course's "Õpiväljundid" are printed; the card warns when one of them is over 120 characters, and she then adds shorter lines there), and "Maht", e.g. "10 akadeemilist tundi" (empty: left out).
+  3. One try with a sample student (`<label>.naidis@example.test`, "Proov (näidis)") on a temporary unpublished sample e-course "Proov (näidis)", completed by hand: confirm the name, download the PDF, open it on her tablet and on a phone, try "Paranda nimi". The try takes a real number of the series. Afterwards delete the sample account and the sample course by that exact address and that course only (never with the pattern `like '%.naidis@example.test'`, section 11; the certificate goes with the account), then set "Järgmine number" again to the number after her last paper certificate.
+- [ ] From the go-live on, every paper certificate takes its number from Seaded: Maria writes the number Seaded shows as next and raises "Järgmine number" by one. The site refuses a next number at or below one it has issued that year, but it cannot know her paper ones.
+- [ ] Dim approves the wording sheet (the plan's Wording appendix): the student's "Tunnistus" row and card link, the mail's line, the course editor's card, Seaded's card, the drawer's line, "Paranda nimi" and the register. The PDF's own texts ("TUNNISTUS", "KOOLITAJA", "REGISTRIKOOD", "Tunnistuse nr.") follow Maria's sample.
+- [ ] Native-speaker check of the Russian texts this phase added, all in `src/i18n/dict/ru.ts`: `account.certificate.*` and `account.completionMail.completedCertificate`. The no-break space after в, с, к, о, у is enforced by `tests/unit/protocols.test.ts`. The certificate itself is Estonian only (D6).
+- [ ] The privacy text (Seaded → Privaatsus) gets Maria's line about certificates: the name as confirmed and the course are kept with the account, shown only to the student and to Maria, and deleted with the account.
+- [ ] Maria's own certificate, the design's reference, stays in the git-ignored `Assets/` (it carries a real student's name): never committed or published.
+- [ ] Until the coming-soon gate is removed, students cannot reach the "Tunnistus" row or the PDF: real certificates after the public launch.
+- [ ] Owner notes (Dim decides; nothing is changed until he does):
+  - "Koolitaja nimi" is not frozen: a changed name appears on old certificates too at their next download.
+  - A name is written in Latin letters as in the passport: a student whose account name is in Cyrillic is asked to write it in Latin letters (the script font has no Cyrillic).
+  - A deleted account takes its certificate with it, and its number is not reused: the series has a gap.
+  - A student who never confirms her name has no certificate ("Tunnistus: õpilane pole veel nime kinnitanud" in the drawer); Maria cannot issue one for her.
+  - The student cannot correct her own name once issued; she writes to Maria ("Kui nimes on viga, kirjuta meile"), who uses "Paranda nimi" (no mail goes; Maria tells her).
+  - The drawer's and the register's link says "Laada alla" (the spec's word); the student's says "Laadi tunnistus alla". Dim decides whether the admin's becomes "Laadi alla".
+  - Contact courses stay on paper (Maria's answer of 12.10.2026).

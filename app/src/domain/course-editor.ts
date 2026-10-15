@@ -98,6 +98,13 @@ export type CourseDraft = {
   protocolStages: string[];
   /** "Teadmiste test" (e-course completion, spec §5.1, R1): an e-course's questions, pass mark and tries; stored in course_tests, not on the course. */
   test: TestDraft;
+  /**
+   * "Tunnistus" (phase 3d, spec §6): an e-course certificate's competency lines (plain Estonian text, at most 16 of at most 120 characters;
+   * none: the course's "Õpiväljundid" are printed, domain/certificate.ts certificateSkills) and its volume ("10 akadeemilist tundi"; empty: left
+   * out of the PDF). A contact course has none.
+   */
+  certificateSkills: string[];
+  certificateVolume: string;
   price: string;
   priceGroup: string;
   priceIndividual: string;
@@ -133,6 +140,8 @@ export function newCourseDraft(): CourseDraft {
     includes: [],
     protocolStages: [],
     test: emptyTestDraft(),
+    certificateSkills: [],
+    certificateVolume: "",
     price: "",
     priceGroup: "",
     priceIndividual: "",
@@ -163,6 +172,9 @@ type StoredCourse = {
   protocolStages: string[];
   /** Its course_tests row (getCourseForEdit), null without one; absent where a caller has none to give (the defaults then). */
   test?: { questions: TestQuestion[]; passPercent: number; tries: number } | null;
+  /** "Tunnistus" (phase 3d); absent where a caller has none to give (none then). */
+  certificateSkills?: string[];
+  certificateVolume?: string;
   price: number | null;
   priceGroup: number | null;
   priceIndividual: number | null;
@@ -193,6 +205,9 @@ export function draftFromCourse(c: StoredCourse): CourseDraft {
     includes: c.includes.map(copy),
     protocolStages: readStages(c.protocolStages),
     test: c.test ? { questions: readQuestions(c.test.questions), passPercent: String(c.test.passPercent), tries: String(c.test.tries) } : emptyTestDraft(),
+    // jsonb read defensively: only the lines that are text
+    certificateSkills: (c.certificateSkills ?? []).filter((s): s is string => typeof s === "string"),
+    certificateVolume: c.certificateVolume ?? "",
     price: amount(c.price),
     priceGroup: amount(c.priceGroup),
     priceIndividual: amount(c.priceIndividual),

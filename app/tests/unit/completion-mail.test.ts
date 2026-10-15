@@ -58,10 +58,71 @@ describe("completionMail (Estonian)", () => {
     expect(withPoints.text).toContain("Oled kõik koolituse sammud läbinud.");
     expect(withPoints.text).toContain(`Vaata koolitust:\n${BASE}/konto/kursus/kulmude-e-kursus/praktiline`);
     const lessonsOnly = completionMail(input({ kind: "completed" }));
-    expect(lessonsOnly.text).toContain(`Vaata koolitust:\n${BASE}/konto/kursus/kulmude-e-kursus\n`);
+    expect(lessonsOnly.text).toContain(`\n${BASE}/konto/kursus/kulmude-e-kursus\n`);
+    expect(lessonsOnly.html).toContain(`href="${BASE}/konto/kursus/kulmude-e-kursus" style="display:inline-block;`); // the button
+    expect(lessonsOnly.html).toContain(">Vaata koolitust</a>");
     expect(completionMail(input({ kind: "completed", hasPoints: false })).text).toContain(`${BASE}/konto/kursus/kulmude-e-kursus\n`);
     // a subject is one line, whatever the title holds
     expect(completionMail(input({ kind: "completed", course: { et: "Kulmud\n  ja   ripsmed" } })).subject).toBe("Palju õnne! Koolitus „Kulmud ja ripsmed“ on lõpetatud");
+  });
+
+  test("completed: one more line, 'Kinnita oma nimi ja laadi tunnistus alla:' with the e-course's page, where the certificate is (phase 3d); a link, never an attachment; no other kind has it", () => {
+    const page = `${BASE}/konto/kursus/kulmude-e-kursus`;
+    const withPoints = completionMail(input({ kind: "completed", hasPoints: true }));
+    expect(withPoints.text).toBe(
+      [
+        "Tere, Kati!", "",
+        "Oled kõik koolituse sammud läbinud.", "",
+        "Kulmude e-kursus", "",
+        "Vaata koolitust:", `${page}/praktiline`, "",
+        "Kinnita oma nimi ja laadi tunnistus alla:", page, "",
+        "MS LAB Koolituskeskus",
+      ].join("\n"),
+    );
+    expect(withPoints.html).toContain(`Kinnita oma nimi ja laadi tunnistus alla:<br><a href="${page}"`);
+    expect((withPoints.html!.match(/mso-padding-alt/g) ?? []).length).toBe(1); // still one button: the line is a text link
+    expect(withPoints).not.toHaveProperty("attachments");
+    for (const kind of KINDS.filter((k) => k !== "completed")) expect(completionMail(input({ kind })).text, kind).not.toContain("tunnistus");
+    expect(completionMail(input({ kind: "completed", locale: "ru" })).text).toContain(`Подтвердите своё имя и скачайте сертификат:\n${BASE}/ru/konto/kursus/kulmude-e-kursus\n`);
+  });
+
+  test("M-2: a course without points (the button's page is the certificate's): the line above the button, the address written once, in the text and the HTML", async () => {
+    const page = `${BASE}/konto/kursus/kulmude-e-kursus`;
+    const m = completionMail(input({ kind: "completed" }));
+    expect(m.text).toBe(
+      [
+        "Tere, Kati!", "",
+        "Oled kõik koolituse sammud läbinud.", "",
+        "Kulmude e-kursus", "",
+        "Kinnita oma nimi ja laadi tunnistus alla:", page, "",
+        "MS LAB Koolituskeskus",
+      ].join("\n"),
+    );
+    const html = m.html!;
+    expect(html.split(`>${page}</a>`).length - 1).toBe(1); // written out once, under the button
+    expect(html.split(`href="${page}"`).length - 1).toBe(2); // the button and the address under it, nothing more
+    expect(html.indexOf("Kinnita oma nimi ja laadi tunnistus alla:")).toBeGreaterThan(html.indexOf("Kulmude e-kursus"));
+    expect(html.indexOf("Kinnita oma nimi ja laadi tunnistus alla:")).toBeLessThan(html.indexOf(">Vaata koolitust</a>"));
+    expect((html.match(/mso-padding-alt/g) ?? []).length).toBe(1); // one button
+    const ru = completionMail(input({ kind: "completed", locale: "ru" }));
+    expect(ru.text.split(`${BASE}/ru/konto/kursus/kulmude-e-kursus`).length - 1).toBe(1);
+    expect(ru.html!.indexOf("Подтвердите своё имя и скачайте сертификат:")).toBeLessThan(ru.html!.indexOf(">Открыть обучение</a>"));
+  });
+
+  test("I-1: an access that is not active as the mail is built: the certificate line goes to the dashboard (/konto), whose card has the name form; an active one's to the course page", async () => {
+    for (const hasPoints of [true, false]) {
+      const ended = completionMail(input({ kind: "completed", hasPoints, accessActive: false }));
+      expect(ended.text, `points ${hasPoints}`).toContain(`Kinnita oma nimi ja laadi tunnistus alla:\n${BASE}/konto\n`);
+      expect(ended.html, `points ${hasPoints}`).toContain(`Kinnita oma nimi ja laadi tunnistus alla:<br><a href="${BASE}/konto"`);
+      const active = completionMail(input({ kind: "completed", hasPoints, accessActive: true }));
+      expect(active.text, `points ${hasPoints}`).toContain(`Kinnita oma nimi ja laadi tunnistus alla:\n${BASE}/konto/kursus/kulmude-e-kursus\n`);
+    }
+    // the button is the course's as before; the line under it is the dashboard, so both are written out
+    const ended = completionMail(input({ kind: "completed", accessActive: false }));
+    expect(ended.text).toContain(`Vaata koolitust:\n${BASE}/konto/kursus/kulmude-e-kursus\n\nKinnita oma nimi ja laadi tunnistus alla:\n${BASE}/konto\n\nMS LAB Koolituskeskus`);
+    expect(completionMail(input({ kind: "completed", locale: "ru", accessActive: false })).text).toContain(`Подтвердите своё имя и скачайте сертификат:\n${BASE}/ru/konto\n`);
+    // only "completed" has the line, whatever the access
+    for (const kind of KINDS.filter((k) => k !== "completed")) expect(completionMail(input({ kind, accessActive: false })).text, kind).not.toContain("/konto\n");
   });
 
   test("testPassed, testFix and reopened: the spec's subjects; the practical work after a passed test, the test otherwise", () => {
@@ -113,7 +174,8 @@ describe("Review Focus 5: a Russian-speaking student gets her mails in Russian",
     expect(assessed.html).toContain('<html lang="ru">');
     expect(assessed.text.endsWith("MS LAB Учебный центр")).toBe(true);
     expect(ru("completed", { hasPoints: true }).subject).toBe("Поздравляем! Обучение «Онлайн-курс по бровям» завершено");
-    expect(ru("completed").text).toContain(`Открыть обучение:\n${BASE}/ru/konto/kursus/kulmude-e-kursus\n`);
+    expect(ru("completed", { hasPoints: true }).text).toContain(`Открыть обучение:\n${BASE}/ru/konto/kursus/kulmude-e-kursus/praktiline\n`);
+    expect(ru("completed").html).toContain(`href="${BASE}/ru/konto/kursus/kulmude-e-kursus" style="display:inline-block;`);
     const passed = ru("testPassed");
     expect(passed.subject).toBe("Тест сдан");
     expect(passed.text).toContain("Практическая работа теперь открыта.");

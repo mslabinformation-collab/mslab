@@ -198,3 +198,11 @@
   gap: 4px 16px;
   margin-top: 6px;
 }
+
+/* an e-course's certificate (phase 3d): its line, the name printed, the download and "Paranda nimi", one under another */
+.certificate {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  margin-top: 6px;
+}

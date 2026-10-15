@@ -71,6 +71,13 @@
   color: var(--paper);
 }
 
+/* a warning about what will be printed, saved all the same (the certificate's lines: an outcome too long for it, final review M-4) */
+.warning {
+  margin: 0;
+  color: var(--warn);
+  font: 600 13px/1.45 var(--font-body);
+}
+
 /* ---------- B .form-grid ---------- */
 
 .grid {
