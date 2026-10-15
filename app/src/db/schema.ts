@@ -32,7 +32,7 @@ export const courses = pgTable("courses", {
   body: jsonb("body").$type<I18n>().notNull(),
   outcomes: jsonb("outcomes").$type<I18n[]>().notNull().default([]),
   includes: jsonb("includes").$type<I18n[]>().notNull().default([]),
-  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0009 drops it after the 3a deploy (code first).
+  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0010 drops it after the 3a deploy (code first).
   modules: jsonb("modules").$type<I18n[]>().notNull().default([]),
   language: text("language").notNull().default("ET"),        // "ET" | "RU" | "ET / RU"
   price: integer("price"),                                     // e-learning, cents
@@ -50,6 +50,13 @@ export const courses = pgTable("courses", {
    * it is created (its first save); a change here reaches only protocols not created yet.
    */
   protocolStages: jsonb("protocol_stages").$type<string[]>().notNull().default([]),
+  /**
+   * An e-course's competency lines on its certificate (phase 3d, spec §3): plain Estonian text, at most 16 of at most 120 characters (the
+   * course editor's "Tunnistus" card). Empty: the certificate takes the course's outcomes, Estonian (domain/certificate.ts certificateSkills).
+   */
+  certificateSkills: jsonb("certificate_skills").$type<string[]>().notNull().default([]),
+  /** An e-course's volume on its certificate, "10 akadeemilist tundi"; empty: the PDF leaves it out. */
+  certificateVolume: text("certificate_volume").notNull().default(""),
   published: boolean("published").notNull().default(false),
   sort: integer("sort").notNull().default(0),
   isSample: boolean("is_sample").notNull().default(false),
@@ -520,6 +527,46 @@ export const practicalPhotos = pgTable("practical_photos", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("practical_photos_protocol").on(t.protocolId, t.stage, t.round)]);
 
+// ---------- the certificate (phase 3d) ----------
+
+/**
+ * One e-course certificate (phase 3d, spec §3): one per completed access, made when the student confirms her name
+ * (server/certificates.ts issueCertificate). It holds a frozen copy of everything the PDF prints, so a later change of the course or of
+ * Seaded → Tunnistus never alters it; Maria's "Paranda nimi" changes only `name` and `reissuedAt`, under the same number. The PDF is drawn
+ * from this row on every download (server/certificate-pdf.ts); only the signature image is not frozen. Deleted with the access, and so with
+ * the account; its number is never given again (the series then has a gap).
+ */
+export const certificates = pgTable("certificates", {
+  id: serial("id").primaryKey(),
+  accessId: integer("access_id").notNull().references(() => courseAccess.id, { onDelete: "cascade" }),
+  /** "MS LAB 2026-03" (domain/certificate.ts formatCertificateNumber): one series with Maria's paper certificates. */
+  number: text("number").notNull(),
+  /** The Tallinn year of the issue and the number within it: unique together, the backstop behind the issue's number lock. */
+  year: integer("year").notNull(),
+  seq: integer("seq").notNull(),
+  /** As the student confirmed it (domain/certificate.ts checkCertificateName), or as Maria corrected it. */
+  name: text("name").notNull(),
+  /** The course's Estonian title at the issue. */
+  courseTitle: text("course_title").notNull(),
+  /** The competency lines at the issue (domain/certificate.ts certificateSkills). */
+  skills: jsonb("skills").$type<string[]>().notNull(),
+  /** "10 akadeemilist tundi"; empty: not printed. */
+  volume: text("volume").notNull().default(""),
+  practicalLine: text("practical_line").notNull(),
+  place: text("place").notNull(),
+  registryCode: text("registry_code").notNull(),
+  /** The issue; its Tallinn date is printed after the place. A re-issue keeps it. */
+  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+  /** Maria's last "Paranda nimi"; null before one. */
+  reissuedAt: timestamp("reissued_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("certificates_access").on(t.accessId),
+  uniqueIndex("certificates_number").on(t.number),
+  uniqueIndex("certificates_year_seq").on(t.year, t.seq),
+  check("certificates_seq_positive", sql`${t.seq} >= 1`),
+]);
+
 /** text compared byte by byte (collation "C"): the KV keys sort as in Cloudflare KV, and a LIKE 'prefix%' can use the primary key index. */
 const byteText = customType<{ data: string }>({ dataType: () => 'text COLLATE "C"' });
 
@@ -534,7 +581,8 @@ export const kvEntries = pgTable(
   (t) => [index("kv_entries_expires_at").on(t.expiresAt).where(sql`${t.expiresAt} is not null`)],
 );
 export const settings = pgTable("settings", { key: text("key").primaryKey(), value: jsonb("value").notNull() });
-// keys: "contact" {email, phone, address, instagram, facebook}, "newsletter" {discountLabel, welcomeCode}, "trainer" {portraitKey, name, role: I18n, stats: [{value,label:I18n}]}, "prepayment" {receiver, iban, bank, referencePrefix}
+// keys: "contact" {email, phone, address, instagram, facebook}, "newsletter" {discountLabel, welcomeCode}, "trainer" {portraitKey, name, role: I18n, stats: [{value,label:I18n}]}, "prepayment" {receiver, iban, bank, referencePrefix},
+// "certificate" {place, registryCode, practicalLine, trainerName, nextYear, nextSeq, signatureKey} (phase 3d: domain/certificate.ts readCertificateSettings)
 
 export const authTokens = pgTable("auth_tokens", { hash: text("hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), usedAt: timestamp("used_at", { withTimezone: true }) });
 export const adminSessions = pgTable("admin_sessions", { idHash: text("id_hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull() });
@@ -585,3 +633,4 @@ export type CourseFeedback = typeof courseFeedback.$inferSelect;
 export type CourseTest = typeof courseTests.$inferSelect;
 export type TestAttempt = typeof testAttempts.$inferSelect;
 export type PracticalPhoto = typeof practicalPhotos.$inferSelect;
+export type Certificate = typeof certificates.$inferSelect;

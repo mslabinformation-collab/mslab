@@ -26,13 +26,13 @@ function uploaded(rules: string, path: string): boolean {
   return parts.every((_, i) => !ig.ignores(parts.slice(0, i + 1).join("/")));
 }
 
-/** What the Vercel build of app/ reads (project Root Directory `app`): the only things of app/ that may be uploaded. */
-const BUILD_INPUTS = ["src", "public", "drizzle", "package.json", "package-lock.json", "next.config.ts", "tsconfig.json", "vercel.json", "drizzle.config.ts"];
+/** What the Vercel build of app/ reads (project Root Directory `app`), the certificate's fonts included (phase 3d): the only things of app/ that may be uploaded. */
+const BUILD_INPUTS = ["src", "public", "assets", "drizzle", "package.json", "package-lock.json", "next.config.ts", "tsconfig.json", "vercel.json", "drizzle.config.ts"];
 
 describe("root .vercelignore (what a CLI deploy uploads)", () => {
   test("uploads what the build of app/ reads", () => {
     const sql = readdirSync(join(APP, "drizzle")).find((f) => f.endsWith(".sql"));
-    const wanted = [...BUILD_INPUTS.filter((p) => !["src", "public", "drizzle"].includes(p)), "src/middleware.ts", "src/instrumentation.ts", "public/feedback.js", `drizzle/${sql}`];
+    const wanted = [...BUILD_INPUTS.filter((p) => !["src", "public", "assets", "drizzle"].includes(p)), "src/middleware.ts", "src/instrumentation.ts", "public/feedback.js", "assets/fonts/Jost[wght].ttf", `drizzle/${sql}`];
     for (const p of wanted) expect(existsSync(join(APP, p)), `${p} exists`).toBe(true); // the list is not stale
     expect(wanted.filter((p) => !uploaded(FILE, `app/${p}`))).toEqual([]);
   });

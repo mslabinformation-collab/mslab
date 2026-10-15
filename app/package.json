@@ -18,9 +18,11 @@
     "visual": "playwright test -c playwright.visual.config.ts"
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "1.1.1",
     "aws4fetch": "^1.0.20",
     "drizzle-orm": "^0.45.3",
     "next": "16.3.8",
+    "pdf-lib": "1.17.1",
     "postgres": "^3.4.9",
     "react": "19.2.8",
     "react-dom": "19.2.8",

@@ -64,6 +64,13 @@
       "when": 1791902157382,
       "tag": "0008_ecourse_completion",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792070646137,
+      "tag": "0009_certificates",
+      "breakpoints": true
     }
   ]
 }
