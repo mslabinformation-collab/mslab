@@ -61,7 +61,8 @@ The planned drop of `courses.modules` moves to `0010` (code first, then the migr
 
 - A certificate issued in year Y (Tallinn date) takes:
   - `seq = nextSeq` when `nextYear == Y`;
-  - else `seq = 1`, so the series starts again each year.
+  - else `seq = 1`, so the series starts again each year;
+  - and never less than year Y's highest issued `seq` + 1. Without that, a saved setting for another year (a typo, next year preset in December, a page left open over New Year) or a lost setting row would restart Y at 1, and every later issue would collide with an issued number and fail (amended 15.10 after the Task 3 review).
   - The setting then becomes `{ nextYear: Y, nextSeq: seq + 1 }`.
 - `number = "MS LAB " + Y + "-" + pad2(seq)`; for example 2026-03, and 2026-123 once the sequence reaches three digits.
 - **No duplicate numbers.** The issue runs in one transaction. It locks the access row first, then takes a transaction-scoped advisory lock `certificate-number` before reading and writing the setting. The unique (`year`, `seq`) is the backstop: two certificates issued at the same moment get two numbers.
