@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
-  CERT_DEFAULTS, CERT_LIMITS, certificateFileName, certificateSkills, checkCertificateName, formatCertificateNumber, nextNumber, readCertificateSettings,
-  seqToIssue, tallinnDateText, tallinnYear,
+  CERT_DEFAULTS, CERT_LIMITS, certificateFileName, certificateSkills, checkCertificateName, formatCertificateNumber, nextNumber, outcomesTooLong,
+  readCertificateSettings, seqToIssue, tallinnDateText, tallinnYear,
 } from "@/domain/certificate";
 
 // The certificate's pure rules (phase 3d, spec §3–§5, §10 unit): the limits and the defaults, the stored setting read defensively, the name
@@ -165,7 +165,8 @@ describe("readCertificateSettings: the stored setting read defensively", () => {
   });
 
   test("each malformed text is its default: missing, not a string, blank, or over its limit", () => {
-    expect(readCertificateSettings({ place: "   ", registryCode: 16346048, trainerName: "x".repeat(61), practicalLine: "y".repeat(201) }, now)).toEqual(defaults);
+    // a registry code that is a number, not a string, and not the default's digits (else a read that took its digits would pass unseen)
+    expect(readCertificateSettings({ place: "   ", registryCode: 12345678, trainerName: "x".repeat(61), practicalLine: "y".repeat(201) }, now)).toEqual(defaults);
     expect(readCertificateSettings({ place: "x".repeat(60), trainerName: "x".repeat(60), registryCode: "1".repeat(20), practicalLine: "y".repeat(200) }, now)).toMatchObject({
       place: "x".repeat(60),
       trainerName: "x".repeat(60),
@@ -209,5 +210,16 @@ describe("certificateSkills: the course's lines (spec §3)", () => {
     const many = Array.from({ length: 20 }, (_, i) => `Oskus ${i + 1}`);
     expect(certificateSkills({ certificateSkills: many, outcomes })).toEqual(many.slice(0, 16));
     expect(certificateSkills({ certificateSkills: [], outcomes: many.map((et) => ({ et })) })).toEqual(many.slice(0, 16));
+  });
+
+  test("M-4 outcomesTooLong: no line of its own, and one of the outcomes it prints is over CERT_LIMITS.skill (120) characters as the PDF writes it", () => {
+    const fits = { et: "x".repeat(120) };
+    const long = { et: "x".repeat(121) };
+    expect(outcomesTooLong({ certificateSkills: [], outcomes: [fits, long] })).toBe(true);
+    expect(outcomesTooLong({ certificateSkills: ["  "], outcomes: [long] })).toBe(true); // a blank line is none
+    expect(outcomesTooLong({ certificateSkills: ["Oskus"], outcomes: [long] })).toBe(false); // its own lines are printed
+    expect(outcomesTooLong({ certificateSkills: [], outcomes: [fits, { et: ` ${"y".repeat(60)}\n\n${"y".repeat(59)} ` }] })).toBe(false); // on one line: 120
+    expect(outcomesTooLong({ certificateSkills: [], outcomes: [...Array.from({ length: 16 }, () => fits), long] })).toBe(false); // the 17th is not printed
+    expect(outcomesTooLong({ certificateSkills: [], outcomes: [] })).toBe(false);
   });
 });

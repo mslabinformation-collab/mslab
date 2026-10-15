@@ -6,7 +6,7 @@ import { certificateForAdmin, certificatePdf } from "@/server/certificates";
 import { logFailure } from "@/server/log";
 
 export const dynamic = "force-dynamic";
-// the PDF takes tens of milliseconds (spec §7): a hung database call ends after 30 s, not the default 300 s.
+// the PDF takes about a tenth of a second (spec §7): a hung database call ends after 30 s, not the default 300 s.
 // next.config.ts traces assets/fonts into this function (outputFileTracingIncludes, Task 1).
 export const maxDuration = 30;
 

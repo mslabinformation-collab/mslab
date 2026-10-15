@@ -8,7 +8,6 @@ import {
 } from "@/domain/certificate";
 import { PAGE_SIZE } from "@/domain/paging";
 import { toStorable } from "@/lib/to-storable";
-import { loadCertificateAssets, renderCertificate } from "./certificate-pdf";
 import { accessFor, lockAccess } from "./completion";
 
 // The e-course certificate (phase 3d, spec §3–§7), without Next.js: the issue (one per completed access, numbered in Maria's own series), the
@@ -24,9 +23,7 @@ import { accessFor, lockAccess } from "./completion";
 const SETTING_KEY = "certificate";
 /** The number series' transaction lock (hashtext of this): every write that reads and rewrites the setting holds it. */
 const NUMBER_LOCK = "certificate-number";
-/** "Järgmine number": a year Maria can mean, and a number below six digits. */
-const YEAR_MIN = 2000;
-const YEAR_MAX = 2099;
+/** "Järgmine number": a number below six digits (its year is this Tallinn year or the next: saveCertificateSettings). */
 const SEQ_MAX = 99_999;
 
 export type CertificateView = { id: number; number: string; name: string; issuedAt: string; reissuedAt: string | null };
@@ -41,9 +38,10 @@ export type IssueResult =
 export type RegisterRow = { id: number; number: string; name: string; course: string; issuedAt: Date; reissuedAt: Date | null; revoked: boolean; clientId: number };
 
 /**
- * Seaded's refusal of one field (saveCertificateSettings): "required" empty, "tooLong" over its CERT_LIMITS, "invalid" no year 2000–2099
- * or no number 1–99 999 (both under `nextSeq`), "taken" a number at or below one already issued in that year; on `trainerName` also the
- * name rules' "letters" and "length" (checkCertificateName: the trainer's name is the signature the script font writes).
+ * Seaded's refusal of one field (saveCertificateSettings): "required" empty, "tooLong" over its CERT_LIMITS, "invalid" a year that is not
+ * this Tallinn year or the next (`nextYear`) or no number 1–99 999 (`nextSeq`), "taken" a number at or below one already issued in that year;
+ * on `trainerName` also the name rules' "letters" and "length" (checkCertificateName: the trainer's name is the signature the script font
+ * writes).
  */
 export type CertificateFieldError = "required" | "tooLong" | "invalid" | "taken" | "letters" | "length";
 
@@ -209,13 +207,14 @@ function wholeNumber(value: unknown): number | null {
  * - The trainer's name is Maria's signature, written in the script font: it also passes the student's name rules (checkCertificateName:
  *   "letters" or "length" on `trainerName`) and is stored as they clean it, so the PDF never prints a letter the font lacks. No character
  *   outside the BMP is a letter, so none is ever saved in it.
- * - "Järgmine number" is a year 2000–2099 and a number 1–99 999.
+ * - "Järgmine number" is a year and a number 1–99 999. The year is the Tallinn year of `now` or the next one (a preset in December): an issue
+ *   never uses a past year's setting (seqToIssue), so Maria's number for one — a typo, a form left open over New Year — would be void.
  * - Under the number series' lock, a number at or below the highest one issued in that year is refused (`nextSeq: "taken"`). Two certificates
  *   must never share a number, and a student's issue between Maria's loading the page and her save moves the series on.
- * Field errors (CertificateFieldError) are keyed place, registryCode, practicalLine, trainerName and nextSeq (a bad year is reported under
- * nextSeq too); nothing is stored when there is one.
+ * Field errors (CertificateFieldError) are keyed place, registryCode, practicalLine, trainerName, nextYear and nextSeq; nothing is stored when
+ * there is one.
  */
-export async function saveCertificateSettings(db: Db, raw: unknown): Promise<SaveResult> {
+export async function saveCertificateSettings(db: Db, raw: unknown, now: Date): Promise<SaveResult> {
   const input = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const fields: Record<string, CertificateFieldError> = {};
   // the lengths are measured as readCertificateSettings measures them (a value saved here must never be dropped there): these three in UTF-16
@@ -239,7 +238,9 @@ export async function saveCertificateSettings(db: Db, raw: unknown): Promise<Sav
   }
   const nextYear = wholeNumber(input.nextYear);
   const nextSeq = wholeNumber(input.nextSeq);
-  if (nextYear === null || nextYear < YEAR_MIN || nextYear > YEAR_MAX || nextSeq === null || nextSeq < 1 || nextSeq > SEQ_MAX) fields.nextSeq = "invalid";
+  const year = tallinnYear(now);
+  if (nextYear !== year && nextYear !== year + 1) fields.nextYear = "invalid";
+  if (nextSeq === null || nextSeq < 1 || nextSeq > SEQ_MAX) fields.nextSeq = "invalid";
   // the null checks again, written out: the transaction's closure below sees both as numbers
   if (nextYear === null || nextSeq === null || Object.keys(fields).length > 0) return { ok: false, fields };
   return db.transaction(async (t): Promise<SaveResult> => {
@@ -304,8 +305,11 @@ export async function certificateCard(db: Db, now: Date): Promise<{ settings: Ce
  * The PDF of a certificate row, rendered on each download (spec §7). It uses the row's frozen copy, and from Seaded as it is now the trainer's
  * name, which the renderer writes in the script font as Maria's signature (one the font cannot draw reads as "Maria Sosnina":
  * readCertificateSettings). The fonts come from assets/fonts (certificate-pdf.ts loadCertificateAssets); no store, no image. Nothing is stored.
+ * certificate-pdf.ts (pdf-lib and its fontkit) is imported here, when a certificate is rendered: this module comes with every account API
+ * request, the payment routes and the admin pages, which then never load the PDF stack at a cold start.
  */
 export async function certificatePdf(db: Db, cert: Certificate, now: Date): Promise<Uint8Array> {
+  const { loadCertificateAssets, renderCertificate } = await import("./certificate-pdf");
   const [settings, assets] = await Promise.all([getCertificateSettings(db, now), loadCertificateAssets()]);
   return renderCertificate(
     {

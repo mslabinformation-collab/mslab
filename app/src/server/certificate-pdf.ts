@@ -76,12 +76,12 @@ const TITLE = { size: 18, twoLineSize: 14, spacing: 0.35, width: 662, baseline: 
  */
 const NAME = { size: 88, shrinkTo: 44, width: 540, baseline: 331, leading: 1.1, inkFloor: 303 } as const;
 const RULE = { y: 316, halfWidth: PAGE.width * 0.35, thickness: 0.75 } as const;
-/** The competency lines: two columns of "● line", the left one filled first; 9.5 pt, 8.5 pt above 12 lines, smaller still if they would reach the practical line. */
+/** The competency lines: two columns of lines, each after a drawn bullet (BULLET), the left one filled first; 9.5 pt, 8.5 pt above 12 lines, smaller still if they would reach the practical line. */
 const SKILLS = { size: 9.5, manySize: 8.5, many: 12, minSize: 5, spacing: 0.05, leading: 1.6, top: 290, bottom: 172, left: 96, width: 650, gap: 26 } as const;
 /**
  * A competency bullet is a filled white circle, as on Maria's certificate (Jost's "•" is a 1 pt dot set high): `diameter` em across (2.6 pt at
  * 9.5 pt), its left edge at the column's x and its centre `centre` em over the baseline, the middle of the lowercase letters (0.46 em high).
- * The text starts 1.2 em after the column's x, as it did after the glyph.
+ * The text starts 1.2 em after the column's x.
  */
 const BULLET = { diameter: 0.275, centre: 0.25 } as const;
 /** The practical line at the left and the volume at the right, capitals, 8 pt on one baseline; a long practical line shrinks to 6.5 pt, then takes two lines. */

@@ -16,7 +16,8 @@ import { expect, submitsForms, test } from "./test";
 // confirms her name on the course page (an emoji and a Cyrillic name refused first: Review Focus 2, Latin letters as in the passport) and
 // downloads the PDF (`%PDF`, its file name); Maria's drawer shows it with her download, "Paranda nimi" re-issues it under the same number, the
 // register lists it; the ended access's dashboard card links it, and once the access is revoked her link goes and her download is 404 while
-// Maria's drawer keeps it, marked (Review Focus 5). Seaded → "Tunnistus": the trainer's name is the signature (no picture to upload), and one
+// Maria's drawer keeps it, marked (Review Focus 5). A student whose access ended before she confirmed her name gets it from her dashboard
+// card's own form (final review I-1). Seaded → "Tunnistus": the trainer's name is the signature (no picture to upload), and one
 // in Cyrillic is refused on its field with nothing stored. And the screens at 390, 834, 1194 and 1440 px. Every student is a sample address
 // (`e2e-client-cert-…@example.test`, never mailed) on an e-course of the test's own; all of it is removed after each test. Under `next dev`
 // and the production build (E2E_PROD_BUILD=1); Maria signs in as Dim (admin-login.ts). The number series and Seaded's setting are the whole
@@ -214,6 +215,32 @@ test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoj
   await expect(line.locator("[data-certificate-revoked]")).toHaveText("ligipääs tühistatud");
   await expect(line.locator("[data-reissue]")).toHaveCount(0);
   expect((await page.request.get(`/api/admin/tunnistus/${stored.id}`)).status()).toBe(200);
+  await her.close();
+});
+
+test("I-1: completed, then her access ended before she confirmed her name: the dashboard card has the name form, issues, and then links the PDF", async ({ browser, visitorIp }, info) => {
+  info.setTimeout(180_000 + LOCK_WAIT_MS); // the number series may be held by another test
+  const s = await student("ended", info);
+  await onAccess(s.accessId, "ended");
+  const her = await studentPage(browser, s.email, visitorIp); // she lands on her dashboard
+  const form = her.page.locator("[data-card-certificate-form]");
+  await expect(form.locator("[data-certificate-name]")).toHaveValue("Kati Kask");
+  await expect(her.page.locator("[data-card-certificate]")).toHaveCount(0);
+  let stored!: StoredCertificate;
+  const unlock = await holdLocalLock(NUMBER_LOCK);
+  try {
+    await form.locator("[data-certificate-issue]").click();
+    await expect(her.page.locator("[data-card-certificate]")).toBeVisible({ timeout: 30_000 });
+    stored = (await storedCertificate(s.accessId))!;
+  } finally {
+    await unlock();
+  }
+  expect(stored).toMatchObject({ name: "Kati Kask", courseTitle: "E2E lõpetamine", reissuedAt: null });
+  await expect(form).toHaveCount(0);
+  await expect(her.page.locator("[data-card-certificate]")).toHaveAttribute("href", `/api/konto/tunnistus/${stored.id}`);
+  expect(await noOverflow(her.page)).toBe(true);
+  const pdf = await her.page.request.get(`/api/konto/tunnistus/${stored.id}`);
+  expect([pdf.status(), pdfHead(await pdf.body())]).toEqual([200, "%PDF-"]);
   await her.close();
 });
 

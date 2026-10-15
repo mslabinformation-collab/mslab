@@ -182,8 +182,9 @@
   }
 
   /* its label wraps on a 360 px phone ("Открыть практическую работу" and the arrow) instead of running off it; two classes outweigh ui.btn's
-     nowrap whichever stylesheet comes first */
-  .step .main {
+     nowrap whichever stylesheet comes first. The name form's button too, also on an ended access's course card (CertificateForm.tsx). */
+  .step .main,
+  .certificate .main {
     white-space: normal;
     text-align: center;
   }

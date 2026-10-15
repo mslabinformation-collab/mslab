@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { certificates, clients, clientSessions, courseAccess, courseModules, courses, lessonProgress, lessons } from "@/db/schema";
 import { handleAccountApi, sessionCookies, type AccountDeps } from "@/server/account-api";
-import { issueCertificate } from "@/server/certificates";
+import { certificatePdf, issueCertificate } from "@/server/certificates";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
 import { loadDashboard, loadEcourse } from "@/server/client-data";
 import { newToken, sha256 } from "@/server/token";
@@ -16,7 +16,13 @@ import { makeTestDb } from "./helpers";
 // - GET /tunnistus/<id> answers with the PDF as a download named by its number: hers only, also after her access has ended, never once it
 //   is revoked (Review Focus 5);
 // - the e-course page's data and the dashboard card carry it.
-// The issue's own rules are server/certificates.ts's (tests/db/certificates.test.ts).
+// The issue's own rules are server/certificates.ts's (tests/db/certificates.test.ts). The PDF is the real one, wrapped so a test can make one
+// render fail.
+
+vi.mock("@/server/certificates", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/server/certificates")>();
+  return { ...real, certificatePdf: vi.fn(real.certificatePdf) };
+});
 
 const NOW = new Date("2026-10-20T10:00:00Z");
 const DAY = 86_400_000;
@@ -134,6 +140,18 @@ describe("POST /kursus/:slug/tunnistus", () => {
     expect(await db.select().from(certificates)).toEqual([]);
   });
 
+  test("I-1: completed, and her access has ended since: the route issues it (the dashboard card's form posts here), and the card then has its id", async () => {
+    const w = await world({ expiresAt: new Date(NOW.getTime() - DAY), completedAt: new Date(NOW.getTime() - 2 * DAY) });
+    expect(await loadEcourse(db, w.kati.id, "veebikursus", NOW)).toBeNull(); // the course page is closed to her
+    const card = async () => (await loadDashboard(db, w.kati.id, NOW))!.cards.find((c) => c.kind === "ecourse");
+    expect(await card()).toMatchObject({ revoked: false, completedAt: new Date(NOW.getTime() - 2 * DAY).toISOString(), certificateId: null });
+    const res = await call(w.kati.cookie, "POST", ISSUE, { name: "Kati Kask" });
+    const body = (await res.json()) as { ok: boolean; certificate: { id: number; number: string } };
+    expect([res.status, body.ok, body.certificate.number]).toEqual([200, true, "MS LAB 2026-01"]);
+    expect(await card()).toMatchObject({ certificateId: body.certificate.id });
+    expect((await call(w.kati.cookie, "GET", `/tunnistus/${body.certificate.id}`)).status).toBe(200);
+  });
+
   test("10 an hour per student; the 11th is 429 before anything is made", async () => {
     const w = await world();
     for (let i = 0; i < 10; i++) expect((await call(w.kati.cookie, "POST", ISSUE, { name: "Kati 2" })).status, `try ${i + 1}`).toBe(400);
@@ -166,6 +184,30 @@ describe("GET /tunnistus/:id", () => {
     for (let i = 0; i < 10; i++) expect((await call(w.kati.cookie, "GET", `/tunnistus/${id}`)).status, `download ${i + 1}`).toBe(200);
     const res = await call(w.kati.cookie, "GET", `/tunnistus/${id}`);
     expect([res.status, await res.json()]).toEqual([429, { ok: false, error: "rate" }]);
+  });
+
+  test("M-9: a 404 counts against her 10 an hour too, so ids cannot be probed: after 10 unknown ids her own certificate is 429", async () => {
+    const w = await world();
+    const id = await issue(w.kati.cookie);
+    for (let i = 1; i <= 10; i++) expect((await call(w.kati.cookie, "GET", `/tunnistus/${id + i}`)).status, `probe ${i}`).toBe(404);
+    const res = await call(w.kati.cookie, "GET", `/tunnistus/${id}`);
+    expect([res.status, await res.json()]).toEqual([429, { ok: false, error: "rate" }]);
+    expect(vi.mocked(certificatePdf)).not.toHaveBeenCalled(); // nothing was rendered
+  });
+
+  test("M-9: a render that fails answers 500 JSON { ok: false, error: 'server' }, private, with no PDF; the log has the certificate's id and the error's class only, never a name or the message", async () => {
+    const w = await world();
+    const id = await issue(w.kati.cookie);
+    vi.mocked(console.error).mockClear();
+    vi.mocked(certificatePdf).mockRejectedValueOnce(new TypeError("boom: Kati Kask, Veebikursus, kati@example.test"));
+    const res = await call(w.kati.cookie, "GET", `/tunnistus/${id}`);
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("content-disposition")).toBeNull();
+    expect(await res.json()).toEqual({ ok: false, error: "server" });
+    expect(vi.mocked(console.error).mock.calls.map((c) => c.join(" "))).toEqual([`[certificate] ${id}: the student's download failed: TypeError`]);
+    expect((await call(w.kati.cookie, "GET", `/tunnistus/${id}`)).status).toBe(200); // the next try renders
   });
 
   test("Review Focus 5: revoked after the certificate was made: her download is 404 and her card loses the link; another student's or an unknown id is 404 too", async () => {

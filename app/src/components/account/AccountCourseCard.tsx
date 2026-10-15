@@ -14,6 +14,8 @@ import { href } from "@/i18n/href";
 import type { Locale } from "@/i18n/locales";
 import { isDone, sendJson } from "@/lib/json-request";
 import { navigate } from "@/lib/navigate";
+import type { CertificateView } from "@/server/certificates";
+import { CertificateForm } from "./CertificateForm";
 import { NextStepLine } from "./NextStepLine";
 import { PrepaymentInfo } from "./PrepaymentInfo";
 import { ProgressBar } from "./ProgressBar";
@@ -40,6 +42,8 @@ export type CardProps = {
    * the page (CoursesView's quiet reload). Answers whether the server answered the new load; absent (the admin's view): nothing to load.
    */
   onStale?(card: ContactCard): Promise<boolean>;
+  /** Her account's name (the dashboard's client.name): the first value of an ended access's "Nimi tunnistusel", as on the e-course page. */
+  certificateName?: string;
 };
 
 /** A ref that focuses its element once, when it appears (stable, so a later render does not focus it again). */
@@ -73,12 +77,16 @@ function onlineDue(card: AccountCard, now: Date): Due {
  * An open e-course with lessons shows '{done} / {total}' with the e-course page's bar, or 'Läbitud ✓' (phase 2c).
  * A completed e-course says 'Lõpetatud {date}' (e-course completion), also after its access has ended.
  * An ended e-course with a certificate links its PDF, "Laadi tunnistus alla" (phase 3d), a quiet text link: the course page has closed.
+ * An ended e-course completed without one yet has the e-course page's name form instead (CertificateForm: `certificateName` to start with),
+ * as that page needs an active access; once it is made, the link takes its place and the focus.
  * `readOnly`: the buttons are there but aria-disabled, and do nothing.
  */
-export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale }: CardProps) {
+export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale, certificateName = "" }: CardProps) {
   const step = nextStep(card, now, pay, locale, payOnline);
   const [open, setOpen] = useState(false);
   const [paying, setPaying] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  // the certificate made on this card (an ended access's name form)
+  const [made, setMade] = useState<CertificateView | null>(null);
   const titleId = useId();
   const panelId = useId();
   const when = cardWhen(card, locale);
@@ -220,15 +228,18 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
 
   // "Laadi tunnistus alla" (phase 3d, spec §5): an ended access's way back to its certificate, since the e-course page needs an active access.
   // A revoked access has none (certificateId is null). A plain link: the API answers with the PDF as a download, named by its number.
-  const certificateId = card.kind === "ecourse" && !card.revoked && isPastCard(card, now) ? (card.certificateId ?? null) : null;
+  // Completed without one yet (certificateId null, as loadDashboard says it): the name form, whose certificate the link then gives.
+  const ended = card.kind === "ecourse" && !card.revoked && isPastCard(card, now) ? card : null;
+  const certificateId = ended ? (made?.id ?? ended.certificateId ?? null) : null;
+  const toConfirm = ended !== null && made === null && Boolean(ended.completedAt) && ended.certificateId === null ? ended : null;
   if (certificateId !== null) {
     const link = readOnly ? (
       <a className={styles.second} role="link" aria-disabled="true" data-card-certificate="">
-        {t.certificate}
+        {t.certificate.cardLink}
       </a>
     ) : (
-      <a className={styles.second} href={`/api/konto/tunnistus/${certificateId}`} download data-card-certificate="">
-        {t.certificate}
+      <a ref={made ? focusOnMount : undefined} className={styles.second} href={`/api/konto/tunnistus/${certificateId}`} download data-card-certificate="">
+        {t.certificate.cardLink}
       </a>
     );
     second = (
@@ -280,6 +291,11 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
           <Icon name="check" size={18} />
           {fill(t.completed, { date: formatDate(new Date(completedAt), locale) })}
         </p>
+      )}
+      {toConfirm && (
+        <div className={styles.certificate} data-card-certificate-form="">
+          <CertificateForm slug={toConfirm.course.slug} startName={certificateName} t={t.certificate} readOnly={readOnly} quiet={false} onIssued={setMade} />
+        </div>
       )}
       {button && <div className={styles.foot}>{button}</div>}
       {paying.error && (

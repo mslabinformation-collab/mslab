@@ -108,8 +108,30 @@ describe("ReissueCertificate", () => {
     action.mockResolvedValueOnce({ kind: "invalid", error: "length" });
     await type(field(), "K");
     await submit();
-    expect($("[data-reissue-error]")!.textContent).toBe("Nimi peab olema 2–80 tähemärki pikk");
+    expect($("[data-reissue-error]")!.textContent).toBe("Nimi peab olema 2–80 tähemärki pikk.");
     expect($("[data-reissue-done]")!.textContent).toBe("");
+  });
+
+  test("M-8: the same refused name sent twice: the alert goes while the second is on its way and comes back, a new one, so it is announced again", async () => {
+    let answer!: (result: unknown) => void;
+    action.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    await show();
+    await click($("[data-reissue]"));
+    await type(field(), "Kati 2");
+    await act(async () => $<HTMLFormElement>("[data-reissue-form]")!.requestSubmit());
+    await act(async () => answer({ kind: "invalid", error: "letters" }));
+    await settle();
+    const first = $("[data-reissue-error]")!;
+    expect([first.textContent, first.getAttribute("role")]).toEqual(["Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).", "alert"]);
+    await act(async () => $<HTMLFormElement>("[data-reissue-form]")!.requestSubmit());
+    expect($("[data-reissue-error]")).toBeNull(); // emptied by the press
+    expect(field().hasAttribute("aria-invalid")).toBe(false);
+    await act(async () => answer({ kind: "invalid", error: "letters" }));
+    await settle();
+    const second = $("[data-reissue-error]")!;
+    expect([second.textContent, second.getAttribute("role")]).toEqual([first.textContent, "alert"]);
+    expect(second).not.toBe(first); // a new alert: a screen reader reads it again
+    expect(document.activeElement).toBe(field());
   });
 
   test("a certificate gone meanwhile, or a failure, says so; the form stays open", async () => {

@@ -693,12 +693,13 @@ export const adminEt = {
       saved: "Tunnistuse andmed on salvestatud.",
       invalid: "Kontrolli märgitud välju.",
       error: "Salvestamine ei õnnestunud. Proovi uuesti.",
-      // server/certificates.ts CertificateFieldError (a bad year is reported on the number, "invalid"; `letters` and `length` are the name
-      // rules' refusals of the trainer's name); `other` for a code this list does not know
+      // server/certificates.ts CertificateFieldError (`letters` and `length` are the name rules' refusals of the trainer's name); `other` for a
+      // code this list does not know. "invalid" on the year (not this Tallinn year or the next) has its own words, `year`; on the number, `invalid`
       errors: {
         required: "Täida see väli.",
         tooLong: "Tekst on liiga pikk.",
-        invalid: "Kontrolli aastat (2000–2099) ja numbrit (1–99 999).",
+        invalid: "Kontrolli numbrit (1–99 999).",
+        year: "Aasta peab olema käesolev või järgmine.",
         taken: "See number on juba väljastatud. Vali suurem number kui viimati väljastatud.",
         letters: "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).",
         length: "Nimi on liiga lühike.",
@@ -724,7 +725,7 @@ export const adminEt = {
       cancel: "Katkesta",
       done: "Tunnistus {number} on uuesti väljastatud nimega {name}.",
       errors: {
-        length: "Nimi peab olema 2–80 tähemärki pikk",
+        length: "Nimi peab olema 2–80 tähemärki pikk.",
         letters: "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).",
         notFound: "Seda tunnistust ei leitud. Laadi leht uuesti.",
       },
@@ -922,8 +923,10 @@ export const adminEt = {
       certificateLead: "E-kursuse tunnistuse tekst. Juba väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
       certificateSkills: "Oskused tunnistusel",
       certificateSkill: "Rida",
-      certificateSkillsHint: "Tühjana kasutatakse „Mida õpid“ ridu",
+      certificateSkillsHint: "Tühjana kasutatakse „Õpiväljundid“ ridu",
       certificateSkillsEmpty: "Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read.",
+      // no line of its own, and an outcome the certificate would print is over 120 characters (domain/certificate.ts outcomesTooLong)
+      certificateSkillsLong: "Tunnistusele lähevad õpiväljundid. Mõni neist on üle 120 tähemärgi ega mahu tunnistusele: lisa siia lühemad read.",
       certificateSkillsAdd: "Lisa rida",
       certificateSkillsFull: "Rohkem kui 16 rida ei saa lisada.",
       certificateVolume: "Maht",

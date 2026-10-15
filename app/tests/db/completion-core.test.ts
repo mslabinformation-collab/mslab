@@ -318,9 +318,9 @@ describe("the lesson paths complete a course (spec §4.4)", () => {
 });
 
 describe("the 'completed' mail (spec §6)", () => {
-  test("completionJob: her address, name and language and the course; hasPoints from the protocol's copy once there is one", async () => {
+  test("completionJob: her address, name and language and the course; hasPoints from the protocol's copy once there is one; whether the access is active at `now`", async () => {
     const w = await world({ locale: "ru", points: ["Kulmude kuju"] });
-    expect(await completionJob(db, w.access.id)).toEqual({
+    expect(await completionJob(db, w.access.id, NOW)).toEqual({
       accessId: w.access.id,
       email: "kati@example.com",
       name: "Kati Kask",
@@ -328,15 +328,30 @@ describe("the 'completed' mail (spec §6)", () => {
       slug: "e-kulm",
       course: { et: "Kulmude e-koolitus", ru: "Онлайн-курс бровей" },
       hasPoints: true,
+      active: true,
     });
     await db.insert(protocols).values({ accessId: w.access.id, stages: [] });
-    expect((await completionJob(db, w.access.id))!.hasPoints).toBe(false);
-    expect(await completionJob(db, 999_999)).toBeNull();
+    expect((await completionJob(db, w.access.id, NOW))!.hasPoints).toBe(false);
+    expect(await completionJob(db, 999_999, NOW)).toBeNull();
+    // ended at `now` (expires_at > now is active, as everywhere), or revoked: not active
+    expect((await completionJob(db, w.access.id, new Date(NOW.getTime() + 180 * DAY)))!.active).toBe(false);
+    await db.update(courseAccess).set({ revokedAt: NOW }).where(eq(courseAccess.id, w.access.id));
+    expect((await completionJob(db, w.access.id, NOW))!.active).toBe(false);
+  });
+
+  test("I-1: mailCompletion of an access that is not active: the certificate's line goes to the dashboard, an active one's to the course page", async () => {
+    const w = await world({ points: ["Kulmude kuju"], access: { expiresAt: new Date(NOW.getTime() - DAY) } });
+    await mailCompletion(env(), SITE, (await completionJob(db, w.access.id, NOW))!, "completed");
+    await db.update(courseAccess).set({ expiresAt: new Date(NOW.getTime() + DAY) }).where(eq(courseAccess.id, w.access.id));
+    await mailCompletion(env(), SITE, (await completionJob(db, w.access.id, NOW))!, "completed");
+    const [ended, active] = mails();
+    expect(ended.text).toContain(`Kinnita oma nimi ja laadi tunnistus alla:\n${SITE}/konto\n`);
+    expect(active.text).toContain(`Kinnita oma nimi ja laadi tunnistus alla:\n${SITE}/konto/kursus/e-kulm\n`);
   });
 
   test("mailCompletion: in her language, linking the practical page of a course with points; never to a sample address, nothing without Resend", async () => {
     const w = await world({ locale: "ru", points: ["Kulmude kuju"] });
-    const job = (await completionJob(db, w.access.id))!;
+    const job = (await completionJob(db, w.access.id, NOW))!;
     await mailCompletion(env(), SITE, job, "completed");
     const [mail] = mails();
     expect(mail.to).toBe("kati@example.com");

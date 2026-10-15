@@ -218,7 +218,7 @@ export async function submitAttempt(deps: TestDeps, clientId: number, slug: stri
       .returning();
     const completed = status === "passed" && (await completeIfDone(t, access.id, deps.now));
     const view = await buildView(t, access, setup, deps.now);
-    const job = await completionJob(t, access.id);
+    const job = await completionJob(t, access.id, deps.now);
     const after: Task[] = [];
     if (job) {
       const label = `[test] attempt ${row.id}`;
@@ -265,7 +265,7 @@ export async function resubmitAnswers(deps: TestDeps, clientId: number, slug: st
     if (questions.some((q) => !open.has(q.id) && !sameAnswer(attempt.answers[q.id], answers.answers[q.id]))) return stop({ kind: "changed" });
     await tx.update(testAttempts).set({ answers: answers.answers, status: "review", submittedAt: deps.now }).where(eq(testAttempts.id, attempt.id));
     const view = await buildView(t, access, setup, deps.now);
-    const job = await completionJob(t, access.id);
+    const job = await completionJob(t, access.id, deps.now);
     const after: Task[] = job
       ? [() => notify(deps, `[test] attempt ${attempt.id}`, testReviewSummary({ ...noticeOf(job), attemptId: attempt.id, number: attempt.number }, adminUrl(deps.siteUrl)), job.email)]
       : [];
@@ -308,7 +308,7 @@ export async function reviewAttempt(deps: TestDeps, adminEmail: string, attemptI
     const status = reviewStatus(review.review);
     await tx.update(testAttempts).set({ review: review.review, status, reviewedAt: deps.now, reviewedBy: adminEmail }).where(eq(testAttempts.id, attemptId));
     const completed = status === "passed" && (await completeIfDone(t, access.id, deps.now));
-    const job = await completionJob(t, access.id);
+    const job = await completionJob(t, access.id, deps.now);
     const active = isActive(access, deps.now); // an ended access: no mail sends her to a page she can only read
     const kind: CompletionMailKind | null = completed ? "completed" : !active ? null : status === "fix" ? "testFix" : job?.hasPoints ? "testPassed" : null;
     return { result: { kind: "reviewed", status, completed }, after: job && kind ? [() => mailCompletion(deps.env, deps.siteUrl, job, kind)] : [] };
@@ -340,7 +340,7 @@ export async function reopenTest(deps: TestDeps, adminEmail: string, accessId: n
     // the new allowance is setup.tries + extraTries: at least the attempts made (rows.length) plus the course's tries
     const extraTries = Math.max(access.extraTries + setup.tries, rows.length);
     await tx.update(courseAccess).set({ extraTries }).where(eq(courseAccess.id, accessId));
-    const job = await completionJob(t, accessId);
+    const job = await completionJob(t, accessId, deps.now);
     return {
       result: { kind: "reopened", triesLeft: Math.max(0, triesAllowed(setup.tries, extraTries) - rows.length) },
       // an ended access: the tries wait for an extension, and no mail invites her to a test she cannot take now

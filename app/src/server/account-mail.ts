@@ -587,6 +587,9 @@ export function protocolMail(input: ProtocolMailInput): Mail {
 
 // ---------- the e-course completion's mails (phase e-course completion, spec §6) ----------
 
+/** The account's dashboard, "Minu koolitused": /konto. */
+export const dashboardUrl = (siteUrl: string, locale: Locale): string => `${siteUrl.replace(/\/+$/, "")}${href(locale, "/konto")}`;
+
 /** The e-course's page in the account: /konto/kursus/<slug> (the course in the path: an account page never has a query). */
 export const ecourseUrl = (siteUrl: string, locale: Locale, slug: string): string =>
   `${siteUrl.replace(/\/+$/, "")}${href(locale, `/konto/kursus/${encodeURIComponent(slug)}`)}`;
@@ -619,6 +622,11 @@ export type CompletionMailInput = {
   fixCount?: number;
   /** "completed": the course has practical points, so the button opens the practical work (all "Kinnitatud"); else the e-course's page. */
   hasPoints?: boolean;
+  /**
+   * "completed": the access is active as the mail is built (absent: it is). One that is not (it ended before Maria's last approval) sends the
+   * certificate's line to the dashboard, whose card has the name form, as the e-course's page needs an active access.
+   */
+  accessActive?: boolean;
 };
 
 /**
@@ -628,8 +636,10 @@ export type CompletionMailInput = {
  * - assessed, protocol, protocolAgain and testPassed: the practical work;
  * - testFix and reopened: the test;
  * - completed: the practical work of a course with points, else the e-course's page.
- * "completed" adds one line under the button (phase 3d, spec §5): "Kinnita oma nimi ja laadi tunnistus alla:" with the e-course's page, where
- * its "Tunnistus" row is. It is a text link, so the mail keeps its one button, and never an attachment. Plain text and HTML; the caller never
+ * "completed" adds one line (phase 3d, spec §5): "Kinnita oma nimi ja laadi tunnistus alla:" with the page where she does it — the e-course's
+ * page, with its "Tunnistus" row, or the dashboard when the access is no longer active (`accessActive` false: its card has the form). Under
+ * the button as a text link of its own, so the mail keeps its one button; when it is the button's own page (a course without points, an
+ * active access), above the button instead, and the address is written once. Never an attachment. Plain text and HTML; the caller never
  * sends it to a sample address.
  */
 export function completionMail(input: CompletionMailInput): Mail {
@@ -657,23 +667,27 @@ export function completionMail(input: CompletionMailInput): Mail {
   const { subject, lead, button, link } = parts[input.kind];
   const greeting = hello(dict.account.dashboard, input.name);
   const lines = input.kind === "assessed" && input.fixCount ? [fill(m.fixCount, { n: input.fixCount })] : [];
-  // the certificate (phase 3d): her name to confirm and the PDF to download, on the e-course's page
-  const certificate = input.kind === "completed" ? ecourseUrl(input.siteUrl, input.locale, input.slug) : null;
+  // the certificate (phase 3d): her name to confirm and the PDF to download, on the e-course's page, or on the dashboard's card once the
+  // access is not active; the button's own page (a course without points) gets the line above the button and its address once
+  const certificate =
+    input.kind !== "completed" ? null : input.accessActive === false ? dashboardUrl(input.siteUrl, input.locale) : ecourseUrl(input.siteUrl, input.locale, input.slug);
+  const sameLink = certificate === link;
   const text = [
     greeting, "",
     lead, "",
     title, ...lines, "",
-    `${button}:`, link,
-    ...(certificate ? ["", m.completedCertificate, certificate] : []),
+    ...(sameLink ? [m.completedCertificate, link] : [`${button}:`, link]),
+    ...(certificate && !sameLink ? ["", m.completedCertificate, certificate] : []),
     "", mail.signature,
   ].join("\n");
   const html = mailCard(subject, input.locale, [
     greetingRow(greeting),
     paragraphRow(lead),
     boxRow(`<div style="font:600 18px/1.4 ${FONT};color:${INK};">${esc(title)}</div>` + lines.map((line) => `<div>${esc(line)}</div>`).join(""), 12),
+    ...(sameLink ? [paragraphRow(m.completedCertificate)] : []),
     buttonRow(link, button),
     linkRow(link),
-    ...(certificate
+    ...(certificate && !sameLink
       ? [
           row(
             `padding:20px 28px 0;${textStyle(14)}`,

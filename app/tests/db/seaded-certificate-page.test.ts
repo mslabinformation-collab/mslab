@@ -177,5 +177,5 @@ test.each(CASES)("what the card shows is accepted by its own save: $name", async
   await seed(setting, issued);
   const read = await certificateCard(db, new Date(now));
   expect([read.settings.nextYear, read.settings.nextSeq]).toEqual(card);
-  expect(await saveCertificateSettings(db, { ...CERT_DEFAULTS, nextYear: card[0], nextSeq: card[1] })).toMatchObject({ ok: true });
+  expect(await saveCertificateSettings(db, { ...CERT_DEFAULTS, nextYear: card[0], nextSeq: card[1] }, new Date(now))).toMatchObject({ ok: true });
 });

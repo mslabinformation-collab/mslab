@@ -49,8 +49,8 @@ const toneClass = (tone: Line["tone"]) => (tone === "error" ? ui.error : tone ==
  * (owner, 15.10: no picture) — and "Järgmine number" (year and number), with the number last issued in that year beside it. A form
  * of its own after the settings' form, with its own "Salvesta tunnistuse andmed" (a secondary button: the page's primary one is the
  * settings' save bar); a refused field is marked in words and the first one takes the focus (Review Focus 4: a next number at or below one
- * already issued is "taken"; a trainer's name the name rules refuse is "letters" or "length"). The card keeps its own state; the page is not
- * refreshed.
+ * already issued is "taken"; a trainer's name the name rules refuse is "letters" or "length"; a year that is not this one or the next is
+ * "invalid" on the year, in its own words). The card keeps its own state; the page is not refreshed.
  */
 export function CertificateSettings({ initial }: { initial: CertificateSettingsInitial }) {
   const t = adminEt.certificates.settings;
@@ -73,6 +73,8 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
   const errorOf = (name: Field): string | undefined => {
     const code = fields[name];
     if (code === undefined) return undefined;
+    // a year that is not this one or the next (M-5) has its own words; the number's "invalid" is about the number
+    if (name === "nextYear" && code === "invalid") return t.errors.year;
     // Task 3's codes (CertificateFieldError) have their own words; anything else the general line
     const known: Record<CertificateFieldError, string> & Record<string, string | undefined> = t.errors;
     return known[code] ?? t.errors.other;

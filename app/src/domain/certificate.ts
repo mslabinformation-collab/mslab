@@ -83,8 +83,8 @@ const JOINERS = " -'’.";
 
 /**
  * The name on the certificate (spec §5): NFC, trimmed, every run of white space one space; 2–80 characters ("length"); then only letters
- * (LETTER) and joiners, with at least two letters ("letters": "Kasuta nimes ainult tähti, tühikuid ja sidekriipse"). A digit, an emoji, a
- * Cyrillic letter or any letter the font lacks is refused before anything is stored.
+ * (LETTER) and joiners, with at least two letters ("letters": the name in Latin letters as in the passport, account.certificate.letters). A
+ * digit, an emoji, a Cyrillic letter or any letter the font lacks is refused before anything is stored.
  */
 export function checkCertificateName(raw: string): { ok: true; name: string } | { ok: false; error: "length" | "letters" } {
   const name = raw.normalize("NFC").replace(/\s+/g, " ").trim();
@@ -133,8 +133,9 @@ export function nextNumber(s: { nextYear: number; nextSeq: number }, year: numbe
  * The number an issue in `year` really takes (spec §4 as amended) and the setting after it: nextNumber's, but never at or below `top`, the
  * highest seq already issued in that year (0 for none), so the issue takes the larger of the two. Seaded's number ahead of the series (Maria's
  * jump) is kept; one behind it (the default 1 of a deleted row, a number set long ago), or for another year, cannot make the unique
- * (year, seq) refuse every later issue. This is the one rule: the issue, Seaded's save (its "taken" check reads the same `top`) and Seaded's card
- * (the number it shows) all call it, so they cannot disagree.
+ * (year, seq) refuse every later issue. This is the one rule: the issue and Seaded's card (the number it shows) call it, so they cannot
+ * disagree. Seaded's save does not call it; its "taken" check reads the same `top` (server/certificates.ts highestSeq), so a number it accepts
+ * is one this rule keeps.
  */
 export function seqToIssue(s: { nextYear: number; nextSeq: number }, year: number, top: number): { year: number; seq: number; next: { nextYear: number; nextSeq: number } } {
   const seq = Math.max(nextNumber(s, year).seq, top + 1);
@@ -152,4 +153,14 @@ export function certificateSkills(course: { certificateSkills: readonly string[]
   const own = course.certificateSkills.map(oneLine).filter(Boolean);
   const lines = own.length ? own : course.outcomes.map((o) => oneLine(o?.et)).filter(Boolean);
   return lines.slice(0, CERT_LIMITS.skills);
+}
+
+/**
+ * The course has no certificate line of its own, so its certificate prints its outcomes (certificateSkills), and one of those printed is
+ * longer than a certificate line may be (CERT_LIMITS.skill): the competency block would run into the practical line and the logo. The course
+ * editor's "Tunnistus" card warns Maria (final review M-4); nothing is cut.
+ */
+export function outcomesTooLong(course: { certificateSkills: readonly string[]; outcomes: readonly { et: string }[] }): boolean {
+  if (course.certificateSkills.some((s) => oneLine(s))) return false;
+  return certificateSkills(course).some((line) => line.length > CERT_LIMITS.skill);
 }

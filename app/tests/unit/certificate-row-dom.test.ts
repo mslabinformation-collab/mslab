@@ -159,7 +159,7 @@ describe("the 'Tunnistus' row", () => {
     expect(errorText()).toBe("Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).");
     await type("A".repeat(81));
     await press();
-    expect(errorText()).toBe("Nimi peab olema 2–80 tähemärki pikk");
+    expect(errorText()).toBe("Nimi peab olema 2–80 tähemärki pikk.");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -198,7 +198,7 @@ describe("the 'Tunnistus' row", () => {
     expect($("[data-certificate-number]")!.textContent).toBe("Tunnistus nr. MS LAB 2026-03");
     const cases: [() => Promise<Response>, string][] = [
       [async () => json(400, { ok: false, error: "name", reason: "letters" }), "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma)."],
-      [async () => json(400, { ok: false, error: "name", reason: "length" }), "Nimi peab olema 2–80 tähemärki pikk"],
+      [async () => json(400, { ok: false, error: "name", reason: "length" }), "Nimi peab olema 2–80 tähemärki pikk."],
       [async () => json(429, { ok: false, error: "rate" }), "Liiga palju katseid. Proovi mõne minuti pärast."],
       [async () => json(409, { ok: false, error: "notCompleted" }), "Midagi läks valesti. Proovi uuesti."],
       [async () => json(404, { ok: false }), "Midagi läks valesti. Proovi uuesti."],
@@ -268,6 +268,9 @@ describe("the 'Tunnistus' row", () => {
       await press();
       expect(errorText(), name).toBe("Напишите имя латинскими буквами, как в\u00a0паспорте (можно также пробел, дефис и апостроф).");
     }
+    await type("A".repeat(81));
+    await press();
+    expect(errorText()).toBe("Имя должно быть длиной от 2 до 80 символов."); // with its full stop, as the other refusal (M-7)
     expect(posts()).toHaveLength(0);
     await type("Katja Kask");
     await press();
@@ -289,13 +292,28 @@ describe("the course card's 'Laadi tunnistus alla' (spec §5)", () => {
     certificateId: 7,
     ...over,
   });
-  const showCard = (c: EcourseCard, locale: Locale = "et", readOnly = false) =>
+  const showCard = (c: EcourseCard, locale: Locale = "et", readOnly = false, certificateName = "Kati Kask") =>
     act(async () =>
       root.render(
-        createElement(AccountCourseCard, { card: c, now: new Date("2026-11-20T10:00:00.000Z"), locale, t: coursesTexts(getDict(locale)), pay: null, readOnly, sent: false, onChangeRequest: () => {} }),
+        createElement(AccountCourseCard, {
+          card: c,
+          now: new Date("2026-11-20T10:00:00.000Z"),
+          locale,
+          t: coursesTexts(getDict(locale)),
+          pay: null,
+          readOnly,
+          sent: false,
+          onChangeRequest: () => {},
+          certificateName,
+        }),
       ),
     );
   const link = () => $("[data-card-certificate]");
+  const cardForm = () => $("[data-card-certificate-form]");
+  const pressCard = async () => {
+    await act(async () => $<HTMLFormElement>("[data-card-certificate-form] form")!.requestSubmit());
+    await settle();
+  };
 
   test("an ended access's card: a quiet download link to its PDF, the way back to it once the course page is closed", async () => {
     await showCard(card());
@@ -318,5 +336,165 @@ describe("the course card's 'Laadi tunnistus alla' (spec §5)", () => {
     expect(link()).toBeNull();
     await showCard(card(), "et", true);
     expect([link()!.getAttribute("href"), link()!.getAttribute("aria-disabled")]).toEqual([null, "true"]);
+  });
+
+  test("I-1: an ended, completed access without a certificate: the card has the 'Tunnistus' form (her account's name, the hint, the card's one button); issued, the quiet link takes its place and the focus", async () => {
+    fetchMock.mockResolvedValueOnce(json(200, { ok: true, certificate: ISSUED }));
+    await showCard(card({ certificateId: null }));
+    const form = cardForm()!;
+    expect(form).not.toBeNull();
+    expect(form.textContent).toContain("Kontrolli, kuidas su nimi tunnistusel kirjas on");
+    expect(form.querySelector("label")!.textContent).toBe("Nimi tunnistusel");
+    expect(field()!.value).toBe("Kati Kask");
+    const hint = $("[data-certificate-hint]")!;
+    expect(hint.textContent).toBe("Ladina tähtedega, nagu passis.");
+    expect(field()!.getAttribute("aria-describedby")!.split(" ")).toEqual([hint.id, $("[data-certificate-error]")!.id]);
+    const issue = $("[data-certificate-issue]")!;
+    expect([issue.tagName, issue.textContent]).toEqual(["BUTTON", "Kinnita ja koosta tunnistus"]);
+    const filled = $$("[data-card] a, [data-card] button").filter((e) => /btn/.test(e.className) && !/btnOutline/.test(e.className));
+    expect(filled).toEqual([issue]); // the card's one button
+    expect(link()).toBeNull();
+    // the name is the rule's, sent to the course's own address (POST …/tunnistus issues for an ended, completed access)
+    await type("  Mari-Liis   Tamm ");
+    await pressCard();
+    expect(posts()).toHaveLength(1);
+    const [url, init] = posts()[0];
+    expect([url, JSON.parse(String(init!.body))]).toEqual(["/api/konto/kursus/veebikursus/tunnistus", { name: "Mari-Liis Tamm" }]);
+    expect(cardForm()).toBeNull();
+    const a = link()!;
+    expect([a.tagName, a.textContent, a.getAttribute("href"), a.hasAttribute("download")]).toEqual(["A", "Laadi tunnistus alla", "/api/konto/tunnistus/7", true]);
+    expect(document.activeElement).toBe(a); // the form she pressed in is gone: a screen reader hears what took its place
+  });
+
+  test("I-1: the form's refusals in her language (the name checked here first, then the server's); another device first ('already') gives the link", async () => {
+    await showCard(card({ certificateId: null }), "et", false, "Катя Каск");
+    expect(field()!.value).toBe("Катя Каск");
+    await pressCard();
+    expect(errorText()).toBe("Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).");
+    expect(fetchMock).not.toHaveBeenCalled();
+    await showCard(card({ certificateId: null }), "ru", false, "Катя Каск");
+    expect($("[data-certificate-hint]")!.textContent).toBe("Латинскими буквами, как в\u00a0паспорте.");
+    await pressCard();
+    expect(errorText()).toBe("Напишите имя латинскими буквами, как в\u00a0паспорте (можно также пробел, дефис и апостроф).");
+    fetchMock.mockResolvedValueOnce(json(429, { ok: false, error: "rate" }));
+    await type("Katja Kask");
+    await pressCard();
+    expect(errorText()).toBe(getDict("ru").forms.errorTooMany);
+    fetchMock.mockResolvedValueOnce(json(409, { ok: false, error: "already", certificate: ISSUED }));
+    await pressCard();
+    expect(cardForm()).toBeNull();
+    expect(link()!.getAttribute("href")).toBe("/api/konto/tunnistus/7");
+  });
+
+  test("I-1: no form while the access is open (the course page has the row), when it was revoked, before the completion, with a certificate, or when the card does not say; inert in the admin's view", async () => {
+    const cases: [string, Partial<EcourseCard>][] = [
+      ["open", { certificateId: null, expiresAt: "2027-04-03T10:00:00.000Z", progress: { done: 2, total: 2, next: null } }],
+      ["revoked", { certificateId: null, revoked: true }],
+      ["not completed", { certificateId: null, completedAt: null }],
+      ["completedAt absent", { certificateId: null, completedAt: undefined }],
+      ["with a certificate", { certificateId: 7 }],
+      ["certificateId absent", { certificateId: undefined }],
+    ];
+    for (const [what, over] of cases) {
+      await showCard(card(over));
+      expect(cardForm(), what).toBeNull();
+      expect(field(), what).toBeNull();
+    }
+    await showCard(card({ certificateId: null }), "et", true);
+    expect(field()!.disabled).toBe(true);
+    const issue = $("[data-certificate-issue]")!;
+    expect([issue.tagName, issue.getAttribute("aria-disabled")]).toEqual(["SPAN", "true"]);
+    const html = renderToStaticMarkup(
+      createElement(AccountCourseCard, {
+        card: card({ certificateId: null }),
+        now: new Date("2026-11-20T10:00:00.000Z"),
+        locale: "et",
+        t: coursesTexts(getDict("et")),
+        pay: null,
+        readOnly: true,
+        sent: false,
+        onChangeRequest: () => {},
+        certificateName: "Kati Kask",
+      }),
+    );
+    expect(html).toContain("data-card-certificate-form");
+    expect(html).not.toContain("<button");
+  });
+});
+
+describe("M-8: the same refusal again is announced again (the alert line is emptied, then says it again)", () => {
+  const LETTERS = "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).";
+  const LENGTH = "Nimi peab olema 2–80 tähemärki pikk.";
+  /** The submit alone: the press's own render, before the next frame and before any answer. */
+  const submitOnly = (scope: string) => act(async () => $<HTMLFormElement>(`${scope} form`)!.requestSubmit());
+  /** The frames asked for, held here until `nextFrame` (happy-dom would run them inside act's own wait, before the press's render is seen). */
+  let frames: FrameRequestCallback[] = [];
+  beforeEach(() => {
+    frames = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
+  });
+  const nextFrame = () =>
+    act(async () => {
+      for (const cb of frames.splice(0)) cb(performance.now());
+    });
+
+  test("the course page's row: a name refused here, and one the server refuses, each pressed twice", async () => {
+    await show(data());
+    await type("Kati 2");
+    await submitOnly("[data-certificate]");
+    await nextFrame();
+    expect(errorText()).toBe(LETTERS);
+    await submitOnly("[data-certificate]");
+    expect(errorText()).toBe(""); // emptied by the press
+    await nextFrame();
+    expect(errorText()).toBe(LETTERS); // and said again on the next frame
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // the server's refusal: the line is empty while the request is on its way
+    let answer!: (res: Response) => void;
+    fetchMock.mockImplementation(() => new Promise<Response>((resolve) => (answer = resolve)));
+    await type("Kati Kask");
+    await submitOnly("[data-certificate]");
+    await act(async () => answer(json(400, { ok: false, error: "name", reason: "length" })));
+    await settle();
+    expect(errorText()).toBe(LENGTH);
+    await submitOnly("[data-certificate]");
+    expect(errorText()).toBe("");
+    await act(async () => answer(json(400, { ok: false, error: "name", reason: "length" })));
+    await settle();
+    expect(errorText()).toBe(LENGTH);
+  });
+
+  test("the ended access's card: the same name refused twice", async () => {
+    await act(async () =>
+      root.render(
+        createElement(AccountCourseCard, {
+          card: {
+            kind: "ecourse",
+            course: { slug: "veebikursus", title: { et: "Kulmumeistri e-koolitus" } },
+            grantedAt: "2026-05-01T10:00:00.000Z",
+            expiresAt: "2026-11-15T10:00:00.000Z",
+            revoked: false,
+            completedAt: COMPLETED,
+            certificateId: null,
+          },
+          now: new Date("2026-11-20T10:00:00.000Z"),
+          locale: "et",
+          t: coursesTexts(getDict("et")),
+          pay: null,
+          readOnly: false,
+          sent: false,
+          onChangeRequest: () => {},
+          certificateName: "Kati 2",
+        }),
+      ),
+    );
+    await submitOnly("[data-card-certificate-form]");
+    await nextFrame();
+    expect(errorText()).toBe(LETTERS);
+    await submitOnly("[data-card-certificate-form]");
+    expect(errorText()).toBe("");
+    await nextFrame();
+    expect(errorText()).toBe(LETTERS);
   });
 });

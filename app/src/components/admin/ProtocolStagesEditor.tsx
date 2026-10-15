@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { moveItem } from "@/domain/course-editor";
-import { CERT_LIMITS } from "@/domain/certificate";
+import { CERT_LIMITS, outcomesTooLong } from "@/domain/certificate";
 import { PROTOCOL_LIMITS } from "@/domain/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
@@ -19,7 +19,9 @@ const newKey = () => `stage-${++rowCount}`;
  * with the course ("Salvesta"); blank rows are dropped then. A change reaches only protocols not created yet (the hint says so). As ListEditor:
  * the arrows are aria-disabled at the ends, after adding a row its field gets the focus, after removing one the next row's field (or "Lisa punkt").
  * `kind` "skills": the same editor for the e-course certificate's lines ("Oskused tunnistusel", phase 3d, spec §6), with their own title, row
- * label, limit (16 lines of 120 characters, CERT_LIMITS) and data hooks, so an e-course's editor tells its two lists apart.
+ * label, limit (16 lines of 120 characters, CERT_LIMITS) and data hooks, so an e-course's editor tells its two lists apart. With no line of
+ * its own the certificate prints the course's `outcomes`; one of them too long for a certificate line is warned of under the list
+ * (domain/certificate.ts outcomesTooLong; final review M-4), and nothing is cut.
  */
 export function ProtocolStagesEditor({
   items,
@@ -28,6 +30,7 @@ export function ProtocolStagesEditor({
   hint,
   empty,
   kind = "stages",
+  outcomes,
 }: {
   items: string[];
   onChange: (items: string[]) => void;
@@ -38,6 +41,8 @@ export function ProtocolStagesEditor({
   empty?: string;
   /** stages (default): "Protokolli punktid"; skills: the certificate's lines (phase 3d). */
   kind?: "stages" | "skills";
+  /** kind "skills": the course's outcomes ("Õpiväljundid"), which the certificate prints while the list has no line. */
+  outcomes?: readonly { et: string }[];
 }) {
   const t = adminEt.courseEditor;
   const l = adminEt.list;
@@ -82,6 +87,7 @@ export function ProtocolStagesEditor({
     onChange(list);
   };
   const full = items.length >= most;
+  const tooLong = skills && outcomes !== undefined && outcomesTooLong({ certificateSkills: items, outcomes });
   const add = () => {
     if (full) return;
     set([...items, ""], [...keys, newKey()]);
@@ -104,7 +110,7 @@ export function ProtocolStagesEditor({
       {...(skills ? { "data-certificate-skills": "" } : { "data-protocol-stages": "" })}
       role="group"
       aria-labelledby={`${uid}-title`}
-      aria-describedby={error ? `${uid}-hint ${uid}-error` : `${uid}-hint`}
+      aria-describedby={[`${uid}-hint`, tooLong ? `${uid}-long` : "", error ? `${uid}-error` : ""].filter(Boolean).join(" ")}
       data-invalid={error ? "" : undefined}
       tabIndex={error ? -1 : undefined}
     >
@@ -116,6 +122,11 @@ export function ProtocolStagesEditor({
       <p id={`${uid}-hint`} className={ui.hint}>
         {hint ?? words.hint}
       </p>
+      {tooLong && (
+        <p id={`${uid}-long`} className={styles.warning} data-certificate-long="">
+          {t.fields.certificateSkillsLong}
+        </p>
+      )}
       {items.length === 0 ? (
         <p className={`${ui.muted} ${ui.small}`}>{empty ?? words.empty}</p>
       ) : (

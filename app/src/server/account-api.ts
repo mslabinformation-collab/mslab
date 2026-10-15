@@ -125,7 +125,7 @@ const PHOTO_ENVELOPE = 64 * 1024;
 const PHOTO_BODY_BYTES = PHOTO_LIMITS.fullBytes + PHOTO_LIMITS.thumbBytes + PHOTO_ENVELOPE;
 /** Certificate issues a student may ask for per hour (phase 3d, spec §5): one is enough, a double tap or a retry after a refused name more. */
 const CERTIFICATE_ISSUES_PER_HOUR = 10;
-/** Certificate downloads per hour (spec §5): each one renders the PDF, a few tens of milliseconds of the function. */
+/** Certificate downloads per hour (spec §5): each one renders the PDF, about a tenth of a second of the function. */
 const CERTIFICATE_FILES_PER_HOUR = 10;
 /** The issue's body, `{ name }`: a name of at most 80 characters, with room for its JSON escapes. */
 const CERTIFICATE_BODY_CHARS = 1024;
@@ -861,7 +861,7 @@ async function issueCertificateRoute(request: Request, deps: AccountDeps, rawSlu
  * GET /tunnistus/:id (phase 3d, spec §5, §7): her certificate as a PDF (certificates.ts certificatePdf, rendered from the frozen row on each
  * download), via pdfAnswer as `attachment; filename="MS-LAB-tunnistus-{year}-{nn}.pdf"`. Only her own access's certificate, and only while
  * that access is not revoked; an ended (expired) access keeps it. 404 `{ ok: false }` for any other id; 429 `{ error: "rate" }` after 10
- * in an hour (a 404 counts too, so ids cannot be probed).
+ * in an hour (a 404 counts too, so ids cannot be probed). A render that fails is 500 `{ error: "server" }`, logged by the certificate's id.
  */
 async function certificateFile(request: Request, deps: AccountDeps, rawId: string): Promise<Response> {
   const session = await requireClient(request, deps);
@@ -874,7 +874,13 @@ async function certificateFile(request: Request, deps: AccountDeps, rawId: strin
   }
   const cert = await certificateForStudent(deps.db, session.clientId, id);
   if (!cert) return clientResponse(session, { ok: false }, 404);
-  const bytes = await certificatePdf(deps.db, cert, deps.now);
+  let bytes: Uint8Array;
+  try {
+    bytes = await certificatePdf(deps.db, cert, deps.now);
+  } catch (e) {
+    logFailure(`[certificate] ${cert.id}: the student's download failed`, e); // its id and the error's class only
+    return clientResponse(session, { ok: false, error: "server" }, 500);
+  }
   return pdfAnswer(session, bytes, cert);
 }
 

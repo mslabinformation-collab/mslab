@@ -16,13 +16,14 @@ import { logFailure } from "../log";
 /**
  * Seaded → "Tunnistus" → "Salvesta tunnistuse andmed": the card's fields as typed (`{ place, registryCode, practicalLine, trainerName, nextYear,
  * nextSeq }`, the two numbers as text), checked by saveCertificateSettings (the trainer's name by the student's name rules, "letters" or
- * "length"; a next number at or below one already issued in that year is refused on `nextSeq`, "taken": Review Focus 4). Saved: the settings
- * as stored and the number last issued in the saved year. A throw is { ok: false, error: "server" }, logged by its label only.
+ * "length"; a year that is not this one or the next is refused on `nextYear`, "invalid"; a next number at or below one already issued in
+ * that year on `nextSeq`, "taken": Review Focus 4). Saved: the settings as stored and the number last issued in the saved year. A throw is
+ * { ok: false, error: "server" }, logged by its label only.
  */
 export const saveCertificateSettingsAction = adminAction(async (_admin, raw: unknown) => {
   try {
     const db = getDb();
-    const result = await saveCertificateSettings(db, raw);
+    const result = await saveCertificateSettings(db, raw, new Date());
     if (!result.ok) return { ok: false as const, fields: result.fields };
     const { settings } = result;
     return { ok: true as const, settings, last: await lastIssued(db, settings.nextYear) };

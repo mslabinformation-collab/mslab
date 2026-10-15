@@ -113,17 +113,29 @@ describe("CertificateSettings", () => {
     expect(input("place").getAttribute("aria-invalid")).toBeNull();
     expect(input("next-seq").value).toBe("14"); // what she typed stays
 
-    // the other codes in their own words (a bad year is reported on the number, "invalid"); a code the card does not know in a general line
+    // the other codes in their own words; a code the card does not know in a general line
     action.mockResolvedValue({ ok: false, fields: { place: "required", registryCode: "tooLong", nextSeq: "invalid", trainerName: "somethingNew" } });
     await submit();
     expect([errorOf("place"), errorOf("registry"), errorOf("next-seq"), errorOf("trainer"), errorOf("next-year")]).toEqual([
       "Täida see väli.",
       "Tekst on liiga pikk.",
-      "Kontrolli aastat (2000–2099) ja numbrit (1–99 999).",
+      "Kontrolli numbrit (1–99 999).",
       "Kontrolli seda välja.",
       null,
     ]);
     expect(document.activeElement).toBe(input("place"));
+    // M-5: a year that is not this one or the next is refused on its own field, in its own words, and takes the focus
+    action.mockResolvedValue({ ok: false, fields: { nextYear: "invalid" } });
+    await type(input("next-year"), "2025");
+    await submit();
+    expect([errorOf("next-year"), errorOf("next-seq")]).toEqual(["Aasta peab olema käesolev või järgmine.", null]);
+    expect(input("next-year").getAttribute("aria-invalid")).toBe("true");
+    expect(input("next-year").getAttribute("aria-describedby")).toContain(`${input("next-year").id}-error`);
+    expect(document.activeElement).toBe(input("next-year"));
+    expect(input("next-year").value).toBe("2025");
+    action.mockResolvedValue({ ok: false, fields: { nextYear: "invalid", nextSeq: "invalid" } });
+    await submit();
+    expect([errorOf("next-year"), errorOf("next-seq")]).toEqual(["Aasta peab olema käesolev või järgmine.", "Kontrolli numbrit (1–99 999)."]);
     action.mockResolvedValue({ ok: false, error: "server" });
     await submit();
     expect($("[data-cert-status]")!.textContent).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");

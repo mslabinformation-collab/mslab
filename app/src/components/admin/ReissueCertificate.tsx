@@ -17,7 +17,7 @@ export type ReissueTexts = AdminDict["certificates"]["reissue"] & { saving: stri
  * her passport; Cyrillic is refused —, spaces, hyphens, apostrophes and dots; Review Focus 2: an emoji or digits are refused on the field,
  * nothing stored). "Väljasta uuesti" re-issues it under the same number, sets its re-issue day and mails nobody; the page is refreshed (the
  * drawer's line and the register show the new name), and the line that says what was done stays and takes the focus. "Katkesta" closes the
- * form with the focus back on the button.
+ * form with the focus back on the button. Each press takes the last refusal away first, so the same refusal again is a new alert.
  */
 export function ReissueCertificate({ certificateId, name, t }: { certificateId: number; name: string; t: ReissueTexts }) {
   const uid = useId();
@@ -41,6 +41,8 @@ export function ReissueCertificate({ certificateId, name, t }: { certificateId: 
   const save = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (pending) return;
+    // the refusal's line goes while this one is on its way: the same refusal again is a new alert, which a screen reader reads again
+    setError("");
     start(async () => {
       const result = await reissueCertificateAction({ certificateId, name: value });
       if (result.kind === "reissued") {

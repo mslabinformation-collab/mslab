@@ -31,6 +31,7 @@ test("the card's fields go on as they came; saved: the settings as stored, and t
   const result = await saveCertificateSettingsAction(RAW);
   expect(result).toEqual({ ok: true, settings: STORED, last: "MS LAB 2026-14" });
   expect(work.saveCertificateSettings.mock.calls[0][1]).toBe(RAW);
+  expect(work.saveCertificateSettings.mock.calls[0][2]).toBeInstanceOf(Date); // now: the save checks the year against it (M-5)
   expect(work.lastIssued.mock.calls[0][1]).toBe(2026);
   expect(cache.refresh).not.toHaveBeenCalled(); // the card keeps its own state
 });

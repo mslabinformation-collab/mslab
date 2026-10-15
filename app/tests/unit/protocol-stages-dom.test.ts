@@ -13,17 +13,17 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-type Opts = { kind?: "stages" | "skills"; hint?: string; empty?: string };
+type Opts = { kind?: "stages" | "skills"; hint?: string; empty?: string; outcomes?: { et: string }[] };
 
 let container: HTMLDivElement;
 let root: Root;
 let current: string[] = [];
-function Harness({ initial, kind, hint, empty }: { initial: string[] } & Opts) {
+function Harness({ initial, kind, hint, empty, outcomes }: { initial: string[] } & Opts) {
   const [items, setItems] = useState(initial);
   useEffect(() => {
     current = items; // (not during the render: react-hooks/globals; act() flushes the effect)
   }, [items]);
-  return createElement(ProtocolStagesEditor, { items, onChange: setItems, kind, hint, empty });
+  return createElement(ProtocolStagesEditor, { items, onChange: setItems, kind, hint, empty, outcomes });
 }
 // a new key for each list: a new editor, as the course editor's reload gives one
 const render = async (initial: string[], opts: Opts = {}) =>
@@ -74,20 +74,21 @@ test("none yet says what the protocol has then; at 30 'Lisa punkt' adds nothing 
 
 test("the certificate's lines (kind 'skills') own their default hint and empty line: no protocol wording shows where the caller gives none", async () => {
   await render([], { kind: "skills" });
-  expect(container.textContent).toContain("Tühjana kasutatakse „Mida õpid“ ridu");
+  expect(container.textContent).toContain("Tühjana kasutatakse „Õpiväljundid“ ridu");
   expect(container.textContent).toContain("Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read.");
   expect(container.textContent).not.toMatch(/protokoll|Punkte veel pole/i);
+  expect(container.textContent).not.toContain("Mida õpid"); // one name for the list: the card Maria fills is „Õpiväljundid“ (M-7)
   await render([], { kind: "stages" }); // and the stages' own defaults are as they were
   expect(container.textContent).toContain("Punkte veel pole");
-  expect(container.textContent).not.toContain("Mida õpid");
+  expect(container.textContent).not.toContain("Õpiväljundid");
 });
 
 test("the certificate's lines (kind 'skills'): their own title, labels and hooks, the hint and the empty line given; at 16 'Lisa rida' adds nothing and says so", async () => {
-  await render([], { kind: "skills", hint: "Tühjana kasutatakse „Mida õpid“ ridu", empty: "Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read." });
+  await render([], { kind: "skills", hint: "Tühjana kasutatakse „Õpiväljundid“ ridu", empty: "Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read." });
   expect(container.querySelector("[data-protocol-stages]")).toBeNull();
   expect(container.querySelector("[data-add-stage]")).toBeNull();
   expect(container.querySelector("[data-certificate-skills] h3")!.textContent).toBe("Oskused tunnistusel");
-  expect(container.textContent).toContain("Tühjana kasutatakse „Mida õpid“ ridu");
+  expect(container.textContent).toContain("Tühjana kasutatakse „Õpiväljundid“ ridu");
   expect(container.textContent).toContain("Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read.");
   const add = container.querySelector("[data-add-skill]")!;
   expect(add.textContent).toBe("+ Lisa rida");
@@ -106,4 +107,32 @@ test("the certificate's lines (kind 'skills'): their own title, labels and hooks
   await click(full);
   expect(current).toHaveLength(16);
   expect(container.textContent).toContain("Rohkem kui 16 rida ei saa lisada.");
+});
+
+test("M-4: no line of its own, so the certificate prints the course's outcomes, and one of them is over 120 characters: a warning says to add shorter lines here; nothing is cut", async () => {
+  const WARNING = "Tunnistusele lähevad õpiväljundid. Mõni neist on üle 120 tähemärgi ega mahu tunnistusele: lisa siia lühemad read.";
+  const long = { et: "Kulmude kuju " + "x".repeat(108) }; // 121 characters
+  const warning = () => container.querySelector<HTMLElement>("[data-certificate-long]");
+  await render([], { kind: "skills", outcomes: [{ et: "Kulmude kuju" }, long] });
+  expect(warning()!.textContent).toBe(WARNING);
+  const group = container.querySelector("[data-certificate-skills]")!;
+  expect(group.getAttribute("aria-describedby")!.split(" ")).toContain(warning()!.id); // read with the list
+  // a blank line is dropped on save, so the outcomes are still what is printed
+  await render(["  "], { kind: "skills", outcomes: [long] });
+  expect(warning()).not.toBeNull();
+  // a line of her own: the outcomes are not printed; typed into the list, the warning goes
+  await render(["Kulmude kuju"], { kind: "skills", outcomes: [long] });
+  expect(warning()).toBeNull();
+  await render([], { kind: "skills", outcomes: [long] });
+  await click(container.querySelector("[data-add-skill]"));
+  await type(fields("data-certificate-skill")[0], "Kulmude kuju");
+  expect(warning()).toBeNull();
+  // every outcome fits (120 characters, white space counted as the PDF writes it), or the long one is past the 16 printed: none
+  await render([], { kind: "skills", outcomes: [{ et: "x".repeat(120) }, { et: `  ${"y".repeat(60)}\n\n${"y".repeat(59)} ` }] });
+  expect(warning()).toBeNull();
+  await render([], { kind: "skills", outcomes: [...Array.from({ length: 16 }, (_, i) => ({ et: `Oskus ${i + 1}` })), long] });
+  expect(warning()).toBeNull();
+  // the protocol's list never warns about it
+  await render([], { outcomes: [long] });
+  expect(warning()).toBeNull();
 });

@@ -889,7 +889,7 @@ export const et = {
       issue: "Kinnita ja koosta tunnistus",
       issuing: "Koostan tunnistust…",
       letters: "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).",
-      length: "Nimi peab olema 2–80 tähemärki pikk",
+      length: "Nimi peab olema 2–80 tähemärki pikk.",
       number: "Tunnistus nr. {number}",
       download: "Laadi tunnistus alla (PDF)",
       fixName: "Kui nimes on viga, kirjuta meile",
