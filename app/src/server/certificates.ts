@@ -71,10 +71,12 @@ const readSettings = async (q: Db, now: Date): Promise<CertificateSettings> => r
  *   completed_at is `notCompleted`. One that has a certificate is `already`, with that one's view (a double tap, a second device). These
  *   answers need only the access's lock, so they never wait for the number series;
  * - otherwise the course's copy is read, the number series locked, Seaded read and the number taken: nextNumber for the Tallinn year of
- *   `now`, a new year starting at 1;
+ *   `now` (a new year starting at 1), but never at or below the highest number already issued in that year (max(seq) under the lock): the
+ *   issue takes the larger of the two, so Seaded's number ahead of the series (Maria's jump) is kept, and one behind it or for another
+ *   year, or no row at all, cannot make the unique (year, seq) refuse every later issue. This amends spec §4's "else 1";
  * - the frozen copy is written: the course's Estonian title, its certificate lines (certificateSkills: its own, else "Mida õpid") and its
  *   volume, and Seaded's practical line, place and registry code;
- * - Seaded's next number is moved on.
+ * - Seaded's next number is moved on: the year used and the number used plus one.
  * `notFound` also without an access, and for a contact course (accessFor). Logs `[certificate] access N: issued <number>` after the commit.
  */
 export async function issueCertificate(db: Db, clientId: number, slug: string, rawName: string, now: Date): Promise<IssueResult> {
@@ -98,7 +100,13 @@ export async function issueCertificate(db: Db, clientId: number, slug: string, r
     // the series' lock after the access's, always in this order: no two writes ever wait for each other the other way round
     await lockNumbers(tx);
     const settings = await readSettings(tx, now);
-    const { year, seq, next } = nextNumber(settings, tallinnYear(now));
+    const wanted = nextNumber(settings, tallinnYear(now));
+    // Never a number of this year that is already issued, whatever Seaded says (spec §4 as amended): a year that is not this one (a typo,
+    // next year preset in December, a form left open over New Year) or a missing row would give number 1 again, the unique (year, seq)
+    // would refuse every later issue and the series would stall. A number ahead of the highest (Maria's jump) is kept.
+    const year = wanted.year;
+    const [{ top }] = await tx.select({ top: max(certificates.seq) }).from(certificates).where(eq(certificates.year, year));
+    const seq = Math.max(wanted.seq, (top ?? 0) + 1);
     const [row] = await tx
       .insert(certificates)
       .values({
@@ -116,7 +124,7 @@ export async function issueCertificate(db: Db, clientId: number, slug: string, r
         issuedAt: now,
       })
       .returning(); // (returning(fields) has no common overload on the Db union: the whole row)
-    await setSetting(tx, SETTING_KEY, { ...settings, ...next });
+    await setSetting(tx, SETTING_KEY, { ...settings, nextYear: year, nextSeq: seq + 1 });
     return { kind: "issued", certificate: viewOf(row) };
   });
   if (result.kind === "issued") console.info(`[certificate] access ${known.id}: issued ${result.certificate.number}`);

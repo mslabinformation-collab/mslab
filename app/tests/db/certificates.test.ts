@@ -7,7 +7,7 @@ import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
 import { readSetting } from "@/db/queries/public";
 import * as schema from "@/db/schema";
-import { certificates, clients, courseAccess, courses } from "@/db/schema";
+import { certificates, clients, courseAccess, courses, settings } from "@/db/schema";
 import { CERT_DEFAULTS } from "@/domain/certificate";
 import { renderCertificate } from "@/server/certificate-pdf";
 import {
@@ -41,6 +41,25 @@ beforeEach(async () => {
   for (const method of ["info", "warn", "error"] as const) vi.spyOn(console, method).mockImplementation(() => {});
 });
 afterEach(() => vi.restoreAllMocks());
+
+/** A fresh migrated database that records every query it runs (drizzle's logger); it replaces `db`, which the helpers below write through. */
+async function useLoggedDb() {
+  const log: { query: string; params: unknown[] }[] = [];
+  const logged: Db = drizzle(new PGlite(), { schema, logger: { logQuery: (query: string, params: unknown[]) => void log.push({ query, params }) } });
+  await migrate(logged, { migrationsFolder: "./drizzle" });
+  db = logged;
+  log.length = 0; // the migrations are not of interest
+  return log;
+}
+/** Where in a query log the access row is locked, the number series' transaction lock is taken, the year's highest seq is read, and the setting is read or written. */
+const at = (log: { query: string; params: unknown[] }[]) => ({
+  accessLock: log.findIndex((e) => /from "course_access"[\s\S]*for update/.test(e.query)),
+  numberLock: log.findIndex((e) => /pg_advisory_xact_lock\(hashtext\(/.test(e.query) && e.params.includes("certificate-number")),
+  maxSeq: log.findIndex((e) => /max\("seq"\)/.test(e.query)),
+  settingRead: log.findIndex((e) => /^select .* from "settings"/.test(e.query)),
+  settingWrite: log.findIndex((e) => /^insert into "settings"/.test(e.query)),
+  written: log.findIndex((e) => /^insert into "certificates"/.test(e.query)),
+});
 
 const infoLog = () => vi.mocked(console.info).mock.calls.flat().join("\n");
 const stored = () => readSetting(db, "certificate");
@@ -173,28 +192,91 @@ describe("Review Focus 1: two certificates at the same moment", () => {
     expect(await stored()).toMatchObject({ nextSeq: 6 });
   });
 
-  test("Review Focus 1: the order of the locks — the access row (FOR UPDATE), then the number series' transaction lock, then Seaded read, the certificate written and the number moved on; an issued one never waits for the series", async () => {
-    const log: { query: string; params: unknown[] }[] = [];
-    const logged: Db = drizzle(new PGlite(), { schema, logger: { logQuery: (query: string, params: unknown[]) => void log.push({ query, params }) } });
-    await migrate(logged, { migrationsFolder: "./drizzle" });
-    db = logged; // the helpers write through it
+  test("Review Focus 1: the order of the locks — the access row (FOR UPDATE), then the number series' transaction lock, then Seaded read and the year's highest number read, the certificate written and the number moved on; an issued one never waits for the series", async () => {
+    const log = await useLoggedDb();
     const c = await ecourse();
     const kati = await student("kati@example.test", c.id);
     log.length = 0;
     expect((await issueCertificate(db, kati.client.id, "kulmud-e", "Kati Kask", NOW)).kind).toBe("issued");
-    const accessLock = log.findIndex((e) => /from "course_access"[\s\S]*for update/.test(e.query));
-    const numberLock = log.findIndex((e) => /pg_advisory_xact_lock\(hashtext\(/.test(e.query) && e.params.includes("certificate-number"));
-    const settingRead = log.findIndex((e, i) => i > numberLock && /from "settings"/.test(e.query));
-    const written = log.findIndex((e) => /^insert into "certificates"/.test(e.query));
-    const moved = log.findIndex((e) => /^insert into "settings"/.test(e.query));
-    expect(accessLock).toBeGreaterThanOrEqual(0);
-    expect([accessLock < numberLock, numberLock < settingRead, settingRead < written, written < moved]).toEqual([true, true, true, true]);
+    const p = at(log);
+    expect(p.accessLock).toBeGreaterThanOrEqual(0);
+    expect([p.accessLock < p.numberLock, p.numberLock < p.settingRead, p.numberLock < p.maxSeq, p.settingRead < p.written, p.maxSeq < p.written, p.written < p.settingWrite]).toEqual([
+      true, true, true, true, true, true,
+    ]);
     expect(log.filter((e) => /pg_advisory/.test(e.query))).toHaveLength(1);
     // asked again: the access's lock finds it issued; the number series is never touched
     log.length = 0;
     expect((await issueCertificate(db, kati.client.id, "kulmud-e", "Kati Kask", NOW)).kind).toBe("already");
     expect(log.some((e) => /from "course_access"[\s\S]*for update/.test(e.query))).toBe(true);
     expect(log.some((e) => /pg_advisory/.test(e.query))).toBe(false);
+  });
+
+  test("Review Focus 1: the refusals that write nothing — a revoked access, one not completed — answer under the access's lock alone and never take the number series' lock", async () => {
+    const log = await useLoggedDb();
+    const c = await ecourse();
+    const revoked = await student("revoked@example.test", c.id, { revokedAt: NOW });
+    const open = await student("open@example.test", c.id, { completedAt: null });
+    for (const [who, kind] of [[revoked, "notFound"], [open, "notCompleted"]] as const) {
+      log.length = 0;
+      expect((await issueCertificate(db, who.client.id, "kulmud-e", "Kati Kask", NOW)).kind).toBe(kind);
+      expect(at(log).accessLock, kind).toBeGreaterThanOrEqual(0);
+      expect(log.some((e) => /pg_advisory/.test(e.query)), kind).toBe(false);
+      expect(at(log).written, kind).toBe(-1);
+    }
+    expect(await stored()).toBeNull();
+  });
+});
+
+describe("the number series never stalls (an issue takes past the year's highest number, spec §4 as amended)", () => {
+  /** Three students of "kulmud-e" with certificates 2026-01 to 2026-03, issued from an empty Seaded. */
+  async function threeIssued() {
+    const c = await ecourse();
+    for (const [i, name] of ["Kati Kask", "Mari Maasikas", "Liis Lill"].entries()) await issued((await student(`s${i}@example.test`, c.id)).client.id, name);
+    expect((await rows()).map((r) => r.number)).toEqual(["MS LAB 2026-01", "MS LAB 2026-02", "MS LAB 2026-03"]);
+    return c;
+  }
+
+  test("Seaded says another year (next year preset in December, a typo, a form left open over New Year) while the certificates are of this one: the issue takes the next free number of its own year, and Seaded follows", async () => {
+    const c = await threeIssued();
+    // Maria presets 2027 from number 1: the save is accepted (nothing issued in 2027) ...
+    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2027, nextSeq: 1 })).toMatchObject({ ok: true });
+    // ... and a student completes in 2026 all the same: 2026-04, not a second 2026-01
+    expect((await issued((await student("a@example.test", c.id)).client.id, "Anu Aas")).number).toBe("MS LAB 2026-04");
+    expect(await stored()).toMatchObject({ nextYear: 2026, nextSeq: 5 });
+    // a typo, 2025 from number 3
+    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2025, nextSeq: 3 })).toMatchObject({ ok: true });
+    expect((await issued((await student("b@example.test", c.id)).client.id, "Ben Bauer")).number).toBe("MS LAB 2026-05");
+    expect(await stored()).toMatchObject({ nextYear: 2026, nextSeq: 6 });
+    expect((await rows()).map((r) => [r.year, r.seq])).toEqual([[2026, 1], [2026, 2], [2026, 3], [2026, 4], [2026, 5]]);
+  });
+
+  test("a form left open over New Year: Seaded's old-year number saved after a student issued the new year's first; the next issue goes on from it", async () => {
+    await setSetting(db, "certificate", { ...SETTING, nextSeq: 8 });
+    const c = await ecourse();
+    const turned = new Date("2026-12-31T22:30:00Z"); // already 2027 in Tallinn
+    expect((await issued((await student("a@example.test", c.id)).client.id, "Anu Aas", turned)).number).toBe("MS LAB 2027-01");
+    // her form was loaded on 31.12 (2026, number 8): the save looks at 2026's numbers and is accepted
+    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2026, nextSeq: 8 })).toMatchObject({ ok: true });
+    expect((await issued((await student("b@example.test", c.id)).client.id, "Ben Bauer", new Date("2027-01-02T08:00:00Z"))).number).toBe("MS LAB 2027-02");
+    expect(await stored()).toMatchObject({ nextYear: 2027, nextSeq: 3 });
+  });
+
+  test("Seaded's row is gone (deleted by hand) while certificates exist: the issue takes the next free number, not number 1 again", async () => {
+    const c = await ecourse();
+    await issued((await student("a@example.test", c.id)).client.id, "Anu Aas");
+    await issued((await student("b@example.test", c.id)).client.id, "Ben Bauer");
+    await db.delete(settings).where(eq(settings.key, "certificate"));
+    expect(await stored()).toBeNull();
+    expect((await issued((await student("c@example.test", c.id)).client.id, "Cleo Cook")).number).toBe("MS LAB 2026-03");
+    expect(await stored()).toMatchObject({ ...CERT_DEFAULTS, nextYear: 2026, nextSeq: 4 });
+  });
+
+  test("a number ahead of the highest issued — Maria's deliberate jump, or a gap left by a deleted account — is honoured, and the series goes on from it", async () => {
+    const c = await threeIssued();
+    expect(await saveCertificateSettings(db, { ...VALID, nextYear: 2026, nextSeq: 10 })).toMatchObject({ ok: true });
+    expect((await issued((await student("a@example.test", c.id)).client.id, "Anu Aas")).number).toBe("MS LAB 2026-10");
+    expect(await stored()).toMatchObject({ nextYear: 2026, nextSeq: 11 });
+    expect((await issued((await student("b@example.test", c.id)).client.id, "Ben Bauer")).number).toBe("MS LAB 2026-11");
   });
 });
 
@@ -375,6 +457,27 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
     expect(await saveCertificateSettings(db, { ...VALID, trainerName: "Õie-Mai Šõrmus" })).toMatchObject({ ok: true, settings: { trainerName: "Õie-Mai Šõrmus" } });
   });
 
+  test("Review Focus 1: the save takes the number series' lock before it reads the year's highest number and before it writes the setting (so an issue that commits first is seen, and none can slip in between); a refusal for a field touches nothing", async () => {
+    const log = await useLoggedDb();
+    expect(await saveCertificateSettings(db, VALID)).toMatchObject({ ok: true });
+    let p = at(log);
+    expect(p.numberLock).toBeGreaterThanOrEqual(0);
+    expect([p.numberLock < p.maxSeq, p.maxSeq < p.settingWrite]).toEqual([true, true]);
+    expect(log.filter((e) => /pg_advisory/.test(e.query))).toHaveLength(1);
+    // 'taken': under the lock as well, and nothing is written
+    const c = await ecourse();
+    await issued((await student("kati@example.test", c.id)).client.id, "Kati Kask");
+    log.length = 0;
+    expect(await saveCertificateSettings(db, { ...VALID, nextSeq: 1 })).toEqual({ ok: false, fields: { nextSeq: "taken" } });
+    p = at(log);
+    expect(p.numberLock).toBeGreaterThanOrEqual(0);
+    expect([p.numberLock < p.maxSeq, p.settingWrite]).toEqual([true, -1]);
+    // a field error is answered before any query
+    log.length = 0;
+    expect(await saveCertificateSettings(db, { ...VALID, place: "" })).toEqual({ ok: false, fields: { place: "required" } });
+    expect(log).toEqual([]);
+  });
+
   test("the save measures a text as readCertificateSettings does, so a value it accepts is never dropped by the read: the place, the registry code and the practical line in UTF-16 units (a character outside the BMP is two), at the limit with one", async () => {
     const emoji = "\u{1F600}"; // 2 UTF-16 units, 1 code point
     const limits = { place: 60, registryCode: 20, practicalLine: 200 } as const;
@@ -394,12 +497,12 @@ describe("Seaded → Tunnistus (spec §3, §4)", () => {
 
   test("the trainer's name is measured as the read does — in code points once it is NFC — so a decomposed name of 61 or more units that is shorter once composed is kept, one of 61 letters is 'tooLong', and a character outside the BMP is 'letters' (none is ever a letter, so none can reach the limit)", async () => {
     // "M" + 30 × (o + U+0308, a combining diaeresis) is 61 UTF-16 units, "Mö…ö" of 31 characters once it is NFC
-    const decomposed = "M" + "ö".repeat(30);
-    const composed = "M" + "ö".repeat(30);
+    const decomposed = "M" + "o\u0308".repeat(30);
+    const composed = "M" + "\u00F6".repeat(30);
     expect(await saveCertificateSettings(db, { ...VALID, trainerName: decomposed })).toMatchObject({ ok: true, settings: { trainerName: composed } });
     expect((await getCertificateSettings(db, NOW)).trainerName).toBe(composed);
     // 61 letters, composed: over the limit
-    expect(await saveCertificateSettings(db, { ...VALID, trainerName: "M" + "ö".repeat(60) })).toEqual({ ok: false, fields: { trainerName: "tooLong" } });
+    expect(await saveCertificateSettings(db, { ...VALID, trainerName: "M" + "\u00F6".repeat(60) })).toEqual({ ok: false, fields: { trainerName: "tooLong" } });
     // 60 code points (61 units) with an emoji: within the limit, so the name rules decide: not a letter
     expect(await saveCertificateSettings(db, { ...VALID, trainerName: "M".repeat(59) + "\u{1F600}" })).toEqual({ ok: false, fields: { trainerName: "letters" } });
     // 60 letters: kept, and the read keeps it
