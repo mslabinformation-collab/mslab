@@ -4,7 +4,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 // (server/certificates.ts saveCertificateSettings checks them; tests/db/certificates.test.ts); saved, the browser gets the settings as stored
 // and the saved year's last number; a refusal's field errors as they came; a throw is { ok: false, error: "server" }.
 
-const work = vi.hoisted(() => ({ saveCertificateSettings: vi.fn(), lastIssued: vi.fn(), reissueCertificate: vi.fn() }));
+const work = vi.hoisted(() => ({ saveCertificateSettings: vi.fn(), lastIssued: vi.fn() }));
 const cache = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("@/server/certificates", () => work);
 vi.mock("next/cache", () => cache);
@@ -19,7 +19,6 @@ const STORED = { place: "Tallinn", registryCode: "16346048", practicalLine: "Pra
 beforeEach(() => {
   work.saveCertificateSettings.mockReset();
   work.lastIssued.mockReset();
-  work.reissueCertificate.mockReset();
   cache.refresh.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });

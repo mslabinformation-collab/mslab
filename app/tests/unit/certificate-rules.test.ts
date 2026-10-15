@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   CERT_DEFAULTS, CERT_LIMITS, certificateFileName, certificateSkills, checkCertificateName, formatCertificateNumber, nextNumber, readCertificateSettings,
-  tallinnDateText, tallinnYear,
+  seqToIssue, tallinnDateText, tallinnYear,
 } from "@/domain/certificate";
 
 // The certificate's pure rules (phase 3d, spec §3–§5, §10 unit): the limits and the defaults, the stored setting read defensively, the name
@@ -39,6 +39,41 @@ describe("Review Focus 3: the year turns at Tallinn midnight", () => {
     // a setting of another year, earlier or later, gives 1 (spec §4: seq = nextSeq only when nextYear is the issue's year)
     expect(nextNumber({ nextYear: 2025, nextSeq: 40 }, 2026)).toEqual({ year: 2026, seq: 1, next: { nextYear: 2026, nextSeq: 2 } });
     expect(nextNumber({ nextYear: 2027, nextSeq: 5 }, 2026)).toEqual({ year: 2026, seq: 1, next: { nextYear: 2026, nextSeq: 2 } });
+  });
+});
+
+describe("seqToIssue: the number an issue takes — the one rule of the issue, Seaded's save and Seaded's card (spec §4 as amended)", () => {
+  // (setting, the Tallinn year of the issue, the highest seq already issued in that year, 0 for none) → the number taken and the setting after it
+  const CASES: { name: string; setting: { nextYear: number; nextSeq: number }; year: number; top: number; takes: [number, number] }[] = [
+    { name: "this year, nothing issued: the setting's number", setting: { nextYear: 2026, nextSeq: 3 }, year: 2026, top: 0, takes: [2026, 3] },
+    { name: "this year, the setting is just past the highest: kept", setting: { nextYear: 2026, nextSeq: 15 }, year: 2026, top: 14, takes: [2026, 15] },
+    { name: "this year, ahead of the highest (Maria's jump): kept", setting: { nextYear: 2026, nextSeq: 20 }, year: 2026, top: 14, takes: [2026, 20] },
+    { name: "this year, behind the highest (the default 1 of a deleted row, or a number Maria set long ago): the highest + 1", setting: { nextYear: 2026, nextSeq: 1 }, year: 2026, top: 14, takes: [2026, 15] },
+    { name: "this year, equal to the highest: the highest + 1", setting: { nextYear: 2026, nextSeq: 14 }, year: 2026, top: 14, takes: [2026, 15] },
+    { name: "the previous year's setting, nothing issued this year yet (January): the new year starts at 1", setting: { nextYear: 2026, nextSeq: 15 }, year: 2027, top: 0, takes: [2027, 1] },
+    { name: "the previous year's setting, this year's numbers already begun: the highest + 1", setting: { nextYear: 2026, nextSeq: 15 }, year: 2027, top: 3, takes: [2027, 4] },
+    { name: "a setting for next year (a preset in December) is not used before that year: this year's highest + 1", setting: { nextYear: 2027, nextSeq: 20 }, year: 2026, top: 14, takes: [2026, 15] },
+    { name: "a setting for next year, once that year has come: its number", setting: { nextYear: 2027, nextSeq: 20 }, year: 2027, top: 0, takes: [2027, 20] },
+    { name: "a setting for next year, once that year has come and passed it: the highest + 1", setting: { nextYear: 2027, nextSeq: 20 }, year: 2027, top: 25, takes: [2027, 26] },
+  ];
+  test.each(CASES)("$name", ({ setting, year, top, takes: [takesYear, takesSeq] }) => {
+    expect(seqToIssue(setting, year, top)).toEqual({ year: takesYear, seq: takesSeq, next: { nextYear: takesYear, nextSeq: takesSeq + 1 } });
+  });
+
+  test("a deleted or malformed setting reads as this year's number 1 (readCertificateSettings), and the highest still wins", () => {
+    const now = new Date("2026-10-15T09:00:00Z");
+    const stored = readCertificateSettings(undefined, now);
+    expect(seqToIssue(stored, tallinnYear(now), 0)).toMatchObject({ year: 2026, seq: 1 });
+    expect(seqToIssue(stored, tallinnYear(now), 14)).toMatchObject({ year: 2026, seq: 15 });
+  });
+
+  test("with nothing issued it is nextNumber, and never below it: the number is nextNumber's or the highest + 1, whichever is larger", () => {
+    for (const setting of [{ nextYear: 2026, nextSeq: 7 }, { nextYear: 2025, nextSeq: 40 }, { nextYear: 2027, nextSeq: 5 }])
+      for (const top of [0, 3, 7, 50]) {
+        const wanted = nextNumber(setting, 2026);
+        expect(seqToIssue(setting, 2026, top).seq).toBe(Math.max(wanted.seq, top + 1));
+      }
+    expect(seqToIssue({ nextYear: 2026, nextSeq: 7 }, 2026, 0)).toEqual(nextNumber({ nextYear: 2026, nextSeq: 7 }, 2026));
   });
 });
 

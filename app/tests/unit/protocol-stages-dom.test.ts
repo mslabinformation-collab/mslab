@@ -72,6 +72,16 @@ test("none yet says what the protocol has then; at 30 'Lisa punkt' adds nothing 
   expect(container.textContent).toContain("Rohkem kui 30 punkti ei saa lisada.");
 });
 
+test("the certificate's lines (kind 'skills') own their default hint and empty line: no protocol wording shows where the caller gives none", async () => {
+  await render([], { kind: "skills" });
+  expect(container.textContent).toContain("Tühjana kasutatakse „Mida õpid“ ridu");
+  expect(container.textContent).toContain("Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read.");
+  expect(container.textContent).not.toMatch(/protokoll|Punkte veel pole/i);
+  await render([], { kind: "stages" }); // and the stages' own defaults are as they were
+  expect(container.textContent).toContain("Punkte veel pole");
+  expect(container.textContent).not.toContain("Mida õpid");
+});
+
 test("the certificate's lines (kind 'skills'): their own title, labels and hooks, the hint and the empty line given; at 16 'Lisa rida' adds nothing and says so", async () => {
   await render([], { kind: "skills", hint: "Tühjana kasutatakse „Mida õpid“ ridu", empty: "Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read." });
   expect(container.querySelector("[data-protocol-stages]")).toBeNull();

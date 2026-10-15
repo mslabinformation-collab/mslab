@@ -343,8 +343,6 @@ export function CourseEditor({ initial, others, next, publicHref, created, typeL
                   items={draft.certificateSkills}
                   onChange={(v) => set("certificateSkills", v)}
                   error={err("certificateSkills")}
-                  hint={f.certificateSkillsHint}
-                  empty={f.certificateSkillsEmpty}
                 />
                 {plain("certificateVolume", f.certificateVolume, { hint: f.certificateVolumeHint, maxLength: CERT_LIMITS.volume })}
               </div>

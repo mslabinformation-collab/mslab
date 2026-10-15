@@ -75,7 +75,14 @@ describe("CertificateSettings", () => {
     expect(container.querySelector('img, input[type="file"]')).toBeNull();
     expect($("[data-cert-save]")!.textContent).toBe("Salvesta tunnistuse andmed");
     await show({ ...INITIAL, last: null });
-    expect($("[data-cert-last]")!.textContent).toBe("Sel aastal pole veel tunnistusi väljastatud.");
+    expect($("[data-cert-last]")!.textContent).toBe("2026. aastal pole veel tunnistusi väljastatud.");
+  });
+
+  test("none issued yet names the year it is about (the year loaded, or saved), not 'this year': a preset for a later year says so; typing another year changes nothing until it is saved", async () => {
+    await show({ ...INITIAL, nextYear: 2027, nextSeq: 20, last: null });
+    expect($("[data-cert-last]")!.textContent).toBe("2027. aastal pole veel tunnistusi väljastatud.");
+    await type(input("next-year"), "2030");
+    expect($("[data-cert-last]")!.textContent).toBe("2027. aastal pole veel tunnistusi väljastatud.");
   });
 
   test("'Salvesta tunnistuse andmed' sends the fields as typed; saved, the fields take the stored values and the saved year's last number", async () => {
@@ -89,7 +96,7 @@ describe("CertificateSettings", () => {
     expect(action.mock.calls[0][0]).toEqual({ place: "  Tallinn ", registryCode: "16346048", practicalLine: PRACTICAL, trainerName: "Maria Sosnina", nextYear: "2027", nextSeq: "1" });
     expect(input("place").value).toBe("Tallinn");
     expect($("[data-cert-status]")!.textContent).toBe("Tunnistuse andmed on salvestatud.");
-    expect($("[data-cert-last]")!.textContent).toBe("Sel aastal pole veel tunnistusi väljastatud.");
+    expect($("[data-cert-last]")!.textContent).toBe("2027. aastal pole veel tunnistusi väljastatud.");
   });
 
   test("Review Focus 4: a next number at or below one already issued is refused on its field, which takes the focus; the last issued number stays beside it", async () => {

@@ -32,9 +32,9 @@ export function ProtocolStagesEditor({
   items: string[];
   onChange: (items: string[]) => void;
   error?: string;
-  /** The hint under the title (default: the contact course's). */
+  /** The hint under the title (default: the kind's own: the contact course's protocol, or the certificate's lines'). */
   hint?: string;
-  /** The line shown while there are none (default: the contact course's). */
+  /** The line shown while there are none (default: the kind's own). */
   empty?: string;
   /** stages (default): "Protokolli punktid"; skills: the certificate's lines (phase 3d). */
   kind?: "stages" | "skills";
@@ -43,8 +43,22 @@ export function ProtocolStagesEditor({
   const l = adminEt.list;
   const skills = kind === "skills";
   const words = skills
-    ? { title: t.fields.certificateSkills, item: t.fields.certificateSkill, add: t.fields.certificateSkillsAdd, full: t.fields.certificateSkillsFull }
-    : { title: t.sections.protocolStages, item: t.fields.protocolStage, add: t.fields.protocolStagesAdd, full: t.fields.protocolStagesFull };
+    ? {
+        title: t.fields.certificateSkills,
+        item: t.fields.certificateSkill,
+        add: t.fields.certificateSkillsAdd,
+        full: t.fields.certificateSkillsFull,
+        hint: t.fields.certificateSkillsHint,
+        empty: t.fields.certificateSkillsEmpty,
+      }
+    : {
+        title: t.sections.protocolStages,
+        item: t.fields.protocolStage,
+        add: t.fields.protocolStagesAdd,
+        full: t.fields.protocolStagesFull,
+        hint: t.fields.protocolStagesHint,
+        empty: t.fields.protocolStagesEmpty,
+      };
   const most = skills ? CERT_LIMITS.skills : PROTOCOL_LIMITS.stages;
   const longest = skills ? CERT_LIMITS.skill : PROTOCOL_LIMITS.title;
   const uid = useId();
@@ -100,10 +114,10 @@ export function ProtocolStagesEditor({
         </h3>
       </div>
       <p id={`${uid}-hint`} className={ui.hint}>
-        {hint ?? t.fields.protocolStagesHint}
+        {hint ?? words.hint}
       </p>
       {items.length === 0 ? (
-        <p className={`${ui.muted} ${ui.small}`}>{empty ?? t.fields.protocolStagesEmpty}</p>
+        <p className={`${ui.muted} ${ui.small}`}>{empty ?? words.empty}</p>
       ) : (
         <ol className={styles.rows}>
           {items.map((item, i) => {

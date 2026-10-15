@@ -686,7 +686,8 @@ export const adminEt = {
       nextSeq: "Number",
       nextHint: "Jätka oma paberil tunnistuste numbreid. Uue aasta esimene tunnistus saab numbri 1.",
       last: "Viimati väljastatud: {number}",
-      lastNone: "Sel aastal pole veel tunnistusi väljastatud.",
+      // {year}: the year the card is about (the next number's year: this year, or the later year of Maria's preset)
+      lastNone: "{year}. aastal pole veel tunnistusi väljastatud.",
       save: "Salvesta tunnistuse andmed",
       saving: "Salvestan…",
       saved: "Tunnistuse andmed on salvestatud.",

@@ -4,7 +4,7 @@ import { paged, setSetting, type Paged } from "@/db/queries/admin";
 import { readSetting } from "@/db/queries/public";
 import { certificates, courseAccess, courses, type Certificate } from "@/db/schema";
 import {
-  CERT_LIMITS, certificateSkills, checkCertificateName, formatCertificateNumber, nextNumber, readCertificateSettings, tallinnYear, type CertificateSettings,
+  CERT_LIMITS, certificateSkills, checkCertificateName, formatCertificateNumber, readCertificateSettings, seqToIssue, tallinnYear, type CertificateSettings,
 } from "@/domain/certificate";
 import { PAGE_SIZE } from "@/domain/paging";
 import { toStorable } from "@/lib/to-storable";
@@ -61,6 +61,12 @@ const viewOf = (c: Pick<Certificate, "id" | "number" | "name" | "issuedAt" | "re
 /** Waits for and takes the number series' lock; it is held to the end of `tx`'s transaction. */
 const lockNumbers = (tx: Db) => tx.execute(sql`select pg_advisory_xact_lock(hashtext(${NUMBER_LOCK}))`);
 
+/** The highest seq issued in `year`, 0 for none: what seqToIssue (the one rule of the next number) and Seaded's "taken" check read; inside a write, after lockNumbers. */
+const highestSeq = async (q: Db, year: number): Promise<number> => {
+  const [{ top }] = await q.select({ top: max(certificates.seq) }).from(certificates).where(eq(certificates.year, year));
+  return top ?? 0;
+};
+
 /** Seaded's certificate settings as stored, or the defaults (domain/certificate.ts readCertificateSettings); inside a write, after lockNumbers. */
 const readSettings = async (q: Db, now: Date): Promise<CertificateSettings> => readCertificateSettings(await readSetting(q, SETTING_KEY), now);
 
@@ -70,10 +76,11 @@ const readSettings = async (q: Db, now: Date): Promise<CertificateSettings> => r
  * - the access row is locked (lockAccess). A revoked access is `notFound`; an expired one issues, since she completed it. One without
  *   completed_at is `notCompleted`. One that has a certificate is `already`, with that one's view (a double tap, a second device). These
  *   answers need only the access's lock, so they never wait for the number series;
- * - otherwise the course's copy is read, the number series locked, Seaded read and the number taken: nextNumber for the Tallinn year of
- *   `now` (a new year starting at 1), but never at or below the highest number already issued in that year (max(seq) under the lock): the
- *   issue takes the larger of the two, so Seaded's number ahead of the series (Maria's jump) is kept, and one behind it or for another
- *   year, or no row at all, cannot make the unique (year, seq) refuse every later issue. This amends spec §4's "else 1";
+ * - otherwise the course's copy is read, the number series locked, Seaded read and the number taken (domain/certificate.ts seqToIssue, the one
+ *   rule Seaded's card shows too): nextNumber for the Tallinn year of `now` (a new year starting at 1), but never at or below the highest
+ *   number already issued in that year (highestSeq under the lock): the issue takes the larger of the two, so Seaded's number ahead of the
+ *   series (Maria's jump) is kept, and one behind it or for another year, or no row at all, cannot make the unique (year, seq) refuse every
+ *   later issue. This amends spec §4's "else 1";
  * - the frozen copy is written: the course's Estonian title, its certificate lines (certificateSkills: its own, else "Mida õpid") and its
  *   volume, and Seaded's practical line, place and registry code;
  * - Seaded's next number is moved on: the year used and the number used plus one.
@@ -100,20 +107,18 @@ export async function issueCertificate(db: Db, clientId: number, slug: string, r
     // the series' lock after the access's, always in this order: no two writes ever wait for each other the other way round
     await lockNumbers(tx);
     const settings = await readSettings(tx, now);
-    const wanted = nextNumber(settings, tallinnYear(now));
     // Never a number of this year that is already issued, whatever Seaded says (spec §4 as amended): a year that is not this one (a typo,
     // next year preset in December, a form left open over New Year) or a missing row would give number 1 again, the unique (year, seq)
     // would refuse every later issue and the series would stall. A number ahead of the highest (Maria's jump) is kept.
-    const year = wanted.year;
-    const [{ top }] = await tx.select({ top: max(certificates.seq) }).from(certificates).where(eq(certificates.year, year));
-    const seq = Math.max(wanted.seq, (top ?? 0) + 1);
+    const year = tallinnYear(now);
+    const taken = seqToIssue(settings, year, await highestSeq(tx, year));
     const [row] = await tx
       .insert(certificates)
       .values({
         accessId: access.id,
-        number: formatCertificateNumber(year, seq),
-        year,
-        seq,
+        number: formatCertificateNumber(taken.year, taken.seq),
+        year: taken.year,
+        seq: taken.seq,
         name: checked.name,
         courseTitle: course.title.et,
         skills: certificateSkills(course),
@@ -124,7 +129,7 @@ export async function issueCertificate(db: Db, clientId: number, slug: string, r
         issuedAt: now,
       })
       .returning(); // (returning(fields) has no common overload on the Db union: the whole row)
-    await setSetting(tx, SETTING_KEY, { ...settings, nextYear: year, nextSeq: seq + 1 });
+    await setSetting(tx, SETTING_KEY, { ...settings, ...taken.next });
     return { kind: "issued", certificate: viewOf(row) };
   });
   if (result.kind === "issued") console.info(`[certificate] access ${known.id}: issued ${result.certificate.number}`);
@@ -240,8 +245,7 @@ export async function saveCertificateSettings(db: Db, raw: unknown): Promise<Sav
   return db.transaction(async (t): Promise<SaveResult> => {
     const tx = t as unknown as Db;
     await lockNumbers(tx);
-    const [{ top }] = await tx.select({ top: max(certificates.seq) }).from(certificates).where(eq(certificates.year, nextYear));
-    if (top !== null && nextSeq <= top) return { ok: false, fields: { nextSeq: "taken" } };
+    if (nextSeq <= (await highestSeq(tx, nextYear))) return { ok: false, fields: { nextSeq: "taken" } };
     const settings: CertificateSettings = { place, registryCode, practicalLine, trainerName, nextYear, nextSeq };
     await setSetting(tx, SETTING_KEY, settings);
     return { ok: true, settings };
@@ -281,17 +285,18 @@ export async function lastIssued(db: Db, year: number): Promise<string | null> {
 }
 
 /**
- * Seaded's "Tunnistus" card (spec §4, §6): the stored setting and the number last issued in the year the card shows. An issue moves the
- * stored next number on, so in January, until the year's first issue, it can still be last year's. An issue does not use it then (nextNumber:
- * another year starts at 1; and never at or below the year's highest, as issueCertificate), so the card shows the number the next issue will
- * really take: this Tallinn year, 1 or its highest + 1. A next number for this year or a later one (Maria's preset) is shown as she saved it.
+ * Seaded's "Tunnistus" card (spec §4, §6): the stored setting with "Järgmine number" as the next issue will take it, and the number last issued
+ * in the year the card shows. The stored number is only a start: an issue never takes less than the year's highest + 1, and a setting for
+ * another year (still last year's in January, until the year's first issue; a deleted row's default) is not used, so the card runs the stored
+ * setting through the issue's own rule (seqToIssue) for this Tallinn year. One exception: a setting for a LATER year (Maria's preset in December)
+ * is shown as she saved it. An issue before that year still takes this year's number, but showing that would replace her preset on the card,
+ * and an unrelated save of the card would overwrite it.
  */
 export async function certificateCard(db: Db, now: Date): Promise<{ settings: CertificateSettings; last: string | null }> {
   const stored = await getCertificateSettings(db, now);
   const year = tallinnYear(now);
-  if (stored.nextYear >= year) return { settings: stored, last: await lastIssued(db, stored.nextYear) };
-  const [{ top }] = await db.select({ top: max(certificates.seq) }).from(certificates).where(eq(certificates.year, year));
-  const seq = Math.max(nextNumber(stored, year).seq, (top ?? 0) + 1); // issueCertificate's rule
+  if (stored.nextYear > year) return { settings: stored, last: await lastIssued(db, stored.nextYear) };
+  const { seq } = seqToIssue(stored, year, await highestSeq(db, year));
   return { settings: { ...stored, nextYear: year, nextSeq: seq }, last: await lastIssued(db, year) };
 }
 

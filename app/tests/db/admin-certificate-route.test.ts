@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vi
 import type { Db } from "@/db/client";
 import { certificates, courseAccess, settings } from "@/db/schema";
 import { createSession } from "@/server/auth";
+import { certificatePdf } from "@/server/certificates";
 import { at, ecourse, student } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
 
@@ -18,6 +19,11 @@ vi.mock("next/headers", () => ({
   }),
 }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
+// the real PDF, wrapped so a test can make one render fail
+vi.mock("@/server/certificates", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/server/certificates")>();
+  return { ...real, certificatePdf: vi.fn(real.certificatePdf) };
+});
 
 import { GET, maxDuration } from "@/app/api/admin/tunnistus/[id]/route";
 
@@ -109,6 +115,20 @@ describe("GET /api/admin/tunnistus/<id>", () => {
     } finally {
       await db.update(courseAccess).set({ revokedAt: null }).where(eq(courseAccess.id, accessId));
     }
+  });
+
+  test("a render that fails answers 500 { ok: false, error: 'server' } and no PDF, and logs the certificate's id and the error's class only, never a name or the message", async () => {
+    await signIn();
+    vi.mocked(certificatePdf).mockRejectedValueOnce(new TypeError("boom: Kätlin Kask-Žukova, Kulmumeistri e-koolitus"));
+    const res = await download(String(certId));
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("content-disposition")).toBeNull();
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toEqual({ ok: false, error: "server" });
+    expect(vi.mocked(console.error).mock.calls.map((call) => call.join(" "))).toEqual([`[certificate] ${certId}: the admin's download failed: TypeError`]);
+    // and the next download is a PDF again
+    expect((await download(String(certId))).status).toBe(200);
   });
 
   test("404: an id that is no certificate, or no id at all", async () => {

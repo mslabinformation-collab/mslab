@@ -11,7 +11,7 @@ import ed from "./editor.module.css";
 import site from "./site-editor.module.css";
 import styles from "./CertificateSettings.module.css";
 
-/** What the Seaded page reads for the card (server/certificates.ts getCertificateSettings and lastIssued). */
+/** What the Seaded page reads for the card (server/certificates.ts certificateCard: the settings, "Järgmine number" as the next issue takes it, and the last issued number). */
 export type CertificateSettingsInitial = {
   place: string;
   registryCode: string;
@@ -57,7 +57,8 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
   const uid = useId();
   const form = useRef<HTMLFormElement>(null);
   const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
-  const [last, setLast] = useState(initial.last);
+  // the last issued number belongs to the year it was read for (the loaded one, then the saved one), not to what is typed in the year field
+  const [last, setLast] = useState({ number: initial.last, year: initial.nextYear });
   const [fields, setFields] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Line>(IDLE);
   const [pending, start] = useTransition();
@@ -107,7 +108,7 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
       const result = await saveCertificateSettingsAction(draft);
       if (result.ok) {
         setDraft(draftOf(result.settings));
-        setLast(result.last);
+        setLast({ number: result.last, year: result.settings.nextYear });
         setFields({});
         setStatus({ tone: "done", text: t.saved });
       } else if (result.fields) {
@@ -220,7 +221,7 @@ export function CertificateSettings({ initial }: { initial: CertificateSettingsI
               {t.nextHint}
             </p>
             <p id={`${uid}-last`} className={ui.hint} data-cert-last="">
-              {last ? fill(t.last, { number: last }) : t.lastNone}
+              {last.number ? fill(t.last, { number: last.number }) : fill(t.lastNone, { year: last.year })}
             </p>
           </fieldset>
         </div>

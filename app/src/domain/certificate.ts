@@ -129,6 +129,18 @@ export function nextNumber(s: { nextYear: number; nextSeq: number }, year: numbe
   return { year, seq, next: { nextYear: year, nextSeq: seq + 1 } };
 }
 
+/**
+ * The number an issue in `year` really takes (spec §4 as amended) and the setting after it: nextNumber's, but never at or below `top`, the
+ * highest seq already issued in that year (0 for none), so the issue takes the larger of the two. Seaded's number ahead of the series (Maria's
+ * jump) is kept; one behind it (the default 1 of a deleted row, a number set long ago), or for another year, cannot make the unique
+ * (year, seq) refuse every later issue. This is the one rule: the issue, Seaded's save (its "taken" check reads the same `top`) and Seaded's card
+ * (the number it shows) all call it, so they cannot disagree.
+ */
+export function seqToIssue(s: { nextYear: number; nextSeq: number }, year: number, top: number): { year: number; seq: number; next: { nextYear: number; nextSeq: number } } {
+  const seq = Math.max(nextNumber(s, year).seq, top + 1);
+  return { year, seq, next: { nextYear: year, nextSeq: seq + 1 } };
+}
+
 /** A line as the PDF draws it: every run of white space (a line break too) one space, trimmed. */
 const oneLine = (s: unknown): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "");
 
