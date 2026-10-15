@@ -23,7 +23,8 @@ const stamp = (d: Date) => `${formatDate(d, "et")} ${formatTime(d, "et")}`;
  * Hindamine (e-course completion, spec §5.2): what waits for Maria, in three groups, each oldest first — the practical work sent ("Hinda" opens
  * the access's protocol screen, ?ligipaas=), the open answers waiting for her review ("Vaata vastuseid": /admin/hindamine/test?id=), and the
  * students out of tries ("Ava test uuesti" with its confirmation, and their attempts). A group with nothing in it is left out; when nothing waits
- * at all: "Kõik on hinnatud." Each group has an anchor the overview's card links to.
+ * at all: "Kõik on hinnatud." Each group has an anchor the overview's card links to. Its heading links the certificate register
+ * (/admin/tunnistused, phase 3d), which is not in the menu.
  */
 export default async function AssessmentPage() {
   const email = await requireAdmin();
@@ -42,6 +43,9 @@ export default async function AssessmentPage() {
             <h1 className={ui.h1}>{t.title}</h1>
             <p className={ui.lead}>{t.lead}</p>
           </div>
+          <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/admin/tunnistused" data-to-register="">
+            {adminEt.certificates.register.fromAssessment}
+          </Link>
         </div>
 
         {nothing ? (

@@ -50,7 +50,7 @@ export type CertificateFieldError = "required" | "tooLong" | "invalid" | "taken"
 type SaveResult = { ok: true; settings: CertificateSettings } | { ok: false; fields: Record<string, string> };
 
 /** What the pages get of a certificate row (ISO times). */
-const viewOf = (c: Pick<Certificate, "id" | "number" | "name" | "issuedAt" | "reissuedAt">): CertificateView => ({
+export const viewOf = (c: Pick<Certificate, "id" | "number" | "name" | "issuedAt" | "reissuedAt">): CertificateView => ({
   id: c.id,
   number: c.number,
   name: c.name,

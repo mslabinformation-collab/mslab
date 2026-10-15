@@ -5,7 +5,7 @@ import { listRegistrations, paged, type Paged, type RegistrationRow } from "@/db
 import { clientNameSql } from "@/db/queries/client-name";
 import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
 import { feedbackOf, type FeedbackRow } from "@/db/queries/protocols";
-import { clients, courseAccess, courses, lessonProgress, practicePackages, protocols, registrations, requests, termsAcceptances, testAttempts } from "@/db/schema";
+import { certificates, clients, courseAccess, courses, lessonProgress, practicePackages, protocols, registrations, requests, termsAcceptances, testAttempts } from "@/db/schema";
 import { accessState, defaultExpiryDate, grantExpiry, type AccessState } from "@/domain/client-access";
 import { percentOf, type CourseSteps } from "@/domain/completion";
 import { isEmail, normalizeEmail } from "@/domain/email";
@@ -15,6 +15,7 @@ import { pick, type I18n } from "@/i18n/field";
 import { getDict } from "@/i18n/locales";
 import { parseRowId } from "@/lib/row-id";
 import { linkClientRecords, lockAddress } from "./client-auth";
+import { viewOf, type CertificateView } from "./certificates";
 import { loadSteps } from "./completion";
 import { field } from "./edit-check";
 import { courseOutline } from "./lesson-outline";
@@ -97,6 +98,11 @@ export type ClientAccessRow = {
   testPercent: number | null;
   /** She has made an attempt at the course's test ("Testi katsed"). */
   hasAttempts: boolean;
+  /**
+   * Her certificate of this e-course (phase 3d, spec §6), or null before she has confirmed her name; `revoked`: an admin ended the access, so
+   * she can no longer download it (Maria still can, Review Focus 5).
+   */
+  certificate: (CertificateView & { revoked: boolean }) | null;
 };
 /** One of her registrations in the drawer: a contact course's carries its course day's protocol ("Lisa protokoll" / "Ava protokoll", spec §5.5). */
 export type ClientRegistrationRow = RegistrationRow & { protocolId: number | null; contact: boolean };
@@ -128,6 +134,10 @@ export type ClientDetail = {
   /** Her answers to the course feedback form (phase protocols, spec §7), newest first. */
   feedback: FeedbackRow[];
 };
+
+/** A certificate row as the drawer shows it (server/certificates.ts viewOf), with whether an admin ended her access. */
+const certificateView = (c: { id: number; number: string; name: string; issuedAt: Date; reissuedAt: Date | null } | undefined, revoked: boolean): ClientAccessRow["certificate"] =>
+  c ? { ...viewOf(c), revoked } : null;
 
 /** Everything the student's drawer shows, or null when there is no such student. Newest first in every list. */
 export async function clientDetail(db: Db, id: number, now: Date = new Date()): Promise<ClientDetail | null> {
@@ -169,7 +179,7 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
   const newsletter = await newsletterState(db, client.email);
   // each e-course's lessons for her: done of total, and the first lesson she cannot open yet ("Ava järgmine õppetund"); and (e-course
   // completion, spec §5.5) each access's steps as her own page reads them, the protocols of her accesses and registrations, her attempts
-  const [outlines, steps, accessProtocols, registrationProtocols, attempts] = await Promise.all([
+  const [outlines, steps, accessProtocols, registrationProtocols, attempts, issued] = await Promise.all([
     Promise.all(access.map((a) => courseOutline(db, a.courseId, id))),
     Promise.all(
       access.map((a) =>
@@ -179,9 +189,17 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
     access.length ? db.select({ id: protocols.id, accessId: protocols.accessId }).from(protocols).where(inArray(protocols.accessId, access.map((a) => a.id))) : [],
     regs.length ? db.select({ id: protocols.id, registrationId: protocols.registrationId }).from(protocols).where(inArray(protocols.registrationId, regs.map((r) => r.id))) : [],
     db.select({ courseId: testAttempts.courseId, number: testAttempts.number, correct: testAttempts.correct, total: testAttempts.total }).from(testAttempts).where(eq(testAttempts.clientId, id)),
+    // her certificates (phase 3d): at most one per access
+    access.length
+      ? db
+          .select({ id: certificates.id, accessId: certificates.accessId, number: certificates.number, name: certificates.name, issuedAt: certificates.issuedAt, reissuedAt: certificates.reissuedAt })
+          .from(certificates)
+          .where(inArray(certificates.accessId, access.map((a) => a.id)))
+      : [],
   ]);
   const accessProtocol = new Map(accessProtocols.map((p) => [p.accessId, p.id]));
   const registrationProtocol = new Map(registrationProtocols.map((p) => [p.registrationId, p.id]));
+  const certificateOf = new Map(issued.map((c) => [c.accessId, c]));
   // her newest attempt at each course's test: its score is the step line's (none for an attempt of open answers only)
   const newest = new Map<number, { number: number; percent: number | null }>();
   for (const t of attempts) if ((newest.get(t.courseId)?.number ?? 0) < t.number) newest.set(t.courseId, { number: t.number, percent: t.total > 0 ? percentOf(t.correct, t.total) : null });
@@ -200,6 +218,7 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
         protocolId: accessProtocol.get(a.id) ?? null,
         testPercent: newest.get(a.courseId)?.percent ?? null,
         hasAttempts: newest.has(a.courseId),
+        certificate: certificateView(certificateOf.get(a.id), a.revokedAt !== null),
       };
     }),
     terms,

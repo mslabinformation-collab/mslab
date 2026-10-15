@@ -77,6 +77,8 @@ const COURSE_CSS = [
   "src/components/admin/Assessment.module.css",
   // Seaded → "Tunnistus" (phase 3d, Task 5)
   "src/components/admin/CertificateSettings.module.css",
+  // the certificate register (phase 3d, Task 6)
+  "src/app/admin/(panel)/tunnistused/register.module.css",
 ];
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""); // comments aside

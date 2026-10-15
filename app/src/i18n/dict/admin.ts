@@ -668,8 +668,8 @@ export const adminEt = {
     attempts: "Testi katsed",
   },
 
-  // The e-course certificate (phase 3d, spec §6): Seaded → "Tunnistus" (components/admin/CertificateSettings.tsx). Task 6 adds the drawer's line,
-  // "Paranda nimi" and the register here.
+  // The e-course certificate (phase 3d, spec §6): Seaded → "Tunnistus" (components/admin/CertificateSettings.tsx), the Õpilased drawer's line,
+  // "Paranda nimi" and the register /admin/tunnistused.
   certificates: {
     settings: {
       title: "Tunnistus",
@@ -704,6 +704,43 @@ export const adminEt = {
         length: "Nimi on liiga lühike.",
         other: "Kontrolli seda välja.",
       },
+    },
+    // the Õpilased drawer's line about an access's certificate (components/admin/ClientDrawer.tsx); {date}: dd.mm.yyyy in Tallinn
+    drawer: {
+      line: "Tunnistus {number} · {date}",
+      reissued: "nimi parandatud {date}",
+      name: "Nimi tunnistusel: {name}",
+      download: "Laada alla",
+      downloadLabel: "Laada alla tunnistus {number}",
+      notYet: "Tunnistus: õpilane pole veel nime kinnitanud",
+      revoked: "ligipääs tühistatud",
+    },
+    // "Paranda nimi" (components/admin/ReissueCertificate.tsx): the student's rules, the same number, no mail
+    reissue: {
+      button: "Paranda nimi",
+      label: "Nimi tunnistusel",
+      hint: "Tunnistus väljastatakse uuesti sama numbriga. Õpilasele kirja ei saadeta.",
+      save: "Väljasta uuesti",
+      cancel: "Katkesta",
+      done: "Tunnistus {number} on uuesti väljastatud nimega {name}.",
+      errors: {
+        length: "Nimi peab olema 2–80 tähemärki pikk",
+        letters: "Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma).",
+        notFound: "Seda tunnistust ei leitud. Laadi leht uuesti.",
+      },
+    },
+    // /admin/tunnistused, from Hindamine's heading ("Väljastatud tunnistused")
+    register: {
+      fromAssessment: "Väljastatud tunnistused",
+      eyebrow: "Hindamine",
+      title: "Tunnistused",
+      lead: "Kõik väljastatud e-kursuse tunnistused, uusimad eespool.",
+      back: "Hindamisse",
+      count: "Tunnistusi: {n}",
+      empty: "Tunnistusi pole veel väljastatud.",
+      col: { number: "Number", name: "Nimi", course: "Koolitus", issued: "Väljastatud", file: "Tunnistus" },
+      // the re-issue note, the "ligipääs tühistatud" mark and the download link are the drawer's (certificates.drawer.reissued, .revoked, .download, .downloadLabel)
+      openStudent: "Ava õpilane {name}",
     },
   },
 
