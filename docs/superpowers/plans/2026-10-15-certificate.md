@@ -4246,7 +4246,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `account.certificate.issue` | Kinnita ja koosta tunnistus | Подтвердить и создать сертификат | Spec (ET); RU Draft |
 | `account.certificate.issuing` | Koostan tunnistust… | Создаю сертификат… | Draft |
 | `account.certificate.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Напишите имя латинскими буквами, как в паспорте (можно также пробел, дефис и апостроф). | Owner (15.10: Latin letters as in the passport) |
-| `account.certificate.length` | Nimi peab olema 2–80 tähemärki pikk | Имя должно быть длиной от 2 до 80 символов | Draft |
+| `account.certificate.length` | Nimi peab olema 2–80 tähemärki pikk. | Имя должно быть длиной от 2 до 80 символов. | Draft (the final full stop: final review M-7) |
 | `account.certificate.number` | Tunnistus nr. {number} | Сертификат № {number} | Spec (ET); RU Draft |
 | `account.certificate.download` | Laadi tunnistus alla (PDF) | Скачать сертификат (PDF) | Spec (ET); RU Draft |
 | `account.certificate.fixName` | Kui nimes on viga, kirjuta meile | Если в имени ошибка, напишите нам | Spec (ET); RU Draft |
@@ -5731,8 +5731,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `adminEt.courseEditor.fields.certificateLead` | E-kursuse tunnistuse tekst. Juba väljastatud tunnistused jäävad selliseks, nagu need väljastati. | Draft |
 | `adminEt.courseEditor.fields.certificateSkills` | Oskused tunnistusel | Spec (§6) |
 | `adminEt.courseEditor.fields.certificateSkill` | Rida (a field's label: "Rida 1") | Draft |
-| `adminEt.courseEditor.fields.certificateSkillsHint` | Tühjana kasutatakse „Mida õpid“ ridu | Spec (§6) |
+| `adminEt.courseEditor.fields.certificateSkillsHint` | Tühjana kasutatakse „Õpiväljundid“ ridu | Draft (final review M-7: the list's one name, the card Maria fills; spec §6 says „Mida õpid“) |
 | `adminEt.courseEditor.fields.certificateSkillsEmpty` | Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read. | Draft (names the editor's own card, which the public page calls „Mida õpid“) |
+| `adminEt.courseEditor.fields.certificateSkillsLong` | Tunnistusele lähevad õpiväljundid. Mõni neist on üle 120 tähemärgi ega mahu tunnistusele: lisa siia lühemad read. | Draft (final review M-4: no line of its own, and an outcome the certificate would print is over 120 characters) |
 | `adminEt.courseEditor.fields.certificateSkillsAdd` | Lisa rida | Draft |
 | `adminEt.courseEditor.fields.certificateSkillsFull` | Rohkem kui 16 rida ei saa lisada. | Draft |
 | `adminEt.courseEditor.fields.certificateVolume` | Maht | Spec (§6) |
@@ -5750,7 +5751,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `adminEt.certificates.settings.nextYear` / `nextSeq` | Aasta / Number | Draft |
 | `adminEt.certificates.settings.nextHint` | Jätka oma paberil tunnistuste numbreid. Uue aasta esimene tunnistus saab numbri 1. | Draft |
 | `adminEt.certificates.settings.last` | Viimati väljastatud: {number} | Draft |
-| `adminEt.certificates.settings.lastNone` | Sel aastal pole veel tunnistusi väljastatud. | Draft |
+| `adminEt.certificates.settings.lastNone` | {year}. aastal pole veel tunnistusi väljastatud. | Draft ({year}: the year the card is about, this year or the later year of a preset) |
 | `adminEt.certificates.settings.save` | Salvesta tunnistuse andmed | Draft |
 | `adminEt.certificates.settings.saving` | Salvestan… | Draft (as `common.saving`) |
 | `adminEt.certificates.settings.saved` | Tunnistuse andmed on salvestatud. | Draft |
@@ -5758,7 +5759,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `adminEt.certificates.settings.error` | Salvestamine ei õnnestunud. Proovi uuesti. | Draft (as `common.saveError`) |
 | `adminEt.certificates.settings.errors.required` | Täida see väli. | Draft |
 | `adminEt.certificates.settings.errors.tooLong` | Tekst on liiga pikk. | Draft (as the editors') |
-| `adminEt.certificates.settings.errors.invalid` | Kontrolli aastat (2000–2099) ja numbrit (1–99 999). | Draft (Task 3's ranges) |
+| `adminEt.certificates.settings.errors.invalid` | Kontrolli numbrit (1–99 999). | Draft (the number's range; final review M-5) |
+| `adminEt.certificates.settings.errors.year` | Aasta peab olema käesolev või järgmine. | Draft (`invalid` on the year: this Tallinn year or the next; final review M-5) |
 | `adminEt.certificates.settings.errors.taken` | See number on juba väljastatud. Vali suurem number kui viimati väljastatud. | Draft (§4's rule) |
 | `adminEt.certificates.settings.errors.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Owner (15.10), as the student's `account.certificate.letters` |
 | `adminEt.certificates.settings.errors.length` | Nimi on liiga lühike. | Draft (the trainer's name of one character; over 60 is `tooLong`) |
@@ -6787,7 +6789,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `adminEt.certificates.reissue.save` | Väljasta uuesti | Draft |
 | `adminEt.certificates.reissue.cancel` | Katkesta | Draft |
 | `adminEt.certificates.reissue.done` | Tunnistus {number} on uuesti väljastatud nimega {name}. | Draft |
-| `adminEt.certificates.reissue.errors.length` | Nimi peab olema 2–80 tähemärki pikk | Draft |
+| `adminEt.certificates.reissue.errors.length` | Nimi peab olema 2–80 tähemärki pikk. | Draft (the final full stop: final review M-7) |
 | `adminEt.certificates.reissue.errors.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Owner (15.10), as the student's `account.certificate.letters` |
 | `adminEt.certificates.reissue.errors.notFound` | Seda tunnistust ei leitud. Laadi leht uuesti. | Draft |
 | `adminEt.certificates.register.fromAssessment` | Väljastatud tunnistused | Draft |
@@ -7563,7 +7565,7 @@ no dictionary key. The fixed texts printed on the certificate, in `src/server/ce
 | `account.certificate.issue` | Kinnita ja koosta tunnistus | Подтвердить и создать сертификат | Spec (ET); RU Draft |
 | `account.certificate.issuing` | Koostan tunnistust… | Создаю сертификат… | Draft |
 | `account.certificate.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Напишите имя латинскими буквами, как в паспорте (можно также пробел, дефис и апостроф). | Owner (15.10: Latin letters as in the passport) |
-| `account.certificate.length` | Nimi peab olema 2–80 tähemärki pikk | Имя должно быть длиной от 2 до 80 символов | Draft |
+| `account.certificate.length` | Nimi peab olema 2–80 tähemärki pikk. | Имя должно быть длиной от 2 до 80 символов. | Draft (the final full stop: final review M-7) |
 | `account.certificate.number` | Tunnistus nr. {number} | Сертификат № {number} | Spec (ET); RU Draft |
 | `account.certificate.download` | Laadi tunnistus alla (PDF) | Скачать сертификат (PDF) | Spec (ET); RU Draft |
 | `account.certificate.fixName` | Kui nimes on viga, kirjuta meile | Если в имени ошибка, напишите нам | Spec (ET); RU Draft |
@@ -7582,8 +7584,9 @@ the admin is Estonian only.
 | `adminEt.courseEditor.fields.certificateLead` | E-kursuse tunnistuse tekst. Juba väljastatud tunnistused jäävad selliseks, nagu need väljastati. | Draft |
 | `adminEt.courseEditor.fields.certificateSkills` | Oskused tunnistusel | Spec (§6) |
 | `adminEt.courseEditor.fields.certificateSkill` | Rida (a field's label: "Rida 1") | Draft |
-| `adminEt.courseEditor.fields.certificateSkillsHint` | Tühjana kasutatakse „Mida õpid“ ridu | Spec (§6) |
+| `adminEt.courseEditor.fields.certificateSkillsHint` | Tühjana kasutatakse „Õpiväljundid“ ridu | Draft (final review M-7: the list's one name, the card Maria fills; spec §6 says „Mida õpid“) |
 | `adminEt.courseEditor.fields.certificateSkillsEmpty` | Ridu pole: tunnistusel on kaardi „Õpiväljundid“ read. | Draft (names the editor's own card, which the public page calls „Mida õpid“) |
+| `adminEt.courseEditor.fields.certificateSkillsLong` | Tunnistusele lähevad õpiväljundid. Mõni neist on üle 120 tähemärgi ega mahu tunnistusele: lisa siia lühemad read. | Draft (final review M-4: no line of its own, and an outcome the certificate would print is over 120 characters) |
 | `adminEt.courseEditor.fields.certificateSkillsAdd` | Lisa rida | Draft |
 | `adminEt.courseEditor.fields.certificateSkillsFull` | Rohkem kui 16 rida ei saa lisada. | Draft |
 | `adminEt.courseEditor.fields.certificateVolume` | Maht | Spec (§6) |
@@ -7601,7 +7604,7 @@ the admin is Estonian only.
 | `adminEt.certificates.settings.nextYear` / `nextSeq` | Aasta / Number | Draft |
 | `adminEt.certificates.settings.nextHint` | Jätka oma paberil tunnistuste numbreid. Uue aasta esimene tunnistus saab numbri 1. | Draft |
 | `adminEt.certificates.settings.last` | Viimati väljastatud: {number} | Draft |
-| `adminEt.certificates.settings.lastNone` | Sel aastal pole veel tunnistusi väljastatud. | Draft |
+| `adminEt.certificates.settings.lastNone` | {year}. aastal pole veel tunnistusi väljastatud. | Draft ({year}: the year the card is about, this year or the later year of a preset) |
 | `adminEt.certificates.settings.save` | Salvesta tunnistuse andmed | Draft |
 | `adminEt.certificates.settings.saving` | Salvestan… | Draft (as `common.saving`) |
 | `adminEt.certificates.settings.saved` | Tunnistuse andmed on salvestatud. | Draft |
@@ -7609,7 +7612,8 @@ the admin is Estonian only.
 | `adminEt.certificates.settings.error` | Salvestamine ei õnnestunud. Proovi uuesti. | Draft (as `common.saveError`) |
 | `adminEt.certificates.settings.errors.required` | Täida see väli. | Draft |
 | `adminEt.certificates.settings.errors.tooLong` | Tekst on liiga pikk. | Draft (as the editors') |
-| `adminEt.certificates.settings.errors.invalid` | Kontrolli aastat (2000–2099) ja numbrit (1–99 999). | Draft (Task 3's ranges) |
+| `adminEt.certificates.settings.errors.invalid` | Kontrolli numbrit (1–99 999). | Draft (the number's range; final review M-5) |
+| `adminEt.certificates.settings.errors.year` | Aasta peab olema käesolev või järgmine. | Draft (`invalid` on the year: this Tallinn year or the next; final review M-5) |
 | `adminEt.certificates.settings.errors.taken` | See number on juba väljastatud. Vali suurem number kui viimati väljastatud. | Draft (§4's rule) |
 | `adminEt.certificates.settings.errors.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Owner (15.10), as the student's `account.certificate.letters` |
 | `adminEt.certificates.settings.errors.length` | Nimi on liiga lühike. | Draft (the trainer's name of one character; over 60 is `tooLong`) |
@@ -7634,7 +7638,7 @@ the admin is Estonian only.
 | `adminEt.certificates.reissue.save` | Väljasta uuesti | Draft |
 | `adminEt.certificates.reissue.cancel` | Katkesta | Draft |
 | `adminEt.certificates.reissue.done` | Tunnistus {number} on uuesti väljastatud nimega {name}. | Draft |
-| `adminEt.certificates.reissue.errors.length` | Nimi peab olema 2–80 tähemärki pikk | Draft |
+| `adminEt.certificates.reissue.errors.length` | Nimi peab olema 2–80 tähemärki pikk. | Draft (the final full stop: final review M-7) |
 | `adminEt.certificates.reissue.errors.letters` | Kirjuta nimi ladina tähtedega nagu passis (lubatud on ka tühik, sidekriips ja ülakoma). | Owner (15.10), as the student's `account.certificate.letters` |
 | `adminEt.certificates.reissue.errors.notFound` | Seda tunnistust ei leitud. Laadi leht uuesti. | Draft |
 | `adminEt.certificates.register.fromAssessment` | Väljastatud tunnistused | Draft |

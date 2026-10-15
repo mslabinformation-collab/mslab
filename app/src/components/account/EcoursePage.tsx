@@ -18,7 +18,9 @@ import styles from "./EcoursePage.module.css";
 /**
  * The personal part of /konto/kursus/<slug> (the page itself is a static shell, the same for every visitor): loads
  * GET /api/konto/kursus/<slug> in the browser (AccountLoader: skeleton, signed out → login page, another device, error + retry), then
- * - 404, no active access: "Sul ei ole sellele koolitusele ligipääsu." and one button to the public course page, not the error;
+ * - 404, no active access: "Sul ei ole sellele koolitusele ligipääsu.", one button to the public course page and a text link "Minu konto" to
+ *   the dashboard (an ended access completed without its certificate has the name form on its card there: a "completed" mail built while
+ *   the access was active links this page), not the error;
  * - terms of the current version not accepted: the notice (TermsGate), then the course;
  * - otherwise the course (EcourseView).
  */
@@ -35,7 +37,7 @@ export function EcoursePage({ slug, locale, t }: { slug: string; locale: Locale;
       }
       notFound={
         <div data-account-state="noAccess">
-          <Notice title={t.noAccess}>
+          <Notice title={t.noAccess} links={[{ href: href(locale, "/konto"), label: t.toAccount }]}>
             <Link className={ui.btn} href={href(locale, `/koolitused/${slug}`)}>
               {t.viewCourse}
               <Icon name="arrow" />

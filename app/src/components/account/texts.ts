@@ -34,10 +34,11 @@ export type CertificateTexts = Dict["account"]["certificate"] & { rate: string; 
 
 /**
  * The e-course page's: the account.ecourse strings, the modules' lock label (course.locked), AccountLoader's, "Lõpetamine" (account.completion)
- * and its "Tunnistus" row (CertificateTexts).
+ * and its "Tunnistus" row (CertificateTexts), and "Minu konto" (nav.account), the no-access notice's way to the dashboard.
  */
 export type EcourseTexts = Dict["account"]["ecourse"] & {
   locked: string;
+  toAccount: string;
   loader: LoaderTexts;
   completion: Dict["account"]["completion"];
   certificate: CertificateTexts;
@@ -69,6 +70,7 @@ const certificateTexts = (d: Dict): CertificateTexts => ({ ...d.account.certific
 export const ecourseTexts = (d: Dict): EcourseTexts => ({
   ...d.account.ecourse,
   locked: d.course.locked,
+  toAccount: d.nav.account,
   loader: loaderTexts(d),
   completion: d.account.completion,
   certificate: certificateTexts(d),

@@ -115,26 +115,33 @@ describe("the static shell", () => {
 });
 
 describe("without access (the API's 404)", () => {
-  test("says so in one sentence with one button to the public course page, and is not the error state", async () => {
+  test("says so in one sentence with one button to the public course page and a link to her account (an ended access's card has its certificate there), and is not the error state", async () => {
     fetchMock.mockResolvedValue(json(404, { ok: false }));
     await mount();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe("/api/konto/kursus/veebikursus");
     const state = $("[data-account-state='noAccess']")!;
     expect(state.querySelector("h1")?.textContent).toBe("Sul ei ole sellele koolitusele ligipääsu.");
-    expect([...state.querySelectorAll("a, button")].map((e) => e.textContent)).toEqual(["Vaata koolitust"]);
+    const ways = [...state.querySelectorAll("a, button")];
+    expect(ways.map((e) => [e.textContent, e.getAttribute("href")])).toEqual([
+      ["Vaata koolitust", "/koolitused/veebikursus"],
+      ["Minu konto", "/konto"],
+    ]);
+    expect(ways.map((e) => /btn/.test(e.className))).toEqual([true, false]); // the account is a text link: the page keeps one button
     expect(state.querySelector("a")?.getAttribute("href")).toBe("/koolitused/veebikursus");
     expect($("[data-account-state='error']")).toBeNull();
     expect(document.body.textContent).not.toMatch(/Proovi uuesti|Ei õnnestunud/);
   });
 
-  test("Russian: the same, linking to /ru/koolitused/<slug>", async () => {
+  test("Russian: the same, linking to /ru/koolitused/<slug> and /ru/konto", async () => {
     fetchMock.mockResolvedValue(json(404, { ok: false }));
     await mount("ru");
     const state = $("[data-account-state='noAccess']")!;
     expect(state.querySelector("h1")?.textContent).toBe("У\u00a0вас нет доступа к\u00a0этому курсу.");
     expect(state.querySelector("a")?.textContent).toBe("Посмотреть курс");
     expect(state.querySelector("a")?.getAttribute("href")).toBe("/ru/koolitused/veebikursus");
+    const account = state.querySelectorAll("a")[1];
+    expect([account?.textContent, account?.getAttribute("href")]).toEqual(["Мой кабинет", "/ru/konto"]);
   });
 
   test("a 404 that is not the API's own answer (the platform's HTML page) is the error with its retry button, never the no-access sentence", async () => {
