@@ -37,8 +37,9 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken }
 //   finds the row paid and does nothing.
 //   The winner's transaction also gives the payment its invoice (invoices, spec D5, §6.1; server/invoices.ts invoiceForPaidPayment, once, after
 //   the amount is added or the course opened): the unpaid invoice it was started for is paid, else one is born paid (none while Seaded's
-//   seller is empty); an invoice that cannot be written rolls the payment back with it, as the registration does. The payer's mail carries the
-//   invoice's PDF and „Arve on lisatud." (a PDF that fails to render: the mail goes without both).
+//   seller is empty). It runs in a savepoint (invoiceStep, ruling R13): an invoice that cannot be made never undoes the payment, which then
+//   waits in „Arveta maksed" for its catch-up. The payer's mail carries the invoice's PDF and „Arve on lisatud." (no invoice, or a PDF that
+//   fails to render: the mail goes without both).
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
 // - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
 //   nothing; a VOIDED (the bank took a paid payment back) is stored as failed with its paid_at and alerts Maria, who decides.
@@ -212,9 +213,10 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     // an e-course's payment opens the course instead, in this same transaction: only the winner of the update above gets here
     const grant = payment.kind === "ecourse" ? await openCourse(tx, payment, deps.now) : null;
     const paidRow = grant ? { ...payment, clientId: grant.clientId } : payment;
-    // its invoice, once, here and only here (the winner's): the linked unpaid one paid (its amount is added above, not again), or one born
-    // paid; null without Seaded's seller. The locks it takes (the invoice row, the number series, the setting) come after this path's own.
-    const invoice = await invoiceForPaidPayment(tx, paidRow, deps.now);
+    // its invoice, once, here and only here (the winner's), in a savepoint: the linked unpaid one paid (its amount is added above, not again),
+    // or one born paid; null without Seaded's seller, or when the step failed. The locks it takes (the invoice row, the number series, the
+    // setting) come after this path's own.
+    const invoice = await invoiceStep(tx, paidRow, deps.now);
     return { payment: paidRow, registration, grant, invoice };
   });
   if (!won) return lost(deps, row, facts);
@@ -284,6 +286,23 @@ async function openCourse(tx: Tx, payment: Payment, now: Date): Promise<Grant | 
     // pending (nobody is told), to be settled by Montonio's retry, the return or the daily check; only any other error is "not opened"
     if (isTransient(e)) throw e;
     logFailure(`[payments] payment ${payment.id}: the course could not be opened`, e);
+    return null;
+  }
+}
+
+/**
+ * The paid payment's invoice (server/invoices.ts invoiceForPaidPayment) in a savepoint of the paid transaction (ruling R13): a failure there
+ * never undoes the payment's recording. Whatever it throws — a transient database error too, unlike openCourse: the invoice is no reason to
+ * leave real money unrecorded, and the catch-up makes it later — only the invoice step is rolled back; the payment stays paid with no invoice,
+ * listed in „Arveta maksed" (uninvoicedPayments), whose „Koosta arve" makes it (catchUpInvoice: the linked invoice paid, or one born paid), and
+ * the payer's mail goes without a PDF. Logged `[invoices] payment N: no invoice: <class>` at error level. (A lost connection fails the whole
+ * transaction all the same, and the payment stays pending for the next call, as before.)
+ */
+async function invoiceStep(tx: Tx, payment: Payment, now: Date): Promise<Invoice | null> {
+  try {
+    return await (tx as unknown as Db).transaction((savepoint) => invoiceForPaidPayment(savepoint, payment, now));
+  } catch (e) {
+    logFailure(`[invoices] payment ${payment.id}: no invoice`, e);
     return null;
   }
 }

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, isNull, lt, max, ne, notExists, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, lt, max, ne, notExists, or, sql, type SQL } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
 import { addRegistrationPayment, paged, setSetting, type Paged } from "@/db/queries/admin";
 import { readSetting } from "@/db/queries/public";
@@ -29,8 +29,10 @@ import { toStorable } from "@/lib/to-storable";
 // Every issue holds 3 and 4 in one transaction: the setting is read under the lock, the number taken (never at or below the prefix-year's
 // highest: domain/invoice.ts invoiceSeq, the certificate's rule), the frozen copies written and the setting moved on; the unique
 // (prefix, year, seq) and number are the backstop. Seaded's save holds 3 as well. A paid payment's invoice is issued inside settle.ts's own
-// transaction, after its locks (1, and its payment row by the paid update): invoiceForPaidPayment and markLinkedInvoicePaid take a `tx` and
-// open none. Logs carry ids and numbers only, never a name, an e-mail or an amount.
+// transaction, after its locks (1, and its payment row by the paid update), in a savepoint of it (ruling R13: a failure there never undoes
+// the payment): invoiceForPaidPayment and markLinkedInvoicePaid take a `tx` and open none. A payment is invoiced exactly when an invoice
+// names it (invoices.payment_id): the one born paid of it, or the unpaid one it was started for and paid. Logs carry ids and numbers only,
+// never a name, an e-mail or an amount.
 
 /** The number series' transaction lock (hashtext of this): every issue and Seaded's save hold it. */
 const NUMBER_LOCK = "invoice-number";
@@ -49,7 +51,7 @@ export type BuyerFieldError = "required" | "tooLong";
 
 export type SaveInvoiceSettingsResult = { ok: true; settings: InvoiceSettings } | { ok: false; fields: Record<string, InvoiceFieldError> };
 export type CreateInvoiceResult = { ok: true; invoice: Invoice } | { ok: false; error: "notFound" | "sellerMissing" | "bankMissing" | "notOpen" | "invalid" };
-export type MarkPaidResult = { ok: true; invoice: Invoice; full?: true } | { ok: false; error: "notFound" | "notUnpaid" | "invalid" };
+export type MarkPaidResult = { ok: true; invoice: Invoice; full?: true } | { ok: false; error: "notFound" | "notUnpaid" | "paidOnline" | "invalid" };
 export type UndoPaidResult = { ok: true; invoice: Invoice } | { ok: false; error: "notFound" | "notPaid" | "notManual" };
 export type CancelResult = { ok: true } | { ok: false; error: "notFound" | "notUnpaid" };
 export type BuyerResult = { ok: true; invoice: Invoice } | { ok: false; error: "notFound" | "notUnpaid" } | { ok: false; error: "invalid"; fields: Record<string, BuyerFieldError> };
@@ -266,12 +268,16 @@ async function withInvoiceLocked<T>(db: Db, id: number, change: (tx: Tx, inv: In
  * and the registration stays unconfirmed, as the online path does). `paidAdds` says the mark added it, so its undo takes it back; an invoice
  * whose registration was deleted is paid and adds nothing. `invalid` before anything is read when the date is no date or after today in
  * Tallinn, or the way is not bank, cash or card (what a form sent is checked here too). Under lockForPayment and the invoice's lock: of two
- * marks at the same moment the second finds it paid (`notUnpaid`), and the amount is added once. Logs `[invoices] invoice N: marked paid`.
+ * marks at the same moment the second finds it paid (`notUnpaid`), and the amount is added once. `paidOnline` (ruling R14): a paid online
+ * payment was started for it and its invoice step failed (paidOnlineSql), so its money is counted already; „Arveta maksed" pays it (the
+ * screen's Draft words: „See arve on juba veebis tasutud — koosta arve „Arveta maksed" alt."). Logs `[invoices] invoice N: marked paid`.
  */
 export async function markInvoicePaid(db: Db, id: number, input: { paidAt: Date; method: Exclude<PaidMethod, "montonio"> }, now: Date): Promise<MarkPaidResult> {
   if (!paidByToday(input.paidAt, now) || !isManualMethod(input.method)) return { ok: false, error: "invalid" };
   const result = await withInvoiceLocked(db, id, async (tx, inv): Promise<MarkPaidResult> => {
     if (inv.status !== "unpaid") return { ok: false, error: "notUnpaid" };
+    const [online] = await tx.select({ id: invoices.id }).from(invoices).where(and(eq(invoices.id, inv.id), paidOnlineSql)).limit(1);
+    if (online) return { ok: false, error: "paidOnline" };
     const added = inv.registrationId === null ? null : await addRegistrationPayment(tx, inv.registrationId, inv.amountCents, now);
     const [row] = await tx
       .update(invoices)
@@ -373,18 +379,33 @@ export async function updateInvoiceBuyer(db: Db, id: number, raw: unknown): Prom
 
 // ---------- a paid payment's invoice ----------
 
-/** A born-paid invoice of `paymentId` (invoices.payment_id), or null. */
-async function bornPaidOf(q: Q, paymentId: number): Promise<Invoice | null> {
+/**
+ * The invoice `paymentId` is invoiced by (ruling R13: "invoiced" is exactly this, invoices.payment_id): the one born paid of it, or the unpaid
+ * one it was started for and paid (markLinkedInvoicePaid writes its payment id); null for none.
+ */
+async function invoiceOfPayment(q: Q, paymentId: number): Promise<Invoice | null> {
   const [row] = await q.select().from(invoices).where(eq(invoices.paymentId, paymentId)).limit(1);
   return row ?? null;
 }
 
 /**
- * The born-paid invoice of a paid payment (D5, §6.3), issued at `now`: Montonio, paid on the payment's time (now when it has none), the
- * payment's id; the kind by invoiceKindOfPayment (a whole-sum registration's prepayment is the whole sum); the course's Estonian title, the
- * registration's session (none for an e-course), the payer's name and e-mail as the buyer; the payment's client, else the registration's.
+ * The kind of the invoice `p` was started for (payments.invoice_id) when it is that payment's — its registration's, of its sum — whatever its
+ * state now; null without one. A payment whose invoice was cancelled or marked meanwhile is invoiced at that invoice's part: a 100% invoice
+ * of a 50% registration stays „Kogu summa (100%)" at 350 €, not invoiceKindOfPayment's „Ettemaks 50%" (its payment is of kind prepayment).
  */
-async function issueForPayment(tx: Tx, p: Payment, now: Date): Promise<Invoice | "sellerMissing"> {
+async function linkedKind(tx: Tx, p: Payment): Promise<InvoiceKind | null> {
+  if (p.invoiceId === null) return null;
+  const [inv] = await tx.select({ kind: invoices.kind, registrationId: invoices.registrationId, amountCents: invoices.amountCents }).from(invoices).where(eq(invoices.id, p.invoiceId)).limit(1);
+  return inv && inv.registrationId === p.registrationId && inv.amountCents === p.amountCents ? inv.kind : null;
+}
+
+/**
+ * The born-paid invoice of a paid payment (D5, §6.3), issued at `now`: Montonio, paid on the payment's time (now when it has none), the
+ * payment's id; the kind of the invoice it was started for (`kindOfLinked`: linkedKind) or, without one, invoiceKindOfPayment's (a
+ * whole-sum registration's prepayment is the whole sum); the course's Estonian title, the registration's session (none for an e-course), the
+ * payer's name and e-mail as the buyer; the payment's client, else the registration's.
+ */
+async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: InvoiceKind | null): Promise<Invoice | "sellerMissing"> {
   const [reg] =
     p.registrationId === null
       ? []
@@ -397,7 +418,7 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date): Promise<Invoice |
   const r: Registration | null = reg?.registration ?? null;
   const courseId = p.courseId ?? r?.courseId ?? null;
   const [course] = courseId === null ? [] : await tx.select({ title: courses.title }).from(courses).where(eq(courses.id, courseId)).limit(1);
-  const kind = invoiceKindOfPayment(p, r);
+  const kind = kindOfLinked ?? invoiceKindOfPayment(p, r);
   return issue<never>(tx, now, () => ({
     kind,
     registrationId: p.registrationId,
@@ -418,9 +439,10 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date): Promise<Invoice |
 /**
  * settle.ts's paid() (Task 4), inside its transaction after its own locks: the unpaid invoice `payment.invoice_id` names (D5, the payment was
  * started to pay it) becomes paid — Montonio, on the payment's time, `paidAdds` false (the payment itself adds its amount through
- * addRegistrationPayment). Under the invoice's lock (the order's step 2). null when the payment names none, or its invoice is no longer
- * unpaid (Maria cancelled or marked it meanwhile), is another registration's or is of another sum: then it pays no invoice of hers.
- * invoiceForPaidPayment calls it: settle calls that one alone, never this one as well (a second call finds the invoice paid, see there).
+ * addRegistrationPayment) — and is the payment's (its `payment_id`, ruling R13: the payment is invoiced by it, as by a born-paid one). Under
+ * the invoice's lock (the order's step 2). null when the payment names none, or its invoice is no longer unpaid (Maria cancelled or marked it
+ * meanwhile), is another registration's or is of another sum: then it pays no invoice of hers. invoiceForPaidPayment and catchUpInvoice call
+ * it; settle calls invoiceForPaidPayment alone, never this one as well.
  */
 export async function markLinkedInvoicePaid(tx: Tx, payment: Payment, now: Date): Promise<Invoice | null> {
   if (payment.invoiceId === null) return null;
@@ -428,7 +450,7 @@ export async function markLinkedInvoicePaid(tx: Tx, payment: Payment, now: Date)
   if (!inv || inv.status !== "unpaid" || inv.registrationId !== payment.registrationId || inv.amountCents !== payment.amountCents) return null;
   const [row] = await tx
     .update(invoices)
-    .set({ status: "paid", paidAt: payment.paidAt ?? now, paidMethod: "montonio", paidAdds: false })
+    .set({ status: "paid", paidAt: payment.paidAt ?? now, paidMethod: "montonio", paidAdds: false, paymentId: payment.id })
     .where(eq(invoices.id, inv.id))
     .returning();
   console.info(`[invoices] invoice ${row.id}: paid online by payment ${payment.id}`);
@@ -436,53 +458,67 @@ export async function markLinkedInvoicePaid(tx: Tx, payment: Payment, now: Date)
 }
 
 /**
+ * The invoice a paid payment that has none gets, inside the caller's transaction after its locks: the unpaid invoice it was started for,
+ * paid (markLinkedInvoicePaid); else one born paid (issueForPayment), of that invoice's kind when it had one that is no longer unpaid
+ * (ruling R7, linkedKind); "sellerMissing" when one must be issued and Seaded's seller is empty (D3).
+ */
+async function invoiceForUninvoiced(tx: Tx, p: Payment, now: Date): Promise<Invoice | "sellerMissing"> {
+  const linked = await markLinkedInvoicePaid(tx, p, now);
+  return linked ?? issueForPayment(tx, p, now, await linkedKind(tx, p));
+}
+
+/**
  * A paid payment's invoice, inside settle.ts's paid() transaction after its locks (Task 4; §6.1: a paid payment has its invoice once the
- * seller is filled in). It opens no transaction of its own. Call it ONCE per payment, from the winner of settle's paid update only (as the
- * rest of the once-only work), and do not call markLinkedInvoicePaid as well.
- * - A payment that already has its own born-paid invoice gets that one back, and never pays a linked invoice too (§6.2: never both).
- * - The payment was started for an unpaid invoice (`invoiceId`): that invoice is paid (markLinkedInvoicePaid) and returned; no second
- *   invoice. If that invoice is no longer unpaid (cancelled, or marked by Maria while the student paid), the payment's money would have no
- *   invoice: it gets its own born-paid one below, so it is invoiced once (ruling R7).
+ * seller is filled in). It opens no transaction of its own: settle runs it in a savepoint (ruling R13). Call it once per payment, from the
+ * winner of settle's paid update only (as the rest of the once-only work), and do not call markLinkedInvoicePaid as well. Idempotent: a call
+ * again returns the invoice the first one gave.
+ * - A payment already invoiced (an invoice with its payment_id: born paid of it, or the linked one it paid) gets that one back, and never
+ *   pays a linked invoice too (§6.2: never both).
+ * - The payment was started for an unpaid invoice (`invoiceId`): that invoice is paid (markLinkedInvoicePaid), made the payment's, and
+ *   returned; no second invoice. If that invoice is no longer unpaid (cancelled, or marked by Maria while the student paid), the payment's
+ *   money would have no invoice: it gets its own born-paid one of that invoice's kind, so it is invoiced once (ruling R7).
  * - Otherwise its born-paid invoice (issueForPayment).
  * - No seller (D3): null, never a throw. The payment stays paid without an invoice and is listed in „Arveta maksed" (uninvoicedPayments).
- * Not idempotent for a payment that paid its linked invoice: the linked invoice carries no payment id, so a second call would find it paid and
- * issue a born-paid one as well. settle's once-only winner makes that second call unreachable.
  */
 export async function invoiceForPaidPayment(tx: Tx, payment: Payment, now: Date): Promise<Invoice | null> {
-  const own = await bornPaidOf(tx, payment.id);
+  const own = await invoiceOfPayment(tx, payment.id);
   if (own) return own;
-  const linked = await markLinkedInvoicePaid(tx, payment, now);
-  if (linked) return linked;
-  const made = await issueForPayment(tx, payment, now);
+  const made = await invoiceForUninvoiced(tx, payment, now);
   if (made === "sellerMissing") {
     console.info(`[invoices] payment ${payment.id}: paid without an invoice (Arve andmed not filled in)`);
     return null;
   }
-  console.info(`[invoices] payment ${payment.id}: issued ${made.number} (invoice ${made.id})`);
+  if (made.id !== payment.invoiceId) console.info(`[invoices] payment ${payment.id}: issued ${made.number} (invoice ${made.id})`);
   return made;
 }
 
 /**
- * „Koosta arve" of a row of „Arveta maksed" (§6.3): the invoice of a payment paid while the seller was not filled in, issued now, paid on the
- * payment's time, Montonio, not mailed. Under lockForPayment (a registration's payment), then the payment row FOR UPDATE, so two at once give
- * one invoice: the second finds it (`already`). `already` too for a payment that paid the invoice it was started for; `notPaid` for one that
- * is not paid (pending, failed, held, refunded without an invoice); `sellerMissing` while the card is still empty. Logs
- * `[invoices] payment N: issued <number>` after the commit.
+ * „Koosta arve" of a row of „Arveta maksed" (§6.3, ruling R13): the invoice of a paid payment that has none — paid while the seller was not
+ * filled in, or while its invoice step failed (settle's savepoint). A payment started for an invoice that is still unpaid pays THAT invoice
+ * (Montonio, on the payment's time, `paidAdds` false: the payment added its amount when it was paid; markLinkedInvoicePaid); otherwise one is
+ * issued now, born paid on the payment's time, Montonio (of the linked invoice's kind when it had one: R7), not mailed. Under lockForPayment
+ * (a registration's payment), then the payment row FOR UPDATE, then the invoice row or the number series: settle's order. Two at once give
+ * one invoice: the second finds it (`already`). `notPaid` for one that is not paid (pending, failed, held, refunded without an invoice);
+ * `sellerMissing` when one must be issued and the card is still empty. Logs `[invoices] payment N: issued <number>` or `… paid <number>`
+ * after the commit.
  */
 export async function catchUpInvoice(db: Db, paymentId: number, now: Date): Promise<CatchUpResult> {
-  const [known] = await db.select({ registrationId: payments.registrationId, kind: payments.kind }).from(payments).where(eq(payments.id, paymentId)).limit(1);
+  const [known] = await db
+    .select({ registrationId: payments.registrationId, kind: payments.kind, invoiceId: payments.invoiceId })
+    .from(payments)
+    .where(eq(payments.id, paymentId))
+    .limit(1);
   if (!known) return { ok: false, error: "notFound" };
   const result = await db.transaction(async (tx): Promise<CatchUpResult> => {
     if (known.kind !== "ecourse" && known.registrationId !== null) await lockForPayment(tx, known.registrationId);
     const [p] = await tx.select().from(payments).where(eq(payments.id, paymentId)).for("update");
     if (!p) return { ok: false, error: "notFound" };
-    if (await bornPaidOf(tx, p.id)) return { ok: false, error: "already" };
+    if (await invoiceOfPayment(tx, p.id)) return { ok: false, error: "already" };
     if (p.status !== "paid") return { ok: false, error: "notPaid" };
-    if (p.invoiceId !== null) return { ok: false, error: "already" };
-    const made = await issueForPayment(tx, p, now);
+    const made = await invoiceForUninvoiced(tx, p, now);
     return made === "sellerMissing" ? { ok: false, error: "sellerMissing" } : { ok: true, invoice: made };
   });
-  if (result.ok) console.info(`[invoices] payment ${paymentId}: issued ${result.invoice.number} (invoice ${result.invoice.id})`);
+  if (result.ok) console.info(`[invoices] payment ${paymentId}: ${result.invoice.id === known.invoiceId ? "paid" : "issued"} ${result.invoice.number} (invoice ${result.invoice.id})`);
   return result;
 }
 
@@ -494,15 +530,22 @@ export async function invoicesOfRegistration(db: Db, registrationId: number): Pr
 }
 
 /**
- * The registration's latest unpaid invoice, or null (D5: the one „Maksa" pays, domain/payments.ts payableDue). A plain read: the start
- * (payments/start.ts) asks it under lockForPayment, which every change of an invoice of the registration takes first, and the /maksa page
- * without a lock (it only shows).
+ * An unpaid invoice that a paid payment was started for (payments.invoice_id, status paid): its money is in, counted on Laekunud summa, but
+ * the payment's invoice step failed (settle's savepoint, ruling R13), so the invoice still reads unpaid until the catch-up pays it (ruling R14).
+ */
+const paidOnlineSql = sql`exists (select 1 from payments p where p.invoice_id = ${invoices.id} and p.status = 'paid')`;
+
+/**
+ * The registration's latest unpaid invoice that „Maksa" may charge, or null (D5: domain/payments.ts payableDue). An invoice already paid
+ * online whose payment awaits its catch-up (R14, paidOnlineSql) is left out: its money is counted, so it is not charged again. A plain read:
+ * the start (payments/start.ts) asks it under lockForPayment, which every change of an invoice of the registration (and settle) takes first,
+ * and the /maksa page without a lock (it only shows).
  */
 export async function unpaidInvoiceOf(q: Q, registrationId: number): Promise<Invoice | null> {
   const [row] = await q
     .select()
     .from(invoices)
-    .where(and(eq(invoices.registrationId, registrationId), eq(invoices.status, "unpaid")))
+    .where(and(eq(invoices.registrationId, registrationId), eq(invoices.status, "unpaid"), sql`not ${paidOnlineSql}`))
     .orderBy(desc(invoices.issuedAt), desc(invoices.id))
     .limit(1);
   return row ?? null;
@@ -574,12 +617,15 @@ export async function listInvoices(db: Db, filter: { month?: string; status?: In
   );
 }
 
-/** „Arveta maksed" (D3, §6.3): the paid payments with no invoice — none born of them, and not started for one — the oldest first. */
+/**
+ * „Arveta maksed" (D3, §6.3, ruling R13): the paid payments no invoice names as its payment (invoices.payment_id) — paid while the seller was
+ * empty, or whose invoice step failed (one started for an invoice included: its catch-up pays that invoice) — the oldest first.
+ */
 export async function uninvoicedPayments(db: Db): Promise<Payment[]> {
   return db
     .select()
     .from(payments)
-    .where(and(eq(payments.status, "paid"), isNull(payments.invoiceId), notExists(db.select({ one: sql`1` }).from(invoices).where(eq(invoices.paymentId, payments.id)))))
+    .where(and(eq(payments.status, "paid"), notExists(db.select({ one: sql`1` }).from(invoices).where(eq(invoices.paymentId, payments.id)))))
     .orderBy(asc(payments.paidAt), asc(payments.id));
 }
 

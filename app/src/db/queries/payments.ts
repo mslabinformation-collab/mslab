@@ -99,8 +99,9 @@ export async function releaseHoldLocked(db: Db, registrationId: number, now: Dat
 }
 
 /**
- * A pending payment that will not be paid (its order was refused, or Montonio said ABANDONED/FAILED): `failed`, and a prepayment's hold ends
- * (releaseHold), in one transaction. Null when it was not pending (paid is a floor: settle.ts). The lock order of every payment path
+ * A pending payment that will not be paid (its order was refused, or Montonio said ABANDONED/FAILED): `failed`, and the hold its start took
+ * ends (releaseHold: an unconfirmed registration's, whatever the payment paid — a prepayment, or an invoice's rest: server/payments/start.ts),
+ * in one transaction. Null when it was not pending (paid is a floor: settle.ts). The lock order of every payment path
  * (db/queries/seats.ts): the registration is locked before the payment row is written, as a re-send of the same payment locks it. Freeing a
  * seat cannot overbook, so the session is not locked (a subset of the locks, in the same order, is safe).
  */
@@ -111,7 +112,8 @@ export async function failPayment(db: Db, id: number, now: Date): Promise<{ paym
     if (known?.registrationId != null) await lockRegistration(tx, known.registrationId);
     const [payment] = await tx.update(payments).set({ status: "failed", updatedAt: now }).where(and(eq(payments.id, id), eq(payments.status, "pending"))).returning();
     if (!payment) return null;
-    const released = payment.kind === "prepayment" && payment.registrationId !== null ? await releaseHold(tx, payment.registrationId, payment.id, now) : false;
+    // (releaseHold ends only an unconfirmed registration's live hold, so a confirmed registration's rest releases nothing)
+    const released = payment.kind !== "ecourse" && payment.registrationId !== null ? await releaseHold(tx, payment.registrationId, payment.id, now) : false;
     return { payment, released };
   });
 }

@@ -1292,7 +1292,9 @@
       ],
       "why": "Teise poole saab õpilane maksta ise, ilma Mariata.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-pooleli",
@@ -1771,7 +1773,9 @@
       ],
       "why": "E-koolituse ost peab avama ligipääsu ilma Maria abita.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ost-uuesti",

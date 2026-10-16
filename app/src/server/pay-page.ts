@@ -61,8 +61,8 @@ export async function loadPayView(db: Db, token: string, now: Date): Promise<Pay
     await unpaidInvoiceOf(db, r.id),
     now,
   );
-  // only an unconfirmed registration's prepayment can be refused for a seat (start.ts): a confirmed one holds its place already
-  const full = due.kind === "prepayment" && r.status === "awaiting_prepayment" && session !== null && !(await hasFreeSeat(db, session, now, r.id));
+  // only an unconfirmed registration's payment can be refused for a seat (start.ts): a confirmed one holds its place already
+  const full = due.kind !== "none" && r.status === "awaiting_prepayment" && session !== null && !(await hasFreeSeat(db, session, now, r.id));
   return {
     token,
     locale: r.locale === "ru" ? "ru" : "et",

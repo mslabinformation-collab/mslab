@@ -4,7 +4,7 @@ import { attachOrder, failPayment, insertPayment } from "@/db/queries/payments";
 import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
 import { normalizeEmail } from "@/domain/email";
-import { invoiceDue, payableDue } from "@/domain/payments";
+import { payableDue } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
 import { holdUntil, SEAT_HOLD_MS } from "@/domain/sessions";
 import { unpaidInvoiceOf } from "../invoices";
@@ -142,11 +142,11 @@ async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment,
  * payableDue: the prepayment, or the rest after it, amountDue; or, while the registration has an unpaid invoice, exactly that invoice's
  * amount, on the course day too: invoices, D5), checked under the session's and the registration's locks (lockForPayment, first; the
  * registration is found by an unlocked read, then locked and read again, and its latest unpaid invoice read under them). The payment row
- * records the invoice it pays (`invoice_id`): settle.ts then pays that invoice instead of making one. A prepayment of an unconfirmed
- * registration needs a free seat — the others' seats counted, confirmed or held, hers not — and holds it for 30 minutes from now (D2); the
- * rest, and a confirmed registration's invoice, need none and hold nothing. The open attempt of the same amount and invoice, when there is
- * one, is sent again instead of a new one (liveAttempt; not counted in STARTS_PER_HOUR). `target`: the registration (with `clientId`: only
- * when it is that client's) or its "Maksa" token.
+ * records the invoice it pays (`invoice_id`): settle.ts then pays that invoice instead of making one. An unconfirmed registration's payment
+ * (amountDue's prepayment, or an invoice's prepayment or rest) needs a free seat — the others' seats counted, confirmed or held, hers not —
+ * and holds it for 30 minutes from now (D2); a confirmed registration's needs none and holds nothing. The open attempt of the same amount
+ * and invoice, when there is one, is sent again instead of a new one (liveAttempt; not counted in STARTS_PER_HOUR). `target`: the
+ * registration (with `clientId`: only when it is that client's) or its "Maksa" token.
  */
 export async function startRegistrationPayment(deps: StartDeps, target: { registrationId: number; clientId?: number } | { payToken: string }): Promise<StartResult> {
   const montonio = deps.montonio;
@@ -169,16 +169,16 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
       .where(and(eq(registrations.id, found.id), which));
     if (!row) return { kind: "notFound" };
     const { registration: r, course, session } = row;
-    // (a plain read: every change of the registration's invoices takes lockForPayment first, so it cannot change before this commits)
-    const invoice = await unpaidInvoiceOf(tx, r.id);
+    // (unpaidInvoiceOf is a plain read: every change of the registration's invoices takes lockForPayment first, so it cannot change before
+    // this commits)
     const due = payableDue(
       { status: r.status, paymentChoice: r.paymentChoice, priceCents: registrationPrice(course, r.kind), paidCents: r.paidCents, startsAt: session?.startsAt ?? null, sessionCancelled: session?.status === "cancelled" },
-      invoice,
+      await unpaidInvoiceOf(tx, r.id),
       deps.now,
     );
     if (due.kind === "none") return { kind: "nothing" };
-    // the invoice this payment pays: the one whose amount payableDue charged
-    const invoiceId = invoice && invoiceDue(invoice) ? invoice.id : null;
+    // the invoice this payment pays, when payableDue charged one
+    const invoiceId = "invoiceId" in due ? due.invoiceId : null;
     // the open attempt of this amount (and invoice) is sent again, not doubled; it is no new attempt, so it is not counted here
     const live = await liveAttempt(tx, { registrationId: r.id, kind: due.kind, invoiceId }, due.cents, deps.now);
     if (!live) {
@@ -188,8 +188,9 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
         .where(and(eq(payments.registrationId, r.id), gt(payments.createdAt, new Date(deps.now.getTime() - 60 * 60_000))));
       if (Number(n) >= STARTS_PER_HOUR) return { kind: "rate" };
     }
-    // (amountDue's prepayment is an unconfirmed registration's; an invoice's prepayment may be a confirmed one's, which holds its place already)
-    if (due.kind === "prepayment" && r.status === "awaiting_prepayment") {
+    // an unconfirmed registration's payment, whatever it pays (amountDue's prepayment, or an invoice's prepayment or rest), would confirm her
+    // place: it needs a free seat and holds it; a confirmed one holds its place already
+    if (r.status === "awaiting_prepayment") {
       if (session && !(await hasFreeSeat(tx, session, deps.now, r.id))) return { kind: "full" };
       await tx.update(registrations).set({ seatHoldUntil: holdUntil(deps.now) }).where(eq(registrations.id, r.id));
     }

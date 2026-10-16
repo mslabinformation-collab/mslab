@@ -10,7 +10,7 @@ import { ecourseOpenMail, registrationPaidMail, type EcourseOpenInput, type Regi
 import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
 import { renderInvoice } from "@/server/invoice-pdf";
-import { cancelInvoice, createInvoice, markInvoicePaid, uninvoicedPayments } from "@/server/invoices";
+import { cancelInvoice, catchUpInvoice, createInvoice, markInvoicePaid, uninvoicedPayments } from "@/server/invoices";
 import { loadPayView, payPage } from "@/server/pay-page";
 import { settleToken } from "@/server/payments/settle";
 import { startRegistrationPayment } from "@/server/payments/start";
@@ -61,6 +61,13 @@ const newest = async (): Promise<Payment> => (await db.select().from(payments).o
 const sent = (m: ReturnType<typeof stubMontonio>) => m.mails() as SentMail[];
 const logged = (method: "info" | "error") => vi.mocked(console[method]).mock.calls.map((c) => c.map(String).join(" "));
 
+/** Every `op` on invoices fails from now (a trigger), as a broken invoice step would; allowAgain ends it. */
+async function refuse(op: "insert" | "update") {
+  await db.execute(sql.raw("create or replace function mslab_refuse_invoice() returns trigger language plpgsql as $$ begin raise exception 'refused'; end $$"));
+  await db.execute(sql.raw(`create trigger mslab_refuse_invoice_${op} before ${op} on invoices for each row execute function mslab_refuse_invoice()`));
+}
+const allowAgain = (op: "insert" | "update") => db.execute(sql.raw(`drop trigger mslab_refuse_invoice_${op} on invoices`));
+
 /** Seaded's seller card and the bank details filled in. */
 async function ready() {
   await setSetting(db, "invoice", SELLER);
@@ -94,16 +101,16 @@ async function pdfText(attachment: { content: string }): Promise<string> {
 }
 
 /**
- * Every euro of `r` invoiced once (spec §1's anti-goals, ruling R7): the paid invoices add up to Laekunud summa, each paid payment pays exactly
- * one invoice (its own born-paid one, or the unpaid one it was started for, paid by Montonio), and no invoice is left unpaid.
+ * Every euro of `r` invoiced once (spec §1's anti-goals, rulings R7 and R13): the paid invoices add up to Laekunud summa, each paid payment is
+ * named by exactly one invoice (invoices.payment_id: its own born-paid one, or the unpaid one it was started for, paid by Montonio), and no
+ * invoice is left unpaid.
  */
 async function expectEachEuroInvoicedOnce(r: Registration) {
   const all = await allInvoices();
   expect(all.filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amountCents, 0)).toBe((await registration(r.id)).paidCents);
   for (const p of (await db.select().from(payments)).filter((x) => x.status === "paid")) {
-    const own = all.filter((i) => i.paymentId === p.id);
-    const linked = all.filter((i) => i.id === p.invoiceId && i.paymentId === null && i.paidMethod === "montonio");
-    expect(own.length + linked.length, `payment ${p.id}`).toBe(1);
+    const its = all.filter((i) => i.paymentId === p.id);
+    expect(its.map((i) => [i.status, i.paidMethod]), `payment ${p.id}`).toEqual([["paid", "montonio"]]);
   }
   expect(all.filter((i) => i.status === "unpaid")).toEqual([]);
   expect(await uninvoicedPayments(db)).toEqual([]);
@@ -182,22 +189,27 @@ describe("a paid payment's invoice (D5: born paid), and the paid mail that carri
     expect(logged("error")).toContain("[invoices] MSL2026-001: the paid mail went without its PDF: Error");
   });
 
-  test("the invoice is made in the payment's own transaction: when it cannot be written, the payment stays pending and nothing is sent; Montonio's retry pays it with its invoice", async () => {
+  test("R13: the invoice step runs in a savepoint — when its invoice cannot be written, the payment is still recorded, the mail goes without a PDF, it waits in „Arveta maksed\", and its catch-up makes the invoice", async () => {
     const m = stubMontonio();
     await ready();
     const r = await registrationOn(db, await contactCourse(db));
     await start(m, r);
     const p = await newest();
-    await db.execute(sql`create function mslab_refuse_invoice() returns trigger language plpgsql as $$ begin raise exception 'refused'; end $$`);
-    await db.execute(sql`create trigger mslab_refuse_invoice before insert on invoices for each row execute function mslab_refuse_invoice()`);
-    await expect(pay(m, p)).rejects.toThrow();
-    expect(await newest()).toMatchObject({ status: "pending", paidAt: null });
-    expect((await registration(r.id)).paidCents).toBe(0);
-    expect(sent(m)).toEqual([]);
-    await db.execute(sql`drop trigger mslab_refuse_invoice on invoices`);
-    expect(await pay(m, p)).toMatchObject({ payment: { status: "paid" } });
-    expect((await allInvoices()).map((i) => [i.number, i.paymentId])).toEqual([["MSL2026-001", p.id]]);
-    expect((await registration(r.id)).paidCents).toBe(17500);
+    await refuse("insert");
+    expect(await pay(m, p)).toMatchObject({ kind: "done", payment: { status: "paid", paidAt: LATER } });
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 17500]);
+    expect(await allInvoices()).toEqual([]);
+    expect((await uninvoicedPayments(db)).map((x) => x.id)).toEqual([p.id]);
+    const [hers, marias] = sent(m);
+    expect(hers.subject).toBe("Koht on kinnitatud — Kulmumeistri baaskoolitus");
+    expect(hers.attachments).toBeUndefined();
+    expect(hers.text).not.toContain("Arve on lisatud.");
+    expect(marias.to).toBe("maria@example.test");
+    expect(logged("error")).toContain(`[invoices] payment ${p.id}: no invoice: DrizzleQueryError (code P0001)`);
+    // the setting did not move: the series has no gap
+    await allowAgain("insert");
+    expect(await catchUpInvoice(db, p.id, LATER)).toMatchObject({ ok: true, invoice: { number: "MSL2026-001", paymentId: p.id, paidAt: LATER, paidMethod: "montonio" } });
+    await expectEachEuroInvoicedOnce(r);
   });
 
   test("the webhook twice and the return: one invoice, one mail with it", async () => {
@@ -258,7 +270,7 @@ describe("an unpaid invoice paid online (D5): „Maksa\" charges exactly its amo
     expect(p).toMatchObject({ kind: "prepayment", amountCents: 35000, invoiceId: inv.id, status: "pending" });
     expect(m.state.orders).toEqual([expect.objectContaining({ merchantReference: p.reference, grandTotal: 350 })]);
     await pay(m, p);
-    expect(await allInvoices()).toEqual([expect.objectContaining({ id: inv.id, number: "MSL2026-001", status: "paid", paidMethod: "montonio", paidAt: LATER, paidAdds: false, paymentId: null })]);
+    expect(await allInvoices()).toEqual([expect.objectContaining({ id: inv.id, number: "MSL2026-001", status: "paid", paidMethod: "montonio", paidAt: LATER, paidAdds: false, paymentId: p.id })]);
     expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 35000]);
     const [hers] = sent(m);
     expect(hers.attachments!.map((a) => a.filename)).toEqual(["MS-LAB-arve-MSL2026-001.pdf"]);
@@ -294,6 +306,35 @@ describe("an unpaid invoice paid online (D5): „Maksa\" charges exactly its amo
     const rest = await request(r, "balance");
     expect(await start(m, r)).toMatchObject({ kind: "started" });
     expect(await newest()).toMatchObject({ kind: "balance", amountCents: 17500, invoiceId: rest.id });
+  });
+
+  test("an unconfirmed registration paying an invoice's rest needs a free seat, as a prepayment does: „full\" on the start and the page, nothing started", async () => {
+    const m = stubMontonio();
+    await ready();
+    const c = await contactCourse(db, { capacity: 1 });
+    const r = await registrationOn(db, c);
+    await request(r, "prepayment");
+    await request(r, "balance");
+    await registrationOn(db, c, { email: "teine@example.com", status: "confirmed", paidCents: 35000 });
+    expect(await start(m, r)).toEqual({ kind: "full" });
+    expect((await loadPayView(db, r.payToken, NOW))?.full).toBe(true);
+    expect(await db.select().from(payments)).toEqual([]);
+  });
+
+  test("…and holds the seat for 30 minutes; an order Montonio refuses ends that hold at once, as a prepayment's", async () => {
+    const m = stubMontonio();
+    await ready();
+    const r = await registrationOn(db, await contactCourse(db));
+    await request(r, "prepayment");
+    const rest = await request(r, "balance");
+    m.state.down = true;
+    expect(await start(m, r)).toEqual({ kind: "failed" });
+    expect(await newest()).toMatchObject({ kind: "balance", invoiceId: rest.id, status: "failed" });
+    expect((await registration(r.id)).seatHoldUntil).toBeNull();
+    m.state.down = false;
+    expect(await start(m, r)).toMatchObject({ kind: "started" });
+    expect(await newest()).toMatchObject({ kind: "balance", invoiceId: rest.id, status: "pending" });
+    expect((await registration(r.id)).seatHoldUntil).toEqual(new Date(NOW.getTime() + 30 * MIN));
   });
 
   test("a cancelled registration, or a session called off, pays nothing online, invoice or not", async () => {
@@ -333,9 +374,9 @@ describe("an unpaid invoice paid online (D5): „Maksa\" charges exactly its amo
   test("the /maksa page shows the invoice's amount: „Maksa 350 €\" and the transfer of 350 € for a 100% invoice of a 50% registration", async () => {
     await ready();
     const r = await registrationOn(db, await contactCourse(db));
-    await request(r, "full");
+    const inv = await request(r, "full");
     const view = await loadPayView(db, r.payToken, NOW);
-    expect(view?.due).toEqual({ kind: "prepayment", cents: 35000 });
+    expect(view?.due).toEqual({ kind: "prepayment", cents: 35000, invoiceId: inv.id });
     expect(view?.full).toBe(false);
     const html = payPage(view, { online: true });
     expect(html).toContain(`Maksa ${formatEUR(35000, "et")}`);
@@ -348,9 +389,9 @@ describe("an unpaid invoice paid online (D5): „Maksa\" charges exactly its amo
     db = ldb;
     await ready();
     const r = await registrationOn(db, await contactCourse(db));
-    await request(r, "full");
+    const inv = await request(r, "full");
     queries.length = 0;
-    expect((await loadPayView(db, r.payToken, NOW))?.due).toEqual({ kind: "prepayment", cents: 35000 });
+    expect((await loadPayView(db, r.payToken, NOW))?.due).toEqual({ kind: "prepayment", cents: 35000, invoiceId: inv.id });
     expect(queries.length).toBeGreaterThan(0);
     expect(queries.filter((q) => !/^select /i.test(q) || /for update/i.test(q))).toEqual([]);
   });
@@ -390,7 +431,7 @@ describe("a Montonio payment and Maria's „Märgi tasutuks\" on the same invoic
     const { r, inv, p } = await startedForInvoice(m);
     await pay(m, p);
     expect(await markInvoicePaid(db, inv.id, { paidAt: LATER, method: "bank" }, LATER)).toEqual({ ok: false, error: "notUnpaid" });
-    expect((await allInvoices()).map((i) => [i.id, i.status, i.paidMethod, i.paymentId])).toEqual([[inv.id, "paid", "montonio", null]]);
+    expect((await allInvoices()).map((i) => [i.id, i.status, i.paidMethod, i.paymentId])).toEqual([[inv.id, "paid", "montonio", p.id]]);
     expect((await registration(r.id)).paidCents).toBe(17500);
     await expectEachEuroInvoicedOnce(r);
   });
@@ -418,6 +459,23 @@ describe("a Montonio payment and Maria's „Märgi tasutuks\" on the same invoic
     await expectEachEuroInvoicedOnce(r);
   });
 
+  test("the payment's own invoice keeps the part of the invoice it was started for: a 100% invoice cancelled while paid is invoiced „Kogu summa (100%)\" at 350 €, not „Ettemaks 50%\"", async () => {
+    const m = stubMontonio();
+    await ready();
+    const r = await registrationOn(db, await contactCourse(db));
+    const inv = await request(r, "full");
+    await start(m, r);
+    const p = await newest();
+    expect(p).toMatchObject({ kind: "prepayment", amountCents: 35000, invoiceId: inv.id });
+    expect(await cancelInvoice(db, inv.id, NOW)).toEqual({ ok: true });
+    await pay(m, p);
+    expect((await allInvoices()).map((i) => [i.number, i.kind, i.status, i.amountCents, i.line.part, i.paymentId])).toEqual([
+      ["MSL2026-001", "full", "cancelled", 35000, "Kogu summa (100%)", null],
+      ["MSL2026-002", "full", "paid", 35000, "Kogu summa (100%)", p.id],
+    ]);
+    await expectEachEuroInvoicedOnce(r);
+  });
+
   test("both at the same moment: whichever wins, the invoice is paid once and every euro is invoiced once", async () => {
     const m = stubMontonio();
     const { r, inv, p } = await startedForInvoice(m);
@@ -433,6 +491,58 @@ describe("a Montonio payment and Maria's „Märgi tasutuks\" on the same invoic
       expect(await allInvoices()).toHaveLength(2);
       expect((await registration(r.id)).paidCents).toBe(35000);
     }
+    await expectEachEuroInvoicedOnce(r);
+  });
+});
+
+describe("R14: a payment whose invoice step failed, started for an invoice that still reads unpaid, until its catch-up", () => {
+  /** A 50% registration's unpaid 100% invoice, „Maksa" pressed for it, and its payment settled while invoice updates fail (the savepoint rolls back). */
+  async function failedForInvoice(m: ReturnType<typeof stubMontonio>) {
+    await ready();
+    const r = await registrationOn(db, await contactCourse(db));
+    const inv = await request(r, "full");
+    await start(m, r);
+    const p = await newest();
+    await refuse("update");
+    expect(await pay(m, p)).toMatchObject({ payment: { status: "paid" } });
+    await allowAgain("update");
+    return { r, inv, p };
+  }
+
+  test("its money is counted while the invoice reads unpaid: „Maksa\" does not charge it again, Maria's mark refuses with paidOnline, and the catch-up pays THAT invoice", async () => {
+    const m = stubMontonio();
+    const { r, inv, p } = await failedForInvoice(m);
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 35000]);
+    expect(await allInvoices()).toEqual([expect.objectContaining({ id: inv.id, status: "unpaid", paymentId: null })]);
+    expect((await uninvoicedPayments(db)).map((x) => x.id)).toEqual([p.id]);
+    expect(logged("error")).toContain(`[invoices] payment ${p.id}: no invoice: DrizzleQueryError (code P0001)`);
+    expect(sent(m)[0].attachments).toBeUndefined();
+    // not charged again: the page and the start find nothing to pay (its money is counted)
+    expect((await loadPayView(db, r.payToken, LATER))?.due).toEqual({ kind: "none" });
+    expect(await start(m, r, LATER)).toEqual({ kind: "nothing" });
+    // Maria's mark would count it twice
+    expect(await markInvoicePaid(db, inv.id, { paidAt: LATER, method: "bank" }, LATER)).toEqual({ ok: false, error: "paidOnline" });
+    expect((await registration(r.id)).paidCents).toBe(35000);
+    // „Koosta arve" in „Arveta maksed": that invoice, paid by Montonio on the payment's time, adding nothing
+    expect(await catchUpInvoice(db, p.id, LATER)).toEqual({
+      ok: true,
+      invoice: expect.objectContaining({ id: inv.id, number: "MSL2026-001", status: "paid", paidMethod: "montonio", paidAt: LATER, paidAdds: false, paymentId: p.id }),
+    });
+    expect(logged("info")).toContain(`[invoices] payment ${p.id}: paid MSL2026-001 (invoice ${inv.id})`);
+    expect(await allInvoices()).toHaveLength(1);
+    expect(await catchUpInvoice(db, p.id, LATER)).toEqual({ ok: false, error: "already" });
+    expect((await registration(r.id)).paidCents).toBe(35000);
+    await expectEachEuroInvoicedOnce(r);
+  });
+
+  test("Maria cancels that invoice before the catch-up: the catch-up issues the payment's own, of that invoice's part", async () => {
+    const m = stubMontonio();
+    const { r, inv, p } = await failedForInvoice(m);
+    expect(await cancelInvoice(db, inv.id, LATER)).toEqual({ ok: true });
+    expect(await catchUpInvoice(db, p.id, LATER)).toMatchObject({
+      ok: true,
+      invoice: { number: "MSL2026-002", kind: "full", status: "paid", paymentId: p.id, amountCents: 35000, paidAt: LATER, line: { part: "Kogu summa (100%)" } },
+    });
     await expectEachEuroInvoicedOnce(r);
   });
 });
@@ -561,15 +671,15 @@ describe("domain/payments.ts: what „Maksa\" charges", () => {
     expect([invoicePaymentKind("prepayment"), invoicePaymentKind("full"), invoicePaymentKind("balance")]).toEqual(["prepayment", "prepayment", "balance"]);
   });
 
-  test("payableDue: the invoice's amount at any time, the course day and after too; amountDue without one; nothing for a cancelled registration or a session called off", () => {
-    const full = { kind: "full" as const, status: "unpaid" as const, amountCents: 35000 };
-    expect(payableDue(due(), full, NOW)).toEqual({ kind: "prepayment", cents: 35000 });
+  test("payableDue: the invoice's amount (with its id) at any time, the course day and after too; amountDue without one (no id); nothing for a cancelled registration or a session called off", () => {
+    const full = { id: 7, kind: "full" as const, status: "unpaid" as const, amountCents: 35000 };
+    expect(payableDue(due(), full, NOW)).toEqual({ kind: "prepayment", cents: 35000, invoiceId: 7 });
     expect(payableDue(due(), null, NOW)).toEqual({ kind: "prepayment", cents: 17500 });
     const courseDay = new Date("2026-11-14T12:00:00Z");
-    const rest = { kind: "balance" as const, status: "unpaid" as const, amountCents: 17500 };
+    const rest = { id: 8, kind: "balance" as const, status: "unpaid" as const, amountCents: 17500 };
     expect(payableDue(due({ status: "confirmed", paidCents: 17500 }), null, courseDay)).toEqual({ kind: "none" });
-    expect(payableDue(due({ status: "confirmed", paidCents: 17500 }), rest, courseDay)).toEqual({ kind: "balance", cents: 17500 });
-    expect(payableDue(due({ status: "confirmed", paidCents: 17500, startsAt: null }), rest, NOW)).toEqual({ kind: "balance", cents: 17500 });
+    expect(payableDue(due({ status: "confirmed", paidCents: 17500 }), rest, courseDay)).toEqual({ kind: "balance", cents: 17500, invoiceId: 8 });
+    expect(payableDue(due({ status: "confirmed", paidCents: 17500, startsAt: null }), rest, NOW)).toEqual({ kind: "balance", cents: 17500, invoiceId: 8 });
     expect(payableDue(due({ status: "cancelled" }), full, NOW)).toEqual({ kind: "none" });
     expect(payableDue(due({ sessionCancelled: true }), full, NOW)).toEqual({ kind: "none" });
     // a paid or cancelled invoice is no invoice to pay: amountDue

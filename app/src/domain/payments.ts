@@ -108,18 +108,22 @@ export function invoiceDue(inv: Pick<Invoice, "status" | "amountCents">): { kind
  */
 export const invoicePaymentKind = (kind: InvoiceKind): "prepayment" | "balance" => (kind === "balance" ? "balance" : "prepayment");
 
+/** What „Maksa" charges (payableDue): amountDue's answer, or an unpaid invoice's amount with that invoice's id (`invoiceId`). */
+export type PayableDue = Due | { kind: "prepayment" | "balance"; cents: number; invoiceId: number };
+
 /**
- * What „Maksa" charges a registration now (D5): while it has an unpaid invoice (`invoice`, its latest: server/invoices.ts unpaidInvoiceOf),
- * exactly that invoice's amount, as its kind's payment (invoicePaymentKind), at any time — amountDue's window is not the invoice's, so it is
- * payable on the course day too — unless the registration is cancelled or its session called off (nothing, as amountDue says). Without one
- * (or with one no longer unpaid): amountDue. The start and the /maksa page ask this; the account's card (AccountCourseCard onlineDue) asks
- * amountDue until its data carries her unpaid invoice (invoices Task 6), then this.
+ * What „Maksa" charges a registration now (D5): while it has an unpaid invoice (`invoice`: its latest that may be charged, server/invoices.ts
+ * unpaidInvoiceOf), exactly that invoice's amount, as its kind's payment (invoicePaymentKind), with its id — the invoice the payment pays —
+ * at any time: amountDue's window is not the invoice's, so it is payable on the course day too. Nothing for a cancelled registration or a
+ * session called off (as amountDue says). Without one (or with one no longer unpaid): amountDue, with no invoice. The start and the /maksa
+ * page ask this; the account's card (AccountCourseCard onlineDue) asks amountDue until its data carries her unpaid invoice (invoices Task 6),
+ * then this.
  */
-export function payableDue(r: DueInput, invoice: Pick<Invoice, "kind" | "status" | "amountCents"> | null, now: Date): Due {
+export function payableDue(r: DueInput, invoice: Pick<Invoice, "id" | "kind" | "status" | "amountCents"> | null, now: Date): PayableDue {
   const charge = invoice ? invoiceDue(invoice) : null;
   if (!invoice || !charge) return amountDue(r, now);
   if (r.status === "cancelled" || r.sessionCancelled) return NONE;
-  return { kind: invoicePaymentKind(invoice.kind), cents: charge.cents };
+  return { kind: invoicePaymentKind(invoice.kind), cents: charge.cents, invoiceId: invoice.id };
 }
 
 /** What the bank's way back says (spec 6.5): paid, still pending, or not paid. */

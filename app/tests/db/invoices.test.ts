@@ -602,7 +602,8 @@ describe("a paid payment's invoice: invoiceForPaidPayment, markLinkedInvoicePaid
     const p = await pendingPayment(db, r);
     await db.update(payments).set({ invoiceId: inv.id }).where(eq(payments.id, p.id));
     const paid = await settle({ ...p, invoiceId: inv.id });
-    expect(paid).toMatchObject({ id: inv.id, number: "MSL2026-001", status: "paid", paidMethod: "montonio", paidAt: PAID_AT, paidAdds: false, paymentId: null });
+    // ruling R13: the invoice it paid is the payment's (payment_id), as a born-paid one is
+    expect(paid).toMatchObject({ id: inv.id, number: "MSL2026-001", status: "paid", paidMethod: "montonio", paidAt: PAID_AT, paidAdds: false, paymentId: p.id });
     expect(await allInvoices()).toHaveLength(1);
     expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
     expect(await uninvoicedPayments(db)).toEqual([]);
