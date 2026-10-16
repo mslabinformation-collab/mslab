@@ -151,3 +151,21 @@ describe("next.config.ts outputFileTracingIncludes (the certificate, phase 3d)",
     });
   });
 });
+
+describe("next.config.ts env (the test page, phase 4)", () => {
+  // The build's instant is what a "markedAt": "deploy" of the test plan reads as when tools/testplan-stamp.mjs was skipped (spec §6). The
+  // server reads it as process.env.TESTPLAN_BUILD_AT, inlined when the config is loaded for the build.
+  test("TESTPLAN_BUILD_AT is the moment the config was loaded, as an ISO instant", async () => {
+    const before = Date.now();
+    const at = (await config()).env?.TESTPLAN_BUILD_AT;
+    expect(typeof at).toBe("string");
+    expect(Number.isNaN(Date.parse(at!))).toBe(false);
+    expect(new Date(at!).toISOString()).toBe(at); // exactly the form the answers' instants have, so they compare as instants
+    expect(Date.parse(at!)).toBeGreaterThanOrEqual(before - 1000);
+    expect(Date.parse(at!)).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
+  test("the review tools' flag is still there beside it", async () => {
+    expect((await config()).env?.NEXT_PUBLIC_REVIEW_TOOLS).toBe("1");
+  });
+});

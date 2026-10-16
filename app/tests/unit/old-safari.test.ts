@@ -68,6 +68,8 @@ const BROWSER_FILES = [
   "src/components/admin/verdict-taps.ts",
   // the certificate, Task 1: the name rules the student's name field and Seaded share (it pulls domain/calendar.ts, listed above)
   "src/domain/certificate.ts",
+  // the test page, Task 1: the plan's rules the page loads in the browser (pure, imports nothing)
+  "src/domain/testplan.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

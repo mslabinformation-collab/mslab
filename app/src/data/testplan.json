@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "marked": "2026-10-16T00:00:00.000Z",
+  "areas": [
+    {
+      "id": "enne",
+      "name": "Enne alustamist",
+      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kõik, mida testides lood, nimeta „Proov“ ja numbriga, näiteks „Proov 1“. Õpilase e-posti aadress on oma aadress, kuhu lisad enne @-märki +proov1, siis jõuab kiri sinu enda postkasti. Sisselogimiskoodi saab küsida kuni 3 korda 15 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kirjuta iga vea juurde märkus.",
+      "checks": false
+    },
+    {
+      "id": "avalik",
+      "name": "Avalik leht",
+      "note": "Ei loo midagi. Alusta siit."
+    },
+    {
+      "id": "haldus",
+      "name": "Haldus: sisu",
+      "note": "Iga muudatus peab ilmuma avalikul lehel."
+    },
+    {
+      "id": "registreerimine",
+      "name": "Registreerimine ja maksmine",
+      "note": "Loob andmeid. Kasuta alati proovi-aadressi, nagu „Enne alustamist“ ütleb."
+    },
+    {
+      "id": "konto",
+      "name": "Õpilase konto"
+    },
+    {
+      "id": "ekursus",
+      "name": "E-kursus"
+    },
+    {
+      "id": "kontakt",
+      "name": "Kontaktkoolitus"
+    },
+    {
+      "id": "kirjad",
+      "name": "Kirjad",
+      "note": "Iga kiri avatakse Gmailis telefonis ja arvutis."
+    },
+    {
+      "id": "koristamine",
+      "name": "Koristamine",
+      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering ja lõpeta iga proovi-ligipääs. Pärast viimast tunnistuse kontrolli pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele, sest proovitunnistus võtab numbri tema päris reast. Märgi iga proovis kasutatud aadress üles: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi.",
+      "checks": false
+    }
+  ],
+  "items": [
+    {
+      "id": "avalik-avaleht-telefon",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Avaleht telefonis",
+      "href": "/",
+      "steps": [
+        "Ava mslab.ee telefonis.",
+        "Keri avaleht ülevalt alla."
+      ],
+      "expect": [
+        "Üleval on suur pilt ja nupp.",
+        "Midagi ei ulatu ekraani servast välja.",
+        "Allpool on koolituste kaardid, korduma kippuvate küsimuste plokk ja kontaktiplokk.",
+        "Tekst on loetav ja nupud on sõrmega hästi puudutatavad."
+      ],
+      "why": "Avaleht on esimene, mida tulevane õpilane näeb.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "avalik-koolitused-filter",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Koolituste loend ja filtrid",
+      "href": "/koolitused",
+      "steps": [
+        "Ava koolituste loend.",
+        "Vajuta nuppu „E-õpe“.",
+        "Vajuta nuppu „Baaskoolitused“.",
+        "Kirjuta väljale „Otsi koolitust“ osa mõne koolituse nimest.",
+        "Kirjuta sinna hoopis sõna, mida ühegi koolituse tekstis pole.",
+        "Vajuta nuppu „Lähtesta filtrid“."
+      ],
+      "expect": [
+        "Pärast nuppu „E-õpe“ jäävad alles ainult e-õppe koolitused.",
+        "Nupu „E-õpe“ all on selgitus, kuidas e-õpe käib.",
+        "Pärast nuppu „Baaskoolitused“ jäävad alles ainult baaskoolitused.",
+        "Otsing jätab alles ainult koolitused, mis sisaldavad sinu kirjutatud sõna.",
+        "Võõra sõna korral näed teadet „Sobivat koolitust ei leitud“.",
+        "Pärast nuppu „Lähtesta filtrid“ on kõik koolitused jälle nähtaval."
+      ],
+      "why": "Filtrite abil leiab õpilane oma koolituse.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "avalik-ru-avaleht",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Avaleht vene keeles",
+      "href": "/ru",
+      "steps": [
+        "Ava vene keelne avaleht.",
+        "Keri leht ülevalt alla.",
+        "Vajuta üleval lingile „ET / RU“."
+      ],
+      "expect": [
+        "Menüü, nupud ja lehe lõpp on vene keeles.",
+        "Pealkirjad „Выберите свой курс.“, „Часто задаваемые вопросы“ ja „Не знаете, какой курс подойдёт?“ on olemas.",
+        "Link „ET / RU“ viib sama lehe eestikeelsesse versiooni."
+      ],
+      "why": "Venekeelne pool peab töötama sama hästi kui eestikeelne.",
+      "risk": "med",
+      "writes": false
+    }
+  ]
+}
