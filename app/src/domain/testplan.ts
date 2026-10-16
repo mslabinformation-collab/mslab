@@ -65,7 +65,7 @@ const wordCount = (line: string): number => line.trim().split(/\s+/).length;
  * "constructor" or "valueOf", and a plain object would hand back Object.prototype's member as an answer. (`hasOwnProperty.call`, not
  * `Object.hasOwn`: this module runs in the browser, on iOS Safari before 15.4 as well.)
  */
-const answerOf = (answers: Record<string, StoredAnswer>, id: string): StoredAnswer | undefined =>
+export const answerOf = (answers: Record<string, StoredAnswer>, id: string): StoredAnswer | undefined =>
   Object.prototype.hasOwnProperty.call(answers, id) ? answers[id] : undefined;
 
 /** The problems of one line of a check (a step, an expect line or the "why"): empty, no final full stop, too many words. */

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  NOTE_MAX, appliesAt, checkState, cleanNote, markPinged, mergeAnswers, pingsFor, planCounts, readAnswersDoc, testerOf,
+  NOTE_MAX, answerOf, appliesAt, checkState, cleanNote, markPinged, mergeAnswers, pingsFor, planCounts, readAnswersDoc, testerOf,
   type AnswersDoc, type IncomingAnswer, type Ping, type Status, type StoredAnswer, type TestItem, type TestPlan,
 } from "@/domain/testplan";
 
@@ -396,6 +396,12 @@ describe("answers are read off the document's own keys, never off Object.prototy
     const pings = pingsFor(doc(), merged.doc, merged.changed, plan, BUILD);
     expect(pings).toEqual([{ id, kind: "bad" }]);
     expect(markPinged(merged.doc, pings, NOW).answers[id]).toEqual({ status: "bad", note: "katki", at: NOW.toISOString(), by: "m@x.test", pinged: NOW.toISOString(), notePinged: true });
+  });
+
+  test.each(NAMES)("%s: answerOf (exported for the server and the page) finds an own entry and never the prototype's member", (id) => {
+    expect(answerOf({}, id)).toBeUndefined();
+    const own = answer("ok", NOW.toISOString());
+    expect(answerOf({ [id]: own }, id)).toBe(own);
   });
 
   test.each(NAMES)("%s: markPinged does not invent an entry for an answer the doc does not hold; pingsFor finds none", (id) => {

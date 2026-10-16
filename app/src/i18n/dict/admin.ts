@@ -1409,6 +1409,14 @@ export const adminEt = {
     admins: "Halduse ligipääs",
     adminsLead: "Need aadressid saavad haldusesse sisse logida. Nimekirja muudab arendaja.",
   },
+  // The test page (phase 4, piece 1): /admin/testimine. `tg` is the Telegram text of a Viga and of its first note (server/testplan.ts pingText).
+  testplan: {
+    tg: {
+      bad: "Testimine — Viga: {title} ({name})\n{note}\n{url}",
+      noNote: "(märkust veel pole)",
+      note: "Testimine — Märkus: {title} ({name})\n{note}\n{url}",
+    },
+  },
 };
 
 export type AdminDict = typeof adminEt;
