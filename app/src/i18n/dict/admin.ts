@@ -296,6 +296,8 @@ export const adminEt = {
       // no seller yet (D3): in place of „Koosta arve“, a link to Seaded
       needSeller: "Täida Seaded → Arve andmed",
       allCovered: "Kõik summad on juba arvega kaetud.",
+      // a paid online payment of the registration with no invoice yet (the final review's I1; Draft): {amount} its sum, {date} the day it was paid
+      uninvoiced: "Veebimakse {amount} ({date}) on veel arveta.",
       amount: "Summa",
       kind: "Arve liik",
       forPayment: "Maksmiseks",
@@ -325,6 +327,8 @@ export const adminEt = {
       download: "Laadi alla (PDF)",
       downloadLabel: "Laadi alla (PDF): arve {number}",
       openRegistration: "Ava registreering",
+      // an unpaid invoice whose online payment is paid and waits for its catch-up (R14, the final review's m2; Draft)
+      paidOnline: "Veebis tasutud — ootab „Arveta maksed“ alt arvet.",
       actionsLabel: "Arve {number} tegevused",
       close: "Katkesta",
       sendPanel: {

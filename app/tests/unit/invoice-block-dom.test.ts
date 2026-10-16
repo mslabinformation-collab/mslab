@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { OpenAmount } from "@/domain/invoice";
+import { coveringInvoices, openAmounts, type OpenAmount, type OpenAmounts } from "@/domain/invoice";
 
 // The registration drawer's „Arved“ (invoices Task 5, spec §5, D5, D6, rulings R10 and R1) in a browser-like document (happy-dom), with the
 // server actions answered here: the actions each state allows (and none other), „Koosta arve“ offering exactly the open amounts and the two
@@ -22,6 +22,7 @@ const actions = vi.hoisted(() => ({
   undoInvoicePaidAction: vi.fn(),
   cancelInvoiceAction: vi.fn(),
   updateInvoiceBuyerAction: vi.fn(),
+  catchUpInvoiceAction: vi.fn(),
 }));
 vi.mock("@/server/actions/admin-invoices", () => actions);
 
@@ -45,6 +46,8 @@ const view = (over: Partial<InvoiceView> = {}): InvoiceView => ({
   paidAt: null,
   paidMethod: null,
   online: false,
+  paidOnline: false,
+  refunded: false,
   paidAdds: false,
   sentAt: null,
   sentNote: "",
@@ -57,10 +60,14 @@ const MARKED = view({ id: 12, number: "MSL2026-002", status: "paid", dueAt: null
 const RECEIPT = view({ id: 13, number: "MSL2026-003", status: "paid", dueAt: null, paidAt: "2026-10-12T09:00:00.000Z", paidMethod: "cash", paidAdds: false });
 const ONLINE = view({ id: 14, number: "MSL2026-004", status: "paid", dueAt: null, paidAt: "2026-10-14T09:00:00.000Z", paidMethod: "montonio", online: true });
 const CANCELLED = view({ id: 15, number: "MSL2026-005", status: "cancelled" });
-const OPEN: OpenAmount[] = [
+const AMOUNTS: OpenAmount[] = [
   { kind: "prepayment", cents: 17500, part: "Ettemaks 50%" },
   { kind: "full", cents: 35000, part: "Kogu summa (100%)" },
 ];
+/** Nothing typed by hand: „Maksmiseks“ and „Juba tasutud“ are offered the same amounts. */
+const both = (amounts: OpenAmount[]): OpenAmounts => ({ request: amounts, receipt: amounts });
+const OPEN = both(AMOUNTS);
+const NONE = both([]);
 
 let container: HTMLDivElement;
 let root: Root;
@@ -72,7 +79,7 @@ const settle = () =>
   });
 type Props = Partial<Parameters<typeof InvoiceBlock>[0]>;
 const show = async (props: Props = {}) => {
-  await act(async () => root.render(createElement(InvoiceBlock, { registrationId: 7, invoices: [UNPAID], open: OPEN, sellerReady: true, canCreate: true, today: TODAY, ...props })));
+  await act(async () => root.render(createElement(InvoiceBlock, { registrationId: 7, invoices: [UNPAID], uninvoiced: [], open: OPEN, sellerReady: true, canCreate: true, today: TODAY, ...props })));
   await settle();
 };
 const rowOf = (number: string) => $(`[data-invoice="${number}"]`)!;
@@ -171,7 +178,7 @@ describe("„Koosta arve“", () => {
   });
 
   test("when only the rest is open, only the rest is offered", async () => {
-    await show({ open: [{ kind: "balance", cents: 17500, part: "Jääk 50%" }] });
+    await show({ open: both([{ kind: "balance", cents: 17500, part: "Jääk 50%" }]) });
     await open();
     expect(all("[data-invoice-kind]").map((k) => k.getAttribute("data-invoice-kind"))).toEqual(["balance"]);
   });
@@ -230,13 +237,87 @@ describe("„Koosta arve“", () => {
   });
 
   test("everything already invoiced: a line says so; a registration without a price offers nothing", async () => {
-    await show({ open: [] });
+    await show({ open: NONE });
     expect($("[data-invoice-all-covered]")!.textContent).toBe("Kõik summad on juba arvega kaetud.");
     expect($("[data-invoice-create]")).toBeNull();
-    await show({ open: [], canCreate: false });
+    await show({ open: NONE, canCreate: false });
     expect($("[data-invoice-all-covered]")).toBeNull();
     expect($("[data-invoice-need-seller]")).toBeNull();
     expect($("[data-invoice-create]")).toBeNull();
+  });
+});
+
+describe("the final review's wave on the block: paid online payments without an invoice (I1), money typed by hand (m4)", () => {
+  /** The prepayment paid online on 15.10, no invoice yet (it is in „Arveta maksed“): the page's uninvoicedOf, coveringInvoices and openAmounts. */
+  const PAID = { paymentId: 21, amountCents: 17500, paidAt: "2026-10-15T09:00:00.000Z", pays: null };
+  const afterPaid = openAmounts({ priceCents: 35000, paymentChoice: "half", paidCents: 17500 }, coveringInvoices({ paymentChoice: "half" }, [], [{ id: 21, kind: "prepayment", invoiceId: null, amountCents: 17500 }]));
+
+  test("I1: the paid payment is listed with its own „Koosta arve“ (the catch-up), and „Koosta arve“ offers only the rest, as a request or a receipt", async () => {
+    actions.catchUpInvoiceAction.mockResolvedValue({ ok: true, number: "MSL2026-002" });
+    await show({ invoices: [], uninvoiced: [PAID], open: afterPaid });
+    const row = $("[data-uninvoiced-payment='21']")!;
+    expect($("[data-uninvoiced-line]", row)!.textContent).toBe(`Veebimakse 175,00${NBSP}€ (15.10.2026) on veel arveta.`);
+    expect($("[data-uninvoiced-pays]", row)!.textContent).toBe("Koostab uue arve");
+    await click($("[data-invoice-create]"));
+    expect(all("[data-invoice-kind]").map((k) => k.getAttribute("data-invoice-kind"))).toEqual(["balance"]);
+    await click($('[data-invoice-mode="receipt"]'));
+    expect(all("[data-invoice-kind]").map((k) => [k.getAttribute("data-invoice-kind"), k.closest("label")!.textContent])).toEqual([["balance", `Jääk 50% · 175,00${NBSP}€`]]);
+    // the row's own button is the catch-up: it makes the payment's invoice
+    await click($("[data-uninvoiced-create='21']", row));
+    expect(actions.catchUpInvoiceAction).toHaveBeenCalledWith({ paymentId: 21 });
+    expect(line(row)).toBe("Arve MSL2026-002 on valmis.");
+  });
+
+  test("I1: one started for an unpaid invoice names the invoice its catch-up will pay; without a seller the row has no button", async () => {
+    await show({ invoices: [view({ paidOnline: true })], uninvoiced: [{ ...PAID, pays: "MSL2026-001" }], open: both([{ kind: "balance", cents: 17500, part: "Jääk 50%" }]) });
+    expect($("[data-uninvoiced-payment='21'] [data-uninvoiced-pays]")!.textContent).toBe("Tasub arve MSL2026-001");
+    await show({ invoices: [], uninvoiced: [PAID], open: afterPaid, sellerReady: false });
+    expect($("[data-uninvoiced-payment='21']")).not.toBeNull();
+    expect($("[data-uninvoiced-create]")).toBeNull();
+    expect($("[data-invoice-need-seller]")).not.toBeNull();
+  });
+
+  test("no such payment: no list", async () => {
+    await show();
+    expect($("[data-invoice-uninvoiced]")).toBeNull();
+  });
+
+  test("m4: money typed by hand — „Maksmiseks“ asks for the rest only, „Juba tasutud“ offers exactly the typed sum; with nothing to request, the request kind cannot be chosen", async () => {
+    actions.createInvoiceAction.mockResolvedValue({ ok: true, number: "MSL2026-006" });
+    await show({ invoices: [], open: openAmounts({ priceCents: 35000, paymentChoice: "half", paidCents: 10000 }, []) });
+    await click($("[data-invoice-create]"));
+    expect(all("[data-invoice-kind]").map((k) => k.closest("label")!.textContent)).toEqual([`Osamakse · 250,00${NBSP}€`]);
+    await click($('[data-invoice-mode="receipt"]'));
+    expect(all("[data-invoice-kind]").map((k) => [k.getAttribute("data-invoice-kind"), k.closest("label")!.textContent])).toEqual([["prepayment", `Osamakse · 100,00${NBSP}€`]]);
+    await submitForm($("[data-invoice-create-form]"));
+    expect(actions.createInvoiceAction.mock.calls[0][0]).toMatchObject({ registrationId: 7, kind: "prepayment", mode: "receipt" });
+    // all of the price typed: only a receipt; „Maksmiseks“ is there but cannot be chosen
+    await show({ invoices: [], open: openAmounts({ priceCents: 35000, paymentChoice: "half", paidCents: 35000 }, []) });
+    await click($("[data-invoice-create]"));
+    expect($<HTMLInputElement>('[data-invoice-mode="request"]')!.disabled).toBe(true);
+    expect($<HTMLInputElement>('[data-invoice-mode="receipt"]')!.checked).toBe(true);
+    expect(all("[data-invoice-kind]").map((k) => k.closest("label")!.textContent)).toEqual([`Kogu summa (100%) · 350,00${NBSP}€`]);
+    expect($("[data-paid-date]")).not.toBeNull();
+  });
+});
+
+describe("the final review's wave on a row: paid online, waiting for its catch-up (m2); „Tagastatud“ (I3)", () => {
+  test("m2: an invoice paid online that waits for „Arveta maksed“ says so, and offers no „Saada õpilasele“ and no „Märgi tasutuks“", async () => {
+    await show({ invoices: [view({ paidOnline: true })] });
+    expect($("[data-invoice-paid-online]", rowOf("MSL2026-001"))!.textContent).toBe("Veebis tasutud — ootab „Arveta maksed“ alt arvet.");
+    expect(actionsOf("MSL2026-001")).toEqual(["Muuda saajat", "Tühista arve", "Laadi alla (PDF)"]);
+    await show({ invoices: [UNPAID] });
+    expect($("[data-invoice-paid-online]")).toBeNull();
+  });
+
+  test("I3: a paid invoice whose payment was refunded or voided reads „Tagastatud“ (stored paid); its actions are a paid online invoice's", async () => {
+    await show({ invoices: [view({ ...ONLINE, refunded: true })] });
+    expect($("[data-invoice-state]", rowOf("MSL2026-004"))!.textContent).toBe("Tagastatud");
+    expect(rowOf("MSL2026-004").getAttribute("data-invoice-status")).toBe("paid");
+    expect(rowOf("MSL2026-004").getAttribute("data-invoice-refunded")).toBe("true");
+    expect(actionsOf("MSL2026-004")).toEqual(["Saada õpilasele", "Laadi alla (PDF)"]);
+    await show({ invoices: [ONLINE] });
+    expect($("[data-invoice-state]", rowOf("MSL2026-004"))!.textContent).toBe("Tasutud");
   });
 });
 

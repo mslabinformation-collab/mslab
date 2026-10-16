@@ -150,6 +150,12 @@ export function partText(kind: InvoiceKind): string {
   }
 }
 
+/**
+ * What a paid invoice whose online payment was refunded or voided reads (spec D5, the final review's I3): on Maria's screens, the student's card
+ * and the CSV. Read-side only: the invoice stays stored paid, its sums as issued.
+ */
+export const REFUNDED = "Tagastatud";
+
 /** The state in words (D6, the CSV and the screens). */
 export function invoiceStatusText(status: InvoiceStatus): string {
   switch (status) {
@@ -169,33 +175,96 @@ export function paidMethodText(method: PaidMethod): string {
   }
 }
 
-export type OpenAmount = { kind: InvoiceKind; cents: number; part: string };
+/**
+ * The words of a part that is no half, whole sum or rest of the price (Draft, the final review's m4/m10): a sum typed by hand into „Laekunud
+ * summa“, or an online payment of what such a sum left.
+ */
+export const ODD_PART = "Osamakse";
 
 /**
- * The amounts Maria may still invoice on a registration (D5, §6.2): "open" is not yet covered by an invoice, where covered is the sum of its
- * unpaid and paid invoices (a cancelled one counts for nothing). With the half choice: the prepayment (the site's own, prepaymentDue: half the
- * price rounded up to the cent, so a paid one makes the 50 % that confirms the place, ruling R11) while there is no prepayment or whole-sum
- * invoice, the whole sum while nothing is covered, and the rest (price − covered) once something is covered but not all. With the whole-sum choice: the whole sum while nothing is covered. A prepayment and a whole sum exclude
- * each other; an amount of nothing is never offered.
+ * The part an amount of `kind` is of the price, in words (the line's part, D4): the kind's own words (partText) when the amount is that part
+ * exactly — the prepayment the site's own half (prepaymentDue, rounded up), the whole sum the price, the rest the price less that half — else
+ * „Osamakse“ (ODD_PART): an „Ettemaks 50%“ of 100 € or a „Kogu summa (100%)“ of 250 € would say what the money is not (m10). An e-course, or a
+ * registration without a price, keeps its kind's words.
  */
-export function openAmounts(
-  r: { priceCents: number; paymentChoice: "full" | "half" },
-  invoiced: { kind: InvoiceKind; status: InvoiceStatus; amountCents: number }[],
-): OpenAmount[] {
+export function partOf(kind: InvoiceKind, cents: number, priceCents: number | null): string {
+  if (kind === "ecourse" || priceCents === null) return partText(kind);
+  const half = prepaymentDue(priceCents, "half");
+  const exact = kind === "prepayment" ? half : kind === "full" ? priceCents : priceCents - half;
+  return cents === exact ? partText(kind) : ODD_PART;
+}
+
+export type OpenAmount = { kind: InvoiceKind; cents: number; part: string };
+/** What „Koosta arve“ offers, by the kind Maria picks: „Maksmiseks“ (a request to pay) and „Juba tasutud“ (a receipt). */
+export type OpenAmounts = { request: OpenAmount[]; receipt: OpenAmount[] };
+/** What covers a registration's price: an invoice (or a paid payment's money counted as one, coveringInvoices). */
+export type Covering = { kind: InvoiceKind; status: InvoiceStatus; amountCents: number };
+
+/**
+ * The amounts Maria may still invoice on a registration (D5, §6.2, the final review's I1 and m4). `invoiced` is what covers its price
+ * (coveringInvoices: its invoices, and its paid online payments that have no invoice yet, as paid). Covered is the sum of the unpaid and the
+ * paid ones (a cancelled one counts for nothing); `paidCents` is Laekunud summa, and the part of it no paid one covers is money typed by hand
+ * (uncovered; never more than the price leaves open).
+ * - **Maksmiseks** never asks again for money already in: the prepayment (the site's own, prepaymentDue: half the price rounded up to the cent,
+ *   so a paid one makes the 50 % that confirms the place, ruling R11) of the half choice while there is no prepayment or whole-sum invoice and
+ *   nothing typed uncovered; the whole sum while nothing is covered or typed; the rest (price − covered − uncovered) once something is but not
+ *   all. A prepayment and a whole sum exclude each other.
+ * - **Juba tasutud**: with money typed uncovered, a receipt for exactly that money (it does not touch Laekunud summa, which holds it): the first
+ *   money in (no paid prepayment or whole sum yet) is the whole sum when it is all of the price, else the half choice's prepayment or the whole
+ *   choice's whole sum; later money is the rest. Its words are partOf's: „Osamakse“ when it is no half, whole or rest. Without such money, the
+ *   same amounts as a request (money received and not typed: the rest paid at the venue).
+ * An amount of nothing is never offered.
+ */
+export function openAmounts(r: { priceCents: number; paymentChoice: "full" | "half"; paidCents: number }, invoiced: readonly Covering[]): OpenAmounts {
+  const price = r.priceCents;
   const live = invoiced.filter((i) => i.status !== "cancelled");
-  const covered = live.reduce((sum, i) => sum + i.amountCents, 0);
-  const out: OpenAmount[] = [];
-  const offer = (kind: InvoiceKind, cents: number) => {
-    if (cents > 0) out.push({ kind, cents, part: partText(kind) });
-  };
-  if (r.paymentChoice === "half") {
-    if (!live.some((i) => i.kind === "prepayment" || i.kind === "full")) offer("prepayment", prepaymentDue(r.priceCents, "half"));
-    if (covered === 0) offer("full", r.priceCents);
-    if (covered > 0 && covered < r.priceCents) offer("balance", r.priceCents - covered);
-  } else if (covered === 0) {
-    offer("full", r.priceCents);
+  const sum = (list: readonly Covering[]) => list.reduce((total, i) => total + i.amountCents, 0);
+  const covered = sum(live);
+  const paid = live.filter((i) => i.status === "paid");
+  const uncovered = Math.max(0, Math.min(r.paidCents - sum(paid), price - covered));
+  const accounted = covered + uncovered;
+  const head = (list: readonly Covering[]) => list.some((i) => i.kind === "prepayment" || i.kind === "full");
+  const amount = (kind: InvoiceKind, cents: number): OpenAmount[] => (cents > 0 ? [{ kind, cents, part: partOf(kind, cents, price) }] : []);
+  const request = [
+    ...(r.paymentChoice === "half" && !head(live) && uncovered === 0 ? amount("prepayment", prepaymentDue(price, "half")) : []),
+    ...(accounted === 0 ? amount("full", price) : []),
+    ...(accounted > 0 && accounted < price ? amount("balance", price - accounted) : []),
+  ];
+  if (uncovered === 0) return { request, receipt: request };
+  const first = !head(paid);
+  const kind: InvoiceKind = first && uncovered === price ? "full" : first ? (r.paymentChoice === "half" ? "prepayment" : "full") : "balance";
+  return { request, receipt: amount(kind, uncovered) };
+}
+
+/** A paid online payment of a registration that no invoice names yet: it waits in „Arveta maksed“ (I1). */
+export type UninvoicedPayment = { id: number; kind: "prepayment" | "balance" | "ecourse"; invoiceId: number | null; amountCents: number };
+
+/** `payments` that are paid and that no invoice of `invoices` names as its payment (invoices.payment_id: ruling R13's "invoiced"). */
+export function uninvoicedOf<P extends { id: number; status: string }>(payments: P[], invoices: { paymentId: number | null }[]): P[] {
+  return payments.filter((p) => p.status === "paid" && !invoices.some((i) => i.paymentId === p.id));
+}
+
+/**
+ * What covers a registration's price for openAmounts (the final review's I1): its invoices, and its paid online payments that have no invoice
+ * yet (`uninvoiced`, uninvoicedOf), whose money is in Laekunud summa already and so counts as paid. Each such payment counts as what its
+ * catch-up (server/invoices.ts catchUpInvoice) will make of it:
+ * - started for an invoice of the registration that is still unpaid and of its sum (markLinkedInvoicePaid's test; R14): that invoice, paid —
+ *   the first such payment only, a second one has its own;
+ * - otherwise a paid invoice of its own, of the kind of the invoice it was started for (R7) or else of invoiceKindOfPayment's.
+ */
+export function coveringInvoices(
+  r: { paymentChoice: "full" | "half" },
+  invoices: (Covering & { id: number })[],
+  uninvoiced: UninvoicedPayment[],
+): Covering[] {
+  const paidByCatchUp = new Set<number>();
+  const own: Covering[] = [];
+  for (const p of uninvoiced) {
+    const linked = invoices.find((i) => i.id === p.invoiceId && i.amountCents === p.amountCents);
+    if (linked && linked.status === "unpaid" && !paidByCatchUp.has(linked.id)) paidByCatchUp.add(linked.id);
+    else own.push({ kind: linked?.kind ?? invoiceKindOfPayment(p, r), status: "paid", amountCents: p.amountCents });
   }
-  return out;
+  return [...invoices.map((i) => ({ kind: i.kind, status: paidByCatchUp.has(i.id) ? ("paid" as const) : i.status, amountCents: i.amountCents })), ...own];
 }
 
 /**
@@ -264,9 +333,11 @@ function csvText(raw: string): string {
 /**
  * The CSV for the accountant (§6.5): a row per invoice in the order given, `;`-separated for Estonian Excel, UTF-8 with a BOM, CRLF line
  * ends. Dates are Tallinn dd.mm.yyyy. A cancelled invoice stays in the file marked „Tühistatud" with zero sums; the paid date and the way
- * are those of a paid invoice only. Sums are net, VAT and total (the invoice's amount is the gross; no rate: all net).
+ * are those of a paid invoice only. Sums are net, VAT and total (the invoice's amount is the gross; no rate: all net). A paid invoice whose
+ * payment was refunded or voided (`refunded`, D5, the final review's I3) reads „Tagastatud“, its sums, paid date and way as issued: the
+ * accountant books the return (credit notes are out of scope).
  */
-export function invoiceCsv(rows: Invoice[]): string {
+export function invoiceCsv(rows: (Invoice & { refunded?: boolean })[]): string {
   const lines = rows.map((i) => {
     const sums = i.status === "cancelled" ? { net: 0, vat: 0, gross: 0 } : vatSplit(i.amountCents, i.vatRate);
     const paid = i.status === "paid";
@@ -281,7 +352,7 @@ export function invoiceCsv(rows: Invoice[]): string {
       csvAmount(sums.net),
       csvAmount(sums.vat),
       csvAmount(sums.gross),
-      invoiceStatusText(i.status),
+      paid && i.refunded ? REFUNDED : invoiceStatusText(i.status),
       paid && i.paidAt ? tallinnDateText(i.paidAt) : "",
       paid && i.paidMethod ? paidMethodText(i.paidMethod) : "",
     ].join(";");

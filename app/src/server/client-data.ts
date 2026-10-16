@@ -91,12 +91,14 @@ const iso = (d: Date): string => d.toISOString();
 
 /**
  * An invoice as her card shows it (invoices Task 6, spec §4; domain/account-cards.ts CardInvoice). An unpaid invoice carries the receiver, IBAN
- * and bank frozen on it and its reference, when it has a receiver and an IBAN to pay to. An unpaid one whose online payment is paid already
- * (R14: `paidOnline`, its catch-up pending) is shown as paid, with no bank details: the money is in, and the start will not charge it again
- * (invoices.ts unpaidInvoiceOf). Its PDF reads as the row does, unpaid, until Maria's catch-up pays it, so it is marked `awaitingCatchUp` and
- * the card offers no download for it.
+ * and bank frozen on it and its reference, when it has a receiver and an IBAN to pay to, and while it may be paid (`payable`: not on a
+ * cancelled registration or a called-off session, whose invoice stays unpaid until Maria cancels it, spec §9, but invites no payment: the final
+ * review's m8). An unpaid one whose online payment is paid already (R14: `paidOnline`, its catch-up pending) is shown as paid, with no bank
+ * details: the money is in, and the start will not charge it again (invoices.ts unpaidInvoiceOf). Its PDF reads as the row does, unpaid, until
+ * Maria's catch-up pays it, so it is marked `awaitingCatchUp` and the card offers no download for it. A paid one whose payment was refunded or
+ * voided is marked `refunded` („Tagastatud“, I3).
  */
-function cardInvoice(inv: StudentInvoice): CardInvoice | null {
+function cardInvoice(inv: StudentInvoice, payable: boolean): CardInvoice | null {
   if (inv.status === "cancelled") return null; // void: not hers to see (invoices.ts ofClient leaves it out already)
   const unpaid = inv.status === "unpaid" && !inv.paidOnline;
   const { receiver, iban, bank } = inv.seller;
@@ -107,8 +109,9 @@ function cardInvoice(inv: StudentInvoice): CardInvoice | null {
     status: unpaid ? "unpaid" : "paid",
     dueAt: inv.dueAt ? iso(inv.dueAt) : null,
     paidAt: inv.paidAt ? iso(inv.paidAt) : null,
-    transfer: unpaid && receiver.trim() !== "" && iban.trim() !== "" ? { receiver, iban, bank, reference: inv.reference } : null,
+    transfer: unpaid && payable && receiver.trim() !== "" && iban.trim() !== "" ? { receiver, iban, bank, reference: inv.reference } : null,
     ...(inv.status === "unpaid" && !unpaid ? { awaitingCatchUp: true as const } : {}),
+    ...(inv.refunded ? { refunded: true as const } : {}),
   };
 }
 
@@ -236,8 +239,8 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
   // her invoices on the card they belong to: a registration's, and an e-course's by its course (a purchase's invoice has no registration)
   const ofRegistration = groupInvoices(invoiceRows, (i) => i.registrationId);
   const ofCourse = groupInvoices(invoiceRows, (i) => (i.registrationId === null && i.kind === "ecourse" ? i.courseId : null));
-  const invoicesOn = (list: StudentInvoice[] = []) => {
-    const shown = list.flatMap((i) => cardInvoice(i) ?? []);
+  const invoicesOn = (list: StudentInvoice[] = [], payable = true) => {
+    const shown = list.flatMap((i) => cardInvoice(i, payable) ?? []);
     return shown.length ? { invoices: shown } : {};
   };
 
@@ -245,6 +248,8 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
   for (const r of regRows) {
     const course = { slug: r.course.slug, title: r.course.title };
     const mine = ofRegistration.get(r.id);
+    // a cancelled registration, or one whose session was called off, pays nothing (m8): its unpaid invoice shows, without bank details or „Maksa“
+    const payable = r.status !== "cancelled" && r.sessionStatus !== "cancelled";
     if (r.startsAt === null) {
       cards.push({
         kind: "individual",
@@ -254,10 +259,10 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         preferredPeriod: r.preferredPeriod,
         createdAt: iso(r.createdAt),
         ...(r.protocolSentAt ? { protocolSent: true } : {}),
-        ...invoicesOn(mine),
+        ...invoicesOn(mine, payable),
       });
     } else {
-      const open = mine ? openInvoiceOf(mine) : null;
+      const open = mine && payable ? openInvoiceOf(mine) : null;
       cards.push({
         kind: "contact",
         registrationId: r.id,
@@ -269,7 +274,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         paidCents: r.paidCents,
         createdAt: iso(r.createdAt),
         ...(r.protocolSentAt ? { protocolSent: true } : {}),
-        ...invoicesOn(mine),
+        ...invoicesOn(mine, payable),
         ...(open ? { openInvoice: open } : {}),
       });
     }

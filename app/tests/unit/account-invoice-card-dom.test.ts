@@ -212,6 +212,27 @@ describe("„Maksa“ with an unpaid invoice: the server's payableDue", () => {
   });
 });
 
+describe("the final review's wave: „Tagastatud“ (I3), a cancelled registration (m8)", () => {
+  test("I3: a paid invoice whose payment was refunded or voided reads „Tagastatud“, its download as it was; the paid one beside it „Tasutud“", async () => {
+    await render(dashboard([contact(7, { status: "confirmed", paidCents: 17500, invoices: [paidInvoice({ refunded: true }), paidInvoice({ id: 13, number: "MSL2026-003" })] })]));
+    expect(lineOf(11)).toBe(`Arve MSL2026-001 · 175,00${NBSP}€ · Tagastatud`);
+    expect(lineOf(13)).toBe(`Arve MSL2026-003 · 175,00${NBSP}€ · Tasutud`);
+    expect($("[data-card-invoice='11']")?.getAttribute("data-invoice-refunded")).toBe("true");
+    expect($("[data-card-invoice='13']")?.hasAttribute("data-invoice-refunded")).toBe(false);
+    expect($("[data-card-invoice='11'] a[data-card-invoice-download]")?.getAttribute("href")).toBe("/api/konto/arve/11");
+    await render(dashboard([contact(7, { status: "confirmed", paidCents: 17500, invoices: [paidInvoice({ refunded: true })] })]), { locale: "ru" });
+    expect(lineOf(11)).toBe(`Счёт MSL2026-001 · 175,00${NBSP}€ · Возвращён`);
+  });
+
+  test("m8: a cancelled registration's unpaid invoice (sent without bank details or `openInvoice`) reads „Tasumata“ with no bank details and no „Maksa“", async () => {
+    await render(dashboard([contact(7, { status: "cancelled", invoices: [unpaidInvoice({ transfer: null })] })]));
+    expect(lineOf(12)).toBe(`Arve MSL2026-002 · 175,00${NBSP}€ · Tasumata · tasu 23.10.2026`);
+    expect($("[data-invoice-transfer]")).toBeNull();
+    expect($$("[data-card-action='pay-online'], [data-card-action='pay']")).toEqual([]);
+    expect($("[data-card-invoice='12'] a[data-card-invoice-download]")?.getAttribute("href")).toBe("/api/konto/arve/12");
+  });
+});
+
 describe("R14: an invoice waiting for its catch-up arrives as paid", () => {
   /** The dashboard's data for it (client-data.ts): the money is in (Laekunud summa), the invoice is paid for the student, nothing is open. */
   const waiting = paidInvoice({ id: 12, number: "MSL2026-002", dueAt: "2026-10-23T09:00:00.000Z", paidAt: null, awaitingCatchUp: true });
@@ -264,6 +285,6 @@ describe("the texts", () => {
   });
 
   test("the spec's quoted words, as quoted", () => {
-    expect([et.account.invoices.paid, et.account.invoices.unpaid, et.account.invoices.download]).toEqual(["Tasutud", "Tasumata", "Laadi alla (PDF)"]);
+    expect([et.account.invoices.paid, et.account.invoices.unpaid, et.account.invoices.download, et.account.invoices.refunded]).toEqual(["Tasutud", "Tasumata", "Laadi alla (PDF)", "Tagastatud"]);
   });
 });

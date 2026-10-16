@@ -42,7 +42,7 @@ export type InvoiceTransfer = { receiver: string; iban: string; bank: string; re
  * the student is told: an unpaid invoice whose online payment is paid already (R14: the money is in, the catch-up is pending) is sent as "paid"
  * (with `paidAt` null until the catch-up gives it one) and marked `awaitingCatchUp`: its row still reads unpaid, so its PDF would still ask for
  * the money, and the card offers no download for it until Maria's catch-up has paid it. `transfer` is set for an unpaid invoice that has bank
- * details, else null.
+ * details and may be paid (not on a cancelled registration or a called-off session: m8), else null. `refunded`: see below.
  */
 export type CardInvoice = {
   id: number;
@@ -54,6 +54,8 @@ export type CardInvoice = {
   transfer: InvoiceTransfer | null;
   /** R14: paid online, its invoice not yet marked paid (the catch-up is pending); absent otherwise. */
   awaitingCatchUp?: true;
+  /** Paid, and its online payment refunded or voided since (spec D5, the final review's I3): the card says „Tagastatud“. Absent otherwise. */
+  refunded?: true;
 };
 
 /**

@@ -141,6 +141,41 @@ describe("the invoice mail, Russian", () => {
   });
 });
 
+describe("m9: the copy for „Saada ka aadressile“ (`second`, say the student's accountant)", () => {
+  test("Estonian: a neutral greeting „Tere!“ (not the student's first name) and no „Ava minu konto“ (the account is the student's); the rest as the student's copy", () => {
+    const mail = invoiceMail(input({ email: "raamatupidaja@firma.example", second: true }));
+    const text = lines(mail.text);
+    expect(text[0]).toBe("Tere!");
+    expect(mail.text).not.toContain("Kati");
+    expect(mail.text).not.toContain(et.account.mail.confirm.open);
+    expect(mail.text).not.toContain("/konto/sisene");
+    expect(buttons(mail.html!)).toBe(0);
+    expect(mail.html).not.toContain("Kati");
+    expect(mail.html).not.toContain("/konto/sisene");
+    expect(mail.html).not.toContain(et.account.mail.confirm.open);
+    // the invoice is all there: the subject, the amount, the bank details, the PDF, the signature
+    expect(mail.subject).toBe("MS LAB arve MSL2026-001");
+    expect(mail.to).toBe("raamatupidaja@firma.example");
+    for (const part of [`Summa: 175,00${NBSP}€`, "IBAN: EE38 2200 2210 2014 5685", "Selgitus: MSLAB-42", et.account.invoiceMail.attached]) expect(text, part).toContain(part);
+    expect(text.at(-1)).toBe("MS LAB Koolituskeskus");
+    expect(mail.attachments).toHaveLength(1);
+  });
+
+  test("Russian: «Здравствуйте!» and no «Открыть мой кабинет»", () => {
+    const mail = invoiceMail(input({ locale: "ru", name: "Мария Иванова", email: "buh@firma.example", second: true }));
+    expect(lines(mail.text)[0]).toBe("Здравствуйте!");
+    expect(mail.text).not.toContain("Мария");
+    expect(mail.text).not.toContain(ru.account.mail.confirm.open);
+    expect(buttons(mail.html!)).toBe(0);
+  });
+
+  test("the student's own copy keeps her name and the button", () => {
+    const mail = invoiceMail(input({ second: false }));
+    expect(lines(mail.text)[0]).toBe("Tere, Kati!");
+    expect(buttons(mail.html!)).toBe(1);
+  });
+});
+
 describe("Russian typography in every invoice-mail string", () => {
   const strings = (value: unknown, path: string): [string, string][] =>
     typeof value === "string" ? [[path, value]] : Object.entries(value as Record<string, unknown>).flatMap(([k, v]) => strings(v, `${path}.${k}`));

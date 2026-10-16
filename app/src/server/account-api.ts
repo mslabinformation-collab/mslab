@@ -908,7 +908,7 @@ async function invoiceFile(request: Request, deps: AccountDeps, rawId: string): 
   if (!invoice) return clientResponse(session, { ok: false }, 404);
   let bytes: Uint8Array;
   try {
-    bytes = await invoicePdf(deps.db, invoice);
+    bytes = await invoicePdf(invoice);
   } catch (e) {
     logFailure(`[invoices] ${invoice.id}: the student's download failed`, e); // its id and the error's class only
     return clientResponse(session, { ok: false, error: "server" }, 500);

@@ -33,7 +33,7 @@ export function InvoiceCatchUp({ paymentId }: { paymentId: number }) {
       <button type="button" className={`${ui.btn} ${ui.smallBtn}`} aria-disabled={pending || undefined} onClick={make} data-uninvoiced-create={paymentId}>
         {pending ? t.working : t.create}
       </button>
-      <p role="status" className={`${styles.status} ${toneClass(line.tone)}`}>
+      <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-uninvoiced-status="">
         {line.text}
       </p>
     </div>

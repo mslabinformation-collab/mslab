@@ -230,6 +230,11 @@ type Confirmation = {
    * kustutada.", which could make a buyer delete her access mail. Every other mail with a code keeps it.
    */
   afterPurchase?: boolean;
+  /**
+   * The mail goes to someone who has no account here (the invoice's copy for „Saada ka aadressile“, the final review's m9): no „Ava minu konto“,
+   * neither the button nor its line. Without a login only.
+   */
+  noAccount?: boolean;
 };
 
 /** The first line of the e-mail: "Tere, Kati!", or just "Tere!" when the name has no word. */
@@ -261,7 +266,7 @@ function confirmationText(c: Confirmation, greeting: string, mail: MailTexts, li
     else lines.push(...section.fields.map(([label, value]) => `${label}: ${value}`), "");
   }
   if (c.login) lines.push(mail.codeIntro, "", c.login.code, "", `${mail.button}:`, links.main, "", mail.valid, ...(c.afterPurchase ? [] : [mail.ignore]), "", mail.confirm.codeHere, links.code, "");
-  else lines.push(`${mail.confirm.open}:`, links.main, "");
+  else if (!c.noAccount) lines.push(`${mail.confirm.open}:`, links.main, "");
   lines.push(mail.signature);
   return lines.join("\n");
 }
@@ -309,7 +314,9 @@ function confirmationHtml(c: Confirmation, greeting: string, mail: MailTexts, li
       ...(c.afterPurchase ? [] : [row(`padding:4px 28px 0;${textStyle(14)}`, esc(mail.ignore))]),
       row(`padding:12px 28px 0;${textStyle(14)}`, `${esc(mail.confirm.codeHere)} <a href="${esc(links.code)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.codeLink)}</a>`),
     );
-  else if (payButton) rows.push(row(`padding:20px 28px 0;text-align:center;${textStyle(14)}`, `<a href="${esc(links.main)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.open)}</a>`));
+  else if (c.noAccount) {
+    // (no link to an account: the mail's reader has none here)
+  } else if (payButton) rows.push(row(`padding:20px 28px 0;text-align:center;${textStyle(14)}`, `<a href="${esc(links.main)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.open)}</a>`));
   else rows.push(buttonRow(links.main, mail.confirm.open));
   rows.push(signatureRow(mail));
   return mailCard(c.subject, c.locale, rows);
@@ -487,6 +494,11 @@ export type InvoiceMailInput = {
   /** The buyer's name, for the greeting (its first word). */
   name: string;
   locale: Locale;
+  /**
+   * The copy for the second address of „Saada ka aadressile“ (D11; the final review's m9): its reader is not the student (say her accountant),
+   * so the greeting is the neutral „Tere!“ / «Здравствуйте!», not her first name, and there is no „Ava minu konto“.
+   */
+  second?: boolean;
   /** The invoice as the PDF prints it: its frozen row. A cancelled invoice is never mailed. */
   invoice: Pick<Invoice, "number" | "status" | "amountCents" | "dueAt" | "paidAt" | "reference" | "line" | "seller">;
   /** The invoice's PDF (server/invoices.ts invoicePdf, rendered now): the mail's one attachment. */
@@ -498,7 +510,8 @@ export type InvoiceMailInput = {
  * with its date, the amount and, of an unpaid invoice, the due date, the bank details and the payment reference (the frozen seller's, as the
  * PDF prints them), or of a paid one the day it was paid and no request for money; the invoice's PDF attached; and one button, „Ava minu
  * konto“. No login in it, and not counted in the daily caps (it follows Maria's own send, like the protocol mail). The labels of the bank
- * rows are the account card's own (`account.dashboard.payment`). The caller attaches nothing: the PDF is in `attachments`.
+ * rows are the account card's own (`account.dashboard.payment`). The caller attaches nothing: the PDF is in `attachments`. The copy for a
+ * second address (`second`) greets no one by name and has no button.
  */
 export function invoiceMail(input: InvoiceMailInput): Mail {
   const dict = getDict(input.locale);
@@ -515,7 +528,8 @@ export function invoiceMail(input: InvoiceMailInput): Mail {
   }
   const mail = confirmationMail({
     email: input.email,
-    name: input.name,
+    // (a name with no word is the neutral „Tere!“: the second address's reader is not the student)
+    name: input.second ? "" : input.name,
     locale: input.locale,
     siteUrl: input.siteUrl,
     subject: oneLine(fill(m.subject, { number: inv.number })),
@@ -523,6 +537,7 @@ export function invoiceMail(input: InvoiceMailInput): Mail {
     box: { title: inv.line.course || inv.number, lines: inv.line.session ? [inv.line.session] : [] },
     sections: [{ fields: fields.filter(([, value]) => value.trim() !== "") }, { text: m.attached }],
     login: null,
+    noAccount: input.second === true,
   });
   return { ...mail, attachments: [{ filename: invoiceFileName(inv.number), content: Buffer.from(input.pdf), contentType: "application/pdf" }] };
 }

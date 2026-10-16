@@ -793,6 +793,8 @@ export const ru: Dict = {
       number: "Счёт {number}",
       paid: "Оплачен",
       unpaid: "Не оплачен",
+      // Draft: a paid invoice whose online payment was refunded or voided (et „Tagastatud“)
+      refunded: "Возвращён",
       payBy: "оплатить до {date}",
       download: "Скачать (PDF)",
     },

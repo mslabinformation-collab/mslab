@@ -10,7 +10,7 @@ import { createInvoice, markInvoicePaid, uninvoicedPayments } from "../../src/se
 import type { Env } from "../../src/server/notify";
 import { settlePayment, type Facts, type SettleDeps } from "../../src/server/payments/settle";
 import { insertAdminFixtures, localDatabaseUrl, onLocalDb, removeAdminFixtures, storedAdminRegistration, type AdminFixtures } from "./fixtures";
-import { holdInvoiceSettings } from "./invoices";
+import { holdInvoiceSettings, INVOICE_NUMBER, today } from "./invoices";
 import { expect, submitsForms, test } from "./test";
 
 // Invoices on real Postgres (invoices Task 7; owed by Tasks 3 and 4): what the unit tests' single-connection PGlite cannot show, because it
@@ -21,12 +21,15 @@ import { expect, submitsForms, test } from "./test";
 // - a „Märgi tasutuks" and a Montonio settlement of a payment started for that same invoice at the same moment (rulings R7, R13, R14), in both
 //   orders. Whichever comes second finds the first's committed state: settle first, the invoice is Montonio's and the mark is refused; the mark
 //   first, the invoice is Maria's, and the payment's money gets an invoice of its own. Either way the invoice is paid once, „Laekunud summa"
-//   counts every real payment, and nothing is left unpaid and charged.
-// "At the same moment" is proven, not hoped for (inFlight): another connection holds the registration's session row, the first lock of every
-// payment path (db/queries/seats.ts lockForPayment: the session, then the registration, then the payment or the invoice), while the calls
-// start, and lets it go only once this pool shows every call waiting for it. They stand in the lock's queue in the order started (a lock queue
-// is first come, first served), so which of the two goes first is fixed by the test, and the outcome that follows is the locks', not the
-// timing's. The settlement's mails and Maria's notices (the work after the response) are not run here: no mail goes out. Nothing here depends
+//   counts every real payment, and nothing is left unpaid and charged;
+// - two invoices issued at the same moment under the same prefix, on two registrations of two sessions (no row lock between them): the
+//   number series' transaction lock (pg_advisory_xact_lock(hashtext('invoice-number'))) puts one after the other, so under READ COMMITTED the
+//   second reads the first's committed highest seq and setting, and the two take consecutive numbers, never one twice (the final review's m14).
+// "At the same moment" is proven, not hoped for (inFlight): another connection holds the lock the calls meet first — the registration's
+// session row, the first lock of every payment path (db/queries/seats.ts lockForPayment: the session, then the registration, then the payment or
+// the invoice), or the number series' lock — while the calls start, and lets it go only once this pool shows every call waiting for it. They
+// stand in the lock's queue in the order started (a lock queue is first come, first served), so which of the two goes first is fixed by the
+// test, and the outcome that follows is the locks', not the timing's. The settlement's mails and Maria's notices (the work after the response) are not run here: no mail goes out. Nothing here depends
 // on the screen: the desktop project runs these once.
 
 test.skip(({ isMobile }) => isMobile, "nothing here depends on the screen: the desktop project runs these once");
@@ -81,13 +84,18 @@ async function lockWaits(n: number, gone: () => boolean, ms = 15_000): Promise<W
   }
 }
 
+/** What another connection holds while two calls start: the session row of a registration (the first statement of lockForPayment). */
+const sessionRow = (sessionId: number) => (tx: postgres.TransactionSql) => tx`select 1 from course_sessions where id = ${sessionId} for update`;
+/** …or the number series' transaction lock, which every issue takes after its row locks (server/invoices.ts lockNumbers). */
+const numberSeries = (tx: postgres.TransactionSql) => tx`select pg_advisory_xact_lock(hashtext('invoice-number'))`;
+
 /**
- * Two calls in flight at the same moment, `first` started before `second`. Another connection holds the session row of the registration
- * (the first statement of lockForPayment) while they start; the test starts `first`, waits until this pool shows it waiting, starts `second`,
- * waits until it shows both waiting, and only then lets the row go (its transaction ends). A call that ran its whole transaction before the
- * other began would never be seen waiting beside it. Their results, in the order started.
+ * Two calls in flight at the same moment, `first` started before `second`. Another connection holds a lock (`hold`: the session row of the
+ * registration, or the number series' lock) while they start; the test starts `first`, waits until this pool shows it waiting, starts
+ * `second`, waits until it shows both waiting, and only then lets the lock go (its transaction ends). A call that ran its whole transaction
+ * before the other began would never be seen waiting beside it. Their results, in the order started.
  */
-async function inFlight<A, B>(sessionId: number, first: () => Promise<A>, second: () => Promise<B>): Promise<[A, B]> {
+async function inFlight<A, B>(hold: (tx: postgres.TransactionSql) => Promise<unknown>, first: () => Promise<A>, second: () => Promise<B>): Promise<[A, B]> {
   let settled = 0;
   const started: Promise<unknown>[] = [];
   const start = <T,>(call: () => Promise<T>): Promise<T> => {
@@ -105,12 +113,12 @@ async function inFlight<A, B>(sessionId: number, first: () => Promise<A>, second
     await onLocalDb(
       (sql) =>
         sql.begin(async (tx) => {
-          await tx`select 1 from course_sessions where id = ${sessionId} for update`;
+          await hold(tx);
           a = start(first);
-          expect((await lockWaits(1, () => settled > 0)).length, "the first call waits for the session row").toBe(1);
+          expect((await lockWaits(1, () => settled > 0)).length, "the first call waits for the held lock").toBe(1);
           b = start(second);
           const waiting = await lockWaits(2, () => settled > 0);
-          expect(settled, "a call went past the session row's lock while it was held").toBe(0);
+          expect(settled, "a call went past the held lock while it was held").toBe(0);
           expect(waiting.length, `both calls wait for the lock (${waiting.map((w) => w.query.slice(0, 60)).join(" | ")})`).toBe(2);
         }),
       { marksPages: false },
@@ -174,7 +182,7 @@ const mark = (id: number) => markInvoicePaid(db, id, { paidAt: new Date(), metho
 test("two „Märgi tasutuks“ at the same moment on one invoice: exactly one wins, and „Laekunud summa“ gets the amount once", async ({}, info) => {
   const f = await fixtures(info);
   const invoice = await request(f);
-  const [first, second] = await inFlight(f.session.id, () => mark(invoice.id), () => mark(invoice.id));
+  const [first, second] = await inFlight(sessionRow(f.session.id), () => mark(invoice.id), () => mark(invoice.id));
   expect(first).toMatchObject({ ok: true });
   expect(second).toEqual({ ok: false, error: "notUnpaid" });
   // one paid invoice, Maria's mark; the registration holds the 175 € once and confirms at 50 %
@@ -186,7 +194,7 @@ test("a „Märgi tasutuks“ first and a Montonio settlement of the payment sta
   const f = await fixtures(info);
   const invoice = await request(f);
   const payment = await startedFor(f, invoice.id);
-  const [marked, settled] = await inFlight(f.session.id, () => mark(invoice.id), () => settlePayment(deps(), payment, paidFacts(payment)));
+  const [marked, settled] = await inFlight(sessionRow(f.session.id), () => mark(invoice.id), () => settlePayment(deps(), payment, paidFacts(payment)));
   expect(marked).toMatchObject({ ok: true });
   expect(settled).toMatchObject({ id: payment.id, status: "paid" });
   expect(await storedPaymentStatus(payment.id)).toBe("paid");
@@ -206,7 +214,7 @@ test("a Montonio settlement first and a „Märgi tasutuks“ of the invoice it 
   const f = await fixtures(info);
   const invoice = await request(f);
   const payment = await startedFor(f, invoice.id);
-  const [settled, marked] = await inFlight(f.session.id, () => settlePayment(deps(), payment, paidFacts(payment)), () => mark(invoice.id));
+  const [settled, marked] = await inFlight(sessionRow(f.session.id), () => settlePayment(deps(), payment, paidFacts(payment)), () => mark(invoice.id));
   expect(settled).toMatchObject({ id: payment.id, status: "paid" });
   expect(marked).toEqual({ ok: false, error: "notUnpaid" });
   expect(await storedPaymentStatus(payment.id)).toBe("paid");
@@ -214,4 +222,41 @@ test("a Montonio settlement first and a „Märgi tasutuks“ of the invoice it 
   expect(await storedInvoices(f)).toEqual([{ status: "paid", method: "montonio", paymentId: payment.id, paidAdds: false, cents: 17500 }]);
   expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
   expect((await uninvoicedPayments(db)).filter((p) => p.id === payment.id)).toEqual([]);
+});
+
+test("m14: two invoices issued at the same moment under the same prefix, on two registrations of two sessions: consecutive numbers, never one twice", async ({}, info) => {
+  const f = await fixtures(info);
+  // a second registration of the fixture course on a session of its own, so the two issues share no row lock: only the number series' lock
+  // stands between them (its address is the fixture's pattern, so the clean-up takes it and its invoice; the course takes its session)
+  const second = await onLocalDb(
+    async (sql) => {
+      const [session] = await sql<{ id: number }[]>`
+        insert into course_sessions (course_id, starts_at, city, venue, capacity)
+        values (${f.course.id}, date_trunc('day', now()) + interval '61 days 10 hours', 'Tartu', 'E2E saal 2', 4) returning id`;
+      const [registration] = await sql<{ id: number }[]>`
+        insert into registrations (course_id, course_session_id, kind, name, email, payment_choice, status)
+        values (${f.course.id}, ${session.id}, 'group', ${`E2E Teine ${f.tag}`}, ${`e2e-admin-reg2-${f.tag}@example.com`}, 'half', 'awaiting_prepayment')
+        returning id`;
+      return { session: session.id, registration: registration.id };
+    },
+    { marksPages: false },
+  );
+  const issue = (registrationId: number) => () => createInvoice(db, registrationId, { kind: "prepayment", mode: "request" }, new Date());
+  const [a, b] = await inFlight(numberSeries, issue(f.registration.id), issue(second.registration));
+  if (!a.ok || !b.ok) throw new Error(`createInvoice: ${a.ok ? "" : a.error} ${b.ok ? "" : b.error}`);
+  // both are the tests' series (E2E, this Tallinn year); the first started is the first issued, and the second takes the very next number
+  for (const inv of [a.invoice, b.invoice]) {
+    expect(inv.number).toMatch(INVOICE_NUMBER);
+    expect([inv.prefix, inv.year]).toEqual(["E2E", Number(today().slice(0, 4))]);
+  }
+  expect(b.invoice.seq).toBe(a.invoice.seq + 1);
+  expect(b.invoice.number).not.toBe(a.invoice.number);
+  // the database agrees: one row per number, and the setting moved on past both
+  const stored = await onLocalDb(
+    (sql) => sql<{ number: string; n: number }[]>`select number, count(*)::int as n from invoices where number in (${a.invoice.number}, ${b.invoice.number}) group by number order by number`,
+    { marksPages: false },
+  );
+  expect(stored).toEqual([{ number: a.invoice.number, n: 1 }, { number: b.invoice.number, n: 1 }].sort((x, y) => x.number.localeCompare(y.number)));
+  const [{ setting }] = await onLocalDb((sql) => sql<{ setting: { nextSeq: number } }[]>`select value as setting from settings where key = 'invoice'`, { marksPages: false });
+  expect(setting.nextSeq).toBe(b.invoice.seq + 1);
 });

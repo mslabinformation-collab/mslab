@@ -10,7 +10,9 @@ import { ecourseOpenMail, registrationPaidMail, type EcourseOpenInput, type Regi
 import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
 import { renderInvoice } from "@/server/invoice-pdf";
-import { cancelInvoice, catchUpInvoice, createInvoice, markInvoicePaid, uninvoicedPayments } from "@/server/invoices";
+import {
+  cancelInvoice, catchUpInvoice, createInvoice, invoicesOfClient, invoicesOfRegistration, listInvoices, markInvoicePaid, undoInvoicePaid, uninvoicedPayments, unpaidInvoiceOf,
+} from "@/server/invoices";
 import { loadPayView, payPage } from "@/server/pay-page";
 import { settleToken } from "@/server/payments/settle";
 import { startRegistrationPayment } from "@/server/payments/start";
@@ -495,6 +497,34 @@ describe("a Montonio payment and Maria's „Märgi tasutuks\" on the same invoic
   });
 });
 
+describe("m1 (the final review): R14's trap is only a payment that has no invoice of its own", () => {
+  test("Maria marks the invoice, the payment started for it settles (its own invoice, R7), and she undoes her mark: the invoice is an ordinary unpaid one again — not „paid online“, payable, markable, on her screens and the student's card", async () => {
+    const m = stubMontonio();
+    await ready();
+    const [client] = await db.insert(clients).values({ email: "kati@example.com" }).returning();
+    const r = await registrationOn(db, await contactCourse(db), { clientId: client.id });
+    const inv = await request(r, "prepayment");
+    expect(await start(m, r)).toMatchObject({ kind: "started" });
+    const p = await newest();
+    expect(p.invoiceId).toBe(inv.id);
+    expect(await markInvoicePaid(db, inv.id, { paidAt: NOW, method: "bank" }, NOW)).toMatchObject({ ok: true });
+    await pay(m, p);
+    expect(await undoInvoicePaid(db, inv.id, LATER)).toMatchObject({ ok: true, invoice: { status: "unpaid" } });
+    // the payment is invoiced by its own (R7), so nothing waits for a catch-up: the invoice is not „paid online“ anywhere
+    expect(await uninvoicedPayments(db)).toEqual([]);
+    expect((await invoicesOfRegistration(db, r.id)).map((i) => [i.number, i.status, i.paymentId, i.paidOnline])).toEqual([
+      ["MSL2026-001", "unpaid", null, false],
+      ["MSL2026-002", "paid", p.id, false],
+    ]);
+    expect((await listInvoices(db, {}, 1)).rows.map((i) => [i.number, i.paidOnline])).toEqual([["MSL2026-002", false], ["MSL2026-001", false]]);
+    expect((await invoicesOfClient(db, client.id)).map((i) => [i.number, i.paidOnline])).toEqual([["MSL2026-001", false], ["MSL2026-002", false]]);
+    // „Maksa“ charges it (the start and the page agree), and „Märgi tasutuks“ is no dead end
+    expect(await unpaidInvoiceOf(db, r.id)).toMatchObject({ id: inv.id });
+    expect((await loadPayView(db, r.payToken, LATER))?.due).toEqual({ kind: "prepayment", cents: 17500, invoiceId: inv.id });
+    expect(await markInvoicePaid(db, inv.id, { paidAt: LATER, method: "bank" }, LATER)).toMatchObject({ ok: true });
+  });
+});
+
 describe("R14: a payment whose invoice step failed, started for an invoice that still reads unpaid, until its catch-up", () => {
   /** A 50% registration's unpaid 100% invoice, „Maksa" pressed for it, and its payment settled while invoice updates fail (the savepoint rolls back). */
   async function failedForInvoice(m: ReturnType<typeof stubMontonio>) {
@@ -544,6 +574,33 @@ describe("R14: a payment whose invoice step failed, started for an invoice that 
       invoice: { number: "MSL2026-002", kind: "full", status: "paid", paymentId: p.id, amountCents: 35000, paidAt: LATER, line: { part: "Kogu summa (100%)" } },
     });
     await expectEachEuroInvoicedOnce(r);
+  });
+});
+
+describe("I1 (the final review) with R14: a payment started for a prepayment invoice whose invoice step failed", () => {
+  test("that invoice counts as paid, once: „Koosta arve“ offers the rest only and never a receipt for the payment's money; Maria's screens flag it until the catch-up pays THAT invoice", async () => {
+    const m = stubMontonio();
+    await ready();
+    const r = await registrationOn(db, await contactCourse(db));
+    const inv = await request(r, "prepayment");
+    await start(m, r);
+    const p = await newest();
+    await refuse("update");
+    expect(await pay(m, p)).toMatchObject({ payment: { status: "paid" } });
+    await allowAgain("update");
+    expect((await registration(r.id)).paidCents).toBe(17500);
+    // Maria's reads: unpaid, paid online, waiting for its catch-up (the screens hide „Saada õpilasele“ and „Märgi tasutuks“)
+    expect((await invoicesOfRegistration(db, r.id)).map((i) => [i.id, i.status, i.paidOnline])).toEqual([[inv.id, "unpaid", true]]);
+    expect((await listInvoices(db, {}, 1)).rows.map((i) => [i.id, i.paidOnline])).toEqual([[inv.id, true]]);
+    // the 175 € is in once: no receipt for it, no request for it, no whole sum
+    for (const [kind, mode] of [["prepayment", "receipt"], ["prepayment", "request"], ["full", "request"], ["full", "receipt"]] as const)
+      expect(await createInvoice(db, r.id, mode === "receipt" ? { kind, mode, paidAt: LATER, method: "bank" } : { kind, mode }, LATER), `${kind} ${mode}`).toEqual({ ok: false, error: "notOpen" });
+    const rest = await request(r, "balance", LATER);
+    expect(rest).toMatchObject({ kind: "balance", amountCents: 17500 });
+    // the catch-up pays THAT invoice; nothing is flagged any more, and the paid invoices hold Laekunud summa
+    expect(await catchUpInvoice(db, p.id, LATER)).toMatchObject({ ok: true, invoice: { id: inv.id, status: "paid", paymentId: p.id } });
+    expect((await invoicesOfRegistration(db, r.id)).map((i) => [i.id, i.status, i.paidOnline])).toEqual([[inv.id, "paid", false], [rest.id, "unpaid", false]]);
+    expect((await allInvoices()).filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amountCents, 0)).toBe((await registration(r.id)).paidCents);
   });
 });
 

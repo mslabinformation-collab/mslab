@@ -243,9 +243,13 @@ describe("renderInvoice: an unpaid invoice, VAT on", () => {
     expect(text).not.toContain("Viitenumber");
   });
 
-  test("a numeric reference is a Viitenumber, a text one a Selgitus; none, no line", async () => {
-    expect(textOf((await render({ ...UNPAID, reference: "1234567" })).runs)).toContain("Viitenumber");
-    expect(textOf((await render({ ...UNPAID, reference: "1234567" })).runs)).not.toContain("Selgitus");
+  test("m3: the reference is a „Selgitus“, as the account and the mails call it, digits alone too (no check digit: no viitenumber); none, no line", async () => {
+    for (const reference of ["1234567", "42", "MSLAB-42"]) {
+      const text = textOf((await render({ ...UNPAID, reference })).runs);
+      expect(text, reference).toContain("Selgitus");
+      expect(text, reference).toContain(reference);
+      expect(text, reference).not.toContain("Viitenumber");
+    }
     expect(textOf((await render({ ...UNPAID, reference: "" })).runs)).not.toMatch(/Viitenumber|Selgitus/);
   });
 

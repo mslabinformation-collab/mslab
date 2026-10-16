@@ -24,11 +24,11 @@ export const INVOICE_PAGE = { width: 595, height: 842 } as const;
 /** What the footer of a VAT-off invoice says (D8, spec-quoted; the accountant is to confirm the wording once). */
 export const VAT_OFF_NOTE = "Arve ei sisalda käibemaksu (müüja ei ole käibemaksukohustuslane).";
 
-/** What the PDF prints: the invoice's frozen row, and Maria's footer line from Seaded → Arve andmed (the row does not hold it). */
+/** What the PDF prints: the invoice's frozen row, Maria's footer line too (frozen at the issue since migration 0012; the sample's from the card). */
 export type InvoiceContent = Pick<
   Invoice,
-  "number" | "kind" | "status" | "amountCents" | "vatRate" | "line" | "seller" | "buyer" | "reference" | "issuedAt" | "dueAt" | "paidAt" | "paidMethod"
-> & { footer: string };
+  "number" | "kind" | "status" | "amountCents" | "vatRate" | "line" | "seller" | "buyer" | "reference" | "issuedAt" | "dueAt" | "paidAt" | "paidMethod" | "footer"
+>;
 
 // ---------- the layout (595 × 842 pt) ----------
 
@@ -225,12 +225,13 @@ function compose(c: InvoiceContent, measure: (text: string, size: number) => num
       y -= 24 * k;
       text("Maksmiseks", EDGE.left, y - SIZE.label * k, SIZE.label * k);
       y -= SIZE.label * k * LEADING + 3 * k;
-      const numeric = /^\d+$/.test(clear(c.reference));
+      // the reference is „Selgitus“, as the account and the mails call it, also when it is digits alone: it is no viitenumber (no 7-3-1 check
+      // digit), and a bank refuses it in that field (the final review's m3)
       const details: [string, string, number][] = [
         ["Saaja", seller.receiver, 4],
         ["IBAN", seller.iban, 2],
         ["Pank", seller.bank, 3],
-        [numeric ? "Viitenumber" : "Selgitus", c.reference, 4],
+        ["Selgitus", c.reference, 4],
       ];
       for (const [label, value, max] of details) {
         if (!clear(value)) continue;

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
-import { euro, INVOICE_LIMITS, invoiceStatusText, paidMethodText } from "@/domain/invoice";
+import { euro, INVOICE_LIMITS, invoiceStatusText, paidMethodText, REFUNDED } from "@/domain/invoice";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate } from "@/i18n/format";
 import { cancelInvoiceAction, markInvoicePaidAction, sendInvoiceAction, undoInvoicePaidAction, updateInvoiceBuyerAction } from "@/server/actions/admin-invoices";
@@ -12,8 +12,10 @@ import ui from "./ui.module.css";
 import styles from "./InvoiceBlock.module.css";
 
 // One invoice with the actions its state allows (spec §5, D6, ruling R10), in the registration drawer and on the „Arved“ list:
-// - Tasumata: „Saada õpilasele“, „Muuda saajat“, „Märgi tasutuks“, „Tühista arve“;
-// - Tasutud: „Saada õpilasele“, and „Võta tasumine tagasi“ when Maria marked it (an online payment's invoice is never changed by the site);
+// - Tasumata: „Saada õpilasele“, „Muuda saajat“, „Märgi tasutuks“, „Tühista arve“; one whose online payment is paid and waits for its catch-up
+//   (R14, the final review's m2) says so and has neither „Saada õpilasele“ (a request for money already in) nor „Märgi tasutuks“ (refused);
+// - Tasutud: „Saada õpilasele“, and „Võta tasumine tagasi“ when Maria marked it (an online payment's invoice is never changed by the site); one
+//   whose online payment was refunded or voided reads „Tagastatud“ (I3), its actions as they were;
 // - Tühistatud: nothing but the download.
 // „Laadi alla (PDF)“ is on every invoice. An action that needs more than a tap opens a panel under the buttons (the second address, the day and
 // the way, the buyer's fields) or asks to be confirmed (undo, cancel), saying what will happen; the page is refreshed by the action when it
@@ -115,7 +117,7 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
   }, [panel, fields]);
 
   const status = v.status;
-  const sendable = status !== "cancelled";
+  const sendable = status !== "cancelled" && !v.paidOnline;
   const when = (iso: string) => formatDate(new Date(iso), "et");
   const facts = [
     v.part,
@@ -154,11 +156,11 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
   };
 
   return (
-    <li className={styles.row} data-invoice={v.number} data-invoice-id={v.id} data-invoice-status={status}>
+    <li className={styles.row} data-invoice={v.number} data-invoice-id={v.id} data-invoice-status={status} data-invoice-refunded={v.refunded || undefined}>
       <div className={styles.head}>
         <strong className={styles.number}>{v.number}</strong>
-        <span className={`${ui.tag} ${TAG[status]}`} data-invoice-state="">
-          {invoiceStatusText(status)}
+        <span className={`${ui.tag} ${v.refunded ? ui.warn : TAG[status]}`} data-invoice-state="">
+          {v.refunded ? REFUNDED : invoiceStatusText(status)}
         </span>
         <strong className={styles.amount} data-invoice-amount="">
           {euro(v.amountCents)}
@@ -180,6 +182,11 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
       <p className={styles.meta} data-invoice-facts="">
         {facts.join(" · ")}
       </p>
+      {v.paidOnline && (
+        <p className={styles.meta} data-invoice-paid-online="">
+          {t.paidOnline}
+        </p>
+      )}
       {sentLine && (
         <p className={styles.meta} data-invoice-sent="">
           {sentLine}
@@ -197,9 +204,11 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
             <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => open("buyer")} aria-expanded={panel === "buyer"} data-invoice-buyer="">
               {t.editBuyer}
             </button>
-            <button type="button" className={`${ui.btn} ${ui.smallBtn}`} onClick={() => open("paid")} aria-expanded={panel === "paid"} data-invoice-mark-paid="">
-              {t.markPaid}
-            </button>
+            {!v.paidOnline && (
+              <button type="button" className={`${ui.btn} ${ui.smallBtn}`} onClick={() => open("paid")} aria-expanded={panel === "paid"} data-invoice-mark-paid="">
+                {t.markPaid}
+              </button>
+            )}
             <button type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => open("cancel")} aria-expanded={panel === "cancel"} data-invoice-cancel="">
               {t.cancelInvoice}
             </button>

@@ -56,11 +56,12 @@ export async function sendInvoice(deps: Pick<SendDeps, "db" | "env" | "siteUrl" 
   // (a mail that is not set up fails here before any PDF is drawn; sample addresses need no mail)
   if (targets.some((address) => !isSampleAddress(address)) && !mailConfigured(deps.env)) return { ok: false, error: "mailFailed" };
   const locale = await localeOf(deps, inv);
-  const pdf = await invoicePdf(deps.db, inv);
+  const pdf = await invoicePdf(inv);
   const went: boolean[] = [];
-  for (const address of targets) {
+  for (const [i, address] of targets.entries()) {
     if (isSampleAddress(address)) went.push(true);
-    else went.push(await sendMail(deps.env, invoiceMail({ siteUrl: deps.siteUrl, email: address, name: inv.buyer.name, locale, invoice: inv, pdf })));
+    // (the second address's copy greets no one by name and has no „Ava minu konto“: its reader is not the student, m9)
+    else went.push(await sendMail(deps.env, invoiceMail({ siteUrl: deps.siteUrl, email: address, name: inv.buyer.name, locale, invoice: inv, pdf, second: i > 0 })));
     // (the student's first: when hers is not accepted the second is not tried)
     if (!went[0]) break;
   }

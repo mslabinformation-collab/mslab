@@ -543,7 +543,7 @@ async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNoti
 async function invoiceAttachment(deps: SettleDeps, invoice: Invoice | null): Promise<MailAttachment | null> {
   if (!invoice) return null;
   try {
-    const pdf = await invoicePdf(deps.db, invoice);
+    const pdf = await invoicePdf(invoice);
     return { filename: invoiceFileName(invoice.number), content: Buffer.from(pdf), contentType: "application/pdf" };
   } catch (e) {
     logFailure(`[invoices] ${invoice.number}: the paid mail went without its PDF`, e);

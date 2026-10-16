@@ -73,6 +73,8 @@ function onlineDue(card: AccountCard, now: Date): PayableDue {
  * with „Laadi alla (PDF)“ (GET /api/konto/arve/<id>, a download; `readOnly`: aria-disabled, as the certificate's link). An unpaid invoice also
  * shows the bank details and the reference frozen on it (PrepaymentInfo's rows, with "Kopeeri"). The invoice's own sum, not the card's. An
  * invoice paid online that waits for its catch-up (R14: `awaitingCatchUp`) reads „Tasutud" with no download: its PDF would still read unpaid.
+ * A paid one whose payment was refunded or voided reads „Tagastatud“ (`refunded`, I3), its download as it was. No bank details for an invoice
+ * the card may not pay (a cancelled registration's, m8: the server sends it without `transfer`).
  */
 function InvoiceLines({ invoices, locale, t, readOnly }: { invoices: CardInvoice[]; locale: Locale; t: CoursesTexts; readOnly: boolean }) {
   const base = useId();
@@ -83,13 +85,13 @@ function InvoiceLines({ invoices, locale, t, readOnly }: { invoices: CardInvoice
         const line = [
           fill(t.invoices.number, { number: inv.number }),
           euro(inv.amountCents),
-          unpaid ? t.invoices.unpaid : t.invoices.paid,
+          unpaid ? t.invoices.unpaid : inv.refunded ? t.invoices.refunded : t.invoices.paid,
           ...(unpaid && inv.dueAt ? [fill(t.invoices.payBy, { date: formatDate(new Date(inv.dueAt), locale) })] : []),
         ].join(" · ");
         // (named by its invoice for a screen reader: a card may have several, and the visible words come first)
         const label = `${t.invoices.download}: ${inv.number}`;
         return (
-          <li key={inv.id} className={styles.invoice} data-card-invoice={inv.id} data-invoice-status={inv.status}>
+          <li key={inv.id} className={styles.invoice} data-card-invoice={inv.id} data-invoice-status={inv.status} data-invoice-refunded={inv.refunded || undefined}>
             <div className={styles.invoiceHead}>
               <span className={styles.invoiceLine} data-invoice-line="">
                 {line}

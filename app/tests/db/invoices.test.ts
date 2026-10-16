@@ -721,20 +721,123 @@ describe("the reads: the student's own, Maria's, a registration's, the list, the
 });
 
 describe("invoicePdf (spec §7)", () => {
-  test("the row's frozen copy and the footer of Seaded as it is now, rendered with the fonts; a PDF", async () => {
+  test("I2: the row's frozen copy, its footer line too (the one of the issue, not Seaded's of today), rendered with the fonts; a PDF", async () => {
     const c = await contactCourse(db);
     await ready({ footer: "Täname, et valisite MS LABi!" });
     const inv = await request(await registrationOn(db, c));
+    expect(inv.footer).toBe("Täname, et valisite MS LABi!");
     await ready({ footer: "Uus jalus" });
-    const bytes = await invoicePdf(db, inv);
+    const bytes = await invoicePdf(inv);
     expect(Buffer.from(bytes.slice(0, 5)).toString()).toBe("%PDF-");
     expect(renderInvoice).toHaveBeenCalledTimes(1);
     const [content, assets] = vi.mocked(renderInvoice).mock.calls[0];
     expect(content).toEqual({
       number: inv.number, kind: inv.kind, status: inv.status, amountCents: inv.amountCents, vatRate: inv.vatRate, line: inv.line, seller: inv.seller, buyer: inv.buyer,
-      reference: inv.reference, issuedAt: inv.issuedAt, dueAt: inv.dueAt, paidAt: inv.paidAt, paidMethod: inv.paidMethod, footer: "Uus jalus",
+      reference: inv.reference, issuedAt: inv.issuedAt, dueAt: inv.dueAt, paidAt: inv.paidAt, paidMethod: inv.paidMethod, footer: "Täname, et valisite MS LABi!",
     });
     expect(assets.sans).toBeInstanceOf(Uint8Array);
+  });
+});
+
+describe("the final review's wave: what covers a registration (I1, m4), the frozen footer (I2), „Tagastatud“ (I3), an odd part's words (m10)", () => {
+  const notOpen = { ok: false, error: "notOpen" };
+  /** „Koosta arve“ of `kind` as `mode` on `r` (a receipt paid on PAID_AT by bank). */
+  const make = (r: Registration, kind: "prepayment" | "full" | "balance", mode: "request" | "receipt") =>
+    createInvoice(db, r.id, mode === "request" ? { kind, mode } : { kind, mode, paidAt: PAID_AT, method: "bank" }, NOW);
+
+  test("I1: a paid online prepayment with no invoice yet (the card was empty) counts as covered — „Koosta arve“ offers only the rest, as a request or a receipt; its own catch-up then gives it its one invoice", async () => {
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c);
+    const p = await pendingPayment(db, r);
+    expect(await settle(p)).toBeNull(); // no seller: paid, counted on Laekunud summa, no invoice
+    await ready();
+    for (const kind of ["prepayment", "full"] as const) for (const mode of ["request", "receipt"] as const) expect(await make(r, kind, mode), `${kind} ${mode}`).toEqual(notOpen);
+    const rest = await request(r, "balance");
+    expect(rest).toMatchObject({ number: "MSL2026-001", kind: "balance", amountCents: 17500, line: { part: "Jääk 50%" } });
+    // the payment's own „Koosta arve“ („Arveta maksed“, also on the registration's block): its one invoice, the prepayment
+    expect(await catchUpInvoice(db, p.id, NOW)).toMatchObject({ ok: true, invoice: { number: "MSL2026-002", kind: "prepayment", status: "paid", paymentId: p.id, amountCents: 17500 } });
+    for (const kind of ["prepayment", "full", "balance"] as const) for (const mode of ["request", "receipt"] as const) expect(await make(r, kind, mode), `${kind} ${mode}`).toEqual(notOpen);
+    expect(await uninvoicedPayments(db)).toEqual([]);
+    // the paid invoices hold what Laekunud summa holds: 175 € once
+    expect((await allInvoices()).filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amountCents, 0)).toBe((await registration(r.id)).paidCents);
+  });
+
+  test("I1: a whole-sum registration's paid payment without an invoice covers the whole sum: nothing is offered", async () => {
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c, { paymentChoice: "full" });
+    expect(await settle(await pendingPayment(db, r, { amountCents: 35000 }))).toBeNull();
+    await ready();
+    for (const kind of ["prepayment", "full", "balance"] as const) for (const mode of ["request", "receipt"] as const) expect(await make(r, kind, mode), `${kind} ${mode}`).toEqual(notOpen);
+  });
+
+  test("m4: money typed by hand into Laekunud summa — no request asks for it again; a receipt („Juba tasutud“) is offered for exactly it, in the words of its part", async () => {
+    const c = await contactCourse(db);
+    await ready();
+    const typed = await registrationOn(db, c, { paidCents: 17500, status: "confirmed" });
+    for (const [kind, mode] of [["prepayment", "request"], ["full", "request"], ["full", "receipt"], ["balance", "receipt"]] as const) expect(await make(typed, kind, mode), `${kind} ${mode}`).toEqual(notOpen);
+    expect(await make(typed, "prepayment", "receipt")).toMatchObject({ ok: true, invoice: { kind: "prepayment", status: "paid", amountCents: 17500, paidAdds: false, line: { part: "Ettemaks 50%" } } });
+    expect(await registration(typed.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
+    // the typed money has its receipt now: the rest is requested as before
+    expect(await request(typed, "balance")).toMatchObject({ amountCents: 17500, line: { part: "Jääk 50%" } });
+    // an odd sum typed: its receipt is that sum, an „Osamakse“; a request asks for the rest only, never the 100 € again
+    const odd = await registrationOn(db, c, { email: "o@example.com", paidCents: 10000 });
+    expect(await make(odd, "prepayment", "request")).toEqual(notOpen);
+    expect(await make(odd, "prepayment", "receipt")).toMatchObject({ ok: true, invoice: { amountCents: 10000, line: { part: "Osamakse" } } });
+    expect(await request(odd, "balance")).toMatchObject({ amountCents: 25000, line: { part: "Osamakse" } });
+  });
+
+  test("m10: a whole-sum registration's rest paid online after a part typed by hand is an „Osamakse“ (not „Kogu summa (100%)“ for less than the price), and the typed part gets its receipt", async () => {
+    const c = await contactCourse(db);
+    await ready();
+    const r = await registrationOn(db, c, { paymentChoice: "full", paidCents: 10000 });
+    expect(await settle(await pendingPayment(db, r, { amountCents: 25000 }))).toMatchObject({ kind: "full", amountCents: 25000, line: { part: "Osamakse" } });
+    expect(await make(r, "balance", "request")).toEqual(notOpen);
+    expect(await make(r, "balance", "receipt")).toMatchObject({ ok: true, invoice: { kind: "balance", amountCents: 10000, line: { part: "Osamakse" } } });
+    expect((await allInvoices()).reduce((sum, i) => sum + i.amountCents, 0)).toBe((await registration(r.id)).paidCents);
+  });
+
+  test("I2: every invoice freezes Seaded's footer line of its issue — Maria's request, a receipt and a payment's own; a later change of the card reaches none of them", async () => {
+    const c = await contactCourse(db);
+    await ready({ footer: "Viivis 0,05% päevas." });
+    const r = await registrationOn(db, c);
+    const req = await request(r);
+    const receipt = await createInvoice(db, (await registrationOn(db, c, { email: "b@example.com" })).id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW);
+    const online = await settle(await pendingPayment(db, await registrationOn(db, c, { email: "d@example.com" })));
+    expect([req.footer, receipt.ok && receipt.invoice.footer, online?.footer]).toEqual(["Viivis 0,05% päevas.", "Viivis 0,05% päevas.", "Viivis 0,05% päevas."]);
+    await ready({ footer: "" });
+    await ready({ footer: "Uus jalus" });
+    expect((await allInvoices()).map((i) => i.footer)).toEqual(["Viivis 0,05% päevas.", "Viivis 0,05% päevas.", "Viivis 0,05% päevas."]);
+    // one issued after the change has the new one
+    expect((await request(await registrationOn(db, c, { email: "e@example.com" }))).footer).toBe("Uus jalus");
+  });
+
+  test("I3: an invoice whose payment was refunded, or voided (failed with its paid_at), is `refunded` on Maria's and the student's reads and „Tagastatud“ in the CSV; stored paid, its sums as issued", async () => {
+    const c = await contactCourse(db);
+    const [kati] = await db.insert(clients).values({ email: "kati@example.com", name: "Kati Tamm" }).returning();
+    await ready();
+    const paidOne = async (email: string) => {
+      const r = await registrationOn(db, c, { email, clientId: kati.id });
+      const p = await pendingPayment(db, r);
+      return { r, p, inv: (await settle(p))! };
+    };
+    const refunded = await paidOne("a@example.com");
+    const voided = await paidOne("b@example.com");
+    const kept = await paidOne("d@example.com");
+    await db.update(payments).set({ status: "refunded" }).where(eq(payments.id, refunded.p.id));
+    await db.update(payments).set({ status: "failed" }).where(eq(payments.id, voided.p.id)); // the bank took it back: its paid_at stays
+    const flags = (list: { number: string; status: string; refunded: boolean }[]) => list.map((i) => [i.number, i.status, i.refunded]);
+    expect(flags((await listInvoices(db, {}, 1)).rows)).toEqual([["MSL2026-003", "paid", false], ["MSL2026-002", "paid", true], ["MSL2026-001", "paid", true]]);
+    expect(flags((await listInvoices(db, { status: "paid" }, 1)).rows)).toHaveLength(3); // (the filter is the stored state)
+    expect(flags(await invoicesOfRegistration(db, refunded.r.id))).toEqual([["MSL2026-001", "paid", true]]);
+    expect(flags(await invoicesOfRegistration(db, kept.r.id))).toEqual([["MSL2026-003", "paid", false]]);
+    expect(flags(await invoicesOfClient(db, kati.id))).toEqual([["MSL2026-001", "paid", true], ["MSL2026-002", "paid", true], ["MSL2026-003", "paid", false]]);
+    const states = (await invoicesCsv(db, "2026-10")).slice(1).trimEnd().split("\r\n").slice(1).map((l) => [l.split(";")[0], l.split(";")[10], l.split(";")[9]]);
+    expect(states).toEqual([['"MSL2026-001"', "Tagastatud", "175,00"], ['"MSL2026-002"', "Tagastatud", "175,00"], ['"MSL2026-003"', "Tasutud", "175,00"]]);
+    // nothing stored changed
+    expect((await allInvoices()).map((i) => [i.status, i.amountCents, i.paidMethod])).toEqual([["paid", 17500, "montonio"], ["paid", 17500, "montonio"], ["paid", 17500, "montonio"]]);
+    // a failed payment that was never paid (no paid_at) is no refund
+    await db.update(payments).set({ paidAt: null }).where(eq(payments.id, voided.p.id));
+    expect(flags(await invoicesOfRegistration(db, voided.r.id))).toEqual([["MSL2026-002", "paid", false]]);
   });
 });
 

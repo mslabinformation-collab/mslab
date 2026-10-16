@@ -46,7 +46,7 @@
     {
       "id": "koristamine",
       "name": "Koristamine",
-      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
+      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
     }
   ],
   "items": [
@@ -1310,6 +1310,32 @@
       "writes": false
     },
     {
+      "id": "registreerimine-arveta-makse-paneelis",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arveta makse registreeringu juures",
+      "href": "/admin/arved",
+      "steps": [
+        "Ava „Maksed“, vajuta „Arved“ ja vaata plokki „Arveta maksed“; kui see on tühi, vajuta „Jäta vahele“.",
+        "Kirjuta selle kontrolli märkusesse ühe kontaktkoolituse makse maksja nimi.",
+        "Ava „Registreerimised“, vajuta selle maksja nimele ja keri plokini „Arved“.",
+        "Vajuta plokis „Koosta arve“, vaata pakutud summasid ja vajuta „Katkesta“.",
+        "Vajuta makse real „Koosta arve“."
+      ],
+      "expect": [
+        "Plokis on rida „Veebimakse … on veel arveta.“ ja selle all oma nupp „Koosta arve“.",
+        "Veebis makstud summat „Koosta arve“ uuesti ei paku, näiteks ettemaksu järel ainult „Jääk 50%“.",
+        "Pärast makse rea vajutust on plokis selle makse arve märkega „Tasutud“.",
+        "„Arved“ lehe plokk „Arveta maksed“ seda makset enam ei näita."
+      ],
+      "why": "Veebis makstud raha ei saa teist arvet ega teist maksenõuet.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-arveta-maksed",
       "area": "registreerimine",
       "who": "dim",
@@ -1383,6 +1409,33 @@
       "why": "Raamatupidaja saab kuu arved ühe failina.",
       "risk": "high",
       "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-tagastatud",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Tagastatud makse arve",
+      "href": "/admin/arved",
+      "steps": [
+        "Kui Proov 0 maksel pole arvet, koosta see „Arved“ lehe plokis „Arveta maksed“.",
+        "Tee Montonio testkeskkonna Partner Systemis Proov 0 maksele tagasimakse.",
+        "Kui tagasimakse nuppu pole, kirjuta see märkusesse ja vajuta „Jäta vahele“.",
+        "Halduses ava „Maksed“ ja vaata Proov 0 makset.",
+        "Ava „Arved“, vaata Proov 0 arvet ja laadi alla selle kuu CSV.",
+        "Laadi alla Proov 0 arve PDF."
+      ],
+      "expect": [
+        "Proov 0 makse on „Tagastatud“ ja Maria sai teate „Kontrolli Montonios“.",
+        "Proov 0 arve real on „Tagastatud“ ja filter „Tasutud“ näitab seda arvet ikka.",
+        "CSV-failis on selle arve olek „Tagastatud“ ja summa nagu arvel.",
+        "PDF on endine: „Tasutud“, makse kuupäev ja „Montonio“."
+      ],
+      "why": "Tagastatud raha ei paista raamatupidajale tavalise tuluna.",
+      "risk": "med",
+      "writes": true,
       "mark": "new",
       "markedAt": "deploy"
     },
@@ -1572,13 +1625,14 @@
         "Vale aadressi korral näed „Sisesta korrektne e-posti aadress.“ ja kirja ei saadeta.",
         "Pärast teist vajutust näed „Arve on saadetud.“.",
         "Arve real on „Saadetud … · ka aadressile …“ teise aadressiga.",
-        "Mõlemasse postkasti tuleb sama kiri „MS LAB arve …“ PDF-iga.",
+        "Mõlemasse postkasti tuleb kiri „MS LAB arve …“ PDF-iga.",
+        "Teise aadressi kiri algab „Tere!“ ilma nimeta ja selles pole nuppu „Ava minu konto“.",
         "Teist aadressi ei salvestata mujale kui arve viimase saatmise märkesse."
       ],
       "why": "Arve saab saata ka õpilase raamatupidajale.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
+      "mark": "redo",
       "markedAt": "deploy"
     },
     {
@@ -1701,6 +1755,57 @@
         "„Koosta arve“ pakub jälle summat „Jääk 50%“."
       ],
       "why": "Tühistatud arve number ei kao ega saa uuesti kasutada.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-jalus",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arve alumine rida jääb arvele",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava Proov 6 paneelis tasutud arve real „Laadi alla (PDF)“ ja vaata arve alumist rida.",
+        "Ava „Seaded“, kirjuta kaardil „Arve andmed“ väljale „Arve alumine rida“: Proov jalus, ja salvesta.",
+        "Laadi sama Proov 6 arve uuesti alla ja vaata arve alumist rida.",
+        "Koosta Proov 6 jaoks „Jääk 50%“ arve valikuga „Maksmiseks“ ja laadi see alla.",
+        "Tühista see uus arve nupuga „Tühista arve“.",
+        "Pane „Arve alumine rida“ tagasi endiseks ja salvesta."
+      ],
+      "expect": [
+        "Vana arve alumine rida on sama mis enne: uus rida seda ei muuda.",
+        "Pärast muudatust koostatud arvel on rida „Proov jalus“.",
+        "Pärast tagasipanekut on mõlemad arved nii, nagu need koostati."
+      ],
+      "why": "Väljastatud arve ei muutu, ka mitte selle alumine rida.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-laekunud",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Käsitsi sisestatud raha arve",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 6 paneel ja kirjuta „Laekunud summa (€)“ väljale koolituse täishind, nagu jääk oleks kohapeal makstud.",
+        "Vajuta „Salvesta summa“.",
+        "Vajuta plokis „Arved“ nuppu „Koosta arve“.",
+        "Vali „Juba tasutud“, jäta kuupäevaks täna, vali „Sularaha“ ja vajuta „Koosta arve“."
+      ],
+      "expect": [
+        "„Maksmiseks“ ei ole valitav: käsitsi sisestatud raha eest uut maksenõuet ei tehta.",
+        "„Juba tasutud“ pakub ainult summat „Jääk 50%“, mis on veel arveta.",
+        "Uus arve on „Tasutud“ ja „Laekunud“ ei muutu.",
+        "Pärast seda ütleb plokk „Kõik summad on juba arvega kaetud.“."
+      ],
+      "why": "Käsitsi sisestatud raha saab arve, aga õpilaselt seda uuesti ei küsita.",
       "risk": "high",
       "writes": true,
       "mark": "new",
@@ -2036,6 +2141,29 @@
         "Kaardi nupp on „Оплатить остаток …“ ja selle summa on uue arve summa."
       ],
       "why": "Vene keelt kõnelev õpilane näeb oma arveid ja pangaandmeid oma keeles.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "konto-arve-tuhistatud",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Tühistatud registreeringu arve",
+      "href": "/konto",
+      "steps": [
+        "Halduses ava Proov 7 registreering ja vajuta „Tühista registreerimine“.",
+        "Logi sisse kui Proov 7 ja ava „Minu koolitused“.",
+        "Vaata Proov 7 kaarti ja selle tasumata arve rida."
+      ],
+      "expect": [
+        "Tasumata arve rida on alles märkega „Tasumata“ ja lingiga „Laadi alla (PDF)“.",
+        "Rea all pole pangaandmeid ja kaardil pole nuppu „Maksa …“.",
+        "Halduses on arve endiselt „Tasumata“, kuni Maria selle tühistab."
+      ],
+      "why": "Tühistatud koolituse eest ei paluta õpilasel maksta.",
       "risk": "med",
       "writes": true,
       "mark": "new",

@@ -16,7 +16,7 @@ const json = (body: unknown, status: number) => Response.json(body, { status, he
 
 /**
  * GET /api/admin/arve/<id> (invoices Task 5, spec §5): any invoice as Maria downloads it from the registration's „Arved“ or the „Arved“ page —
- * a cancelled or a paid one too. Rendered from its frozen row, with Seaded's footer line of now (server/invoices.ts invoicePdf), as
+ * a cancelled or a paid one too. Rendered from its frozen row, its footer line too (server/invoices.ts invoicePdf), as
  * `attachment; filename="MS-LAB-arve-MSL2026-001.pdf"` (domain/invoice.ts invoiceDownloadHeaders), private and never kept. Signed-in admins
  * only (withAdmin: 401 otherwise). 404 `notFound` for an id that is no invoice; 500 `server` (logged by the invoice's id).
  */
@@ -27,7 +27,7 @@ export const GET = withAdmin<Ctx>(async (_request, ctx) => {
     const db = getDb();
     const inv = await invoiceForAdmin(db, id);
     if (!inv) return json({ ok: false, error: "notFound" }, 404);
-    const bytes = await invoicePdf(db, inv);
+    const bytes = await invoicePdf(inv);
     return new Response(new Blob([bytes as BlobPart], { type: "application/pdf" }), {
       // the type, the file name and nosniff are domain/invoice.ts's; the answer is never kept
       headers: { ...invoiceDownloadHeaders(inv.number), "cache-control": "private, no-store" },

@@ -300,6 +300,8 @@ export const payments = pgTable(
     index("payments_registration").on(t.registrationId),
     index("payments_client").on(t.clientId),
     index("payments_status_created").on(t.status, t.createdAt),
+    // the invoice a payment was started for (migration 0012): the R14 read per invoice row, and the set null of an invoice's deletion
+    index("payments_invoice").on(t.invoiceId),
     check("payments_amount_positive", sql`${t.amountCents} > 0`),
   ],
 );
@@ -622,6 +624,11 @@ export const invoices = pgTable("invoices", {
   sentNote: text("sent_note").notNull().default(""),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * Maria's footer line of Seaded → Arve andmed as it was at the issue, frozen (D2; migration 0012): the PDF prints this, never the setting of
+   * the day it is downloaded. Empty for none, and for the invoices issued before 0012.
+   */
+  footer: text("footer").notNull().default(""),
 }, (t) => [
   uniqueIndex("invoices_number").on(t.number),
   uniqueIndex("invoices_series").on(t.prefix, t.year, t.seq),

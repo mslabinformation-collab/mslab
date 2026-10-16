@@ -7,13 +7,13 @@ import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
 import { insertPayment } from "@/db/queries/payments";
 import * as schema from "@/db/schema";
-import { clients, clientSessions, courseAccess, courses, invoices, payments, type Invoice, type Registration } from "@/db/schema";
+import { clients, clientSessions, courseAccess, courses, courseSessions, invoices, payments, registrations, type Invoice, type Registration } from "@/db/schema";
 import type { AccountCard, ContactCard, EcourseCard, IndividualCard } from "@/domain/account-cards";
 import { handleAccountApi, sessionCookies, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
 import { loadDashboard } from "@/server/client-data";
 import { renderInvoice } from "@/server/invoice-pdf";
-import { cancelInvoice, createInvoice, invoiceForAdmin, invoiceForPaidPayment, unpaidInvoiceOf } from "@/server/invoices";
+import { cancelInvoice, createInvoice, invoiceForAdmin, invoiceForPaidPayment, markInvoicePaid, undoInvoicePaid, unpaidInvoiceOf } from "@/server/invoices";
 import { newToken, sha256 } from "@/server/token";
 import { fakeKv, fakeMediaStore } from "../fakes";
 import { makeTestDb } from "./helpers";
@@ -270,6 +270,64 @@ describe("loadDashboard: her invoices on the card they belong to", () => {
     const p = await insertPayment(db, { kind: "prepayment", registrationId: r.id, courseId: r.courseId, clientId: kati.id, email: r.email, name: r.name, locale: "et", amountCents: 17500, invoiceId: inv.id }, NOW, "MSLAB-M");
     await db.update(payments).set({ status: "failed" }).where(eq(payments.id, p.id));
     expect(contactCard(await cards(kati.id), r.id)).toMatchObject({ openInvoice: { id: inv.id }, invoices: [{ status: "unpaid" }] });
+  });
+});
+
+describe("loadDashboard: the final review's wave (m1, m8, I3)", () => {
+  test("m1: a paid payment started for an invoice but invoiced by its own (R7: Maria marked it meanwhile, then undid her mark) leaves the invoice an ordinary unpaid one: bank details and `openInvoice` (openInvoiceOf, in step with unpaidInvoiceOf)", async () => {
+    await ready();
+    const kati = await student("kati@example.test", "Kati Kask");
+    const r = await registrationOn(db, await contactCourse(db), { clientId: kati.id });
+    const inv = await request(r, "prepayment");
+    const p = await insertPayment(db, { kind: "prepayment", registrationId: r.id, courseId: r.courseId, clientId: kati.id, email: r.email, name: r.name, locale: "et", amountCents: 17500, invoiceId: inv.id }, NOW, "MSLAB-M");
+    expect(await markInvoicePaid(db, inv.id, { paidAt: NOW, method: "bank" }, NOW)).toMatchObject({ ok: true });
+    const own = await db.transaction(async (tx) => {
+      const [paid] = await tx.update(payments).set({ status: "paid", paidAt: NOW, updatedAt: NOW }).where(eq(payments.id, p.id)).returning();
+      return invoiceForPaidPayment(tx, paid, NOW);
+    });
+    expect(own).toMatchObject({ paymentId: p.id, status: "paid" });
+    expect(await undoInvoicePaid(db, inv.id, NOW)).toMatchObject({ ok: true, invoice: { status: "unpaid" } });
+    const card = contactCard(await cards(kati.id), r.id);
+    expect(card.invoices!.map((i) => [i.id, i.status, i.transfer !== null, "awaitingCatchUp" in i])).toEqual([[inv.id, "unpaid", true, false], [own!.id, "paid", false, false]]);
+    expect(card.openInvoice).toEqual({ id: inv.id, kind: "prepayment", amountCents: 17500 });
+    expect((await unpaidInvoiceOf(db, r.id))?.id).toBe(inv.id);
+  });
+
+  test("m8: a cancelled registration's unpaid invoice is still on its card („Tasumata“, until Maria cancels it, spec §9) but invites no payment: no bank details, no `openInvoice`; nor one whose session was called off", async () => {
+    await ready();
+    const kati = await student("kati@example.test", "Kati Kask");
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c, { clientId: kati.id });
+    const inv = await request(r, "prepayment");
+    await db.update(registrations).set({ status: "cancelled" }).where(eq(registrations.id, r.id));
+    const card = contactCard(await cards(kati.id), r.id);
+    expect(card.invoices).toEqual([expect.objectContaining({ id: inv.id, status: "unpaid", transfer: null })]);
+    expect("openInvoice" in card).toBe(false);
+    // the session called off, the registration as it was
+    await db.update(registrations).set({ status: "awaiting_prepayment" }).where(eq(registrations.id, r.id));
+    await db.update(courseSessions).set({ status: "cancelled" }).where(eq(courseSessions.id, c.session.id));
+    const offCard = contactCard(await cards(kati.id), r.id);
+    expect(offCard.invoices).toEqual([expect.objectContaining({ id: inv.id, status: "unpaid", transfer: null })]);
+    expect("openInvoice" in offCard).toBe(false);
+    // a registration that is not cancelled keeps both
+    await db.update(courseSessions).set({ status: "scheduled" }).where(eq(courseSessions.id, c.session.id));
+    expect(contactCard(await cards(kati.id), r.id)).toMatchObject({ openInvoice: { id: inv.id }, invoices: [{ transfer: expect.objectContaining({ iban: BANK.iban }) }] });
+  });
+
+  test("I3: a paid invoice whose payment was refunded or voided is `refunded` on her card, its PDF still hers; one whose payment stays paid is not", async () => {
+    await ready();
+    const kati = await student("kati@example.test", "Kati Kask");
+    const one = await boughtEcourse(kati.id);
+    const two = await boughtEcourse(kati.id, { at: new Date("2026-10-16T08:00:00Z") });
+    await db.insert(courseAccess).values({ clientId: kati.id, courseId: one.course.id, grantedBy: "admin@example.test", expiresAt: new Date(NOW.getTime() + 180 * DAY) });
+    await db.update(payments).set({ status: "refunded" }).where(eq(payments.id, one.payment.id));
+    const card = (await cards(kati.id)).find((x): x is EcourseCard => x.kind === "ecourse")!;
+    expect(card.invoices!.map((i) => [i.id, i.status, i.refunded ?? false])).toEqual([[one.invoice.id, "paid", true], [two.invoice.id, "paid", false]]);
+    expect((await call(kati.cookie, "GET", `/arve/${one.invoice.id}`)).status).toBe(200);
+    // voided: failed with its paid_at
+    await db.update(payments).set({ status: "failed" }).where(eq(payments.id, two.payment.id));
+    const after = (await cards(kati.id)).find((x): x is EcourseCard => x.kind === "ecourse")!;
+    expect(after.invoices!.map((i) => i.refunded ?? false)).toEqual([true, true]);
   });
 });
 

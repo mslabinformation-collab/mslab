@@ -112,6 +112,13 @@ describe("sendInvoice: „Saada ka aadressile“", () => {
     expect(await sendInvoice(deps(), inv.id, "  Raamatupidaja@Firma.Example ")).toEqual({ ok: true });
     expect(sent.mails().map((m) => [m.to, m.subject])).toEqual([["kati@school.example", "MS LAB arve MSL2026-001"], ["raamatupidaja@firma.example", "MS LAB arve MSL2026-001"]]);
     expect(sent.mails().every((m) => m.attachments?.length === 1)).toBe(true);
+    // m9: the student's copy greets her and links her account; the second is greeted neutrally, with no button to an account that is not theirs
+    const [hers, second] = sent.mails();
+    expect(hers.text.split("\n")[0]).toBe("Tere, Kati!");
+    expect(hers.text).toContain("Ava minu konto:");
+    expect(second.text.split("\n")[0]).toBe("Tere!");
+    expect(second.text).not.toContain("Kati");
+    expect(second.text).not.toContain("Ava minu konto");
     const after = await row(inv.id);
     expect([after.sentAt, after.sentNote]).toEqual([NOW, "raamatupidaja@firma.example"]);
     expect(after.buyer.email).toBe("kati@school.example"); // the buyer is untouched

@@ -8,8 +8,8 @@ import { hasPrepayment, parsePrepayment, paymentReference, PREPAYMENT_KEY } from
 import { tallinnFormParts, tallinnInstant } from "@/domain/calendar";
 import { tallinnDateText, tallinnYear } from "@/domain/certificate";
 import {
-  formatInvoiceNumber, INVOICE_KEY, INVOICE_LIMITS, invoiceCsv, invoiceKindOfPayment, invoiceSeq, openAmounts, partText, readInvoiceSettings, sellerReady,
-  type InvoiceBuyer, type InvoiceKind, type InvoiceSettings, type InvoiceStatus, type PaidMethod,
+  coveringInvoices, formatInvoiceNumber, INVOICE_KEY, INVOICE_LIMITS, invoiceCsv, invoiceKindOfPayment, invoiceSeq, openAmounts, partOf, readInvoiceSettings,
+  sellerReady, type InvoiceBuyer, type InvoiceKind, type InvoiceSettings, type InvoiceStatus, type PaidMethod,
 } from "@/domain/invoice";
 import { PAGE_SIZE } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment } from "@/domain/registration";
@@ -82,7 +82,8 @@ type IssueDraft = Pick<
  * Issues one invoice inside `tx`, after the caller's row locks: the number series' lock, Seaded read (no seller: "sellerMissing", nothing
  * written), the bank details from Ettemaksu juhised, then `build` (which may refuse with its own word, R6's "bankMissing"), the number for the
  * Tallinn year of `now` under the setting's prefix (invoiceSeq: never at or below that prefix-year's highest), the row with its frozen seller
- * (Arve andmed and the bank details as they are now), VAT rate (null when VAT is off) and issue time, and the setting moved on.
+ * (Arve andmed and the bank details as they are now), VAT rate (null when VAT is off), footer line (D2, migration 0012: the PDF prints it, never
+ * a later setting) and issue time, and the setting moved on.
  */
 async function issue<R extends string = never>(
   tx: Tx,
@@ -107,6 +108,7 @@ async function issue<R extends string = never>(
       year,
       seq,
       vatRate: settings.vatOn ? settings.vatRate : null,
+      footer: settings.footer,
       seller: {
         company: settings.company,
         registryCode: settings.registryCode,
@@ -171,12 +173,15 @@ async function lockInvoice(tx: Tx, id: number): Promise<Invoice | null> {
 // ---------- Maria's invoice on a registration ----------
 
 /**
- * „Koosta arve" on a registration (D5, §6.1–§6.2): the amount of `kind` while it is open (domain/invoice.ts openAmounts: not yet covered by an
- * unpaid or paid invoice of the registration), as a request to pay („Maksmiseks": unpaid, due in Seaded's term, the bank details and the
+ * „Koosta arve" on a registration (D5, §6.1–§6.2): the amount of `kind` while it is open for `mode` (domain/invoice.ts openAmounts: not yet
+ * covered by an unpaid or paid invoice of the registration, nor by a paid online payment of it that has no invoice yet — coveringInvoices, the
+ * final review's I1 — and a request never for money typed by hand into Laekunud summa, which a receipt is for instead: m4), as a request to pay
+ * („Maksmiseks": unpaid, due in Seaded's term, the bank details and the
  * registration's payment reference, `{referencePrefix}{registrationId}` as the account shows it) or a receipt („Juba tasutud": born paid on
  * `paidAt` by `method`, bank, cash or card; it does not touch Laekunud summa, which already holds the money). `invalid` before anything is
  * read for a kind or mode it does not know, or a receipt without a date (or one after today in Tallinn) or a way. Then ONE transaction:
- * lockForPayment, the registration (`notFound`) and its invoices (an amount not open: `notOpen`, under the registration's lock alone), then the
+ * lockForPayment, the registration (`notFound`), its invoices and its paid payments that no invoice names (an amount not open: `notOpen`, under
+ * the registration's lock alone, which every payment's settlement takes first), then the
  * issue: no seller (D3)
  * `sellerMissing`; a request without the receiver and the IBAN of Ettemaksu juhised (R6) `bankMissing`. The frozen line is the course's
  * Estonian title, its session's date and city (empty for none) and the part; the buyer is the registration's name and e-mail. Logs
@@ -205,8 +210,13 @@ export async function createInvoice(
     if (!found) return { ok: false, error: "notFound" };
     const { registration: r, course, session } = found;
     const price = registrationPrice(course, r.kind);
-    const invoiced = await tx.select({ kind: invoices.kind, status: invoices.status, amountCents: invoices.amountCents }).from(invoices).where(eq(invoices.registrationId, r.id));
-    const open = price === null ? undefined : openAmounts({ priceCents: price, paymentChoice: r.paymentChoice }, invoiced).find((o) => o.kind === input.kind);
+    const invoiced = await tx.select({ id: invoices.id, kind: invoices.kind, status: invoices.status, amountCents: invoices.amountCents }).from(invoices).where(eq(invoices.registrationId, r.id));
+    const uninvoiced = await tx
+      .select({ id: payments.id, kind: payments.kind, invoiceId: payments.invoiceId, amountCents: payments.amountCents })
+      .from(payments)
+      .where(and(eq(payments.registrationId, r.id), eq(payments.status, "paid"), notExists(tx.select({ one: sql`1` }).from(invoices).where(eq(invoices.paymentId, payments.id)))));
+    const covering = coveringInvoices(r, invoiced, uninvoiced);
+    const open = price === null ? undefined : openAmounts({ priceCents: price, paymentChoice: r.paymentChoice, paidCents: r.paidCents }, covering)[input.mode].find((o) => o.kind === input.kind);
     if (!open) return { ok: false, error: "notOpen" };
     const made = await issue(tx, now, ({ settings, bank, bankReady }): IssueDraft | "bankMissing" => {
       if (!receipt && !bankReady) return "bankMissing";
@@ -403,8 +413,9 @@ async function linkedKind(tx: Tx, p: Payment): Promise<InvoiceKind | null> {
 /**
  * The born-paid invoice of a paid payment (D5, §6.3), issued at `now`: Montonio, paid on the payment's time (now when it has none), the
  * payment's id; the kind of the invoice it was started for (`kindOfLinked`: linkedKind) or, without one, invoiceKindOfPayment's (a
- * whole-sum registration's prepayment is the whole sum); the course's Estonian title, the registration's session (none for an e-course), the
- * payer's name and e-mail as the buyer; the payment's client, else the registration's.
+ * whole-sum registration's prepayment is the whole sum), in the words of the part its amount is of the registration's price (partOf: an amount
+ * that is no half, whole or rest, after a sum typed by hand, is an „Osamakse“, m10); the course's Estonian title, the registration's session
+ * (none for an e-course), the payer's name and e-mail as the buyer; the payment's client, else the registration's.
  */
 async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: InvoiceKind | null): Promise<Invoice | "sellerMissing"> {
   const [reg] =
@@ -418,8 +429,12 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: Invo
           .limit(1);
   const r: Registration | null = reg?.registration ?? null;
   const courseId = p.courseId ?? r?.courseId ?? null;
-  const [course] = courseId === null ? [] : await tx.select({ title: courses.title }).from(courses).where(eq(courses.id, courseId)).limit(1);
+  const [course] =
+    courseId === null
+      ? []
+      : await tx.select({ title: courses.title, type: courses.type, price: courses.price, priceGroup: courses.priceGroup, priceIndividual: courses.priceIndividual }).from(courses).where(eq(courses.id, courseId)).limit(1);
   const kind = kindOfLinked ?? invoiceKindOfPayment(p, r);
+  const price = course && r ? registrationPrice(course, r.kind) : null;
   return issue<never>(tx, now, () => ({
     kind,
     registrationId: p.registrationId,
@@ -428,7 +443,7 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: Invo
     clientId: p.clientId ?? r?.clientId ?? null,
     status: "paid",
     amountCents: p.amountCents,
-    line: { course: course?.title.et ?? "", session: reg?.session ? sessionText(reg.session) : "", part: partText(kind) },
+    line: { course: course?.title.et ?? "", session: reg?.session ? sessionText(reg.session) : "", part: partOf(kind, p.amountCents, price) },
     buyer: buyerOf(p),
     reference: "",
     dueAt: null,
@@ -525,16 +540,44 @@ export async function catchUpInvoice(db: Db, paymentId: number, now: Date): Prom
 
 // ---------- the reads ----------
 
-/** A registration's invoices, every state, in the order they were issued (the drawer's „Arved"). */
-export async function invoicesOfRegistration(db: Db, registrationId: number): Promise<Invoice[]> {
-  return db.select().from(invoices).where(eq(invoices.registrationId, registrationId)).orderBy(asc(invoices.issuedAt), asc(invoices.id));
+/** A registration's invoices, every state, in the order they were issued (the drawer's „Arved"), each with its R14 and refund flags (AdminInvoice). */
+export async function invoicesOfRegistration(db: Db, registrationId: number): Promise<AdminInvoice[]> {
+  const rows = await db.select(adminFields).from(invoices).where(eq(invoices.registrationId, registrationId)).orderBy(asc(invoices.issuedAt), asc(invoices.id));
+  return rows.map(toAdmin);
 }
 
 /**
- * An unpaid invoice that a paid payment was started for (payments.invoice_id, status paid): its money is in, counted on Laekunud summa, but
- * the payment's invoice step failed (settle's savepoint, ruling R13), so the invoice still reads unpaid until the catch-up pays it (ruling R14).
+ * An invoice that a paid payment was started for (payments.invoice_id, status paid) while that payment is itself invoiced by none (no invoice
+ * has it as its payment_id): its money is in, counted on Laekunud summa, but the payment's invoice step failed (settle's savepoint, ruling R13),
+ * so the invoice still reads unpaid until the catch-up pays it (ruling R14). A payment that has an invoice of its own (R7: born paid after
+ * Maria marked this one; the mark then undone) leaves this invoice an ordinary one (the final review's m1). Only an unpaid invoice is read so.
+ * Written with the outer table's own name: in the select list of a query of invoices alone drizzle prints a column without its table, which
+ * inside the subquery would be the payment's own `id`.
  */
-const paidOnlineSql = sql<boolean>`exists (select 1 from payments p where p.invoice_id = ${invoices.id} and p.status = 'paid')`;
+const paidOnlineSql = sql<boolean>`exists (select 1 from payments p where p.invoice_id = "invoices"."id" and p.status = 'paid' and not exists (select 1 from invoices i2 where i2.payment_id = p.id))`;
+
+/**
+ * A paid invoice whose paying payment (invoices.payment_id) was refunded, or voided (the bank took it back: failed with its paid_at): it reads
+ * „Tagastatud“ (spec D5, the final review's I3) on Maria's screens, the student's card and the CSV. Read-side only: it stays stored paid, its
+ * sums as issued. The outer table by its own name, as paidOnlineSql.
+ */
+const refundedSql = sql<boolean>`exists (select 1 from payments rp where rp.id = "invoices"."payment_id" and (rp.status = 'refunded' or (rp.status = 'failed' and rp.paid_at is not null)))`;
+
+/**
+ * An invoice as Maria's screens read it (the registration's „Arved“, the list): `paidOnline`, an unpaid invoice whose online payment is paid
+ * already and waits for its catch-up (R14, paidOnlineSql: no „Saada õpilasele“, no „Märgi tasutuks“); `refunded`, a paid one whose payment was
+ * refunded or voided (refundedSql: „Tagastatud“).
+ */
+export type AdminInvoice = Invoice & { paidOnline: boolean; refunded: boolean };
+
+/** The fields of an AdminInvoice query: the row and its two flags. */
+const adminFields = { invoice: invoices, paidOnline: paidOnlineSql, refunded: refundedSql };
+/** A row of adminFields as the screens take it: each flag only where its state allows it (paidOnline unpaid, refunded paid). */
+const toAdmin = (r: { invoice: Invoice; paidOnline: boolean; refunded: boolean }): AdminInvoice => ({
+  ...r.invoice,
+  paidOnline: r.invoice.status === "unpaid" && r.paidOnline,
+  refunded: r.invoice.status === "paid" && r.refunded,
+});
 
 /**
  * The registration's latest unpaid invoice that „Maksa" may charge, or null (D5: domain/payments.ts payableDue). An invoice already paid
@@ -559,8 +602,11 @@ export async function unpaidInvoiceOf(q: Q, registrationId: number): Promise<Inv
 const ofClient = (clientId: number): SQL | undefined =>
   and(or(eq(registrations.clientId, clientId), eq(payments.clientId, clientId)), ne(invoices.status, "cancelled"));
 
-/** One of her invoices with what the card needs besides the row: `paidOnline`, an unpaid invoice whose online payment is paid already (R14, paidOnlineSql). */
-export type StudentInvoice = Invoice & { paidOnline: boolean };
+/**
+ * One of her invoices with what the card needs besides the row: `paidOnline`, an unpaid invoice whose online payment is paid already (R14,
+ * paidOnlineSql); `refunded`, a paid one whose payment was refunded or voided („Tagastatud“, refundedSql).
+ */
+export type StudentInvoice = Invoice & { paidOnline: boolean; refunded: boolean };
 
 /**
  * Her invoices (the account's course cards), in the order they were issued; see ofClient. One query: each row also says whether its online
@@ -569,13 +615,13 @@ export type StudentInvoice = Invoice & { paidOnline: boolean };
  */
 export async function invoicesOfClient(db: Db, clientId: number): Promise<StudentInvoice[]> {
   const rows = await db
-    .select({ invoice: invoices, paidOnline: paidOnlineSql })
+    .select(adminFields)
     .from(invoices)
     .leftJoin(registrations, eq(invoices.registrationId, registrations.id))
     .leftJoin(payments, eq(invoices.paymentId, payments.id))
     .where(ofClient(clientId))
     .orderBy(asc(invoices.issuedAt), asc(invoices.id));
-  return rows.map((r) => ({ ...r.invoice, paidOnline: r.invoice.status === "unpaid" && r.paidOnline }));
+  return rows.map(toAdmin);
 }
 
 /** Her invoice `id` (GET /api/konto/arve/<id>), or null: another's, a cancelled one, none. */
@@ -614,14 +660,17 @@ function issuedIn(month: string): SQL {
   return range ? (and(gte(invoices.issuedAt, range.from), lt(invoices.issuedAt, range.to)) as SQL) : sql`false`;
 }
 
-/** The „Arved" page (§5): every invoice, newest first, 50 a page (a page past the end is the last); by the Tallinn month of the issue and the state. */
-export async function listInvoices(db: Db, filter: { month?: string; status?: InvoiceStatus }, page: number): Promise<Paged<Invoice>> {
+/**
+ * The „Arved" page (§5): every invoice, newest first, 50 a page (a page past the end is the last); by the Tallinn month of the issue and the
+ * state (the stored one: a refunded invoice is under „Tasutud“). Each with its R14 and refund flags (AdminInvoice).
+ */
+export async function listInvoices(db: Db, filter: { month?: string; status?: InvoiceStatus }, page: number): Promise<Paged<AdminInvoice>> {
   const where = and(filter.month === undefined ? undefined : issuedIn(filter.month), filter.status ? eq(invoices.status, filter.status) : undefined);
   return paged(
     page,
     PAGE_SIZE,
     async () => (await db.select({ n: count() }).from(invoices).where(where))[0].n,
-    (range) => db.select().from(invoices).where(where).orderBy(desc(invoices.issuedAt), desc(invoices.id)).limit(range.limit).offset(range.offset),
+    async (range) => (await db.select(adminFields).from(invoices).where(where).orderBy(desc(invoices.issuedAt), desc(invoices.id)).limit(range.limit).offset(range.offset)).map(toAdmin),
   );
 }
 
@@ -670,10 +719,13 @@ export async function uninvoicedPaymentRows(db: Db): Promise<UninvoicedRow[]> {
   });
 }
 
-/** The accountant's file of a Tallinn month, "2026-10" (§6.5, domain/invoice.ts invoiceCsv): every invoice issued in it, cancelled ones too, in the order they were issued. */
+/**
+ * The accountant's file of a Tallinn month, "2026-10" (§6.5, domain/invoice.ts invoiceCsv): every invoice issued in it, cancelled ones too, in the
+ * order they were issued; a refunded one's state „Tagastatud“ (I3).
+ */
 export async function invoicesCsv(db: Db, month: string): Promise<string> {
-  const rows = await db.select().from(invoices).where(issuedIn(month)).orderBy(asc(invoices.issuedAt), asc(invoices.id));
-  return invoiceCsv(rows);
+  const rows = await db.select(adminFields).from(invoices).where(issuedIn(month)).orderBy(asc(invoices.issuedAt), asc(invoices.id));
+  return invoiceCsv(rows.map(toAdmin));
 }
 
 // ---------- Seaded → Arve andmed ----------
@@ -777,14 +829,14 @@ export async function saveInvoiceSettings(db: Db, raw: unknown, now: Date): Prom
 // ---------- the PDF ----------
 
 /**
- * The PDF of an invoice row, rendered on each download (spec §7) from its frozen copy, with Maria's footer line from Seaded as it is now (the
- * row does not hold it). invoice-pdf.ts (pdf-lib and its fontkit) and the fonts' loader are imported here, when an invoice is rendered: this
- * module comes with the account API, the payment routes and the admin pages, which then never load the PDF stack at a cold start. The fonts
- * are the certificate's (no new font); the invoice draws the sans alone.
+ * The PDF of an invoice row, rendered on each download (spec §7) from its frozen copy alone, Maria's footer line too (D2, migration 0012: the
+ * one of the issue, never the setting of the download's day; the final review's I2). invoice-pdf.ts (pdf-lib and its fontkit) and the fonts'
+ * loader are imported here, when an invoice is rendered: this module comes with the account API, the payment routes and the admin pages, which
+ * then never load the PDF stack at a cold start. The fonts are the certificate's (no new font); the invoice draws the sans alone.
  */
-export async function invoicePdf(db: Db, inv: Invoice): Promise<Uint8Array> {
+export async function invoicePdf(inv: Invoice): Promise<Uint8Array> {
   const [{ renderInvoice }, { loadCertificateAssets }] = await Promise.all([import("./invoice-pdf"), import("./certificate-pdf")]);
-  const [settings, fonts] = await Promise.all([getInvoiceSettings(db, new Date()), loadCertificateAssets()]);
+  const fonts = await loadCertificateAssets();
   return renderInvoice(
     {
       number: inv.number,
@@ -800,7 +852,7 @@ export async function invoicePdf(db: Db, inv: Invoice): Promise<Uint8Array> {
       dueAt: inv.dueAt,
       paidAt: inv.paidAt,
       paidMethod: inv.paidMethod,
-      footer: settings.footer,
+      footer: inv.footer,
     },
     { sans: fonts.sans },
   );

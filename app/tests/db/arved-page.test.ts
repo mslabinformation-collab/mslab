@@ -3,10 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
-import { invoices, payments } from "@/db/schema";
+import { invoices, payments, registrations } from "@/db/schema";
 import { tallinnFormParts } from "@/domain/calendar";
 import { adminEt } from "@/i18n/dict/admin";
-import { cancelInvoice, createInvoice, markInvoicePaid } from "@/server/invoices";
+import { cancelInvoice, catchUpInvoice, createInvoice, markInvoicePaid } from "@/server/invoices";
 import { makeTestDb } from "./helpers";
 import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtures";
 
@@ -284,6 +284,45 @@ describe("the registration drawer's „Arved“", () => {
     const { block } = await drawer(r.id);
     expect(block).toContain('data-invoice-create=""');
     expect(block).toContain(">Koosta arve<");
+  });
+
+  test("I1: a paid online payment of the registration with no invoice yet is on the block with its own „Koosta arve“ (the catch-up); the money is covered, so „Koosta arve“ stays for the rest", async () => {
+    const r = await registrationOn(db, fixture);
+    const p = await pendingPayment(db, r, {}, SEPTEMBER);
+    await db.update(payments).set({ status: "paid", paidAt: SEPTEMBER }).where(eq(payments.id, p.id));
+    await db.update(registrations).set({ paidCents: 17500, status: "confirmed" }).where(eq(registrations.id, r.id));
+    // no seller yet: the payment is listed, without its button
+    let { block } = await drawer(r.id);
+    expect(block).toContain(`data-uninvoiced-payment="${p.id}"`);
+    expect(block).toContain(`Veebimakse 175,00${NBSP}€ (15.09.2026) on veel arveta.`);
+    expect(block).not.toContain("data-uninvoiced-create");
+    await ready();
+    ({ block } = await drawer(r.id));
+    expect(block).toContain(`data-uninvoiced-create="${p.id}"`);
+    expect(block).toContain("Koostab uue arve");
+    expect(block).toContain('data-invoice-create=""'); // the rest is still open
+    // its catch-up made, the row leaves the block and its invoice is in the list
+    await catchUpInvoice(db, p.id, OCTOBER);
+    ({ block } = await drawer(r.id));
+    expect(block).not.toContain("data-uninvoiced-payment");
+    expect(numbers(block)).toEqual(["MSL2026-001"]);
+  });
+
+  test("m2 and I3 through the real reads: an invoice paid online that waits for its catch-up says so (no „Märgi tasutuks“); a refunded one reads „Tagastatud“ in the drawer and on the list", async () => {
+    await ready();
+    const a = await request("kati@example.com", "Kati Tamm", OCTOBER);
+    const p = await pendingPayment(db, a.registration, {}, OCTOBER);
+    await db.update(payments).set({ status: "paid", paidAt: OCTOBER, invoiceId: a.invoice.id }).where(eq(payments.id, p.id));
+    const { block } = await drawer(a.registration.id);
+    expect(block).toContain("Veebis tasutud — ootab „Arveta maksed“ alt arvet.");
+    expect(block).not.toContain(">Märgi tasutuks<");
+    expect(block).toContain("Tasub arve MSL2026-001"); // (its payment on the block, whose catch-up pays it)
+    await catchUpInvoice(db, p.id, OCTOBER);
+    await db.update(payments).set({ status: "refunded" }).where(eq(payments.id, p.id));
+    expect((await drawer(a.registration.id)).block).toContain(">Tagastatud<");
+    const list = await render(InvoicesPage);
+    expect(list).toContain(">Tagastatud<");
+    expect(numbers(await render(InvoicesPage, { staatus: "paid" }))).toEqual(["MSL2026-001"]); // (the stored state is paid)
   });
 
   test("the text of the page's own dictionary is the one shown", () => {

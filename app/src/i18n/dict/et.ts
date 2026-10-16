@@ -916,6 +916,8 @@ export const et = {
       number: "Arve {number}",
       paid: "Tasutud",
       unpaid: "Tasumata",
+      // a paid invoice whose online payment was refunded or voided (spec D5's word)
+      refunded: "Tagastatud",
       payBy: "tasu {date}",
       download: "Laadi alla (PDF)",
     },
