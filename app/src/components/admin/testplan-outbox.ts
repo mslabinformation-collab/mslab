@@ -6,10 +6,13 @@ import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by 
 // - a status press is sent at once, a note 1 s after the last keystroke (or at once, when the field loses the focus: flush);
 // - until a save that carried an answer comes back ok, this browser keeps it (localStorage `mslab-testplan-outbox`, one entry per check, the newest
 //   press of a check wins), and a reload or a new tab sends what it finds there at once. A browser that cannot keep it (storage full, blocked or
-//   absent) still sends it; the status then says "offline" for as long as the answer is unsent;
+//   absent) still sends it, with the ordinary status (the answer is then in this page's memory only, which `keeps()` tells);
 // - a save that fails is tried again after 2, 5, 10, 20, then every 30 s, and at once when the browser is back online or the tab is shown again;
 // - one save at a time: a press made while a save is on its way waits for it, and is sent right after it. An answer leaves the outbox only when
 //   the save that carried THAT press came back ok, never one made after it was sent.
+// - and a stale press is never sent again over a newer answer: the server stamps every save as the newest (spec §5), so a press it has
+//   confirmed leaves the storage at once, even when the page was left while that save was on its way (stop()), and with it any older press of
+//   that check still stored there (one whose newer press could not be written).
 // The storage is shared by the tabs of a browser, so it is changed entry by entry (read, change, write back) and read again before each send: a tab
 // never erases another's unsent answers. The server stamps `at` itself (spec §5); `clientAt` only orders the presses of one check on this device,
 // so it stays in the outbox and is not sent.
@@ -21,18 +24,25 @@ export const RETRY_MS = [2000, 5000, 10_000, 20_000, 30_000] as const;
 /** A note is sent this long (ms) after the last keystroke. */
 export const NOTE_WAIT_MS = 1000;
 
-export type OutboxStatus = "idle" | "saving" | "saved" | "retrying" | "offline";
+/** (The page's "offline" text is not one of these: it is the page's own, for answers it cannot read, spec §7.) */
+export type OutboxStatus = "idle" | "saving" | "saved" | "retrying";
 /** An unsent answer: what the tester pressed or typed, and the (strictly increasing) instant of that press on this device. */
 type Entry = { status: Status; note: string; clientAt: string };
 
 export type Outbox = {
   /** A status press: queued and sent at once. `note` is the check's note as it stands. */
   answer(id: string, status: Status, note: string): void;
-  /** A note typed: queued, sent 1 s after the last call. `status` is the check's status as it stands (else the press before it, else the note has nothing to attach to and is dropped). */
+  /**
+   * A note typed: queued, sent 1 s after the last call. It goes with the status of the check's press waiting here, when there is one (the page
+   * shows that press, and a page not redrawn since it was made passes the status before it); else `status`, the check's status as the page
+   * shows it; else the last press here; else it has nothing to attach to and is dropped.
+   */
   note(id: string, note: string, status?: Status): void;
   /** Sends what is queued now (a note waiting for its second included); resolves when that save is over, whatever came of it. */
   flush(): Promise<void>;
   status(): OutboxStatus;
+  /** False when this device cannot keep an unsent answer: there is no storage, or the last press could not be written to it (full, blocked). */
+  keeps(): boolean;
   /** The answers not confirmed yet (the page shows them over the server's). A new map on every call. */
   unsent(): ReadonlyMap<string, { status: Status; note: string }>;
   /** `fn` is called after every change of `status()` or `unsent()`; returns the unsubscribe. */
@@ -53,6 +63,10 @@ export type OutboxDeps = {
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isStatus = (v: unknown): v is Status => v === "ok" || v === "bad" || v === "skip";
+/** A `clientAt` as this file writes it (`toISOString`): such instants compare as text in time order. */
+const STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+/** The instant of a stored entry without a usable one of its own: the oldest press there is (it is sent, and loses to any press made here). */
+const OLDEST = new Date(0).toISOString();
 
 /** The entries a stored value holds (anything else: rubbish, another version's: none). An entry without a usable instant counts as the oldest. */
 function parseStored(text: string | null): Map<string, Entry> {
@@ -67,7 +81,7 @@ function parseStored(text: string | null): Map<string, Entry> {
   if (!isObject(value)) return out;
   for (const [id, raw] of Object.entries(value)) {
     if (!isObject(raw) || !isStatus(raw.status) || typeof raw.note !== "string") continue;
-    out.set(id, { status: raw.status, note: raw.note, clientAt: typeof raw.clientAt === "string" ? raw.clientAt : "" });
+    out.set(id, { status: raw.status, note: raw.note, clientAt: typeof raw.clientAt === "string" && STAMP.test(raw.clientAt) ? raw.clientAt : OLDEST });
   }
   return out;
 }
@@ -181,8 +195,8 @@ export function createOutbox(deps: OutboxDeps): Outbox {
       } catch {
         answers = null;
       }
-      if (stopped) return;
       if (answers === null) {
+        if (stopped) return; // (the press stays in the storage: the next visit sends it)
         failing = true;
         clearRetry();
         retryTimer = deps.setTimer(() => void send(), RETRY_MS[Math.min(attempts, RETRY_MS.length - 1)]);
@@ -198,9 +212,16 @@ export function createOutbox(deps: OutboxDeps): Outbox {
         if (entry.clientAt > (confirmed.get(id) ?? "")) confirmed.set(id, entry.clientAt);
         if (queue.get(id)?.clientAt === entry.clientAt) queue.delete(id);
       }
+      // ...and in the storage, that press and any older one of the check (left there when a newer press could not be written): the server holds
+      // something at least as new, and one sent again would be stamped the newest answer. A newer one (another tab's) stays. This runs after
+      // stop() too: left there, a press the server has would go again on the next visit, over whatever was answered meanwhile.
       writeStore((stored) => {
-        for (const [id, entry] of sent) if (stored.get(id)?.clientAt === entry.clientAt) stored.delete(id);
+        for (const [id, entry] of sent) {
+          const left = stored.get(id);
+          if (left && left.clientAt <= entry.clientAt) stored.delete(id);
+        }
       }, false);
+      if (stopped) return; // (the page is gone: nobody to tell, nothing to send next)
       deps.onAnswers(answers);
       emit();
     } while (again);
@@ -250,7 +271,7 @@ export function createOutbox(deps: OutboxDeps): Outbox {
     },
     note(id, note, status) {
       if (stopped) return;
-      const of = status ?? queue.get(id)?.status ?? known.get(id);
+      const of = queue.get(id)?.status ?? status ?? known.get(id);
       if (of === undefined) return;
       queueEntry(id, of, note);
       clearNote();
@@ -266,8 +287,10 @@ export function createOutbox(deps: OutboxDeps): Outbox {
     },
     status() {
       if (queue.size === 0) return saved ? "saved" : "idle";
-      if (!kept) return "offline";
       return failing ? "retrying" : "saving";
+    },
+    keeps() {
+      return kept;
     },
     unsent() {
       return new Map([...queue].map(([id, e]) => [id, { status: e.status, note: e.note }]));

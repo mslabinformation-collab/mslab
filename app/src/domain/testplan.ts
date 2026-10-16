@@ -34,8 +34,12 @@ export type AnswersDoc = { v: 1; answers: Record<string, StoredAnswer> };
 export type IncomingAnswer = { status: Status; note: string; clientAt?: string };
 /** `answer` is the check's valid answer; `overtaken` is the answer a redo has reopened the check over (shown as "Varasem vastus"). Never both: an open check has no valid answer. */
 export type CheckState = { state: "open" | "done" | "failed"; answer: StoredAnswer | null; overtaken: StoredAnswer | null };
-/** A Telegram message to send: the first for a new failure ("bad"), the second for its first note ("note"). */
-export type Ping = { id: string; kind: "bad" | "note" };
+/**
+ * A Telegram message to send: the first for a new failure ("bad"), the second for its first note ("note"). `oldNote`: the new failure's note is
+ * the one the answer before it already had (the page sends a check's note as it stands with a press, so a Viga pressed on an OK "Tahvlis korras"
+ * carries that note along). It is not this failure's: the first message says there is no note yet, and the note typed next is the second.
+ */
+export type Ping = { id: string; kind: "bad" | "note"; oldNote?: true };
 
 /** A note holds at most this many characters, counted in code points after trimming. */
 export const NOTE_MAX = 1000;
@@ -62,8 +66,8 @@ const isStatus = (v: unknown): v is Status => typeof v === "string" && STATUS.in
 const wordCount = (line: string): number => line.trim().split(/\s+/).length;
 /**
  * The answer of a check by its id, from the document's own keys. Never `answers[id]` alone: ids are kebab-case, so a check can be called
- * "constructor" or "valueOf", and a plain object would hand back Object.prototype's member as an answer. (`hasOwnProperty.call`, not
- * `Object.hasOwn`: this module runs in the browser, on iOS Safari before 15.4 as well.)
+ * "constructor" (the one member of Object.prototype a kebab-case id can name), and a plain object would hand back that member as an answer.
+ * (`hasOwnProperty.call`, not `Object.hasOwn`: this module runs in the browser, on iOS Safari before 15.4 as well.)
  */
 export const answerOf = (answers: Record<string, StoredAnswer>, id: string): StoredAnswer | undefined =>
   Object.prototype.hasOwnProperty.call(answers, id) ? answers[id] : undefined;
@@ -263,39 +267,45 @@ export function mergeAnswers(
 }
 
 /**
- * The Telegram messages a save earns (spec D6), for the ids it changed whose answer is now Viga: the first message when no `pinged` is
- * recorded (the failure is new: mergeAnswers dropped the old one's), the second, once, when the failure has been announced, has no
- * `notePinged` and now has a note. A new Viga that already has a note gets the first message only, which carries the note (markPinged marks
- * the note sent too). Nothing for OK, Jäta vahele, or an id not in the plan; nothing again once both are recorded. `before` and `buildAt` are
- * not read: mergeAnswers already decided which failure is the same one, and `after` carries what it decided.
+ * The Telegram messages a save earns (spec D6), for the ids it changed whose answer is now Viga, against `before`, the answers as stored before
+ * the save:
+ * - the first message when no `pinged` is recorded (the failure is new: mergeAnswers dropped the old one's). A new Viga that already has a note
+ *   gets the first message only, which carries the note (markPinged marks the note sent too), unless that note is the one the answer before it
+ *   had (`oldNote`: a Viga pressed on an OK or a Jäta vahele with a note, or on a failure a redo has overtaken, carries that note along);
+ * - the second, once, when the failure has been announced, has no `notePinged`, and this save brings it a note, one that differs from the note
+ *   stored before (so an old note carried along is never sent as the failure's, however often it is saved again).
+ * Nothing for OK, Jäta vahele, or an id not in the plan; nothing again once both are recorded. `buildAt` is not read: mergeAnswers already
+ * decided which failure is the same one, and `after` carries what it decided.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function pingsFor(_before: AnswersDoc, after: AnswersDoc, changed: string[], plan: TestPlan, _buildAt: string): Ping[] {
+export function pingsFor(before: AnswersDoc, after: AnswersDoc, changed: string[], plan: TestPlan, _buildAt: string): Ping[] {
   const known = new Set(plan.items.map((item) => item.id));
   const pings: Ping[] = [];
   for (const id of changed) {
     const answer = answerOf(after.answers, id);
     if (!answer || answer.status !== "bad" || !known.has(id)) continue;
-    if (answer.pinged === undefined) pings.push({ id, kind: "bad" });
-    else if (!answer.notePinged && answer.note !== "") pings.push({ id, kind: "note" });
+    const noteBefore = answerOf(before.answers, id)?.note;
+    if (answer.pinged === undefined) pings.push(answer.note !== "" && answer.note === noteBefore ? { id, kind: "bad", oldNote: true } : { id, kind: "bad" });
+    else if (!answer.notePinged && answer.note !== "" && answer.note !== noteBefore) pings.push({ id, kind: "note" });
   }
   return pings;
 }
 
 /**
- * The doc after the pings were sent (record only the ones that went out; a failed send is not recorded and is found again by the next save):
- * the first message sets `pinged` (the instant of the first message, kept if there is one) and, when the answer has a note, `notePinged` too
- * (the first message carried it); the second sets `notePinged`. A copy; an id the doc does not hold is skipped.
+ * The doc with the pings recorded as sent. The server records them when it stores the save, before anything is sent (the sends go after the
+ * commit), and a send that fails is logged and never tried again (spec D6, docs/deploy.md section 15.4: Dim reads the page): the first message
+ * sets `pinged` (the instant of the first message, kept if there is one) and, when the answer has a note of its own (not `oldNote`),
+ * `notePinged` too (the first message carried it); the second sets `notePinged`. A copy; an id the doc does not hold is skipped.
  */
 export function markPinged(doc: AnswersDoc, pings: Ping[], now: Date): AnswersDoc {
   const answers = { ...doc.answers };
   const at = now.toISOString();
-  for (const { id, kind } of pings) {
+  for (const { id, kind, oldNote } of pings) {
     const answer = answerOf(answers, id);
     if (!answer) continue;
     answers[id] =
       kind === "bad"
-        ? { ...answer, pinged: answer.pinged ?? at, ...(answer.note !== "" ? { notePinged: true as const } : {}) }
+        ? { ...answer, pinged: answer.pinged ?? at, ...(answer.note !== "" && !oldNote ? { notePinged: true as const } : {}) }
         : { ...answer, notePinged: true };
   }
   return { v: 1, answers };

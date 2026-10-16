@@ -145,6 +145,25 @@ describe("PUT", () => {
     expect(await stored()).toBeUndefined();
   });
 
+  test("a body of no declared length (sent in chunks) over 128 KB: 413 tooLarge, and it is read no further than the cap", async () => {
+    await signIn();
+    const CHUNK = 64 * 1024;
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled >= 8 * 1024 * 1024) return controller.close();
+        pulled += CHUNK;
+        controller.enqueue(new Uint8Array(CHUNK).fill(0x20));
+      },
+    });
+    const request = new Request(URL_, { method: "PUT", headers: { "content-type": "application/json" }, body: stream, duplex: "half" } as RequestInit);
+    expect(request.headers.get("content-length")).toBeNull();
+    const res = await PUT(request, undefined);
+    expect([res.status, await res.json()]).toEqual([413, { ok: false, error: "tooLarge" }]);
+    expect(pulled).toBeLessThan(1024 * 1024); // (of 8 MB on offer)
+    expect(await stored()).toBeUndefined();
+  });
+
   test("a body of exactly 128 KB is read", async () => {
     await signIn();
     const pad = (n: number) => JSON.stringify({ answers: { "maria-1": { status: "ok", note: "" } }, pad: "x".repeat(n) });
@@ -223,6 +242,18 @@ describe("PUT", () => {
     expect(texts).toEqual([
       "Testimine — Viga: Avaleht telefonis (Maria)\n(märkust veel pole)\nhttps://site.example.test/admin/testimine#maria-1",
       "Testimine — Märkus: Avaleht telefonis (Maria)\nesimene märkus\nhttps://site.example.test/admin/testimine#maria-1",
+    ]);
+  });
+
+  test("a Viga pressed on an OK with a note: the first message says there is no note yet, and the note typed next goes as the second", async () => {
+    await signIn();
+    for (const [status, note] of [["ok", "Tahvlis korras"], ["bad", "Tahvlis korras"], ["bad", "Nupp ei tööta"]]) {
+      await put({ answers: { "maria-1": { status, note } } });
+      await runLater();
+    }
+    expect(vi.mocked(sendTelegram).mock.calls.map(([, text]) => text)).toEqual([
+      "Testimine — Viga: Avaleht telefonis (Maria)\n(märkust veel pole)\nhttps://site.example.test/admin/testimine#maria-1",
+      "Testimine — Märkus: Avaleht telefonis (Maria)\nNupp ei tööta\nhttps://site.example.test/admin/testimine#maria-1",
     ]);
   });
 

@@ -142,6 +142,17 @@ describe("a note", () => {
     expect(bodyOf(put, 1)).toEqual({ answers: { a: { status: "skip", note: "Jäi vahele, sest ei ole aega" } } });
   });
 
+  test("attaches to the check's press waiting here, whatever status the page passes (a page that has not drawn that press yet passes the one before)", async () => {
+    const put = vi.fn(() => new Promise<Response>(() => {}));
+    const { outbox } = outboxOver(memoryStorage(), put);
+    outbox.answer("a", "bad", "");
+    outbox.note("a", "Nupp ei tööta", "ok");
+    expect(outbox.unsent().get("a")).toEqual({ status: "bad", note: "Nupp ei tööta" });
+    // with no press waiting, the page's status is the one (the server's answer, perhaps the other admin's)
+    outbox.note("b", "Hea", "skip");
+    expect(outbox.unsent().get("b")).toEqual({ status: "skip", note: "Hea" });
+  });
+
   test("typed while a save is on its way: the save finishes first, and the note then goes by its own timer, not at once", async () => {
     let finish: (r: Response) => void = () => {};
     const put = vi.fn().mockImplementationOnce(() => new Promise<Response>((r) => (finish = r))).mockImplementation(async () => okResponse());
@@ -274,6 +285,47 @@ describe("a send that fails", () => {
   });
 });
 
+describe("a page left while a save is on its way (stop() mid-flight)", () => {
+  test("the save comes back ok: the press leaves the storage all the same (nothing is told: the page is gone), and the next visit sends nothing old", async () => {
+    const storage = memoryStorage();
+    let finish: (r: Response) => void = () => {};
+    const put = vi.fn(() => new Promise<Response>((r) => (finish = r)));
+    const { outbox, onAnswers } = outboxOver(storage, put);
+    outbox.answer("a", "ok", "");
+    expect(storage.dump()).not.toBeNull();
+    const heard = vi.fn();
+    outbox.onChange(heard);
+    outbox.stop(); // ("Avaleht" or Back, a moment after the last press)
+    finish(okResponse());
+    await settle();
+    expect(storage.dump()).toBeNull();
+    expect(onAnswers).not.toHaveBeenCalled();
+    expect(heard).not.toHaveBeenCalled();
+
+    const next = vi.fn(async () => okResponse());
+    outboxOver(storage, next);
+    await settle();
+    expect(next).not.toHaveBeenCalled(); // (else the old press would be stamped the newest answer, over what came after it)
+  });
+
+  test("the save fails: the press stays in the storage for the next visit, and the stopped outbox tries nothing again", async () => {
+    const storage = memoryStorage();
+    let fail: (e: Error) => void = () => {};
+    const put = vi.fn(() => new Promise<Response>((_, reject) => (fail = reject)));
+    const { outbox } = outboxOver(storage, put);
+    outbox.answer("a", "bad", "Nupp ei tööta");
+    outbox.stop();
+    fail(new TypeError("Failed to fetch"));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(storage.dump()!).a).toMatchObject({ status: "bad", note: "Nupp ei tööta" });
+
+    const next = vi.fn(async () => okResponse());
+    outboxOver(storage, next);
+    expect(bodyOf(next, 0)).toEqual({ answers: { a: { status: "bad", note: "Nupp ei tööta" } } });
+  });
+});
+
 describe("a device that was closed", () => {
   test("survives a reload: a new outbox over the same storage sends the leftover entry at once", async () => {
     const storage = memoryStorage();
@@ -336,30 +388,103 @@ describe("a device that was closed", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(bodyOf(put, 1)).toEqual({ answers: { a: { status: "ok", note: "" } } });
   });
+
+  test("an entry without an instant (another version's, a hand edit) is taken as the oldest press there is: sent, then cleared", async () => {
+    const storage = memoryStorage();
+    storage.setItem(OUTBOX_KEY, JSON.stringify({ a: { status: "bad", note: "Ilma ajata" }, b: { status: "skip", note: "", clientAt: "not an instant" } }));
+    const put = vi.fn(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    expect(bodyOf(put, 0)).toEqual({ answers: { a: { status: "bad", note: "Ilma ajata" }, b: { status: "skip", note: "" } } });
+    await settle();
+    expect(storage.dump()).toBeNull();
+    expect(outbox.status()).toBe("saved");
+  });
+
+  test("...and it never wins over a press of this tab", async () => {
+    const storage = memoryStorage();
+    const put = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    outbox.answer("a", "ok", "");
+    outbox.answer("b", "ok", "");
+    await settle();
+    storage.setItem(OUTBOX_KEY, JSON.stringify({ a: { status: "bad", note: "vana" }, b: { status: "bad", note: "vana", clientAt: "zzz" } }));
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(bodyOf(put, 1)).toEqual({ answers: { a: { status: "ok", note: "" }, b: { status: "ok", note: "" } } });
+  });
+});
+
+describe("the clean-up after a confirmed save", () => {
+  test("an older press of that check left in the storage (the newer one could not be written: storage full) goes too: the next visit does not send it again", async () => {
+    const flags = { failSet: false };
+    const storage = memoryStorage(flags);
+    const put = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    outbox.answer("a", "bad", "Nupp ei tööta");
+    await settle(); // (that save failed: the Viga waits in the storage)
+    flags.failSet = true;
+    outbox.answer("a", "ok", "Parandatud"); // (not written: the storage still holds the Viga)
+    await settle();
+    expect(bodyOf(put, 1)).toEqual({ answers: { a: { status: "ok", note: "Parandatud" } } });
+    expect(storage.dump()).toBeNull();
+
+    flags.failSet = false;
+    const next = vi.fn(async () => okResponse());
+    outboxOver(storage, next);
+    await settle();
+    expect(next).not.toHaveBeenCalled(); // (else: a fixed check a Viga again, and a false "Testimine — Viga" to Dim)
+  });
+
+  test("a newer press of that check in the storage (another tab's, made while the save was on its way) is kept", async () => {
+    const storage = memoryStorage();
+    let finish: (r: Response) => void = () => {};
+    const put = vi.fn().mockImplementationOnce(() => new Promise<Response>((r) => (finish = r))).mockImplementation(async () => okResponse());
+    const { outbox } = outboxOver(storage, put);
+    outbox.answer("a", "ok", ""); // (at 10:00:00)
+    storage.setItem(OUTBOX_KEY, JSON.stringify({ a: { status: "bad", note: "Teises vahelehes", clientAt: "2026-10-16T10:00:30.000Z" } }));
+    finish(okResponse());
+    await settle();
+    expect(JSON.parse(storage.dump()!).a).toMatchObject({ status: "bad", note: "Teises vahelehes" });
+  });
 });
 
 describe("a storage that cannot be written", () => {
-  test("a write that throws still sends; the status is offline until the send succeeds", async () => {
+  // (the answers are then in this page's memory only: the status never says "offline", whose text promises they are kept on the device)
+  test("a write that throws still sends, with the ordinary status: saving, then saved; keeps() says the device does not keep the answer", async () => {
     let finish: (r: Response) => void = () => {};
     const put = vi.fn(() => new Promise<Response>((r) => (finish = r)));
     const { outbox } = outboxOver(memoryStorage({ failSet: true }), put);
+    expect(outbox.keeps()).toBe(true); // (nothing written yet)
     outbox.answer("a", "ok", "");
     expect(put).toHaveBeenCalledTimes(1);
-    expect(outbox.status()).toBe("offline");
+    expect(outbox.status()).toBe("saving");
+    expect(outbox.keeps()).toBe(false);
     finish(okResponse());
     await settle();
     expect(outbox.status()).toBe("saved");
   });
 
-  test("no storage at all (null) is the same, and a failed send is offline (not retrying) while it is unsent; the retries go on", async () => {
+  test("no storage at all (null) is the same: a failed send is retrying, and the retries go on", async () => {
     const put = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(async () => okResponse());
     const { outbox } = outboxOver(null, put);
+    expect(outbox.keeps()).toBe(false);
     outbox.answer("a", "ok", "");
+    expect(outbox.status()).toBe("saving");
     await settle();
-    expect(outbox.status()).toBe("offline");
+    expect(outbox.status()).toBe("retrying");
     await vi.advanceTimersByTimeAsync(2000);
     expect(put).toHaveBeenCalledTimes(2);
     expect(outbox.status()).toBe("saved");
+  });
+
+  test("keeps() is whether the last press could be written: a storage that is full, then has room again", async () => {
+    const flags = { failSet: true };
+    const put = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    const { outbox } = outboxOver(memoryStorage(flags), put);
+    outbox.answer("a", "ok", "");
+    expect(outbox.keeps()).toBe(false);
+    flags.failSet = false;
+    outbox.answer("b", "ok", "");
+    expect(outbox.keeps()).toBe(true);
   });
 
   test("a storage that cannot be read (getItem throws) is the same: the press is sent", async () => {

@@ -244,6 +244,12 @@ describe("pingText", () => {
     expect(text).toContain("(märkust veel pole)");
   });
 
+  test("tg.bad for a Viga that carries the answer before it's note (oldNote): that note is not the failure's, so tg.noNote", () => {
+    expect(pingText({ id: "maria-1", kind: "bad", oldNote: true }, PLAN, bad("Tahvlis korras"), NAMES, BASE)).toBe(
+      "Testimine — Viga: Avaleht telefonis (Maria)\n(märkust veel pole)\nhttps://mslab.ee/admin/testimine#maria-1",
+    );
+  });
+
   test("tg.note: the first note of a failure", () => {
     expect(pingText({ id: "maria-1", kind: "note" }, PLAN, bad("nupp ei tööta"), NAMES, BASE)).toBe(
       "Testimine — Märkus: Avaleht telefonis (Maria)\nnupp ei tööta\nhttps://mslab.ee/admin/testimine#maria-1",

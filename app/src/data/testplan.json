@@ -36,7 +36,7 @@
     {
       "id": "kontakt",
       "name": "Kontaktkoolitus",
-      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Selle ala lõpus tühistati ainult Proov 2 registreering; Proov 1 registreering jääb alles kuni koristamiseni."
+      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Registreerimise ala lõpus tühistati ainult Proov 2 registreering; Proov 1 registreering jääb alles kuni koristamiseni."
     },
     {
       "id": "kirjad",
@@ -108,6 +108,7 @@
       ],
       "expect": [
         "Slaid vahetub ise umbes 6 sekundi järel.",
+        "Kui seadmes on sees „Vähenda liikumist“, ei vahetu slaid ise: see on õige.",
         "Nool viib järgmisele slaidile ja number muutub, näiteks „02 / 05“.",
         "Pärast peatamist slaidid enam ise ei vahetu.",
         "Libistamine vahetab slaidi.",
@@ -740,15 +741,18 @@
       "title": "Koolituse hind",
       "href": "/admin/koolitused",
       "steps": [
-        "Ava mõni kontaktkoolitus ja kirjuta „Grupikoolituse hind (€)“ väljale ühe euro võrra suurem hind.",
-        "Vajuta „Salvesta“ ja ava selle koolituse avalik leht.",
+        "Ava mõni kontaktkoolitus, millel on täidetud „Grupikoolituse hind (€)“ ja „Individuaalkoolituse hind (€)“.",
+        "Kirjuta mõlemale väljale ühe euro võrra suurem hind, vajuta „Salvesta“ ja ava koolituse avalik leht.",
         "Ava mõni e-koolitus ja kirjuta „Hind (€)“ väljale ühe euro võrra suurem hind.",
         "Vajuta „Salvesta“ ja ava avalik koolituste loend.",
-        "Vajuta selle e-koolituse lehel „Osta kohe“.",
-        "Pane mõlemad hinnad tagasi, nagu need olid, ja salvesta."
+        "Ava selle e-koolituse leht.",
+        "Vajuta „Osta kohe“.",
+        "Pane kõik kolm hinda tagasi, nagu need olid, ja salvesta.",
+        "Ava mõlema koolituse avalik leht uuesti."
       ],
       "expect": [
         "Kontaktkoolituse lehel on „Grupikoolitus“ juures uus hind.",
+        "Ka „Individuaalkoolitus“ juures on uus hind.",
         "E-koolituse kaardil on uus hind.",
         "Ostukorvi real „Kokku“ on uus hind.",
         "Pärast tagasipanekut on mõlemal lehel jälle vana hind."
@@ -1002,8 +1006,8 @@
         "Ava „Hüpikaken“.",
         "Vali „Lehel näidatakse“ alt „Uudiskiri“ ja vajuta „Salvesta“.",
         "Ava avaleht uues vahekaardis ja oota 6 sekundit.",
-        "Vali „Väljas“, salvesta ja ava avaleht uues vahekaardis.",
-        "Vali „Kampaania“, salvesta ja ava avaleht uues vahekaardis.",
+        "Vali „Väljas“, salvesta, ava avaleht uues vahekaardis ja oota 6 sekundit.",
+        "Vali „Kampaania“, salvesta, ava avaleht uues vahekaardis ja oota 6 sekundit.",
         "Pane tagasi valik, mis oli enne, ja salvesta."
       ],
       "expect": [

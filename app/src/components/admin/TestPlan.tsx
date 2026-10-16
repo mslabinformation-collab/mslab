@@ -8,7 +8,7 @@ import {
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDayMonth, formatTime } from "@/i18n/format";
 import type { PageAnswer } from "@/server/testplan"; // (a type only: erased by the build)
-import { createOutbox, type Outbox } from "./testplan-outbox";
+import { createOutbox, type Outbox, type OutboxStatus } from "./testplan-outbox";
 import ui from "./ui.module.css";
 import styles from "./TestPlan.module.css";
 
@@ -127,7 +127,9 @@ export function TestPlan({ plan, initial, you, buildAt }: TestPlanProps) {
   /** The server's answers could not be read (or the last read failed): the page says so, and the answers stay on the device. */
   const [down, setDown] = useState(initial === null);
   const [reading, setReading] = useState(false);
+  /** The outbox as this render shows it (null until it is made). The handlers use `ensureOutbox` instead. */
   const [outbox, setOutbox] = useState<Outbox | null>(null);
+  const outboxRef = useRef<Outbox | null>(null);
   const [version, changed] = useReducer((n: number) => n + 1, 0);
   /** Saves that came back: a read that began before one is older than it and is not taken. */
   const writes = useRef(0);
@@ -167,7 +169,14 @@ export function TestPlan({ plan, initial, you, buildAt }: TestPlanProps) {
     setReading(false);
   };
 
-  useEffect(() => {
+  /**
+   * The outbox, made on first use: by the effect below, or by a press that comes before it. A tap while the page is still loading is run by
+   * React against the first render's handlers (it hydrates the page, then replays the tap), and that render had no outbox yet: the handlers take
+   * it from here, never from their render, so such a press is queued like any other. (Once stopped it says nothing more, so there is no
+   * listener to take off.)
+   */
+  const ensureOutbox = useCallback((): Outbox => {
+    if (outboxRef.current) return outboxRef.current;
     const made = createOutbox({
       storage: browserStorage(),
       put: (body) => fetch(API, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
@@ -180,13 +189,19 @@ export function TestPlan({ plan, initial, you, buildAt }: TestPlanProps) {
         setDown(false);
       },
     });
-    const off = made.onChange(changed);
+    made.onChange(changed);
+    outboxRef.current = made;
     setOutbox(made);
-    return () => {
-      off();
-      made.stop();
-    };
+    return made;
   }, []);
+
+  useEffect(() => {
+    const made = ensureOutbox();
+    return () => {
+      made.stop();
+      if (outboxRef.current === made) outboxRef.current = null;
+    };
+  }, [ensureOutbox]);
 
   // every load reads the answers again (the page was made a moment ago, or is the browser's copy of an earlier visit)
   useEffect(() => {
@@ -220,13 +235,15 @@ export function TestPlan({ plan, initial, you, buildAt }: TestPlanProps) {
   }, [plan, initial, buildAt, view.who]);
   const hashArea = plan.items.find((i) => i.id === hash)?.area;
 
-  const saveKey = outbox ? outbox.status() : "idle";
-  const shownKey = saveKey === "idle" && down ? "offline" : saveKey;
+  const saveKey: OutboxStatus = outbox ? outbox.status() : "idle";
+  // the answers cannot be read (the database is down) and nothing waits: "offline", whose text says the answers are kept on this device; so
+  // only on a device that keeps them (with no storage they live in this page only, and a press shows "Salvestan…", then "Salvestamata…")
+  const shownKey = saveKey === "idle" && down && (outbox === null || outbox.keeps()) ? "offline" : saveKey;
   const saveText = shownKey === "idle" ? "" : t[shownKey];
 
   const press = (item: TestItem, status: Status) => {
     const note = typed.get(item.id) ?? states.get(item.id)?.answer?.note ?? "";
-    outbox?.answer(item.id, status, note);
+    ensureOutbox().answer(item.id, status, note);
     if (status === "bad") {
       focusAfterRef.current = item.id;
       setNoteOpen((m) => withEntry(m, item.id, true));
@@ -235,11 +252,11 @@ export function TestPlan({ plan, initial, you, buildAt }: TestPlanProps) {
   const type = (item: TestItem, status: Status, value: string) => {
     const text = clip(value);
     setTyped((m) => withEntry(m, item.id, text));
-    outbox?.note(item.id, text, status);
+    ensureOutbox().note(item.id, text, status);
   };
   const leave = (item: TestItem) => {
     setTyped((m) => withoutEntry(m, item.id));
-    void outbox?.flush();
+    void ensureOutbox().flush();
   };
 
   return (

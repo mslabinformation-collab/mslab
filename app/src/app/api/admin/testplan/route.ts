@@ -3,6 +3,7 @@ import { getDb } from "@/db/client";
 import type { AnswersDoc, Ping } from "@/domain/testplan";
 import { withAdmin } from "@/server/auth";
 import { serverEnv } from "@/server/env";
+import { readBody } from "@/server/feedback";
 import { serverKv } from "@/server/kv";
 import { logFailure, logNote } from "@/server/log";
 import { sendTelegram, type Env } from "@/server/notify";
@@ -36,8 +37,10 @@ export const GET = withAdmin(async (_request, _ctx, { email }) => {
 });
 
 /**
- * The Telegram messages a save earned, one after the other (Telegram limits a chat to about a message a second), once the answer has gone. A
- * send that fails is logged with the check's id and nothing else, and never changes the answer or stops the messages after it.
+ * The Telegram messages a save earned, once the answer has gone: one after the other, each send awaited, with no pause between them (so a long
+ * offline outbox carrying several Vead sends them in one burst, and Telegram may refuse the later ones, about a message a second per chat). A
+ * send that fails or is refused is logged with the check's id and nothing else and is not tried again (the messages were recorded as sent with
+ * the save); it never changes the answer or stops the messages after it.
  */
 async function sendPings(env: Env, pings: Ping[], doc: AnswersDoc, names: string, base: string): Promise<void> {
   for (const ping of pings) {
@@ -58,11 +61,11 @@ async function sendPings(env: Env, pings: Ping[], doc: AnswersDoc, names: string
  * answer (server/testplan.ts saveAnswers). Never cached.
  */
 export const PUT = withAdmin(async (request, _ctx, { email }) => {
-  if (Number(request.headers.get("content-length") ?? 0) > BODY_MAX) return json({ ok: false, error: "tooLarge" }, 413);
   let body: unknown;
   try {
-    const text = await request.text();
-    if (Buffer.byteLength(text) > BODY_MAX) return json({ ok: false, error: "tooLarge" }, 413);
+    // (read from the stream up to the cap: a body over it is refused by its declared length, or as soon as it passes the cap, never read whole)
+    const text = await readBody(request, BODY_MAX);
+    if (text === null) return json({ ok: false, error: "tooLarge" }, 413);
     body = JSON.parse(text);
   } catch {
     return json({ ok: false, error: "invalid" }, 400);

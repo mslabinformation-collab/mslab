@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TestPlan } from "@/components/admin/TestPlan";
 import { TestplanCard } from "@/components/admin/TestplanCard";
@@ -360,6 +361,24 @@ describe("TestPlan", () => {
     expect(status()).toBe("Salvestamata — proovin uuesti");
   });
 
+  test("the database is down on a device that cannot keep answers (no storage): no 'offline' text, which would promise they are kept here; a press is retrying", async () => {
+    const blocked = vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    try {
+      await show({ initial: null, you: { name: "Kati", tester: null } });
+      expect(status()).toBe("");
+      expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("idle");
+      putReply = async () => json({ ok: false, error: "unavailable" }, 503);
+      await openAll();
+      await click(check("a1-plain").querySelector('[data-answer="ok"]')!);
+      expect(state("a1-plain")).toBe("done");
+      expect(status()).toBe("Salvestamata — proovin uuesti");
+    } finally {
+      blocked.mockRestore();
+    }
+  });
+
   test("a GET that is not ok, or not JSON (a 500 page), is the same as the database being down: the plan and the answers stay, the page says offline", async () => {
     await showAll();
     expect(status()).toBe("");
@@ -471,6 +490,45 @@ describe("TestPlan", () => {
     await settle();
     expect($$("[data-check-state]").map((c) => c.getAttribute("data-check-state"))).toEqual(["open", "open"]);
     expect($("[data-progress]")!.textContent).toBe("0 / 2 tehtud · 0 viga · 0 uuesti testida");
+  });
+});
+
+describe("a tap while the page is still loading", () => {
+  /** Lets the page's work run with no act() around it (the tap below must land between the hydration and what its effects set). */
+  const ticks = async () => {
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  test("a tap that hydration replays (the page's effects have not drawn yet) is sent; a Viga then, and the note typed after it, are saved as Viga with that note", async () => {
+    // a1-plain holds an OK with a note; an admin who sees every check, so the area a1 is open in the server's HTML as well
+    const initial = { ...SERVER, "a1-plain": answer("ok", "2026-10-16T10:30:00.000Z", "Maria", "Tahvlis korras") };
+    server = { ...initial };
+    const props = { plan: PLAN, initial, you: { name: "Kati", tester: null }, buildAt: BUILD_AT };
+    const box = document.createElement("div");
+    document.body.append(box);
+    box.innerHTML = renderToString(createElement(TestPlan, props));
+    const inBox = <E extends Element = HTMLElement>(selector: string) => box.querySelector<E>(selector)!;
+    const puts = () => calls.filter((c) => c.method === "PUT").map((c) => c.body);
+    globalThis.IS_REACT_ACT_ENVIRONMENT = false;
+    const hydrated = hydrateRoot(box, createElement(TestPlan, props));
+    try {
+      inBox('[data-check="a1-plain"] [data-answer="bad"]').click(); // (before anything has settled: React hydrates, then runs the click)
+      await ticks();
+      expect(puts()).toEqual([{ answers: { "a1-plain": { status: "bad", note: "Tahvlis korras" } } }]);
+      expect(inBox('[data-check="a1-plain"]').getAttribute("data-check-state")).toBe("failed");
+      const note = inBox<HTMLTextAreaElement>('[data-check="a1-plain"] [data-check-note]');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(note, "Nupp ei tööta");
+      note.dispatchEvent(new Event("input", { bubbles: true }));
+      note.focus();
+      note.blur();
+      await ticks();
+      expect(puts().at(-1)).toEqual({ answers: { "a1-plain": { status: "bad", note: "Nupp ei tööta" } } });
+      expect(puts().every((body) => body!.answers["a1-plain"].status === "bad")).toBe(true);
+    } finally {
+      hydrated.unmount();
+      box.remove();
+      globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    }
   });
 });
 
