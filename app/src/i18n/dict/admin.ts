@@ -1409,6 +1409,40 @@ export const adminEt = {
     admins: "Halduse ligipääs",
     adminsLead: "Need aadressid saavad haldusesse sisse logida. Nimekirja muudab arendaja.",
   },
+  // The test page (phase 4, piece 1): /admin/testimine, the checks Maria and Dim answer. `tg` is the Telegram text of a Viga and of its first note
+  // (server/testplan.ts pingText). `last` is "{name} · dd.mm HH:MM · {status}" (Tallinn time, the status in the button's words).
+  testplan: {
+    title: "Testimine",
+    progress: "{done} / {total} tehtud · {bad} viga · {redo} uuesti testida",
+    filter: { all: "Kõik", open: "Avatud", bad: "Vead", changed: "Muudetud" },
+    who: { label: "Kes", all: "Kõik", maria: "Maria", dim: "Dim", koos: "Koos" },
+    you: "Sina: {name}",
+    refresh: "Värskenda",
+    open: "Ava",
+    expect: "Mida näed",
+    why: "Miks",
+    writes: "Loob andmeid",
+    device: { telefon: "Telefon", tahvel: "Tahvel", arvuti: "Arvuti" },
+    mark: { redo: "Uuesti testida", reworded: "Sõnastus muutus", new: "Uus" },
+    ok: "OK",
+    bad: "Viga",
+    skip: "Jäta vahele",
+    note: "Märkus",
+    notePrompt: "Mis läks valesti?",
+    last: "{name} · {when} · {status}",
+    overtaken: "Varasem vastus (enne muudatust): {status}",
+    saving: "Salvestan…",
+    saved: "Salvestatud",
+    retrying: "Salvestamata — proovin uuesti",
+    offline: "Vastuseid ei saa praegu salvestada; need on selles seadmes alles.",
+    areaCount: "{done} / {total}",
+    card: "Testimine: {open} avatud, {bad} viga",
+    tg: {
+      bad: "Testimine — Viga: {title} ({name})\n{note}\n{url}",
+      noNote: "(märkust veel pole)",
+      note: "Testimine — Märkus: {title} ({name})\n{note}\n{url}",
+    },
+  },
 };
 
 export type AdminDict = typeof adminEt;

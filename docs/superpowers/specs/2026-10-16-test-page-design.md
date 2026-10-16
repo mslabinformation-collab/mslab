@@ -39,12 +39,12 @@ Every phase after this one changes behaviour that some checks describe. So the p
   - A failed send never fails the save.
 - **D7. Test data is labelled** (Dim, 16.10: as recommended). Every check that creates something (`writes: true`) tells the tester exactly what to type:
   - the name "Proov" plus a number;
-  - for a student, an e-mail with `+proov` added to the tester's own address (for example `nimi+proov1@gmail.com`), which Gmail delivers to the tester's own inbox.
+  - for a student, an e-mail with `+proov` added to the tester's own address (for example `nimi+proov1@…`), which Gmail delivers to the tester's own inbox.
   
   "Enne alustamist" says this once. The test rows stay in the database, labelled, while testing goes on. The admin can cancel a registration and end an access, but cannot delete a student or a Montonio test payment. **Right before the public launch, Dim removes them by exact address** (the address list is kept on the page's "Koristamine" section as the tester types them; never by pattern). That step goes into `docs/launch-checklist.md`. "Koristamine" also says:
   - cancel each test registration in the admin;
   - end each test access in the admin;
-  - after the last certificate check, set Seaded → Tunnistus → „Järgmine number“ back to the number after Maria's last paper certificate, because a test certificate takes a real number from her series.
+  - after the last certificate check, delete each test student's account ("Kustuta konto" in her Minu andmed; it takes her test certificate and photos with it), then set Seaded → Tunnistus → „Järgmine number“ back (Seaded refuses a number at or below one still issued; amended 16.10 after Task 4) to the number after Maria's last paper certificate, because a test certificate takes a real number from her series.
 - **D9. The checks run on Maria's real courses** (Dim, 16.10: as recommended). There is no hidden sample course.
   - **E-course checks.** Area 3 starts by having Maria set up one of her real e-courses for testing. She needs to do this for the launch anyway. Steps, in order:
     - one module with a text lesson and a video lesson;
@@ -94,7 +94,7 @@ Every phase after this one changes behaviour that some checks describe. So the p
 - the buttons and labels a step names are written exactly as the screen shows them, in quotes „…“.
 
 **Areas, in this order** (each uses what the one before created). This is my call, and the builder may split or merge areas if a section grows past about 25 checks.
-1. **Enne alustamist.** Notes, no checks: the gate (D8), the test e-mail (D7), the login code limit (3 codes in 15 minutes), Montonio's test bank, and "update the page if something looks old".
+1. **Enne alustamist.** Notes, no checks: the gate (D8), the test e-mail (D7), the login code limit (3 student codes in 30 minutes; 3 admin links in 10 minutes), Montonio's test bank, and "update the page if something looks old".
 2. **Avalik leht.** Home, catalogue, a course page (contact and e-course), trainer, news, gallery, FAQ, the popups, the footer and newsletter sign-up, `/ru/` pages, phone and tablet widths.
 3. **Haldus: sisu.** Maria edits:
    - a course (texts, prices, badges, pictures, "Protokolli punktid", "Teadmiste test", "Tunnistus");
@@ -196,7 +196,7 @@ Phone-first, in the admin's look. Top to bottom:
 - **A note with only white space** counts as no note.
 - **"Viga" with no note** is allowed. The note field opens and asks "Mis läks valesti?", but the save does not wait for it.
 - **Both admins on one device.** The page always shows whose session it is ("Sina: Maria"), and `by` is the session's.
-- **The database is down.** The page still shows the plan from its own bundle and keeps answers locally. It says "Vastuseid ei saa praegu salvestada; need on selles seadmes alles" and sends them later.
+- **The database is down.** The page still shows the plan from its own bundle and keeps answers locally. It says "Vastuseid ei saa praegu salvestada; need on selles seadmes alles" and sends them later — only when this device can keep them (its storage works); on a device that cannot, the page shows the ordinary "Salvestan…" / "Salvestamata — proovin uuesti" states instead (amended 16.10 in the final review).
 
 ## 8. Testing
 

@@ -65,7 +65,7 @@ Preview deployments get only the variables that are enabled for the Preview envi
 
 ## 3. Deploying
 
-**Normal way (once the branch is merged into `main`).** The project's Git integration (`mslabinformation-collab/mslab`) deploys `main` to production on every push, and any other branch or pull request to a preview URL (`*.vercel.app`, noindex like everything else). Nothing else is needed: the build is `next build` in `app/`. Database migrations are not part of it (section 6): apply a new one **before** the code that needs it goes live.
+**Normal way (once the branch is merged into `main`).** The project's Git integration (`mslabinformation-collab/mslab`) deploys `main` to production on every push, and any other branch or pull request to a preview URL (`*.vercel.app`, noindex like everything else). Nothing else is needed: the build is `next build` in `app/`. Database migrations are not part of it (section 6): apply a new one **before** the code that needs it goes live. Right before every push to `main`, stamp the test plan: `node tools/testplan-stamp.mjs` from `app/`, and commit the changed `app/src/data/testplan.json` with the merge (section 15; the tool prints how many `"deploy"` marks it replaced and leaves the file untouched when there are none).
 
 **Previews.** A preview deployment builds, but no Preview environment variables are set (section 2), so the start-up check fails and every page and API request answers **500** (static files under `app/public`, such as `/guide/`, may still load). That is harmless: it touches no database and is behind Deployment Protection. Do not "fix" it by enabling the production variables for Preview. If a working preview is ever wanted, give Preview its own database and variables.
 
@@ -316,5 +316,35 @@ When an e-course is "Lõpetatud", the student confirms her name once and downloa
 9. **Deploying** (this phase's go-live, and every push after it), in this order:
    1. **The font's licence.** Nothing to check before a push: the owner waived the private-repository gate on 15.10.2026 (item 1, "The script font's licence").
    2. Migration 0009 on Railway (section 6: the count goes from 9 to 10).
-   3. The push of `main` (Vercel deploys it).
-   4. The smoke check: `/api/admin/tunnistus/1` answers 401 without a session.
+   3. The test plan's stamp: `node tools/testplan-stamp.mjs` from `app/`, committed with the merge (section 15).
+   4. The push of `main` (Vercel deploys it).
+   5. The smoke check: `/api/admin/tunnistus/1` answers 401 without a session.
+
+## 15. Testimine (the test page)
+
+The acceptance walk of the site, written down (phase 4 piece 1, spec `docs/superpowers/specs/2026-10-16-test-page-design.md`): `/admin/testimine`, titled "Testimine", where Maria and Dim tick each check "OK", "Viga" or "Jäta vahele" with a note, and see each other's answers. It is for the two admins only and is not in the admin's menu: the overview (Avaleht) shows a card "Testimine: N avatud, M viga" with the open and failed checks of the admin's own `who` (Maria: `maria` + `koos`; Dim: `dim` + `koos`; matched by the first word of the name in `ADMIN_NAMES`), and only while there are some. The card goes away by itself once none of that admin's checks is open or failed.
+
+1. **What runs where.**
+   - **The plan** is the committed file `app/src/data/testplan.json`: the areas in their order and the checks (steps, what to see, why, `who`, the device, whether running it creates data). `tests/unit/testplan-file.test.ts` holds it to `checkPlan` (`src/domain/testplan.ts`), the house style: at most 8 steps and 8 expect lines, at most 20 words a line, every line a sentence with a full stop, known ids and enums, no free-mail address. The checks' buttons and labels are the screen's words, in „…“.
+   - **The page** loads the plan and the answers in one call, `GET /api/admin/testplan`. A press saves at once and a note 1 s after typing stops (and when the field loses focus), through `PUT /api/admin/testplan`. Both are behind `withAdmin`, never cached; a save body is at most 128 KB and a note 1 000 characters. Unsent answers wait in the device's storage and go when the connection is back ("Salvestamata — proovin uuesti"). When the answers cannot be read (the database is down) and nothing is waiting, the page says "Vastuseid ei saa praegu salvestada; need on selles seadmes alles." A device that cannot keep an answer (no storage, or one that refused the last press: blocked or full) does not say it: there an unsent answer lives in the open page only, and the page shows just "Salvestan…" and "Salvestamata — proovin uuesti". A press the server has confirmed leaves the storage at once, also when the page was left while its save was on its way, so a later visit never sends it again over a newer answer.
+   - **Configuration:** no migration, no variable, no cron. The build instant is inlined by `next.config.ts` as `TESTPLAN_BUILD_AT`; it is not a configured variable (section 2 does not list it).
+2. **The answers row.** One `settings` row, key `testplan_answers`: `{ v: 1, answers: { <check id>: { status, note, at, by, pinged?, notePinged? } } }`.
+   - `at` (and `pinged`) are the server's clock at the save, never the device's; `by` is the session's e-mail address and never leaves the server (the page shows the first name of `ADMIN_NAMES`).
+   - A save merges by check id under the row's lock (`select … for update`, the row inserted first when missing): the newer `at` wins, and two saves at once both survive. Reading creates no row.
+   - Answers to ids no longer in the plan stay in the row and are never shown.
+   - To start the answers over (for example after the launch), delete the row on Railway (section 6; read it first). That throws away every answer.
+3. **The plan follows the code (the standing rule, spec §6).** Every later change that alters what a check describes updates `testplan.json` in the same commit:
+   - `"mark": "redo"` when the site behaves differently: the check opens again for whoever answered it, with the old answer under it ("Varasem vastus (enne muudatust): …"). `"mark": "reworded"` when only the words move; a new check with `"mark": "new"` for new behaviour. A fix for a "Viga" marks that check `redo` in the same commit. A behaviour that shows only on particular data gets a new check naming that data: a `redo` alone is not coverage.
+   - **On a branch**, a marked check carries `"markedAt": "deploy"`: a branch can wait for days, and an answer given meanwhile was about the old site.
+   - **Right before every push to `main`**, from `app/`: `node tools/testplan-stamp.mjs`. It replaces every `"markedAt": "deploy"` with the current instant (a text replacement: nothing else in the file changes) and prints how many it replaced; with none, the file is left untouched. Commit the result with the merge. The deploy follows within minutes.
+   - **The safety net:** a `"deploy"` that reaches a deployment unstamped reads as that build's instant (`TESTPLAN_BUILD_AT`). The check opens again at that deploy, as it should, and again at every later deploy until the tool stamps it. That asks too much rather than too little, and never hides a change.
+   - Never move the plan-wide `"marked"` to cover one check: it would open other checks' answers again.
+   - **Ids never change.** The answers hang on the id: a renamed id loses its answer, and no test can catch that. A changed meaning is a mark, not a new id.
+4. **The Telegram messages** (spec D6). Through the existing chat (`sendTelegram`: the review tools' chat, Dim's until the launch, `docs/launch-checklist.md` section 1), after the answer has gone:
+   - when a check becomes Viga: "Testimine — Viga: {title} ({name})", the note's first 300 characters or "(märkust veel pole)", and the link `<site>/admin/testimine#<id>`;
+   - once, when that Viga gets its first note: "Testimine — Märkus: {title} ({name})", the note's first 300 characters and the link;
+   - nothing more for the same failure: later edits of the note send nothing. A Viga on a check that a `redo` opened again is a new failure and sends its own messages (a fix did not work).
+   - A press carries the check's note as it stands, so a Viga pressed on an OK or a "Jäta vahele" with a note carries that old note along. It is not the failure's: the first message says "(märkust veel pole)", and the note typed next goes as the second message.
+   - A failed send never fails the save. The message is recorded as sent when the save is stored, so a send that fails is logged (with the check's id) and not tried again: read the page.
+5. **The logs.** `[testplan] saved N answers, N messages`, `[testplan] a Telegram message failed (check <id>)`, `[testplan] the answers could not be read: <error class>` and `[testplan] the save failed: <error class>`. Ids and counts only: never a note, an e-mail address or a name.
+6. **The test data** (spec D7). The checks name everything they create "Proov" and a number, and a student's address is the tester's own with `+proov<n>` before the @ (one per role, as the plan's "Enne alustamist" says). The test rows stay in the database, labelled, while testing goes on. The testers write every address they used into the check `koristamine-aadressid`; before the public launch Dim removes those rows by exact address (`docs/launch-checklist.md` section 14).

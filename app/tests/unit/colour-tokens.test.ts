@@ -79,6 +79,9 @@ const COURSE_CSS = [
   "src/components/admin/CertificateSettings.module.css",
   // the certificate register (phase 3d, Task 6)
   "src/app/admin/(panel)/tunnistused/register.module.css",
+  // the test page and its Avaleht card (phase 4, piece 1, Task 3)
+  "src/components/admin/TestPlan.module.css",
+  "src/components/admin/TestplanCard.module.css",
 ];
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""); // comments aside

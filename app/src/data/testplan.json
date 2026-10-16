@@ -1,0 +1,3186 @@
+{
+  "version": 1,
+  "marked": "2026-10-16T00:00:00.000Z",
+  "areas": [
+    {
+      "id": "enne",
+      "name": "Enne alustamist",
+      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest ja Proov 0 on Dimi esimene makse. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
+      "checks": false
+    },
+    {
+      "id": "avalik",
+      "name": "Avalik leht",
+      "note": "Alusta siit. Ainult märkega „Loob andmeid“ kontrollid saadavad vormi."
+    },
+    {
+      "id": "haldus",
+      "name": "Haldus: sisu",
+      "note": "Iga muudatus peab ilmuma avalikul lehel. Alusta esimestest kontrollidest: need valmistavad testiks ette ühe sinu päris e-koolituse, mida kasutavad järgmised alad. Kui muudad proovi jaoks päris teksti, pane see pärast tagasi."
+    },
+    {
+      "id": "registreerimine",
+      "name": "Registreerimine ja maksmine",
+      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate."
+    },
+    {
+      "id": "konto",
+      "name": "Õpilase konto",
+      "note": "Konto lehed avanevad ainult seadmes, kus vajutasid halduses „Vaata kodulehte“. Proov 1 konto on olemas pärast registreerimist."
+    },
+    {
+      "id": "ekursus",
+      "name": "E-kursus",
+      "note": "Loob andmeid. Kasutab e-koolitust, mille valmistasid ette alas „Haldus: sisu“, ja õpilast Proov 1."
+    },
+    {
+      "id": "kontakt",
+      "name": "Kontaktkoolitus",
+      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Registreerimise ala lõpus tühistati ainult Proov 2 registreering; Proov 1 registreering jääb alles kuni koristamiseni."
+    },
+    {
+      "id": "kirjad",
+      "name": "Kirjad",
+      "note": "Iga kiri avatakse Gmailis telefonis ja arvutis. Kirjad tulevad eelmiste alade kontrollidest; vaata need üle siis, kui kiri on käes. Maria teated lähevad Maria postkasti ja Telegrami teated enne avamist Dimile."
+    },
+    {
+      "id": "koristamine",
+      "name": "Koristamine",
+      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi."
+    }
+  ],
+  "items": [
+    {
+      "id": "avalik-avaleht-telefon",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Avaleht telefonis",
+      "href": "/",
+      "steps": [
+        "Ava mslab.ee telefonis.",
+        "Keri avaleht ülevalt alla."
+      ],
+      "expect": [
+        "Üleval on suur pilt ja nupp.",
+        "Midagi ei ulatu ekraani servast välja.",
+        "Allpool on koolituste kaardid, korduma kippuvate küsimuste plokk ja kontaktiplokk.",
+        "Tekst on loetav ja nupud on sõrmega hästi puudutatavad."
+      ],
+      "why": "Avaleht on esimene, mida tulevane õpilane näeb.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "avalik-avaleht-tahvel",
+      "area": "avalik",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Avaleht tahvlis",
+      "href": "/",
+      "steps": [
+        "Ava avaleht tahvlis, hoides tahvlit püsti.",
+        "Keri leht ülevalt alla.",
+        "Pööra tahvel külili ja keri leht uuesti läbi."
+      ],
+      "expect": [
+        "Slaidide all on kolm järgmist koolituspäeva.",
+        "Mõlemas asendis on tekst loetav.",
+        "Midagi ei ulatu ekraani servast välja ja plokid ei kattu."
+      ],
+      "why": "Paljud õpilased vaatavad lehte tahvlis.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "avalik-slaidid",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Avalehe slaidid",
+      "href": "/",
+      "steps": [
+        "Ava avaleht ja oota 10 sekundit.",
+        "Vajuta slaidide juures noolt paremale.",
+        "Vajuta peatamise nuppu noolte kõrval.",
+        "Telefonis libista slaidi sõrmega vasakule.",
+        "Vajuta slaidil „Vaata koolituskalendrit“."
+      ],
+      "expect": [
+        "Slaid vahetub ise umbes 6 sekundi järel.",
+        "Kui seadmes on sees „Vähenda liikumist“, ei vahetu slaid ise: see on õige.",
+        "Nool viib järgmisele slaidile ja number muutub, näiteks „02 / 05“.",
+        "Pärast peatamist slaidid enam ise ei vahetu.",
+        "Libistamine vahetab slaidi.",
+        "„Vaata koolituskalendrit“ avab koolituskalendri."
+      ],
+      "why": "Slaidid on avalehe esimene vaade.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "avalik-oppevormid",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Plokk „Kuidas soovid õppida?“",
+      "href": "/",
+      "steps": [
+        "Keri avalehel plokini „Kuidas soovid õppida?“.",
+        "Vaata samme, kui „E-õpe“ on valitud.",
+        "Vajuta „Kontaktõpe“.",
+        "Vajuta „Hübriidõpe“.",
+        "Vajuta uuesti „Kontaktõpe“ ja siis „Vaata kontaktõppe koolitusi“."
+      ],
+      "expect": [
+        "„E-õpe“ all on viis sammu, esimene „Vali sobiv koolitus“.",
+        "„Kontaktõpe“ all on viis sammu, viimane „Tunnistus“.",
+        "„Hübriidõpe“ all on ainult selgitus, samme pole.",
+        "„Vaata kontaktõppe koolitusi“ avab loendi ainult kontaktõppe koolitustega."
+      ],
+      "why": "Plokk selgitab enne ostu, kuidas õppimine käib.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "avalik-koolitused-filter",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Koolituste loend ja filtrid",
+      "href": "/koolitused",
+      "steps": [
+        "Ava koolituste loend.",
+        "Vajuta nuppu „E-õpe“.",
+        "Vajuta nuppu „Baaskoolitused“.",
+        "Kirjuta väljale „Otsi koolitust“ osa mõne koolituse nimest.",
+        "Kirjuta sinna hoopis sõna, mida ühegi koolituse tekstis pole.",
+        "Vajuta nuppu „Lähtesta filtrid“."
+      ],
+      "expect": [
+        "Pärast nuppu „E-õpe“ jäävad alles ainult e-õppe koolitused.",
+        "Nupu „E-õpe“ all on selgitus, kuidas e-õpe käib.",
+        "Pärast nuppu „Baaskoolitused“ jäävad alles ainult baaskoolitused.",
+        "Otsing jätab alles ainult koolitused, mis sisaldavad sinu kirjutatud sõna.",
+        "Võõra sõna korral näed teadet „Sobivat koolitust ei leitud“.",
+        "Pärast nuppu „Lähtesta filtrid“ on kõik koolitused jälle nähtaval."
+      ],
+      "why": "Filtrite abil leiab õpilane oma koolituse.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "avalik-kontaktkoolitus-leht",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Kontaktkoolituse leht",
+      "href": "/koolitused",
+      "steps": [
+        "Ava koolituste loend ja vajuta mõne kontaktõppe koolituse kaardile.",
+        "Keri leht ülevalt alla.",
+        "Vali „Osalemisviis“ all „Individuaalkoolitus“.",
+        "Vali tagasi „Grupikoolitus“."
+      ],
+      "expect": [
+        "Üleval on nimi, „Kestus“, „Õppekeel“, „Linnad“ ja „Koolitaja“.",
+        "„Grupikoolitus“ ja „Individuaalkoolitus“ näitavad kumbki oma hinda.",
+        "„Vali kuupäev ja linn“ all on tulevased kuupäevad, igaühel vabade kohtade arv.",
+        "„Individuaalkoolitus“ peidab kuupäevad ja küsib „Soovitud periood või kuupäev“.",
+        "Allpool on „Koolitusest“, „Pärast koolitust oskad“, „Koolitus sisaldab“ ja „Õppekava“.",
+        "Lõpus on plokk „Sulle võiksid huvi pakkuda“."
+      ],
+      "why": "Siin teeb õpilane otsuse ja registreerub.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "avalik-ekursus-leht",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "E-koolituse leht",
+      "href": "/koolitused",
+      "steps": [
+        "Ava koolituste loend ja vajuta mõne e-õppe koolituse kaardile.",
+        "Keri leht ülevalt alla.",
+        "Vajuta „Osta kohe“."
+      ],
+      "expect": [
+        "Üleval on „Moodulid“, „Õppevideod“, „Ligipääs“ ja „Õppekeel“.",
+        "„Tasumine“ all on „Maksa kohe — 100% pangalingiga“.",
+        "„Vormista järelmaks — tulekul“ on hall ja seda ei saa valida.",
+        "„Koolitus sisaldab“ loetleb videod, materjalid, testi, hindamise ja tunnistuse.",
+        "Moodulite loendis on iga moodul märkega „Lukustatud“.",
+        "„Osta kohe“ avab ostukorvi selle koolituse ja hinnaga."
+      ],
+      "why": "E-koolitust ostetakse otse sellelt lehelt.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "avalik-galerii",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Koolituse pildid",
+      "href": "/koolitused",
+      "steps": [
+        "Ava koolitus, millel on mitu pilti.",
+        "Vajuta suurele pildile.",
+        "Vaheta pilti noolega või libista sõrmega.",
+        "Sulge pildivaade ✕ nupuga."
+      ],
+      "expect": [
+        "Pilt avaneb suurelt üle kogu ekraani.",
+        "Nool ja libistamine näitavad järgmist pilti.",
+        "Pärast sulgemist oled samas kohas lehel."
+      ],
+      "why": "Pildid näitavad, mida koolitusel õpitakse.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "avalik-jaga-lemmik",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Jaga ja lisa lemmikutesse",
+      "href": "/koolitused",
+      "steps": [
+        "Ava mõni koolitus, kui sa pole õpilasena sisse logitud.",
+        "Vajuta „Jaga koolitust“.",
+        "Vajuta „Lisa lemmikutesse“.",
+        "Laadi leht uuesti."
+      ],
+      "expect": [
+        "„Jaga koolitust“ avab telefoni jagamise akna või ütleb „Koolituse link kopeeritud.“.",
+        "Süda täitub ja nupp ütleb „Lemmikutes“.",
+        "Pärast uuesti laadimist on koolitus ikka „Lemmikutes“."
+      ],
+      "why": "Lemmik ja jagamine aitavad õpilasel koolituse juurde tagasi tulla.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "avalik-kalender",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Koolituskalender",
+      "href": "/koolituskalender",
+      "steps": [
+        "Ava „Koolituskalender“.",
+        "Vajuta linna nupul, näiteks „Pärnu“.",
+        "Vajuta „Kõik“.",
+        "Vajuta mõne kuupäeva real „Registreeru“."
+      ],
+      "expect": [
+        "Igal real on kuupäev, koolitus, linn, koht, keel ja vabade kohtade arv.",
+        "Linna nupp jätab alles ainult selle linna kuupäevad.",
+        "„Registreeru“ avab koolituse lehe ja see kuupäev on vormis juba valitud.",
+        "Tühistatud kuupäeval on märge „Tühistatud“ ja nupp „Vaata teisi“."
+      ],
+      "why": "Kalendrist valib õpilane linna ja kuupäeva.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "avalik-praktika",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Praktika leht",
+      "href": "/praktika",
+      "steps": [
+        "Ava „Praktika“.",
+        "Vajuta paketi MINI kaardil „Registreeru“.",
+        "Vaata vormi „Registreeru praktikale“."
+      ],
+      "expect": [
+        "Lehel on kirjas, et praktika toimub ainult Pärnus.",
+        "MINI ja MAXI kaardil on hind, kestus ja paketi punktid.",
+        "Vormi juures on „Valitud pakett: MINI“.",
+        "Vormis on „Nimi“, „E-post“, „Telefon“ ja „Millised ajad sulle sobivad?“."
+      ],
+      "why": "Praktika leht toob praktikataotlused.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "avalik-koolitaja",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Koolitaja leht",
+      "href": "/koolitaja",
+      "steps": [
+        "Ava „Koolitaja“.",
+        "Keri leht lõpuni.",
+        "Vajuta „Vaata koolitusi“."
+      ],
+      "expect": [
+        "Üleval on portree, nimi, tutvustus ja numbrid.",
+        "Allpool on „Koolitaja tööd“, „Koolituskeskuse lugu“ ja „Koolitaja teekond“.",
+        "„Vaata koolitusi“ avab koolituste loendi."
+      ],
+      "why": "Õpilane tahab teada, kes teda õpetab.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "avalik-uudised",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Uudised ja postitus",
+      "href": "/uudised",
+      "steps": [
+        "Ava „Uudised“.",
+        "Vajuta ühel postitusel „Loe edasi“.",
+        "Keri postitus lõpuni."
+      ],
+      "expect": [
+        "Lehel on pealkiri „Blogi.“ ja postitused, uuemad eespool.",
+        "Postituse lehel on kaanepilt, kuupäev, kategooria ja tekst.",
+        "Postituse all on nupp „Vaata koolitusi“ ja teised postitused."
+      ],
+      "why": "Blogi toob lehele uusi lugejaid.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "avalik-kkk",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Korduma kippuvad küsimused",
+      "href": "/",
+      "steps": [
+        "Keri avalehel plokini „Korduma kippuvad küsimused“.",
+        "Vajuta teisele küsimusele.",
+        "Vajuta sama küsimust uuesti."
+      ],
+      "expect": [
+        "Esimese küsimuse vastus on kohe lahti.",
+        "Vajutus avab küsimuse vastuse.",
+        "Teine vajutus sulgeb vastuse."
+      ],
+      "why": "Küsimused vastavad enne, kui õpilane Mariale kirjutab.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "avalik-hupikaken",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Hüpikaken avalehel",
+      "href": "/",
+      "steps": [
+        "Kontrolli, et halduses „Hüpikaken“ all pole valitud „Väljas“.",
+        "Ava avaleht uues brauseri vahekaardis ja oota 6 sekundit.",
+        "Sulge aken ✕ nupuga.",
+        "Liigu mõnele teisele lehele ja tule avalehele tagasi.",
+        "Ava avaleht veel ühes uues vahekaardis ja libista aken sõrmega alla."
+      ],
+      "expect": [
+        "Umbes 6 sekundi pärast avaneb hüpikaken, mis on halduses „Hüpikaken“ all valitud.",
+        "✕ sulgeb akna.",
+        "Samas vahekaardis aken uuesti ei avane.",
+        "Uues vahekaardis avaneb aken jälle ja alla libistamine sulgeb selle."
+      ],
+      "why": "Hüpikaken toob kampaania või uudiskirja ette ainult korra.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "avalik-jalus",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Lehe jalus",
+      "href": "/",
+      "steps": [
+        "Keri mõne lehe lõppu.",
+        "Vajuta jaluses „Privaatsus“.",
+        "Mine tagasi ja vajuta „Õppetingimused“.",
+        "Mine tagasi ja vajuta „Võta ühendust ↗“."
+      ],
+      "expect": [
+        "Jaluses on uudiskirja plokk „MS LABi kirjad“, lingid ja kontaktandmed.",
+        "„Privaatsus“ avab privaatsusteksti.",
+        "„Õppetingimused“ avab õppetingimuste teksti.",
+        "„Võta ühendust ↗“ avab lehe „Alustame vestlusest.“."
+      ],
+      "why": "Jalus on igal lehel ja viib õigusteksti ning kontakti juurde.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "avalik-uudiskiri",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Liitumine uudiskirjaga",
+      "href": "/",
+      "steps": [
+        "Keri lehe lõppu plokini „MS LABi kirjad“.",
+        "Kirjuta väljale „Sinu e-post“ oma aadress, kuhu lisad enne @-märki +proov3.",
+        "Vajuta „Liitu“.",
+        "Ava halduses „Uudiskiri“."
+      ],
+      "expect": [
+        "Näed teadet „Aitäh, oled liitunud!“ ja „Saatsime sulle tervituskirja.“.",
+        "Postkasti tuleb kiri „Tere tulemast MS LABi!“.",
+        "Halduse tellijate loendis on see aadress."
+      ],
+      "why": "Uudiskiri on Maria otsene tee õpilaste juurde.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "avalik-kontaktivorm",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Kontaktivorm",
+      "href": "/kontakt",
+      "steps": [
+        "Ava kontaktileht ja vajuta „Saada“ tühja vormiga.",
+        "Kirjuta „Nimi“: Proov 3.",
+        "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov3.",
+        "Kirjuta „Sõnum“: Proov 3, kontaktivormi test.",
+        "Vajuta „Saada“."
+      ],
+      "expect": [
+        "Tühja vormi korral on väljade all „See väli on kohustuslik.“.",
+        "Pärast saatmist näed „Aitäh! Sinu sõnum on saadetud.“.",
+        "Maria postkasti tuleb kiri „Sõnum kodulehelt — Proov 3“.",
+        "Halduses „Päringud“ → „Kontakt“ on Proov 3 sõnum märkega „Uus“."
+      ],
+      "why": "Kontaktivorm on õpilase lihtsaim tee Mariani.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "avalik-ru-avaleht",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Avaleht vene keeles",
+      "href": "/ru",
+      "steps": [
+        "Ava venekeelne avaleht.",
+        "Keri leht ülevalt alla.",
+        "Vajuta lingile „ET / RU“; telefonis on see menüüs ☰."
+      ],
+      "expect": [
+        "Menüü, nupud ja lehe lõpp on vene keeles.",
+        "Pealkirjad „Выберите свой курс.“, „Часто задаваемые вопросы“ ja „Не знаете, какой курс подойдёт?“ on olemas.",
+        "Link „ET / RU“ viib sama lehe eestikeelsesse versiooni."
+      ],
+      "why": "Venekeelne pool peab töötama sama hästi kui eestikeelne.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "avalik-ru-koolitus",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Koolituse leht vene keeles",
+      "href": "/ru/koolitused",
+      "steps": [
+        "Ava venekeelne koolituste loend.",
+        "Ava mõni kontaktõppe koolitus.",
+        "Ava mõni e-õppe koolitus."
+      ],
+      "expect": [
+        "Nupud, sildid ja vormi väljad on vene keeles.",
+        "Koolituse tekst on vene keeles või, kui tõlget pole, eesti keeles.",
+        "Aadress algab /ru."
+      ],
+      "why": "Vene keelt kõnelev õpilane registreerub vene lehel.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "avalik-404",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Olematu leht",
+      "href": "/koolitused/olematu-koolitus",
+      "steps": [
+        "Ava aadress mslab.ee/koolitused/olematu-koolitus.",
+        "Vajuta „Avalehele“."
+      ],
+      "expect": [
+        "Näed lehte „Lehte ei leitud“.",
+        "Päis ja jalus on alles.",
+        "„Avalehele“ viib avalehele."
+      ],
+      "why": "Vana või vale link ei tohi jätta õpilast tühja lehe ette.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "avalik-ootelehekulg",
+      "area": "avalik",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Ootelehekülg enne avamist",
+      "href": "/",
+      "steps": [
+        "Ava mslab.ee privaatses aknas, kus sa pole halduses sisse logitud.",
+        "Ava samas aknas mslab.ee/koolitused.",
+        "Ava samas aknas mslab.ee/admin ja küsi sisselogimislink.",
+        "Kopeeri kirjast link ja ava see samas privaatses aknas.",
+        "Vajuta halduses üleval „Vaata kodulehte“."
+      ],
+      "expect": [
+        "Avalehel on ainult „Uus koduleht on peagi valmis.“ ja uudiskirjaga liitumine.",
+        "Ka /koolitused näitab sama ootelehekülge.",
+        "/admin avab halduse sisselogimise.",
+        "Pärast „Vaata kodulehte“ näeb see aken kogu kodulehte."
+      ],
+      "why": "Enne avamist ei tohi võõras kodulehte näha.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-ekursus-moodul",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Testiks: moodul ja tekstitund",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava „Koolitused“ ja vajuta oma päris e-koolituse nimele.",
+        "Keri plokini „Moodulid ja õppetunnid“.",
+        "Kirjuta „Uue mooduli nimi“ ja vajuta „Lisa moodul“.",
+        "Kirjuta mooduli all „Uue õppetunni nimi“ ja vajuta „Lisa õppetund“.",
+        "Vali avanenud paneelis „Õppetunni liik“ all „Tekst“.",
+        "Kirjuta „Lühike tekst“ ja vajuta „Salvesta“."
+      ],
+      "expect": [
+        "Moodul ilmub loendisse oma numbriga, näiteks 01.",
+        "Õppetund ilmub mooduli alla ja selle paneel avaneb ise.",
+        "Paneelis näed pärast salvestamist „Salvestatud.“.",
+        "Õppetunni real on märge „Tekst“."
+      ],
+      "why": "Alad 4–7 kasutavad seda e-koolitust; see töö on vaja teha ka avamiseks.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-ekursus-video",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Testiks: videotund",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava sama e-koolitus ja sama moodul.",
+        "Lisa moodulisse teine õppetund nupuga „Lisa õppetund“.",
+        "Jäta avanenud paneelis liigiks „Video“.",
+        "Vajuta „Vali video“ ja vali lühike video.",
+        "Hoia leht lahti, kuni üleslaadimine lõpeb."
+      ],
+      "expect": [
+        "Üleslaadimise ajal näed „Laen üles…“ koos protsentidega.",
+        "Seejärel näed „Töötlemisel…“.",
+        "Mõne minuti pärast näed „Valmis“ koos video pikkusega.",
+        "Õppetunni real on märge „Video“ koos video pikkusega."
+      ],
+      "why": "Videotund on e-koolituse põhiosa.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-ekursus-test",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Testiks: teadmiste test",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava sama e-koolitus ja keri plokini „Teadmiste test“.",
+        "Vajuta „Lisa küsimus“ ja jäta liigiks „Valikvastustega“.",
+        "Kirjuta küsimus ja kaks vastusevarianti ning märgi ühe juures „Õige“.",
+        "Vajuta uuesti „Lisa küsimus“ ja vali „Vaba vastusega“.",
+        "Kirjuta teine küsimus.",
+        "Vaata üle „Läbimise piir (%)“ ja „Katseid“.",
+        "Vajuta lehe all „Salvesta“."
+      ],
+      "expect": [
+        "Pärast salvestamist näed „Salvestatud.“.",
+        "Pärast lehe uuesti laadimist on mõlemad küsimused alles.",
+        "Valikküsimusel on õige vastus märgitud."
+      ],
+      "why": "Test on e-koolituse lõpetamise teine samm.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-ekursus-punktid",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Testiks: praktilise töö punktid",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava sama e-koolitus ja keri plokini „Protokolli punktid“.",
+        "Vajuta „Lisa punkt“ ja kirjuta esimese punkti nimi.",
+        "Vajuta uuesti „Lisa punkt“ ja kirjuta teise punkti nimi.",
+        "Vajuta lehe all „Salvesta“."
+      ],
+      "expect": [
+        "Ploki juures on selgitus, et e-kursusel on need praktilise töö punktid.",
+        "Pärast salvestamist näed „Salvestatud.“.",
+        "Mõlemad punktid jäävad alles, kui lehe uuesti laadid."
+      ],
+      "why": "Õpilane lisab iga punkti juurde fotod ja sina hindad neid.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-ekursus-tunnistus",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Testiks: tunnistuse kaart",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava sama e-koolitus ja keri plokini „Tunnistus“.",
+        "Lisa „Oskused tunnistusel“ alla read nupuga „Lisa rida“ või jäta tühjaks.",
+        "Kirjuta „Maht“, näiteks 10 akadeemilist tundi.",
+        "Vajuta lehe all „Salvesta“."
+      ],
+      "expect": [
+        "Tühja loendi korral on kirjas, et tunnistusel on „Õpiväljundid“ read.",
+        "Pärast salvestamist näed „Salvestatud.“."
+      ],
+      "why": "Need read trükitakse õpilase tunnistusele.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "haldus-ekursus-avalda",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Testiks: avalda e-koolitus",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava sama e-koolitus ja keri plokini „Avaldamine“.",
+        "Märgi „Avaldatud“ ja vajuta „Salvesta“.",
+        "Vajuta üleval „Vaata lehel ↗“."
+      ],
+      "expect": [
+        "Koolituste loendis on e-koolituse staatus „Avaldatud“.",
+        "Avalikul lehel on koolitus koos hinnaga.",
+        "Lehe moodulite loendis on sinu moodul.",
+        "„Õppevideod“ näitab arvu, mis on väljal „Videotunde“."
+      ],
+      "why": "Ainult avaldatud e-koolitust saab osta.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-kontakt-punktid",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Kontaktkoolituse protokolli punktid",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava kontaktkoolitus, millele registreerid alas „Registreerimine ja maksmine“.",
+        "Keri plokini „Protokolli punktid“.",
+        "Lisa vähemalt kaks punkti nupuga „Lisa punkt“.",
+        "Vajuta lehe all „Salvesta“."
+      ],
+      "expect": [
+        "Pärast salvestamist näed „Salvestatud.“.",
+        "Punktid jäävad alles, kui lehe uuesti laadid."
+      ],
+      "why": "Koolituspäeva protokoll kasutab neid punkte.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "haldus-koolitus-tekst",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Koolituse tekst",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni koolitus.",
+        "Lisa „Lühikirjeldus“ lõppu sõna Proov.",
+        "Vajuta „Salvesta“.",
+        "Ava avalik koolituste loend ja selle koolituse leht.",
+        "Kustuta sõna Proov ja salvesta uuesti."
+      ],
+      "expect": [
+        "Muutmise ajal näed „Salvestamata muudatused“.",
+        "Pärast salvestamist näed „Salvestatud.“.",
+        "Sõna Proov on kaardil ja koolituse lehe päises.",
+        "Pärast tagasimuutmist on sõna kadunud ka avalikult lehelt."
+      ],
+      "why": "Maria muudab tekste ise ja muudatus peab kohe näha olema.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-koolitus-hind",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Koolituse hind",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni kontaktkoolitus, millel on täidetud „Grupikoolituse hind (€)“ ja „Individuaalkoolituse hind (€)“.",
+        "Kirjuta mõlemale väljale ühe euro võrra suurem hind, vajuta „Salvesta“ ja ava koolituse avalik leht.",
+        "Ava mõni e-koolitus ja kirjuta „Hind (€)“ väljale ühe euro võrra suurem hind.",
+        "Vajuta „Salvesta“ ja ava avalik koolituste loend.",
+        "Ava selle e-koolituse leht.",
+        "Vajuta „Osta kohe“.",
+        "Pane kõik kolm hinda tagasi, nagu need olid, ja salvesta.",
+        "Ava mõlema koolituse avalik leht uuesti."
+      ],
+      "expect": [
+        "Kontaktkoolituse lehel on „Grupikoolitus“ juures uus hind.",
+        "Ka „Individuaalkoolitus“ juures on uus hind.",
+        "E-koolituse kaardil on uus hind.",
+        "Ostukorvi real „Kokku“ on uus hind.",
+        "Pärast tagasipanekut on mõlemal lehel jälle vana hind."
+      ],
+      "why": "Maria muudab hindu ise ja õpilane peab nägema õiget hinda.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-ru-tekst",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Venekeelne tekst",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni koolitus.",
+        "Vajuta välja „Lühikirjeldus“ juures „RU“.",
+        "Vaata, mis on välja juures, kui vene tekst puudub.",
+        "Ava sama koolitus avalikul lehel vene keeles."
+      ],
+      "expect": [
+        "Tühja vene välja juures on märge „tõlge tulekul“.",
+        "Vene lehel on siis näha eestikeelne tekst.",
+        "Täidetud vene tekst on vene lehel näha."
+      ],
+      "why": "Vene pool ei tohi jääda tühjaks.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "haldus-koolitus-margis",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Koolituse märgis",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni koolitus ja keri plokini „Koolituse märgis“.",
+        "Vali „Kiirvalik“ alt „Uus“.",
+        "Vali „Värv“ alt mõni teine värv.",
+        "Vajuta „Salvesta“ ja ava avalik koolituste loend.",
+        "Pane märgis tagasi, nagu see oli, ja salvesta."
+      ],
+      "expect": [
+        "„Eelvaade“ näitab kaarti uue märgisega kohe.",
+        "Avalikus loendis on kaardil märgis „Uus“ valitud värviga.",
+        "Pärast tagasipanekut on kaart nagu enne."
+      ],
+      "why": "Märgis tõstab koolituse esile.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "haldus-koolitus-pildid",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Koolituse pildid",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni koolitus ja keri plokini „Galerii“.",
+        "Vajuta „Lisa pilte“ ja vali tahvlist üks pilt.",
+        "Liiguta uus pilt noolega esimeseks.",
+        "Vajuta „Salvesta“ ja ava koolitus avalikul lehel.",
+        "Eemalda uus pilt ✕ nupuga ja salvesta."
+      ],
+      "expect": [
+        "Pilt laaditakse üles ja ilmub galeriisse.",
+        "Esimese pildi juures on „Põhipilt“.",
+        "Avalikul lehel ja kaardil on uus pilt esimene.",
+        "Pärast eemaldamist on galerii nagu enne."
+      ],
+      "why": "Maria lisab pildid otse tahvlist.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "haldus-koolitus-jarjekord",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Koolituste järjekord",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava „Koolitused“.",
+        "Vajuta teise koolituse real noolt üles.",
+        "Ava avalik koolituste loend.",
+        "Vii koolitus noolega tagasi oma kohale."
+      ],
+      "expect": [
+        "Koolitus liigub loendis kohe üles.",
+        "Avalikus loendis on sama järjekord.",
+        "Pärast tagasiviimist on järjekord nagu enne."
+      ],
+      "why": "Järjekord otsustab, mida õpilane näeb esimesena.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "haldus-kalender-toimumine",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Kalender: lisa ja kustuta toimumine",
+      "href": "/admin/kalender",
+      "steps": [
+        "Ava „Kalender“ ja vajuta „Lisa toimumine“.",
+        "Vali koolitus ja kuupäev järgmisel aastal.",
+        "Kirjuta „Algus“: 10:00, „Linn“: Proov ja „Toimumiskoht“: Proov 1.",
+        "Vajuta „Lisa toimumine“.",
+        "Ava avalik koolituskalender.",
+        "Ava halduses see toimumine, vali „Staatus“ alt „Tühistatud“ ja vajuta „Salvesta toimumine“.",
+        "Ava uuesti avalik koolituskalender.",
+        "Vajuta halduses toimumisel „Kustuta toimumine“ ja siis „Jah, kustuta“."
+      ],
+      "expect": [
+        "Näed „Toimumine lisatud.“ ja uus rida on kalendris.",
+        "Avalikus kalendris on rida linnaga Proov.",
+        "Pärast tühistamist on avalikus kalendris märge „Tühistatud“.",
+        "Pärast kustutamist näed „Toimumine kustutatud.“ ja rida on kadunud."
+      ],
+      "why": "Maria paneb kuupäevad kalendrisse ise.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "haldus-avaleht-slaid",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Avalehe slaid",
+      "href": "/admin/avaleht",
+      "steps": [
+        "Ava „Avaleht“ ja vajuta „Slaid 1“, et see avada.",
+        "Lisa „Pealkiri“ lõppu sõna Proov ja vajuta „Salvesta“.",
+        "Ava avaleht.",
+        "Eemalda sõna Proov ja salvesta.",
+        "Võta ära märge „Näidatakse avalehel“, salvesta ja ava avaleht.",
+        "Pane märge tagasi ja salvesta."
+      ],
+      "expect": [
+        "Pärast salvestamist näed „Salvestatud.“.",
+        "Avalehe esimesel slaidil on sõna Proov.",
+        "Pärast eemaldamist on pealkiri nagu enne.",
+        "Ilma märketa on slaid halduses „Peidetud“ ja avalehel seda pole.",
+        "Pärast märke tagasipanekut on slaid jälle avalehel."
+      ],
+      "why": "Slaidid on avalehe esimene vaade.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "haldus-avaleht-kkk",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Avalehe küsimused",
+      "href": "/admin/avaleht",
+      "steps": [
+        "Ava „Avaleht“ ja keri plokini „Korduma kippuvad küsimused“.",
+        "Vajuta „Lisa küsimus“.",
+        "Kirjuta „Küsimus“: Proov 1? ja „Vastus“: Proov 1.",
+        "Vajuta „Salvesta“ ja ava avaleht.",
+        "Eemalda see küsimus ja salvesta."
+      ],
+      "expect": [
+        "Avalehe küsimuste lõpus on „Proov 1?“.",
+        "Pärast eemaldamist on küsimus avalehelt kadunud."
+      ],
+      "why": "Maria vastab korduvatele küsimustele ise.",
+      "risk": "low",
+      "writes": true
+    },
+    {
+      "id": "haldus-uudised-postitus",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Uus postitus",
+      "href": "/admin/uudised",
+      "steps": [
+        "Ava „Uudised“ ja vajuta „Lisa postitus“.",
+        "Kirjuta „Pealkiri“: Proov 1 ja „Lühitekst“: Proov 1.",
+        "Vajuta „Salvesta“.",
+        "Vajuta „Kaanepilt“ all „Vali pilt“ ja märgi „Avaldatud“.",
+        "Vajuta „Salvesta“ ja ava avalik „Uudised“.",
+        "Vajuta postituses „Kustuta postitus“ ja „Jah, kustuta“."
+      ],
+      "expect": [
+        "Pärast esimest salvestamist näed „Postitus loodud. Lisa kaanepilt ja avalda, kui kõik on valmis.“.",
+        "Avaldatud postitus Proov 1 on blogis ja avalehel.",
+        "Pärast kustutamist näed „Postitus kustutatud.“ ja blogis seda pole."
+      ],
+      "why": "Maria kirjutab uudiseid ise.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "haldus-praktika",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Praktikapaketid",
+      "href": "/admin/praktika",
+      "steps": [
+        "Ava „Praktika“.",
+        "Lisa paketi MINI „Lühitekst“ lõppu sõna Proov.",
+        "Vajuta „Salvesta“ ja ava avalik praktika leht.",
+        "Eemalda sõna Proov ja salvesta."
+      ],
+      "expect": [
+        "Praktika lehel ja avalehe praktikaplokis on sõna Proov.",
+        "Pärast eemaldamist on tekst nagu enne."
+      ],
+      "why": "Paketid on praktika lehel ja avalehel.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "haldus-koolitaja",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Koolitaja andmed",
+      "href": "/admin/koolitaja",
+      "steps": [
+        "Ava „Koolitaja“.",
+        "Vajuta „Koolitaja tööd“ all „Lisa pilte“ ja vali üks pilt.",
+        "Vajuta „Salvesta“.",
+        "Ava avalik koolitaja leht.",
+        "Eemalda see pilt ja salvesta."
+      ],
+      "expect": [
+        "Koolitaja lehel on uus pilt „Koolitaja tööd“ all.",
+        "Avalehe koolitaja plokis on sama nimi ja tutvustus.",
+        "Pärast eemaldamist on pilt kadunud."
+      ],
+      "why": "Koolitaja leht näitab Maria tööd.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "haldus-hupikaken",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Hüpikakna valik",
+      "href": "/admin/kampaania",
+      "steps": [
+        "Ava „Hüpikaken“.",
+        "Vali „Lehel näidatakse“ alt „Uudiskiri“ ja vajuta „Salvesta“.",
+        "Ava avaleht uues vahekaardis ja oota 6 sekundit.",
+        "Vali „Väljas“, salvesta, ava avaleht uues vahekaardis ja oota 6 sekundit.",
+        "Vali „Kampaania“, salvesta, ava avaleht uues vahekaardis ja oota 6 sekundit.",
+        "Pane tagasi valik, mis oli enne, ja salvesta."
+      ],
+      "expect": [
+        "„Uudiskiri“ korral avaneb aken e-posti välja ja nupuga „Liitu“.",
+        "„Väljas“ korral ei avane ükski aken.",
+        "„Kampaania“ korral avaneb sooduspakkumise aken."
+      ],
+      "why": "Maria otsustab, mida avaleht pakub.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "haldus-seaded-kontakt",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: kontaktandmed",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja vaata üle „Kontaktandmed“.",
+        "Paranda vajadusel „E-post“, „Telefon“ ja „Aadress“.",
+        "Vajuta „Salvesta“.",
+        "Ava avaliku lehe jalus ja kontaktileht."
+      ],
+      "expect": [
+        "Jaluses on sama e-post ja telefon.",
+        "Kontaktilehel on sama e-post ja aadress.",
+        "Tühja välja ei näidata."
+      ],
+      "why": "Õpilane võtab ühendust nende andmete järgi.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "haldus-seaded-ettemaks",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: ettemaksu juhised",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja keri plokini „Ettemaksu juhised“.",
+        "Täida „Saaja“, „IBAN“ ja „Pank“.",
+        "Kirjuta „Selgituse algus“, näiteks MSLAB.",
+        "Vajuta „Salvesta“."
+      ],
+      "expect": [
+        "Pärast salvestamist näed „Salvestatud.“.",
+        "Vigase IBANi korral näed „Kontrolli IBANi: …“ ja midagi ei salvestata."
+      ],
+      "why": "Ilma nendeta ei saa õpilane pangaülekandega maksta.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-seaded-tingimused",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: e-koolituse tingimused",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja keri plokini „E-koolituse tingimused“.",
+        "Kirjuta oma päris tingimuste tekst.",
+        "Vajuta „Salvesta“."
+      ],
+      "expect": [
+        "Pärast salvestamist näed „Salvestatud.“.",
+        "Seda teksti ei ole avalikul lehel."
+      ],
+      "why": "Õpilane nõustub nende tingimustega enne e-koolituse alustamist.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-seaded-tunnistus",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: tunnistuse andmed",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja keri kaardini „Tunnistus“.",
+        "Kirjuta selle kontrolli märkusesse „Järgmine number“ praegune aasta ja number.",
+        "Vaata üle „Koht“, „Registrikood“ ja „Praktilise töö rida“.",
+        "Kirjuta „Koolitaja nimi“ nii, nagu tahad allkirja.",
+        "Vajuta „Salvesta tunnistuse andmed“."
+      ],
+      "expect": [
+        "Kaardil on rida „Viimati väljastatud: …“ või teade, et tänavu pole tunnistusi väljastatud.",
+        "„Järgmine number“ juures on vihje „Jätka oma paberil tunnistuste numbreid. …“.",
+        "Pärast salvestamist näed „Tunnistuse andmed on salvestatud.“."
+      ],
+      "why": "Tunnistus jätkab Maria paberil tunnistuste numbrite rida.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "registreerimine-vorm-vead",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Registreerimisvormi vead",
+      "href": "/koolitused",
+      "steps": [
+        "Ava oma kontaktkoolituse leht.",
+        "Vajuta „Registreeru“ ilma midagi täitmata.",
+        "Vali kuupäev ja vajuta uuesti „Registreeru“."
+      ],
+      "expect": [
+        "Kuupäevade all on „Vali sobiv kuupäev.“.",
+        "Nime, telefoni ja tingimuste juures on „See väli on kohustuslik.“.",
+        "E-posti all on „Sisesta korrektne e-posti aadress.“.",
+        "Pärast kuupäeva valimist kaob kuupäeva viga, teised jäävad.",
+        "Midagi ei salvestata ja leht ei liigu edasi."
+      ],
+      "why": "Vigane vorm peab ütlema, mida parandada.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "registreerimine-montonio-esmane",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Montonio testpank: esimene makse",
+      "href": "/koolitused",
+      "steps": [
+        "Ava kontaktkoolitus ja vali tulevane kuupäev, kus on vabu kohti.",
+        "Kirjuta „Nimi“: Proov 0.",
+        "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov0.",
+        "Vali „100% kohe“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Kirjuta selle kontrolli märkusesse, mida Montonio leht pakub: pangad, kaart ja nupud.",
+        "Tee makse testpangas lõpuni ja kirjuta märkusesse iga samm.",
+        "Kirjuta sama ka docs/deploy.md jaotise 11 punkti 6.",
+        "Halduses ava „Registreerimised“, vali Proov 0 ja vajuta „Tühista registreerimine“."
+      ],
+      "expect": [
+        "„Registreeru“ avab Montonio makselehe koolituse hinna suuruse summaga.",
+        "Pärast makset on lehel „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“.",
+        "Halduses „Maksed“ on Proov 0 makse staatusega „Makstud“.",
+        "Märkuses on testpanga sammud, mida Maria saab järgida.",
+        "Pärast tühistamist näed „Registreerimine on tühistatud.“."
+      ],
+      "why": "Montonio dokumentatsioon ei kirjelda testpanga lehte, nii et teised maksekontrollid järgivad seda märkust.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "registreerimine-grupp",
+      "area": "registreerimine",
+      "who": "koos",
+      "device": "telefon",
+      "title": "Registreerimine grupikoolitusele",
+      "href": "/koolitused",
+      "steps": [
+        "Ava oma kontaktkoolituse leht ja vali tulevane kuupäev, kus on vabu kohti.",
+        "Kirjuta „Nimi“: Proov 1.",
+        "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov1.",
+        "Kirjuta „Telefon“: oma telefoninumber.",
+        "Vali „50% registreerimisel + 50% koolituspäeval“.",
+        "Märgi „Loo mulle kohe konto MS LAB keskkonda“ ja tingimuste ruut.",
+        "Vajuta „Registreeru“."
+      ],
+      "expect": [
+        "Hetkeks näed teadet „Registreerimine on vastu võetud. …“.",
+        "Siis avaneb Montonio makseleht poole koolituse hinnaga.",
+        "Postkasti tuleb kiri „Registreering on vastu võetud — …“ koos koodiga.",
+        "Maria postkasti tuleb teade „Registreerimine: …“ nimega Proov 1."
+      ],
+      "why": "Registreerimine on lehe kõige tähtsam töö.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "registreerimine-ettemaks",
+      "area": "registreerimine",
+      "who": "koos",
+      "device": "telefon",
+      "title": "Ettemaks testpangas",
+      "href": "/koolitused",
+      "steps": [
+        "Montonio lehel tee makse testpangas, nagu Dim kirjutas kontrolli „Montonio testpank: esimene makse“ märkusesse.",
+        "Oota, kuni pank saadab sind tagasi MS LABi lehele."
+      ],
+      "expect": [
+        "Lehel on „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“ ja link „Minu koolitused“.",
+        "Postkasti tuleb kiri „Koht on kinnitatud — …“.",
+        "Kirjas on ülejäänud summa ja lause, et selle saab tasuda koolituspäeval või Minu koolitused lehel.",
+        "Maria postkasti tuleb teade „Uus makse: Proov 1, …“."
+      ],
+      "why": "Ettemaks kinnitab koha.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "registreerimine-haldus",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Registreering halduses",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava „Registreerimised“.",
+        "Vajuta nimele Proov 1.",
+        "Vaata avanenud paneelis hinda ja laekunud summat."
+      ],
+      "expect": [
+        "Real on „Kontaktõpe“, „Grupp“, koolitus, kuupäev, „50% ettemaks“ ja staatus „Kinnitatud“.",
+        "Paneeli üleval on Proov 1, koolitus ja nupp „Ava protokoll“.",
+        "„Laekunud“ on pool hinnast.",
+        "„Veebimaksed“ all on makse märkega „Makstud“.",
+        "Ülevaate arv „Ootab ettemaksu“ ei loe Proov 1 registreeringut."
+      ],
+      "why": "Maria näeb siin, kes on maksnud.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "registreerimine-maksed",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Maksed halduses",
+      "href": "/admin/maksed",
+      "steps": [
+        "Ava „Maksed“.",
+        "Vajuta filtril „Makstud“.",
+        "Vaata Proov 1 rida."
+      ],
+      "expect": [
+        "Real on maksja Proov 1, koolitus, „Ettemaks“, summa ja staatus „Makstud“.",
+        "Veerus „Montonio id“ on Montonio tellimuse number.",
+        "Uuemad maksed on eespool."
+      ],
+      "why": "Maksete loend näitab iga Montonio makset.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "registreerimine-kohad",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Vabad kohad pärast registreerimist",
+      "href": "/koolituskalender",
+      "steps": [
+        "Ava avalikus koolituskalendris Proov 1 kuupäeva rida.",
+        "Ava halduses „Kalender“ ja sama kuupäeva rida."
+      ],
+      "expect": [
+        "Halduse veerus „Kohad“ on Proov 1 arvestatud kinnitatute hulka.",
+        "Avaliku kalendri vabade kohtade arv on sama mis halduse „Vabu kohti“.",
+        "Kui number pole veel muutunud, on see õige 5 minuti pärast."
+      ],
+      "why": "Täis kuupäevale ei tohi rohkem registreerida.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "registreerimine-ulejaanud",
+      "area": "registreerimine",
+      "who": "koos",
+      "device": "telefon",
+      "title": "Ülejäänud summa maksmine",
+      "href": "/koolitused",
+      "steps": [
+        "Ava kiri „Registreering on vastu võetud — …“.",
+        "Vajuta kirjas nuppu „Maksa …“.",
+        "Vaata avanenud lehte „Koolituse eest tasumine“.",
+        "Vajuta „Maksa ülejäänud …“ ja tee makse testpangas."
+      ],
+      "expect": [
+        "Lehel on koolitus, kuupäev ja ülejäänud summa.",
+        "Pärast makset on lehel „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“.",
+        "Postkasti tuleb kiri „Makse on kätte saadud — …“ reaga „Kogu summa on tasutud.“.",
+        "Halduses on Proov 1 „Laekunud“ võrdne koolituse hinnaga."
+      ],
+      "why": "Teise poole saab õpilane maksta ise, ilma Mariata.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "registreerimine-pooleli",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Makse jääb tegemata",
+      "href": "/koolitused",
+      "steps": [
+        "Registreeri samale kuupäevale: „Nimi“ Proov 2 ja „Telefon“ oma number.",
+        "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov2.",
+        "Vali „100% kohe“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb."
+      ],
+      "expect": [
+        "Tagasi lehel on „Makse jäi tegemata.“ või „Makse on pooleli. …“.",
+        "Lehel on nupp „Proovi uuesti“.",
+        "Postkasti tuleb kiri „Registreering on vastu võetud — …“.",
+        "Kirjas on nupp „Maksa …“ ja selle all „või tasu pangaülekandega“ koos panga andmetega."
+      ],
+      "why": "Kõik ei maksa kohe; registreering peab ikka alles jääma.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "registreerimine-pangaulekanne",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Pangaülekande märkimine",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava „Registreerimised“ ja vajuta nimele Proov 2.",
+        "Kirjuta „Laekunud summa (€)“ väljale koolituse hind.",
+        "Vajuta „Salvesta summa“.",
+        "Ava kiri „Registreering on vastu võetud — …“ ja vaata pangaandmeid."
+      ],
+      "expect": [
+        "Enne salvestamist on staatus „Ootab ettemaksu“.",
+        "Pärast salvestamist näed „Summa salvestatud.“.",
+        "Staatus muutub „Kinnitatud“.",
+        "Kirjas on „Saaja“, „IBAN“, „Pank“, „Summa“ ja „Selgitus“, nagu Seadetes."
+      ],
+      "why": "Pangaülekanne on maksmise teine tee ja Maria märgib selle ise.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "registreerimine-individuaal",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Individuaalkoolituse päring",
+      "href": "/koolitused",
+      "steps": [
+        "Ava kontaktkoolitus, millel on individuaalkoolituse hind.",
+        "Vali „Individuaalkoolitus“.",
+        "Kirjuta „Nimi“: Proov 3 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov3.",
+        "Kirjuta „Telefon“: oma number ja „Soovitud periood või kuupäev“: Proov 3.",
+        "Märgi tingimuste ruut ja vajuta „Saada päring“."
+      ],
+      "expect": [
+        "Näed teadet „Aitäh! Sinu päring on saadetud.“.",
+        "Postkasti tuleb kiri „Päring on vastu võetud — …“.",
+        "Maria postkasti tuleb „Individuaalkoolituse päring: … — Proov 3“.",
+        "Halduses „Päringud“ → „Individuaal“ on Proov 3 päring märkega „Uus“."
+      ],
+      "why": "Individuaalkoolituse aeg lepitakse kokku päringu kaudu.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "registreerimine-praktika",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Praktikataotlus",
+      "href": "/praktika",
+      "steps": [
+        "Ava „Praktika“ ja vajuta paketil MAXI „Registreeru“.",
+        "Kirjuta „Nimi“: Proov 3 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov3.",
+        "Kirjuta „Telefon“: oma number ja „Millised ajad sulle sobivad?“: Proov 3.",
+        "Vajuta „Saada taotlus“."
+      ],
+      "expect": [
+        "Näed „Taotlus on saadetud.“ ja „Maria võtab sinuga ühendust ja pakub sobiva aja.“.",
+        "Postkasti tuleb kiri „Päring on vastu võetud — MAXI“.",
+        "Maria postkasti tuleb „Praktika taotlus: MAXI — Proov 3“.",
+        "Halduses „Päringud“ → „Praktika“ on Proov 3 taotlus."
+      ],
+      "why": "Praktika aeg lepitakse kokku taotluse kaudu.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "registreerimine-ootenimekiri",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Ootenimekiri",
+      "href": "/koolituskalender",
+      "steps": [
+        "Leia koolituskalendrist kuupäev märkega „Kohad täis“; kui sellist pole, vajuta „Jäta vahele“.",
+        "Vajuta selle real „Liitu ootenimekirjaga“.",
+        "Kirjuta „Nimi“: Proov 3 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov3.",
+        "Vajuta „Liitu ootenimekirjaga“."
+      ],
+      "expect": [
+        "Rea alla avaneb vorm „Liitu ootenimekirjaga“.",
+        "Näed teadet „Aitäh! Oled ootenimekirjas.“.",
+        "Postkasti tuleb kiri „Oled ootenimekirjas — …“.",
+        "Halduses „Päringud“ → „Ootenimekiri“ on Proov 3."
+      ],
+      "why": "Täis kuupäeval jääb huviline ootenimekirja.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "registreerimine-paringud",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Päringud halduses",
+      "href": "/admin/paringud",
+      "steps": [
+        "Ava „Päringud“.",
+        "Vaata läbi vahelehed „Kontakt“, „Individuaal“, „Praktika“ ja „Ootenimekiri“.",
+        "Vajuta ühel Proov 3 päringul „Märgi tehtuks“.",
+        "Ava „Ülevaade“."
+      ],
+      "expect": [
+        "Vahelehtedel „Kontakt“, „Individuaal“ ja „Praktika“ on Proov 3 päring koos saabumise ajaga.",
+        "Kui ootenimekirja kontroll tehti, on Proov 3 ka vahelehel „Ootenimekiri“.",
+        "„Vasta e-kirjaga“ avab kirja Proov 3 aadressile.",
+        "Tehtud päring liigub loendi lõppu märkega „Tehtud“.",
+        "Ülevaates „Tegemata päringud“ arv väheneb ühe võrra."
+      ],
+      "why": "Päringud on Maria postkast lehel.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "registreerimine-tuhista",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Registreeringu tühistamine",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava „Registreerimised“ ja vajuta nimele Proov 2.",
+        "Vajuta „Tühista registreerimine“.",
+        "Ava halduses „Kalender“ ja Proov 2 kuupäeva rida."
+      ],
+      "expect": [
+        "Paneelis näed „Registreerimine on tühistatud.“.",
+        "Loendis on Proov 2 staatus „Tühistatud“.",
+        "Kalendris on kinnitatuid ühe võrra vähem ja vaba koht on tagasi."
+      ],
+      "why": "Tühistamine vabastab koha teisele õpilasele.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "konto-kood",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Sisselogimine koodiga",
+      "href": "/konto/sisene",
+      "steps": [
+        "Ava lehe menüü ☰ ja vajuta „Logi sisse“.",
+        "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov1.",
+        "Vajuta „Saada kood“.",
+        "Kirjuta kirjast kuuekohaline kood väljale „Kood“.",
+        "Vajuta „Logi sisse“.",
+        "Ava uuesti lehe menüü ☰."
+      ],
+      "expect": [
+        "Pärast „Saada kood“ näed „Saatsime 6-kohalise koodi aadressile …“.",
+        "Kiri „… — MS LAB sisselogimiskood“ tuleb mõne minuti jooksul.",
+        "Pärast sisselogimist näed „Tere, Proov!“ ja oma registreeringut.",
+        "Menüüs on „Logi sisse“ asemel „Minu konto“."
+      ],
+      "why": "Kood on õpilase peamine viis kontole pääseda.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "konto-link",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Sisselogimine kirja nupuga",
+      "href": "/konto/sisene",
+      "steps": [
+        "Vajuta konto ümmargust menüünuppu ja „Logi välja“.",
+        "Küsi lehel „Logi sisse“ uus kood; „E-post“ on oma aadress, kuhu lisad enne @-märki +proov1.",
+        "Vajuta kirjas nuppu „Logi sisse“.",
+        "Vajuta sama nuppu kirjas teist korda."
+      ],
+      "expect": [
+        "Esimene vajutus avab „Minu koolitused“ ilma koodita.",
+        "Teine vajutus ütleb „Link on aegunud või juba kasutatud. Saada uus kood.“."
+      ],
+      "why": "Paljud õpilased vajutavad koodi asemel nuppu.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "konto-kood-vale",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Vale kood ja uus kood",
+      "href": "/konto/sisene",
+      "steps": [
+        "Logi välja ja küsi uus kood; „E-post“ on oma aadress, kuhu lisad enne @-märki +proov1.",
+        "Kirjuta väljale „Kood“ 000000 ja vajuta „Logi sisse“.",
+        "Vaata koodi välja alla kohe pärast koodi küsimist.",
+        "Oota minut ja vajuta „Saada uus kood“.",
+        "Kirjuta uusim kood ja logi sisse."
+      ],
+      "expect": [
+        "Vale koodi korral näed „Kood ei sobi. Proovi uuesti.“.",
+        "Esimese minuti jooksul on „Uue koodi saad saata … s pärast.“.",
+        "Pärast uut koodi näed „Saatsime uue koodi.“.",
+        "Uusim kood logib sisse."
+      ],
+      "why": "Õpilane eksib koodiga ja vajab selget juhist.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "konto-uks-seade",
+      "area": "konto",
+      "who": "maria",
+      "device": "any",
+      "title": "Konto ühes seadmes korraga",
+      "href": "/konto",
+      "steps": [
+        "Logi telefonis sisse kui Proov 1.",
+        "Logi tahvlis sisse kui Proov 1.",
+        "Ava telefonis uuesti „Minu koolitused“."
+      ],
+      "expect": [
+        "Telefonis näed „Sinu konto avati teises seadmes“.",
+        "Selle all on nupp „Saada uus kood“.",
+        "Tahvlis jääb konto lahti."
+      ],
+      "why": "Konto on korraga lahti ainult ühes seadmes, et seda ei jagataks.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "konto-minu-koolitused",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Minu koolitused",
+      "href": "/konto",
+      "steps": [
+        "Logi sisse kui Proov 1 ja ava „Minu koolitused“.",
+        "Vaata kontaktkoolituse kaarti."
+      ],
+      "expect": [
+        "Kaardil on silt „Kontaktõpe“, koolitus, kuupäev, kellaaeg ja koht.",
+        "Kaardi lause on „Koht on kinnitatud.“, sest kogu summa on makstud.",
+        "Kaardil on nupp „Tühista või muuda aega“."
+      ],
+      "why": "Õpilane näeb siin oma koolitused ühes kohas.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "konto-muutmine",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Soov aega muuta",
+      "href": "/konto",
+      "steps": [
+        "Vajuta Proov 1 kaardil „Tühista või muuda aega“.",
+        "Vali „Soovin muuta aega“.",
+        "Kirjuta „Sõnum Mariale (kui soovid)“: Proov 1, aja muutmise test.",
+        "Vajuta „Saada“.",
+        "Ava halduses „Päringud“ → „Muutmine“."
+      ],
+      "expect": [
+        "Kaardil on „Saadetud. Maria võtab sinuga ühendust.“.",
+        "Maria postkasti tuleb „Soov registreeringu aega muuta: … — Proov 1“.",
+        "Päringutes on Proov 1 soov märkega „Soovib muuta aega“.",
+        "Registreering ise jääb muutmata."
+      ],
+      "why": "Õpilane küsib muudatust, aga otsuse teeb Maria.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "konto-lemmikud",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Lemmikud",
+      "href": "/konto/lemmikud",
+      "steps": [
+        "Logi sisse kui Proov 1 samas brauseris, kus märkisid enne lemmiku.",
+        "Ava konto vaheleht „Lemmikud“.",
+        "Vajuta koolituse kaardil südant."
+      ],
+      "expect": [
+        "„Sinu lemmikud“ all on koolitus, mille märkisid enne sisselogimist.",
+        "Pärast südamele vajutamist näed „Eemaldatud lemmikutest: …“.",
+        "Tühja loendi korral näed „Lisa koolitus lemmikuks ♡ koolituse lehel.“."
+      ],
+      "why": "Lemmikud jäävad kontoga alles ka teises seadmes.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "konto-andmed",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Minu andmed",
+      "href": "/konto/andmed",
+      "steps": [
+        "Ava konto vaheleht „Minu andmed“.",
+        "Kirjuta „Telefon“: +372 5555 0101 ja vajuta „Salvesta“.",
+        "Laadi leht uuesti.",
+        "Lülita sisse „Saada mulle uudiskirja“."
+      ],
+      "expect": [
+        "Lehel on „Sinu andmed“ ja e-post, mida muuta ei saa.",
+        "Pärast salvestamist näed „Salvestatud.“ ja uus telefon jääb alles.",
+        "Uudiskirja lüliti salvestub kohe.",
+        "Halduses „Uudiskiri“ all on nüüd ka Proov 1 aadress."
+      ],
+      "why": "Õpilane hoiab oma andmed ise korras.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "konto-parool",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Parooli määramine",
+      "href": "/konto/andmed",
+      "steps": [
+        "Ava „Minu andmed“ ja vajuta „Määra parool“.",
+        "Kirjuta „Uus parool“ ja „Korda parooli“ lühike parool, näiteks proov.",
+        "Vajuta „Salvesta parool“.",
+        "Kirjuta mõlemasse välja uus parool, vähemalt 10 märki, mida mujal ei kasuta.",
+        "Vajuta „Salvesta parool“."
+      ],
+      "expect": [
+        "Lühikese parooli korral näed „Parool peab olema vähemalt 10 märki.“.",
+        "Pärast salvestamist näed „Parool on salvestatud.“.",
+        "Lehel on „Parool on määratud (muudetud …).“.",
+        "Postkasti tuleb kiri „MS LABi konto parool on muudetud“."
+      ],
+      "why": "Parool on koodi kõrval teine viis sisse logida.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "konto-parool-sisene",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Sisselogimine parooliga",
+      "href": "/konto/sisene",
+      "steps": [
+        "Logi välja ja ava „Logi sisse“.",
+        "Vajuta „Sisene parooliga“.",
+        "Kirjuta oma +proov1 aadress ja vale parool ning vajuta „Logi sisse“.",
+        "Kirjuta õige parool ja vajuta „Logi sisse“."
+      ],
+      "expect": [
+        "Vale parooli korral näed „E-post või parool ei sobi.“.",
+        "Õige parooliga avaneb „Minu koolitused“.",
+        "Lehel on ka „Saada mulle hoopis kood“."
+      ],
+      "why": "Parooliga sisenemine peab töötama ilma kirjata.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "konto-parool-eemalda",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Parooli eemaldamine",
+      "href": "/konto/andmed",
+      "steps": [
+        "Ava „Minu andmed“ ja vajuta „Eemalda parool“.",
+        "Vajuta „Jah, eemalda“."
+      ],
+      "expect": [
+        "Enne näed küsimust „Kas eemaldame parooli? Saad edasi siseneda koodiga.“.",
+        "Pärast näed „Parool on eemaldatud.“.",
+        "Postkasti tuleb jälle kiri „MS LABi konto parool on muudetud“."
+      ],
+      "why": "Parool on valikuline ja selle saab ära võtta.",
+      "risk": "low",
+      "writes": true
+    },
+    {
+      "id": "konto-kustuta",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Konto kustutamine",
+      "href": "/konto/sisene",
+      "steps": [
+        "Logi koodiga sisse; „E-post“ on oma aadress, kuhu lisad enne @-märki +proov4.",
+        "Ava „Minu andmed“ ja vajuta lehe lõpus „Kustuta konto“.",
+        "Vajuta „Jah, kustuta“.",
+        "Ava halduses „Õpilased“ ja otsi +proov4."
+      ],
+      "expect": [
+        "Esimesel sisselogimisel luuakse uus konto ja näed „Sul ei ole veel koolitusi.“.",
+        "Enne kustutamist on küsimus „Kas kustutame su konto? …“.",
+        "Pärast kustutamist avaneb avaleht teatega „Konto on kustutatud.“.",
+        "Postkasti tuleb kiri „MS LAB konto on kustutatud“.",
+        "Õpilaste otsing +proov4 kohta ei leia kedagi."
+      ],
+      "why": "Õpilasel on õigus oma konto ise kustutada.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "konto-opilased",
+      "area": "konto",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Õpilased halduses",
+      "href": "/admin/opilased",
+      "steps": [
+        "Ava „Õpilased“.",
+        "Kirjuta otsingusse proov1 ja vajuta „Otsi“.",
+        "Vajuta nimele Proov 1.",
+        "Vajuta paneelis „Vaata tema vaadet“."
+      ],
+      "expect": [
+        "Otsing leiab Proov 1.",
+        "Paneelis on „Konto loodud …“, telefon, keel ja „Registreerimised“.",
+        "„Vaata tema vaadet“ avab lehe ribaga „Vaatad kliendi … vaadet — muuta ei saa“.",
+        "Seal näed sama kaarti, mida näeb Proov 1."
+      ],
+      "why": "Maria näeb õpilase kontot nii, nagu õpilane seda näeb.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "ekursus-ost",
+      "area": "ekursus",
+      "who": "koos",
+      "device": "telefon",
+      "title": "E-koolituse ost",
+      "href": "/koolitused",
+      "steps": [
+        "Ava testiks valmistatud e-koolitus ja vajuta „Osta kohe“.",
+        "Kirjuta „Nimi“: Proov 1 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov1.",
+        "Märgi tingimuste ruut ja vajuta „Maksa …“.",
+        "Tee makse testpangas, nagu Dimi märkus ütleb.",
+        "Vajuta tagasi lehel „Ava e-koolitus“.",
+        "Ava 30 minuti jooksul kiri „E-koolitus on avatud — …“ ja vajuta kirjas „Logi sisse“."
+      ],
+      "expect": [
+        "Tagasi lehel on „Makse õnnestus.“ ja „Saatsime sulle e-postiga sisselogimislingi.“.",
+        "Postkasti tuleb kiri „E-koolitus on avatud — …“ koos koodiga ja kuupäevaga.",
+        "Kirja nupp „Logi sisse“ avab „Minu koolitused“ koos selle e-koolitusega.",
+        "Maria postkasti tuleb „Uus makse: Proov 1, … (e-koolitus), …“.",
+        "Halduses „Õpilased“ → Proov 1 all on see e-koolitus märkega „veebimakse“."
+      ],
+      "why": "E-koolituse ost peab avama ligipääsu ilma Maria abita.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-ost-uuesti",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Sama e-koolitus uuesti 30 minuti jooksul",
+      "href": "/ostukorv",
+      "steps": [
+        "Ava 30 minuti jooksul pärast ostu sama e-koolituse ostukorv.",
+        "Kirjuta sama nimi ja +proov1 aadress.",
+        "Märgi tingimuste ruut ja vajuta „Maksa …“."
+      ],
+      "expect": [
+        "Näed „Makse on juba tehtud — vaata oma e-posti.“.",
+        "Uut makset ei alga ja Montonio lehte ei avane."
+      ],
+      "why": "See hoiab ära, et õpilane maksab sama koolituse eest kaks korda.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "ekursus-tingimused",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "E-koolituse tingimused",
+      "href": "/konto",
+      "steps": [
+        "Logi sisse kui Proov 1 ja vajuta e-koolituse kaardil „Ava koolitus“.",
+        "Loe tingimused läbi.",
+        "Märgi „Olen tutvunud ja nõustun tingimustega“.",
+        "Vajuta „Alusta koolitust“."
+      ],
+      "expect": [
+        "Enne sisu näed pealkirja „Enne alustamist“ ja Seadetes kirjutatud tingimusi.",
+        "„Alusta koolitust“ töötab alles pärast ruudu märkimist.",
+        "Pärast nõustumist avaneb koolituse leht.",
+        "Halduses Proov 1 paneelis on „Tingimustega nõustumised“ all „Nõustus …“."
+      ],
+      "why": "Õpilane nõustub tingimustega enne esimest tundi.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-leht",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "E-koolituse leht õpilasele",
+      "href": "/konto",
+      "steps": [
+        "Ava Proov 1 e-koolituse leht.",
+        "Vaata moodulit ja selle õppetunde.",
+        "Keri plokini „Lõpetamine“."
+      ],
+      "expect": [
+        "Üleval on „Ligipääs kuni …“ ja „0 / … õppetundi tehtud“.",
+        "Esimene õppetund on avatud, teise juures on lukk.",
+        "Lukus tunni all on „Avaneb, kui eelmine õppetund on tehtud.“.",
+        "„Lõpetamine“ all on „Õppetunnid“, „Teadmiste test“, „Praktiline töö“ ja „Lõpetatud“.",
+        "Testi juures on „Avaneb, kui kõik õppetunnid on tehtud.“."
+      ],
+      "why": "Õpilane näeb oma teekonda ühel lehel.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "ekursus-tekstitund",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Tekstitund",
+      "href": "/konto",
+      "steps": [
+        "Vajuta koolituse lehel „Alusta“.",
+        "Loe tekst läbi.",
+        "Vajuta „Märgi tehtuks“.",
+        "Ava „Minu koolitused“."
+      ],
+      "expect": [
+        "Tunni lehel on sinu kirjutatud tekst.",
+        "Pärast vajutust näed „Õppetund tehtud ✓“ ja nupp on nüüd „Järgmine õppetund“.",
+        "„Minu koolitused“ üleval on tume kaart „Pooleli“ nupuga „Jätka“.",
+        "Kaardil on „1 / … õppetundi tehtud“."
+      ],
+      "why": "Tekstitund lõpetatakse nupuga.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-videotund",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Videotund",
+      "href": "/konto",
+      "steps": [
+        "Vajuta „Jätka“ ja käivita video.",
+        "Proovi video edasi kerida kaugemale, kui oled vaadanud.",
+        "Vajuta „Täisekraan“ ja tule tagasi.",
+        "Vaata video lõpuni."
+      ],
+      "expect": [
+        "Video mängib lehel.",
+        "Edasi kerimise järel näed „Edasi saab kerida kuni kohani, kuhu oled jõudnud.“.",
+        "Täisekraanil jääb video pildi peale sinu aadress.",
+        "Lõpu lähedal märgitakse tund tehtuks.",
+        "Kui see oli viimane tund, on „Lõpetamine“ all „Kõik õppetunnid on tehtud“."
+      ],
+      "why": "Videotund loetakse tehtuks alles vaatamise järel.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-test-katsed",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Test: katsed lõpevad",
+      "href": "/konto",
+      "steps": [
+        "Vajuta koolituse lehel „Lõpetamine“ all „Ava test“.",
+        "Vali valikküsimusele vale vastus ja kirjuta vabaks vastuseks: Proov 1.",
+        "Vajuta „Esita test“ ja siis „Jah, esita“.",
+        "Vajuta „Proovi uuesti“ ja korda, kuni katsed on otsas."
+      ],
+      "expect": [
+        "Üleval on „Katse 1/…“ ja läbimise piir protsentides.",
+        "Pärast esitamist näed „Said 0 %, vaja … %. Valesti vastatud: 1.“.",
+        "Viimase katse järel näed „Katsed on otsas. Maria sai teate ja avab testi sulle uuesti.“.",
+        "Maria postkasti tuleb „Testi katsed otsas: Proov 1, …“.",
+        "Halduses „Hindamine“ on Proov 1 grupis „Katsed otsas“."
+      ],
+      "why": "Õpilane ei saa testi lõputult proovida.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-test-uuesti",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Hindamine: ava test uuesti",
+      "href": "/admin/hindamine",
+      "steps": [
+        "Ava „Hindamine“.",
+        "Vajuta grupis „Katsed otsas“ Proov 1 real „Ava test uuesti“.",
+        "Vajuta „Jah, ava“."
+      ],
+      "expect": [
+        "Enne avamist on küsimus „Kas avan testi „…“ uuesti? …“.",
+        "Pärast näed „Test on uuesti avatud: katseid jäänud …“.",
+        "Proov 1 postkasti tuleb kiri „Test on sinu jaoks uuesti avatud“.",
+        "Õpilase testi lehel on jälle „Esita test“."
+      ],
+      "why": "Maria annab õpilasele uued katsed.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-test-oige",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Test: õige vastus ja vaba vastus",
+      "href": "/konto",
+      "steps": [
+        "Ava Proov 1 test uuesti.",
+        "Vali valikküsimusele õige vastus ja kirjuta vabaks vastuseks: Proov 1, õige katse.",
+        "Vajuta „Esita test“ ja „Jah, esita“."
+      ],
+      "expect": [
+        "Näed „Ootab Maria hinnangut“ ja „Maria loeb sinu vastused läbi. …“.",
+        "Maria postkasti tuleb „Test ootab hindamist: Proov 1, …“.",
+        "Halduses „Hindamine“ on Proov 1 grupis „Testi vastused“.",
+        "Halduse menüüs on „Hindamine“ juures arv."
+      ],
+      "why": "Vaba vastuse loeb läbi Maria.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-test-paranda",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Hindamine: palu vastust parandada",
+      "href": "/admin/hindamine",
+      "steps": [
+        "Ava „Hindamine“ ja vajuta Proov 1 real „Vaata vastuseid“.",
+        "Vali vaba vastuse juures „Paranda“.",
+        "Vajuta „Saada“ enne kommentaari kirjutamist.",
+        "Kirjuta „Kommentaar“: Proov 1, palun täienda.",
+        "Vajuta „Saada“."
+      ],
+      "expect": [
+        "Lehel on „Valikküsimused: 100 % (vaja … %)“.",
+        "Ilma kommentaarita ei lase leht saata ja palub kirjutada, mida parandada.",
+        "Pärast saatmist näed „Saadetud: õpilane parandab „Paranda“ vastused. Ta saab kirja.“.",
+        "Proov 1 postkasti tuleb kiri „Vaata üle oma testi vastused“."
+      ],
+      "why": "Maria saab vastuse tagasi saata.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-test-saada-uuesti",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Test: vastuse parandamine",
+      "href": "/konto",
+      "steps": [
+        "Ava Proov 1 test.",
+        "Loe „Maria kommentaar“.",
+        "Kirjuta vastuseks: Proov 1, parandatud vastus.",
+        "Vajuta „Saada uuesti“."
+      ],
+      "expect": [
+        "Üleval on „Maria palub mõned vastused üle vaadata.“.",
+        "Kommentaari all on sinu vastus, mida saab muuta.",
+        "Lehel on kirjas „… See ei kuluta katset.“.",
+        "Pärast saatmist näed jälle „Ootab Maria hinnangut“."
+      ],
+      "why": "Parandus käib ilma uue katseta.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "ekursus-test-kinnita",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Hindamine: kinnita test",
+      "href": "/admin/hindamine",
+      "steps": [
+        "Ava „Hindamine“ ja vajuta Proov 1 real „Vaata vastuseid“.",
+        "Vali vastuse juures „Kinnitatud“.",
+        "Vajuta „Saada“."
+      ],
+      "expect": [
+        "Pärast saatmist näed „Saadetud: test on sooritatud. Õpilane saab kirja.“.",
+        "Proov 1 postkasti tuleb kiri „Test on sooritatud“.",
+        "Õpilase lehel on „Test on sooritatud“ ja nupp „Ava praktiline töö“."
+      ],
+      "why": "Pärast testi avaneb praktiline töö.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-praktiline-saada",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Praktiline töö: fotod",
+      "href": "/konto",
+      "steps": [
+        "Vajuta Proov 1 lehel „Ava praktiline töö“.",
+        "Vajuta esimese punkti juures „Lisa foto“ ja tee telefoniga foto.",
+        "Lisa teisele punktile foto, mille tegid telefoniga külili hoides.",
+        "Vajuta „Saada hindamiseks“ ja siis „Jah, saada“."
+      ],
+      "expect": [
+        "Üleval on „Lisa iga punkti juurde 1–3 fotot ja saada töö hindamiseks.“.",
+        "Foto juures on üleslaadimise ajal „Laadin üles…“ koos protsentidega ja siis eelvaade.",
+        "Külili tehtud foto on eelvaates püsti.",
+        "Pärast saatmist näed „Ootab hindamist. Maria vaatab fotod üle ja saadab sulle hinnangu.“.",
+        "Maria postkasti tuleb „Praktiline töö hindamiseks: Proov 1, …“."
+      ],
+      "why": "Praktiline töö on e-koolituse viimane samm.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-hinda-praktiline",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Hindamine: praktiline töö",
+      "href": "/admin/hindamine",
+      "steps": [
+        "Ava „Hindamine“ ja vajuta grupis „Praktilised tööd“ Proov 1 real „Hinda“.",
+        "Vajuta fotole, suurenda kahe sõrmega ja sulge.",
+        "Vali esimesel punktil „Kinnitatud“.",
+        "Vali teisel punktil „Paranda“ ja kirjuta selle punkti märkus: Proov 1.",
+        "Vajuta „Saada hinnang“ ja siis „Saada“."
+      ],
+      "expect": [
+        "Üleval on „Praktiline töö, 1. kord“.",
+        "Foto avaneb täisekraanil ja seda saab suurendada.",
+        "Kinnituses on „Kinnitatud: 1 · Paranda: 1“.",
+        "Pärast saatmist näed „Hinnang saadetud. Paranda-punktid: 2.“.",
+        "Proov 1 postkasti tuleb kiri „Sinu praktiline töö on hinnatud“."
+      ],
+      "why": "Maria hindab iga punkti eraldi.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-praktiline-paranda",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Praktiline töö: parandus",
+      "href": "/konto",
+      "steps": [
+        "Ava Proov 1 praktiline töö.",
+        "Lisa „Paranda“ märkega punktile uus foto.",
+        "Vajuta „Saada uuesti“ ja siis „Jah, saada“."
+      ],
+      "expect": [
+        "Üleval on „Lisa uued fotod punktidele, mille juures on „Paranda“, ja saada uuesti.“.",
+        "Teise punkti juures on Maria märkus.",
+        "Esimese punkti juures on „Kinnitatud“.",
+        "Maria postkasti tuleb „Praktiline töö hindamiseks: Proov 1, … (2. kord)“."
+      ],
+      "why": "Õpilane parandab ainult seda, mida Maria palus.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-lopeta",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Hindamine: kõik kinnitatud",
+      "href": "/admin/hindamine",
+      "steps": [
+        "Ava „Hindamine“ ja vajuta Proov 1 real „Hinda“.",
+        "Vali teisel punktil „Kinnitatud“.",
+        "Vajuta „Saada hinnang“ ja siis „Saada“."
+      ],
+      "expect": [
+        "Üleval on „Praktiline töö, 2. kord“.",
+        "Kinnituses on „Kõik punktid on kinnitatud: praktiline töö on sooritatud.“.",
+        "Pärast saatmist näed „Hinnang saadetud. Koolitus on lõpetatud.“.",
+        "Proov 1 postkasti tuleb kiri „Palju õnne! Koolitus „…“ on lõpetatud“."
+      ],
+      "why": "Viimane kinnitus lõpetab koolituse.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-lopetatud",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Lõpetatud koolitus õpilasele",
+      "href": "/konto",
+      "steps": [
+        "Ava Proov 1 e-koolituse leht.",
+        "Vaata plokki „Lõpetamine“.",
+        "Ava „Minu koolitused“."
+      ],
+      "expect": [
+        "Kõik sammud on tehtud ja viimane ütleb „Lõpetatud …“ tänase kuupäevaga.",
+        "Lõpetamise all on rida „Tunnistus“.",
+        "E-koolituse kaardil on „Lõpetatud …“."
+      ],
+      "why": "Õpilane peab nägema, et koolitus on läbitud.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "ekursus-tunnistus",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Tunnistuse koostamine",
+      "href": "/konto",
+      "steps": [
+        "Keri Proov 1 e-koolituse lehel reani „Tunnistus“.",
+        "Jäta väljale „Nimi tunnistusel“ nimi Proov 1.",
+        "Vajuta „Kinnita ja koosta tunnistus“.",
+        "Kirjuta väljale „Nimi tunnistusel“: Proov Üks.",
+        "Vajuta „Kinnita ja koosta tunnistus“.",
+        "Vajuta „Laadi tunnistus alla (PDF)“."
+      ],
+      "expect": [
+        "Välja all on „Ladina tähtedega, nagu passis.“.",
+        "Numbriga nime korral näed „Kirjuta nimi ladina tähtedega nagu passis …“.",
+        "Õige nimega näed „Tunnistus nr. MS LAB …“.",
+        "Rea all on „Kui nimes on viga, kirjuta meile“.",
+        "Alla laaditakse PDF-fail, mille nimi algab MS-LAB-tunnistus."
+      ],
+      "why": "Tunnistus on e-koolituse lõpp ja võtab päris numbri.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-tunnistus-pdf",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "any",
+      "title": "Tunnistus PDF-ina",
+      "href": "/konto",
+      "steps": [
+        "Ava alla laaditud tunnistus tahvlis.",
+        "Ava sama tunnistus telefonis.",
+        "Võrdle seda oma paberil tunnistusega."
+      ],
+      "expect": [
+        "Tunnistus on laiuti, must, valge tekstiga.",
+        "Õpilase nimi ja allkiri on käekirjas.",
+        "Tunnistusel on koolituse nimi, kuupäev, number ja registrikood.",
+        "All paremal on Seadetes kirjutatud koolitaja nimi ja sõna „KOOLITAJA“.",
+        "Mõlemas seadmes avaneb fail ilma veata."
+      ],
+      "why": "Tunnistus peab välja nägema nagu Maria paberil tunnistus.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "ekursus-paranda-nimi",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Tunnistuse nime parandus",
+      "href": "/admin/opilased",
+      "steps": [
+        "Ava „Õpilased“ ja vajuta nimele Proov 1.",
+        "Vajuta tunnistuse real „Paranda nimi“.",
+        "Kirjuta „Nimi tunnistusel“: Proov Parandatud.",
+        "Vajuta „Väljasta uuesti“.",
+        "Laadi Proov 1 kontol tunnistus uuesti alla."
+      ],
+      "expect": [
+        "Paneelis on rida „Tunnistus MS LAB … · …“ ja „Laada alla“.",
+        "Pärast näed „Tunnistus … on uuesti väljastatud nimega Proov Parandatud.“.",
+        "Uuel failil on uus nimi, sama number ja sama kuupäev.",
+        "Proov 1 ei saa selle kohta kirja."
+      ],
+      "why": "Maria parandab nime, kui õpilane kirjutab veast.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "ekursus-tunnistused",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Väljastatud tunnistused",
+      "href": "/admin/tunnistused",
+      "steps": [
+        "Ava „Hindamine“ ja vajuta „Väljastatud tunnistused“.",
+        "Vajuta Proov 1 real „Laada alla“.",
+        "Ava „Seaded“ ja kaart „Tunnistus“."
+      ],
+      "expect": [
+        "Lehel „Tunnistused“ on Proov 1 rida numbri, koolituse ja kuupäevaga.",
+        "„Laada alla“ annab sama PDF-i.",
+        "Seadetes on „Viimati väljastatud: MS LAB …“ Proov 1 numbriga."
+      ],
+      "why": "Register näitab kõiki väljastatud tunnistusi.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "ekursus-ligipaas-ava",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "E-koolituse avamine käsitsi",
+      "href": "/admin/opilased",
+      "steps": [
+        "Ava „Õpilased“.",
+        "Kirjuta „Lisa õpilane e-posti järgi“: oma aadress, kuhu lisad enne @-märki +proov5.",
+        "Vajuta „Lisa õpilane“.",
+        "Vali paneelis „Ava ligipääs“ all testiks valmistatud e-koolitus.",
+        "Vaata üle „Ligipääs kuni“ ja vajuta „Ava ligipääs“.",
+        "Logi teises seadmes sisse kui Proov 5."
+      ],
+      "expect": [
+        "Pärast „Lisa õpilane“ avaneb uue õpilase paneel.",
+        "Pärast avamist näed „Ligipääs on avatud.“.",
+        "E-koolituse real on „Avatud kuni …“ ja „Avas …“.",
+        "Proov 5 „Minu koolitused“ all on see e-koolitus nupuga „Ava koolitus“."
+      ],
+      "why": "Maria saab avada e-koolituse ka ilma veebimakseta.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "ekursus-ava-jargmine",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Järgmise tunni avamine käsitsi",
+      "href": "/admin/opilased",
+      "steps": [
+        "Ava Proov 5 paneel.",
+        "Vajuta e-koolituse real „Ava järgmine õppetund“.",
+        "Vajuta „Jah, ava“.",
+        "Ava Proov 5 e-koolituse leht."
+      ],
+      "expect": [
+        "Enne on küsimus „Kas avan õpilasele õppetunni „…“? …“.",
+        "Pärast näed „Õppetund „…“ on avatud.“.",
+        "Proov 5 näeb videotundi lukuta, kuigi tekstitund pole tehtud."
+      ],
+      "why": "Maria saab õpilast aidata, kui tund jääb kinni.",
+      "risk": "low",
+      "writes": true
+    },
+    {
+      "id": "ekursus-ligipaas-lopeta",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Ligipääsu lõpetamine",
+      "href": "/admin/opilased",
+      "steps": [
+        "Ava Proov 5 paneel.",
+        "Vajuta e-koolituse real „Lõpeta ligipääs“.",
+        "Vajuta „Jah, lõpeta“.",
+        "Ava Proov 5 „Minu koolitused“."
+      ],
+      "expect": [
+        "Enne on küsimus „Kas lõpetan ligipääsu koolitusele „…“? …“.",
+        "E-koolituse real on nüüd „Lõpetatud …“.",
+        "Proov 5 kaardil on „Ligipääs on lõppenud.“ ja nuppu „Ava koolitus“ pole."
+      ],
+      "why": "Lõpetatud ligipääsuga ei saa koolitust enam avada.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "kontakt-protokoll",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Protokolli kirjutamine",
+      "href": "/admin/opilased",
+      "steps": [
+        "Ava „Õpilased“ ja vajuta nimele Proov 1.",
+        "Vajuta paneelis kontaktkoolituse registreeringu juures „Lisa protokoll“.",
+        "Kirjuta esimese punkti alla: Proov 1, esimene punkt.",
+        "Kirjuta „Üldised märkused“ alla: Proov 1.",
+        "Laadi leht uuesti.",
+        "Ava uuesti „Õpilased“ ja Proov 1 paneel."
+      ],
+      "expect": [
+        "Enne kirjutamist on registreeringu juures nupp „Lisa protokoll“, sest protokolli veel pole.",
+        "Lehel on koolituse nimi, kuupäev ja Proov 1 nimi.",
+        "„Praktiline osa“ all on koolituse punktid ja nende all „Üldised märkused“.",
+        "Kirjutades näed „Salvestamata muudatused“, siis „Salvestatud …“ koos kellaajaga.",
+        "Pärast uuesti laadimist on tekst alles.",
+        "Paneelis on nüüd sama nupu nimi „Ava protokoll“."
+      ],
+      "why": "Maria kirjutab protokolli koolituspäeval tahvlis.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "kontakt-protokoll-uhendus",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Protokoll ilma internetita",
+      "href": "/admin/protokollid",
+      "steps": [
+        "Ava Proov 1 protokoll.",
+        "Lülita tahvlis lennurežiim sisse.",
+        "Lisa „Üldised märkused“ lõppu sõna Proov.",
+        "Lülita lennurežiim välja ja oota pool minutit.",
+        "Laadi leht uuesti."
+      ],
+      "expect": [
+        "Ilma internetita näed „Salvestamata — proovin uuesti“.",
+        "Kui internet on tagasi, näed „Salvestatud …“ uue kellaajaga.",
+        "Pärast uuesti laadimist on sõna Proov alles."
+      ],
+      "why": "Koolituse ruumis võib Wi-Fi katkeda ja tekst ei tohi kaduda.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "kontakt-protokoll-saada",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Protokolli saatmine",
+      "href": "/admin/protokollid",
+      "steps": [
+        "Ava Proov 1 protokoll.",
+        "Vajuta „Saada“.",
+        "Ava 30 minuti jooksul kiri „Sinu koolituse protokoll on valmis“ ja vajuta kirjas „Vaata protokolli“."
+      ],
+      "expect": [
+        "Protokolli kohal on „Saadetud … Õpilane näeb seda versiooni.“ koos kuupäeva ja kellaajaga.",
+        "Nupu „Saada“ asemel on nüüd „Muuda“.",
+        "Proov 1 postkasti tuleb kiri „Sinu koolituse protokoll on valmis“.",
+        "Kirja nupp avab lehe „Koolituse protokoll“."
+      ],
+      "why": "Protokoll on õpilase kirjalik tagasiside.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "kontakt-protokoll-opilane",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Protokoll õpilase kontol",
+      "href": "/konto",
+      "steps": [
+        "Logi sisse kui Proov 1.",
+        "Vajuta kontaktkoolituse kaardil „Vaata protokolli“."
+      ],
+      "expect": [
+        "Avaneb leht „Koolituse protokoll“.",
+        "Lehel on koolituse punktid ja „Üldised märkused“ sinu tekstiga.",
+        "Üleval on „Saadetud …“ saatmise kuupäevaga."
+      ],
+      "why": "Õpilane loeb protokolli oma kontolt.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "kontakt-protokoll-muuda",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Protokolli muutmine ja uuesti saatmine",
+      "href": "/admin/protokollid",
+      "steps": [
+        "Ava Proov 1 protokoll ja vajuta „Muuda“.",
+        "Lisa „Üldised märkused“ lõppu: Proov 1, muudetud.",
+        "Vajuta „Saada uuesti“.",
+        "Ava 30 minuti jooksul kiri „Sinu koolituse protokolli on uuendatud“ ja vajuta kirjas „Vaata protokolli“."
+      ],
+      "expect": [
+        "Pärast „Muuda“ näed „Muuda teksti — salvestan ise. Siis saad selle uuesti saata.“.",
+        "Pärast muutmist on all nupp „Saada uuesti“.",
+        "Pärast saatmist on üleval jälle „Saadetud …“ uue kellaajaga.",
+        "Proov 1 postkasti tuleb kiri „Sinu koolituse protokolli on uuendatud“.",
+        "Kirja nupp avab protokolli koos muudetud tekstiga."
+      ],
+      "why": "Maria saab protokolli hiljem parandada.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "kontakt-lukusta-koik",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "„Lukusta ja saada kõik“ kinnitus",
+      "href": "/admin/kalender",
+      "steps": [
+        "Ava „Kalender“ ja vajuta Proov 1 kuupäeva real.",
+        "Vajuta paneelis „Protokollid“.",
+        "Vajuta „Lukusta ja saada kõik“.",
+        "Loe kinnitus läbi ja vajuta „Tagasi“, mitte „Saada“."
+      ],
+      "expect": [
+        "Avaneb sama koolituspäeva kõigi õpilaste protokollide leht.",
+        "Kinnituses on rida „Juba saadetud, uut pole: Proov 1“ või „Pole midagi uut saata.“.",
+        "Tühja protokolliga õpilased on real „Jäävad vahele, sest protokoll on tühi: …“.",
+        "Pärast „Tagasi“ ei saadeta midagi."
+      ],
+      "why": "Koolituspäeva lõpus saadab Maria kõik protokollid korraga.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kontakt-tagasiside",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Tagasiside vorm",
+      "href": "/konto",
+      "steps": [
+        "Logi sisse kui Proov 1.",
+        "Vajuta kaardil „Kuidas koolitus läks?“ nuppu „Jäta tagasiside“.",
+        "Vali hinne 1–10 ja vasta veel ühele küsimusele.",
+        "Vajuta „Saada tagasiside“.",
+        "Ava vorm uuesti protokolli kirja lingist."
+      ],
+      "expect": [
+        "Vormi pealkiri on „Sinu kogemus MS LAB koolitusel“.",
+        "Pärast saatmist näed tänuteksti „Aitäh, et oled osa MS LAB koolituskeskuse algusest ja kasvust. …“.",
+        "Maria postkasti tuleb „Uus tagasiside: Proov 1, …“ koos hindega.",
+        "Teisel avamisel näed „Tagasiside on juba saadetud. Aitäh!“."
+      ],
+      "why": "Tagasiside aitab Marial koolitusi paremaks teha.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "kontakt-tagasiside-haldus",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Tagasiside halduses",
+      "href": "/admin/tagasiside",
+      "steps": [
+        "Ava „Tagasiside“.",
+        "Vajuta lehe üleval nupul, millel on Proov 1 koolituse nimi.",
+        "Vajuta loendis nimele Proov 1.",
+        "Ava „Registreerimised“ ja Proov 1 paneel."
+      ],
+      "expect": [
+        "Loendis on Proov 1 vastus koos hindega.",
+        "Nuppude reas on ka „Kõik koolitused“.",
+        "Koolituse valikul on „Keskmine hinne: … / 10“ ja iga vastusevariandi arv.",
+        "Paneeli üleval on nimi Proov 1 ja e-post, all kõik vastused.",
+        "Registreeringu paneelis on plokk „Tagasiside“."
+      ],
+      "why": "Maria loeb vastused ühest kohast.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kontakt-tana",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Ülevaate kaart „Täna“",
+      "href": "/admin",
+      "steps": [
+        "Tee see kontroll mõnel päris koolituspäeval; muul päeval vajuta „Jäta vahele“.",
+        "Ava halduse „Ülevaade“.",
+        "Vajuta kaardil „Täna“ nuppu „Protokollid“."
+      ],
+      "expect": [
+        "Kaardil „Täna“ on tänane koolitus ja „Õpilasi: …“.",
+        "„Protokollid“ avab selle päeva protokollid.",
+        "Päeval, kus koolitust pole, kaarti ei ole."
+      ],
+      "why": "Koolituspäeval jõuab Maria protokollideni ühe vajutusega.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "kirjad-sisselogimiskood",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: sisselogimiskood",
+      "steps": [
+        "Ava Gmailis telefonis kiri „… — MS LAB sisselogimiskood“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kood on pealkirja alguses ja kirjas suurelt.",
+        "Kirjas on „Kood ja link kehtivad 30 minutit.“.",
+        "Nupp „Logi sisse“ on olemas; seda vajutati kontrollis „Sisselogimine kirja nupuga“.",
+        "Vastuse saaja on Maria aadress."
+      ],
+      "why": "See kiri on õpilase tee kontole.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "kirjad-registreering",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: registreering vastu võetud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Registreering on vastu võetud — …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Tere, Proov!“, koolitus, kuupäev, kellaaeg ja koht.",
+        "Kirjas on nupp „Maksa …“ ja selle all pangaülekande andmed.",
+        "Kirjas on „Koht kinnitatakse pärast vähemalt 50% ettemaksu laekumist.“.",
+        "Vastuse saaja on Maria aadress."
+      ],
+      "why": "Kiri ütleb õpilasele, mida edasi teha.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "kirjad-paring",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: päring vastu võetud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Päring on vastu võetud — …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas „Ava minu konto“.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Päring on saadetud. Maria vastab peagi.“.",
+        "Kirjas on koolituse või paketi nimi.",
+        "Nupp „Ava minu konto“ avab konto lehe.",
+        "Vastuse saaja on Maria aadress."
+      ],
+      "why": "Õpilane teab, et päring jõudis kohale.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-ootenimekiri",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: ootenimekirjas",
+      "steps": [
+        "Kui ootenimekirja kontroll jäi vahele, vajuta „Jäta vahele“.",
+        "Ava Gmailis telefonis kiri „Oled ootenimekirjas — …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Oled ootenimekirjas. Anname teada, kui koht vabaneb.“.",
+        "Kirjas on koolitus ja kuupäev.",
+        "Vastuse saaja on Maria aadress."
+      ],
+      "why": "Õpilane teab, millise kuupäeva ootenimekirjas ta on.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "kirjad-koht-kinnitatud",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: koht on kinnitatud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Koht on kinnitatud — …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas „Ava minu konto“.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Makse on kätte saadud. Sinu koht on kinnitatud.“.",
+        "Kirjas on tasutud summa ja ülejäänud summa.",
+        "„Ava minu konto“ avab konto lehe.",
+        "Vastuse saaja on Maria aadress."
+      ],
+      "why": "Kinnitus annab õpilasele kindluse.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "kirjad-makse-katte",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: makse kätte saadud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Makse on kätte saadud — …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Makse on kätte saadud. Aitäh!“.",
+        "Kirjas on „Kogu summa on tasutud.“.",
+        "Vastuse saaja on Maria aadress."
+      ],
+      "why": "Õpilane teab, et kogu summa on makstud.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-ekoolitus-avatud",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: e-koolitus on avatud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „E-koolitus on avatud — …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Makse on kätte saadud. E-koolitus on sinu jaoks avatud.“.",
+        "Kirjas on „Ligipääs kuni …“ kuupäevaga.",
+        "Kirjas on kood ja nupp „Logi sisse“ on olemas.",
+        "Vastuse saaja on Maria aadress."
+      ],
+      "why": "Ostja peab kohe koolituse juurde pääsema.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "kirjad-tervituskiri",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: uudiskirja tervitus ja loobumine",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Tere tulemast MS LABi!“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirja viimases reas loobumise linki.",
+        "Vajuta avanenud lehel „Loobu uudiskirjast“."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Aitäh, et liitusid MS LABi uudiskirjaga.“.",
+        "Kui Seadetes on tervituskood, on kood kirjas.",
+        "Link avab lehe „Uudiskirjast loobumine“.",
+        "Pärast nuppu on avalehel „Oled uudiskirjast loobunud.“ ja halduses pole aadressi."
+      ],
+      "why": "Igal uudiskirjal peab olema lihtne loobumine.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "kirjad-parool",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: parool muudetud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „MS LABi konto parool on muudetud“.",
+        "Ava sama kiri Gmailis arvutis."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Sinu MS LABi konto parool on muudetud.“.",
+        "Kirjas on „Kui see polnud sina, kirjuta kohe Mariale: …“ Seadete e-postiga."
+      ],
+      "why": "Kiri hoiatab, kui keegi teine muutis parooli.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-konto-kustutatud",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: konto kustutatud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „MS LAB konto on kustutatud“.",
+        "Ava sama kiri Gmailis arvutis."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Sinu MS LAB konto on kustutatud.“.",
+        "Kirjas on „Sinu registreeringud jäävad Mariale alles.“."
+      ],
+      "why": "Õpilane saab kinnituse, et konto on läinud.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "kirjad-protokoll",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: protokoll valmis",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Sinu koolituse protokoll on valmis“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Sinu koolituse protokoll on valmis.“ ja kood.",
+        "Nupp „Vaata protokolli“ on olemas.",
+        "Kirjas on link „Soovi korral jäta meile tagasisidet“.",
+        "Vastuse saaja on Maria aadress."
+      ],
+      "why": "Kiri viib õpilase protokolli ja tagasiside juurde.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "kirjad-protokoll-uuendatud",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: protokoll uuendatud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Sinu koolituse protokolli on uuendatud“.",
+        "Ava sama kiri Gmailis arvutis."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Sinu koolituse protokolli on uuendatud.“.",
+        "Tagasiside linki selles kirjas pole.",
+        "Nupp „Vaata protokolli“ on olemas."
+      ],
+      "why": "Õpilane teab, et protokolli muudeti.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-test-uuesti",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: test uuesti avatud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Test on sinu jaoks uuesti avatud“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas „Ava test“."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Maria andis sulle uued katsed. Saad testi uuesti teha.“.",
+        "„Ava test“ avab testi lehe."
+      ],
+      "why": "Õpilane teab, et saab testi uuesti teha.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-test-paranda",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: vaata testi vastused üle",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Vaata üle oma testi vastused“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas „Ava test“."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Maria palub mõne vastuse ümber kirjutada. …“.",
+        "Kirjas pole Maria kommentaari ega vastust.",
+        "„Ava test“ avab testi koos Maria kommentaariga."
+      ],
+      "why": "Õpilane teab, et peab vastust parandama.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-test-sooritatud",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: test sooritatud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Test on sooritatud“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas „Ava praktiline töö“."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Praktiline töö on nüüd avatud.“.",
+        "„Ava praktiline töö“ avab praktilise töö lehe."
+      ],
+      "why": "Kiri viib õpilase järgmise sammu juurde.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-praktiline-hinnatud",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: praktiline töö hinnatud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Sinu praktiline töö on hinnatud“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas „Vaata hinnangut“."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Parandamist vajavaid punkte: 1“.",
+        "Kirjas pole Maria märkust ega fotosid.",
+        "„Vaata hinnangut“ avab praktilise töö lehe."
+      ],
+      "why": "Õpilane teab, et peab punkti parandama.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-lopetatud",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: koolitus lõpetatud",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Palju õnne! Koolitus „…“ on lõpetatud“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas rea „Kinnita oma nimi ja laadi tunnistus alla:“ all olevat linki.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Oled kõik koolituse sammud läbinud.“.",
+        "Link avab koolituse lehe, kus on rida „Tunnistus“.",
+        "Kirjas pole tunnistust manusena.",
+        "Vastuse saaja on Maria aadress."
+      ],
+      "why": "Kiri viib õpilase tunnistuse juurde.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "kirjad-halduse-link",
+      "area": "kirjad",
+      "who": "dim",
+      "device": "any",
+      "title": "Kiri: halduse sisselogimislink",
+      "href": "/admin/login",
+      "steps": [
+        "Logi halduses välja.",
+        "Kirjuta halduse sisselogimisel oma aadress ja vajuta „Saada sisselogimislink“.",
+        "Ava Gmailis kiri „MS LAB — sisselogimislink“.",
+        "Vajuta kirjas linki.",
+        "Vajuta sama linki teist korda."
+      ],
+      "expect": [
+        "Lehel on „Kontrolli oma postkasti“ ja „Link kehtib 15 minutit ja töötab ainult ühe korra.“.",
+        "Saatja on MS LAB.",
+        "Link avab halduse „Ülevaade“.",
+        "Teine kord ütleb leht „See sisselogimislink on aegunud või juba kasutatud. Telli uus link.“."
+      ],
+      "why": "Ilma selle kirjata ei pääse keegi haldusesse.",
+      "risk": "high",
+      "writes": true
+    },
+    {
+      "id": "kirjad-maria-registreerimine",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: registreerimine",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Registreerimine: … — Proov 1“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on koolitus, kuupäev, koht, Proov 1 kontaktid ja makseviis.",
+        "Kirjas on „Staatus: ootab ettemaksu. …“.",
+        "Kirja lõpus on halduse link.",
+        "Vastuse saaja on Proov 1 aadress."
+      ],
+      "why": "Maria peab kohe teadma, et keegi registreerus.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "kirjad-maria-makse",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: uus makse",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Uus makse: Proov 1, …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Pealkirjas on nimi, koolitus ja summa.",
+        "Kirjas on makseviis ja laekunud summa.",
+        "Vastuse saaja on Proov 1 aadress."
+      ],
+      "why": "Maria näeb iga makset kohe.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "kirjad-maria-individuaal",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: individuaalkoolituse päring",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Individuaalkoolituse päring: … — Proov 3“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on koolitus, „Soovitud periood või kuupäev“ ja Proov 3 kontaktid.",
+        "Kirjas on „Aeg ja tasumine lepitakse kokku.“.",
+        "Vastuse saaja on Proov 3 aadress."
+      ],
+      "why": "Maria vastab päringule otse kirjast.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-maria-praktika",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: praktikataotlus",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Praktika taotlus: MAXI — Proov 3“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on pakett, Proov 3 kontaktid ja sobivad ajad.",
+        "Vastuse saaja on Proov 3 aadress."
+      ],
+      "why": "Maria lepib praktika aja kokku kirja kaudu.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-maria-sonum",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: sõnum kodulehelt",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Sõnum kodulehelt — Proov 3“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on Proov 3 nimi, e-post ja sõnum.",
+        "Vastuse saaja on Proov 3 aadress."
+      ],
+      "why": "Maria vastab sõnumile otse kirjast.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-maria-ootenimekiri",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: ootenimekiri",
+      "steps": [
+        "Kui ootenimekirja kontroll jäi vahele, vajuta „Jäta vahele“.",
+        "Ava Gmailis telefonis kiri „Ootenimekiri: … — Proov 3“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on koolitus, kuupäev, koht ja Proov 3 kontaktid.",
+        "Vastuse saaja on Proov 3 aadress."
+      ],
+      "why": "Maria teab, kes ootab vaba kohta.",
+      "risk": "low",
+      "writes": false
+    },
+    {
+      "id": "kirjad-maria-muutmine",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: soov aega muuta",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Soov registreeringu aega muuta: … — Proov 1“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on koolitus, kuupäev, registreeringu number ja Proov 1 sõnum.",
+        "Kirjas on „Registreeringut ei ole muudetud. …“.",
+        "Vastuse saaja on Proov 1 aadress."
+      ],
+      "why": "Maria võtab õpilasega ühendust ja otsustab ise.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-maria-tagasiside",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: uus tagasiside",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Uus tagasiside: Proov 1, …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Pealkirjas on nimi, koolitus ja hinne, näiteks 9/10.",
+        "Kirjas on küsimused ja Proov 1 vastused eesti keeles.",
+        "Vastuse saaja on Proov 1 aadress."
+      ],
+      "why": "Maria loeb tagasiside kohe.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-maria-praktiline",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: praktiline töö hindamiseks",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Praktiline töö hindamiseks: Proov 1, …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas halduse linki."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Teise korra kirja pealkirja lõpus on „(2. kord)“.",
+        "Link avab Proov 1 praktilise töö hindamise."
+      ],
+      "why": "Maria teab, et töö ootab hindamist.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-maria-test",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: test ootab hindamist",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Test ootab hindamist: Proov 1, …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas halduse linki."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on koolitus ja katse number.",
+        "Link avab Proov 1 testi vastused."
+      ],
+      "why": "Maria teab, et vaba vastus ootab lugemist.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-maria-katsed",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Maria teade: testi katsed otsas",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Testi katsed otsas: Proov 1, …“.",
+        "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas halduse linki."
+      ],
+      "expect": [
+        "Saatja on MS LAB.",
+        "Kirjas on „Uued katsed annab nupp „Ava test uuesti“ lehel Hindamine.“.",
+        "Link avab lehe „Hindamine“."
+      ],
+      "why": "Maria teab, et õpilane vajab uusi katseid.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-telegram",
+      "area": "kirjad",
+      "who": "dim",
+      "device": "telefon",
+      "title": "Telegrami teated",
+      "steps": [
+        "Ava Telegramis MS LABi teadete vestlus.",
+        "Vaata teateid, mis tulid koos Maria kirjadega.",
+        "Vajuta ühe teate lõpus olevat linki."
+      ],
+      "expect": [
+        "Iga Maria kirja kohta on Telegramis teade.",
+        "Teate esimene rida ütleb, mis juhtus, näiteks „Uus registreerimine (grupikoolitus)“.",
+        "Teate lõpus on halduse link, mis avab halduse."
+      ],
+      "why": "Enne avamist jõuavad teated Dimile, pärast Mariale.",
+      "risk": "med",
+      "writes": false
+    },
+    {
+      "id": "kirjad-testimine-telegram",
+      "area": "kirjad",
+      "who": "dim",
+      "device": "any",
+      "title": "Testimise lehe Telegrami teade",
+      "href": "/admin/testimine",
+      "steps": [
+        "Vajuta selle kontrolli juures „Viga“.",
+        "Ava Telegram.",
+        "Kirjuta selle kontrolli märkusesse: Proov.",
+        "Oota paar sekundit ja ava Telegram uuesti.",
+        "Vajuta selle kontrolli juures „OK“."
+      ],
+      "expect": [
+        "Telegramis on „Testimine — Viga: Testimise lehe Telegrami teade (Dim)“ ja „(märkust veel pole)“.",
+        "Pärast märkust tuleb teine teade „Testimine — Märkus: …“ tekstiga Proov.",
+        "Teate link avab selle kontrolli testimise lehel.",
+        "Pärast „OK“ uusi teateid ei tule."
+      ],
+      "why": "Iga Viga peab Dimini jõudma samal päeval.",
+      "risk": "med",
+      "writes": true
+    },
+    {
+      "id": "koristamine-aadressid",
+      "area": "koristamine",
+      "who": "koos",
+      "device": "any",
+      "title": "Proovi-aadressid ja -nimed",
+      "steps": [
+        "Kirjuta selle kontrolli märkusesse iga proovi-aadress, mida kasutasid.",
+        "Kirjuta märkusesse iga „Proov“ nimega registreeringu nimi ja koolituspäev.",
+        "Kontrolli, et ühtegi aadressi pole puudu.",
+        "Kui loend on täielik, vajuta „OK“."
+      ],
+      "expect": [
+        "Märkuses on iga aadress täpselt nii, nagu see vormi kirjutati.",
+        "Märkuses on iga proovi-registreering nimega.",
+        "Dim kustutab enne avamist need read täpse aadressi järgi."
+      ],
+      "why": "Proovi-andmed ei tohi jääda päris õpilaste ja registreeringute sekka.",
+      "risk": "high",
+      "writes": false
+    }
+  ]
+}

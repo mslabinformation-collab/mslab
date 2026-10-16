@@ -28,6 +28,9 @@ const nextConfig: NextConfig = {
     // Review tools: Maria's comment widget (public/feedback.js) on every public page, posting to /api/feedback.
     // On ("1") for the review builds; switched off ("0") at the mslab.ee launch. Inlined at build time, not a secret.
     NEXT_PUBLIC_REVIEW_TOOLS: "1",
+    // The test page (phase 4, piece 1, spec §6): the instant a "markedAt": "deploy" of src/data/testplan.json reads as when
+    // tools/testplan-stamp.mjs was skipped, i.e. this build's time. Inlined at build time; not a secret and not a configured variable.
+    TESTPLAN_BUILD_AT: new Date().toISOString(),
   },
   ...e2ePageCache,
   // The certificate's fonts (phase 3d): server/certificate-pdf.ts reads app/assets/fonts with fs on every download, so `next build` must put
