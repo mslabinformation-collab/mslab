@@ -5,6 +5,7 @@
 // (tests/unit/old-safari.test.ts).
 
 import type { Invoice } from "@/db/schema";
+import { tallinnFormParts, tallinnInstant } from "./calendar";
 import { seqToIssue, tallinnDateText, tallinnYear } from "./certificate";
 import { prepaymentDue } from "./registration";
 
@@ -224,6 +225,21 @@ export function invoiceDownloadHeaders(number: string): Record<string, string> {
     "content-disposition": `attachment; filename="${invoiceFileName(number)}"`,
     "x-content-type-options": "nosniff",
   };
+}
+
+/** A month of Tallinn's calendar as the „Arved“ page's `?kuu=` and the CSV's name it, "2026-10"; null for anything else (a day, a space, a list, a month 00 or 13). */
+export function parseMonth(value: unknown): string | null {
+  return typeof value === "string" && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(value) ? value : null;
+}
+
+/**
+ * The instant of a day Maria gives for money received (the date of „Juba tasutud“ and of „Märgi tasutuks“): `date` is "YYYY-MM-DD" on
+ * Tallinn's calendar. Today it is `now` itself; another day is noon of it in Tallinn, so that no zone reads it as the day before or after.
+ * null for anything that is no real date. A day after today is returned as it is: the server refuses it (an invoice cannot be paid ahead).
+ */
+export function paidDay(date: unknown, now: Date): Date | null {
+  if (typeof date !== "string") return null;
+  return date === tallinnFormParts(now).date ? now : tallinnInstant(date, "12:00");
 }
 
 /** The columns of the accountant's file (§6.5), in order. */

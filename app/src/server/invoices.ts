@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, lt, max, ne, notExists, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, lt, max, ne, notExists, or, sql, type SQL } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
 import { addRegistrationPayment, paged, setSetting, type Paged } from "@/db/queries/admin";
 import { readSetting } from "@/db/queries/public";
@@ -14,6 +14,7 @@ import {
 import { PAGE_SIZE } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment } from "@/domain/registration";
 import { prepaymentDraft, type PrepaymentDraft } from "@/domain/site-editor";
+import type { I18n } from "@/i18n/field";
 import { toStorable } from "@/lib/to-storable";
 
 // The invoices (invoices, Task 3; spec D2–D9, §6), without Next.js: the issue of a number in the setting's series, Maria's invoice on a
@@ -627,6 +628,39 @@ export async function uninvoicedPayments(db: Db): Promise<Payment[]> {
     .from(payments)
     .where(and(eq(payments.status, "paid"), notExists(db.select({ one: sql`1` }).from(invoices).where(eq(invoices.paymentId, payments.id)))))
     .orderBy(asc(payments.paidAt), asc(payments.id));
+}
+
+/** A row of „Arveta maksed“: the paid payment, the course it was for, and the number of the unpaid invoice its catch-up will pay (null: it will make a new one). */
+export type UninvoicedRow = { payment: Payment; courseTitle: I18n | null; pays: string | null };
+
+/**
+ * „Arveta maksed“ for the „Arved“ page (invoices Task 5, ruling R13): uninvoicedPayments with what a row shows — the course (the payment's, else
+ * its registration's) and, for a payment that was started for an invoice, that invoice's number when its catch-up will pay THAT invoice
+ * (markLinkedInvoicePaid's own test: it is still unpaid, the same registration's and of the same sum); otherwise the catch-up issues a new one.
+ */
+export async function uninvoicedPaymentRows(db: Db): Promise<UninvoicedRow[]> {
+  const list = await uninvoicedPayments(db);
+  if (list.length === 0) return [];
+  const some = <T>(values: (T | null)[]): T[] => [...new Set(values.filter((v): v is T => v !== null))];
+  const regIds = some(list.map((p) => p.registrationId));
+  const regCourse = new Map(
+    regIds.length === 0 ? [] : (await db.select({ id: registrations.id, courseId: registrations.courseId }).from(registrations).where(inArray(registrations.id, regIds))).map((r) => [r.id, r.courseId]),
+  );
+  const courseOf = (p: Payment): number | null => p.courseId ?? (p.registrationId === null ? null : (regCourse.get(p.registrationId) ?? null));
+  const courseIds = some(list.map(courseOf));
+  const titles = new Map(courseIds.length === 0 ? [] : (await db.select({ id: courses.id, title: courses.title }).from(courses).where(inArray(courses.id, courseIds))).map((c) => [c.id, c.title]));
+  const invoiceIds = some(list.map((p) => p.invoiceId));
+  const linked = new Map(
+    invoiceIds.length === 0
+      ? []
+      : (await db.select({ id: invoices.id, number: invoices.number, status: invoices.status, registrationId: invoices.registrationId, amountCents: invoices.amountCents }).from(invoices).where(inArray(invoices.id, invoiceIds))).map((i) => [i.id, i]),
+  );
+  return list.map((payment) => {
+    const inv = payment.invoiceId === null ? undefined : linked.get(payment.invoiceId);
+    const pays = inv && inv.status === "unpaid" && inv.registrationId === payment.registrationId && inv.amountCents === payment.amountCents ? inv.number : null;
+    const courseId = courseOf(payment);
+    return { payment, courseTitle: courseId === null ? null : (titles.get(courseId) ?? null), pays };
+  });
 }
 
 /** The accountant's file of a Tallinn month, "2026-10" (§6.5, domain/invoice.ts invoiceCsv): every invoice issued in it, cancelled ones too, in the order they were issued. */

@@ -457,6 +457,16 @@ export const ru: Dict = {
       valid: "Код и кнопка действуют 30 минут. Позже протокол можно найти на странице «Мои курсы».",
       feedback: "По желанию оставьте нам отзыв",
     },
+    // Maria's «Отправить ученице» (server/account-mail.ts invoiceMail); Draft (invoices Task 5, for Dim's wording sheet). The subject is
+    // «Счёт MS LAB {number}» (R1). The labels of the bank details are `dashboard.payment`'s.
+    invoiceMail: {
+      subject: "Счёт MS LAB {number}",
+      leadUnpaid: "Отправляем вам счёт {number}.",
+      leadPaid: "Отправляем вам счёт {number}. Он уже оплачен.",
+      due: "Оплатить до",
+      paidOn: "Оплачено",
+      attached: "Счёт в\u00a0формате PDF во\u00a0вложении.",
+    },
     // the e-course completion's mails (server/account-mail.ts completionMail)
     completionMail: {
       assessedSubject: "Ваша практическая работа оценена",

@@ -69,6 +69,15 @@ describe("next.config.ts headers()", () => {
     expect(valueFor(rules, "/konto", "cache-control")).toBeUndefined(); // the static shell pages keep the CDN's caching
   });
 
+  test("Maria's invoice downloads are private and never kept: the PDF, the month's CSV and the sample (the admin rule's plain no-store would replace the route's own header); the rest of /api/admin keeps no-store (invoices Task 5)", async () => {
+    const rules = (await (await config()).headers!()) as Rule[];
+    for (const path of ["/api/admin/arve/12", "/api/admin/arved", "/api/admin/naidisarve"]) {
+      expect(valueFor(rules, path, "cache-control"), path).toBe("private, no-store");
+      expect(valueFor(rules, path, "x-robots-tag"), path).toBe("noindex, nofollow");
+    }
+    for (const path of ["/api/admin/upload", "/api/admin/subscribers.csv", "/api/admin/arve", "/api/admin/arve/12/x", "/api/admin/arvedx"]) expect(valueFor(rules, path, "cache-control"), path).toBe("no-store");
+  });
+
   test("the unsubscribe page's POST keeps its Origin: the loobu route is same-origin, never no-referrer (a strict policy makes the form post Origin: null, which is refused as cross-site)", async () => {
     const rules = (await (await config()).headers!()) as Rule[];
     expect(valueFor(rules, "/api/newsletter/loobu", "referrer-policy")).toBe("same-origin");

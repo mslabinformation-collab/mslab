@@ -1,0 +1,93 @@
+/* Arved (invoices Task 5): the way back to Maksed, the month's file for the accountant, „Arveta maksed“ above the list, the month filter. The invoice
+   rows are the registration drawer's (components/admin/InvoiceBlock.module.css). Colours from tokens.css only. */
+
+.back {
+  margin: 0 0 18px;
+}
+
+.csv {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+.csv p {
+  margin: 0;
+  max-width: 260px;
+}
+
+.uninvoiced {
+  margin-bottom: 25px;
+}
+
+.uninvoiced h2 {
+  margin-bottom: 10px;
+}
+
+.uninvoiced > p {
+  max-width: 720px;
+}
+
+.payments {
+  display: grid;
+  gap: 0;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.payment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.payment:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.payment p {
+  margin: 0;
+}
+
+.paymentWho {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.paymentMeta {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.pays {
+  font-size: 13px;
+}
+
+.month {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px 12px;
+  margin: 0 0 18px;
+}
+
+.month input[type="month"] {
+  width: auto;
+  min-width: 180px;
+}
+
+.count {
+  margin-bottom: 6px;
+}
+
+@media (max-width: 640px) {
+  .payment {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

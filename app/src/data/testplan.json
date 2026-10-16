@@ -5,7 +5,7 @@
     {
       "id": "enne",
       "name": "Enne alustamist",
-      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest ja Proov 0 on Dimi esimene makse. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
+      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest, Proov 6 saab Maria arved ja Proov 0 on Dimi esimene makse. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
       "checks": false
     },
     {
@@ -21,7 +21,7 @@
     {
       "id": "registreerimine",
       "name": "Registreerimine ja maksmine",
-      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate."
+      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate. Arvete kontrollid kasutavad Proov 6 registreeringut, mille teed kontrolli „Arve pangaülekandeks“ esimestes sammudes."
     },
     {
       "id": "konto",
@@ -36,7 +36,7 @@
     {
       "id": "kontakt",
       "name": "Kontaktkoolitus",
-      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Registreerimise ala lõpus tühistati ainult Proov 2 registreering; Proov 1 registreering jääb alles kuni koristamiseni."
+      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Registreerimise ala lõpus tühistati ainult Proov 2 registreering; Proov 1 ja Proov 6 registreeringud jäävad alles kuni koristamiseni."
     },
     {
       "id": "kirjad",
@@ -1106,6 +1106,61 @@
       "writes": false
     },
     {
+      "id": "haldus-seaded-arve",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: arve andmed",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja keri kaardini „Arve andmed“.",
+        "Kirjuta selle kontrolli märkusesse praegune „Arve numbri eesliide“ ja „Järgmine number“.",
+        "Täida „Ettevõtte nimi“, „Registrikood“ ja „Aadress“.",
+        "Märgi „Arvel on käibemaks“, jäta „KMKR number“ tühjaks ja vajuta „Salvesta arve andmed“.",
+        "Võta märge ära ja vajuta „Salvesta arve andmed“ uuesti."
+      ],
+      "expect": [
+        "Esimesel salvestamisel näed „Käibemaksuga arve vajab KMKR numbrit.“ ja midagi ei salvestata.",
+        "Teisel salvestamisel näed „Arve andmed on salvestatud.“.",
+        "„Arve numbri eesliide“ all on vihje „Uus eesliide alustab oma numbrit 001-st.“.",
+        "„Pangaandmed“ näitab saajat, IBANi ja panka, nagu „Ettemaksu juhised“.",
+        "Kaardil on rida „Viimati väljastatud: …“ või teade, et tänavu pole arveid väljastatud."
+      ],
+      "why": "Ilma nende andmeteta ei koosta sait ühtegi arvet.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-seaded-naidisarve",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: näidisarve",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja keri kaardini „Arve andmed“.",
+        "Muuda „Ettevõtte nimi“, aga ära salvesta.",
+        "Vajuta „Näidisarve (PDF)“.",
+        "Märgi „Arvel on käibemaks“, kirjuta „KMKR number“ ja ava „Näidisarve (PDF)“ uuesti.",
+        "Lae leht uuesti ja vaata „Ettevõtte nimi“."
+      ],
+      "expect": [
+        "PDF avaneb uues aknas ja mahub ühele A4 lehele.",
+        "Arvel on muudetud ettevõtte nimi, kuigi seda polnud salvestatud.",
+        "Arvel on „Näidiskoolitus“, „Ettemaks 50%“ ja summa 175,00 €.",
+        "Pangaandmed on samad mis „Ettemaksu juhised“.",
+        "Käibemaksuga näidisel on „Summa käibemaksuta“, „Käibemaks 24%“ ja „Kokku“.",
+        "Pärast lehe uuesti laadimist on endine ettevõtte nimi: midagi ei salvestatud."
+      ],
+      "why": "Maria näeb arvet enne, kui keegi seda saab.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-vorm-vead",
       "area": "registreerimine",
       "who": "maria",
@@ -1224,11 +1279,14 @@
         "Paneeli üleval on Proov 1, koolitus ja nupp „Ava protokoll“.",
         "„Laekunud“ on pool hinnast.",
         "„Veebimaksed“ all on makse märkega „Makstud“.",
+        "Plokis „Arved“ on Proov 1 ettemaksu arve märkega „Tasutud“ ja nupuga „Laadi alla (PDF)“.",
         "Ülevaate arv „Ootab ettemaksu“ ei loe Proov 1 registreeringut."
       ],
       "why": "Maria näeb siin, kes on maksnud.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-maksed",
@@ -1250,6 +1308,83 @@
       "why": "Maksete loend näitab iga Montonio makset.",
       "risk": "high",
       "writes": false
+    },
+    {
+      "id": "registreerimine-arveta-maksed",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Arveta maksed",
+      "href": "/admin/arved",
+      "steps": [
+        "Ava „Maksed“ ja vajuta nuppu „Arved“.",
+        "Vaata lehe ülaosas plokki „Arveta maksed“; kui seda pole, vajuta „Jäta vahele“.",
+        "Vajuta ühe makse real „Koosta arve“."
+      ],
+      "expect": [
+        "Plokis on tasutud veebimaksed, millel arvet pole, näiteks enne arvete tulekut tehtud testmaksed.",
+        "Rida ütleb „Koostab uue arve“ või „Tasub arve …“, kui makse oli tehtud tasumata arve jaoks.",
+        "Pärast vajutust kaob rida plokist ja arvete loendisse tuleb arve.",
+        "Arve on „Tasutud“, makse päevaga ja makseviisiga „Montonio“.",
+        "Õpilasele kirja ei saadeta.",
+        "Kui „Arve andmed“ on tühi, näed lingi „Täida Seaded → Arve andmed“ ja nuppe pole."
+      ],
+      "why": "Ükski tasutud makse ei jää arveta.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arved-loend",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arvete loend",
+      "href": "/admin/arved",
+      "steps": [
+        "Ava „Maksed“ ja vajuta nuppu „Arved“.",
+        "Vajuta filtril „Tasumata“ ja siis „Kõik“.",
+        "Vali „Kuu“ välja see kuu ja vajuta „Näita“.",
+        "Vajuta „Kõik kuud“."
+      ],
+      "expect": [
+        "Loendis on iga arve number, ostja, koolitus, summa ja olek.",
+        "Uuemad arved on eespool.",
+        "Filter „Tasumata“ näitab ainult tasumata arveid.",
+        "Kuu valik näitab ainult selle kuu arveid.",
+        "Arve real on samad nupud nagu registreeringu paneelis ja link „Ava registreering“."
+      ],
+      "why": "Maria leiab iga arve ühest kohast.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arved-csv",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Kuu arved raamatupidajale",
+      "href": "/admin/arved",
+      "steps": [
+        "Ava „Arved“ ja vali „Kuu“ väljale see kuu.",
+        "Vajuta „Näita“ ja siis „Laadi alla (CSV)“.",
+        "Ava fail Excelis."
+      ],
+      "expect": [
+        "Faili nimi on MS-LAB-arved-AAAA-KK.csv, kus AAAA-KK on valitud kuu.",
+        "Excel näitab eesti tähti õigesti ja veerud on eraldi.",
+        "Iga selle kuul koostatud arve on real: number, kuupäev, ostja, kirjeldus, summa ja olek.",
+        "Tühistatud arved on failis märkega „Tühistatud“ ja summaga 0,00.",
+        "Summad on komaga, näiteks 175,00."
+      ],
+      "why": "Raamatupidaja saab kuu arved ühe failina.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-kohad",
@@ -1340,7 +1475,236 @@
       ],
       "why": "Pangaülekanne on maksmise teine tee ja Maria märgib selle ise.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-maksmiseks",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arve pangaülekandeks",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Registreeri samale kuupäevale: „Nimi“ Proov 6 ja „Telefon“ oma number.",
+        "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov6.",
+        "Vali „50% registreerimisel + 50% koolituspäeval“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb.",
+        "Halduses ava „Registreerimised“, vajuta nimele Proov 6 ja keri plokini „Arved“.",
+        "Vajuta „Koosta arve“, vali „Ettemaks 50%“ ja „Maksmiseks“, siis vajuta „Koosta arve“.",
+        "Vajuta arve real „Laadi alla (PDF)“."
+      ],
+      "expect": [
+        "Enne koostamist pakub „Koosta arve“ summasid „Ettemaks 50%“ ja „Kogu summa (100%)“.",
+        "Plokis on uus arve numbriga, näiteks MSL2026-001, märkega „Tasumata“ ja tähtajaga.",
+        "PDF-il on „Maksmiseks“ ja Saaja, IBAN, Pank ja Selgitus, nagu „Ettemaksu juhised“.",
+        "Pärast koostamist pakub „Koosta arve“ ainult summat „Jääk 50%“.",
+        "„Laekunud“ jääb nulliks ja staatus on „Ootab ettemaksu“."
+      ],
+      "why": "Maria koostab pangaülekande arve kahe vajutusega ja ei trüki summat ise.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-saaja",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arve saaja muutmine",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 6 paneelis tasumata arve rida ja vajuta „Muuda saajat“.",
+        "Kirjuta „Ettevõtte nimi“: Proov OÜ ja „Ettevõtte registrikood“: 12345678.",
+        "Tühjenda „Nimi“ ja vajuta „Salvesta saaja“.",
+        "Kirjuta „Nimi“: Proov 6 ja vajuta „Salvesta saaja“.",
+        "Vajuta „Laadi alla (PDF)“."
+      ],
+      "expect": [
+        "Tühja nime korral näed välja all „Täida see väli.“ ja midagi ei salvestata.",
+        "Pärast salvestamist näed „Saaja on salvestatud.“.",
+        "PDF-il „Ostja“ all on Proov OÜ, registrikood 12345678 ja nimi Proov 6."
+      ],
+      "why": "Ettevõtte eest tasuv õpilane saab arve ettevõtte nimele.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-saada",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arve saatmine õpilasele",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 6 paneelis tasumata arve rida ja vajuta „Saada õpilasele“.",
+        "Jäta „Saada ka aadressile“ tühjaks ja vajuta „Saada“."
+      ],
+      "expect": [
+        "Paneelis on rida „Kiri läheb aadressile …“ Proov 6 aadressiga.",
+        "Näed teadet „Arve on saadetud.“.",
+        "Arve real on rida „Saadetud“ tänase kuupäevaga.",
+        "Proov 6 postkasti tuleb kiri „MS LAB arve …“ (vaata kontrolli „Kiri: arve õpilasele“)."
+      ],
+      "why": "Õpilane saab arve oma postkasti, kui Maria seda tahab.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-saada-teisele",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arve saatmine teisele aadressile",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava sama arve real „Saada õpilasele“.",
+        "Kirjuta „Saada ka aadressile“: ei-aadress, ja vajuta „Saada“.",
+        "Asenda see oma teise aadressiga, kuhu lisad enne @-märki +proov6b, ja vajuta „Saada“."
+      ],
+      "expect": [
+        "Vale aadressi korral näed „Sisesta korrektne e-posti aadress.“ ja kirja ei saadeta.",
+        "Pärast teist vajutust näed „Arve on saadetud.“.",
+        "Arve real on „Saadetud … · ka aadressile …“ teise aadressiga.",
+        "Mõlemasse postkasti tuleb sama kiri „MS LAB arve …“ PDF-iga.",
+        "Teist aadressi ei salvestata mujale kui arve viimase saatmise märkesse."
+      ],
+      "why": "Arve saab saata ka õpilase raamatupidajale.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-tasutuks",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arve märkimine tasutuks",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 6 paneelis tasumata arve rida ja vajuta „Märgi tasutuks“.",
+        "Jäta kuupäevaks täna ja makseviisiks „Pangaülekanne“.",
+        "Vajuta „Salvesta tasumine“."
+      ],
+      "expect": [
+        "Enne salvestamist ütleb paneel, et summa lisatakse „Laekunud summa“ juurde.",
+        "Näed teadet „Arve on märgitud tasutuks.“.",
+        "Arve real on „Tasutud“, kuupäev ja „Pangaülekanne“.",
+        "„Laekunud“ on 50% hinnast ja staatus on „Kinnitatud“, ilma et trükiksid summat ise.",
+        "Ülevaate arv „Ootab ettemaksu“ ei loe Proov 6 enam."
+      ],
+      "why": "Maria ei trüki sama summat kaks korda: arve märkimine kinnitab koha.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-tagasi",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arve tasumise tagasivõtmine",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 6 paneelis tasutud arve rida ja vajuta „Võta tasumine tagasi“.",
+        "Loe kinnitus läbi ja vajuta „Katkesta“.",
+        "Vajuta uuesti „Võta tasumine tagasi“ ja siis „Jah, võta tasumine tagasi“.",
+        "Märgi arve uuesti tasutuks."
+      ],
+      "expect": [
+        "Kinnituses on „Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha.“.",
+        "„Katkesta“ ei muuda midagi.",
+        "Pärast kinnitamist näed „Arve on jälle tasumata.“ ja arve on „Tasumata“.",
+        "„Laekunud“ on null ja staatus on jälle „Ootab ettemaksu“.",
+        "Uuesti märkimisel on „Laekunud“ jälle 50% ja staatus „Kinnitatud“."
+      ],
+      "why": "Vale vajutus ei tohi jääda püsima.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-kviitung",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arve juba tasutud rahale",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 6 paneelis „Koosta arve“ ja vali „Jääk 50%“.",
+        "Vali „Juba tasutud“, jäta kuupäevaks täna ja vali „Sularaha“.",
+        "Vajuta „Koosta arve“."
+      ],
+      "expect": [
+        "„Juba tasutud“ juures näed kuupäeva ning makseviise „Pangaülekanne“, „Sularaha“ ja „Kaardimakse kohapeal“.",
+        "Uus arve on märkega „Tasutud“, tänase kuupäeva ja makseviisiga „Sularaha“.",
+        "„Laekunud“ ei muutu.",
+        "Arve real pole nuppe „Märgi tasutuks“ ega „Tühista arve“."
+      ],
+      "why": "Koolituspäeval makstud jäägile saab arve ilma raha topelt arvestamata.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-kviitung-tagasi",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Kviitungi tasumise tagasivõtmine",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 6 paneelis „Sularaha“ arve rida ja vajuta „Võta tasumine tagasi“.",
+        "Loe kinnitus läbi ja vajuta „Jah, võta tasumine tagasi“."
+      ],
+      "expect": [
+        "Kinnituses on „Kviitung tühistatakse (number jääb alles).“.",
+        "Näed teadet „Kviitung on tühistatud.“ ja arve on „Tühistatud“.",
+        "Arve number jääb loendisse.",
+        "„Laekunud“ ei muutu.",
+        "„Koosta arve“ pakub jälle summat „Jääk 50%“."
+      ],
+      "why": "Kviitung ei küsinud raha, nii et seda ei saa tasumata arveks muuta.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-arve-tuhista",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arve tühistamine",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Koosta Proov 6 jaoks „Jääk 50%“ arve valikuga „Maksmiseks“.",
+        "Vajuta selle arve real „Tühista arve“.",
+        "Loe kinnitus läbi ja vajuta „Katkesta“.",
+        "Vajuta uuesti „Tühista arve“ ja siis „Jah, tühista arve“."
+      ],
+      "expect": [
+        "Kinnituses on „Arve tühistatakse. Number jääb alles …“.",
+        "„Katkesta“ jätab arve „Tasumata“.",
+        "Pärast kinnitamist näed „Arve on tühistatud.“ ja arve on „Tühistatud“, numbriga.",
+        "„Laekunud“ ei muutu.",
+        "„Koosta arve“ pakub jälle summat „Jääk 50%“."
+      ],
+      "why": "Tühistatud arve number ei kao ega saa uuesti kasutada.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-individuaal",
@@ -1455,7 +1819,9 @@
       ],
       "why": "Tühistamine vabastab koha teisele õpilasele.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "konto-kood",
@@ -2488,7 +2854,9 @@
       ],
       "why": "Maria loeb vastused ühest kohast.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-tana",
@@ -2645,6 +3013,32 @@
         "Arvel on müüja andmed nagu „Arve andmed“ ja ostjana Proov 1."
       ],
       "why": "Iga veebimakse saab arve, mille õpilane saab endale hoida.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kirjad-arve-oppilasele",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: arve õpilasele",
+      "steps": [
+        "Ava Gmailis telefonis kiri „MS LAB arve …“, mille Maria saatis Proov 6 aadressile.",
+        "Ava kirja manus.",
+        "Vajuta kirjas nuppu „Ava minu konto“.",
+        "Ava sama kiri Gmailis arvutis, vajuta „Vasta“, vaata saajat ja ära saada."
+      ],
+      "expect": [
+        "Saatja on MS LAB ja kirjas on „Tere, Proov!“.",
+        "Kirjas on koolitus, summa ja „Tasumise tähtaeg“.",
+        "Kirjas on Saaja, IBAN, Pank ja Selgitus, nagu „Ettemaksu juhised“.",
+        "Kirjal on üks manus, PDF-fail „MS-LAB-arve-…“, mille number on sama mis pealkirjas.",
+        "Nupp „Ava minu konto“ avab sisselogimise lehe.",
+        "Vastuse saaja on Maria aadress."
+      ],
+      "why": "Õpilane saab arve koos pangaandmetega.",
       "risk": "high",
       "writes": false,
       "mark": "new",

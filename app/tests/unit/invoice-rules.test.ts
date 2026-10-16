@@ -3,7 +3,7 @@ import type { Invoice } from "@/db/schema";
 import { seqToIssue } from "@/domain/certificate";
 import {
   INVOICE_DEFAULTS, INVOICE_KEY, INVOICE_LIMITS, euro, formatInvoiceNumber, invoiceCsv, invoiceDownloadHeaders, invoiceFileName, invoiceKindOfPayment,
-  invoiceSeq, invoiceStatusText, openAmounts, paidMethodText, partText, readInvoiceSettings, sellerReady, vatSplit,
+  invoiceSeq, invoiceStatusText, openAmounts, paidDay, paidMethodText, parseMonth, partText, readInvoiceSettings, sellerReady, vatSplit,
   type InvoiceKind, type InvoiceStatus,
 } from "@/domain/invoice";
 import { prepaymentDue, registrationStatusAfterPayment } from "@/domain/registration";
@@ -263,6 +263,34 @@ describe("sellerReady: company, registry code and address (D3)", () => {
   });
   test("the defaults are not ready", () => {
     expect(sellerReady({ ...INVOICE_DEFAULTS, nextYear: 2026, nextSeq: 1 })).toBe(false);
+  });
+});
+
+describe("parseMonth: the „Arved“ page's ?kuu= and the CSV's (Task 5)", () => {
+  test("a Tallinn month as YYYY-MM, January to December", () => {
+    for (const month of ["2026-01", "2026-10", "2026-12", "2030-06"]) expect(parseMonth(month), month).toBe(month);
+  });
+  test("anything else is null: another month, a day, a space, a list, a number, nothing", () => {
+    for (const bad of ["2026-00", "2026-13", "2026-1", "26-10", "2026-10-01", " 2026-10", "2026-10 ", "2026/10", "oktoober", "", ["2026-10"], 202610, null, undefined])
+      expect(parseMonth(bad), String(bad)).toBeNull();
+  });
+});
+
+describe("paidDay: the date Maria gives for money received (Task 5)", () => {
+  const now = new Date("2026-10-16T21:30:00Z"); // 17.10.2026 00:30 in Tallinn (summer time, UTC+3)
+  test("today in Tallinn is now itself (the day's own time, not a noon still to come)", () => {
+    expect(paidDay("2026-10-17", now)).toBe(now);
+  });
+  test("another day is noon of it in Tallinn, summer or winter time", () => {
+    expect(paidDay("2026-10-15", now)?.toISOString()).toBe("2026-10-15T09:00:00.000Z");
+    expect(paidDay("2026-11-02", now)?.toISOString()).toBe("2026-11-02T10:00:00.000Z");
+  });
+  test("a day after today is still an instant: refusing it is the server's rule (a receipt cannot be dated ahead)", () => {
+    expect(paidDay("2026-10-20", now)?.toISOString()).toBe("2026-10-20T09:00:00.000Z");
+  });
+  test("a date that is no date is null", () => {
+    for (const bad of ["2026-02-30", "2026-13-01", "17.10.2026", "2026-10-17T10:00", "", " 2026-10-17", null, undefined, 20261017, new Date(now)])
+      expect(paidDay(bad, now), String(bad)).toBeNull();
   });
 });
 

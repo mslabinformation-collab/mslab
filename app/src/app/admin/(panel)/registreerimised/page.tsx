@@ -3,6 +3,8 @@ import Link from "next/link";
 import { getAdminCounts } from "@/components/admin/data";
 import { Drawer } from "@/components/admin/Drawer";
 import { FeedbackAnswers } from "@/components/admin/FeedbackAnswers";
+import { InvoiceBlock } from "@/components/admin/InvoiceBlock";
+import { invoiceView } from "@/components/admin/invoice-view";
 import { Pager } from "@/components/admin/Pager";
 import { PaymentLines } from "@/components/admin/PaymentLines";
 import { RegistrationForms } from "@/components/admin/RegistrationForms";
@@ -15,6 +17,9 @@ import { getDb } from "@/db/client";
 import { getRegistration, pageRegistrations, type RegistrationFilter, type RegistrationRow } from "@/db/queries/admin";
 import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
 import { feedbackOf, type FeedbackRow } from "@/db/queries/protocols";
+import type { Invoice } from "@/db/schema";
+import { tallinnFormParts } from "@/domain/calendar";
+import { openAmounts, sellerReady } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { parsePage } from "@/domain/paging";
 import { prepaymentDue, registrationPrice, type RegStatus } from "@/domain/registration";
@@ -22,6 +27,7 @@ import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { requireAdmin } from "@/server/auth";
+import { getInvoiceSettings, invoicesOfRegistration } from "@/server/invoices";
 import styles from "./registrations.module.css";
 
 export const dynamic = "force-dynamic";
@@ -85,11 +91,15 @@ export default async function RegistrationsPage({ searchParams }: Props) {
   const db = getDb();
   const filter: RegistrationFilter = { type: view.vorm ? FORMS[view.vorm] : undefined, status: view.staatus ?? undefined };
   // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
-  const [list, open, online, answers] = await Promise.all([
+  const now = new Date();
+  const [list, open, online, answers, invoiceList, invoiceSeller] = await Promise.all([
     pageRegistrations(db, filter, view.leht),
     view.id ? getRegistration(db, view.id) : null,
     view.id ? listPaymentsOf(db, { registrationId: view.id }) : [],
     view.id ? feedbackOf(db, { registrationId: view.id }) : [],
+    // the drawer's „Arved“ (invoices Task 5): the registration's invoices, and whether Seaded → Arve andmed has a seller to make one
+    view.id ? invoicesOfRegistration(db, view.id) : [],
+    view.id ? getInvoiceSettings(db, now) : null,
     getAdminCounts(),
   ]);
   const rows = list.rows;
@@ -217,14 +227,39 @@ export default async function RegistrationsPage({ searchParams }: Props) {
           closeLabel={t.drawer.close}
           returnFocus={open ? `reg-${open.id}` : undefined}
         >
-          {open ? <RegistrationDetail r={open} payments={online} feedback={answers[0] ?? null} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}
+          {open ? (
+            <RegistrationDetail
+              r={open}
+              payments={online}
+              feedback={answers[0] ?? null}
+              invoices={invoiceList}
+              sellerReady={invoiceSeller !== null && sellerReady(invoiceSeller)}
+              today={tallinnFormParts(now).date}
+            />
+          ) : (
+            <p className={ui.empty}>{t.drawer.notFound}</p>
+          )}
         </Drawer>
       )}
     </Shell>
   );
 }
 
-function RegistrationDetail({ r, payments, feedback }: { r: RegistrationRow; payments: PaymentRow[]; feedback: FeedbackRow | null }) {
+function RegistrationDetail({
+  r,
+  payments,
+  feedback,
+  invoices,
+  sellerReady: seller,
+  today,
+}: {
+  r: RegistrationRow;
+  payments: PaymentRow[];
+  feedback: FeedbackRow | null;
+  invoices: Invoice[];
+  sellerReady: boolean;
+  today: string;
+}) {
   const t = adminEt.registrations.drawer;
   const yesNo = (v: boolean) => (v ? adminEt.common.yes : adminEt.common.no);
   const total = registrationPrice(r.course, r.kind);
@@ -290,6 +325,16 @@ function RegistrationDetail({ r, payments, feedback }: { r: RegistrationRow; pay
           </div>
         )}
       </section>
+
+      {/* the registration's invoices and „Koosta arve“ (invoices Task 5, spec §5): the amounts still open are those no unpaid or paid invoice covers */}
+      <InvoiceBlock
+        registrationId={r.id}
+        invoices={invoices.map(invoiceView)}
+        open={total == null ? [] : openAmounts({ priceCents: total, paymentChoice: r.paymentChoice }, invoices)}
+        sellerReady={seller}
+        canCreate={total != null}
+        today={today}
+      />
 
       {/* her answers to the course feedback form (phase protocols, spec §7): none, or the one */}
       {feedback && (

@@ -78,6 +78,10 @@ export default async function PaymentsPage({ searchParams }: Props) {
             <h1 className={ui.h1}>{t.title}</h1>
             <p className={ui.lead}>{t.lead}</p>
           </div>
+          {/* the invoices (invoices Task 5, spec §11): reached from here, not from the menu */}
+          <Link className={`${ui.btn} ${ui.secondary}`} href="/admin/arved" data-payments-invoices="">
+            {adminEt.invoices.fromPayments}
+          </Link>
         </div>
 
         <nav className={ui.filters} aria-label={t.filterLabel} data-payment-filter="">

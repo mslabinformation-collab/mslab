@@ -105,6 +105,12 @@ describe("admin guards are inherited by every admin entry point", () => {
         "server/actions/admin-certificates.ts",
         // phase 3d, Task 6: the certificate register (from Hindamine)
         "app/admin/(panel)/tunnistused/page.tsx",
+        // invoices, Task 5: Maria's invoice list, the PDF, the month's CSV, the sample and the invoice actions
+        "app/admin/(panel)/arved/page.tsx",
+        "app/api/admin/arve/[id]/route.ts",
+        "app/api/admin/arved/route.ts",
+        "app/api/admin/naidisarve/route.ts",
+        "server/actions/admin-invoices.ts",
       ]),
     );
     const broken = all.flatMap((f) => violations(f.path, f.source).map((v) => `${f.path}: ${v}`));

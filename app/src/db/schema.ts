@@ -275,8 +275,9 @@ export const payments = pgTable(
     courseId: integer("course_id").references(() => courses.id, { onDelete: "set null" }),
     clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
     /**
-     * The unpaid invoice this payment was started to pay (invoices, D5): when it is paid, that invoice becomes paid. Null for a payment that
-     * makes its own invoice (invoices.paymentId). Set null when the invoice is deleted.
+     * The unpaid invoice this payment was started to pay (invoices, D5): when it is paid, that invoice becomes paid and takes this payment's id
+     * as its own `payment_id`. Null for a payment that was not started for an invoice; it then makes its own born-paid invoice (invoices.paymentId)
+     * — also when the invoice it was started for is no longer unpaid by then. Set null when the invoice is deleted.
      */
     invoiceId: integer("invoice_id").references((): AnyPgColumn => invoices.id, { onDelete: "set null" }),
     email: text("email").notNull(),
@@ -575,7 +576,8 @@ export const certificates = pgTable("certificates", {
 
 /**
  * One invoice (spec §3): a contact course's prepayment, whole sum or rest, or an e-course's price. Born paid when a Montonio payment is
- * paid (`paymentId`, one per payment), or made by Maria on a registration: unpaid (a request to pay) or paid (a receipt). It holds a frozen
+ * paid (`paymentId`, one per payment), or made by Maria on a registration: unpaid (a request to pay, which a Montonio payment started for it
+ * then pays: it takes that payment's `paymentId`) or paid (a receipt). It holds a frozen
  * copy of everything the PDF prints (`line`, `seller`, `buyer`, `vatRate`, `amountCents`), so a later change of the course, of the price, of
  * Seaded → Arve andmed or of the account never alters it; an unpaid invoice's buyer is the one thing Maria may still edit. The PDF is drawn
  * from this row on every download. The number is {prefix}{year}-{nnn} (domain/invoice.ts formatInvoiceNumber), given under the invoice-number
@@ -590,7 +592,11 @@ export const invoices = pgTable("invoices", {
   seq: integer("seq").notNull(),
   kind: text("kind").$type<InvoiceKind>().notNull(),
   registrationId: integer("registration_id").references(() => registrations.id, { onDelete: "set null" }),
-  /** The online payment this invoice was born paid from; null for one Maria made. At most one invoice per payment (invoices_payment). */
+  /**
+   * The online payment that paid this invoice: the one it was born paid from, or the one that paid it after it was started for this invoice
+   * (payments.invoice_id; written when it is paid). Null for one Maria made and nobody paid online, however Maria marked it. At most one invoice
+   * per payment (invoices_payment), so "a payment is invoiced" is exactly "an invoice names it".
+   */
   paymentId: integer("payment_id").references(() => payments.id, { onDelete: "set null" }),
   courseId: integer("course_id").references(() => courses.id, { onDelete: "set null" }),
   clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),

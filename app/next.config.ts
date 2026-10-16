@@ -75,6 +75,9 @@ const nextConfig: NextConfig = {
       { source: "/admin/:path*", headers: noStore },
       { source: "/api/auth/:path*", headers: noStore },
       { source: "/api/admin/:path*", headers: noStore },
+      // Maria's invoice downloads (invoices Task 5): the PDF, the month's CSV and the sample are private as well as never kept (the rule above would leave
+      // them at plain no-store: a header given here replaces the route's own)
+      ...["/api/admin/arve/:id", "/api/admin/arved", "/api/admin/naidisarve"].map((source) => ({ source, headers: [{ key: "Cache-Control", value: "private, no-store" }] })),
       // the client account's API: one visitor's data, never kept by a CDN or a shared cache (server/account-api.ts)
       { source: "/api/konto/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
       // uploaded images: nothing in them may run (server/media.ts)

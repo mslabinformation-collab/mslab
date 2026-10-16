@@ -516,6 +516,17 @@ export const et = {
       valid: "Kood ja nupp kehtivad 30 minutit. Hiljem leiad protokolli Minu koolituste lehelt.",
       feedback: "Soovi korral jäta meile tagasisidet",
     },
+    // Maria's „Saada õpilasele“ (server/account-mail.ts invoiceMail, invoices Task 5): the invoice's PDF is attached and the one button is
+    // `confirm.open`. The labels of the bank details are `dashboard.payment`'s (receiver, iban, bank, amount, reference). `subject` is
+    // „MS LAB arve {number}“ (R1); the rest is Draft for Dim's wording sheet. {number} is the invoice's number.
+    invoiceMail: {
+      subject: "MS LAB arve {number}",
+      leadUnpaid: "Saadame sulle arve {number}.",
+      leadPaid: "Saadame sulle arve {number}. See on juba tasutud.",
+      due: "Tasumise tähtaeg",
+      paidOn: "Tasutud",
+      attached: "Arve PDF on kirjas manusena.",
+    },
     // The e-course completion's mails to the student (server/account-mail.ts completionMail, phase e-course completion, spec §6): each kind
     // has its subject, its one line and its button, which opens the page (she signs in there when she must). {title} is the course, {n} the
     // points to fix. Maria's notes-only protocol of an e-course without points takes `protocolMail`'s texts. No mail holds a note or an answer.

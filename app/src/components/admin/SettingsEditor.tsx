@@ -107,7 +107,7 @@ export function SettingsEditor({ initial, admins }: { initial: Loaded<SettingsVa
           </div>
         </section>
 
-        <section className={ui.card} aria-labelledby={`${uid}-prepayment`} data-prepayment-editor="">
+        <section id="ettemaks" className={ui.card} aria-labelledby={`${uid}-prepayment`} data-prepayment-editor="">
           <h2 id={`${uid}-prepayment`} className={`${ui.h2} ${styles.cardTitle}`}>
             {t.prepayment}
           </h2>

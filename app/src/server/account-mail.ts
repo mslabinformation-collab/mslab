@@ -1,4 +1,6 @@
+import type { Invoice } from "@/db/schema";
 import { firstName, groupIban, hasPrepayment, paymentReference, type PrepaymentInfo } from "@/domain/account-cards";
+import { euro, invoiceFileName } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { prepaymentDue } from "@/domain/registration";
 import { pick, type I18n } from "@/i18n/field";
@@ -17,6 +19,7 @@ import type { Mail } from "./notify";
 // when the visitor ticked "Loo mulle kohe konto", the live login code with "Logi sisse" in its place.
 // After an online payment (phase 2b) the same card says what was paid (registrationPaidMail) or that an e-course is open (ecourseOpenMail).
 // The e-course completion (completionMail) uses the protocol mail's card without a login: one line, the course, one button to the page.
+// Maria's invoice (invoiceMail, invoices Task 5) is the same card again: the course, the amount, the due date and the bank details, the PDF attached.
 
 /**
  * The link in the login e-mail: it signs in the device that opens it (api/konto verify). `pageLocale` is the language of
@@ -475,6 +478,53 @@ export function ecourseOpenMail(input: EcourseOpenInput): Mail {
     login: input.login,
     afterPurchase: true,
   });
+}
+
+export type InvoiceMailInput = {
+  siteUrl: string;
+  /** The address this copy goes to: the student's, or the second one Maria typed (D11). */
+  email: string;
+  /** The buyer's name, for the greeting (its first word). */
+  name: string;
+  locale: Locale;
+  /** The invoice as the PDF prints it: its frozen row. A cancelled invoice is never mailed. */
+  invoice: Pick<Invoice, "number" | "status" | "amountCents" | "dueAt" | "paidAt" | "reference" | "line" | "seller">;
+  /** The invoice's PDF (server/invoices.ts invoicePdf, rendered now): the mail's one attachment. */
+  pdf: Uint8Array;
+};
+
+/**
+ * Maria's „Saada õpilasele“ (invoices Task 5, ruling R1; spec §4, D11): „MS LAB arve {number}“ (Russian «Счёт MS LAB {number}»), the course
+ * with its date, the amount and, of an unpaid invoice, the due date, the bank details and the payment reference (the frozen seller's, as the
+ * PDF prints them), or of a paid one the day it was paid and no request for money; the invoice's PDF attached; and one button, „Ava minu
+ * konto“. No login in it, and not counted in the daily caps (it follows Maria's own send, like the protocol mail). The labels of the bank
+ * rows are the account card's own (`account.dashboard.payment`). The caller attaches nothing: the PDF is in `attachments`.
+ */
+export function invoiceMail(input: InvoiceMailInput): Mail {
+  const dict = getDict(input.locale);
+  const m = dict.account.invoiceMail;
+  const labels = dict.account.dashboard.payment;
+  const { invoice: inv } = input;
+  const paid = inv.status === "paid";
+  const fields: [string, string][] = [[labels.amount, euro(inv.amountCents)]];
+  if (paid) {
+    if (inv.paidAt) fields.push([m.paidOn, formatDate(inv.paidAt, input.locale)]);
+  } else {
+    if (inv.dueAt) fields.push([m.due, formatDate(inv.dueAt, input.locale)]);
+    fields.push([labels.receiver, inv.seller.receiver], [labels.iban, groupIban(inv.seller.iban)], [labels.bank, inv.seller.bank], [labels.reference, inv.reference]);
+  }
+  const mail = confirmationMail({
+    email: input.email,
+    name: input.name,
+    locale: input.locale,
+    siteUrl: input.siteUrl,
+    subject: oneLine(fill(m.subject, { number: inv.number })),
+    lead: fill(paid ? m.leadPaid : m.leadUnpaid, { number: inv.number }),
+    box: { title: inv.line.course || inv.number, lines: inv.line.session ? [inv.line.session] : [] },
+    sections: [{ fields: fields.filter(([, value]) => value.trim() !== "") }, { text: m.attached }],
+    login: null,
+  });
+  return { ...mail, attachments: [{ filename: invoiceFileName(inv.number), content: Buffer.from(input.pdf), contentType: "application/pdf" }] };
 }
 
 export type RequestConfirmationInput = {

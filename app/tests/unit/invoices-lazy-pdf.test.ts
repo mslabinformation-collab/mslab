@@ -19,3 +19,11 @@ test("importing server/invoices.ts loads no PDF code", async () => {
   expect(typeof invoices.invoicePdf).toBe("function");
   expect(loaded).toEqual({ invoice: false, certificate: false });
 });
+
+// Maria's side (invoices Task 5): the mail of „Saada õpilasele“ and Seaded's sample draw a PDF too, and load the stack only when they do.
+test("importing server/invoice-send.ts and server/invoice-sample.ts loads no PDF code", async () => {
+  const send = await import("@/server/invoice-send");
+  const sample = await import("@/server/invoice-sample");
+  expect([typeof send.sendInvoice, typeof sample.sampleInvoicePdf]).toEqual(["function", "function"]);
+  expect(loaded).toEqual({ invoice: false, certificate: false });
+});
