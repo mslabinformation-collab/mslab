@@ -31,7 +31,7 @@
     {
       "id": "ekursus",
       "name": "E-kursus",
-      "note": "Loob andmeid. Kasutab e-koolitust, mille valmistasid ette alas „Haldus: sisu“, ja õpilast Proov 1. Enne e-koolituse ostu täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“), muidu ostul arvet ei teki."
+      "note": "Loob andmeid. Kasutab e-koolitust, mille valmistasid ette alas „Haldus: sisu“, ja õpilast Proov 1. Enne e-koolituse ostu täida halduses kontroll „Seaded: arve andmed“ (ala „Haldus: sisu“); ilma selleta tehakse ostu arve hiljem plokist „Arveta maksed“. E-koolituse ost ei vaja kontrolli „Seaded: ettemaksu juhised“."
     },
     {
       "id": "kontakt",
@@ -46,7 +46,7 @@
     {
       "id": "koristamine",
       "name": "Koristamine",
-      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi."
+      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
     }
   ],
   "items": [
@@ -2219,6 +2219,7 @@
       "expect": [
         "Tagasi lehel on „Makse õnnestus.“ ja „Saatsime sulle e-postiga sisselogimislingi.“.",
         "Postkasti tuleb kiri „E-koolitus on avatud — …“ koos koodiga ja kuupäevaga.",
+        "Kirjas on rida „Arve on lisatud.“ ja manusena PDF-fail „MS-LAB-arve-…“, muud manust pole.",
         "Kirja nupp „Logi sisse“ avab „Minu koolitused“ koos selle e-koolitusega.",
         "Maria postkasti tuleb „Uus makse: Proov 1, … (e-koolitus), …“.",
         "Halduses „Õpilased“ → Proov 1 all on see e-koolitus märkega „veebimakse“."
