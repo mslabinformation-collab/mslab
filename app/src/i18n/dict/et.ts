@@ -908,6 +908,17 @@ export const et = {
       fixName: "Kui nimes on viga, kirjuta meile",
       cardLink: "Laadi tunnistus alla",
     },
+    // The invoices on a course card (components/account/AccountCourseCard.tsx; invoices Task 6, spec §4): one quiet line per invoice,
+    // „Arve MSL2026-001 · 175,00 € · Tasutud“ or „Arve … · Tasumata · tasu 23.10.2026“ (`number`, the amount, `paid` or `unpaid` and `payBy`, joined by " · "), with
+    // `download` (the PDF). {number} is the invoice's number, {date} its due date. „Tasutud“, „Tasumata“ and „Laadi alla (PDF)“ are the
+    // spec's own words; the rest is Draft for Dim's wording sheet. The bank details under an unpaid invoice use `dashboard.payment`'s labels.
+    invoices: {
+      number: "Arve {number}",
+      paid: "Tasutud",
+      unpaid: "Tasumata",
+      payBy: "tasu {date}",
+      download: "Laadi alla (PDF)",
+    },
     // "Lemmikud" /konto/lemmikud (components/account/FavouritesTab.tsx): the hearted courses as the catalogue's cards, each with ♡ to
     // take it off. {title} is a course's title (the button's name for a screen reader, and what was taken off).
     favourites: {

@@ -19,7 +19,7 @@ const nameOf = (chunk: string) => /async function (\w+)/.exec(chunk)![1];
 /** The data endpoints in their order in the source; every one starts with requireClient. */
 const HANDLERS = [
   "dashboard", "ecourse", "lesson", "progress", "lessonDone", "lessonFile", "testPage", "submitTest", "resubmitTest", "practicalPage", "uploadPhoto", "deletePhoto", "submitWork", "photo",
-  "issueCertificateRoute", "certificateFile", "favouriteCourses", "favourite", "mergeFavouriteList", "profile", "newsletter", "setPassword", "removePassword", "changeRequest", "payRegistration",
+  "issueCertificateRoute", "certificateFile", "invoiceFile", "favouriteCourses", "favourite", "mergeFavouriteList", "profile", "newsletter", "setPassword", "removePassword", "changeRequest", "payRegistration",
   "protocol", "feedbackForm", "sendFeedback", "dismissFeedback", "terms", "deleteAccount",
 ];
 
@@ -69,17 +69,22 @@ describe("the data endpoints of the account API", () => {
     expect(handlers.find((h) => nameOf(h) === "photo")).toContain("photoAnswer(session, ");
   });
 
-  test("a certificate's PDF is built above the handlers (pdfAnswer: the bytes, the PDF's headers, the session's cookies), never by the handler itself", () => {
+  test("a PDF (a certificate's, an invoice's) is built above the handlers (pdfAnswer: the bytes, the PDF's headers, the session's cookies), never by the handler itself", () => {
     const helper = SOURCE.indexOf("function pdfAnswer(");
     expect(helper).toBeGreaterThan(0);
     expect(helper).toBeLessThan(SOURCE.indexOf(START));
     const body = SOURCE.slice(helper, SOURCE.indexOf("\n}\n", helper));
-    // the type, the file name and nosniff come from certificateDownloadHeaders (domain/certificate.ts), pinned by both routes' header tests
-    for (const part of ["certificateDownloadHeaders(", "BASE_HEADERS", "session.cookies"]) expect(body, part).toContain(part);
-    expect(handlers.find((h) => nameOf(h) === "certificateFile")).toContain("pdfAnswer(session, ");
+    for (const part of ["BASE_HEADERS", "...download", "session.cookies"]) expect(body, part).toContain(part);
+    // the type, the file name and nosniff come from the file's own headers (domain/certificate.ts certificateDownloadHeaders, domain/invoice.ts
+    // invoiceDownloadHeaders), which each handler hands over; pinned by both routes' header tests
+    for (const [handler, headers] of [["certificateFile", "certificateDownloadHeaders("], ["invoiceFile", "invoiceDownloadHeaders("]]) {
+      const source = handlers.find((h) => nameOf(h) === handler);
+      expect(source, handler).toContain("pdfAnswer(session, ");
+      expect(source, handler).toContain(headers);
+    }
   });
 
-  test("the router sends every known path to a handler, and only GET /kursus/:slug, the test's, the practical work's, the certificate's and the lesson paths are matched by pattern", () => {
+  test("the router sends every known path to a handler, and only GET /kursus/:slug, the test's, the practical work's, the certificate's, the invoice's and the lesson paths are matched by pattern", () => {
     const router = SOURCE.slice(SOURCE.indexOf(END), SOURCE.indexOf("/** The router: `null`"));
     const cases = [...router.matchAll(/case "(\w+) ([^"]+)": return (\w+)\(request, deps\);/g)].map((m) => `${m[1]} ${m[2]} ${m[3]}`);
     expect(cases).toEqual([
@@ -99,6 +104,8 @@ describe("the data endpoints of the account API", () => {
     expect(router).toContain("CERT_PATH.exec(path)");
     expect(router.indexOf("CERT_PATH.exec(path)")).toBeLessThan(router.indexOf("LESSON_PATH.exec(path)"));
     expect(router).toContain('request.method === "GET" ? CERT_FILE_PATH.exec(path) : null');
+    // an invoice's PDF (invoices Task 6): GET only, by its own path
+    expect(router).toContain('request.method === "GET" ? INVOICE_FILE_PATH.exec(path) : null');
   });
 });
 

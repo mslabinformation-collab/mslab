@@ -787,6 +787,15 @@ export const ru: Dict = {
       fixName: "Если в\u00a0имени ошибка, напишите нам",
       cardLink: "Скачать сертификат",
     },
+    // The invoices on a course card (components/account/AccountCourseCard.tsx; invoices Task 6): the same line as the Estonian one. Draft for Dim's
+    // wording sheet. The bank details under an unpaid invoice use `dashboard.payment`'s labels.
+    invoices: {
+      number: "Счёт {number}",
+      paid: "Оплачен",
+      unpaid: "Не оплачен",
+      payBy: "оплатить до {date}",
+      download: "Скачать (PDF)",
+    },
     favourites: {
       title: "Ваше избранное",
       remove: "Убрать из избранного",

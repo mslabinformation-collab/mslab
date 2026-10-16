@@ -1928,11 +1928,14 @@
       "expect": [
         "Kaardil on silt „Kontaktõpe“, koolitus, kuupäev, kellaaeg ja koht.",
         "Kaardi lause on „Koht on kinnitatud.“, sest kogu summa on makstud.",
-        "Kaardil on nupp „Tühista või muuda aega“."
+        "Kaardil on nupp „Tühista või muuda aega“.",
+        "Kui Proov 1 maksis veebis, on kaardil ka rida „Arve MSL2026-… · … · Tasutud“ ja link „Laadi alla (PDF)“."
       ],
       "why": "Õpilane näeb siin oma koolitused ühes kohas.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "konto-muutmine",
@@ -1957,6 +1960,86 @@
       "why": "Õpilane küsib muudatust, aga otsuse teeb Maria.",
       "risk": "med",
       "writes": true
+    },
+    {
+      "id": "konto-arve-maksa",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Arve tasumine kontolt",
+      "href": "/konto",
+      "steps": [
+        "Registreeri samale kuupäevale: „Nimi“ Proov 7 ja „Telefon“ oma number.",
+        "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov7.",
+        "Vali „50% registreerimisel + 50% koolituspäeval“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb.",
+        "Koosta halduses Proov 7 jaoks „Ettemaks 50%“ arve valikuga „Maksmiseks“.",
+        "Logi sisse kui Proov 7, ava „Minu koolitused“ ja vajuta rea „Arve …“ juures „Laadi alla (PDF)“.",
+        "Vajuta kaardil „Maksa …“ ja tee makse testpangas, nagu Dimi märkus ütleb.",
+        "Ava „Minu koolitused“ uuesti ja vaata halduses Proov 7 plokki „Arved“."
+      ],
+      "expect": [
+        "Kaardil on rida „Arve MSL2026-… · … · Tasumata · tasu …“ koos summa ja tähtajaga.",
+        "Rea all on Saaja, IBAN, Pank, Summa ja Selgitus, nagu arvel.",
+        "Alla laaditud PDF on sama arve, millel on „Maksmiseks“.",
+        "„Maksa …“ võtab täpselt arve summa.",
+        "Pärast makset on sama arve rida „Tasutud“ ja pangaandmeid enam ei näita.",
+        "Plokis „Arved“ on üks arve, „Tasutud“ ja „Montonio“; teist arvet ei tekkinud.",
+        "„Laekunud“ on arve summa ja staatus on „Kinnitatud“."
+      ],
+      "why": "Õpilane tasub Maria koostatud arve ise ja iga euro saab täpselt ühe arve.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "konto-arve-pdf",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Tasutud arve PDF õpilasele",
+      "href": "/konto",
+      "steps": [
+        "Logi sisse kui Proov 7 ja ava „Minu koolitused“.",
+        "Vajuta kaardil tasutud arve rea juures „Laadi alla (PDF)“.",
+        "Ava alla laaditud fail."
+      ],
+      "expect": [
+        "Kaardil on rida „Arve … · … · Tasutud“ ja selle kõrval link „Laadi alla (PDF)“.",
+        "Faili nimi on MS-LAB-arve-MSL2026-….pdf ja see avaneb ilma veata.",
+        "Arvel on „Tasutud …“ kuupäeva ja makseviisiga „Montonio“, pangaandmeid pole.",
+        "Arve number, summa ja ostja Proov 7 on samad mis kaardil."
+      ],
+      "why": "Õpilane hoiab tasutud arve endale või annab selle oma raamatupidajale.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "konto-arve-vene-keeles",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Arve kaardil vene keeles",
+      "href": "/ru/konto",
+      "steps": [
+        "Koosta halduses Proov 7 jaoks „Jääk 50%“ arve valikuga „Maksmiseks“.",
+        "Logi sisse kui Proov 7 ja ava aadress /ru/konto.",
+        "Vaata Proov 7 kaarti."
+      ],
+      "expect": [
+        "Tasutud arve rida on „Счёт MSL2026-… · … · Оплачен“ ja selle kõrval „Скачать (PDF)“.",
+        "Uue arve rida on „Счёт … · … · Не оплачен · оплатить до …“.",
+        "Rea all on Получатель, IBAN, Банк, Сумма ja Назначение платежа.",
+        "Kaardi nupp on „Оплатить остаток …“ ja selle summa on uue arve summa."
+      ],
+      "why": "Vene keelt kõnelev õpilane näeb oma arveid ja pangaandmeid oma keeles.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "konto-lemmikud",
@@ -2109,11 +2192,14 @@
         "Otsing leiab Proov 1.",
         "Paneelis on „Konto loodud …“, telefon, keel ja „Registreerimised“.",
         "„Vaata tema vaadet“ avab lehe ribaga „Vaatad kliendi … vaadet — muuta ei saa“.",
-        "Seal näed sama kaarti, mida näeb Proov 1."
+        "Seal näed sama kaarti, mida näeb Proov 1.",
+        "Arve rea link „Laadi alla (PDF)“ on seal, aga ei tööta."
       ],
       "why": "Maria näeb õpilase kontot nii, nagu õpilane seda näeb.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ost",
@@ -2500,11 +2586,14 @@
       "expect": [
         "Kõik sammud on tehtud ja viimane ütleb „Lõpetatud …“ tänase kuupäevaga.",
         "Lõpetamise all on rida „Tunnistus“.",
-        "E-koolituse kaardil on „Lõpetatud …“."
+        "E-koolituse kaardil on „Lõpetatud …“.",
+        "Kui Proov 1 maksis veebis, on kaardil ka rida „Arve … · … · Tasutud“ ja link „Laadi alla (PDF)“."
       ],
       "why": "Õpilane peab nägema, et koolitus on läbitud.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-tunnistus",

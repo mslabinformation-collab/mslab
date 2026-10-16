@@ -534,7 +534,7 @@ export async function invoicesOfRegistration(db: Db, registrationId: number): Pr
  * An unpaid invoice that a paid payment was started for (payments.invoice_id, status paid): its money is in, counted on Laekunud summa, but
  * the payment's invoice step failed (settle's savepoint, ruling R13), so the invoice still reads unpaid until the catch-up pays it (ruling R14).
  */
-const paidOnlineSql = sql`exists (select 1 from payments p where p.invoice_id = ${invoices.id} and p.status = 'paid')`;
+const paidOnlineSql = sql<boolean>`exists (select 1 from payments p where p.invoice_id = ${invoices.id} and p.status = 'paid')`;
 
 /**
  * The registration's latest unpaid invoice that „Maksa" may charge, or null (D5: domain/payments.ts payableDue). An invoice already paid
@@ -559,16 +559,23 @@ export async function unpaidInvoiceOf(q: Q, registrationId: number): Promise<Inv
 const ofClient = (clientId: number): SQL | undefined =>
   and(or(eq(registrations.clientId, clientId), eq(payments.clientId, clientId)), ne(invoices.status, "cancelled"));
 
-/** Her invoices (the account's course cards), in the order they were issued; see ofClient. */
-export async function invoicesOfClient(db: Db, clientId: number): Promise<Invoice[]> {
+/** One of her invoices with what the card needs besides the row: `paidOnline`, an unpaid invoice whose online payment is paid already (R14, paidOnlineSql). */
+export type StudentInvoice = Invoice & { paidOnline: boolean };
+
+/**
+ * Her invoices (the account's course cards), in the order they were issued; see ofClient. One query: each row also says whether its online
+ * payment is paid while the invoice still reads unpaid (`paidOnline`, R14: unpaidInvoiceOf leaves it out and „Maksa" does not charge it again),
+ * so the card agrees with the start without asking per invoice.
+ */
+export async function invoicesOfClient(db: Db, clientId: number): Promise<StudentInvoice[]> {
   const rows = await db
-    .select({ invoice: invoices })
+    .select({ invoice: invoices, paidOnline: paidOnlineSql })
     .from(invoices)
     .leftJoin(registrations, eq(invoices.registrationId, registrations.id))
     .leftJoin(payments, eq(invoices.paymentId, payments.id))
     .where(ofClient(clientId))
     .orderBy(asc(invoices.issuedAt), asc(invoices.id));
-  return rows.map((r) => r.invoice);
+  return rows.map((r) => ({ ...r.invoice, paidOnline: r.invoice.status === "unpaid" && r.paidOnline }));
 }
 
 /** Her invoice `id` (GET /api/konto/arve/<id>), or null: another's, a cancelled one, none. */

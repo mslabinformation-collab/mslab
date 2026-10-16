@@ -5,10 +5,12 @@ import { useEffect, useId, useState } from "react";
 import { Icon } from "@/components/site/Icon";
 import ui from "@/components/site/ui.module.css";
 import {
-  cardKey, cardTag, cardTitle, cardWhen, hasPrepayment, isPastCard, nextStep, type AccountCard, type ContactCard, type PrepaymentInfo as PaySettings,
+  cardInvoices, cardKey, cardTag, cardTitle, cardWhen, hasPrepayment, isPastCard, nextStep, type AccountCard, type CardInvoice, type ContactCard,
+  type PrepaymentInfo as PaySettings,
 } from "@/domain/account-cards";
+import { euro } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
-import { amountDue, type Due } from "@/domain/payments";
+import { payableDue, type PayableDue } from "@/domain/payments";
 import { fill, formatDate } from "@/i18n/format";
 import { href } from "@/i18n/href";
 import type { Locale } from "@/i18n/locales";
@@ -52,12 +54,68 @@ const focusOnMount = (el: HTMLElement | null) => el?.focus();
 /** The page Montonio answers with is a web address of its own; anything else is no page to send the browser to. */
 const isPageUrl = (url: unknown): url is string => typeof url === "string" && /^https?:\/\//i.test(url);
 
-/** What a contact card can pay online now (phase 2b, domain/payments.ts amountDue): the prepayment still due, the rest, or nothing. */
-function onlineDue(card: AccountCard, now: Date): Due {
+/**
+ * What a contact card can pay online now, as the server decides it (domain/payments.ts payableDue, which the start and the /maksa page ask): the
+ * prepayment still due, the rest, or nothing (amountDue, phase 2b) — or, while the registration has an open unpaid invoice (`openInvoice`, invoices
+ * D5: the one the server would charge), exactly that invoice's amount, "ülejäänud" for a „Jääk", also on the course day.
+ */
+function onlineDue(card: AccountCard, now: Date): PayableDue {
   if (card.kind !== "contact") return { kind: "none" };
-  return amountDue(
+  return payableDue(
     { status: card.status, paymentChoice: card.paymentChoice, priceCents: card.priceCents, paidCents: card.paidCents, startsAt: new Date(card.session.startsAt), sessionCancelled: card.session.cancelled },
+    card.openInvoice ? { ...card.openInvoice, status: "unpaid" } : null,
     now,
+  );
+}
+
+/**
+ * Her invoices of a card (invoices Task 6, spec §4): a quiet line each, „Arve MSL2026-001 · 175,00 € · Tasutud“ or „… · Tasumata · tasu {date}“,
+ * with „Laadi alla (PDF)“ (GET /api/konto/arve/<id>, a download; `readOnly`: aria-disabled, as the certificate's link). An unpaid invoice also
+ * shows the bank details and the reference frozen on it (PrepaymentInfo's rows, with "Kopeeri"). The invoice's own sum, not the card's.
+ */
+function InvoiceLines({ invoices, locale, t, readOnly }: { invoices: CardInvoice[]; locale: Locale; t: CoursesTexts; readOnly: boolean }) {
+  const base = useId();
+  return (
+    <ul className={styles.invoices} data-card-invoices="">
+      {invoices.map((inv) => {
+        const unpaid = inv.status === "unpaid";
+        const line = [
+          fill(t.invoices.number, { number: inv.number }),
+          euro(inv.amountCents),
+          unpaid ? t.invoices.unpaid : t.invoices.paid,
+          ...(unpaid && inv.dueAt ? [fill(t.invoices.payBy, { date: formatDate(new Date(inv.dueAt), locale) })] : []),
+        ].join(" · ");
+        // (named by its invoice for a screen reader: a card may have several, and the visible words come first)
+        const label = `${t.invoices.download}: ${inv.number}`;
+        return (
+          <li key={inv.id} className={styles.invoice} data-card-invoice={inv.id} data-invoice-status={inv.status}>
+            <div className={styles.invoiceHead}>
+              <span className={styles.invoiceLine} data-invoice-line="">
+                {line}
+              </span>
+              {readOnly ? (
+                <a className={styles.second} role="link" aria-disabled="true" aria-label={label} data-card-invoice-download="">
+                  {t.invoices.download}
+                </a>
+              ) : (
+                <a className={styles.second} href={`/api/konto/arve/${inv.id}`} download aria-label={label} data-card-invoice-download="">
+                  {t.invoices.download}
+                </a>
+              )}
+            </div>
+            {inv.transfer && (
+              <PrepaymentInfo
+                id={`${base}-invoice-${inv.id}`}
+                pay={{ receiver: inv.transfer.receiver, iban: inv.transfer.iban, bank: inv.transfer.bank, referencePrefix: "" }}
+                invoiceReference={inv.transfer.reference}
+                amount={euro(inv.amountCents)}
+                t={t.payment}
+              />
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -79,6 +137,8 @@ function onlineDue(card: AccountCard, now: Date): Due {
  * An ended e-course with a certificate links its PDF, "Laadi tunnistus alla" (phase 3d), a quiet text link: the course page has closed.
  * An ended e-course completed without one yet has the e-course page's name form instead (CertificateForm: `certificateName` to start with),
  * as that page needs an active access; once it is made, the link takes its place and the focus.
+ * Her invoices (invoices Task 6) are quiet lines under the next-step sentence (InvoiceLines); "Maksa" charges the open unpaid invoice's amount when
+ * the card has one (onlineDue).
  * `readOnly`: the buttons are there but aria-disabled, and do nothing.
  */
 export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale, certificateName = "" }: CardProps) {
@@ -95,6 +155,7 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
   // "Lõpetatud {date}" (e-course completion, spec §4.1): once the course is completed, also after its access has ended
   const completedAt = card.kind === "ecourse" ? (card.completedAt ?? null) : null;
   const due = payOnline ? onlineDue(card, now) : ({ kind: "none" } as const);
+  const invoices = cardInvoices(card);
   // the main button is "Maksa …" when the step is a payment and an amount can be paid online now
   const online = due.kind !== "none" && (action.kind === "pay" || step.key === "confirmedRest") ? due : null;
 
@@ -297,6 +358,7 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
           <CertificateForm slug={toConfirm.course.slug} startName={certificateName} t={t.certificate} readOnly={readOnly} quiet={false} onIssued={setMade} />
         </div>
       )}
+      {invoices.length > 0 && <InvoiceLines invoices={invoices} locale={locale} t={t} readOnly={readOnly} />}
       {button && <div className={styles.foot}>{button}</div>}
       {paying.error && (
         <p className={styles.payError} role="alert" data-card-pay-error="">

@@ -84,8 +84,8 @@ const NONE: Due = { kind: "none" };
  * The amount a registration can pay online now (phase 2b, spec 6.3, D5). Not confirmed: the prepayment (domain/registration.ts
  * prepaymentDue) minus what is paid, while the session has not begun (calendar.ts upcomingFrom, the booking's own "upcoming"). Confirmed:
  * the price minus what is paid, until the training day begins in Tallinn (paying on the day is Maria's, by hand). Nothing for a cancelled
- * registration, a called-off session, no price or no session. The /maksa page, Minu koolitused and the start itself all ask this (the page
- * and the start through payableDue, which charges an unpaid invoice's amount instead).
+ * registration, a called-off session, no price or no session. The /maksa page, Minu koolitused and the start itself all ask this (each through
+ * payableDue, which charges an unpaid invoice's amount instead).
  */
 export function amountDue(r: DueInput, now: Date): Due {
   if (r.status === "cancelled" || r.sessionCancelled || r.priceCents === null || r.startsAt === null) return NONE;
@@ -115,9 +115,9 @@ export type PayableDue = Due | { kind: "prepayment" | "balance"; cents: number; 
  * What „Maksa" charges a registration now (D5): while it has an unpaid invoice (`invoice`: its latest that may be charged, server/invoices.ts
  * unpaidInvoiceOf), exactly that invoice's amount, as its kind's payment (invoicePaymentKind), with its id — the invoice the payment pays —
  * at any time: amountDue's window is not the invoice's, so it is payable on the course day too. Nothing for a cancelled registration or a
- * session called off (as amountDue says). Without one (or with one no longer unpaid): amountDue, with no invoice. The start and the /maksa
- * page ask this; the account's card (AccountCourseCard onlineDue) asks amountDue until its data carries her unpaid invoice (invoices Task 6),
- * then this.
+ * session called off (as amountDue says). Without one (or with one no longer unpaid): amountDue, with no invoice. The start, the /maksa page
+ * and the account's card (AccountCourseCard onlineDue, with the card's `openInvoice`, client-data.ts) all ask this, so the button says what
+ * the start will charge.
  */
 export function payableDue(r: DueInput, invoice: Pick<Invoice, "id" | "kind" | "status" | "amountCents"> | null, now: Date): PayableDue {
   const charge = invoice ? invoiceDue(invoice) : null;

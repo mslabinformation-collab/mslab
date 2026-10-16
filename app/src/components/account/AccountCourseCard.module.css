@@ -95,6 +95,32 @@
   margin-top: 16px;
 }
 
+/* her invoices (invoices Task 6): a quiet line each — "Arve MSL2026-001 · 175,00 € · Tasutud" with its download as a text link, and under an
+   unpaid one the bank details (PrepaymentInfo's panel) */
+.invoices {
+  align-self: stretch;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.invoice + .invoice {
+  margin-top: 6px;
+}
+
+.invoiceHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 14px;
+}
+
+.invoiceLine {
+  color: var(--ink-soft);
+  font: 400 13px/1.55 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
 .foot {
   margin-top: 20px;
 }

@@ -20,20 +20,29 @@ const COPIED_MS = 2000;
  * "Kopeeri": copied, the pressed button itself says "Kopeeritud ✓" for a moment (both words share one cell, so it keeps
  * its width); where the browser gives no clipboard, the text is selected and a line says to copy it. A hidden live
  * region tells a screen reader either way.
+ * An unpaid invoice's bank details (invoices Task 6) are the same rows: `invoiceReference` is the invoice's own payment reference (frozen on it,
+ * and `pay` its frozen receiver, IBAN and bank; the prefix is not used), in place of the registration's. Such a panel does not promise the place
+ * ("Pärast makset kinnitab Maria su koha.": an invoice may be for the rest) and is marked `data-invoice-transfer` instead of `data-prepayment`.
  */
 export function PrepaymentInfo({
   id,
   pay,
   registrationId,
+  invoiceReference,
   amount,
   t,
 }: {
   id: string;
   pay: PaySettings;
-  registrationId: number;
+  /** The registration whose number is the reference; not given for an invoice. */
+  registrationId?: number;
+  /** An invoice's reference (empty: it has none to print); given: the panel is an invoice's. */
+  invoiceReference?: string;
   amount: string | undefined;
   t: CoursesTexts["payment"];
 }) {
+  const forInvoice = invoiceReference !== undefined;
+  const reference = invoiceReference ?? (registrationId === undefined ? "" : paymentReference(pay, registrationId));
   const [copied, setCopied] = useState<string | null>(null);
   const [selected, setSelected] = useState(false);
   const [status, setStatus] = useState("");
@@ -45,7 +54,7 @@ export function PrepaymentInfo({
     { key: "iban", label: t.iban, value: compactIban(pay.iban), shown: groupIban(pay.iban), copy: true },
     { key: "bank", label: t.bank, value: pay.bank },
     { key: "amount", label: t.amount, value: amount ?? "" },
-    { key: "reference", label: t.reference, value: paymentReference(pay, registrationId), copy: true },
+    { key: "reference", label: t.reference, value: reference, copy: true },
   ].filter((row) => row.value.trim() !== "");
 
   const copy = async (row: Row, value: HTMLElement | null) => {
@@ -73,7 +82,7 @@ export function PrepaymentInfo({
   };
 
   return (
-    <div id={id} className={styles.panel} data-prepayment="">
+    <div id={id} className={styles.panel} {...(forInvoice ? { "data-invoice-transfer": "" } : { "data-prepayment": "" })}>
       <dl className={styles.rows}>
         {rows.map((row) => (
           <div key={row.key} className={styles.row} data-pay-row={row.key}>
@@ -99,7 +108,7 @@ export function PrepaymentInfo({
           </div>
         ))}
       </dl>
-      <p className={styles.after}>{t.after}</p>
+      {!forInvoice && <p className={styles.after}>{t.after}</p>}
       {selected && (
         <p className={styles.selected} data-pay-selected="">
           {t.selected}
