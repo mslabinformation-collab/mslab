@@ -62,6 +62,9 @@ test("0006 gives every registration its own pay token, no hold, and adds the pay
   const [first, second] = tokens;
   await violates(db.update(registrations).set({ payToken: first.token }).where(eq(registrations.email, second.email)), "registrations_pay_token");
 
+  // (the rest runs on the schema as it stands: drizzle's insert and select name every column of payments, among them payments.invoice_id, which migration 0011 adds)
+  await migrate(db, { migrationsFolder: "./drizzle" });
+
   // payments: the amount is positive, the reference unique, and a deleted registration leaves its payment (unlinked) for the books
   const [reg] = await db.select({ id: registrations.id }).from(registrations).where(eq(registrations.email, "a@example.test"));
   const base = { kind: "prepayment" as const, registrationId: reg.id, courseId: course.id, email: "a@example.test", name: "A", amountCents: 17500 };
