@@ -1,0 +1,10 @@
+/* The Avaleht card "Testimine: N avatud, M viga" (phase 4, piece 1): one line and a button; the head wraps on a phone. */
+
+.card {
+  margin-bottom: 25px;
+}
+
+.head {
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}

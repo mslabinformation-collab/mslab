@@ -70,6 +70,10 @@ const BROWSER_FILES = [
   "src/domain/certificate.ts",
   // the test page, Task 1: the plan's rules the page loads in the browser (pure, imports nothing)
   "src/domain/testplan.ts",
+  // the test page, Task 3: the page, its outbox of unsent answers, and the Avaleht card (the card is a server component, listed anyway: it is the phase's file)
+  "src/components/admin/TestPlan.tsx",
+  "src/components/admin/testplan-outbox.ts",
+  "src/components/admin/TestplanCard.tsx",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

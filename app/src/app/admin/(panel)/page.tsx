@@ -4,6 +4,7 @@ import { AdminIcon, type AdminIconName } from "@/components/admin/AdminIcon";
 import { getAdminCounts } from "@/components/admin/data";
 import { adminTitle } from "@/components/admin/sections";
 import { Shell } from "@/components/admin/Shell";
+import { TestplanCard } from "@/components/admin/TestplanCard";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { assessmentQueue } from "@/db/queries/assessment";
@@ -15,6 +16,9 @@ import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill, formatDate, formatLongDate, formatTime } from "@/i18n/format";
 import { adminName, requireAdmin } from "@/server/auth";
+import { serverEnv } from "@/server/env";
+import { logFailure } from "@/server/log";
+import { testplanCard } from "@/server/testplan";
 import styles from "./overview.module.css";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +38,16 @@ export default async function Overview() {
   const name = adminName(email);
   const now = new Date();
   const db = getDb();
-  const [counts, sessions, today, waiting] = await Promise.all([
+  const [counts, sessions, today, waiting, testing] = await Promise.all([
     getAdminCounts(),
     listUpcomingSessions(db, startOfDayTallinn(now)),
     todaySessions(db, now),
     assessmentQueue(db),
+    // the test page's card (phase 4, piece 1): a failing read leaves the card out, never the overview
+    testplanCard(db, email, serverEnv().ADMIN_NAMES).catch((e) => {
+      logFailure("[testplan] the card's numbers could not be read", e);
+      return null;
+    }),
   ]);
   const scheduled = sessions.filter((s) => s.status === "scheduled");
   const soon = scheduled.filter((s) => s.startsAt.getTime() < now.getTime() + 30 * DAY).length;
@@ -122,6 +131,9 @@ export default async function Overview() {
             </ul>
           </section>
         )}
+
+        {/* "Testimine: N avatud, M viga" (phase 4, piece 1, spec D1, §5): the signed-in admin's open and failed checks; hidden when there are none */}
+        {testing && <TestplanCard open={testing.open} bad={testing.bad} />}
 
         {/* "Täna" (phase protocols, spec §4): today's sessions, each with one tap to its protocols; hidden on a day with none */}
         {today.length > 0 && (
