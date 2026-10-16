@@ -16,7 +16,7 @@ import { family, rawStream, readPdf, type Run } from "../pdf-read";
 const SANS = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.sans)));
 const jost = fontkit.create(SANS);
 const ASSETS = { sans: SANS };
-const NBSP = " ";
+const NBSP = "\u00a0";
 /** The page's printable margin: the least that any ink keeps from every edge. */
 const MARGIN = 36;
 
@@ -25,7 +25,7 @@ const SELLER: InvoiceSeller = {
   registryCode: "12345678",
   address: "Pärnu mnt 12, 10148 Tallinn",
   vatNumber: "EE123456789",
-  receiver: "Näidis Akadeemia OÜ",
+  receiver: "Näidis Õppekeskus MTÜ", // not the company: the bank block must print its own receiver
   iban: "EE382200221020145685",
   bank: "Swedbank",
 };
@@ -168,12 +168,15 @@ describe("renderInvoice: a paid invoice, VAT off", () => {
     expect(VAT_OFF_NOTE).toBe("Arve ei sisalda käibemaksu (müüja ei ole käibemaksukohustuslane).");
     expect(text).toContain("Kuupäev");
     expect(text).toContain("16.10.2026");
-    expect(text).toContain("Saaja");
+    expect(text).toContain("Müüja");
+    expect(text).toContain("Ostja");
     // no VAT line, no due date, no payment instructions
     expect(text).not.toContain("Käibemaks");
     expect(text).not.toContain("Summa käibemaksuta");
     expect(text).not.toContain("Maksetähtaeg");
     expect(text).not.toContain("IBAN");
+    expect(text).not.toContain("Saaja"); // the payee's label: on an invoice with no bank block it is nowhere (the buyer is „Ostja")
+    expect(text).not.toContain(SELLER.receiver);
     // the seller is not VAT-registered on this invoice, so no VAT number is printed beside the sentence that says so
     expect(text).not.toContain("EE123456789");
     // the sum is the sum, once in the line and once as the total
@@ -192,9 +195,9 @@ describe("renderInvoice: a paid invoice, VAT off", () => {
     }
   });
 
-  test("the blocks stand in order from the top: the number, the buyer, the line, the total, the payment, the footer", async () => {
+  test("the blocks stand in order from the top: the number, the buyer (Ostja), the line, the total, the payment, the footer", async () => {
     const { runs } = await render({ ...PAID, footer: "Küsimuste korral kirjuta Mariale." });
-    const ys = ["ARVE MSL2026-001", "Saaja", "Kulmude kujundamise koolitus", "Kokku", "Tasutud 16.10.2026 (Montonio)", VAT_OFF_NOTE].map((t) => find(runs, t).y);
+    const ys = ["ARVE MSL2026-001", "Ostja", "Kulmude kujundamise koolitus", "Kokku", "Tasutud 16.10.2026 (Montonio)", VAT_OFF_NOTE].map((t) => find(runs, t).y);
     expect(ys).toEqual([...ys].sort((a, b) => b - a));
     expect(new Set(ys).size).toBe(ys.length);
     // the footer line follows the VAT sentence
@@ -212,6 +215,14 @@ describe("renderInvoice: an unpaid invoice, VAT on", () => {
     expect(text).toContain("EE382200221020145685");
     expect(text).toContain("Swedbank");
     expect(text).toContain("MSLAB42");
+    // the bank block's first row is the receiver, its own text (not the seller's company), under its label „Saaja" on one baseline;
+    // the buyer's heading is „Ostja", so „Saaja" stands once on the page: the payee's
+    const receiver = one(runs, SELLER.receiver);
+    const payee = one(runs, "Saaja");
+    expect([receiver.x, receiver.size]).toEqual([48 + 82, 10]);
+    expect([payee.x, payee.y, payee.size]).toEqual([48, receiver.y, 10]);
+    expect(one(runs, "Ostja").x).toBe(312);
+    expect(find(runs, "Maksmiseks").y).toBeGreaterThan(receiver.y);
     expect(text).toContain("Summa käibemaksuta");
     expect(text).toContain("141,13 €");
     expect(text).toContain("Käibemaks 24%");
@@ -265,6 +276,33 @@ describe("renderInvoice: an unpaid invoice, VAT on", () => {
     expectFitsAndApart(runs);
   });
 
+  test("an individual buyer's own address stands under her name and over her e-mail; when a company pays, the company's address is printed and the person's is not", async () => {
+    const address = "Kase 5, 50409 Tartu";
+    const { runs } = await render({ ...UNPAID, buyer: { ...BUYER, address } });
+    const [name, at, mail] = [one(runs, BUYER.name), one(runs, address), one(runs, BUYER.email)];
+    expect([name.x, at.x, mail.x]).toEqual([312, 312, 312]);
+    expect(name.y).toBeGreaterThan(at.y);
+    expect(at.y).toBeGreaterThan(mail.y);
+    expectFitsAndApart(runs);
+    const company: InvoiceBuyer = { ...BUYER, address, company: "Õunapuu Ilusalong FIE", companyCode: "87654321", companyAddress: "Riia 1, 51010 Tartu" };
+    const text = textOf((await render({ ...UNPAID, buyer: company })).runs);
+    expect(text).toContain("Riia 1, 51010 Tartu");
+    expect(text).not.toContain(address);
+  });
+
+  test("with no bank details at all (receiver, IBAN and bank empty) there is no payment block: no heading, no reference, nothing between the total and the foot", async () => {
+    const { runs } = await render({ ...UNPAID, seller: { ...SELLER, receiver: "", iban: "  ", bank: "" } });
+    const text = textOf(runs);
+    for (const word of ["Maksmiseks", "Saaja", "IBAN", "Pank", "Selgitus", "Viitenumber", "MSLAB42"]) expect(text, word).not.toContain(word);
+    // the due date is still the invoice's own; the total is the last of the body, only Maria's footer line stands under it
+    expect(text).toContain("23.10.2026");
+    const total = find(runs, "Kokku").y;
+    expect(runs.filter((r) => r.y < total).map((r) => r.text)).toEqual([UNPAID.footer]);
+    // one detail is enough for the block
+    for (const seller of [{ ...SELLER, receiver: "", bank: "" }, { ...SELLER, iban: "", bank: "" }, { ...SELLER, receiver: "", iban: "" }])
+      expect(textOf((await render({ ...UNPAID, seller })).runs), JSON.stringify(seller)).toContain("Maksmiseks");
+  });
+
   test("a cancelled invoice says so and asks for no payment", async () => {
     const { runs } = await render({ ...UNPAID, status: "cancelled" });
     const text = textOf(runs);
@@ -304,16 +342,21 @@ describe("renderInvoice: long texts stay on the page", () => {
     expect(longCourse.length).toBeGreaterThanOrEqual(190);
     const company = words(20, "Firma").slice(0, 120).trim();
     expect(company.length).toBeGreaterThanOrEqual(110);
+    const receiver = words(12, "Vastu"); // a receiver of its own, not the company's text
     for (const status of ["paid", "unpaid"] as const) {
-      const { runs } = await render({ ...UNPAID, status, line: { ...UNPAID.line, course: longCourse }, seller: { ...SELLER, company, receiver: company }, buyer: { ...BUYER, company } });
+      const { runs } = await render({ ...UNPAID, status, line: { ...UNPAID.line, course: longCourse }, seller: { ...SELLER, company, receiver }, buyer: { ...BUYER, company } });
       expectFitsAndApart(runs);
       // nothing is lost: the course's lines, one under the other, read as the title; the company's too, wherever it is printed
       const first = find(runs, "Kursus1 ");
       const course = runs.filter((r) => r.x === first.x && r.size === first.size && r.y > find(runs, "Kokku").y).sort((a, b) => b.y - a.y);
       expect(course.map((r) => r.text).join(" ")).toBe(longCourse);
       expect(course.length).toBeGreaterThan(1);
-      const companyLines = runs.filter((r) => r.text.startsWith("Firma1 ")).map((r) => r.x);
-      expect(companyLines.length).toBeGreaterThanOrEqual(2); // the seller's block and the payment's receiver
+      expect(runs.filter((r) => r.text.startsWith("Firma1 ")).map((r) => r.x)).toEqual([48, 312]); // the seller's block and the buyer's
+      const receiverLines = runs.filter((r) => /^Vastu\d/.test(r.text)).sort((a, b) => b.y - a.y);
+      if (status === "unpaid") {
+        expect(receiverLines.map((r) => r.text).join(" ")).toBe(receiver);
+        expect(receiverLines.every((r) => r.x === 48 + 82)).toBe(true);
+      } else expect(receiverLines).toEqual([]); // a paid invoice has no bank block
     }
   });
 

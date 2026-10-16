@@ -7,7 +7,7 @@ import { drawLogo } from "./pdf-logo";
 
 // The invoice as a PDF (invoices, Task 2, spec §7, D6, D8): drawn on every download from the invoice's frozen row and the sans (Jost, the
 // same committed font as the certificate's: no new font), with pdf-lib and its fontkit. A4 portrait, a white page and black text, printable:
-// the logo (server/pdf-logo.ts) and the invoice's number at the top, the seller at the left and the buyer ("Saaja") at the right, the one
+// the logo (server/pdf-logo.ts) and the invoice's number at the top, the seller at the left and the buyer ("Ostja") at the right, the one
 // line of what is invoiced and its sum, the totals (the VAT lines only when VAT is on), then how to pay it (an unpaid invoice) or how it was
 // paid (a paid one), and at the foot the VAT sentence (VAT off) and Maria's footer line. Every position below is in PDF points from the
 // bottom left corner.
@@ -147,7 +147,7 @@ function compose(c: InvoiceContent, measure: (text: string, size: number) => num
   // the seller and the buyer, side by side under their labels
   const partiesTop = headerBottom - 22 * k;
   text("Müüja", EDGE.left, partiesTop - SIZE.label * k, SIZE.label * k);
-  text("Saaja", PARTIES.rightX, partiesTop - SIZE.label * k, SIZE.label * k);
+  text("Ostja", PARTIES.rightX, partiesTop - SIZE.label * k, SIZE.label * k);
   const columnsTop = partiesTop - SIZE.label * k * LEADING - 3 * k;
   const { seller, buyer } = c;
   const sellerBottom = column(
@@ -218,24 +218,28 @@ function compose(c: InvoiceContent, measure: (text: string, size: number) => num
   rightText(euro(c.amountCents), SIZE.total * k, y - SIZE.total * k);
   y -= SIZE.total * k * LEADING;
 
-  // how to pay it, or how it was paid
-  y -= 24 * k;
+  // how to pay it, or how it was paid. An unpaid invoice with no bank details at all (the request-to-pay invoice is not made without an
+  // IBAN) prints no payment block, not a heading with nothing under it.
   if (c.status === "unpaid") {
-    text("Maksmiseks", EDGE.left, y - SIZE.label * k, SIZE.label * k);
-    y -= SIZE.label * k * LEADING + 3 * k;
-    const numeric = /^\d+$/.test(clear(c.reference));
-    const details: [string, string, number][] = [
-      ["Saaja", seller.receiver, 4],
-      ["IBAN", seller.iban, 2],
-      ["Pank", seller.bank, 3],
-      [numeric ? "Viitenumber" : "Selgitus", c.reference, 4],
-    ];
-    for (const [label, value, max] of details) {
-      if (!clear(value)) continue;
-      text(label, EDGE.left, y - SIZE.body * k, SIZE.body * k);
-      y = lines(wrapped(value, SIZE.body * k, PAY.valueWidth, max), PAY.value, y, SIZE.body * k);
+    if ([seller.receiver, seller.iban, seller.bank].some((v) => clear(v) !== "")) {
+      y -= 24 * k;
+      text("Maksmiseks", EDGE.left, y - SIZE.label * k, SIZE.label * k);
+      y -= SIZE.label * k * LEADING + 3 * k;
+      const numeric = /^\d+$/.test(clear(c.reference));
+      const details: [string, string, number][] = [
+        ["Saaja", seller.receiver, 4],
+        ["IBAN", seller.iban, 2],
+        ["Pank", seller.bank, 3],
+        [numeric ? "Viitenumber" : "Selgitus", c.reference, 4],
+      ];
+      for (const [label, value, max] of details) {
+        if (!clear(value)) continue;
+        text(label, EDGE.left, y - SIZE.body * k, SIZE.body * k);
+        y = lines(wrapped(value, SIZE.body * k, PAY.valueWidth, max), PAY.value, y, SIZE.body * k);
+      }
     }
   } else {
+    y -= 24 * k;
     const paid = c.status === "paid";
     const said = paid
       ? ["Tasutud", c.paidAt ? tallinnDateText(c.paidAt) : "", c.paidMethod ? `(${paidMethodText(c.paidMethod)})` : ""].filter(Boolean).join(" ")
