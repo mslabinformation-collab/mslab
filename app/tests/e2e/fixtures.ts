@@ -590,6 +590,7 @@ export async function removeAdminFixtures(tag?: string): Promise<number> {
   const slugs = tag ? `e2e-admin-${tag}` : ADMIN_FIXTURE_SLUG_PATTERN;
   const sql = connect();
   try {
+    await sql`delete from invoices where buyer->>'email' like ${mails}`; // their invoices (invoices Task 7): no cascade, they outlive the registration
     await sql`delete from payments where email like ${mails}`; // the online payments of the admin tests (phase 2b)
     await sql`delete from registrations where email like ${mails} or course_id in (select id from courses where slug like ${slugs})`;
     // Matched on the whole payload text, so a payload stored the wrong way (one jsonb string) is found too.
@@ -599,6 +600,7 @@ export async function removeAdminFixtures(tag?: string): Promise<number> {
     await sql`delete from courses where slug like ${slugs}`; // its sessions go with it (on delete cascade)
     const [{ n }] = await sql<{ n: number }[]>`
       select (select count(*) from registrations where email like ${mails})
+           + (select count(*) from invoices where buyer->>'email' like ${mails})
            + (select count(*) from payments where email like ${mails})
            + (select count(*) from requests where payload::text like ${inPayload})
            + (select count(*) from subscribers where email like ${mails})

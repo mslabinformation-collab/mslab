@@ -1,18 +1,16 @@
-import type { BrowserContext, Locator, Page } from "@playwright/test";
+import type { BrowserContext, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
 import { signInAsAdmin } from "./admin-login";
 import {
-  holdLocalLock,
   insertAdminFixtures,
   insertStoredPayment,
-  LOCK_WAIT_MS,
   onLocalDb,
   removeAdminFixtures,
   removeAdminRows,
-  snapshotRows,
   storedAdminRegistration,
   type AdminFixtures,
 } from "./fixtures";
+import { holdInvoiceSettings, INVOICE_COMPANY, INVOICE_NUMBER, noOverflow, offered, openDrawer, rowOf, today } from "./invoices";
 
 // Invoices, Maria's side (invoices Task 5, spec §5): the registration drawer's „Arved“ — „Koosta arve“ as a request to pay and as a receipt,
 // „Märgi tasutuks“ (which confirms the registration at 50 %), „Võta tasumine tagasi“ for a request and for a receipt, „Tühista arve“, „Saada
@@ -20,13 +18,14 @@ import {
 // run against the local dev server only: they sign in as Dim through the devLink and look at rows each test inserts for itself and deletes again
 // (tests/e2e/fixtures.ts, an unpublished fixture course; its invoices have no cascade, so they are deleted by the buyer's address). The
 // seller card and the bank details are shared settings other tests read: a test holds the prepayment setting's lock, writes its own and puts the
-// stored rows back. No mail is sent here (no RESEND_API_KEY): a send that reaches Resend answers „Kirja ei saadeta“, and the registration of the
-// send test carries a sample address (`…@example.test`), which counts as sent without a mail.
+// stored rows back (tests/e2e/invoices.ts holdInvoiceSettings, with the other helpers the invoice specs share). No mail is sent here (no
+// RESEND_API_KEY): a send that reaches Resend answers „Kirja ei saadeta“, and the registration of the send test carries a sample address
+// (`…@example.test`), which counts as sent without a mail. The whole path in a row is invoices.spec.ts; the races on real Postgres are
+// invoices-race.spec.ts.
 
 const created = { tokens: new Set<string>(), sessions: new Set<string>() };
 let fx: AdminFixtures | null = null;
-let restores: (() => Promise<void>)[] = [];
-let release: (() => Promise<void>) | null = null;
+let giveBack: (() => Promise<void>) | null = null;
 
 test.beforeEach(() => submitsForms());
 
@@ -34,70 +33,23 @@ test.afterEach(async () => {
   await removeAdminRows({ tokens: created.tokens, sessions: created.sessions }).catch(() => {});
   created.tokens.clear();
   created.sessions.clear();
-  if (fx) {
-    await onLocalDb((sql) => sql`delete from invoices where buyer->>'email' like ${`%${fx!.tag}%`} or seller->>'company' = ${COMPANY}`, { marksPages: false });
-    expect(await removeAdminFixtures(fx.tag)).toBe(0);
+  try {
+    if (fx) {
+      await onLocalDb((sql) => sql`delete from invoices where buyer->>'email' like ${`%${fx!.tag}%`} or seller->>'company' = ${INVOICE_COMPANY}`, { marksPages: false });
+      expect(await removeAdminFixtures(fx.tag)).toBe(0);
+    }
+  } finally {
+    fx = null;
+    await giveBack?.();
+    giveBack = null;
   }
-  fx = null;
-  for (const restore of restores) await restore();
-  restores = [];
-  await release?.();
-  release = null;
 });
-
-const COMPANY = "E2E Arvete OÜ";
-/** Today on Tallinn's calendar, "YYYY-MM-DD" (the server reads the month and the year there). */
-const today = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Tallinn" }).format(new Date());
-/** The seller card a test writes: prefix E2E, so the numbers are the test's own; this Tallinn year, number 1. */
-const card = (extra: Record<string, unknown> = {}) => ({
-  company: COMPANY,
-  registryCode: "12345678",
-  address: "Testi 1, Pärnu",
-  vatNumber: "",
-  vatOn: false,
-  vatRate: 24,
-  prefix: "E2E",
-  nextYear: Number(today().slice(0, 4)),
-  nextSeq: 1,
-  termDays: 7,
-  footer: "",
-  ...extra,
-});
-const BANK = { receiver: "MS LAB OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" };
-const NUMBER = /^E2E\d{4}-\d{3}$/;
-
-/** Takes the shared settings for a test: the lock, the stored rows saved for putting back, the test's seller card and bank (null: no card). */
-async function settings(info: { setTimeout(ms: number): void; timeout: number }, seller: Record<string, unknown> | null = card()): Promise<void> {
-  info.setTimeout(info.timeout + LOCK_WAIT_MS);
-  release = await holdLocalLock("e2e-prepayment-setting");
-  restores.push(await snapshotRows("settings", { column: "key", value: "invoice" }));
-  restores.push(await snapshotRows("settings", { column: "key", value: "prepayment" }));
-  await onLocalDb(async (sql) => {
-    await sql`delete from settings where key in ('invoice', 'prepayment')`;
-    await sql`insert into settings (key, value) values ('prepayment', ${sql.json(BANK)})`;
-    if (seller) await sql`insert into settings (key, value) values ('invoice', ${sql.json(seller as never)})`;
-  });
-}
 
 async function fixtures(project: string): Promise<AdminFixtures> {
   fx = await insertAdminFixtures(project);
   return fx;
 }
 const signIn = (page: Page, context: BrowserContext, ip: string) => signInAsAdmin(page, context, ip, created);
-const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-
-/** Opens the fixture registration's drawer; returns its dialog and its „Arved“ block. */
-async function openDrawer(page: Page, f: AdminFixtures): Promise<{ drawer: Locator; block: Locator }> {
-  await page.goto(`/admin/registreerimised?id=${f.registration.id}`);
-  const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
-  await expect(drawer).toBeVisible();
-  const block = drawer.locator("[data-registration-invoices]");
-  await expect(block).toBeVisible();
-  return { drawer, block };
-}
-/** The amounts „Koosta arve“ offers, as their kinds. */
-const offered = (block: Locator) => block.locator("[data-invoice-kind]").evaluateAll((els) => els.map((e) => e.getAttribute("data-invoice-kind")));
-const rowOf = (block: Locator, status: string) => block.locator(`[data-invoice-status="${status}"]`);
 
 test.describe("guard (GET only)", () => {
   test("the list, the PDF, the CSV and the sample need a session", async ({ request }) => {
@@ -112,7 +64,7 @@ test.describe("guard (GET only)", () => {
 });
 
 test("a request to pay: made in two taps, marked paid (the registration confirms at 50 %), taken back, a receipt for the rest, undone, a request cancelled", async ({ page, context, visitorIp }, info) => {
-  await settings(info);
+  giveBack = await holdInvoiceSettings(info);
   const f = await fixtures(info.project.name);
   await signIn(page, context, visitorIp);
   const { drawer, block } = await openDrawer(page, f);
@@ -133,7 +85,7 @@ test("a request to pay: made in two taps, marked paid (the registration confirms
   const requestId = (await rowOf(block, "unpaid").getAttribute("data-invoice-id"))!;
   const unpaid = block.locator(`[data-invoice-id="${requestId}"]`);
   const number = (await unpaid.locator("strong").first().textContent())!.trim();
-  expect(number).toMatch(NUMBER);
+  expect(number).toMatch(INVOICE_NUMBER);
   await expect(unpaid.locator("[data-invoice-state]")).toHaveText("Tasumata");
   await expect(unpaid.locator("[data-invoice-amount]")).toContainText("175,00");
   await expect(unpaid.locator("[data-invoice-facts]")).toContainText("Ettemaks 50%");
@@ -219,7 +171,7 @@ test("a request to pay: made in two taps, marked paid (the registration confirms
 });
 
 test("„Saada õpilasele“: a second address that is no address is refused; the send is recorded with the second address as its note", async ({ page, context, visitorIp }, info) => {
-  await settings(info);
+  giveBack = await holdInvoiceSettings(info);
   const f = await fixtures(info.project.name);
   // a sample address counts as sent without a mail (server/invoice-send.ts); the invoice is made for this address
   const sample = `e2e-admin-inv-${f.tag}@example.test`;
@@ -248,7 +200,7 @@ test("„Saada õpilasele“: a second address that is no address is refused; th
 });
 
 test("„Arved“: the list with its filters, the month's CSV, and „Arveta maksed“ with its own „Koosta arve“", async ({ page, context, visitorIp }, info) => {
-  await settings(info);
+  giveBack = await holdInvoiceSettings(info);
   const f = await fixtures(info.project.name);
   // a payment that was paid while there was no invoice for it (the card was empty, or the step failed)
   const payer = f.registration;
@@ -260,7 +212,7 @@ test("„Arved“: the list with its filters, the month's CSV, and „Arveta mak
   await block.locator("[data-invoice-create-confirm]").click();
   await expect(rowOf(block, "unpaid")).toHaveCount(1);
   const number = (await rowOf(block, "unpaid").locator("strong").first().textContent())!.trim();
-  expect(number).toMatch(NUMBER);
+  expect(number).toMatch(INVOICE_NUMBER);
 
   // Maksed links to it; the page lists the payment under „Arveta maksed“, and the invoice below
   await page.goto("/admin/maksed");
@@ -314,7 +266,7 @@ test("„Arved“: the list with its filters, the month's CSV, and „Arveta mak
 });
 
 test("„Arve andmed“ in Seaded: refused without a KMKR number, saved, a new prefix starts at 001, and the sample shows what is typed — and stores nothing", async ({ page, context, visitorIp }, info) => {
-  await settings(info, null);
+  giveBack = await holdInvoiceSettings(info, null);
   await signIn(page, context, visitorIp);
   await page.goto("/admin/seaded");
   const cardBox = page.locator("[data-invoice-settings]");
@@ -366,7 +318,7 @@ test("„Arve andmed“ in Seaded: refused without a KMKR number, saved, a new p
 });
 
 test("without a seller „Koosta arve“ is a link to Seaded → Arve andmed", async ({ page, context, visitorIp }, info) => {
-  await settings(info, null);
+  giveBack = await holdInvoiceSettings(info, null);
   const f = await fixtures(info.project.name);
   await signIn(page, context, visitorIp);
   const { block } = await openDrawer(page, f);

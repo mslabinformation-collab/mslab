@@ -31,12 +31,12 @@
     {
       "id": "ekursus",
       "name": "E-kursus",
-      "note": "Loob andmeid. Kasutab e-koolitust, mille valmistasid ette alas „Haldus: sisu“, ja õpilast Proov 1."
+      "note": "Loob andmeid. Kasutab e-koolitust, mille valmistasid ette alas „Haldus: sisu“, ja õpilast Proov 1. Enne e-koolituse ostu täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“), muidu ostul arvet ei teki."
     },
     {
       "id": "kontakt",
       "name": "Kontaktkoolitus",
-      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Registreerimise ala lõpus tühistati ainult Proov 2 registreering; Proov 1, Proov 6, Proov 7 ja Proov 8 registreeringud jäävad alles kuni koristamiseni."
+      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Registreerimise ala lõpus tühistati ainult Proov 2 registreering; Proov 1, Proov 6 ja Proov 7 registreeringud jäävad alles kuni koristamiseni."
     },
     {
       "id": "kirjad",
