@@ -39,9 +39,11 @@ Dim, 16.10.2026: it is not settled whether Maria opens a separate company for th
 
 ## 3. Data (migration 0011, additive)
 
-`invoices`: `id`, `number` (unique), `year`, `seq` (unique together), `kind` (`prepayment` | `full` | `balance` | `ecourse`), `registration_id` (set null on delete), `payment_id` (unique when set; set null on delete), `course_id` (set null), `client_id` (set null), `status` (`unpaid` | `paid` | `cancelled`), `amount_cents` (> 0), `vat_rate` (null when VAT off), `line` (jsonb: the course title, the session date text, the part — frozen), `seller` (jsonb: name, registry code, address, VAT number, receiver, IBAN, bank — frozen), `buyer` (jsonb: name, e-mail, company, company registry code, address), `reference` (the payment reference for a bank transfer), `issued_at`, `due_at` (null for one born paid), `paid_at`, `paid_method` (`montonio` | `bank`), `sent_at` (last mail), `cancelled_at`, `created_at`.
+`invoices`: `id`, `number` (unique), `prefix`, `year`, `seq` (`(prefix, year, seq)` unique), `kind` (`prepayment` | `full` | `balance` | `ecourse`), `registration_id` (set null on delete), `payment_id` (unique when set; set null on delete), `course_id` (set null), `client_id` (set null), `status` (`unpaid` | `paid` | `cancelled`), `amount_cents` (> 0), `vat_rate` (null when VAT off), `line` (jsonb: the course title, the session date text, the part — frozen), `seller` (jsonb: name, registry code, address, VAT number, receiver, IBAN, bank — frozen), `buyer` (jsonb: name, e-mail, company, company registry code, address), `reference` (the payment reference for a bank transfer), `issued_at`, `due_at` (null for one born paid), `paid_at`, `paid_method` (`montonio` | `bank` | `cash` | `card`), `paid_adds` (true when the paid mark added the amount to „Laekunud summa", so an undo takes it back), `sent_at` (last mail), `cancelled_at`, `created_at`.
 
-Rules the database enforces: one invoice per payment (`payment_id` unique); `number` and `(year, seq)` unique; amount positive. A student's or registration's deletion keeps the invoice (accounting records outlive the account; the buyer is frozen on it).
+`payments` gets `invoice_id` (nullable, set null on delete): the unpaid invoice a Montonio payment was started to pay (D5).
+
+Rules the database enforces: one born-paid invoice per payment (`invoices.payment_id` unique); `number` and `(prefix, year, seq)` unique; amount positive. A student's or registration's deletion keeps the invoice (accounting records outlive the account; the buyer is frozen on it).
 
 Settings key `invoice` = `{ company, registryCode, address, vatNumber, vatOn, vatRate, prefix, nextYear, nextSeq, termDays, footer }`, defaults empty except `prefix: "MSL"`, `vatOn: false`, `vatRate: 24`, `termDays: 7`.
 
@@ -60,10 +62,11 @@ Settings key `invoice` = `{ company, registryCode, address, vatNumber, vatOn, va
 ## 6. Rules
 
 1. **Creation under lock.** Making an invoice takes, in one transaction: the registration's or payment's row lock, then an advisory lock `invoice-number`, then the `invoice` setting read and its number advanced (the certificate's pattern, phase 3d `seqToIssue`). A payment's invoice is made in the same transaction that marks the payment paid, so a paid payment always has its invoice once the seller is filled in; if the seller is missing, the payment is marked paid and listed as „Arveta maksed".
-2. **No double invoices.** A payment has at most one invoice (unique index). „Koosta arve" offers only amounts not yet covered by an unpaid or paid invoice of that registration; a prepayment and a full invoice exclude each other.
-3. **„Märgi tasutuks"** adds the invoice's amount to the registration's „Laekunud summa" in the same transaction (and the registration confirms at 50% as the existing rule says). Cancelling an unpaid invoice changes nothing else.
-4. **The CSV** (`;`-separated for Estonian Excel, UTF-8 with BOM): number, issue date, due date, buyer, buyer's company and registry code, description, sum without VAT, VAT, total, state, paid date, method; one row per invoice issued in the chosen month, cancelled ones included (marked).
-5. **Logs:** ids and numbers only, never names, e-mails or amounts with names.
+2. **No double invoices.** A payment pays at most one invoice: its own born-paid one (unique index) or the unpaid one it was started for (`payments.invoice_id`), never both. „Koosta arve" offers only amounts not yet covered by an unpaid or paid invoice of that registration (price − invoiced); a prepayment and a full invoice exclude each other.
+3. **„Arveta maksed" (catch-up).** A paid payment without an invoice (the seller card was empty, D3) gets one by its own „Koosta arve" on the „Arved" page: issued today, paid on the payment's time, method Montonio, not mailed (Maria may press „Saada õpilasele"). No bulk button (my call: each one is a real number).
+4. **„Märgi tasutuks"** adds the invoice's amount to the registration's „Laekunud summa" in the same transaction (and the registration confirms at 50% as the existing rule says). Cancelling an unpaid invoice changes nothing else.
+5. **The CSV** (`;`-separated for Estonian Excel, UTF-8 with BOM): number, issue date, due date, buyer, buyer's company and registry code, description, sum without VAT, VAT, total, state, paid date, method; one row per invoice issued in the chosen month, cancelled ones included (marked).
+6. **Logs:** ids and numbers only, never names, e-mails or amounts with names.
 
 ## 7. The PDF
 
@@ -81,6 +84,7 @@ New checks with `mark: "new"` and `"markedAt": "deploy"` in `testplan.json`: fil
 - The year turns: numbering restarts (D7); an unpaid invoice of December is paid in January under its own number.
 - A student deletes her account: her invoices remain (frozen buyer), visible to Maria, no longer to anyone else.
 - „Arve andmed" changed while invoices exist: only new invoices see the change.
+- **Test invoices on staging.** Testing (the test page) makes invoices on mslab.ee with Montonio's sandbox. Before the public launch Dim deletes them by the exact test addresses (the same clean-up as the other test rows, `docs/launch-checklist.md`), and Maria sets the series' „Järgmine number" for her first real invoice. Until then the series may hold test numbers; that is expected.
 
 ## 10. Out of scope
 
