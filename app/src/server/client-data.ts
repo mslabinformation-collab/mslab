@@ -7,7 +7,9 @@ import {
   certificates, clientFavourites, clientLoginTokens, clients, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols, registrations, requests,
   subscribers, termsAcceptances,
 } from "@/db/schema";
-import { PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type EcourseCard, type FeedbackPrompt, type PrepaymentInfo } from "@/domain/account-cards";
+import {
+  PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type CardInvoice, type EcourseCard, type FeedbackPrompt, type OpenInvoice, type PrepaymentInfo,
+} from "@/domain/account-cards";
 import { upcomingFrom } from "@/domain/calendar";
 import type { CourseSteps } from "@/domain/completion";
 import { DEFAULT_TERMS_VERSION, TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
@@ -22,6 +24,7 @@ import { getDict, type Locale } from "@/i18n/locales";
 import { certificateOfAccess, type CertificateView } from "./certificates";
 import { lockAddress } from "./client-auth";
 import { accessFor, completeIfDone, isActive, loadSteps } from "./completion";
+import { invoicesOfClient, type StudentInvoice } from "./invoices";
 import { courseOutline, ecourseProgress, progressActivity, type OutlineModule } from "./lesson-outline";
 import { logFailure } from "./log";
 import { practicalKeys } from "./practical";
@@ -86,6 +89,48 @@ export type EcourseView = {
 
 const iso = (d: Date): string => d.toISOString();
 
+/**
+ * An invoice as her card shows it (invoices Task 6, spec §4; domain/account-cards.ts CardInvoice). An unpaid invoice carries the receiver, IBAN
+ * and bank frozen on it and its reference, when it has a receiver and an IBAN to pay to, and while it may be paid (`payable`: not on a
+ * cancelled registration or a called-off session, whose invoice stays unpaid until Maria cancels it, spec §9, but invites no payment: the final
+ * review's m8). An unpaid one whose online payment is paid already (R14: `paidOnline`, its catch-up pending) is shown as paid, with no bank
+ * details: the money is in, and the start will not charge it again (invoices.ts unpaidInvoiceOf). Its PDF reads as the row does, unpaid, until
+ * Maria's catch-up pays it, so it is marked `awaitingCatchUp` and the card offers no download for it. A paid one whose payment was refunded or
+ * voided is marked `refunded` („Tagastatud“, I3).
+ */
+function cardInvoice(inv: StudentInvoice, payable: boolean): CardInvoice | null {
+  if (inv.status === "cancelled") return null; // void: not hers to see (invoices.ts ofClient leaves it out already)
+  const unpaid = inv.status === "unpaid" && !inv.paidOnline;
+  const { receiver, iban, bank } = inv.seller;
+  return {
+    id: inv.id,
+    number: inv.number,
+    amountCents: inv.amountCents,
+    status: unpaid ? "unpaid" : "paid",
+    dueAt: inv.dueAt ? iso(inv.dueAt) : null,
+    paidAt: inv.paidAt ? iso(inv.paidAt) : null,
+    transfer: unpaid && payable && receiver.trim() !== "" && iban.trim() !== "" ? { receiver, iban, bank, reference: inv.reference } : null,
+    ...(inv.status === "unpaid" && !unpaid ? { awaitingCatchUp: true as const } : {}),
+    ...(inv.refunded ? { refunded: true as const } : {}),
+  };
+}
+
+/** The invoice „Maksa" charges among a registration's (oldest first): the latest unpaid one not paid online already — invoices.ts unpaidInvoiceOf's rule over rows already read. */
+function openInvoiceOf(list: StudentInvoice[]): OpenInvoice | null {
+  const open = list.findLast((i) => i.status === "unpaid" && !i.paidOnline);
+  return open ? { id: open.id, kind: open.kind, amountCents: open.amountCents } : null;
+}
+
+/** `list` grouped by `key`, each group in the order given; an invoice with no key is left out. */
+function groupInvoices(list: StudentInvoice[], key: (inv: StudentInvoice) => number | null): Map<number, StudentInvoice[]> {
+  const groups = new Map<number, StudentInvoice[]>();
+  for (const inv of list) {
+    const k = key(inv);
+    if (k !== null) groups.set(k, [...(groups.get(k) ?? []), inv]);
+  }
+  return groups;
+}
+
 /** The version of the e-course terms: the settings key `courseTermsVersion` (an ISO time, set when the admin saves the terms text), "1" until then. */
 export async function courseTermsVersion(db: Db): Promise<string> {
   const value = await readSetting(db, TERMS_VERSION_KEY);
@@ -95,12 +140,13 @@ export async function courseTermsVersion(db: Db): Promise<string> {
 // ---------- the dashboard ----------
 
 /**
- * Six small queries, run together: registrations (with session and course), requests, e-course access, favourites, the client, the prepayment setting;
- * then, for each open e-course, its lessons (two queries each) and her last lesson activity (one query), for the cards' progress and the
- * "Pooleli" card (`resume`).
+ * Seven small queries, run together: registrations (with session and course), requests, e-course access, favourites, the client, the prepayment
+ * setting, and her invoices (invoices.ts invoicesOfClient: one query, grouped here onto the registration's or the e-course's card, none per
+ * card); then, for each open e-course, its lessons (two queries each) and her last lesson activity (one query), for the cards' progress and
+ * the "Pooleli" card (`resume`).
  */
 export async function loadDashboard(db: Db, clientId: number, now: Date): Promise<Dashboard | null> {
-  const [regRows, requestRows, accessRows, favourites, [client], prepayment] = await Promise.all([
+  const [regRows, requestRows, accessRows, favourites, [client], prepayment, invoiceRows] = await Promise.all([
     db
       .select({
         id: registrations.id,
@@ -186,12 +232,24 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       .where(eq(clients.id, clientId))
       .limit(1),
     readSetting(db, PREPAYMENT_KEY),
+    invoicesOfClient(db, clientId),
   ]);
   if (!client) return null;
+
+  // her invoices on the card they belong to: a registration's, and an e-course's by its course (a purchase's invoice has no registration)
+  const ofRegistration = groupInvoices(invoiceRows, (i) => i.registrationId);
+  const ofCourse = groupInvoices(invoiceRows, (i) => (i.registrationId === null && i.kind === "ecourse" ? i.courseId : null));
+  const invoicesOn = (list: StudentInvoice[] = [], payable = true) => {
+    const shown = list.flatMap((i) => cardInvoice(i, payable) ?? []);
+    return shown.length ? { invoices: shown } : {};
+  };
 
   const cards: AccountCard[] = [];
   for (const r of regRows) {
     const course = { slug: r.course.slug, title: r.course.title };
+    const mine = ofRegistration.get(r.id);
+    // a cancelled registration, or one whose session was called off, pays nothing (m8): its unpaid invoice shows, without bank details or „Maksa“
+    const payable = r.status !== "cancelled" && r.sessionStatus !== "cancelled";
     if (r.startsAt === null) {
       cards.push({
         kind: "individual",
@@ -201,8 +259,10 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         preferredPeriod: r.preferredPeriod,
         createdAt: iso(r.createdAt),
         ...(r.protocolSentAt ? { protocolSent: true } : {}),
+        ...invoicesOn(mine, payable),
       });
     } else {
+      const open = mine && payable ? openInvoiceOf(mine) : null;
       cards.push({
         kind: "contact",
         registrationId: r.id,
@@ -214,6 +274,8 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         paidCents: r.paidCents,
         createdAt: iso(r.createdAt),
         ...(r.protocolSentAt ? { protocolSent: true } : {}),
+        ...invoicesOn(mine, payable),
+        ...(open ? { openInvoice: open } : {}),
       });
     }
   }
@@ -258,6 +320,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       completedAt: a.completedAt ? iso(a.completedAt) : null,
       // the certificate (phase 3d): its id while the access is not revoked, so an ended access's card links it; a revoked one's never
       certificateId: a.revokedAt === null ? a.certificateId : null,
+      ...invoicesOn(ofCourse.get(a.courseId)),
     };
     if (progressOf.has(a.slug)) card.progress = progressOf.get(a.slug) ?? null;
     cards.push(card);

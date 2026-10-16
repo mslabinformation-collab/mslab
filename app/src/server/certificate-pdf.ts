@@ -4,6 +4,7 @@ import fontkit, { type Font } from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, setCharacterSpacing, type PDFFont, type PDFPage } from "pdf-lib";
 import type { Certificate } from "@/db/schema";
 import { tallinnDateText } from "@/domain/certificate";
+import { drawLogo } from "./pdf-logo";
 
 // The e-course certificate as a PDF (phase 3d, spec §7): drawn on every download from the certificate's frozen row, the trainer's name and
 // the two committed fonts, with pdf-lib and its fontkit. A4 landscape, white on black, laid out as Maria's paper certificate: "TUNNISTUS",
@@ -86,8 +87,8 @@ const SKILLS = { size: 9.5, manySize: 8.5, many: 12, minSize: 5, spacing: 0.05, 
 const BULLET = { diameter: 0.275, centre: 0.25 } as const;
 /** The practical line at the left and the volume at the right, capitals, 8 pt on one baseline; a long practical line shrinks to 6.5 pt, then takes two lines. */
 const FOOT = { size: 8, shrinkTo: 6.5, spacing: 0.12, baseline: 148, left: 56, right: 786, gap: 24, leading: 1.35 } as const;
-/** The MS LAB logo as vector shapes (public/brand/logo.png is dark on transparent): a thin frame, "MS LAB" in it, "KOOLITUSKESKUS" on its lower edge. */
-const LOGO = { x: 56, y: 80, width: 150, height: 50, thickness: 0.8, nameSize: 30, nameSpacing: 0.12, smallSize: 5.2, smallSpacing: 0.4, smallPad: 4 } as const;
+/** Where the MS LAB logo stands (server/pdf-logo.ts draws it, here in white): the box of 150 × 50 pt, its lower left corner at the page's bottom left. */
+const LOGO = { x: 56, y: 80, width: 150, height: 50 } as const;
 /** Under the logo: "REGISTRIKOOD: …" and "Tunnistuse nr. …". */
 const LEFT_LINES = { x: 56, size: 7.5, spacing: 0.1, baselines: [58, 46] } as const;
 /**
@@ -193,24 +194,6 @@ function layoutSkills(skills: readonly string[], font: PDFFont): { size: number;
   }
 }
 
-/** The logo, drawn in white: the frame (its lower edge open under the small word), "MS LAB" centred in it, "KOOLITUSKESKUS" on the edge. */
-function drawLogo(page: PDFPage, sans: PDFFont): void {
-  const { x, y, width, height, thickness } = LOGO;
-  const centre = x + width / 2;
-  const line = (x1: number, y1: number, x2: number, y2: number) => page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness, color: WHITE });
-  const small: Style = { font: sans, size: LOGO.smallSize, spacing: LOGO.smallSpacing };
-  const half = widthOf("KOOLITUSKESKUS", small) / 2 + LOGO.smallPad;
-  line(x, y + height, x + width, y + height);
-  line(x, y, x, y + height);
-  line(x + width, y, x + width, y + height);
-  line(x, y, centre - half, y);
-  line(centre + half, y, x + width, y);
-  const name: Style = { font: sans, size: LOGO.nameSize, spacing: LOGO.nameSpacing };
-  // Jost's capitals are 0.7 em high (700 of its 1000 units): "MS LAB" sits in the middle of the frame, the small word on its edge
-  drawCentred(page, "MS LAB", name, centre, y + (height - LOGO.nameSize * 0.7) / 2);
-  drawCentred(page, "KOOLITUSKESKUS", small, centre, y - (LOGO.smallSize * 0.7) / 2);
-}
-
 /** A4 landscape (842 × 595), black, laid out as spec §7 (the constants above). */
 export async function renderCertificate(c: CertificateContent, assets: CertificateAssets): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -276,7 +259,7 @@ export async function renderCertificate(c: CertificateContent, assets: Certifica
   practical.lines.forEach((line, i) => drawAt(page, line, footStyle(practical.size), FOOT.left, FOOT.baseline - i * practical.size * FOOT.leading));
   if (volume) drawRight(page, volume, footStyle(FOOT.size), FOOT.right, FOOT.baseline);
 
-  drawLogo(page, sans);
+  drawLogo(page, sans, LOGO, WHITE);
   const left: Style = { font: sans, size: LEFT_LINES.size, spacing: LEFT_LINES.spacing };
   drawAt(page, `REGISTRIKOOD: ${oneLine(c.registryCode)}`, left, LEFT_LINES.x, LEFT_LINES.baselines[0]);
   drawAt(page, `Tunnistuse nr. ${c.number}`, left, LEFT_LINES.x, LEFT_LINES.baselines[1]);

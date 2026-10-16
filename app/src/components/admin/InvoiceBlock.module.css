@@ -1,0 +1,186 @@
+/* Arved (invoices Task 5): the registration drawer's block (InvoiceBlock), one invoice with its actions (InvoiceRow), and the pieces they share.
+   Buttons, tags, fields and the notice come from ui.module.css. Every control is the admin's 44 px one; colours from tokens.css only. */
+
+.block {
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  gap: 8px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:first-child {
+  padding-top: 0;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.number {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.amount {
+  margin-left: auto;
+  font: 400 17px/1.4 var(--font-display);
+  white-space: nowrap;
+}
+
+.meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 14px;
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* the box the focus is looked for in: it takes no room of its own */
+.panelBox {
+  display: contents;
+}
+
+.panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--canvas);
+}
+
+.panel p {
+  margin: 0;
+}
+
+.panelActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.date {
+  max-width: 220px;
+}
+
+.fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fieldset legend {
+  padding: 0;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--heather);
+  border-radius: 99px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.choice:has(input:checked) {
+  border-color: var(--rose);
+  background: var(--first);
+}
+
+.choice input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.status {
+  margin: 0;
+}
+
+.status:empty {
+  display: none;
+}
+
+/* a row of „Arveta maksed“: its button and the line under it */
+.catchUp {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+.create {
+  display: grid;
+  gap: 14px;
+}
+
+.seller {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .amount {
+    margin-left: 0;
+  }
+}

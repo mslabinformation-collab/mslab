@@ -393,6 +393,8 @@ export const ru: Dict = {
       full: "Группа тем временем заполнилась, поэтому место не подтверждено. Мария свяжется с вами.",
       notConfirmed: "Мария свяжется с вами.",
       access: "Доступ до {date}.",
+      // Draft (invoices Task 4, for Dim's wording sheet)
+      invoiceAttached: "Счёт во вложении.",
     },
   },
 
@@ -454,6 +456,16 @@ export const ru: Dict = {
       button: "Посмотреть протокол",
       valid: "Код и кнопка действуют 30 минут. Позже протокол можно найти на странице «Мои курсы».",
       feedback: "По желанию оставьте нам отзыв",
+    },
+    // Maria's «Отправить ученице» (server/account-mail.ts invoiceMail); Draft (invoices Task 5, for Dim's wording sheet). The subject is
+    // «Счёт MS LAB {number}» (R1). The labels of the bank details are `dashboard.payment`'s.
+    invoiceMail: {
+      subject: "Счёт MS LAB {number}",
+      leadUnpaid: "Отправляем вам счёт {number}.",
+      leadPaid: "Отправляем вам счёт {number}. Он уже оплачен.",
+      due: "Оплатить до",
+      paidOn: "Оплачено",
+      attached: "Счёт в\u00a0формате PDF во\u00a0вложении.",
     },
     // the e-course completion's mails (server/account-mail.ts completionMail)
     completionMail: {
@@ -774,6 +786,17 @@ export const ru: Dict = {
       download: "Скачать сертификат (PDF)",
       fixName: "Если в\u00a0имени ошибка, напишите нам",
       cardLink: "Скачать сертификат",
+    },
+    // The invoices on a course card (components/account/AccountCourseCard.tsx; invoices Task 6): the same line as the Estonian one. Draft for Dim's
+    // wording sheet. The bank details under an unpaid invoice use `dashboard.payment`'s labels.
+    invoices: {
+      number: "Счёт {number}",
+      paid: "Оплачен",
+      unpaid: "Не оплачен",
+      // Draft: a paid invoice whose online payment was refunded or voided (et „Tagastatud“)
+      refunded: "Возвращён",
+      payBy: "оплатить до {date}",
+      download: "Скачать (PDF)",
     },
     favourites: {
       title: "Ваше избранное",

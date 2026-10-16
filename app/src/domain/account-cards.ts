@@ -1,4 +1,5 @@
 import { upcomingFrom } from "@/domain/calendar";
+import type { InvoiceKind, InvoiceStatus } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { prepaymentDue, type RegStatus } from "@/domain/registration";
 import { pick, type I18n } from "@/i18n/field";
@@ -30,6 +31,39 @@ export type SessionRef = { startsAt: string; city: string; venue: string };
 /** A date on the calendar; `cancelled` is true when Maria called the training off. */
 export type CalendarSession = SessionRef & { cancelled: boolean };
 
+/**
+ * An unpaid invoice's bank details as they were frozen on it (invoices.seller: the receiver, the IBAN and the bank of Ettemaksu juhised at its
+ * creation) and its payment reference (invoices.reference; empty when there is none to print). The instructions' rows, without the prefix.
+ */
+export type InvoiceTransfer = { receiver: string; iban: string; bank: string; reference: string };
+
+/**
+ * One of her invoices on a course card (invoices Task 6, spec §4; server/client-data.ts loadDashboard): never a cancelled one. `status` is what
+ * the student is told: an unpaid invoice whose online payment is paid already (R14: the money is in, the catch-up is pending) is sent as "paid"
+ * (with `paidAt` null until the catch-up gives it one) and marked `awaitingCatchUp`: its row still reads unpaid, so its PDF would still ask for
+ * the money, and the card offers no download for it until Maria's catch-up has paid it. `transfer` is set for an unpaid invoice that has bank
+ * details and may be paid (not on a cancelled registration or a called-off session: m8), else null. `refunded`: see below.
+ */
+export type CardInvoice = {
+  id: number;
+  number: string;
+  amountCents: number;
+  status: Exclude<InvoiceStatus, "cancelled">;
+  dueAt: string | null;
+  paidAt: string | null;
+  transfer: InvoiceTransfer | null;
+  /** R14: paid online, its invoice not yet marked paid (the catch-up is pending); absent otherwise. */
+  awaitingCatchUp?: true;
+  /** Paid, and its online payment refunded or voided since (spec D5, the final review's I3): the card says „Tagastatud“. Absent otherwise. */
+  refunded?: true;
+};
+
+/**
+ * The invoice „Maksa" charges on a registration (invoices D5; server/invoices.ts unpaidInvoiceOf, the one the start and the /maksa page ask):
+ * its latest unpaid one that is not paid online already. The card asks domain/payments.ts payableDue with it, as the server does.
+ */
+export type OpenInvoice = { id: number; kind: InvoiceKind; amountCents: number };
+
 /** A contact-course registration for one session. */
 export type ContactCard = {
   kind: "contact";
@@ -44,6 +78,10 @@ export type ContactCard = {
   createdAt: string;
   /** Maria has sent this registration's protocol (phase protocols, spec §5): the card offers "Vaata protokolli". Absent until then. */
   protocolSent?: boolean;
+  /** Her invoices of this registration, the oldest first (invoices Task 6); absent without one, so the cards of a student with none are as they were. */
+  invoices?: CardInvoice[];
+  /** The unpaid invoice „Maksa" charges instead of what is due (OpenInvoice); absent without one. */
+  openInvoice?: OpenInvoice | null;
 };
 
 /** A registration without a session (an individual course): Maria agrees the time with the student. */
@@ -56,6 +94,8 @@ export type IndividualCard = {
   createdAt: string;
   /** Maria has sent this registration's protocol (phase protocols, spec §5): the card offers "Vaata protokolli". Absent until then. */
   protocolSent?: boolean;
+  /** Her invoices of this registration (invoices Task 6), as a contact card's; no „Maksa" on this card, so no open one. Absent without one. */
+  invoices?: CardInvoice[];
 };
 
 /** An individual-course or practice request. `title` is the course or the practice package (null when it is gone). */
@@ -105,6 +145,8 @@ export type EcourseCard = {
    * it once the course page has closed. Optional so cards built elsewhere keep compiling.
    */
   certificateId?: number | null;
+  /** Her invoices of this course's purchases, the oldest first (invoices Task 6): each is born paid. Absent without one. */
+  invoices?: CardInvoice[];
 };
 
 export type AccountCard = ContactCard | IndividualCard | RequestCard | WaitlistCard | EcourseCard;
@@ -298,6 +340,11 @@ export const groupIban = (iban: string): string => compactIban(iban).replace(/(.
 /** The payment's explanation on the prepayment instructions: the admin's prefix and the registration number ("MSLAB-" + 42). */
 export function paymentReference(pay: PrepaymentInfo, registrationId: number): string {
   return `${pay.referencePrefix.trim()}${registrationId}`;
+}
+
+/** The invoices on a card: a registration's or an e-course's own; none for a request or a waitlist entry. */
+export function cardInvoices(card: AccountCard): CardInvoice[] {
+  return card.kind === "contact" || card.kind === "individual" || card.kind === "ecourse" ? (card.invoices ?? []) : [];
 }
 
 /** The names a card uses when its course or practice package is gone (account.dashboard.untitled). */

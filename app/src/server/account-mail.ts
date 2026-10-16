@@ -1,4 +1,6 @@
+import type { Invoice } from "@/db/schema";
 import { firstName, groupIban, hasPrepayment, paymentReference, type PrepaymentInfo } from "@/domain/account-cards";
+import { euro, invoiceFileName } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { prepaymentDue } from "@/domain/registration";
 import { pick, type I18n } from "@/i18n/field";
@@ -17,6 +19,7 @@ import type { Mail } from "./notify";
 // when the visitor ticked "Loo mulle kohe konto", the live login code with "Logi sisse" in its place.
 // After an online payment (phase 2b) the same card says what was paid (registrationPaidMail) or that an e-course is open (ecourseOpenMail).
 // The e-course completion (completionMail) uses the protocol mail's card without a login: one line, the course, one button to the page.
+// Maria's invoice (invoiceMail, invoices Task 5) is the same card again: the course, the amount, the due date and the bank details, the PDF attached.
 
 /**
  * The link in the login e-mail: it signs in the device that opens it (api/konto verify). `pageLocale` is the language of
@@ -227,6 +230,11 @@ type Confirmation = {
    * kustutada.", which could make a buyer delete her access mail. Every other mail with a code keeps it.
    */
   afterPurchase?: boolean;
+  /**
+   * The mail goes to someone who has no account here (the invoice's copy for „Saada ka aadressile“, the final review's m9): no „Ava minu konto“,
+   * neither the button nor its line. Without a login only.
+   */
+  noAccount?: boolean;
 };
 
 /** The first line of the e-mail: "Tere, Kati!", or just "Tere!" when the name has no word. */
@@ -258,7 +266,7 @@ function confirmationText(c: Confirmation, greeting: string, mail: MailTexts, li
     else lines.push(...section.fields.map(([label, value]) => `${label}: ${value}`), "");
   }
   if (c.login) lines.push(mail.codeIntro, "", c.login.code, "", `${mail.button}:`, links.main, "", mail.valid, ...(c.afterPurchase ? [] : [mail.ignore]), "", mail.confirm.codeHere, links.code, "");
-  else lines.push(`${mail.confirm.open}:`, links.main, "");
+  else if (!c.noAccount) lines.push(`${mail.confirm.open}:`, links.main, "");
   lines.push(mail.signature);
   return lines.join("\n");
 }
@@ -306,7 +314,9 @@ function confirmationHtml(c: Confirmation, greeting: string, mail: MailTexts, li
       ...(c.afterPurchase ? [] : [row(`padding:4px 28px 0;${textStyle(14)}`, esc(mail.ignore))]),
       row(`padding:12px 28px 0;${textStyle(14)}`, `${esc(mail.confirm.codeHere)} <a href="${esc(links.code)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.codeLink)}</a>`),
     );
-  else if (payButton) rows.push(row(`padding:20px 28px 0;text-align:center;${textStyle(14)}`, `<a href="${esc(links.main)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.open)}</a>`));
+  else if (c.noAccount) {
+    // (no link to an account: the mail's reader has none here)
+  } else if (payButton) rows.push(row(`padding:20px 28px 0;text-align:center;${textStyle(14)}`, `<a href="${esc(links.main)}" style="color:${INK};text-decoration:underline;">${esc(mail.confirm.open)}</a>`));
   else rows.push(buttonRow(links.main, mail.confirm.open));
   rows.push(signatureRow(mail));
   return mailCard(c.subject, c.locale, rows);
@@ -407,12 +417,15 @@ export type RegistrationPaidInput = {
   confirmed: boolean;
   /** Paid, but the course was full: the place stayed unconfirmed (D2). */
   full: boolean;
+  /** The payment's invoice goes with the mail as a PDF (invoices, spec §4): the line „Arve on lisatud.". */
+  invoiceAttached?: boolean;
 };
 
 /**
  * The mail after an online payment of a registration (phase 2b, spec 6.2.4): "Koht on kinnitatud — {title}" when the place is confirmed now,
  * else "Makse on kätte saadud — {title}"; the course with its date and place, what was paid, and what is left ("Ülejäänud {amount} tasud
- * koolituspäeval või Minu koolitused lehel.") or "Kogu summa on tasutud."; a place left unconfirmed says why. One button: "Ava minu konto".
+ * koolituspäeval või Minu koolitused lehel.") or "Kogu summa on tasutud."; a place left unconfirmed says why; „Arve on lisatud." when the
+ * payment's invoice is attached (settle.ts attaches it). One button: "Ava minu konto".
  * settle.ts never sends it to a sample address and does not count it in the daily caps (it follows a real payment).
  */
 export function registrationPaidMail(input: RegistrationPaidInput): Mail {
@@ -422,6 +435,7 @@ export function registrationPaidMail(input: RegistrationPaidInput): Mail {
   if (input.full) sections.push({ text: m.full });
   else if (!input.confirmed) sections.push({ text: m.notConfirmed });
   else sections.push({ text: input.restCents > 0 ? fill(m.rest, { amount: formatEUR(input.restCents, input.locale) }) : m.allPaid });
+  if (input.invoiceAttached) sections.push({ text: m.invoiceAttached });
   return confirmationMail({
     email: input.email,
     name: input.name,
@@ -445,13 +459,16 @@ export type EcourseOpenInput = {
   expiresAt: Date;
   /** A live login for the address (client-auth.ts issueClientLogin), or null when it has its 3 already: then "Ava minu konto". */
   login: LoginCode | null;
+  /** The purchase's invoice goes with the mail as a PDF (invoices, spec §4): the line „Arve on lisatud.". */
+  invoiceAttached?: boolean;
 };
 
 /**
  * The mail after a paid e-course purchase (phase 2b, spec 6.2.4): "E-koolitus on avatud — {title}", the course with "Ligipääs kuni {date}.",
- * and the login: the code large and "Logi sisse" (verifyLink, like the code login), which opens Minu koolitused with the course on it. It leaves
- * out the login mail's "Kui sa ei palunud sisselogimist, võid selle kirja kustutada.": the buyer has just paid, and that line could make her
- * delete her access. settle.ts never sends it to a sample address and does not count it in the daily caps (it follows a real payment).
+ * „Arve on lisatud." when the purchase's invoice is attached (settle.ts attaches it), and the login: the code large and "Logi sisse"
+ * (verifyLink, like the code login), which opens Minu koolitused with the course on it. It leaves out the login mail's "Kui sa ei palunud
+ * sisselogimist, võid selle kirja kustutada.": the buyer has just paid, and that line could make her delete her access. settle.ts never sends
+ * it to a sample address and does not count it in the daily caps (it follows a real payment).
  */
 export function ecourseOpenMail(input: EcourseOpenInput): Mail {
   const m = getDict(input.locale).payment.mail;
@@ -464,10 +481,65 @@ export function ecourseOpenMail(input: EcourseOpenInput): Mail {
     subject: oneLine(fill(m.subjectEcourse, { title })),
     lead: m.leadEcourse,
     box: { title, lines: [fill(m.access, { date: formatDate(input.expiresAt, input.locale) })] },
-    sections: [],
+    sections: input.invoiceAttached ? [{ text: m.invoiceAttached }] : [],
     login: input.login,
     afterPurchase: true,
   });
+}
+
+export type InvoiceMailInput = {
+  siteUrl: string;
+  /** The address this copy goes to: the student's, or the second one Maria typed (D11). */
+  email: string;
+  /** The buyer's name, for the greeting (its first word). */
+  name: string;
+  locale: Locale;
+  /**
+   * The copy for the second address of „Saada ka aadressile“ (D11; the final review's m9): its reader is not the student (say her accountant),
+   * so the greeting is the neutral „Tere!“ / «Здравствуйте!», not her first name, and there is no „Ava minu konto“.
+   */
+  second?: boolean;
+  /** The invoice as the PDF prints it: its frozen row. A cancelled invoice is never mailed. */
+  invoice: Pick<Invoice, "number" | "status" | "amountCents" | "dueAt" | "paidAt" | "reference" | "line" | "seller">;
+  /** The invoice's PDF (server/invoices.ts invoicePdf, rendered now): the mail's one attachment. */
+  pdf: Uint8Array;
+};
+
+/**
+ * Maria's „Saada õpilasele“ (invoices Task 5, ruling R1; spec §4, D11): „MS LAB arve {number}“ (Russian «Счёт MS LAB {number}»), the course
+ * with its date, the amount and, of an unpaid invoice, the due date, the bank details and the payment reference (the frozen seller's, as the
+ * PDF prints them), or of a paid one the day it was paid and no request for money; the invoice's PDF attached; and one button, „Ava minu
+ * konto“. No login in it, and not counted in the daily caps (it follows Maria's own send, like the protocol mail). The labels of the bank
+ * rows are the account card's own (`account.dashboard.payment`). The caller attaches nothing: the PDF is in `attachments`. The copy for a
+ * second address (`second`) greets no one by name and has no button.
+ */
+export function invoiceMail(input: InvoiceMailInput): Mail {
+  const dict = getDict(input.locale);
+  const m = dict.account.invoiceMail;
+  const labels = dict.account.dashboard.payment;
+  const { invoice: inv } = input;
+  const paid = inv.status === "paid";
+  const fields: [string, string][] = [[labels.amount, euro(inv.amountCents)]];
+  if (paid) {
+    if (inv.paidAt) fields.push([m.paidOn, formatDate(inv.paidAt, input.locale)]);
+  } else {
+    if (inv.dueAt) fields.push([m.due, formatDate(inv.dueAt, input.locale)]);
+    fields.push([labels.receiver, inv.seller.receiver], [labels.iban, groupIban(inv.seller.iban)], [labels.bank, inv.seller.bank], [labels.reference, inv.reference]);
+  }
+  const mail = confirmationMail({
+    email: input.email,
+    // (a name with no word is the neutral „Tere!“: the second address's reader is not the student)
+    name: input.second ? "" : input.name,
+    locale: input.locale,
+    siteUrl: input.siteUrl,
+    subject: oneLine(fill(m.subject, { number: inv.number })),
+    lead: fill(paid ? m.leadPaid : m.leadUnpaid, { number: inv.number }),
+    box: { title: inv.line.course || inv.number, lines: inv.line.session ? [inv.line.session] : [] },
+    sections: [{ fields: fields.filter(([, value]) => value.trim() !== "") }, { text: m.attached }],
+    login: null,
+    noAccount: input.second === true,
+  });
+  return { ...mail, attachments: [{ filename: invoiceFileName(inv.number), content: Buffer.from(input.pdf), contentType: "application/pdf" }] };
 }
 
 export type RequestConfirmationInput = {

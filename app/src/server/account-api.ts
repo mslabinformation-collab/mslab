@@ -6,6 +6,7 @@ import { clients } from "@/db/schema";
 import { certificateDownloadHeaders } from "@/domain/certificate";
 import { PHOTO_LIMITS, TEST_LIMITS } from "@/domain/completion";
 import { isEmail, isSampleAddress, normalizeEmail } from "@/domain/email";
+import { invoiceDownloadHeaders } from "@/domain/invoice";
 import { FEEDBACK_TEXT_MAX } from "@/domain/protocols";
 import type { Locale } from "@/i18n/locales";
 import { LOGIN_MARK } from "@/lib/account-marks";
@@ -28,6 +29,7 @@ import {
 import { removeClientPassword, setClientPassword } from "./client-password";
 import { queueCompletionMail } from "./completion";
 import { feedbackState, hideFeedback, notifyFeedback, submitFeedback } from "./course-feedback";
+import { invoiceForStudent, invoicePdf } from "./invoices";
 import { PgKv } from "./kv";
 import { lessonFileFor, loadLesson, markTextLessonDone, saveProgress } from "./lesson-data";
 import { attachmentHeader, FILE_URL_TTL_SEC } from "./lesson-files";
@@ -61,7 +63,7 @@ import { sha256 } from "./token";
 // GET /kursus/:slug/:lesson one lesson (an open one with a signed video URL; 403 terms or locked), POST …/:lesson/progress how far a video has
 // been watched, POST …/:lesson/tehtud "Märgi tehtuks" for a text lesson, GET …/:lesson/fail/:file a lesson file, GET /kursus/:slug/test the knowledge test with POST /kursus/:slug/test an attempt and POST …/test/uuesti the "Paranda" answers rewritten (e-course completion), GET /lemmikud the
 // favourites as course cards, POST /lemmikud and /lemmikud/merge favourites, PATCH /andmed the profile, POST /uudiskiri the newsletter, POST /muutmine a request to cancel or
-// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, GET /kursus/:slug/praktiline the practical work of an e-course (e-course completion: her points, her photos and Maria's sent assessment), POST …/praktiline/foto one photo (multipart, made smaller in the browser), DELETE …/praktiline/foto/:id one photo of the round being prepared, POST …/praktiline/saada "Saada hindamiseks" / "Saada uuesti", GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kursus/:slug/tunnistus the certificate of her completed e-course with the name she confirmed and GET /tunnistus/:id its PDF (phase 3d), POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
+// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, GET /kursus/:slug/praktiline the practical work of an e-course (e-course completion: her points, her photos and Maria's sent assessment), POST …/praktiline/foto one photo (multipart, made smaller in the browser), DELETE …/praktiline/foto/:id one photo of the round being prepared, POST …/praktiline/saada "Saada hindamiseks" / "Saada uuesti", GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kursus/:slug/tunnistus the certificate of her completed e-course with the name she confirmed and GET /tunnistus/:id its PDF (phase 3d), GET /arve/:id one of her invoices as a PDF (invoices), POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
 // Each one starts with requireClient and answers through clientResponse (a renewed session's cookies reach the browser); the
 // client is always the session's, never a value from the request. A body that is not what the endpoint expects is 400
 // { ok: false, error: "<field>" } (account-input.ts), a record that is not the client's is 404.
@@ -127,6 +129,8 @@ const PHOTO_BODY_BYTES = PHOTO_LIMITS.fullBytes + PHOTO_LIMITS.thumbBytes + PHOT
 const CERTIFICATE_ISSUES_PER_HOUR = 10;
 /** Certificate downloads per hour (spec §5): each one renders the PDF, about a tenth of a second of the function. */
 const CERTIFICATE_FILES_PER_HOUR = 10;
+/** Invoice downloads per hour (invoices Task 6, spec §4): each one renders the PDF, as a certificate's does. */
+const INVOICE_FILES_PER_HOUR = 10;
 /** The issue's body, `{ name }`: a name of at most 80 characters, with room for its JSON escapes. */
 const CERTIFICATE_BODY_CHARS = 1024;
 
@@ -465,14 +469,15 @@ async function photoAnswer(session: ClientSession, store: FileStore, key: string
 }
 
 /**
- * A certificate's PDF for its owner (phase 3d, spec §5, §7): the bytes as a download named by her certificate's number (domain/certificate.ts
- * certificateDownloadHeaders), `private, no-store` and not for search engines (BASE_HEADERS), nosniff; the cookies of a renewed session go
- * with it, as with clientResponse. The handlers never build a Response of their own.
+ * A PDF for its owner (a certificate, phase 3d, spec §5, §7; an invoice, invoices Task 6, spec §4): the bytes as a download named by its number
+ * (`download`: domain/certificate.ts certificateDownloadHeaders or domain/invoice.ts invoiceDownloadHeaders), `private, no-store` and not for
+ * search engines (BASE_HEADERS), nosniff; the cookies of a renewed session go with it, as with clientResponse. The handlers never build a Response
+ * of their own.
  * (The cast: the PDF's bytes are a Uint8Array<ArrayBufferLike>, which TypeScript does not take as a BlobPart as it stands.)
  */
-function pdfAnswer(session: ClientSession, bytes: Uint8Array, cert: { year: number; seq: number }): Response {
+function pdfAnswer(session: ClientSession, bytes: Uint8Array, download: Record<string, string>): Response {
   const res = new Response(new Blob([bytes as BlobPart], { type: "application/pdf" }), {
-    headers: { ...BASE_HEADERS, ...certificateDownloadHeaders(cert.year, cert.seq) },
+    headers: { ...BASE_HEADERS, ...download },
   });
   for (const cookie of session.cookies) res.headers.append("set-cookie", cookie);
   return res;
@@ -881,7 +886,34 @@ async function certificateFile(request: Request, deps: AccountDeps, rawId: strin
     logFailure(`[certificate] ${cert.id}: the student's download failed`, e); // its id and the error's class only
     return clientResponse(session, { ok: false, error: "server" }, 500);
   }
-  return pdfAnswer(session, bytes, cert);
+  return pdfAnswer(session, bytes, certificateDownloadHeaders(cert.year, cert.seq));
+}
+
+/**
+ * GET /arve/:id (invoices Task 6, spec §4): her invoice as a PDF (invoices.ts invoicePdf, rendered from the frozen row on each download), via
+ * pdfAnswer as `attachment; filename="MS-LAB-arve-{number}.pdf"`. Only her own (invoices.ts invoiceForStudent: by her registration's or her
+ * payment's client id), never a cancelled one; 404 `{ ok: false }` for any other id; 429 `{ error: "rate" }` after 10 in an hour (a 404 counts
+ * too, so ids cannot be probed). A render that fails is 500 `{ error: "server" }`, logged by the invoice's id.
+ */
+async function invoiceFile(request: Request, deps: AccountDeps, rawId: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const id = parseRowId(rawId);
+  if (id === null) return clientResponse(session, { ok: false }, 404);
+  if (!(await withinClientLimit(deps, session.clientId, "client-invoice-pdf", INVOICE_FILES_PER_HOUR, 60 * 60))) {
+    logNote("[account] invoice downloads rate limited");
+    return clientResponse(session, { ok: false, error: "rate" }, 429);
+  }
+  const invoice = await invoiceForStudent(deps.db, session.clientId, id);
+  if (!invoice) return clientResponse(session, { ok: false }, 404);
+  let bytes: Uint8Array;
+  try {
+    bytes = await invoicePdf(invoice);
+  } catch (e) {
+    logFailure(`[invoices] ${invoice.id}: the student's download failed`, e); // its id and the error's class only
+    return clientResponse(session, { ok: false, error: "server" }, 500);
+  }
+  return pdfAnswer(session, bytes, invoiceDownloadHeaders(invoice.number));
 }
 
 /**
@@ -1005,7 +1037,8 @@ async function changeRequest(request: Request, deps: AccountDeps): Promise<Respo
 
 /**
  * POST /maksa `{ registrationId }` (phase 2b, spec 6.3): starts the online payment of one of the client's own registrations — the prepayment
- * still due, or the rest after it — with the /maksa page's checks (server/payments/start.ts). 200 `{ ok: true, paymentUrl }` (the card sends
+ * still due, or the rest after it, or, while it has an unpaid invoice, exactly that invoice's amount (invoices, D5) — with the /maksa page's
+ * checks (server/payments/start.ts). 200 `{ ok: true, paymentUrl }` (the card sends
  * the browser there); 404 `{ error: "registration" }` (not hers, or none); 409 `{ error: "nothing" }` (nothing to pay now) or `"full"` (no
  * free seat, D2); 429 `{ error: "rate" }` (5 starts from this IP in 10 minutes, shared with the /maksa page, or 5 of this registration in an
  * hour); 503 `{ error: "unavailable" }` without online payments or when Montonio says no. A throw is the router's 500.
@@ -1149,6 +1182,8 @@ const PHOTO_PATH = /^\/praktiline\/foto\/([^/]+)(\/pisi)?$/;
 const CERT_PATH = /^\/kursus\/([^/]+)\/tunnistus$/;
 /** A certificate's PDF (phase 3d; the id in the path, never a query): GET /tunnistus/<id>. */
 const CERT_FILE_PATH = /^\/tunnistus\/([^/]+)$/;
+/** An invoice's PDF (invoices Task 6; the id in the path, never a query): GET /arve/<id>. */
+const INVOICE_FILE_PATH = /^\/arve\/([^/]+)$/;
 
 /** The endpoints behind a session; any other method and path is unknown (404, with or without a session). */
 async function dataRoute(request: Request, path: string, deps: AccountDeps): Promise<Response> {
@@ -1197,6 +1232,8 @@ async function dataRoute(request: Request, path: string, deps: AccountDeps): Pro
   if (certPath) return request.method === "POST" ? issueCertificateRoute(request, deps, certPath[1]) : accountResponse({ ok: false }, 404);
   const certFile = request.method === "GET" ? CERT_FILE_PATH.exec(path) : null;
   if (certFile) return certificateFile(request, deps, certFile[1]);
+  const invoiceFilePath = request.method === "GET" ? INVOICE_FILE_PATH.exec(path) : null;
+  if (invoiceFilePath) return invoiceFile(request, deps, invoiceFilePath[1]);
   const lessonPath = LESSON_PATH.exec(path);
   if (lessonPath) {
     const [, slug, id, action, file] = lessonPath;

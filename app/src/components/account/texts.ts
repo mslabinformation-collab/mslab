@@ -21,6 +21,8 @@ export type CoursesTexts = Dict["account"]["dashboard"] & {
    * without one yet, in the e-course page's own words.
    */
   certificate: CertificateTexts;
+  /** The invoices on the card (invoices Task 6): the account.invoices words. */
+  invoices: Dict["account"]["invoices"];
 };
 
 /** "Lemmikud": the account.favourites strings and AccountLoader's. */
@@ -83,6 +85,7 @@ export const coursesTexts = (d: Dict): CoursesTexts => ({
   online: payTexts(d),
   completed: d.account.completion.completedOn,
   certificate: certificateTexts(d),
+  invoices: d.account.invoices,
 });
 
 export const favouritesTexts = (d: Dict): FavouritesTexts => ({ ...d.account.favourites, loader: loaderTexts(d) });

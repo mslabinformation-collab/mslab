@@ -5,13 +5,14 @@ import { hasFreeSeat } from "@/db/queries/seats";
 import { courses, courseSessions, registrations } from "@/db/schema";
 import { groupIban, hasPrepayment, parsePrepayment, paymentReference, PREPAYMENT_KEY, type PrepaymentInfo } from "@/domain/account-cards";
 import { formatEUR } from "@/domain/money";
-import { amountDue, type Due } from "@/domain/payments";
+import { payableDue, type Due } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
 import { pick, type I18n } from "@/i18n/field";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { getDict, type Locale } from "@/i18n/locales";
 import { esc } from "./account-mail";
 import { crossSiteFormPost } from "./auth";
+import { unpaidInvoiceOf } from "./invoices";
 import { logFailure, logNote } from "./log";
 import type { Montonio } from "./payments/montonio";
 import { PAY_STARTS_PER_IP, startRegistrationPayment, type StartResult } from "./payments/start";
@@ -39,7 +40,10 @@ export type PayView = {
   transfer: PrepaymentInfo | null;
 };
 
-/** The view of a "Maksa" token, or null: a token that cannot be one, or no registration has it. Reads only. */
+/**
+ * The view of a "Maksa" token, or null: a token that cannot be one, or no registration has it. What is due is the start's own
+ * (domain/payments.ts payableDue): while the registration has an unpaid invoice, that invoice's amount (invoices, D5). Reads only.
+ */
 export async function loadPayView(db: Db, token: string, now: Date): Promise<PayView | null> {
   if (!isTokenShape(token)) return null;
   const [row] = await db
@@ -52,12 +56,13 @@ export async function loadPayView(db: Db, token: string, now: Date): Promise<Pay
   if (!row) return null;
   const { registration: r, course, session } = row;
   const pay = parsePrepayment(await readSetting(db, PREPAYMENT_KEY));
-  const due = amountDue(
+  const due = payableDue(
     { status: r.status, paymentChoice: r.paymentChoice, priceCents: registrationPrice(course, r.kind), paidCents: r.paidCents, startsAt: session?.startsAt ?? null, sessionCancelled: session?.status === "cancelled" },
+    await unpaidInvoiceOf(db, r.id),
     now,
   );
-  // only a prepayment can be refused for a seat (start.ts): a confirmed registration paying its rest holds its place already
-  const full = due.kind === "prepayment" && session !== null && !(await hasFreeSeat(db, session, now, r.id));
+  // only an unconfirmed registration's payment can be refused for a seat (start.ts): a confirmed one holds its place already
+  const full = due.kind !== "none" && r.status === "awaiting_prepayment" && session !== null && !(await hasFreeSeat(db, session, now, r.id));
   return {
     token,
     locale: r.locale === "ru" ? "ru" : "et",

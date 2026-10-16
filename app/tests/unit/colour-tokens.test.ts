@@ -82,6 +82,10 @@ const COURSE_CSS = [
   // the test page and its Avaleht card (phase 4, piece 1, Task 3)
   "src/components/admin/TestPlan.module.css",
   "src/components/admin/TestplanCard.module.css",
+  // the invoices (phase 4, piece 2, Task 5): the registration drawer's block, Seaded's card and the list
+  "src/components/admin/InvoiceBlock.module.css",
+  "src/components/admin/InvoiceSettings.module.css",
+  "src/app/admin/(panel)/arved/arved.module.css",
 ];
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""); // comments aside

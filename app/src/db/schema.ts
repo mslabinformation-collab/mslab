@@ -2,6 +2,7 @@ import { relations, sql } from "drizzle-orm";
 import { pgTable, serial, text, integer, boolean, jsonb, timestamp, pgEnum, uniqueIndex, index, primaryKey, customType, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { I18n } from "@/i18n/field";
 import type { FeedbackAnswers } from "@/domain/protocols";
+import type { InvoiceBuyer, InvoiceKind, InvoiceLine, InvoiceSeller, InvoiceStatus, PaidMethod } from "@/domain/invoice";
 
 export const courseType = pgEnum("course_type", ["e_learning", "contact"]);
 export const courseLevel = pgEnum("course_level", ["basic", "advanced"]);
@@ -273,6 +274,12 @@ export const payments = pgTable(
     registrationId: integer("registration_id").references(() => registrations.id, { onDelete: "set null" }),
     courseId: integer("course_id").references(() => courses.id, { onDelete: "set null" }),
     clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
+    /**
+     * The unpaid invoice this payment was started to pay (invoices, D5): when it is paid, that invoice becomes paid and takes this payment's id
+     * as its own `payment_id`. Null for a payment that was not started for an invoice; it then makes its own born-paid invoice (invoices.paymentId)
+     * — also when the invoice it was started for is no longer unpaid by then. Set null when the invoice is deleted.
+     */
+    invoiceId: integer("invoice_id").references((): AnyPgColumn => invoices.id, { onDelete: "set null" }),
     email: text("email").notNull(),
     name: text("name").notNull(),
     locale: text("locale").$type<"et" | "ru">().notNull().default("et"),
@@ -293,6 +300,8 @@ export const payments = pgTable(
     index("payments_registration").on(t.registrationId),
     index("payments_client").on(t.clientId),
     index("payments_status_created").on(t.status, t.createdAt),
+    // the invoice a payment was started for (migration 0012): the R14 read per invoice row, and the set null of an invoice's deletion
+    index("payments_invoice").on(t.invoiceId),
     check("payments_amount_positive", sql`${t.amountCents} > 0`),
   ],
 );
@@ -565,6 +574,72 @@ export const certificates = pgTable("certificates", {
   check("certificates_seq_positive", sql`${t.seq} >= 1`),
 ]);
 
+// ---------- invoices (phase 4, piece 2) ----------
+
+/**
+ * One invoice (spec §3): a contact course's prepayment, whole sum or rest, or an e-course's price. Born paid when a Montonio payment is
+ * paid (`paymentId`, one per payment), or made by Maria on a registration: unpaid (a request to pay, which a Montonio payment started for it
+ * then pays: it takes that payment's `paymentId`) or paid (a receipt). It holds a frozen
+ * copy of everything the PDF prints (`line`, `seller`, `buyer`, `vatRate`, `amountCents`), so a later change of the course, of the price, of
+ * Seaded → Arve andmed or of the account never alters it; an unpaid invoice's buyer is the one thing Maria may still edit. The PDF is drawn
+ * from this row on every download. The number is {prefix}{year}-{nnn} (domain/invoice.ts formatInvoiceNumber), given under the invoice-number
+ * lock, unique with (prefix, year, seq) as the backstop; it is never given again, so a cancelled invoice keeps its own. The links are set null
+ * when the registration, the payment, the course or the account is deleted: an accounting record outlives them.
+ */
+export const invoices = pgTable("invoices", {
+  id: serial("id").primaryKey(),
+  number: text("number").notNull(),
+  prefix: text("prefix").notNull(),
+  year: integer("year").notNull(),
+  seq: integer("seq").notNull(),
+  kind: text("kind").$type<InvoiceKind>().notNull(),
+  registrationId: integer("registration_id").references(() => registrations.id, { onDelete: "set null" }),
+  /**
+   * The online payment that paid this invoice: the one it was born paid from, or the one that paid it after it was started for this invoice
+   * (payments.invoice_id; written when it is paid). Null for one Maria made and nobody paid online, however Maria marked it. At most one invoice
+   * per payment (invoices_payment), so "a payment is invoiced" is exactly "an invoice names it".
+   */
+  paymentId: integer("payment_id").references(() => payments.id, { onDelete: "set null" }),
+  courseId: integer("course_id").references(() => courses.id, { onDelete: "set null" }),
+  clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
+  status: text("status").$type<InvoiceStatus>().notNull().default("unpaid"),
+  /** The gross sum in cents (VAT included when VAT is on). */
+  amountCents: integer("amount_cents").notNull(),
+  /** The VAT rate in percent the sum contains; null when VAT was off at the creation. */
+  vatRate: integer("vat_rate"),
+  line: jsonb("line").$type<InvoiceLine>().notNull(),
+  seller: jsonb("seller").$type<InvoiceSeller>().notNull(),
+  buyer: jsonb("buyer").$type<InvoiceBuyer>().notNull(),
+  /** The payment reference of a bank transfer; empty when there is none to print. */
+  reference: text("reference").notNull().default(""),
+  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+  /** Null for an invoice born paid. */
+  dueAt: timestamp("due_at", { withTimezone: true }),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  paidMethod: text("paid_method").$type<PaidMethod>(),
+  /** The paid mark added the amount to the registration's paid_cents, so undoing it takes it back (spec D6). */
+  paidAdds: boolean("paid_adds").notNull().default(false),
+  /** The last "Saada õpilasele": when, and a note of where it went (D11). */
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  sentNote: text("sent_note").notNull().default(""),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * Maria's footer line of Seaded → Arve andmed as it was at the issue, frozen (D2; migration 0012): the PDF prints this, never the setting of
+   * the day it is downloaded. Empty for none, and for the invoices issued before 0012.
+   */
+  footer: text("footer").notNull().default(""),
+}, (t) => [
+  uniqueIndex("invoices_number").on(t.number),
+  uniqueIndex("invoices_series").on(t.prefix, t.year, t.seq),
+  uniqueIndex("invoices_payment").on(t.paymentId),
+  index("invoices_registration").on(t.registrationId),
+  index("invoices_client").on(t.clientId),
+  index("invoices_issued").on(t.issuedAt),
+  check("invoices_amount_positive", sql`${t.amountCents} > 0`),
+  check("invoices_seq_positive", sql`${t.seq} > 0`),
+]);
+
 /** text compared byte by byte (collation "C"): the KV keys sort as in Cloudflare KV, and a LIKE 'prefix%' can use the primary key index. */
 const byteText = customType<{ data: string }>({ dataType: () => 'text COLLATE "C"' });
 
@@ -581,6 +656,7 @@ export const kvEntries = pgTable(
 export const settings = pgTable("settings", { key: text("key").primaryKey(), value: jsonb("value").notNull() });
 // keys: "contact" {email, phone, address, instagram, facebook}, "newsletter" {discountLabel, welcomeCode}, "trainer" {portraitKey, name, role: I18n, stats: [{value,label:I18n}]}, "prepayment" {receiver, iban, bank, referencePrefix},
 // "certificate" {place, registryCode, practicalLine, trainerName, nextYear, nextSeq} (phase 3d: domain/certificate.ts readCertificateSettings)
+// "invoice" {company, registryCode, address, vatNumber, vatOn, vatRate, prefix, nextYear, nextSeq, termDays, footer} (invoices: domain/invoice.ts readInvoiceSettings)
 
 export const authTokens = pgTable("auth_tokens", { hash: text("hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), usedAt: timestamp("used_at", { withTimezone: true }) });
 export const adminSessions = pgTable("admin_sessions", { idHash: text("id_hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull() });
@@ -632,3 +708,4 @@ export type CourseTest = typeof courseTests.$inferSelect;
 export type TestAttempt = typeof testAttempts.$inferSelect;
 export type PracticalPhoto = typeof practicalPhotos.$inferSelect;
 export type Certificate = typeof certificates.$inferSelect;
+export type Invoice = typeof invoices.$inferSelect;

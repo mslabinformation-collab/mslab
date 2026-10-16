@@ -436,6 +436,8 @@ export const et = {
       full: "Koolitus on vahepeal täitunud, nii et koht jäi kinnitamata. Maria võtab sinuga ühendust.",
       notConfirmed: "Maria võtab sinuga ühendust.",
       access: "Ligipääs kuni {date}.",
+      // the payment's invoice is attached as a PDF (invoices, spec §4: verbatim)
+      invoiceAttached: "Arve on lisatud.",
     },
   },
 
@@ -513,6 +515,17 @@ export const et = {
       button: "Vaata protokolli",
       valid: "Kood ja nupp kehtivad 30 minutit. Hiljem leiad protokolli Minu koolituste lehelt.",
       feedback: "Soovi korral jäta meile tagasisidet",
+    },
+    // Maria's „Saada õpilasele“ (server/account-mail.ts invoiceMail, invoices Task 5): the invoice's PDF is attached and the one button is
+    // `confirm.open`. The labels of the bank details are `dashboard.payment`'s (receiver, iban, bank, amount, reference). `subject` is
+    // „MS LAB arve {number}“ (R1); the rest is Draft for Dim's wording sheet. {number} is the invoice's number.
+    invoiceMail: {
+      subject: "MS LAB arve {number}",
+      leadUnpaid: "Saadame sulle arve {number}.",
+      leadPaid: "Saadame sulle arve {number}. See on juba tasutud.",
+      due: "Tasumise tähtaeg",
+      paidOn: "Tasutud",
+      attached: "Arve PDF on kirjas manusena.",
     },
     // The e-course completion's mails to the student (server/account-mail.ts completionMail, phase e-course completion, spec §6): each kind
     // has its subject, its one line and its button, which opens the page (she signs in there when she must). {title} is the course, {n} the
@@ -894,6 +907,19 @@ export const et = {
       download: "Laadi tunnistus alla (PDF)",
       fixName: "Kui nimes on viga, kirjuta meile",
       cardLink: "Laadi tunnistus alla",
+    },
+    // The invoices on a course card (components/account/AccountCourseCard.tsx; invoices Task 6, spec §4): one quiet line per invoice,
+    // „Arve MSL2026-001 · 175,00 € · Tasutud“ or „Arve … · Tasumata · tasu 23.10.2026“ (`number`, the amount, `paid` or `unpaid` and `payBy`, joined by " · "), with
+    // `download` (the PDF). {number} is the invoice's number, {date} its due date. „Tasutud“, „Tasumata“ and „Laadi alla (PDF)“ are the
+    // spec's own words; the rest is Draft for Dim's wording sheet. The bank details under an unpaid invoice use `dashboard.payment`'s labels.
+    invoices: {
+      number: "Arve {number}",
+      paid: "Tasutud",
+      unpaid: "Tasumata",
+      // a paid invoice whose online payment was refunded or voided (spec D5's word)
+      refunded: "Tagastatud",
+      payBy: "tasu {date}",
+      download: "Laadi alla (PDF)",
     },
     // "Lemmikud" /konto/lemmikud (components/account/FavouritesTab.tsx): the hearted courses as the catalogue's cards, each with ♡ to
     // take it off. {title} is a course's title (the button's name for a screen reader, and what was taken off).
