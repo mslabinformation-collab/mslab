@@ -70,13 +70,14 @@ async function accept(page: Page) {
   return answer;
 }
 
-test("without access: one sentence and one button to the public course page, not the error; an unknown course is the same", async ({ page }, info) => {
+test("without access: one sentence, a button to the public course page and a link to her account (where an ended access's certificate is), not the error; an unknown course is the same", async ({ page }, info) => {
   const c = await signedIn(page, "noaccess", info.project.name, { access: false });
   expect(c.expiresAt).toBeNull();
   await page.goto(path(c.slug));
   const state = page.locator("[data-account-state='noAccess']");
   await expect(state.getByRole("heading", { level: 1 })).toHaveText("Sul ei ole sellele koolitusele ligipääsu.");
-  await expect(state.getByRole("link")).toHaveText(["Vaata koolitust"]);
+  await expect(state.getByRole("link")).toHaveText(["Vaata koolitust", "Minu konto"]);
+  await expect(state.getByRole("link", { name: "Minu konto" })).toHaveAttribute("href", "/konto");
   await expect(state.getByRole("button")).toHaveCount(0);
   await expect(page.getByText(/Proovi uuesti|Ei õnnestunud/)).toHaveCount(0);
   await expect(gate(page)).toHaveCount(0);

@@ -61,7 +61,8 @@ const badgeNew: Badge = { label: { et: "Uus", ru: "Новинка" }, bg: "#DDD4
 
 export type SeedImage = { key: string; alt: I18n };
 export type SeedSession = Omit<SessionInput, "id" | "courseId">;
-export type SeedCourse = Omit<CourseInput, "id" | "published" | "isSample" | "sort"> & { images: SeedImage[]; sessions?: SeedSession[] };
+/** `modules`: the course's module titles in order, written as course_modules rows (seed-apply.ts); courses has no column of its own for them. */
+export type SeedCourse = Omit<CourseInput, "id" | "published" | "isSample" | "sort"> & { images: SeedImage[]; sessions?: SeedSession[]; modules?: I18n[] };
 
 // Prototype D SESS (8 rows), mapped onto the three contact courses. D's dates were 14.11.2026 … 23.01.2027; they are
 // kept as days after the first one (a Saturday about six weeks ahead, seed-dates.ts), so a seed made on any day gets an

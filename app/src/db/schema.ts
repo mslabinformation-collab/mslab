@@ -32,8 +32,6 @@ export const courses = pgTable("courses", {
   body: jsonb("body").$type<I18n>().notNull(),
   outcomes: jsonb("outcomes").$type<I18n[]>().notNull().default([]),
   includes: jsonb("includes").$type<I18n[]>().notNull().default([]),
-  // Legacy (phase 3a): module titles live in course_modules; nothing reads or writes this column. Migration 0010 drops it after the 3a deploy (code first).
-  modules: jsonb("modules").$type<I18n[]>().notNull().default([]),
   language: text("language").notNull().default("ET"),        // "ET" | "RU" | "ET / RU"
   price: integer("price"),                                     // e-learning, cents
   priceGroup: integer("price_group"),                          // contact, cents
