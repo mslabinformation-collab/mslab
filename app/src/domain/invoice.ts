@@ -62,13 +62,16 @@ export const INVOICE_DEFAULTS: Omit<InvoiceSettings, "nextYear" | "nextSeq"> = {
 export const INVOICE_LIMITS = { company: 120, registryCode: 20, address: 200, vatNumber: 20, prefix: 10, footer: 300, termDays: 90, vatRate: 50, name: 120, buyerAddress: 200, note: 200 } as const;
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+/** The largest value of a Postgres integer column (invoices.seq). */
+const INT4_MAX = 2_147_483_647;
 const wholeIn = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 
 /**
  * The stored setting read defensively (jsonb: anything), as readCertificateSettings reads its own. Each text is trimmed; a missing, blank or
  * over-long one is the default. The VAT rate is a whole 1–50 (VAT off is `vatOn`, not a rate of 0) and the term a whole 0–90 days, else the
  * default. VAT is on only with a VAT number (D8), whatever was stored. The next number is a pair: a whole year 2000–9999 and a whole number
- * from 1, else both are the default (this Tallinn year, 1).
+ * from 1 up to the largest the seq column holds (INT4_MAX: a larger one would fail the insert, inside the transaction that marks a payment
+ * paid), else both are the default (this Tallinn year, 1).
  */
 export function readInvoiceSettings(value: unknown, now: Date): InvoiceSettings {
   const v = isObject(value) ? value : {};
@@ -76,7 +79,7 @@ export function readInvoiceSettings(value: unknown, now: Date): InvoiceSettings 
     const s = typeof v[key] === "string" ? (v[key] as string).trim() : "";
     return s && s.length <= INVOICE_LIMITS[key] ? s : INVOICE_DEFAULTS[key];
   };
-  const numbered = wholeIn(v.nextYear, 2000, 9999) && wholeIn(v.nextSeq, 1, Number.MAX_SAFE_INTEGER);
+  const numbered = wholeIn(v.nextYear, 2000, 9999) && wholeIn(v.nextSeq, 1, INT4_MAX);
   const vatNumber = text("vatNumber");
   return {
     company: text("company"),
@@ -232,13 +235,13 @@ const CSV_HEADER = [
 const csvAmount = (cents: number): string => `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, "0")}`;
 
 /**
- * A text the buyer or Maria typed, as one field: a leading = + - @ would make a spreadsheet read it as a formula (a name typed into the public
- * form lands in Maria's file), so such a text gets a leading apostrophe; then it is quoted when it holds the separator, a quote or a line
- * break (a quote doubled).
+ * A text the buyer or Maria typed, as one field. A text that a spreadsheet would read as a formula (a name typed into the public form lands
+ * in Maria's file), that is one whose first character after any white space is = + - @ (or a tab or CR), gets a leading apostrophe. Then it
+ * is always quoted, a quote doubled, so that neither `;` nor `,` splits it in any locale's spreadsheet. The sums are not texts: they stay bare.
  */
 function csvText(raw: string): string {
-  const s = /^[=+\-@]/.test(raw) ? `'${raw}` : raw;
-  return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const s = /^\s*[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  return `"${s.replace(/"/g, '""')}"`;
 }
 
 /**

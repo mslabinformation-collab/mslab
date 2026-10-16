@@ -236,10 +236,12 @@ describe("readInvoiceSettings: the stored setting read defensively (D2)", () => 
     expect(readInvoiceSettings({ termDays: 90 }, now).termDays).toBe(90);
   });
 
-  test("the next number is a pair: a whole year 2000–9999 and a whole number from 1, else both are the default", () => {
-    for (const [nextYear, nextSeq] of [[2026, 0], [2026, 1.5], [2026, "3"], [26, 3], [10_000, 3], [2026.5, 3], [null, 3], [2026, null]])
+  test("the next number is a pair: a whole year 2000–9999 and a whole number from 1 to the largest an integer column holds, else both are the default", () => {
+    const INT4_MAX = 2_147_483_647; // invoices.seq is an integer column: a larger next number would fail the insert inside the payment-settle transaction
+    for (const [nextYear, nextSeq] of [[2026, 0], [2026, 1.5], [2026, "3"], [26, 3], [10_000, 3], [1999, 3], [2026.5, 3], [null, 3], [2026, null], [2026, INT4_MAX + 1], [2026, Number.MAX_SAFE_INTEGER], [2026, Infinity], [2026, NaN]])
       expect(readInvoiceSettings({ nextYear, nextSeq }, now), `${nextYear} ${nextSeq}`).toMatchObject({ nextYear: 2026, nextSeq: 1 });
-    expect(readInvoiceSettings({ nextYear: 2025, nextSeq: 31 }, now)).toMatchObject({ nextYear: 2025, nextSeq: 31 });
+    for (const [nextYear, nextSeq] of [[2025, 31], [2000, 1], [9999, 7], [2026, INT4_MAX]])
+      expect(readInvoiceSettings({ nextYear, nextSeq }, now), `${nextYear} ${nextSeq}`).toMatchObject({ nextYear, nextSeq });
   });
 });
 
@@ -266,11 +268,23 @@ describe("invoiceCsv: for the accountant (§6.5)", () => {
     paidAt: new Date("2026-10-16T21:30:00Z"), paidMethod: "bank", paidAdds: true, sentAt: null, sentNote: "", cancelledAt: null, createdAt: new Date("2026-10-15T09:00:00Z"),
   };
   const HEADER = "Arve nr;Kuupäev;Tasumise tähtaeg;Ostja;Ostja ettevõte;Registrikood;Kirjeldus;Summa käibemaksuta;Käibemaks;Kokku;Olek;Tasumise kuupäev;Makseviis";
+  /** The rows after the header, each without its CRLF (a text field may hold a line break of its own, so not a split on it). */
+  const rowsOf = (list: Invoice[]): string[] => {
+    const csv = invoiceCsv(list);
+    const head = `\uFEFF${HEADER}\r\n`;
+    expect(csv.startsWith(head)).toBe(true);
+    expect(csv.endsWith("\r\n")).toBe(true);
+    const body = csv.slice(head.length, -2);
+    return body === "" ? [] : body.split("\r\n");
+  };
+  // the fixed cells around the buyer's name in `base`
+  const BEFORE_NAME = '"MSL2026-001";15.10.2026;22.10.2026;';
+  const AFTER_NAME = ';"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne';
 
-  test("the BOM, the exact header, one CRLF-ended line per invoice, the amounts with comma decimals", () => {
+  test("the BOM, the exact header, one CRLF-ended line per invoice, the text fields quoted and the amounts bare with comma decimals", () => {
     const csv = invoiceCsv([base]);
     expect(csv.startsWith("\uFEFF")).toBe(true);
-    expect(csv).toBe(`\uFEFF${HEADER}\r\nMSL2026-001;15.10.2026;22.10.2026;Kati Kask;;;Kulmumeistri baaskoolitus — Ettemaks 50%;175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne\r\n`);
+    expect(csv).toBe(`\uFEFF${HEADER}\r\n"MSL2026-001";15.10.2026;22.10.2026;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne\r\n`);
   });
 
   test("a VAT invoice splits the sum; an unpaid one has no paid date and no method; a company buyer fills its columns", () => {
@@ -278,46 +292,59 @@ describe("invoiceCsv: for the accountant (§6.5)", () => {
       ...base, id: 2, number: "MSL2026-002", seq: 2, status: "unpaid", vatRate: 24, paidAt: null, paidMethod: null,
       buyer: { ...buyer, company: "Salong OÜ", companyCode: "87654321" },
     };
-    const [, row] = invoiceCsv([vat]).split("\r\n");
-    expect(row).toBe("MSL2026-002;15.10.2026;22.10.2026;Kati Kask;Salong OÜ;87654321;Kulmumeistri baaskoolitus — Ettemaks 50%;141,13;33,87;175,00;Tasumata;;");
+    expect(rowsOf([vat])).toEqual(['"MSL2026-002";15.10.2026;22.10.2026;"Kati Kask";"Salong OÜ";"87654321";"Kulmumeistri baaskoolitus — Ettemaks 50%";141,13;33,87;175,00;Tasumata;;']);
   });
 
   test("a cancelled row is marked and has zero sums, whatever the amount was", () => {
     const cancelled: Invoice = { ...base, id: 3, number: "MSL2026-003", seq: 3, status: "cancelled", vatRate: 24, paidAt: null, paidMethod: null, cancelledAt: new Date("2026-10-18T09:00:00Z") };
-    const [, row] = invoiceCsv([cancelled]).split("\r\n");
-    expect(row).toBe("MSL2026-003;15.10.2026;22.10.2026;Kati Kask;;;Kulmumeistri baaskoolitus — Ettemaks 50%;0,00;0,00;0,00;Tühistatud;;");
+    expect(rowsOf([cancelled])).toEqual(['"MSL2026-003";15.10.2026;22.10.2026;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";0,00;0,00;0,00;Tühistatud;;']);
   });
 
   test("two invoices, one cancelled: in the order given, the dates in Tallinn time (a born-paid invoice has no due date)", () => {
     const born: Invoice = { ...base, id: 4, number: "MSL2026-004", seq: 4, dueAt: null, issuedAt: new Date("2026-12-31T22:30:00Z"), paidAt: new Date("2026-12-31T22:30:00Z"), paidMethod: "montonio" };
     const cancelled: Invoice = { ...base, id: 3, number: "MSL2026-003", seq: 3, status: "cancelled", paidAt: null, paidMethod: null };
-    const lines = invoiceCsv([born, cancelled]).split("\r\n");
-    expect(lines).toHaveLength(4); // header, two rows, the empty piece after the last CRLF
-    expect(lines[1]).toBe("MSL2026-004;01.01.2027;;Kati Kask;;;Kulmumeistri baaskoolitus — Ettemaks 50%;175,00;0,00;175,00;Tasutud;01.01.2027;Montonio");
-    expect(lines[2]).toContain(";0,00;0,00;0,00;Tühistatud;;");
-    expect(lines[3]).toBe("");
+    const rows = rowsOf([born, cancelled]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toBe('"MSL2026-004";01.01.2027;;"Kati Kask";"";"";"Kulmumeistri baaskoolitus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;01.01.2027;Montonio');
+    expect(rows[1]).toContain(";0,00;0,00;0,00;Tühistatud;;");
   });
 
   test("no invoices: the BOM and the header only", () => {
     expect(invoiceCsv([])).toBe(`\uFEFF${HEADER}\r\n`);
+    expect(rowsOf([])).toEqual([]);
   });
 
-  test("a field holding ; \" or a line break is quoted, a quote doubled", () => {
+  test.each([
+    // [what the buyer typed, the exact cell]: every text field is quoted, a quote doubled, so no `;` or `,` splits it
+    ["Kati Kask", '"Kati Kask"'],
+    ['Kask, Kati; "Õun"', '"Kask, Kati; ""Õun"""'],
+    ["", '""'],
+    ["Kati -Kask", '"Kati -Kask"'], // a sign inside the text is not a formula
+    ["1\n2", '"1\n2"'], // a line break stays inside its quotes
+    // what a spreadsheet would read as a formula gets a leading apostrophe, after any white space as well
+    ["=1+1", `"'=1+1"`],
+    ["  =cmd", `"'  =cmd"`],
+    ["\t=x", `"'\t=x"`],
+    ["\r=x", `"'\r=x"`],
+    ["\n=x", `"'\n=x"`],
+    ["+1", `"'+1"`],
+    ["-2", `"'-2"`],
+    ["@a", `"'@a"`],
+    [" @SUM(A1)", `"' @SUM(A1)"`],
+    ['=HYPERLINK("http://x";"y")', `"'=HYPERLINK(""http://x"";""y"")"`],
+    ["\t", `"'\t"`], // a tab alone: the guard covers it
+  ])("the buyer's name %j is the cell %s", (name, cell) => {
+    const [row] = rowsOf([{ ...base, buyer: { ...buyer, name } }]);
+    expect(row).toBe(`${BEFORE_NAME}${cell}${AFTER_NAME}`);
+  });
+
+  test("every text column is guarded alike: the number, the buyer's company and registry code, the description", () => {
     const odd: Invoice = {
-      ...base, buyer: { ...buyer, name: "Kask; Kati", company: 'Salong "Õun" OÜ', companyCode: "1\n2" },
-      line: { course: "Kursus; kõik", session: "", part: "Ettemaks 50%" },
+      ...base, number: "-X2026-001", buyer: { ...buyer, company: "@Salong; OÜ", companyCode: "=1" },
+      line: { course: "+Kursus", session: "", part: "Ettemaks 50%" },
     };
-    const [, row] = invoiceCsv([odd]).split("\r\n");
-    expect(row).toBe('MSL2026-001;15.10.2026;22.10.2026;"Kask; Kati";"Salong ""Õun"" OÜ";"1\n2";"Kursus; kõik — Ettemaks 50%";175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne');
-  });
-
-  test("a buyer's name cannot make a formula in the accountant's spreadsheet", () => {
-    for (const name of ["=HYPERLINK(\"http://x\")", "+1+1", "-1+1", "@SUM(A1)"]) {
-      const [, row] = invoiceCsv([{ ...base, buyer: { ...buyer, name } }]).split("\r\n");
-      const field = row.split(";")[3].replace(/^"|"$/g, "");
-      expect(field.startsWith("'"), name).toBe(true);
-    }
-    // an ordinary name is left alone
-    expect(invoiceCsv([base]).split("\r\n")[1].split(";")[3]).toBe("Kati Kask");
+    expect(rowsOf([odd])).toEqual([
+      `"'-X2026-001";15.10.2026;22.10.2026;"Kati Kask";"'@Salong; OÜ";"'=1";"'+Kursus — Ettemaks 50%";175,00;0,00;175,00;Tasutud;17.10.2026;Pangaülekanne`,
+    ]);
   });
 });
