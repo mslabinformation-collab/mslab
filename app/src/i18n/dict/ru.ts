@@ -393,6 +393,8 @@ export const ru: Dict = {
       full: "Группа тем временем заполнилась, поэтому место не подтверждено. Мария свяжется с вами.",
       notConfirmed: "Мария свяжется с вами.",
       access: "Доступ до {date}.",
+      // Draft (invoices Task 4, for Dim's wording sheet)
+      invoiceAttached: "Счёт во вложении.",
     },
   },
 

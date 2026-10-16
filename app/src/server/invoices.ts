@@ -494,6 +494,21 @@ export async function invoicesOfRegistration(db: Db, registrationId: number): Pr
 }
 
 /**
+ * The registration's latest unpaid invoice, or null (D5: the one „Maksa" pays, domain/payments.ts payableDue). A plain read: the start
+ * (payments/start.ts) asks it under lockForPayment, which every change of an invoice of the registration takes first, and the /maksa page
+ * without a lock (it only shows).
+ */
+export async function unpaidInvoiceOf(q: Q, registrationId: number): Promise<Invoice | null> {
+  const [row] = await q
+    .select()
+    .from(invoices)
+    .where(and(eq(invoices.registrationId, registrationId), eq(invoices.status, "unpaid")))
+    .orderBy(desc(invoices.issuedAt), desc(invoices.id))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
  * Hers (the Global Constraints): an invoice of a registration whose client she is, or of a payment whose client she is (an e-course). A
  * cancelled invoice is void and not hers to see (the account does not show it, and its download is a 404).
  */

@@ -20,8 +20,14 @@ export type Env = {
   TELEGRAM_CHAT_ID?: string;
 };
 
-/** `text` is always there; `html`, when given, is the same message for clients that show HTML (the text stays as the fallback). */
-export type Mail = { to: string; subject: string; text: string; html?: string; replyTo?: string };
+/** A file a mail carries (an invoice's PDF, invoices Task 4): its name as the reader sees it, its bytes and its media type. */
+export type MailAttachment = { filename: string; content: Buffer; contentType: string };
+
+/**
+ * `text` is always there; `html`, when given, is the same message for clients that show HTML (the text stays as the fallback);
+ * `attachments`, when given, the files it carries.
+ */
+export type Mail = { to: string; subject: string; text: string; html?: string; replyTo?: string; attachments?: MailAttachment[] };
 
 const TELEGRAM_MAX = 3900;
 export const TG_CHAT_KEY = "tg:chat";
@@ -69,7 +75,8 @@ export function defaultReplyTo(env: Pick<Env, "MARIA_EMAIL">, to: string): strin
 /**
  * Sends one e-mail: plain text, plus HTML when `mail.html` is set. true = Resend accepted it. When Resend answers that it is being asked
  * too often (429; its default limit is about 2 requests a second) the send is tried once more after RATE_LIMIT_RETRY_MS, never a third time.
- * The Reply-To is the mail's own, else Maria's inbox (defaultReplyTo), else none.
+ * The Reply-To is the mail's own, else Maria's inbox (defaultReplyTo), else none. The mail's attachments go with it, each file's bytes as
+ * Base64 (one of the two forms Resend takes, and the smaller one in the request's JSON).
  */
 export async function sendMail(env: Env, mail: Mail): Promise<boolean> {
   if (!mailConfigured(env)) return false;
@@ -84,6 +91,9 @@ export async function sendMail(env: Env, mail: Mail): Promise<boolean> {
           text: mail.text,
           ...(mail.html ? { html: mail.html } : {}),
           ...(replyTo ? { replyTo } : {}),
+          ...(mail.attachments?.length
+            ? { attachments: mail.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64"), contentType: a.contentType })) }
+            : {}),
         }),
         NOTIFY_TIMEOUT_MS,
       );

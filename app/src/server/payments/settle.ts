@@ -4,17 +4,19 @@ import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admi
 import { failPayment, isConnectionError, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
 import { dbErrorCode } from "@/db/safe-error";
-import { payments, type Payment } from "@/db/schema";
+import { payments, type Invoice, type Payment } from "@/db/schema";
 import { isSampleAddress } from "@/domain/email";
+import { invoiceFileName } from "@/domain/invoice";
 import { referenceId } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
 import { pick } from "@/i18n/field";
 import { ecourseOpenMail, registrationPaidMail } from "../account-mail";
 import type { PublicChange } from "../cache-targets";
 import { issueClientLogin } from "../client-auth";
+import { invoiceForPaidPayment, invoicePdf } from "../invoices";
 import { logFailure, logNote } from "../log";
 import { overpaymentSummary, paymentAlertSummary, paymentSummary, recordedAfterAlertSummary, stuckPaymentSummary, type PaymentNotice } from "../messages";
-import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env } from "../notify";
+import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env, type MailAttachment } from "../notify";
 import { forgetKey, releaseSlot, reserveSlot } from "../ratelimit";
 import { subscribeLater } from "../submit";
 import { grantPurchase, type Grant } from "./grant";
@@ -33,6 +35,10 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken }
 //   ticked), Maria's "Ülemakse" when the payment took the registration's paid sum over its price (alertIfOverpaid), and "Makse on nüüd kirja
 //   pandud" when she had been told "Makse vajab kontrolli" about it (followUpUnsettled: she may have recorded it by hand). Every other caller
 //   finds the row paid and does nothing.
+//   The winner's transaction also gives the payment its invoice (invoices, spec D5, §6.1; server/invoices.ts invoiceForPaidPayment, once, after
+//   the amount is added or the course opened): the unpaid invoice it was started for is paid, else one is born paid (none while Seaded's
+//   seller is empty); an invoice that cannot be written rolls the payment back with it, as the registration does. The payer's mail carries the
+//   invoice's PDF and „Arve on lisatud." (a PDF that fails to render: the mail goes without both).
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
 // - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
 //   nothing; a VOIDED (the bank took a paid payment back) is stored as failed with its paid_at and alerts Maria, who decides.
@@ -74,8 +80,8 @@ export type SettleResult = { kind: "unknown" } | { kind: "unconfirmed"; payment:
 /** GET /orders/:uuid's answer as facts. The bank's name is only in a token: `bank` keeps the one a token gave. */
 export const factsOf = (s: OrderSnapshot, bank = ""): Facts => ({ uuid: s.uuid, status: s.status, rawStatus: s.rawStatus, amountCents: s.amountCents, currency: s.currency, method: s.method, bank });
 
-/** The once-only work's outcome: the paid row, and what it did to its registration, or the e-course it opened (phase 2b Task 7). */
-type Won = { payment: Payment; registration: RegistrationPaid | null; grant: Grant | null };
+/** The once-only work's outcome: the paid row, and what it did to its registration, or the e-course it opened (phase 2b Task 7); its invoice. */
+type Won = { payment: Payment; registration: RegistrationPaid | null; grant: Grant | null; invoice: Invoice | null };
 
 /**
  * The door of an order token (the webhook, the return). A reference without this environment's prefix (Montonio.referencePrefix: a local
@@ -205,14 +211,18 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     const registration = payment.kind !== "ecourse" && payment.registrationId !== null ? await addRegistrationPayment(tx, payment.registrationId, payment.amountCents, deps.now) : null;
     // an e-course's payment opens the course instead, in this same transaction: only the winner of the update above gets here
     const grant = payment.kind === "ecourse" ? await openCourse(tx, payment, deps.now) : null;
-    return { payment: grant ? { ...payment, clientId: grant.clientId } : payment, registration, grant };
+    const paidRow = grant ? { ...payment, clientId: grant.clientId } : payment;
+    // its invoice, once, here and only here (the winner's): the linked unpaid one paid (its amount is added above, not again), or one born
+    // paid; null without Seaded's seller. The locks it takes (the invoice row, the number series, the setting) come after this path's own.
+    const invoice = await invoiceForPaidPayment(tx, paidRow, deps.now);
+    return { payment: paidRow, registration, grant, invoice };
   });
   if (!won) return lost(deps, row, facts);
   console.info(`[payments] payment ${won.payment.id}: paid`);
   // queued before anything that could fail after the commit: the payment is paid for good, and this is the only time its mails are sent
   deps.later(async () => {
-    if (won.registration) await mailRegistrationPaid(deps, won.payment, won.registration);
-    if (won.grant) await mailEcourseOpen(deps, won.payment, won.grant);
+    if (won.registration) await mailRegistrationPaid(deps, won.payment, won.registration, won.invoice);
+    if (won.grant) await mailEcourseOpen(deps, won.payment, won.grant, won.invoice);
     try {
       await tellMaria(deps, won.payment, outcomeOf(won));
     } finally {
@@ -507,41 +517,64 @@ async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNoti
 }
 
 /**
+ * The paid mail's attachment (invoices, spec §4): the PDF of the payment's invoice (server/invoices.ts invoicePdf, rendered now), named by its
+ * number (domain/invoice.ts invoiceFileName). null without an invoice, and when the PDF fails to render: the mail then goes without it (and
+ * without its line), and the log has the invoice's number and the error's class.
+ */
+async function invoiceAttachment(deps: SettleDeps, invoice: Invoice | null): Promise<MailAttachment | null> {
+  if (!invoice) return null;
+  try {
+    const pdf = await invoicePdf(deps.db, invoice);
+    return { filename: invoiceFileName(invoice.number), content: Buffer.from(pdf), contentType: "application/pdf" };
+  } catch (e) {
+    logFailure(`[invoices] ${invoice.number}: the paid mail went without its PDF`, e);
+    return null;
+  }
+}
+
+/**
  * "E-koolitus on avatud — …" with a live login (spec 6.2.4), after the response: never to a sample address, not counted in the daily caps (it
  * follows a real payment). The login is a normal client login (client-auth.ts issueClientLogin), made only now and sent only in this mail; an
- * address that has its 3 live logins already gets the mail without a code ("Ava minu konto"). Nothing here signs anyone in.
+ * address that has its 3 live logins already gets the mail without a code ("Ava minu konto"). Nothing here signs anyone in. The purchase's
+ * invoice goes with it as a PDF, with „Arve on lisatud." (invoiceAttachment).
  */
-async function mailEcourseOpen(deps: SettleDeps, p: Payment, g: Grant): Promise<void> {
+async function mailEcourseOpen(deps: SettleDeps, p: Payment, g: Grant, invoice: Invoice | null): Promise<void> {
   if (isSampleAddress(p.email) || !mailConfigured(deps.env)) return;
   try {
+    const attachment = await invoiceAttachment(deps, invoice);
     const login = await issueClientLogin(deps.db, p.email, deps.now);
-    const sent = await sendMail(deps.env, ecourseOpenMail({ siteUrl: deps.siteUrl, email: p.email, name: p.name, locale: p.locale, course: g.courseTitle, expiresAt: g.expiresAt, login }));
+    const mail = ecourseOpenMail({ siteUrl: deps.siteUrl, email: p.email, name: p.name, locale: p.locale, course: g.courseTitle, expiresAt: g.expiresAt, login, invoiceAttached: attachment !== null });
+    const sent = await sendMail(deps.env, attachment ? { ...mail, attachments: [attachment] } : mail);
     console.info(`[payments] payment ${p.id}: the e-course mail sent: ${sent}`);
   } catch (e) {
     logFailure(`[payments] payment ${p.id}: the e-course mail failed`, e);
   }
 }
 
-/** The payer's mail after a paid registration: never to a sample address, not counted in the daily caps (it follows a real payment). */
-async function mailRegistrationPaid(deps: SettleDeps, p: Payment, r: RegistrationPaid): Promise<void> {
+/**
+ * The payer's mail after a paid registration: never to a sample address, not counted in the daily caps (it follows a real payment; nor is
+ * the invoice it carries: the controller's ruling for invoice mails). The payment's invoice goes with it as a PDF, with „Arve on lisatud."
+ * (invoiceAttachment).
+ */
+async function mailRegistrationPaid(deps: SettleDeps, p: Payment, r: RegistrationPaid, invoice: Invoice | null): Promise<void> {
   if (isSampleAddress(p.email) || !mailConfigured(deps.env)) return;
   try {
     const total = registrationPrice(r.course, r.registration.kind);
-    const sent = await sendMail(
-      deps.env,
-      registrationPaidMail({
-        siteUrl: deps.siteUrl,
-        email: p.email,
-        name: p.name,
-        locale: p.locale,
-        course: r.course.title,
-        session: r.session ? { startsAt: r.session.startsAt, city: r.session.city, venue: r.session.venue } : null,
-        paidCents: p.amountCents,
-        restCents: total === null ? 0 : Math.max(0, total - r.registration.paidCents),
-        confirmed: r.registration.status === "confirmed",
-        full: r.full,
-      }),
-    );
+    const attachment = await invoiceAttachment(deps, invoice);
+    const mail = registrationPaidMail({
+      siteUrl: deps.siteUrl,
+      email: p.email,
+      name: p.name,
+      locale: p.locale,
+      course: r.course.title,
+      session: r.session ? { startsAt: r.session.startsAt, city: r.session.city, venue: r.session.venue } : null,
+      paidCents: p.amountCents,
+      restCents: total === null ? 0 : Math.max(0, total - r.registration.paidCents),
+      confirmed: r.registration.status === "confirmed",
+      full: r.full,
+      invoiceAttached: attachment !== null,
+    });
+    const sent = await sendMail(deps.env, attachment ? { ...mail, attachments: [attachment] } : mail);
     console.info(`[payments] payment ${p.id}: the payer's mail sent: ${sent}`);
   } catch (e) {
     logFailure(`[payments] payment ${p.id}: the payer's mail failed`, e);

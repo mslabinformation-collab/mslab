@@ -1,9 +1,11 @@
-// Online payments' pure rules (phase 2b): the reference Montonio knows a payment by, what a registration can pay now, and Maria's word for
-// how it was paid. No database, no React.
+// Online payments' pure rules (phase 2b): the reference Montonio knows a payment by, what a registration can pay now (with an unpaid
+// invoice, invoices Task 4: its amount), and Maria's word for how it was paid. No database, no React: the account's card runs it in the
+// browser.
 
-import type { PaymentStatus } from "@/db/schema";
+import type { Invoice, PaymentStatus } from "@/db/schema";
 import { isSlug } from "@/lib/slug";
 import { startOfDayTallinn, upcomingFrom } from "./calendar";
+import type { InvoiceKind } from "./invoice";
 import { prepaymentDue, type RegStatus } from "./registration";
 
 /**
@@ -82,7 +84,8 @@ const NONE: Due = { kind: "none" };
  * The amount a registration can pay online now (phase 2b, spec 6.3, D5). Not confirmed: the prepayment (domain/registration.ts
  * prepaymentDue) minus what is paid, while the session has not begun (calendar.ts upcomingFrom, the booking's own "upcoming"). Confirmed:
  * the price minus what is paid, until the training day begins in Tallinn (paying on the day is Maria's, by hand). Nothing for a cancelled
- * registration, a called-off session, no price or no session. The /maksa page, Minu koolitused and the start itself all ask this.
+ * registration, a called-off session, no price or no session. The /maksa page, Minu koolitused and the start itself all ask this (the page
+ * and the start through payableDue, which charges an unpaid invoice's amount instead).
  */
 export function amountDue(r: DueInput, now: Date): Due {
   if (r.status === "cancelled" || r.sessionCancelled || r.priceCents === null || r.startsAt === null) return NONE;
@@ -92,6 +95,31 @@ export function amountDue(r: DueInput, now: Date): Due {
   }
   const cents = r.priceCents - r.paidCents;
   return cents > 0 && now < startOfDayTallinn(r.startsAt) ? { kind: "balance", cents } : NONE;
+}
+
+/** What „Maksa" charges for an invoice (spec D5): an unpaid invoice's whole amount; null for one that is paid or cancelled. */
+export function invoiceDue(inv: Pick<Invoice, "status" | "amountCents">): { kind: "invoice"; cents: number } | null {
+  return inv.status === "unpaid" && inv.amountCents > 0 ? { kind: "invoice", cents: inv.amountCents } : null;
+}
+
+/**
+ * The kind of the online payment of an invoice (D5): a prepayment or a whole sum is paid as the prepayment is, the rest as the rest. (An
+ * e-course's invoice is only ever born paid, never paid by „Maksa".)
+ */
+export const invoicePaymentKind = (kind: InvoiceKind): "prepayment" | "balance" => (kind === "balance" ? "balance" : "prepayment");
+
+/**
+ * What „Maksa" charges a registration now (D5): while it has an unpaid invoice (`invoice`, its latest: server/invoices.ts unpaidInvoiceOf),
+ * exactly that invoice's amount, as its kind's payment (invoicePaymentKind), at any time — amountDue's window is not the invoice's, so it is
+ * payable on the course day too — unless the registration is cancelled or its session called off (nothing, as amountDue says). Without one
+ * (or with one no longer unpaid): amountDue. The start and the /maksa page ask this; the account's card (AccountCourseCard onlineDue) asks
+ * amountDue until its data carries her unpaid invoice (invoices Task 6), then this.
+ */
+export function payableDue(r: DueInput, invoice: Pick<Invoice, "kind" | "status" | "amountCents"> | null, now: Date): Due {
+  const charge = invoice ? invoiceDue(invoice) : null;
+  if (!invoice || !charge) return amountDue(r, now);
+  if (r.status === "cancelled" || r.sessionCancelled) return NONE;
+  return { kind: invoicePaymentKind(invoice.kind), cents: charge.cents };
 }
 
 /** What the bank's way back says (spec 6.5): paid, still pending, or not paid. */

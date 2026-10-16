@@ -1005,7 +1005,8 @@ async function changeRequest(request: Request, deps: AccountDeps): Promise<Respo
 
 /**
  * POST /maksa `{ registrationId }` (phase 2b, spec 6.3): starts the online payment of one of the client's own registrations — the prepayment
- * still due, or the rest after it — with the /maksa page's checks (server/payments/start.ts). 200 `{ ok: true, paymentUrl }` (the card sends
+ * still due, or the rest after it, or, while it has an unpaid invoice, exactly that invoice's amount (invoices, D5) — with the /maksa page's
+ * checks (server/payments/start.ts). 200 `{ ok: true, paymentUrl }` (the card sends
  * the browser there); 404 `{ error: "registration" }` (not hers, or none); 409 `{ error: "nothing" }` (nothing to pay now) or `"full"` (no
  * free seat, D2); 429 `{ error: "rate" }` (5 starts from this IP in 10 minutes, shared with the /maksa page, or 5 of this registration in an
  * hour); 503 `{ error: "unavailable" }` without online payments or when Montonio says no. A throw is the router's 500.

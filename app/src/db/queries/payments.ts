@@ -24,6 +24,8 @@ export type NewPayment = {
   locale: "et" | "ru";
   amountCents: number;
   newsletter?: boolean;
+  /** The unpaid invoice it is started to pay (invoices, spec D5: „Maksa" of a registration with one); none: null or left out. */
+  invoiceId?: number | null;
 };
 
 /**

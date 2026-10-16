@@ -1154,7 +1154,9 @@
       ],
       "why": "Montonio dokumentatsioon ei kirjelda testpanga lehte, nii et teised maksekontrollid järgivad seda märkust.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-grupp",
@@ -1201,7 +1203,9 @@
       ],
       "why": "Ettemaks kinnitab koha.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-haldus",
@@ -2613,7 +2617,34 @@
       ],
       "why": "Kinnitus annab õpilasele kindluse.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kirjad-arve-manusena",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: veebimakse arve manusena",
+      "steps": [
+        "Kontrolli enne Proov 1 ettemaksu, et halduses „Seaded“ → „Arve andmed“ on täidetud.",
+        "Ava Gmailis telefonis kiri „Koht on kinnitatud — …“, mis tuli Proov 1 ettemaksust.",
+        "Ava kirja manus.",
+        "Ava sama kiri ja manus Gmailis arvutis."
+      ],
+      "expect": [
+        "Kirjas on rida „Arve on lisatud.“.",
+        "Kirjal on üks manus, PDF-fail „MS-LAB-arve-…“.",
+        "Arve summa on tasutud ettemaks.",
+        "Arvel on „Tasutud“, makse kuupäev ja makseviis „Montonio“.",
+        "Arvel on müüja andmed nagu „Arve andmed“ ja ostjana Proov 1."
+      ],
+      "why": "Iga veebimakse saab arve, mille õpilane saab endale hoida.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-makse-katte",
@@ -2634,7 +2665,9 @@
       ],
       "why": "Õpilane teab, et kogu summa on makstud.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-ekoolitus-avatud",
@@ -2656,7 +2689,9 @@
       ],
       "why": "Ostja peab kohe koolituse juurde pääsema.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-tervituskiri",

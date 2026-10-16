@@ -436,6 +436,8 @@ export const et = {
       full: "Koolitus on vahepeal täitunud, nii et koht jäi kinnitamata. Maria võtab sinuga ühendust.",
       notConfirmed: "Maria võtab sinuga ühendust.",
       access: "Ligipääs kuni {date}.",
+      // the payment's invoice is attached as a PDF (invoices, spec §4: verbatim)
+      invoiceAttached: "Arve on lisatud.",
     },
   },
 

@@ -52,6 +52,18 @@ describe("e-mail (Resend)", () => {
     expect(f.calls[1].body).toMatchObject({ text: "T" });
   });
 
+  test("a mail's attachments go to Resend with their names and types, the bytes as Base64; a mail without any carries none (invoices, Task 4)", async () => {
+    const f = stubFetch(() => Response.json({ id: "email_123" }));
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const key = env({ RESEND_API_KEY: "re_test" });
+    const pdf = Buffer.from("%PDF-1.7 the invoice");
+    expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T", attachments: [{ filename: "MS-LAB-arve-MSL2026-001.pdf", content: pdf, contentType: "application/pdf" }] })).toBe(true);
+    expect((f.calls[0].body as { attachments: unknown }).attachments).toEqual([{ filename: "MS-LAB-arve-MSL2026-001.pdf", content: pdf.toString("base64"), content_type: "application/pdf" }]);
+    expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T", attachments: [] })).toBe(true);
+    expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T" })).toBe(true);
+    for (const call of f.calls.slice(1)) expect((call.body as { attachments?: unknown }).attachments).toBeUndefined();
+  });
+
   test("a rejected or failed send is reported as false; the log has the error name and status, not the message", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     stubFetch(() =>

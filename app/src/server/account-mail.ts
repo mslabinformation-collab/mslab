@@ -407,12 +407,15 @@ export type RegistrationPaidInput = {
   confirmed: boolean;
   /** Paid, but the course was full: the place stayed unconfirmed (D2). */
   full: boolean;
+  /** The payment's invoice goes with the mail as a PDF (invoices, spec §4): the line „Arve on lisatud.". */
+  invoiceAttached?: boolean;
 };
 
 /**
  * The mail after an online payment of a registration (phase 2b, spec 6.2.4): "Koht on kinnitatud — {title}" when the place is confirmed now,
  * else "Makse on kätte saadud — {title}"; the course with its date and place, what was paid, and what is left ("Ülejäänud {amount} tasud
- * koolituspäeval või Minu koolitused lehel.") or "Kogu summa on tasutud."; a place left unconfirmed says why. One button: "Ava minu konto".
+ * koolituspäeval või Minu koolitused lehel.") or "Kogu summa on tasutud."; a place left unconfirmed says why; „Arve on lisatud." when the
+ * payment's invoice is attached (settle.ts attaches it). One button: "Ava minu konto".
  * settle.ts never sends it to a sample address and does not count it in the daily caps (it follows a real payment).
  */
 export function registrationPaidMail(input: RegistrationPaidInput): Mail {
@@ -422,6 +425,7 @@ export function registrationPaidMail(input: RegistrationPaidInput): Mail {
   if (input.full) sections.push({ text: m.full });
   else if (!input.confirmed) sections.push({ text: m.notConfirmed });
   else sections.push({ text: input.restCents > 0 ? fill(m.rest, { amount: formatEUR(input.restCents, input.locale) }) : m.allPaid });
+  if (input.invoiceAttached) sections.push({ text: m.invoiceAttached });
   return confirmationMail({
     email: input.email,
     name: input.name,
@@ -445,13 +449,16 @@ export type EcourseOpenInput = {
   expiresAt: Date;
   /** A live login for the address (client-auth.ts issueClientLogin), or null when it has its 3 already: then "Ava minu konto". */
   login: LoginCode | null;
+  /** The purchase's invoice goes with the mail as a PDF (invoices, spec §4): the line „Arve on lisatud.". */
+  invoiceAttached?: boolean;
 };
 
 /**
  * The mail after a paid e-course purchase (phase 2b, spec 6.2.4): "E-koolitus on avatud — {title}", the course with "Ligipääs kuni {date}.",
- * and the login: the code large and "Logi sisse" (verifyLink, like the code login), which opens Minu koolitused with the course on it. It leaves
- * out the login mail's "Kui sa ei palunud sisselogimist, võid selle kirja kustutada.": the buyer has just paid, and that line could make her
- * delete her access. settle.ts never sends it to a sample address and does not count it in the daily caps (it follows a real payment).
+ * „Arve on lisatud." when the purchase's invoice is attached (settle.ts attaches it), and the login: the code large and "Logi sisse"
+ * (verifyLink, like the code login), which opens Minu koolitused with the course on it. It leaves out the login mail's "Kui sa ei palunud
+ * sisselogimist, võid selle kirja kustutada.": the buyer has just paid, and that line could make her delete her access. settle.ts never sends
+ * it to a sample address and does not count it in the daily caps (it follows a real payment).
  */
 export function ecourseOpenMail(input: EcourseOpenInput): Mail {
   const m = getDict(input.locale).payment.mail;
@@ -464,7 +471,7 @@ export function ecourseOpenMail(input: EcourseOpenInput): Mail {
     subject: oneLine(fill(m.subjectEcourse, { title })),
     lead: m.leadEcourse,
     box: { title, lines: [fill(m.access, { date: formatDate(input.expiresAt, input.locale) })] },
-    sections: [],
+    sections: input.invoiceAttached ? [{ text: m.invoiceAttached }] : [],
     login: input.login,
     afterPurchase: true,
   });

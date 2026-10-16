@@ -4,9 +4,10 @@ import { attachOrder, failPayment, insertPayment } from "@/db/queries/payments";
 import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
 import { normalizeEmail } from "@/domain/email";
-import { amountDue } from "@/domain/payments";
+import { invoiceDue, payableDue } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
 import { holdUntil, SEAT_HOLD_MS } from "@/domain/sessions";
+import { unpaidInvoiceOf } from "../invoices";
 import { logNote } from "../log";
 import { MontonioError, type Montonio } from "./montonio";
 
@@ -14,8 +15,8 @@ import { MontonioError, type Montonio } from "./montonio";
 // prefix this environment's: montonio.ts), then Montonio's order outside any transaction (a 15 s call must not hold a row lock), then the page
 // to send the payer to. When Montonio says no or cannot be reached, a new attempt's row is failed and a prepayment's hold ends
 // (db/queries/payments.ts failPayment): nothing breaks, the registration stands; a re-send's row stays pending (see order). A start while the
-// same attempt is still open (the same registration and kind, or the same e-course and address, the same amount, its order inside Montonio's
-// 30-minute window) re-sends that attempt instead of making a second order (the double-payment rule): POST /orders with the same
+// same attempt is still open (the same registration, kind and invoice, or the same e-course and address, the same amount, its order inside
+// Montonio's 30-minute window) re-sends that attempt instead of making a second order (the double-payment rule): POST /orders with the same
 // merchantReference overwrites the unpaid order at Montonio (spec 4), so the payer never has two orders open to pay.
 // The locks are the one order of every payment path (db/queries/seats.ts): the session, then the registration (lockForPayment, taken first),
 // then the payment row. Nothing is held across Montonio's call: the transaction commits first, and only then are the order made and the row
@@ -69,19 +70,24 @@ export function paymentUrls(returnBase: string, notifyBase: string): { returnUrl
 }
 
 /**
- * The open attempt of what is being paid now (the double-payment rule): the newest `pending` row of the same registration and kind — or the
- * same e-course and address — with this amount, whose order is still inside Montonio's 30-minute window (SEAT_HOLD_MS; `updated_at` is the
- * row's insert or its last re-send: nothing else touches a pending row). null: there is none, and the start is a new attempt.
+ * The open attempt of what is being paid now (the double-payment rule): the newest `pending` row of the same registration, kind and invoice
+ * (the unpaid invoice it was started for, or none: invoices, D5) — or the same e-course and address — with this amount, whose order is still
+ * inside Montonio's 30-minute window (SEAT_HOLD_MS; `updated_at` is the row's insert or its last re-send: nothing else touches a pending row).
+ * null: there is none, and the start is a new attempt.
  */
 async function liveAttempt(
   q: Q,
-  of: { registrationId: number; kind: "prepayment" | "balance" } | { courseId: number; email: string },
+  of: { registrationId: number; kind: "prepayment" | "balance"; invoiceId: number | null } | { courseId: number; email: string },
   amountCents: number,
   now: Date,
 ): Promise<Payment | null> {
   const which =
     "registrationId" in of
-      ? and(eq(payments.registrationId, of.registrationId), eq(payments.kind, of.kind))
+      ? and(
+          eq(payments.registrationId, of.registrationId),
+          eq(payments.kind, of.kind),
+          of.invoiceId === null ? isNull(payments.invoiceId) : eq(payments.invoiceId, of.invoiceId),
+        )
       : and(eq(payments.kind, "ecourse"), isNull(payments.registrationId), eq(payments.courseId, of.courseId), eq(payments.email, of.email));
   const [row] = await q
     .select()
@@ -133,11 +139,14 @@ async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment,
 
 /**
  * Starts the online payment of a registration (spec 6.1 "Registreeru", 6.3 /maksa and Minu koolitused): what is due now (domain/payments.ts
- * amountDue: the prepayment, or the rest after it), checked under the session's and the registration's locks (lockForPayment, first; the
- * registration is found by an unlocked read, then locked and read again). A prepayment needs a free seat — the others'
- * seats counted, confirmed or held, hers not — and holds it for 30 minutes from now (D2); the rest needs none and holds nothing. The open
- * attempt of the same amount, when there is one, is sent again instead of a new one (liveAttempt; not counted in STARTS_PER_HOUR). `target`:
- * the registration (with `clientId`: only when it is that client's) or its "Maksa" token.
+ * payableDue: the prepayment, or the rest after it, amountDue; or, while the registration has an unpaid invoice, exactly that invoice's
+ * amount, on the course day too: invoices, D5), checked under the session's and the registration's locks (lockForPayment, first; the
+ * registration is found by an unlocked read, then locked and read again, and its latest unpaid invoice read under them). The payment row
+ * records the invoice it pays (`invoice_id`): settle.ts then pays that invoice instead of making one. A prepayment of an unconfirmed
+ * registration needs a free seat — the others' seats counted, confirmed or held, hers not — and holds it for 30 minutes from now (D2); the
+ * rest, and a confirmed registration's invoice, need none and hold nothing. The open attempt of the same amount and invoice, when there is
+ * one, is sent again instead of a new one (liveAttempt; not counted in STARTS_PER_HOUR). `target`: the registration (with `clientId`: only
+ * when it is that client's) or its "Maksa" token.
  */
 export async function startRegistrationPayment(deps: StartDeps, target: { registrationId: number; clientId?: number } | { payToken: string }): Promise<StartResult> {
   const montonio = deps.montonio;
@@ -160,13 +169,18 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
       .where(and(eq(registrations.id, found.id), which));
     if (!row) return { kind: "notFound" };
     const { registration: r, course, session } = row;
-    const due = amountDue(
+    // (a plain read: every change of the registration's invoices takes lockForPayment first, so it cannot change before this commits)
+    const invoice = await unpaidInvoiceOf(tx, r.id);
+    const due = payableDue(
       { status: r.status, paymentChoice: r.paymentChoice, priceCents: registrationPrice(course, r.kind), paidCents: r.paidCents, startsAt: session?.startsAt ?? null, sessionCancelled: session?.status === "cancelled" },
+      invoice,
       deps.now,
     );
     if (due.kind === "none") return { kind: "nothing" };
-    // the open attempt of this amount is sent again, not doubled; it is no new attempt, so it is not counted here
-    const live = await liveAttempt(tx, { registrationId: r.id, kind: due.kind }, due.cents, deps.now);
+    // the invoice this payment pays: the one whose amount payableDue charged
+    const invoiceId = invoice && invoiceDue(invoice) ? invoice.id : null;
+    // the open attempt of this amount (and invoice) is sent again, not doubled; it is no new attempt, so it is not counted here
+    const live = await liveAttempt(tx, { registrationId: r.id, kind: due.kind, invoiceId }, due.cents, deps.now);
     if (!live) {
       const [{ n }] = await tx
         .select({ n: count() })
@@ -174,7 +188,8 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
         .where(and(eq(payments.registrationId, r.id), gt(payments.createdAt, new Date(deps.now.getTime() - 60 * 60_000))));
       if (Number(n) >= STARTS_PER_HOUR) return { kind: "rate" };
     }
-    if (due.kind === "prepayment") {
+    // (amountDue's prepayment is an unconfirmed registration's; an invoice's prepayment may be a confirmed one's, which holds its place already)
+    if (due.kind === "prepayment" && r.status === "awaiting_prepayment") {
       if (session && !(await hasFreeSeat(tx, session, deps.now, r.id))) return { kind: "full" };
       await tx.update(registrations).set({ seatHoldUntil: holdUntil(deps.now) }).where(eq(registrations.id, r.id));
     }
@@ -185,7 +200,7 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
     }
     const payment = await insertPayment(
       tx,
-      { kind: due.kind, registrationId: r.id, courseId: course.id, clientId: r.clientId, email: r.email, name: r.name, locale: r.locale === "ru" ? "ru" : "et", amountCents: due.cents },
+      { kind: due.kind, registrationId: r.id, courseId: course.id, clientId: r.clientId, email: r.email, name: r.name, locale: r.locale === "ru" ? "ru" : "et", amountCents: due.cents, invoiceId },
       deps.now,
       montonio.referencePrefix,
     );
