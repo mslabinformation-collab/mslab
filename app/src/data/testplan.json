@@ -36,7 +36,7 @@
     {
       "id": "kontakt",
       "name": "Kontaktkoolitus",
-      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Tee see ala enne registreeringu tühistamist."
+      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Selle ala lõpus tühistati ainult Proov 2 registreering; Proov 1 registreering jääb alles kuni koristamiseni."
     },
     {
       "id": "kirjad",
@@ -659,7 +659,6 @@
       ],
       "expect": [
         "Tühja loendi korral on kirjas, et tunnistusel on „Õpiväljundid“ read.",
-        "Liiga pika õpiväljundi korral hoiatab kaart ja palub lühemaid ridu.",
         "Pärast salvestamist näed „Salvestatud.“."
       ],
       "why": "Need read trükitakse õpilase tunnistusele.",
@@ -714,7 +713,7 @@
       "area": "haldus",
       "who": "maria",
       "device": "tahvel",
-      "title": "Koolituse tekst ja hind",
+      "title": "Koolituse tekst",
       "href": "/admin/koolitused",
       "steps": [
         "Ava mõni koolitus.",
@@ -730,6 +729,31 @@
         "Pärast tagasimuutmist on sõna kadunud ka avalikult lehelt."
       ],
       "why": "Maria muudab tekste ise ja muudatus peab kohe näha olema.",
+      "risk": "high",
+      "writes": false
+    },
+    {
+      "id": "haldus-koolitus-hind",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Koolituse hind",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni kontaktkoolitus ja kirjuta „Grupikoolituse hind (€)“ väljale ühe euro võrra suurem hind.",
+        "Vajuta „Salvesta“ ja ava selle koolituse avalik leht.",
+        "Ava mõni e-koolitus ja kirjuta „Hind (€)“ väljale ühe euro võrra suurem hind.",
+        "Vajuta „Salvesta“ ja ava avalik koolituste loend.",
+        "Vajuta selle e-koolituse lehel „Osta kohe“.",
+        "Pane mõlemad hinnad tagasi, nagu need olid, ja salvesta."
+      ],
+      "expect": [
+        "Kontaktkoolituse lehel on „Grupikoolitus“ juures uus hind.",
+        "E-koolituse kaardil on uus hind.",
+        "Ostukorvi real „Kokku“ on uus hind.",
+        "Pärast tagasipanekut on mõlemal lehel jälle vana hind."
+      ],
+      "why": "Maria muudab hindu ise ja õpilane peab nägema õiget hinda.",
       "risk": "high",
       "writes": false
     },
@@ -838,7 +862,8 @@
         "Vajuta „Lisa toimumine“.",
         "Ava avalik koolituskalender.",
         "Ava halduses see toimumine, vali „Staatus“ alt „Tühistatud“ ja vajuta „Salvesta toimumine“.",
-        "Vajuta „Kustuta toimumine“ ja siis „Jah, kustuta“."
+        "Ava uuesti avalik koolituskalender.",
+        "Vajuta halduses toimumisel „Kustuta toimumine“ ja siis „Jah, kustuta“."
       ],
       "expect": [
         "Näed „Toimumine lisatud.“ ja uus rida on kalendris.",
@@ -978,6 +1003,7 @@
         "Vali „Lehel näidatakse“ alt „Uudiskiri“ ja vajuta „Salvesta“.",
         "Ava avaleht uues vahekaardis ja oota 6 sekundit.",
         "Vali „Väljas“, salvesta ja ava avaleht uues vahekaardis.",
+        "Vali „Kampaania“, salvesta ja ava avaleht uues vahekaardis.",
         "Pane tagasi valik, mis oli enne, ja salvesta."
       ],
       "expect": [
@@ -1390,7 +1416,8 @@
         "Ava „Ülevaade“."
       ],
       "expect": [
-        "Igal vahelehel on Proov 3 päring koos saabumise ajaga.",
+        "Vahelehtedel „Kontakt“, „Individuaal“ ja „Praktika“ on Proov 3 päring koos saabumise ajaga.",
+        "Kui ootenimekirja kontroll tehti, on Proov 3 ka vahelehel „Ootenimekiri“.",
         "„Vasta e-kirjaga“ avab kirja Proov 3 aadressile.",
         "Tehtud päring liigub loendi lõppu märkega „Tehtud“.",
         "Ülevaates „Tegemata päringud“ arv väheneb ühe võrra."
@@ -1585,7 +1612,7 @@
       "href": "/konto/andmed",
       "steps": [
         "Ava konto vaheleht „Minu andmed“.",
-        "Muuda „Telefon“ ja vajuta „Salvesta“.",
+        "Kirjuta „Telefon“: +372 5555 0101 ja vajuta „Salvesta“.",
         "Laadi leht uuesti.",
         "Lülita sisse „Saada mulle uudiskirja“."
       ],
@@ -1724,11 +1751,13 @@
         "Kirjuta „Nimi“: Proov 1 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov1.",
         "Märgi tingimuste ruut ja vajuta „Maksa …“.",
         "Tee makse testpangas, nagu Dimi märkus ütleb.",
-        "Vajuta tagasi lehel „Ava e-koolitus“."
+        "Vajuta tagasi lehel „Ava e-koolitus“.",
+        "Ava 30 minuti jooksul kiri „E-koolitus on avatud — …“ ja vajuta kirjas „Logi sisse“."
       ],
       "expect": [
         "Tagasi lehel on „Makse õnnestus.“ ja „Saatsime sulle e-postiga sisselogimislingi.“.",
         "Postkasti tuleb kiri „E-koolitus on avatud — …“ koos koodiga ja kuupäevaga.",
+        "Kirja nupp „Logi sisse“ avab „Minu koolitused“ koos selle e-koolitusega.",
         "Maria postkasti tuleb „Uus makse: Proov 1, … (e-koolitus), …“.",
         "Halduses „Õpilased“ → Proov 1 all on see e-koolitus märkega „veebimakse“."
       ],
@@ -1741,10 +1770,10 @@
       "area": "ekursus",
       "who": "maria",
       "device": "telefon",
-      "title": "Sama e-koolitus kohe uuesti",
+      "title": "Sama e-koolitus uuesti 30 minuti jooksul",
       "href": "/ostukorv",
       "steps": [
-        "Ava kohe pärast ostu sama e-koolituse ostukorv.",
+        "Ava 30 minuti jooksul pärast ostu sama e-koolituse ostukorv.",
         "Kirjuta sama nimi ja +proov1 aadress.",
         "Märgi tingimuste ruut ja vajuta „Maksa …“."
       ],
@@ -1858,7 +1887,7 @@
       "href": "/konto",
       "steps": [
         "Vajuta koolituse lehel „Lõpetamine“ all „Ava test“.",
-        "Vali valikküsimusele vale vastus ja kirjuta vaba vastus.",
+        "Vali valikküsimusele vale vastus ja kirjuta vabaks vastuseks: Proov 1.",
         "Vajuta „Esita test“ ja siis „Jah, esita“.",
         "Vajuta „Proovi uuesti“ ja korda, kuni katsed on otsas."
       ],
@@ -1904,7 +1933,7 @@
       "href": "/konto",
       "steps": [
         "Ava Proov 1 test uuesti.",
-        "Vali valikküsimusele õige vastus ja kirjuta vaba vastus.",
+        "Vali valikküsimusele õige vastus ja kirjuta vabaks vastuseks: Proov 1, õige katse.",
         "Vajuta „Esita test“ ja „Jah, esita“."
       ],
       "expect": [
@@ -1927,6 +1956,7 @@
       "steps": [
         "Ava „Hindamine“ ja vajuta Proov 1 real „Vaata vastuseid“.",
         "Vali vaba vastuse juures „Paranda“.",
+        "Vajuta „Saada“ enne kommentaari kirjutamist.",
         "Kirjuta „Kommentaar“: Proov 1, palun täienda.",
         "Vajuta „Saada“."
       ],
@@ -1950,7 +1980,8 @@
       "steps": [
         "Ava Proov 1 test.",
         "Loe „Maria kommentaar“.",
-        "Kirjuta vastus uuesti ja vajuta „Saada uuesti“."
+        "Kirjuta vastuseks: Proov 1, parandatud vastus.",
+        "Vajuta „Saada uuesti“."
       ],
       "expect": [
         "Üleval on „Maria palub mõned vastused üle vaadata.“.",
@@ -2266,19 +2297,22 @@
       "who": "maria",
       "device": "tahvel",
       "title": "Protokolli kirjutamine",
-      "href": "/admin/registreerimised",
+      "href": "/admin/opilased",
       "steps": [
-        "Ava „Registreerimised“ ja vajuta nimele Proov 1.",
-        "Vajuta paneelis „Ava protokoll“.",
+        "Ava „Õpilased“ ja vajuta nimele Proov 1.",
+        "Vajuta paneelis kontaktkoolituse registreeringu juures „Lisa protokoll“.",
         "Kirjuta esimese punkti alla: Proov 1, esimene punkt.",
         "Kirjuta „Üldised märkused“ alla: Proov 1.",
-        "Laadi leht uuesti."
+        "Laadi leht uuesti.",
+        "Ava uuesti „Õpilased“ ja Proov 1 paneel."
       ],
       "expect": [
+        "Enne kirjutamist on registreeringu juures nupp „Lisa protokoll“, sest protokolli veel pole.",
         "Lehel on koolituse nimi, kuupäev ja Proov 1 nimi.",
         "„Praktiline osa“ all on koolituse punktid ja nende all „Üldised märkused“.",
         "Kirjutades näed „Salvestamata muudatused“, siis „Salvestatud …“ koos kellaajaga.",
-        "Pärast uuesti laadimist on tekst alles."
+        "Pärast uuesti laadimist on tekst alles.",
+        "Paneelis on nüüd sama nupu nimi „Ava protokoll“."
       ],
       "why": "Maria kirjutab protokolli koolituspäeval tahvlis.",
       "risk": "high",
@@ -2316,12 +2350,14 @@
       "href": "/admin/protokollid",
       "steps": [
         "Ava Proov 1 protokoll.",
-        "Vajuta „Saada“."
+        "Vajuta „Saada“.",
+        "Ava 30 minuti jooksul kiri „Sinu koolituse protokoll on valmis“ ja vajuta kirjas „Vaata protokolli“."
       ],
       "expect": [
         "Protokolli kohal on „Saadetud … Õpilane näeb seda versiooni.“ koos kuupäeva ja kellaajaga.",
         "Nupu „Saada“ asemel on nüüd „Muuda“.",
-        "Proov 1 postkasti tuleb kiri „Sinu koolituse protokoll on valmis“."
+        "Proov 1 postkasti tuleb kiri „Sinu koolituse protokoll on valmis“.",
+        "Kirja nupp avab lehe „Koolituse protokoll“."
       ],
       "why": "Protokoll on õpilase kirjalik tagasiside.",
       "risk": "high",
@@ -2357,13 +2393,15 @@
       "steps": [
         "Ava Proov 1 protokoll ja vajuta „Muuda“.",
         "Lisa „Üldised märkused“ lõppu: Proov 1, muudetud.",
-        "Vajuta „Saada uuesti“."
+        "Vajuta „Saada uuesti“.",
+        "Ava 30 minuti jooksul kiri „Sinu koolituse protokolli on uuendatud“ ja vajuta kirjas „Vaata protokolli“."
       ],
       "expect": [
         "Pärast „Muuda“ näed „Muuda teksti — salvestan ise. Siis saad selle uuesti saata.“.",
         "Pärast muutmist on all nupp „Saada uuesti“.",
         "Pärast saatmist on üleval jälle „Saadetud …“ uue kellaajaga.",
-        "Proov 1 postkasti tuleb kiri „Sinu koolituse protokolli on uuendatud“."
+        "Proov 1 postkasti tuleb kiri „Sinu koolituse protokolli on uuendatud“.",
+        "Kirja nupp avab protokolli koos muudetud tekstiga."
       ],
       "why": "Maria saab protokolli hiljem parandada.",
       "risk": "med",
@@ -2425,14 +2463,15 @@
       "href": "/admin/tagasiside",
       "steps": [
         "Ava „Tagasiside“.",
-        "Vali „Koolitus“ alt Proov 1 koolitus.",
-        "Vajuta Proov 1 real.",
+        "Vajuta lehe üleval nupul, millel on Proov 1 koolituse nimi.",
+        "Vajuta loendis nimele Proov 1.",
         "Ava „Registreerimised“ ja Proov 1 paneel."
       ],
       "expect": [
         "Loendis on Proov 1 vastus koos hindega.",
+        "Nuppude reas on ka „Kõik koolitused“.",
         "Koolituse valikul on „Keskmine hinne: … / 10“ ja iga vastusevariandi arv.",
-        "Paneelis „Tagasiside: Proov 1“ on kõik vastused.",
+        "Paneeli üleval on nimi Proov 1 ja e-post, all kõik vastused.",
         "Registreeringu paneelis on plokk „Tagasiside“."
       ],
       "why": "Maria loeb vastused ühest kohast.",
@@ -2469,14 +2508,13 @@
       "steps": [
         "Ava Gmailis telefonis kiri „… — MS LAB sisselogimiskood“.",
         "Ava sama kiri Gmailis arvutis.",
-        "Vajuta kirjas nuppu „Logi sisse“.",
         "Vajuta „Vasta“, vaata saajat ja ära saada."
       ],
       "expect": [
         "Saatja on MS LAB.",
         "Kood on pealkirja alguses ja kirjas suurelt.",
         "Kirjas on „Kood ja link kehtivad 30 minutit.“.",
-        "„Logi sisse“ avab „Minu koolitused“.",
+        "Nupp „Logi sisse“ on olemas; seda vajutati kontrollis „Sisselogimine kirja nupuga“.",
         "Vastuse saaja on Maria aadress."
       ],
       "why": "See kiri on õpilase tee kontole.",
@@ -2514,6 +2552,7 @@
       "steps": [
         "Ava Gmailis telefonis kiri „Päring on vastu võetud — …“.",
         "Ava sama kiri Gmailis arvutis.",
+        "Vajuta kirjas „Ava minu konto“.",
         "Vajuta „Vasta“, vaata saajat ja ära saada."
       ],
       "expect": [
@@ -2534,6 +2573,7 @@
       "device": "any",
       "title": "Kiri: ootenimekirjas",
       "steps": [
+        "Kui ootenimekirja kontroll jäi vahele, vajuta „Jäta vahele“.",
         "Ava Gmailis telefonis kiri „Oled ootenimekirjas — …“.",
         "Ava sama kiri Gmailis arvutis.",
         "Vajuta „Vasta“, vaata saajat ja ära saada."
@@ -2601,14 +2641,13 @@
       "steps": [
         "Ava Gmailis telefonis kiri „E-koolitus on avatud — …“.",
         "Ava sama kiri Gmailis arvutis.",
-        "Vajuta kirjas „Logi sisse“.",
         "Vajuta „Vasta“, vaata saajat ja ära saada."
       ],
       "expect": [
         "Saatja on MS LAB.",
         "Kirjas on „Makse on kätte saadud. E-koolitus on sinu jaoks avatud.“.",
         "Kirjas on „Ligipääs kuni …“ kuupäevaga.",
-        "Kirjas on kood ja „Logi sisse“ avab „Minu koolitused“.",
+        "Kirjas on kood ja nupp „Logi sisse“ on olemas.",
         "Vastuse saaja on Maria aadress."
       ],
       "why": "Ostja peab kohe koolituse juurde pääsema.",
@@ -2685,13 +2724,12 @@
       "steps": [
         "Ava Gmailis telefonis kiri „Sinu koolituse protokoll on valmis“.",
         "Ava sama kiri Gmailis arvutis.",
-        "Vajuta kirjas „Vaata protokolli“.",
         "Vajuta „Vasta“, vaata saajat ja ära saada."
       ],
       "expect": [
         "Saatja on MS LAB.",
-        "Kirjas on kood ja nupp „Vaata protokolli“.",
-        "„Vaata protokolli“ avab lehe „Koolituse protokoll“.",
+        "Kirjas on „Sinu koolituse protokoll on valmis.“ ja kood.",
+        "Nupp „Vaata protokolli“ on olemas.",
         "Kirjas on link „Soovi korral jäta meile tagasisidet“.",
         "Vastuse saaja on Maria aadress."
       ],
@@ -2707,14 +2745,13 @@
       "title": "Kiri: protokoll uuendatud",
       "steps": [
         "Ava Gmailis telefonis kiri „Sinu koolituse protokolli on uuendatud“.",
-        "Ava sama kiri Gmailis arvutis.",
-        "Vajuta kirjas „Vaata protokolli“."
+        "Ava sama kiri Gmailis arvutis."
       ],
       "expect": [
         "Saatja on MS LAB.",
         "Kirjas on „Sinu koolituse protokolli on uuendatud.“.",
         "Tagasiside linki selles kirjas pole.",
-        "„Vaata protokolli“ näitab muudetud teksti."
+        "Nupp „Vaata protokolli“ on olemas."
       ],
       "why": "Õpilane teab, et protokolli muudeti.",
       "risk": "med",
@@ -2960,6 +2997,7 @@
       "device": "any",
       "title": "Maria teade: ootenimekiri",
       "steps": [
+        "Kui ootenimekirja kontroll jäi vahele, vajuta „Jäta vahele“.",
         "Ava Gmailis telefonis kiri „Ootenimekiri: … — Proov 3“.",
         "Ava sama kiri Gmailis arvutis.",
         "Vajuta „Vasta“, vaata saajat ja ära saada."
