@@ -1,25 +1,25 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import fontkit from "@pdf-lib/fontkit";
-import { decodePDFRawStream, PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
+import { decodePDFRawStream, PDFArray, PDFDict, PDFName } from "pdf-lib";
 import { describe, expect, test } from "vitest";
 import { checkCertificateName, readCertificateSettings } from "@/domain/certificate";
 import { CERT_FONT_DIR, CERT_FONTS, loadCertificateAssets, renderCertificate, type CertificateAssets, type CertificateContent } from "@/server/certificate-pdf";
+import { family, rawStream, readPdf, type Run } from "../pdf-read";
 
 // The certificate's PDF (phase 3d, spec §7, §10 "PDF", Review Focus 2): rendered from a fixture and read back the way a PDF reader reads
 // it. pdf-lib embeds each font as glyph ids, not letters, into the page (the name is never in the file as text), but it also writes each
-// font's ToUnicode map: readPdf below decodes the page's content stream, follows every text-showing operator (Tf, Tc, Tm, Tj) and turns its
-// glyph ids back into letters through that map. That is real text extraction (a reader's copy and search use the same map), so it checks at
-// once that the right letters were drawn, in which font and size, and where. Positions are PDF points from the bottom left of the 842 × 595
-// page. The script font, Revive 80 Signature, has tall capitals with long swashes and a tiny lowercase: its ink (the glyphs' bounding box,
-// not the advance widths) is checked against the title above the name and the competency lines below it.
+// font's ToUnicode map: readPdf (tests/pdf-read.ts, shared with the invoice's test) decodes the page's content stream, follows every
+// text-showing operator (Tf, Tc, Tm, Tj) and turns its glyph ids back into letters through that map. That is real text extraction (a reader's
+// copy and search use the same map), so it checks at once that the right letters were drawn, in which font and size, and where. Positions
+// are PDF points from the bottom left of the 842 × 595 page. The script font, Revive 80 Signature, has tall capitals with long swashes and a
+// tiny lowercase: its ink (the glyphs' bounding box, not the advance widths) is checked against the title above the name and the competency
+// lines below it.
 
 const SANS = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.sans)));
 const SCRIPT = new Uint8Array(readFileSync(join(CERT_FONT_DIR, CERT_FONTS.script)));
 const jost = fontkit.create(SANS);
 const revive = fontkit.create(SCRIPT);
-/** The fonts' families as the PDF names them (the PostScript name without "-Regular" and pdf-lib's random "-1234" suffix). */
-const family = (postscriptName: string | null) => (postscriptName ?? "").replace(/-\d+$/, "").replace(/-Regular$/, "");
 const SANS_FAMILY = family(jost.postscriptName);
 const SCRIPT_FAMILY = family(revive.postscriptName);
 
@@ -40,85 +40,11 @@ const ASSETS: CertificateAssets = { sans: SANS, script: SCRIPT };
 /** The name's band: its ink stays under the course title (whose second line, when it wraps, stands on 428) and 6 pt over the first competency line (letters up to 297). */
 const INK_BAND = { bottom: 303, top: 425 } as const;
 
-type Run = { font: string; size: number; spacing: number; x: number; y: number; text: string };
-
-const rawStream = (o: unknown): PDFRawStream => {
-  if (!(o instanceof PDFRawStream)) throw new Error("not a stream");
-  return o;
-};
-const streamText = (o: unknown): string => new TextDecoder().decode(decodePDFRawStream(rawStream(o)).decode());
-
-/** A ToUnicode map (pdf-lib writes `<glyph> <UTF-16BE>` pairs between beginbfchar and endbfchar): glyph id → its letters. */
-function toUnicode(cmap: string): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const section of cmap.split("beginbfchar").slice(1)) {
-    for (const [, glyph, utf16] of section.split("endbfchar")[0].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
-      map.set(glyph.toUpperCase(), String.fromCharCode(...(utf16.match(/.{4}/g) ?? []).map((u) => parseInt(u, 16))));
-    }
-  }
-  return map;
-}
-
 /** The names of the page's images (XObjects): pdf-lib leaves an empty dictionary when nothing is drawn. */
 const imagesOf = (page: { node: { Resources(): PDFDict | undefined } }): string[] => {
   const xobjects = page.node.Resources()!.lookup(PDFName.of("XObject"));
   return xobjects instanceof PDFDict ? xobjects.keys().map((k) => k.decodeText()) : [];
 };
-
-/**
- * The PDF read back: its one page, the text runs (each Tj with its font's family, size, letter spacing in em, position and letters), the filled
- * circles (the competency bullets: pdf-lib draws a circle as four Bézier curves, whose end points are its four extremes; centre, diameter and
- * the fill colour), the embedded fonts' names and the page's operators.
- */
-async function readPdf(bytes: Uint8Array) {
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  const pages = doc.getPages();
-  const page = pages[0];
-  const resources = page.node.Resources()!;
-  const fonts = new Map<string, { name: string; unicode: Map<string, string> }>();
-  for (const [key, ref] of resources.lookup(PDFName.of("Font"), PDFDict).entries()) {
-    const font = doc.context.lookup(ref, PDFDict);
-    fonts.set(key.decodeText(), { name: font.lookup(PDFName.of("BaseFont"), PDFName).decodeText(), unicode: toUnicode(streamText(font.lookup(PDFName.of("ToUnicode")))) });
-  }
-  const contents = page.node.Contents();
-  const ops = (contents instanceof PDFArray ? contents.asArray().map((ref) => doc.context.lookup(ref)) : [contents]).map(streamText).join("\n");
-
-  const runs: Run[] = [];
-  const circles: { x: number; y: number; diameter: number; color: string }[] = [];
-  let font = "";
-  let size = 0;
-  let spacing = 0;
-  let at = [0, 0];
-  let fill = "";
-  let path: number[][] = [];
-  let curves = 0;
-  let args: string[] = [];
-  for (const token of ops.match(/\/[^\s/<>[\]()]+|<[0-9A-Fa-f]*>|[-+]?(?:\d+\.?\d*|\.\d+)|[A-Za-z*'"]+|\[|\]/g) ?? []) {
-    if (!/^[A-Za-z*'"]+$/.test(token)) {
-      args.push(token);
-      continue;
-    }
-    if (token === "Tf") [font, size] = [args[0].slice(1), Number(args[1])];
-    else if (token === "Tc") spacing = Number(args[0]);
-    else if (token === "Tm") at = [Number(args[4]), Number(args[5])];
-    else if (token === "Tj") {
-      const f = fonts.get(font)!;
-      const glyphs = args[0].slice(1, -1).match(/.{4}/g) ?? [];
-      runs.push({ font: family(f.name), size, spacing: spacing / size, x: at[0], y: at[1], text: glyphs.map((g) => f.unicode.get(g.toUpperCase()) ?? "�").join("") });
-    } else if (token === "rg") fill = args.map(Number).join(" ");
-    else if (token === "m") [path, curves] = [[[Number(args[0]), Number(args[1])]], 0];
-    else if (token === "c") {
-      path.push([Number(args[4]), Number(args[5])]);
-      curves++;
-    } else if (token === "f" && curves === 4) {
-      const [xs, ys] = [path.map((p) => p[0]), path.map((p) => p[1])];
-      circles.push({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, diameter: Math.max(...xs) - Math.min(...xs), color: fill });
-    }
-    args = [];
-  }
-  const fontNames = [...new Set([...fonts.values()].map((f) => f.name))].sort();
-  return { doc, pages, page, runs, circles, fontNames, ops };
-}
 
 /** A run's width as pdf-lib measured it when it laid the page out: the glyphs' advances (no kerning) plus the spacing between them. */
 function widthOf(run: Run): number {

@@ -140,15 +140,31 @@ describe("next.config.ts headers()", () => {
   });
 });
 
-describe("next.config.ts outputFileTracingIncludes (the certificate, phase 3d)", () => {
-  // The PDF is drawn in two functions, the account API and Maria's download, from fonts read with fs (server/certificate-pdf.ts), so the
-  // folder goes with both. The keys are globs matched against each route's name. Turbopack (Next 16.3.8, `next build`'s bundler) matches
-  // "/api/konto/**", but neither the literal "/api/konto/[[...path]]" nor a backslash-escaped one: checked with a build on 15.10.2026.
+describe("next.config.ts outputFileTracingIncludes (the certificate, phase 3d; the invoices, phase 4)", () => {
+  // The PDFs are drawn in the functions that serve them, from fonts read with fs (server/certificate-pdf.ts, server/invoice-pdf.ts), so the
+  // folder goes with each of them. The keys are globs matched against each route's name. Turbopack (Next 16.3.8, `next build`'s bundler)
+  // matches "/api/konto/**", but neither the literal "/api/konto/[[...path]]" nor a backslash-escaped one: checked with a build on 15.10.2026.
+  const FONTS = ["./assets/fonts/**"];
+
   test("the fonts go with the two functions that render the certificate, named by their folders", async () => {
-    expect((await config()).outputFileTracingIncludes).toEqual({
-      "/api/konto/**": ["./assets/fonts/**"],
-      "/api/admin/tunnistus/**": ["./assets/fonts/**"],
-    });
+    const include = (await config()).outputFileTracingIncludes!;
+    for (const key of ["/api/konto/**", "/api/admin/tunnistus/**"]) expect(include[key], key).toEqual(FONTS);
+  });
+
+  test("...and with every function that renders an invoice: Maria's download and the sample, the payment routes, the cron and the admin pages", async () => {
+    const include = (await config()).outputFileTracingIncludes!;
+    for (const key of ["/api/admin/arve/**", "/api/admin/naidisarve/**", "/api/payments/**", "/api/cron/**", "/admin/**"]) expect(include[key], key).toEqual(FONTS);
+  });
+
+  test("nothing else is traced with the fonts: exactly these seven keys, each a route's folder and /**", async () => {
+    const include = (await config()).outputFileTracingIncludes!;
+    expect(Object.keys(include).sort()).toEqual(
+      ["/admin/**", "/api/admin/arve/**", "/api/admin/naidisarve/**", "/api/admin/tunnistus/**", "/api/cron/**", "/api/konto/**", "/api/payments/**"].sort(),
+    );
+    for (const [key, files] of Object.entries(include)) {
+      expect(key, key).toMatch(/^\/[a-z/]+\/\*\*$/);
+      expect(files, key).toEqual(FONTS);
+    }
   });
 });
 
