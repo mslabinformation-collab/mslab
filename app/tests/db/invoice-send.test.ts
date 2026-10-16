@@ -134,7 +134,7 @@ describe("sendInvoice: „Saada ka aadressile“", () => {
   test("a second address that is no address is `email`: nothing sent, nothing recorded", async () => {
     const inv = await request("kati@school.example");
     const sent = resend();
-    for (const bad of ["not an address", "a@b", "x@y@z.ee", 5, {}]) expect(await sendInvoice(deps(), inv.id, bad), String(bad)).toEqual({ ok: false, error: "email" });
+    for (const bad of ["not an address", "a@b", "x@y@z.example", 5, {}]) expect(await sendInvoice(deps(), inv.id, bad), String(bad)).toEqual({ ok: false, error: "email" });
     expect(sent.mails()).toHaveLength(0);
     expect((await row(inv.id)).sentAt).toBeNull();
   });

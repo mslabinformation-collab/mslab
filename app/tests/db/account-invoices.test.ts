@@ -24,7 +24,8 @@ import { contactCourse, registrationOn } from "./payments-fixtures";
 //   query however many cards there are; a cancelled one, another client's and an orphan are not on any card;
 // - an unpaid invoice carries the bank details and the reference frozen on it, and the card's `openInvoice` is the one „Maksa" charges
 //   (server/invoices.ts unpaidInvoiceOf, which the start and the /maksa page ask) — also when the registration has two;
-// - R14: an unpaid invoice whose online payment is paid already (its catch-up pending) reads „Tasutud" and is nothing to pay;
+// - R14: an unpaid invoice whose online payment is paid already (its catch-up pending) reads „Tasutud", is nothing to pay and is marked
+//   `awaitingCatchUp` (its PDF would still read unpaid: the card offers no download for it);
 // - GET /api/konto/arve/<id>: the PDF as a download, hers only, 404 for every other id, 10 an hour (a 404 counts), a render that fails is 500.
 // The rules of the reads are tests/db/invoices.test.ts's. The PDF renderer is the real one, wrapped so a test can make a render fail.
 
@@ -254,10 +255,10 @@ describe("loadDashboard: her invoices on the card they belong to", () => {
     expect(contactCard(await cards(kati.id), r.id)).toMatchObject({ openInvoice: { id: inv.id }, invoices: [{ id: inv.id, status: "unpaid", transfer: expect.anything() }] });
     await db.update(payments).set({ status: "paid", paidAt: new Date("2026-10-16T08:30:00Z") }).where(eq(payments.id, p.id));
     const card = contactCard(await cards(kati.id), r.id);
-    expect(card.invoices).toEqual([{ id: inv.id, number: "MSL2026-001", amountCents: 17500, status: "paid", dueAt: inv.dueAt!.toISOString(), paidAt: null, transfer: null }]);
+    expect(card.invoices).toEqual([{ id: inv.id, number: "MSL2026-001", amountCents: 17500, status: "paid", dueAt: inv.dueAt!.toISOString(), paidAt: null, transfer: null, awaitingCatchUp: true }]);
     expect("openInvoice" in card).toBe(false);
     expect(await unpaidInvoiceOf(db, r.id)).toBeNull();
-    // the row itself is untouched: Maria's catch-up pays it (and the PDF reads as the row does until then)
+    // the row itself is untouched: Maria's catch-up pays it (and its PDF reads as the row does until then, so the card offers none: awaitingCatchUp)
     expect(await invoiceForAdmin(db, inv.id)).toMatchObject({ status: "unpaid", paidAt: null });
   });
 

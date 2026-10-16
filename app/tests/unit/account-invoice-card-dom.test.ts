@@ -15,7 +15,8 @@ import type { Dashboard } from "@/server/client-data";
 //   /api/konto/arve/<id>; aria-disabled in the admin's read-only copy, like the certificate's);
 // - an unpaid invoice also shows the receiver, IBAN, bank, amount and reference frozen on it (the instructions' own rows, with "Kopeeri");
 // - „Maksa" charges what payableDue says on the server too: an unpaid invoice's exact amount, "ülejäänud" for a „Jääk", also on the course day;
-// - an invoice waiting for its catch-up (R14) arrives as paid: no bank details, no „Maksa" for it;
+// - an invoice waiting for its catch-up (R14) arrives as paid and `awaitingCatchUp`: no bank details, no „Maksa", and no download (its PDF would
+//   still read unpaid) while a paid invoice beside it has its;
 // - in Russian, with the account's typography.
 
 declare global {
@@ -212,12 +213,23 @@ describe("„Maksa“ with an unpaid invoice: the server's payableDue", () => {
 });
 
 describe("R14: an invoice waiting for its catch-up arrives as paid", () => {
-  test("it reads „Tasutud“ with its download, shows no bank details and gives no „Maksa“ of its own", async () => {
-    // the dashboard's data for it (client-data.ts): the money is in (Laekunud summa), the invoice is paid for the student, nothing is open
-    await render(dashboard([contact(7, { status: "confirmed", paidCents: 17500, invoices: [paidInvoice({ id: 12, number: "MSL2026-002", dueAt: "2026-10-23T09:00:00.000Z", paidAt: null })] })]));
+  /** The dashboard's data for it (client-data.ts): the money is in (Laekunud summa), the invoice is paid for the student, nothing is open. */
+  const waiting = paidInvoice({ id: 12, number: "MSL2026-002", dueAt: "2026-10-23T09:00:00.000Z", paidAt: null, awaitingCatchUp: true });
+
+  test("it reads „Tasutud“, shows no bank details and gives no „Maksa“ of its own", async () => {
+    await render(dashboard([contact(7, { status: "confirmed", paidCents: 17500, invoices: [waiting] })]));
     expect(lineOf(12)).toBe(`Arve MSL2026-002 · 175,00${NBSP}€ · Tasutud`);
     expect($("[data-invoice-transfer]")).toBeNull();
     expect($$("[data-card-action='pay-online']").map((b) => b.textContent)).toEqual(["Maksa ülejäänud 175 €"]); // (the registration's own rest, amountDue's: not the invoice's)
+  });
+
+  test("it has no download until the catch-up has paid it, while the paid invoice beside it has one (also in the admin's read-only copy)", async () => {
+    for (const readOnly of [false, true]) {
+      await render(dashboard([contact(7, { status: "confirmed", paidCents: 17500, invoices: [paidInvoice(), waiting] })]), { readOnly });
+      expect($$("[data-card-invoice] a[data-card-invoice-download]").map((a) => a.closest("[data-card-invoice]")?.getAttribute("data-card-invoice"))).toEqual(["11"]);
+      expect($("[data-card-invoice='12']")).not.toBeNull(); // (its line is there)
+      expect($$("[data-card-invoice='12'] a")).toEqual([]);
+    }
   });
 });
 

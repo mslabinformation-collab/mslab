@@ -5,7 +5,7 @@
     {
       "id": "enne",
       "name": "Enne alustamist",
-      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest, Proov 6 saab Maria arved ja Proov 0 on Dimi esimene makse. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
+      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest, Proov 6 saab Maria arved, Proov 7 tasub Maria arve ise, Proov 8 on venekeelne õpilane, kes saab arve kirjaga, ja Proov 0 on Dimi esimene makse. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
       "checks": false
     },
     {
@@ -21,12 +21,12 @@
     {
       "id": "registreerimine",
       "name": "Registreerimine ja maksmine",
-      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate. Arvete kontrollid kasutavad Proov 6 registreeringut, mille teed kontrolli „Arve pangaülekandeks“ esimestes sammudes."
+      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate. Arvete kontrollid kasutavad Proov 6 registreeringut, mille teed kontrolli „Arve pangaülekandeks“ esimestes sammudes. Enne arvete kontrolle täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“)."
     },
     {
       "id": "konto",
       "name": "Õpilase konto",
-      "note": "Konto lehed avanevad ainult seadmes, kus vajutasid halduses „Vaata kodulehte“. Proov 1 konto on olemas pärast registreerimist."
+      "note": "Konto lehed avanevad ainult seadmes, kus vajutasid halduses „Vaata kodulehte“. Proov 1 konto on olemas pärast registreerimist. Enne arvete kontrolle täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“). Arvete kontrollid kasutavad õpilast Proov 7, kelle registreeringu teed kontrolli „Arve tasumine kontolt“ esimestes sammudes."
     },
     {
       "id": "ekursus",
@@ -36,12 +36,12 @@
     {
       "id": "kontakt",
       "name": "Kontaktkoolitus",
-      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Registreerimise ala lõpus tühistati ainult Proov 2 registreering; Proov 1 ja Proov 6 registreeringud jäävad alles kuni koristamiseni."
+      "note": "Kasutab Proov 1 registreeringut alast „Registreerimine ja maksmine“. Registreerimise ala lõpus tühistati ainult Proov 2 registreering; Proov 1, Proov 6, Proov 7 ja Proov 8 registreeringud jäävad alles kuni koristamiseni."
     },
     {
       "id": "kirjad",
       "name": "Kirjad",
-      "note": "Iga kiri avatakse Gmailis telefonis ja arvutis. Kirjad tulevad eelmiste alade kontrollidest; vaata need üle siis, kui kiri on käes. Maria teated lähevad Maria postkasti ja Telegrami teated enne avamist Dimile."
+      "note": "Iga kiri avatakse Gmailis telefonis ja arvutis. Kirjad tulevad eelmiste alade kontrollidest; vaata need üle siis, kui kiri on käes. Maria teated lähevad Maria postkasti ja Telegrami teated enne avamist Dimile. Arvekirjade kontrollide jaoks täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“)."
     },
     {
       "id": "koristamine",
@@ -3130,6 +3130,32 @@
       "why": "Õpilane saab arve koos pangaandmetega.",
       "risk": "high",
       "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kirjad-arve-vene-keeles",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: arve vene keeles",
+      "steps": [
+        "Registreeri venekeelsel lehel /ru/koolitused samale kuupäevale: „Nimi“ Proov 8 ja „Telefon“ oma number.",
+        "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov8.",
+        "Vali 50% ettemaksu valik, märgi tingimuste ruut ja vajuta registreerimisnuppu; katkesta makse Montonio lehel.",
+        "Koosta halduses Proov 8 jaoks „Ettemaks 50%“ arve valikuga „Maksmiseks“ ja vajuta „Saada õpilasele“.",
+        "Ava Gmailis telefonis kiri „Счёт MS LAB …“, mis tuli Proov 8 aadressile.",
+        "Ava kirja manus ja vajuta kirjas nuppu „Открыть мой кабинет“."
+      ],
+      "expect": [
+        "Kiri on vene keeles ja algab sõnadega „Здравствуйте, Proov!“.",
+        "Kirjas on „Оплатить до“ koos kuupäevaga, Получатель, IBAN, Банк, Сумма ja Назначение платежа, nagu „Ettemaksu juhised“.",
+        "Kirjal on üks manus, PDF-fail „MS-LAB-arve-…“, mille number on sama mis pealkirjas; arve ise on eesti keeles.",
+        "Nupp „Открыть мой кабинет“ avab sisselogimise lehe vene keeles."
+      ],
+      "why": "Venekeelne õpilane saab arve koos pangaandmetega oma keeles.",
+      "risk": "high",
+      "writes": true,
       "mark": "new",
       "markedAt": "deploy"
     },

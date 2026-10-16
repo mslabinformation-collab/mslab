@@ -93,7 +93,8 @@ const iso = (d: Date): string => d.toISOString();
  * An invoice as her card shows it (invoices Task 6, spec §4; domain/account-cards.ts CardInvoice). An unpaid invoice carries the receiver, IBAN
  * and bank frozen on it and its reference, when it has a receiver and an IBAN to pay to. An unpaid one whose online payment is paid already
  * (R14: `paidOnline`, its catch-up pending) is shown as paid, with no bank details: the money is in, and the start will not charge it again
- * (invoices.ts unpaidInvoiceOf); its PDF reads as the row does until Maria's catch-up pays it.
+ * (invoices.ts unpaidInvoiceOf). Its PDF reads as the row does, unpaid, until Maria's catch-up pays it, so it is marked `awaitingCatchUp` and
+ * the card offers no download for it.
  */
 function cardInvoice(inv: StudentInvoice): CardInvoice | null {
   if (inv.status === "cancelled") return null; // void: not hers to see (invoices.ts ofClient leaves it out already)
@@ -107,6 +108,7 @@ function cardInvoice(inv: StudentInvoice): CardInvoice | null {
     dueAt: inv.dueAt ? iso(inv.dueAt) : null,
     paidAt: inv.paidAt ? iso(inv.paidAt) : null,
     transfer: unpaid && receiver.trim() !== "" && iban.trim() !== "" ? { receiver, iban, bank, reference: inv.reference } : null,
+    ...(inv.status === "unpaid" && !unpaid ? { awaitingCatchUp: true as const } : {}),
   };
 }
 

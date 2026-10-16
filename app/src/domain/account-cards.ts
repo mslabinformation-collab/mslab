@@ -40,7 +40,9 @@ export type InvoiceTransfer = { receiver: string; iban: string; bank: string; re
 /**
  * One of her invoices on a course card (invoices Task 6, spec §4; server/client-data.ts loadDashboard): never a cancelled one. `status` is what
  * the student is told: an unpaid invoice whose online payment is paid already (R14: the money is in, the catch-up is pending) is sent as "paid"
- * (with `paidAt` null until the catch-up gives it one). `transfer` is set for an unpaid invoice that has bank details, else null.
+ * (with `paidAt` null until the catch-up gives it one) and marked `awaitingCatchUp`: its row still reads unpaid, so its PDF would still ask for
+ * the money, and the card offers no download for it until Maria's catch-up has paid it. `transfer` is set for an unpaid invoice that has bank
+ * details, else null.
  */
 export type CardInvoice = {
   id: number;
@@ -50,6 +52,8 @@ export type CardInvoice = {
   dueAt: string | null;
   paidAt: string | null;
   transfer: InvoiceTransfer | null;
+  /** R14: paid online, its invoice not yet marked paid (the catch-up is pending); absent otherwise. */
+  awaitingCatchUp?: true;
 };
 
 /**

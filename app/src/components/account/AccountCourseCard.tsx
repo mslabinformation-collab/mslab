@@ -71,7 +71,8 @@ function onlineDue(card: AccountCard, now: Date): PayableDue {
 /**
  * Her invoices of a card (invoices Task 6, spec §4): a quiet line each, „Arve MSL2026-001 · 175,00 € · Tasutud“ or „… · Tasumata · tasu {date}“,
  * with „Laadi alla (PDF)“ (GET /api/konto/arve/<id>, a download; `readOnly`: aria-disabled, as the certificate's link). An unpaid invoice also
- * shows the bank details and the reference frozen on it (PrepaymentInfo's rows, with "Kopeeri"). The invoice's own sum, not the card's.
+ * shows the bank details and the reference frozen on it (PrepaymentInfo's rows, with "Kopeeri"). The invoice's own sum, not the card's. An
+ * invoice paid online that waits for its catch-up (R14: `awaitingCatchUp`) reads „Tasutud" with no download: its PDF would still read unpaid.
  */
 function InvoiceLines({ invoices, locale, t, readOnly }: { invoices: CardInvoice[]; locale: Locale; t: CoursesTexts; readOnly: boolean }) {
   const base = useId();
@@ -93,7 +94,7 @@ function InvoiceLines({ invoices, locale, t, readOnly }: { invoices: CardInvoice
               <span className={styles.invoiceLine} data-invoice-line="">
                 {line}
               </span>
-              {readOnly ? (
+              {inv.awaitingCatchUp ? null : readOnly ? (
                 <a className={styles.second} role="link" aria-disabled="true" aria-label={label} data-card-invoice-download="">
                   {t.invoices.download}
                 </a>
