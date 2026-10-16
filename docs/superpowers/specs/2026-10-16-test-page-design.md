@@ -196,7 +196,7 @@ Phone-first, in the admin's look. Top to bottom:
 - **A note with only white space** counts as no note.
 - **"Viga" with no note** is allowed. The note field opens and asks "Mis läks valesti?", but the save does not wait for it.
 - **Both admins on one device.** The page always shows whose session it is ("Sina: Maria"), and `by` is the session's.
-- **The database is down.** The page still shows the plan from its own bundle and keeps answers locally. It says "Vastuseid ei saa praegu salvestada; need on selles seadmes alles" and sends them later.
+- **The database is down.** The page still shows the plan from its own bundle and keeps answers locally. It says "Vastuseid ei saa praegu salvestada; need on selles seadmes alles" and sends them later — only when this device can keep them (its storage works); on a device that cannot, the page shows the ordinary "Salvestan…" / "Salvestamata — proovin uuesti" states instead (amended 16.10 in the final review).
 
 ## 8. Testing
 
