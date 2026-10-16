@@ -39,7 +39,7 @@ Every phase after this one changes behaviour that some checks describe. So the p
   - A failed send never fails the save.
 - **D7. Test data is labelled** (Dim, 16.10: as recommended). Every check that creates something (`writes: true`) tells the tester exactly what to type:
   - the name "Proov" plus a number;
-  - for a student, an e-mail with `+proov` added to the tester's own address (for example `nimi+proov1@gmail.com`), which Gmail delivers to the tester's own inbox.
+  - for a student, an e-mail with `+proov` added to the tester's own address (for example `nimi+proov1@…`), which Gmail delivers to the tester's own inbox.
   
   "Enne alustamist" says this once. The test rows stay in the database, labelled, while testing goes on. The admin can cancel a registration and end an access, but cannot delete a student or a Montonio test payment. **Right before the public launch, Dim removes them by exact address** (the address list is kept on the page's "Koristamine" section as the tester types them; never by pattern). That step goes into `docs/launch-checklist.md`. "Koristamine" also says:
   - cancel each test registration in the admin;
