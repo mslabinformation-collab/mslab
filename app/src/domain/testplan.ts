@@ -60,6 +60,13 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const isInstant = (v: unknown): v is string => typeof v === "string" && INSTANT.test(v) && !Number.isNaN(Date.parse(v));
 const isStatus = (v: unknown): v is Status => typeof v === "string" && STATUS.includes(v);
 const wordCount = (line: string): number => line.trim().split(/\s+/).length;
+/**
+ * The answer of a check by its id, from the document's own keys. Never `answers[id]` alone: ids are kebab-case, so a check can be called
+ * "constructor" or "valueOf", and a plain object would hand back Object.prototype's member as an answer. (`hasOwnProperty.call`, not
+ * `Object.hasOwn`: this module runs in the browser, on iOS Safari before 15.4 as well.)
+ */
+const answerOf = (answers: Record<string, StoredAnswer>, id: string): StoredAnswer | undefined =>
+  Object.prototype.hasOwnProperty.call(answers, id) ? answers[id] : undefined;
 
 /** The problems of one line of a check (a step, an expect line or the "why"): empty, no final full stop, too many words. */
 function lineProblems(where: string, line: unknown): string[] {
@@ -224,8 +231,9 @@ export function readAnswersDoc(value: unknown): AnswersDoc {
  * id outside the plan, or a status that is none of ok / bad / skip, is ignored; answers stored for ids outside the plan are kept untouched.
  * `changed` lists the ids written, in the order sent. The stored entry's `pinged` and `notePinged` carry over only while it stays the same
  * failure: it was Viga, it is Viga again, and no redo has overtaken it; otherwise the failure is a new one and earns its own messages (D6).
- * `buildAt` is what a "deploy" mark reads as (appliesAt); without it, `now`: a check marked "deploy" then counts every earlier failure as
- * overtaken, which can only send a message too many and never hide one. Pure: `stored` is not edited.
+ * `buildAt` (required) is what a "deploy" mark reads as (appliesAt): pass the running build's instant, TESTPLAN_BUILD_AT. It has no default
+ * on purpose. A guess such as `now` would make every stored failure of a check marked "deploy" older than its mark, so each save of the same
+ * failure would count as a new one and send the first Telegram message again (a message per pause in typing a note). Pure: `stored` is not edited.
  */
 export function mergeAnswers(
   stored: AnswersDoc,
@@ -233,7 +241,7 @@ export function mergeAnswers(
   plan: TestPlan,
   by: string,
   now: Date,
-  buildAt: string = now.toISOString(),
+  buildAt: string,
 ): { doc: AnswersDoc; changed: string[] } {
   const items = new Map(plan.items.map((item) => [item.id, item]));
   const answers = { ...stored.answers };
@@ -243,7 +251,7 @@ export function mergeAnswers(
     const item = items.get(id);
     if (!item || !isObject(raw) || !isStatus(raw.status)) continue;
     const entry: StoredAnswer = { status: raw.status, note: cleanNote(raw.note), at, by };
-    const prev = stored.answers[id];
+    const prev = answerOf(stored.answers, id);
     if (prev && prev.status === "bad" && entry.status === "bad" && checkState(item, prev, plan, buildAt).overtaken === null) {
       if (prev.pinged !== undefined) entry.pinged = prev.pinged;
       if (prev.notePinged) entry.notePinged = true;
@@ -266,7 +274,7 @@ export function pingsFor(_before: AnswersDoc, after: AnswersDoc, changed: string
   const known = new Set(plan.items.map((item) => item.id));
   const pings: Ping[] = [];
   for (const id of changed) {
-    const answer = after.answers[id];
+    const answer = answerOf(after.answers, id);
     if (!answer || answer.status !== "bad" || !known.has(id)) continue;
     if (answer.pinged === undefined) pings.push({ id, kind: "bad" });
     else if (!answer.notePinged && answer.note !== "") pings.push({ id, kind: "note" });
@@ -283,7 +291,7 @@ export function markPinged(doc: AnswersDoc, pings: Ping[], now: Date): AnswersDo
   const answers = { ...doc.answers };
   const at = now.toISOString();
   for (const { id, kind } of pings) {
-    const answer = answers[id];
+    const answer = answerOf(answers, id);
     if (!answer) continue;
     answers[id] =
       kind === "bad"
@@ -325,7 +333,7 @@ export function planCounts(
   const counts = { total: 0, done: 0, open: 0, bad: 0, redo: 0 };
   for (const item of plan.items) {
     if (who !== null && item.who !== who && item.who !== "koos") continue;
-    const { state, overtaken } = checkState(item, doc.answers[item.id], plan, buildAt);
+    const { state, overtaken } = checkState(item, answerOf(doc.answers, item.id), plan, buildAt);
     counts.total++;
     if (state === "done") counts.done++;
     else if (state === "failed") counts.bad++;

@@ -170,7 +170,7 @@ describe("mergeAnswers (spec D4, §5)", () => {
   const NOW = new Date("2026-10-17T10:00:00.000Z");
 
   test("an id that is not in the plan is ignored; the others are written", () => {
-    const { doc: merged, changed } = mergeAnswers(doc(), { ghost: inc("ok"), "maria-1": inc("ok", "hea") }, PLAN, "m@x.test", NOW);
+    const { doc: merged, changed } = mergeAnswers(doc(), { ghost: inc("ok"), "maria-1": inc("ok", "hea") }, PLAN, "m@x.test", NOW, BUILD);
     expect(changed).toEqual(["maria-1"]);
     expect(Object.keys(merged.answers)).toEqual(["maria-1"]);
     expect(merged.answers["maria-1"]).toEqual({ status: "ok", note: "hea", at: NOW.toISOString(), by: "m@x.test" });
@@ -178,12 +178,12 @@ describe("mergeAnswers (spec D4, §5)", () => {
 
   test("`by` comes from the argument, never from the incoming object; `at` is the server's `now`, never the device's", () => {
     const sneaky = { status: "ok", note: "", by: "evil@x.test", at: "2020-01-01T00:00:00.000Z", clientAt: "2020-01-01T00:00:00.000Z", pinged: "2020-01-01T00:00:00.000Z" } as unknown as IncomingAnswer;
-    const { doc: merged } = mergeAnswers(doc(), { "maria-1": sneaky }, PLAN, "m@x.test", NOW);
+    const { doc: merged } = mergeAnswers(doc(), { "maria-1": sneaky }, PLAN, "m@x.test", NOW, BUILD);
     expect(merged.answers["maria-1"]).toEqual({ status: "ok", note: "", at: NOW.toISOString(), by: "m@x.test" });
   });
 
   test("the note is cleaned: trimmed, white space is no note, cut at 1000", () => {
-    const { doc: merged } = mergeAnswers(doc(), { "maria-1": inc("bad", "  a  "), "dim-1": inc("bad", "   "), "koos-1": inc("bad", "😀".repeat(1001)) }, PLAN, "m@x.test", NOW);
+    const { doc: merged } = mergeAnswers(doc(), { "maria-1": inc("bad", "  a  "), "dim-1": inc("bad", "   "), "koos-1": inc("bad", "😀".repeat(1001)) }, PLAN, "m@x.test", NOW, BUILD);
     expect(merged.answers["maria-1"].note).toBe("a");
     expect(merged.answers["dim-1"].note).toBe("");
     expect(Array.from(merged.answers["koos-1"].note)).toHaveLength(1000);
@@ -191,23 +191,23 @@ describe("mergeAnswers (spec D4, §5)", () => {
 
   test("an entry with a status that is none of ok / bad / skip is ignored", () => {
     const wrong = { status: "maybe", note: "" } as unknown as IncomingAnswer;
-    const { doc: merged, changed } = mergeAnswers(doc(), { "maria-1": wrong, "dim-1": inc("skip") }, PLAN, "m@x.test", NOW);
+    const { doc: merged, changed } = mergeAnswers(doc(), { "maria-1": wrong, "dim-1": inc("skip") }, PLAN, "m@x.test", NOW, BUILD);
     expect(changed).toEqual(["dim-1"]);
     expect(Object.keys(merged.answers)).toEqual(["dim-1"]);
   });
 
   test("a stored answer to an id outside the plan survives a merge untouched; so do the other checks' answers", () => {
     const stored = doc({ gone: answer("bad", "2026-09-01T00:00:00.000Z", { note: "vana", pinged: "2026-09-01T00:00:01.000Z" }), "dim-1": answer("ok", "2026-10-16T12:00:00.000Z", { by: "d@x.test" }) });
-    const { doc: merged, changed } = mergeAnswers(stored, { "maria-1": inc("ok") }, PLAN, "m@x.test", NOW);
+    const { doc: merged, changed } = mergeAnswers(stored, { "maria-1": inc("ok") }, PLAN, "m@x.test", NOW, BUILD);
     expect(changed).toEqual(["maria-1"]);
     expect(merged.answers.gone).toEqual(stored.answers.gone);
     expect(merged.answers["dim-1"]).toEqual(stored.answers["dim-1"]);
   });
 
   test("two merges in sequence keep both ids; the stored doc is not edited in place", () => {
-    const first = mergeAnswers(doc(), { "maria-1": inc("ok") }, PLAN, "m@x.test", NOW);
+    const first = mergeAnswers(doc(), { "maria-1": inc("ok") }, PLAN, "m@x.test", NOW, BUILD);
     const frozen = JSON.stringify(first.doc);
-    const second = mergeAnswers(first.doc, { "dim-1": inc("bad", "viga") }, PLAN, "d@x.test", new Date("2026-10-17T11:00:00.000Z"));
+    const second = mergeAnswers(first.doc, { "dim-1": inc("bad", "viga") }, PLAN, "d@x.test", new Date("2026-10-17T11:00:00.000Z"), BUILD);
     expect(Object.keys(second.doc.answers).sort()).toEqual(["dim-1", "maria-1"]);
     expect(second.doc.answers["maria-1"].by).toBe("m@x.test");
     expect(second.doc.answers["dim-1"].by).toBe("d@x.test");
@@ -215,16 +215,22 @@ describe("mergeAnswers (spec D4, §5)", () => {
   });
 
   test("the same id answered again replaces the answer: the later press wins", () => {
-    const first = mergeAnswers(doc(), { "maria-1": inc("ok") }, PLAN, "m@x.test", NOW);
-    const second = mergeAnswers(first.doc, { "maria-1": inc("skip", "hiljem") }, PLAN, "d@x.test", new Date("2026-10-17T11:00:00.000Z"));
+    const first = mergeAnswers(doc(), { "maria-1": inc("ok") }, PLAN, "m@x.test", NOW, BUILD);
+    const second = mergeAnswers(first.doc, { "maria-1": inc("skip", "hiljem") }, PLAN, "d@x.test", new Date("2026-10-17T11:00:00.000Z"), BUILD);
     expect(second.doc.answers["maria-1"]).toEqual({ status: "skip", note: "hiljem", at: "2026-10-17T11:00:00.000Z", by: "d@x.test" });
   });
 
   test("nothing incoming: nothing changed", () => {
     const stored = doc({ "maria-1": answer("ok", "2026-10-16T12:00:00.000Z") });
-    const got = mergeAnswers(stored, {}, PLAN, "m@x.test", NOW);
+    const got = mergeAnswers(stored, {}, PLAN, "m@x.test", NOW, BUILD);
     expect(got.changed).toEqual([]);
     expect(got.doc).toEqual(stored);
+  });
+
+  test("`buildAt` is required: a call without it does not compile (a forgotten build instant must not turn into a message on every save)", () => {
+    // @ts-expect-error the sixth argument, the build instant a "deploy" mark reads as, has no default
+    const withoutBuildAt = () => mergeAnswers(doc(), {}, PLAN, "m@x.test", NOW);
+    expect(typeof withoutBuildAt).toBe("function"); // (never called: `tsc --noEmit` is the check)
   });
 });
 
@@ -307,6 +313,22 @@ describe("the pings a save earns: pingsFor and markPinged (spec D6)", () => {
     expect(noted.pings).toEqual([{ id: "d-1", kind: "note" }]);
   });
 
+  test("the same failure saved four times on a check marked \"deploy\" earns exactly one message", () => {
+    // the safety net (the stamp tool was skipped): every save is after the build, so it is one failure, announced once, whatever the note edits
+    const plan: TestPlan = { ...PLAN, items: [item({ id: "d-1", mark: "redo", markedAt: "deploy" })] };
+    let stored = doc();
+    const perSave: string[][] = [];
+    ["katki", "katki, tahvlis ka", "katki, tahvlis ka, kell 10", "katki, tahvlis ka, kell 10 hommikul"].forEach((note, i) => {
+      const now = new Date(Date.UTC(2026, 9, 23, 10, i)); // 23.10, after the build of 22.10
+      const merged = mergeAnswers(stored, { "d-1": inc("bad", note) }, plan, "m@x.test", now, BUILD);
+      const pings = pingsFor(stored, merged.doc, merged.changed, plan, BUILD);
+      perSave.push(pings.map((p) => p.kind));
+      stored = markPinged(merged.doc, pings, now);
+    });
+    expect(perSave).toEqual([["bad"], [], [], []]);
+    expect(stored.answers["d-1"].pinged).toBe("2026-10-23T10:00:00.000Z");
+  });
+
   test("6. a brand-new Viga that already has a note: the first message only (it carries the note), and the note is marked sent", () => {
     const s = save(doc(), "maria-1", "bad", "nupp on katki", "2026-10-17T10:00:00.000Z");
     expect(s.pings).toEqual([{ id: "maria-1", kind: "bad" }]);
@@ -321,6 +343,12 @@ describe("the pings a save earns: pingsFor and markPinged (spec D6)", () => {
     expect(save(doc(), "maria-1", "skip", "hiljem", "2026-10-17T10:00:00.000Z").pings).toEqual([]);
     const failing = doc({ "maria-1": answer("bad", "2026-10-17T10:00:00.000Z", { note: "x" }) });
     expect(pingsFor(failing, failing, [], PLAN, BUILD)).toEqual([]);
+  });
+
+  test("a Viga on an id that is not in the plan earns nothing, whatever the doc holds", () => {
+    const after = doc({ gone: answer("bad", "2026-10-17T10:00:00.000Z", { note: "vana" }), "maria-1": answer("bad", "2026-10-17T10:00:00.000Z") });
+    expect(pingsFor(doc(), after, ["gone"], PLAN, BUILD)).toEqual([]);
+    expect(pingsFor(doc(), after, ["gone", "maria-1"], PLAN, BUILD)).toEqual([{ id: "maria-1", kind: "bad" }]);
   });
 
   test("two Vigas in one save: a ping for each, in the order saved", () => {
@@ -347,6 +375,34 @@ describe("the pings a save earns: pingsFor and markPinged (spec D6)", () => {
     expect(got.answers.ghost).toBeUndefined();
     // a first message for a failure without a note leaves the note message still to come
     expect(markPinged(stored, [{ id: "dim-1", kind: "bad" }], new Date("2026-10-17T10:00:05.000Z")).answers["dim-1"]).toEqual({ ...stored.answers["dim-1"], pinged: "2026-10-17T10:00:05.000Z" });
+  });
+});
+
+describe("answers are read off the document's own keys, never off Object.prototype", () => {
+  // kebab-case lets a check be called like a member of every object
+  const NAMES = ["constructor", "toString", "valueOf", "hasOwnProperty"];
+  const plan: TestPlan = { ...PLAN, items: NAMES.map((id) => item({ id })) };
+  const NOW = new Date("2026-10-17T10:00:00.000Z");
+
+  test("planCounts: unanswered checks with such ids are open, not done", () => {
+    expect(planCounts(plan, doc(), BUILD, null)).toEqual({ total: 4, done: 0, open: 4, bad: 0, redo: 0 });
+  });
+
+  test.each(NAMES)("%s: a Viga is written as an own entry, counted as one, and earns its first message", (id) => {
+    const merged = mergeAnswers(doc(), { [id]: inc("bad", "katki") }, plan, "m@x.test", NOW, BUILD);
+    expect(merged.changed).toEqual([id]);
+    expect(Object.keys(merged.doc.answers)).toEqual([id]);
+    expect(planCounts(plan, merged.doc, BUILD, null)).toEqual({ total: 4, done: 0, open: 3, bad: 1, redo: 0 });
+    const pings = pingsFor(doc(), merged.doc, merged.changed, plan, BUILD);
+    expect(pings).toEqual([{ id, kind: "bad" }]);
+    expect(markPinged(merged.doc, pings, NOW).answers[id]).toEqual({ status: "bad", note: "katki", at: NOW.toISOString(), by: "m@x.test", pinged: NOW.toISOString(), notePinged: true });
+  });
+
+  test.each(NAMES)("%s: markPinged does not invent an entry for an answer the doc does not hold; pingsFor finds none", (id) => {
+    const got = markPinged(doc(), [{ id, kind: "bad" }], NOW);
+    expect(Object.keys(got.answers)).toEqual([]);
+    expect(Object.prototype.hasOwnProperty.call(got.answers, id)).toBe(false);
+    expect(pingsFor(doc(), doc(), [id], plan, BUILD)).toEqual([]);
   });
 });
 

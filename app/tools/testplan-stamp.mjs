@@ -8,7 +8,7 @@
 // is left untouched. Nothing else in the text changes, byte for byte (line endings, the BOM and the spacing around the colon included): it is a
 // text replacement, not a JSON round trip. If it is skipped, the server reads a "deploy" it still finds as the running deployment's build time
 // (next.config.ts TESTPLAN_BUILD_AT), which reopens the checks at that deploy and again at the next one, until this tool stamps them.
-// docs/deploy.md names it in the deploy steps.
+// The deploy steps name it (docs/deploy.md, phase 4 piece 1 Task 4).
 
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
