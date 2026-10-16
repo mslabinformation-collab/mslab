@@ -6,6 +6,7 @@
 
 import type { Invoice } from "@/db/schema";
 import { seqToIssue, tallinnDateText, tallinnYear } from "./certificate";
+import { prepaymentDue } from "./registration";
 
 /** What an invoice is for (D4): a contact course's half, whole sum or rest, or an e-course's price. */
 export type InvoiceKind = "prepayment" | "full" | "balance" | "ecourse";
@@ -171,9 +172,9 @@ export type OpenAmount = { kind: InvoiceKind; cents: number; part: string };
 
 /**
  * The amounts Maria may still invoice on a registration (D5, §6.2): "open" is not yet covered by an invoice, where covered is the sum of its
- * unpaid and paid invoices (a cancelled one counts for nothing). With the half choice: the prepayment (half the price, rounded down to the
- * cent) while there is no prepayment or whole-sum invoice, the whole sum while nothing is covered, and the rest (price − covered) once
- * something is covered but not all. With the whole-sum choice: the whole sum while nothing is covered. A prepayment and a whole sum exclude
+ * unpaid and paid invoices (a cancelled one counts for nothing). With the half choice: the prepayment (the site's own, prepaymentDue: half the
+ * price rounded up to the cent, so a paid one makes the 50 % that confirms the place, ruling R11) while there is no prepayment or whole-sum
+ * invoice, the whole sum while nothing is covered, and the rest (price − covered) once something is covered but not all. With the whole-sum choice: the whole sum while nothing is covered. A prepayment and a whole sum exclude
  * each other; an amount of nothing is never offered.
  */
 export function openAmounts(
@@ -187,7 +188,7 @@ export function openAmounts(
     if (cents > 0) out.push({ kind, cents, part: partText(kind) });
   };
   if (r.paymentChoice === "half") {
-    if (!live.some((i) => i.kind === "prepayment" || i.kind === "full")) offer("prepayment", Math.floor(r.priceCents / 2));
+    if (!live.some((i) => i.kind === "prepayment" || i.kind === "full")) offer("prepayment", prepaymentDue(r.priceCents, "half"));
     if (covered === 0) offer("full", r.priceCents);
     if (covered > 0 && covered < r.priceCents) offer("balance", r.priceCents - covered);
   } else if (covered === 0) {

@@ -36,7 +36,7 @@ import { toStorable } from "@/lib/to-storable";
 const NUMBER_LOCK = "invoice-number";
 /** The largest value of the integer column invoices.seq (domain/invoice.ts readInvoiceSettings keeps a next number up to it). */
 const INT4_MAX = 2_147_483_647;
-/** What a prefix may be (Seaded → Arve andmed): letters A–Z a–z and digits, 1–10 of them. */
+/** What a prefix may be typed as (Seaded → Arve andmed): letters A–Z a–z and digits, 1–10 of them; it is stored in capitals. */
 const PREFIX = /^[A-Za-z0-9]{1,10}$/;
 const KINDS: readonly InvoiceKind[] = ["prepayment", "full", "balance", "ecourse"];
 /** The ways Maria marks or records a payment (D6); Montonio's is the site's own. */
@@ -49,7 +49,7 @@ export type BuyerFieldError = "required" | "tooLong";
 
 export type SaveInvoiceSettingsResult = { ok: true; settings: InvoiceSettings } | { ok: false; fields: Record<string, InvoiceFieldError> };
 export type CreateInvoiceResult = { ok: true; invoice: Invoice } | { ok: false; error: "notFound" | "sellerMissing" | "bankMissing" | "notOpen" | "invalid" };
-export type MarkPaidResult = { ok: true; invoice: Invoice; full?: true } | { ok: false; error: "notFound" | "notUnpaid" };
+export type MarkPaidResult = { ok: true; invoice: Invoice; full?: true } | { ok: false; error: "notFound" | "notUnpaid" | "invalid" };
 export type UndoPaidResult = { ok: true; invoice: Invoice } | { ok: false; error: "notFound" | "notPaid" | "notManual" };
 export type CancelResult = { ok: true } | { ok: false; error: "notFound" | "notUnpaid" };
 export type BuyerResult = { ok: true; invoice: Invoice } | { ok: false; error: "notFound" | "notUnpaid" } | { ok: false; error: "invalid"; fields: Record<string, BuyerFieldError> };
@@ -125,16 +125,30 @@ async function issue<R extends string = never>(
 
 const two = (n: number) => String(n).padStart(2, "0");
 
+/** The Tallinn calendar date `days` after `now`'s, "YYYY-MM-DD". */
+function tallinnDateAfter(now: Date, days: number): string {
+  const [y, m, d] = tallinnFormParts(now).date.split("-").map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d + days));
+  return `${String(day.getUTCFullYear()).padStart(4, "0")}-${two(day.getUTCMonth() + 1)}-${two(day.getUTCDate())}`;
+}
+
 /**
  * The due date of a request issued at `now` (D5): `days` later on Tallinn's calendar at the same Tallinn time, so the date printed is the
  * issue's date plus the term also across a change of the clocks (25.10.2026: 21.10 00:30 + 7 days is 28.10 00:30, not 27.10 23:30).
  */
 function dueDate(now: Date, days: number): Date {
-  const { date, time } = tallinnFormParts(now);
-  const [y, m, d] = date.split("-").map(Number);
-  const day = new Date(Date.UTC(y, m - 1, d + days));
-  return tallinnInstant(`${String(day.getUTCFullYear()).padStart(4, "0")}-${two(day.getUTCMonth() + 1)}-${two(day.getUTCDate())}`, time) ?? new Date(now.getTime() + days * 86_400_000);
+  return tallinnInstant(tallinnDateAfter(now, days), tallinnFormParts(now).time) ?? new Date(now.getTime() + days * 86_400_000);
 }
+
+/** A date Maria gives for money received (a receipt, a mark): a real date, and not after today in Tallinn (before tomorrow's midnight). */
+function paidByToday(paidAt: unknown, now: Date): paidAt is Date {
+  if (!validDate(paidAt)) return false;
+  const tomorrow = tallinnInstant(tallinnDateAfter(now, 1), "00:00");
+  return tomorrow === null || paidAt.getTime() < tomorrow.getTime();
+}
+
+/** One of the ways Maria marks or records money (bank, cash, card), whatever the form sent. */
+const isManualMethod = (method: unknown): method is Exclude<PaidMethod, "montonio"> => typeof method === "string" && (MANUAL_METHODS as readonly string[]).includes(method);
 
 /** The line's session (InvoiceLine.session): "14.11.2026 Pärnu", its Tallinn date and city. */
 const sessionText = (s: Pick<CourseSession, "startsAt" | "city">): string => `${tallinnDateText(s.startsAt)} ${s.city.trim()}`.trim();
@@ -158,8 +172,9 @@ async function lockInvoice(tx: Tx, id: number): Promise<Invoice | null> {
  * unpaid or paid invoice of the registration), as a request to pay („Maksmiseks": unpaid, due in Seaded's term, the bank details and the
  * registration's payment reference, `{referencePrefix}{registrationId}` as the account shows it) or a receipt („Juba tasutud": born paid on
  * `paidAt` by `method`, bank, cash or card; it does not touch Laekunud summa, which already holds the money). `invalid` before anything is
- * read for a kind or mode it does not know, or a receipt without a date or a way. Then ONE transaction: lockForPayment, the registration
- * (`notFound`) and its invoices (an amount not open: `notOpen`, under the registration's lock alone), then the issue: no seller (D3)
+ * read for a kind or mode it does not know, or a receipt without a date (or one after today in Tallinn) or a way. Then ONE transaction:
+ * lockForPayment, the registration (`notFound`) and its invoices (an amount not open: `notOpen`, under the registration's lock alone), then the
+ * issue: no seller (D3)
  * `sellerMissing`; a request without the receiver and the IBAN of Ettemaksu juhised (R6) `bankMissing`. The frozen line is the course's
  * Estonian title, its session's date and city (empty for none) and the part; the buyer is the registration's name and e-mail. Logs
  * `[invoices] registration N: issued <number>` after the commit.
@@ -174,7 +189,7 @@ export async function createInvoice(
   const receipt = input.mode === "receipt";
   const paidAt = input.paidAt;
   const method = input.method;
-  if (receipt && (!validDate(paidAt) || method === undefined || !MANUAL_METHODS.includes(method))) return { ok: false, error: "invalid" };
+  if (receipt && (!paidByToday(paidAt, now) || !isManualMethod(method))) return { ok: false, error: "invalid" };
   const result = await db.transaction(async (tx): Promise<CreateInvoiceResult> => {
     await lockForPayment(tx, registrationId);
     const [found] = await tx
@@ -249,10 +264,12 @@ async function withInvoiceLocked<T>(db: Db, id: number, change: (tx: Tx, inv: In
  * „Märgi tasutuks" (§6.4): an unpaid invoice is paid on `paidAt` by `method`, and in the same transaction its amount is added to the
  * registration's Laekunud summa (db/queries/admin.ts addRegistrationPayment: confirmed from 50 %, unless the session is full, D2: then `full`,
  * and the registration stays unconfirmed, as the online path does). `paidAdds` says the mark added it, so its undo takes it back; an invoice
- * whose registration was deleted is paid and adds nothing. Under lockForPayment and the invoice's lock: of two marks at the same moment the
- * second finds it paid (`notUnpaid`), and the amount is added once. Logs `[invoices] invoice N: marked paid`.
+ * whose registration was deleted is paid and adds nothing. `invalid` before anything is read when the date is no date or after today in
+ * Tallinn, or the way is not bank, cash or card (what a form sent is checked here too). Under lockForPayment and the invoice's lock: of two
+ * marks at the same moment the second finds it paid (`notUnpaid`), and the amount is added once. Logs `[invoices] invoice N: marked paid`.
  */
 export async function markInvoicePaid(db: Db, id: number, input: { paidAt: Date; method: Exclude<PaidMethod, "montonio"> }, now: Date): Promise<MarkPaidResult> {
+  if (!paidByToday(input.paidAt, now) || !isManualMethod(input.method)) return { ok: false, error: "invalid" };
   const result = await withInvoiceLocked(db, id, async (tx, inv): Promise<MarkPaidResult> => {
     if (inv.status !== "unpaid") return { ok: false, error: "notUnpaid" };
     const added = inv.registrationId === null ? null : await addRegistrationPayment(tx, inv.registrationId, inv.amountCents, now);
@@ -268,22 +285,33 @@ export async function markInvoicePaid(db: Db, id: number, input: { paidAt: Date;
 }
 
 /**
- * „Võta tasumine tagasi" (D6): a paid invoice that Maria marked or recorded (not Montonio's: `notManual`; not paid: `notPaid`) is unpaid
- * again, its date and way cleared. When the mark added the amount (`paidAdds`), the same transaction takes it back off Laekunud summa and
- * recomputes the status as Maria's own write does (recordRegistrationPayment): the place stays while the rest still makes 50 %, else it is
- * awaiting again. A receipt's mark added nothing, so nothing is taken back. Its due date and reference stay as issued (a receipt has none).
- * Under lockForPayment and the invoice's lock. Logs `[invoices] invoice N: paid mark undone`.
+ * „Võta tasumine tagasi" (D6) of a paid invoice that Maria marked or recorded (not Montonio's: `notManual`; not paid: `notPaid`):
+ * - a request she marked paid, whose mark added the amount (`paidAdds`): unpaid again, its date and way cleared, its due date and reference
+ *   as issued; the same transaction takes the amount back off Laekunud summa and recomputes the status as Maria's own write does
+ *   (recordRegistrationPayment): the place stays while the rest still makes 50 %, else it is awaiting again;
+ * - ruling R10: a receipt („Juba tasutud", born paid: its mark added nothing) never asked for money, so it is not made unpaid (a „Märgi
+ *   tasutuks" on it would add the same money again, and the student's „Maksa" would charge it): it is cancelled at `now`, keeps its number,
+ *   and Laekunud summa stays; its amount is open again for the right receipt. So is a mark that added nothing because its registration was
+ *   deleted.
+ * Under lockForPayment and the invoice's lock. Logs `[invoices] invoice N: paid mark undone` or `… receipt undone: cancelled`.
  */
 export async function undoInvoicePaid(db: Db, id: number, now: Date): Promise<UndoPaidResult> {
-  void now; // the actions' one shape (Task 5): an undo stores no time
   const result = await withInvoiceLocked(db, id, async (tx, inv): Promise<UndoPaidResult> => {
     if (inv.status !== "paid") return { ok: false, error: "notPaid" };
     if (inv.paidMethod === "montonio" || inv.paymentId !== null) return { ok: false, error: "notManual" };
-    if (inv.paidAdds && inv.registrationId !== null) await takeBackRegistrationPayment(tx, inv.registrationId, inv.amountCents);
+    if (!inv.paidAdds) {
+      const [cancelled] = await tx
+        .update(invoices)
+        .set({ status: "cancelled", cancelledAt: now, paidAt: null, paidMethod: null })
+        .where(eq(invoices.id, inv.id))
+        .returning();
+      return { ok: true, invoice: cancelled };
+    }
+    if (inv.registrationId !== null) await takeBackRegistrationPayment(tx, inv.registrationId, inv.amountCents);
     const [row] = await tx.update(invoices).set({ status: "unpaid", paidAt: null, paidMethod: null, paidAdds: false }).where(eq(invoices.id, inv.id)).returning();
     return { ok: true, invoice: row };
   });
-  if (result.ok) console.info(`[invoices] invoice ${id}: paid mark undone`);
+  if (result.ok) console.info(`[invoices] invoice ${id}: ${result.invoice.status === "cancelled" ? "receipt undone: cancelled" : "paid mark undone"}`);
   return result;
 }
 
@@ -392,6 +420,7 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date): Promise<Invoice |
  * started to pay it) becomes paid — Montonio, on the payment's time, `paidAdds` false (the payment itself adds its amount through
  * addRegistrationPayment). Under the invoice's lock (the order's step 2). null when the payment names none, or its invoice is no longer
  * unpaid (Maria cancelled or marked it meanwhile), is another registration's or is of another sum: then it pays no invoice of hers.
+ * invoiceForPaidPayment calls it: settle calls that one alone, never this one as well (a second call finds the invoice paid, see there).
  */
 export async function markLinkedInvoicePaid(tx: Tx, payment: Payment, now: Date): Promise<Invoice | null> {
   if (payment.invoiceId === null) return null;
@@ -408,18 +437,22 @@ export async function markLinkedInvoicePaid(tx: Tx, payment: Payment, now: Date)
 
 /**
  * A paid payment's invoice, inside settle.ts's paid() transaction after its locks (Task 4; §6.1: a paid payment has its invoice once the
- * seller is filled in). It opens no transaction of its own.
+ * seller is filled in). It opens no transaction of its own. Call it ONCE per payment, from the winner of settle's paid update only (as the
+ * rest of the once-only work), and do not call markLinkedInvoicePaid as well.
+ * - A payment that already has its own born-paid invoice gets that one back, and never pays a linked invoice too (§6.2: never both).
  * - The payment was started for an unpaid invoice (`invoiceId`): that invoice is paid (markLinkedInvoicePaid) and returned; no second
  *   invoice. If that invoice is no longer unpaid (cancelled, or marked by Maria while the student paid), the payment's money would have no
- *   invoice: it gets its own born-paid one below, so it is invoiced once.
- * - Otherwise its born-paid invoice (issueForPayment), or the one it already has (a call again finds it).
+ *   invoice: it gets its own born-paid one below, so it is invoiced once (ruling R7).
+ * - Otherwise its born-paid invoice (issueForPayment).
  * - No seller (D3): null, never a throw. The payment stays paid without an invoice and is listed in „Arveta maksed" (uninvoicedPayments).
+ * Not idempotent for a payment that paid its linked invoice: the linked invoice carries no payment id, so a second call would find it paid and
+ * issue a born-paid one as well. settle's once-only winner makes that second call unreachable.
  */
 export async function invoiceForPaidPayment(tx: Tx, payment: Payment, now: Date): Promise<Invoice | null> {
-  const linked = await markLinkedInvoicePaid(tx, payment, now);
-  if (linked) return linked;
   const own = await bornPaidOf(tx, payment.id);
   if (own) return own;
+  const linked = await markLinkedInvoicePaid(tx, payment, now);
+  if (linked) return linked;
   const made = await issueForPayment(tx, payment, now);
   if (made === "sellerMissing") {
     console.info(`[invoices] payment ${payment.id}: paid without an invoice (Arve andmed not filled in)`);
@@ -583,7 +616,8 @@ function wholeNumber(value: unknown): number | null {
  * - The texts are kept on one line and trimmed, each within INVOICE_LIMITS (UTF-16 units, as readInvoiceSettings measures them, so what is
  *   saved here is never dropped by the read). The company, its registry code and its address are required (D3: no invoice without them);
  *   the VAT number and the footer are optional, but VAT on requires the VAT number ("required" on `vatNumber`).
- * - The prefix is letters A–Z a–z and digits, 1–10 ("required", "tooLong", "invalid").
+ * - The prefix is letters A–Z a–z and digits, 1–10 ("required", "tooLong", "invalid"), stored in capitals: „msl" is MSL's series, so no
+ *   number reads twice as MSL2026-001 and msl2026-001.
  * - The VAT rate a whole 1–50 and the term a whole 0–90 days ("invalid"); "Järgmine number" a year that is this Tallinn year or the next
  *   and a number 1–2 147 483 647 (the seq column's largest) ("invalid").
  * Then under the number series' lock (the setting read under it):
@@ -610,10 +644,12 @@ export async function saveInvoiceSettings(db: Db, raw: unknown, now: Date): Prom
   const footer = text("footer", false);
   const vatOn = input.vatOn === true || input.vatOn === "on" || input.vatOn === "true";
   if (vatOn && !vatNumber && !fields.vatNumber) fields.vatNumber = "required";
-  const prefix = oneLine(input.prefix);
-  if (!prefix) fields.prefix = "required";
-  else if (prefix.length > INVOICE_LIMITS.prefix) fields.prefix = "tooLong";
-  else if (!PREFIX.test(prefix)) fields.prefix = "invalid";
+  const typedPrefix = oneLine(input.prefix);
+  if (!typedPrefix) fields.prefix = "required";
+  else if (typedPrefix.length > INVOICE_LIMITS.prefix) fields.prefix = "tooLong";
+  else if (!PREFIX.test(typedPrefix)) fields.prefix = "invalid";
+  // in capitals, once it is known to be A–Z a–z 0–9 (so no other letter can become one by its case): msl and MSL are one series
+  const prefix = typedPrefix.toUpperCase();
   const vatRate = wholeNumber(input.vatRate);
   if (vatRate === null || vatRate < 1 || vatRate > INVOICE_LIMITS.vatRate) fields.vatRate = "invalid";
   const termDays = wholeNumber(input.termDays);

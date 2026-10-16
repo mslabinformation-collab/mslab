@@ -70,6 +70,8 @@ const at = (log: LogEntry[]) => ({
   settingRead: log.findIndex((e) => /^select .* from "settings"/.test(e.query) && e.params.includes("invoice")),
   written: log.findIndex((e) => /^insert into "invoices"/.test(e.query)),
   settingWrite: log.findIndex((e) => /^insert into "settings"/.test(e.query) && e.params.includes("invoice")),
+  paidSumWrite: log.findIndex((e) => /^update "registrations"/.test(e.query)),
+  invoiceWrite: log.findIndex((e) => /^update "invoices"/.test(e.query)),
 });
 
 const infoLog = () => vi.mocked(console.info).mock.calls.flat().join("\n");
@@ -211,6 +213,20 @@ describe("Seaded → Arve andmed: getInvoiceSettings, saveInvoiceSettings, invoi
     expect(await saveInvoiceSettings(db, { ...VALID, prefix: "XYZ", nextSeq: 50 }, NOW)).toMatchObject({ ok: true, settings: { prefix: "XYZ", nextSeq: 50 } });
   });
 
+  test("the prefix is stored in capitals: „msl“ is MSL's own series (no reset, no second MSL2026-001 as msl2026-001), „abc“ a new one", async () => {
+    const c = await contactCourse(db);
+    expect(await saveInvoiceSettings(db, { ...VALID, prefix: " msl " }, NOW)).toMatchObject({ ok: true, settings: { prefix: "MSL" } });
+    await setSetting(db, "prepayment", BANK);
+    expect((await request(await registrationOn(db, c, { email: "a@example.com" }))).number).toBe("MSL2026-001");
+    // the same series whatever its case: the number is checked against it (taken) and kept, not reset
+    expect(await saveInvoiceSettings(db, { ...VALID, prefix: "msl", nextSeq: 1 }, NOW)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
+    expect(await saveInvoiceSettings(db, { ...VALID, prefix: "Msl", nextSeq: 7 }, NOW)).toMatchObject({ ok: true, settings: { prefix: "MSL", nextSeq: 7 } });
+    expect((await request(await registrationOn(db, c, { email: "b@example.com" }))).number).toBe("MSL2026-007");
+    expect(await saveInvoiceSettings(db, { ...VALID, prefix: "abc1", nextSeq: 8 }, NOW)).toMatchObject({ ok: true, settings: { prefix: "ABC1", nextSeq: 1 } });
+    expect((await request(await registrationOn(db, c, { email: "d@example.com" }))).number).toBe("ABC12026-001");
+    expect((await allInvoices()).map((i) => i.prefix)).toEqual(["MSL", "MSL", "ABC1"]);
+  });
+
   test("Review Focus 1: the save takes the number lock before it reads the setting and the series' highest, and before it writes; a refused field touches nothing", async () => {
     const log = await useLoggedDb();
     expect((await saveInvoiceSettings(db, VALID, NOW)).ok).toBe(true);
@@ -340,6 +356,8 @@ describe("markInvoicePaid: „Märgi tasutuks“ adds the amount (§6.4)", () =>
     expect(infoLog()).toContain(`[invoices] invoice ${inv.id}: marked paid`);
   });
 
+  // PGlite runs one transaction at a time, so this race cannot fail here: the locks it relies on are proven by the query log ("the order of the
+  // locks" below: lockForPayment, then the invoice FOR UPDATE, before the paid sum and the invoice are written). Task 7 races on real Postgres.
   test("Review Focus 1: two marks at the same moment — one is ok, the other notUnpaid, and the amount is added once", async () => {
     const c = await contactCourse(db);
     const r = await registrationOn(db, c);
@@ -361,6 +379,40 @@ describe("markInvoicePaid: „Märgi tasutuks“ adds the amount (§6.4)", () =>
     const inv = await request(r);
     expect(await markInvoicePaid(db, inv.id, { paidAt: PAID_AT, method: "card" }, NOW)).toEqual({ ok: true, invoice: expect.objectContaining({ status: "paid" }), full: true });
     expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "awaiting_prepayment" });
+  });
+
+  test("R11: an odd price — „Ettemaks 50%“ is the site's own prepayment (rounded up), so once paid it confirms at 50 %; the rest is what is left", async () => {
+    const c = await contactCourse(db);
+    await db.update(courses).set({ priceGroup: 35001 }).where(eq(courses.id, c.course.id));
+    const r = await registrationOn(db, c);
+    await ready();
+    const inv = await request(r);
+    expect(inv.amountCents).toBe(17501);
+    expect((await markInvoicePaid(db, inv.id, { paidAt: PAID_AT, method: "bank" }, NOW)).ok).toBe(true);
+    expect(await registration(r.id)).toMatchObject({ paidCents: 17501, status: "confirmed" });
+    expect((await request(r, "balance")).amountCents).toBe(17500);
+  });
+
+  test("the date and the way are checked: a date that is no date or after today (Tallinn), a way that is not bank, cash or card — invalid, nothing changed", async () => {
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c);
+    await ready();
+    const inv = await request(r);
+    // NOW is 16.10.2026 12:00 in Tallinn: its last minute is 23:59 (20:59 UTC), the next day begins at 21:00 UTC
+    for (const input of [
+      { paidAt: new Date("nope"), method: "bank" },
+      { paidAt: new Date("2026-10-16T21:00:00Z"), method: "bank" },
+      { paidAt: PAID_AT, method: "montonio" },
+      { paidAt: PAID_AT, method: "cheque" },
+      { paidAt: "2026-10-15", method: "bank" },
+    ]) expect(await markInvoicePaid(db, inv.id, input as never, NOW), JSON.stringify(input)).toEqual({ ok: false, error: "invalid" });
+    expect(await invoiceForAdmin(db, inv.id)).toMatchObject({ status: "unpaid", paidAt: null });
+    expect(await registration(r.id)).toMatchObject({ paidCents: 0 });
+    // the receipt's date is held to the same day
+    expect(await createInvoice(db, r.id, { kind: "balance", mode: "receipt", paidAt: new Date("2026-10-16T21:00:00Z"), method: "cash" }, NOW)).toEqual({ ok: false, error: "invalid" });
+    // later today is today
+    const tonight = new Date("2026-10-16T20:59:00Z");
+    expect(await markInvoicePaid(db, inv.id, { paidAt: tonight, method: "cash" }, NOW)).toMatchObject({ ok: true, invoice: { paidAt: tonight } });
   });
 });
 
@@ -390,14 +442,35 @@ describe("undoInvoicePaid: „Võta tasumine tagasi“ (D6)", () => {
     expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
   });
 
-  test("a receipt's mark added nothing: undone, the invoice is unpaid and Laekunud summa is unchanged; a Montonio invoice is notManual", async () => {
+  test("R10: a receipt never asked for money, so its undo cancels it — its number kept, Laekunud summa unchanged, gone from her reads, never marked paid again (no money counted twice)", async () => {
     const c = await contactCourse(db);
-    const r = await registrationOn(db, c, { paidCents: 17500, status: "confirmed" });
+    const [kati] = await db.insert(clients).values({ email: "kati@example.com", name: "Kati Tamm" }).returning();
+    const r = await registrationOn(db, c, { paidCents: 17500, status: "confirmed", clientId: kati.id });
     await ready();
     const receipt = await createInvoice(db, r.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "bank" }, NOW);
     if (!receipt.ok) throw new Error(receipt.error);
-    expect(await undoInvoicePaid(db, receipt.invoice.id, NOW)).toMatchObject({ ok: true, invoice: { status: "unpaid", paidAt: null, paidMethod: null } });
+    expect(await invoicesOfClient(db, kati.id)).toHaveLength(1);
+    const later = new Date(NOW.getTime() + 60_000);
+    expect(await undoInvoicePaid(db, receipt.invoice.id, later)).toEqual({
+      ok: true,
+      invoice: expect.objectContaining({ id: receipt.invoice.id, number: "MSL2026-001", status: "cancelled", cancelledAt: later, paidAt: null, paidMethod: null, paidAdds: false }),
+    });
     expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
+    expect(await invoiceForStudent(db, kati.id, receipt.invoice.id)).toBeNull();
+    expect(await invoicesOfClient(db, kati.id)).toEqual([]);
+    // the wrong tap's way back: no „Märgi tasutuks" on it (that would add the same money again), no second undo
+    expect(await markInvoicePaid(db, receipt.invoice.id, { paidAt: PAID_AT, method: "bank" }, NOW)).toEqual({ ok: false, error: "notUnpaid" });
+    expect(await undoInvoicePaid(db, receipt.invoice.id, NOW)).toEqual({ ok: false, error: "notPaid" });
+    expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
+    // the amount is open again: Maria issues the right receipt under a new number
+    const right = await createInvoice(db, r.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW);
+    expect(right).toMatchObject({ ok: true, invoice: { number: "MSL2026-002", status: "paid", paidMethod: "cash" } });
+    expect(await registration(r.id)).toMatchObject({ paidCents: 17500 });
+  });
+
+  test("a Montonio invoice is notManual: the site never changes it", async () => {
+    const c = await contactCourse(db);
+    await ready();
     const other = await registrationOn(db, c, { email: "online@example.com" });
     const online = await settle(await pendingPayment(db, other));
     expect(online).toMatchObject({ paidMethod: "montonio" });
@@ -555,6 +628,23 @@ describe("a paid payment's invoice: invoiceForPaidPayment, markLinkedInvoicePaid
     expect(await invoiceForAdmin(db, inv.id)).toMatchObject({ status: "cancelled" });
   });
 
+  test("§6.2 never both: a payment with its own born-paid invoice never pays a linked one too, and a call again returns that invoice — no second one", async () => {
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c);
+    await ready();
+    const p = await pendingPayment(db, r);
+    const own = await settle(p);
+    expect(own).toMatchObject({ number: "MSL2026-001", paymentId: p.id });
+    // an unpaid invoice of the same registration and sum, named as if the payment had been started for it
+    const rest = await request(r, "balance");
+    const [paid] = await db.select().from(payments).where(eq(payments.id, p.id));
+    for (const payment of [paid, { ...paid, invoiceId: rest.id }]) {
+      expect(await db.transaction((tx) => invoiceForPaidPayment(tx, payment, NOW))).toMatchObject({ id: own!.id });
+    }
+    expect(await invoiceForAdmin(db, rest.id)).toMatchObject({ status: "unpaid", paidAt: null });
+    expect((await allInvoices()).map((i) => i.number)).toEqual(["MSL2026-001", "MSL2026-002"]);
+  });
+
   test("the invoice the payment was started for was cancelled meanwhile: the payment gets its own born-paid invoice, so its money is invoiced once", async () => {
     const c = await contactCourse(db);
     const r = await registrationOn(db, c);
@@ -668,24 +758,40 @@ describe("Review Focus 1: the order of the locks (Global Constraints): the regis
     expect(log.some((e) => /pg_advisory/.test(e.query))).toBe(false);
   });
 
-  test("markInvoicePaid, undoInvoicePaid, cancelInvoice: the session and the registration, then the invoice FOR UPDATE; no number lock", async () => {
+  test("markInvoicePaid, undoInvoicePaid, cancelInvoice: the session and the registration, then the invoice FOR UPDATE, and only then the paid sum and the invoice written; no number lock", async () => {
     const log = await useLoggedDb();
     const c = await contactCourse(db);
     const r = await registrationOn(db, c);
     await ready();
     const inv = await request(r);
-    for (const run of [
-      () => markInvoicePaid(db, inv.id, { paidAt: PAID_AT, method: "bank" }, NOW),
-      () => undoInvoicePaid(db, inv.id, NOW),
-      () => cancelInvoice(db, inv.id, NOW),
-    ]) {
+    for (const [name, run, writesSum] of [
+      ["mark", () => markInvoicePaid(db, inv.id, { paidAt: PAID_AT, method: "bank" }, NOW), true],
+      ["undo", () => undoInvoicePaid(db, inv.id, NOW), true],
+      ["cancel", () => cancelInvoice(db, inv.id, NOW), false],
+    ] as const) {
       log.length = 0;
-      expect((await run()).ok).toBe(true);
+      expect((await run()).ok, name).toBe(true);
       const p = at(log);
-      expect(p.sessionLock).toBeGreaterThanOrEqual(0);
-      expect([p.sessionLock < p.registrationLock, p.registrationLock < p.invoiceLock]).toEqual([true, true]);
-      expect(p.numberLock).toBe(-1);
+      expect(p.sessionLock, name).toBeGreaterThanOrEqual(0);
+      expect([p.sessionLock < p.registrationLock, p.registrationLock < p.invoiceLock, p.invoiceLock < p.invoiceWrite], name).toEqual([true, true, true]);
+      // the mark's addRegistrationPayment and the undo's take-back write the paid sum after the invoice's lock, before the invoice
+      if (writesSum) expect([p.invoiceLock < p.paidSumWrite, p.paidSumWrite < p.invoiceWrite], name).toEqual([true, true]);
+      else expect(p.paidSumWrite, name).toBe(-1);
+      expect(p.numberLock, name).toBe(-1);
     }
+  });
+
+  test("an e-course's catch-up: no registration to lock — the payment FOR UPDATE, the number lock, the setting", async () => {
+    const log = await useLoggedDb();
+    const { payment } = await ecoursePurchase();
+    await settle(payment);
+    await ready();
+    log.length = 0;
+    expect((await catchUpInvoice(db, payment.id, NOW)).ok).toBe(true);
+    const p = at(log);
+    expect([p.sessionLock, p.registrationLock]).toEqual([-1, -1]);
+    expect(p.paymentLock).toBeGreaterThanOrEqual(0);
+    expect([p.paymentLock < p.numberLock, p.numberLock < p.settingRead, p.settingRead < p.written, p.written < p.settingWrite]).toEqual([true, true, true, true]);
   });
 
   test("catchUpInvoice: the session and the registration, the payment FOR UPDATE, the number lock, the setting", async () => {

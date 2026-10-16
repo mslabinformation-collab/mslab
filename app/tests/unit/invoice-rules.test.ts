@@ -6,6 +6,7 @@ import {
   invoiceSeq, invoiceStatusText, openAmounts, paidMethodText, partText, readInvoiceSettings, sellerReady, vatSplit,
   type InvoiceKind, type InvoiceStatus,
 } from "@/domain/invoice";
+import { prepaymentDue, registrationStatusAfterPayment } from "@/domain/registration";
 
 // The invoice's pure rules (invoices, Task 1; spec §2 D2–D8, §6): the number and its series, the VAT split, the euro text, the amounts still
 // open on a registration, the kind of an online payment's invoice, the stored setting read defensively, the download headers and the CSV.
@@ -127,16 +128,23 @@ describe("openAmounts: what is still to invoice on a registration (D5)", () => {
     expect(openAmounts(full, [inv("full", "paid", 35000)])).toEqual([]);
     expect(openAmounts(full, [inv("full", "cancelled", 35000)])).toEqual([wholeSum]);
   });
-  test("an odd price: the prepayment is half rounded down to the cent, the rest is what is left", () => {
-    const odd = { priceCents: 17501, paymentChoice: "half" } as const;
+  test("R11, an odd price: the prepayment is the site's own (prepaymentDue: half rounded up to the cent, so a paid one makes 50 %), the rest is what is left", () => {
+    const odd = { priceCents: 35001, paymentChoice: "half" } as const;
     expect(openAmounts(odd, [])).toEqual([
-      { kind: "prepayment", cents: 8750, part: "Ettemaks 50%" },
-      { kind: "full", cents: 17501, part: "Kogu summa (100%)" },
+      { kind: "prepayment", cents: 17501, part: "Ettemaks 50%" },
+      { kind: "full", cents: 35001, part: "Kogu summa (100%)" },
     ]);
-    expect(openAmounts(odd, [inv("prepayment", "paid", 8750)])).toEqual([{ kind: "balance", cents: 8751, part: "Jääk 50%" }]);
+    expect(openAmounts(odd, [])[0].cents).toBe(prepaymentDue(35001, "half"));
+    expect(openAmounts(odd, [inv("prepayment", "paid", 17501)])).toEqual([{ kind: "balance", cents: 17500, part: "Jääk 50%" }]);
+    // a paid prepayment is 50 % by the registration's own rule
+    expect(registrationStatusAfterPayment({ status: "awaiting_prepayment", paidCents: openAmounts(odd, [])[0].cents }, 35001)).toBe("confirmed");
   });
-  test("a price too small to halve offers no zero prepayment", () => {
-    expect(openAmounts({ priceCents: 1, paymentChoice: "half" }, [])).toEqual([{ kind: "full", cents: 1, part: "Kogu summa (100%)" }]);
+  test("a one-cent price: its half rounds up to the whole cent, so no rest is left; no price, nothing", () => {
+    expect(openAmounts({ priceCents: 1, paymentChoice: "half" }, [])).toEqual([
+      { kind: "prepayment", cents: 1, part: "Ettemaks 50%" },
+      { kind: "full", cents: 1, part: "Kogu summa (100%)" },
+    ]);
+    expect(openAmounts({ priceCents: 1, paymentChoice: "half" }, [inv("prepayment", "unpaid", 1)])).toEqual([]);
     expect(openAmounts({ priceCents: 0, paymentChoice: "half" }, [])).toEqual([]);
   });
 });
