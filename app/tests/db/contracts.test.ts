@@ -1,8 +1,12 @@
+import { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
 import { readSetting } from "@/db/queries/public";
+import * as schema from "@/db/schema";
 import { clients, contracts, courseAccess, courses, courseSessions, pages, payments, registrations, type Contract, type Registration } from "@/db/schema";
 import { CONTRACT_CONTACT_KEY, CONTRACT_CONTACT_VERSION_KEY, type ContractFields } from "@/domain/contract";
 import { TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
@@ -13,12 +17,13 @@ import {
 } from "@/server/contracts";
 import { readPdf } from "../pdf-read";
 import { makeTestDb } from "./helpers";
-import { contactCourse, loggedDb, registrationOn } from "./payments-fixtures";
+import { contactCourse, registrationOn } from "./payments-fixtures";
 
 // The contracts' server (contracts, Task 3; spec D2–D7, §3–§6) against a real (PGlite) database: the frozen contract of a registration and of an
-// e-course access (the filled text, the parties, the course, the session, the price), asking again and superseding under the row's lock, the
-// reads of the student and of Maria, the contract texts of Seaded (the contact text, its version bumped only by a change; the public terms
-// as the text until Maria writes hers) and the PDF. The order of the locks is read off drizzle's query log, as the invoices' tests do.
+// e-course access (the filled text, the parties, the course in the contract's language, the session, the price), asking again and superseding
+// under the row's lock, the reads of the student and of Maria, the contract texts of Seaded (the contact text, its version bumped only by a
+// change; the public terms as the text until Maria writes hers) and the PDF. The order of the locks, and of the version before the text, is read
+// off drizzle's query log, as the invoices' tests do. Logs carry ids only: this module logs nothing, and every test asserts it.
 
 const NOW = new Date("2026-10-17T09:00:00Z");
 const LATER = new Date("2026-10-18T09:00:00Z");
@@ -40,12 +45,32 @@ type Texts = { title: { et: string; ru?: string }; body: { et: string; ru?: stri
 /** The e-course text (course_terms), as the seed stores it. */
 const ECOURSE = { title: { et: "E-koolituse tingimused", ru: "Условия онлайн-обучения" }, body: { et: "Tere {nimi}, hind {hind}.", ru: "Здравствуйте, {nimi}, цена {hind}." } };
 
+const CONSOLE = ["log", "info", "warn", "error", "debug"] as const;
 let db: Db;
 beforeEach(async () => {
   db = await makeTestDb();
-  for (const method of ["info", "warn", "error"] as const) vi.spyOn(console, method).mockImplementation(() => {});
+  for (const method of CONSOLE) vi.spyOn(console, method);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  // the module logs nothing: not an id, not a name, not an amount (the spies pass anything through, so that it would show)
+  for (const method of CONSOLE) expect(console[method], `console.${method}`).not.toHaveBeenCalled();
+  vi.restoreAllMocks();
+});
+
+type LogEntry = { query: string; params: unknown[] };
+/** A fresh migrated database that records every query it runs (drizzle's logger); it replaces `db`, which the helpers below write through. */
+async function useLoggedDb(): Promise<LogEntry[]> {
+  const log: LogEntry[] = [];
+  const logged: Db = drizzle(new PGlite(), { schema, logger: { logQuery: (query: string, params: unknown[]) => void log.push({ query, params }) } });
+  await migrate(logged, { migrationsFolder: "./drizzle" });
+  db = logged;
+  return log;
+}
+/** Where in a query log the first statement matching `re` runs (-1: none); `key`: the statement names this key (a setting's or a page's) among its parameters. */
+const at = (log: LogEntry[], re: RegExp, key?: string): number => log.findIndex((e) => re.test(e.query) && (key === undefined || e.params.includes(key)));
+const count = (log: LogEntry[], re: RegExp, key?: string): number => log.filter((e) => re.test(e.query) && (key === undefined || e.params.includes(key))).length;
+const SETTING = /^select .* from "settings"/;
+const PAGE = /^select .* from "pages"/;
 
 const writePage = async (key: string, title: { et: string; ru?: string }, body: { et: string; ru?: string }) => {
   await db.insert(pages).values({ key, title, body }).onConflictDoUpdate({ target: pages.key, set: { title, body } });
@@ -73,8 +98,7 @@ const registrationRow = async (id: number) => (await db.select().from(registrati
 async function accept(r: Registration, over: { via?: "form" | "account"; now?: Date } = {}): Promise<Contract> {
   return db.transaction(async (tx) => {
     const f = (await registrationContractFields(tx, r.id))!;
-    const template = await contractTemplate(tx, "contact", f.locale);
-    return contractForRegistration(tx, { registrationId: r.id, clientId: r.clientId, courseId: r.courseId, template, fields: f.fields, prepaymentText: f.prepaymentText, via: over.via ?? "form", now: over.now ?? NOW });
+    return contractForRegistration(tx, { registrationId: r.id, clientId: r.clientId, courseId: r.courseId, template: f.template, fields: f.fields, prepaymentText: f.prepaymentText, via: over.via ?? "form", now: over.now ?? NOW });
   });
 }
 
@@ -95,10 +119,10 @@ type Tpl = { version: string; locale: "et" | "ru"; title: string; body: string }
 const TEMPLATE_V1: Tpl = { version: "2026-10-01T00:00:00.000Z", locale: "et", title: "E-koolituse tingimused", body: "Tere {nimi}, hind {hind}." };
 const TEMPLATE_V2: Tpl = { ...TEMPLATE_V1, version: "2026-10-10T00:00:00.000Z", body: "Uus tekst, {nimi}." };
 
-/** A contract of the access, as the terms gate or the purchase makes it. */
+/** A contract of the access, as the terms gate or the purchase makes it (the fields in the language of the text it brings). */
 async function acceptAccess(a: { access: { id: number; courseId: number; clientId: number } }, over: { template?: Tpl; via?: "purchase" | "terms"; paymentId?: number | null; now?: Date } = {}) {
   return db.transaction(async (tx) => {
-    const fields = (await accessContractFields(tx, a.access.id, over.paymentId))!;
+    const fields = (await accessContractFields(tx, a.access.id, over.paymentId, (over.template ?? TEMPLATE_V1).locale))!;
     return contractForAccess(tx, {
       accessId: a.access.id, clientId: a.access.clientId, courseId: a.access.courseId, paymentId: over.paymentId, snapshotOrTemplate: over.template ?? TEMPLATE_V1, fields, via: over.via ?? "terms", now: over.now ?? NOW,
     });
@@ -153,6 +177,7 @@ describe("a registration's contract (D1, D3)", () => {
       fields: { school: { company: "MS LAB", registryCode: "", address: "" }, student: { name: "Mari Mänd", email: "mari@example.com" }, course: "Hinnata koolitus", session: "", price: "", payment: "100% kohe" },
       prepaymentText: "",
       locale: "et",
+      template: { version: NOW.toISOString(), locale: "et", title: CONTACT.title.et, body: CONTACT.body.et },
     });
     expect((await accept(r)).body).toContain("Toimumine: . Hind , ettemaks . {tundmatu}");
   });
@@ -183,19 +208,35 @@ describe("a registration's contract (D1, D3)", () => {
     expect(await registrationContractFields(db, 999)).toBeNull();
   });
 
-  test("D6: a Russian registration gets the Russian contract and payment words when the Russian text exists; an Estonian-only text gives an Estonian contract, payment words too", async () => {
+  test("D6, M-1: a Russian registration gets the Russian contract, the payment words and the course's name in Russian when the Russian text exists; an Estonian-only text gives an Estonian contract all through", async () => {
     await saveContact(CONTACT);
     const r = await registrationOn(db, await contactCourse(db), { locale: "ru" });
     const ru = (await registrationContractFields(db, r.id))!;
-    expect(ru).toMatchObject({ locale: "ru", fields: { payment: "50% при регистрации + 50% в день обучения", course: "Kulmumeistri baaskoolitus" } });
+    expect(ru).toMatchObject({
+      locale: "ru", fields: { payment: "50% при регистрации + 50% в день обучения", course: "Базовый курс бровиста" }, template: { locale: "ru", title: "Договор очного обучения", body: CONTACT.body.ru },
+    });
     const made = await accept(r);
-    expect(made).toMatchObject({ locale: "ru", title: "Договор очного обучения" });
-    expect(made.body).toContain("Ученик Kati Tamm (kati@example.com) записывается на курс Kulmumeistri baaskoolitus.");
+    expect(made).toMatchObject({ locale: "ru", title: "Договор очного обучения", fields: { course: "Базовый курс бровиста" } });
+    expect(made.body).toContain("Ученик Kati Tamm (kati@example.com) записывается на курс Базовый курс бровиста.");
 
     await saveContact(CONTACT_ET, LATER);
     const et = (await registrationContractFields(db, r.id))!;
-    expect(et).toMatchObject({ locale: "et", fields: { payment: "50% registreerimisel + 50% koolituspäeval" } });
-    expect(await accept(r, { via: "account", now: LATER })).toMatchObject({ locale: "et", title: "Kontaktkoolituse leping" });
+    expect(et).toMatchObject({ locale: "et", fields: { payment: "50% registreerimisel + 50% koolituspäeval", course: "Kulmumeistri baaskoolitus" } });
+    const estonian = await accept(r, { via: "account", now: LATER });
+    expect(estonian).toMatchObject({ locale: "et", title: "Kontaktkoolituse leping", fields: { course: "Kulmumeistri baaskoolitus" } });
+    expect(estonian.body).toContain("registreerub koolitusele Kulmumeistri baaskoolitus.");
+  });
+
+  test("M-1: an Estonian registration, and a Russian contract of a course with no Russian title, name the course in Estonian", async () => {
+    await saveContact(CONTACT);
+    const c = await contactCourse(db);
+    const et = await registrationOn(db, c, { locale: "et" });
+    expect((await registrationContractFields(db, et.id))!.fields.course).toBe("Kulmumeistri baaskoolitus");
+    await db.update(courses).set({ title: { et: "Kulmumeistri baaskoolitus" } }).where(eq(courses.id, c.course.id));
+    const ru = await registrationOn(db, c, { locale: "ru", email: "ru@example.com" });
+    expect(await registrationContractFields(db, ru.id)).toMatchObject({ locale: "ru", fields: { course: "Kulmumeistri baaskoolitus" } });
+    await db.update(courses).set({ title: { et: "Kulmumeistri baaskoolitus", ru: "  " } }).where(eq(courses.id, c.course.id));
+    expect((await registrationContractFields(db, ru.id))!.fields.course).toBe("Kulmumeistri baaskoolitus");
   });
 });
 
@@ -241,7 +282,9 @@ describe("asking again and superseding (D4)", () => {
     expect((await contractsOfRegistration(db, r.id)).map((x) => x.id)).toEqual([second.id, first.id]);
   });
 
-  test("Review Focus 4: „Kinnitan“ twice at once, and Maria asking while it is accepted, leave one current contract; the others are superseded", async () => {
+  // PGlite runs one transaction at a time, so these run one after the other here and the race itself cannot fail: the locks are proven by the query
+  // log ("the registration's row is locked …" below), the final state by the partial unique index (the next test).
+  test("Review Focus 4: „Kinnitan“ twice, and Maria asking, started together, leave one current contract; the others are superseded", async () => {
     await saveContact();
     const r = await registrationOn(db, await contactCourse(db), { clientId: (await client()).id });
     await accept(r);
@@ -265,18 +308,16 @@ describe("asking again and superseding (D4)", () => {
   });
 
   test("the registration's row is locked FOR UPDATE before the old contract is superseded, the new one inserted and the flag cleared", async () => {
-    const logged = await loggedDb();
-    db = logged.db;
+    const log = await useLoggedDb();
     await saveContact();
     const r = await registrationOn(db, await contactCourse(db), { clientId: (await client()).id });
     await accept(r);
-    logged.queries.length = 0;
+    log.length = 0;
     await accept(r, { via: "account", now: LATER });
-    const at = (re: RegExp) => logged.queries.findIndex((q) => re.test(q));
-    const lock = at(/^select 1 from registrations where id = [\s\S]*for update/);
-    const supersede = at(/^update "contracts"/);
-    const insert = at(/^insert into "contracts"/);
-    const clear = at(/^update "registrations"/);
+    const lock = at(log, /^select 1 from registrations where id = [\s\S]*for update/);
+    const supersede = at(log, /^update "contracts"/);
+    const insert = at(log, /^insert into "contracts"/);
+    const clear = at(log, /^update "registrations"/);
     expect(lock).toBeGreaterThanOrEqual(0);
     expect(lock).toBeLessThan(supersede);
     expect(supersede).toBeLessThan(insert);
@@ -284,15 +325,22 @@ describe("asking again and superseding (D4)", () => {
   });
 
   test("asking takes the registration's lock before it writes", async () => {
-    const logged = await loggedDb();
-    db = logged.db;
+    const log = await useLoggedDb();
     const r = await registrationOn(db, await contactCourse(db), { clientId: (await client()).id });
-    logged.queries.length = 0;
+    log.length = 0;
     await requestContract(db, r.id, NOW);
-    const lock = logged.queries.findIndex((q) => /from "registrations"[\s\S]*for update|^select 1 from registrations[\s\S]*for update/.test(q));
-    const write = logged.queries.findIndex((q) => /^update "registrations"/.test(q));
+    const lock = at(log, /from "registrations"[\s\S]*for update/);
+    const write = at(log, /^update "registrations"/);
     expect(lock).toBeGreaterThanOrEqual(0);
     expect(lock).toBeLessThan(write);
+  });
+
+  test("M-5: only a group registration can be asked (D4); an individual one is not found, and nothing is stored", async () => {
+    const c = await contactCourse(db);
+    const k = await client();
+    const individual = await registrationOn(db, c, { clientId: k.id, kind: "individual", courseSessionId: null });
+    expect(await requestContract(db, individual.id, NOW)).toEqual({ ok: false, error: "notFound" });
+    expect((await registrationRow(individual.id)).contractRequestedAt).toBeNull();
   });
 });
 
@@ -344,24 +392,75 @@ describe("an e-course access's contract (D1)", () => {
     expect(gate.body).toBe("Kati Tamm kati@example.com Kulmumeistri e-koolitus ");
   });
 
+  test("R4: a purchase always freezes its own contract with the paid price: after a free grant's gate contract of the same version it supersedes that one", async () => {
+    const e = await ecourse({ paid: true });
+    const gate = (await acceptAccess(e))!;
+    expect(gate).toMatchObject({ acceptedVia: "terms", paymentId: null, fields: { price: "" } });
+    const shown = { ...TEMPLATE_V1, body: `Tere Kati Tamm, hind 175,00${NBSP}€.` };
+    const bought = (await acceptAccess(e, { via: "purchase", paymentId: e.payment!.id, template: shown, now: LATER }))!;
+    expect(bought).toMatchObject({ acceptedVia: "purchase", paymentId: e.payment!.id, version: TEMPLATE_V1.version, body: shown.body, fields: { price: `175,00${NBSP}€` }, acceptedAt: LATER, supersededAt: null });
+    expect(await allContracts()).toEqual([{ ...gate, supersededAt: LATER }, bought]);
+    // and the gate asks nothing more of her: the purchase is the current contract of that version
+    expect(await acceptAccess(e, { now: LATEST })).toBeNull();
+  });
+
+  test("R4: a renewal on the same access row, the text unchanged, freezes the second payment's contract and supersedes the first purchase's", async () => {
+    const e = await ecourse({ paid: true });
+    const [second] = await db
+      .insert(payments)
+      .values({ reference: "MSLAB-L2", kind: "ecourse", courseId: e.course.id, clientId: e.client.id, email: e.client.email, name: e.client.name, amountCents: 9000, status: "paid", paidAt: LATER })
+      .returning();
+    const shown = (price: string) => ({ ...TEMPLATE_V1, body: `Hind ${price}.` });
+    const first = (await acceptAccess(e, { via: "purchase", paymentId: e.payment!.id, template: shown("175"), now: NOW }))!;
+    const renewal = (await acceptAccess(e, { via: "purchase", paymentId: second.id, template: shown("90"), now: LATER }))!;
+    expect(renewal).toMatchObject({ paymentId: second.id, fields: { price: `90,00${NBSP}€` }, body: "Hind 90.", supersededAt: null });
+    expect(await allContracts()).toEqual([{ ...first, supersededAt: LATER }, renewal]);
+  });
+
+  test("M-1: the course's name follows the contract's language: Russian for a Russian contract when the course has a Russian title, else Estonian", async () => {
+    const e = await ecourse();
+    expect((await accessContractFields(db, e.access.id))!.course).toBe("Kulmumeistri e-koolitus");
+    expect((await accessContractFields(db, e.access.id, null, "et"))!.course).toBe("Kulmumeistri e-koolitus");
+    expect((await accessContractFields(db, e.access.id, null, "ru"))!.course).toBe("Онлайн-курс бровиста");
+    const ru = await acceptAccess(e, { template: { ...TEMPLATE_V1, locale: "ru", body: "{koolitus}" } });
+    expect(ru).toMatchObject({ locale: "ru", body: "Онлайн-курс бровиста", fields: { course: "Онлайн-курс бровиста" } });
+    await db.update(courses).set({ title: { et: "Kulmumeistri e-koolitus" } }).where(eq(courses.id, e.course.id));
+    expect((await accessContractFields(db, e.access.id, null, "ru"))!.course).toBe("Kulmumeistri e-koolitus");
+  });
+
   test("an unknown access has no fields", async () => {
     expect(await accessContractFields(db, 999)).toBeNull();
   });
 
-  test("the access row is locked FOR UPDATE before the old contract is superseded and the new one inserted", async () => {
-    const logged = await loggedDb();
-    db = logged.db;
+  test("the access row is locked FOR UPDATE (completion.ts lockAccess) before the old contract is superseded and the new one inserted", async () => {
+    const log = await useLoggedDb();
     const e = await ecourse();
     await acceptAccess(e);
-    logged.queries.length = 0;
+    log.length = 0;
     await acceptAccess(e, { template: TEMPLATE_V2, now: LATER });
-    const at = (re: RegExp) => logged.queries.findIndex((q) => re.test(q));
-    const lock = at(/from course_access where id = [\s\S]*for update/);
-    const supersede = at(/^update "contracts"/);
-    const insert = at(/^insert into "contracts"/);
+    const lock = at(log, /from "course_access"[\s\S]*for update/);
+    const supersede = at(log, /^update "contracts"/);
+    const insert = at(log, /^insert into "contracts"/);
     expect(lock).toBeGreaterThanOrEqual(0);
     expect(lock).toBeLessThan(supersede);
     expect(supersede).toBeLessThan(insert);
+  });
+
+  test("M-3: the ids the caller passes must belong together: another client's or another course's access, and an access that is gone, write nothing and throw", async () => {
+    const e = await ecourse();
+    const other = await client("mari@example.com", "Mari Mänd");
+    const [course2] = await db
+      .insert(courses)
+      .values({ slug: "teine", type: "e_learning", level: "basic", title: { et: "Teine" }, summary: { et: "" }, body: { et: "" }, published: true, price: 9000 })
+      .returning();
+    const fields = (await accessContractFields(db, e.access.id))!;
+    const input = { accessId: e.access.id, clientId: e.client.id, courseId: e.course.id, snapshotOrTemplate: TEMPLATE_V1, fields, via: "terms" as const, now: NOW };
+    const refused = (over: Partial<typeof input>) => db.transaction((tx) => contractForAccess(tx, { ...input, ...over }));
+    await expect(refused({ clientId: other.id })).rejects.toThrow(`access ${e.access.id} does not belong to client ${other.id} and course ${e.course.id}`);
+    await expect(refused({ courseId: course2.id })).rejects.toThrow(`access ${e.access.id} does not belong to client ${e.client.id} and course ${course2.id}`);
+    await expect(refused({ accessId: 999 })).rejects.toThrow("access 999 does not belong");
+    expect(await allContracts()).toEqual([]);
+    await expect(refused({})).resolves.toMatchObject({ accessId: e.access.id });
   });
 
   test("two accesses are two contracts; the partial unique index is the backstop for one access", async () => {
@@ -422,6 +521,47 @@ describe("the templates (D2)", () => {
     expect(await contractTemplate(db, "ecourse", "ru")).toEqual({ version: "2026-10-12T08:00:00.000Z", locale: "ru", title: "Условия онлайн-обучения", body: "Здравствуйте, {nimi}, цена {hind}." });
   });
 
+  // client-data.ts: „The version is read BEFORE the text: an admin save that lands in between then pairs the old version with the new text (the next
+  // visit shows the notice again), never a new version with text the student did not see.“ The same rule for both texts, read off the query log.
+  test("I-1: the contact version is read before the text, each once, in the registration's read too — a save in between can give the old version the new text, never the new version the old text", async () => {
+    const log = await useLoggedDb();
+    await saveContact();
+    const r = await registrationOn(db, await contactCourse(db));
+    log.length = 0;
+
+    const f = (await registrationContractFields(db, r.id))!;
+    expect(f.template).toEqual({ version: NOW.toISOString(), locale: "et", title: CONTACT.title.et, body: CONTACT.body.et });
+    expect(count(log, SETTING, CONTRACT_CONTACT_VERSION_KEY)).toBe(1);
+    expect(count(log, PAGE)).toBe(1); // one read of the text for the fields and the template: the caller reads none
+    expect(at(log, PAGE, CONTRACT_CONTACT_KEY)).toBeGreaterThan(at(log, SETTING, CONTRACT_CONTACT_VERSION_KEY));
+    expect(at(log, SETTING, CONTRACT_CONTACT_VERSION_KEY)).toBeGreaterThanOrEqual(0);
+
+    log.length = 0;
+    await contractTemplate(db, "contact", "ru");
+    expect(at(log, PAGE, CONTRACT_CONTACT_KEY)).toBeGreaterThan(at(log, SETTING, CONTRACT_CONTACT_VERSION_KEY));
+    expect(at(log, SETTING, CONTRACT_CONTACT_VERSION_KEY)).toBeGreaterThanOrEqual(0);
+  });
+
+  test("I-1: the public terms as the contract: the contact version, then Maria's page (absent), then the terms page whose version is of its own text; the e-course version before course_terms", async () => {
+    const log = await useLoggedDb();
+    await writePage("terms", { et: "Õppetingimused" }, { et: "Tingimuste tekst." });
+    await writePage(TERMS_PAGE_KEY, ECOURSE.title, ECOURSE.body);
+    log.length = 0;
+    await contractTemplate(db, "contact", "et");
+    const version = at(log, SETTING, CONTRACT_CONTACT_VERSION_KEY);
+    const own = at(log, PAGE, CONTRACT_CONTACT_KEY);
+    const terms = at(log, PAGE, "terms");
+    expect(version).toBeGreaterThanOrEqual(0);
+    expect(version).toBeLessThan(own);
+    expect(own).toBeLessThan(terms);
+    expect(count(log, PAGE, "terms")).toBe(1);
+
+    log.length = 0;
+    await contractTemplate(db, "ecourse", "et");
+    expect(at(log, SETTING, TERMS_VERSION_KEY)).toBeGreaterThanOrEqual(0);
+    expect(at(log, SETTING, TERMS_VERSION_KEY)).toBeLessThan(at(log, PAGE, TERMS_PAGE_KEY));
+  });
+
   test("the e-course text of a stored page that is not a text is an empty one; the contact text never uses course_terms", async () => {
     await db.insert(pages).values({ key: TERMS_PAGE_KEY, title: { et: "x" }, body: { et: 5 } as never });
     expect(await contractTemplate(db, "ecourse", "et")).toMatchObject({ title: "", body: "" });
@@ -465,6 +605,19 @@ describe("saveContractTexts (Seaded → Lepingud)", () => {
       expect(await saveContractTexts(db, raw, LATER)).toEqual({ ok: false, fields: { form: "invalid" } });
     }
     expect(await read()).toEqual(before);
+    expect(await readSetting(db, CONTRACT_CONTACT_VERSION_KEY)).toBe(NOW.toISOString());
+  });
+
+  test("M-6: the limits are Seaded's legal texts' (a title of 120, a text of 30 000 stand, one more is „tooLong“ by its field), and a raw string past 40 000, as Seaded's parts cap them, is refused before it is cleaned", async () => {
+    expect(await saveContractTexts(db, { title: { et: "t".repeat(120) }, body: { et: "b".repeat(30_000) } }, NOW)).toEqual({ ok: true });
+    expect((await read()).body.et).toHaveLength(30_000);
+    expect(await saveContractTexts(db, { title: { et: "t".repeat(121) }, body: { et: "b".repeat(30_001), ru: "r".repeat(30_001) } }, LATER)).toEqual({ ok: false, fields: { title: "tooLong", body: "tooLong" } });
+    expect(await saveContractTexts(db, { title: { et: "t", ru: "r".repeat(121) }, body: { et: "b" } }, LATER)).toEqual({ ok: false, fields: { title: "tooLong" } });
+    const wide = "x".repeat(40_001);
+    for (const raw of [{ title: { et: wide }, body: { et: "b" } }, { title: { et: "t" }, body: { et: wide } }, { title: { et: "t" }, body: { et: "b", ru: wide } }, { title: { et: "t", ru: wide }, body: { et: "b" } }]) {
+      expect(await saveContractTexts(db, raw, LATER)).toEqual({ ok: false, fields: { form: "invalid" } });
+    }
+    expect((await read()).body.et).toHaveLength(30_000);
     expect(await readSetting(db, CONTRACT_CONTACT_VERSION_KEY)).toBe(NOW.toISOString());
   });
 

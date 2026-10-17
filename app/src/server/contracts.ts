@@ -16,6 +16,7 @@ import { SITE_LIMITS } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
 import { toStorable } from "@/lib/to-storable";
 import { contentVersion } from "@/lib/version";
+import { lockAccess } from "./completion";
 import { Check } from "./edit-check";
 import { getInvoiceSettings } from "./invoices";
 
@@ -26,10 +27,15 @@ import { getInvoiceSettings } from "./invoices";
 // The locks. A contract is written inside the transaction of the act that accepts it (the registration's submit, settle's paid e-course, the terms
 // gate, the account's „Kinnitan“): contractForRegistration and contractForAccess take that `tx` and open none, so a failure of the act undoes the
 // contract with it. Each takes the lock of the row the contract belongs to, FOR UPDATE, before it supersedes the current contract and inserts the
-// new one: the registration's (db/queries/seats.ts lockRegistration) or the access's. The lock is the caller's own already when it holds it (a
-// transaction never waits for itself), and it is the last of the orders that other code takes: course_sessions → registrations → payments
-// (seats.ts), and settle's payment row → address → registrations … course_access. So no two writes wait for each other the other way round. The
-// partial unique indexes (contracts_current_registration, contracts_current_access) are the backstop: a second current contract is refused whatever
+// new one: the registration's (db/queries/seats.ts lockRegistration) or the access's (completion.ts lockAccess). A transaction never waits for a lock
+// it holds, so a caller that has the row already pays nothing. What the caller must keep, so that no two writes wait for each other the other way
+// round:
+// - contractForRegistration before any payment row lock of its transaction: the order of seats.ts is course_sessions → registrations → payments, and
+//   a transaction that holds a payment row must not then wait for a registration. The submit (its own new registration) and „Kinnitan“ (the
+//   registration alone) keep it.
+// - contractForAccess with the access row as the first row lock of the write about one access (completion.ts: „the first lock of every write about
+//   one access“), or after settle's own order: its payment row, the address lock, the rows linked to the address, course_access last.
+// The partial unique indexes (contracts_current_registration, contracts_current_access) are the backstop: a second current contract is refused whatever
 // the code does. Logs carry ids only (this module logs nothing).
 
 /** The public „Õppetingimused“ page (`pages` key `terms`): the contact contract's text until Maria writes hers (D2). */
@@ -67,20 +73,25 @@ async function versionOf(q: Q, key: string, fallback: string): Promise<string> {
 }
 
 /**
- * The text of a kind in both languages with its version, before a language is chosen.
- * - ecourse: the page `course_terms` and the terms gate's version (`courseTermsVersion`).
- * - contact: Maria's page `contract_contact` and its version setting; until she has written it (D2) the public „Õppetingimused“ text, whose version is
- *   of its text (a hash), so that an edit of it is another version for whoever compares versions (the account's „Kinnita leping“ refuses an
- *   acceptance of a text that was edited since it was shown) although nothing bumps a setting for it.
+ * The text of a kind in both languages with its version, before a language is chosen. The version is read BEFORE the text, as client-data.ts reads
+ * the terms' (versionThenText): a save of Maria's that lands in between then pairs the old version with the new text (the next acceptance of that
+ * version is refused and shown again), never a new version with the old text, which a student would accept unseen.
+ * - ecourse: the terms gate's version (`courseTermsVersion`), then the page `course_terms`.
+ * - contact: `contractContactVersion`, then Maria's page `contract_contact`; until she has written it (D2) the public „Õppetingimused“ text, whose
+ *   version is of its text (a hash of the very value returned, so the two can never come apart), so that an edit of it is another version for whoever
+ *   compares versions (the account's „Kinnita leping“ refuses an acceptance of a text that was edited since it was shown) although nothing bumps a
+ *   setting for it. A first save that lands between the version and the page gives Maria's text with "1", which no acceptance of the old text matches.
  * With no text at all the contract is empty rather than registering blocked (D2: never block registration).
  */
 async function storedTemplate(q: Q, kind: ContractKind): Promise<{ title: I18n; body: I18n; version: string }> {
   const none = { title: { et: "" }, body: { et: "" } };
   if (kind === "ecourse") {
-    return { ...((await pageTexts(q, TERMS_PAGE_KEY)) ?? none), version: await versionOf(q, TERMS_VERSION_KEY, DEFAULT_TERMS_VERSION) };
+    const version = await versionOf(q, TERMS_VERSION_KEY, DEFAULT_TERMS_VERSION);
+    return { ...((await pageTexts(q, TERMS_PAGE_KEY)) ?? none), version };
   }
+  const version = await versionOf(q, CONTRACT_CONTACT_VERSION_KEY, FIRST_CONTACT_VERSION);
   const own = await pageTexts(q, CONTRACT_CONTACT_KEY);
-  if (own) return { ...own, version: await versionOf(q, CONTRACT_CONTACT_VERSION_KEY, FIRST_CONTACT_VERSION) };
+  if (own) return { ...own, version };
   const terms = (await pageTexts(q, PUBLIC_TERMS_KEY)) ?? none;
   return { ...terms, version: `terms:${(await contentVersion(terms)).slice(0, 16)}` };
 }
@@ -99,14 +110,22 @@ export async function contractTemplate(q: Q, kind: ContractKind, locale: "et" | 
 
 // ---------- the fields ----------
 
+/** A course's name in the contract's language (D6): the Russian title for a Russian contract when the course has one, else the Estonian title. */
+const courseName = (title: I18n, locale: "et" | "ru"): string => (locale === "ru" && (title.ru ?? "").trim() ? (title.ru as string) : title.et);
+
 /**
- * What a contact registration's contract holds besides the text (D3), read from the registration, its course and its session: the school (Seaded →
- * Arve andmed), the student as she typed herself, the course's Estonian title, the session's date and place, the price (the group or the individual
- * price: registrationPrice) and the payment choice in words. `prepaymentText` is „Ettemaks“, the half the choice asks first (or the whole price), for
- * the placeholder. `locale` is the language the contract is made in (D6: the registration's, when that text exists in it, else Estonian), which the
- * payment words are in and which contractTemplate must be asked for. Null for an unknown registration.
+ * What a contact registration's contract is made of: its fields (D3), `prepaymentText` and the `template` it is made from, from one read of the
+ * registration and one read of the text, so that the language, the payment words, the course's name and the text agree and the caller reads none again.
+ * The fields come from the registration, its course and its session: the school (Seaded → Arve andmed), the student as she typed herself, the course's
+ * name in the contract's language, the session's date and place, the price (the group or the individual price: registrationPrice) and the payment
+ * choice in words. `prepaymentText` is „Ettemaks“, the half the choice asks first (or the whole price), for the placeholder. `locale` (the template's
+ * too) is the language the contract is made in (D6: the registration's, when that text exists in it, else Estonian). The template's version is read
+ * before its text (storedTemplate). Null for an unknown registration.
  */
-export async function registrationContractFields(q: Q, registrationId: number): Promise<{ fields: ContractFields; prepaymentText: string; locale: "et" | "ru" } | null> {
+export async function registrationContractFields(
+  q: Q,
+  registrationId: number,
+): Promise<{ fields: ContractFields; prepaymentText: string; locale: "et" | "ru"; template: ContractTemplate } | null> {
   const [row] = await q
     .select({ registration: registrations, course: courses, session: courseSessions })
     .from(registrations)
@@ -116,28 +135,31 @@ export async function registrationContractFields(q: Q, registrationId: number): 
     .limit(1);
   if (!row) return null;
   const { registration: r, course, session } = row;
-  const { locale } = await contractTemplate(q, "contact", r.locale === "ru" ? "ru" : "et");
+  const template = await contractTemplate(q, "contact", r.locale === "ru" ? "ru" : "et");
+  const { locale } = template;
   const price = registrationPrice(course, r.kind);
   return {
     fields: {
       school: schoolOf(await getInvoiceSettings(q, new Date())),
       student: { name: r.name, email: r.email },
-      course: course.title.et,
+      course: courseName(course.title, locale),
       session: sessionText(session),
       price: price === null ? "" : euro(price),
       payment: paymentText(r.paymentChoice, locale),
     },
     prepaymentText: price === null ? "" : euro(prepaymentDue(price, r.paymentChoice)),
     locale,
+    template,
   };
 }
 
 /**
- * What an e-course access's contract holds besides the text (D3): the school, the student (her account's name and e-mail), the course's Estonian
- * title, no session and no payment choice, and the price: the amount of the payment `paymentId` names (a purchase; settle calls it with the payment
- * it has just marked paid), empty for none, for a free grant and for a payment that is gone. Null for an unknown access.
+ * What an e-course access's contract holds besides the text (D3): the school, the student (her account's name and e-mail), the course's name in the
+ * contract's language (`locale`: the language of the text it goes with, the template's or the snapshot's; Estonian when omitted), no session and no
+ * payment choice, and the price: the amount of the payment `paymentId` names (a purchase; settle calls it with the payment it has just marked paid),
+ * empty for none, for a free grant and for a payment that is gone. Null for an unknown access.
  */
-export async function accessContractFields(q: Q, accessId: number, paymentId?: number | null): Promise<ContractFields | null> {
+export async function accessContractFields(q: Q, accessId: number, paymentId?: number | null, locale: "et" | "ru" = "et"): Promise<ContractFields | null> {
   const [row] = await q
     .select({ name: clients.name, email: clients.email, title: courses.title })
     .from(courseAccess)
@@ -154,7 +176,7 @@ export async function accessContractFields(q: Q, accessId: number, paymentId?: n
   return {
     school: schoolOf(await getInvoiceSettings(q, new Date())),
     student: { name: row.name, email: row.email },
-    course: row.title.et,
+    course: courseName(row.title, locale),
     session: "",
     price,
     payment: "",
@@ -204,10 +226,14 @@ export async function contractForRegistration(
 }
 
 /**
- * An e-course access's contract (D1): inserted as the access's current contract, `terms` (the terms gate) or `purchase` (settle's paid winner, with
- * `paymentId`). Null, and nothing written, when the access already has a current contract of this version (accepting the same text twice makes no
- * second contract); a current contract of another version is superseded by the new one. Runs in the caller's transaction, after its locks, and takes
- * the access's row lock (FOR UPDATE) first; it opens no transaction of its own.
+ * An e-course access's contract (D1), inserted as the access's current contract: `terms` (the terms gate) or `purchase` (settle's paid winner, with
+ * `paymentId`). Runs in the caller's transaction, after its locks, and opens none of its own. It takes the access's row lock (completion.ts
+ * lockAccess, FOR UPDATE) first and throws when the access is gone or is not `clientId`'s access to `courseId` (the ids the caller passes belong
+ * together; a contract is never written under the wrong owner).
+ * - `terms`: null, and nothing written, when the access already has a current contract of this version (accepting the same text twice makes no second
+ *   contract; a purchase's contract of that version satisfies the gate too). A current contract of another version is superseded.
+ * - `purchase` (ruling R4): always freezes its own contract with the paid price and supersedes the access's current one, whatever its version. One
+ *   access row serves a free grant followed by a purchase and a renewal, and each paid purchase is a contract of its own.
  *
  * `snapshotOrTemplate` is what the way says it is. A `purchase` brings the snapshot the cart showed (payments.contract_snapshot), which is filled
  * already (a value of it such as a name typed "{hind}" must not be filled a second time), so it is stored exactly as it is. A `terms` brings the
@@ -217,10 +243,13 @@ export async function contractForAccess(
   tx: Tx,
   input: { accessId: number; clientId: number; courseId: number; paymentId?: number | null; snapshotOrTemplate: ContractTemplate; fields: ContractFields; via: "purchase" | "terms"; now: Date },
 ): Promise<Contract | null> {
-  await tx.execute(sql`select 1 from course_access where id = ${input.accessId} for update`);
+  const access = await lockAccess(tx, input.accessId);
+  if (!access || access.clientId !== input.clientId || access.courseId !== input.courseId) {
+    throw new Error(`contracts: access ${input.accessId} does not belong to client ${input.clientId} and course ${input.courseId}`); // ids only
+  }
   const [current] = await tx.select({ id: contracts.id, version: contracts.version }).from(contracts).where(and(eq(contracts.accessId, input.accessId), isNull(contracts.supersededAt))).limit(1);
   const shown = input.snapshotOrTemplate;
-  if (current?.version === shown.version) return null;
+  if (input.via === "terms" && current?.version === shown.version) return null;
   if (current) await supersede(tx, eq(contracts.accessId, input.accessId), input.now);
   const values = contractValues(input.fields, "");
   const [row] = await tx
@@ -248,12 +277,13 @@ export type RequestContractResult = { ok: true } | { ok: false; error: "notFound
 /**
  * „Saada leping kinnitamiseks“ (D4): records that Maria asked, `contract_requested_at` = `now` (asking again moves it), so that the student's account
  * offers „Kinnita leping“ until she accepts. Only a registration linked to an account (`noAccount`: the drawer says so) and not cancelled (`cancelled`)
- * can be asked; `notFound` for an unknown id. Under the registration's row lock. The mail with the link is the action's.
+ * can be asked; `notFound` for an unknown id, and for an individual registration (D4 asks on a group registration and D1 puts individual courses out of
+ * scope: it is not one a contract is asked for). Under the registration's row lock. The mail with the link is the action's.
  */
 export async function requestContract(db: Db, registrationId: number, now: Date): Promise<RequestContractResult> {
   return db.transaction(async (tx): Promise<RequestContractResult> => {
-    const [r] = await tx.select({ clientId: registrations.clientId, status: registrations.status }).from(registrations).where(eq(registrations.id, registrationId)).for("update");
-    if (!r) return { ok: false, error: "notFound" };
+    const [r] = await tx.select({ kind: registrations.kind, clientId: registrations.clientId, status: registrations.status }).from(registrations).where(eq(registrations.id, registrationId)).for("update");
+    if (!r || r.kind !== "group") return { ok: false, error: "notFound" };
     if (r.clientId === null) return { ok: false, error: "noAccount" };
     if (r.status === "cancelled") return { ok: false, error: "cancelled" };
     await tx.update(registrations).set({ contractRequestedAt: now }).where(eq(registrations.id, registrationId));
@@ -296,7 +326,9 @@ export async function markContractSent(db: Db, id: number, now: Date): Promise<v
 
 // ---------- Seaded → Lepingud ----------
 
-const i18nInput = z.object({ et: z.string(), ru: z.string().optional() });
+/** The longest raw string taken before it is cleaned and checked against its limit: Seaded's parts cap every string at this (admin-site.ts `i18n`). */
+const RAW_MAX = 40_000;
+const i18nInput = z.object({ et: z.string().max(RAW_MAX), ru: z.string().max(RAW_MAX).optional() });
 const textsInput = z.object({ title: i18nInput, body: i18nInput });
 
 /** `f` as Postgres can store it (toStorable): a pasted control character never reaches the page or a contract. */
@@ -307,7 +339,7 @@ const sameText = (a: I18n, b: I18n): boolean => a.et === b.et && (a.ru ?? "") ==
  * Seaded → Lepingud „Salvesta“ (D2): the contact contract's title and text in both languages, `{ title: { et, ru? }, body: { et, ru? } }`, stored as
  * the page `contract_contact`. Both are texts of Maria's: trimmed, the Estonian one required (a Russian text without it is refused), within the
  * legal texts' limits (SITE_LIMITS.legalTitle, SITE_LIMITS.legal), a blank Russian one left out; the refusals name their field (`title`, `body`) with
- * the editors' codes ("required", "tooLong"), and anything that is not that shape is `form: "invalid"`. Nothing is stored when a field is refused.
+ * the editors' codes ("required", "tooLong"), and anything that is not that shape, or a string past RAW_MAX, is `form: "invalid"`. Nothing is stored when a field is refused.
  * The version (`contractContactVersion`, as `courseTermsVersion` is the e-course text's) moves to the time of the save only when the text or the title
  * changed, in the same transaction as the page, and never to the version already stored: the same text again keeps it. A first save is a change.
  */
