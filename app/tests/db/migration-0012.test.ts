@@ -15,12 +15,15 @@ import { migrationsThrough } from "./helpers";
 
 test("0012 adds invoices.footer, empty for the invoices already there, and the index payments_invoice; it only adds", async () => {
   const db = drizzle(new PGlite(), { schema });
-  const dir = migrationsThrough("0011_invoices");
-  try {
-    await migrate(db, { migrationsFolder: dir });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const through = async (tag: string) => {
+    const dir = migrationsThrough(tag);
+    try {
+      await migrate(db, { migrationsFolder: dir });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  await through("0011_invoices");
   // the code of 0011's rows (raw SQL: drizzle would name the column 0012 adds)
   await db.execute(sql`insert into courses (slug, type, level, title, summary, body, price_group) values ('k', 'contact', 'basic', '{"et":"K"}', '{"et":""}', '{"et":""}', 35000)`);
   const [{ id: courseId }] = await db.execute<{ id: number }>(sql`select id from courses where slug = 'k'`).then((r) => r.rows);
@@ -35,7 +38,7 @@ test("0012 adds invoices.footer, empty for the invoices already there, and the i
   await db.execute(sql`insert into payments (reference, kind, course_id, email, name, amount_cents, invoice_id) values ('MSLAB-L1', 'prepayment', ${courseId}, 'kati@example.test', 'Kati Kask', 17500, ${invoiceId})`);
   const columnsBefore = await db.execute<{ table_name: string; column_name: string }>(sql`select table_name, column_name from information_schema.columns where table_schema = 'public' order by table_name, column_name`);
 
-  await migrate(db, { migrationsFolder: "./drizzle" });
+  await through("0012_invoice_footer");
 
   // one column more, invoices.footer, text not null default '' — nothing removed, nothing else added
   const columnsAfter = await db.execute<{ table_name: string; column_name: string }>(sql`select table_name, column_name from information_schema.columns where table_schema = 'public' order by table_name, column_name`);
@@ -59,6 +62,9 @@ test("0012 adds invoices.footer, empty for the invoices already there, and the i
     sql`insert into invoices (number, prefix, year, seq, kind, amount_cents, line, seller, buyer, issued_at) select 'MSL2026-003', prefix, year, 3, kind, amount_cents, line, seller, buyer, issued_at from invoices where id = ${invoiceId} returning footer`,
   ).then((r) => r.rows);
   expect(none).toBe("");
+
+  // (the rest runs on the schema as it stands: drizzle's insert names every column of payments, among them payments.contract_snapshot, which migration 0013 adds)
+  await migrate(db, { migrationsFolder: "./drizzle" });
 
   // the index on payments.invoice_id, a plain one (an invoice may have been started for by more than one payment)
   const index = await db.execute<{ indexdef: string }>(sql`select indexdef from pg_indexes where tablename = 'payments' and indexname = 'payments_invoice'`);
