@@ -546,6 +546,12 @@ export const et = {
       lead: "Kinnitasid lepingu {date}.",
       attached: "Leping on lisatud.",
     },
+    // Maria's ask (server/account-mail.ts contractRequestMail, contracts Task 5, ruling R9; spec D4): „Saada leping kinnitamiseks“ mails the student a plain
+    // link to her account, where the card shows „Kinnita leping“. `subject` is R9's; `lead` is Draft for Dim's wording sheet. {course} is the course's name.
+    contractRequestMail: {
+      subject: "MS LAB leping kinnitamiseks",
+      lead: "Maria palub sul kinnitada lepingu koolituse „{course}“ jaoks.",
+    },
     // The e-course completion's mails to the student (server/account-mail.ts completionMail, phase e-course completion, spec §6): each kind
     // has its subject, its one line and its button, which opens the page (she signs in there when she must). {title} is the course, {n} the
     // points to fix. Maria's notes-only protocol of an e-course without points takes `protocolMail`'s texts. No mail holds a note or an answer.

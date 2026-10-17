@@ -23,6 +23,7 @@ import type { Mail, MailAttachment } from "./notify";
 // Maria's invoice (invoiceMail, invoices Task 5) is the same card again: the course, the amount, the due date and the bank details, the PDF attached.
 // The contract (contractMail, contracts Task 4, ruling R1) is the same card: the day she accepted it, the contract and its course, the PDF attached
 // with „Leping on lisatud.“; the registration's confirmation and the e-course's paid mail carry the same line when their caller attaches the PDF.
+// Maria's ask (contractRequestMail, contracts Task 5, ruling R9) is a short mail with a plain link to the account page, no login in it.
 // This module imports the contracts' types only (contracts.ts imports it, through completion.ts too).
 
 /**
@@ -598,6 +599,34 @@ export function contractMail(input: ContractMailInput): Mail {
     noAccount: input.noAccount === true,
   });
   return input.pdf ? { ...mail, attachments: [contractAttachment(input.contract.id, input.pdf)] } : mail;
+}
+
+export type ContractRequestMailInput = {
+  siteUrl: string;
+  /** The student's address (the registration's). */
+  email: string;
+  name: string;
+  /** The mail's language: the registration's. */
+  locale: Locale;
+  /** The course's name, in the mail's language. */
+  course: string;
+};
+
+/**
+ * „MS LAB leping kinnitamiseks“ (Russian «Договор MS LAB — подтвердите»; contracts Task 5, ruling R9, spec D4): the mail Maria's „Saada leping
+ * kinnitamiseks“ sends. A short greeting, one line saying Maria asks her to confirm the contract for the course, and one button to her account's
+ * page in her language (/konto, /ru/konto), where the card shows „Kinnita leping“. A plain link, never a login: no token, no code, no address
+ * in it (she signs in as she always does). The caller decides whom and whether to send it (never to a sample address).
+ */
+export function contractRequestMail(input: ContractRequestMailInput): Mail {
+  const dict = getDict(input.locale).account;
+  const m = dict.contractRequestMail;
+  const greeting = hello(dict.dashboard, input.name);
+  const lead = fill(m.lead, { course: oneLine(input.course) });
+  const link = `${input.siteUrl.replace(/\/+$/, "")}${href(input.locale, "/konto")}`;
+  const text = [greeting, "", lead, "", `${dict.mail.confirm.open}:`, link, "", dict.mail.signature].join("\n");
+  const html = mailCard(m.subject, input.locale, [greetingRow(greeting), paragraphRow(lead), buttonRow(link, dict.mail.confirm.open), linkRow(link), signatureRow(dict.mail)]);
+  return { to: input.email, subject: m.subject, text, html };
 }
 
 export type RequestConfirmationInput = {

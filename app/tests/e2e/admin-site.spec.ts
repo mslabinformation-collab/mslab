@@ -610,6 +610,78 @@ test.describe("settings", () => {
     await expect(page.locator("[data-flash-code]")).toHaveCount(0);
   });
 
+  test("Lepingud (contracts Task 5): the contact contract's title and text are saved with their placeholders listed, a refused title is marked, the sample posts what is on the screen and stores nothing; the e-course contract's card has its own title", async ({ page, context, visitorIp }, info) => {
+    test.skip(phone(info), "desktop changes the contract texts; the phone project the privacy page");
+    await changing(["pages", { column: "key", value: "contract_contact" }], ["pages", { column: "key", value: "course_terms" }], ["settings", { column: "key", value: "contractContactVersion" }], ["settings", { column: "key", value: "courseTermsVersion" }]);
+    await signIn(page, context, visitorIp);
+    await page.goto("/admin/seaded");
+    await adminReady(page);
+
+    // the e-course contract keeps its card in the settings' form, retitled; its title is Maria's (ruling R3) with the suggestion in a hint
+    const ecourse = page.locator('[data-legal-editor="course_terms"]');
+    await expect(ecourse.getByRole("heading", { level: 2 })).toHaveText("E-koolituse leping (tingimused)");
+    const ecourseTitle = ecourse.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true });
+    await expect(ecourseTitle).toBeVisible();
+    await expect(ecourse).toContainText("Soovitus: „E-koolituse leping“.");
+
+    const card = page.locator("[data-contract-texts]");
+    await expect(card.getByRole("heading", { level: 2 })).toHaveText("Lepingud");
+    await expect(card.getByRole("heading", { level: 3 })).toHaveText("Kontaktkoolituse leping");
+    await expect(card.getByText("Tühi rida alustab uut lõiku.")).toBeVisible();
+    await expect(card.locator("[data-contract-placeholders] li code")).toHaveText(["{nimi}", "{e-post}", "{koolitus}", "{toimumine}", "{hind}", "{ettemaks}"]);
+    const title = card.getByRole("textbox", { name: "Pealkiri (eesti keeles)", exact: true });
+    const body = card.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
+    expect(await noOverflow(page)).toBe(true);
+
+    // an empty title is refused in words and nothing is stored
+    await body.fill("E2E {nimi} registreerub koolitusele {koolitus}.\n\nHind {hind}.");
+    await card.getByRole("button", { name: "Salvesta lepingud", exact: true }).click();
+    await expect(card.locator("[data-contract-status]")).toHaveText("Kontrolli märgitud välju.");
+    await expect(title).toHaveAttribute("aria-invalid", "true");
+    await expect(card.getByText("Täida see väli (eesti keeles).")).toBeVisible();
+    await expect(title).toBeFocused();
+    expect(await one((sql) => sql<{ n: number }[]>`select count(*)::int as n from pages where key = 'contract_contact'`)).toEqual({ n: 0 });
+
+    // the sample posts the screen's texts, saved or not; nothing is stored by it
+    await title.fill("E2E Kontaktkoolituse leping");
+    const sample = card.locator("[data-contract-sample-form]");
+    await expect(sample).toHaveAttribute("method", "post");
+    await expect(sample).toHaveAttribute("action", "/api/admin/naidisleping");
+    await expect(sample).toHaveAttribute("target", "_blank");
+    await expect(sample.locator('input[name="titleEt"]')).toHaveValue("E2E Kontaktkoolituse leping");
+    await expect(sample.locator('input[name="bodyEt"]')).toHaveValue("E2E {nimi} registreerub koolitusele {koolitus}.\n\nHind {hind}.");
+    await expect(sample.getByRole("button", { name: "Näidisleping (PDF)", exact: true })).toBeVisible();
+    await expect(sample.getByRole("button", { name: "Näidisleping vene keeles (PDF)" })).toHaveCount(0); // no Russian text yet
+    const pdf = await page.request.post("/api/admin/naidisleping", { form: { titleEt: "E2E Kontaktkoolituse leping", bodyEt: "E2E {nimi} registreerub koolitusele {koolitus}.", lang: "et" } });
+    expect(pdf.status()).toBe(200);
+    expect(pdf.headers()["content-type"]).toBe("application/pdf");
+    expect(pdf.headers()["content-disposition"]).toBe('inline; filename="MS-LAB-naidisleping.pdf"');
+    expect(pdf.headers()["cache-control"]).toBe("private, no-store");
+    expect((await pdf.body()).subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    expect(await one((sql) => sql<{ n: number }[]>`select count(*)::int as n from pages where key = 'contract_contact'`)).toEqual({ n: 0 });
+
+    // the Russian text makes the Russian sample available; then the save
+    await card.getByRole("button", { name: /^RU/ }).first().click();
+    await card.getByRole("textbox", { name: "Pealkiri (vene keeles)", exact: true }).fill("E2E Договор очного обучения");
+    await card.getByRole("button", { name: /^RU/ }).last().click();
+    await card.getByRole("textbox", { name: "Tekst (vene keeles)", exact: true }).fill("E2E Ученик {nimi}.");
+    await expect(sample.getByRole("button", { name: "Näidisleping vene keeles (PDF)", exact: true })).toBeVisible();
+    await card.getByRole("button", { name: "Salvesta lepingud", exact: true }).click();
+    await expect(card.locator("[data-contract-status]")).toHaveText("Lepingud on salvestatud.");
+    const stored = await one((sql) => sql<{ title: { et: string; ru: string }; body: { et: string; ru: string } }[]>`select title, body from pages where key = 'contract_contact'`);
+    expect(stored).toEqual({ title: { et: "E2E Kontaktkoolituse leping", ru: "E2E Договор очного обучения" }, body: { et: "E2E {nimi} registreerub koolitusele {koolitus}.\n\nHind {hind}.", ru: "E2E Ученик {nimi}." } });
+    const version = await one((sql) => sql<{ v: string }[]>`select value #>> '{}' as v from settings where key = 'contractContactVersion'`);
+    expect(Math.abs(Date.now() - new Date(version.v).getTime())).toBeLessThan(120_000);
+
+    // the e-course card: the title written there is the e-course contract's page title, and the text is not touched
+    const before = await one((sql) => sql<{ body: unknown }[]>`select body from pages where key = 'course_terms'`);
+    await ecourseTitle.fill("E2E E-koolituse leping");
+    await save(page);
+    const after = await one((sql) => sql<{ title: { et: string }; body: unknown }[]>`select title, body from pages where key = 'course_terms'`);
+    expect(after.title.et).toBe("E2E E-koolituse leping");
+    expect(after.body).toEqual(before.body);
+  });
+
   test("the privacy page in two paragraphs, text typed during a save is kept; the admin addresses are shown, not editable", async ({ page, context, visitorIp }, info) => {
     test.skip(!phone(info), "the phone project changes the privacy page; desktop the contact settings");
     await changing(["pages", { column: "key", value: "privacy" }]);

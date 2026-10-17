@@ -53,6 +53,17 @@ describe("the revalidation map", () => {
     expect(paths({ kind: "settings", parts: ["course_terms", "contact"] })).toEqual([`${SITE} (layout)`]);
   });
 
+  test("settings: Maria's contact contract (contract_contact, Seaded → Lepingud) is the course pages' registration form's contract: saving it revalidates the course pages, once, so a form that refuses a stale version does not show the refusal again for minutes (contracts Task 5)", () => {
+    expect(paths({ kind: "settings", parts: ["contract_contact"] })).toEqual([`${SITE}/koolitused/[slug] (page)`]);
+    // with "terms" (the same pages) they are listed once, and each other part keeps its own pages
+    expect(paths({ kind: "settings", parts: ["contract_contact", "terms"] })).toEqual([`${SITE}/tingimused (page)`, `${SITE}/koolitused/[slug] (page)`]);
+    expect(paths({ kind: "settings", parts: ["course_terms", "contract_contact", "privacy"] })).toEqual([`${SITE}/privaatsus (page)`, `${SITE}/koolitused/[slug] (page)`, `${SITE}/ostukorv (layout)`]);
+    // the footer's parts revalidate every page already, so the course pages are not named again
+    expect(paths({ kind: "settings", parts: ["contract_contact", "contact"] })).toEqual([`${SITE} (layout)`]);
+    // the e-course contract is the carts', not the course pages'
+    expect(paths({ kind: "settings", parts: ["course_terms"] })).not.toContain(`${SITE}/koolitused/[slug] (page)`);
+  });
+
   test("settings: the prepayment instructions are account-only (the unpaid cards' JSON), so saving them revalidates no public page", () => {
     expect(revalidationTargets({ kind: "settings", parts: ["prepayment"] })).toEqual([]);
     expect(paths({ kind: "settings", parts: ["prepayment", "course_terms"] })).toEqual([`${SITE}/ostukorv (layout)`]);
@@ -73,6 +84,7 @@ describe("the revalidation map", () => {
       { kind: "trainer", parts: ["trainer"] },
       { kind: "settings", parts: ["privacy", "terms"] },
       { kind: "settings", parts: ["course_terms"] },
+      { kind: "settings", parts: ["contract_contact"] },
     ];
     const routes = all.flatMap(revalidationTargets).filter((t) => t.path.startsWith("/["));
     for (const t of routes) {
@@ -134,6 +146,7 @@ describe("revalidatePublic", () => {
       { kind: "trainer", parts: ["bio", "works"] },
       { kind: "settings", parts: ["contact"] },
       { kind: "settings", parts: ["privacy", "terms"] },
+      { kind: "settings", parts: ["contract_contact"] },
     ];
     for (const change of changes) {
       const store = await inAction(() => revalidatePublic(change));

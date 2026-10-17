@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getAdminCounts } from "@/components/admin/data";
+import { ContractBlock } from "@/components/admin/ContractBlock";
+import { contractView, type ContractView } from "@/components/admin/contract-view";
 import { Drawer } from "@/components/admin/Drawer";
 import { FeedbackAnswers } from "@/components/admin/FeedbackAnswers";
 import { InvoiceBlock, type UninvoicedView } from "@/components/admin/InvoiceBlock";
@@ -26,6 +28,7 @@ import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { requireAdmin } from "@/server/auth";
+import { contractsOfRegistration } from "@/server/contracts";
 import { getInvoiceSettings, invoicesOfRegistration, type AdminInvoice } from "@/server/invoices";
 import styles from "./registrations.module.css";
 
@@ -91,7 +94,7 @@ export default async function RegistrationsPage({ searchParams }: Props) {
   const filter: RegistrationFilter = { type: view.vorm ? FORMS[view.vorm] : undefined, status: view.staatus ?? undefined };
   // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
   const now = new Date();
-  const [list, open, online, answers, invoiceList, invoiceSeller] = await Promise.all([
+  const [list, open, online, answers, invoiceList, invoiceSeller, contractList] = await Promise.all([
     pageRegistrations(db, filter, view.leht),
     view.id ? getRegistration(db, view.id) : null,
     view.id ? listPaymentsOf(db, { registrationId: view.id }) : [],
@@ -99,6 +102,8 @@ export default async function RegistrationsPage({ searchParams }: Props) {
     // the drawer's „Arved“ (invoices Task 5): the registration's invoices, and whether Seaded → Arve andmed has a seller to make one
     view.id ? invoicesOfRegistration(db, view.id) : [],
     view.id ? getInvoiceSettings(db, now) : null,
+    // the drawer's „Leping“ (contracts Task 5): the registration's contracts, the current one first
+    view.id ? contractsOfRegistration(db, view.id) : [],
     getAdminCounts(),
   ]);
   const rows = list.rows;
@@ -232,6 +237,7 @@ export default async function RegistrationsPage({ searchParams }: Props) {
               payments={online}
               feedback={answers[0] ?? null}
               invoices={invoiceList}
+              contracts={contractList.map(contractView)}
               sellerReady={invoiceSeller !== null && sellerReady(invoiceSeller)}
               today={tallinnFormParts(now).date}
             />
@@ -249,6 +255,7 @@ function RegistrationDetail({
   payments,
   feedback,
   invoices,
+  contracts,
   sellerReady: seller,
   today,
 }: {
@@ -256,6 +263,7 @@ function RegistrationDetail({
   payments: PaymentRow[];
   feedback: FeedbackRow | null;
   invoices: AdminInvoice[];
+  contracts: ContractView[];
   sellerReady: boolean;
   today: string;
 }) {
@@ -347,6 +355,18 @@ function RegistrationDetail({
         canCreate={total != null}
         today={today}
       />
+
+      {/* the registration's contract (contracts Task 5, spec §4): a group registration on a contact course has one (the form's tick), an individual
+          one and an e-learning one do not (D1) */}
+      {r.course.type === "contact" && r.kind === "group" && (
+        <ContractBlock
+          registrationId={r.id}
+          contracts={contracts}
+          requestedAt={r.contractRequestedAt ? r.contractRequestedAt.toISOString() : null}
+          linked={r.clientId !== null}
+          cancelled={r.status === "cancelled"}
+        />
+      )}
 
       {/* her answers to the course feedback form (phase protocols, spec §7): none, or the one */}
       {feedback && (

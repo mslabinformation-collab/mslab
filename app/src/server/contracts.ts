@@ -18,7 +18,7 @@ import type { I18n } from "@/i18n/field";
 import type { Locale } from "@/i18n/locales";
 import { toStorable } from "@/lib/to-storable";
 import { contentVersion } from "@/lib/version";
-import { contractMail } from "./account-mail";
+import { contractMail, contractRequestMail } from "./account-mail";
 import { lockAccess } from "./completion";
 import { Check } from "./edit-check";
 import { getInvoiceSettings } from "./invoices";
@@ -389,6 +389,21 @@ export async function saveContractTexts(db: Db, raw: unknown, now: Date = new Da
   return { ok: true };
 }
 
+/** Seaded → Lepingud as the card loads it: Maria's contact text, title and body in both languages (an empty text for a language she has not written). */
+export type ContractCard = { title: { et: string; ru: string }; body: { et: string; ru: string } };
+
+/**
+ * The card „Lepingud“ of Seaded (Task 5): Maria's own contact contract as stored (the page `contract_contact`), empty before her first save. It
+ * never shows the public „Õppetingimused“ text that stands in for hers until she writes it (D2): the card says so in words, and a text she did
+ * not write is not one she saves by pressing „Salvesta“.
+ */
+export async function contractCard(q: Q): Promise<ContractCard> {
+  const [row] = await q.select().from(pages).where(eq(pages.key, CONTRACT_CONTACT_KEY)).limit(1);
+  const title = textOf(row?.title);
+  const body = textOf(row?.body);
+  return { title: { et: title?.et ?? "", ru: title?.ru ?? "" }, body: { et: body?.et ?? "", ru: body?.ru ?? "" } };
+}
+
 // ---------- the PDF ----------
 
 /**
@@ -414,6 +429,37 @@ export async function contractPdfForMail(c: Contract): Promise<Uint8Array | null
   } catch (e) {
     logFailure(`[contracts] contract ${c.id}: the mail went without its PDF`, e);
     return null;
+  }
+}
+
+/**
+ * „MS LAB leping kinnitamiseks“ to the student (account-mail.ts contractRequestMail; ruling R9), after Maria's „Saada leping kinnitamiseks“ was
+ * recorded (requestContract): to the registration's address, in its language, with a plain link to her account page, where the card shows
+ * „Kinnita leping“. Best effort, as every mail of the contracts: never to a sample address (`@example.test`), nothing without Resend (local
+ * development), never throws; true when the mail went out. The registration is read here, so the caller passes the id alone. Not counted in the
+ * daily caps (it follows Maria's own press). The log has the registration's id only.
+ */
+export async function mailContractRequest(deps: { db: Db; env: Env; siteUrl: string }, registrationId: number): Promise<boolean> {
+  try {
+    const [row] = await deps.db
+      .select({ email: registrations.email, name: registrations.name, locale: registrations.locale, title: courses.title })
+      .from(registrations)
+      .innerJoin(courses, eq(registrations.courseId, courses.id))
+      .where(eq(registrations.id, registrationId))
+      .limit(1);
+    if (!row) return false;
+    if (isSampleAddress(row.email)) {
+      console.info(`[contracts] registration ${registrationId}: the ask was not mailed (sample address)`);
+      return false;
+    }
+    if (!mailConfigured(deps.env)) return false;
+    const locale = row.locale === "ru" ? "ru" : "et";
+    const sent = await sendMail(deps.env, contractRequestMail({ siteUrl: deps.siteUrl, email: row.email, name: row.name, locale, course: contractCourseName(row.title, locale) }));
+    console.info(`[contracts] registration ${registrationId}: the ask was mailed: ${sent}`);
+    return sent;
+  } catch (e) {
+    logFailure(`[contracts] registration ${registrationId}: the ask's mail failed`, e);
+    return false;
   }
 }
 

@@ -229,7 +229,7 @@ test("accept, then the admin saves new terms in Seaded: the next open shows the 
     await page.goto("/admin/seaded");
     await adminReady(page);
     const editor = page.locator('[data-legal-editor="course_terms"]');
-    await expect(editor.getByRole("heading", { level: 2 })).toHaveText("E-koolituse tingimused");
+    await expect(editor.getByRole("heading", { level: 2 })).toHaveText("E-koolituse leping (tingimused)");
     // next to privacy and terms; account-only, so no link to a public page
     await expect(page.locator("[data-legal-editor]")).toHaveCount(3);
     await expect(editor.getByRole("link")).toHaveCount(0);

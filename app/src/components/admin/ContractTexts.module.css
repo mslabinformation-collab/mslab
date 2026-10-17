@@ -1,0 +1,82 @@
+/* Seaded → „Lepingud“ (contracts Task 5, spec D2): a card of its own after the invoice's, the contact contract's two texts and the sample under them.
+   Every control is the admin's 44 px one; colours from tokens.css only. */
+
+.card {
+  margin-top: 25px;
+  scroll-margin-top: 20px;
+}
+
+.group {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+}
+
+.group h3 {
+  margin: 0;
+}
+
+/* the placeholders and what fills each, as a quiet box under the text */
+.placeholders {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--canvas);
+}
+
+.placeholders p {
+  margin: 0;
+}
+
+.placeholders ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.placeholders code {
+  font-family: inherit;
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin-top: 22px;
+}
+
+.actions p[role="status"] {
+  flex: 1 1 260px;
+  margin: 0;
+}
+
+/* the sample's own form: a form cannot sit inside the save form, so it follows it */
+.sample {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  margin-top: 22px;
+}
+
+.sample p {
+  margin: 0;
+}
+
+.sampleButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .actions button {
+    flex: 1 1 100%;
+  }
+}

@@ -78,6 +78,16 @@ describe("next.config.ts headers()", () => {
     for (const path of ["/api/admin/upload", "/api/admin/subscribers.csv", "/api/admin/arve", "/api/admin/arve/12/x", "/api/admin/arvedx"]) expect(valueFor(rules, path, "cache-control"), path).toBe("no-store");
   });
 
+  test("Maria's contract downloads are private and never kept, as the invoices': the PDF by its id and Seaded's sample; no other path under /api/admin/leping or /api/admin/naidisleping is (contracts Task 5)", async () => {
+    const rules = (await (await config()).headers!()) as Rule[];
+    for (const path of ["/api/admin/leping/12", "/api/admin/naidisleping"]) {
+      expect(valueFor(rules, path, "cache-control"), path).toBe("private, no-store");
+      expect(valueFor(rules, path, "x-robots-tag"), path).toBe("noindex, nofollow");
+      expect(valueFor(rules, path, "content-security-policy"), path).toBe("frame-ancestors 'self'");
+    }
+    for (const path of ["/api/admin/leping", "/api/admin/leping/12/x", "/api/admin/lepingud", "/api/admin/naidisleping/x", "/api/admin/naidislepingx"]) expect(valueFor(rules, path, "cache-control"), path).toBe("no-store");
+  });
+
   test("the unsubscribe page's POST keeps its Origin: the loobu route is same-origin, never no-referrer (a strict policy makes the form post Origin: null, which is refused as cross-site)", async () => {
     const rules = (await (await config()).headers!()) as Rule[];
     expect(valueFor(rules, "/api/newsletter/loobu", "referrer-policy")).toBe("same-origin");
@@ -168,6 +178,12 @@ describe("next.config.ts outputFileTracingIncludes (the certificate, phase 3d; t
     for (const key of ["/api/admin/arve/**", "/api/admin/naidisarve/**", "/api/payments/**", "/api/cron/**", "/admin/**"]) expect(include[key], key).toEqual(FONTS);
   });
 
+  test("...and with Maria's two contract routes, named by their folders and not by the bracketed route (contracts Task 5): the download and Seaded's sample", async () => {
+    const include = (await config()).outputFileTracingIncludes!;
+    for (const key of ["/api/admin/leping/**", "/api/admin/naidisleping/**"]) expect(include[key], key).toEqual(FONTS);
+    expect(Object.keys(include)).not.toContain("/api/admin/leping/[id]");
+  });
+
   test("...and with the public course page's function, where the registration form's action runs and mails the contract's PDF: the key has no brackets, \"*\" stands for the locale's folder (contracts, Task 2)", async () => {
     const include = (await config()).outputFileTracingIncludes!;
     expect(include["/*/koolitused/**"]).toEqual(FONTS);
@@ -175,10 +191,13 @@ describe("next.config.ts outputFileTracingIncludes (the certificate, phase 3d; t
     for (const key of Object.keys(include)) expect(key, key).not.toMatch(/\[|\\/);
   });
 
-  test("nothing else is traced with the fonts: exactly these eight keys, each a route's folder and /** (a bracketed folder is *)", async () => {
+  test("nothing else is traced with the fonts: exactly these ten keys, each a route's folder and /** (a bracketed folder is *)", async () => {
     const include = (await config()).outputFileTracingIncludes!;
     expect(Object.keys(include).sort()).toEqual(
-      ["/*/koolitused/**", "/admin/**", "/api/admin/arve/**", "/api/admin/naidisarve/**", "/api/admin/tunnistus/**", "/api/cron/**", "/api/konto/**", "/api/payments/**"].sort(),
+      [
+        "/*/koolitused/**", "/admin/**", "/api/admin/arve/**", "/api/admin/leping/**", "/api/admin/naidisarve/**", "/api/admin/naidisleping/**", "/api/admin/tunnistus/**",
+        "/api/cron/**", "/api/konto/**", "/api/payments/**",
+      ].sort(),
     );
     for (const [key, files] of Object.entries(include)) {
       expect(key, key).toMatch(/^\/[a-z*/]+\/\*\*$/);

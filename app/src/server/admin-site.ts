@@ -417,7 +417,7 @@ export type SettingsValues = {
   prepayment: PrepaymentDraft;
   privacy: PageDraft;
   terms: PageDraft;
-  course_terms: { body: I18n };
+  course_terms: { title: I18n; body: I18n };
 };
 
 const settingsParts: Parts = {
@@ -475,22 +475,27 @@ const settingsParts: Parts = {
   }),
   privacy: pagePart("privacy", { titleMax: L.legalTitle, bodyMax: L.legal, required: true }),
   terms: pagePart("terms", { titleMax: L.legalTitle, bodyMax: L.legal, required: true }),
-  // "E-koolituse tingimused": what a student accepts before opening an e-course (account-only, no public page). Only the text is
-  // edited (the title stays). A changed text and the new version (settings courseTermsVersion = the save time) are written in
+  // "E-koolituse leping (tingimused)": what a student accepts in the cart before buying and at the terms gate of a course opened without a purchase
+  // (account-only, no public page): the e-course contract (contracts, D2). Its title is the contract's (ruling R3: Maria's page title as she writes it;
+  // the card suggests „E-koolituse leping“) and its text the contract's body. A page that sends the text alone (open since before the title was
+  // editable) keeps the stored title. A changed text or title and the new version (settings courseTermsVersion = the save time) are written in
   // this one transaction, so a student is never asked about a text that has no version, nor holds a version of another text.
-  // The same text again keeps the version: nobody is asked to accept what did not change.
-  course_terms: part<{ body: I18n }>({
+  // The same text and title again keep the version: nobody is asked to accept what did not change.
+  course_terms: part<{ title?: I18n; body: I18n }>({
     tables: ["pages", "settings"],
-    schema: z.object({ body: i18n }),
+    schema: z.object({ title: i18n.optional(), body: i18n }),
     read: (q) => readPage(q, TERMS_PAGE_KEY),
-    draft: (stored) => ({ body: copyI18n((stored as Page | null)?.body) }),
+    draft: (stored) => ({ title: copyI18n((stored as Page | null)?.title ?? TERMS_PAGE_TITLE), body: copyI18n((stored as Page | null)?.body) }),
     check: (c, v, name) => {
+      const title = v.title === undefined ? undefined : c.text(`${name}.title`, v.title, L.legalTitle, { required: true });
       const body = c.text(`${name}.body`, v.body, L.legal, { required: true });
-      if (!body) return null;
+      if (!body || title === null) return null;
       return async (tx, stored) => {
-        const old = (stored as Page | null)?.body;
-        await upsertPage(tx, { key: TERMS_PAGE_KEY, title: (stored as Page | null)?.title ?? TERMS_PAGE_TITLE, body });
-        if (old && old.et === body.et && (old.ru ?? "") === (body.ru ?? "")) return;
+        const old = stored as Page | null;
+        const kept = title ?? old?.title ?? TERMS_PAGE_TITLE;
+        await upsertPage(tx, { key: TERMS_PAGE_KEY, title: kept, body });
+        const same = (a: I18n, b: I18n) => a.et === b.et && (a.ru ?? "") === (b.ru ?? "");
+        if (old && same(old.body, body) && same(old.title, kept)) return;
         await setSetting(tx, TERMS_VERSION_KEY, nextTermsVersion(new Date(), await readSetting(tx, TERMS_VERSION_KEY)));
       };
     },

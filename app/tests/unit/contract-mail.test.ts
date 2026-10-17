@@ -3,7 +3,7 @@ import type { Contract } from "@/db/schema";
 import { et } from "@/i18n/dict/et";
 import { ru } from "@/i18n/dict/ru";
 import {
-  accountLink, contractAttachment, contractMail, ecourseOpenMail, registrationConfirmationMail, type ContractMailInput, type EcourseOpenInput, type RegistrationConfirmationInput,
+  accountLink, contractAttachment, contractMail, contractRequestMail, ecourseOpenMail, registrationConfirmationMail, type ContractMailInput, type EcourseOpenInput, type RegistrationConfirmationInput,
 } from "@/server/account-mail";
 
 // The contract's mails (contracts, Task 4; ruling R1; spec D7): contractMail, „MS LAB leping“ (Russian «Договор MS LAB»), the short mail of the
@@ -83,6 +83,62 @@ describe("contractMail: „MS LAB leping“", () => {
   });
 });
 
+describe("contractRequestMail: Maria's „Saada leping kinnitamiseks“ (contracts Task 5, ruling R9, spec D4)", () => {
+  const ask = { siteUrl: BASE, email: EMAIL, name: "Kati Tamm", course: "Kulmude baaskoolitus" };
+
+  test("Estonian: „MS LAB leping kinnitamiseks“, a short greeting, one line naming the course, and a plain link to /konto", () => {
+    const mail = contractRequestMail({ ...ask, locale: "et" });
+    expect(mail.to).toBe(EMAIL);
+    expect(mail.subject).toBe("MS LAB leping kinnitamiseks");
+    const text = lines(mail.text);
+    expect(text[0]).toBe("Tere, Kati!");
+    expect(text).toContain("Maria palub sul kinnitada lepingu koolituse „Kulmude baaskoolitus“ jaoks.");
+    expect(text).toContain(`${BASE}/konto`);
+    expect(mail.html).toContain(`href="${BASE}/konto"`);
+    expect(mail.html).toContain("Kulmude baaskoolitus");
+    expect(mail.attachments).toBeUndefined();
+  });
+
+  test("Russian: «Договор MS LAB — подтвердите», the Russian line, the link to /ru/konto", () => {
+    const mail = contractRequestMail({ ...ask, locale: "ru" });
+    expect(mail.subject).toBe("Договор MS LAB — подтвердите");
+    const text = lines(mail.text);
+    expect(text[0]).toBe("Здравствуйте, Kati!");
+    expect(text).toContain(`Мария просит вас подтвердить договор по${NBSP}курсу «Kulmude baaskoolitus».`);
+    expect(text).toContain(`${BASE}/ru/konto`);
+    expect(mail.html).toContain('lang="ru"');
+    expect(mail.html).toContain(`href="${BASE}/ru/konto"`);
+  });
+
+  test("the link carries no login: no token, no code, no address, no fragment (a plain page of the account)", () => {
+    for (const locale of ["et", "ru"] as const) {
+      const mail = contractRequestMail({ ...ask, locale });
+      const links = [...mail.html!.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+      expect(links.length, locale).toBeGreaterThan(0);
+      for (const link of links) {
+        expect(link, locale).toMatch(new RegExp(`^${BASE}(/ru)?/konto$`));
+        expect(link).not.toMatch(/[?#=@]|verify|token/);
+      }
+      expect(mail.text).not.toContain("/api/konto/verify");
+      expect(mail.text).not.toContain("#email=");
+    }
+  });
+
+  test("one button; a base address with a trailing slash does not double it; a course name cannot open a tag", () => {
+    const mail = contractRequestMail({ ...ask, siteUrl: `${BASE}/`, course: "<b>Kulmud</b> & \"co\"", locale: "et" });
+    expect(buttons(mail.html!)).toBe(1);
+    expect(mail.html).toContain(`href="${BASE}/konto"`);
+    expect(mail.html).not.toContain("<b>Kulmud</b>");
+    expect(mail.html).toContain("&lt;b&gt;Kulmud&lt;/b&gt; &amp;");
+  });
+
+  test("a name with no word is the neutral greeting; a course name over several lines is one line", () => {
+    const mail = contractRequestMail({ ...ask, name: "  ", course: "Kulmude\n baaskoolitus", locale: "et" });
+    expect(lines(mail.text)[0]).toBe("Tere!");
+    expect(lines(mail.text)).toContain("Maria palub sul kinnitada lepingu koolituse „Kulmude baaskoolitus“ jaoks.");
+  });
+});
+
 describe("the line in the mails that already go out (D7)", () => {
   const registration = (over: Partial<RegistrationConfirmationInput> = {}): RegistrationConfirmationInput => ({
     siteUrl: BASE, email: EMAIL, name: "Kati Tamm", locale: "et", registrationId: 42, course: { et: "Kulmude baaskoolitus" },
@@ -112,10 +168,11 @@ describe("the line in the mails that already go out (D7)", () => {
 describe("the texts", () => {
   test("Estonian and Russian hold the same keys", () => {
     expect(Object.keys(ru.account.contractMail).sort()).toEqual(Object.keys(et.account.contractMail).sort());
+    expect(Object.keys(ru.account.contractRequestMail).sort()).toEqual(Object.keys(et.account.contractRequestMail).sort());
   });
 
   test("Russian typography: no one-letter preposition (в, с, к, о, у) is followed by an ordinary space", () => {
-    const all = [...Object.entries(ru.account.contractMail), ["forms.contractTerms", ru.forms.contractTerms], ["forms.readContract", ru.forms.readContract], ["forms.contractNoSession", ru.forms.contractNoSession], ["cart.contractTerms", ru.cart.contractTerms]];
+    const all = [...Object.entries(ru.account.contractMail), ...Object.entries(ru.account.contractRequestMail), ["forms.contractTerms", ru.forms.contractTerms], ["forms.readContract", ru.forms.readContract], ["forms.contractNoSession", ru.forms.contractNoSession], ["cart.contractTerms", ru.cart.contractTerms]];
     for (const [key, text] of all) expect(text, key).not.toMatch(/(^|[\s(«])[вскоуВСКОУ] /u);
   });
 

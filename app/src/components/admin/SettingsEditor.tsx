@@ -18,9 +18,9 @@ import styles from "./site-editor.module.css";
  * Seaded: the contact details and social links (footer, contact page; social links https only), the newsletter's
  * welcome discount (footer text) and welcome code ("Tervituskood": mailed after the first confirmation, shown on the
  * confirmed notice; phase 2c), the prepayment instructions (where students pay; shown on their unpaid contact-course
- * cards only when the receiver and the IBAN are filled in), the legal pages (privacy, terms) in ET / RU, the e-course terms
- * (the text a student accepts before opening an e-course; account-only, so no link to a public page) and the admin
- * addresses, read-only.
+ * cards only when the receiver and the IBAN are filled in), the legal pages (privacy, terms) in ET / RU, the e-course contract
+ * („E-koolituse leping (tingimused)“: its title and the text a student accepts in the cart and at the terms gate; account-only, so no link to a
+ * public page) and the admin addresses, read-only. The contact course's contract has its own card after this form (ContractTexts, Seaded → Lepingud).
  */
 export function SettingsEditor({ initial, admins }: { initial: Loaded<SettingsValues>; admins: string[] }) {
   const t = adminEt.settings;
@@ -139,9 +139,18 @@ export function SettingsEditor({ initial, admins }: { initial: Loaded<SettingsVa
           <p className={`${ui.muted} ${styles.cardLead}`}>{t.courseTermsLead}</p>
           <div className={styles.fields}>
             <I18nInput
+              label={t.pageTitle}
+              value={courseTerms.title}
+              onChange={(title) => d.set("course_terms", { ...courseTerms, title })}
+              maxLength={SITE_LIMITS.legalTitle}
+              hint={adminEt.contracts.settings.ecourseTitleHint}
+              error={d.err("course_terms.title")}
+              name="course_terms.title"
+            />
+            <I18nInput
               label={t.pageBody}
               value={courseTerms.body}
-              onChange={(body) => d.set("course_terms", { body })}
+              onChange={(body) => d.set("course_terms", { ...courseTerms, body })}
               multiline
               rows={10}
               maxLength={SITE_LIMITS.legal}

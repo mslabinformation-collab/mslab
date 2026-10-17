@@ -511,11 +511,12 @@ describe("settings", () => {
       return saveSettingsForm(db, form({ course_terms: { version: s.versions.course_terms, value: { body } } }));
     };
 
-    test("the seed has a sample text in both languages and no version yet; the editor loads the body only", async () => {
+    test("the seed has a sample text in both languages and no version yet; the editor loads the title (the contract's, ruling R3) and the body", async () => {
       const s = await loadSettings(db);
       expect(s.values.course_terms.body.et).toMatch(/Näidistekst/);
       expect(s.values.course_terms.body.ru).toMatch(/Образец текста/);
-      expect(Object.keys(s.values.course_terms)).toEqual(["body"]);
+      expect(s.values.course_terms.title).toEqual({ et: "E-koolituse tingimused", ru: "Условия онлайн-обучения" });
+      expect(Object.keys(s.values.course_terms)).toEqual(["title", "body"]);
       expect(s.versions.course_terms).toMatch(/^[0-9a-f]{32}$/);
       expect((await stored()).version).toBeUndefined(); // no version in the seed: it reads as "1" until the first save
       expect(JSON.stringify((await getPage(db, "course_terms"))!.body)).not.toMatch(/version/i);
@@ -535,6 +536,42 @@ describe("settings", () => {
       const saved = (r as unknown as { saved: { values: { course_terms: { body: unknown } }; versions: Record<string, string> } }).saved;
       expect(Object.keys(saved.versions)).toEqual(["course_terms"]);
       expect(saved.values.course_terms.body).toEqual({ et: "Uus tekst.\n\nTeine lõik.", ru: "Новый текст." });
+    });
+
+    test("the title is the e-course contract's (ruling R3): Maria writes it, trimmed and required in Estonian, within the legal titles' limit; a save without one (an older page) keeps the stored title", async () => {
+      const saveTitled = async (title: { et: string; ru?: string }, body: { et: string; ru?: string } = { et: "Tekst." }) => {
+        const s = await loadSettings(db);
+        return saveSettingsForm(db, form({ course_terms: { version: s.versions.course_terms, value: { title, body } } }));
+      };
+      expect(await saveTitled({ et: "  E-koolituse leping ", ru: " Договор онлайн-обучения " })).toMatchObject({ ok: true });
+      expect((await stored()).page).toMatchObject({ title: { et: "E-koolituse leping", ru: "Договор онлайн-обучения" }, body: { et: "Tekst." } });
+      const saved = (await loadSettings(db)).values.course_terms;
+      expect(saved.title).toEqual({ et: "E-koolituse leping", ru: "Договор онлайн-обучения" });
+      // an older page sends the body alone: the title Maria wrote stays
+      expect(await save({ et: "Uus tekst." })).toMatchObject({ ok: true });
+      expect((await stored()).page).toMatchObject({ title: { et: "E-koolituse leping", ru: "Договор онлайн-обучения" }, body: { et: "Uus tekst." } });
+      // refused: an empty Estonian title, a title past the limit; nothing is written
+      const before = await stored();
+      expect(fieldsOf(await saveTitled({ et: "  " }, { et: "Muu tekst." }))).toEqual({ "course_terms.title": "required" });
+      expect(fieldsOf(await saveTitled({ et: "", ru: "Только русский" }, { et: "Muu tekst." }))).toEqual({ "course_terms.title": "required" });
+      expect(fieldsOf(await saveTitled({ et: "x".repeat(121) }, { et: "Muu tekst." }))).toEqual({ "course_terms.title": "tooLong" });
+      expect(await stored()).toEqual(before);
+    });
+
+    test("the title is part of what a student accepts: a changed title alone gives a new version, the very same title and text keeps it", async () => {
+      const saveTitled = async (title: { et: string }, body: { et: string }) => {
+        const s = await loadSettings(db);
+        return saveSettingsForm(db, form({ course_terms: { version: s.versions.course_terms, value: { title, body } } }));
+      };
+      await saveTitled({ et: "E-koolituse tingimused" }, { et: "Tekst." });
+      const first = (await stored()).version;
+      expect(typeof first).toBe("string");
+      await saveTitled({ et: "E-koolituse tingimused" }, { et: "Tekst." });
+      expect((await stored()).version).toBe(first);
+      await saveTitled({ et: "E-koolituse leping" }, { et: "Tekst." });
+      const second = (await stored()).version;
+      expect(second).not.toBe(first);
+      expect(new Date(second as string).getTime()).toBeGreaterThan(new Date(first as string).getTime());
     });
 
     test("every changed save gives a new version; a save of the very same text keeps it (nobody has to accept again)", async () => {

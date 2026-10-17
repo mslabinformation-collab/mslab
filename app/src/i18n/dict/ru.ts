@@ -480,6 +480,11 @@ export const ru: Dict = {
       lead: "Вы подтвердили договор {date}.",
       attached: "Договор во\u00a0вложении.",
     },
+    // Maria's ask (server/account-mail.ts contractRequestMail; contracts Task 5, ruling R9): `subject` is R9's, `lead` Draft for Dim's wording sheet
+    contractRequestMail: {
+      subject: "Договор MS LAB — подтвердите",
+      lead: "Мария просит вас подтвердить договор по\u00a0курсу «{course}».",
+    },
     // the e-course completion's mails (server/account-mail.ts completionMail)
     completionMail: {
       assessedSubject: "Ваша практическая работа оценена",

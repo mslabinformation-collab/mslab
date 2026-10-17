@@ -41,8 +41,9 @@ const nextConfig: NextConfig = {
   //   (/api/admin/naidisarve), the payment routes and the cron's sweep (each settles a payment, whose paid mail carries its invoice) and
   //   the admin pages, whose actions send an invoice by mail (/admin/**);
   // - a contract: the same account API (the student's download, her „Kinnitan“) and payment routes (the paid e-course's mail), the admin
-  //   pages (Maria's resend), and the public course page (/[locale]/koolitused/[slug]), whose registration form's action
-  //   (server/actions/public.ts registerContact) mails the contract's PDF with the confirmation.
+  //   pages (Maria's resend), Maria's download (/api/admin/leping) and Seaded's sample (/api/admin/naidisleping), and the public course page
+  //   (/[locale]/koolitused/[slug]), whose registration form's action (server/actions/public.ts registerContact) mails the contract's PDF with
+  //   the confirmation.
   // Turbopack matches these keys by glob against the route's name: "/**" works, the bracketed route names do not (checked with a
   // build on 15.10.2026), so each key names the route's folder, a bracketed folder as "*": the course page's key is "/*/koolitused/**".
   // The match is not anchored at the start (the route groups' folders, "(site)", stand between "/[locale]" and "/koolitused"): the key
@@ -55,6 +56,8 @@ const nextConfig: NextConfig = {
     "/api/admin/tunnistus/**": ["./assets/fonts/**"],
     "/api/admin/arve/**": ["./assets/fonts/**"],
     "/api/admin/naidisarve/**": ["./assets/fonts/**"],
+    "/api/admin/leping/**": ["./assets/fonts/**"],
+    "/api/admin/naidisleping/**": ["./assets/fonts/**"],
     "/api/payments/**": ["./assets/fonts/**"],
     "/api/cron/**": ["./assets/fonts/**"],
     "/admin/**": ["./assets/fonts/**"],
@@ -85,9 +88,12 @@ const nextConfig: NextConfig = {
       { source: "/admin/:path*", headers: noStore },
       { source: "/api/auth/:path*", headers: noStore },
       { source: "/api/admin/:path*", headers: noStore },
-      // Maria's invoice downloads (invoices Task 5): the PDF, the month's CSV and the sample are private as well as never kept (the rule above would leave
-      // them at plain no-store: a header given here replaces the route's own)
-      ...["/api/admin/arve/:id", "/api/admin/arved", "/api/admin/naidisarve"].map((source) => ({ source, headers: [{ key: "Cache-Control", value: "private, no-store" }] })),
+      // Maria's invoice and contract downloads (invoices Task 5; contracts Task 5): the PDF, the month's CSV and the samples are private as well as never kept
+      // (the rule above would leave them at plain no-store: a header given here replaces the route's own)
+      ...["/api/admin/arve/:id", "/api/admin/arved", "/api/admin/naidisarve", "/api/admin/leping/:id", "/api/admin/naidisleping"].map((source) => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "private, no-store" }],
+      })),
       // the client account's API: one visitor's data, never kept by a CDN or a shared cache (server/account-api.ts)
       { source: "/api/konto/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
       // uploaded images: nothing in them may run (server/media.ts)

@@ -1067,20 +1067,25 @@
       "area": "haldus",
       "who": "maria",
       "device": "tahvel",
-      "title": "Seaded: e-koolituse tingimused",
+      "title": "Seaded: e-koolituse leping (tingimused)",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja keri plokini „E-koolituse tingimused“.",
-        "Kirjuta oma päris tingimuste tekst.",
-        "Vajuta „Salvesta“."
+        "Ava „Seaded“ ja keri plokini „E-koolituse leping (tingimused)“.",
+        "Kirjuta „Pealkiri“: „E-koolituse leping“, ja oma päris lepingu tekst.",
+        "Vajuta „Salvesta“.",
+        "Ava e-koolituse ostukorv."
       ],
       "expect": [
         "Pärast salvestamist näed „Salvestatud.“.",
-        "Seda teksti ei ole avalikul lehel."
+        "Pealkirja all on vihje, mis soovitab pealkirjaks „E-koolituse leping“.",
+        "Ostukorvis on „Loe lepingut“ all uus pealkiri ja tekst.",
+        "Õpilane loeb seda enne ostmist ja enne tasuta avatud koolituse esimest avamist."
       ],
-      "why": "Õpilane nõustub nende tingimustega enne e-koolituse alustamist.",
+      "why": "Õpilane nõustub selle lepinguga enne e-koolituse ostmist või alustamist.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-tunnistus",
@@ -1159,6 +1164,62 @@
       "writes": false,
       "mark": "new",
       "markedAt": "2026-10-16T22:27:00.452Z"
+    },
+    {
+      "id": "haldus-seaded-lepingud",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: lepingud",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja keri kaardini „Lepingud“.",
+        "Jäta „Kontaktkoolituse leping“ all „Pealkiri“ tühjaks ja vajuta „Salvesta lepingud“.",
+        "Kirjuta eesti keeles „Pealkiri“ ja „Tekst“, kus on {nimi}, {koolitus} ja {hind}.",
+        "Vali RU ja kirjuta sama vene keeles.",
+        "Vajuta „Salvesta lepingud“.",
+        "Ava kontaktkoolituse leht, vali tulevane kuupäev ja vajuta ruudu all „Loe lepingut“."
+      ],
+      "expect": [
+        "Teksti all on „Tühi rida alustab uut lõiku.“ ja kuus kohahoidjat: {nimi}, {e-post}, {koolitus}, {toimumine}, {hind}, {ettemaks}.",
+        "Tühja pealkirja korral näed „Täida see väli (eesti keeles).“ ja „Kontrolli märgitud välju.“, midagi ei salvestata.",
+        "Pärast salvestamist näed „Lepingud on salvestatud.“.",
+        "Kontaktkoolituse lehel on „Loe lepingut“ all sinu tekst, kohahoidjad on täidetud.",
+        "Uus tekst on lehel kohe, ootamata.",
+        "Vene lehel on vene tekst."
+      ],
+      "why": "Lepingu teksti kirjutab Maria ise.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-seaded-naidisleping",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: näidisleping",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja keri kaardini „Lepingud“.",
+        "Muuda „Pealkiri“ ja „Tekst“, aga ära salvesta.",
+        "Vajuta „Näidisleping (PDF)“.",
+        "Vali RU, kirjuta vene tekst ja vajuta „Näidisleping vene keeles (PDF)“.",
+        "Lae leht uuesti ja vaata „Pealkiri“."
+      ],
+      "expect": [
+        "PDF avaneb uues aknas ja selles on muudetud pealkiri ja tekst, kuigi neid polnud salvestatud.",
+        "Õpilane on „Proov (näidis)“, koolitus „Näidiskoolitus“ ja kohahoidjad on täidetud.",
+        "Ettevõtte andmed on samad mis kaardil „Arve andmed“.",
+        "Venekeelsel näidisel on vene tekst ja sildid, näiteks „Стороны“.",
+        "Pärast lehe uuesti laadimist on endine pealkiri: midagi ei salvestatud."
+      ],
+      "why": "Maria näeb lepingut enne, kui keegi seda kinnitab.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-vorm-vead",
@@ -1872,6 +1933,80 @@
       "writes": true,
       "mark": "new",
       "markedAt": "2026-10-16T22:27:00.452Z"
+    },
+    {
+      "id": "registreerimine-leping-plokk",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Leping registreeringu paneelis",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava „Registreerimised“ ja vajuta nimele Proov 1.",
+        "Vaata plokki „Leping“ ja vajuta „Laadi alla (PDF)“.",
+        "Ava „Õpilased“, Proov 1 paneel ja vaata plokki „Lepingud“.",
+        "Ava registreering, mille õpilasel pole kontot (kui sellist pole, jäta see samm vahele)."
+      ],
+      "expect": [
+        "Plokis „Leping“ on pealkiri ja „Kinnitatud …“ koos kuupäeva ja viisiga „Registreerimisvorm“.",
+        "Plokis on nupud „Saada koopia õpilasele“, „Laadi alla (PDF)“ ja „Saada leping kinnitamiseks“.",
+        "PDF-is on pooled, koolitus, lepingu tekst ja rida „Kinnitatud elektrooniliselt …“.",
+        "Õpilase paneelis on sama leping koos „Laadi alla (PDF)“ ja viitega „Ava registreerimine“.",
+        "Ilma kontota õpilasel on nupu asemel „Õpilasel pole kontot — lisa ta Õpilased lehel.“."
+      ],
+      "why": "Maria hoiab iga registreeringu lepingut ühe puudutuse kaugusel.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-leping-kinnitamiseks",
+      "area": "registreerimine",
+      "who": "koos",
+      "device": "tahvel",
+      "title": "Lepingu kinnitamise küsimine uuesti",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 1 registreeringu paneel ja vajuta „Saada leping kinnitamiseks“.",
+        "Ava Proov 1 postkastis kiri „MS LAB leping kinnitamiseks“ ja vajuta kirjas nuppu.",
+        "Vajuta paneelis uuesti „Saada leping kinnitamiseks“."
+      ],
+      "expect": [
+        "Paneelis näed „Palve on õpilasele saadetud.“ ja rida „Kinnitamist ootab (saadetud …)“.",
+        "Kirjas on lühike tervitus, üks rida, mis nimetab koolitust, ja nupp „Ava minu konto“.",
+        "Nupp avab Proov 1 konto lehe ja kirjas pole sisselogimise linki.",
+        "Vana leping jääb paneelis alles.",
+        "Uuesti vajutades liigub „saadetud“ kuupäev ja tuleb teine kiri."
+      ],
+      "why": "Maria saab õpilaselt uue kinnituse küsida, kui koolitus või tekst muutus.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-leping-koopia",
+      "area": "registreerimine",
+      "who": "koos",
+      "device": "tahvel",
+      "title": "Lepingu koopia õpilasele",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 1 registreeringu paneel ja vajuta lepingul „Saada koopia õpilasele“.",
+        "Ava Proov 1 postkastis kiri „MS LAB leping“ ja selle manus."
+      ],
+      "expect": [
+        "Näed teadet „Koopia on õpilasele saadetud.“ ja lepingu all rida „Saadetud õpilasele …“ tänase kuupäevaga.",
+        "Kiri on „MS LAB leping“ reaga „Leping on lisatud.“ ja manusega „MS-LAB-leping-….pdf“.",
+        "Manuse tekst on sama mis failil „Laadi alla (PDF)“.",
+        "Asendatud lepingul koopia nuppu pole."
+      ],
+      "why": "Õpilane saab lepingu uuesti, kui esimene kiri läks kaduma.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-individuaal",
@@ -2948,7 +3083,7 @@
         "Pärast nõustumist avaneb koolituse leht.",
         "Postkasti tuleb kiri „MS LAB leping“ reaga „Leping on lisatud.“.",
         "Manus „MS-LAB-leping-….pdf“ näitab tingimusi Proov 5 nimega ja ilma hinnata.",
-        "Halduses Proov 5 paneelis on „Tingimustega nõustumised“ all „Nõustus …“."
+        "Halduses Proov 5 paneelis on „Lepingud“ all „Kinnitatud … · E-koolituse tingimuste kinnitus“ ja „Laadi alla (PDF)“."
       ],
       "why": "Maria avatud e-koolitusel on lepinguks tingimuste kinnitus.",
       "risk": "high",
