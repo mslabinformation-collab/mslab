@@ -1268,8 +1268,8 @@
       "why": "Montonio dokumentatsioon ei kirjelda testpanga lehte, nii et teised maksekontrollid järgivad seda märkust.",
       "risk": "high",
       "writes": true,
-      "mark": "reworded",
-      "markedAt": "deploy"
+      "mark": "redo",
+      "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
       "id": "registreerimine-grupp",
@@ -1620,8 +1620,8 @@
       "why": "Maria koostab pangaülekande arve kahe vajutusega ja ei trüki summat ise.",
       "risk": "high",
       "writes": true,
-      "mark": "reworded",
-      "markedAt": "deploy"
+      "mark": "new",
+      "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
       "id": "registreerimine-arve-saaja",
@@ -2157,8 +2157,8 @@
       "why": "Õpilane tasub Maria koostatud arve ise ja iga euro saab täpselt ühe arve.",
       "risk": "high",
       "writes": true,
-      "mark": "reworded",
-      "markedAt": "deploy"
+      "mark": "new",
+      "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
       "id": "konto-arve-pdf",
@@ -3422,8 +3422,8 @@
       "why": "Venekeelne õpilane saab arve koos pangaandmetega oma keeles.",
       "risk": "high",
       "writes": true,
-      "mark": "reworded",
-      "markedAt": "deploy"
+      "mark": "new",
+      "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
       "id": "kirjad-makse-katte",
