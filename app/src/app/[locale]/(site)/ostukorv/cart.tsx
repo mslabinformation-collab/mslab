@@ -125,6 +125,7 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
                 email: d.forms.email,
                 contractTerms: d.cart.contractTerms,
                 readContract: d.forms.readContract,
+                contractChanged: d.forms.contractChanged,
                 newsletterConsent: d.forms.newsletterConsent,
                 submit: fill(d.payment.pay, { amount: price }),
                 starting: d.payment.starting,
@@ -134,7 +135,7 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
                 errorTooMany: d.forms.errorTooMany,
                 errorGeneric: d.forms.errorGeneric,
               }}
-              contract={{ title: contract.title, body: contract.body, locale: contract.locale, course: contractCourseName(course.title, contract.locale), priceCents: course.price }}
+              contract={{ version: contract.version, title: contract.title, body: contract.body, locale: contract.locale, course: contractCourseName(course.title, contract.locale), priceCents: course.price }}
               fallback={interest(d.payment.cartDown)}
             />
           ) : (

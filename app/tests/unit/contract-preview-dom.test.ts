@@ -18,10 +18,10 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const mocks = vi.hoisted(() => ({ registerContact: vi.fn(), submitIndividual: vi.fn(), buyEcourse: vi.fn() }));
+const mocks = vi.hoisted(() => ({ registerContact: vi.fn(), submitIndividual: vi.fn(), buyEcourse: vi.fn(), refresh: vi.fn() }));
 vi.mock("@/server/actions/public", () => ({ registerContact: mocks.registerContact, submitIndividual: mocks.submitIndividual, buyEcourse: mocks.buyEcourse }));
 vi.mock("@/lib/navigate", () => ({ navigate: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
 vi.mock("@/lib/url-query", () => ({ useUrlQuery: () => [new URLSearchParams(), vi.fn()] }));
 
 const NBSP = " ";
@@ -57,6 +57,7 @@ const t: ContactRegisterTexts = {
   contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
   readContract: "Loe lepingut",
   contractNoSession: "(vali toimumine)",
+  contractChanged: "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.",
   preferredPeriod: "Soovitud periood või kuupäev",
   preferredPeriodPlaceholder: "Nt detsembri teine pool",
   message: "Sõnum",
@@ -75,7 +76,8 @@ const t: ContactRegisterTexts = {
 /** 14.11.2026 at 10:00 in Tallinn, as Task 1's session fixture. */
 const session: SessionOption = { id: 7, startsAt: "2026-11-14T08:00:00.000Z", date: "14.11.2026", weekday: "laupäev", city: "Tallinn", venue: "", language: "ET", state: "open", stateLabel: "Vabu kohti · 6", disabled: false };
 const other: SessionOption = { ...session, id: 8, startsAt: "2026-12-05T08:00:00.000Z", date: "05.12.2026", city: "Tartu", venue: "Kesk 2" };
-const contactContract: FormContract = { title: "Kontaktkoolituse leping — {koolitus}", body: `${TEXT}\n\nTeine lõik, {tundmatu} jääb.`, locale: "et", course: "Kulmude kujundus", priceCents: 35000 };
+const V1 = "2026-10-10T09:00:00.000Z";
+const contactContract: FormContract = { version: V1, title: "Kontaktkoolituse leping — {koolitus}", body: `${TEXT}\n\nTeine lõik, {tundmatu} jääb.`, locale: "et", course: "Kulmude kujundus", priceCents: 35000 };
 const contactProps = { course: "kulmude-kujundus", locale: "et" as const, kinds: [{ kind: "group" as const, price: "350 €" }, { kind: "individual" as const, price: "450 €" }], sessions: [session, other], t, contract: contactContract };
 
 let container: HTMLDivElement;
@@ -95,6 +97,7 @@ const type = async (selector: string, value: string) => {
 };
 
 beforeEach(() => {
+  for (const m of Object.values(mocks)) m.mockReset();
   vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
   container = document.createElement("div");
   document.body.append(container);
@@ -168,6 +171,7 @@ describe("the cart: the e-course contract in the same way", () => {
     email: "E-post",
     contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
     readContract: "Loe lepingut",
+    contractChanged: "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.",
     newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
     submit: "Maksa 190 €",
     starting: "Avan makse…",
@@ -177,7 +181,7 @@ describe("the cart: the e-course contract in the same way", () => {
     errorTooMany: "Liiga palju katseid.",
     errorGeneric: "Midagi läks valesti.",
   };
-  const contract: FormContract = { title: "E-koolituse tingimused", body: "Tere {nimi} ({e-post}). {koolitus} maksab {hind}.[{toimumine}{ettemaks}]", locale: "et", course: "Kulmumeistri e-koolitus", priceCents: 19000 };
+  const contract: FormContract = { version: V1, title: "E-koolituse tingimused", body: "Tere {nimi} ({e-post}). {koolitus} maksab {hind}.[{toimumine}{ettemaks}]", locale: "et", course: "Kulmumeistri e-koolitus", priceCents: 19000 };
 
   test("the box is the contract, „Loe lepingut“ opens it in the cart: the name and the address as typed, the course, the price; no session and no prepayment", async () => {
     await act(async () => root.render(createElement(EcoursePurchase, { course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract, fallback: null })));
@@ -195,5 +199,65 @@ describe("the cart: the e-course contract in the same way", () => {
     await act(async () => root.render(createElement(EcoursePurchase, { course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract: { ...contract, title: "", body: "  " }, fallback: null })));
     expect($("input[name='terms']")).not.toBeNull();
     expect(toggle()).toBeNull();
+  });
+});
+
+describe("a text that changed since the page was loaded (ruling R6): the form says so, clears the box and loads the page again", () => {
+  const V2 = "2026-10-17T09:02:00.000Z";
+  const settle = () =>
+    act(async () => {
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+  const box = () => $<HTMLInputElement>("input[name='terms']")!;
+  const MESSAGE = "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.";
+
+  test("the registration form sends the version its page shows; 'changed' shows the message at the box, unticks it, focuses it and loads the page again", async () => {
+    mocks.registerContact.mockResolvedValue({ ok: false, errors: { terms: "changed" } });
+    await act(async () => root.render(createElement(ContactRegister, contactProps)));
+    await click($("[data-session='7']"));
+    await click(box());
+    expect(box().checked).toBe(true);
+    await act(async () => $<HTMLFormElement>("[data-register-form]")!.requestSubmit());
+    await settle();
+    expect((mocks.registerContact.mock.calls[0][0] as FormData).get("contractVersion")).toBe(V1);
+    expect(box().checked).toBe(false);
+    expect(box().getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById(box().getAttribute("aria-describedby")!)!.textContent).toBe(MESSAGE);
+    expect(document.activeElement).toBe(box());
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    // the page loaded again brings the new text: the form shows it and sends its version with the next tick
+    await act(async () => root.render(createElement(ContactRegister, { ...contactProps, contract: { ...contactContract, version: V2, body: "Uus tekst, {nimi}." } })));
+    await click(toggle());
+    expect(shown()).toContain("Uus tekst, .");
+    expect($<HTMLInputElement>("input[name='contractVersion']")!.value).toBe(V2);
+  });
+
+  test("an individual request sends no version: it has no contract", async () => {
+    mocks.submitIndividual.mockResolvedValue({ ok: true });
+    await act(async () => root.render(createElement(ContactRegister, contactProps)));
+    expect($<HTMLInputElement>("input[name='contractVersion']")!.value).toBe(V1);
+    await click($("input[name='kind'][value='individual']"));
+    expect($("input[name='contractVersion']")).toBeNull();
+  });
+
+  test("the cart: it sends the version it shows; 'changed' shows the message at the box, unticks it and loads the cart again, and goes nowhere", async () => {
+    const et: EcoursePurchaseTexts = {
+      name: "Nimi", email: "E-post", contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.", readContract: "Loe lepingut", contractChanged: MESSAGE,
+      newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi", submit: "Maksa 190 €", starting: "Avan makse…", alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
+      errorRequired: "See väli on kohustuslik.", errorEmail: "Sisesta korrektne e-posti aadress.", errorTooMany: "Liiga palju katseid.", errorGeneric: "Midagi läks valesti.",
+    };
+    const contract: FormContract = { version: V1, title: "E-koolituse tingimused", body: "Tere {nimi}.", locale: "et", course: "Kulmumeistri e-koolitus", priceCents: 19000 };
+    mocks.buyEcourse.mockResolvedValue({ ok: false, errors: { terms: "changed" } });
+    await act(async () => root.render(createElement(EcoursePurchase, { course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract, fallback: null })));
+    await type("input[name='name']", "Kati Kask");
+    await type("input[name='email']", "kati@example.test");
+    await click(box());
+    await act(async () => $<HTMLFormElement>("[data-ecourse-form]")!.requestSubmit());
+    await settle();
+    expect((mocks.buyEcourse.mock.calls[0][0] as FormData).get("contractVersion")).toBe(V1);
+    expect(box().checked).toBe(false);
+    expect(document.getElementById(box().getAttribute("aria-describedby")!)!.textContent).toBe(MESSAGE);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    expect($("button[type='submit']")!.textContent).toBe("Maksa 190 €");
   });
 });

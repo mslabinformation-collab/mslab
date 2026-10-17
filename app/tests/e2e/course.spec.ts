@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
-import { clientEmail, insertClient, signInAsClient, storedAccess, storedClient } from "./account";
+import { clientEmail, holdTerms, insertClient, signInAsClient, storedAccess, storedClient } from "./account";
 import { LOCAL_FIXTURES, removeClientRows, storedHold, storedPayments, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
 import { E2E_MONTONIO } from "./montonio-values";
 
@@ -444,6 +444,17 @@ test.describe("both types", () => {
 });
 
 test.describe("cart (/ostukorv)", () => {
+  // the cart's contract is the e-course terms (contracts, R6: „Maksa“ is refused when they changed since the cart was loaded): every cart test
+  // takes the terms' turn, so that no test of the terms (account-ecourse and the others that take them) saves other ones in between
+  let releaseTerms: (() => Promise<void>) | null = null;
+  test.beforeEach(async () => {
+    if (LOCAL_FIXTURES) releaseTerms = await holdTerms();
+  });
+  test.afterEach(async () => {
+    await releaseTerms?.();
+    releaseTerms = null;
+  });
+
   test("summarises the e-course; the purchase form — name, e-mail, the terms, the newsletter box — and 'Maksa 190 €' goes to the bank (phase 2b, D3)", async ({ page }, info) => {
     submitsForms();
     const addr = testEmail("buy", info.project.name);

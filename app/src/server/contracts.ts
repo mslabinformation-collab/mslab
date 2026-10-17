@@ -51,7 +51,7 @@ const FIRST_CONTACT_VERSION = "1";
 const SAVE_LOCK = "contract-contact-text";
 
 /** A contract text with its version and the language it is in: what a student reads, what a contract freezes, what a purchase keeps on its payment. */
-export type ContractTemplate = ContractSnapshot;
+export type ContractTemplate = Omit<ContractSnapshot, "acceptedAt">;
 
 // ---------- the templates ----------
 
@@ -111,6 +111,17 @@ export async function contractTemplate(q: Q, kind: ContractKind, locale: "et" | 
   const used = contractLocale(locale, (stored.body.ru ?? "").trim() !== "");
   const pick = (f: I18n): string => (used === "ru" && (f.ru ?? "").trim() ? (f.ru as string) : f.et);
   return { version: stored.version, locale: used, title: pick(stored.title), body: pick(stored.body) };
+}
+
+/**
+ * Whether the text a form's page showed is the one a contract made now freezes (ruling R6): `shown` is the version the page rendered (the
+ * registration form's hidden field, the cart's purchase input), `template` the text read for the contract (contractTemplate: the version before the
+ * text). The version is read once more after that text, so a save of Maria's that lands anywhere between the page and here, or between the
+ * template's version and its text, refuses. A page without a version (cached before the forms sent one) is refused too: it may show anything.
+ */
+export async function shownVersionHolds(q: Q, kind: ContractKind, locale: "et" | "ru", template: ContractTemplate, shown: string | undefined): Promise<boolean> {
+  if (!shown || shown !== template.version) return false;
+  return (await contractTemplate(q, kind, locale)).version === shown;
 }
 
 // ---------- the fields ----------
@@ -242,10 +253,24 @@ export async function contractForRegistration(
  * `snapshotOrTemplate` is what the way says it is. A `purchase` brings the snapshot the cart showed (payments.contract_snapshot), which is filled
  * already (a value of it such as a name typed "{hind}" must not be filled a second time), so it is stored exactly as it is. A `terms` brings the
  * current template, which is filled here with the access's fields (fillContract over contractValues; an e-course has no „Ettemaks“).
+ *
+ * The times (ruling R7): `now` is when this is written, the time the current contract is superseded at; `acceptedAt`, when the acceptance was
+ * given, if earlier (a purchase: the press of „Maksa“ that filled its snapshot); `now` by default. A superseded contract is so never marked
+ * superseded before the contract that replaces it exists.
  */
 export async function contractForAccess(
   tx: Tx,
-  input: { accessId: number; clientId: number; courseId: number; paymentId?: number | null; snapshotOrTemplate: ContractTemplate; fields: ContractFields; via: "purchase" | "terms"; now: Date },
+  input: {
+    accessId: number;
+    clientId: number;
+    courseId: number;
+    paymentId?: number | null;
+    snapshotOrTemplate: ContractTemplate;
+    fields: ContractFields;
+    via: "purchase" | "terms";
+    now: Date;
+    acceptedAt?: Date;
+  },
 ): Promise<Contract | null> {
   const access = await lockAccess(tx, input.accessId);
   if (!access || access.clientId !== input.clientId || access.courseId !== input.courseId) {
@@ -269,7 +294,7 @@ export async function contractForAccess(
       title: input.via === "purchase" ? shown.title : fillContract(shown.title, values),
       body: input.via === "purchase" ? shown.body : fillContract(shown.body, values),
       fields: input.fields,
-      acceptedAt: input.now,
+      acceptedAt: input.acceptedAt ?? input.now,
       acceptedVia: input.via,
     })
     .returning();
@@ -395,7 +420,8 @@ export async function contractPdfForMail(c: Contract): Promise<Uint8Array | null
 /**
  * „MS LAB leping“ to the student (account-mail.ts contractMail), after the act that accepted `c` (the terms gate; Tasks 5 and 6 send it too): to
  * the address the contract froze, in `locale` (the language of the page she accepted it on; the contract's own by default), with its PDF attached
- * (none when it fails to render: contractPdfForMail), and `sent_at` recorded at `now` once Resend took a mail that carried the PDF. Never to a
+ * (none when it fails to render: contractPdfForMail), and `sent_at` recorded at `now` once Resend took a mail that carried the PDF (a failure of
+ * that record alone is logged, and the mail still counts as sent). Never to a
  * sample address (`@example.test`), and nothing without Resend (local development). Not counted in the daily caps: it follows her own act (or
  * Maria's). Never throws; true when the mail went out. The log has the contract's id only.
  */
@@ -413,8 +439,15 @@ export async function mailContract(
     if (!mailConfigured(deps.env)) return false;
     const pdf = await contractPdfForMail(c);
     const sent = await sendMail(deps.env, contractMail({ siteUrl: deps.siteUrl, email, name, locale: opts.locale ?? c.locale, contract: c, pdf, noAccount: opts.noAccount }));
-    if (sent && pdf) await markContractSent(deps.db, c.id, deps.now);
     console.info(`[contracts] contract ${c.id}: mailed: ${sent}`);
+    // the mail is out once Resend took it: a failure to record that (sent_at) is logged on its own, and the answer stays true
+    if (sent && pdf) {
+      try {
+        await markContractSent(deps.db, c.id, deps.now);
+      } catch (e) {
+        logFailure(`[contracts] contract ${c.id}: mailed, but the send was not recorded`, e);
+      }
+    }
     return sent;
   } catch (e) {
     logFailure(`[contracts] contract ${c.id}: the mail failed`, e);

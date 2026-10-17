@@ -12,7 +12,7 @@ import { ECOURSE_BUY_LOCK_CLASS, lockEcoursePurchase, startEcoursePayment } from
 import { handleEcoursePurchase, type Deps } from "@/server/submit";
 import { fakeKv } from "../fakes";
 import { contactCourse, orderToken, registrationOn, settleDeps, SITE, stubMontonio } from "./payments-fixtures";
-import { makeTestDb } from "./helpers";
+import { makeTestDb, shownContractVersion } from "./helpers";
 
 // The e-course purchase (phase 2b, spec 6.4, 6.2.3): the cart's action creates only a pending payment and Montonio's order; when it is paid,
 // the client is found or created, the course opens for her (by "payment"), the newsletter follows when ticked, and she gets "E-koolitus on
@@ -22,8 +22,11 @@ const NOW = new Date("2026-10-09T10:00:00Z");
 const MIN = 60_000;
 let db: Db;
 let ecourseId: number;
+/** The e-course contract's version the cart shows (contracts R6: the cart sends it with the box). */
+let contractVersion = "";
 beforeEach(async () => {
   db = await makeTestDb();
+  contractVersion = await shownContractVersion(db, "ecourse");
   for (const method of ["info", "error"] as const) vi.spyOn(console, method).mockImplementation(() => {});
   const [c] = await db
     .insert(courses)
@@ -44,7 +47,7 @@ function formDeps(montonio: Deps["montonio"], opts: { now?: Date; kv?: ReturnTyp
 }
 const form = (over: Record<string, string> = {}) => {
   const fd = new FormData();
-  for (const [k, v] of Object.entries({ course: "kulmumeistri-e-koolitus", name: "Kati Tamm", email: "kati@example.com", terms: "on", locale: "et", ...over })) fd.set(k, v);
+  for (const [k, v] of Object.entries({ course: "kulmumeistri-e-koolitus", name: "Kati Tamm", email: "kati@example.com", terms: "on", locale: "et", contractVersion, ...over })) fd.set(k, v);
   return fd;
 };
 

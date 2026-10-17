@@ -8,9 +8,10 @@ import styles from "./ContractPreview.module.css";
  * What a form needs to show its contract inline (contracts, D1): the text the server reads for the form's page (contracts.ts contractTemplate:
  * Maria's text, or the public „Õppetingimused“ until she writes the contact one), unfilled, in the language it is in; the course's name in that
  * language (domain/contract.ts contractCourseName); the price in cents (the group price, the e-course's price). The form fills the rest from
- * what she types and chooses (domain/contract.ts filledContract), as the server does when it freezes the contract.
+ * what she types and chooses (domain/contract.ts filledContract), as the server does when it freezes the contract. `version` is the text's
+ * version, which the form sends with the box (ruling R6): the server freezes nothing from another text than the one shown here.
  */
-export type FormContract = { title: string; body: string; locale: "et" | "ru"; course: string; priceCents: number | null };
+export type FormContract = { version: string; title: string; body: string; locale: "et" | "ru"; course: string; priceCents: number | null };
 
 /**
  * „Loe lepingut“ under the box of the registration form and of the cart (D1): a button that opens the contract's text in the form, below it, and

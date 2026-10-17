@@ -267,9 +267,11 @@ export const ru: Dict = {
     sending: "Отправляем…",
     register: "Записаться",
     terms: "Ознакомлен(а) с условиями и принимаю их.",
+    // the contract's box, its inline text and its refusal (contracts Task 4, ruling R6): Draft for Dim's wording sheet
     contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их.",
     readContract: "Читать договор",
     contractNoSession: "(выберите дату)",
+    contractChanged: "Текст договора за это время изменился — прочитайте его снова и подтвердите.",
     modelHelp: "Мне нужна помощь учебного центра в поиске моделей",
     createAccount: "Сразу создайте мне аккаунт в среде MS LAB",
     newsletterConsent: "Хочу получать новости и предложения MS LAB",
@@ -357,6 +359,7 @@ export const ru: Dict = {
     emptyTitle: "Корзина пуста",
     emptyText: "Выберите подходящий онлайн-курс — купить его можно будет, как только откроется оплата.",
     total: "Итого",
+    // the purchase's box is the e-course contract (contracts Task 4): Draft for Dim's wording sheet
     contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их.",
   },
 
@@ -471,7 +474,7 @@ export const ru: Dict = {
       paidOn: "Оплачено",
       attached: "Счёт в\u00a0формате PDF во\u00a0вложении.",
     },
-    // the contract's mail (server/account-mail.ts contractMail)
+    // the contract's mail (server/account-mail.ts contractMail; contracts Task 4, ruling R1): Draft for Dim's wording sheet
     contractMail: {
       subject: "Договор MS LAB",
       lead: "Вы подтвердили договор {date}.",

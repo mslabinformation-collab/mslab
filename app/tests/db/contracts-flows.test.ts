@@ -12,7 +12,7 @@ import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
 import { acceptTerms, loadEcourse, termsState } from "@/server/client-data";
 import { renderContract } from "@/server/contract-pdf";
-import { contractTemplate, saveContractTexts } from "@/server/contracts";
+import { contractTemplate, mailContract, saveContractTexts } from "@/server/contracts";
 import type { Env } from "@/server/notify";
 import { settleToken } from "@/server/payments/settle";
 import { handleEcoursePurchase, handleIndividual, handleRegistration, handleWaitlist, runSubmission, type Deps } from "@/server/submit";
@@ -117,9 +117,18 @@ async function contactReady(opts: { capacity?: number } = {}) {
   expect(await saveContractTexts(db, CONTACT, CONTACT_SAVED)).toEqual({ ok: true });
   return contactCourse(db, opts);
 }
-/** The group registration form as she fills it: the name and the address with stray spaces, 50 %, the box ticked. */
+/**
+ * The group registration form as she fills it: the name and the address with stray spaces, 50 %, the box ticked, and the version of the contact
+ * text its page showed (ruling R6): the one contactReady saved.
+ */
 const groupForm = (sessionId: number, over: Record<string, string> = {}) =>
-  form({ course: "kulmumeistri-baaskoolitus", session: String(sessionId), name: "Kati  Kask", email: " Kati@Example.com ", phone: "+372 5555 0101", payment: "half", terms: "on", locale: "et", ...over });
+  form({ course: "kulmumeistri-baaskoolitus", session: String(sessionId), name: "Kati  Kask", email: " Kati@Example.com ", phone: "+372 5555 0101", payment: "half", terms: "on", locale: "et", contractVersion: CONTACT_SAVED.toISOString(), ...over });
+/** The same form from a page cached before the forms sent a version: no `contractVersion` at all. */
+const withoutVersion = (fd: FormData) => {
+  fd.delete("contractVersion");
+  return fd;
+};
+const CHANGED = { ok: false, errors: { terms: "changed" } };
 const euros = (s: string) => s.replace(/ €/g, `${NBSP}€`);
 
 describe("the registration form's box is the contract (D1, §4)", () => {
@@ -267,7 +276,8 @@ async function ecourseReady(): Promise<Course> {
     .returning();
   return course;
 }
-const cartForm = (over: Record<string, string> = {}) => form({ course: SLUG, name: "Kati Kask", email: "kati@example.com", terms: "on", locale: "et", ...over });
+/** The cart's purchase as she fills it, with the version of the e-course text the cart showed (R6): V1, the one ecourseReady stores. */
+const cartForm = (over: Record<string, string> = {}) => form({ course: SLUG, name: "Kati Kask", email: "kati@example.com", terms: "on", locale: "et", contractVersion: V1, ...over });
 const newestPayment = async (): Promise<Payment> => (await db.select().from(payments).orderBy(desc(payments.id)).limit(1))[0];
 
 /** „Maksa“ in the cart at `at` (NOW): the payment row it started. */
@@ -285,19 +295,19 @@ async function pay(m: ReturnType<typeof stubMontonio>, p: Payment, at = LATER) {
 const katiClient = async () => (await db.select().from(clients).where(eq(clients.email, "kati@example.com")))[0];
 
 describe("the cart's box is the e-course contract (D1, §4)", () => {
-  test("the start keeps the contract the cart showed on the payment: filled with the name, the address, the course and the price, its version and language; the cart's preview fills it the same", async () => {
+  test("the start keeps the contract the cart showed on the payment: filled with the name, the address, the course and the price, its version and language, and the press (R7); the cart's preview fills it the same", async () => {
     const m = stubMontonio();
     const course = await ecourseReady();
     const p = await startPurchase(m);
-    expect(p.contractSnapshot).toEqual({ version: V1, locale: "et", title: "E-koolituse tingimused", body: `Tere Kati Kask, hind 190,00${NBSP}€.` });
+    expect(p.contractSnapshot).toEqual({ version: V1, locale: "et", title: "E-koolituse tingimused", body: `Tere Kati Kask, hind 190,00${NBSP}€.`, acceptedAt: NOW.toISOString() });
     const template = await contractTemplate(db, "ecourse", "et");
-    expect({ ...template, ...filledContract(template, { name: "Kati Kask", email: "kati@example.com", course: contractCourseName(course.title, "et"), session: null, priceCents: 19000, choice: null, locale: "et" }) }).toEqual(p.contractSnapshot);
-    // pressed again while the order is open (the same row is sent again): what this press showed replaces it, in Russian now
+    expect({ ...template, ...filledContract(template, { name: "Kati Kask", email: "kati@example.com", course: contractCourseName(course.title, "et"), session: null, priceCents: 19000, choice: null, locale: "et" }), acceptedAt: NOW.toISOString() }).toEqual(p.contractSnapshot);
+    // pressed again while the order is open (the same row is sent again): what this press showed replaces it, in Russian now, with its time
     await startPurchase(m, { locale: "ru", name: "Katja" }, new Date(NOW.getTime() + MIN));
     const [again, ...none] = await db.select().from(payments);
     expect(none).toEqual([]);
     expect(again.id).toBe(p.id);
-    expect(again.contractSnapshot).toEqual({ version: V1, locale: "ru", title: "Условия онлайн-обучения", body: `Здравствуйте, Katja, цена 190,00${NBSP}€.` });
+    expect(again.contractSnapshot).toEqual({ version: V1, locale: "ru", title: "Условия онлайн-обучения", body: `Здравствуйте, Katja, цена 190,00${NBSP}€.`, acceptedAt: new Date(NOW.getTime() + MIN).toISOString() });
   });
 
   test("paid: the purchase's contract is frozen beside the grant — the snapshot as it is, the paid price, accepted at the order's start; the gate is satisfied for that version (she is not asked twice)", async () => {
@@ -497,5 +507,133 @@ describe("the terms gate freezes the contract (D1: a free grant, a newer text)",
     const [k] = await allContracts();
     expect([k.locale, k.sentAt]).toEqual(["et", null]);
     expect(m.mails()).toEqual([]);
+  });
+});
+
+// ---------- fix round 1 (rulings R6, R7, R8; minors M-4, M-5, M-6) ----------
+
+describe("R6: the forms freeze only the text their page showed", () => {
+  test("the registration form: Maria saves another text between the page and the submit — refused, and nothing is made (no registration, contract, payment or order); a page without a version too; the new version books", async () => {
+    const m = stubMontonio();
+    const c = await contactReady(); // the page is loaded with this version (CONTACT_SAVED)
+    expect(await saveContractTexts(db, { title: CONTACT.title, body: { et: "Uus tekst, {nimi}." } }, LATER)).toEqual({ ok: true }); // Maria saves meanwhile
+    const { deps, flush } = formDeps({ montonio: m.montonio, mail: true });
+    expect(await handleRegistration(deps, groupForm(c.session.id))).toEqual(CHANGED);
+    expect(await handleRegistration(deps, withoutVersion(groupForm(c.session.id)))).toEqual(CHANGED); // a page cached before the forms sent one
+    expect(await handleRegistration(deps, groupForm(c.session.id, { contractVersion: "x".repeat(201) }))).toEqual(CHANGED); // no version can be that
+    await flush();
+    expect(await db.select().from(registrations)).toEqual([]);
+    expect(await allContracts()).toEqual([]);
+    expect(await db.select().from(payments)).toEqual([]);
+    expect(m.state.orders).toEqual([]);
+    expect(m.mails()).toEqual([]);
+    expect(logged("info")).toContain("[forms] register: the contract's text changed since the page was loaded: nothing stored");
+    // the page loaded again shows the new text and sends its version: booked, with that text frozen
+    expect(await handleRegistration(deps, groupForm(c.session.id, { contractVersion: LATER.toISOString() }))).toMatchObject({ ok: true });
+    const [k] = await allContracts();
+    expect([k.version, k.body]).toEqual([LATER.toISOString(), "Uus tekst, Kati Kask."]);
+  });
+
+  test("the registration form: the same version still books (and the contract is the text of that version)", async () => {
+    const c = await contactReady();
+    expect(await handleRegistration(formDeps().deps, groupForm(c.session.id))).toEqual({ ok: true });
+    expect((await allContracts()).map((k) => k.version)).toEqual([CONTACT_SAVED.toISOString()]);
+  });
+
+  test("the cart: Maria saves another e-course text between the cart and „Maksa“ — refused before anything is filled or started (no payment, no order); a cart without a version too; the new version starts", async () => {
+    const m = stubMontonio();
+    await ecourseReady(); // the cart is loaded with V1
+    await db.update(pages).set({ body: { et: "Uus tekst, {nimi}." } }).where(eq(pages.key, TERMS_PAGE_KEY));
+    await setSetting(db, TERMS_VERSION_KEY, V2); // Maria saves meanwhile
+    const deps = formDeps({ montonio: m.montonio }).deps;
+    expect(await handleEcoursePurchase(deps, cartForm())).toEqual(CHANGED);
+    expect(await handleEcoursePurchase(deps, withoutVersion(cartForm()))).toEqual(CHANGED);
+    expect(await db.select().from(payments)).toEqual([]);
+    expect(m.state.orders).toEqual([]);
+    expect(logged("info")).toContain("[forms] ecourse: the contract's text changed since the cart was loaded: nothing started");
+    // the cart loaded again: the new version starts, and its text is what the payment keeps
+    expect(await handleEcoursePurchase(deps, cartForm({ contractVersion: V2 }))).toMatchObject({ ok: true });
+    const [p] = await db.select().from(payments);
+    expect(p.contractSnapshot).toMatchObject({ version: V2, body: "Uus tekst, Kati Kask." });
+  });
+
+  test("M-4: payments off — nothing is read for the contract, and the answer stays „unavailable“", async () => {
+    await ecourseReady();
+    await db.execute(sql`alter table pages rename to pages_away`);
+    try {
+      expect(await handleEcoursePurchase(formDeps({ montonio: null }).deps, cartForm())).toEqual({ ok: false, errors: { form: "unavailable" } });
+    } finally {
+      await db.execute(sql`alter table pages_away rename to pages`);
+    }
+    expect(await db.select().from(payments)).toEqual([]);
+  });
+});
+
+describe("R7, R8, M-6: the purchase's contract — its times, its student, once", () => {
+  test("R7: a gate acceptance inside an open payment window, then settle — the purchase is accepted at the press that filled its snapshot (a re-send's), and the gate's contract is superseded at the settlement, after it was accepted", async () => {
+    const m = stubMontonio();
+    const { kati, access } = await freeGrant();
+    const pressed = new Date(NOW.getTime() + MIN);
+    await startPurchase(m); // at NOW
+    const p = await startPurchase(m, {}, pressed); // „Maksa“ again: the same open attempt, its snapshot filled again
+    expect(p.contractSnapshot!.acceptedAt).toBe(pressed.toISOString());
+    expect(await acceptTerms(db, kati.id, SLUG, V1, LATER, { locale: "et" })).toBe("accepted"); // the gate, while the payment is open
+    await pay(m, p, LATEST);
+    const [gate, bought, ...none] = await allContracts();
+    expect(none).toEqual([]);
+    expect(gate).toMatchObject({ acceptedVia: "terms", accessId: access.id, acceptedAt: LATER, supersededAt: LATEST });
+    expect(bought).toMatchObject({ acceptedVia: "purchase", accessId: access.id, paymentId: p.id, acceptedAt: pressed, supersededAt: null });
+    // superseded at the settlement (deps.now), never before the contract that replaced it was accepted or made
+    expect(gate.supersededAt!.getTime()).toBeGreaterThanOrEqual(gate.acceptedAt.getTime());
+    expect(gate.supersededAt!.getTime()).toBeGreaterThanOrEqual(bought.acceptedAt.getTime());
+  });
+
+  test("R7: a snapshot kept before it carried its press is accepted at the payment's start", async () => {
+    const m = stubMontonio();
+    await ecourseReady();
+    const p = await startPurchase(m);
+    const { acceptedAt: _pressed, ...older } = p.contractSnapshot!;
+    void _pressed;
+    await db.update(payments).set({ contractSnapshot: older }).where(eq(payments.id, p.id));
+    await pay(m, p);
+    expect((await allContracts())[0].acceptedAt).toEqual(p.createdAt);
+  });
+
+  test("R8: an existing client types another name in the cart — the contract names her one way: its {nimi} and its „Pooled“ are the name she typed", async () => {
+    const m = stubMontonio();
+    await ecourseReady();
+    await db.insert(clients).values({ email: "kati@example.com", name: "Katrin", locale: "et" });
+    await pay(m, await startPurchase(m, { name: "  Kati   Kask " }));
+    expect((await katiClient()).name).toBe("Katrin"); // her account keeps its name
+    const [k] = await allContracts();
+    expect(k.body).toBe(`Tere Kati Kask, hind 190,00${NBSP}€.`);
+    expect(k.fields.student).toEqual({ name: "Kati Kask", email: "kati@example.com" });
+  });
+
+  test("M-6: the same PAID twice (the webhook's retry, the return) leaves one contract and one mail with it", async () => {
+    const m = stubMontonio();
+    await ecourseReady();
+    const p = await startPurchase(m);
+    await pay(m, p);
+    await pay(m, p, LATEST);
+    expect(await allContracts()).toHaveLength(1);
+    expect(hers(m).filter((x) => x.attachments?.some((a) => a.filename.startsWith("MS-LAB-leping-")))).toHaveLength(1);
+  });
+});
+
+describe("M-5: mailContract once Resend took the mail", () => {
+  test("a failure to record the send is logged on its own, and the mail still counts as sent", async () => {
+    const m = stubMontonio();
+    const { kati } = await freeGrant();
+    const made: Contract[] = [];
+    await acceptTerms(db, kati.id, SLUG, V1, NOW, { locale: "et", onContract: (c) => void made.push(c) });
+    await db.execute(sql.raw("create or replace function mslab_refuse_contract_update() returns trigger language plpgsql as $$ begin raise exception 'refused'; end $$"));
+    await db.execute(sql.raw("create trigger mslab_refuse_contract_update before update on contracts for each row execute function mslab_refuse_contract_update()"));
+    const env: Env = { KV: fakeKv(), MAIL_FROM: "MS LAB <info@send.example>", MARIA_EMAIL: "maria@example.test", SITE_URL: SITE, RESEND_API_KEY: "re_test" };
+    expect(await mailContract({ db, env, siteUrl: SITE, now: LATER }, made[0])).toBe(true);
+    expect(hers(m)).toHaveLength(1);
+    expect((await allContracts())[0].sentAt).toBeNull();
+    expect(logged("error")).toContain(`[contracts] contract ${made[0].id}: mailed, but the send was not recorded: DrizzleQueryError (code P0001)`);
+    expect(logged("error").join("\n")).not.toContain("the mail failed");
   });
 });

@@ -62,6 +62,8 @@ export type ContactRegisterTexts = {
   readContract: string;
   /** {toimumine} in the inline contract until a date is chosen: „(vali toimumine)“. */
   contractNoSession: string;
+  /** The box's error when the contract's text changed since the page was loaded (ruling R6): the new text is shown, the box cleared. */
+  contractChanged: string;
   preferredPeriod: string;
   preferredPeriodPlaceholder: string;
   message: string;
@@ -103,7 +105,9 @@ const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "me
  * - The group registration's box is the contract (contracts, D1): „Olen tutvunud lepingu tingimustega …“ with „Loe lepingut“, which opens
  *   `contract` in the form, filled live from what the form holds (the chosen date and place, the price, the payment choice, the name and the
  *   address; „(vali toimumine)“ before a date is chosen) by the server's own fill (domain/contract.ts filledContract, Review Focus 3). Submitting
- *   with it ticked is the acceptance: the server freezes the contract with the registration.
+ *   with it ticked is the acceptance: the server freezes the contract with the registration. The form sends the version of the text it shows
+ *   (R6); when Maria has saved another text since the page was loaded, nothing is stored, the box's error says so, the box is cleared and the
+ *   page is loaded again with the new text.
  * - The individual request keeps today's box and its link to „Õppetingimused“ (D1: no contract).
  * After a failed submit, focus goes to the first field with an error (its message is linked with aria-describedby).
  * "?sessioon=12" (the links from the home page and the calendar) preselects that date until the visitor picks one. The
@@ -156,8 +160,13 @@ export function ContactRegister({
       }
       const errors: Errors = {};
       let rejected: number | undefined;
+      let changed = false;
       for (const [f, code] of Object.entries(result.errors)) {
         if (f === "form") errors.form = code === "rate" ? t.errorTooMany : t.errorGeneric;
+        else if (f === "terms" && code === "changed") {
+          errors.terms = t.contractChanged;
+          changed = true;
+        }
         else if (f === "email") errors.email = t.errorEmail;
         else if (f === "session" && (code === "full" || code === "unavailable")) {
           errors.session = code === "full" ? t.sessionFull : t.sessionUnavailable;
@@ -166,8 +175,11 @@ export function ContactRegister({
         else errors[f as Field] = t.errorRequired;
       }
       if (Object.keys(errors).length === 0) errors.form = t.errorGeneric;
-      // The date list on the page is out of date: load the current seat states.
-      if (rejected !== undefined) router.refresh();
+      // The contract's text changed since the page was loaded (R6): her tick was for the old one, so the box is cleared, and the page is loaded
+      // again for the new text (and its version) to read.
+      if (changed) setChecks((c) => ({ ...c, terms: false }));
+      // The date list on the page is out of date: load the current seat states. The same for a changed contract text.
+      if (rejected !== undefined || changed) router.refresh();
       return { status: "error", kind: k, errors, rejected };
     } catch {
       return { status: "error", kind: k, errors: { form: t.errorGeneric } };
@@ -473,6 +485,8 @@ export function ContactRegister({
 
           <input type="hidden" name="course" value={course} />
           <input type="hidden" name="locale" value={locale} />
+          {/* the version of the contract this page shows (R6): the server freezes nothing from another text */}
+          {kind === "group" && <input type="hidden" name="contractVersion" value={contract.version} />}
           {/* Honeypot: people never see or fill it. */}
           <div className={styles.honeypot} aria-hidden="true">
             <label>

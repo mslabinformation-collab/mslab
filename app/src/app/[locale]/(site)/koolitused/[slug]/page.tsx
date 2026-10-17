@@ -238,6 +238,7 @@ export default async function CoursePage({ params }: Props) {
                 kinds={kinds}
                 sessions={sessions}
                 contract={{
+                  version: template?.version ?? "",
                   title: template?.title ?? "",
                   body: template?.body ?? "",
                   locale: template?.locale ?? locale,
@@ -271,6 +272,7 @@ export default async function CoursePage({ params }: Props) {
                   contractTerms: d.forms.contractTerms,
                   readContract: d.forms.readContract,
                   contractNoSession: d.forms.contractNoSession,
+                  contractChanged: d.forms.contractChanged,
                   preferredPeriod: d.forms.preferredPeriod,
                   preferredPeriodPlaceholder: d.forms.preferredPeriodPlaceholder,
                   message: d.forms.message,

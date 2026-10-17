@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { makeTestDb } from "./helpers";
+import { makeTestDb, shownContractVersion } from "./helpers";
 import type { Db } from "@/db/client";
 import { courses, courseSessions, practicePackages, registrations, requests, subscribers } from "@/db/schema";
 import { clientDetail } from "@/server/admin-clients";
@@ -30,9 +30,12 @@ const base = { level: "basic" as const, summary: { et: "" }, body: { et: "" } };
 
 let db: Db;
 let session: { id: number };
+/** The contact contract's version the course page shows (contracts R6: the group form sends it with the box). */
+let contractVersion = "";
 
 beforeEach(async () => {
   db = await makeTestDb();
+  contractVersion = await shownContractVersion(db);
   const [contact] = await db
     .insert(courses)
     .values({ ...base, slug: "kulm", type: "contact", title: { et: "Kulmude lamineerimine" }, priceGroup: 35000, priceIndividual: 45000, published: true })
@@ -64,7 +67,7 @@ const form = (fields: Record<string, string>) => {
 };
 
 const register = (email: string, extra: Record<string, string> = {}) =>
-  handleRegistration(deps(), form({ course: "kulm", session: String(session.id), name: "Kati Kask", email, phone: "+372 5555 1234", payment: "half", terms: "on", ...extra }));
+  handleRegistration(deps(), form({ course: "kulm", session: String(session.id), name: "Kati Kask", email, phone: "+372 5555 1234", payment: "half", terms: "on", contractVersion, ...extra }));
 const waitlist = (email: string, extra: Record<string, string> = {}) =>
   handleWaitlist(deps(), form({ session: String(session.id), name: "Kati Kask", email, ...extra }));
 const individual = (email: string, extra: Record<string, string> = {}) =>

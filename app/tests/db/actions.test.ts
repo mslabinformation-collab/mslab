@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { makeTestDb } from "./helpers";
+import { makeTestDb, shownContractVersion } from "./helpers";
 import type { Db } from "@/db/client";
 import { clientLoginTokens, courses, courseSessions, mailQuota, practicePackages, registrations, requests, settings, subscribers } from "@/db/schema";
 import type { PublicChange } from "@/server/cache-targets";
@@ -34,8 +34,12 @@ let c: { id: number };
 let s: { id: number };
 const ids = { other: 0, full: 0, cancelled: 0, past: 0, thisMorning: 0, yesterday: 0, thisEvening: 0, otherCourse: 0, unpublished: 0, groupless: 0 };
 
+/** The contact contract's version the course page shows (contracts R6: the group form sends it with the box). */
+let contractVersion = "";
+
 beforeAll(async () => {
   db = await makeTestDb();
+  contractVersion = await shownContractVersion(db);
   [c] = await db
     .insert(courses)
     .values({ ...text, slug: "kulmud", type: "contact", title: { et: "Kulmude baaskoolitus" }, published: true, priceGroup: 39000, priceIndividual: 45000 })
@@ -111,7 +115,7 @@ const form = (fields: Record<string, string>) => {
   return fd;
 };
 const group = (extra: Record<string, string> = {}) =>
-  form({ course: "kulmud", session: String(s.id), name: "Test  Õpilane", email: " Test@Example.com ", phone: "+372 5555 5555", payment: "half", modelHelp: "on", terms: "on", locale: "ru", ...extra });
+  form({ course: "kulmud", session: String(s.id), name: "Test  Õpilane", email: " Test@Example.com ", phone: "+372 5555 5555", payment: "half", modelHelp: "on", terms: "on", locale: "ru", contractVersion, ...extra });
 
 test("createRegistration never confirms", async () => {
   const r = await createRegistration(db, { courseId: c.id, courseSessionId: s.id, kind: "group", name: "A", email: "a@example.ee", phone: "1", paymentChoice: "full", wantsModelHelp: true, wantsAccount: false, preferredPeriod: "", message: "", locale: "et" });
@@ -1074,7 +1078,7 @@ describe("confirmation e-mails to the visitor (phase 2a Task 10)", () => {
 
 describe("the newsletter consent on the registration forms (phase 2c)", () => {
   const groupFields = (email: string, extra: Record<string, string> = {}) => ({
-    course: "kulmud", session: String(s.id), name: "Kati Tamm", email, phone: "+372 5555 5555", payment: "full", terms: "on", locale: "et", ...extra,
+    course: "kulmud", session: String(s.id), name: "Kati Tamm", email, phone: "+372 5555 5555", payment: "full", terms: "on", locale: "et", contractVersion, ...extra,
   });
   const WELCOME_SUBJECT = "Tere tulemast MS LABi!";
   const newsletterMails = (mails: { to: string; subject: string }[], to: string) => mails.filter((m) => m.to === to && m.subject === WELCOME_SUBJECT);

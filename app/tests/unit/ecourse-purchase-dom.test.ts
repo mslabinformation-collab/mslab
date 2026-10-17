@@ -18,12 +18,14 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const mocks = vi.hoisted(() => ({ buyEcourse: vi.fn<(fd: FormData) => Promise<unknown>>(), navigate: vi.fn<(url: string) => void>() }));
 vi.mock("@/server/actions/public", () => ({ buyEcourse: mocks.buyEcourse }));
 vi.mock("@/lib/navigate", () => ({ navigate: mocks.navigate }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const t: EcoursePurchaseTexts = {
   name: "Nimi",
   email: "E-post",
   contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
   readContract: "Loe lepingut",
+  contractChanged: "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.",
   newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
   submit: "Maksa 190 €",
   starting: "Avan makse…",
@@ -33,7 +35,7 @@ const t: EcoursePurchaseTexts = {
   errorTooMany: "Liiga palju katseid. Proovi mõne minuti pärast.",
   errorGeneric: "Midagi läks valesti. Proovi uuesti.",
 };
-const contract = { title: "E-koolituse tingimused", body: "Tere {nimi}, hind {hind}.", locale: "et" as const, course: "Kulmumeistri e-koolitus", priceCents: 19000 };
+const contract = { version: "2026-10-01T00:00:00.000Z", title: "E-koolituse tingimused", body: "Tere {nimi}, hind {hind}.", locale: "et" as const, course: "Kulmumeistri e-koolitus", priceCents: 19000 };
 const props = { course: "kulmumeistri-e-koolitus", locale: "et" as const, t, contract, fallback: createElement("p", { "data-fallback": "" }, "Makse lisandub peagi") };
 
 let container: HTMLDivElement;
@@ -74,7 +76,7 @@ test("the markup: a POST form with name, e-mail, the box with „Loe lepingut“
   const html = renderToStaticMarkup(createElement(EcoursePurchase, props));
   // either order of the two attributes (React 19 writes a form's `method` after the others)
   expect(html).toMatch(/<form\b(?=[^>]*\bmethod="post")(?=[^>]*\bdata-ecourse-form="")[^>]*>/);
-  for (const part of ['name="name"', 'name="email"', 'name="terms"', 'name="newsletter"', 'name="course" value="kulmumeistri-e-koolitus"', 'name="locale" value="et"', 'name="website"', "Olen tutvunud lepingu tingimustega ja nõustun nendega.", "Loe lepingut", "Maksa 190 €"])
+  for (const part of ['name="name"', 'name="email"', 'name="terms"', 'name="newsletter"', 'name="course" value="kulmumeistri-e-koolitus"', 'name="locale" value="et"', 'name="website"', 'name="contractVersion" value="2026-10-01T00:00:00.000Z"', "Olen tutvunud lepingu tingimustega ja nõustun nendega.", "Loe lepingut", "Maksa 190 €"])
     expect(html).toContain(part);
   expect(html).not.toContain('href="/tingimused"');
   expect(html).not.toMatch(/name="newsletter"[^>]*checked/);

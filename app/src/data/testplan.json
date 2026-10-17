@@ -1215,6 +1215,33 @@
       "markedAt": "deploy"
     },
     {
+      "id": "registreerimine-leping-muutunud",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Leping muutus enne registreerimist",
+      "href": "/koolitused",
+      "steps": [
+        "Ava oma kontaktkoolituse leht ja vali tulevane kuupäev.",
+        "Kirjuta „Nimi“: Proov 1, oma +proov1 e-post ja telefon ning märgi lepingu ruut.",
+        "Ava teises vahelehes Seaded, lisa kontaktkoolituse lepingule (või „Õppetingimused“ tekstile) üks lause ja salvesta.",
+        "Vajuta esimeses vahelehes „Registreeru“.",
+        "Vajuta „Loe lepingut“.",
+        "Pane Seadetes tekst tagasi ja salvesta."
+      ],
+      "expect": [
+        "Ruudu all on „Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.“.",
+        "Lepingu ruut on jälle märkimata.",
+        "„Loe lepingut“ näitab teksti koos lisatud lausega.",
+        "Montonio leht ei avane ja halduses „Registreerimised“ uut registreeringut pole."
+      ],
+      "why": "Õpilane kinnitab ainult seda lepingu teksti, mida ta nägi.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-montonio-esmane",
       "area": "registreerimine",
       "who": "dim",
@@ -1225,7 +1252,7 @@
         "Ava kontaktkoolitus ja vali tulevane kuupäev, kus on vabu kohti.",
         "Kirjuta „Nimi“: Proov 0.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov0.",
-        "Vali „100% kohe“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Vali „100% kohe“, märgi lepingu ruut ja vajuta „Registreeru“.",
         "Kirjuta selle kontrolli märkusesse, mida Montonio leht pakub: pangad, kaart ja nupud.",
         "Tee makse testpangas lõpuni ja kirjuta märkusesse iga samm.",
         "Kirjuta sama ka docs/deploy.md jaotise 11 punkti 6.",
@@ -1241,8 +1268,8 @@
       "why": "Montonio dokumentatsioon ei kirjelda testpanga lehte, nii et teised maksekontrollid järgivad seda märkust.",
       "risk": "high",
       "writes": true,
-      "mark": "redo",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-grupp",
@@ -1527,7 +1554,7 @@
       "steps": [
         "Registreeri samale kuupäevale: „Nimi“ Proov 2 ja „Telefon“ oma number.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov2.",
-        "Vali „100% kohe“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Vali „100% kohe“, märgi lepingu ruut ja vajuta „Registreeru“.",
         "Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb."
       ],
       "expect": [
@@ -1538,7 +1565,9 @@
       ],
       "why": "Kõik ei maksa kohe; registreering peab ikka alles jääma.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-pangaulekanne",
@@ -1575,7 +1604,7 @@
       "steps": [
         "Registreeri samale kuupäevale: „Nimi“ Proov 6 ja „Telefon“ oma number.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov6.",
-        "Vali „50% registreerimisel + 50% koolituspäeval“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Vali „50% registreerimisel + 50% koolituspäeval“, märgi lepingu ruut ja vajuta „Registreeru“.",
         "Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb.",
         "Halduses ava „Registreerimised“, vajuta nimele Proov 6 ja keri plokini „Arved“.",
         "Vajuta „Koosta arve“, vali „Ettemaks 50%“ ja „Maksmiseks“, siis vajuta „Koosta arve“.",
@@ -1591,8 +1620,8 @@
       "why": "Maria koostab pangaülekande arve kahe vajutusega ja ei trüki summat ise.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-saaja",
@@ -2109,7 +2138,7 @@
       "steps": [
         "Registreeri samale kuupäevale: „Nimi“ Proov 7 ja „Telefon“ oma number.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov7.",
-        "Vali „50% registreerimisel + 50% koolituspäeval“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Vali „50% registreerimisel + 50% koolituspäeval“, märgi lepingu ruut ja vajuta „Registreeru“.",
         "Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb.",
         "Koosta halduses Proov 7 jaoks „Ettemaks 50%“ arve valikuga „Maksmiseks“.",
         "Logi sisse kui Proov 7, ava „Minu koolitused“ ja vajuta rea „Arve …“ juures „Laadi alla (PDF)“.",
@@ -2128,8 +2157,8 @@
       "why": "Õpilane tasub Maria koostatud arve ise ja iga euro saab täpselt ühe arve.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "konto-arve-pdf",
@@ -2425,7 +2454,7 @@
       "steps": [
         "Ava 30 minuti jooksul pärast ostu sama e-koolituse ostukorv.",
         "Kirjuta sama nimi ja +proov1 aadress.",
-        "Märgi tingimuste ruut ja vajuta „Maksa …“."
+        "Märgi lepingu ruut ja vajuta „Maksa …“."
       ],
       "expect": [
         "Näed „Makse on juba tehtud — vaata oma e-posti.“.",
@@ -2433,7 +2462,9 @@
       ],
       "why": "See hoiab ära, et õpilane maksab sama koolituse eest kaks korda.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-tingimused",
@@ -3377,7 +3408,7 @@
       "steps": [
         "Registreeri venekeelsel lehel /ru/koolitused samale kuupäevale: „Nimi“ Proov 8 ja „Telefon“ oma number.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov8.",
-        "Vali 50% ettemaksu valik, märgi tingimuste ruut ja vajuta registreerimisnuppu; katkesta makse Montonio lehel.",
+        "Vali 50% ettemaksu valik, märgi lepingu ruut ja vajuta registreerimisnuppu; katkesta makse Montonio lehel.",
         "Koosta halduses Proov 8 jaoks „Ettemaks 50%“ arve valikuga „Maksmiseks“ ja vajuta „Saada õpilasele“.",
         "Ava Gmailis telefonis kiri „Счёт MS LAB …“, mis tuli Proov 8 aadressile.",
         "Ava kirja manus ja vajuta kirjas nuppu „Открыть мой кабинет“."
@@ -3391,8 +3422,8 @@
       "why": "Venekeelne õpilane saab arve koos pangaandmetega oma keeles.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-makse-katte",

@@ -5,6 +5,7 @@ import { failPayment, isConnectionError, paymentByProviderUuid, paymentByReferen
 import { lockForPayment } from "@/db/queries/seats";
 import { dbErrorCode } from "@/db/safe-error";
 import { payments, type Contract, type Invoice, type Payment } from "@/db/schema";
+import { contractStudent } from "@/domain/contract";
 import { isSampleAddress } from "@/domain/email";
 import { invoiceFileName } from "@/domain/invoice";
 import { referenceId } from "@/domain/payments";
@@ -222,7 +223,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     const paidRow = grant ? { ...payment, clientId: grant.clientId } : payment;
     // the purchase's contract beside the grant, in a savepoint (contracts, §4): the copy the cart showed, frozen now; null when it failed
     // (the gate asks her later) or when nothing was opened. Its locks are the access row's, which the grant holds already.
-    const contract = grant ? await contractStep(tx, paidRow, grant) : null;
+    const contract = grant ? await contractStep(tx, paidRow, grant, deps.now) : null;
     // its invoice, once, here and only here (the winner's), in a savepoint: the linked unpaid one paid (its amount is added above, not again),
     // or one born paid; null without Seaded's seller, or when the step failed. The locks it takes (the invoice row, the number series, the
     // setting) come after this path's own.
@@ -318,24 +319,31 @@ async function invoiceStep(tx: Tx, payment: Payment, now: Date): Promise<Invoice
 }
 
 /**
- * The purchase's contract (contracts, D1, §4; rulings R3, R4) in a savepoint of the paid transaction, beside the grant: the copy the cart showed
- * (payments.contract_snapshot, kept when the purchase started), frozen as it is as the opened access's contract by `purchase`, with the paid price
- * in its fields and the order's start (the payment row's creation, when she ticked the box) as its acceptance; it supersedes the access's current
- * contract (a free grant's, an earlier purchase's). Whatever it throws — a transient database error too, as the invoice step: the contract is no
- * reason to leave real money unrecorded — only the contract is rolled back: the payment and the grant stand, the log has the payment's id and the
- * error's class, and the terms gate asks her later (`terms`), as it does for a payment that kept no copy (one started before contracts existed).
+ * The purchase's contract (contracts, D1, §4; rulings R3, R4, R7, R8) in a savepoint of the paid transaction, beside the grant: the copy the cart
+ * showed (payments.contract_snapshot, kept when the purchase started), frozen as it is as the opened access's contract by `purchase`, with the paid
+ * price in its fields, the student the snapshot was filled with (the payment's name and address, so its {nimi} and its „Pooled“ agree), and the
+ * press of „Maksa“ that filled it as its acceptance (the snapshot's `acceptedAt`; the payment's start for a snapshot without one). It supersedes the
+ * access's current contract (a free grant's, a gate's, an earlier purchase's) at `now`, the settlement's time, never before it exists. Whatever
+ * it throws — a transient database error too, as the invoice step: the contract is no reason to leave real money unrecorded — only the contract
+ * is rolled back: the payment and the grant stand, the log has the payment's id and the error's class, and the terms gate asks her later
+ * (`terms`), as it does for a payment that kept no copy (one started before contracts existed).
  */
-async function contractStep(tx: Tx, payment: Payment, grant: Grant): Promise<Contract | null> {
+async function contractStep(tx: Tx, payment: Payment, grant: Grant, now: Date): Promise<Contract | null> {
   const shown = payment.contractSnapshot;
   if (!shown || payment.courseId === null) {
     console.info(`[contracts] payment ${payment.id}: no contract kept with it, the terms gate asks`);
     return null;
   }
   const courseId = payment.courseId;
+  // the press that filled the snapshot (R7); a snapshot kept before it carried one: the payment's start
+  const pressed = shown.acceptedAt ? new Date(shown.acceptedAt) : null;
+  const acceptedAt = pressed && !Number.isNaN(pressed.getTime()) ? pressed : payment.createdAt;
   try {
     return await (tx as unknown as Db).transaction(async (savepoint) => {
-      const fields = await accessContractFields(savepoint, grant.accessId, payment.id, shown.locale);
-      if (!fields) throw new Error(`access ${grant.accessId} is gone`); // ids only
+      const access = await accessContractFields(savepoint, grant.accessId, payment.id, shown.locale);
+      if (!access) throw new Error(`access ${grant.accessId} is gone`); // ids only
+      // the student as the snapshot was filled with her: the name and the address the cart's payment carries (R8), not the account's
+      const fields = { ...access, student: contractStudent(payment.name, payment.email) };
       return contractForAccess(savepoint, {
         accessId: grant.accessId,
         clientId: grant.clientId,
@@ -344,7 +352,8 @@ async function contractStep(tx: Tx, payment: Payment, grant: Grant): Promise<Con
         snapshotOrTemplate: shown,
         fields,
         via: "purchase",
-        now: payment.createdAt,
+        now,
+        acceptedAt,
       });
     });
   } catch (e) {

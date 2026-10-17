@@ -29,6 +29,12 @@ const flag = z.union([z.boolean(), z.string()]).optional().transform((v) => v ==
 /** An unknown or missing locale falls back to Estonian instead of failing the form. */
 const locale = z.enum(["et", "ru"]).catch("et");
 const terms = z.literal("on");
+/**
+ * The version of the contract text the form's page showed (contracts, ruling R6), which the server compares with the current one before it
+ * freezes anything. Left out by a page cached before it existed: the server then refuses as for a changed text. A value no version can be is
+ * the same refusal (placement: terms "changed").
+ */
+const contractVersion = z.string().max(200).optional();
 
 /** Fields both contact-course forms share (group registration and individual request). */
 const contactCourseFields = {
@@ -65,6 +71,8 @@ export const groupRegistrationFormSchema = z.object({
   wantsNewsletter: flag,
   /** The optional "Sõnum" (phase 2c): the welcome code is written there. */
   message: z.string().trim().max(MAX.message).default(""),
+  /** The contact contract's version the page showed (R6). */
+  contractVersion,
 });
 
 /** Individual contact course: a request to Maria with the preferred period; she agrees the time and payment (P12). */
@@ -82,7 +90,7 @@ export const contactSchema = z.object({ name: line(MAX.name), email, message: te
 export const purchaseInterestSchema = z.object({ course: slug, email, locale, wantsNewsletter: flag });
 
 /** The e-course cart's purchase (phase 2b, spec 6.4, D3): name, e-mail, the terms box (required) and the newsletter box (unticked). */
-export const ecoursePurchaseSchema = z.object({ course: slug, name: line(MAX.name), email, terms, wantsNewsletter: flag, locale });
+export const ecoursePurchaseSchema = z.object({ course: slug, name: line(MAX.name), email, terms, wantsNewsletter: flag, locale, contractVersion });
 
 export const practiceSchema = z.object({
   package: z.string().trim().regex(/^[A-Za-z0-9_-]{1,20}$/),
@@ -138,6 +146,8 @@ function parseForm<S extends z.ZodType>(
 const same = (...names: string[]) => Object.fromEntries(names.map((n) => [n, n]));
 const contactCourseForm = { ...same("course", "name", "email", "phone", "terms", "locale"), wantsModelHelp: "modelHelp", wantsAccount: "account", wantsNewsletter: "newsletter" };
 const slugPlacement: Placement = { course: ["form", "invalid"] };
+/** A contract version no page can have sent is refused as a changed text (R6). */
+const versionPlacement: Placement = { contractVersion: ["terms", "changed"] };
 
 /** Contact message (home, /kontakt). Fields: name, email, message, locale. */
 export const parseContact = (fd: FormData) => parseForm(contactSchema, fd, same("name", "email", "message", "locale"));
@@ -147,11 +157,13 @@ export const parseSubscribe = (fd: FormData) => parseForm(subscribeSchema, fd, s
 
 /**
  * Group registration. Fields: course (slug), session, name, email, phone, payment, modelHelp, account, newsletter ("Soovin MS LABi
- * uudiseid ja pakkumisi", phase 2c), message (optional, phase 2c), terms, locale.
+ * uudiseid ja pakkumisi", phase 2c), message (optional, phase 2c), terms, contractVersion (the contract text's version the page showed,
+ * contracts R6), locale.
  */
 export const parseGroupRegistration = (fd: FormData) =>
-  parseForm(groupRegistrationFormSchema, fd, { ...contactCourseForm, courseSessionId: "session", paymentChoice: "payment", message: "message" }, {
+  parseForm(groupRegistrationFormSchema, fd, { ...contactCourseForm, courseSessionId: "session", paymentChoice: "payment", message: "message", contractVersion: "contractVersion" }, {
     ...slugPlacement,
+    ...versionPlacement,
     courseSessionId: ["session", "required"],
     paymentChoice: ["payment", "required"],
   });
@@ -167,9 +179,12 @@ export const parseIndividual = (fd: FormData) =>
 export const parsePurchaseInterest = (fd: FormData) =>
   parseForm(purchaseInterestSchema, fd, { ...same("course", "email", "locale"), wantsNewsletter: "newsletter" }, slugPlacement);
 
-/** The e-course purchase (phase 2b). Fields: course (slug), name, email, terms, newsletter ("Soovin MS LABi uudiseid ja pakkumisi"), locale. */
+/**
+ * The e-course purchase (phase 2b). Fields: course (slug), name, email, terms, newsletter ("Soovin MS LABi uudiseid ja pakkumisi"),
+ * contractVersion (the e-course contract's version the cart showed, contracts R6), locale.
+ */
 export const parseEcoursePurchase = (fd: FormData) =>
-  parseForm(ecoursePurchaseSchema, fd, { ...same("course", "name", "email", "terms", "locale"), wantsNewsletter: "newsletter" }, slugPlacement);
+  parseForm(ecoursePurchaseSchema, fd, { ...same("course", "name", "email", "terms", "locale", "contractVersion"), wantsNewsletter: "newsletter" }, { ...slugPlacement, ...versionPlacement });
 
 /** Practice request. Fields: package, name, email, phone, course (optional), times, locale. */
 export const parsePractice = (fd: FormData) => parseForm(practiceSchema, fd, same("package", "name", "email", "phone", "course", "times", "locale"));

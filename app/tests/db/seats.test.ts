@@ -8,7 +8,7 @@ import { holdsSeat } from "@/domain/sessions";
 import type { Env } from "@/server/notify";
 import { handleRegistration, type Deps } from "@/server/submit";
 import { fakeKv } from "../fakes";
-import { makeTestDb } from "./helpers";
+import { makeTestDb, shownContractVersion } from "./helpers";
 
 // One seat count (phase 2b, spec 5.3, D2): a registration takes a seat when it is confirmed, or awaiting its prepayment with a hold that has
 // not ended. The registration form's full check, the public calendar and course page, and the admin's calendar count with it.
@@ -86,9 +86,10 @@ test("the registration form's full check counts a live hold: the last seat is ta
   await db.insert(registrations).values(reg(c.id, s.id, "a", "awaiting_prepayment", new Date(now.getTime() + 10 * MIN)));
   const env: Env = { KV: fakeKv(), MAIL_FROM: "MS LAB <info@send.example>", MARIA_EMAIL: "maria@example.test", SITE_URL: "https://mslab.example" };
   const deps = (at: Date): Deps => ({ db, env, ip: "203.0.113.5", siteUrl: "https://mslab.example", now: at, later: () => {} });
+  const contractVersion = await shownContractVersion(db);
   const form = () => {
     const fd = new FormData();
-    for (const [k, v] of Object.entries({ course: "kulmud", session: String(s.id), name: "Kati", email: "kati@example.test", phone: "+372 5555 5555", payment: "half", terms: "on", locale: "et" })) fd.set(k, v);
+    for (const [k, v] of Object.entries({ course: "kulmud", session: String(s.id), name: "Kati", email: "kati@example.test", phone: "+372 5555 5555", payment: "half", terms: "on", locale: "et", contractVersion })) fd.set(k, v);
     return fd;
   };
   expect(await handleRegistration(deps(now), form())).toEqual({ ok: false, errors: { session: "full" } });

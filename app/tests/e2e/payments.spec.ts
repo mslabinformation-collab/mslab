@@ -1,5 +1,5 @@
 import type { Page, Request, TestInfo } from "@playwright/test";
-import { clientEmail, insertAccountFixtures, signInAsClient, storedAccess, storedClient } from "./account";
+import { clientEmail, holdTerms, insertAccountFixtures, signInAsClient, storedAccess, storedClient } from "./account";
 import { signInAsAdmin, type CreatedRows } from "./admin-login";
 import { insertStoredPayment, onLocalDb, removeAdminRows, removeClientRows, storedPayments, storedPayToken, storedRegistrations } from "./fixtures";
 import { ECOURSE_BUY_LOCK_CLASS } from "../../src/server/payments/start";
@@ -184,28 +184,34 @@ test("a refund in Montonio's Partner System: its refund notice ({ refundToken })
 });
 
 test("an e-course bought from the cart: paid → 'Ava e-koolitus'; the access is hers, opened by the payment, and her card offers it (spec 6.4)", async ({ page }, info) => {
-  const email = await fresh("ecourse", info);
-  await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
-  const form = page.locator("[data-ecourse-form]");
-  await form.getByLabel("Nimi").fill("Test Ostja");
-  await form.getByLabel("E-post").fill(email);
-  await form.getByLabel(/tingimustega/).check();
-  await form.getByRole("button", { name: "Maksa 190 €" }).click();
-  await atBank(page, "Makstud");
-  await page.waitForURL(/\/makse#tulemus=makstud&liik=ekoolitus&kursus=kulmumeistri-e-koolitus$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse õnnestus.");
-  // she is not signed in by buying: her login link is in the mail (task 6)
-  await expect(page.getByText("Saatsime sulle e-postiga sisselogimislingi.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Ava e-koolitus" })).toHaveAttribute("href", "/konto/kursus/kulmumeistri-e-koolitus");
-  await expect.poll(() => storedPayments(email)).toEqual([{ kind: "ecourse", status: "paid", amountCents: 19000 }]);
-  expect(await storedClient(email)).toMatchObject({ name: "Test Ostja", locale: "et" });
-  expect(await storedAccess(email, "kulmumeistri-e-koolitus")).toMatchObject({ grantedBy: "payment", revoked: false });
-  expect((await page.context().cookies()).some((c) => c.name === "__Host-mslab_client")).toBe(false);
+  // the cart's contract is the e-course terms: no test of the terms saves other ones while this one buys (R6)
+  const release = await holdTerms();
+  try {
+    const email = await fresh("ecourse", info);
+    await page.goto("/ostukorv?kursus=kulmumeistri-e-koolitus");
+    const form = page.locator("[data-ecourse-form]");
+    await form.getByLabel("Nimi").fill("Test Ostja");
+    await form.getByLabel("E-post").fill(email);
+    await form.getByLabel(/tingimustega/).check();
+    await form.getByRole("button", { name: "Maksa 190 €" }).click();
+    await atBank(page, "Makstud");
+    await page.waitForURL(/\/makse#tulemus=makstud&liik=ekoolitus&kursus=kulmumeistri-e-koolitus$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse õnnestus.");
+    // she is not signed in by buying: her login link is in the mail (task 6)
+    await expect(page.getByText("Saatsime sulle e-postiga sisselogimislingi.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Ava e-koolitus" })).toHaveAttribute("href", "/konto/kursus/kulmumeistri-e-koolitus");
+    await expect.poll(() => storedPayments(email)).toEqual([{ kind: "ecourse", status: "paid", amountCents: 19000 }]);
+    expect(await storedClient(email)).toMatchObject({ name: "Test Ostja", locale: "et" });
+    expect(await storedAccess(email, "kulmumeistri-e-koolitus")).toMatchObject({ grantedBy: "payment", revoked: false });
+    expect((await page.context().cookies()).some((c) => c.name === "__Host-mslab_client")).toBe(false);
 
-  await signInAsClient(page, email);
-  const open = page.locator("[data-card='course-kulmumeistri-e-koolitus'] [data-card-action='open']");
-  await expect(open).toBeVisible();
-  await expect(open).toHaveText("Ava koolitus");
+    await signInAsClient(page, email);
+    const open = page.locator("[data-card='course-kulmumeistri-e-koolitus'] [data-card-action='open']");
+    await expect(open).toBeVisible();
+    await expect(open).toHaveText("Ava koolitus");
+  } finally {
+    await release();
+  }
 });
 
 test("the admin's Maksed: the filter, 'Kontrolli Montonios' on a held payment; the registration's drawer lists its payments (spec 8)", async ({ page, context, visitorIp }, info) => {
@@ -299,36 +305,48 @@ const answeredWithBank = async (answer: Response) => {
 };
 
 test("a start of an e-course purchase waits for the purchase's advisory lock while another transaction holds it, and goes on when it is let go (Postgres, Task 7)", async ({ page, visitorIp }, info) => {
-  const email = await fresh("held", info);
-  const { replay } = await heldEcoursePress(page, email);
-  const [course] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from courses where slug = 'kulmumeistri-e-koolitus'`, { marksPages: false });
-  let answer!: Promise<Response>;
-  let finished = false;
-  // another connection holds the purchase's lock (start.ts lockEcoursePurchase: class ECOURSE_BUY_LOCK_CLASS, key "<course id>:<address>") …
-  await onLocalDb(
-    (sql) =>
-      sql.begin(async (tx) => {
-        await tx`select pg_advisory_xact_lock(${ECOURSE_BUY_LOCK_CLASS}::int, hashtext(${`${course.id}:${email}`}))`;
-        answer = replay(racerIps(visitorIp, 1)[0]);
-        void answer.then(() => (finished = true), () => (finished = true));
-        await new Promise((resolve) => setTimeout(resolve, 2_000));
-        // … so the start cannot have got further than the lock: no answer yet, and no payment row (the look for an open attempt and the insert are behind it)
-        expect(finished, "the start went past the purchase's lock while it was held").toBe(false);
-        expect(await storedPayments(email)).toEqual([]);
-      }),
-    { marksPages: false },
-  );
-  // the lock is let go with the transaction: the start goes on and ends as any other
-  await answeredWithBank(await answer);
-  expect(await storedPayments(email)).toEqual([{ kind: "ecourse", status: "pending", amountCents: 19000 }]);
+  // the cart's contract is the e-course terms: no test of the terms saves other ones while this one buys (R6)
+  const release = await holdTerms();
+  try {
+    const email = await fresh("held", info);
+    const { replay } = await heldEcoursePress(page, email);
+    const [course] = await onLocalDb((sql) => sql<{ id: number }[]>`select id from courses where slug = 'kulmumeistri-e-koolitus'`, { marksPages: false });
+    let answer!: Promise<Response>;
+    let finished = false;
+    // another connection holds the purchase's lock (start.ts lockEcoursePurchase: class ECOURSE_BUY_LOCK_CLASS, key "<course id>:<address>") …
+    await onLocalDb(
+      (sql) =>
+        sql.begin(async (tx) => {
+          await tx`select pg_advisory_xact_lock(${ECOURSE_BUY_LOCK_CLASS}::int, hashtext(${`${course.id}:${email}`}))`;
+          answer = replay(racerIps(visitorIp, 1)[0]);
+          void answer.then(() => (finished = true), () => (finished = true));
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+          // … so the start cannot have got further than the lock: no answer yet, and no payment row (the look for an open attempt and the insert are behind it)
+          expect(finished, "the start went past the purchase's lock while it was held").toBe(false);
+          expect(await storedPayments(email)).toEqual([]);
+        }),
+      { marksPages: false },
+    );
+    // the lock is let go with the transaction: the start goes on and ends as any other
+    await answeredWithBank(await answer);
+    expect(await storedPayments(email)).toEqual([{ kind: "ecourse", status: "pending", amountCents: 19000 }]);
+  } finally {
+    await release();
+  }
 });
 
 test("the same e-course purchase started eight times at the same moment is one pending payment, never several charges (the advisory lock, Postgres, Task 7)", async ({ page, visitorIp }, info) => {
-  const email = await fresh("lock", info);
-  const { replay } = await heldEcoursePress(page, email);
-  // eight requests that meet in the server at the same moment. Without the lock, two or three of them are enough to make two rows, but how often
-  // they overlap varies (about four runs in five caught the missing lock): the test above is the one that never misses it.
-  const answers = await Promise.all(racerIps(visitorIp, 8).map(replay));
-  for (const answer of answers) await answeredWithBank(answer);
-  expect(await storedPayments(email)).toEqual([{ kind: "ecourse", status: "pending", amountCents: 19000 }]);
+  // the cart's contract is the e-course terms: no test of the terms saves other ones while this one buys (R6)
+  const release = await holdTerms();
+  try {
+    const email = await fresh("lock", info);
+    const { replay } = await heldEcoursePress(page, email);
+    // eight requests that meet in the server at the same moment. Without the lock, two or three of them are enough to make two rows, but how often
+    // they overlap varies (about four runs in five caught the missing lock): the test above is the one that never misses it.
+    const answers = await Promise.all(racerIps(visitorIp, 8).map(replay));
+    for (const answer of answers) await answeredWithBank(answer);
+    expect(await storedPayments(email)).toEqual([{ kind: "ecourse", status: "pending", amountCents: 19000 }]);
+  } finally {
+    await release();
+  }
 });

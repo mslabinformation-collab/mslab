@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
 import { filledContract } from "@/domain/contract";
 import type { Locale } from "@/i18n/locales";
@@ -19,6 +20,8 @@ export type EcoursePurchaseTexts = {
   contractTerms: string;
   /** „Loe lepingut“: opens the contract in the cart. */
   readContract: string;
+  /** The box's error when the contract's text changed since the cart was loaded (ruling R6): the new text is shown, the box cleared. */
+  contractChanged: string;
   newsletterConsent: string;
   /** "Maksa 190 €" */
   submit: string;
@@ -46,7 +49,9 @@ const isPageUrl = (url: unknown): url is string => typeof url === "string" && /^
  * The e-course cart's purchase (phase 2b, spec 6.4, D3): name, e-mail, the box (required), the newsletter box (unticked) and "Maksa {hind}"; the
  * bank or the card is chosen on Montonio's own page (D4). The box is the e-course contract (contracts, D1), and „Loe lepingut“ opens `contract`
  * in the cart, filled live with the name and the address she types, the course and the price (domain/contract.ts filledContract: the server keeps
- * the very same text on the payment when „Maksa“ starts it, and freezes it when it is paid). The price is
+ * the very same text on the payment when „Maksa“ starts it, and freezes it when it is paid). It sends the version of the text it shows (R6): when
+ * Maria has saved another text since the cart was loaded, nothing starts, the box's error says so, the box is cleared and the cart is loaded again
+ * with the new text. The price is
  * the course's own on the server: this form sends none. The cart is cached for everyone, so a signed-in browser (the hint cookie) fills name and
  * e-mail from /api/konto/me here, in the browser, never over what was typed; nothing personal is in the page the server renders.
  * When payments are not available after all (form "unavailable": Montonio down), `fallback` takes the form's place: the cart's
@@ -75,6 +80,7 @@ export function EcoursePurchase({
   const [newsletter, setNewsletter] = useState(false);
   const [away, setAway] = useState(false);
   const paidRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   useEffect(() => {
     if (!hintIn(document.cookie)) return;
@@ -112,12 +118,22 @@ export function EcoursePurchase({
       if (result.errors.form === "unavailable") return { status: "unavailable" };
       if (result.errors.form === "alreadyPaid") return { status: "alreadyPaid" };
       const errors: Errors = {};
+      let changed = false;
       for (const [f, code] of Object.entries(result.errors)) {
         if (f === "form") errors.form = code === "rate" ? t.errorTooMany : t.errorGeneric;
         else if (f === "email") errors.email = t.errorEmail;
-        else if (f === "name" || f === "terms") errors[f] = t.errorRequired;
+        else if (f === "terms" && code === "changed") {
+          errors.terms = t.contractChanged;
+          changed = true;
+        } else if (f === "name" || f === "terms") errors[f] = t.errorRequired;
       }
       if (Object.keys(errors).length === 0) errors.form = t.errorGeneric;
+      // the contract's text changed since the cart was loaded (R6): her tick was for the old one, so the box is cleared and the cart is loaded
+      // again for the new text (and its version) to read; nothing was started
+      if (changed) {
+        setAgreed(false);
+        router.refresh();
+      }
       return { status: "error", errors };
     } catch {
       return { status: "error", errors: { form: t.errorGeneric } };
@@ -199,6 +215,8 @@ export function EcoursePurchase({
       </label>
       <input type="hidden" name="course" value={course} />
       <input type="hidden" name="locale" value={locale} />
+      {/* the version of the contract this cart shows (R6): the server starts nothing for another text */}
+      <input type="hidden" name="contractVersion" value={contract.version} />
       {/* Honeypot: people never see or fill it. */}
       <div className={styles.honeypot} aria-hidden="true">
         <label>

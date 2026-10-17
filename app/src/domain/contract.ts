@@ -31,8 +31,12 @@ export type ContractFields = {
   payment: string;
 };
 
-/** The contract an e-course purchase showed in the cart, kept on the payment until it is paid (payments.contract_snapshot, §4): what settle freezes. */
-export type ContractSnapshot = { version: string; locale: "et" | "ru"; title: string; body: string };
+/**
+ * The contract an e-course purchase showed in the cart, kept on the payment until it is paid (payments.contract_snapshot, §4): what settle freezes.
+ * `acceptedAt` (ISO; ruling R7) is the press of „Maksa“ that filled it, the acceptance the contract records; a re-send refills it. A snapshot
+ * kept before it existed has none (settle then takes the payment's start).
+ */
+export type ContractSnapshot = { version: string; locale: "et" | "ru"; title: string; body: string; acceptedAt?: string };
 
 /** The `pages` key of „Kontaktkoolituse leping“ (D2); the e-course's text keeps its own, `course_terms`. */
 export const CONTRACT_CONTACT_KEY = "contract_contact";
@@ -91,7 +95,7 @@ export function contractParts(input: ContractInput): { fields: Omit<ContractFiel
   const price = input.priceCents;
   return {
     fields: {
-      student: { name: input.name.replace(/\s+/g, " ").trim(), email: normalizeEmail(input.email) },
+      student: contractStudent(input.name, input.email),
       course: input.course,
       session: sessionText(input.session),
       price: price === null ? "" : euro(price),
@@ -99,6 +103,15 @@ export function contractParts(input: ContractInput): { fields: Omit<ContractFiel
     },
     prepayment: price === null || input.choice === null ? "" : euro(prepaymentDue(price, input.choice)),
   };
+}
+
+/**
+ * The student as a contract names her, from the name and the address she typed: the name on one line, the address trimmed and in lower case, as
+ * the forms store them (server/forms.ts). contractParts fills {nimi} and {e-post} with it, and settle names a purchase's student with it from the
+ * payment (ruling R8), so the text and the parties of one contract name her alike.
+ */
+export function contractStudent(name: string, email: string): ContractFields["student"] {
+  return { name: name.replace(/\s+/g, " ").trim(), email: normalizeEmail(email) };
 }
 
 /**

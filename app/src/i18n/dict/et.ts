@@ -286,10 +286,13 @@ export const et = {
     // the individual request's box (D1: it gets no contract) and its link to „Õppetingimused“
     terms: "Olen tutvunud tingimustega ja nõustun nendega.",
     // the group registration's box is the contract (contracts, D1: verbatim), with the inline contract („Loe lepingut“, verbatim) filled live
-    // from the form; until a date is chosen, {toimumine} says `contractNoSession`
+    // from the form; until a date is chosen, {toimumine} says `contractNoSession` (Draft for Dim's wording sheet). `contractChanged` (Draft for
+    // Dim's wording sheet; ruling R6) is the box's error when the contract's text changed since the page was loaded, in the cart too: the form
+    // shows the new text and the box is cleared
     contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
     readContract: "Loe lepingut",
     contractNoSession: "(vali toimumine)",
+    contractChanged: "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.",
     // Contact-course registration extras (P11, P14, P16)
     modelHelp: "Soovin koolituskeskuse abi modellide leidmisel",
     createAccount: "Loo mulle kohe konto MS LAB keskkonda",
@@ -537,7 +540,7 @@ export const et = {
     },
     // The contract's mail (server/account-mail.ts contractMail, contracts Task 4, ruling R1): after the terms gate, „Kinnitan“ and Maria's copy.
     // `attached` (verbatim, spec D7) is also the line of the registration's confirmation and of the e-course's paid mail when they carry the
-    // contract. `subject` is „MS LAB leping“; `lead` is Draft. {date} is the day she accepted it.
+    // contract. `subject` („MS LAB leping“, the brief's value) and `lead` are Draft for Dim's wording sheet. {date} is the day she accepted it.
     contractMail: {
       subject: "MS LAB leping",
       lead: "Kinnitasid lepingu {date}.",
