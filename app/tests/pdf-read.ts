@@ -28,14 +28,14 @@ function toUnicode(cmap: string): Map<string, string> {
 }
 
 /**
- * The PDF read back: its one page, the text runs (each Tj with its font's family, size, letter spacing in em, position and letters), the filled
- * circles (the competency bullets: pdf-lib draws a circle as four Bézier curves, whose end points are its four extremes; centre, diameter and
- * the fill colour), the embedded fonts' names and the page's operators.
+ * The PDF read back: its page number `index` (the first by default; the contract's PDF has several), the text runs (each Tj with its font's
+ * family, size, letter spacing in em, position and letters), the filled circles (the competency bullets: pdf-lib draws a circle as four Bézier
+ * curves, whose end points are its four extremes; centre, diameter and the fill colour), the embedded fonts' names and the page's operators.
  */
-export async function readPdf(bytes: Uint8Array) {
+export async function readPdf(bytes: Uint8Array, index = 0) {
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
   const pages = doc.getPages();
-  const page = pages[0];
+  const page = pages[index];
   const resources = page.node.Resources()!;
   const fonts = new Map<string, { name: string; unicode: Map<string, string> }>();
   for (const [key, ref] of resources.lookup(PDFName.of("Font"), PDFDict).entries()) {

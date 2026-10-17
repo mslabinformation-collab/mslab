@@ -33,14 +33,23 @@ const nextConfig: NextConfig = {
     TESTPLAN_BUILD_AT: new Date().toISOString(),
   },
   ...e2ePageCache,
-  // The PDFs' fonts (the certificate, phase 3d; the invoices, phase 4): server/certificate-pdf.ts and server/invoice-pdf.ts read
-  // app/assets/fonts with fs on every download, so `next build` must put the folder into every function that renders a PDF:
+  // The PDFs' fonts (the certificate, phase 3d; the invoices, phase 4; the contracts, phase 4 piece 3): server/certificate-pdf.ts reads
+  // app/assets/fonts with fs on every download, and the invoice's and the contract's PDFs draw with its fonts, so `next build` must put the
+  // folder into every function that renders a PDF:
   // - the certificate: the account API (/api/konto/[[...path]]) and Maria's download (/api/admin/tunnistus/[id]);
   // - an invoice: the same account API (the student's download), Maria's download (/api/admin/arve), the sample of Seaded
   //   (/api/admin/naidisarve), the payment routes and the cron's sweep (each settles a payment, whose paid mail carries its invoice) and
-  //   the admin pages, whose actions send an invoice by mail (/admin/**).
+  //   the admin pages, whose actions send an invoice by mail (/admin/**);
+  // - a contract: the same account API (the student's download, her „Kinnitan“) and payment routes (the paid e-course's mail), the admin
+  //   pages (Maria's resend), and the public course page (/[locale]/koolitused/[slug]), whose registration form's action
+  //   (server/actions/public.ts registerContact) mails the contract's PDF with the confirmation.
   // Turbopack matches these keys by glob against the route's name: "/**" works, the bracketed route names do not (checked with a
-  // build on 15.10.2026), so each key names the route's folder.
+  // build on 15.10.2026), so each key names the route's folder, a bracketed folder as "*": the course page's key is "/*/koolitused/**".
+  // The match is not anchored at the start (the route groups' folders, "(site)", stand between "/[locale]" and "/koolitused"): the key
+  // reaches the catalogue page and Maria's course pages too, which carry the folder anyway. Checked with a build on 17.10.2026, a marker
+  // file per key: "/*/koolitused/**" reached the course page's function; "/[locale]/koolitused/[slug]" and "/[[]locale]/koolitused/**"
+  // reached nothing. Turbopack's own file trace had already put the folder there (the action's code reaches the fonts' read), but a key
+  // does not hang on that.
   outputFileTracingIncludes: {
     "/api/konto/**": ["./assets/fonts/**"],
     "/api/admin/tunnistus/**": ["./assets/fonts/**"],
@@ -49,6 +58,7 @@ const nextConfig: NextConfig = {
     "/api/payments/**": ["./assets/fonts/**"],
     "/api/cron/**": ["./assets/fonts/**"],
     "/admin/**": ["./assets/fonts/**"],
+    "/*/koolitused/**": ["./assets/fonts/**"],
   },
   // Every answer (pages, API, /media and the static files of public/, the hub included):
   // - the whole host stays out of search engines until launch on mslab.ee;

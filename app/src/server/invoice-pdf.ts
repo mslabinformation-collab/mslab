@@ -4,6 +4,7 @@ import type { Invoice } from "@/db/schema";
 import { tallinnDateText } from "@/domain/certificate";
 import { euro, paidMethodText, partText, vatSplit } from "@/domain/invoice";
 import { drawLogo } from "./pdf-logo";
+import { clean, wrap } from "./pdf-text";
 
 // The invoice as a PDF (invoices, Task 2, spec §7, D6, D8): drawn on every download from the invoice's frozen row and the sans (Jost, the
 // same committed font as the certificate's: no new font), with pdf-lib and its fontkit. A4 portrait, a white page and black text, printable:
@@ -14,7 +15,8 @@ import { drawLogo } from "./pdf-logo";
 // Jost is embedded as a subset (only the letters drawn); the page is about 7 KB, and the test holds it under 100 KB. The output is
 // deterministic: the same row gives the same bytes (the PDF's dates are the issue's).
 // Fitting. Every text is cleaned (white space is one space; a character Jost lacks is "?", never a missing-glyph box), wrapped at its box (a
-// word wider than the box is broken at the box) and, past the lines the box allows, cut with "…". The whole page is composed at a scale: if it
+// word wider than the box is broken at the box) and, past the lines the box allows, cut with "…", by the helpers it shares with the contract's
+// PDF (server/pdf-text.ts). The whole page is composed at a scale: if it
 // does not fit between the top and the foot, it is composed again at a smaller one, so nothing leaves the page and nothing runs into
 // anything else, whatever the texts.
 
@@ -58,46 +60,6 @@ const SCALE = { min: 0.5, step: 0.05 } as const;
 type Op = { text: string; x: number; y: number; size: number } | { x1: number; x2: number; y: number; thickness: number };
 /** One field of a column: its text, its size and the most lines its box takes. */
 type Row = { s: string; size: number; max: number };
-
-/** `text` cleaned for drawing: white space is one space, control and format characters are dropped, a character `chars` lacks is "?". */
-function clean(text: string, chars: ReadonlySet<number>): string {
-  const spaced = text.replace(/\s+/g, " ").replace(/[\p{Cc}\p{Cf}]/gu, "").replace(/ {2,}/g, " ").trim();
-  return Array.from(spaced, (ch) => (chars.has(ch.codePointAt(0)!) ? ch : "?")).join("");
-}
-
-/**
- * `text` broken at its spaces into lines that fit `width`, a word wider than the box broken at the box; past `maxLines` the last line is cut and
- * ends in "…".
- */
-function wrap(text: string, fits: (line: string) => boolean, maxLines: number): string[] {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of text.split(" ")) {
-    if (!word) continue;
-    const joined = line ? `${line} ${word}` : word;
-    if (fits(joined)) {
-      line = joined;
-      continue;
-    }
-    if (line) lines.push(line);
-    let rest = word;
-    while (!fits(rest)) {
-      const chars = Array.from(rest);
-      let n = 1;
-      while (n < chars.length - 1 && fits(chars.slice(0, n + 1).join(""))) n++;
-      lines.push(chars.slice(0, n).join(""));
-      rest = chars.slice(n).join("");
-    }
-    line = rest;
-  }
-  if (line) lines.push(line);
-  if (lines.length <= maxLines) return lines;
-  const kept = lines.slice(0, maxLines);
-  const last = Array.from(kept[maxLines - 1]);
-  while (last.length > 0 && !fits(`${last.join("").trimEnd()}…`)) last.pop();
-  kept[maxLines - 1] = `${last.join("").trimEnd()}…`;
-  return kept;
-}
 
 /**
  * The page as drawing operations at scale `k` (every size and gap times `k`; the boxes' widths stay): the text with its left end and its
