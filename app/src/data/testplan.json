@@ -1942,12 +1942,15 @@
       "title": "Leping registreeringu paneelis",
       "href": "/admin/registreerimised",
       "steps": [
+        "Ava „Õpilased“ ja kirjuta „Lisa õpilane e-posti järgi“: oma aadress, kuhu lisad enne @-märki +proov1.",
+        "Vajuta „Lisa õpilane“.",
         "Ava „Registreerimised“ ja vajuta nimele Proov 1.",
         "Vaata plokki „Leping“ ja vajuta „Laadi alla (PDF)“.",
         "Ava „Õpilased“, Proov 1 paneel ja vaata plokki „Lepingud“.",
         "Ava registreering, mille õpilasel pole kontot (kui sellist pole, jäta see samm vahele)."
       ],
       "expect": [
+        "Pärast „Lisa õpilane“ avaneb Proov 1 paneel, kus on „Registreerimised“ all tema registreering.",
         "Plokis „Leping“ on pealkiri ja „Kinnitatud …“ koos kuupäeva ja viisiga „Registreerimisvorm“.",
         "Plokis on nupud „Saada koopia õpilasele“, „Laadi alla (PDF)“ ja „Saada leping kinnitamiseks“.",
         "PDF-is on pooled, koolitus, lepingu tekst ja rida „Kinnitatud elektrooniliselt …“.",
@@ -1975,7 +1978,7 @@
       "expect": [
         "Paneelis näed „Palve on õpilasele saadetud.“ ja rida „Kinnitamist ootab (saadetud …)“.",
         "Kirjas on lühike tervitus, üks rida, mis nimetab koolitust, ja nupp „Ava minu konto“.",
-        "Nupp avab Proov 1 konto lehe ja kirjas pole sisselogimise linki.",
+        "Nupp avab konto lehe: sisselogituna „Minu koolitused“, muidu sisselogimise lehe; kirjas pole sisselogimise linki.",
         "Vana leping jääb paneelis alles.",
         "Uuesti vajutades jääb rida „Kinnitamist ootab (saadetud …)“ tänase kuupäevaga ja tuleb teine kiri."
       ],
@@ -2356,7 +2359,7 @@
         "Logi sisse kui Proov 7 ja ava aadress /ru/konto.",
         "Vajuta kaardil „Подтвердить договор“ ja loe tekst läbi.",
         "Vajuta „Подтверждаю“.",
-        "Vajuta kaardil „Скачать (PDF)“.",
+        "Vajuta kaardil rea „Договор · подтверждён …“ juures „Скачать (PDF)“.",
         "Ava Proov 7 postkastis kiri „Договор MS LAB“."
       ],
       "expect": [
@@ -2407,14 +2410,14 @@
         "Logi sisse kui Proov 1 ja ava „Minu koolitused“.",
         "Vajuta kaardil „Kinnita leping“ ja loe tekst läbi.",
         "Vajuta „Kinnitan“.",
-        "Ava Proov 1 postkastis kiri „MS LAB leping“.",
+        "Ava Proov 1 postkastis uusim kiri „MS LAB leping“.",
         "Ava halduses Proov 1 registreeringu paneel."
       ],
       "expect": [
         "Enne kinnitamist on kaardil lause „Maria palub sul lepingu kinnitada.“ ja tekstinupp „Kinnita leping“.",
         "Nupp avab kaardil lepingu teksti, kus Proov 1 nimi, kuupäev ja hind on täidetud.",
         "Pärast „Kinnitan“ näed hetkeks „Leping on kinnitatud.“, siis rida „Leping · kinnitatud …“ tänase kuupäevaga.",
-        "Kiri „MS LAB leping“ tuleb manusega „MS-LAB-leping-….pdf“ ja reaga „Leping on lisatud.“.",
+        "Uusim kiri „MS LAB leping“ on manusega „MS-LAB-leping-….pdf“ ja reaga „Leping on lisatud.“.",
         "Halduses on uus leping viisiga „Õpilase konto“ ja vana on „Asendatud“.",
         "Rida „Kinnitamist ootab …“ on halduses kadunud ja „Kinnita leping“ on kaardilt kadunud."
       ],
@@ -2438,7 +2441,7 @@
       ],
       "expect": [
         "Kaardil on vaikne rida „Leping · kinnitatud …“ tänase kuupäevaga ja link „Laadi alla (PDF)“.",
-        "Alla laaditud fail on „MS-LAB-leping-….pdf“ ja sama leping, mis kirjas „MS LAB leping“.",
+        "Alla laaditud fail on „MS-LAB-leping-….pdf“ ja sama leping, mis uusimas kirjas „MS LAB leping“.",
         "PDF-is on sinu nimi, koolitus, kuupäev ja hind ning lõpus „Kinnitatud elektrooniliselt …“.",
         "Rida ei ole nupp ja kaardil ei ole „Kinnita leping“."
       ],

@@ -133,11 +133,14 @@ describe("checkPlan: a plan that is not a plan", () => {
   });
 });
 
-// The test page shows the checks in file order and Maria and Dim walk them top to bottom (contracts Task 6, review I-1): each contract check sits
-// where what it needs exists. Proov 1 registers and gets an account in `registreerimine-grupp`; Maria's ask on that registration is opened by
-// `registreerimine-leping-kinnitamiseks` and stays open until `konto-leping-kinnita` answers it, so the plain contract line of that card can only be
-// read after it; Proov 7 registers and signs in at `konto-arve-maksa` and is cancelled at `konto-arve-tuhistatud`, so the Russian contract check
-// (which asks again and confirms) sits between them; Proov 5's free access is opened by `ekursus-ligipaas-ava` before its terms gate.
+// The test page shows the checks in file order and Maria and Dim walk them top to bottom (contracts Task 6, review I-1 and N-1): each contract check
+// sits where what it needs exists. A student has NO account until somebody signs her in or Maria adds her („Lisa õpilane e-posti järgi“): the
+// registration form's „Loo mulle kohe konto“ only mails a code, so a registration is not linked (no ask button, no „Õpilased“ panel) before that.
+// Proov 1 registers in `registreerimine-grupp`; the first check that needs her linked, `registreerimine-leping-plokk`, adds her first. Maria's ask
+// on that registration is opened by `registreerimine-leping-kinnitamiseks` and stays open until `konto-leping-kinnita` answers it, so the plain
+// contract line of that card can only be read after it; Proov 7 registers and signs in (which links her) at `konto-arve-maksa` and is cancelled at
+// `konto-arve-tuhistatud`, so the Russian contract check (which asks again and confirms) sits between them; Proov 5's free access is opened by
+// Maria adding her in `ekursus-ligipaas-ava` before her terms gate.
 describe("the contract checks sit where their preconditions exist", () => {
   const order = plan.items.map((i) => i.id);
   const at = (id: string): number => {
@@ -178,11 +181,55 @@ describe("the contract checks sit where their preconditions exist", () => {
     expect(item("konto-arve-maksa").steps.join("\n")).toContain("Proov 7");
   });
 
-  test("the sign-in each one needs is earlier: the first Proov 1 login, and Proov 5's access before its gate", () => {
+  /** The first step, in file order, that contains all of `needles`: where it is (the check, the step's place). */
+  const firstStep = (...needles: string[]) => {
+    for (const id of order) {
+      const n = item(id).steps.findIndex((s) => needles.every((needle) => s.includes(needle)));
+      if (n >= 0) return { id, n };
+    }
+    return null;
+  };
+
+  test("Proov 1 has no account until Maria adds her, as the FIRST step of the first check that needs her registration linked (the ask button, her „Õpilased“ panel)", () => {
+    // the form's box only mails a code: no client is made until somebody signs in or Maria adds her
+    expect(item("registreerimine-grupp").expect.join("\n")).toContain("koodiga");
+    const add = firstStep("Lisa õpilane e-posti järgi", "+proov1");
+    expect(add).toEqual({ id: "registreerimine-leping-plokk", n: 0 });
+    expect(item("registreerimine-leping-plokk").steps[1]).toContain("Vajuta „Lisa õpilane“");
+    // nothing that needs her linked sits before it, and the first Proov 1 sign-in (konto-kood) is later still
+    for (const id of ["registreerimine-leping-plokk", "registreerimine-leping-kinnitamiseks", "konto-minu-koolitused", "konto-leping-kinnita", "konto-leping-kaardil"]) {
+      expect(at(id), id).toBeGreaterThanOrEqual(at(add!.id));
+    }
+    // the ask button and the „Õpilased“ panel are read after the step that adds her, within the same check
+    expect(item("registreerimine-leping-plokk").steps.findIndex((s) => s.includes("Saada leping kinnitamiseks") || s.includes("vaata plokki „Lepingud“"))).toBeGreaterThan(0);
     expect(at("konto-kood")).toBeLessThan(at("konto-minu-koolitused"));
     expect(at("konto-kood")).toBeLessThan(at("konto-leping-kinnita"));
+    expect(at("konto-kood")).toBeLessThan(at("konto-leping-kaardil"));
+    // the mail's button of the ask opens the sign-in page for a device nobody has signed in on yet
+    expect(expectText("registreerimine-leping-kinnitamiseks")).toContain("muidu sisselogimise lehe");
+  });
+
+  test("Proov 7 is linked by her first sign-in in konto-arve-maksa, before the Russian check; Proov 5 by Maria adding her before her gate; Proov 1's e-course is bought before its page", () => {
+    const register = firstStep("Registreeri samale kuupäevale", "Proov 7");
+    const signIn = firstStep("Logi sisse kui Proov 7");
+    expect(register).toEqual({ id: "konto-arve-maksa", n: 0 });
+    expect(signIn?.id).toBe("konto-arve-maksa");
+    expect(at("konto-arve-maksa")).toBeLessThan(at("konto-leping-vene-keeles"));
+    expect(firstStep("Lisa õpilane e-posti järgi", "+proov5")?.id).toBe("ekursus-ligipaas-ava");
     expect(at("ekursus-ligipaas-ava")).toBeLessThan(at("ekursus-tingimused-leping"));
     expect(at("ekursus-ost")).toBeLessThan(at("ekursus-tingimused"));
+  });
+
+  test("a download link whose text another row of the card repeats is named by its row (Proov 7 and Proov 1 have invoice rows with „Laadi alla (PDF)“)", () => {
+    expect(item("konto-leping-vene-keeles").steps.find((s) => s.includes("Скачать (PDF)"))).toContain("Договор · подтверждён");
+    expect(item("konto-leping-kaardil").steps.find((s) => s.includes("Laadi alla (PDF)"))).toContain("rea „Leping“ juures");
+  });
+
+  test("by the time Proov 1 has two mails „MS LAB leping“ (the copy, then the one from „Kinnitan“), the checks name the newest", () => {
+    expect(at("registreerimine-leping-koopia")).toBeLessThan(at("konto-leping-kinnita"));
+    expect(item("konto-leping-kinnita").steps.find((s) => s.includes("„MS LAB leping“"))).toContain("uusim kiri");
+    expect(item("konto-leping-kinnita").expect.find((l) => l.includes("„MS LAB leping“"))).toContain("Uusim kiri");
+    expect(expectText("konto-leping-kaardil")).toContain("uusimas kirjas „MS LAB leping“");
   });
 
   test("the transient sentence after „Kinnitan“ is worded as seen for a moment, then the line the card goes to", () => {
