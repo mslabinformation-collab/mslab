@@ -4,15 +4,16 @@ import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admi
 import { failPayment, isConnectionError, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
 import { dbErrorCode } from "@/db/safe-error";
-import { payments, type Invoice, type Payment } from "@/db/schema";
+import { payments, type Contract, type Invoice, type Payment } from "@/db/schema";
 import { isSampleAddress } from "@/domain/email";
 import { invoiceFileName } from "@/domain/invoice";
 import { referenceId } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
 import { pick } from "@/i18n/field";
-import { ecourseOpenMail, registrationPaidMail } from "../account-mail";
+import { contractAttachment, ecourseOpenMail, registrationPaidMail } from "../account-mail";
 import type { PublicChange } from "../cache-targets";
 import { issueClientLogin } from "../client-auth";
+import { accessContractFields, contractForAccess, contractPdfForMail, markContractSent } from "../contracts";
 import { invoiceForPaidPayment, invoicePdf } from "../invoices";
 import { logFailure, logNote } from "../log";
 import { overpaymentSummary, paymentAlertSummary, paymentSummary, recordedAfterAlertSummary, stuckPaymentSummary, type PaymentNotice } from "../messages";
@@ -40,6 +41,9 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken }
 //   seller is empty). It runs in a savepoint (invoiceStep, ruling R13): an invoice that cannot be made never undoes the payment, which then
 //   waits in „Arveta maksed" for its catch-up. The payer's mail carries the invoice's PDF and „Arve on lisatud." (no invoice, or a PDF that
 //   fails to render: the mail goes without both).
+//   An e-course's winner also freezes the purchase's contract beside the grant (contracts, §4; contractStep, in a savepoint as the invoice
+//   step): the copy the cart showed, kept on the row since the start. A contract that cannot be made never undoes the payment or the grant: the
+//   terms gate asks her later. The paid mail carries its PDF after the invoice's, with „Leping on lisatud.“.
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
 // - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
 //   nothing; a VOIDED (the bank took a paid payment back) is stored as failed with its paid_at and alerts Maria, who decides.
@@ -81,8 +85,11 @@ export type SettleResult = { kind: "unknown" } | { kind: "unconfirmed"; payment:
 /** GET /orders/:uuid's answer as facts. The bank's name is only in a token: `bank` keeps the one a token gave. */
 export const factsOf = (s: OrderSnapshot, bank = ""): Facts => ({ uuid: s.uuid, status: s.status, rawStatus: s.rawStatus, amountCents: s.amountCents, currency: s.currency, method: s.method, bank });
 
-/** The once-only work's outcome: the paid row, and what it did to its registration, or the e-course it opened (phase 2b Task 7); its invoice. */
-type Won = { payment: Payment; registration: RegistrationPaid | null; grant: Grant | null; invoice: Invoice | null };
+/**
+ * The once-only work's outcome: the paid row, and what it did to its registration, or the e-course it opened (phase 2b Task 7) with its contract
+ * (contracts, §4); its invoice.
+ */
+type Won = { payment: Payment; registration: RegistrationPaid | null; grant: Grant | null; contract: Contract | null; invoice: Invoice | null };
 
 /**
  * The door of an order token (the webhook, the return). A reference without this environment's prefix (Montonio.referencePrefix: a local
@@ -213,18 +220,21 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     // an e-course's payment opens the course instead, in this same transaction: only the winner of the update above gets here
     const grant = payment.kind === "ecourse" ? await openCourse(tx, payment, deps.now) : null;
     const paidRow = grant ? { ...payment, clientId: grant.clientId } : payment;
+    // the purchase's contract beside the grant, in a savepoint (contracts, §4): the copy the cart showed, frozen now; null when it failed
+    // (the gate asks her later) or when nothing was opened. Its locks are the access row's, which the grant holds already.
+    const contract = grant ? await contractStep(tx, paidRow, grant) : null;
     // its invoice, once, here and only here (the winner's), in a savepoint: the linked unpaid one paid (its amount is added above, not again),
     // or one born paid; null without Seaded's seller, or when the step failed. The locks it takes (the invoice row, the number series, the
     // setting) come after this path's own.
     const invoice = await invoiceStep(tx, paidRow, deps.now);
-    return { payment: paidRow, registration, grant, invoice };
+    return { payment: paidRow, registration, grant, contract, invoice };
   });
   if (!won) return lost(deps, row, facts);
   console.info(`[payments] payment ${won.payment.id}: paid`);
   // queued before anything that could fail after the commit: the payment is paid for good, and this is the only time its mails are sent
   deps.later(async () => {
     if (won.registration) await mailRegistrationPaid(deps, won.payment, won.registration, won.invoice);
-    if (won.grant) await mailEcourseOpen(deps, won.payment, won.grant, won.invoice);
+    if (won.grant) await mailEcourseOpen(deps, won.payment, won.grant, won.invoice, won.contract);
     try {
       await tellMaria(deps, won.payment, outcomeOf(won));
     } finally {
@@ -303,6 +313,42 @@ async function invoiceStep(tx: Tx, payment: Payment, now: Date): Promise<Invoice
     return await (tx as unknown as Db).transaction((savepoint) => invoiceForPaidPayment(savepoint, payment, now));
   } catch (e) {
     logFailure(`[invoices] payment ${payment.id}: no invoice`, e);
+    return null;
+  }
+}
+
+/**
+ * The purchase's contract (contracts, D1, §4; rulings R3, R4) in a savepoint of the paid transaction, beside the grant: the copy the cart showed
+ * (payments.contract_snapshot, kept when the purchase started), frozen as it is as the opened access's contract by `purchase`, with the paid price
+ * in its fields and the order's start (the payment row's creation, when she ticked the box) as its acceptance; it supersedes the access's current
+ * contract (a free grant's, an earlier purchase's). Whatever it throws — a transient database error too, as the invoice step: the contract is no
+ * reason to leave real money unrecorded — only the contract is rolled back: the payment and the grant stand, the log has the payment's id and the
+ * error's class, and the terms gate asks her later (`terms`), as it does for a payment that kept no copy (one started before contracts existed).
+ */
+async function contractStep(tx: Tx, payment: Payment, grant: Grant): Promise<Contract | null> {
+  const shown = payment.contractSnapshot;
+  if (!shown || payment.courseId === null) {
+    console.info(`[contracts] payment ${payment.id}: no contract kept with it, the terms gate asks`);
+    return null;
+  }
+  const courseId = payment.courseId;
+  try {
+    return await (tx as unknown as Db).transaction(async (savepoint) => {
+      const fields = await accessContractFields(savepoint, grant.accessId, payment.id, shown.locale);
+      if (!fields) throw new Error(`access ${grant.accessId} is gone`); // ids only
+      return contractForAccess(savepoint, {
+        accessId: grant.accessId,
+        clientId: grant.clientId,
+        courseId,
+        paymentId: payment.id,
+        snapshotOrTemplate: shown,
+        fields,
+        via: "purchase",
+        now: payment.createdAt,
+      });
+    });
+  } catch (e) {
+    logFailure(`[contracts] payment ${payment.id}: no contract`, e);
     return null;
   }
 }
@@ -555,16 +601,24 @@ async function invoiceAttachment(deps: SettleDeps, invoice: Invoice | null): Pro
  * "E-koolitus on avatud — …" with a live login (spec 6.2.4), after the response: never to a sample address, not counted in the daily caps (it
  * follows a real payment). The login is a normal client login (client-auth.ts issueClientLogin), made only now and sent only in this mail; an
  * address that has its 3 live logins already gets the mail without a code ("Ava minu konto"). Nothing here signs anyone in. The purchase's
- * invoice goes with it as a PDF, with „Arve on lisatud." (invoiceAttachment).
+ * invoice goes with it as a PDF, with „Arve on lisatud." (invoiceAttachment), and its contract as the second PDF, with „Leping on lisatud.“
+ * (contracts, D7), whose `sent_at` is then recorded.
  */
-async function mailEcourseOpen(deps: SettleDeps, p: Payment, g: Grant, invoice: Invoice | null): Promise<void> {
+async function mailEcourseOpen(deps: SettleDeps, p: Payment, g: Grant, invoice: Invoice | null, contract: Contract | null): Promise<void> {
   if (isSampleAddress(p.email) || !mailConfigured(deps.env)) return;
   try {
     const attachment = await invoiceAttachment(deps, invoice);
+    // the purchase's contract, the second attachment (contracts, D7); none when there is no contract or its PDF failed (logged by its id)
+    const contractFile = contract ? await contractPdfForMail(contract) : null;
     const login = await issueClientLogin(deps.db, p.email, deps.now);
-    const mail = ecourseOpenMail({ siteUrl: deps.siteUrl, email: p.email, name: p.name, locale: p.locale, course: g.courseTitle, expiresAt: g.expiresAt, login, invoiceAttached: attachment !== null });
-    const sent = await sendMail(deps.env, attachment ? { ...mail, attachments: [attachment] } : mail);
+    const mail = ecourseOpenMail({
+      siteUrl: deps.siteUrl, email: p.email, name: p.name, locale: p.locale, course: g.courseTitle, expiresAt: g.expiresAt, login,
+      invoiceAttached: attachment !== null, contractAttached: contractFile !== null,
+    });
+    const attachments = [...(attachment ? [attachment] : []), ...(contract && contractFile ? [contractAttachment(contract.id, contractFile)] : [])];
+    const sent = await sendMail(deps.env, attachments.length ? { ...mail, attachments } : mail);
     console.info(`[payments] payment ${p.id}: the e-course mail sent: ${sent}`);
+    if (sent && contract && contractFile) await markContractSent(deps.db, contract.id, deps.now);
   } catch (e) {
     logFailure(`[payments] payment ${p.id}: the e-course mail failed`, e);
   }

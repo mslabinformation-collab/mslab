@@ -18,7 +18,8 @@ const focusOnMount = (el: HTMLElement | null) => el?.focus();
  * "Enne alustamist", the terms text (the same renderer as the public legal pages, in their 750 px column), one checkbox and one
  * button, "Alusta koolitust", directly under it, which is off until the box is ticked.
  *
- * The acceptance is POST /api/konto/tingimused `{ slug, version }` with the version of the text shown here:
+ * The acceptance is POST /api/konto/tingimused `{ slug, version, locale }` with the version of the text shown here and the page's language
+ * (the language of the contract it freezes and of the mail that brings it: contracts, D1, D6):
  * - ok → `onAccepted()` (the course view takes over);
  * - 409 (the admin saved new terms since this page was loaded; nothing was stored), 401 (signed out or replaced) or 404 (the
  *   access ended): `onRefresh()` loads the page again, quietly. The fresh notice shows the new text with an empty box (the page
@@ -69,7 +70,7 @@ export function TermsGate({
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ slug, version }),
+        body: JSON.stringify({ slug, version, locale }),
       });
       status = res.status;
       const body = (await res.json().catch(() => null)) as { ok?: unknown } | null;

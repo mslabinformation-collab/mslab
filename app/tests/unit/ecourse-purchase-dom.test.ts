@@ -5,7 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { EcoursePurchase, type EcoursePurchaseTexts } from "@/components/site/EcoursePurchase";
 
-// The e-course cart's purchase form (phase 2b, spec 6.4, D3): name, e-mail, the terms box with its link, the newsletter box and "Maksa 190 €";
+// The e-course cart's purchase form (phase 2b, spec 6.4, D3): name, e-mail, the box (the e-course contract with „Loe lepingut“: contracts, D1;
+// tests/unit/contract-preview-dom.test.ts fills it), the newsletter box and "Maksa 190 €";
 // filled from the account when the browser is signed in; the action's paymentUrl is where the page goes; "unavailable" shows the
 // purchase-interest form instead. The action and the navigation are stood in for here.
 
@@ -21,8 +22,8 @@ vi.mock("@/lib/navigate", () => ({ navigate: mocks.navigate }));
 const t: EcoursePurchaseTexts = {
   name: "Nimi",
   email: "E-post",
-  terms: "Olen tutvunud tingimustega ja nõustun nendega.",
-  termsLink: { label: "Õppetingimused", href: "/tingimused" },
+  contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
+  readContract: "Loe lepingut",
   newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
   submit: "Maksa 190 €",
   starting: "Avan makse…",
@@ -32,7 +33,8 @@ const t: EcoursePurchaseTexts = {
   errorTooMany: "Liiga palju katseid. Proovi mõne minuti pärast.",
   errorGeneric: "Midagi läks valesti. Proovi uuesti.",
 };
-const props = { course: "kulmumeistri-e-koolitus", locale: "et" as const, t, fallback: createElement("p", { "data-fallback": "" }, "Makse lisandub peagi") };
+const contract = { title: "E-koolituse tingimused", body: "Tere {nimi}, hind {hind}.", locale: "et" as const, course: "Kulmumeistri e-koolitus", priceCents: 19000 };
+const props = { course: "kulmumeistri-e-koolitus", locale: "et" as const, t, contract, fallback: createElement("p", { "data-fallback": "" }, "Makse lisandub peagi") };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -68,12 +70,13 @@ afterEach(async () => {
   document.cookie = "mslab_in=; max-age=0";
 });
 
-test("the markup: a POST form with name, e-mail, the terms box and its link, the newsletter box (unticked), the course, the honeypot and 'Maksa 190 €'", () => {
+test("the markup: a POST form with name, e-mail, the box with „Loe lepingut“ (no link away: the contract opens in the cart), the newsletter box (unticked), the course, the honeypot and 'Maksa 190 €'", () => {
   const html = renderToStaticMarkup(createElement(EcoursePurchase, props));
   // either order of the two attributes (React 19 writes a form's `method` after the others)
   expect(html).toMatch(/<form\b(?=[^>]*\bmethod="post")(?=[^>]*\bdata-ecourse-form="")[^>]*>/);
-  for (const part of ['name="name"', 'name="email"', 'name="terms"', 'name="newsletter"', 'name="course" value="kulmumeistri-e-koolitus"', 'name="locale" value="et"', 'name="website"', 'href="/tingimused"', "Maksa 190 €"])
+  for (const part of ['name="name"', 'name="email"', 'name="terms"', 'name="newsletter"', 'name="course" value="kulmumeistri-e-koolitus"', 'name="locale" value="et"', 'name="website"', "Olen tutvunud lepingu tingimustega ja nõustun nendega.", "Loe lepingut", "Maksa 190 €"])
     expect(html).toContain(part);
+  expect(html).not.toContain('href="/tingimused"');
   expect(html).not.toMatch(/name="newsletter"[^>]*checked/);
   // the server renders it for everyone: nothing personal in it, and no price field to trust
   expect(html).not.toMatch(/name="(price|amount)/);

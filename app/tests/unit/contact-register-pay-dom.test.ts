@@ -48,6 +48,9 @@ const t: ContactRegisterTexts = {
   newsletterConsent: "Soovin uudiseid",
   terms: "Olen tutvunud tingimustega",
   termsLink: { label: "Tingimused", href: "/tingimused" },
+  contractTerms: "Olen tutvunud lepingu tingimustega",
+  readContract: "Loe lepingut",
+  contractNoSession: "(vali toimumine)",
   preferredPeriod: "Sobiv aeg",
   preferredPeriodPlaceholder: "Näiteks jaanuar",
   message: "Sõnum",
@@ -63,8 +66,8 @@ const t: ContactRegisterTexts = {
   errorTooMany: "Liiga palju katseid.",
   errorGeneric: "Midagi läks valesti.",
 };
-const session: SessionOption = { id: 7, date: "14.11", weekday: "laupäev", city: "Tallinn", venue: "Stuudio", language: "ET", state: "open", stateLabel: "Vabu kohti · 6", disabled: false };
-const props = { course: "kulmumeistri-baaskoolitus", locale: "et" as const, kinds: [{ kind: "group" as const, price: "350 €" }, { kind: "individual" as const, price: "450 €" }], sessions: [session], t };
+const session: SessionOption = { id: 7, startsAt: "2026-11-14T08:00:00.000Z", date: "14.11", weekday: "laupäev", city: "Tallinn", venue: "Stuudio", language: "ET", state: "open", stateLabel: "Vabu kohti · 6", disabled: false };
+const props = { course: "kulmumeistri-baaskoolitus", locale: "et" as const, kinds: [{ kind: "group" as const, price: "350 €" }, { kind: "individual" as const, price: "450 €" }], sessions: [session], t, contract: { title: "Leping", body: "{nimi}, {toimumine}, {hind}.", locale: "et" as const, course: "Kulmumeistri baaskoolitus", priceCents: 35000 } };
 
 let container: HTMLDivElement;
 let root: Root;

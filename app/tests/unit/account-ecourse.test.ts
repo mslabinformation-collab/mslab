@@ -228,7 +228,7 @@ describe("accepting", () => {
     await click(button());
     expect(posts()).toHaveLength(1);
     expect(posts()[0][0]).toBe("/api/konto/tingimused");
-    expect(posts()[0][1]).toMatchObject({ method: "POST", credentials: "same-origin", body: JSON.stringify({ slug: "veebikursus", version: V1 }) });
+    expect(posts()[0][1]).toMatchObject({ method: "POST", credentials: "same-origin", body: JSON.stringify({ slug: "veebikursus", version: V1, locale: "et" }) });
     expect(fetchMock).toHaveBeenCalledTimes(2); // the page and the acceptance
 
     expect($("[data-terms-gate]")).toBeNull();
@@ -269,7 +269,7 @@ describe("accepting", () => {
     await mount();
     await tick();
     await click(button());
-    expect(posts()[0][1]).toMatchObject({ body: JSON.stringify({ slug: "veebikursus", version: V1 }) });
+    expect(posts()[0][1]).toMatchObject({ body: JSON.stringify({ slug: "veebikursus", version: V1, locale: "et" }) });
     // while the new answer is on its way the notice stays (no skeleton), still sending, no message; the box is cleared by the new notice
     expect($("[data-account-state='loading']")).toBeNull();
     expect($("[data-terms-gate]")).not.toBeNull();
@@ -292,7 +292,7 @@ describe("accepting", () => {
     fetchMock.mockImplementation(async (_input, init) => (init?.method === "POST" ? json(200, { ok: true }) : json(200, view({ version: V2 }))));
     await tick();
     await click(button());
-    expect(posts()[1][1]).toMatchObject({ body: JSON.stringify({ slug: "veebikursus", version: V2 }) });
+    expect(posts()[1][1]).toMatchObject({ body: JSON.stringify({ slug: "veebikursus", version: V2, locale: "et" }) });
     expect($("[data-ecourse]")).not.toBeNull();
   });
 

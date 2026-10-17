@@ -3,6 +3,7 @@ import type { Db, Q, Tx } from "@/db/client";
 import { attachOrder, failPayment, insertPayment } from "@/db/queries/payments";
 import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
+import type { ContractSnapshot } from "@/domain/contract";
 import { normalizeEmail } from "@/domain/email";
 import { payableDue } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
@@ -267,10 +268,12 @@ async function paidRecently(q: Q, courseId: number, email: string, now: Date): P
  * (lockEcoursePurchase, in a transaction of its own that ends before Montonio is called): two presses at the same moment find one row, not two.
  * Under the same lock, before any of that: an address that paid this course in the last 30 minutes (paidRecently) starts nothing — `alreadyPaid`,
  * no row and no call to Montonio. It tells her only that, never an amount or a name.
+ * `contract` (contracts, §4) is the contract the cart showed, filled (submit.ts handleEcoursePurchase): the row keeps it (`contract_snapshot`), a
+ * re-send keeps this press's, and settle freezes it when the payment is paid. None (a caller without a cart): the terms gate asks her later.
  */
 export async function startEcoursePayment(
   deps: StartDeps,
-  input: { courseId: number; amountCents: number; email: string; name: string; locale: "et" | "ru"; newsletter: boolean },
+  input: { courseId: number; amountCents: number; email: string; name: string; locale: "et" | "ru"; newsletter: boolean; contract?: ContractSnapshot | null },
 ): Promise<EcourseStartResult> {
   const montonio = deps.montonio;
   if (!montonio) return { kind: "off" };
@@ -280,14 +283,14 @@ export async function startEcoursePayment(
     if (await paidRecently(tx, input.courseId, email, deps.now)) return { alreadyPaid: true };
     const live = await liveAttempt(tx, { courseId: input.courseId, email }, input.amountCents, deps.now);
     if (live) {
-      // its window starts again now, and what she typed this time replaces what she typed before
-      const fresh = { name: input.name, locale: input.locale, newsletter: input.newsletter, updatedAt: deps.now };
+      // its window starts again now, and what she typed this time replaces what she typed before (the contract this press showed too)
+      const fresh = { name: input.name, locale: input.locale, newsletter: input.newsletter, contractSnapshot: input.contract ?? null, updatedAt: deps.now };
       await tx.update(payments).set(fresh).where(and(eq(payments.id, live.id), eq(payments.status, "pending")));
       return { payment: { ...live, ...fresh }, again: true };
     }
     const payment = await insertPayment(
       tx,
-      { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email, name: input.name, locale: input.locale, amountCents: input.amountCents, newsletter: input.newsletter },
+      { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email, name: input.name, locale: input.locale, amountCents: input.amountCents, newsletter: input.newsletter, contractSnapshot: input.contract ?? null },
       deps.now,
       montonio.referencePrefix,
     );

@@ -3,8 +3,13 @@
 // texts, the download's file name and headers, and the school block when Seaded → Arve andmed is empty. No database, no React: the server, Maria's
 // screens and the student's account share them. It runs in the browser too (the form's and the cart's inline contract, Seaded's sample), on iOS
 // Safari before 16.4 as well: no lookbehind here nor in what it imports (tests/unit/old-safari.test.ts), no builtin newer than Safari 15, no node: module.
+// What a contract is filled with is made by one function on both sides (contractParts, filledContract: Task 4, Review Focus 3).
 
+import type { I18n } from "@/i18n/field";
 import { tallinnDateText } from "./certificate";
+import { normalizeEmail } from "./email";
+import { euro } from "./invoice";
+import { prepaymentDue } from "./registration";
 
 /** What a contract is for (D1): a contact course's registration, or an e-course's access. */
 export type ContractKind = "contact" | "ecourse";
@@ -13,7 +18,8 @@ export type AcceptedVia = "form" | "purchase" | "account" | "terms";
 
 /**
  * Everything the PDF's header holds besides the text (D3, §5), frozen at the acceptance: the school (Seaded → Arve andmed; schoolOf), the
- * student, the course's Estonian title, the session (sessionText), the price in euros and the payment choice in words (paymentText).
+ * student, the course's name in the contract's language (contractCourseName), the session (sessionText), the price in euros and the payment
+ * choice in words (paymentText).
  * `session`, `price` and `payment` are empty when there is none (an e-course has no session or choice; a free grant has no price).
  */
 export type ContractFields = {
@@ -49,8 +55,62 @@ export function fillContract(text: string, values: ContractValues): string {
 }
 
 /** The placeholders' values from a contract's fields (D2); `prepayment` is the text of the half the choice asks first, which the caller knows. */
-export function contractValues(f: ContractFields, prepayment: string): ContractValues {
+export function contractValues(f: Omit<ContractFields, "school">, prepayment: string): ContractValues {
   return { nimi: f.student.name, "e-post": f.student.email, koolitus: f.course, toimumine: f.session, hind: f.price, ettemaks: prepayment };
+}
+
+/** A course's name in the contract's language (D6, ruling R5): the Russian title for a Russian contract when the course has one, else the Estonian title. */
+export function contractCourseName(title: I18n, locale: "et" | "ru"): string {
+  return locale === "ru" && (title.ru ?? "").trim() ? (title.ru as string) : title.et;
+}
+
+/**
+ * What a contract is made of besides the school and the text (D3), as a form holds it: the student as she typed herself, the course's name (in the
+ * contract's language: contractCourseName), the session (none for an e-course, or before she has chosen one), the price in cents and the payment
+ * choice (none for an e-course), and the contract's language.
+ */
+export type ContractInput = {
+  name: string;
+  email: string;
+  course: string;
+  session: { startsAt: Date; city: string; venue?: string } | null;
+  priceCents: number | null;
+  choice: "full" | "half" | null;
+  locale: "et" | "ru";
+};
+
+/**
+ * The fields of a contract but the school, and its „Ettemaks“ text, from what a form holds: the server's frozen contract (contracts.ts
+ * registrationContractFields, from the stored registration) and the forms' inline contract in the browser (filledContract) are made by this one
+ * function, so a placeholder can never be filled one way on the page and another way in the contract (Review Focus 3). The name is one line and
+ * the address trimmed and in lower case, as the forms store them (server/forms.ts), so what she typed and what was stored give the same text. The
+ * price is euro() of the cents („350,00 €“), the payment choice its words (paymentText), the prepayment the half the choice asks first (or the
+ * whole price); each is empty without a price or a choice.
+ */
+export function contractParts(input: ContractInput): { fields: Omit<ContractFields, "school">; prepayment: string } {
+  const price = input.priceCents;
+  return {
+    fields: {
+      student: { name: input.name.replace(/\s+/g, " ").trim(), email: normalizeEmail(input.email) },
+      course: input.course,
+      session: sessionText(input.session),
+      price: price === null ? "" : euro(price),
+      payment: paymentText(input.choice, input.locale),
+    },
+    prepayment: price === null || input.choice === null ? "" : euro(prepaymentDue(price, input.choice)),
+  };
+}
+
+/**
+ * A contract text filled from what a form holds (D1): the registration form's and the cart's inline contract („Loe lepingut“), and the copy an
+ * e-course purchase keeps on its payment (payments.contract_snapshot), which is the cart's very text. `noSession` is what {toimumine} says while no
+ * session is chosen (the form's „(vali toimumine)“); without it, as on the server, an empty session is empty.
+ */
+export function filledContract(template: { title: string; body: string }, input: ContractInput, noSession?: string): { title: string; body: string } {
+  const { fields, prepayment } = contractParts(input);
+  const values = contractValues(fields, prepayment);
+  if (input.session === null && noSession !== undefined) values.toimumine = noSession;
+  return { title: fillContract(template.title, values), body: fillContract(template.body, values) };
 }
 
 /** The language a contract is made in (D6): RU when she registered in RU and the RU text exists, else ET. */

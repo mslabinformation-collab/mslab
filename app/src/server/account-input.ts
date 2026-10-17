@@ -29,7 +29,8 @@ const merge = z.object({ slugs: z.array(slug).max(LIMITS.mergeSlugs) });
 const profile = z.object({ name: line(LIMITS.name), phone: line(LIMITS.phone), locale: z.enum(["et", "ru"]) });
 const newsletter = z.object({ on: z.boolean() });
 const changeRequest = z.object({ registrationId: rowId, kind: z.enum(["cancel", "change"]), message: text(LIMITS.message).optional().transform((m) => m ?? "") });
-const terms = z.object({ slug, version: z.string().min(1).max(LIMITS.version).refine(storable) });
+/** The terms gate: the version the page showed, and the page's language (the contract's, D6; a page from before contracts sends none). */
+const terms = z.object({ slug, version: z.string().min(1).max(LIMITS.version).refine(storable), locale: z.enum(["et", "ru"]).optional() });
 const deletion = z.object({ confirm: z.literal(true) });
 const progress = z.object({ watchedSec: z.number().min(0).max(LIMITS.watchedSec) });
 /** Kept exactly as typed (no trim): the length and the e-mail rules are the server's, with the account's address (domain/password.ts). */

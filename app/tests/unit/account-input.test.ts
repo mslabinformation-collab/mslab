@@ -143,6 +143,12 @@ describe("terms { slug, version } and deletion { confirm }", () => {
     for (const version of ["", "v".repeat(LIMITS.version + 1), 1, null, ["1"], { v: 1 }, "a\u0000b", "a\ud800"]) expect(parseTerms({ slug: "veebikursus", version }), JSON.stringify(version)).toEqual(err("version"));
   });
 
+  test("terms: the page's language (the contract's, contracts Task 4) is et or ru, and may be left out by a page from before it", () => {
+    expect(parseTerms({ slug: "veebikursus", version: "1", locale: "ru" })).toEqual(ok({ slug: "veebikursus", version: "1", locale: "ru" }));
+    expect(parseTerms({ slug: "veebikursus", version: "1" })).toEqual(ok({ slug: "veebikursus", version: "1" }));
+    for (const locale of ["en", "", 1, null]) expect(parseTerms({ slug: "veebikursus", version: "1", locale }), JSON.stringify(locale)).toEqual(err("locale"));
+  });
+
   test("deletion: confirm is exactly true", () => {
     expect(parseDeletion({ confirm: true })).toEqual(ok({ confirm: true }));
     for (const confirm of [false, "true", 1, null, undefined, {}]) expect(parseDeletion({ confirm }), String(confirm)).toEqual(err("confirm"));

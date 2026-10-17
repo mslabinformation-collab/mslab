@@ -39,24 +39,24 @@ describe("the revalidation map", () => {
     expect(paths({ kind: "trainer", parts: [] })).toEqual([]);
   });
 
-  test("settings: contact and newsletter are in the footer of every page; privacy and terms their own pages", () => {
+  test("settings: contact and newsletter are in the footer of every page; privacy and terms their own pages, terms the course pages too (the contact contract's text until Maria writes hers: contracts, D2)", () => {
     expect(paths({ kind: "settings", parts: ["contact"] })).toEqual([`${SITE} (layout)`]);
     expect(paths({ kind: "settings", parts: ["newsletter", "terms"] })).toEqual([`${SITE} (layout)`]);
-    expect(paths({ kind: "settings", parts: ["privacy", "terms"] })).toEqual([`${SITE}/privaatsus (page)`, `${SITE}/tingimused (page)`]);
+    expect(paths({ kind: "settings", parts: ["privacy", "terms"] })).toEqual([`${SITE}/privaatsus (page)`, `${SITE}/tingimused (page)`, `${SITE}/koolitused/[slug] (page)`]);
     expect(paths({ kind: "settings", parts: [] })).toEqual([]);
   });
 
-  test("settings: the e-course terms (course_terms) are account-only, so saving them revalidates no public page", () => {
-    expect(revalidationTargets({ kind: "settings", parts: ["course_terms"] })).toEqual([]);
-    // saved together with another part, only that part's pages are made stale
-    expect(paths({ kind: "settings", parts: ["course_terms", "privacy"] })).toEqual([`${SITE}/privaatsus (page)`]);
+  test("settings: the e-course terms (course_terms) are the e-course contract every cart shows inline (contracts, D1): saving them revalidates the carts", () => {
+    expect(paths({ kind: "settings", parts: ["course_terms"] })).toEqual([`${SITE}/ostukorv (layout)`]);
+    // saved together with another part, that part's pages too
+    expect(paths({ kind: "settings", parts: ["course_terms", "privacy"] })).toEqual([`${SITE}/privaatsus (page)`, `${SITE}/ostukorv (layout)`]);
     expect(paths({ kind: "settings", parts: ["course_terms", "contact"] })).toEqual([`${SITE} (layout)`]);
   });
 
   test("settings: the prepayment instructions are account-only (the unpaid cards' JSON), so saving them revalidates no public page", () => {
     expect(revalidationTargets({ kind: "settings", parts: ["prepayment"] })).toEqual([]);
-    expect(revalidationTargets({ kind: "settings", parts: ["prepayment", "course_terms"] })).toEqual([]);
-    expect(paths({ kind: "settings", parts: ["prepayment", "terms"] })).toEqual([`${SITE}/tingimused (page)`]);
+    expect(paths({ kind: "settings", parts: ["prepayment", "course_terms"] })).toEqual([`${SITE}/ostukorv (layout)`]);
+    expect(paths({ kind: "settings", parts: ["prepayment", "terms"] })).toEqual([`${SITE}/tingimused (page)`, `${SITE}/koolitused/[slug] (page)`]);
     expect(paths({ kind: "settings", parts: ["prepayment", "newsletter"] })).toEqual([`${SITE} (layout)`]);
   });
 
@@ -72,6 +72,7 @@ describe("the revalidation map", () => {
       { kind: "trainer", parts: ["bio", "works"] },
       { kind: "trainer", parts: ["trainer"] },
       { kind: "settings", parts: ["privacy", "terms"] },
+      { kind: "settings", parts: ["course_terms"] },
     ];
     const routes = all.flatMap(revalidationTargets).filter((t) => t.path.startsWith("/["));
     for (const t of routes) {

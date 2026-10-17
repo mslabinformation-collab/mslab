@@ -52,9 +52,13 @@ beforeEach(async () => {
   for (const method of CONSOLE) vi.spyOn(console, method);
 });
 afterEach(() => {
-  // the module logs nothing: not an id, not a name, not an amount (the spies pass anything through, so that it would show)
-  for (const method of CONSOLE) expect(console[method], `console.${method}`).not.toHaveBeenCalled();
-  vi.restoreAllMocks();
+  try {
+    // the module logs nothing here: not an id, not a name, not an amount (the spies pass anything through, so that it would show)
+    for (const method of CONSOLE) expect(console[method], `console.${method}`).not.toHaveBeenCalled();
+  } finally {
+    // restored even when an expect above fails, so that the next test starts with the real console
+    vi.restoreAllMocks();
+  }
 });
 
 type LogEntry = { query: string; params: unknown[] };
@@ -122,7 +126,7 @@ const TEMPLATE_V2: Tpl = { ...TEMPLATE_V1, version: "2026-10-10T00:00:00.000Z", 
 /** A contract of the access, as the terms gate or the purchase makes it (the fields in the language of the text it brings). */
 async function acceptAccess(a: { access: { id: number; courseId: number; clientId: number } }, over: { template?: Tpl; via?: "purchase" | "terms"; paymentId?: number | null; now?: Date } = {}) {
   return db.transaction(async (tx) => {
-    const fields = (await accessContractFields(tx, a.access.id, over.paymentId, (over.template ?? TEMPLATE_V1).locale))!;
+    const fields = (await accessContractFields(tx, a.access.id, over.paymentId ?? null, (over.template ?? TEMPLATE_V1).locale))!;
     return contractForAccess(tx, {
       accessId: a.access.id, clientId: a.access.clientId, courseId: a.access.courseId, paymentId: over.paymentId, snapshotOrTemplate: over.template ?? TEMPLATE_V1, fields, via: over.via ?? "terms", now: over.now ?? NOW,
     });
@@ -369,7 +373,7 @@ describe("an e-course access's contract (D1)", () => {
 
   test("a purchase names its payment and carries its paid amount as the price, beside the text the cart showed", async () => {
     const e = await ecourse({ paid: true });
-    const fields = (await accessContractFields(db, e.access.id, e.payment!.id))!;
+    const fields = (await accessContractFields(db, e.access.id, e.payment!.id, "et"))!;
     expect(fields).toMatchObject({ price: `175,00${NBSP}€`, session: "", payment: "", course: "Kulmumeistri e-koolitus", student: { name: "Kati Tamm", email: "kati@example.com" } });
     const shown = { ...TEMPLATE_V1, body: `Tere Kati Tamm, hind 175,00${NBSP}€.` };
     const made = (await acceptAccess(e, { via: "purchase", paymentId: e.payment!.id, template: shown }))!;
@@ -378,9 +382,9 @@ describe("an e-course access's contract (D1)", () => {
 
   test("without a payment, and with one that is gone, the price is empty", async () => {
     const e = await ecourse({ paid: true });
-    expect((await accessContractFields(db, e.access.id))!.price).toBe("");
-    expect((await accessContractFields(db, e.access.id, null))!.price).toBe("");
-    expect((await accessContractFields(db, e.access.id, 999))!.price).toBe("");
+    expect((await accessContractFields(db, e.access.id, null, "et"))!.price).toBe("");
+    expect((await accessContractFields(db, e.access.id, null, "ru"))!.price).toBe("");
+    expect((await accessContractFields(db, e.access.id, 999, "et"))!.price).toBe("");
   });
 
   test("a purchase stores the snapshot the cart showed exactly as it is (it is filled already: a name that reads {hind} is not filled a second time); the gate's text is filled here", async () => {
@@ -419,7 +423,6 @@ describe("an e-course access's contract (D1)", () => {
 
   test("M-1: the course's name follows the contract's language: Russian for a Russian contract when the course has a Russian title, else Estonian", async () => {
     const e = await ecourse();
-    expect((await accessContractFields(db, e.access.id))!.course).toBe("Kulmumeistri e-koolitus");
     expect((await accessContractFields(db, e.access.id, null, "et"))!.course).toBe("Kulmumeistri e-koolitus");
     expect((await accessContractFields(db, e.access.id, null, "ru"))!.course).toBe("Онлайн-курс бровиста");
     const ru = await acceptAccess(e, { template: { ...TEMPLATE_V1, locale: "ru", body: "{koolitus}" } });
@@ -429,7 +432,7 @@ describe("an e-course access's contract (D1)", () => {
   });
 
   test("an unknown access has no fields", async () => {
-    expect(await accessContractFields(db, 999)).toBeNull();
+    expect(await accessContractFields(db, 999, null, "et")).toBeNull();
   });
 
   test("the access row is locked FOR UPDATE (completion.ts lockAccess) before the old contract is superseded and the new one inserted", async () => {
@@ -453,7 +456,7 @@ describe("an e-course access's contract (D1)", () => {
       .insert(courses)
       .values({ slug: "teine", type: "e_learning", level: "basic", title: { et: "Teine" }, summary: { et: "" }, body: { et: "" }, published: true, price: 9000 })
       .returning();
-    const fields = (await accessContractFields(db, e.access.id))!;
+    const fields = (await accessContractFields(db, e.access.id, null, "et"))!;
     const input = { accessId: e.access.id, clientId: e.client.id, courseId: e.course.id, snapshotOrTemplate: TEMPLATE_V1, fields, via: "terms" as const, now: NOW };
     const refused = (over: Partial<typeof input>) => db.transaction((tx) => contractForAccess(tx, { ...input, ...over }));
     await expect(refused({ clientId: other.id })).rejects.toThrow(`access ${e.access.id} does not belong to client ${other.id} and course ${e.course.id}`);

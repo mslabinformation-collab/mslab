@@ -267,6 +267,9 @@ export const ru: Dict = {
     sending: "Отправляем…",
     register: "Записаться",
     terms: "Ознакомлен(а) с условиями и принимаю их.",
+    contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их.",
+    readContract: "Читать договор",
+    contractNoSession: "(выберите дату)",
     modelHelp: "Мне нужна помощь учебного центра в поиске моделей",
     createAccount: "Сразу создайте мне аккаунт в среде MS LAB",
     newsletterConsent: "Хочу получать новости и предложения MS LAB",
@@ -354,6 +357,7 @@ export const ru: Dict = {
     emptyTitle: "Корзина пуста",
     emptyText: "Выберите подходящий онлайн-курс — купить его можно будет, как только откроется оплата.",
     total: "Итого",
+    contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их.",
   },
 
   // Online payments (phase 2b, spec 9); drafts for the native-speaker check (docs/launch-checklist.md §10).
@@ -466,6 +470,12 @@ export const ru: Dict = {
       due: "Оплатить до",
       paidOn: "Оплачено",
       attached: "Счёт в\u00a0формате PDF во\u00a0вложении.",
+    },
+    // the contract's mail (server/account-mail.ts contractMail)
+    contractMail: {
+      subject: "Договор MS LAB",
+      lead: "Вы подтвердили договор {date}.",
+      attached: "Договор во\u00a0вложении.",
     },
     // the e-course completion's mails (server/account-mail.ts completionMail)
     completionMail: {

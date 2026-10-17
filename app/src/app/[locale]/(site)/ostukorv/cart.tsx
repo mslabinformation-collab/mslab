@@ -8,12 +8,14 @@ import { PurchaseInterest } from "@/components/site/PurchaseInterest";
 import ui from "@/components/site/ui.module.css";
 import { getDb } from "@/db/client";
 import { getCourseBySlug } from "@/db/queries/public";
+import { contractCourseName } from "@/domain/contract";
 import { formatEUR } from "@/domain/money";
 import { pick } from "@/i18n/field";
 import { fill } from "@/i18n/format";
 import { href } from "@/i18n/href";
 import { getDict, type Locale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
+import { contractTemplate } from "@/server/contracts";
 import { paymentsConfigured } from "@/server/payments/montonio";
 import styles from "./cart.module.css";
 
@@ -24,7 +26,8 @@ export function cartMetadata(locale: Locale): Metadata {
 
 /**
  * Cart (/ostukorv?kursus=<slug>), target of "Osta kohe" on an e-learning page (P9). With online payments (phase 2b, spec 6.4) it sums up the
- * course and takes the purchase: name, e-mail, the terms, the newsletter box and "Maksa {hind}" (components/site/EcoursePurchase.tsx); without
+ * course and takes the purchase: name, e-mail, the box that is the e-course contract with „Loe lepingut“ (contracts, D1: Maria's e-course text,
+ * read here; a save of it revalidates the carts), the newsletter box and "Maksa {hind}" (components/site/EcoursePurchase.tsx); without
  * them it says payment opens soon and takes an e-mail to tell the visitor, and when Montonio does not open the payment at the moment of buying
  * the form gives way to that same interest form under "Makse ei avanenud…". Whether payments are on is a setting of the deployment, read while
  * the page renders (the page stays one cached page per course): nothing about the visitor is in it, her name and e-mail are filled in by the
@@ -46,6 +49,9 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
 
   const title = pick(course.title, locale);
   const image = course.images[0];
+  // the e-course contract the box accepts (contracts, D1), in this page's language when its text has one: the form fills it live, and „Maksa“
+  // keeps the same filled text on the payment
+  const contract = await contractTemplate(getDb(), "ecourse", locale);
   const price = formatEUR(course.price, locale);
   const c = d.course;
   // today's purchase-interest form under a line saying why: "Makse lisandub peagi" without payments, "Makse ei avanenud" when Montonio is down
@@ -117,8 +123,8 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
               t={{
                 name: d.forms.name,
                 email: d.forms.email,
-                terms: d.forms.terms,
-                termsLink: { label: d.footer.terms, href: to("/tingimused") },
+                contractTerms: d.cart.contractTerms,
+                readContract: d.forms.readContract,
                 newsletterConsent: d.forms.newsletterConsent,
                 submit: fill(d.payment.pay, { amount: price }),
                 starting: d.payment.starting,
@@ -128,6 +134,7 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
                 errorTooMany: d.forms.errorTooMany,
                 errorGeneric: d.forms.errorGeneric,
               }}
+              contract={{ title: contract.title, body: contract.body, locale: contract.locale, course: contractCourseName(course.title, contract.locale), priceCents: course.price }}
               fallback={interest(d.payment.cartDown)}
             />
           ) : (

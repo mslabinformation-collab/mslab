@@ -1,11 +1,11 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { CourseCardData } from "@/components/site/CourseCard";
 import { courseCardData } from "@/components/site/course-card-data";
-import type { Db } from "@/db/client";
+import type { Db, Q } from "@/db/client";
 import { listPublishedCourses, listUpcomingSessions, readSetting } from "@/db/queries/public";
 import {
-  certificates, clientFavourites, clientLoginTokens, clients, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols, registrations, requests,
-  subscribers, termsAcceptances,
+  certificates, clientFavourites, clientLoginTokens, clients, contracts, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols, registrations,
+  requests, subscribers, termsAcceptances, type Contract,
 } from "@/db/schema";
 import {
   PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type CardInvoice, type EcourseCard, type FeedbackPrompt, type OpenInvoice, type PrepaymentInfo,
@@ -24,6 +24,7 @@ import { getDict, type Locale } from "@/i18n/locales";
 import { certificateOfAccess, type CertificateView } from "./certificates";
 import { lockAddress } from "./client-auth";
 import { accessFor, completeIfDone, isActive, loadSteps } from "./completion";
+import { accessContractFields, contractForAccess, contractTemplate } from "./contracts";
 import { invoicesOfClient, type StudentInvoice } from "./invoices";
 import { courseOutline, ecourseProgress, progressActivity, type OutlineModule } from "./lesson-outline";
 import { logFailure } from "./log";
@@ -132,7 +133,7 @@ function groupInvoices(list: StudentInvoice[], key: (inv: StudentInvoice) => num
 }
 
 /** The version of the e-course terms: the settings key `courseTermsVersion` (an ISO time, set when the admin saves the terms text), "1" until then. */
-export async function courseTermsVersion(db: Db): Promise<string> {
+export async function courseTermsVersion(db: Q): Promise<string> {
   const value = await readSetting(db, TERMS_VERSION_KEY);
   return typeof value === "string" && value.trim() ? value : DEFAULT_TERMS_VERSION;
 }
@@ -376,19 +377,26 @@ export function termsText(body: unknown): I18n | null {
 
 /**
  * The terms notice of an e-course for this client: the current version, whether nothing is left to accept, and the text while
- * something is. The version is read BEFORE the text (see loadEcourse).
+ * something is. The version is read BEFORE the text (see loadEcourse). Accepted: an acceptance of that version, or a current contract of her
+ * access to the course of that version (contracts, D1: the cart's box, frozen when the purchase was paid, is the acceptance; she is not asked
+ * twice), or no text at all.
  */
 export async function termsState(db: Db, clientId: number, courseId: number): Promise<EcourseView["terms"]> {
   const versionThenText = async () => {
     const current = await courseTermsVersion(db);
     return [current, await db.select({ body: pages.body }).from(pages).where(eq(pages.key, TERMS_PAGE_KEY)).limit(1)] as const;
   };
-  const [[version, page], accepted] = await Promise.all([
+  const [[version, page], accepted, contracted] = await Promise.all([
     versionThenText(),
     db.select({ version: termsAcceptances.termsVersion }).from(termsAcceptances).where(and(eq(termsAcceptances.clientId, clientId), eq(termsAcceptances.courseId, courseId))),
+    db
+      .select({ version: contracts.version })
+      .from(contracts)
+      .innerJoin(courseAccess, eq(contracts.accessId, courseAccess.id))
+      .where(and(eq(courseAccess.clientId, clientId), eq(courseAccess.courseId, courseId), isNull(contracts.supersededAt))),
   ]);
   const text = termsText(page[0]?.body);
-  const isAccepted = text === null || accepted.some((row) => row.version === version);
+  const isAccepted = text === null || accepted.some((row) => row.version === version) || contracted.some((row) => row.version === version);
   return { version, accepted: isAccepted, text: isAccepted ? null : text };
 }
 
@@ -447,20 +455,49 @@ export async function loadEcourse(db: Db, clientId: number, slug: string, now: D
 }
 
 /**
- * Stores that the client accepted the terms `version` for the e-course.
+ * Stores that the client accepted the terms `version` for the e-course, and freezes the access's contract with it (contracts, D1, §4: the
+ * gate's box is the acceptance, `terms`): the current e-course text in `opts.locale` (the language of the page she accepted it on; her account's
+ * without it, D6), filled with her account's name and address and the course, no price. Both in one transaction, the access row's lock taken
+ * first (contracts.ts contractForAccess); a contract of this version she has already (an acceptance before, the purchase's) makes no second one.
+ * `opts.onContract` is told the contract it froze (none when it made none), so the caller mails it.
  * - `"noAccess"`: no active access to that course (nothing is stored).
  * - `"stale"`: `version` is not the current terms version (the admin saved new terms after the page was loaded; nothing is stored), or there is no
- *   terms text any more (nothing to accept: nothing is stored, and the page, loaded again, finds the course open).
+ *   terms text any more (nothing to accept: nothing is stored, and the page, loaded again, finds the course open). The version is read again
+ *   after the text the contract freezes: a save that lands in between is stale too, so a contract never holds a text the page did not show.
  * - `"accepted"`: stored (accepting twice is fine).
  */
-export async function acceptTerms(db: Db, clientId: number, slug: string, version: string, now: Date): Promise<"accepted" | "noAccess" | "stale"> {
+export async function acceptTerms(
+  db: Db,
+  clientId: number,
+  slug: string,
+  version: string,
+  now: Date,
+  opts: { locale?: "et" | "ru"; onContract?: (contract: Contract) => void } = {},
+): Promise<"accepted" | "noAccess" | "stale"> {
   const access = await activeAccess(db, clientId, slug, now);
   if (!access) return "noAccess";
   if (version !== (await courseTermsVersion(db))) return "stale";
   const [page] = await db.select({ body: pages.body }).from(pages).where(eq(pages.key, TERMS_PAGE_KEY)).limit(1);
   if (termsText(page?.body) === null) return "stale";
-  await db.insert(termsAcceptances).values({ clientId, courseId: access.course.id, termsVersion: version, acceptedAt: now }).onConflictDoNothing();
-  return "accepted";
+  const locale = opts.locale ?? (await clientLocale(db, clientId));
+  const done = await db.transaction(async (tx): Promise<{ result: "accepted" | "noAccess" | "stale"; contract: Contract | null }> => {
+    // the text she accepts: its version is read before it (contractTemplate), and again after it (a save between the two: stale)
+    const template = await contractTemplate(tx, "ecourse", locale);
+    if (template.version !== version || (await courseTermsVersion(tx)) !== version) return { result: "stale", contract: null };
+    const fields = await accessContractFields(tx, access.id, null, template.locale);
+    if (!fields) return { result: "noAccess", contract: null };
+    const contract = await contractForAccess(tx, { accessId: access.id, clientId, courseId: access.course.id, snapshotOrTemplate: template, fields, via: "terms", now });
+    await tx.insert(termsAcceptances).values({ clientId, courseId: access.course.id, termsVersion: version, acceptedAt: now }).onConflictDoNothing();
+    return { result: "accepted", contract };
+  });
+  if (done.contract) opts.onContract?.(done.contract);
+  return done.result;
+}
+
+/** The account's language (D6: the contract's when the page's is not known), Estonian for none. */
+async function clientLocale(db: Db, clientId: number): Promise<"et" | "ru"> {
+  const [row] = await db.select({ locale: clients.locale }).from(clients).where(eq(clients.id, clientId)).limit(1);
+  return row?.locale === "ru" ? "ru" : "et";
 }
 
 // ---------- favourites ----------

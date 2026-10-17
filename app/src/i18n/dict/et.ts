@@ -283,7 +283,13 @@ export const et = {
     submit: "Saada",
     sending: "Saadan…",
     register: "Registreeru",
+    // the individual request's box (D1: it gets no contract) and its link to „Õppetingimused“
     terms: "Olen tutvunud tingimustega ja nõustun nendega.",
+    // the group registration's box is the contract (contracts, D1: verbatim), with the inline contract („Loe lepingut“, verbatim) filled live
+    // from the form; until a date is chosen, {toimumine} says `contractNoSession`
+    contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
+    readContract: "Loe lepingut",
+    contractNoSession: "(vali toimumine)",
     // Contact-course registration extras (P11, P14, P16)
     modelHelp: "Soovin koolituskeskuse abi modellide leidmisel",
     createAccount: "Loo mulle kohe konto MS LAB keskkonda",
@@ -390,6 +396,8 @@ export const et = {
     emptyTitle: "Ostukorv on tühi",
     emptyText: "Vali endale sobiv e-koolitus — selle saad osta kohe, kui makse avaneb.",
     total: "Kokku",
+    // the purchase's box is the e-course contract (contracts, D1), with `forms.readContract` opening its text in the cart
+    contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
   },
 
   // Online payments (phase 2b, spec 9). {amount} is euros ("175 €"), {title} the course, {date} the last day of an e-course's access. The
@@ -526,6 +534,14 @@ export const et = {
       due: "Tasumise tähtaeg",
       paidOn: "Tasutud",
       attached: "Arve PDF on kirjas manusena.",
+    },
+    // The contract's mail (server/account-mail.ts contractMail, contracts Task 4, ruling R1): after the terms gate, „Kinnitan“ and Maria's copy.
+    // `attached` (verbatim, spec D7) is also the line of the registration's confirmation and of the e-course's paid mail when they carry the
+    // contract. `subject` is „MS LAB leping“; `lead` is Draft. {date} is the day she accepted it.
+    contractMail: {
+      subject: "MS LAB leping",
+      lead: "Kinnitasid lepingu {date}.",
+      attached: "Leping on lisatud.",
     },
     // The e-course completion's mails to the student (server/account-mail.ts completionMail, phase e-course completion, spec §6): each kind
     // has its subject, its one line and its button, which opens the page (she signs in there when she must). {title} is the course, {n} the

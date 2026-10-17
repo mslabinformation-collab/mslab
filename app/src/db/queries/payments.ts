@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gt, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type { ContractSnapshot } from "@/domain/contract";
 import { PAGE_SIZE } from "@/domain/paging";
 import { orderReference } from "@/domain/payments";
 import type { I18n } from "@/i18n/field";
@@ -26,6 +27,8 @@ export type NewPayment = {
   newsletter?: boolean;
   /** The unpaid invoice it is started to pay (invoices, spec D5: „Maksa" of a registration with one); none: null or left out. */
   invoiceId?: number | null;
+  /** An e-course purchase: the contract the cart showed, filled (contracts, §4); none: null or left out. */
+  contractSnapshot?: ContractSnapshot | null;
 };
 
 /**

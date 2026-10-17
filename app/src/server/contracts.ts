@@ -6,19 +6,24 @@ import { readSetting } from "@/db/queries/public";
 import { lockRegistration } from "@/db/queries/seats";
 import { clients, contracts, courseAccess, courses, courseSessions, pages, payments, registrations, type Contract } from "@/db/schema";
 import {
-  CONTRACT_CONTACT_KEY, CONTRACT_CONTACT_VERSION_KEY, contractLocale, contractValues, fillContract, paymentText, schoolOf, sessionText, type ContractFields, type ContractKind,
+  CONTRACT_CONTACT_KEY, CONTRACT_CONTACT_VERSION_KEY, contractCourseName, contractLocale, contractParts, contractValues, fillContract, schoolOf, type ContractFields, type ContractKind,
   type ContractSnapshot,
 } from "@/domain/contract";
 import { DEFAULT_TERMS_VERSION, nextTermsVersion, TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
+import { isSampleAddress } from "@/domain/email";
 import { euro } from "@/domain/invoice";
-import { prepaymentDue, registrationPrice } from "@/domain/registration";
+import { registrationPrice } from "@/domain/registration";
 import { SITE_LIMITS } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
+import type { Locale } from "@/i18n/locales";
 import { toStorable } from "@/lib/to-storable";
 import { contentVersion } from "@/lib/version";
+import { contractMail } from "./account-mail";
 import { lockAccess } from "./completion";
 import { Check } from "./edit-check";
 import { getInvoiceSettings } from "./invoices";
+import { logFailure } from "./log";
+import { mailConfigured, sendMail, type Env } from "./notify";
 
 // The contracts' server (contracts, Task 3; spec D1–D7, §3–§6), without Next.js: the frozen contract of a registration and of an e-course access,
 // asking again and superseding under the row's lock, the reads of the student and of Maria, the contract texts of Seaded (the contact text, its
@@ -36,7 +41,7 @@ import { getInvoiceSettings } from "./invoices";
 // - contractForAccess with the access row as the first row lock of the write about one access (completion.ts: „the first lock of every write about
 //   one access“), or after settle's own order: its payment row, the address lock, the rows linked to the address, course_access last.
 // The partial unique indexes (contracts_current_registration, contracts_current_access) are the backstop: a second current contract is refused whatever
-// the code does. Logs carry ids only (this module logs nothing).
+// the code does. Logs carry ids only: only the mail's part logs (a PDF that fails to render, a mail that fails), by the contract's id.
 
 /** The public „Õppetingimused“ page (`pages` key `terms`): the contact contract's text until Maria writes hers (D2). */
 const PUBLIC_TERMS_KEY = "terms";
@@ -110,9 +115,6 @@ export async function contractTemplate(q: Q, kind: ContractKind, locale: "et" | 
 
 // ---------- the fields ----------
 
-/** A course's name in the contract's language (D6): the Russian title for a Russian contract when the course has one, else the Estonian title. */
-const courseName = (title: I18n, locale: "et" | "ru"): string => (locale === "ru" && (title.ru ?? "").trim() ? (title.ru as string) : title.et);
-
 /**
  * What a contact registration's contract is made of: its fields (D3), `prepaymentText` and the `template` it is made from, from one read of the
  * registration and one read of the text, so that the language, the payment words, the course's name and the text agree and the caller reads none again.
@@ -120,7 +122,8 @@ const courseName = (title: I18n, locale: "et" | "ru"): string => (locale === "ru
  * name in the contract's language, the session's date and place, the price (the group or the individual price: registrationPrice) and the payment
  * choice in words. `prepaymentText` is „Ettemaks“, the half the choice asks first (or the whole price), for the placeholder. `locale` (the template's
  * too) is the language the contract is made in (D6: the registration's, when that text exists in it, else Estonian). The template's version is read
- * before its text (storedTemplate). Null for an unknown registration.
+ * before its text (storedTemplate). Null for an unknown registration. The fields are domain/contract.ts contractParts of the stored registration:
+ * the function the form's inline contract fills itself with in the browser (Review Focus 3).
  */
 export async function registrationContractFields(
   q: Q,
@@ -137,17 +140,18 @@ export async function registrationContractFields(
   const { registration: r, course, session } = row;
   const template = await contractTemplate(q, "contact", r.locale === "ru" ? "ru" : "et");
   const { locale } = template;
-  const price = registrationPrice(course, r.kind);
+  const parts = contractParts({
+    name: r.name,
+    email: r.email,
+    course: contractCourseName(course.title, locale),
+    session,
+    priceCents: registrationPrice(course, r.kind),
+    choice: r.paymentChoice,
+    locale,
+  });
   return {
-    fields: {
-      school: schoolOf(await getInvoiceSettings(q, new Date())),
-      student: { name: r.name, email: r.email },
-      course: courseName(course.title, locale),
-      session: sessionText(session),
-      price: price === null ? "" : euro(price),
-      payment: paymentText(r.paymentChoice, locale),
-    },
-    prepaymentText: price === null ? "" : euro(prepaymentDue(price, r.paymentChoice)),
+    fields: { school: schoolOf(await getInvoiceSettings(q, new Date())), ...parts.fields },
+    prepaymentText: parts.prepayment,
     locale,
     template,
   };
@@ -155,11 +159,11 @@ export async function registrationContractFields(
 
 /**
  * What an e-course access's contract holds besides the text (D3): the school, the student (her account's name and e-mail), the course's name in the
- * contract's language (`locale`: the language of the text it goes with, the template's or the snapshot's; Estonian when omitted), no session and no
- * payment choice, and the price: the amount of the payment `paymentId` names (a purchase; settle calls it with the payment it has just marked paid),
- * empty for none, for a free grant and for a payment that is gone. Null for an unknown access.
+ * contract's language (`locale`: the language of the text it goes with, the template's or the snapshot's), no session and no payment choice, and the
+ * price: the amount of the payment `paymentId` names (a purchase; settle calls it with the payment it has just marked paid), empty for none, for a
+ * free grant and for a payment that is gone. Null for an unknown access.
  */
-export async function accessContractFields(q: Q, accessId: number, paymentId?: number | null, locale: "et" | "ru" = "et"): Promise<ContractFields | null> {
+export async function accessContractFields(q: Q, accessId: number, paymentId: number | null, locale: "et" | "ru"): Promise<ContractFields | null> {
   const [row] = await q
     .select({ name: clients.name, email: clients.email, title: courses.title })
     .from(courseAccess)
@@ -176,7 +180,7 @@ export async function accessContractFields(q: Q, accessId: number, paymentId?: n
   return {
     school: schoolOf(await getInvoiceSettings(q, new Date())),
     student: { name: row.name, email: row.email },
-    course: courseName(row.title, locale),
+    course: contractCourseName(row.title, locale),
     session: "",
     price,
     payment: "",
@@ -371,4 +375,49 @@ export async function contractPdf(c: Contract): Promise<Uint8Array> {
   const [{ renderContract }, { loadCertificateAssets }] = await Promise.all([import("./contract-pdf"), import("./certificate-pdf")]);
   const fonts = await loadCertificateAssets();
   return renderContract(c, { sans: fonts.sans });
+}
+
+// ---------- the mails (D7) ----------
+
+/**
+ * The PDF of `c` for a mail (contractPdf), or null when it fails to render: the mail then goes without it and without its line „Leping on lisatud.“
+ * (D7: mails are best effort, and Maria can send a copy). The log has the contract's id and the error's class, never its message.
+ */
+export async function contractPdfForMail(c: Contract): Promise<Uint8Array | null> {
+  try {
+    return await contractPdf(c);
+  } catch (e) {
+    logFailure(`[contracts] contract ${c.id}: the mail went without its PDF`, e);
+    return null;
+  }
+}
+
+/**
+ * „MS LAB leping“ to the student (account-mail.ts contractMail), after the act that accepted `c` (the terms gate; Tasks 5 and 6 send it too): to
+ * the address the contract froze, in `locale` (the language of the page she accepted it on; the contract's own by default), with its PDF attached
+ * (none when it fails to render: contractPdfForMail), and `sent_at` recorded at `now` once Resend took a mail that carried the PDF. Never to a
+ * sample address (`@example.test`), and nothing without Resend (local development). Not counted in the daily caps: it follows her own act (or
+ * Maria's). Never throws; true when the mail went out. The log has the contract's id only.
+ */
+export async function mailContract(
+  deps: { db: Db; env: Env; siteUrl: string; now: Date },
+  c: Contract,
+  opts: { locale?: Locale; noAccount?: boolean } = {},
+): Promise<boolean> {
+  try {
+    const { email, name } = c.fields.student;
+    if (isSampleAddress(email)) {
+      console.info(`[contracts] contract ${c.id}: not mailed (sample address)`);
+      return false;
+    }
+    if (!mailConfigured(deps.env)) return false;
+    const pdf = await contractPdfForMail(c);
+    const sent = await sendMail(deps.env, contractMail({ siteUrl: deps.siteUrl, email, name, locale: opts.locale ?? c.locale, contract: c, pdf, noAccount: opts.noAccount }));
+    if (sent && pdf) await markContractSent(deps.db, c.id, deps.now);
+    console.info(`[contracts] contract ${c.id}: mailed: ${sent}`);
+    return sent;
+  } catch (e) {
+    logFailure(`[contracts] contract ${c.id}: the mail failed`, e);
+    return false;
+  }
 }

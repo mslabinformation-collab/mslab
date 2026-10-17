@@ -1,10 +1,12 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
+import { filledContract } from "@/domain/contract";
 import type { Locale } from "@/i18n/locales";
 import { hintIn } from "@/lib/account-cookies";
 import { navigate } from "@/lib/navigate";
 import { buyEcourse } from "@/server/actions/public";
+import { ContractPreview, type FormContract } from "./ContractPreview";
 import { Icon } from "./Icon";
 import ui from "./ui.module.css";
 import styles from "./PurchaseInterest.module.css";
@@ -13,8 +15,10 @@ import checks from "./CourseBuy.module.css";
 export type EcoursePurchaseTexts = {
   name: string;
   email: string;
-  terms: string;
-  termsLink: { label: string; href: string };
+  /** The box: the e-course contract (contracts, D1). */
+  contractTerms: string;
+  /** „Loe lepingut“: opens the contract in the cart. */
+  readContract: string;
   newsletterConsent: string;
   /** "Maksa 190 €" */
   submit: string;
@@ -39,8 +43,10 @@ const ORDER: Field[] = ["name", "email", "terms"];
 const isPageUrl = (url: unknown): url is string => typeof url === "string" && /^https?:\/\//i.test(url);
 
 /**
- * The e-course cart's purchase (phase 2b, spec 6.4, D3): name, e-mail, the terms box (required, with the "Õppetingimused" link, as on the
- * registration form), the newsletter box (unticked) and "Maksa {hind}"; the bank or the card is chosen on Montonio's own page (D4). The price is
+ * The e-course cart's purchase (phase 2b, spec 6.4, D3): name, e-mail, the box (required), the newsletter box (unticked) and "Maksa {hind}"; the
+ * bank or the card is chosen on Montonio's own page (D4). The box is the e-course contract (contracts, D1), and „Loe lepingut“ opens `contract`
+ * in the cart, filled live with the name and the address she types, the course and the price (domain/contract.ts filledContract: the server keeps
+ * the very same text on the payment when „Maksa“ starts it, and freezes it when it is paid). The price is
  * the course's own on the server: this form sends none. The cart is cached for everyone, so a signed-in browser (the hint cookie) fills name and
  * e-mail from /api/konto/me here, in the browser, never over what was typed; nothing personal is in the page the server renders.
  * When payments are not available after all (form "unavailable": Montonio down), `fallback` takes the form's place: the cart's
@@ -49,7 +55,20 @@ const isPageUrl = (url: unknown): url is string => typeof url === "string" && /^
  * payment was made (form "alreadyPaid": this address paid the course in the last 30 minutes, Dim's decision of 10.10) shows "Makse on juba tehtud"
  * in the form's place instead of charging again. It says that and nothing else; a reload brings the form back once the 30 minutes are over.
  */
-export function EcoursePurchase({ course, locale, t, fallback }: { course: string; locale: Locale; t: EcoursePurchaseTexts; fallback: React.ReactNode }) {
+export function EcoursePurchase({
+  course,
+  locale,
+  t,
+  contract,
+  fallback,
+}: {
+  course: string;
+  locale: Locale;
+  t: EcoursePurchaseTexts;
+  /** The e-course contract, unfilled (FormContract). */
+  contract: FormContract;
+  fallback: React.ReactNode;
+}) {
   const id = useId();
   const [values, setValues] = useState({ name: "", email: "" });
   const [agreed, setAgreed] = useState(false);
@@ -124,6 +143,16 @@ export function EcoursePurchase({ course, locale, t, fallback }: { course: strin
     );
   const errors: Errors = state.status === "error" ? state.errors : {};
   const busy = pending || away;
+  // the contract as the cart fills it now: what „Maksa“ keeps on the payment (server/submit.ts handleEcoursePurchase fills it the same way)
+  const contractText = filledContract(contract, {
+    name: values.name,
+    email: values.email,
+    course: contract.course,
+    session: null,
+    priceCents: contract.priceCents,
+    choice: null,
+    locale: contract.locale,
+  });
   const described = (f: Field) => ({ "aria-invalid": errors[f] ? true : undefined, "aria-describedby": errors[f] ? `${id}-${f}-error` : undefined });
   const err = (f: Field) =>
     errors[f] ? (
@@ -159,11 +188,9 @@ export function EcoursePurchase({ course, locale, t, fallback }: { course: strin
       <div>
         <label className={checks.check}>
           <input id={`${id}-terms`} type="checkbox" name="terms" required checked={agreed} onChange={(e) => setAgreed(e.target.checked)} {...described("terms")} />
-          <span>{t.terms}</span>
+          <span>{t.contractTerms}</span>
         </label>
-        <a className={checks.termsLink} href={t.termsLink.href} target="_blank" rel="noopener">
-          {t.termsLink.label} ↗
-        </a>
+        <ContractPreview label={t.readContract} text={contractText} />
         {err("terms")}
       </div>
       <label className={checks.check}>

@@ -1053,10 +1053,12 @@ describe("confirmation e-mails to the visitor (phase 2a Task 10)", () => {
   test("the content is read before anything is spent: with the settings table gone nothing is issued or counted, the error is logged, Maria is still told, the submission stays stored", async () => {
     const { mails } = outbox();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { deps, flush } = setup({ secrets: true });
+    // stored first, with its contract (contracts, Task 4: the submit reads the contract's text and the school from the settings, and a
+    // registration never stands without its contract); the table goes away before the work after the answer reads the confirmation's content
+    expect(await handleRegistration(deps, group({ locale: "et", account: "on" }))).toEqual({ ok: true });
     await db.execute(sql`alter table settings rename to settings_away`);
     try {
-      const { deps, flush } = setup({ secrets: true });
-      expect(await handleRegistration(deps, group({ locale: "et", account: "on" }))).toEqual({ ok: true });
       await expect(flush()).resolves.toBeDefined();
       expect(to(mails(), "maria@example.com")).toHaveLength(1);
       expect(to(mails(), "test@example.com")).toHaveLength(0);

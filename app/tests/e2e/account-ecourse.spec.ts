@@ -167,7 +167,7 @@ test("accepting shows the course: title, access end, the modules, one sentence (
   await openFromDashboard(page, c.slug);
   const answer = await accept(page);
   expect(answer.status()).toBe(200);
-  expect(answer.request().postDataJSON()).toEqual({ slug: c.slug, version: "1" });
+  expect(answer.request().postDataJSON()).toEqual({ slug: c.slug, version: "1", locale: "et" }); // the page's language: the contract's (contracts, D6)
 
   await expect(gate(page)).toHaveCount(0);
   const heading = courseView(page).getByRole("heading", { level: 1 });
@@ -257,7 +257,7 @@ test("accept, then the admin saves new terms in Seaded: the next open shows the 
 
   // accepting stores the new version next to the old one
   const answer = await accept(page);
-  expect(answer.request().postDataJSON()).toEqual({ slug: c.slug, version });
+  expect(answer.request().postDataJSON()).toEqual({ slug: c.slug, version, locale: "et" });
   await expect(courseView(page).getByRole("heading", { level: 1 })).toHaveText(c.title.et);
   expect(await storedAcceptances(c.clientId)).toEqual([{ slug: c.slug, version: "1" }, { slug: c.slug, version }]);
 });
@@ -273,7 +273,7 @@ test("a 409: new terms saved after the page loaded, before the click — the fre
   const answer = page.waitForResponse((r) => r.url().endsWith("/api/konto/tingimused") && r.request().method() === "POST");
   await start(page).click();
   expect((await answer).status()).toBe(409);
-  expect((await answer).request().postDataJSON()).toEqual({ slug: c.slug, version: "1" });
+  expect((await answer).request().postDataJSON()).toEqual({ slug: c.slug, version: "1", locale: "et" }); // the page's language: the contract's (contracts, D6)
 
   // quietly loaded again: the new text, an empty box, the button off, and no message of any kind
   await expect(gate(page).locator("[data-legal-body] p")).toHaveText(["E2E vahepeal muudetud tingimused."]);
@@ -289,7 +289,7 @@ test("a 409: new terms saved after the page loaded, before the click — the fre
   // reading the new text and accepting it works, and stores that version
   const second = await accept(page);
   expect(second.status()).toBe(200);
-  expect(second.request().postDataJSON()).toEqual({ slug: c.slug, version });
+  expect(second.request().postDataJSON()).toEqual({ slug: c.slug, version, locale: "et" });
   await expect(courseView(page).getByRole("heading", { level: 1 })).toHaveText(c.title.et);
   expect(await storedAcceptances(c.clientId)).toEqual([{ slug: c.slug, version }]);
 });

@@ -28,6 +28,7 @@ import {
 } from "./client-data";
 import { removeClientPassword, setClientPassword } from "./client-password";
 import { queueCompletionMail } from "./completion";
+import { mailContract } from "./contracts";
 import { feedbackState, hideFeedback, notifyFeedback, submitFeedback } from "./course-feedback";
 import { invoiceForStudent, invoicePdf } from "./invoices";
 import { PgKv } from "./kv";
@@ -1130,16 +1131,24 @@ async function dismissFeedback(request: Request, deps: AccountDeps): Promise<Res
 }
 
 /**
- * POST /tingimused `{ slug, version }`: the client accepts the e-course terms, the version the page showed (`terms.version` of the e-course view).
- * 404 `{ error: "slug" }` without active access to that course; 409 `{ error: "version" }` when the terms have changed since the page was loaded
- * (nothing is stored: the page loads the course again and shows the new text).
+ * POST /tingimused `{ slug, version, locale? }`: the client accepts the e-course terms, the version the page showed (`terms.version` of the
+ * e-course view), on a page in `locale`. The acceptance freezes the access's contract (contracts, D1; client-data.ts acceptTerms), which is mailed
+ * to her after the response with its PDF, „MS LAB leping“ in the page's language (contracts.ts mailContract: never to a sample address, nothing in
+ * local development). 404 `{ error: "slug" }` without active access to that course; 409 `{ error: "version" }` when the terms have changed since
+ * the page was loaded (nothing is stored: the page loads the course again and shows the new text).
  */
 async function terms(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const input = parseTerms(await readObject(request));
   if (!input.ok) return badInput(session, input.error);
-  const result = await acceptTerms(deps.db, session.clientId, input.data.slug, input.data.version, deps.now);
+  const { locale } = input.data;
+  const result = await acceptTerms(deps.db, session.clientId, input.data.slug, input.data.version, deps.now, {
+    locale,
+    onContract: (contract) => {
+      if (!deps.dev) deps.later(() => mailContract({ db: deps.db, env: deps.env, siteUrl: deps.siteUrl, now: deps.now }, contract, { locale }));
+    },
+  });
   if (result === "accepted") return clientResponse(session, { ok: true });
   return result === "stale" ? clientResponse(session, { ok: false, error: "version" }, 409) : clientResponse(session, { ok: false, error: "slug" }, 404);
 }

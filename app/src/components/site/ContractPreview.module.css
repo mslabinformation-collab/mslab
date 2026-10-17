@@ -1,0 +1,92 @@
+/* „Loe lepingut“ and the contract it opens inside the registration form and the cart (contracts, D1). The button sits where the old
+   terms link sat (CourseBuy.module.css .termsLink): under the box's text, 44 px tall to tap. */
+
+.contract {
+  margin-left: 32px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--ink);
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* a small chevron, down when closed, up when open */
+.chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.2s var(--ease);
+}
+
+.chevron[data-open] {
+  transform: translateY(2px) rotate(-135deg);
+}
+
+.panel {
+  max-height: min(360px, 55vh);
+  margin: 4px 0 8px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--canvas);
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.55;
+  /* a long address breaks inside the box (anywhere: Safari 15.4+; break-word before it) */
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.panel[hidden] {
+  display: none;
+}
+
+.panel:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.panel p {
+  margin: 0 0 10px;
+}
+
+.panel p:last-child {
+  margin-bottom: 0;
+}
+
+.title {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}
