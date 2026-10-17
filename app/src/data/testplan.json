@@ -2000,7 +2000,7 @@
         "Näed teadet „Koopia on õpilasele saadetud.“ ja lepingu all rida „Saadetud õpilasele …“ tänase kuupäevaga.",
         "Kiri on „MS LAB leping“ reaga „Leping on lisatud.“ ja manusega „MS-LAB-leping-….pdf“.",
         "Manuse tekst on sama mis failil „Laadi alla (PDF)“.",
-        "Asendatud lepingul koopia nuppu pole."
+        "Asendatud lepingul (kui paneelis on selline) koopia nuppu pole."
       ],
       "why": "Õpilane saab lepingu uuesti, kui esimene kiri läks kaduma.",
       "risk": "med",
@@ -2232,7 +2232,7 @@
         "Kaardi lause on „Koht on kinnitatud.“, sest kogu summa on makstud.",
         "Kaardil on nupp „Tühista või muuda aega“.",
         "Kui Proov 1 maksis veebis, on kaardil ka rida „Arve MSL2026-… · … · Tasutud“ ja link „Laadi alla (PDF)“.",
-        "Kui Proov 1 registreeris lepingu ruuduga, on kaardil ka rida „Leping · kinnitatud …“ ja link „Laadi alla (PDF)“."
+        "Kaardil on rida „Leping · kinnitatud …“ ja „Laadi alla (PDF)“ või, kui Maria küsis, „Kinnita leping“."
       ],
       "why": "Õpilane näeb siin oma koolitused ühes kohas.",
       "risk": "high",
@@ -2345,6 +2345,34 @@
       "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
+      "id": "konto-leping-vene-keeles",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Leping kaardil vene keeles",
+      "href": "/ru/konto",
+      "steps": [
+        "Ava halduses Proov 7 registreeringu paneel ja vajuta „Saada leping kinnitamiseks“.",
+        "Logi sisse kui Proov 7 ja ava aadress /ru/konto.",
+        "Vajuta kaardil „Подтвердить договор“ ja loe tekst läbi.",
+        "Vajuta „Подтверждаю“.",
+        "Vajuta kaardil „Скачать (PDF)“.",
+        "Ava Proov 7 postkastis kiri „Договор MS LAB“."
+      ],
+      "expect": [
+        "Kaardil on lause „Мария просит вас подтвердить договор.“ ja tekstinupp „Подтвердить договор“.",
+        "Lepingu tekst on vene keeles, kuigi Proov 7 registreeris eesti keeles, ja kohahoidjad on täidetud.",
+        "Pärast „Подтверждаю“ näed hetkeks „Договор подтверждён.“, siis rida „Договор · подтверждён …“ tänase kuupäevaga.",
+        "PDF on vene keeles ja selles on sildid, näiteks „Стороны“.",
+        "Kiri „Договор MS LAB“ on vene keeles, manusega ja reaga „Договор во вложении.“."
+      ],
+      "why": "Venekeelne õpilane kinnitab ja loeb lepingu oma keeles.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "konto-arve-tuhistatud",
       "area": "konto",
       "who": "maria",
@@ -2368,30 +2396,6 @@
       "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
-      "id": "konto-leping-kaardil",
-      "area": "konto",
-      "who": "maria",
-      "device": "telefon",
-      "title": "Leping kaardil ja PDF",
-      "href": "/konto",
-      "steps": [
-        "Logi sisse kui Proov 1 ja ava „Minu koolitused“.",
-        "Vaata kontaktkoolituse kaarti, mille registreerisid lepingu ruuduga.",
-        "Vajuta kaardil rea „Leping“ juures „Laadi alla (PDF)“."
-      ],
-      "expect": [
-        "Kaardil on vaikne rida „Leping · kinnitatud …“ registreerimise päevaga ja link „Laadi alla (PDF)“.",
-        "Alla laaditud fail on „MS-LAB-leping-….pdf“ ja sama leping, mis registreerimise kirjas.",
-        "PDF-is on sinu nimi, koolitus, kuupäev ja hind ning lõpus „Kinnitatud elektrooniliselt …“.",
-        "Rida ei ole nupp ja kaardil ei ole „Kinnita leping“."
-      ],
-      "why": "Õpilane leiab oma lepingu kontolt ka siis, kui kiri on kadunud.",
-      "risk": "high",
-      "writes": false,
-      "mark": "new",
-      "markedAt": "deploy"
-    },
-    {
       "id": "konto-leping-kinnita",
       "area": "konto",
       "who": "maria",
@@ -2409,7 +2413,7 @@
       "expect": [
         "Enne kinnitamist on kaardil lause „Maria palub sul lepingu kinnitada.“ ja tekstinupp „Kinnita leping“.",
         "Nupp avab kaardil lepingu teksti, kus Proov 1 nimi, kuupäev ja hind on täidetud.",
-        "Pärast „Kinnitan“ näed „Leping on kinnitatud.“ ja siis rida „Leping · kinnitatud …“ tänase kuupäevaga.",
+        "Pärast „Kinnitan“ näed hetkeks „Leping on kinnitatud.“, siis rida „Leping · kinnitatud …“ tänase kuupäevaga.",
         "Kiri „MS LAB leping“ tuleb manusega „MS-LAB-leping-….pdf“ ja reaga „Leping on lisatud.“.",
         "Halduses on uus leping viisiga „Õpilase konto“ ja vana on „Asendatud“.",
         "Rida „Kinnitamist ootab …“ on halduses kadunud ja „Kinnita leping“ on kaardilt kadunud."
@@ -2421,29 +2425,26 @@
       "markedAt": "deploy"
     },
     {
-      "id": "konto-leping-vene-keeles",
+      "id": "konto-leping-kaardil",
       "area": "konto",
       "who": "maria",
       "device": "telefon",
-      "title": "Leping kaardil vene keeles",
-      "href": "/ru/konto",
+      "title": "Leping kaardil ja PDF",
+      "href": "/konto",
       "steps": [
-        "Ava halduses Proov 8 registreeringu paneel ja vajuta „Saada leping kinnitamiseks“.",
-        "Logi sisse kui Proov 8 ja ava aadress /ru/konto.",
-        "Vajuta kaardil „Подтвердить договор“ ja loe tekst läbi.",
-        "Vajuta „Подтверждаю“.",
-        "Vajuta kaardil „Скачать (PDF)“."
+        "Ava Proov 1 „Minu koolitused“ pärast kontrolli „Kinnita leping, kui Maria küsib“.",
+        "Vaata kontaktkoolituse kaarti.",
+        "Vajuta kaardil rea „Leping“ juures „Laadi alla (PDF)“."
       ],
       "expect": [
-        "Kaardil on lause „Мария просит вас подтвердить договор.“ ja tekstinupp „Подтвердить договор“.",
-        "Lepingu tekst on vene keeles ja kohahoidjad on täidetud.",
-        "Pärast kinnitamist näed „Договор подтверждён.“ ja siis rida „Договор · подтверждён …“.",
-        "PDF on vene keeles ja selles on sildid, näiteks „Стороны“.",
-        "Kiri „Договор MS LAB“ tuleb vene keeles, manusega ja reaga „Договор во вложении.“."
+        "Kaardil on vaikne rida „Leping · kinnitatud …“ tänase kuupäevaga ja link „Laadi alla (PDF)“.",
+        "Alla laaditud fail on „MS-LAB-leping-….pdf“ ja sama leping, mis kirjas „MS LAB leping“.",
+        "PDF-is on sinu nimi, koolitus, kuupäev ja hind ning lõpus „Kinnitatud elektrooniliselt …“.",
+        "Rida ei ole nupp ja kaardil ei ole „Kinnita leping“."
       ],
-      "why": "Venekeelne õpilane kinnitab ja loeb lepingu oma keeles.",
-      "risk": "med",
-      "writes": true,
+      "why": "Õpilane leiab oma lepingu kontolt ka siis, kui kiri on kadunud.",
+      "risk": "high",
+      "writes": false,
       "mark": "new",
       "markedAt": "deploy"
     },

@@ -132,3 +132,68 @@ describe("checkPlan: a plan that is not a plan", () => {
     expect(checkPlan({ version: 1, marked: "2026-10-16T00:00:00.000Z", areas: [null], items: [5] })).toEqual(["area 1 is not an object", "item 1 is not an object"]);
   });
 });
+
+// The test page shows the checks in file order and Maria and Dim walk them top to bottom (contracts Task 6, review I-1): each contract check sits
+// where what it needs exists. Proov 1 registers and gets an account in `registreerimine-grupp`; Maria's ask on that registration is opened by
+// `registreerimine-leping-kinnitamiseks` and stays open until `konto-leping-kinnita` answers it, so the plain contract line of that card can only be
+// read after it; Proov 7 registers and signs in at `konto-arve-maksa` and is cancelled at `konto-arve-tuhistatud`, so the Russian contract check
+// (which asks again and confirms) sits between them; Proov 5's free access is opened by `ekursus-ligipaas-ava` before its terms gate.
+describe("the contract checks sit where their preconditions exist", () => {
+  const order = plan.items.map((i) => i.id);
+  const at = (id: string): number => {
+    const n = order.indexOf(id);
+    expect(n, id).toBeGreaterThanOrEqual(0);
+    return n;
+  };
+  const item = (id: string) => plan.items[at(id)];
+  const expectText = (id: string) => item(id).expect.join("\n");
+
+  test("the card's plain contract line is read only after the ask on Proov 1 has been answered", () => {
+    expect(at("registreerimine-grupp")).toBeLessThan(at("registreerimine-leping-kinnitamiseks"));
+    expect(at("registreerimine-leping-kinnitamiseks")).toBeLessThan(at("konto-leping-kinnita"));
+    expect(at("konto-leping-kinnita")).toBeLessThan(at("konto-leping-kaardil"));
+    expect(expectText("konto-leping-kaardil")).toContain("tänase kuupäevaga");
+  });
+
+  test("a check that sits while the ask is open names „Kinnita leping“ as the other thing the card may show", () => {
+    expect(at("konto-minu-koolitused")).toBeGreaterThan(at("registreerimine-leping-kinnitamiseks"));
+    expect(at("konto-minu-koolitused")).toBeLessThan(at("konto-leping-kinnita"));
+    const line = item("konto-minu-koolitused").expect.find((l) => l.includes("Leping · kinnitatud"));
+    expect(line, "the contract line of konto-minu-koolitused").toBeDefined();
+    expect(line).toContain("Kinnita leping");
+  });
+
+  test("nothing is superseded yet where the copy check sits: its line about a replaced contract is conditional", () => {
+    expect(at("registreerimine-leping-koopia")).toBeLessThan(at("konto-leping-kinnita"));
+    const line = item("registreerimine-leping-koopia").expect.find((l) => l.includes("Asendatud"));
+    expect(line).toContain("kui paneelis on selline");
+  });
+
+  test("the Russian check uses Proov 7 between its registration and its cancellation", () => {
+    expect(at("konto-arve-maksa")).toBeLessThan(at("konto-leping-vene-keeles"));
+    expect(at("konto-leping-vene-keeles")).toBeLessThan(at("konto-arve-tuhistatud"));
+    const ru = item("konto-leping-vene-keeles");
+    expect(ru.steps.join("\n")).toContain("Proov 7");
+    expect(ru.steps.join("\n")).not.toContain("Proov 8");
+    expect(item("konto-arve-maksa").steps.join("\n")).toContain("Proov 7");
+  });
+
+  test("the sign-in each one needs is earlier: the first Proov 1 login, and Proov 5's access before its gate", () => {
+    expect(at("konto-kood")).toBeLessThan(at("konto-minu-koolitused"));
+    expect(at("konto-kood")).toBeLessThan(at("konto-leping-kinnita"));
+    expect(at("ekursus-ligipaas-ava")).toBeLessThan(at("ekursus-tingimused-leping"));
+    expect(at("ekursus-ost")).toBeLessThan(at("ekursus-tingimused"));
+  });
+
+  test("the transient sentence after „Kinnitan“ is worded as seen for a moment, then the line the card goes to", () => {
+    for (const id of ["konto-leping-kinnita", "konto-leping-vene-keeles"]) {
+      const line = item(id).expect.find((l) => l.includes("kinnitatud.“") || l.includes("подтверждён.“"));
+      expect(line, id).toContain("hetkeks");
+      expect(line, id).toContain("siis rida");
+    }
+  });
+
+  test("the new checks keep their marks: new, from the deploy", () => {
+    for (const id of ["konto-leping-kaardil", "konto-leping-kinnita", "konto-leping-vene-keeles"]) expect([item(id).mark, item(id).markedAt], id).toEqual(["new", "deploy"]);
+  });
+});

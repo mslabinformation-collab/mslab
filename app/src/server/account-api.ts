@@ -1188,15 +1188,15 @@ async function terms(request: Request, deps: AccountDeps): Promise<Response> {
 /**
  * GET /leping-tekst/:registrationId?l=<et|ru> (contracts Task 6, spec D4): the text „Kinnita leping" opens on a course card, `{ ok: true, title, body,
  * version, locale }`: the current contact contract filled with her registration (client-data.ts contractToAccept), in the page's language `l`
- * (D6; `locale` is the language the text is in, Estonian when no Russian text exists). `version` goes back with „Kinnitan". Only while Maria's ask is
+ * (D6; `locale` is the language the text is in, Estonian when no Russian text exists; with no `l` her account's language, as POST /leping takes it). `version` goes back with „Kinnitan". Only while Maria's ask is
  * open on her own, not cancelled, group registration; 404 `{ ok: false }` for everything else (not hers, no ask, cancelled, unknown, not an id).
  */
 async function contractText(request: Request, deps: AccountDeps, rawId: string): Promise<Response> {
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const id = parseRowId(rawId);
-  const locale = pageLocaleOf(new URL(request.url).searchParams.get("l")) ?? "et";
-  const text = id === null ? null : await contractToAccept(deps.db, session.clientId, id, locale);
+  // no (or an unknown) language: her account's, as „Kinnitan“ takes it (client-data.ts acceptContract): the text shown is the text frozen
+  const text = id === null ? null : await contractToAccept(deps.db, session.clientId, id, pageLocaleOf(new URL(request.url).searchParams.get("l")));
   return text ? clientResponse(session, { ok: true, ...text }) : clientResponse(session, { ok: false }, 404);
 }
 

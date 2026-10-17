@@ -542,12 +542,14 @@ export type ContractToAccept = { title: string; body: string; version: string; l
 
 /**
  * GET /api/konto/leping-tekst/<registrationId>: the current contract text of her registration, filled as „Kinnitan“ will freeze it (the same
- * template and fields, contracts.ts registrationContractFields), for the page's language `locale` (D6: Russian when the page is Russian and a
- * Russian text exists, else Estonian; `locale` of the answer is the language the text is in). null unless Maria's ask is open on her own,
- * not cancelled, group registration (askedRegistration): nothing else is shown, and not another's.
+ * template and fields, contracts.ts registrationContractFields), for the page's language `pageLocale` (D6: Russian when the page is Russian and a
+ * Russian text exists, else Estonian; `locale` of the answer is the language the text is in). With no `pageLocale` it is her account's, the very
+ * fallback acceptContract takes, so the text shown and the text frozen are always in one language (the version is one per kind, not per language).
+ * null unless Maria's ask is open on her own, not cancelled, group registration (askedRegistration): nothing else is shown, and not another's.
  */
-export async function contractToAccept(db: Db, clientId: number, registrationId: number, locale: "et" | "ru"): Promise<ContractToAccept | null> {
+export async function contractToAccept(db: Db, clientId: number, registrationId: number, pageLocale?: "et" | "ru"): Promise<ContractToAccept | null> {
   if (typeof (await askedRegistration(db, clientId, registrationId, false)) === "string") return null;
+  const locale = pageLocale ?? (await clientLocale(db, clientId));
   const made = await registrationContractFields(db, registrationId, locale);
   if (!made) return null;
   const values = contractValues(made.fields, made.prepaymentText);

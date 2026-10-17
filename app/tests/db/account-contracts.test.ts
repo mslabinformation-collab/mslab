@@ -482,6 +482,24 @@ describe("POST /api/konto/leping: „Kinnitan“", () => {
     expect((await allContracts())[2]).toMatchObject({ locale: "et", title: "Kontaktkoolituse leping" });
   });
 
+  test("review M-1: with no language sent, the text route and „Kinnitan“ fall back to the same one — her account's — so the text shown is the text frozen", async () => {
+    const c = await ready();
+    for (const locale of ["ru", "et"] as const) {
+      const kati = await student(`kati-${locale}@example.com`, "Kati Kask", locale);
+      const r = await registrationOn(db, c, { clientId: kati.id, email: kati.email, name: "Kati Kask" });
+      // none sent, one that is not a language (`l=en`) and an empty one: her account's, for the text and for the acceptance alike
+      for (const [n, query] of ["", "?l=en", "?l="].entries()) {
+        await ask(r);
+        const shown = (await (await call(kati.cookie, "GET", `/leping-tekst/${r.id}${query}`)).json()) as { title: string; body: string; version: string; locale: string };
+        expect(shown, `${locale} ${query}`).toMatchObject({ ok: true, locale, title: locale === "ru" ? "Договор очного обучения" : "Kontaktkoolituse leping" });
+        const res = await post(kati.cookie, { registrationId: r.id, version: shown.version }, deps({ now: new Date(NOW.getTime() + n * 60_000) }));
+        expect(res.status, `${locale} ${query}`).toBe(200);
+        const [frozen] = (await allContracts()).filter((x) => x.registrationId === r.id && x.supersededAt === null);
+        expect([frozen.locale, frozen.title, frozen.body, frozen.version], `${locale} ${query}`).toEqual([shown.locale, shown.title, shown.body, shown.version]);
+      }
+    }
+  });
+
   test("a Russian page with no Russian text makes an Estonian contract (the Estonian text is the one the others fall back to)", async () => {
     const { kati, r } = await asked({ locale: "ru" });
     expect(await saveContractTexts(db, { title: { et: "Ainult eesti" }, body: { et: "Tekst {nimi}." } }, LATER_SAVE)).toEqual({ ok: true });
