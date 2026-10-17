@@ -396,6 +396,7 @@ export async function removeClientRows(email?: string): Promise<number> {
     await sql`delete from clients where email like ${match}`; // on delete cascade: sessions, favourites, access, terms
     await sql`delete from payments where email like ${match}`; // the online payments of the test address (phase 2b)
     await sql`delete from invoices where buyer->>'email' like ${match}`; // its invoices (invoices Task 6): no cascade, they outlive the account
+    await sql`delete from contracts where fields->'student'->>'email' like ${match}`; // its contracts (contracts Task 6): their links are set null when the registration or the account goes, so the rows stay
     const store = localStore(join(process.cwd(), ".media-local"));
     for (const p of photos) for (const key of [p.key, p.thumbKey]) await store.delete(key);
     const [{ n }] = await sql<{ n: number }[]>`
@@ -404,6 +405,7 @@ export async function removeClientRows(email?: string): Promise<number> {
            + (select count(*) from clients where email like ${match})
            + (select count(*) from payments where email like ${match})
            + (select count(*) from invoices where buyer->>'email' like ${match})
+           + (select count(*) from contracts where fields->'student'->>'email' like ${match})
            + (select count(*) from registrations where email like ${match})
            + (select count(*) from requests where payload->>'email' like ${match})
            + (select count(*) from courses where slug like ${courses})::int as n`;

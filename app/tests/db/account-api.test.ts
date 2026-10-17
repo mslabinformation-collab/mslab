@@ -749,6 +749,7 @@ describe("GET /api/konto: the dashboard", () => {
           kind: "contact", registrationId: reg.id, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine" } },
           session: { startsAt: seeded.session.startsAt.toISOString(), city: "Pärnu", venue: "Salong", cancelled: false },
           status: "awaiting_prepayment", paymentChoice: "full", priceCents: 35000, paidCents: 0, createdAt: reg.createdAt.toISOString(),
+          contract: null, contractRequested: false,
         },
       ],
       favourites: ["veebikursus"],

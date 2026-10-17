@@ -816,6 +816,20 @@ export const ru: Dict = {
       payBy: "оплатить до {date}",
       download: "Скачать (PDF)",
     },
+    // The contract on a course card (components/account/ContractLine.tsx; contracts Task 6): the same as the Estonian one. Draft for Dim's wording
+    // sheet, every line of it. The refusals use the forms' Russian words (`forms.contractChanged`, `forms.errorTooMany`, `forms.errorGeneric`).
+    contract: {
+      line: "Договор · подтверждён {date}",
+      download: "Скачать (PDF)",
+      asked: "Мария просит вас подтвердить договор.",
+      open: "Подтвердить договор",
+      hide: "Скрыть договор",
+      region: "Договор",
+      loading: "Загружаем договор…",
+      loadFailed: "Не удалось загрузить договор. Попробуйте ещё раз.",
+      accept: "Подтверждаю",
+      done: "Договор подтверждён.",
+    },
     favourites: {
       title: "Ваше избранное",
       remove: "Убрать из избранного",

@@ -135,10 +135,13 @@ export async function shownVersionHolds(q: Q, kind: ContractKind, locale: "et" |
  * too) is the language the contract is made in (D6: the registration's, when that text exists in it, else Estonian). The template's version is read
  * before its text (storedTemplate). Null for an unknown registration. The fields are domain/contract.ts contractParts of the stored registration:
  * the function the form's inline contract fills itself with in the browser (Review Focus 3).
+ * `pageLocale`: the language of the page the contract is shown and accepted on, when it is not the registration's own (the account's „Kinnitan“,
+ * D6: the language of the page she accepts it on, as the terms gate's); without it, the registration's.
  */
 export async function registrationContractFields(
   q: Q,
   registrationId: number,
+  pageLocale?: "et" | "ru",
 ): Promise<{ fields: ContractFields; prepaymentText: string; locale: "et" | "ru"; template: ContractTemplate } | null> {
   const [row] = await q
     .select({ registration: registrations, course: courses, session: courseSessions })
@@ -149,7 +152,7 @@ export async function registrationContractFields(
     .limit(1);
   if (!row) return null;
   const { registration: r, course, session } = row;
-  const template = await contractTemplate(q, "contact", r.locale === "ru" ? "ru" : "et");
+  const template = await contractTemplate(q, "contact", pageLocale ?? (r.locale === "ru" ? "ru" : "et"));
   const { locale } = template;
   const parts = contractParts({
     name: r.name,
@@ -353,6 +356,21 @@ export async function contractsOfClient(db: Db, clientId: number): Promise<Contr
     .where(sql`${CONTRACT_OWNER} = ${clientId}`)
     .orderBy(desc(contracts.acceptedAt), desc(contracts.id));
   return rows.map((r) => r.contract);
+}
+
+/**
+ * What a course card needs of the contracts she owns (the dashboard, ruling R14: the same owner as contractsOfClient, in ONE query for all the
+ * cards): the id, the registration or the access it belongs to, and when it was accepted, of her CURRENT contracts only (not superseded), the
+ * newest acceptance first. No title, text or fields: the card links the PDF by the id, and the text is read when she asks for it.
+ */
+export async function currentContractsOfClient(q: Q, clientId: number): Promise<{ id: number; registrationId: number | null; accessId: number | null; acceptedAt: Date }[]> {
+  return q
+    .select({ id: contracts.id, registrationId: contracts.registrationId, accessId: contracts.accessId, acceptedAt: contracts.acceptedAt })
+    .from(contracts)
+    .leftJoin(registrations, eq(contracts.registrationId, registrations.id))
+    .leftJoin(courseAccess, eq(contracts.accessId, courseAccess.id))
+    .where(and(isNull(contracts.supersededAt), sql`${CONTRACT_OWNER} = ${clientId}`))
+    .orderBy(desc(contracts.acceptedAt), desc(contracts.id));
 }
 
 /** Her contract `id` (GET /api/konto/leping/<id>), a superseded one too, or null: another's, none. "Hers" is CONTRACT_OWNER. */

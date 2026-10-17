@@ -946,6 +946,25 @@ export const et = {
       payBy: "tasu {date}",
       download: "Laadi alla (PDF)",
     },
+    // The contract on a course card (components/account/ContractLine.tsx; contracts Task 6, spec §4 Account): a quiet line „Leping · kinnitatud
+    // 15.10.2026“ (`line`, {date} the day she accepted it) with `download` (the PDF); once Maria has asked her to confirm it (spec D4) the card
+    // instead offers `open` („Kinnita leping“), which shows the current text with `accept` („Kinnitan“). `line`, `download`, `open` and `accept` are
+    // the spec's own words; the rest is Draft for Dim's wording sheet. The refusals use the forms' words: `forms.contractChanged` (the text changed
+    // since she opened it, ruling R6), `forms.errorTooMany` and `forms.errorGeneric`.
+    contract: {
+      line: "Leping · kinnitatud {date}",
+      download: "Laadi alla (PDF)",
+      // why the card offers it (Maria pressed „Saada leping kinnitamiseks“)
+      asked: "Maria palub sul lepingu kinnitada.",
+      open: "Kinnita leping",
+      hide: "Peida leping",
+      // the name of the text for a screen reader
+      region: "Leping",
+      loading: "Laadin lepingut…",
+      loadFailed: "Lepingut ei õnnestunud laadida. Proovi uuesti.",
+      accept: "Kinnitan",
+      done: "Leping on kinnitatud.",
+    },
     // "Lemmikud" /konto/lemmikud (components/account/FavouritesTab.tsx): the hearted courses as the catalogue's cards, each with ♡ to
     // take it off. {title} is a course's title (the button's name for a screen reader, and what was taken off).
     favourites: {

@@ -31,6 +31,11 @@ const newsletter = z.object({ on: z.boolean() });
 const changeRequest = z.object({ registrationId: rowId, kind: z.enum(["cancel", "change"]), message: text(LIMITS.message).optional().transform((m) => m ?? "") });
 /** The terms gate: the version the page showed, and the page's language (the contract's, D6; a page from before contracts sends none). */
 const terms = z.object({ slug, version: z.string().min(1).max(LIMITS.version).refine(storable), locale: z.enum(["et", "ru"]).optional() });
+/**
+ * „Kinnitan“ (contracts Task 6): the registration, the version of the text the card showed (absent or empty is not a version: a mismatch, the server's
+ * 409, ruling R6; the length is checked, the match is not) and the page's language (the contract's, D6; her account's without it).
+ */
+const contractAccept = z.object({ registrationId: rowId, version: z.string().max(LIMITS.version).refine(storable).optional(), locale: z.enum(["et", "ru"]).optional() });
 const deletion = z.object({ confirm: z.literal(true) });
 const progress = z.object({ watchedSec: z.number().min(0).max(LIMITS.watchedSec) });
 /** Kept exactly as typed (no trim): the length and the e-mail rules are the server's, with the account's address (domain/password.ts). */
@@ -46,6 +51,7 @@ export type ProfileInput = z.infer<typeof profile>;
 export type NewsletterInput = z.infer<typeof newsletter>;
 export type ChangeRequestInput = z.infer<typeof changeRequest>;
 export type TermsInput = z.infer<typeof terms>;
+export type ContractAcceptInput = z.infer<typeof contractAccept>;
 export type ProgressInput = z.infer<typeof progress>;
 
 /** `body` (the parsed JSON, or null when it was not an object) against `schema`; the first wrong field is the error ("body" when it is not an object at all). */
@@ -62,6 +68,7 @@ export const parseProfile = (body: unknown) => parse(profile, body);
 export const parseNewsletter = (body: unknown) => parse(newsletter, body);
 export const parseChangeRequest = (body: unknown) => parse(changeRequest, body);
 export const parseTerms = (body: unknown) => parse(terms, body);
+export const parseContractAccept = (body: unknown) => parse(contractAccept, body);
 export const parseDeletion = (body: unknown) => parse(deletion, body);
 export const parseProgress = (body: unknown) => parse(progress, body);
 export const parsePassword = (body: unknown) => parse(password, body);

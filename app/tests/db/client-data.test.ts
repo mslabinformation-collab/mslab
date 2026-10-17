@@ -125,6 +125,7 @@ describe("loadDashboard", () => {
         kind: "contact", registrationId: reg.id, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine", ru: "Ламинирование бровей" } },
         session: { startsAt: f.soon.startsAt.toISOString(), city: "Pärnu", venue: "Salong", cancelled: false },
         status: "confirmed", paymentChoice: "half", priceCents: 35000, paidCents: 17500, createdAt: reg.createdAt.toISOString(),
+        contract: null, contractRequested: false,
       },
     ]);
     // the cards feed nextStep as they are (they are the JSON the endpoint sends)
@@ -242,7 +243,7 @@ describe("loadDashboard", () => {
     // open ones newest grant first, then over ones the most recent first
     expect(cards.map((c) => c.kind === "ecourse" && c.course.slug)).toEqual(["peidus-kursus", "veebikursus", "kolmas-kursus", "teine-kursus"]);
     expect(cards.map((c) => nextStep(c, NOW, null).key)).toEqual(["openCourse", "openCourse", "accessEnded", "accessEnded"]);
-    expect(cards[1]).toEqual({ kind: "ecourse", course: { slug: "veebikursus", title: { et: "Veebikursus" } }, grantedAt: at(-10).toISOString(), expiresAt: at(170).toISOString(), revoked: false, progress: null, completedAt: null, certificateId: null });
+    expect(cards[1]).toEqual({ kind: "ecourse", course: { slug: "veebikursus", title: { et: "Veebikursus" } }, grantedAt: at(-10).toISOString(), expiresAt: at(170).toISOString(), revoked: false, progress: null, completedAt: null, certificateId: null, contract: null, contractRequested: false });
     expect(cards[2]).toMatchObject({ revoked: true });
   });
 
