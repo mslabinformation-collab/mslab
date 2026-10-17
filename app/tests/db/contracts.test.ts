@@ -11,9 +11,10 @@ import { clients, contracts, courseAccess, courses, courseSessions, pages, payme
 import { CONTRACT_CONTACT_KEY, CONTRACT_CONTACT_VERSION_KEY, type ContractFields } from "@/domain/contract";
 import { TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
 import { INVOICE_KEY } from "@/domain/invoice";
+import { linkClientRecords } from "@/server/client-auth";
 import {
   accessContractFields, contractForAccess, contractForAdmin, contractForRegistration, contractForStudent, contractPdf, contractsOfClient, contractsOfRegistration,
-  contractTemplate, markContractSent, registrationContractFields, requestContract, saveContractTexts,
+  contractOwner, contractTemplate, markContractSent, registrationContractFields, requestContract, saveContractTexts,
 } from "@/server/contracts";
 import { readPdf } from "../pdf-read";
 import { makeTestDb } from "./helpers";
@@ -261,6 +262,21 @@ describe("asking again and superseding (D4)", () => {
     expect((await registrationRow(linked.id)).contractRequestedAt).toEqual(NOW);
     expect(await requestContract(db, linked.id, LATER)).toEqual({ ok: true });
     expect((await registrationRow(linked.id)).contractRequestedAt).toEqual(LATER);
+  });
+
+  test("only a group registration of a contact course can be asked (review M-5): an individual one and a registration of an e-course are `notFound`, whoever they are linked to; nothing is recorded", async () => {
+    const c = await contactCourse(db);
+    const e = await ecourse();
+    const k = e.client;
+    const individual = await registrationOn(db, c, { kind: "individual", courseSessionId: null, clientId: k.id, email: "i@example.com" });
+    expect(await requestContract(db, individual.id, NOW)).toEqual({ ok: false, error: "notFound" });
+    const [elearning] = await db.insert(registrations).values({ courseId: e.course.id, kind: "group", name: "Kati Tamm", email: "e@example.com", phone: "+372 5555 0101", paymentChoice: "full", clientId: k.id }).returning();
+    expect(await requestContract(db, elearning.id, NOW)).toEqual({ ok: false, error: "notFound" });
+    expect((await registrationRow(individual.id)).contractRequestedAt).toBeNull();
+    expect((await registrationRow(elearning.id)).contractRequestedAt).toBeNull();
+    // ...and the same student's group registration of the contact course is asked
+    const group = await registrationOn(db, c, { clientId: k.id, email: "g@example.com" });
+    expect(await requestContract(db, group.id, NOW)).toEqual({ ok: true });
   });
 
   test("asking, then accepting again: the old contract is superseded at the new acceptance and untouched otherwise, the new one is current, the flag is cleared; current first, then the superseded", async () => {
@@ -650,6 +666,71 @@ describe("the reads", () => {
     expect((await contractsOfClient(db, mine.id)).map((x) => x.id)).toEqual([second.id, first.id]);
     expect((await contractsOfClient(db, other.id)).map((x) => x.id)).toEqual([theirs.id]);
     expect(await contractsOfClient(db, 999)).toEqual([]);
+  });
+
+  test("ruling R14: a contract made before the student had an account is hers once her registration is linked — found by the owner's live link, the frozen row untouched", async () => {
+    await saveContact();
+    const r = await registrationOn(db, await contactCourse(db)); // no account yet: client_id null at the acceptance
+    const made = await accept(r);
+    expect(made.clientId).toBeNull();
+    const kati = await client(); // her account comes later (her first login, or Maria adds her on Õpilased)...
+    expect(await contractsOfClient(db, kati.id)).toEqual([]); // ...and until her registrations are linked the contract is nobody's
+    expect(await contractForStudent(db, kati.id, made.id)).toBeNull();
+    expect(await contractOwner(db, made.id)).toBeNull();
+    await linkClientRecords(db, kati.id, kati.email);
+    expect(await contractsOfClient(db, kati.id)).toEqual([made]);
+    expect(await contractForStudent(db, kati.id, made.id)).toEqual(made);
+    expect(await contractOwner(db, made.id)).toBe(kati.id);
+    // linking changed no contract: the row is exactly as it was frozen
+    expect((await db.select().from(contracts).where(eq(contracts.id, made.id)))[0]).toEqual(made);
+    // another student still has nothing of hers
+    const other = await client("mari@example.com", "Mari Mänd");
+    expect(await contractsOfClient(db, other.id)).toEqual([]);
+    expect(await contractForStudent(db, other.id, made.id)).toBeNull();
+  });
+
+  test("ruling R14: a registration Maria re-links from one student to another takes its contracts with it — shown to the new owner only, never to two", async () => {
+    await saveContact();
+    const a = await client("a@example.com", "Anu Aas");
+    const b = await client("b@example.com", "Bert Bergmann");
+    const r = await registrationOn(db, await contactCourse(db), { clientId: a.id, email: "a@example.com" });
+    const first = await accept(r);
+    const second = await accept(r, { via: "account", now: LATER });
+    expect(first.clientId).toBe(a.id);
+    expect((await contractsOfClient(db, a.id)).map((x) => x.id)).toEqual([second.id, first.id]);
+    await db.update(registrations).set({ clientId: b.id }).where(eq(registrations.id, r.id));
+    expect(await contractsOfClient(db, a.id)).toEqual([]);
+    expect((await contractsOfClient(db, b.id)).map((x) => x.id)).toEqual([second.id, first.id]);
+    expect(await contractForStudent(db, a.id, second.id)).toBeNull();
+    expect(await contractForStudent(db, a.id, first.id)).toBeNull();
+    expect((await contractForStudent(db, b.id, first.id))!.id).toBe(first.id);
+    expect(await contractOwner(db, first.id)).toBe(b.id);
+    // the frozen rows still say what the acceptance said
+    expect((await db.select().from(contracts).where(eq(contracts.id, first.id)))[0].clientId).toBe(a.id);
+    // unlinked again: the owner falls back to the client the contract froze, so it is not lost
+    await db.update(registrations).set({ clientId: null }).where(eq(registrations.id, r.id));
+    expect(await contractOwner(db, first.id)).toBe(a.id);
+    expect((await contractsOfClient(db, a.id)).map((x) => x.id)).toEqual([second.id, first.id]);
+    expect(await contractsOfClient(db, b.id)).toEqual([]);
+  });
+
+  test("ruling R14: an e-course contract is its access's student's; a contract whose registration or access is gone keeps the client it froze; an unknown id has no owner", async () => {
+    const e = await ecourse();
+    const made = (await acceptAccess(e))!;
+    // the access's client comes before the client the row froze
+    await db.update(contracts).set({ clientId: null }).where(eq(contracts.id, made.id));
+    expect(await contractOwner(db, made.id)).toBe(e.client.id);
+    expect((await contractsOfClient(db, e.client.id)).map((x) => x.id)).toEqual([made.id]);
+    expect((await contractForStudent(db, e.client.id, made.id))!.id).toBe(made.id);
+    // the registration of a contact contract deleted: the frozen client is the owner
+    await saveContact();
+    const k = await client("kati2@example.com", "Kati Teine");
+    const r = await registrationOn(db, await contactCourse(db), { clientId: k.id, email: "kati2@example.com" });
+    const contact = await accept(r);
+    await db.delete(registrations).where(eq(registrations.id, r.id));
+    expect(await contractOwner(db, contact.id)).toBe(k.id);
+    expect((await contractForStudent(db, k.id, contact.id))!.id).toBe(contact.id);
+    expect(await contractOwner(db, 999_999)).toBeNull();
   });
 
   test("Maria reads any contract by id; null for an unknown one", async () => {

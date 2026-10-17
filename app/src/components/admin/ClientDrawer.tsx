@@ -308,9 +308,9 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
               <li key={k.id} className={styles.row} data-client-contract={k.id} data-contract-state={k.supersededAt ? "superseded" : "current"}>
                 <div className={styles.rowHead}>
                   <strong>{k.title || adminEt.contracts.title}</strong>
-                  {k.supersededAt && <span className={ui.tag}>{fill(adminEt.contracts.block.superseded, { date: formatDate(k.supersededAt, "et") })}</span>}
+                  {k.supersededAt && <span className={ui.tag}>{fill(adminEt.contracts.block.superseded, { date: formatDate(new Date(k.supersededAt), "et") })}</span>}
                 </div>
-                <p className={styles.meta}>{fill(adminEt.contracts.block.accepted, { date: formatDate(k.acceptedAt, "et"), way: adminEt.contracts.via[k.acceptedVia] })}</p>
+                <p className={styles.meta}>{fill(adminEt.contracts.block.accepted, { date: formatDate(new Date(k.acceptedAt), "et"), way: adminEt.contracts.via[k.acceptedVia] })}</p>
                 <div className={styles.links}>
                   <a className={ui.link} href={`/api/admin/leping/${k.id}`} aria-label={fill(adminEt.contracts.block.downloadLabel, { id: k.id })} data-contract-download={k.id}>
                     {adminEt.contracts.block.download}

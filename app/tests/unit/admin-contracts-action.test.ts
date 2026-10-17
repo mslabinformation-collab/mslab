@@ -13,6 +13,8 @@ const work = vi.hoisted(() => ({
   requestContract: vi.fn(),
   mailContractRequest: vi.fn(),
   contractForAdmin: vi.fn(),
+  contractOwner: vi.fn(),
+  contractPdf: vi.fn(),
   mailContract: vi.fn(),
 }));
 const cache = vi.hoisted(() => ({ refresh: vi.fn() }));
@@ -149,23 +151,51 @@ describe("requestContractAction: „Saada leping kinnitamiseks“", () => {
 });
 
 describe("sendContractCopyAction: „Saada koopia õpilasele“", () => {
-  const CONTRACT = { id: 5, clientId: 3 };
+  const CONTRACT = { id: 5, clientId: null };
+  const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+  beforeEach(() => {
+    work.contractPdf.mockResolvedValue(PDF);
+    work.contractOwner.mockResolvedValue(3);
+  });
 
-  test("the contract goes by mail with the send deps (ruling R1: mailContract); sent: the page refreshes", async () => {
+  test("the contract goes by mail with the send deps (ruling R1: mailContract), with the PDF drawn for it (R15); sent: the page refreshes", async () => {
     work.contractForAdmin.mockResolvedValue(CONTRACT);
     work.mailContract.mockResolvedValue(true);
     expect(await actions.sendContractCopyAction({ id: 5 })).toEqual({ ok: true });
     expect(work.contractForAdmin).toHaveBeenCalledWith({ marker: "db" }, 5);
+    expect(work.contractPdf).toHaveBeenCalledWith(CONTRACT);
     expect(deps.adminSendDeps).toHaveBeenCalledWith("[contracts]");
-    expect(work.mailContract).toHaveBeenCalledWith(SENDING, CONTRACT, { noAccount: false });
+    expect(work.mailContract).toHaveBeenCalledWith(SENDING, CONTRACT, { noAccount: false, pdf: PDF });
     refreshed();
   });
 
-  test("a contract with no account behind it (the registration was never linked) goes without the link to an account", async () => {
-    work.contractForAdmin.mockResolvedValue({ id: 5, clientId: null });
+  test("ruling R14: whether the student has an account is the contract's owner NOW, not the client it froze — a contract frozen with none, whose registration was linked since, still gets the button", async () => {
+    work.contractForAdmin.mockResolvedValue(CONTRACT); // clientId null
+    work.contractOwner.mockResolvedValue(3);
     work.mailContract.mockResolvedValue(true);
     await actions.sendContractCopyAction({ id: 5 });
-    expect(work.mailContract.mock.calls[0][2]).toEqual({ noAccount: true });
+    expect(work.contractOwner).toHaveBeenCalledWith({ marker: "db" }, 5);
+    expect(work.mailContract.mock.calls[0][2]).toMatchObject({ noAccount: false });
+  });
+
+  test("a contract with no account behind it (the registration was never linked) goes without the link to an account", async () => {
+    work.contractForAdmin.mockResolvedValue({ id: 5, clientId: 3 });
+    work.contractOwner.mockResolvedValue(null);
+    work.mailContract.mockResolvedValue(true);
+    await actions.sendContractCopyAction({ id: 5 });
+    expect(work.mailContract.mock.calls[0][2]).toMatchObject({ noAccount: true });
+  });
+
+  test("ruling R15: a PDF that cannot be drawn sends nothing — `pdfFailed` in words, logged by the id and the class only, the page not refreshed", async () => {
+    work.contractForAdmin.mockResolvedValue(CONTRACT);
+    work.contractPdf.mockRejectedValue(new TypeError("boom: Kati Kask"));
+    expect(await actions.sendContractCopyAction({ id: 5 })).toEqual({ ok: false, error: "pdfFailed", text: E.pdfFailed });
+    expect(E.pdfFailed).toBe("Lepingu PDF-i ei õnnestunud koostada — proovi uuesti.");
+    expect(work.mailContract).not.toHaveBeenCalled();
+    expect(deps.adminSendDeps).not.toHaveBeenCalled();
+    expect(logged()).toContain("[contracts] contract 5: the copy's PDF could not be drawn: TypeError");
+    expect(logged()).not.toContain("Kati");
+    expect(cache.refresh).not.toHaveBeenCalled();
   });
 
   test("a mail that did not go (Resend is not set up, a sample address, refused) is `mailFailed` in words; the page is not refreshed", async () => {
@@ -197,7 +227,7 @@ describe("sendContractCopyAction: „Saada koopia õpilasele“", () => {
 
 describe("the words", () => {
   test("every refusal the work can answer has Estonian words of its own, and no text is a code", () => {
-    for (const code of ["notFound", "contractNotFound", "noAccount", "cancelled", "mailFailed", "server"] as const) {
+    for (const code of ["notFound", "contractNotFound", "noAccount", "cancelled", "mailFailed", "pdfFailed", "server"] as const) {
       expect(E[code], code).toMatch(/\S/);
       expect(E[code], code).not.toBe(code);
     }

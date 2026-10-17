@@ -139,11 +139,13 @@ test.describe("the registration drawer's „Leping“", () => {
     const f = await fixtures(info.project.name);
     const clientId = await linkAccount(f);
     const current = await addContract(f, clientId);
-    await onLocalDb((sql) => sql`update registrations set status = 'cancelled' where id = ${f.registration.id}`, { marksPages: false });
+    // (it was asked before it was cancelled: cancelling never clears the ask, and the block does not show it as pending)
+    await onLocalDb((sql) => sql`update registrations set status = 'cancelled', contract_requested_at = now() where id = ${f.registration.id}`, { marksPages: false });
     await signIn(page, context, visitorIp);
     const { drawer } = await openDrawer(page, f);
     const block = drawer.locator("[data-registration-contracts]");
     await expect(block.locator(`[data-contract="${current}"]`)).toBeVisible();
+    await expect(block.locator("[data-contract-pending]")).toHaveCount(0);
     await expect(block.getByRole("button", { name: "Saada leping kinnitamiseks" })).toHaveCount(0);
     await expect(block.locator("[data-contract-no-account]")).toHaveCount(0);
     await expect(block.locator(`[data-contract-download="${current}"]`)).toBeVisible();
@@ -162,7 +164,8 @@ test.describe("the Õpilased drawer's „Lepingud“", () => {
   test("her contracts newest first with the superseded one marked, each with its PDF and the contact one with a link to its registration", async ({ page, context, visitorIp }, info) => {
     const f = await fixtures(info.project.name);
     const clientId = await linkAccount(f);
-    const current = await addContract(f, clientId, { acceptedDaysAgo: 1, via: "account" });
+    // (the newest was frozen before her account existed — client_id null — and is hers through her linked registration: ruling R14)
+    const current = await addContract(f, null, { acceptedDaysAgo: 1, via: "account" });
     const old = await addContract(f, clientId, { title: "E2E vana leping", acceptedDaysAgo: 8, supersededDaysAgo: 1 });
     await signIn(page, context, visitorIp);
     await page.goto(`/admin/opilased?id=${clientId}`);

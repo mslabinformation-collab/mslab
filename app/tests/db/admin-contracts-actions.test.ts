@@ -7,6 +7,8 @@ import { clients, contracts, pages, registrations, type Contract } from "@/db/sc
 import { CONTRACT_CONTACT_KEY, CONTRACT_CONTACT_VERSION_KEY } from "@/domain/contract";
 import { INVOICE_KEY } from "@/domain/invoice";
 import { adminEt } from "@/i18n/dict/admin";
+import { linkClientRecords } from "@/server/client-auth";
+import { renderContract } from "@/server/contract-pdf";
 import { contractForRegistration, mailContractRequest, registrationContractFields, saveContractTexts } from "@/server/contracts";
 import type { Env } from "@/server/notify";
 import { fakeKv, stubFetch } from "../fakes";
@@ -21,6 +23,10 @@ import { contactCourse, registrationOn, SITE } from "./payments-fixtures";
 // headers are stand-ins (the guard is tests/unit/admin-guards.test.ts's, the routes' is admin-contract-routes.test.ts's).
 
 const state = vi.hoisted(() => ({ db: null as unknown, mail: true }));
+vi.mock("@/server/contract-pdf", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/server/contract-pdf")>();
+  return { ...real, renderContract: vi.fn(real.renderContract) };
+});
 const cache = vi.hoisted(() => ({ refresh: vi.fn() }));
 const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
@@ -59,6 +65,7 @@ beforeEach(async () => {
   state.mail = true;
   cache.refresh.mockReset();
   pub.revalidatePublic.mockReset();
+  vi.mocked(renderContract).mockClear();
   fetches = stubFetch((url) => (url.includes("resend") ? Response.json({ id: "email_1" }) : Response.json({})));
   for (const method of ["info", "warn", "error"] as const) vi.spyOn(console, method).mockImplementation(() => {});
   await setSetting(db, INVOICE_KEY, CARD);
@@ -243,6 +250,39 @@ describe("sendContractCopyAction: „Saada koopia õpilasele“ (ruling R1)", ()
     expect((await db.select().from(contracts).where(eq(contracts.id, c.id)))[0].sentAt).toBeInstanceOf(Date);
     expect(cache.refresh).toHaveBeenCalledTimes(1);
     expect(mail.html).toContain(`${SITE}/ru/konto`);
+  });
+
+  test("ruling R14: a student whose account came after her form still gets the button — the copy decides on the registration's live link, not on the client the contract froze", async () => {
+    const r = await registrationOn(db, fixture, { email: "mari@example.com", name: "Mari Maasikas" });
+    const c = await accept(r);
+    expect(c.clientId).toBeNull();
+    // her account is made later and her registration linked to it; the contract row is not touched
+    const [client] = await db.insert(clients).values({ email: "mari@example.com", name: "Mari Maasikas" }).returning();
+    await linkClientRecords(db, client.id, client.email);
+    expect((await db.select().from(contracts).where(eq(contracts.id, c.id)))[0].clientId).toBeNull();
+    expect(await actions.sendContractCopyAction({ id: c.id })).toEqual({ ok: true });
+    const [mail] = mails();
+    expect(mail.text).toContain("Ava minu konto");
+    expect(mail.html).toContain(`${SITE}/konto/sisene#email=mari%40example.com`);
+    expect(mail.attachments).toHaveLength(1);
+  });
+
+  test("ruling R15: the PDF is drawn first and once; when it cannot be drawn nothing is sent, nothing is recorded, and Maria is told in words", async () => {
+    const c = await accept(await registration());
+    vi.mocked(renderContract).mockRejectedValueOnce(new TypeError("boom: Kati Tamm, kati@example.com"));
+    expect(await actions.sendContractCopyAction({ id: c.id })).toEqual({ ok: false, error: "pdfFailed", text: "Lepingu PDF-i ei õnnestunud koostada — proovi uuesti." });
+    expect(E.pdfFailed).toBe("Lepingu PDF-i ei õnnestunud koostada — proovi uuesti.");
+    expect(mails()).toEqual([]); // not even a mail without the contract
+    expect((await db.select().from(contracts).where(eq(contracts.id, c.id)))[0].sentAt).toBeNull();
+    expect(cache.refresh).not.toHaveBeenCalled();
+    expect(logged()).toContain(`[contracts] contract ${c.id}: the copy's PDF could not be drawn: TypeError`);
+    expect(logged()).not.toMatch(/kati|Tamm/i);
+    // the next press draws it again, sends it once with its PDF, and only then says so
+    expect(await actions.sendContractCopyAction({ id: c.id })).toEqual({ ok: true });
+    expect(mails()).toHaveLength(1);
+    expect(mails()[0].attachments).toHaveLength(1);
+    expect(vi.mocked(renderContract)).toHaveBeenCalledTimes(2); // the failed draw and the one that went (not a third inside the mail)
+    expect((await db.select().from(contracts).where(eq(contracts.id, c.id)))[0].sentAt).toBeInstanceOf(Date);
   });
 
   test("a contract with no account behind it gets the copy without a link to an account", async () => {

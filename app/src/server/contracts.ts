@@ -306,13 +306,16 @@ export type RequestContractResult = { ok: true } | { ok: false; error: "notFound
 /**
  * „Saada leping kinnitamiseks“ (D4): records that Maria asked, `contract_requested_at` = `now` (asking again moves it), so that the student's account
  * offers „Kinnita leping“ until she accepts. Only a registration linked to an account (`noAccount`: the drawer says so) and not cancelled (`cancelled`)
- * can be asked; `notFound` for an unknown id, and for an individual registration (D4 asks on a group registration and D1 puts individual courses out of
- * scope: it is not one a contract is asked for). Under the registration's row lock. The mail with the link is the action's.
+ * can be asked; `notFound` for an unknown id, and for any registration that is not a group registration of a contact course: an individual one (D4 asks
+ * on a group registration and D1 puts individual courses out of scope), and one of an e-course (its contract is the access's, not a registration's).
+ * Under the registration's row lock. The mail with the link is the action's.
  */
 export async function requestContract(db: Db, registrationId: number, now: Date): Promise<RequestContractResult> {
   return db.transaction(async (tx): Promise<RequestContractResult> => {
-    const [r] = await tx.select({ kind: registrations.kind, clientId: registrations.clientId, status: registrations.status }).from(registrations).where(eq(registrations.id, registrationId)).for("update");
+    const [r] = await tx.select({ kind: registrations.kind, clientId: registrations.clientId, status: registrations.status, courseId: registrations.courseId }).from(registrations).where(eq(registrations.id, registrationId)).for("update");
     if (!r || r.kind !== "group") return { ok: false, error: "notFound" };
+    const [course] = await tx.select({ type: courses.type }).from(courses).where(eq(courses.id, r.courseId)).limit(1);
+    if (course?.type !== "contact") return { ok: false, error: "notFound" };
     if (r.clientId === null) return { ok: false, error: "noAccount" };
     if (r.status === "cancelled") return { ok: false, error: "cancelled" };
     await tx.update(registrations).set({ contractRequestedAt: now }).where(eq(registrations.id, registrationId));
@@ -331,15 +334,49 @@ export async function contractsOfRegistration(db: Db, registrationId: number): P
     .orderBy(sql`${contracts.supersededAt} is not null`, desc(contracts.acceptedAt), desc(contracts.id));
 }
 
-/** An account's contracts (the client drawer's list), the newest acceptance first, the superseded ones too. */
+/**
+ * Whose a contract is (ruling R14): the client its registration is linked to NOW, else the client its access belongs to, else the client the contract
+ * froze (`contracts.client_id`: what the registration or the access said at the acceptance; null for a registration with no account yet). The live link
+ * comes first, so a contract made before the student had an account is hers once the registration is linked to it (`linkClientRecords` never touches a
+ * frozen row), and a registration Maria re-links moves with its contracts to the new client and is never shown to two. Needs both left joins below
+ * (registrations, course_access) in the query it is used in; every query that reads a contract by its owner uses this one expression.
+ */
+export const CONTRACT_OWNER = sql<number | null>`coalesce(${registrations.clientId}, ${courseAccess.clientId}, ${contracts.clientId})`;
+
+/** An account's contracts (the client drawer's list), the newest acceptance first, the superseded ones too: the contracts it owns (CONTRACT_OWNER). */
 export async function contractsOfClient(db: Db, clientId: number): Promise<Contract[]> {
-  return db.select().from(contracts).where(eq(contracts.clientId, clientId)).orderBy(desc(contracts.acceptedAt), desc(contracts.id));
+  const rows = await db
+    .select({ contract: contracts })
+    .from(contracts)
+    .leftJoin(registrations, eq(contracts.registrationId, registrations.id))
+    .leftJoin(courseAccess, eq(contracts.accessId, courseAccess.id))
+    .where(sql`${CONTRACT_OWNER} = ${clientId}`)
+    .orderBy(desc(contracts.acceptedAt), desc(contracts.id));
+  return rows.map((r) => r.contract);
 }
 
-/** Her contract `id` (GET /api/konto/leping/<id>), a superseded one too, or null: another's, none. */
+/** Her contract `id` (GET /api/konto/leping/<id>), a superseded one too, or null: another's, none. "Hers" is CONTRACT_OWNER. */
 export async function contractForStudent(db: Db, clientId: number, id: number): Promise<Contract | null> {
-  const [row] = await db.select().from(contracts).where(and(eq(contracts.id, id), eq(contracts.clientId, clientId))).limit(1);
-  return row ?? null;
+  const [row] = await db
+    .select({ contract: contracts })
+    .from(contracts)
+    .leftJoin(registrations, eq(contracts.registrationId, registrations.id))
+    .leftJoin(courseAccess, eq(contracts.accessId, courseAccess.id))
+    .where(and(eq(contracts.id, id), sql`${CONTRACT_OWNER} = ${clientId}`))
+    .limit(1);
+  return row?.contract ?? null;
+}
+
+/** The client contract `id` belongs to now (CONTRACT_OWNER), or null: no account behind it (or an unknown id). */
+export async function contractOwner(q: Q, id: number): Promise<number | null> {
+  const [row] = await q
+    .select({ owner: CONTRACT_OWNER })
+    .from(contracts)
+    .leftJoin(registrations, eq(contracts.registrationId, registrations.id))
+    .leftJoin(courseAccess, eq(contracts.accessId, courseAccess.id))
+    .where(eq(contracts.id, id))
+    .limit(1);
+  return row?.owner ?? null;
 }
 
 /** Any contract, for Maria; null for an unknown id. */
@@ -469,12 +506,13 @@ export async function mailContractRequest(deps: { db: Db; env: Env; siteUrl: str
  * (none when it fails to render: contractPdfForMail), and `sent_at` recorded at `now` once Resend took a mail that carried the PDF (a failure of
  * that record alone is logged, and the mail still counts as sent). Never to a
  * sample address (`@example.test`), and nothing without Resend (local development). Not counted in the daily caps: it follows her own act (or
- * Maria's). Never throws; true when the mail went out. The log has the contract's id only.
+ * Maria's). Never throws; true when the mail went out. The log has the contract's id only. `opts.pdf`: a PDF the caller drew already (Maria's copy
+ * draws it first, so that it never sends a mail without it: ruling R15), attached as it is instead of drawing it again.
  */
 export async function mailContract(
   deps: { db: Db; env: Env; siteUrl: string; now: Date },
   c: Contract,
-  opts: { locale?: Locale; noAccount?: boolean } = {},
+  opts: { locale?: Locale; noAccount?: boolean; pdf?: Uint8Array } = {},
 ): Promise<boolean> {
   try {
     const { email, name } = c.fields.student;
@@ -483,7 +521,8 @@ export async function mailContract(
       return false;
     }
     if (!mailConfigured(deps.env)) return false;
-    const pdf = await contractPdfForMail(c);
+    // (`opts.pdf`: the caller rendered it already and has seen it render, as Maria's copy does: it is not drawn twice)
+    const pdf = opts.pdf ?? (await contractPdfForMail(c));
     const sent = await sendMail(deps.env, contractMail({ siteUrl: deps.siteUrl, email, name, locale: opts.locale ?? c.locale, contract: c, pdf, noAccount: opts.noAccount }));
     console.info(`[contracts] contract ${c.id}: mailed: ${sent}`);
     // the mail is out once Resend took it: a failure to record that (sent_at) is logged on its own, and the answer stays true

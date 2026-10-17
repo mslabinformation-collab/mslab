@@ -1,7 +1,9 @@
+import { eq } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { clients, contracts, courseAccess, courses, courseSessions, registrations, termsAcceptances } from "@/db/schema";
+import { linkClientRecords } from "@/server/client-auth";
 import { makeTestDb } from "./helpers";
 
 // The Õpilased drawer's „Lepingud“ (contracts Task 5, spec §4): the student's contracts from contractsOfClient, the contact course's and the e-course's, in
@@ -99,6 +101,39 @@ test("her contracts newest acceptance first, the superseded one marked, each wit
   expect(e).toContain(`href="/api/admin/leping/${ecourse.id}"`);
   expect(e).not.toContain("/admin/registreerimised");
   expect(e).not.toContain("Asendatud");
+});
+
+test("ruling R14 (review I-1): a contract she accepted before her account existed is in her drawer once her registration is linked — the frozen row says no client", async () => {
+  const [reg] = await db.insert(registrations).values({ courseId: kontakt.id, courseSessionId: kontakt.sessionId, kind: "group", name: "Kati Tamm", email: "kati@example.test", clientId: null, paymentChoice: "half" }).returning();
+  const [c] = await db
+    .insert(contracts)
+    .values({ kind: "contact", clientId: null, registrationId: reg.id, courseId: kontakt.id, locale: "et", title: "Kontaktkoolituse leping", body: "Tekst.", version: "1", fields: fieldsOf("kati@example.test", "Kulmude lamineerimine"), acceptedAt: new Date("2026-10-01T09:00:00Z"), acceptedVia: "form" })
+    .returning();
+  // her account is made later (her first login, or Maria adds her), and her registrations are linked to it
+  const [kati] = await db.insert(clients).values({ email: "kati@example.test", name: "Kati" }).returning();
+  expect(text(section(await drawer(kati.id)))).toContain("Lepinguid veel pole.");
+  await linkClientRecords(db, kati.id, kati.email);
+  const html = section(await drawer(kati.id));
+  expect(html).toContain(`data-client-contract="${c.id}"`);
+  expect(text(row(html, c.id))).toContain("Kontaktkoolituse leping Kinnitatud 01.10.2026 · Registreerimisvorm");
+  expect(row(html, c.id)).toContain(`href="/api/admin/leping/${c.id}"`);
+  expect(row(html, c.id)).toContain(`href="/admin/registreerimised?id=${reg.id}"`);
+  // (the contract's own row was not touched by the link)
+  expect((await db.select().from(contracts))[0].clientId).toBeNull();
+});
+
+test("ruling R14: a registration Maria re-links to another student takes its contract to that student's drawer only", async () => {
+  const [a] = await db.insert(clients).values({ email: "a@example.test", name: "Anu" }).returning();
+  const [b] = await db.insert(clients).values({ email: "b@example.test", name: "Bert" }).returning();
+  const [reg] = await db.insert(registrations).values({ courseId: kontakt.id, courseSessionId: kontakt.sessionId, kind: "group", name: "Anu Aas", email: a.email, clientId: a.id, paymentChoice: "half" }).returning();
+  const [c] = await db
+    .insert(contracts)
+    .values({ kind: "contact", clientId: a.id, registrationId: reg.id, courseId: kontakt.id, locale: "et", title: "Kontaktkoolituse leping", body: "Tekst.", version: "1", fields: fieldsOf(a.email, "Kulmude lamineerimine"), acceptedAt: new Date("2026-10-01T09:00:00Z"), acceptedVia: "form" })
+    .returning();
+  expect(section(await drawer(a.id))).toContain(`data-client-contract="${c.id}"`);
+  await db.update(registrations).set({ clientId: b.id }).where(eq(registrations.id, reg.id));
+  expect(text(section(await drawer(a.id)))).toContain("Lepinguid veel pole.");
+  expect(section(await drawer(b.id))).toContain(`data-client-contract="${c.id}"`);
 });
 
 test("a contract whose registration is gone keeps its row and its PDF, with no link to a drawer; a contract with no title is named „Leping“", async () => {

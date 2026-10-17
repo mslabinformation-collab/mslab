@@ -140,13 +140,18 @@ describe("the ask: „Saada leping kinnitamiseks“ and its pending state", () =
     expect(requestButton()).toBeNull();
   });
 
-  test("cancelled: the contracts are shown (the PDF, the copy), nothing is asked and nothing is said about an account; a pending ask is still told", async () => {
+  test("cancelled: the contracts are shown (the PDF, the copy), nothing is asked, nothing is said about an account, and no ask is shown as pending (cancelling never clears it)", async () => {
     await show({ contracts: [CURRENT, OLD], cancelled: true, requestedAt: "2026-10-18T07:00:00.000Z" });
     expect(requestButton()).toBeNull();
     expect($("[data-contract-no-account]")).toBeNull();
     expect(actionsOf(7)).toEqual(["Saada koopia õpilasele", "Laadi alla (PDF)"]);
     expect(actionsOf(5)).toEqual(["Laadi alla (PDF)"]);
+    expect($("[data-contract-pending]")).toBeNull();
+    expect(container.textContent).not.toContain("Kinnitamist ootab");
+    // (the same registration not cancelled still shows it)
+    await show({ contracts: [CURRENT], cancelled: false, requestedAt: "2026-10-18T07:00:00.000Z" });
     expect($("[data-contract-pending]")).not.toBeNull();
+    await show({ contracts: [CURRENT, OLD], cancelled: true, requestedAt: "2026-10-18T07:00:00.000Z" });
     await show({ contracts: [CURRENT], cancelled: true, linked: false });
     expect(requestButton()).toBeNull();
     expect($("[data-contract-no-account]")).toBeNull();

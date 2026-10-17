@@ -530,6 +530,8 @@ export const adminEt = {
       noAccount: "Õpilasel pole kontot — lisa ta Õpilased lehel.",
       cancelled: "Tühistatud registreeringu lepingut ei saa kinnitamiseks saata.",
       mailFailed: "Kirja ei saadetud. Proovi uuesti.",
+      // the copy draws the PDF first and sends nothing without it (ruling R15; Draft)
+      pdfFailed: "Lepingu PDF-i ei õnnestunud koostada — proovi uuesti.",
       server: "Midagi läks valesti. Proovi uuesti.",
     },
     // Seaded → „Lepingud“ (components/admin/ContractTexts.tsx)

@@ -6,7 +6,7 @@ import { getDb } from "@/db/client";
 import { adminEt } from "@/i18n/dict/admin";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { adminAction } from "../auth";
-import { contractCard, contractForAdmin, mailContract, mailContractRequest, requestContract, saveContractTexts } from "../contracts";
+import { contractCard, contractForAdmin, contractOwner, contractPdf, mailContract, mailContractRequest, requestContract, saveContractTexts } from "../contracts";
 import { logFailure } from "../log";
 import { revalidatePublic } from "../public-cache";
 import { adminSendDeps } from "../send-deps";
@@ -77,19 +77,30 @@ export const requestContractAction = adminAction(async (_admin, input: { registr
 });
 
 /**
- * „Saada koopia õpilasele“ (D7, ruling R1): `{ id }` — the contract's PDF, rendered now from its frozen row, goes to the address it froze, in its language
- * (mailContract), which records `sent_at`. Sent: `{ ok: true }`. `mailFailed` when it did not go (Resend is not set up, the address is a sample, the
- * mail was refused), `notFound` for an unknown id.
+ * „Saada koopia õpilasele“ (D7, rulings R1, R14, R15): `{ id }` — the contract's PDF, rendered now from its frozen row, goes to the address it froze, in
+ * its language (mailContract), which records `sent_at`. The PDF is drawn FIRST: when it cannot be drawn nothing is sent (`pdfFailed`), because the copy
+ * exists to deliver the PDF, and only a mail that carried it is answered `{ ok: true }`. The mail has „Ava minu konto“ when the contract has an owner now
+ * (contracts.ts CONTRACT_OWNER: the registration's live link first, so a student whose account came after her form still has the button).
+ * `mailFailed` when it did not go (Resend is not set up, the address is a sample, the mail was refused), `contractNotFound` for an unknown id.
  */
 export const sendContractCopyAction = adminAction(async (_admin, input: { id: number }) => {
   const parsed = idOnly.safeParse(input);
   if (!parsed.success) return fail("contractNotFound");
   const { id } = parsed.data;
   try {
-    const contract = await contractForAdmin(getDb(), id);
+    const db = getDb();
+    const contract = await contractForAdmin(db, id);
     if (!contract) return fail("contractNotFound");
+    let pdf: Uint8Array;
+    try {
+      pdf = await contractPdf(contract);
+    } catch (e) {
+      logFailure(`[contracts] contract ${id}: the copy's PDF could not be drawn`, e);
+      return fail("pdfFailed");
+    }
     // (a student with no account here gets the copy without „Ava minu konto“)
-    const sent = await mailContract(await adminSendDeps("[contracts]"), contract, { noAccount: contract.clientId === null });
+    const noAccount = (await contractOwner(db, id)) === null;
+    const sent = await mailContract(await adminSendDeps("[contracts]"), contract, { noAccount, pdf });
     if (!sent) return fail("mailFailed");
     refresh();
     return { ok: true as const };

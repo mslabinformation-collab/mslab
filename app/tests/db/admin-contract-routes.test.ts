@@ -288,6 +288,85 @@ describe("POST /api/admin/naidisleping: the sample from the card's texts", () =>
     expect([values.titleEt!.length, values.bodyEt!.length, values.bodyRu!.length, values.titleRu, values.lang]).toEqual([40_000, 40_000, 40_000, "Р", "ru"]);
   });
 
+  describe("a body is read up to about 1 MB (review M-2)", () => {
+    const CYRILLIC = "Р".repeat(40_000);
+    const urlencoded = (fields: Record<string, string>) => new URLSearchParams(fields).toString();
+    const post = (body: BodyInit, headers: Record<string, string> = {}, init: Record<string, unknown> = {}) =>
+      downloadSample(new Request(`${ORIGIN}/api/admin/naidisleping`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", ...headers }, body, ...init }), undefined);
+
+    test("the largest sample the card can post — four fields of 40 000 Cyrillic characters, six bytes each form-encoded — is read whole; the fields are cut after", async () => {
+      await signIn();
+      const body = urlencoded({ titleEt: CYRILLIC, titleRu: CYRILLIC, bodyEt: CYRILLIC, bodyRu: CYRILLIC, lang: "ru" });
+      expect(body.length).toBeGreaterThan(960_000);
+      expect(body.length).toBeLessThan(1_000_000);
+      vi.mocked(sampleContractPdf).mockResolvedValueOnce(new Uint8Array([0x25, 0x50, 0x44, 0x46]));
+      expect((await post(body)).status).toBe(200);
+      const values = vi.mocked(sampleContractPdf).mock.calls[0][1];
+      expect([values.titleEt!.length, values.titleRu!.length, values.bodyEt!.length, values.bodyRu!.length]).toEqual([40_000, 40_000, 40_000, 40_000]);
+    });
+
+    test("a content-length above the cap is 413 { ok: false, error: 'tooLarge' } before a byte of the body is read, nothing drawn", async () => {
+      await signIn();
+      const request = new Request(`${ORIGIN}/api/admin/naidisleping`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", "content-length": "1000001" },
+        body: urlencoded({ titleEt: "x", bodyEt: "y" }),
+      });
+      const res = await downloadSample(request, undefined);
+      expect([res.status, await res.json()]).toEqual([413, { ok: false, error: "tooLarge" }]);
+      expect(request.bodyUsed).toBe(false);
+      expect(sampleContractPdf).not.toHaveBeenCalled();
+      // (and a length at the cap is not refused by it)
+      vi.mocked(sampleContractPdf).mockResolvedValueOnce(new Uint8Array([0x25, 0x50, 0x44, 0x46]));
+      expect((await post(urlencoded({ titleEt: "x", bodyEt: "y" }), { "content-length": "1000000" })).status).toBe(200);
+    });
+
+    test("a body that does not say its length (or lies) is read chunk by chunk and dropped at the first byte past the cap: 413, and the rest is never pulled", async () => {
+      await signIn();
+      const chunk = new TextEncoder().encode("bodyEt=" + "a".repeat(99_993)); // 100 000 bytes
+      let pulled = 0;
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (pulled >= 50) return controller.close(); // 5 MB on offer
+          pulled += 1;
+          controller.enqueue(chunk);
+        },
+      });
+      const res = await post(stream, {}, { duplex: "half" });
+      expect([res.status, await res.json()]).toEqual([413, { ok: false, error: "tooLarge" }]);
+      expect(pulled).toBeLessThan(15); // about eleven chunks fill the cap; the other 39 were never asked for
+      expect(sampleContractPdf).not.toHaveBeenCalled();
+    });
+
+    test("a small body that arrives as a stream is read and drawn as ever", async () => {
+      await signIn();
+      const bytes = new TextEncoder().encode(urlencoded({ titleEt: "Proovileping", bodyEt: "Tekst." }));
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes.subarray(0, 10));
+          controller.enqueue(bytes.subarray(10));
+          controller.close();
+        },
+      });
+      const res = await post(stream, {}, { duplex: "half" });
+      expect(res.status).toBe(200);
+      expect(await textOf(await bytesOf(res))).toContain("Proovileping");
+    });
+
+    test("an empty body is not a form with fields: the sample of an empty card", async () => {
+      await signIn();
+      const res = await post("");
+      expect(res.status).toBe(200);
+      expect(await textOf(await bytesOf(res))).toContain("(lepingu pealkiri)");
+    });
+
+    test("without a session nothing of the body is read (401 first)", async () => {
+      const request = new Request(`${ORIGIN}/api/admin/naidisleping`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: urlencoded({ titleEt: "x" }) });
+      expect((await downloadSample(request, undefined)).status).toBe(401);
+      expect(request.bodyUsed).toBe(false);
+    });
+  });
+
   test("a body that is no form is 400 { ok: false, error: 'invalid' }, nothing drawn", async () => {
     await signIn();
     const res = await sample(null);

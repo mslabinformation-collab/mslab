@@ -1977,7 +1977,7 @@
         "Kirjas on lühike tervitus, üks rida, mis nimetab koolitust, ja nupp „Ava minu konto“.",
         "Nupp avab Proov 1 konto lehe ja kirjas pole sisselogimise linki.",
         "Vana leping jääb paneelis alles.",
-        "Uuesti vajutades liigub „saadetud“ kuupäev ja tuleb teine kiri."
+        "Uuesti vajutades jääb rida „Kinnitamist ootab (saadetud …)“ tänase kuupäevaga ja tuleb teine kiri."
       ],
       "why": "Maria saab õpilaselt uue kinnituse küsida, kui koolitus või tekst muutus.",
       "risk": "high",

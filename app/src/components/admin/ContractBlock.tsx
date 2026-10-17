@@ -12,8 +12,9 @@ import styles from "./ContractBlock.module.css";
 // accepted and the way, „Laadi alla (PDF)“ and „Saada koopia õpilasele“, then the superseded ones with „Asendatud {date}“ (they can be downloaded, not
 // sent) — and „Saada leping kinnitamiseks“. The ask is offered to a registration linked to an account and not cancelled, whether or not it has a contract
 // (D4: none, or the session or the terms changed since). Without an account the block says so in words and offers no button; a cancelled registration
-// shows its contracts and no button (and no word about an account: there is nothing left to ask). Once Maria has asked, the block says „Kinnitamist
-// ootab (saadetud {date})“ until the student accepts (the page's `contract_requested_at`). The page is refreshed by the action, so the block then shows
+// shows its contracts and no button (and no word about an account or about a pending ask: there is nothing left to ask or to wait for, and cancelling
+// never clears `contract_requested_at`). Once Maria has asked, the block says „Kinnitamist ootab (saadetud {date})“ until the student accepts (the page's
+// `contract_requested_at`). The page is refreshed by the action, so the block then shows
 // the new state. This file runs on old iPads: no regular expression with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
 
 type Line = { tone: "idle" | "busy" | "done" | "error"; text: string };
@@ -109,7 +110,7 @@ export function ContractBlock({
         </ul>
       )}
 
-      {requestedAt !== null && (
+      {requestedAt !== null && !cancelled && (
         <p className={styles.line} data-contract-pending="">
           {fill(t.pending, { date: when(requestedAt) })}
         </p>

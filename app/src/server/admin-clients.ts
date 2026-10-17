@@ -1,11 +1,12 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
+import { contractView, type ContractView } from "@/components/admin/contract-view";
 import type { Db } from "@/db/client";
 import { listRegistrations, paged, type Paged, type RegistrationRow } from "@/db/queries/admin";
 import { clientNameSql } from "@/db/queries/client-name";
 import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
 import { feedbackOf, type FeedbackRow } from "@/db/queries/protocols";
-import { certificates, clients, courseAccess, courses, lessonProgress, practicePackages, protocols, registrations, requests, testAttempts, type Contract } from "@/db/schema";
+import { certificates, clients, courseAccess, courses, lessonProgress, practicePackages, protocols, registrations, requests, testAttempts } from "@/db/schema";
 import { accessState, defaultExpiryDate, grantExpiry, type AccessState } from "@/domain/client-access";
 import { percentOf, type CourseSteps } from "@/domain/completion";
 import { isEmail, normalizeEmail } from "@/domain/email";
@@ -122,15 +123,13 @@ export type ClientRequestRow = {
   wish: "cancel" | "change" | null;
   subject: string | null;
 };
-/** One of her contracts in the drawer: what the list shows (the text itself is in the PDF). */
-export type ClientContractRow = Pick<Contract, "id" | "kind" | "title" | "locale" | "acceptedAt" | "acceptedVia" | "supersededAt" | "sentAt" | "registrationId">;
 export type ClientDetail = {
   client: { id: number; email: string; name: string; ownName: string; phone: string; locale: "et" | "ru"; createdAt: Date };
   registrations: ClientRegistrationRow[];
   requests: ClientRequestRow[];
   access: ClientAccessRow[];
-  /** Her contracts (contracts Task 5), the contact course's and the e-course's, the newest acceptance first, the superseded ones too. */
-  contracts: ClientContractRow[];
+  /** Her contracts (contracts Task 5), the contact course's and the e-course's, the newest acceptance first, the superseded ones too (the text itself is in the PDF). */
+  contracts: ContractView[];
   /** Her address's newsletter (phase 2c): confirmed, waiting for its confirmation, or none. */
   newsletter: NewsletterState;
   /** Her online payments (phase 2b), newest first. */
@@ -220,7 +219,7 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
         certificate: certificateView(certificateOf.get(a.id), a.revokedAt !== null),
       };
     }),
-    contracts: contractRows.map(({ id, kind, title, locale, acceptedAt, acceptedVia, supersededAt, sentAt, registrationId }) => ({ id, kind, title, locale, acceptedAt, acceptedVia, supersededAt, sentAt, registrationId })),
+    contracts: contractRows.map(contractView),
     newsletter,
     payments,
     feedback,
