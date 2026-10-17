@@ -4,6 +4,7 @@ import { test } from "./edit-lock";
 import { submitsForms, expect } from "./test";
 import { LOCAL_ADMINS } from "../local-secrets";
 import { adminReady, signInAsAdmin } from "./admin-login";
+import { holdContractTexts } from "./contracts";
 import { onLocalDb, POST_SLUG_PREFIX, removeAdminRows, removePostRows, snapshotRows, storedSubscriber, testEmail } from "./fixtures";
 
 // Task 13B: the site content editors (home page, practice, trainer, news, campaign, settings), each followed through to
@@ -612,7 +613,9 @@ test.describe("settings", () => {
 
   test("Lepingud (contracts Task 5): the contact contract's title and text are saved with their placeholders listed, a refused title is marked, the sample posts what is on the screen and stores nothing; the e-course contract's card has its own title", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the contract texts; the phone project the privacy page");
-    await changing(["pages", { column: "key", value: "contract_contact" }], ["pages", { column: "key", value: "course_terms" }], ["settings", { column: "key", value: "contractContactVersion" }], ["settings", { column: "key", value: "courseTermsVersion" }]);
+    // (contracts.spec.ts writes the contact text too, and runs beside this one under `next dev`: they take turns, and the turn puts the two rows back)
+    undo.push(await holdContractTexts(info));
+    await changing(["pages", { column: "key", value: "course_terms" }], ["settings", { column: "key", value: "courseTermsVersion" }]);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/seaded");
     await adminReady(page);

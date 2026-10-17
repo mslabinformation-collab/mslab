@@ -169,12 +169,14 @@ export function testEmail(label: string, project: string): string {
 export async function removeFormRows(): Promise<number> {
   const sql = connect();
   try {
+    await sql`delete from contracts where fields->'student'->>'email' like ${TEST_EMAIL_PATTERN}`; // the registrations' contracts (contracts Task 4): their links are set null when the registration goes, so the rows stay
     await sql`delete from registrations where email like ${TEST_EMAIL_PATTERN}`;
     await sql`delete from requests where payload->>'email' like ${TEST_EMAIL_PATTERN}`;
     await sql`delete from subscribers where email like ${TEST_EMAIL_PATTERN}`;
     await sql`delete from payments where email like ${TEST_EMAIL_PATTERN}`;
     const [{ n }] = await sql<{ n: number }[]>`
-      select (select count(*) from registrations where email like ${TEST_EMAIL_PATTERN})
+      select (select count(*) from contracts where fields->'student'->>'email' like ${TEST_EMAIL_PATTERN})
+           + (select count(*) from registrations where email like ${TEST_EMAIL_PATTERN})
            + (select count(*) from requests where payload->>'email' like ${TEST_EMAIL_PATTERN})
            + (select count(*) from subscribers where email like ${TEST_EMAIL_PATTERN})
            + (select count(*) from payments where email like ${TEST_EMAIL_PATTERN})::int as n`;
