@@ -78,7 +78,7 @@ What exists today:
     - Consumer law asks a trader who shows reviews to say whether and how it checks that they come from real customers.
     - This line is the site's statement. It is not legal advice.
 - **D6. Taking permission back** (my call, from consent law).
-  - **From her account.** Today's feedback card disappears once she answers, so the permission lives on the course card itself (the contact course's card and the e-course's card): a quiet line „Lubasid oma soovitust avaldada“ with „Võta luba tagasi“ (Draft), shown while her review exists (my call, from the builder check). Pressing it deletes the review at once, whatever its status, and the public pages refresh.
+  - **From her account.** Today's feedback card disappears once she answers, so the permission lives on the course card itself (the contact course's card, the e-course's card, and an individual course's card (amended 18.10 during the build)): a quiet line „Lubasid oma soovitust avaldada“ with „Võta luba tagasi“ (Draft), shown while her review exists (my call, from the builder check). Pressing it deletes the review at once, whatever its status, and the public pages refresh.
   - **Deleting her account.** Today this already deletes her feedback, and that now deletes the review with it.
   - **What she is not shown.** She does not see whether Maria published or hid it (my call: Maria's choices stay Maria's).
 - **D7. Languages.** A review is shown as written, on both the ET and the RU page. The headings, the notice and the dates follow the page's language.

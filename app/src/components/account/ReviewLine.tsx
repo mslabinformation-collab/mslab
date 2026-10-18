@@ -8,8 +8,8 @@ import cardStyles from "./AccountCourseCard.module.css";
 import styles from "./ReviewLine.module.css";
 
 /**
- * Her permission to publish, on the course card it belongs to (student reviews, D6): while the card has a review (`review`, a contact card's or an
- * e-course's), a quiet line „Lubasid oma soovitust avaldada“ with the text button „Võta luba tagasi“. The press posts /api/konto/arvustus/tagasi
+ * Her permission to publish, on the course card it belongs to (student reviews, D6): while the card has a review (`review`, a contact card's, an
+ * individual course's or an e-course's), a quiet line „Lubasid oma soovitust avaldada“ with the text button „Võta luba tagasi“. The press posts /api/konto/arvustus/tagasi
  * `{ reviewId }`, which deletes the review at once, whatever Maria has done with it (the line never says: Maria's choices stay hers):
  * - 200: the line is gone, and `onWithdrawn` lets the card put the focus on its heading (the button she pressed went with the line);
  * - 404 (Maria deleted it, another tab took it back): the line is gone too, there is no review to take back, and the cards are loaded again
