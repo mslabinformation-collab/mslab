@@ -295,7 +295,7 @@ function feedbackRows(db: Db) {
   return db
     .select({
       id: courseFeedback.id,
-      registrationId: courseFeedback.registrationId,
+      registrationId: registrations.id, // (the joined registration: course_feedback.registration_id is null for an e-course's answer, which this list does not read yet)
       clientId: registrations.clientId,
       name: registrations.name,
       email: registrations.email,

@@ -4,6 +4,7 @@ import type { I18n } from "@/i18n/field";
 import type { FeedbackAnswers } from "@/domain/protocols";
 import type { InvoiceBuyer, InvoiceKind, InvoiceLine, InvoiceSeller, InvoiceStatus, PaidMethod } from "@/domain/invoice";
 import type { AcceptedVia, ContractFields, ContractKind, ContractSnapshot } from "@/domain/contract";
+import type { ReviewKind, ReviewStatus } from "@/domain/review";
 
 export const courseType = pgEnum("course_type", ["e_learning", "contact"]);
 export const courseLevel = pgEnum("course_level", ["basic", "advanced"]);
@@ -374,23 +375,76 @@ export const protocols = pgTable(
 );
 
 /**
- * The end-of-course feedback form of one registration (spec §7): Maria's paper form "Sinu kogemus MS LAB koolitusel", answered online.
- * `answers` holds keys (domain/protocols.ts FEEDBACK_ORDER), never texts, so a wording fix never breaks an old answer. A row is made by
- * the submit (`submittedAt`) or by "Ei soovi" (`dismissedAt`, `answers` null); one per registration. Deleted with the registration, and with
- * the account.
+ * The end-of-course feedback form of one registration (spec §7) or, since the student reviews (spec §3), of one e-course access: Maria's paper
+ * form "Sinu kogemus MS LAB koolitusel", answered online. `answers` holds keys (domain/protocols.ts FEEDBACK_ORDER), never texts, so a wording
+ * fix never breaks an old answer. A row is made by the submit (`submittedAt`) or by "Ei soovi" (`dismissedAt`, `answers` null). Exactly one of
+ * `registrationId` (a contact course's) and `accessId` (an e-course's, once it is completed) is set (course_feedback_one_target); one row per
+ * registration and per access. Deleted with the registration or the access, and with the account.
  */
 export const courseFeedback = pgTable(
   "course_feedback",
   {
     id: serial("id").primaryKey(),
-    registrationId: integer("registration_id").notNull().references(() => registrations.id, { onDelete: "cascade" }),
+    /** A contact registration's feedback; null for an e-course access's (`accessId`). */
+    registrationId: integer("registration_id").references(() => registrations.id, { onDelete: "cascade" }),
+    /** An e-course access's feedback (student reviews, D3); null for a registration's. */
+    accessId: integer("access_id").references(() => courseAccess.id, { onDelete: "cascade" }),
     answers: jsonb("answers").$type<FeedbackAnswers>(),
     locale: text("locale").$type<"et" | "ru">(),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("course_feedback_registration").on(t.registrationId), index("course_feedback_submitted").on(t.submittedAt)],
+  (t) => [
+    uniqueIndex("course_feedback_registration").on(t.registrationId),
+    uniqueIndex("course_feedback_access").on(t.accessId),
+    index("course_feedback_submitted").on(t.submittedAt),
+    check("course_feedback_one_target", sql`(${t.registrationId} is null) <> (${t.accessId} is null)`),
+  ],
+);
+
+// ---------- student reviews (phase 4, piece 4) ----------
+
+/**
+ * One review of a course (spec §3): a graduate's answer to „Kas soovitaksid seda koolitust ka teistele? Miks?“, published under the course with
+ * her permission and Maria's approval, or one Maria added from elsewhere. A `student` review is made in the transaction of the feedback's submit
+ * (`feedbackId`), as a copy of the answer and of the name she chose to be shown under: `text` and `name` are never updated afterwards, and a
+ * later change of her account name does not touch them; Maria changes only `status`, `featured` and `decidedAt`. A `manual` review has no
+ * feedback, carries Maria's internal source `note`, and is the only kind she may edit or delete. `status` is pending (waiting for Maria),
+ * published (shown, when its course is published) or hidden; `featured` also puts a published review on the home page and keeps its value while
+ * hidden. `writtenAt` is the feedback's submit time, or the date Maria gives. Deleted when the student takes her permission back, with its
+ * feedback (so with the registration, the access or the account it belongs to) and with its course. One review per feedback (reviews_feedback).
+ */
+export const reviews = pgTable(
+  "reviews",
+  {
+    id: serial("id").primaryKey(),
+    courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+    /** The feedback this review was made from; null for a manual review. */
+    feedbackId: integer("feedback_id").references(() => courseFeedback.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<ReviewKind>().notNull(),
+    /** Shown as written, on both languages' pages (domain/review.ts REVIEW_TEXT_MAX). */
+    text: text("text").notNull(),
+    /** The name shown under the text (domain/review.ts REVIEW_NAME_MAX), as typed at the consent. */
+    name: text("name").notNull(),
+    /** The language it was written in. */
+    locale: text("locale").$type<"et" | "ru">().notNull(),
+    writtenAt: timestamp("written_at", { withTimezone: true }).notNull(),
+    status: text("status").$type<ReviewStatus>().notNull(),
+    /** „Avalehel“: a published review shown on the home page too. */
+    featured: boolean("featured").notNull().default(false),
+    /** When Maria last published or hid it; null while pending. */
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** Maria's internal „Kust see pärit on?“, for a manual review only; never shown publicly. */
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("reviews_feedback").on(t.feedbackId),
+    // (nullsFirst is Postgres's own order for DESC, so that `order by written_at desc` can use the index; the column is never null)
+    index("reviews_course_status").on(t.courseId, t.status, t.writtenAt.desc().nullsFirst()),
+  ],
 );
 
 // ---------- phase 3a: modules, lessons, files, progress ----------
@@ -766,3 +820,4 @@ export type PracticalPhoto = typeof practicalPhotos.$inferSelect;
 export type Certificate = typeof certificates.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
 export type Contract = typeof contracts.$inferSelect;
+export type Review = typeof reviews.$inferSelect;
