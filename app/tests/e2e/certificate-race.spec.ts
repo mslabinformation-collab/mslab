@@ -1,15 +1,14 @@
 import type { TestInfo } from "@playwright/test";
-import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import type { Db } from "../../src/db/client";
-import * as schema from "../../src/db/schema";
 import { readCertificateSettings, tallinnYear } from "../../src/domain/certificate";
 import { issueCertificate, type IssueResult } from "../../src/server/certificates";
 import { clientEmail } from "./account";
 import { completedCourse, NUMBER_LOCK, storedCertificate, storedCertificateSetting } from "./certificate";
 import type { CompletionCourse } from "./completion";
-import { holdLocalLock, localDatabaseUrl, LOCK_WAIT_MS, onLocalDb, removeClientRows } from "./fixtures";
+import { holdLocalLock, LOCK_WAIT_MS, onLocalDb, removeClientRows } from "./fixtures";
 import { runName } from "./protocols";
+import { lockWaits, racePool, type Waiting } from "./race";
 import { expect, submitsForms, test } from "./test";
 
 // Spec §10 "Real Postgres (e2e)" and Review Focus 1: what the unit tests' single-connection PGlite cannot show. The app's own issueCertificate,
@@ -31,8 +30,7 @@ let pool: postgres.Sql | null = null;
 let db: Db;
 
 test.beforeAll(() => {
-  pool = postgres(localDatabaseUrl(), { max: 6, connect_timeout: 20, onnotice: () => {}, connection: { application_name: APPLICATION } });
-  db = drizzle(pool, { schema }) as unknown as Db;
+  ({ pool, db } = racePool(APPLICATION));
 });
 test.afterAll(async () => {
   await pool?.end();
@@ -45,25 +43,6 @@ test.afterEach(async () => {
   for (const email of made) await removeClientRows(email);
   made.clear();
 });
-
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-type Waiting = { query: string; wait_event: string | null };
-/**
- * This pool's backends that wait for a lock (pg_stat_activity by its application_name), asked again every 50 ms until there are `n` of them, or
- * `gone()` says the work it waits for is over, or `ms` have passed: a test proves the wait instead of sleeping and hoping.
- */
-async function lockWaits(n: number, gone: () => boolean, ms = 15_000): Promise<Waiting[]> {
-  const until = Date.now() + ms;
-  for (;;) {
-    const waiting = await onLocalDb(
-      (other) => other<Waiting[]>`select query, wait_event from pg_stat_activity where application_name = ${APPLICATION} and wait_event_type = 'Lock'`,
-      { marksPages: false },
-    );
-    if (waiting.length >= n || gone() || Date.now() > until) return waiting;
-    await pause(50);
-  }
-}
 
 /** What one waiting backend waits at: the number's lock, her access row, or (for the failure message) its query. */
 const waitsAt = (w: Waiting) => (/pg_advisory_xact_lock/i.test(w.query) ? "number" : /from "?course_access"?[\s\S]*\bfor update\b/i.test(w.query) ? "access" : w.query);
@@ -88,7 +67,7 @@ async function atOnce(calls: () => Promise<IssueResult>[], at: string[]): Promis
               () => settled++,
               () => settled++,
             );
-          const waiting = await lockWaits(running.length, () => settled > 0);
+          const waiting = await lockWaits(APPLICATION, running.length, () => settled > 0);
           expect(settled, "an issue went past the locks while the number's lock was held").toBe(0);
           expect(waiting.map(waitsAt).sort(), "where each issue waits (server/certificates.ts issueCertificate)").toEqual([...at].sort());
         }),
@@ -102,7 +81,7 @@ async function atOnce(calls: () => Promise<IssueResult>[], at: string[]): Promis
 
 /** A student (`name`) with a completed access to an e-course of her own. */
 async function student(label: string, info: TestInfo, name: string): Promise<CompletionCourse> {
-  const email = clientEmail(`cert-race-${label}`, runName(info));
+  const email = clientEmail(`certrace-${label}`, runName(info));
   made.add(email);
   await removeClientRows(email);
   return completedCourse(email, name);

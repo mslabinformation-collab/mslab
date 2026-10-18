@@ -3,18 +3,17 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { APIResponse, Page, TestInfo } from "@playwright/test";
-import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import type { Db } from "../../src/db/client";
-import * as schema from "../../src/db/schema";
 import type { FileStore } from "../../src/server/media";
 import { localStore } from "../../src/server/media-local";
 import { addPhoto, submitPractical, type PhotoInput, type PracticalDeps } from "../../src/server/practical";
 import { submitAttempt } from "../../src/server/test-attempts";
 import { clientEmail, signInAsClient } from "./account";
 import { E2E_POINTS, E2E_QUESTIONS, insertCompletionCourse, storedAttempts, storedPhotos, storedProtocolOf, type CompletionCourse } from "./completion";
-import { holdLocalLock, localDatabaseUrl, LOCK_WAIT_MS, onLocalDb, removeClientRows } from "./fixtures";
+import { holdLocalLock, LOCK_WAIT_MS, onLocalDb, removeClientRows } from "./fixtures";
 import { runName } from "./protocols";
+import { lockWaits, pause, racePool } from "./race";
 import { expect, submitsForms, test } from "./test";
 
 // Spec §9 "Real Postgres" and Review Focus 2 (two devices, or a double tap): what the unit tests' single-connection PGlite cannot show. The
@@ -43,8 +42,7 @@ let dir = "";
 let store: FileStore;
 
 test.beforeAll(() => {
-  pool = postgres(localDatabaseUrl(), { max: 6, connect_timeout: 20, onnotice: () => {}, connection: { application_name: APPLICATION } });
-  db = drizzle(pool, { schema }) as unknown as Db;
+  ({ pool, db } = racePool(APPLICATION));
 });
 test.afterAll(async () => {
   await pool?.end();
@@ -60,25 +58,6 @@ test.afterEach(async () => {
   made.clear();
   rmSync(dir, { recursive: true, force: true });
 });
-
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-type Waiting = { query: string; wait_event: string | null };
-/**
- * This pool's backends that wait for a lock (pg_stat_activity by its application_name), asked again every 50 ms until there are `n` of them, or
- * `gone()` says the work it waits for is over, or `ms` have passed: a test proves the wait instead of sleeping and hoping.
- */
-async function lockWaits(n: number, gone: () => boolean, ms = 15_000): Promise<Waiting[]> {
-  const until = Date.now() + ms;
-  for (;;) {
-    const waiting = await onLocalDb(
-      (other) => other<Waiting[]>`select query, wait_event from pg_stat_activity where application_name = ${APPLICATION} and wait_event_type = 'Lock'`,
-      { marksPages: false },
-    );
-    if (waiting.length >= n || gone() || Date.now() > until) return waiting;
-    await pause(50);
-  }
-}
 
 type Job = () => Promise<unknown>;
 /** The dependencies of the practical work's and the test's calls; their mails and notices are collected, never run: nothing is mailed. */
@@ -133,7 +112,7 @@ async function atOnce<T>(accessId: number, calls: () => Promise<T>[]): Promise<T
               () => settled++,
               () => settled++,
             );
-          const waiting = await lockWaits(running.length, () => settled > 0);
+          const waiting = await lockWaits(APPLICATION, running.length, () => settled > 0);
           expect(settled, "a call went past her access row's lock while it was held").toBe(0);
           expect(waiting, "this pool's backends that wait for a lock: every call").toHaveLength(running.length);
           for (const w of waiting) expect(w.query, "what each call waits at (server/completion.ts lockAccess)").toMatch(/from "?course_access"?[\s\S]*\bfor update\b/i);
@@ -187,7 +166,7 @@ test("the lock order: a submit waits while another transaction holds her access 
           () => (finished = true),
           () => (finished = true),
         );
-        const waiting = await lockWaits(1, () => finished);
+        const waiting = await lockWaits(APPLICATION, 1, () => finished);
         expect(finished, "the submit went past the access row's lock while it was held").toBe(false);
         expect(waiting, "this pool's backends that wait for a lock: the submit's").toHaveLength(1);
         expect(waiting[0].query, "what the submit waits at (server/completion.ts lockAccess)").toMatch(/from "?course_access"?[\s\S]*\bfor update\b/i);
