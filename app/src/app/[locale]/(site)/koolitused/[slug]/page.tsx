@@ -12,6 +12,7 @@ import { Icon } from "@/components/site/Icon";
 import { IncludesList } from "@/components/site/IncludesList";
 import { ModuleList } from "@/components/site/ModuleList";
 import { Recommendations } from "@/components/site/Recommendations";
+import { ReviewList } from "@/components/site/ReviewList";
 import { trainerSettings } from "@/components/site/settings";
 import { ShareButton } from "@/components/site/ShareButton";
 import { TrainerCard, TrainerLink, type TrainerInfo } from "@/components/site/TrainerLink";
@@ -35,6 +36,7 @@ import { mediaUrl } from "@/lib/media";
 import styles from "./course.module.css";
 import { upcomingFrom } from "@/domain/calendar";
 import { contractTemplate } from "@/server/contracts";
+import { courseReviews } from "@/server/reviews";
 import { shareMetadata } from "@/server/share-meta";
 import { getSiteSettings } from "@/server/site-data";
 
@@ -77,8 +79,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 /**
  * Course page (Task 8, P1–P16) on prototype B's detail layout: gallery left, facts and the type's own purchase or
  * registration right. A course is either e-learning (buy now) or contact (register for a date or ask for an individual
- * course); the page never offers another format (K1, K2). Description, outcomes, contents, trainer and recommendations
- * follow below, recommendations last (P5).
+ * course); the page never offers another format (K1, K2). Description, outcomes, contents, the students' reviews (when the
+ * course has published ones), trainer and recommendations follow below, recommendations last (P5).
  */
 export default async function CoursePage({ params }: Props) {
   const { locale, slug } = await params;
@@ -88,13 +90,15 @@ export default async function CoursePage({ params }: Props) {
   const d = getDict(locale);
   const to = (path: string) => href(locale, path);
   const db = getDb();
-  const [all, upcoming, settings, bio, template] = await Promise.all([
+  const [all, upcoming, settings, bio, template, reviews] = await Promise.all([
     listPublishedCourses(db),
     listUpcomingSessions(db, upcomingFrom(new Date())),
     getSiteSettings(),
     getPage(db, "trainer_bio"),
     // the group registration's contract (contracts, D1), in this page's language when its text has one: the form fills it live
     course.type === "e_learning" ? null : contractTemplate(db, "contact", locale),
+    // the course's published reviews (student reviews, D5): its block, between the content and the trainer's card
+    courseReviews(db, course.id),
   ]);
 
   const c = d.course;
@@ -337,6 +341,8 @@ export default async function CoursePage({ params }: Props) {
           )}
         </div>
       </section>
+
+      <ReviewList reviews={reviews} locale={locale} variant="course" />
 
       {trainer.name && (
         <section className={`${ui.wrap} ${styles.trainer}`} aria-label={d.trainer.eyebrow}>

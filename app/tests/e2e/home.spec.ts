@@ -1,5 +1,6 @@
+import type { Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
-import { LOCAL_FIXTURES, storedRequests, testEmail } from "./fixtures";
+import { insertReviewFixtures, LOCAL_FIXTURES, removeReviewFixtures, storedRequests, testEmail } from "./fixtures";
 
 // Home page (Task 7): Maria's section decisions H1–H17, G5, K5, K8, K11, K12.
 // The first two tests are the brief's tests verbatim; the step-geometry test describes the horizontal row,
@@ -460,5 +461,93 @@ test.describe("home content from the database", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth), p).toBeLessThanOrEqual(w);
     }
     expect(errors).toEqual([]);
+  });
+});
+
+// Student reviews on the home page (student reviews, Task 5; spec D5): the section „Õpilaste kogemused“ after the trainer section, with the published
+// reviews that are featured, each naming its course. The reviews are written to the local database for the test and deleted by their ids afterwards.
+// Desktop project only: a featured review shows on the home page whatever its course, so a second project writing at the same time would be counted
+// (the phone is tried at 390 below). They use the two e-courses, which the course page's review tests do not.
+test.describe("student reviews on the home page", () => {
+  test.skip(({ isMobile }) => isMobile, "the desktop project sets each width, and only one project writes featured reviews at a time");
+  test.skip(!LOCAL_FIXTURES, "writes reviews to the local database");
+  const FIRST = "kulmukuju-ja-summeetria";
+  const SECOND = "ripsmete-laminatsiooni-alused";
+  const featured = (n: number, over: { locale?: "et" | "ru"; offset?: number } = {}) =>
+    Array.from({ length: n }, (_, i) => ({ name: `E2E Mari ${i + 1 + (over.offset ?? 0)}.`, text: `E2E Soovitaksin ${i + 1 + (over.offset ?? 0)}.`, featured: true, locale: over.locale, daysAgo: 1 + i + (over.offset ?? 0) }));
+  const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+
+  test("the section after the trainer section: the six newest featured reviews, each with its course as a link; a review not featured is not there; the notice is under them", async ({ page }) => {
+    const ids = [
+      ...(await insertReviewFixtures(FIRST, featured(4))), // the newest four
+      ...(await insertReviewFixtures(SECOND, featured(4, { offset: 4 }))), // and four older ones: the oldest two do not fit
+      ...(await insertReviewFixtures(FIRST, [{ name: "E2E Ei ole avalehel.", text: "E2E Ainult koolituse lehel.", daysAgo: 0 }])),
+    ];
+    try {
+      await page.goto("/");
+      const section = page.locator('[data-reviews="home"]');
+      await expect(section.getByRole("heading", { level: 2, name: "Õpilaste kogemused" })).toBeVisible();
+      // right after the trainer section
+      expect(await section.evaluate((el) => el.previousElementSibling?.hasAttribute("data-trainer-teaser"))).toBe(true);
+      const items = section.locator("[data-review]");
+      await expect(items).toHaveCount(6);
+      // its own look: a plain block with its own space below, words that are not a link's, and the course's title underlined as a link is
+      expect(await section.evaluate((el) => { const s = getComputedStyle(el); return [s.display, parseFloat(s.paddingBottom) >= 56]; })).toEqual(["block", true]);
+      expect(await items.first().locator("blockquote").evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("none");
+      expect(await items.first().getByRole("link").evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("underline");
+      await expect(items.locator("blockquote")).toHaveText(Array.from({ length: 6 }, (_, i) => `E2E Soovitaksin ${i + 1}.`));
+      await expect(items.first()).toContainText("E2E Mari 1.");
+      await expect(section).not.toContainText("E2E Ainult koolituse lehel.");
+      await expect(section.getByRole("button")).toHaveCount(0); // (no „Näita kõiki“ here)
+      const links = items.getByRole("link");
+      await expect(links.first()).toHaveAttribute("href", `/koolitused/${FIRST}`);
+      await expect(links.nth(4)).toHaveAttribute("href", `/koolitused/${SECOND}`);
+      await expect(section.locator("[data-reviews-notice]")).toHaveText("Tagasiside on MS LAB-i koolituse läbinud õpilastelt. Avaldame selle õpilase loal ja pärast kontrolli.");
+      expect(await section.innerText()).not.toMatch(/[★☆]|keskmine|hinne/i);
+      // the course's title is a link to its page
+      await links.first().click();
+      await expect(page).toHaveURL(new RegExp(`/koolitused/${FIRST}$`));
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    } finally {
+      await removeReviewFixtures(ids);
+    }
+    await page.goto("/");
+    await expect(page.locator("[data-reviews]")).toHaveCount(0); // none featured: no section, no heading, no notice
+    await expect(page.getByText("Õpilaste kogemused")).toHaveCount(0);
+  });
+
+  test("the Russian home page: its heading and notice, the course's title and the link under /ru, the words as written", async ({ page }) => {
+    const ids = await insertReviewFixtures(FIRST, featured(2));
+    try {
+      await page.goto("/ru");
+      const section = page.locator('[data-reviews="home"]');
+      await expect(section.getByRole("heading", { level: 2, name: "Опыт учеников" })).toBeVisible();
+      await expect(section.locator("[data-reviews-notice]")).toContainText("Отзывы оставляют ученики, прошедшие обучение в");
+      await expect(section.locator("[data-review]").first().getByRole("link")).toHaveAttribute("href", `/ru/koolitused/${FIRST}`);
+      await expect(section.locator("blockquote").first()).toHaveAttribute("lang", "et");
+      await expect(section.locator("blockquote").first()).toHaveText("E2E Soovitaksin 1.");
+    } finally {
+      await removeReviewFixtures(ids);
+    }
+  });
+
+  test("at 390, 834, 1194 and 1440: the page never scrolls sideways, the cards sit in 1, 2, 3 and 3 columns, and every link is at least 44 px tall", async ({ page }) => {
+    const ids = [...(await insertReviewFixtures(FIRST, [{ name: `E2E ${"M".repeat(36)}`, text: `Pikk${"sõna".repeat(100)}`, featured: true }, ...featured(2, { offset: 1 })])), ...(await insertReviewFixtures(SECOND, featured(3, { offset: 3 })))];
+    try {
+      for (const [width, columns] of [[390, 1], [834, 2], [1194, 3], [1440, 3]] as const) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto("/");
+        const section = page.locator('[data-reviews="home"]');
+        const items = section.locator("[data-review]");
+        await expect(items, `${width}`).toHaveCount(6);
+        expect(await noOverflow(page), `${width}: no sideways scroll`).toBe(true);
+        const boxes = await items.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));
+        expect(boxes.filter((b) => Math.round(b.top) === Math.round(boxes[0].top)).length, `${width}: columns`).toBe(columns);
+        for (const b of boxes) expect(b.right, `${width}: inside the screen`).toBeLessThanOrEqual(width);
+        for (const link of await section.getByRole("link").all()) expect((await link.boundingBox())!.height, `${width}: a link`).toBeGreaterThanOrEqual(44);
+      }
+    } finally {
+      await removeReviewFixtures(ids);
+    }
   });
 });

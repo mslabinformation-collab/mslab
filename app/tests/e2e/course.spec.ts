@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
 import { clientEmail, holdTerms, insertClient, signInAsClient, storedAccess, storedClient } from "./account";
-import { LOCAL_FIXTURES, removeClientRows, storedHold, storedPayments, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
+import { insertReviewFixtures, LOCAL_FIXTURES, removeClientRows, removeReviewFixtures, storedHold, storedPayments, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
 import { E2E_MONTONIO } from "./montonio-values";
 
 // Course pages (Task 8): Maria's P1–P16. The first two tests are the brief's tests, verbatim except:
@@ -554,6 +554,132 @@ test.describe("cart (/ostukorv)", () => {
       await page.goto(p);
       await expect(page.getByRole("heading", { name: "Ostukorv on tühi" }), p).toBeVisible();
       await expect(page.getByRole("link", { name: /Vaata e-õppe koolitusi/ })).toHaveAttribute("href", "/koolitused?vorm=e");
+    }
+  });
+});
+
+// Student reviews on the course page (student reviews, Task 5; spec D5, D7): the block after the course's content and before the trainer's card, six at
+// first and „Näita kõiki“ for the rest. The reviews are written to the local database for the test and deleted by their ids afterwards. The desktop
+// and the phone project each use their own course, so that they never count each other's reviews.
+test.describe("student reviews on the course page", () => {
+  test.skip(!LOCAL_FIXTURES, "writes reviews to the local database");
+  const courseOf = (project: string) => (project === "mobile" ? "kulmude-lami" : "lash-lift-botox");
+  const reviewsOf = (n: number) => Array.from({ length: n }, (_, i) => ({ name: `E2E Mari ${i + 1}.`, text: `E2E Soovitaksin ${i + 1}.\n\nTeine lõik ${i + 1}.` }));
+  const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+
+  test("six reviews and „Näita kõiki (2)“: the rest opens in place with no request, the button goes, the focus is on the first new review and Tab continues after it", async ({ page, isMobile }, info) => {
+    const slug = courseOf(info.project.name);
+    const ids = await insertReviewFixtures(slug, reviewsOf(8));
+    try {
+      await page.goto(`/koolitused/${slug}`);
+      const block = page.locator('[data-reviews="course"]');
+      await expect(block.getByRole("heading", { level: 2, name: "Õpilaste tagasiside" })).toBeVisible();
+      // after the course's content ("Koolitusest" and the others) and before the trainer's card
+      expect(await block.evaluate((el) => [el.previousElementSibling?.getAttribute("aria-label"), !!el.nextElementSibling?.querySelector("[data-trainer-card]")])).toEqual(["Koolitusest", true]);
+
+      const items = block.locator("[data-review]");
+      await expect(items).toHaveCount(6);
+      // its own look: a plain block with space above it (as the trainer's card has), and words that are not a link's
+      expect(await block.evaluate((el) => { const s = getComputedStyle(el); return [s.display, parseFloat(s.marginTop) >= 56]; })).toEqual(["block", true]);
+      expect(await items.first().locator("blockquote").evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("none");
+      await expect(items.first()).toContainText("E2E Soovitaksin 1.");
+      await expect(items.first().locator("p")).toHaveText(["E2E Soovitaksin 1.", "Teine lõik 1."]); // (paragraphs)
+      await expect(items.first()).toContainText("E2E Mari 1.");
+      await expect(items.first()).toContainText(/\d{4}/); // (the month and year)
+      await expect(block.locator("[data-reviews-notice]")).toHaveText("Tagasiside on MS LAB-i koolituse läbinud õpilastelt. Avaldame selle õpilase loal ja pärast kontrolli.");
+      expect(await block.innerText()).not.toMatch(/[★☆]|keskmine|hinne/i); // (no stars, no score, no average)
+      expect(await noOverflow(page)).toBe(true);
+
+      const more = block.getByRole("button", { name: "Näita kõiki (2)" });
+      await expect(more).toBeVisible();
+      expect((await more.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+      const requests: string[] = [];
+      page.on("request", (r) => requests.push(new URL(r.url()).pathname));
+      if (isMobile) await more.tap();
+      else {
+        await more.focus();
+        await page.keyboard.press("Enter");
+      }
+      await expect(items).toHaveCount(8);
+      await expect(more).toHaveCount(0);
+      await expect(items.nth(6)).toBeFocused(); // the first review newly shown
+      await expect(items.nth(6)).toHaveAttribute("tabindex", "-1");
+      await expect(items.nth(6)).toContainText("E2E Soovitaksin 7.");
+      expect(requests.filter((p) => p.startsWith("/api/") || p === `/koolitused/${slug}`)).toEqual([]); // (it needed no request)
+      expect(await noOverflow(page)).toBe(true);
+      // the notice is still the last thing in the block
+      expect(await block.evaluate((el) => (el.querySelector("[data-reviews-notice]")!.compareDocumentPosition(el.querySelector("[data-review]:last-child")!) & Node.DOCUMENT_POSITION_PRECEDING) !== 0)).toBe(true);
+
+      if (!isMobile) {
+        await page.keyboard.press("Tab");
+        // Tab goes on from the review that was focused, not back to the top of the page
+        expect(await items.nth(6).evaluate((li) => (li.compareDocumentPosition(document.activeElement!) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)).toBe(true);
+      }
+    } finally {
+      await removeReviewFixtures(ids);
+    }
+  });
+
+  test("with six reviews there is no button; with none there is no block, heading or notice", async ({ page }, info) => {
+    const slug = courseOf(info.project.name);
+    const ids = await insertReviewFixtures(slug, reviewsOf(6));
+    try {
+      await page.goto(`/koolitused/${slug}`);
+      await expect(page.locator('[data-reviews="course"] [data-review]')).toHaveCount(6);
+      await expect(page.locator("[data-reviews-more]")).toHaveCount(0);
+    } finally {
+      await removeReviewFixtures(ids);
+    }
+    await page.goto(`/koolitused/${slug}`);
+    await expect(page.locator("[data-reviews]")).toHaveCount(0);
+    await expect(page.getByText("Õpilaste tagasiside")).toHaveCount(0);
+    await expect(page.getByText("Tagasiside on MS LAB-i koolituse läbinud õpilastelt")).toHaveCount(0);
+  });
+
+  test("the Russian page: its own heading, notice, button and month; a review is shown as written, marked with its own language", async ({ page }, info) => {
+    const slug = courseOf(info.project.name);
+    const ids = await insertReviewFixtures(slug, [...reviewsOf(6), { name: "Мария М.", text: "Рекомендую всем!", locale: "ru", daysAgo: 20 }]);
+    try {
+      await page.goto(`/ru/koolitused/${slug}`);
+      const block = page.locator('[data-reviews="course"]');
+      await expect(block.getByRole("heading", { level: 2, name: "Отзывы учеников" })).toBeVisible();
+      await expect(block.locator("[data-reviews-notice]")).toContainText("Отзывы оставляют ученики, прошедшие обучение в");
+      await expect(block.getByRole("button", { name: "Показать все (1)" })).toBeVisible();
+      await expect(block.locator("blockquote").first()).toHaveAttribute("lang", "et"); // (Estonian words on a Russian page)
+      await expect(block.locator("[data-review]").first()).toContainText(/окт\.|нояб\.|дек\.|янв\.|февр\.|мар\.|апр\.|мая|июн\.|июл\.|авг\.|сент\./);
+      await block.getByRole("button", { name: "Показать все (1)" }).click();
+      const last = block.locator("[data-review]").last();
+      await expect(last).toContainText("Рекомендую всем!");
+      await expect(last.locator("blockquote")).not.toHaveAttribute("lang", /./); // (the page's own language needs no mark)
+    } finally {
+      await removeReviewFixtures(ids);
+    }
+  });
+
+  test("at 390, 834, 1194 and 1440: the page never scrolls sideways, the cards sit in 1, 2, 3 and 3 columns, and every control is at least 44 px tall", async ({ page, isMobile }, info) => {
+    test.skip(isMobile, "the desktop project sets each width");
+    const slug = courseOf(info.project.name);
+    // one card with a name of 40 letters and a word of 400, to try to break the width
+    const ids = await insertReviewFixtures(slug, [{ name: `E2E ${"M".repeat(36)}`, text: `Pikk${"sõna".repeat(100)}` }, ...reviewsOf(7)]);
+    try {
+      for (const [width, columns] of [[390, 1], [834, 2], [1194, 3], [1440, 3]] as const) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`/koolitused/${slug}`);
+        const block = page.locator('[data-reviews="course"]');
+        const items = block.locator("[data-review]");
+        for (const phase of ["at first", "all open"]) {
+          if (phase === "all open") await block.getByRole("button", { name: /^Näita kõiki/ }).click();
+          await expect(items, `${width} ${phase}`).toHaveCount(phase === "at first" ? 6 : 8);
+          expect(await noOverflow(page), `${width} ${phase}: no sideways scroll`).toBe(true);
+          const boxes = await items.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));
+          expect(boxes.filter((b) => Math.round(b.top) === Math.round(boxes[0].top)).length, `${width} ${phase}: columns`).toBe(columns);
+          for (const b of boxes) expect(b.right, `${width} ${phase}: inside the screen`).toBeLessThanOrEqual(width);
+          for (const control of await block.locator("a, button").all()) expect((await control.boundingBox())!.height, `${width} ${phase}: a control`).toBeGreaterThanOrEqual(44);
+        }
+      }
+    } finally {
+      await removeReviewFixtures(ids);
     }
   });
 });

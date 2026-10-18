@@ -1,0 +1,143 @@
+/* The student reviews on the public pages (student reviews, spec D5): the course page's block and the home page's section. Prototype D's review
+   cards (.rev: a line, a 20px radius, 28px inside) are the picture; the type and spacing are the site's own, and the colours are tokens only.
+   A review is a card of its words (the body font, as the course page's prose: they run to 2000 characters), its name and month, and on the home
+   page its course. No stars, no score. */
+
+/* The course page: a block under the course's content, spaced as the trainer's card below it. */
+.courseSection {
+  margin-top: clamp(56px, 6vw, 90px);
+}
+
+/* The home page: after the trainer section, which leaves its own space above. */
+.homeSection {
+  padding: 0 0 clamp(56px, 7vw, 100px);
+}
+
+/* Course page .h2 */
+.courseTitle {
+  margin: 0 0 24px;
+  font: 400 clamp(26px, 2.4vw, 32px) / 1.15 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* with ui.h2 */
+.homeTitle {
+  margin-bottom: clamp(28px, 3vw, 40px);
+}
+
+.list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  min-width: 0;
+  border-radius: var(--r-card);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
+  margin: 0;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--paper);
+}
+
+.text {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+/* a line break the student typed stays a line break */
+.text p {
+  margin: 0 0 12px;
+  white-space: pre-line;
+}
+
+.text p:last-child {
+  margin-bottom: 0;
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: auto;
+  min-width: 0;
+}
+
+.person {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  overflow-wrap: anywhere;
+}
+
+.name {
+  font: 600 15px/1.4 var(--font-body);
+}
+
+.month {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* the home page's link to the review's course (44 px tall, as the site's other text links) */
+.courseLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-size: 14px;
+  text-decoration: underline;
+  text-decoration-color: var(--iced);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.courseLink:hover {
+  text-decoration-color: currentColor;
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  margin-top: 32px;
+}
+
+.notice {
+  max-width: 640px;
+  margin: 28px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+@media (max-width: 1180px) {
+  .list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card {
+    padding: 22px;
+  }
+}

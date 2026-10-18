@@ -3586,6 +3586,115 @@
       "markedAt": "deploy"
     },
     {
+      "id": "kontakt-arvustus-plokk",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Tagasiside plokk koolituse lehel",
+      "href": "/koolitused",
+      "steps": [
+        "Ava telefonis kontaktkoolituse leht, millele Proov 1 registreerus.",
+        "Keri alla „Õppekava“ järele, kuni jõuad plokini „Õpilaste tagasiside“.",
+        "Loe plokki ja märkust selle all."
+      ],
+      "expect": [
+        "Plokk „Õpilaste tagasiside“ on pärast „Õppekava“ ja enne koolitaja kaarti.",
+        "Plokis on Proov 1 sõnad nii, nagu ta need kirjutas, tema nimi ning kuu ja aasta.",
+        "Plokis ei ole hinnet, tähti ega keskmist.",
+        "Märkus all on „Tagasiside on MS LAB-i koolituse läbinud õpilastelt. Avaldame selle õpilase loal ja pärast kontrolli.“.",
+        "Nuppu „Näita kõiki“ ei ole, sest arvustusi on vähem kui seitse.",
+        "Midagi ei ulatu ekraani servast välja ja tekst on loetav."
+      ],
+      "why": "Külastaja näeb koolituse lehel, mida varasemad õpilased koolitusest arvavad.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-arvustus-naita-koiki",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Tagasiside: Näita kõiki",
+      "href": "/admin/tagasiside?vaade=arvustused",
+      "steps": [
+        "Ava „Tagasiside“, vajuta „Arvustused“ ja „Lisa arvustus“.",
+        "Lisa kuus arvustust kontaktkoolitusele, millele Proov 1 registreerus: nimed Proov Käsitsi 1 kuni 6, tekst ja allikas Proov.",
+        "Ava selle koolituse leht ja keri plokini „Õpilaste tagasiside“.",
+        "Vajuta klaviatuuril Tab, kuni nupp „Näita kõiki“ on valitud, ja siis Enter.",
+        "Vajuta Tab veel kord.",
+        "Kustuta halduses kõik kuus Proov Käsitsi arvustust: „Kustuta“ ja „Jah, kustuta“.",
+        "Ava koolituse leht uuesti."
+      ],
+      "expect": [
+        "Kõik kuus uut arvustust on kohe „Avaldatud“.",
+        "Koolituse lehel on plokis kuus arvustust ja nupp „Näita kõiki (1)“, nupu all märkus.",
+        "Enteri järel ilmub seitsmes arvustus kohe; leht ei laadi uuesti ega hüppa algusesse.",
+        "Nupp kaob ja äsja ilmunud arvustuse ümber on nähtav raam.",
+        "Tab viib edasi lehe järgmise lingi juurde pärast arvustust, mitte lehe algusesse.",
+        "Märkus jääb plokis kõige viimaseks.",
+        "Pärast kustutamist on plokis jälle ainult Proov 1 sõnad ja nuppu ei ole."
+      ],
+      "why": "Kui koolitusel on üle kuue arvustuse, peab külastaja ülejäänud kätte saama.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-arvustus-avaleht",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Avalehe jaotis „Õpilaste kogemused“",
+      "href": "/",
+      "steps": [
+        "Ava avaleht telefonis ja keri koolitaja jaotise juurde.",
+        "Keri edasi, kuni jõuad jaotiseni „Õpilaste kogemused“.",
+        "Loe Proov 1 kaarti ja märkust selle all.",
+        "Vajuta kaardil koolituse nimele."
+      ],
+      "expect": [
+        "Jaotis „Õpilaste kogemused“ on koolitaja jaotise järel ja enne jaotist „Praktika“.",
+        "Kaardil on Proov 1 sõnad, nimi, kuu ja aasta ning koolituse nimi.",
+        "Kaardil ei ole hinnet, tähti ega keskmist ja jaotises ei ole nuppu „Näita kõiki“.",
+        "Märkus „Tagasiside on MS LAB-i koolituse läbinud õpilastelt. …“ on jaotise lõpus.",
+        "Koolituse nimele vajutades avaneb selle koolituse leht.",
+        "Midagi ei ulatu ekraani servast välja ja koolituse nime on sõrmega lihtne puudutada."
+      ],
+      "why": "Avalehel näeb külastaja kohe, mida õpilased koolitustest arvavad.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-arvustus-vene-keeles",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "any",
+      "title": "Arvustused vene keeles",
+      "href": "/ru",
+      "steps": [
+        "Ava venekeelne avaleht ja keri jaotiseni „Опыт учеников“.",
+        "Vajuta Proov 1 kaardil koolituse nimele.",
+        "Keri koolituse lehel plokini „Отзывы учеников“."
+      ],
+      "expect": [
+        "Avalehe jaotise pealkiri on „Опыт учеников“ ja kuu on vene keeles, näiteks „окт. 2026“.",
+        "Koolituse nimi on vene keeles või, kui tõlget pole, eesti keeles.",
+        "Proov 1 sõnad on eesti keeles, nagu ta need kirjutas: neid ei tõlgita.",
+        "Märkus all algab sõnadega „Отзывы оставляют ученики“.",
+        "Koolituse lehe aadress algab /ru ja selle plokk on „Отзывы учеников“."
+      ],
+      "why": "Venekeelne külastaja näeb samu arvustusi ja sama märkust oma keeles.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "kontakt-arvustus-peida",
       "area": "kontakt",
       "who": "maria",
@@ -3604,6 +3713,32 @@
       ],
       "why": "Peidetud arvustus kaob kõikidelt lehtedelt, aga ei kao halduses.",
       "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-arvustus-tyhi",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Tagasiside plokk ilma arvustuseta",
+      "href": "/admin/tagasiside?vaade=arvustused",
+      "steps": [
+        "Ava „Tagasiside“, vajuta „Arvustused“ ja Proov 1 arvustuse juures „Peida“.",
+        "Ava kontaktkoolituse leht ja keri sisu lõppu.",
+        "Ava avaleht ja keri koolitaja jaotise järele.",
+        "Ava koolitus, millel ühtegi arvustust ei ole."
+      ],
+      "expect": [
+        "Koolituse lehel ei ole pealkirja „Õpilaste tagasiside“, märkust ega tühja kasti.",
+        "Koolituse sisu järel on koolitaja kaart, nagu enne arvustusi.",
+        "Avalehel ei ole jaotist „Õpilaste kogemused“ ega märkust, kui teist avalehe arvustust ei ole.",
+        "Koolitusel ilma arvustuseta ei ole plokki.",
+        "Proov 1 arvustus jääb halduses olekusse „Peidetud“."
+      ],
+      "why": "Leht ilma arvustuseta ei tohi näidata tühja kasti ega märkust.",
+      "risk": "med",
       "writes": true,
       "mark": "new",
       "markedAt": "deploy"

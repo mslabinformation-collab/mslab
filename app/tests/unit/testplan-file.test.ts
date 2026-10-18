@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import plan from "@/data/testplan.json";
 import { checkPlan } from "@/domain/testplan";
+import { et } from "@/i18n/dict/et";
+import { ru } from "@/i18n/dict/ru";
 
 // The test page's plan file (phase 4, piece 1, spec §3, §8): src/data/testplan.json passes checkPlan, and checkPlan names each way a plan can
 // go wrong (house style: line caps, full stops, ids, enums, marks). A mistake in the file fails this test before the page ever sees it.
@@ -297,6 +299,58 @@ describe("the review checks sit where Proov 1's reviews exist", () => {
     expect(item("ekursus-luba-tagasi").expect.join("\n")).toContain("ootab Proov 1 e-koolituse arvustus kinnitust");
     // the e-course card's own question, not the contact card's (Proov 1's contact card may still be there)
     expect(item("ekursus-tagasiside").expect.at(-1)).toMatch(/^E-koolituse kaardilt on „Kuidas koolitus läks\?“ kadunud/);
+  });
+
+  // Task 5: the public blocks. Proov 1's review is published and featured only between „Avalehel“ and „Peida“ (the latter ends by publishing it again), so
+  // the checks that read the blocks sit there; the empty state hides it again, after „Peida“ and before „Lisa arvustus“ adds its own.
+  const PUBLIC = ["kontakt-arvustus-plokk", "kontakt-arvustus-naita-koiki", "kontakt-arvustus-avaleht", "kontakt-arvustus-vene-keeles"];
+  const text = (id: string) => [...item(id).steps, ...item(id).expect].join("\n");
+
+  test("the checks of the public blocks sit between „Avalehel“ and „Peida“, where Proov 1's review is published and featured; the empty state is after „Peida“ and before „Lisa arvustus“", () => {
+    for (const id of PUBLIC) {
+      expect(at(id), id).toBeGreaterThan(at("kontakt-arvustus-avalehel"));
+      expect(at(id), id).toBeLessThan(at("kontakt-arvustus-peida"));
+    }
+    expect(at("kontakt-arvustus-tyhi")).toBeGreaterThan(at("kontakt-arvustus-peida"));
+    expect(at("kontakt-arvustus-tyhi")).toBeLessThan(at("kontakt-arvustus-lisa"));
+    // Proov 1's review alone is on the course page for the first check (no „Näita kõiki“ yet); the second adds six and deletes them, before the others read the blocks
+    expect(item("kontakt-arvustus-plokk").expect.join("\n")).toContain("Nuppu „Näita kõiki“ ei ole");
+    expect(at("kontakt-arvustus-plokk")).toBeLessThan(at("kontakt-arvustus-naita-koiki"));
+    expect(at("kontakt-arvustus-naita-koiki")).toBeLessThan(at("kontakt-arvustus-avaleht"));
+    expect(at("kontakt-arvustus-naita-koiki")).toBeLessThan(at("kontakt-arvustus-vene-keeles"));
+    const steps = item("kontakt-arvustus-naita-koiki").steps;
+    const add = steps.findIndex((s) => s.startsWith("Lisa kuus arvustust"));
+    const open = steps.findIndex((s) => s.includes("„Näita kõiki“ on valitud"));
+    const remove = steps.findIndex((s) => s.startsWith("Kustuta halduses kõik kuus"));
+    expect(add).toBeGreaterThan(-1);
+    expect(open).toBeGreaterThan(add);
+    expect(remove).toBeGreaterThan(open);
+    expect(steps[add]).toContain("1 kuni 6"); // six, so that with Proov 1's own there are seven
+    expect(text("kontakt-arvustus-naita-koiki")).toContain("„Näita kõiki (1)“");
+  });
+
+  test("the empty state hides Proov 1's review again and leaves it hidden for what follows", () => {
+    expect(item("kontakt-arvustus-tyhi").steps[0]).toContain("„Peida“");
+    expect(item("kontakt-arvustus-tyhi").expect.at(-1)).toContain("„Peidetud“");
+    for (const words of ["pealkirja „Õpilaste tagasiside“", "märkust", "tühja kasti", "„Õpilaste kogemused“"]) expect(text("kontakt-arvustus-tyhi"), words).toContain(words);
+  });
+
+  test("the plan quotes the dictionary's headings, notice and button, in each language", () => {
+    expect(text("kontakt-arvustus-plokk")).toContain(`„${et.reviews.courseTitle}“`);
+    expect(text("kontakt-arvustus-plokk")).toContain(et.reviews.notice);
+    expect(text("kontakt-arvustus-avaleht")).toContain(`„${et.reviews.homeTitle}“`);
+    expect(text("kontakt-arvustus-naita-koiki")).toContain(`„${et.reviews.showAll} (1)“`);
+    expect(text("kontakt-arvustus-vene-keeles")).toContain(`„${ru.reviews.homeTitle}“`);
+    expect(text("kontakt-arvustus-vene-keeles")).toContain(`„${ru.reviews.courseTitle}“`);
+    expect(ru.reviews.notice).toContain("Отзывы оставляют ученики");
+    expect(text("kontakt-arvustus-vene-keeles")).toContain("„Отзывы оставляют ученики“");
+  });
+
+  test("the public blocks' checks carry the mark new, from the deploy or its stamp", () => {
+    for (const id of [...PUBLIC, "kontakt-arvustus-tyhi"]) {
+      expect(item(id).mark, id).toBe("new");
+      expect(markedSince(item(id).markedAt), id).toBe(true);
+    }
   });
 
   test("the review checks and the two redone ones carry their marks, from the deploy or its stamp", () => {

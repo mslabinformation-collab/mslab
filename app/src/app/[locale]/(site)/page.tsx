@@ -13,6 +13,7 @@ import { Hero, type HeroSlideView } from "@/components/site/Hero";
 import { Icon } from "@/components/site/Icon";
 import { NewsletterPopup } from "@/components/site/NewsletterPopup";
 import { PracticeBlock } from "@/components/site/PracticeBlock";
+import { ReviewList } from "@/components/site/ReviewList";
 import { trainerSettings } from "@/components/site/settings";
 import { Statement } from "@/components/site/Statement";
 import { TrainerTeaser } from "@/components/site/TrainerTeaser";
@@ -30,6 +31,7 @@ import { href } from "@/i18n/href";
 import { getDict, isLocale } from "@/i18n/locales";
 import { DELETED_MARK } from "@/lib/account-marks";
 import { mediaUrl } from "@/lib/media";
+import { homeReviews } from "@/server/reviews";
 import { shareMetadata } from "@/server/share-meta";
 import styles from "./home.module.css";
 import { upcomingFrom } from "@/domain/calendar";
@@ -53,7 +55,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 /**
  * Home page (Task 7). Section order from the brief: hero → upcoming strip → course cards → "Kuidas soovid õppida?"
- * → statement → trainer → practice → blog → FAQ → contact. The newsletter lives in the footer (layout).
+ * → statement → trainer → students' experiences (student reviews; only while one is featured) → practice → blog → FAQ
+ * → contact. The newsletter lives in the footer (layout).
  * The layout provides <main> and the transparent header that the hero slides under.
  */
 export default async function Home({ params }: Props) {
@@ -62,7 +65,7 @@ export default async function Home({ params }: Props) {
   const d = getDict(locale);
   const to = (path: string) => href(locale, path);
   const db = getDb();
-  const [home, sessions] = await Promise.all([getHomeData(db), listUpcomingSessions(db, upcomingFrom(new Date()))]);
+  const [home, sessions, reviews] = await Promise.all([getHomeData(db), listUpcomingSessions(db, upcomingFrom(new Date())), homeReviews(db)]);
 
   const slides: HeroSlideView[] = home.slides.map((s) => ({
     id: s.id,
@@ -187,6 +190,8 @@ export default async function Home({ params }: Props) {
           link: { label: d.trainer.readMore, href: to("/koolitaja") },
         }}
       />
+
+      <ReviewList reviews={reviews} locale={locale} variant="home" />
 
       {home.practice.length > 0 && (
         <PracticeBlock

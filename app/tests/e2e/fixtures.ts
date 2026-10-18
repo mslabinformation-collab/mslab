@@ -959,3 +959,65 @@ export async function onLocalDb<T>(work: (sql: postgres.Sql) => Promise<T>, opts
     await sql.end();
   }
 }
+
+// ---------- student reviews on the public pages (course.spec.ts, home.spec.ts) ----------
+// Published reviews of a seed course, written straight to the LOCAL database, to see the course page's block and the home page's section. They are
+// reviews Maria "added" (kind manual), so each carries a source note, which here is REVIEW_FIXTURE_NOTE: a test deletes exactly the ids it made
+// (removeReviewFixtures), and global-setup / global-teardown delete any an interrupted run left (and fail the run if one was left).
+// Each project uses its own course for them, so that the desktop and phone runs side by side never count each other's.
+
+export const REVIEW_FIXTURE_NOTE = "e2e-fixture:reviews";
+
+export type ReviewFixture = {
+  name: string;
+  text: string;
+  /** The language it was written in (default et). */
+  locale?: "et" | "ru";
+  /** „Avalehel“ (default false). */
+  featured?: boolean;
+  /** How many days before today it was written (default: the order given, so that the first one is the newest). */
+  daysAgo?: number;
+};
+
+/** Inserts published reviews of the course `slug`; returns their ids, in the order given. */
+export async function insertReviewFixtures(slug: string, rows: ReviewFixture[]): Promise<number[]> {
+  const sql = connect();
+  try {
+    const ids: number[] = [];
+    for (const [i, r] of rows.entries()) {
+      const [row] = await sql<{ id: number }[]>`
+        insert into reviews (course_id, kind, text, name, locale, written_at, status, featured, decided_at, note)
+        select id, 'manual', ${r.text}, ${r.name}, ${r.locale ?? "et"}, now() - (${r.daysAgo ?? i + 1}::int * interval '1 day'), 'published', ${r.featured ?? false}, now(), ${REVIEW_FIXTURE_NOTE}
+        from courses where slug = ${slug}
+        returning id`;
+      if (!row) throw new Error(`e2e fixtures: no course ${slug} — is the local DB seeded?`);
+      ids.push(row.id);
+    }
+    return ids;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Deletes exactly these reviews (the ids a test got from insertReviewFixtures). */
+export async function removeReviewFixtures(ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
+  const sql = connect();
+  try {
+    await sql`delete from reviews where id in ${sql(ids)} and note = ${REVIEW_FIXTURE_NOTE}`;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Deletes every review fixture (an interrupted run's); returns how many are left (0 when clean). */
+export async function removeLeftoverReviewFixtures(): Promise<number> {
+  const sql = connect();
+  try {
+    await sql`delete from reviews where note = ${REVIEW_FIXTURE_NOTE}`;
+    const [{ n }] = await sql<{ n: number }[]>`select count(*)::int as n from reviews where note = ${REVIEW_FIXTURE_NOTE}`;
+    return n;
+  } finally {
+    await sql.end();
+  }
+}

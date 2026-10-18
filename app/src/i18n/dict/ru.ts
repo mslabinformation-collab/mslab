@@ -245,6 +245,14 @@ export const ru: Dict = {
     viewCourses: "Смотреть курсы",
   },
 
+  // Student reviews on the public pages (student reviews, D5, D7): Draft for Dim's wording sheet, every line of it
+  reviews: {
+    courseTitle: "Отзывы учеников",
+    homeTitle: "Опыт учеников",
+    notice: "Отзывы оставляют ученики, прошедшие обучение в\u00a0MS LAB. Мы публикуем их с\u00a0согласия ученика и\u00a0после проверки.",
+    showAll: "Показать все",
+  },
+
   news: {
     eyebrow: "Блог",
     title: "Новости и советы",

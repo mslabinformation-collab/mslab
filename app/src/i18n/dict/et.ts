@@ -261,6 +261,16 @@ export const et = {
     viewCourses: "Vaata koolitusi",
   },
 
+  // Student reviews on the public pages (student reviews, spec D5, D7): the headings of the course page's block and of the home page's section, the
+  // notice under both, and the button of the block. All four are the spec's own words. The count after the button's text ("Näita kõiki (12)") is
+  // added by the component (Draft).
+  reviews: {
+    courseTitle: "Õpilaste tagasiside",
+    homeTitle: "Õpilaste kogemused",
+    notice: "Tagasiside on MS LAB-i koolituse läbinud õpilastelt. Avaldame selle õpilase loal ja pärast kontrolli.",
+    showAll: "Näita kõiki",
+  },
+
   news: {
     eyebrow: "Blogi",
     title: "Uudised ja nõuanded",
