@@ -1086,7 +1086,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "haldus-seaded-tunnistus",
@@ -1193,7 +1193,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "haldus-seaded-naidisleping",
@@ -1220,7 +1220,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-vorm-vead",
@@ -1245,7 +1245,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-leping",
@@ -1274,7 +1274,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-leping-muutunud",
@@ -1301,7 +1301,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-montonio-esmane",
@@ -1359,7 +1359,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-ettemaks",
@@ -1629,7 +1629,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-pangaulekanne",
@@ -1962,7 +1962,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-leping-kinnitamiseks",
@@ -1987,7 +1987,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-leping-koopia",
@@ -2010,7 +2010,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-individuaal",
@@ -2242,7 +2242,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "konto-muutmine",
@@ -2374,7 +2374,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "konto-arve-tuhistatud",
@@ -2426,7 +2426,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "konto-leping-kaardil",
@@ -2450,7 +2450,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "konto-lemmikud",
@@ -2634,7 +2634,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "ekursus-ost",
@@ -2663,7 +2663,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "ekursus-ost-uuesti",
@@ -2685,7 +2685,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "ekursus-tingimused",
@@ -2705,7 +2705,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "ekursus-leht",
@@ -3179,7 +3179,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "ekursus-ava-jargmine",
@@ -3501,7 +3501,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "kirjad-paring",
@@ -3718,7 +3718,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "kirjad-tervituskiri",
@@ -4244,7 +4244,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     }
   ]
 }
