@@ -68,7 +68,7 @@ async function opened(locale: "et" | "ru" = "et") {
 describe("the form opens", () => {
   test("with the sent protocol: GET names the course and says nothing is sent; the dashboard has its card", async () => {
     const { mari, account, cookie } = await opened();
-    expect(await answer(await call(deps().d, cookie, `/tagasiside?id=${mari.id}`))).toEqual([200, { ok: true, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine", ru: "Ламинирование бровей" } }, sent: false }]);
+    expect(await answer(await call(deps().d, cookie, `/tagasiside?id=${mari.id}`))).toEqual([200, { ok: true, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine", ru: "Ламинирование бровей" } }, sent: false, shownName: "Mari M." }]);
     expect((await loadDashboard(db, account.id, NOW))!.feedback).toEqual([{ registrationId: mari.id, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine", ru: "Ламинирование бровей" } } }]);
   });
 
@@ -216,7 +216,7 @@ describe("what is logged", () => {
         throw new Error("commit failed");
       }) : Reflect.get(target, prop, target)),
     });
-    await expect(submitFeedback(failing, { clientId: account.id, registrationId: mari.id, answers: { score: 9 }, locale: "et" }, NOW)).rejects.toThrow("commit failed");
+    await expect(submitFeedback(failing, { clientId: account.id, target: { registrationId: mari.id }, answers: { score: 9 }, locale: "et", consent: null }, NOW)).rejects.toThrow("commit failed");
     expect(await rows()).toEqual([]);
     expect(logged()).not.toContain("submitted");
   });

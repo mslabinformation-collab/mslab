@@ -231,9 +231,11 @@ function FeedbackDetail({ f }: { f: FeedbackRow }) {
               {t.toStudent}
             </Link>
           )}
-          <Link className={ui.link} href={`/admin/registreerimised?id=${f.registrationId}`}>
-            {t.toRegistration}
-          </Link>
+          {f.registrationId !== null && (
+            <Link className={ui.link} href={`/admin/registreerimised?id=${f.registrationId}`}>
+              {t.toRegistration}
+            </Link>
+          )}
         </p>
       </div>
       <FeedbackAnswers answers={f.answers} locale={f.locale} submittedAt={f.submittedAt} />

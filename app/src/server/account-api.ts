@@ -1123,7 +1123,7 @@ async function feedbackForm(request: Request, deps: AccountDeps): Promise<Respon
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const id = queryId(request);
-  const state = id === null ? null : await feedbackState(deps.db, session.clientId, id, deps.now);
+  const state = id === null ? null : await feedbackState(deps.db, session.clientId, { registrationId: id }, deps.now);
   return state ? clientResponse(session, { ok: true, ...state }) : clientResponse(session, { ok: false }, 404);
 }
 
@@ -1139,7 +1139,10 @@ async function sendFeedback(request: Request, deps: AccountDeps): Promise<Respon
   if (!input.ok) return badInput(session, input.error);
   const limited = await feedbackLimited(deps, session);
   if (limited) return limited;
-  const result = await submitFeedback(deps.db, { clientId: session.clientId, ...input.data }, deps.now);
+  const { registrationId, locale, answers } = input.data;
+  // (the tick and the e-course form come with the student reviews' routes: for now a contact course's answers with no consent, which cannot fail its check)
+  const result = await submitFeedback(deps.db, { clientId: session.clientId, target: { registrationId }, answers, locale, consent: null }, deps.now);
+  if (result.kind === "consentText" || result.kind === "consentName") return clientResponse(session, { ok: false, error: result.kind }, 400);
   if (result.kind === "notFound") return clientResponse(session, { ok: false, error: "registration" }, 404);
   if (result.kind === "sent") return clientResponse(session, { ok: false, error: "sent" }, 409);
   const notice = result.notice;
@@ -1158,7 +1161,7 @@ async function dismissFeedback(request: Request, deps: AccountDeps): Promise<Res
   if (!input.ok) return badInput(session, input.error);
   const limited = await feedbackLimited(deps, session);
   if (limited) return limited;
-  const hidden = await hideFeedback(deps.db, { clientId: session.clientId, registrationId: input.data.registrationId }, deps.now);
+  const hidden = await hideFeedback(deps.db, { clientId: session.clientId, target: { registrationId: input.data.registrationId } }, deps.now);
   return hidden ? clientResponse(session, { ok: true }) : clientResponse(session, { ok: false, error: "registration" }, 404);
 }
 

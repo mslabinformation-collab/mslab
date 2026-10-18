@@ -11,6 +11,8 @@ export type PublicChange =
   | { kind: "sessions" }
   /** seat counts: a registration or waitlist entry for `course` (its slug), or an admin's status / payment change */
   | { kind: "seats"; course?: string }
+  /** a review published, hidden, featured, withdrawn or added for `course` (its slug): the course page's „Õpilaste tagasiside“ block and the home page's „Õpilaste kogemused“ section */
+  | { kind: "reviews"; course: string }
   /** Avaleht: hero slides, statement, FAQ */
   | { kind: "home" }
   /** Praktika: the packages */
@@ -55,6 +57,9 @@ export function revalidationTargets(change: PublicChange): CacheTarget[] {
     case "seats":
       // seat states are shown in the calendar and on the course page
       return [...(change.course && SLUG.test(change.course) ? coursePages(change.course) : [COURSE_PAGES]), CALENDAR];
+    case "reviews":
+      // the course's page (its block) and the home page (the featured ones); every course page when the slug is no slug, as for seats
+      return [...(SLUG.test(change.course) ? coursePages(change.course) : [COURSE_PAGES]), HOME];
     case "home":
     case "campaign":
       return [HOME];

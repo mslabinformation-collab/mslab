@@ -91,7 +91,7 @@ describe("the account deleted (spec §3)", () => {
     for (const r of [mari, anu]) {
       await write(r.id, 0, `Märkus: ${r.name}`);
       await sendProtocol(deps(), { registrationId: r.id, version: 1 });
-      expect(await submitFeedback(db, { clientId: await accountOf(r), registrationId: r.id, answers: { score: 9 }, locale: "et" }, NOW)).toMatchObject({ kind: "submitted" });
+      expect(await submitFeedback(db, { clientId: await accountOf(r), target: { registrationId: r.id }, answers: { score: 9 }, locale: "et", consent: null }, NOW)).toMatchObject({ kind: "submitted" });
     }
     return { course, session, mari, anu };
   }
@@ -121,13 +121,13 @@ describe("the account deleted (spec §3)", () => {
     }
     // the answer first, then the deletion: the answer goes with the account
     const first = await accountOf(mari);
-    expect(await submitFeedback(db, { clientId: first, registrationId: mari.id, answers: { score: 9 }, locale: "et" }, NOW)).toMatchObject({ kind: "submitted" });
+    expect(await submitFeedback(db, { clientId: first, target: { registrationId: mari.id }, answers: { score: 9 }, locale: "et", consent: null }, NOW)).toMatchObject({ kind: "submitted" });
     await deleteClient(db, first);
     expect(await db.select().from(courseFeedback)).toEqual([]);
     // the deletion first, then the answer: the registration is no longer hers, and the answer finds nothing
     const second = await accountOf(anu);
     await deleteClient(db, second);
-    expect(await submitFeedback(db, { clientId: second, registrationId: anu.id, answers: { score: 9 }, locale: "et" }, NOW)).toEqual({ kind: "notFound" });
+    expect(await submitFeedback(db, { clientId: second, target: { registrationId: anu.id }, answers: { score: 9 }, locale: "et", consent: null }, NOW)).toEqual({ kind: "notFound" });
     expect(await db.select().from(courseFeedback)).toEqual([]);
     expect(await db.select().from(protocols)).toEqual([]);
   });
@@ -143,5 +143,5 @@ test("signed in under another address: none of her registration's protocol or fe
   const dashboard = (await loadDashboard(db, other.id, NOW))!;
   expect(dashboard.cards).toEqual([]);
   expect(dashboard).not.toHaveProperty("feedback");
-  expect(await submitFeedback(db, { clientId: other.id, registrationId: mari.id, answers: { score: 9 }, locale: "et" }, NOW)).toEqual({ kind: "notFound" });
+  expect(await submitFeedback(db, { clientId: other.id, target: { registrationId: mari.id }, answers: { score: 9 }, locale: "et", consent: null }, NOW)).toEqual({ kind: "notFound" });
 });
