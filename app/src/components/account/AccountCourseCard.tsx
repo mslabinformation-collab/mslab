@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/site/Icon";
 import ui from "@/components/site/ui.module.css";
 import {
-  cardInvoices, cardKey, cardTag, cardTitle, cardWhen, hasPrepayment, isPastCard, nextStep, type AccountCard, type CardInvoice, type ContactCard, type EcourseCard,
+  cardInvoices, cardKey, cardTag, cardTitle, cardWhen, hasPrepayment, isPastCard, nextStep, type AccountCard, type CardInvoice, type ContactCard, type EcourseCard, type IndividualCard,
   type PrepaymentInfo as PaySettings,
 } from "@/domain/account-cards";
 import { euro } from "@/domain/invoice";
@@ -55,7 +55,7 @@ export type CardProps = {
    * Her permission to publish is gone already („Võta luba tagasi“ found no review, a 404: Maria deleted it, or another tab took it back): the cards are loaded
    * again behind the page (CoursesView's quiet reload), which shows what is true. Answers whether the server answered; absent (the admin's view): nothing to load.
    */
-  onReviewGone?(card: ContactCard | EcourseCard): Promise<boolean>;
+  onReviewGone?(card: ContactCard | IndividualCard | EcourseCard): Promise<boolean>;
   /** Her account's name (the dashboard's client.name): the first value of an ended access's "Nimi tunnistusel", as on the e-course page. */
   certificateName?: string;
 };

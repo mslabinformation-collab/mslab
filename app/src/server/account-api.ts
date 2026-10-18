@@ -118,6 +118,12 @@ const PASSWORD_LOCK_SEC = 15 * 60;
 const PASSWORD_CHANGES_PER_HOUR = 5;
 /** Feedback submits and "Ei soovi"s a client may send per hour, together: each submit mails Maria. */
 const FEEDBACK_PER_HOUR = 10;
+/**
+ * Withdrawals of a permission to publish a client may send per hour (the final review's M1, ruling R12): idempotent, cheap and checked against her own
+ * reviews, so the limit is generous and its own, apart from the feedback's 10: a student who has sent her answers and dismissed a few forms can still
+ * take her permission back. A 404 (a review already gone) counts, as every press does.
+ */
+const REVIEW_WITHDRAWALS_PER_HOUR = 30;
 /** A feedback body: two free texts at their limit, JSON-escaped, and the rest. */
 const FEEDBACK_BODY_CHARS = 2 * FEEDBACK_TEXT_MAX * 2 + 2048;
 /** Test submits and rewrites a student may send per hour, together (e-course completion, spec §7): each one is graded at once. */
@@ -151,6 +157,13 @@ const CERTIFICATE_BODY_CHARS = 1024;
 async function feedbackLimited(deps: AccountDeps, session: ClientSession): Promise<Response | null> {
   if (await withinClientLimit(deps, session.clientId, "client-feedback", FEEDBACK_PER_HOUR, 60 * 60)) return null;
   logNote("[account] feedback rate limited");
+  return clientResponse(session, { ok: false, error: "rate" }, 429);
+}
+
+/** The withdrawal's own limit (REVIEW_WITHDRAWALS_PER_HOUR; not the feedback's): null within it, else the 429 to answer. */
+async function withdrawalLimited(deps: AccountDeps, session: ClientSession): Promise<Response | null> {
+  if (await withinClientLimit(deps, session.clientId, "client-review-withdraw", REVIEW_WITHDRAWALS_PER_HOUR, 60 * 60)) return null;
+  logNote("[account] review withdrawal rate limited");
   return clientResponse(session, { ok: false, error: "rate" }, 429);
 }
 
@@ -1186,7 +1199,7 @@ async function sendFeedback(request: Request, deps: AccountDeps): Promise<Respon
 
 /**
  * POST /tagasiside/peida `{ id | kursus }` ("Ei soovi", spec §7): the dashboard's card is gone for good; the form itself still takes her
- * answers later. 200 `{ ok: true }`; 404 `{ error: "registration" }` (not hers, or not open); 429 (with the submits, 10 an hour).
+ * answers later. 200 `{ ok: true }`; 404 `{ error: "registration" }` (not hers, or not open); 429 (with the submits, 10 an hour; not the withdrawals, which count apart).
  */
 async function dismissFeedback(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
@@ -1203,14 +1216,15 @@ async function dismissFeedback(request: Request, deps: AccountDeps): Promise<Res
  * POST /arvustus/tagasi `{ reviewId }` („Võta luba tagasi“, student reviews, D6): the review of her own feedback is deleted at once, whatever its status
  * (her answers stay with Maria), and the public pages of its course and the home page are refreshed before the answer, so that the very next request no
  * longer shows it. 200 `{ ok: true }`; 404 `{ error: "review" }` (not hers, one Maria added, or gone already: another tab, Maria, the account's deletion);
- * 429 with the feedback form's limit (10 an hour, the submits, the "Ei soovi"s and this together).
+ * 429 `{ error: "rate" }` after 30 presses in an hour: a limit of its own (REVIEW_WITHDRAWALS_PER_HOUR), not the feedback form's 10, so that taking
+ * permission back is not refused because she sent her answers and dismissed forms first (the final review's M1, ruling R12).
  */
 async function withdrawPermission(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const input = parseReviewWithdrawal(await readObject(request));
   if (!input.ok) return badInput(session, input.error);
-  const limited = await feedbackLimited(deps, session);
+  const limited = await withdrawalLimited(deps, session);
   if (limited) return limited;
   const result = await withdrawReview(deps.db, session.clientId, input.data.reviewId);
   if (!result.ok) return clientResponse(session, { ok: false, error: "review" }, 404);

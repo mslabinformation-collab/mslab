@@ -5,7 +5,7 @@ import { Drawer } from "@/components/admin/Drawer";
 import { FeedbackAnswers, formatScore } from "@/components/admin/FeedbackAnswers";
 import listTable from "@/components/admin/list-table.module.css";
 import { Pager } from "@/components/admin/Pager";
-import { reviewRowView } from "@/components/admin/review-view";
+import { courseLabel, reviewRowView } from "@/components/admin/review-view";
 import { ReviewsPanel } from "@/components/admin/ReviewsPanel";
 import { adminTitle } from "@/components/admin/sections";
 import { Shell } from "@/components/admin/Shell";
@@ -136,7 +136,7 @@ async function reviewsPage(email: string, olek: StatusWord | null) {
         </nav>
         <ReviewsPanel
           rows={rows.map(reviewRowView)}
-          courses={courses.map((c) => ({ id: c.id, label: c.published ? pick(c.title, "et") : `${pick(c.title, "et")} (${adminEt.clients.grant.draft})` }))}
+          courses={courses.map((c) => ({ id: c.id, label: courseLabel(pick(c.title, "et"), c.published) }))}
           today={tallinnToday(new Date())}
           filtered={olek !== null}
         />

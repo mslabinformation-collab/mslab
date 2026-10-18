@@ -308,6 +308,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         createdAt: iso(r.createdAt),
         ...(r.protocolSentAt ? { protocolSent: true } : {}),
         ...invoicesOn(mine, payable),
+        review: reviewOfRegistration.get(r.id) ?? null,
       });
     } else {
       const open = mine && payable ? openInvoiceOf(mine) : null;

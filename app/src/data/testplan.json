@@ -3604,7 +3604,7 @@
         "Plokis on Proov 1 sõnad nii, nagu ta need kirjutas, tema nimi ning kuu ja aasta.",
         "Plokis ei ole hinnet, tähti ega keskmist.",
         "Märkus all on „Tagasiside on MS LAB-i koolituse läbinud õpilastelt. Avaldame selle õpilase loal ja pärast kontrolli.“.",
-        "Nuppu „Näita kõiki“ ei ole, sest arvustusi on vähem kui seitse.",
+        "Nuppu „Näita kõiki“ ei ole, sest arvustusi on vähem kui seitse (kui koolitusel teisi arvustusi pole).",
         "Midagi ei ulatu ekraani servast välja ja tekst on loetav."
       ],
       "why": "Külastaja näeb koolituse lehel, mida varasemad õpilased koolitusest arvavad.",
@@ -3631,12 +3631,12 @@
       ],
       "expect": [
         "Kõik kuus uut arvustust on kohe „Avaldatud“.",
-        "Koolituse lehel on plokis kuus arvustust ja nupp „Näita kõiki (1)“, nupu all märkus.",
+        "Koolituse lehel on plokis kuus arvustust ja nupp „Näita kõiki (1)“ (kui koolitusel teisi arvustusi pole), nupu all märkus.",
         "Enteri järel ilmub seitsmes arvustus kohe; leht ei laadi uuesti ega hüppa algusesse.",
         "Nupp kaob ja äsja ilmunud arvustuse ümber on nähtav raam.",
         "Tab viib edasi lehe järgmise lingi juurde pärast arvustust, mitte lehe algusesse.",
         "Märkus jääb plokis kõige viimaseks.",
-        "Pärast kustutamist on plokis jälle ainult Proov 1 sõnad ja nuppu ei ole."
+        "Pärast kustutamist on plokis jälle ainult Proov 1 sõnad ja nuppu ei ole (kui koolitusel teisi arvustusi pole)."
       ],
       "why": "Kui koolitusel on üle kuue arvustuse, peab külastaja ülejäänud kätte saama.",
       "risk": "med",
@@ -3733,7 +3733,7 @@
         "Ava koolitus, millel ühtegi arvustust ei ole."
       ],
       "expect": [
-        "Koolituse lehel ei ole pealkirja „Õpilaste tagasiside“, märkust ega tühja kasti.",
+        "Koolituse lehel ei ole pealkirja „Õpilaste tagasiside“, märkust ega tühja kasti (kui koolitusel teisi arvustusi pole).",
         "Koolituse sisu järel on koolitaja kaart, nagu enne arvustusi.",
         "Avalehel ei ole jaotist „Õpilaste kogemused“ ega märkust, kui teist avalehe arvustust ei ole.",
         "Koolitusel ilma arvustuseta ei ole plokki.",

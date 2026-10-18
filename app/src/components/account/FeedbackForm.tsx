@@ -189,7 +189,7 @@ function FeedbackBody({ target, data, locale, t }: { target: HashTarget; data: F
               setConsentError(null);
             }}
             aria-invalid={consentError ? true : undefined}
-            aria-describedby={`${uid}-shown-name-count`}
+            aria-describedby={consentError ? `${uid}-consent-error ${uid}-shown-name-count` : `${uid}-shown-name-count`}
             data-consent-name=""
           />
           <p id={`${uid}-shown-name-count`} className={styles.count}>

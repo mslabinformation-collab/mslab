@@ -60,7 +60,7 @@ What exists today:
     - its language;
     - a required internal note, „Kust see pärit on?“ (Draft), never shown publicly.
   - The form tells her: „Lisa ainult päris õpilase sõnad tema loal.“ (Draft).
-  - She may edit or delete these, and only these. They are published when she saves them, because she adds them herself (my call).
+  - She may edit or delete these, and only these. A new one is published when she first adds it, because she adds it herself (my call); an edit keeps its status (below). (amended 18.10 during the build)
   - Her internal note is capped at 500 characters (R3), and the date written is from the year 2000 on (a typo like 0026 is refused; a date ahead is not). (amended 18.10 during the build)
   - Editing a manual review keeps its status and its „Avalehel“ setting, so a hidden one stays hidden. Moving it to another course refreshes the pages of both courses and the home page (R4). (amended 18.10 during the build)
   - The student's permission for these is Maria's responsibility. The site cannot check it.
@@ -117,8 +117,8 @@ The index is (`course_id`, `status`, `written_at` desc). The text and the name a
     - a tick with an empty name;
     - a name over 40 characters.
   - The feedback and the review are written in one transaction.
-  - The feedback POSTs (`/api/konto/tagasiside` and `/api/konto/tagasiside/peida`) address a course by `id` (a contact course's registration) or by `kursus` (an e-course's slug), exactly one of the two. The older `registrationId` field is no longer accepted: a form left open across the deploy gets one refusal and reloads (R5). (amended 18.10 during the build)
-- **Her account.** The course card shows the permission line and „Võta luba tagasi“ while her review exists (D6); the dashboard's data gives each contact and e-course card `review: { id } | null`. An e-course gets the same open feedback card as a contact course once it is „Lõpetatud“ (D3), placed where today's feedback cards are.
+  - The feedback POSTs (`/api/konto/tagasiside` and `/api/konto/tagasiside/peida`) address a course by `id` (a contact course's registration) or by `kursus` (an e-course's slug), exactly one of the two. The older `registrationId` field is no longer accepted: a form left open across the deploy shows its failure line on every send (the server answers 400), and the form does not reload: the student reloads the page herself (R5). (amended 18.10 during the build)
+- **Her account.** The course card shows the permission line and „Võta luba tagasi“ while her review exists (D6); the dashboard's data gives each contact, individual-course and e-course card `review: { id } | null` (an individual-course registration has no session, and its student is offered the form once Maria has sent the protocol, so she takes her permission back from her card too: ruling R10). (amended 18.10 during the build) An e-course gets the same open feedback card as a contact course once it is „Lõpetatud“ (D3), placed where today's feedback cards are.
 - **The admin.**
   - The „Tagasiside“ page gains „Arvustused“ (D2) and „Lisa arvustus“ (D4).
   - The page heading counts the pending reviews.

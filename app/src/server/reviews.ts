@@ -199,7 +199,8 @@ export type AdminReviewRow = {
   name: string;
   locale: "et" | "ru";
   writtenAt: Date;
-  course: { id: number; slug: string; title: I18n };
+  /** `published`: the course is on the public site; a review of a draft shows nowhere until it is (the final review's M2). */
+  course: { id: number; slug: string; title: I18n; published: boolean };
   note: string | null;
   proof: { registrationStatus: string; protocolSent: boolean } | { completedAt: Date } | null;
 };
@@ -220,6 +221,7 @@ export async function adminReviews(db: Db, filter: { status?: ReviewStatus; cour
       courseId: courses.id,
       slug: courses.slug,
       title: courses.title,
+      coursePublished: courses.published,
       registrationStatus: registrations.status,
       protocolSentAt: protocols.sentAt,
       completedAt: courseAccess.completedAt,
@@ -241,7 +243,7 @@ export async function adminReviews(db: Db, filter: { status?: ReviewStatus; cour
     name: r.name,
     locale: r.locale,
     writtenAt: r.writtenAt,
-    course: { id: r.courseId, slug: r.slug, title: r.title },
+    course: { id: r.courseId, slug: r.slug, title: r.title, published: r.coursePublished },
     note: r.note,
     proof: r.kind === "manual" ? null : r.registrationStatus !== null ? { registrationStatus: r.registrationStatus, protocolSent: r.protocolSentAt !== null } : r.completedAt !== null ? { completedAt: r.completedAt } : null,
   }));

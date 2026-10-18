@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import filters from "@/components/site/CatalogueFilters.module.css";
 import { Icon } from "@/components/site/Icon";
 import ui from "@/components/site/ui.module.css";
-import { cardKey, filterCards, firstName, isPastCard, promptKey, showFilters, type CardFilter, type ContactCard, type EcourseCard } from "@/domain/account-cards";
+import { cardKey, filterCards, firstName, isPastCard, promptKey, showFilters, type CardFilter, type ContactCard, type EcourseCard, type IndividualCard } from "@/domain/account-cards";
 import { fill } from "@/i18n/format";
 import { href } from "@/i18n/href";
 import type { Locale } from "@/i18n/locales";
@@ -143,7 +143,7 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
   // A pay start the server refused as out of date (401, 404, nothing to pay), or a permission to publish that is gone already (a 404): the cards are loaded
   // again behind the page, like a refused change request, with the focus on the card the student was dealing with. Not in the admin's view (no reload there).
   const reloadForCard = reload
-    ? (card: ContactCard | EcourseCard) => {
+    ? (card: ContactCard | IndividualCard | EcourseCard) => {
         focusAfterReload.current = { key: cardKey(card), until: Date.now() + FOCUS_WAIT_MS };
         return reload({ quiet: true });
       }

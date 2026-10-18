@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { tallinnFormParts } from "@/domain/calendar";
-import type { ReviewStatus } from "@/domain/review";
+import { HOME_REVIEWS_MAX, type ReviewStatus } from "@/domain/review";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate } from "@/i18n/format";
 import { decideReviewAction, deleteManualReviewAction, setFeaturedAction } from "@/server/actions/admin-reviews";
 import { emptyReview, ManualReviewForm, type ManualReviewValues } from "./ManualReviewForm";
-import type { ReviewCourseOption, ReviewRowView } from "./review-view";
+import { courseLabel, type ReviewCourseOption, type ReviewRowView } from "./review-view";
 import ui from "./ui.module.css";
 import styles from "./ReviewsPanel.module.css";
 
@@ -17,8 +17,10 @@ import styles from "./ReviewsPanel.module.css";
 // the status: pending „Avalda“ and „Peida“, published „Peida“ and the „Avalehel“ toggle, hidden „Avalda“; a review she added also has „Muuda“ and
 // „Kustuta“ (one confirming step). A student's words have no edit control at all. „Lisa arvustus“ opens the form (ManualReviewForm). The page is
 // refreshed by the actions, so the rows then show the new state; a review that is not there any more (the student took her permission back) is answered
-// in words and its row goes. This file runs on old iPads: no regular expression with a lookbehind, here or in anything it imports
-// (tests/unit/old-safari.test.ts).
+// in words and its row goes. After „Avalda“ or „Peida“ the focus stays on the row, or, when the refresh takes it out of a status-filtered list, goes to the
+// next row (else the one before, else the status line). A review of a draft course says „(mustand)“ after the course; a quiet hint says that the home page
+// shows the newest six, and a hidden review whose „Avalehel“ is still set carries an „Avalehel“ tag („Avalda“ puts it back). This file runs on old iPads:
+// no regular expression with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
 
 type Line = { tone: "idle" | "busy" | "done" | "error"; text: string };
 const IDLE: Line = { tone: "idle", text: "" };
@@ -26,6 +28,9 @@ const toneClass = (tone: Line["tone"]) => (tone === "error" ? ui.error : tone ==
 const STATUS_TONE: Record<ReviewStatus, string> = { pending: ui.warn, published: ui.ok, hidden: ui.bad };
 
 type Outcome = { ok: true } | { ok: false; error: string; text: string };
+
+/** How long after a decision a refresh of the rows may still take the focus (ms): a refresh long after is some other change of the page. */
+const FOCUS_WAIT_MS = 5000;
 
 /** The fields of the form for a review that is edited (the day in Estonian time, as the form's date field holds it). */
 const valuesOf = (r: ReviewRowView): ManualReviewValues => ({
@@ -69,6 +74,8 @@ export function ReviewsPanel({
   const [gone, setGone] = useState<ReadonlySet<number>>(() => new Set());
   const panel = useRef<HTMLElement>(null);
   const statusLine = useRef<HTMLParagraphElement>(null);
+  /** The row a decision was made on and the rows around it (the next ones first, then the ones before): where its focus goes if the refresh takes the row away. */
+  const focusAfter = useRef<{ id: number; neighbours: number[]; until: number } | null>(null);
 
   // an answer in words (a refusal, or a deletion) takes the focus: the row it was about may be gone
   useEffect(() => {
@@ -76,6 +83,27 @@ export function ReviewsPanel({
   }, [line]);
 
   const visible = rows.filter((r) => !gone.has(r.id));
+
+  /**
+   * Puts the focus where a decision left it: on its row, or when the refresh has taken the row out of a status-filtered list, on the next row (else the one
+   * before), else on the status line. `refreshed`: the rows have just been replaced, so the decision is settled; else it is settled only if the row is gone.
+   */
+  const placeFocus = useCallback(
+    (refreshed: boolean) => {
+      const want = focusAfter.current;
+      if (!want) return;
+      if (Date.now() > want.until) {
+        focusAfter.current = null;
+        return;
+      }
+      const rowEl = (id: number) => document.getElementById(`${uid}-review-${id}`);
+      const own = rowEl(want.id);
+      if (refreshed || !own) focusAfter.current = null;
+      (own ?? want.neighbours.map(rowEl).find((el) => el !== null) ?? statusLine.current)?.focus();
+    },
+    [uid],
+  );
+  useEffect(() => placeFocus(true), [rows, placeFocus]);
 
   const run = (id: number, work: () => Promise<Outcome>, after?: () => void) => {
     if (pending) return;
@@ -93,8 +121,18 @@ export function ReviewsPanel({
       if (r.error === "gone" || r.error === "manualGone") setGone((g) => new Set(g).add(id));
     });
   };
-  const decide = (id: number, decision: "publish" | "hide") =>
-    run(id, () => decideReviewAction({ id, decision }), () => document.getElementById(`${uid}-review-${id}`)?.focus());
+  const decide = (id: number, decision: "publish" | "hide") => {
+    const at = visible.findIndex((r) => r.id === id);
+    const neighbours = [...visible.slice(at + 1), ...visible.slice(0, Math.max(at, 0)).reverse()].map((r) => r.id);
+    run(
+      id,
+      () => decideReviewAction({ id, decision }),
+      () => {
+        focusAfter.current = { id, neighbours, until: Date.now() + FOCUS_WAIT_MS };
+        placeFocus(false);
+      },
+    );
+  };
   const feature = (r: ReviewRowView) => run(r.id, () => setFeaturedAction({ id: r.id, featured: !r.featured }));
   const remove = (id: number) =>
     run(
@@ -114,6 +152,9 @@ export function ReviewsPanel({
     const opener = which === "new" ? "[data-review-add]" : `[data-review="${which}"] [data-review-edit]`;
     setTimeout(() => panel.current?.querySelector<HTMLElement>(opener)?.focus(), 0);
   };
+
+  // the hint belongs near the „Avalehel“ toggles: while a published review has one, or a hidden one still carries the setting
+  const homeHint = visible.some((r) => r.status === "published" || (r.status === "hidden" && r.featured));
 
   return (
     <section ref={panel} className={styles.panel} aria-labelledby={`${uid}-title`} data-reviews-panel="">
@@ -137,6 +178,12 @@ export function ReviewsPanel({
       <p ref={statusLine} tabIndex={-1} role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-reviews-status="">
         {line.text}
       </p>
+
+      {homeHint && (
+        <p id={`${uid}-home-hint`} className={ui.hint} data-review-home-hint="">
+          {fill(t.homeHint, { n: HOME_REVIEWS_MAX })}
+        </p>
+      )}
 
       {visible.length === 0 ? (
         <p className={ui.empty} data-reviews-empty="">
@@ -174,12 +221,17 @@ export function ReviewsPanel({
                           {t.manual}
                         </span>
                       )}
+                      {r.status === "hidden" && r.featured && (
+                        <span className={ui.tag} title={t.featuredKept} data-review-featured-tag="">
+                          {t.featured}
+                        </span>
+                      )}
                     </div>
                     <p className={styles.text} data-review-text="">
                       {r.text}
                     </p>
                     <p className={styles.meta} data-review-facts="">
-                      <span>{r.course.title}</span>
+                      <span>{courseLabel(r.course.title, r.course.published)}</span>
                       <span>{formatDate(new Date(r.writtenAt), "et")}</span>
                       <span>{fill(t.language, { locale: adminEt.common.locale[r.locale] })}</span>
                     </p>
@@ -210,6 +262,7 @@ export function ReviewsPanel({
                           className={`${ui.btn} ${ui.secondary} ${ui.smallBtn} ${styles.toggle}`}
                           aria-label={label(t.featured)}
                           aria-pressed={r.featured}
+                          aria-describedby={`${uid}-home-hint`}
                           aria-disabled={pending || undefined}
                           onClick={() => feature(r)}
                           data-review-featured-toggle=""

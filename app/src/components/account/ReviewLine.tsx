@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { AccountCard, ContactCard, EcourseCard } from "@/domain/account-cards";
+import type { AccountCard, ContactCard, EcourseCard, IndividualCard } from "@/domain/account-cards";
 import { isDone, sendJson } from "@/lib/json-request";
 import type { CoursesTexts } from "./texts";
 import cardStyles from "./AccountCourseCard.module.css";
@@ -26,10 +26,10 @@ export function ReviewLine({
   t: CoursesTexts;
   readOnly: boolean;
   /** Loads the cards again, quietly, and answers whether the server answered (CoursesView's `reloadForCard`); absent: nothing to load. */
-  onGone?(card: ContactCard | EcourseCard): Promise<boolean>;
+  onGone?(card: ContactCard | IndividualCard | EcourseCard): Promise<boolean>;
   onWithdrawn(): void;
 }) {
-  const owner = card.kind === "contact" || card.kind === "ecourse" ? card : null;
+  const owner = card.kind === "contact" || card.kind === "individual" || card.kind === "ecourse" ? card : null;
   const review = owner?.review ?? null;
   // the review this line has seen go: the line stays away even while the cards are being loaded again
   const [taken, setTaken] = useState<number | null>(null);

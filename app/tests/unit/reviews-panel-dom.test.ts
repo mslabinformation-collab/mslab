@@ -38,7 +38,7 @@ const student = (over: Partial<ReviewRowView> = {}): ReviewRowView => ({
   name: "Mari M.",
   locale: "et",
   writtenAt: "2026-10-13T08:00:00.000Z",
-  course: { id: 3, title: "Kulmude lamineerimine" },
+  course: { id: 3, title: "Kulmude lamineerimine", published: true },
   note: null,
   proof: { kind: "registration", status: "confirmed", protocolSent: true },
   ...over,
@@ -136,6 +136,16 @@ describe("what each row shows", () => {
     expect($("[data-review-note]", rowOf(1))).toBeNull();
   });
 
+  test("a review of a draft course says „(mustand)“ after the course, as the „Lisa arvustus“ list does; one of a published course has no mark (the final review's M2)", async () => {
+    await show([student({ id: 1, course: { id: 8, title: "Kulmude e-kursus", published: false } }), student({ id: 2 })]);
+    expect($("[data-review-facts]", rowOf(1))!.textContent).toBe("Kulmude e-kursus (mustand)13.10.2026Keel: ET");
+    expect($("[data-review-facts]", rowOf(2))!.textContent).toBe("Kulmude lamineerimine13.10.2026Keel: ET");
+    expect(COURSES[2].label).toBe("Kulmude e-kursus (mustand)"); // the same mark the course list of the form carries
+    // a hidden or pending review of a draft says it too, whatever the status: it is the course that is not shown
+    await show([manual({ id: 3, status: "hidden", course: { id: 8, title: "Kulmude e-kursus", published: false } })]);
+    expect($("[data-review-facts]", rowOf(3))!.textContent).toContain("Kulmude e-kursus (mustand)");
+  });
+
   test("the list holds the rows in the order it was given; none: its own words, narrowed by a status: the other words", async () => {
     await show([student({ id: 4 }), manual({ id: 9 })]);
     expect(all("[data-review]").map((li) => li.getAttribute("data-review"))).toEqual(["4", "9"]);
@@ -170,6 +180,40 @@ describe("the buttons follow the status and the kind", () => {
     await show([student({ id: 1, status: "published" }), student({ id: 2, status: "published", featured: true })]);
     expect($("[data-review-featured-toggle]", rowOf(1))!.getAttribute("aria-pressed")).toBe("false");
     expect($("[data-review-featured-toggle]", rowOf(2))!.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test("„Avalehel“ has a quiet hint near its toggles: only the newest six are shown (the final review's M3); it is not there when no row has the toggle", async () => {
+    await show([student({ id: 1, status: "published" }), student({ id: 2, status: "published", featured: true })]);
+    const hint = $("[data-review-home-hint]")!;
+    expect(hint.textContent).toBe("Avalehel näidatakse kuni 6 uusimat.");
+    for (const id of [1, 2]) expect($("[data-review-featured-toggle]", rowOf(id))!.getAttribute("aria-describedby")).toBe(hint.id);
+    expect(hint.id).not.toBe("");
+    await show([student({ id: 3, status: "pending" }), student({ id: 4, status: "hidden" })]);
+    expect($("[data-review-home-hint]")).toBeNull();
+  });
+
+  test("a hidden review that is still on the home page's list carries an „Avalehel“ tag, so „Avalda“ is seen to put it back; a published, a pending or an unmarked hidden one does not", async () => {
+    await show([
+      student({ id: 1, status: "hidden", featured: true }),
+      student({ id: 2, status: "hidden", featured: false }),
+      student({ id: 3, status: "published", featured: true }),
+      student({ id: 4, status: "pending" }),
+      manual({ id: 5, status: "hidden", featured: true }),
+    ]);
+    for (const id of [1, 5]) {
+      expect($("[data-review-featured-tag]", rowOf(id))!.textContent).toBe("Avalehel");
+      expect($("[data-review-featured-tag]", rowOf(id))!.getAttribute("title")).toBe("Peidetud, aga avalehe valik jääb: „Avalda“ toob selle avalehele tagasi.");
+    }
+    for (const id of [2, 3, 4]) expect($("[data-review-featured-tag]", rowOf(id))).toBeNull();
+    // the hint is there for the hidden marked one too, with no published row on the screen
+    await show([student({ id: 1, status: "hidden", featured: true })]);
+    expect($("[data-review-home-hint]")!.textContent).toBe("Avalehel näidatakse kuni 6 uusimat.");
+    await show([student({ id: 2, status: "hidden", featured: false })]);
+    expect($("[data-review-home-hint]")).toBeNull();
+    // „Avalda“ takes the tag off the row's tags (the page's refresh gives the published row, whose toggle is pressed)
+    await show([student({ id: 1, status: "published", featured: true })]);
+    expect($("[data-review-featured-tag]")).toBeNull();
+    expect($("[data-review-featured-toggle]")!.getAttribute("aria-pressed")).toBe("true");
   });
 
   test("a button's name for a screen reader starts with its words and ends with whose review it is", async () => {
@@ -261,6 +305,83 @@ describe("the presses", () => {
     actions.decideReviewAction.mockResolvedValue({ ok: false, error: "server", text: E.server });
     await click($("[data-review-hide]"));
     expect(status()).toBe(E.server);
+  });
+});
+
+describe("the focus after „Avalda“ or „Peida“ (the final review's M4)", () => {
+  const waiting = (id: number) => student({ id, name: `Õpilane ${id}` });
+  /** The page's refresh in a status-filtered view (?olek=ootel): the rows that are left. */
+  const refreshTo = (rows: ReviewRowView[]) => show(rows, { filtered: true });
+  const press = (decision: "publish" | "hide", id: number) => click($(`[data-review-${decision}]`, rowOf(id)));
+
+  test.each([["publish"], ["hide"]] as const)("%s in a filtered view, the refresh after the answer: the row leaves the list and the focus goes to the next row, not to the page", async (decision) => {
+    actions.decideReviewAction.mockResolvedValue({ ok: true });
+    await show([waiting(1), waiting(2), waiting(3)], { filtered: true });
+    await press(decision, 2);
+    expect(actions.decideReviewAction).toHaveBeenCalledWith({ id: 2, decision });
+    await refreshTo([waiting(1), waiting(3)]);
+    expect($('[data-review="2"]')).toBeNull();
+    expect(document.activeElement).toBe(rowOf(3));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  test("the refresh arrives before the answer does: the same row gets the focus", async () => {
+    let finish: (v: unknown) => void = () => {};
+    actions.decideReviewAction.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    await show([waiting(1), waiting(2), waiting(3)], { filtered: true });
+    await press("publish", 1);
+    await refreshTo([waiting(2), waiting(3)]);
+    await act(async () => finish({ ok: true }));
+    await settle();
+    expect(document.activeElement).toBe(rowOf(2));
+  });
+
+  test("the last row of the list: the focus goes to the row before it", async () => {
+    actions.decideReviewAction.mockResolvedValue({ ok: true });
+    await show([waiting(1), waiting(2)], { filtered: true });
+    await press("hide", 2);
+    await refreshTo([waiting(1)]);
+    expect(document.activeElement).toBe(rowOf(1));
+  });
+
+  test("the only row: none is left, and the focus goes to the status line, whose place the empty list's words follow", async () => {
+    actions.decideReviewAction.mockResolvedValue({ ok: true });
+    await show([waiting(1)], { filtered: true });
+    await press("publish", 1);
+    await refreshTo([]);
+    expect($("[data-reviews-empty]")!.textContent).toBe("Selles vaates arvustusi pole.");
+    expect(document.activeElement).toBe($("[data-reviews-status]"));
+  });
+
+  test("in the view of all, the row stays (its status changes): the focus is on it, as before", async () => {
+    actions.decideReviewAction.mockResolvedValue({ ok: true });
+    await show([waiting(1), waiting(2)]);
+    await press("publish", 1);
+    await show([student({ id: 1, status: "published", name: "Õpilane 1" }), waiting(2)]); // (the page's refresh: the row is published now)
+    expect(document.activeElement).toBe(rowOf(1));
+  });
+
+  test("a refusal does not move the focus to a neighbour: the row stays and the words have the focus", async () => {
+    actions.decideReviewAction.mockResolvedValue({ ok: false, error: "server", text: E.server });
+    await show([waiting(1), waiting(2)], { filtered: true });
+    await press("publish", 1);
+    expect(document.activeElement).toBe($("[data-reviews-status]"));
+    await refreshTo([waiting(1), waiting(2)]);
+    expect(document.activeElement).toBe($("[data-reviews-status]"));
+  });
+
+  test("a refresh that comes long after the press (some other change of the page) does not take the focus", async () => {
+    const real = Date.now();
+    actions.decideReviewAction.mockResolvedValue({ ok: true });
+    await show([waiting(1), waiting(2), waiting(3)], { filtered: true });
+    await press("publish", 2);
+    const later = vi.spyOn(Date, "now").mockReturnValue(real + 60_000);
+    try {
+      await refreshTo([waiting(1), waiting(3)]);
+      expect(document.activeElement).not.toBe(rowOf(3));
+    } finally {
+      later.mockRestore();
+    }
   });
 });
 

@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clients, clientSessions, courseAccess, courseFeedback, courses, reviews } from "@/db/schema";
-import type { ContactCard } from "@/domain/account-cards";
+import { clients, clientSessions, courseAccess, courseFeedback, courses, protocols, reviews } from "@/db/schema";
+import type { ContactCard, IndividualCard } from "@/domain/account-cards";
 import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { revalidationTargets, type PublicChange } from "@/server/cache-targets";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
@@ -228,6 +228,33 @@ describe("the dashboard", () => {
     await submit(db, kati.client.id, { registrationId: registration.id }, { name: "Kati K." });
     expect((await cards(kati.client.id)).contact).toMatchObject({ review: { id: expect.any(Number) } });
   });
+
+  test("an individual-course card has `review` too (the final review's I1, ruling R10): the protocol sent, the answer with consent, the card carries { id }, the withdrawal takes it off", async () => {
+    const { course } = await protocolCourse(db);
+    const [client] = await db.insert(clients).values({ email: "liis@example.test", name: "Liis Lepp" }).returning();
+    const own = await student(db, course, null, "Liis Lepp", { clientId: client.id, email: "liis@example.test" });
+    const individual = async () => (await loadDashboard(db, client.id, NOW))!.cards.find((c): c is IndividualCard => c.kind === "individual")!;
+    // no protocol sent and no session: the form is shut, the card has no review
+    expect(await individual()).toMatchObject({ registrationId: own.id, review: null });
+    expect(await loadDashboard(db, client.id, NOW)).not.toHaveProperty("feedback");
+    // Maria sends the protocol: the form opens, and the dashboard asks "Kuidas koolitus läks?"
+    await db.insert(protocols).values({ registrationId: own.id, stages: [], sentAt: NOW });
+    expect((await loadDashboard(db, client.id, NOW))!.feedback).toEqual([{ target: { registrationId: own.id }, course: { slug: course.slug, title: course.title } }]);
+    // she answers with the tick: the card carries her review's id, and nothing of Maria's choices
+    expect(await submit(db, client.id, { registrationId: own.id }, { name: "Liis L." })).toMatchObject({ kind: "submitted" });
+    const [review] = await reviewRows();
+    expect(await individual()).toMatchObject({ review: { id: review.id } });
+    expect(Object.keys((await individual()).review!)).toEqual(["id"]);
+    await db.update(reviews).set({ status: "published", featured: true, decidedAt: NOW });
+    expect(await individual()).toMatchObject({ review: { id: review.id } }); // published: the card does not say
+    // the withdrawal from this card: the same route as the other cards', the card has none afterwards
+    const { d } = deps();
+    expect(await answer(await call(d, await cookieOf(client.id), "/arvustus/tagasi", { reviewId: review.id }))).toEqual([200, { ok: true }]);
+    expect(await reviewRows()).toEqual([]);
+    expect(await individual()).toMatchObject({ review: null });
+    expect(await feedbackRows()).toHaveLength(1); // her answers stay with Maria
+    expect(changes).toEqual([{ kind: "reviews", course: course.slug }]);
+  });
 });
 
 describe("„Võta luba tagasi“: POST /arvustus/tagasi", () => {
@@ -297,14 +324,29 @@ describe("„Võta luba tagasi“: POST /arvustus/tagasi", () => {
     expect(await reviewRows()).toHaveLength(2);
   });
 
-  test("it shares the feedback's limit of ten an hour: after ten, 429 and the review stays", async () => {
+  test("it has a limit of its own (the final review's M1, ruling R12): the feedback's ten an hour spent by submits and „Ei soovi“s do not refuse a withdrawal, and it does not spend theirs", async () => {
     const { mari, marisReview } = await published();
     const cookie = await cookieOf(mari.client.id);
     const { d } = deps();
     for (let i = 0; i < 10; i++) expect((await call(d, cookie, "/tagasiside/peida", { id: mari.registration.id })).status).toBe(200);
+    expect(await answer(await call(d, cookie, "/tagasiside/peida", { id: mari.registration.id }))).toEqual([429, { ok: false, error: "rate" }]); // the feedback's limit is spent
+    expect(await answer(await call(d, cookie, "/arvustus/tagasi", { reviewId: marisReview.id }))).toEqual([200, { ok: true }]); // her permission can still be taken back
+    expect((await reviewRows()).map((r) => r.name)).toEqual(["Kati K."]);
+    expect(changes).toEqual([{ kind: "reviews", course: "kulmude-lami" }]);
+  });
+
+  test("thirty an hour: after thirty presses (a gone review's 404s count) the next is 429 and the review stays; the feedback form's own count is untouched", async () => {
+    const { mari, marisReview } = await published();
+    const cookie = await cookieOf(mari.client.id);
+    const { d } = deps();
+    for (let i = 0; i < 30; i++) expect((await call(d, cookie, "/arvustus/tagasi", { reviewId: 999_999 })).status).toBe(404);
     expect(await answer(await call(d, cookie, "/arvustus/tagasi", { reviewId: marisReview.id }))).toEqual([429, { ok: false, error: "rate" }]);
     expect(await reviewRows()).toHaveLength(2);
     expect(changes).toEqual([]);
+    expect((await call(d, cookie, "/tagasiside/peida", { id: mari.registration.id })).status).toBe(200); // the feedback's ten an hour are all still there
+    const log = [...vi.mocked(console.info).mock.calls, ...vi.mocked(console.error).mock.calls].map((args) => args.map(String).join(" ")).join("\n");
+    expect(log).toContain("[account] review withdrawal rate limited");
+    expect(log).not.toContain("[account] feedback rate limited");
   });
 
   test("a refresh that fails does not undo the withdrawal or fail the answer; with no refresh given (a test, a script) it answers the same; the log has ids only", async () => {

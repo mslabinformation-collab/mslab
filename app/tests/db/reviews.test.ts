@@ -384,10 +384,21 @@ describe("adminReviews and pendingReviewCount", () => {
     const byId = Object.fromEntries(list.map((r) => [r.id, r]));
     expect(byId[marisReview.id]).toEqual({
       id: marisReview.id, kind: "student", status: "published", featured: false, text: RECOMMEND, name: "Mari M.", locale: "et", writtenAt: NOW,
-      course: { id: mari.course.id, slug: mari.course.slug, title: mari.course.title }, note: null, proof: { registrationStatus: "confirmed", protocolSent: true },
+      course: { id: mari.course.id, slug: mari.course.slug, title: mari.course.title, published: true }, note: null, proof: { registrationStatus: "confirmed", protocolSent: true },
     });
     expect(byId[katisReview.id]).toMatchObject({ kind: "student", proof: { completedAt: new Date("2026-10-10T09:00:00Z") }, course: { id: kati.course.id, slug: "kulmud-e" }, note: null });
     expect(byId[manual.id]).toMatchObject({ kind: "manual", note: "paberil", proof: null });
+  });
+
+  test("each review carries whether its course is published (the final review's M2): a review of a draft says so, and follows the course when it is published", async () => {
+    const { course } = await protocolCourse(db);
+    const { course: draft } = await graduate(db, { published: false });
+    const open = await addReview(course.id, { status: "published" });
+    const hidden = await addReview(draft.id, { status: "pending", kind: "student", note: null, feedbackId: null });
+    const published = async () => Object.fromEntries((await adminReviews(db, {})).map((r) => [r.id, r.course.published]));
+    expect(await published()).toEqual({ [open.id]: true, [hidden.id]: false });
+    await db.update(courses).set({ published: true }).where(eq(courses.id, draft.id));
+    expect(await published()).toEqual({ [open.id]: true, [hidden.id]: true });
   });
 
   test("the proof says when the protocol was not sent, and a cancelled registration's status", async () => {

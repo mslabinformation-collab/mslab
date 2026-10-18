@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CoursesTab } from "@/components/account/CoursesTab";
 import { FeedbackForm } from "@/components/account/FeedbackForm";
 import { coursesTexts, feedbackTexts } from "@/components/account/texts";
-import type { AccountCard, ContactCard, EcourseCard } from "@/domain/account-cards";
+import type { AccountCard, ContactCard, EcourseCard, IndividualCard } from "@/domain/account-cards";
 import { getDict, type Locale } from "@/i18n/locales";
 import type { Dashboard } from "@/server/client-data";
 
@@ -14,7 +14,7 @@ import type { Dashboard } from "@/server/client-data";
 //   a counter), what is sent (`consent: { name }`, or null when unticked, the typed name kept), the refusals;
 // - the e-course's form by `#kursus=<slug>` and its card on the dashboard;
 // - the course card's line „Lubasid oma soovitust avaldada“ with „Võta luba tagasi“ (a contact card's and an e-course's), its answers, and the
-//   admin's read-only copy.
+//   admin's read-only copy; an individual-course card has the same line (the final review's I1, ruling R10).
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -179,6 +179,23 @@ describe("the form's tick and the name it shows", () => {
     expect(posts()[0][1]).toMatchObject({ consent: { name: "Kati K." } });
   });
 
+  test("the name field's error is announced on the field (the final review): while the line is set the field is described by it and by its counter, and by the counter alone after", async () => {
+    await form({ shownName: "" });
+    await answer(RECOMMEND);
+    await click(tick());
+    const counterId = $("[data-consent-name-field] p")!.id;
+    expect(counterId).not.toBe("");
+    expect(nameField()!.getAttribute("aria-describedby")).toBe(counterId); // no error yet: the counter only
+    await click($("[data-feedback-submit]"));
+    const errorId = $("[data-consent-error]")!.id;
+    expect(errorId).not.toBe("");
+    expect(nameField()!.getAttribute("aria-describedby")!.split(" ").sort()).toEqual([counterId, errorId].sort());
+    expect(document.getElementById(errorId)).toBe($("[data-consent-error]")); // the id names the line that is on the page
+    await type(nameField(), "Kati K."); // a name typed takes the line away, and the reference with it
+    expect($("[data-consent-error]")).toBeNull();
+    expect(nameField()!.getAttribute("aria-describedby")).toBe(counterId);
+  });
+
   test.each([
     ["consentName", "Kirjuta nimi, mida näidata (kuni 40 tähemärki)."],
     ["consentText", "Loa andmiseks kirjuta vastus küsimusele „Kas soovitaksid seda koolitust ka teistele? Miks?“."],
@@ -288,6 +305,9 @@ function contactCard(over: Partial<ContactCard> = {}): ContactCard {
     kind: "contact", registrationId: 7, course: CONTACT, session: { startsAt: PAST, city: "Pärnu", venue: "", cancelled: false },
     status: "confirmed", paymentChoice: "full", priceCents: 35000, paidCents: 35000, createdAt: PAST, ...over,
   };
+}
+function individualCard(over: Partial<IndividualCard> = {}): IndividualCard {
+  return { kind: "individual", registrationId: 9, course: CONTACT, status: "confirmed", preferredPeriod: "jaanuar", createdAt: PAST, protocolSent: true, ...over };
 }
 function ecourseCard(over: Partial<EcourseCard> = {}): EcourseCard {
   return { kind: "ecourse", course: ECOURSE, grantedAt: PAST, expiresAt: "2027-04-09T10:00:00.000Z", revoked: false, completedAt: "2026-10-10T09:00:00.000Z", ...over };
@@ -401,14 +421,66 @@ describe("„Võta luba tagasi“ on the course card", () => {
     expect(withdraw()!.textContent).toBe("Отозвать разрешение");
   });
 
-  test("an individual card, a request and a waitlist entry have no line", async () => {
+  test("an individual card with no review, a request and a waitlist entry have no line", async () => {
     await render(
       dashboard([
-        { kind: "individual", registrationId: 9, course: CONTACT, status: "confirmed", preferredPeriod: "jaanuar", createdAt: PAST },
+        individualCard({ review: null }),
         { kind: "request", requestId: 3, requestKind: "practice", title: null, detail: "", handled: false, createdAt: PAST },
         { kind: "waitlist", requestId: 4, course: CONTACT, session: { startsAt: FUTURE, city: "Pärnu", venue: "", cancelled: false }, handled: false, createdAt: PAST },
       ]),
     );
     expect($("[data-card-review]")).toBeNull();
+    await render(dashboard([individualCard()])); // a card built before the field existed reads as none
+    expect($("[data-card-review]")).toBeNull();
+  });
+
+  // The final review's I1 (ruling R10): a student of an individual course gives the permission from the same form, so she takes it back from the same line.
+  describe("an individual-course card (no session)", () => {
+    test("the line is there while the card has a review, with the words and the button of the other cards", async () => {
+      await render(dashboard([individualCard({ review: { id: 8 } })]));
+      expect(line("registration-9")!.textContent).toContain("Lubasid oma soovitust avaldada");
+      expect(withdraw("registration-9")!.textContent).toBe("Võta luba tagasi");
+      expect(withdraw("registration-9")!.tagName).toBe("BUTTON");
+      expect(withdraw("registration-9")!.getAttribute("aria-label")).toBe("Võta luba tagasi: Kulmude lamineerimine");
+      expect(container.textContent).not.toMatch(/Ootab kinnitust|Avaldatud|Peidetud/);
+    });
+
+    test("pressing it posts { reviewId }; after a 200 the line is gone and the focus is on the card's heading", async () => {
+      await render(dashboard([individualCard({ review: { id: 8 } }), contactCard({ review: { id: 5 } })]));
+      fetchMock.mockImplementation(async () => json(200, { ok: true }));
+      await click(withdraw("registration-9"));
+      expect(posts()).toEqual([["/api/konto/arvustus/tagasi", { reviewId: 8 }]]);
+      expect(line("registration-9")).toBeNull();
+      expect(line()).not.toBeNull(); // the contact card keeps its own
+      expect(document.activeElement).toBe($("[data-card='registration-9'] h2"));
+    });
+
+    test("a 404 loads the cards again quietly and the line goes; a 500 keeps the line and says why; read-only does nothing", async () => {
+      const loads = [json(200, dashboard([individualCard({ review: { id: 8 } })])), json(200, dashboard([individualCard({ review: null })]))];
+      fetchMock.mockImplementation(async (input) => (String(input) === "/api/konto" ? (loads.shift() ?? json(500, {})) : json(404, { ok: false, error: "review" })));
+      await act(async () => root.render(createElement(CoursesTab, { locale: "et", t: coursesTexts(getDict("et")), now: NOW })));
+      await settle();
+      await click(withdraw("registration-9"));
+      expect(gets("/api/konto")).toBe(2); // the quiet reload, with the focus kept on this card
+      expect(line("registration-9")).toBeNull();
+      expect(document.activeElement).toBe($("[data-card='registration-9'] h2"));
+      await render(dashboard([individualCard({ review: { id: 8 } })]));
+      fetchMock.mockReset();
+      fetchMock.mockResolvedValueOnce(json(500, { ok: false }));
+      await click(withdraw("registration-9"));
+      expect($("[data-card-review-error]")!.textContent).toBe("Ei õnnestunud. Proovi uuesti.");
+      expect(line("registration-9")).not.toBeNull();
+      await render(dashboard([individualCard({ review: { id: 8 } })]), true);
+      fetchMock.mockReset();
+      await click(withdraw("registration-9"));
+      expect(withdraw("registration-9")!.getAttribute("aria-disabled")).toBe("true");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    test("Russian: the line and the button in Russian", async () => {
+      await render(dashboard([individualCard({ review: { id: 8 } })]), false, "ru");
+      expect(line("registration-9")!.textContent).toContain("Вы разрешили опубликовать вашу рекомендацию");
+      expect(withdraw("registration-9")!.textContent).toBe("Отозвать разрешение");
+    });
   });
 });

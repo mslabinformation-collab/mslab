@@ -114,6 +114,8 @@ export type IndividualCard = {
   protocolSent?: boolean;
   /** Her invoices of this registration (invoices Task 6), as a contact card's; no „Maksa" on this card, so no open one. Absent without one. */
   invoices?: CardInvoice[];
+  /** Her review of this registration's course (student reviews, D6; the final review's I1, ruling R10), as a contact card's `review`. null without one. Present on every card loadDashboard makes. Optional so cards built elsewhere keep compiling. */
+  review?: ReviewRef | null;
 };
 
 /** An individual-course or practice request. `title` is the course or the practice package (null when it is gone). */

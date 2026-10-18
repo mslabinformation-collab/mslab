@@ -849,6 +849,9 @@ export const adminEt = {
     publish: "Avalda",
     hide: "Peida",
     featured: "Avalehel",
+    // (the final review's M3) Draft: the quiet hint near the toggles ({n} is HOME_REVIEWS_MAX), and the tag of a hidden review whose „Avalehel“ is still set (its title)
+    homeHint: "Avalehel näidatakse kuni {n} uusimat.",
+    featuredKept: "Peidetud, aga avalehe valik jääb: „Avalda“ toob selle avalehele tagasi.",
     edit: "Muuda",
     delete: "Kustuta",
     // the buttons' names for a screen reader: the button's own words first, then whose review it is
