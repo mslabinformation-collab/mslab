@@ -363,7 +363,7 @@ describe("Maria's own reviews („Lisa arvustus“)", () => {
 });
 
 describe("adminReviews and pendingReviewCount", () => {
-  test("pending first, then the newest; each with its course, and the proof Maria judges a student by", async () => {
+  test("by status (pending, published, hidden), the newest written first within each; each with its course, and the proof Maria judges a student by", async () => {
     const mari = await contactStudent(db);
     await db.insert(protocols).values({ registrationId: mari.registration.id, stages: [], sentAt: day(12) });
     await submit(db, mari.client.id, { registrationId: mari.registration.id }, { name: "Mari M." });
@@ -377,9 +377,9 @@ describe("adminReviews and pendingReviewCount", () => {
     const list = await adminReviews(db, {});
     expect(list.map((r) => [r.id, r.status])).toEqual([
       [katisReview.id, "pending"], // the one still waiting comes first
-      [hidden.id, "hidden"], // then the newest written
-      [marisReview.id, "published"],
+      [marisReview.id, "published"], // then the published ones, the newest written first
       [manual.id, "published"],
+      [hidden.id, "hidden"], // the hidden one last, though it is the newest written
     ]);
     const byId = Object.fromEntries(list.map((r) => [r.id, r]));
     expect(byId[marisReview.id]).toEqual({

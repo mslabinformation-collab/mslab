@@ -122,7 +122,7 @@ describe("„Arvustused“", () => {
     expect(text(part(await render({ vaade: "arvustused" }), "data-review", marisReview.id))).toContain("Registreering: Ootab ettemaksu · Protokolli pole saadetud");
   });
 
-  test("the waiting ones come first, then the newest written; the status filter narrows the list, and an unknown word is no filter", async () => {
+  test("by status (waiting, published, hidden), the newest written first within each; the status filter narrows the list, and an unknown word is no filter", async () => {
     const { marisReview, katisReview } = await world();
     const written = (id: number, day: number) => db.update(reviews).set({ writtenAt: new Date(Date.UTC(2026, 9, day, 9)) }).where(eq(reviews.id, id));
     // both waiting: the newest written first
@@ -144,6 +144,10 @@ describe("„Arvustused“", () => {
     expect(tag(filtered, "data-review-filter-status", "avaldatud")).toContain('aria-current="true"');
     expect(tag(filtered, "data-review-filter-status", "all")).not.toContain("aria-current");
     expect(tag(await render({ vaade: "arvustused" }), "data-review-filter-status", "all")).toContain('aria-current="true"');
+    // published before hidden, whatever the days: Mari's, now hidden, is the newest written; Kati's, now published, the oldest
+    await db.update(reviews).set({ status: "hidden", writtenAt: new Date(Date.UTC(2026, 9, 15, 9)) }).where(eq(reviews.id, marisReview.id));
+    await db.update(reviews).set({ status: "published" }).where(eq(reviews.id, katisReview.id));
+    expect(reviewIds(await render({ vaade: "arvustused" }))).toEqual([katisReview.id, marisReview.id]);
   });
 
   test("with no review at all the view still offers „Lisa arvustus“ and says there are none", async () => {

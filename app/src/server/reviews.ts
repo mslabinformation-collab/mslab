@@ -204,7 +204,7 @@ export type AdminReviewRow = {
   proof: { registrationStatus: string; protocolSent: boolean } | { completedAt: Date } | null;
 };
 
-/** The reviews, the ones waiting for Maria first, then the newest written; `status` and `courseId` narrow the list. */
+/** The reviews by status (waiting for Maria, then published, then hidden: spec D2), the newest written first within each; `status` and `courseId` narrow the list. */
 export async function adminReviews(db: Db, filter: { status?: ReviewStatus; courseId?: number }): Promise<AdminReviewRow[]> {
   const rows = await db
     .select({
@@ -231,7 +231,7 @@ export async function adminReviews(db: Db, filter: { status?: ReviewStatus; cour
     .leftJoin(protocols, eq(protocols.registrationId, registrations.id))
     .leftJoin(courseAccess, eq(courseFeedback.accessId, courseAccess.id))
     .where(and(filter.status === undefined ? undefined : eq(reviews.status, filter.status), filter.courseId === undefined ? undefined : eq(reviews.courseId, filter.courseId)))
-    .orderBy(sql`(${reviews.status} = 'pending') desc`, desc(reviews.writtenAt), desc(reviews.id));
+    .orderBy(sql`case ${reviews.status} when 'pending' then 0 when 'published' then 1 else 2 end`, desc(reviews.writtenAt), desc(reviews.id));
   return rows.map((r) => ({
     id: r.id,
     kind: r.kind,

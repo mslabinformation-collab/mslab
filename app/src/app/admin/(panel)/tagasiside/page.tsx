@@ -116,7 +116,7 @@ function Top({ pending, active }: { pending: number; active: "answers" | "review
   );
 }
 
-/** "Arvustused": the reviews (pending first, then the newest written), narrowed by the status filter, and "Lisa arvustus". (A function of the page, not a component: it reads.) */
+/** "Arvustused": the reviews (by status, waiting first, then published, then hidden; the newest written first within each), narrowed by the status filter, and "Lisa arvustus". (A function of the page, not a component: it reads.) */
 async function reviewsPage(email: string, olek: StatusWord | null) {
   const db = getDb();
   const t = adminEt.reviews;
