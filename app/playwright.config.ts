@@ -18,8 +18,10 @@ const phone = { ...devices["Desktop Chrome"], viewport: { width: 390, height: 84
  * project depending on its setup has finished. Unlike `dependencies`, a teardown also runs when an earlier test failed.
  * contracts.spec.ts is one of them (contracts Task 7): it writes the contact contract's text and the seller card, which every registration reads.
  * reviews-public.spec.ts is one too (student reviews, Task 5): it writes published and featured reviews, which the course pages and the home page show.
+ * So is reviews.spec.ts (Task 6), the whole path of one review: it publishes and features one, and adds one of Maria's own. (reviews-race.spec.ts is not:
+ * it talks to the database in its own process and no page shows what it writes.)
  */
-const EDITS = /(admin-(edit|site)\.spec\.ts|[\\/]contracts\.spec\.ts|[\\/]reviews-public\.spec\.ts)$/;
+const EDITS = /(admin-(edit|site)\.spec\.ts|[\\/]contracts\.spec\.ts|[\\/]reviews(-public)?\.spec\.ts)$/;
 const ORDER = /order\.setup\.ts$/;
 /** The visual suite has its own config: playwright.visual.config.ts (npm run visual). */
 const VISUAL = /[\\/]visual[\\/]/;

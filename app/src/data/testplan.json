@@ -3070,6 +3070,7 @@
         "Ava Proov 1 „Minu koolitused“ ja vaata e-koolituse kaardil rida „Lubasid oma soovitust avaldada“.",
         "Vajuta rea juures „Võta luba tagasi“.",
         "Värskenda lehte.",
+        "Mine tagasi esimesele halduse lehele (seda ei ole värskendatud) ja vajuta Proov 1 e-koolituse arvustuse juures „Peida“.",
         "Ava halduses „Tagasiside“ uuesti, vajuta „Arvustused“ ja siis „Vastused“."
       ],
       "expect": [
@@ -3077,6 +3078,7 @@
         "Rida ja nupp kaovad kohe, lehte uuendamata.",
         "Kaardil on edasi „Lõpetatud …“.",
         "Pärast värskendamist rida tagasi ei tule.",
+        "Halduse lehel on tekst „Seda arvustust enam pole — õpilane võttis loa tagasi.“ ja arvustuse rida kaob.",
         "Vaates „Arvustused“ ei ole Proov 1 e-koolituse arvustust enam.",
         "Vaates „Vastused“ on tema vastus alles ja kuupäeva asemel on „Lõpetatud …“."
       ],

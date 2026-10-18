@@ -960,13 +960,20 @@ export async function onLocalDb<T>(work: (sql: postgres.Sql) => Promise<T>, opts
   }
 }
 
-// ---------- student reviews on the public pages (course.spec.ts, home.spec.ts) ----------
+// ---------- student reviews on the public pages (reviews-public.spec.ts) ----------
 // Published reviews of a seed course, written straight to the LOCAL database, to see the course page's block and the home page's section. They are
 // reviews Maria "added" (kind manual), so each carries a source note, which here is REVIEW_FIXTURE_NOTE: a test deletes exactly the ids it made
 // (removeReviewFixtures), and global-setup / global-teardown delete any an interrupted run left (and fail the run if one was left).
 // Each project uses its own course for them, so that the desktop and phone runs side by side never count each other's.
 
 export const REVIEW_FIXTURE_NOTE = "e2e-fixture:reviews";
+
+/**
+ * The home page's „Õpilaste kogemused“ shows whatever review is featured, whoever made it, and its tests count what it shows: a test that features a
+ * review (reviews.spec.ts) or counts the section (reviews-public.spec.ts) takes this turn (holdLocalLock) for as long as it needs the home page as it is.
+ * The edit specs run side by side under `next dev`; the production build's edit-lock.ts runs them one at a time anyway.
+ */
+export const HOME_REVIEWS_LOCK = "e2e-home-reviews";
 
 export type ReviewFixture = {
   name: string;

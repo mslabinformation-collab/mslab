@@ -297,6 +297,11 @@ describe("the review checks sit where Proov 1's reviews exist", () => {
     expect(steps.indexOf("„Arvustused“")).toBeGreaterThan(-1);
     expect(steps.indexOf("„Vastused“")).toBeGreaterThan(steps.indexOf("Võta luba tagasi"));
     expect(item("ekursus-luba-tagasi").expect.join("\n")).toContain("ootab Proov 1 e-koolituse arvustus kinnitust");
+    // Maria's page, opened before the withdrawal and not refreshed, is pressed after it: „Seda arvustust enam pole — õpilane võttis loa tagasi.“ (reviews.spec.ts, step 5)
+    const stale = steps.indexOf("seda ei ole värskendatud");
+    expect(stale).toBeGreaterThan(steps.indexOf("Võta luba tagasi"));
+    expect(stale).toBeLessThan(steps.indexOf("„Vastused“"));
+    expect(item("ekursus-luba-tagasi").expect.join("\n")).toContain("Seda arvustust enam pole — õpilane võttis loa tagasi.");
     // the e-course card's own question, not the contact card's (Proov 1's contact card may still be there)
     expect(item("ekursus-tagasiside").expect.at(-1)).toMatch(/^E-koolituse kaardilt on „Kuidas koolitus läks\?“ kadunud/);
   });

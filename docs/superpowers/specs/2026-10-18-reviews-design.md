@@ -40,12 +40,15 @@ What exists today:
     - „Avaldatud“ (published);
     - „Peidetud“ (hidden).
   - Each pending review has „Avalda“ and „Peida“. A published review can be hidden, and a hidden one published again.
+  - „Arvustused“ is a tab of the „Tagasiside“ page, `?vaade=arvustused`, with `?olek=ootel|avaldatud|peidetud` for one status, and it has no paging for now: tens of rows are expected, and the status filter is enough until the list passes about 100 (R6). (amended 18.10 during the build)
+  - The „Kõik“ view lists by status (waiting, published, hidden) and then newest written first (R7). (amended 18.10 during the build)
   - **Who may offer one.** The form opens as it does today (a contact registration after its course day, not cancelled; an e-course once „Lõpetatud“), and Maria's approval is the check. So she can judge whether the writer really took part, each student review in „Arvustused“ shows the registration's status (for example „Ootab ettemaksu“) and whether a protocol was sent; an e-course review shows „Lõpetatud {date}“ (my call, from the builder check).
   - She never edits a student's review (my call, from the anti-goals). She can only publish or hide it.
   - „Avalehel“ is a toggle on a published review that also shows it on the home page.
   - Maria's existing „Uus tagasiside“ mail and Telegram notice gain the line „Lubab avaldada — vaata „Tagasiside“ lehel.“ (Draft) when the student allowed publishing.
 - **D3. E-course graduates get the same feedback form** (my call, from C48's "iga koolituse lõpus").
   - When to offer it: after the access is „Lõpetatud“ (`course_access.completed_at` set). Her account shows the same open feedback card a contact course gets, where today's feedback cards are, with today's „Ei soovi“.
+  - The form opens once the access is „Lõpetatud“ and not revoked. An access that has ended by its date still counts: she finished the course. (amended 18.10 during the build)
   - The form: Maria's paper form unchanged, all questions, because each one reads sensibly for an e-course too.
   - Admin: the „Tagasiside“ page's course filter and averages include e-courses.
 - **D4. Maria can add a review she received elsewhere** (my call, so the site does not launch with empty blocks). This covers past students' paper forms and messages.
@@ -58,6 +61,8 @@ What exists today:
     - a required internal note, „Kust see pärit on?“ (Draft), never shown publicly.
   - The form tells her: „Lisa ainult päris õpilase sõnad tema loal.“ (Draft).
   - She may edit or delete these, and only these. They are published when she saves them, because she adds them herself (my call).
+  - Her internal note is capped at 500 characters (R3), and the date written is from the year 2000 on (a typo like 0026 is refused; a date ahead is not). (amended 18.10 during the build)
+  - Editing a manual review keeps its status and its „Avalehel“ setting, so a hidden one stays hidden. Moving it to another course refreshes the pages of both courses and the home page (R4). (amended 18.10 during the build)
   - The student's permission for these is Maria's responsibility. The site cannot check it.
 - **D5. Where reviews show** (my call):
   - **The course page.** A block „Õpilaste tagasiside“ after the course content, with the course's published reviews, newest first: six, then „Näita kõiki“ for the rest (up to 50).
@@ -112,6 +117,7 @@ The index is (`course_id`, `status`, `written_at` desc). The text and the name a
     - a tick with an empty name;
     - a name over 40 characters.
   - The feedback and the review are written in one transaction.
+  - The feedback POSTs (`/api/konto/tagasiside` and `/api/konto/tagasiside/peida`) address a course by `id` (a contact course's registration) or by `kursus` (an e-course's slug), exactly one of the two. The older `registrationId` field is no longer accepted: a form left open across the deploy gets one refusal and reloads (R5). (amended 18.10 during the build)
 - **Her account.** The course card shows the permission line and „Võta luba tagasi“ while her review exists (D6); the dashboard's data gives each contact and e-course card `review: { id } | null`. An e-course gets the same open feedback card as a contact course once it is „Lõpetatud“ (D3), placed where today's feedback cards are.
 - **The admin.**
   - The „Tagasiside“ page gains „Arvustused“ (D2) and „Lisa arvustus“ (D4).
@@ -158,4 +164,4 @@ The feedback-form checks get `redo`. The plan's file order must hold, per the gu
 
 - The layout of the course block and the home section within the site's existing style, with prototype D's carousel as a reference and nothing copied.
 - The Estonian and Russian texts beyond those quoted. They are marked Draft for Dim's wording sheet.
-- Where „Arvustused“ sits on the „Tagasiside“ page: a tab or a second part.
+- Where „Arvustused“ sits on the „Tagasiside“ page: a tab or a second part. It is a tab (see D2). (amended 18.10 during the build)

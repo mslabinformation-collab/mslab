@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test } from "./edit-lock";
 import { expect } from "./test";
-import { insertReviewFixtures, LOCAL_FIXTURES, removeReviewFixtures } from "./fixtures";
+import { holdLocalLock, HOME_REVIEWS_LOCK, insertReviewFixtures, LOCAL_FIXTURES, LOCK_WAIT_MS, removeReviewFixtures } from "./fixtures";
 
 // The student reviews on the public pages (student reviews, Task 5; spec D5, D7): the course page's block and the home page's section. These tests
 // WRITE published reviews (a few of them featured) of seed courses, which the course page and the home page then show, so they are one of the edit
@@ -143,10 +143,21 @@ test.describe("student reviews on the course page", () => {
 // The home page (spec D5): the section „Õpilaste kogemused“ after the trainer section, with the published reviews that are featured, each naming its
 // course. The reviews are written to the local database for the test and deleted by their ids afterwards. Desktop project only: a featured review
 // shows on the home page whatever its course, so a second project writing at the same time would be counted (the phone is tried at 390 below).
-// They use the two e-courses, which the course page's review tests do not.
+// They use the two e-courses, which the course page's review tests do not. They also take the home page's turn (HOME_REVIEWS_LOCK): reviews.spec.ts, the
+// whole path of one review, features a review of its own for a while, and these tests count what the section shows.
 test.describe("student reviews on the home page", () => {
   test.skip(({ isMobile }) => isMobile, "the desktop project sets each width, and only one project writes featured reviews at a time");
   test.skip(!LOCAL_FIXTURES, "writes reviews to the local database");
+  let giveBackHome: (() => Promise<void>) | null = null;
+  test.beforeEach(async ({}, info) => {
+    if (!LOCAL_FIXTURES) return;
+    info.setTimeout(info.timeout + LOCK_WAIT_MS); // (the wait for the turn is added to the test's own time, as edit-lock.ts does)
+    giveBackHome = await holdLocalLock(HOME_REVIEWS_LOCK, LOCK_WAIT_MS);
+  });
+  test.afterEach(async () => {
+    await giveBackHome?.();
+    giveBackHome = null;
+  });
   const FIRST = "kulmukuju-ja-summeetria";
   const SECOND = "ripsmete-laminatsiooni-alused";
   const featured = (n: number, over: { locale?: "et" | "ru"; offset?: number } = {}) =>
