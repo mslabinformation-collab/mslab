@@ -530,6 +530,9 @@ export const adminEt = {
       noAccount: "Õpilasel pole kontot — lisa ta Õpilased lehel.",
       cancelled: "Tühistatud registreeringu lepingut ei saa kinnitamiseks saata.",
       mailFailed: "Kirja ei saadetud. Proovi uuesti.",
+      // the copy can never go: a sample address (@example.test, never mailed), or no mail service here (no Resend); Draft for Dim's wording sheet
+      sampleAddress: "Sellele aadressile kirja ei saadeta.",
+      mailOff: "Kirjade saatmine pole siin seadistatud.",
       // the copy draws the PDF first and sends nothing without it (ruling R15; Draft)
       pdfFailed: "Lepingu PDF-i ei õnnestunud koostada — proovi uuesti.",
       server: "Midagi läks valesti. Proovi uuesti.",

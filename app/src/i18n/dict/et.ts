@@ -726,6 +726,9 @@ export const et = {
       start: "Alusta koolitust",
       // the acceptance could not be stored (the checkbox stays ticked)
       termsFailed: "Ei õnnestunud salvestada. Proovi uuesti.",
+      // an account with no name gives hers at the gate (contracts, ruling R19): the field and its error, Draft for Dim's wording sheet
+      termsName: "Nimi",
+      termsNameRequired: "Kirjuta oma nimi.",
       access: "Ligipääs kuni {date}",
       soon: "Sisu lisandub peagi.",
       resume: "Jätka",

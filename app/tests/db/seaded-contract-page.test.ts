@@ -87,3 +87,20 @@ test("the e-course's contract keeps its card in the settings' form, retitled, wi
   expect(html.indexOf("</form>")).toBeGreaterThan(html.indexOf('data-legal-editor="course_terms"'));
   expect(html.indexOf("</form>")).toBeLessThan(html.indexOf("data-contract-texts"));
 });
+
+test("ruling R18: the e-course's card has the contact card's placeholders hint (the cart and the terms gate fill them), the same words and list", async () => {
+  const html = await page();
+  const section = (marker: string) => {
+    const from = html.slice(html.indexOf(marker));
+    return from.slice(0, from.indexOf("</section>"));
+  };
+  const hint = (part: string) => {
+    const from = part.slice(part.indexOf("data-contract-placeholders"));
+    return from.slice(0, from.indexOf("</ul>"));
+  };
+  const ecourse = section('data-legal-editor="course_terms"');
+  expect(ecourse).toContain("data-contract-placeholders");
+  expect(hint(ecourse)).toContain("Tekstis võid kasutada kohahoidjaid, mis täituvad lepingu kinnitamisel.");
+  for (const name of ["{nimi}", "{e-post}", "{koolitus}", "{toimumine}", "{hind}", "{ettemaks}"]) expect(hint(ecourse), name).toContain(name);
+  expect(hint(ecourse)).toBe(hint(section("data-contract-texts")));
+});

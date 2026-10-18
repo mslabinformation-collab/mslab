@@ -611,7 +611,7 @@ async function invoiceAttachment(deps: SettleDeps, invoice: Invoice | null): Pro
  * follows a real payment). The login is a normal client login (client-auth.ts issueClientLogin), made only now and sent only in this mail; an
  * address that has its 3 live logins already gets the mail without a code ("Ava minu konto"). Nothing here signs anyone in. The purchase's
  * invoice goes with it as a PDF, with „Arve on lisatud." (invoiceAttachment), and its contract as the second PDF, with „Leping on lisatud.“
- * (contracts, D7), whose `sent_at` is then recorded.
+ * (contracts, D7), whose `sent_at` is then recorded (a failure of that record alone is logged as such: the mail went).
  */
 async function mailEcourseOpen(deps: SettleDeps, p: Payment, g: Grant, invoice: Invoice | null, contract: Contract | null): Promise<void> {
   if (isSampleAddress(p.email) || !mailConfigured(deps.env)) return;
@@ -627,7 +627,14 @@ async function mailEcourseOpen(deps: SettleDeps, p: Payment, g: Grant, invoice: 
     const attachments = [...(attachment ? [attachment] : []), ...(contract && contractFile ? [contractAttachment(contract.id, contractFile)] : [])];
     const sent = await sendMail(deps.env, attachments.length ? { ...mail, attachments } : mail);
     console.info(`[payments] payment ${p.id}: the e-course mail sent: ${sent}`);
-    if (sent && contract && contractFile) await markContractSent(deps.db, contract.id, deps.now);
+    // the mail is out once Resend took it: a failure to record that (sent_at) is logged on its own, as contracts.ts mailContract logs it
+    if (sent && contract && contractFile) {
+      try {
+        await markContractSent(deps.db, contract.id, deps.now);
+      } catch (e) {
+        logFailure(`[contracts] contract ${contract.id}: mailed, but the send was not recorded`, e);
+      }
+    }
   } catch (e) {
     logFailure(`[payments] payment ${p.id}: the e-course mail failed`, e);
   }

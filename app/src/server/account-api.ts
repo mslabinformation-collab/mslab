@@ -1163,25 +1163,29 @@ async function dismissFeedback(request: Request, deps: AccountDeps): Promise<Res
 }
 
 /**
- * POST /tingimused `{ slug, version, locale? }`: the client accepts the e-course terms, the version the page showed (`terms.version` of the
+ * POST /tingimused `{ slug, version, locale?, name? }`: the client accepts the e-course terms, the version the page showed (`terms.version` of the
  * e-course view), on a page in `locale`. The acceptance freezes the access's contract (contracts, D1; client-data.ts acceptTerms), which is mailed
  * to her after the response with its PDF, „MS LAB leping“ in the page's language (contracts.ts mailContract: never to a sample address, nothing in
- * local development). 404 `{ error: "slug" }` without active access to that course; 409 `{ error: "version" }` when the terms have changed since
- * the page was loaded (nothing is stored: the page loads the course again and shows the new text).
+ * local development). `name`: the gate's „Nimi“, sent by an account with no name (ruling R19): it is the contract's name and is saved as hers.
+ * 404 `{ error: "slug" }` without active access to that course; 409 `{ error: "version" }` when the terms have changed since the page was loaded
+ * (nothing is stored: the page loads the course again and shows the new text); 400 `{ error: "name" }` when her account has no name and none
+ * usable came (nothing is stored: the gate says so under the field).
  */
 async function terms(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const input = parseTerms(await readObject(request));
   if (!input.ok) return badInput(session, input.error);
-  const { locale } = input.data;
+  const { locale, name } = input.data;
   const result = await acceptTerms(deps.db, session.clientId, input.data.slug, input.data.version, deps.now, {
     locale,
+    name,
     onContract: (contract) => {
       if (!deps.dev) deps.later(() => mailContract({ db: deps.db, env: deps.env, siteUrl: deps.siteUrl, now: deps.now }, contract, { locale }));
     },
   });
   if (result === "accepted") return clientResponse(session, { ok: true });
+  if (result === "name") return badInput(session, "name");
   return result === "stale" ? clientResponse(session, { ok: false, error: "version" }, 409) : clientResponse(session, { ok: false, error: "slug" }, 404);
 }
 

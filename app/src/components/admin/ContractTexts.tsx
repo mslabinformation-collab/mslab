@@ -22,6 +22,27 @@ const IDLE: Line = { tone: "idle", text: "" };
 const toneClass = (tone: Line["tone"]) => (tone === "error" ? ui.error : tone === "done" ? ui.success : ui.hint);
 
 /**
+ * The placeholders hint under a contract's text: the sentence and each placeholder with what fills it (domain/contract.ts PLACEHOLDERS). The contact
+ * text's card has it, and so does the e-course text's („E-koolituse leping (tingimused)“, SettingsEditor; ruling R18: the cart and the terms gate
+ * fill it, so Maria may use them there too).
+ */
+export function ContractPlaceholders() {
+  const t = adminEt.contracts.settings;
+  return (
+    <div className={styles.placeholders} data-contract-placeholders="">
+      <p className={ui.hint}>{t.placeholders}</p>
+      <ul>
+        {PLACEHOLDERS.map((name) => (
+          <li key={name}>
+            <code>{`{${name}}`}</code> — {t.placeholderMeaning[name]}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
  * Seaded → „Lepingud“ (contracts Task 5, spec D2, §4): „Kontaktkoolituse leping“, the contract a student confirms on the registration form of a group
  * course — its title and its text in Estonian and Russian, in the legal texts' editor (a blank line starts a new paragraph), with the placeholders the
  * text may use and what fills each, and „Näidisleping (PDF)“, a sample drawn from the texts on the screen without saving anything. A form of its
@@ -98,16 +119,7 @@ export function ContractTexts({ initial }: { initial: ContractCard }) {
             error={errorOf("body")}
             name="contract.body"
           />
-          <div className={styles.placeholders} data-contract-placeholders="">
-            <p className={ui.hint}>{t.placeholders}</p>
-            <ul>
-              {PLACEHOLDERS.map((name) => (
-                <li key={name}>
-                  <code>{`{${name}}`}</code> — {t.placeholderMeaning[name]}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <ContractPlaceholders />
         </div>
 
         <div className={styles.actions}>

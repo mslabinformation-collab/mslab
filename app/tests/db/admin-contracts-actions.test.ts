@@ -296,13 +296,14 @@ describe("sendContractCopyAction: „Saada koopia õpilasele“ (ruling R1)", ()
     expect(mail.attachments).toHaveLength(1);
   });
 
-  test("a copy that cannot go — a sample address, no Resend — is `mailFailed` in words and records no send", async () => {
+  test("Minor 9: a copy that can never go — a sample address, no Resend — is refused in its own words before the PDF is drawn, and records no send", async () => {
     const [client] = await db.insert(clients).values({ email: "proov@example.test" }).returning();
     const sample = await accept(await registrationOn(db, fixture, { email: "proov@example.test", name: "Proov", clientId: client.id }));
-    expect(await actions.sendContractCopyAction({ id: sample.id })).toEqual({ ok: false, error: "mailFailed", text: E.mailFailed });
+    expect(await actions.sendContractCopyAction({ id: sample.id })).toEqual({ ok: false, error: "sampleAddress", text: "Sellele aadressile kirja ei saadeta." });
     state.mail = false;
     const real = await accept(await registration());
-    expect(await actions.sendContractCopyAction({ id: real.id })).toEqual({ ok: false, error: "mailFailed", text: E.mailFailed });
+    expect(await actions.sendContractCopyAction({ id: real.id })).toEqual({ ok: false, error: "mailOff", text: "Kirjade saatmine pole siin seadistatud." });
+    expect(vi.mocked(renderContract)).not.toHaveBeenCalled(); // no PDF drawn for a copy that cannot go
     expect((await db.select().from(contracts)).map((c) => c.sentAt)).toEqual([null, null]);
     expect(mails()).toEqual([]);
     expect(cache.refresh).not.toHaveBeenCalled();

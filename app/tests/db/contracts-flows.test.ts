@@ -5,12 +5,13 @@ import { setSetting } from "@/db/queries/admin";
 import { attachOrder, insertPayment } from "@/db/queries/payments";
 import { readSetting } from "@/db/queries/public";
 import { clients, clientSessions, contracts, courseAccess, courses, pages, payments, registrations, requests, termsAcceptances, type Contract, type Course, type Payment } from "@/db/schema";
-import { CONTRACT_CONTACT_VERSION_KEY, contractCourseName, filledContract } from "@/domain/contract";
+import { CONTRACT_CONTACT_VERSION_KEY, contractCourseName, fillContract, filledContract, oneLine } from "@/domain/contract";
 import { TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
 import { INVOICE_KEY } from "@/domain/invoice";
 import { handleAccountApi, type AccountDeps } from "@/server/account-api";
+import { addClient, grantAccess } from "@/server/admin-clients";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
-import { acceptTerms, loadEcourse, termsState } from "@/server/client-data";
+import { acceptTerms, loadEcourse, termsState, type GateTerms } from "@/server/client-data";
 import { renderContract } from "@/server/contract-pdf";
 import { contractTemplate, mailContract, saveContractTexts } from "@/server/contracts";
 import type { Env } from "@/server/notify";
@@ -351,12 +352,15 @@ describe("the cart's box is the e-course contract (D1, §4)", () => {
     const client = await katiClient();
     const [k] = await allContracts();
     expect([k.version, k.title, k.body, k.acceptedVia]).toEqual([V1, "E-koolituse tingimused", `Tere Kati Kask, hind 190,00${NBSP}€.`, "purchase"]);
-    // the new text is another version: the gate asks for it, and its acceptance freezes the new text and supersedes the purchase's
-    expect(await termsState(db, client.id, course.id)).toEqual({ version: V2, accepted: false, text: { et: "Uus tekst, {nimi}." } });
+    // the new text is another version: the gate asks for it — showing it filled as it will be frozen (R18; no Russian text: the Estonian one on
+    // both pages) — and its acceptance freezes the new text and supersedes the purchase's
+    const shown = { title: "E-koolituse tingimused", body: "Uus tekst, Kati Kask." };
+    expect(await termsState(db, client.id, course.id)).toEqual({ version: V2, accepted: false, text: { et: shown, ru: shown }, askName: null });
     expect(await acceptTerms(db, client.id, SLUG, V2, LATEST, { locale: "et" })).toBe("accepted");
     const [old, now] = await allContracts();
     expect(old).toMatchObject({ id: k.id, supersededAt: LATEST, body: k.body });
     expect(now).toMatchObject({ kind: "ecourse", version: V2, body: "Uus tekst, Kati Kask.", acceptedVia: "terms", paymentId: null, acceptedAt: LATEST, supersededAt: null, fields: { price: "" } });
+    expect({ title: now.title, body: now.body }).toEqual(shown);
     expect((await termsState(db, client.id, course.id)).accepted).toBe(true);
   });
 
@@ -618,6 +622,184 @@ describe("R7, R8, M-6: the purchase's contract — its times, its student, once"
     await pay(m, p, LATEST);
     expect(await allContracts()).toHaveLength(1);
     expect(hers(m).filter((x) => x.attachments?.some((a) => a.filename.startsWith("MS-LAB-leping-")))).toHaveLength(1);
+  });
+});
+
+// ---------- the final fix wave (rulings R18, R19) ----------
+
+/** POST /api/konto/tingimused as `client`, signed in, with Resend set up (the mails queued after the answer are run): the response. */
+async function postGate(client: { id: number }, body: Record<string, unknown>) {
+  const raw = newToken();
+  await db.insert(clientSessions).values({ idHash: await sha256(raw), clientId: client.id, createdAt: NOW, expiresAt: new Date(NOW.getTime() + CLIENT_SESSION_TTL_MS) });
+  const tasks: (() => Promise<unknown>)[] = [];
+  const deps: AccountDeps = {
+    db, env: { KV: fakeKv(), MAIL_FROM: "MS LAB <info@send.example>", MARIA_EMAIL: "maria@example.test", SITE_URL: SITE, RESEND_API_KEY: "re_test" },
+    now: NOW, siteUrl: SITE, later: (task) => void tasks.push(task), dev: false,
+  };
+  const res = (await handleAccountApi(
+    new Request(`${SITE}/api/konto/tingimused`, { method: "POST", headers: { cookie: `__Host-mslab_client=${raw}`, "content-type": "application/json", "x-forwarded-for": "203.0.113.9" }, body: JSON.stringify(body) }),
+    deps,
+  ))!;
+  for (let task = tasks.shift(); task; task = tasks.shift()) await task();
+  return res;
+}
+/** The gate's view of `clientId`'s e-course (loadEcourse), still to accept. */
+async function gateOf(clientId: number): Promise<GateTerms> {
+  const terms = (await loadEcourse(db, clientId, SLUG, NOW))!.terms;
+  expect(terms.accepted).toBe(false);
+  return terms as GateTerms;
+}
+/** Maria's e-course text with placeholders in the title and the text, an unknown one too, in Estonian and in Russian. */
+const PLACEHELD = {
+  title: { et: "Leping: {koolitus}", ru: "Договор: {koolitus}" },
+  body: { et: "Mina, {nimi} ({e-post}), alustan koolitust {koolitus}.\n\nHind: {hind}. {tundmatu} jääb.", ru: "Я, {nimi} ({e-post}), начинаю курс {koolitus}.\n\nЦена: {hind}." },
+};
+
+describe("R18: the terms gate shows exactly what it freezes", () => {
+  test("in Estonian and in Russian, with placeholders in the template: the gate's title and text are the contract's, filled as frozen", async () => {
+    const { course, kati } = await freeGrant();
+    await db.update(pages).set(PLACEHELD).where(eq(pages.key, TERMS_PAGE_KEY));
+    const [mari] = await db.insert(clients).values({ email: "mari@example.com", name: "Mari Maasikas", locale: "ru" }).returning();
+    await db.insert(courseAccess).values({ clientId: mari.id, courseId: course.id, grantedBy: "maria@example.test", expiresAt: new Date("2027-04-17T00:00:00Z") });
+    const katiSaw = (await gateOf(kati.id)).text;
+    const mariSaw = (await gateOf(mari.id)).text;
+    expect(katiSaw.et).toEqual({ title: "Leping: Kulmumeistri e-koolitus", body: "Mina, Kati Tamm (kati@example.com), alustan koolitust Kulmumeistri e-koolitus.\n\nHind: . {tundmatu} jääb." });
+    expect(mariSaw.ru).toEqual({ title: "Договор: Онлайн-курс бровиста", body: "Я, Mari Maasikas (mari@example.com), начинаю курс Онлайн-курс бровиста.\n\nЦена: ." });
+    // Kati on an Estonian page, Mari on a Russian one: each contract is, word for word, what that page showed
+    expect(await acceptTerms(db, kati.id, SLUG, V1, NOW, { locale: "et" })).toBe("accepted");
+    expect(await acceptTerms(db, mari.id, SLUG, V1, NOW, { locale: "ru" })).toBe("accepted");
+    const [k, m] = await allContracts();
+    expect({ title: k.title, body: k.body, locale: k.locale }).toEqual({ ...katiSaw.et, locale: "et" });
+    expect({ title: m.title, body: m.body, locale: m.locale }).toEqual({ ...mariSaw.ru, locale: "ru" });
+  });
+
+  test("a Russian page without a Russian text shows the Estonian contract, and that is what a Russian page's acceptance freezes; the title alone changed asks again with the new title", async () => {
+    const { kati } = await freeGrant();
+    await db.update(pages).set({ title: { et: "Leping: {koolitus}" }, body: { et: PLACEHELD.body.et } }).where(eq(pages.key, TERMS_PAGE_KEY));
+    const saw = await gateOf(kati.id);
+    expect(saw.text.ru).toEqual(saw.text.et);
+    expect(await acceptTerms(db, kati.id, SLUG, V1, NOW, { locale: "ru" })).toBe("accepted");
+    const [k] = await allContracts();
+    expect({ title: k.title, body: k.body, locale: k.locale }).toEqual({ ...saw.text.ru, locale: "et" });
+    // a new title (R11 bumps the version): the gate asks again, and shows the title it will freeze
+    await db.update(pages).set({ title: { et: "Uus pealkiri, {nimi}" } }).where(eq(pages.key, TERMS_PAGE_KEY));
+    await setSetting(db, TERMS_VERSION_KEY, V2);
+    const again = await gateOf(kati.id);
+    expect(again.text.et.title).toBe("Uus pealkiri, Kati Tamm");
+    expect(await acceptTerms(db, kati.id, SLUG, V2, LATER, { locale: "et" })).toBe("accepted");
+    expect((await allContracts())[1]).toMatchObject({ version: V2, title: again.text.et.title, body: again.text.et.body });
+  });
+});
+
+describe("R19: the gate asks a student with no name for hers", () => {
+  /** „Lisa õpilane“ by e-mail only (addClient: no name), then „Ava ligipääs“ (grantAccess) to the e-course: the bank-transfer buyer's path. */
+  async function addedByEmail() {
+    const course = await ecourseReady();
+    const added = await addClient(db, "Proov5@Example.com");
+    expect(added).toMatchObject({ ok: true, created: true });
+    const id = (added as { id: number }).id;
+    expect(await grantAccess(db, { clientId: id, courseId: course.id, until: "2027-04-17", by: "maria@example.test", now: NOW })).toEqual({ ok: true });
+    const [client] = await db.select().from(clients).where(eq(clients.id, id));
+    expect(client.name).toBe("");
+    return { course, client };
+  }
+
+  test("the gate asks for the name: the text with {nimi} empty, and the template and values it fills as she types — the very text then frozen", async () => {
+    const { client } = await addedByEmail();
+    await db.update(pages).set(PLACEHELD).where(eq(pages.key, TERMS_PAGE_KEY));
+    const saw = await gateOf(client.id);
+    expect(saw.askName).not.toBeNull();
+    expect(saw.text.et.body).toBe("Mina,  (proov5@example.com), alustan koolitust Kulmumeistri e-koolitus.\n\nHind: . {tundmatu} jääb.");
+    expect(saw.askName!.et.values.nimi).toBe("");
+    // what the gate fills as she types „  Proov   Viis “, on one line, is the text the acceptance freezes
+    const typed = "  Proov \n  Viis ";
+    const fill = (l: "et" | "ru") => {
+      const { template, values } = saw.askName![l];
+      return { title: fillContract(template.title, { ...values, nimi: oneLine(typed) }), body: fillContract(template.body, { ...values, nimi: oneLine(typed) }) };
+    };
+    expect(fill("ru").body).toBe("Я, Proov Viis (proov5@example.com), начинаю курс Онлайн-курс бровиста.\n\nЦена: .");
+    expect(await acceptTerms(db, client.id, SLUG, V1, NOW, { locale: "et", name: typed })).toBe("accepted");
+    const [k] = await allContracts();
+    expect({ title: k.title, body: k.body }).toEqual(fill("et"));
+  });
+
+  test("without a name the gate refuses and stores nothing; with one, the contract has it in the text, in „Pooled“ and in the mailed PDF, and the account keeps it", async () => {
+    const m = stubMontonio();
+    const { client } = await addedByEmail();
+    // refused: no name, a blank one, one longer than Minu andmed takes, one the database cannot hold
+    for (const body of [{}, { name: "" }, { name: " \n " }, { name: "a".repeat(121) }, { name: "Kati\u0000" }]) {
+      const res = await postGate(client, { slug: SLUG, version: V1, locale: "et", ...body });
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(await res.json()).toEqual({ ok: false, error: "name" });
+    }
+    expect(await acceptTerms(db, client.id, SLUG, V1, NOW, { locale: "et" })).toBe("name");
+    expect(await allContracts()).toEqual([]);
+    expect(await db.select().from(termsAcceptances)).toEqual([]);
+    expect((await db.select().from(clients).where(eq(clients.id, client.id)))[0].name).toBe("");
+    expect(m.mails()).toEqual([]);
+    // with her name, as she typed it (on one line)
+    const res = await postGate(client, { slug: SLUG, version: V1, locale: "et", name: "  Proov   Viis " });
+    expect(res.status).toBe(200);
+    const [k, ...none] = await allContracts();
+    expect(none).toEqual([]);
+    expect(k).toMatchObject({ acceptedVia: "terms", body: "Tere Proov Viis, hind .", fields: { student: { name: "Proov Viis", email: "proov5@example.com" } } });
+    expect((await db.select().from(clients).where(eq(clients.id, client.id)))[0].name).toBe("Proov Viis");
+    const [mail] = hers(m, "proov5@example.com");
+    const drawn = await pdfText(mail.attachments![0]);
+    for (const part of ["Pooled", "Proov Viis", "proov5@example.com", "Tere Proov Viis, hind ."]) expect(drawn, part).toContain(part);
+    expect(drawn).toMatch(/Kinnitatud elektrooniliselt .*Proov Viis \(proov5@example\.com\)/);
+    // the account has a name now: the next text's gate asks for none
+    await setSetting(db, TERMS_VERSION_KEY, V2);
+    expect((await gateOf(client.id)).askName).toBeNull();
+  });
+
+  test("a named account is unaffected: no field, no name needed, and a name sent anyway is ignored (the contract and the account keep hers)", async () => {
+    const { kati } = await freeGrant();
+    const saw = await gateOf(kati.id);
+    expect(saw.askName).toBeNull();
+    const res = await postGate(kati, { slug: SLUG, version: V1, locale: "et", name: "Keegi Teine" });
+    expect(res.status).toBe(200);
+    const [k] = await allContracts();
+    expect(k).toMatchObject({ body: "Tere Kati Tamm, hind .", fields: { student: { name: "Kati Tamm" } } });
+    expect({ title: k.title, body: k.body }).toEqual(saw.text.et);
+    expect((await db.select().from(clients).where(eq(clients.id, kati.id)))[0].name).toBe("Kati Tamm");
+  });
+
+  test("a name of blanks is no name: the gate asks, and the name typed replaces the blanks", async () => {
+    const { kati } = await freeGrant();
+    await db.update(clients).set({ name: "   " }).where(eq(clients.id, kati.id));
+    expect((await gateOf(kati.id)).askName).not.toBeNull();
+    expect(await acceptTerms(db, kati.id, SLUG, V1, NOW, { locale: "et" })).toBe("name");
+    expect(await acceptTerms(db, kati.id, SLUG, V1, NOW, { locale: "et", name: "Kati Kask" })).toBe("accepted");
+    expect((await db.select().from(clients).where(eq(clients.id, kati.id)))[0].name).toBe("Kati Kask");
+    expect((await allContracts())[0].fields.student.name).toBe("Kati Kask");
+  });
+
+  test("a stale version is refused before the name is looked at: nothing stored, the account still nameless", async () => {
+    const { client } = await addedByEmail();
+    await setSetting(db, TERMS_VERSION_KEY, V2);
+    expect(await acceptTerms(db, client.id, SLUG, V1, NOW, { locale: "et", name: "Proov Viis" })).toBe("stale");
+    expect(await acceptTerms(db, client.id, SLUG, V1, NOW, { locale: "et" })).toBe("stale");
+    expect((await db.select().from(clients).where(eq(clients.id, client.id)))[0].name).toBe("");
+    expect(await allContracts()).toEqual([]);
+  });
+});
+
+describe("Minor 3: settle's e-course mail once Resend took it", () => {
+  test("a failure to record the contract's send is logged on its own — „mailed, but the send was not recorded“ — and not as a failed mail", async () => {
+    const m = stubMontonio();
+    await ecourseReady();
+    const p = await startPurchase(m);
+    await db.execute(sql.raw("create or replace function mslab_refuse_contract_update() returns trigger language plpgsql as $$ begin raise exception 'refused'; end $$"));
+    await db.execute(sql.raw("create trigger mslab_refuse_contract_update before update on contracts for each row execute function mslab_refuse_contract_update()"));
+    expect(await pay(m, p)).toMatchObject({ kind: "done", payment: { status: "paid" } });
+    const [k] = await allContracts();
+    const [mail] = hers(m);
+    expect(mail.attachments!.map((a) => a.filename)).toEqual(["MS-LAB-arve-MSL2026-001.pdf", `MS-LAB-leping-${k.id}.pdf`]);
+    expect(k.sentAt).toBeNull();
+    expect(logged("error")).toContain(`[contracts] contract ${k.id}: mailed, but the send was not recorded: DrizzleQueryError (code P0001)`);
+    expect(logged("error").join("\n")).not.toContain("the e-course mail failed");
+    expect(logged("info")).toContain(`[payments] payment ${p.id}: the e-course mail sent: true`);
   });
 });
 

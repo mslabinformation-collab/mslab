@@ -3,11 +3,13 @@
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
+import { isSampleAddress } from "@/domain/email";
 import { adminEt } from "@/i18n/dict/admin";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { adminAction } from "../auth";
 import { contractCard, contractForAdmin, contractOwner, contractPdf, mailContract, mailContractRequest, requestContract, saveContractTexts } from "../contracts";
 import { logFailure } from "../log";
+import { mailConfigured } from "../notify";
 import { revalidatePublic } from "../public-cache";
 import { adminSendDeps } from "../send-deps";
 
@@ -78,10 +80,12 @@ export const requestContractAction = adminAction(async (_admin, input: { registr
 
 /**
  * „Saada koopia õpilasele“ (D7, rulings R1, R14, R15): `{ id }` — the contract's PDF, rendered now from its frozen row, goes to the address it froze, in
- * its language (mailContract), which records `sent_at`. The PDF is drawn FIRST: when it cannot be drawn nothing is sent (`pdfFailed`), because the copy
- * exists to deliver the PDF, and only a mail that carried it is answered `{ ok: true }`. The mail has „Ava minu konto“ when the contract has an owner now
+ * its language (mailContract), which records `sent_at`. A copy that can never go is refused before anything is drawn, in words that do not ask
+ * her to try again: `sampleAddress` for a sample address (`@example.test`, never mailed: staging's demo rows), `mailOff` with no mail service here
+ * (no Resend: local development). The PDF is drawn next: when it cannot be drawn nothing is sent (`pdfFailed`), because the copy exists to deliver
+ * the PDF, and only a mail that carried it is answered `{ ok: true }`. The mail has „Ava minu konto“ when the contract has an owner now
  * (contracts.ts CONTRACT_OWNER: the registration's live link first, so a student whose account came after her form still has the button).
- * `mailFailed` when it did not go (Resend is not set up, the address is a sample, the mail was refused), `contractNotFound` for an unknown id.
+ * `mailFailed` when it did not go all the same (Resend refused it), `contractNotFound` for an unknown id.
  */
 export const sendContractCopyAction = adminAction(async (_admin, input: { id: number }) => {
   const parsed = idOnly.safeParse(input);
@@ -91,6 +95,10 @@ export const sendContractCopyAction = adminAction(async (_admin, input: { id: nu
     const db = getDb();
     const contract = await contractForAdmin(db, id);
     if (!contract) return fail("contractNotFound");
+    // (a copy that can never go: refused before the PDF is drawn for nothing)
+    if (isSampleAddress(contract.fields.student.email)) return fail("sampleAddress");
+    const deps = await adminSendDeps("[contracts]");
+    if (!mailConfigured(deps.env)) return fail("mailOff");
     let pdf: Uint8Array;
     try {
       pdf = await contractPdf(contract);
@@ -100,7 +108,7 @@ export const sendContractCopyAction = adminAction(async (_admin, input: { id: nu
     }
     // (a student with no account here gets the copy without „Ava minu konto“)
     const noAccount = (await contractOwner(db, id)) === null;
-    const sent = await mailContract(await adminSendDeps("[contracts]"), contract, { noAccount, pdf });
+    const sent = await mailContract(deps, contract, { noAccount, pdf });
     if (!sent) return fail("mailFailed");
     refresh();
     return { ok: true as const };

@@ -220,6 +220,20 @@ describe("the contract checks sit where their preconditions exist", () => {
     expect(at("ekursus-ost")).toBeLessThan(at("ekursus-tingimused"));
   });
 
+  test("rulings R18, R19: Proov 5 is added by her address only, so her gate asks her name — the check says so, writes it, and expects the filled text", () => {
+    // nothing before her gate gives Proov 5 a name: she is never registered nor named, only added by address and signed in
+    const before = order.slice(0, at("ekursus-tingimused-leping"));
+    for (const id of before) for (const step of item(id).steps) if (step.includes("Proov 5") || step.includes("+proov5")) expect(step, id).not.toMatch(/Nimi|nimi|Registreeri/);
+    const gate = item("ekursus-tingimused-leping");
+    const named = gate.steps.findIndex((s) => s.includes("Kirjuta „Nimi“: Proov 5"));
+    expect(named, "the step that writes her name").toBeGreaterThan(0);
+    // a press without the name comes before the name is written, and the start after it
+    expect(gate.steps.findIndex((s) => s.includes("enne kui nime kirjutad"))).toBeLessThan(named);
+    expect(gate.steps.map((s) => s === "Vajuta „Alusta koolitust“.").lastIndexOf(true)).toBeGreaterThan(named);
+    for (const words of ["lepingu pealkirja", "väli „Nimi“", "„Kirjuta oma nimi.“", "{nimi} kohale", "{koolitus} asemel"]) expect(expectText("ekursus-tingimused-leping"), words).toContain(words);
+    expect([gate.mark, gate.markedAt]).toEqual(["new", "deploy"]);
+  });
+
   test("a download link whose text another row of the card repeats is named by its row (Proov 7 and Proov 1 have invoice rows with „Laadi alla (PDF)“)", () => {
     expect(item("konto-leping-vene-keeles").steps.find((s) => s.includes("Скачать (PDF)"))).toContain("Договор · подтверждён");
     expect(item("konto-leping-kaardil").steps.find((s) => s.includes("Laadi alla (PDF)"))).toContain("rea „Leping“ juures");

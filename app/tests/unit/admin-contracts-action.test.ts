@@ -30,7 +30,8 @@ vi.mock("@/db/client", () => ({ getDb: () => ({ marker: "db" }) }));
 const actions = await import("@/server/actions/admin-contracts");
 const E = adminEt.contracts.errors;
 
-const SENDING = { db: {}, env: {}, siteUrl: "https://mslab.example", now: new Date("2026-10-17T09:00:00Z"), later: vi.fn() };
+/** The send deps (server/send-deps.ts adminSendDeps) of a deployment with Resend set up. */
+const SENDING = { db: {}, env: { RESEND_API_KEY: "re_test" }, siteUrl: "https://mslab.example", now: new Date("2026-10-17T09:00:00Z"), later: vi.fn() };
 const TEXTS = { title: { et: "Kontaktkoolituse leping", ru: "Договор" }, body: { et: "Tekst.", ru: "Текст." } };
 
 beforeEach(() => {
@@ -151,7 +152,7 @@ describe("requestContractAction: „Saada leping kinnitamiseks“", () => {
 });
 
 describe("sendContractCopyAction: „Saada koopia õpilasele“", () => {
-  const CONTRACT = { id: 5, clientId: null };
+  const CONTRACT = { id: 5, clientId: null, fields: { student: { name: "Kati Kask", email: "kati@example.com" } } };
   const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
   beforeEach(() => {
     work.contractPdf.mockResolvedValue(PDF);
@@ -179,7 +180,7 @@ describe("sendContractCopyAction: „Saada koopia õpilasele“", () => {
   });
 
   test("a contract with no account behind it (the registration was never linked) goes without the link to an account", async () => {
-    work.contractForAdmin.mockResolvedValue({ id: 5, clientId: 3 });
+    work.contractForAdmin.mockResolvedValue({ ...CONTRACT, clientId: 3 });
     work.contractOwner.mockResolvedValue(null);
     work.mailContract.mockResolvedValue(true);
     await actions.sendContractCopyAction({ id: 5 });
@@ -192,17 +193,37 @@ describe("sendContractCopyAction: „Saada koopia õpilasele“", () => {
     expect(await actions.sendContractCopyAction({ id: 5 })).toEqual({ ok: false, error: "pdfFailed", text: E.pdfFailed });
     expect(E.pdfFailed).toBe("Lepingu PDF-i ei õnnestunud koostada — proovi uuesti.");
     expect(work.mailContract).not.toHaveBeenCalled();
-    expect(deps.adminSendDeps).not.toHaveBeenCalled();
     expect(logged()).toContain("[contracts] contract 5: the copy's PDF could not be drawn: TypeError");
     expect(logged()).not.toContain("Kati");
     expect(cache.refresh).not.toHaveBeenCalled();
   });
 
-  test("a mail that did not go (Resend is not set up, a sample address, refused) is `mailFailed` in words; the page is not refreshed", async () => {
+  test("Minor 9: a sample address (@example.test) is never mailed: refused before the PDF is drawn, in words that do not ask to try again", async () => {
+    work.contractForAdmin.mockResolvedValue({ ...CONTRACT, fields: { student: { name: "Proov", email: "Proov@Example.test" } } });
+    expect(await actions.sendContractCopyAction({ id: 5 })).toEqual({ ok: false, error: "sampleAddress", text: E.sampleAddress });
+    expect(E.sampleAddress).toBe("Sellele aadressile kirja ei saadeta.");
+    expect(work.contractPdf).not.toHaveBeenCalled();
+    expect(work.mailContract).not.toHaveBeenCalled();
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+
+  test("Minor 9: no mail service here (no Resend): refused before the PDF is drawn, in its own words", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    work.contractForAdmin.mockResolvedValue(CONTRACT);
+    deps.adminSendDeps.mockResolvedValue({ ...SENDING, env: {} });
+    expect(await actions.sendContractCopyAction({ id: 5 })).toEqual({ ok: false, error: "mailOff", text: E.mailOff });
+    expect(E.mailOff).toBe("Kirjade saatmine pole siin seadistatud.");
+    expect(work.contractPdf).not.toHaveBeenCalled();
+    expect(work.mailContract).not.toHaveBeenCalled();
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+
+  test("a mail that did not go all the same (Resend refused it) is `mailFailed` in words; the page is not refreshed", async () => {
     work.contractForAdmin.mockResolvedValue(CONTRACT);
     work.mailContract.mockResolvedValue(false);
     expect(await actions.sendContractCopyAction({ id: 5 })).toEqual({ ok: false, error: "mailFailed", text: E.mailFailed });
     expect(E.mailFailed).toBe("Kirja ei saadetud. Proovi uuesti.");
+    expect(work.contractPdf).toHaveBeenCalledWith(CONTRACT);
     expect(cache.refresh).not.toHaveBeenCalled();
   });
 
@@ -227,7 +248,7 @@ describe("sendContractCopyAction: „Saada koopia õpilasele“", () => {
 
 describe("the words", () => {
   test("every refusal the work can answer has Estonian words of its own, and no text is a code", () => {
-    for (const code of ["notFound", "contractNotFound", "noAccount", "cancelled", "mailFailed", "pdfFailed", "server"] as const) {
+    for (const code of ["notFound", "contractNotFound", "noAccount", "cancelled", "mailFailed", "sampleAddress", "mailOff", "pdfFailed", "server"] as const) {
       expect(E[code], code).toMatch(/\S/);
       expect(E[code], code).not.toBe(code);
     }

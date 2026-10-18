@@ -29,8 +29,12 @@ const merge = z.object({ slugs: z.array(slug).max(LIMITS.mergeSlugs) });
 const profile = z.object({ name: line(LIMITS.name), phone: line(LIMITS.phone), locale: z.enum(["et", "ru"]) });
 const newsletter = z.object({ on: z.boolean() });
 const changeRequest = z.object({ registrationId: rowId, kind: z.enum(["cancel", "change"]), message: text(LIMITS.message).optional().transform((m) => m ?? "") });
-/** The terms gate: the version the page showed, and the page's language (the contract's, D6; a page from before contracts sends none). */
-const terms = z.object({ slug, version: z.string().min(1).max(LIMITS.version).refine(storable), locale: z.enum(["et", "ru"]).optional() });
+/**
+ * The terms gate: the version the page showed, the page's language (the contract's, D6; a page from before contracts sends none) and, from an
+ * account with no name, the name typed in the gate's „Nimi“ (ruling R19). The name is any string here: it is read only for an account with no
+ * name (a name sent from an account that has one is ignored), and checked then (gateName).
+ */
+const terms = z.object({ slug, version: z.string().min(1).max(LIMITS.version).refine(storable), locale: z.enum(["et", "ru"]).optional(), name: z.string().optional() });
 /**
  * „Kinnitan“ (contracts Task 6): the registration, the version of the text the card showed (absent or empty is not a version: a mismatch, the server's
  * 409, ruling R6; the length is checked, the match is not) and the page's language (the contract's, D6; her account's without it).
@@ -82,6 +86,16 @@ export function parseFeedbackPost(body: unknown): Input<{ registrationId: number
   return answers.ok ? { ok: true, data: { registrationId: base.data.registrationId, locale: base.data.locale, answers: answers.answers } } : { ok: false, error: answers.error };
 }
 export const parseFeedbackHide = (body: unknown) => parse(feedbackHide, body);
+
+/**
+ * The name the terms gate asks an account with no name for (ruling R19), as Minu andmed takes a name: on one line (inner whitespace one space, the
+ * ends trimmed), at most LIMITS.name characters, text the database can store. null for no name: none sent, a blank one, a longer one, or one with
+ * a character Postgres refuses.
+ */
+export function gateName(raw: string | undefined): string | null {
+  const result = line(LIMITS.name).safeParse(raw ?? "");
+  return result.success && result.data !== "" ? result.data : null;
+}
 
 /** The course slug of a request path (still percent-encoded), or null when it cannot be a slug (not decodable, empty, too long, text the database cannot hold). */
 export function parseSlug(raw: string): string | null {

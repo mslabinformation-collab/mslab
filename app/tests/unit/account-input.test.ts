@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  LIMITS, parseChangeRequest, parseDeletion, parseFavourite, parseMerge, parseNewsletter, parsePassword, parseProfile, parseProgress, parseSlug, parseTerms,
+  gateName, LIMITS, parseChangeRequest, parseDeletion, parseFavourite, parseMerge, parseNewsletter, parsePassword, parseProfile, parseProgress, parseSlug, parseTerms,
 } from "@/server/account-input";
 
 // The bodies of the account's data endpoints, parsed without a database: a wrong shape, a wrong type, a value over its limit
@@ -147,6 +147,20 @@ describe("terms { slug, version } and deletion { confirm }", () => {
     expect(parseTerms({ slug: "veebikursus", version: "1", locale: "ru" })).toEqual(ok({ slug: "veebikursus", version: "1", locale: "ru" }));
     expect(parseTerms({ slug: "veebikursus", version: "1" })).toEqual(ok({ slug: "veebikursus", version: "1" }));
     for (const locale of ["en", "", 1, null]) expect(parseTerms({ slug: "veebikursus", version: "1", locale }), JSON.stringify(locale)).toEqual(err("locale"));
+  });
+
+  test("terms: the name an account with no name types at the gate (ruling R19) is any string here; it is checked only when the account needs one", () => {
+    expect(parseTerms({ slug: "veebikursus", version: "1", name: "  Kati  " })).toEqual(ok({ slug: "veebikursus", version: "1", name: "  Kati  " }));
+    expect(parseTerms({ slug: "veebikursus", version: "1", name: "a".repeat(500) })).toMatchObject({ ok: true }); // ignored for an account with a name
+    for (const name of [5, null, ["Kati"], { a: 1 }]) expect(parseTerms({ slug: "veebikursus", version: "1", name }), JSON.stringify(name)).toEqual(err("name"));
+  });
+
+  test("gateName: on one line and within Minu andmed's limit, as the profile takes a name; nothing usable is null", () => {
+    expect(gateName("  Kati \n\t Kask ")).toBe("Kati Kask");
+    expect(gateName(` ${"a".repeat(LIMITS.name)} `)).toBe("a".repeat(LIMITS.name));
+    for (const raw of [undefined, "", "   ", "\n", "a".repeat(LIMITS.name + 1), "Kati\u0000", "Kati\ud800"]) expect(gateName(raw), JSON.stringify(raw)).toBeNull();
+    // the same rule as Minu andmed's name
+    expect(parseProfile({ name: "  Kati \n\t Kask ", phone: "", locale: "et" })).toMatchObject({ ok: true, data: { name: "Kati Kask" } });
   });
 
   test("deletion: confirm is exactly true", () => {

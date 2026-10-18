@@ -111,7 +111,15 @@ export function contractParts(input: ContractInput): { fields: Omit<ContractFiel
  * payment (ruling R8), so the text and the parties of one contract name her alike.
  */
 export function contractStudent(name: string, email: string): ContractFields["student"] {
-  return { name: name.replace(/\s+/g, " ").trim(), email: normalizeEmail(email) };
+  return { name: oneLine(name), email: normalizeEmail(email) };
+}
+
+/**
+ * A name on one line: inner whitespace (line breaks too) one space, the ends trimmed, as the forms and Minu andmed store a name (server/forms.ts,
+ * server/account-input.ts). The terms gate fills {nimi} with it as she types (ruling R19), and the server stores and freezes the very same.
+ */
+export function oneLine(name: string): string {
+  return name.replace(/\s+/g, " ").trim();
 }
 
 /**

@@ -6,6 +6,7 @@ import { WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import { adminEt } from "@/i18n/dict/admin";
 import { saveSettings } from "@/server/actions/admin-site";
 import type { SettingsValues } from "@/server/admin-site";
+import { ContractPlaceholders } from "./ContractTexts";
 import { I18nInput } from "./I18nInput";
 import { SaveBar } from "./SaveBar";
 import { TextField } from "./TextField";
@@ -19,8 +20,8 @@ import styles from "./site-editor.module.css";
  * welcome discount (footer text) and welcome code ("Tervituskood": mailed after the first confirmation, shown on the
  * confirmed notice; phase 2c), the prepayment instructions (where students pay; shown on their unpaid contact-course
  * cards only when the receiver and the IBAN are filled in), the legal pages (privacy, terms) in ET / RU, the e-course contract
- * („E-koolituse leping (tingimused)“: its title and the text a student accepts in the cart and at the terms gate; account-only, so no link to a
- * public page) and the admin addresses, read-only. The contact course's contract has its own card after this form (ContractTexts, Seaded → Lepingud).
+ * („E-koolituse leping (tingimused)“: its title and the text a student accepts in the cart and at the terms gate, with the contact card's
+ * placeholders hint, since both fill them; account-only, so no link to a public page) and the admin addresses, read-only. The contact course's contract has its own card after this form (ContractTexts, Seaded → Lepingud).
  */
 export function SettingsEditor({ initial, admins }: { initial: Loaded<SettingsValues>; admins: string[] }) {
   const t = adminEt.settings;
@@ -158,6 +159,7 @@ export function SettingsEditor({ initial, admins }: { initial: Loaded<SettingsVa
               error={d.err("course_terms.body")}
               name="course_terms.body"
             />
+            <ContractPlaceholders />
           </div>
         </section>
 

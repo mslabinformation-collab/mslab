@@ -9,7 +9,8 @@ import { expectFits, openDrawer, today } from "./invoices";
 // the guard of the two PDF routes. Seaded → „Lepingud“ is in admin-site.spec.ts (it changes shared settings and runs after the others). The signed-in
 // tests run against the local dev server only: they sign in as Dim through the devLink and look at rows each test inserts for itself and deletes again
 // (tests/e2e/fixtures.ts, an unpublished fixture course; its contracts keep their rows when the registration goes — set null — so they are deleted by
-// the student's address). No mail is sent here (no RESEND_API_KEY): the ask is recorded and says it was not mailed, a copy answers „Kirja ei saadetud“.
+// the student's address). No mail is sent here (no RESEND_API_KEY): the ask is recorded and says it was not mailed, a copy answers „Kirjade saatmine pole siin seadistatud.“ (Minor 9:
+// refused before its PDF is drawn).
 
 const created = { tokens: new Set<string>(), sessions: new Set<string>() };
 let fx: AdminFixtures | null = null;
@@ -118,9 +119,9 @@ test.describe("the registration drawer's „Leping“", () => {
     expect((await pdf.body()).subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect((await page.request.get(`/api/admin/leping/${current + 100_000}`)).status()).toBe(404);
 
-    // a copy cannot go without Resend: it says so, and no send is recorded
+    // a copy cannot go without Resend: it says so in words that do not ask to retry (Minor 9), and no send is recorded
     await row.getByRole("button", { name: "Saada koopia õpilasele" }).click();
-    await expect(block.locator("[data-contract-status]")).toHaveText("Kirja ei saadetud. Proovi uuesti.");
+    await expect(block.locator("[data-contract-status]")).toHaveText("Kirjade saatmine pole siin seadistatud.");
     expect((await onLocalDb((sql) => sql<{ sentAt: Date | null }[]>`select sent_at as "sentAt" from contracts where id = ${current}`, { marksPages: false }))[0].sentAt).toBeNull();
 
     // the ask: recorded, said not to be mailed, then pending on the page with today's date

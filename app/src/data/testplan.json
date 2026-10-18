@@ -46,7 +46,7 @@
     {
       "id": "koristamine",
       "name": "Koristamine",
-      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
+      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Nii kustutab ta ka proovi-lepingud: needki jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
     }
   ],
   "items": [
@@ -1078,6 +1078,7 @@
       "expect": [
         "Pärast salvestamist näed „Salvestatud.“.",
         "Pealkirja all on vihje, mis soovitab pealkirjaks „E-koolituse leping“.",
+        "Teksti all on kohahoidjate loetelu, sama mis kaardil „Lepingud“.",
         "Ostukorvis on „Loe lepingut“ all uus pealkiri ja tekst.",
         "Õpilane loeb seda enne ostmist ja enne tasuta avatud koolituse esimest avamist."
       ],
@@ -3157,19 +3158,21 @@
       "href": "/konto",
       "steps": [
         "Logi sisse kui Proov 5 ja vajuta e-koolituse kaardil „Ava koolitus“.",
-        "Loe tingimused läbi.",
-        "Märgi „Olen tutvunud ja nõustun tingimustega“.",
+        "Loe leping läbi ja märgi „Olen tutvunud ja nõustun tingimustega“.",
+        "Vajuta „Alusta koolitust“, enne kui nime kirjutad.",
+        "Kirjuta „Nimi“: Proov 5, ja vaata lepingu teksti.",
         "Vajuta „Alusta koolitust“.",
-        "Ava „Minu koolitused“ ja vaata e-koolituse kaarti.",
+        "Ava „Minu koolitused“ ja vaata e-koolituse kaarti, seejärel „Minu andmed“.",
         "Ava Proov 5 postkastis kiri „MS LAB leping“ ja selle manus."
       ],
       "expect": [
-        "Enne sisu näed pealkirja „Enne alustamist“ ja Seadetes kirjutatud tingimusi.",
-        "„Alusta koolitust“ töötab alles pärast ruudu märkimist.",
-        "Pärast nõustumist avaneb koolituse leht.",
-        "E-koolituse kaardil on rida „Leping · kinnitatud …“ ja link „Laadi alla (PDF)“.",
-        "Postkasti tuleb kiri „MS LAB leping“ reaga „Leping on lisatud.“.",
-        "Manus „MS-LAB-leping-….pdf“ näitab tingimusi Proov 5 nimega ja ilma hinnata.",
+        "Enne sisu näed „Enne alustamist“, Seadetes kirjutatud lepingu pealkirja ja selle teksti.",
+        "Tekstis on {koolitus} asemel koolituse nimi ja {e-post} asemel Proov 5 aadress.",
+        "Proov 5 lisati ainult aadressiga, seega on ruudu kohal väli „Nimi“.",
+        "Ilma nimeta näed välja all „Kirjuta oma nimi.“ ja koolitus ei avane.",
+        "Kirjutatud nimi ilmub kohe tekstis {nimi} kohale; pärast nõustumist avaneb koolituse leht.",
+        "E-koolituse kaardil on rida „Leping · kinnitatud …“; „Minu andmed“ all on nimi Proov 5.",
+        "Kiri „MS LAB leping“ tuleb reaga „Leping on lisatud.“; manuses on sama tekst Proov 5 nimega.",
         "Halduses Proov 5 paneelis on „Lepingud“ all „Kinnitatud … · E-koolituse tingimuste kinnitus“ ja „Laadi alla (PDF)“."
       ],
       "why": "Maria avatud e-koolitusel on lepinguks tingimuste kinnitus.",
@@ -4235,11 +4238,13 @@
       "expect": [
         "Märkuses on iga aadress täpselt nii, nagu see vormi kirjutati.",
         "Märkuses on iga proovi-registreering nimega.",
-        "Dim kustutab enne avamist need read täpse aadressi järgi."
+        "Dim kustutab enne avamist need read, ka proovi-arved ja -lepingud, täpse aadressi järgi."
       ],
       "why": "Proovi-andmed ei tohi jääda päris õpilaste ja registreeringute sekka.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     }
   ]
 }

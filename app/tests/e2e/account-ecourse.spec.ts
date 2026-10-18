@@ -37,12 +37,15 @@ test.afterEach(async () => {
   }
 });
 
-/** A fresh client (with access to the seed e-course, or its own unpublished one, or none) signed in on `page`; /konto is open. */
-async function signedIn(page: Page, label: string, project: string, opts: { own?: boolean; access?: boolean; locale?: "et" | "ru" } = {}) {
+/**
+ * A fresh client (with access to the seed e-course, or its own unpublished one, or none) signed in on `page`; /konto is open. She has a name
+ * („E2E Õpilane“) unless `name` says otherwise: an account with none gives hers at the gate (contracts, ruling R19).
+ */
+async function signedIn(page: Page, label: string, project: string, opts: { own?: boolean; access?: boolean; locale?: "et" | "ru"; name?: string } = {}) {
   const email = clientEmail(label, project);
   made.add(email);
   await removeClientRows(email);
-  const course = await insertEcourseAccess(email, opts);
+  const course = await insertEcourseAccess(email, { name: "E2E Õpilane", ...opts });
   await signInAsClient(page, email);
   return { email, ...course };
 }
@@ -113,8 +116,11 @@ test("the notice shows first: title, the text, one checkbox, one button that sta
   await openFromDashboard(page, c.slug);
 
   await expect(gate(page).getByRole("heading", { level: 1 })).toHaveText("Enne alustamist");
+  // the contract's own title above its text (contracts, ruling R18): the page title of „E-koolituse leping (tingimused)“
+  await expect(gate(page).locator("[data-terms-text]").getByRole("heading", { level: 2 })).toHaveText("E-koolituse tingimused");
   await expect(gate(page).locator("[data-legal-body] p")).toHaveText(paragraphs(E2E_TERMS.et));
   await expect(gate(page).getByRole("checkbox")).toHaveCount(1);
+  await expect(gate(page).getByRole("textbox")).toHaveCount(0); // her account has a name: no field (R19)
   await expect(gate(page).getByRole("button")).toHaveCount(1);
   await expect(gate(page).getByRole("link")).toHaveCount(0);
   // a notice on the page, not a dialog that can be dismissed
@@ -197,6 +203,46 @@ test("accepting shows the course: title, access end, the modules, one sentence (
   await expect(page.locator("[data-ecourse-access]")).toHaveText(`Доступ до ${formatDate(c.expiresAt!, "ru")}`);
   await expect(page.locator("[data-ecourse-soon]")).toHaveText("Материалы скоро появятся.");
   await expect(courseView(page).getByRole("heading", { level: 1 })).toHaveText(c.title.ru);
+});
+
+test("rulings R18, R19: the gate shows the contract filled as it is frozen, and an account with no name gives hers — {nimi} fills as she types; it is saved and frozen", async ({ page }, info) => {
+  const c = await signedIn(page, "noname", info.project.name, { name: "" });
+  const version = (await setTerms({ et: "E2E leping: mina, {nimi} ({e-post}), alustan koolitust {koolitus}.\n\nTeine lõik {tundmatu}.", ru: "E2E договор: {nimi}." }))!;
+  await openFromDashboard(page, c.slug);
+  await expect(gate(page)).toHaveAttribute("data-terms-version", version);
+  const text = gate(page).locator("[data-legal-body] p");
+  await expect(text).toHaveText([`E2E leping: mina,  (${c.email}), alustan koolitust ${c.title.et}.`, "Teine lõik {tundmatu}."]);
+  const name = gate(page).getByRole("textbox", { name: "Nimi" });
+  await expect(name).toBeVisible();
+  await expect(name).toHaveAttribute("required", "");
+  // the field, the box and the button fit the column; the field is a 44 px target at least
+  expect((await name.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect(await noOverflow(page)).toBe(true);
+
+  // pressed without a name: nothing is sent, the field says so
+  await box(page).check();
+  await start(page).click();
+  await expect(gate(page).locator("[data-terms-name-error]")).toHaveText("Kirjuta oma nimi.");
+  await expect(name).toBeFocused();
+  expect(await storedAcceptances(c.clientId)).toEqual([]);
+
+  // {nimi} fills as she types, on one line
+  await name.fill("  E2E   Nimeta ");
+  await expect(text.first()).toHaveText(`E2E leping: mina, E2E Nimeta (${c.email}), alustan koolitust ${c.title.et}.`);
+  await expect(gate(page).locator("[data-terms-name-error]")).toHaveText("");
+  const answer = page.waitForResponse((r) => r.url().endsWith("/api/konto/tingimused") && r.request().method() === "POST");
+  await start(page).click();
+  expect((await answer).status()).toBe(200);
+  expect((await answer).request().postDataJSON()).toEqual({ slug: c.slug, version, locale: "et", name: "  E2E   Nimeta " });
+  await expect(courseView(page).getByRole("heading", { level: 1 })).toHaveText(c.title.et);
+
+  // frozen as shown, with her name in the parties; her account has it now
+  const [row] = await onLocalDb(
+    (sql) => sql<{ body: string; name: string; account: string }[]>`
+      select k.body, k.fields->'student'->>'name' as name, c.name as account from contracts k join clients c on c.id = k.client_id where k.client_id = ${c.clientId}`,
+    { marksPages: false },
+  );
+  expect(row).toEqual({ body: `E2E leping: mina, E2E Nimeta (${c.email}), alustan koolitust ${c.title.et}.\n\nTeine lõik {tundmatu}.`, name: "E2E Nimeta", account: "E2E Nimeta" });
 });
 
 test("an unpublished course with active access still opens: the notice, then the course", async ({ page }, info) => {

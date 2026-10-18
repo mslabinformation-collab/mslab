@@ -39,7 +39,10 @@ import { mailConfigured, sendMail, type Env } from "./notify";
 //   a transaction that holds a payment row must not then wait for a registration. The submit (its own new registration) and „Kinnitan“ (the
 //   registration alone) keep it.
 // - contractForAccess with the access row as the first row lock of the write about one access (completion.ts: „the first lock of every write about
-//   one access“), or after settle's own order: its payment row, the address lock, the rows linked to the address, course_access last.
+//   one access“), or after settle's own order: its payment row, the address lock, the rows linked to the address, course_access last. The terms
+//   gate of an account with no name (ruling R19) writes the client's row too: it takes the address lock (client-auth.ts lockAddress) before the
+//   access row and updates the client after it. Settle's grant (the client, then her access) and the account's deletion (her access, then the
+//   client) write both rows under that same address lock, so it orders them all: none of them waits for the other the other way round.
 // The partial unique indexes (contracts_current_registration, contracts_current_access) are the backstop: a second current contract is refused whatever
 // the code does. Logs carry ids only: only the mail's part logs (a PDF that fails to render, a mail that fails), by the contract's id.
 
@@ -107,7 +110,20 @@ async function storedTemplate(q: Q, kind: ContractKind): Promise<{ title: I18n; 
  * The placeholders are not filled here (fillContract with contractValues does that, at the acceptance).
  */
 export async function contractTemplate(q: Q, kind: ContractKind, locale: "et" | "ru"): Promise<ContractTemplate> {
+  return inLanguage(await storedTemplate(q, kind), locale);
+}
+
+/**
+ * contractTemplate for a page in Estonian and for one in Russian, from ONE read of the text (its version before it, storedTemplate): what the terms
+ * gate shows on either page (ruling R18), each the very template acceptTerms freezes on a page in that language.
+ */
+export async function contractTemplates(q: Q, kind: ContractKind): Promise<Record<"et" | "ru", ContractTemplate>> {
   const stored = await storedTemplate(q, kind);
+  return { et: inLanguage(stored, "et"), ru: inLanguage(stored, "ru") };
+}
+
+/** The stored text in the language a page in `locale` reads it in (D6; contractTemplate). */
+function inLanguage(stored: { title: I18n; body: I18n; version: string }, locale: "et" | "ru"): ContractTemplate {
   const used = contractLocale(locale, (stored.body.ru ?? "").trim() !== "");
   const pick = (f: I18n): string => (used === "ru" && (f.ru ?? "").trim() ? (f.ru as string) : f.et);
   return { version: stored.version, locale: used, title: pick(stored.title), body: pick(stored.body) };

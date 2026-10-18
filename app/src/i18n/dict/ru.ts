@@ -622,6 +622,9 @@ export const ru: Dict = {
       termsAccept: "Ознакомлен(а) с\u00a0условиями и принимаю их",
       start: "Начать обучение",
       termsFailed: "Не удалось сохранить. Попробуйте ещё раз.",
+      // the gate's name field for an account with no name (ruling R19): Draft for Dim's wording sheet
+      termsName: "Имя",
+      termsNameRequired: "Напишите своё имя.",
       access: "Доступ до {date}",
       soon: "Материалы скоро появятся.",
       resume: "Продолжить",
