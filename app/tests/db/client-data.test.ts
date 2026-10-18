@@ -125,7 +125,7 @@ describe("loadDashboard", () => {
         kind: "contact", registrationId: reg.id, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine", ru: "Ламинирование бровей" } },
         session: { startsAt: f.soon.startsAt.toISOString(), city: "Pärnu", venue: "Salong", cancelled: false },
         status: "confirmed", paymentChoice: "half", priceCents: 35000, paidCents: 17500, createdAt: reg.createdAt.toISOString(),
-        contract: null, contractRequested: false,
+        contract: null, contractRequested: false, review: null,
       },
     ]);
     // the cards feed nextStep as they are (they are the JSON the endpoint sends)
@@ -243,7 +243,7 @@ describe("loadDashboard", () => {
     // open ones newest grant first, then over ones the most recent first
     expect(cards.map((c) => c.kind === "ecourse" && c.course.slug)).toEqual(["peidus-kursus", "veebikursus", "kolmas-kursus", "teine-kursus"]);
     expect(cards.map((c) => nextStep(c, NOW, null).key)).toEqual(["openCourse", "openCourse", "accessEnded", "accessEnded"]);
-    expect(cards[1]).toEqual({ kind: "ecourse", course: { slug: "veebikursus", title: { et: "Veebikursus" } }, grantedAt: at(-10).toISOString(), expiresAt: at(170).toISOString(), revoked: false, progress: null, completedAt: null, certificateId: null, contract: null, contractRequested: false });
+    expect(cards[1]).toEqual({ kind: "ecourse", course: { slug: "veebikursus", title: { et: "Veebikursus" } }, grantedAt: at(-10).toISOString(), expiresAt: at(170).toISOString(), revoked: false, progress: null, completedAt: null, certificateId: null, contract: null, contractRequested: false, review: null });
     expect(cards[2]).toMatchObject({ revoked: true });
   });
 
@@ -662,7 +662,7 @@ describe("deleteClient", () => {
     await db.insert(clientSessions).values({ idHash: "h1", clientId: kati.id, expiresAt: at(100) });
     await db.insert(subscribers).values([{ email: "Kati@example.test", token: "t1", confirmedAt: NOW, clientId: kati.id }, { email: "mari@example.test", token: "t2", clientId: mari.id }]);
 
-    expect(await deleteClient(db, kati.id)).toEqual({ email: "kati@example.test", locale: "ru", photoKeys: [] });
+    expect(await deleteClient(db, kati.id)).toEqual({ email: "kati@example.test", locale: "ru", photoKeys: [], reviewCourses: [] });
 
     expect((await db.select().from(clients)).map((c) => c.email)).toEqual(["mari@example.test"]);
     expect(await db.select().from(clientSessions)).toEqual([]);
@@ -686,7 +686,7 @@ describe("deleteClient", () => {
     const other = (await issueClientLogin(db, "mari@example.test", T0))!;
     expect(await db.select().from(clientLoginTokens)).toHaveLength(4); // the used one and three live ones, one for Mari
 
-    expect(await deleteClient(db, kati.clientId)).toEqual({ email: "kati@example.test", locale: "et", photoKeys: [] });
+    expect(await deleteClient(db, kati.clientId)).toEqual({ email: "kati@example.test", locale: "et", photoKeys: [], reviewCourses: [] });
 
     expect((await db.select().from(clientLoginTokens)).map((t) => t.email)).toEqual(["mari@example.test"]);
     expect(await redeemClientCode(db, "kati@example.test", resent.code, NOW)).toBeNull();

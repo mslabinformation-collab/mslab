@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import filters from "@/components/site/CatalogueFilters.module.css";
 import { Icon } from "@/components/site/Icon";
 import ui from "@/components/site/ui.module.css";
-import { cardKey, filterCards, firstName, isPastCard, showFilters, type CardFilter, type ContactCard, type EcourseCard } from "@/domain/account-cards";
+import { cardKey, filterCards, firstName, isPastCard, promptKey, showFilters, type CardFilter, type ContactCard, type EcourseCard } from "@/domain/account-cards";
 import { fill } from "@/i18n/format";
 import { href } from "@/i18n/href";
 import type { Locale } from "@/i18n/locales";
@@ -98,13 +98,13 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
    */
   const focusAfterReload = useRef<{ key: string; until: number } | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  // the feedback forms' cards (phase protocols): one dismissed here ("Ei soovi") is gone at once, and the focus goes to the page's heading
-  // first (the card takes the button she pressed with it)
-  const [dismissed, setDismissed] = useState<number[]>([]);
-  const prompts = (data.feedback ?? []).filter((p) => !dismissed.includes(p.registrationId));
-  const dismissPrompt = (id: number) => {
+  // the feedback forms' cards (phase protocols; a contact course's or an e-course's): one dismissed here ("Ei soovi") is gone at once, and the focus
+  // goes to the page's heading first (the card takes the button she pressed with it). Kept by the prompt's key (promptKey).
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const prompts = (data.feedback ?? []).filter((p) => !dismissed.includes(promptKey(p)));
+  const dismissPrompt = (key: string) => {
     heading.current?.focus();
-    setDismissed((list) => [...list, id]);
+    setDismissed((list) => [...list, key]);
   };
 
   // What no longer counts as sent (another date now, or a day old) is dropped from this tab's memory.
@@ -140,10 +140,10 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
     }
   };
 
-  // A pay start the server refused as out of date (401, 404, nothing to pay): the cards are loaded again behind the page, like a refused
-  // change request, with the focus on the card the student was dealing with. Not in the admin's view (no reload there).
+  // A pay start the server refused as out of date (401, 404, nothing to pay), or a permission to publish that is gone already (a 404): the cards are loaded
+  // again behind the page, like a refused change request, with the focus on the card the student was dealing with. Not in the admin's view (no reload there).
   const reloadForCard = reload
-    ? (card: ContactCard) => {
+    ? (card: ContactCard | EcourseCard) => {
         focusAfterReload.current = { key: cardKey(card), until: Date.now() + FOCUS_WAIT_MS };
         return reload({ quiet: true });
       }
@@ -187,7 +187,7 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
           {prompts.length > 0 && (
             <ul className={styles.prompts} data-feedback-prompts="">
               {prompts.map((p) => (
-                <li key={p.registrationId}>
+                <li key={promptKey(p)}>
                   <FeedbackCard prompt={p} locale={locale} t={t} readOnly={readOnly} onDismissed={dismissPrompt} />
                 </li>
               ))}
@@ -234,6 +234,7 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
                   onChangeRequest={openDialog}
                   onStale={reloadForCard}
                   onContract={reloadForCard}
+                  onReviewGone={reloadForCard}
                   certificateName={data.client.name}
                 />
               </li>

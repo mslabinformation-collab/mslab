@@ -70,6 +70,9 @@ export type OpenInvoice = { id: number; kind: InvoiceKind; amountCents: number }
  */
 export type CardContract = { id: number; acceptedAt: string };
 
+/** Her permission to publish, as a card knows it: the review's id (POST /api/konto/arvustus/tagasi takes it back), never its status: Maria's choices stay hers (D6). */
+export type ReviewRef = { id: number };
+
 /** A contact-course registration for one session. */
 export type ContactCard = {
   kind: "contact";
@@ -95,6 +98,8 @@ export type ContactCard = {
    * offers „Kinnita leping“ instead of the contract line. Present on every card loadDashboard makes.
    */
   contractRequested?: boolean;
+  /** Her review of this registration's course (student reviews, D6), while it exists: the card says „Lubasid oma soovitust avaldada“ with „Võta luba tagasi“. null without one. Present on every card loadDashboard makes. Optional so cards built elsewhere keep compiling. */
+  review?: ReviewRef | null;
 };
 
 /** A registration without a session (an individual course): Maria agrees the time with the student. */
@@ -164,12 +169,32 @@ export type EcourseCard = {
   contract?: CardContract | null;
   /** Always false on an e-course card (D4: Maria asks about a contact registration only); present on every card loadDashboard makes, for the cards' one shape. */
   contractRequested?: boolean;
+  /** Her review of this course (student reviews, D6), as a contact card's `review`. null without one. Present on every card loadDashboard makes. */
+  review?: ReviewRef | null;
 };
 
 export type AccountCard = ContactCard | IndividualCard | RequestCard | WaitlistCard | EcourseCard;
 
-/** A feedback form that is open and has no answer (phase protocols, spec §7): the dashboard's "Kuidas koolitus läks?" card. */
-export type FeedbackPrompt = { registrationId: number; course: CourseRef };
+/**
+ * A feedback form that is open and has no answer (phase protocols, spec §7; student reviews, D3): the dashboard's "Kuidas koolitus läks?" card.
+ * `target`: a contact course's registration, or the slug of an e-course she has completed.
+ */
+export type FeedbackPrompt = { target: { registrationId: number } | { courseSlug: string }; course: CourseRef };
+
+/** A stable key of a prompt (a registration's or an e-course's), as cardKey's: the dashboard's list and the card's `data-feedback-card`. */
+export function promptKey(prompt: FeedbackPrompt): string {
+  return "registrationId" in prompt.target ? `registration-${prompt.target.registrationId}` : `course-${prompt.target.courseSlug}`;
+}
+
+/** The fragment of the form's address (an account page has no query): `id=<registration>` or `kursus=<slug>`, after `/konto/tagasiside#`. */
+export function feedbackFragment(target: FeedbackPrompt["target"]): string {
+  return "registrationId" in target ? `id=${target.registrationId}` : `kursus=${target.courseSlug}`;
+}
+
+/** The body fields that name a prompt's target to the API: `{ id }` for a registration, `{ kursus }` for an e-course's slug. */
+export function feedbackTargetBody(target: FeedbackPrompt["target"]): { id: number } | { kursus: string } {
+  return "registrationId" in target ? { id: target.registrationId } : { kursus: target.courseSlug };
+}
 
 export type NextStepKey =
   | "cancelled"

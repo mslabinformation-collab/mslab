@@ -624,8 +624,12 @@ export const et = {
       open: "Ava koolitus",
       // a contact course's card once Maria has sent its protocol (phase protocols)
       viewProtocol: "Vaata protokolli",
-      // the feedback form's card (components/account/FeedbackCard.tsx, phase protocols, spec §7): once the form opens; "Ei soovi" hides it for good
+      // the feedback form's card (components/account/FeedbackCard.tsx, phase protocols, spec §7): once the form opens (a contact course's day has
+      // passed, an e-course is completed); "Ei soovi" hides it for good
       feedbackCard: { question: "Kuidas koolitus läks?", open: "Jäta tagasiside", dismiss: "Ei soovi", dismissFailed: "Ei õnnestunud. Proovi uuesti." },
+      // her permission to publish, on the course card while her review exists (student reviews, D6; AccountCourseCard.tsx): `line` and `withdraw` are
+      // the spec's own words; `failed` is Draft for Dim's wording sheet (a refused press uses the forms' words for a 429, `online.rate`)
+      review: { line: "Lubasid oma soovitust avaldada", withdraw: "Võta luba tagasi", failed: "Ei õnnestunud. Proovi uuesti." },
       empty: "Sul ei ole veel koolitusi.",
       browse: "Vaata koolitusi",
       // The dark "Pooleli" card at the top (components/account/ResumeCard.tsx) and the e-course cards' lessons (phase 2c): {module} and
@@ -795,6 +799,14 @@ export const et = {
         message: { label: "Soovi korral jäta meile väike tagasiside või sõnum:" },
       },
       count: "{n} / {max}",
+      // the tick under the recommend question and the name it shows (student reviews, D1; domain/review.ts): `tick` and `name` are the spec's own words;
+      // `nameError` ({max}: the name's limit) and `needsAnswer` (shown when the server refuses a tick with no answer to publish) are Draft for Dim's wording sheet
+      consent: {
+        tick: "Luban seda vastust avaldada MS LAB kodulehel — selle koolituse lehel ja avalehel.",
+        name: "Nimi, mida näidatakse",
+        nameError: "Kirjuta nimi, mida näidata (kuni {max} tähemärki).",
+        needsAnswer: "Loa andmiseks kirjuta vastus küsimusele „Kas soovitaksid seda koolitust ka teistele? Miks?“.",
+      },
       submit: "Saada tagasiside",
       sending: "Saadan…",
       empty: "Vasta vähemalt ühele küsimusele.",

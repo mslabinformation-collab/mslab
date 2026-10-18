@@ -14,11 +14,12 @@ import { LOGIN_MARK } from "@/lib/account-marks";
 import { parseRowId } from "@/lib/row-id";
 import { deletionMail, loginMail, passwordChangedMail, verifyLink } from "./account-mail";
 import {
-  LIMITS, parseChangeRequest, parseContractAccept, parseDeletion, parseFavourite, parseFeedbackHide, parseFeedbackPost, parseMerge, parseNewsletter, parsePassword, parsePayStart,
-  parseProfile, parseProgress, parseSlug, parseTerms,
+  LIMITS, checkSlug, parseChangeRequest, parseContractAccept, parseDeletion, parseFavourite, parseFeedbackHide, parseFeedbackPost, parseMerge, parseNewsletter, parsePassword,
+  parsePayStart, parseProfile, parseProgress, parseReviewWithdrawal, parseSlug, parseTerms,
 } from "./account-input";
 import { isCrossSite } from "./auth";
 import type { BunnyConfig } from "./bunny";
+import type { PublicChange } from "./cache-targets";
 import { certificateForStudent, certificatePdf, issueCertificate } from "./certificates";
 import {
   CLIENT_COOKIE, CLIENT_SESSION_TTL_MS, HINT_COOKIE, endClientSession, getClientSession, issueClientLogin, redeemClientCode,
@@ -31,7 +32,7 @@ import {
 import { removeClientPassword, setClientPassword } from "./client-password";
 import { queueCompletionMail } from "./completion";
 import { contractForStudent, contractPdf, mailContract } from "./contracts";
-import { feedbackState, hideFeedback, notifyFeedback, submitFeedback } from "./course-feedback";
+import { feedbackState, hideFeedback, notifyFeedback, submitFeedback, type FeedbackTarget } from "./course-feedback";
 import { invoiceForStudent, invoicePdf } from "./invoices";
 import { PgKv } from "./kv";
 import { lessonFileFor, loadLesson, markTextLessonDone, saveProgress } from "./lesson-data";
@@ -47,6 +48,7 @@ import { addPhoto, photoFor, practicalView, removeKeys, removePhoto, submitPract
 import { isPrefetch } from "./prefetch";
 import { privateFileAnswer } from "./private-file";
 import { belowLimit, clientIp, countFailure, rateKey, rateLimit, releaseSlot, reserveSlot, windowKey } from "./ratelimit";
+import { withdrawReview } from "./reviews";
 import { resubmitAnswers, submitAttempt, testView, type SubmitResult } from "./test-attempts";
 import { sha256 } from "./token";
 
@@ -66,7 +68,7 @@ import { sha256 } from "./token";
 // GET /kursus/:slug/:lesson one lesson (an open one with a signed video URL; 403 terms or locked), POST …/:lesson/progress how far a video has
 // been watched, POST …/:lesson/tehtud "Märgi tehtuks" for a text lesson, GET …/:lesson/fail/:file a lesson file, GET /kursus/:slug/test the knowledge test with POST /kursus/:slug/test an attempt and POST …/test/uuesti the "Paranda" answers rewritten (e-course completion), GET /lemmikud the
 // favourites as course cards, POST /lemmikud and /lemmikud/merge favourites, PATCH /andmed the profile, POST /uudiskiri the newsletter, POST /muutmine a request to cancel or
-// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, GET /kursus/:slug/praktiline the practical work of an e-course (e-course completion: her points, her photos and Maria's sent assessment), POST …/praktiline/foto one photo (multipart, made smaller in the browser), DELETE …/praktiline/foto/:id one photo of the round being prepared, POST …/praktiline/saada "Saada hindamiseks" / "Saada uuesti", GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kursus/:slug/tunnistus the certificate of her completed e-course with the name she confirmed and GET /tunnistus/:id its PDF (phase 3d), GET /arve/:id one of her invoices as a PDF (invoices), GET /leping/:id one of her contracts as a PDF (contracts), GET /leping-tekst/:registrationId the text „Kinnita leping" shows once Maria has asked, POST /leping „Kinnitan" (contracts), POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
+// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id= (or ?kursus=<e-course slug>), POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations or completed e-courses (its state, her answers once with her consent to publish the recommend answer, 'Ei soovi'), POST /arvustus/tagasi „Võta luba tagasi“ (her review deleted, the public pages refreshed), POST /tingimused the e-course terms, GET /kursus/:slug/praktiline the practical work of an e-course (e-course completion: her points, her photos and Maria's sent assessment), POST …/praktiline/foto one photo (multipart, made smaller in the browser), DELETE …/praktiline/foto/:id one photo of the round being prepared, POST …/praktiline/saada "Saada hindamiseks" / "Saada uuesti", GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kursus/:slug/tunnistus the certificate of her completed e-course with the name she confirmed and GET /tunnistus/:id its PDF (phase 3d), GET /arve/:id one of her invoices as a PDF (invoices), GET /leping/:id one of her contracts as a PDF (contracts), GET /leping-tekst/:registrationId the text „Kinnita leping" shows once Maria has asked, POST /leping „Kinnitan" (contracts), POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
 // Each one starts with requireClient and answers through clientResponse (a renewed session's cookies reach the browser); the
 // client is always the session's, never a value from the request. A body that is not what the endpoint expects is 400
 // { ok: false, error: "<field>" } (account-input.ts), a record that is not the client's is 404.
@@ -88,6 +90,12 @@ export type AccountDeps = {
   bunny?: BunnyConfig | null;
   /** Online payments (phase 2b, payments/montonio.ts paymentProvider); absent or null: no "Maksa" on the cards, and POST /maksa is 503. */
   montonio?: Montonio | null;
+  /**
+   * Told when a change of hers leaves the public pages stale (student reviews, D6: a review withdrawn, an account deleted with reviews), once it is
+   * committed and before the answer, so that the very next request renders the page again (server/public-cache.ts revalidatePublic). Absent (a test,
+   * a script): nothing to refresh. A failure never undoes the change or fails the answer: it is logged (reviewsChanged).
+   */
+  changed?: (change: PublicChange) => Promise<void> | void;
 };
 
 const SESSION_MAX_AGE = CLIENT_SESSION_TTL_MS / 1000;
@@ -144,6 +152,15 @@ async function feedbackLimited(deps: AccountDeps, session: ClientSession): Promi
   if (await withinClientLimit(deps, session.clientId, "client-feedback", FEEDBACK_PER_HOUR, 60 * 60)) return null;
   logNote("[account] feedback rate limited");
   return clientResponse(session, { ok: false, error: "rate" }, 429);
+}
+
+/** Tells the public pages that the reviews of the course `slug` changed. A failure is logged (ids only) and goes no further: the pages catch up with their own `revalidate`. */
+async function reviewsChanged(deps: AccountDeps, slug: string): Promise<void> {
+  try {
+    await deps.changed?.({ kind: "reviews", course: slug });
+  } catch (e) {
+    logFailure("[account] revalidating the reviews failed", e);
+  }
 }
 
 /** The test's own limit, the submits and the rewrites together: null within it, else the 429 to answer. */
@@ -535,6 +552,21 @@ const lessonRef = (rawSlug: string, rawLesson: string): { slug: string; lessonId
 
 /** The registration id of a request's `?id=` (lib/row-id.ts), or null: the protocol's and the feedback form's endpoints read it so. */
 const queryId = (request: Request): number | null => parseRowId(new URL(request.url).searchParams.get("id") ?? "");
+
+/**
+ * The feedback form a request's query names (student reviews, D3): `?id=` a contact course's registration, or `?kursus=` an e-course's slug; exactly one
+ * of them, else null (the form is not found).
+ */
+function queryTarget(request: Request): FeedbackTarget | null {
+  const params = new URL(request.url).searchParams;
+  if (params.has("id") === params.has("kursus")) return null;
+  if (params.has("id")) {
+    const id = queryId(request);
+    return id === null ? null : { registrationId: id };
+  }
+  const slug = checkSlug(params.get("kursus") ?? "");
+  return slug === null ? null : { courseSlug: slug };
+}
 
 /**
  * The answer to a test submit or rewrite (test-attempts.ts SubmitResult): 200 `{ ok: true, ...TestView }` with the outcome; 409 `changed` (the
@@ -1116,20 +1148,23 @@ async function protocol(request: Request, deps: AccountDeps): Promise<Response> 
 }
 
 /**
- * GET /tagasiside?id=<registration id> (phase protocols, spec §7): the feedback form of one of her registrations — its course, and whether she
- * has answered already (`sent`). 404 `{ ok: false }` when it is not hers, or the form is not open (spec §3) and she has sent nothing.
+ * GET /tagasiside?id=<registration id> or ?kursus=<e-course slug> (phase protocols, spec §7; student reviews, D3): the feedback form of one of her
+ * courses — its course, whether she has answered already (`sent`) and the name the tick offers (`shownName`). 404 `{ ok: false }` when it is not hers,
+ * or the form is not open (spec §3; an e-course once it is completed) and she has sent nothing, or the query names both or neither.
  */
 async function feedbackForm(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
-  const id = queryId(request);
-  const state = id === null ? null : await feedbackState(deps.db, session.clientId, { registrationId: id }, deps.now);
+  const target = queryTarget(request);
+  const state = target === null ? null : await feedbackState(deps.db, session.clientId, target, deps.now);
   return state ? clientResponse(session, { ok: true, ...state }) : clientResponse(session, { ok: false }, 404);
 }
 
 /**
- * POST /tagasiside `{ registrationId, locale, answers }` (spec §7): her answers, once per registration; Maria is told after the response ("Uus
- * tagasiside: …", mail and Telegram). 200 `{ ok: true }`; 400 `{ error }` (a field, a question's key, "answers" or "empty"); 404 `{ error:
+ * POST /tagasiside `{ id | kursus, locale, answers, consent }` (spec §7; student reviews, D1, D3): her answers, once per registration or e-course; Maria is told
+ * after the response ("Uus tagasiside: …", mail and Telegram). `consent` is her tick with the name to show, `{ name }`, or null: with it the answer to
+ * the recommend question also becomes a pending review, in the same transaction. 200 `{ ok: true }`; 400 `{ error }` (a field, "target", a question's key,
+ * "answers" or "empty"; "consentText" for a tick with no recommend text, "consentName" for no name or one over 40 characters); 404 `{ error:
  * "registration" }` (not hers, or not open); 409 `{ error: "sent" }` (answered already); 429 `{ error: "rate" }` after 10 in an hour.
  */
 async function sendFeedback(request: Request, deps: AccountDeps): Promise<Response> {
@@ -1139,9 +1174,8 @@ async function sendFeedback(request: Request, deps: AccountDeps): Promise<Respon
   if (!input.ok) return badInput(session, input.error);
   const limited = await feedbackLimited(deps, session);
   if (limited) return limited;
-  const { registrationId, locale, answers } = input.data;
-  // (the tick and the e-course form come with the student reviews' routes: for now a contact course's answers with no consent, which cannot fail its check)
-  const result = await submitFeedback(deps.db, { clientId: session.clientId, target: { registrationId }, answers, locale, consent: null }, deps.now);
+  const { target, locale, answers, consent } = input.data;
+  const result = await submitFeedback(deps.db, { clientId: session.clientId, target, answers, locale, consent }, deps.now);
   if (result.kind === "consentText" || result.kind === "consentName") return clientResponse(session, { ok: false, error: result.kind }, 400);
   if (result.kind === "notFound") return clientResponse(session, { ok: false, error: "registration" }, 404);
   if (result.kind === "sent") return clientResponse(session, { ok: false, error: "sent" }, 409);
@@ -1151,7 +1185,7 @@ async function sendFeedback(request: Request, deps: AccountDeps): Promise<Respon
 }
 
 /**
- * POST /tagasiside/peida `{ registrationId }` ("Ei soovi", spec §7): the dashboard's card is gone for good; the form itself still takes her
+ * POST /tagasiside/peida `{ id | kursus }` ("Ei soovi", spec §7): the dashboard's card is gone for good; the form itself still takes her
  * answers later. 200 `{ ok: true }`; 404 `{ error: "registration" }` (not hers, or not open); 429 (with the submits, 10 an hour).
  */
 async function dismissFeedback(request: Request, deps: AccountDeps): Promise<Response> {
@@ -1161,8 +1195,27 @@ async function dismissFeedback(request: Request, deps: AccountDeps): Promise<Res
   if (!input.ok) return badInput(session, input.error);
   const limited = await feedbackLimited(deps, session);
   if (limited) return limited;
-  const hidden = await hideFeedback(deps.db, { clientId: session.clientId, target: { registrationId: input.data.registrationId } }, deps.now);
+  const hidden = await hideFeedback(deps.db, { clientId: session.clientId, target: input.data.target }, deps.now);
   return hidden ? clientResponse(session, { ok: true }) : clientResponse(session, { ok: false, error: "registration" }, 404);
+}
+
+/**
+ * POST /arvustus/tagasi `{ reviewId }` („Võta luba tagasi“, student reviews, D6): the review of her own feedback is deleted at once, whatever its status
+ * (her answers stay with Maria), and the public pages of its course and the home page are refreshed before the answer, so that the very next request no
+ * longer shows it. 200 `{ ok: true }`; 404 `{ error: "review" }` (not hers, one Maria added, or gone already: another tab, Maria, the account's deletion);
+ * 429 with the feedback form's limit (10 an hour, the submits, the "Ei soovi"s and this together).
+ */
+async function withdrawPermission(request: Request, deps: AccountDeps): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const input = parseReviewWithdrawal(await readObject(request));
+  if (!input.ok) return badInput(session, input.error);
+  const limited = await feedbackLimited(deps, session);
+  if (limited) return limited;
+  const result = await withdrawReview(deps.db, session.clientId, input.data.reviewId);
+  if (!result.ok) return clientResponse(session, { ok: false, error: "review" }, 404);
+  await reviewsChanged(deps, result.courseSlug);
+  return clientResponse(session, { ok: true });
 }
 
 /**
@@ -1234,8 +1287,8 @@ async function acceptContractRoute(request: Request, deps: AccountDeps): Promise
 }
 
 /**
- * POST /kustuta `{ confirm: true }`: deletes the account (client-data.ts deleteClient: registrations stay with Maria) and answers with
- * both cookies cleared, the one answer that does not go through clientResponse. The confirmation e-mail goes out after the
+ * POST /kustuta `{ confirm: true }`: deletes the account (client-data.ts deleteClient: registrations stay with Maria; her reviews go, and the public pages
+ * of their courses are refreshed) and answers with both cookies cleared, the one answer that does not go through clientResponse. The confirmation e-mail goes out after the
  * response, never to a sample address (`@example.test`) and never in development. Her practical work's photo files (e-course completion,
  * listed by deleteClient) leave the store after the response too.
  */
@@ -1245,6 +1298,8 @@ async function deleteAccount(request: Request, deps: AccountDeps): Promise<Respo
   const input = parseDeletion(await readObject(request));
   if (!input.ok) return badInput(session, input.error);
   const gone = await deleteClient(deps.db, session.clientId);
+  // her reviews went with her feedback: the pages of each of their courses (and the home page) are refreshed now that it is committed (student reviews, D6)
+  for (const slug of gone?.reviewCourses ?? []) await reviewsChanged(deps, slug);
   // her practical work's photo files (e-course completion): listed in the deletion's transaction, removed from the store after the answer
   if (gone && gone.photoKeys.length > 0) {
     const keys = gone.photoKeys;
@@ -1295,6 +1350,7 @@ async function dataRoute(request: Request, path: string, deps: AccountDeps): Pro
     case "GET /tagasiside": return feedbackForm(request, deps);
     case "POST /tagasiside": return sendFeedback(request, deps);
     case "POST /tagasiside/peida": return dismissFeedback(request, deps);
+    case "POST /arvustus/tagasi": return withdrawPermission(request, deps);
     case "POST /tingimused": return terms(request, deps);
     case "POST /leping": return acceptContractRoute(request, deps);
     case "POST /kustuta": return deleteAccount(request, deps);

@@ -54,7 +54,7 @@ afterEach(async () => {
 
 describe("the form", () => {
   test("the questions in the paper form's order; one answer at least; the answers as keys; the closing line", async () => {
-    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(200, { ok: true }) : json(200, { ok: true, course: COURSE, sent: false })));
+    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(200, { ok: true }) : json(200, { ok: true, course: COURSE, sent: false, shownName: "Kati K." })));
     await form();
     expect(fetchMock.mock.calls[0][0]).toBe("/api/konto/tagasiside?id=42");
     expect($("h1")!.textContent).toBe("Sinu kogemus MS LAB koolitusel");
@@ -73,17 +73,17 @@ describe("the form", () => {
     });
     expect($("[data-question='message']")!.textContent).toContain("6 / 2000");
     await click($("[data-feedback-submit]"));
-    expect(posts()).toEqual([["/api/konto/tagasiside", { registrationId: 42, locale: "et", answers: { score: 9, expectations: "met", message: "Aitäh!" } }]]);
+    expect(posts()).toEqual([["/api/konto/tagasiside", { id: 42, locale: "et", answers: { score: 9, expectations: "met", message: "Aitäh!" }, consent: null }]]);
     expect($("[data-feedback-done='done']")!.textContent).toContain("Aitäh, et oled osa MS LAB koolituskeskuse algusest ja kasvust. Sinu tagasiside aitab meil saada veel paremaks!");
     // the button she pressed is gone: the closing line, a status, has the focus
     expect(document.activeElement).toBe($("[data-feedback-done='done'] [role='status']"));
   });
 
   test("answered already (on load, or a second tab's submit): it says so; not open: it says so with the way back", async () => {
-    fetchMock.mockResolvedValueOnce(json(200, { ok: true, course: COURSE, sent: true }));
+    fetchMock.mockResolvedValueOnce(json(200, { ok: true, course: COURSE, sent: true, shownName: "Kati K." }));
     await form();
     expect($("[data-feedback-done='sent']")!.textContent).toContain("Tagasiside on juba saadetud. Aitäh!");
-    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(409, { ok: false, error: "sent" }) : json(200, { ok: true, course: COURSE, sent: false })));
+    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(409, { ok: false, error: "sent" }) : json(200, { ok: true, course: COURSE, sent: false, shownName: "Kati K." })));
     await act(async () => root.unmount());
     root = createRoot(container);
     await form();
@@ -99,27 +99,27 @@ describe("the form", () => {
   });
 
   test("Review Focus 5: Russian: the questions, the options and the closing line in Russian", async () => {
-    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(200, { ok: true }) : json(200, { ok: true, course: COURSE, sent: false })));
+    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(200, { ok: true }) : json(200, { ok: true, course: COURSE, sent: false, shownName: "Kati K." })));
     await form("ru");
     expect($("h1")!.textContent).toBe("Ваш опыт обучения в MS LAB");
     expect($("[data-question='ready']")!.textContent).toContain("Скорее да, нужно немного практики");
     await click($("[data-question='safe'] input[value='very']"));
     await click($("[data-feedback-submit]"));
-    expect(posts()[0][1]).toEqual({ registrationId: 42, locale: "ru", answers: { safe: "very" } });
+    expect(posts()[0][1]).toEqual({ id: 42, locale: "ru", answers: { safe: "very" }, consent: null });
     expect($("[data-feedback-done='done']")!.textContent).toContain("Спасибо, что вы часть начала и роста учебного центра MS LAB.");
   });
 
   test("a refused send keeps her answers and says why, then a second try goes through; a closed form (404 on send) says so", async () => {
-    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(429, { ok: false, error: "rate" }) : json(200, { ok: true, course: COURSE, sent: false })));
+    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(429, { ok: false, error: "rate" }) : json(200, { ok: true, course: COURSE, sent: false, shownName: "Kati K." })));
     await form();
     await click($("[data-question='trainer'] input[value='good']"));
     await click($("[data-feedback-submit]"));
     expect($("[data-feedback-error]")!.textContent).toBe("Liiga palju katseid. Proovi mõne minuti pärast.");
     expect(($("[data-question='trainer'] input[value='good']") as HTMLInputElement).checked).toBe(true);
-    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(500, { ok: false }) : json(200, { ok: true, course: COURSE, sent: false })));
+    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(500, { ok: false }) : json(200, { ok: true, course: COURSE, sent: false, shownName: "Kati K." })));
     await click($("[data-feedback-submit]"));
     expect($("[data-feedback-error]")!.textContent).toBe("Midagi läks valesti. Proovi uuesti.");
-    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(404, { ok: false, error: "registration" }) : json(200, { ok: true, course: COURSE, sent: false })));
+    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(404, { ok: false, error: "registration" }) : json(200, { ok: true, course: COURSE, sent: false, shownName: "Kati K." })));
     await click($("[data-feedback-submit]"));
     expect($("[data-feedback-done='closed']")!.textContent).toContain("Sellele koolitusele ei saa praegu tagasisidet anda.");
     expect($("[data-feedback-form]")).toBeNull();
@@ -128,7 +128,7 @@ describe("the form", () => {
   test("pasted control characters (a NUL) are left out of what is sent and Word's line and page breaks become line breaks, as the server's check wants: the words go through, never a 'failed' line for good", async () => {
     // the route's own check (domain/protocols.ts checkFeedback): a free text Postgres cannot store is refused
     fetchMock.mockImplementation(async (_url, init) =>
-      init?.method === "POST" ? (checkFeedback(JSON.parse(String(init.body)).answers).ok ? json(200, { ok: true }) : json(400, { ok: false, error: "answers" })) : json(200, { ok: true, course: COURSE, sent: false }),
+      init?.method === "POST" ? (checkFeedback(JSON.parse(String(init.body)).answers).ok ? json(200, { ok: true }) : json(400, { ok: false, error: "answers" })) : json(200, { ok: true, course: COURSE, sent: false, shownName: "Kati K." }),
     );
     await form();
     const type = async (key: string, text: string) =>
@@ -143,20 +143,20 @@ describe("the form", () => {
     await type("message", `Väga${VT}hea koolitus${NUL}, aitäh${FF}Mari`);
     await type("recommend", `${VT}${NUL}${FF}`); // nothing but control characters and line breaks: not an answer
     await click($("[data-feedback-submit]"));
-    expect(posts()).toEqual([["/api/konto/tagasiside", { registrationId: 42, locale: "et", answers: { message: "Väga\nhea koolitus, aitäh\nMari" } }]]);
+    expect(posts()).toEqual([["/api/konto/tagasiside", { id: 42, locale: "et", answers: { message: "Väga\nhea koolitus, aitäh\nMari" }, consent: null }]]);
     expect($("[data-feedback-error]")).toBeNull();
     expect($("[data-feedback-done='done']")).not.toBeNull();
   });
 
   test("a choice changed before sending: the last one is sent, and nothing else", async () => {
-    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(200, { ok: true }) : json(200, { ok: true, course: COURSE, sent: false })));
+    fetchMock.mockImplementation(async (_url, init) => (init?.method === "POST" ? json(200, { ok: true }) : json(200, { ok: true, course: COURSE, sent: false, shownName: "Kati K." })));
     await form();
     await click($("[data-question='score'] input[value='9']"));
     await click($("[data-question='score'] input[value='7']"));
     expect(($("[data-question='score'] input[value='9']") as HTMLInputElement).checked).toBe(false);
     expect(($("[data-question='score'] input[value='7']") as HTMLInputElement).checked).toBe(true);
     await click($("[data-feedback-submit]"));
-    expect(posts()).toEqual([["/api/konto/tagasiside", { registrationId: 42, locale: "et", answers: { score: 7 } }]]);
+    expect(posts()).toEqual([["/api/konto/tagasiside", { id: 42, locale: "et", answers: { score: 7 }, consent: null }]]);
   });
 
   test("an address without an id asks nothing and says the form is not open", async () => {
@@ -172,7 +172,7 @@ describe("the form", () => {
     // puts #id=42 in at the same commit. The log is what each commit leaves in the DOM (a Profiler reports every commit of its subtree after
     // the DOM is written and before the browser can paint): a commit that shows "feedbackClosed" is the flash.
     window.history.replaceState(null, "", "/konto/tagasiside");
-    fetchMock.mockResolvedValue(json(200, { ok: true, course: COURSE, sent: false }));
+    fetchMock.mockResolvedValue(json(200, { ok: true, course: COURSE, sent: false, shownName: "Kati K." }));
     const log: string[] = [];
     const Updater = () => {
       useInsertionEffect(() => window.history.replaceState(null, "", "/konto/tagasiside#id=42"), []);
@@ -209,7 +209,7 @@ describe("the dashboard's card", () => {
     favourites: [],
     prepayment: null,
     resume: null,
-    feedback: [{ registrationId: 7, course: COURSE }],
+    feedback: [{ target: { registrationId: 7 }, course: COURSE }],
     ...over,
   });
   const render = async (data: Dashboard, readOnly = false) =>
@@ -217,29 +217,29 @@ describe("the dashboard's card", () => {
 
   test("'Kuidas koolitus läks?' with 'Jäta tagasiside' to the form; 'Ei soovi' takes it away for good; a failure says so", async () => {
     await render(dashboard());
-    const card = $("[data-feedback-card='7']")!;
+    const card = $("[data-feedback-card='registration-7']")!;
     expect(card.textContent).toContain("Kuidas koolitus läks?");
     expect($("[data-feedback-open]")!.getAttribute("href")).toBe("/konto/tagasiside#id=7");
     fetchMock.mockResolvedValueOnce(json(500, { ok: false }));
     await click($("[data-feedback-dismiss]"));
-    expect($("[data-feedback-card='7'] [role='alert']")!.textContent).toBe("Ei õnnestunud. Proovi uuesti.");
+    expect($("[data-feedback-card='registration-7'] [role='alert']")!.textContent).toBe("Ei õnnestunud. Proovi uuesti.");
     fetchMock.mockResolvedValueOnce(json(200, { ok: true }));
     await click($("[data-feedback-dismiss]"));
-    expect(posts().at(-1)).toEqual(["/api/konto/tagasiside/peida", { registrationId: 7 }]);
-    expect($("[data-feedback-card='7']")).toBeNull();
+    expect(posts().at(-1)).toEqual(["/api/konto/tagasiside/peida", { id: 7 }]);
+    expect($("[data-feedback-card='registration-7']")).toBeNull();
     // the card took its focused button with it: the page's heading has the focus now, not the page's top
     expect(document.activeElement).toBe($("h1"));
   });
 
   test("two prompts, one of them dismissed: only the other is left, and the focus is on the heading", async () => {
     const OTHER = { slug: "varvimine", title: { et: "Värvimine", ru: "Окрашивание" } };
-    await render(dashboard({ feedback: [{ registrationId: 7, course: COURSE }, { registrationId: 8, course: OTHER }] }));
-    expect($$("[data-feedback-card]").map((c) => c.getAttribute("data-feedback-card"))).toEqual(["7", "8"]);
+    await render(dashboard({ feedback: [{ target: { registrationId: 7 }, course: COURSE }, { target: { registrationId: 8 }, course: OTHER }] }));
+    expect($$("[data-feedback-card]").map((c) => c.getAttribute("data-feedback-card"))).toEqual(["registration-7", "registration-8"]);
     fetchMock.mockResolvedValueOnce(json(200, { ok: true }));
-    await click($("[data-feedback-card='7'] [data-feedback-dismiss]"));
-    expect(posts()).toEqual([["/api/konto/tagasiside/peida", { registrationId: 7 }]]);
-    expect($$("[data-feedback-card]").map((c) => c.getAttribute("data-feedback-card"))).toEqual(["8"]);
-    expect($("[data-feedback-card='8']")!.textContent).toContain("Värvimine");
+    await click($("[data-feedback-card='registration-7'] [data-feedback-dismiss]"));
+    expect(posts()).toEqual([["/api/konto/tagasiside/peida", { id: 7 }]]);
+    expect($$("[data-feedback-card]").map((c) => c.getAttribute("data-feedback-card"))).toEqual(["registration-8"]);
+    expect($("[data-feedback-card='registration-8']")!.textContent).toContain("Värvimine");
     expect(document.activeElement).toBe($("h1"));
   });
 

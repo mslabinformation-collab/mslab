@@ -100,7 +100,7 @@ describe("the account deleted (spec §3)", () => {
     const { session, mari, anu } = await twoSent();
     const account = await accountOf(mari);
     const before = (await db.select().from(registrations).where(eq(registrations.id, mari.id)))[0];
-    expect(await deleteClient(db, account)).toEqual({ email: "marimaasikas@example.com", locale: "et", photoKeys: [] });
+    expect(await deleteClient(db, account)).toEqual({ email: "marimaasikas@example.com", locale: "et", photoKeys: [], reviewCourses: [] });
     expect((await db.select().from(protocols)).map((p) => p.registrationId)).toEqual([anu.id]);
     expect((await db.select().from(courseFeedback)).map((f) => f.registrationId)).toEqual([anu.id]);
     expect((await db.select().from(registrations).where(eq(registrations.id, mari.id)))[0]).toEqual({ ...before, clientId: null });

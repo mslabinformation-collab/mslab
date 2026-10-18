@@ -233,7 +233,7 @@ test("the feedback card, the form sent, the card gone; Maria reads the answer on
   // her first login makes her account and links the registration (phase 2a)
   const student = await studentPage(browser, mari.email, visitorIp);
   const s = student.page;
-  const card = s.locator(`[data-feedback-card="${mari.id}"]`);
+  const card = s.locator(`[data-feedback-card="registration-${mari.id}"]`);
   await expect(card).toContainText("Kuidas koolitus läks?");
   await card.locator("[data-feedback-open]").click();
   await expect(s).toHaveURL(new RegExp(`/konto/tagasiside#id=${mari.id}$`));
@@ -271,7 +271,7 @@ test("'Ei soovi': a course that was yesterday offers the form by its date; the c
   const [mari] = fx.students;
   const student = await studentPage(browser, mari.email, visitorIp);
   const s = student.page;
-  const card = s.locator(`[data-feedback-card="${mari.id}"]`);
+  const card = s.locator(`[data-feedback-card="registration-${mari.id}"]`);
   await expect(card).toBeVisible();
   await card.locator("[data-feedback-dismiss]").click();
   await expect(card).toHaveCount(0);

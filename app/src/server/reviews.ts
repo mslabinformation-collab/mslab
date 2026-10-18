@@ -1,4 +1,4 @@
-import { and, count, desc, eq, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
 import { courseAccess, courseFeedback, courses, protocols, registrations, reviews } from "@/db/schema";
 import { tallinnInstant } from "@/domain/calendar";
@@ -38,6 +38,38 @@ export async function withdrawReview(db: Db, clientId: number, reviewId: number)
   if (slug === null) return { ok: false };
   log(reviewId, "withdrawn");
   return { ok: true, courseSlug: slug };
+}
+
+/**
+ * Her reviews (one query), each with the registration or the access its feedback belongs to: what the dashboard puts on the course cards as `review`
+ * (D6). Only the student's own: a review reaches her through the feedback of her registration (`registrations.client_id`) or of her access
+ * (`course_access.client_id`); one Maria added has no feedback and no student.
+ */
+export async function reviewsOfClient(q: Q, clientId: number): Promise<{ id: number; registrationId: number | null; accessId: number | null }[]> {
+  return q
+    .select({ id: reviews.id, registrationId: courseFeedback.registrationId, accessId: courseFeedback.accessId })
+    .from(reviews)
+    .innerJoin(courseFeedback, eq(reviews.feedbackId, courseFeedback.id))
+    .leftJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
+    .leftJoin(courseAccess, eq(courseFeedback.accessId, courseAccess.id))
+    .where(or(eq(registrations.clientId, clientId), eq(courseAccess.clientId, clientId)));
+}
+
+/**
+ * The slugs of the courses that have a review on the feedback of these registrations or accesses, once each, sorted: the account deletion's list of
+ * pages to refresh once its reviews are gone. Read before the delete (the reviews go with their feedback, by cascade); the course's publication does not matter.
+ */
+export async function reviewCourseSlugs(q: Q, owners: { registrationIds: number[]; accessIds: number[] }): Promise<string[]> {
+  const { registrationIds, accessIds } = owners;
+  const mine = [...(registrationIds.length > 0 ? [inArray(courseFeedback.registrationId, registrationIds)] : []), ...(accessIds.length > 0 ? [inArray(courseFeedback.accessId, accessIds)] : [])];
+  if (mine.length === 0) return [];
+  const rows = await q
+    .selectDistinct({ slug: courses.slug })
+    .from(reviews)
+    .innerJoin(courseFeedback, eq(reviews.feedbackId, courseFeedback.id))
+    .innerJoin(courses, eq(reviews.courseId, courses.id))
+    .where(or(...mine));
+  return rows.map((r) => r.slug).sort();
 }
 
 // ---------- Maria's decisions (D2) ----------

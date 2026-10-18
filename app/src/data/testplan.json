@@ -3031,6 +3031,59 @@
       "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
+      "id": "ekursus-tagasiside",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "E-koolituse tagasiside",
+      "href": "/konto",
+      "steps": [
+        "Logi sisse kui Proov 1 ja ava „Minu koolitused“.",
+        "Vajuta kaardil, millel on silt „E-õpe“ ja e-koolituse nimi, nuppu „Jäta tagasiside“.",
+        "Vali hinne 1–10 ja kirjuta küsimusele „Kas soovitaksid seda koolitust ka teistele? Miks?“ vastus: Proov 1 e-koolitus.",
+        "Märgi selle küsimuse all ruut „Luban seda vastust avaldada …“; kui nime väli on tühi, kirjuta Proov 1.",
+        "Vajuta „Saada tagasiside“.",
+        "Ava „Minu koolitused“ uuesti ja vaata e-koolituse kaarti."
+      ],
+      "expect": [
+        "Kaardil on silt „E-õpe“, e-koolituse nimi ja küsimus „Kuidas koolitus läks?“.",
+        "Vorm on sama mis kontaktkoolitusel: pealkiri „Sinu kogemus MS LAB koolitusel“ ja kõik küsimused.",
+        "Pärast saatmist näed tänuteksti „Aitäh, et oled osa MS LAB koolituskeskuse algusest ja kasvust. …“.",
+        "Maria postkasti tuleb „Uus tagasiside: Proov 1, …“ koos reaga „Lubab avaldada — vaata „Tagasiside“ lehel.“.",
+        "Kaart „Kuidas koolitus läks?“ on kadunud ja e-koolituse kaardil on rida „Lubasid oma soovitust avaldada“."
+      ],
+      "why": "Ka e-koolituse läbinu saab anda tagasisidet ja loa seda avaldada.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "ekursus-luba-tagasi",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Võta luba tagasi",
+      "href": "/konto",
+      "steps": [
+        "Ava Proov 1 „Minu koolitused“ ja vaata e-koolituse kaardil rida „Lubasid oma soovitust avaldada“.",
+        "Vajuta rea juures „Võta luba tagasi“.",
+        "Värskenda lehte.",
+        "Ava halduses „Tagasiside“ ja vaata plokki „Arvustused“."
+      ],
+      "expect": [
+        "Rida ja nupp kaovad kohe, lehte uuendamata.",
+        "Kaardil on edasi „Lõpetatud …“.",
+        "Pärast värskendamist rida tagasi ei tule.",
+        "Halduses „Arvustused“ ei ole Proov 1 e-koolituse arvustust, aga „Tagasiside“ loendis on tema vastus."
+      ],
+      "why": "Õpilane saab loa igal ajal tagasi võtta ja tema sõnad kaovad lehtedelt.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "ekursus-tunnistus",
       "area": "ekursus",
       "who": "maria",
@@ -3365,6 +3418,38 @@
       "writes": false
     },
     {
+      "id": "kontakt-tagasiside-luba",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Tagasiside: luba avaldada",
+      "href": "/konto",
+      "steps": [
+        "Logi sisse kui Proov 1 ja vajuta kontaktkoolituse kaardil „Kuidas koolitus läks?“ nuppu „Jäta tagasiside“.",
+        "Vaata küsimuse „Kas soovitaksid seda koolitust ka teistele? Miks?“ all olevat ruutu, enne kui vastad.",
+        "Kirjuta sellele küsimusele vastus: Proov 1 test.",
+        "Märgi ruut „Luban seda vastust avaldada …“ ja vaata ilmunud välja „Nimi, mida näidatakse“.",
+        "Kirjuta väljale nimi: Proov Üks.",
+        "Võta ruut maha ja märgi see uuesti.",
+        "Kustuta väljalt nimi ja vajuta „Saada tagasiside“.",
+        "Kustuta küsimuse vastus ja lahku lehelt saatmata: järgmine kontroll saadab tagasiside."
+      ],
+      "expect": [
+        "Enne vastamist on ruut hall ja seda ei saa märkida.",
+        "Pärast vastuse kirjutamist saab ruudu märkida.",
+        "Märgitud ruudu all on väli „Nimi, mida näidatakse“ nimega „Proov 1.“ ja loendur „… / 40“.",
+        "Nime kirjutades loendur muutub; üle 40 märgi ei mahu.",
+        "Ruudu äravõtmisel väli kaob; uuesti märkides on seal Proov Üks.",
+        "Tühja nimega näed „Kirjuta nimi, mida näidata (kuni 40 tähemärki).“ ja midagi ei saadeta.",
+        "Vastuse kustutamisel on ruut taas hall ja märkimata."
+      ],
+      "why": "Õpilane annab loa ise ja näeb, mis nime all tema sõnad avaldatakse.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "kontakt-tagasiside",
       "area": "kontakt",
       "who": "maria",
@@ -3373,20 +3458,25 @@
       "href": "/konto",
       "steps": [
         "Logi sisse kui Proov 1.",
-        "Vajuta kaardil „Kuidas koolitus läks?“ nuppu „Jäta tagasiside“.",
-        "Vali hinne 1–10 ja vasta veel ühele küsimusele.",
+        "Vajuta kontaktkoolituse kaardil „Kuidas koolitus läks?“ nuppu „Jäta tagasiside“.",
+        "Vali hinne 1–10 ja kirjuta küsimusele „Kas soovitaksid seda koolitust ka teistele? Miks?“ vastus.",
+        "Märgi selle küsimuse all ruut „Luban seda vastust avaldada …“; kui nime väli on tühi, kirjuta Proov 1.",
         "Vajuta „Saada tagasiside“.",
-        "Ava vorm uuesti protokolli kirja lingist."
+        "Ava vorm uuesti protokolli kirja lingist.",
+        "Ava „Minu koolitused“ ja vaata kontaktkoolituse kaarti."
       ],
       "expect": [
         "Vormi pealkiri on „Sinu kogemus MS LAB koolitusel“.",
         "Pärast saatmist näed tänuteksti „Aitäh, et oled osa MS LAB koolituskeskuse algusest ja kasvust. …“.",
-        "Maria postkasti tuleb „Uus tagasiside: Proov 1, …“ koos hindega.",
-        "Teisel avamisel näed „Tagasiside on juba saadetud. Aitäh!“."
+        "Maria postkasti tuleb „Uus tagasiside: Proov 1, …“ koos hindega ja reaga „Lubab avaldada — vaata „Tagasiside“ lehel.“.",
+        "Teisel avamisel näed „Tagasiside on juba saadetud. Aitäh!“.",
+        "Kontaktkoolituse kaardil on rida „Lubasid oma soovitust avaldada“ ja nupp „Võta luba tagasi“."
       ],
       "why": "Tagasiside aitab Marial koolitusi paremaks teha.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-tagasiside-haldus",
@@ -4112,12 +4202,15 @@
       "expect": [
         "Saatja on MS LAB.",
         "Pealkirjas on nimi, koolitus ja hinne, näiteks 9/10.",
+        "Kirjas on rida „Lubab avaldada — vaata „Tagasiside“ lehel.“, sest Proov 1 märkis ruudu.",
         "Kirjas on küsimused ja Proov 1 vastused eesti keeles.",
         "Vastuse saaja on Proov 1 aadress."
       ],
       "why": "Maria loeb tagasiside kohe.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-maria-praktiline",

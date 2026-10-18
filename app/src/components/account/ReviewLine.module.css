@@ -1,0 +1,26 @@
+/* Her permission to publish, on a course card (student reviews, D6): a quiet line „Lubasid oma soovitust avaldada“ with the text button
+   „Võta luba tagasi“ (the invoices' and the contract's look), side by side and wrapping on a narrow card; a refusal's sentence under it. Tokens only. */
+
+.review {
+  align-self: stretch;
+  margin-top: 14px;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 14px;
+}
+
+.line {
+  color: var(--ink-soft);
+  font: 400 13px/1.55 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.error {
+  margin: 4px 0 0;
+  color: var(--bad);
+  font: 400 13px/1.45 var(--font-body);
+}
