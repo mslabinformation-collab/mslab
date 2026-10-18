@@ -13,8 +13,8 @@ import styles from "./ReviewList.module.css";
  * The student reviews on the public pages (student reviews, spec D5, D7): the block „Õpilaste tagasiside“ of a course page (`course`: the newest
  * COURSE_REVIEWS_SHOWN, and „Näita kõiki (n)“ for the rest) and the section „Õpilaste kogemused“ of the home page (`home`: every review it is
  * given, each naming its course, linked). `reviews` come as the public reads give them (server/reviews.ts courseReviews, homeReviews): published
- * ones only, newest first. Each is shown as written, in its own language (marked with `lang` where that is not the page's), with its shown name
- * and the month and year; no stars, no score and no average. The notice sits under both. With nothing to show nothing is rendered: no heading,
+ * ones only, newest first. Each is shown as written, in its own language (its words and its shown name are marked with `lang` where that is not the
+ * page's; the month and the course's title are the page's own), with the name and the month and year; no stars, no score and no average. The notice sits under both. With nothing to show nothing is rendered: no heading,
  * no notice.
  */
 export function ReviewList({ reviews, locale, variant }: { reviews: PublicReview[]; locale: Locale; variant: "course" | "home" }) {
@@ -23,17 +23,22 @@ export function ReviewList({ reviews, locale, variant }: { reviews: PublicReview
   const home = variant === "home";
   const titleId = `reviews-title-${variant}`;
 
+  // the language to mark the review's words and shown name with: its own, where that is not the page's
+  const langOf = (r: PublicReview) => (r.locale === locale ? undefined : r.locale);
+
   const item = (r: PublicReview) => (
     <li key={r.id} className={styles.item} data-review={r.id} tabIndex={-1}>
       <figure className={styles.card}>
-        <blockquote className={styles.text} lang={r.locale === locale ? undefined : r.locale}>
+        <blockquote className={styles.text} lang={langOf(r)}>
           {paragraphs(r.text).map((p, i) => (
             <p key={i}>{p}</p>
           ))}
         </blockquote>
         <figcaption className={styles.who}>
           <span className={styles.person}>
-            <span className={styles.name}>{r.name}</span>
+            <span className={styles.name} lang={langOf(r)}>
+              {r.name}
+            </span>
             <span className={styles.month}>{reviewMonth(r.writtenAt, locale)}</span>
           </span>
           {home && (

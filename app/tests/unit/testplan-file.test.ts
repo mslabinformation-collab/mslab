@@ -329,6 +329,12 @@ describe("the review checks sit where Proov 1's reviews exist", () => {
     expect(text("kontakt-arvustus-naita-koiki")).toContain("„Näita kõiki (1)“");
   });
 
+  test("ruling R9: the check that adds six reviews and presses Tab and Enter is Dim's, on a computer; the others of the public blocks are Maria's", () => {
+    expect(item("kontakt-arvustus-naita-koiki").who).toBe("dim");
+    expect(item("kontakt-arvustus-naita-koiki").device).toBe("arvuti");
+    for (const id of ["kontakt-arvustus-plokk", "kontakt-arvustus-avaleht", "kontakt-arvustus-vene-keeles", "kontakt-arvustus-tyhi"]) expect(item(id).who, id).toBe("maria");
+  });
+
   test("the empty state hides Proov 1's review again and leaves it hidden for what follows", () => {
     expect(item("kontakt-arvustus-tyhi").steps[0]).toContain("„Peida“");
     expect(item("kontakt-arvustus-tyhi").expect.at(-1)).toContain("„Peidetud“");

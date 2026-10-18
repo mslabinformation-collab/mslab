@@ -232,8 +232,10 @@ describe("the page's language (D7)", () => {
   test("a review in the other language than the page carries lang on its words, and one in the page's language does not", async () => {
     await show({ reviews: [review(1, { locale: "et" }), review(2, { locale: "ru", text: "Рекомендую!" }), review(3, { locale: "et" })], locale: "et", variant: "course" });
     expect(items().map((el) => $("blockquote", el)!.getAttribute("lang"))).toEqual([null, "ru", null]);
+    expect(items().map((el) => $(".name, [class*='name']", el)!.getAttribute("lang"))).toEqual([null, "ru", null]); // (the shown name too)
     await show({ reviews: [review(1, { locale: "et" }), review(2, { locale: "ru", text: "Рекомендую!" })], locale: "ru", variant: "course" });
     expect(items().map((el) => $("blockquote", el)!.getAttribute("lang"))).toEqual(["et", null]);
+    expect(items().map((el) => $("[class*='name']", el)!.getAttribute("lang"))).toEqual(["et", null]);
   });
 
   test("the home section marks the language the same way", async () => {
@@ -290,9 +292,14 @@ describe("the markup a page sends", () => {
     expect(html).not.toContain("Soovitaksin kindlasti 7.");
   });
 
-  test("a review's text is the only thing that carries lang (the name and the month do not)", () => {
-    const html = renderToStaticMarkup(createElement(ReviewList, { reviews: [review(1, { locale: "ru" })], locale: "et", variant: "course" }));
-    expect(html.match(/lang="/g)).toHaveLength(1);
-    expect(html).toMatch(/<blockquote[^>]*lang="ru"/);
+  test("a review's words and its shown name carry lang; the month and the course's title (the page's own) do not", () => {
+    for (const variant of ["course", "home"] as const) {
+      const html = renderToStaticMarkup(createElement(ReviewList, { reviews: [review(1, { locale: "ru", name: "Мария М." })], locale: "et", variant }));
+      expect(html.match(/lang="/g), variant).toHaveLength(2);
+      expect(html).toMatch(/<blockquote[^>]*lang="ru"/);
+      expect(html).toMatch(/<span[^>]*lang="ru"[^>]*>Мария М\.<\/span>/);
+      expect(html).not.toMatch(/<span[^>]*lang="ru"[^>]*>okt 2026/);
+      expect(html).not.toMatch(/<a[^>]*lang=/);
+    }
   });
 });

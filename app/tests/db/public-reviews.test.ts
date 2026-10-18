@@ -163,6 +163,8 @@ describe("the course page", () => {
     expect(html).toMatch(/<blockquote[^>]*lang="et"[^>]*><p>Soovitan kõigile\.<\/p>/);
     expect(html).toMatch(/<blockquote[^>]*><p>Рекомендую всем!<\/p>/);
     expect(html.match(/<blockquote[^>]*lang="ru"/)).toBeNull(); // (the page's own language needs no mark)
+    expect(html).toMatch(/<span[^>]*lang="et"[^>]*>Anu A\.<\/span>/); // (the shown name of the Estonian review is marked too)
+    expect(html).not.toMatch(/<span[^>]*lang="ru"[^>]*>Мария М\./);
   });
 });
 

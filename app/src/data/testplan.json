@@ -3614,7 +3614,7 @@
     {
       "id": "kontakt-arvustus-naita-koiki",
       "area": "kontakt",
-      "who": "maria",
+      "who": "dim",
       "device": "arvuti",
       "title": "Tagasiside: Näita kõiki",
       "href": "/admin/tagasiside?vaade=arvustused",
