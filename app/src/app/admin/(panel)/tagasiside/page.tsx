@@ -5,19 +5,24 @@ import { Drawer } from "@/components/admin/Drawer";
 import { FeedbackAnswers, formatScore } from "@/components/admin/FeedbackAnswers";
 import listTable from "@/components/admin/list-table.module.css";
 import { Pager } from "@/components/admin/Pager";
+import { courseLabel, reviewRowView } from "@/components/admin/review-view";
+import { ReviewsPanel } from "@/components/admin/ReviewsPanel";
 import { adminTitle } from "@/components/admin/sections";
 import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { feedbackById, feedbackStats, pageFeedback, type CourseFeedbackStats, type FeedbackRow } from "@/db/queries/protocols";
+import { tallinnToday } from "@/domain/client-access";
 import { parsePage } from "@/domain/paging";
 import { FEEDBACK_CHOICES, feedbackQuestions, type ChoiceKey } from "@/domain/protocols";
+import type { ReviewStatus } from "@/domain/review";
 import { adminEt } from "@/i18n/dict/admin";
 import { et } from "@/i18n/dict/et";
 import { pick } from "@/i18n/field";
 import { fill, formatDate } from "@/i18n/format";
 import { parseRowId } from "@/lib/row-id";
 import { requireAdmin } from "@/server/auth";
+import { adminReviews, pendingReviewCount, reviewCourses } from "@/server/reviews";
 import styles from "./feedback.module.css";
 
 export const dynamic = "force-dynamic";
@@ -27,14 +32,32 @@ type Search = Record<string, string | string[] | undefined>;
 type Props = { searchParams: Promise<Search> };
 
 // Addresses: ?koolitus=<course id> (the filter), ?leht=<n> (50 a page), ?id=<answer> (the drawer). A new filter starts at page 1; the drawer
-// keeps the page it was opened from.
+// keeps the page it was opened from. ?vaade=arvustused is the page's second view, the student reviews (student reviews, Task 4; a view of its own
+// because the answers' list, its numbers and its drawer already fill the page), with ?olek=ootel|avaldatud|peidetud narrowing it to one status.
+// ?vaade=vastused (or none) is the answers' view; its own filters and pager keep no ?vaade.
 type View = { koolitus: number | null; leht: number };
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
 
-function parse(sp: Search): View & { id: number | null } {
-  return { koolitus: parseRowId(one(sp.koolitus)), leht: parsePage(sp.leht), id: parseRowId(one(sp.id)) };
+/** The reviews' status filter: the address's word and the status it stands for. */
+const STATUS_WORD = { ootel: "pending", avaldatud: "published", peidetud: "hidden" } as const satisfies Record<string, ReviewStatus>;
+type StatusWord = keyof typeof STATUS_WORD;
+const STATUS_WORDS = Object.keys(STATUS_WORD) as StatusWord[];
+
+type Parsed = View & { id: number | null; reviews: boolean; olek: StatusWord | null };
+
+function parse(sp: Search): Parsed {
+  return {
+    koolitus: parseRowId(one(sp.koolitus)),
+    leht: parsePage(sp.leht),
+    id: parseRowId(one(sp.id)),
+    reviews: sp.vaade === "arvustused",
+    olek: STATUS_WORDS.find((word) => word === sp.olek) ?? null,
+  };
 }
+
+const REVIEWS_HREF = "/admin/tagasiside?vaade=arvustused";
+const reviewsHref = (olek: StatusWord | null) => (olek === null ? REVIEWS_HREF : `${REVIEWS_HREF}&olek=${olek}`);
 
 function href(view: View, id?: number): string {
   const q = new URLSearchParams();
@@ -52,14 +75,81 @@ const CHOICE_KEYS = Object.keys(FEEDBACK_CHOICES) as ChoiceKey[];
 /**
  * Tagasiside (phase protocols, spec §7): the students' answers to the course feedback form, newest first, 50 a page, with the course filter.
  * Without a filter, every course that has answers with its count and average (a link to the filter); with one, its numbers: the average
- * score and every option of the seven choice questions with its count. A row's name opens its answers (the drawer, ?id=). Read-only.
+ * score and every option of the seven choice questions with its count. A row's name opens its answers (the drawer, ?id=). Read-only. An e-course's
+ * answer has no course day: "Lõpetatud {date}", the day her access was completed, stands in its place.
+ *
+ * The second view, "Arvustused" (?vaade=arvustused): the student reviews and "Lisa arvustus" (components/admin/ReviewsPanel.tsx). The heading counts the
+ * reviews waiting for Maria on both views, and the count opens the ones waiting.
  */
 export default async function FeedbackPage({ searchParams }: Props) {
   const email = await requireAdmin();
   const view = parse(await searchParams);
+  return view.reviews ? reviewsPage(email, view.olek) : answersPage(email, view);
+}
+
+/** The page's heading, the count of the reviews waiting for Maria (nothing when none wait) and the two views. */
+function Top({ pending, active }: { pending: number; active: "answers" | "reviews" }) {
+  const t = adminEt.feedback;
+  return (
+    <>
+      <div className={ui.heading}>
+        <div>
+          <p className={ui.eyebrow}>{t.eyebrow}</p>
+          <h1 className={ui.h1}>{t.title}</h1>
+          <p className={ui.lead}>{active === "reviews" ? adminEt.reviews.lead : t.lead}</p>
+        </div>
+        {pending > 0 && (
+          <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={reviewsHref("ootel")} data-pending-reviews={pending}>
+            {fill(t.pendingReviews, { n: pending })}
+          </Link>
+        )}
+      </div>
+      <nav className={ui.filters} aria-label={t.viewsLabel} data-feedback-views="">
+        <Link className={ui.pill} href="/admin/tagasiside?vaade=vastused" aria-current={active === "answers" ? "page" : undefined} data-view="answers">
+          {t.views.answers}
+        </Link>
+        <Link className={ui.pill} href={REVIEWS_HREF} aria-current={active === "reviews" ? "page" : undefined} data-view="reviews">
+          {t.views.reviews}
+        </Link>
+      </nav>
+    </>
+  );
+}
+
+/** "Arvustused": the reviews (by status, waiting first, then published, then hidden; the newest written first within each), narrowed by the status filter, and "Lisa arvustus". (A function of the page, not a component: it reads.) */
+async function reviewsPage(email: string, olek: StatusWord | null) {
+  const db = getDb();
+  const t = adminEt.reviews;
+  const [rows, courses, pending] = await Promise.all([adminReviews(db, olek === null ? {} : { status: STATUS_WORD[olek] }), reviewCourses(db), pendingReviewCount(db), getAdminCounts()]);
+  const filters: { key: StatusWord | null; label: string }[] = [{ key: null, label: t.all }, ...STATUS_WORDS.map((word) => ({ key: word, label: t.status[STATUS_WORD[word]] }))];
+
+  return (
+    <Shell email={email} active="feedback">
+      <div className={ui.page}>
+        <Top pending={pending} active="reviews" />
+        <nav className={ui.filters} aria-label={t.filterLabel} data-review-filter="">
+          {filters.map((f) => (
+            <Link key={f.key ?? "all"} className={ui.pill} href={reviewsHref(f.key)} aria-current={olek === f.key ? "true" : undefined} data-review-filter-status={f.key ?? "all"}>
+              {f.label}
+            </Link>
+          ))}
+        </nav>
+        <ReviewsPanel
+          rows={rows.map(reviewRowView)}
+          courses={courses.map((c) => ({ id: c.id, label: courseLabel(pick(c.title, "et"), c.published) }))}
+          today={tallinnToday(new Date())}
+          filtered={olek !== null}
+        />
+      </div>
+    </Shell>
+  );
+}
+
+/** "Vastused": the answers (see FeedbackPage). */
+async function answersPage(email: string, view: Parsed) {
   const db = getDb();
   // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
-  const [list, stats, open] = await Promise.all([pageFeedback(db, view.koolitus, view.leht), feedbackStats(db), view.id ? feedbackById(db, view.id) : null, getAdminCounts()]);
+  const [list, stats, open, pending] = await Promise.all([pageFeedback(db, view.koolitus, view.leht), feedbackStats(db), view.id ? feedbackById(db, view.id) : null, pendingReviewCount(db), getAdminCounts()]);
   const t = adminEt.feedback;
   const chosen = view.koolitus === null ? null : (stats.find((s) => s.course.id === view.koolitus) ?? null);
   const filters: { key: number | null; label: string }[] = [{ key: null, label: t.all }, ...stats.map((s) => ({ key: s.course.id, label: pick(s.course.title, "et") }))];
@@ -67,13 +157,7 @@ export default async function FeedbackPage({ searchParams }: Props) {
   return (
     <Shell email={email} active="feedback">
       <div className={ui.page}>
-        <div className={ui.heading}>
-          <div>
-            <p className={ui.eyebrow}>{t.eyebrow}</p>
-            <h1 className={ui.h1}>{t.title}</h1>
-            <p className={ui.lead}>{t.lead}</p>
-          </div>
-        </div>
+        <Top pending={pending} active="answers" />
 
         {stats.length > 0 && (
           <nav className={ui.filters} aria-label={t.filterLabel} data-feedback-filter="">
@@ -118,6 +202,7 @@ export default async function FeedbackPage({ searchParams }: Props) {
                     <td data-label={t.col.course}>
                       {pick(f.course.title, "et")}
                       {f.startsAt && <span className={`${ui.muted} ${styles.sub}`}>{formatDate(f.startsAt, "et")}</span>}
+                      {f.completedAt && <span className={`${ui.muted} ${styles.sub}`}>{fill(t.completed, { date: formatDate(f.completedAt, "et") })}</span>}
                     </td>
                     <td data-label={t.col.score} className={ui.nowrap}>
                       {f.answers.score === undefined ? adminEt.common.none : `${f.answers.score}/10`}
@@ -224,16 +309,24 @@ function FeedbackDetail({ f }: { f: FeedbackRow }) {
         <a className={ui.contactLink} href={`mailto:${f.email}`}>
           {f.email}
         </a>
-        <p className={ui.muted}>{f.startsAt ? `${pick(f.course.title, "et")}, ${formatDate(f.startsAt, "et")}` : pick(f.course.title, "et")}</p>
+        <p className={ui.muted} data-feedback-course-day="">
+          {f.startsAt
+            ? `${pick(f.course.title, "et")}, ${formatDate(f.startsAt, "et")}`
+            : f.completedAt
+              ? `${pick(f.course.title, "et")}, ${fill(t.completed, { date: formatDate(f.completedAt, "et") })}`
+              : pick(f.course.title, "et")}
+        </p>
         <p className={styles.links}>
           {f.clientId !== null && (
             <Link className={ui.link} href={`/admin/opilased?id=${f.clientId}`}>
               {t.toStudent}
             </Link>
           )}
-          <Link className={ui.link} href={`/admin/registreerimised?id=${f.registrationId}`}>
-            {t.toRegistration}
-          </Link>
+          {f.registrationId !== null && (
+            <Link className={ui.link} href={`/admin/registreerimised?id=${f.registrationId}`}>
+              {t.toRegistration}
+            </Link>
+          )}
         </p>
       </div>
       <FeedbackAnswers answers={f.answers} locale={f.locale} submittedAt={f.submittedAt} />

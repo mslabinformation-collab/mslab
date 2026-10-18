@@ -46,6 +46,13 @@ export function formatDate(d: Date, l: Locale): string {
   return `${get("day")}.${get("month")}.${get("year")}`;
 }
 
+/** "okt 2026" / "окт. 2026": the short month and the year, in Estonian time (Russian without the "г." after the year). */
+export function formatMonthYear(d: Date, l: Locale): string {
+  const parts = fmt(l, { month: "short", year: "numeric" }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("month")} ${get("year")}`;
+}
+
 /** "laupäev" / "суббота" */
 export function formatWeekday(d: Date, l: Locale): string {
   return fmt(l, { weekday: "long" }).format(d);

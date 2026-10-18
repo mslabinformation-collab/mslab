@@ -7,6 +7,7 @@ import { serverKv } from "@/server/kv";
 import { logFailure } from "@/server/log";
 import { mediaStore } from "@/server/media-store";
 import { paymentProvider } from "@/server/payments/montonio";
+import { revalidatePublic } from "@/server/public-cache";
 import { hostOrigin, isLocalHost, linkBase } from "@/server/site";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,8 @@ function deps(request: Request): AccountDeps {
     bunny: bunnyConfig(env),
     // online payments (phase 2b): null without the keys
     montonio: paymentProvider(),
+    // a review withdrawn, an account deleted with reviews: the course's pages and the home page render again before the answer (server/public-cache.ts)
+    changed: revalidatePublic,
   };
 }
 

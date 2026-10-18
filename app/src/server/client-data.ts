@@ -8,7 +8,7 @@ import {
   requests, subscribers, termsAcceptances, type Contract,
 } from "@/db/schema";
 import {
-  PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type CardContract, type CardInvoice, type EcourseCard, type FeedbackPrompt, type OpenInvoice, type PrepaymentInfo,
+  PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type CardContract, type CardInvoice, type EcourseCard, type FeedbackPrompt, type OpenInvoice, type PrepaymentInfo, type ReviewRef,
 } from "@/domain/account-cards";
 import { upcomingFrom } from "@/domain/calendar";
 import type { CourseSteps } from "@/domain/completion";
@@ -33,6 +33,7 @@ import { invoicesOfClient, type StudentInvoice } from "./invoices";
 import { courseOutline, ecourseProgress, progressActivity, type OutlineModule } from "./lesson-outline";
 import { logFailure } from "./log";
 import { practicalKeys } from "./practical";
+import { reviewCourseSlugs, reviewsOfClient } from "./reviews";
 import { newToken } from "./token";
 
 // What a signed-in client sees and may change, for the JSON endpoints under /api/konto (account-api.ts) and the admin's
@@ -163,13 +164,14 @@ export async function courseTermsVersion(db: Q): Promise<string> {
 // ---------- the dashboard ----------
 
 /**
- * Eight small queries, run together: registrations (with session and course), requests, e-course access, favourites, the client, the prepayment
+ * Nine small queries, run together: registrations (with session and course), requests, e-course access, favourites, the client, the prepayment
  * setting, her invoices (invoices.ts invoicesOfClient: one query, grouped here onto the registration's or the e-course's card, none per
- * card) and her current contracts (contracts.ts currentContractsOfClient: one query, ruling R14's owner, grouped the same way); then, for each
+ * card), her current contracts (contracts.ts currentContractsOfClient: one query, ruling R14's owner, grouped the same way) and her reviews
+ * (reviews.ts reviewsOfClient: one query, grouped onto the registration's or the e-course's card as its `review`); then, for each
  * open e-course, its lessons (two queries each) and her last lesson activity (one query), for the cards' progress and the "Pooleli" card (`resume`).
  */
 export async function loadDashboard(db: Db, clientId: number, now: Date): Promise<Dashboard | null> {
-  const [regRows, requestRows, accessRows, favourites, [client], prepayment, invoiceRows, contractRows] = await Promise.all([
+  const [regRows, requestRows, accessRows, favourites, [client], prepayment, invoiceRows, contractRows, reviewRows] = await Promise.all([
     db
       .select({
         id: registrations.id,
@@ -234,10 +236,12 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         certificateId: certificates.id,
         slug: courses.slug,
         title: courses.title,
+        feedbackId: courseFeedback.id,
       })
       .from(courseAccess)
       .innerJoin(courses, eq(courseAccess.courseId, courses.id))
       .leftJoin(certificates, eq(certificates.accessId, courseAccess.id))
+      .leftJoin(courseFeedback, eq(courseFeedback.accessId, courseAccess.id))
       .where(eq(courseAccess.clientId, clientId)),
     favouriteSlugs(db, clientId),
     db
@@ -259,6 +263,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
     readSetting(db, PREPAYMENT_KEY),
     invoicesOfClient(db, clientId),
     currentContractsOfClient(db, clientId),
+    reviewsOfClient(db, clientId),
   ]);
   if (!client) return null;
 
@@ -279,6 +284,14 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
     else if (c.accessId !== null) contractOfAccess.set(c.accessId, on);
   }
 
+  // her reviews on the card they belong to (student reviews, D6): a registration's, and an e-course's by its access; only the id, never the status
+  const reviewOfRegistration = new Map<number, ReviewRef>();
+  const reviewOfAccess = new Map<number, ReviewRef>();
+  for (const review of reviewRows) {
+    if (review.registrationId !== null) reviewOfRegistration.set(review.registrationId, { id: review.id });
+    else if (review.accessId !== null) reviewOfAccess.set(review.accessId, { id: review.id });
+  }
+
   const cards: AccountCard[] = [];
   for (const r of regRows) {
     const course = { slug: r.course.slug, title: r.course.title };
@@ -295,6 +308,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         createdAt: iso(r.createdAt),
         ...(r.protocolSentAt ? { protocolSent: true } : {}),
         ...invoicesOn(mine, payable),
+        review: reviewOfRegistration.get(r.id) ?? null,
       });
     } else {
       const open = mine && payable ? openInvoiceOf(mine) : null;
@@ -314,14 +328,22 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         contract: contractOfRegistration.get(r.id) ?? null,
         // Maria's open ask (D4) on a registration that can still be confirmed (the route's rule: a group one, not cancelled)
         contractRequested: r.contractRequestedAt !== null && r.kind === "group" && r.status !== "cancelled",
+        review: reviewOfRegistration.get(r.id) ?? null,
       });
     }
   }
-  // the feedback forms' cards (phase protocols, spec §7): a contact course's registration whose form is open and has no row yet
-  const feedback: FeedbackPrompt[] = regRows
-    .filter((r) => r.course.type === "contact" && r.feedbackId === null && feedbackOpenFor(r, now))
-    .sort((a, b) => (b.startsAt ?? b.createdAt).getTime() - (a.startsAt ?? a.createdAt).getTime() || b.id - a.id)
-    .map((r) => ({ registrationId: r.id, course: { slug: r.course.slug, title: r.course.title } }));
+  // the feedback forms' cards (phase protocols, spec §7; student reviews, D3): a contact course's registration whose form is open and has no row yet,
+  // and an e-course she has completed (not revoked, ended or not) and has no row for; the latest first, by the course day or the day it was completed
+  const feedback: FeedbackPrompt[] = [
+    ...regRows
+      .filter((r) => r.course.type === "contact" && r.feedbackId === null && feedbackOpenFor(r, now))
+      .map((r) => ({ at: (r.startsAt ?? r.createdAt).getTime(), order: r.id, prompt: { target: { registrationId: r.id }, course: { slug: r.course.slug, title: r.course.title } } })),
+    ...accessRows
+      .filter((a) => a.completedAt !== null && a.revokedAt === null && a.feedbackId === null)
+      .map((a) => ({ at: a.completedAt?.getTime() ?? 0, order: a.id, prompt: { target: { courseSlug: a.slug }, course: { slug: a.slug, title: a.title } } })),
+  ]
+    .sort((a, b) => b.at - a.at || b.order - a.order)
+    .map((p): FeedbackPrompt => p.prompt);
   for (const r of requestRows) {
     if (r.kind === "waitlist") {
       cards.push({
@@ -361,6 +383,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       ...invoicesOn(ofCourse.get(a.courseId)),
       contract: contractOfAccess.get(a.id) ?? null,
       contractRequested: false, // (Maria asks about a contact registration only)
+      review: reviewOfAccess.get(a.id) ?? null,
     };
     if (progressOf.has(a.slug)) card.progress = progressOf.get(a.slug) ?? null;
     cards.push(card);
@@ -837,6 +860,9 @@ export async function createChangeRequest(
  * Deletes the client with its sessions, favourites, terms acceptances and course access, the login codes and links still waiting for its
  * address (they are keyed by address, so no cascade reaches them; a live one would otherwise sign in again and re-create the account), and the
  * newsletter subscription of the address. Her protocols and her course feedback go too (phase protocols, spec §3): those of the registrations linked to her.
+ * Her reviews (student reviews, D6) go with that feedback, by cascade. The slugs of their courses are listed first, each list read after the lock of its
+ * registrations or accesses (so an answer committed while this waits is in it), so that the caller refreshes those courses' pages and the home page once
+ * this has committed (account-api.ts deleteAccount).
  * Registrations and requests stay with Maria, their name and e-mail as given, only unlinked
  * (client_id null). Takes the address lock the logins take, so a login in flight finishes before this runs or finds nothing after it.
  * Then her registrations, FOR UPDATE, before their protocols and feedback: the order a send takes (the address, the registration, the protocol), so a send or a
@@ -845,9 +871,10 @@ export async function createChangeRequest(
  * Her access rows are locked first (the order a photo upload takes: the access, then its protocol), then her photo files are listed: an
  * upload in flight is either in the list or, after this commit, finds the access gone and removes its own files. The caller removes the
  * listed files from the store after the commit (account-api.ts deleteAccount).
- * Returns the address and language the confirmation mail goes to, and the photo files to remove; null when the client was already gone.
+ * Returns the address and language the confirmation mail goes to, the photo files to remove, and the slugs of the courses whose reviews went (sorted, once
+ * each); null when the client was already gone.
  */
-export async function deleteClient(db: Db, clientId: number): Promise<{ email: string; locale: "et" | "ru"; photoKeys: string[] } | null> {
+export async function deleteClient(db: Db, clientId: number): Promise<{ email: string; locale: "et" | "ru"; photoKeys: string[]; reviewCourses: string[] } | null> {
   return db.transaction(async (tx) => {
     const [existing] = await tx.select({ email: clients.email }).from(clients).where(eq(clients.id, clientId)).limit(1);
     if (!existing) return null;
@@ -855,17 +882,22 @@ export async function deleteClient(db: Db, clientId: number): Promise<{ email: s
     await lockAddress(tx as unknown as Db, address);
     // her protocols and feedback (phase protocols): the registrations themselves stay with Maria, unlinked below (ON DELETE SET NULL)
     const mine = (await tx.select({ id: registrations.id }).from(registrations).where(eq(registrations.clientId, clientId)).for("update")).map((r) => r.id);
+    // the courses of her reviews on these registrations, before their feedback goes (and the reviews with it)
+    const contactReviews = await reviewCourseSlugs(tx, { registrationIds: mine, accessIds: [] });
     if (mine.length > 0) {
       await tx.delete(protocols).where(inArray(protocols.registrationId, mine));
       await tx.delete(courseFeedback).where(inArray(courseFeedback.registrationId, mine));
     }
     // her practical work's photo files (e-course completion): listed under her access rows' lock, removed by the caller after the commit
-    await tx.select({ id: courseAccess.id }).from(courseAccess).where(eq(courseAccess.clientId, clientId)).for("update");
+    const accessIds = (await tx.select({ id: courseAccess.id }).from(courseAccess).where(eq(courseAccess.clientId, clientId)).for("update")).map((a) => a.id);
+    // (the e-courses' reviews go with the clients row, by cascade: the access, its feedback, the review)
+    const ecourseReviews = await reviewCourseSlugs(tx, { registrationIds: [], accessIds });
+    const reviewCourses = [...new Set([...contactReviews, ...ecourseReviews])].sort();
     const photoKeys = await practicalKeys(tx as unknown as Db, clientId);
     const [row] = await tx.delete(clients).where(eq(clients.id, clientId)).returning(); // (returning(fields) has no common overload on the Db union)
     if (!row) return null;
     await tx.delete(clientLoginTokens).where(eq(clientLoginTokens.email, address));
     await tx.delete(subscribers).where(sql`lower(${subscribers.email}) = ${address}`);
-    return { email: row.email, locale: row.locale, photoKeys };
+    return { email: row.email, locale: row.locale, photoKeys, reviewCourses };
   });
 }

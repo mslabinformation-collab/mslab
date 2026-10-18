@@ -1,16 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import type { Db } from "../../src/db/client";
 import { attachOrder, insertPayment } from "../../src/db/queries/payments";
-import * as schema from "../../src/db/schema";
 import type { Payment } from "../../src/db/schema";
 import { LOCAL_REFERENCE_PREFIX } from "../../src/domain/payments";
 import { createInvoice, markInvoicePaid, uninvoicedPayments } from "../../src/server/invoices";
 import type { Env } from "../../src/server/notify";
 import { settlePayment, type Facts, type SettleDeps } from "../../src/server/payments/settle";
-import { insertAdminFixtures, localDatabaseUrl, onLocalDb, removeAdminFixtures, storedAdminRegistration, type AdminFixtures } from "./fixtures";
+import { insertAdminFixtures, onLocalDb, removeAdminFixtures, storedAdminRegistration, type AdminFixtures } from "./fixtures";
 import { holdInvoiceSettings, INVOICE_NUMBER, today } from "./invoices";
+import { inFlight, racePool } from "./race";
 import { expect, submitsForms, test } from "./test";
 
 // Invoices on real Postgres (invoices Task 7; owed by Tasks 3 and 4): what the unit tests' single-connection PGlite cannot show, because it
@@ -43,8 +42,7 @@ let giveBack: (() => Promise<void>) | null = null;
 const loggedInfo = console.info;
 
 test.beforeAll(() => {
-  pool = postgres(localDatabaseUrl(), { max: 6, connect_timeout: 20, onnotice: () => {}, connection: { application_name: APPLICATION } });
-  db = drizzle(pool, { schema }) as unknown as Db;
+  ({ pool, db } = racePool(APPLICATION));
   console.info = () => {}; // (the app's own log lines of the invoices and the payments, ids only: not the test's output)
 });
 test.afterAll(async () => {
@@ -65,69 +63,10 @@ test.afterEach(async () => {
   }
 });
 
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-type Waiting = { query: string; wait_event: string | null };
-/**
- * This pool's backends that wait for a lock (pg_stat_activity by its application_name), asked again every 50 ms until there are `n` of them, or
- * `gone()` says the work it waits for is over, or `ms` have passed: a test proves the wait instead of sleeping and hoping.
- */
-async function lockWaits(n: number, gone: () => boolean, ms = 15_000): Promise<Waiting[]> {
-  const until = Date.now() + ms;
-  for (;;) {
-    const waiting = await onLocalDb(
-      (other) => other<Waiting[]>`select query, wait_event from pg_stat_activity where application_name = ${APPLICATION} and wait_event_type = 'Lock'`,
-      { marksPages: false },
-    );
-    if (waiting.length >= n || gone() || Date.now() > until) return waiting;
-    await pause(50);
-  }
-}
-
 /** What another connection holds while two calls start: the session row of a registration (the first statement of lockForPayment). */
 const sessionRow = (sessionId: number) => (tx: postgres.TransactionSql) => tx`select 1 from course_sessions where id = ${sessionId} for update`;
 /** …or the number series' transaction lock, which every issue takes after its row locks (server/invoices.ts lockNumbers). */
 const numberSeries = (tx: postgres.TransactionSql) => tx`select pg_advisory_xact_lock(hashtext('invoice-number'))`;
-
-/**
- * Two calls in flight at the same moment, `first` started before `second`. Another connection holds a lock (`hold`: the session row of the
- * registration, or the number series' lock) while they start; the test starts `first`, waits until this pool shows it waiting, starts
- * `second`, waits until it shows both waiting, and only then lets the lock go (its transaction ends). A call that ran its whole transaction
- * before the other began would never be seen waiting beside it. Their results, in the order started.
- */
-async function inFlight<A, B>(hold: (tx: postgres.TransactionSql) => Promise<unknown>, first: () => Promise<A>, second: () => Promise<B>): Promise<[A, B]> {
-  let settled = 0;
-  const started: Promise<unknown>[] = [];
-  const start = <T,>(call: () => Promise<T>): Promise<T> => {
-    const running = call();
-    started.push(running);
-    void running.then(
-      () => settled++,
-      () => settled++,
-    );
-    return running;
-  };
-  let a!: Promise<A>;
-  let b!: Promise<B>;
-  try {
-    await onLocalDb(
-      (sql) =>
-        sql.begin(async (tx) => {
-          await hold(tx);
-          a = start(first);
-          expect((await lockWaits(1, () => settled > 0)).length, "the first call waits for the held lock").toBe(1);
-          b = start(second);
-          const waiting = await lockWaits(2, () => settled > 0);
-          expect(settled, "a call went past the held lock while it was held").toBe(0);
-          expect(waiting.length, `both calls wait for the lock (${waiting.map((w) => w.query.slice(0, 60)).join(" | ")})`).toBe(2);
-        }),
-      { marksPages: false },
-    );
-  } finally {
-    await Promise.allSettled(started); // a failure above lets the lock go too: what is on its way finishes before the clean-up
-  }
-  return [await a, await b];
-}
 
 /** The registration of a fresh fixture course (a half-choice group registration at 350 €) with the shared settings in place. */
 async function fixtures(info: { project: { name: string }; setTimeout(ms: number): void; timeout: number }): Promise<AdminFixtures> {
@@ -182,7 +121,7 @@ const mark = (id: number) => markInvoicePaid(db, id, { paidAt: new Date(), metho
 test("two „Märgi tasutuks“ at the same moment on one invoice: exactly one wins, and „Laekunud summa“ gets the amount once", async ({}, info) => {
   const f = await fixtures(info);
   const invoice = await request(f);
-  const [first, second] = await inFlight(sessionRow(f.session.id), () => mark(invoice.id), () => mark(invoice.id));
+  const [first, second] = await inFlight(APPLICATION, sessionRow(f.session.id), () => mark(invoice.id), () => mark(invoice.id));
   expect(first).toMatchObject({ ok: true });
   expect(second).toEqual({ ok: false, error: "notUnpaid" });
   // one paid invoice, Maria's mark; the registration holds the 175 € once and confirms at 50 %
@@ -194,7 +133,7 @@ test("a „Märgi tasutuks“ first and a Montonio settlement of the payment sta
   const f = await fixtures(info);
   const invoice = await request(f);
   const payment = await startedFor(f, invoice.id);
-  const [marked, settled] = await inFlight(sessionRow(f.session.id), () => mark(invoice.id), () => settlePayment(deps(), payment, paidFacts(payment)));
+  const [marked, settled] = await inFlight(APPLICATION, sessionRow(f.session.id), () => mark(invoice.id), () => settlePayment(deps(), payment, paidFacts(payment)));
   expect(marked).toMatchObject({ ok: true });
   expect(settled).toMatchObject({ id: payment.id, status: "paid" });
   expect(await storedPaymentStatus(payment.id)).toBe("paid");
@@ -214,7 +153,7 @@ test("a Montonio settlement first and a „Märgi tasutuks“ of the invoice it 
   const f = await fixtures(info);
   const invoice = await request(f);
   const payment = await startedFor(f, invoice.id);
-  const [settled, marked] = await inFlight(sessionRow(f.session.id), () => settlePayment(deps(), payment, paidFacts(payment)), () => mark(invoice.id));
+  const [settled, marked] = await inFlight(APPLICATION, sessionRow(f.session.id), () => settlePayment(deps(), payment, paidFacts(payment)), () => mark(invoice.id));
   expect(settled).toMatchObject({ id: payment.id, status: "paid" });
   expect(marked).toEqual({ ok: false, error: "notUnpaid" });
   expect(await storedPaymentStatus(payment.id)).toBe("paid");
@@ -242,7 +181,7 @@ test("m14: two invoices issued at the same moment under the same prefix, on two 
     { marksPages: false },
   );
   const issue = (registrationId: number) => () => createInvoice(db, registrationId, { kind: "prepayment", mode: "request" }, new Date());
-  const [a, b] = await inFlight(numberSeries, issue(f.registration.id), issue(second.registration));
+  const [a, b] = await inFlight(APPLICATION, numberSeries, issue(f.registration.id), issue(second.registration));
   if (!a.ok || !b.ok) throw new Error(`createInvoice: ${a.ok ? "" : a.error} ${b.ok ? "" : b.error}`);
   // both are the tests' series (E2E, this Tallinn year); the first started is the first issued, and the second takes the very next number
   for (const inv of [a.invoice, b.invoice]) {

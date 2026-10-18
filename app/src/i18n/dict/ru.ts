@@ -245,6 +245,14 @@ export const ru: Dict = {
     viewCourses: "Смотреть курсы",
   },
 
+  // Student reviews on the public pages (student reviews, D5, D7): Draft for Dim's wording sheet, every line of it
+  reviews: {
+    courseTitle: "Отзывы учеников",
+    homeTitle: "Опыт учеников",
+    notice: "Отзывы оставляют ученики, прошедшие обучение в\u00a0MS LAB. Мы публикуем их с\u00a0согласия ученика и\u00a0после проверки.",
+    showAll: "Показать все",
+  },
+
   news: {
     eyebrow: "Блог",
     title: "Новости и советы",
@@ -546,6 +554,8 @@ export const ru: Dict = {
       open: "Открыть курс",
       viewProtocol: "Посмотреть протокол",
       feedbackCard: { question: "Как прошло обучение?", open: "Оставьте отзыв", dismiss: "Не хочу", dismissFailed: "Не получилось. Попробуйте ещё раз." },
+      // her permission to publish, on the course card while her review exists (student reviews, D6): Draft for Dim's wording sheet, every line of it
+      review: { line: "Вы разрешили опубликовать вашу рекомендацию", withdraw: "Отозвать разрешение", failed: "Не получилось. Попробуйте ещё раз." },
       empty: "У\u00a0вас пока нет курсов.",
       browse: "Посмотреть курсы",
       resumeTag: "В процессе",
@@ -683,6 +693,13 @@ export const ru: Dict = {
         message: { label: "По желанию оставьте нам короткий отзыв или сообщение:" },
       },
       count: "{n} / {max}",
+      // the tick under the recommend question and the name it shows (student reviews, D1): Draft for Dim's wording sheet, every line of it
+      consent: {
+        tick: "Разрешаю опубликовать этот ответ на\u00a0сайте MS LAB\u00a0— на\u00a0странице этого курса и\u00a0на\u00a0главной.",
+        name: "Имя, которое будет показано",
+        nameError: "Напишите имя, которое показать (до\u00a0{max}\u00a0символов).",
+        needsAnswer: "Чтобы дать разрешение, сначала ответьте на\u00a0вопрос «Порекомендовали бы вы это обучение другим? Почему?».",
+      },
       submit: "Отправить отзыв",
       sending: "Отправляю…",
       empty: "Ответьте хотя бы на один вопрос.",

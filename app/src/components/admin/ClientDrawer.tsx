@@ -38,7 +38,8 @@ function requestLabel(q: ClientRequestRow): string {
  * number and day with Maria's download and "Paranda nimi", or, on a completed access, that she has not confirmed her name yet (an ended access keeps the
  * certificate's line and download, marked "ligipääs tühistatud"); then her registrations
  * (each with a link to its own drawer, a contact course's with its protocol), her online payments (phase 2b), her requests and her contracts
- * (contracts Task 5: the contact course's and the e-course's, each with its PDF).
+ * (contracts Task 5: the contact course's and the e-course's, each with its PDF), and her feedback answers (the e-courses' too, with the day the access was
+ * completed in place of a course day), each with whether she allowed publishing and the review's status (student reviews, Task 4).
  */
 export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDetail; ecourses: EcourseOption[]; now: Date }) {
   const t = adminEt.clients.drawer;
@@ -261,6 +262,26 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
                   <strong>{pick(f.course.title, "et")}</strong>
                 </div>
                 {f.startsAt && <p className={styles.meta}>{formatDate(f.startsAt, "et")}</p>}
+                {/* an e-course's answer has no course day: the day her access was completed */}
+                {f.completedAt && (
+                  <p className={styles.meta} data-feedback-completed="">
+                    {fill(adminEt.feedback.completed, { date: formatDate(f.completedAt, "et") })}
+                  </p>
+                )}
+                {/* whether she allowed publishing, and what became of it (student reviews, Task 4) */}
+                <p className={styles.meta} data-feedback-review={f.review ? f.review.status : "none"}>
+                  {f.review
+                    ? fill(f.review.featured ? adminEt.reviews.drawer.allowedFeatured : adminEt.reviews.drawer.allowed, { status: adminEt.reviews.status[f.review.status] })
+                    : adminEt.reviews.drawer.notAllowed}
+                  {f.review && (
+                    <>
+                      {" "}
+                      <Link className={ui.link} href="/admin/tagasiside?vaade=arvustused" data-feedback-review-link="">
+                        {adminEt.reviews.drawer.open}
+                      </Link>
+                    </>
+                  )}
+                </p>
                 <FeedbackAnswers answers={f.answers} locale={f.locale} submittedAt={f.submittedAt} />
               </li>
             ))}

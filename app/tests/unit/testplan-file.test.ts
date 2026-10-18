@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import plan from "@/data/testplan.json";
 import { checkPlan } from "@/domain/testplan";
+import { et } from "@/i18n/dict/et";
+import { ru } from "@/i18n/dict/ru";
 
 // The test page's plan file (phase 4, piece 1, spec §3, §8): src/data/testplan.json passes checkPlan, and checkPlan names each way a plan can
 // go wrong (house style: line caps, full stops, ids, enums, marks). A mistake in the file fails this test before the page ever sees it.
@@ -20,6 +22,9 @@ const copy = (): Plan => structuredClone(plan) as unknown as Plan;
 /** The first check, to break (the real plan must hold at least one). */
 const first = (p: Plan) => p.items[0];
 const words = (n: number) => `${Array.from({ length: n }, (_, i) => `sõna${i + 1}`).join(" ")}.`;
+// A mark set on a branch reads "deploy" until the push stamps it with the push instant (tools/testplan-stamp.mjs): a guard pins the mark, and
+// accepts either form of its time.
+const markedSince = (markedAt: unknown) => markedAt === "deploy" || (typeof markedAt === "string" && !Number.isNaN(Date.parse(markedAt)));
 
 describe("src/data/testplan.json", () => {
   test("passes checkPlan, and holds at least one check", () => {
@@ -231,7 +236,8 @@ describe("the contract checks sit where their preconditions exist", () => {
     expect(gate.steps.findIndex((s) => s.includes("enne kui nime kirjutad"))).toBeLessThan(named);
     expect(gate.steps.map((s) => s === "Vajuta „Alusta koolitust“.").lastIndexOf(true)).toBeGreaterThan(named);
     for (const words of ["lepingu pealkirja", "väli „Nimi“", "„Kirjuta oma nimi.“", "{nimi} kohale", "{koolitus} asemel"]) expect(expectText("ekursus-tingimused-leping"), words).toContain(words);
-    expect([gate.mark, gate.markedAt]).toEqual(["new", "deploy"]);
+    expect(gate.mark).toBe("new");
+    expect(markedSince(gate.markedAt), "its markedAt").toBe(true);
   });
 
   test("a download link whose text another row of the card repeats is named by its row (Proov 7 and Proov 1 have invoice rows with „Laadi alla (PDF)“)", () => {
@@ -254,7 +260,118 @@ describe("the contract checks sit where their preconditions exist", () => {
     }
   });
 
-  test("the new checks keep their marks: new, from the deploy", () => {
-    for (const id of ["konto-leping-kaardil", "konto-leping-kinnita", "konto-leping-vene-keeles"]) expect([item(id).mark, item(id).markedAt], id).toEqual(["new", "deploy"]);
+  test("the new checks keep their mark new, from the deploy or its stamp", () => {
+    for (const id of ["konto-leping-kaardil", "konto-leping-kinnita", "konto-leping-vene-keeles"]) {
+      expect(item(id).mark, id).toBe("new");
+      expect(markedSince(item(id).markedAt), id).toBe(true);
+    }
+  });
+});
+
+// The student reviews' checks (student reviews, Task 4; ruling R5): Proov 1's contact review exists only once `kontakt-tagasiside` has sent her form with
+// the tick, so Maria's checks of it come after, and Proov 1's e-course review (sent by `ekursus-tagasiside`) is withdrawn by `ekursus-luba-tagasi`, whose
+// own steps open the „Arvustused“ view and the „Vastused“ list. The decisions run in the order the review passes through: waiting, published, on the home
+// page (Task 5's checks of the public blocks sit between „Avalehel“ and „Peida“), hidden; „Lisa arvustus“ adds and deletes its own review, last.
+describe("the review checks sit where Proov 1's reviews exist", () => {
+  const order = plan.items.map((i) => i.id);
+  const at = (id: string): number => {
+    const n = order.indexOf(id);
+    expect(n, id).toBeGreaterThanOrEqual(0);
+    return n;
+  };
+  const item = (id: string) => plan.items[at(id)];
+  const CONTACT = ["kontakt-arvustus-toend", "kontakt-arvustus-avalda", "kontakt-arvustus-avalehel", "kontakt-arvustus-peida", "kontakt-arvustus-lisa"];
+
+  test("Proov 1's contact review is made (with the tick) before Maria decides it; the decisions come in the order a review passes through", () => {
+    expect(item("kontakt-tagasiside").steps.join("\n")).toContain("Luban seda vastust avaldada");
+    for (const id of CONTACT) expect(at(id), id).toBeGreaterThan(at("kontakt-tagasiside"));
+    for (const [first, second] of [["kontakt-tagasiside-haldus", "kontakt-arvustus-toend"], ...CONTACT.slice(1).map((id, i) => [CONTACT[i], id])]) expect(at(first), `${first} < ${second}`).toBeLessThan(at(second));
+    // her review is hidden, shown again and deleted by Maria's own: nothing is left between them for a public block to count wrongly
+    expect(item("kontakt-arvustus-peida").expect.join("\n")).toContain("Pärast „Avalda“");
+    expect(item("kontakt-arvustus-lisa").steps.join("\n")).toContain("Jah, kustuta");
+  });
+
+  test("the e-course review is made before the check that withdraws it, whose steps open „Arvustused“ and „Vastused“ (both exist where it sits)", () => {
+    expect(at("ekursus-tagasiside")).toBeLessThan(at("ekursus-luba-tagasi"));
+    const steps = item("ekursus-luba-tagasi").steps.join("\n");
+    expect(steps.indexOf("„Arvustused“")).toBeGreaterThan(-1);
+    expect(steps.indexOf("„Vastused“")).toBeGreaterThan(steps.indexOf("Võta luba tagasi"));
+    expect(item("ekursus-luba-tagasi").expect.join("\n")).toContain("ootab Proov 1 e-koolituse arvustus kinnitust");
+    // Maria's page, opened before the withdrawal and not refreshed, is pressed after it: „Seda arvustust enam pole — õpilane võttis loa tagasi.“ (reviews.spec.ts, step 5)
+    const stale = steps.indexOf("seda ei ole värskendatud");
+    expect(stale).toBeGreaterThan(steps.indexOf("Võta luba tagasi"));
+    expect(stale).toBeLessThan(steps.indexOf("„Vastused“"));
+    expect(item("ekursus-luba-tagasi").expect.join("\n")).toContain("Seda arvustust enam pole — õpilane võttis loa tagasi.");
+    // the e-course card's own question, not the contact card's (Proov 1's contact card may still be there)
+    expect(item("ekursus-tagasiside").expect.at(-1)).toMatch(/^E-koolituse kaardilt on „Kuidas koolitus läks\?“ kadunud/);
+  });
+
+  // Task 5: the public blocks. Proov 1's review is published and featured only between „Avalehel“ and „Peida“ (the latter ends by publishing it again), so
+  // the checks that read the blocks sit there; the empty state hides it again, after „Peida“ and before „Lisa arvustus“ adds its own.
+  const PUBLIC = ["kontakt-arvustus-plokk", "kontakt-arvustus-naita-koiki", "kontakt-arvustus-avaleht", "kontakt-arvustus-vene-keeles"];
+  const text = (id: string) => [...item(id).steps, ...item(id).expect].join("\n");
+
+  test("the checks of the public blocks sit between „Avalehel“ and „Peida“, where Proov 1's review is published and featured; the empty state is after „Peida“ and before „Lisa arvustus“", () => {
+    for (const id of PUBLIC) {
+      expect(at(id), id).toBeGreaterThan(at("kontakt-arvustus-avalehel"));
+      expect(at(id), id).toBeLessThan(at("kontakt-arvustus-peida"));
+    }
+    expect(at("kontakt-arvustus-tyhi")).toBeGreaterThan(at("kontakt-arvustus-peida"));
+    expect(at("kontakt-arvustus-tyhi")).toBeLessThan(at("kontakt-arvustus-lisa"));
+    // Proov 1's review alone is on the course page for the first check (no „Näita kõiki“ yet); the second adds six and deletes them, before the others read the blocks
+    expect(item("kontakt-arvustus-plokk").expect.join("\n")).toContain("Nuppu „Näita kõiki“ ei ole");
+    expect(at("kontakt-arvustus-plokk")).toBeLessThan(at("kontakt-arvustus-naita-koiki"));
+    expect(at("kontakt-arvustus-naita-koiki")).toBeLessThan(at("kontakt-arvustus-avaleht"));
+    expect(at("kontakt-arvustus-naita-koiki")).toBeLessThan(at("kontakt-arvustus-vene-keeles"));
+    const steps = item("kontakt-arvustus-naita-koiki").steps;
+    const add = steps.findIndex((s) => s.startsWith("Lisa kuus arvustust"));
+    const open = steps.findIndex((s) => s.includes("„Näita kõiki“ on valitud"));
+    const remove = steps.findIndex((s) => s.startsWith("Kustuta halduses kõik kuus"));
+    expect(add).toBeGreaterThan(-1);
+    expect(open).toBeGreaterThan(add);
+    expect(remove).toBeGreaterThan(open);
+    expect(steps[add]).toContain("1 kuni 6"); // six, so that with Proov 1's own there are seven
+    expect(text("kontakt-arvustus-naita-koiki")).toContain("„Näita kõiki (1)“");
+  });
+
+  test("ruling R9: the check that adds six reviews and presses Tab and Enter is Dim's, on a computer; the others of the public blocks are Maria's", () => {
+    expect(item("kontakt-arvustus-naita-koiki").who).toBe("dim");
+    expect(item("kontakt-arvustus-naita-koiki").device).toBe("arvuti");
+    for (const id of ["kontakt-arvustus-plokk", "kontakt-arvustus-avaleht", "kontakt-arvustus-vene-keeles", "kontakt-arvustus-tyhi"]) expect(item(id).who, id).toBe("maria");
+  });
+
+  test("the empty state hides Proov 1's review again and leaves it hidden for what follows", () => {
+    expect(item("kontakt-arvustus-tyhi").steps[0]).toContain("„Peida“");
+    expect(item("kontakt-arvustus-tyhi").expect.at(-1)).toContain("„Peidetud“");
+    for (const words of ["pealkirja „Õpilaste tagasiside“", "märkust", "tühja kasti", "„Õpilaste kogemused“"]) expect(text("kontakt-arvustus-tyhi"), words).toContain(words);
+  });
+
+  test("the plan quotes the dictionary's headings, notice and button, in each language", () => {
+    expect(text("kontakt-arvustus-plokk")).toContain(`„${et.reviews.courseTitle}“`);
+    expect(text("kontakt-arvustus-plokk")).toContain(et.reviews.notice);
+    expect(text("kontakt-arvustus-avaleht")).toContain(`„${et.reviews.homeTitle}“`);
+    expect(text("kontakt-arvustus-naita-koiki")).toContain(`„${et.reviews.showAll} (1)“`);
+    expect(text("kontakt-arvustus-vene-keeles")).toContain(`„${ru.reviews.homeTitle}“`);
+    expect(text("kontakt-arvustus-vene-keeles")).toContain(`„${ru.reviews.courseTitle}“`);
+    expect(ru.reviews.notice).toContain("Отзывы оставляют ученики");
+    expect(text("kontakt-arvustus-vene-keeles")).toContain("„Отзывы оставляют ученики“");
+  });
+
+  test("the public blocks' checks carry the mark new, from the deploy or its stamp", () => {
+    for (const id of [...PUBLIC, "kontakt-arvustus-tyhi"]) {
+      expect(item(id).mark, id).toBe("new");
+      expect(markedSince(item(id).markedAt), id).toBe(true);
+    }
+  });
+
+  test("the review checks and the two redone ones carry their marks, from the deploy or its stamp", () => {
+    for (const id of CONTACT) {
+      expect(item(id).mark, id).toBe("new");
+      expect(markedSince(item(id).markedAt), id).toBe(true);
+    }
+    for (const id of ["kontakt-tagasiside-haldus", "kirjad-maria-tagasiside"]) {
+      expect(item(id).mark, id).toBe("redo");
+      expect(markedSince(item(id).markedAt), id).toBe(true);
+    }
   });
 });

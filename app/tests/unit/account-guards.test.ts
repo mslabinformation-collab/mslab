@@ -20,7 +20,7 @@ const nameOf = (chunk: string) => /async function (\w+)/.exec(chunk)![1];
 const HANDLERS = [
   "dashboard", "ecourse", "lesson", "progress", "lessonDone", "lessonFile", "testPage", "submitTest", "resubmitTest", "practicalPage", "uploadPhoto", "deletePhoto", "submitWork", "photo",
   "issueCertificateRoute", "certificateFile", "invoiceFile", "contractFile", "favouriteCourses", "favourite", "mergeFavouriteList", "profile", "newsletter", "setPassword", "removePassword", "changeRequest", "payRegistration",
-  "protocol", "feedbackForm", "sendFeedback", "dismissFeedback", "terms", "contractText", "acceptContractRoute", "deleteAccount",
+  "protocol", "feedbackForm", "sendFeedback", "dismissFeedback", "withdrawPermission", "terms", "contractText", "acceptContractRoute", "deleteAccount",
 ];
 
 describe("the data endpoints of the account API", () => {
@@ -89,7 +89,7 @@ describe("the data endpoints of the account API", () => {
     const cases = [...router.matchAll(/case "(\w+) ([^"]+)": return (\w+)\(request, deps\);/g)].map((m) => `${m[1]} ${m[2]} ${m[3]}`);
     expect(cases).toEqual([
       "GET / dashboard", "GET /lemmikud favouriteCourses", "POST /lemmikud favourite", "POST /lemmikud/merge mergeFavouriteList", "PATCH /andmed profile", "POST /uudiskiri newsletter", "POST /parool setPassword", "DELETE /parool removePassword",
-      "POST /muutmine changeRequest", "POST /maksa payRegistration", "GET /protokoll protocol", "GET /tagasiside feedbackForm", "POST /tagasiside sendFeedback", "POST /tagasiside/peida dismissFeedback", "POST /tingimused terms", "POST /leping acceptContractRoute", "POST /kustuta deleteAccount",
+      "POST /muutmine changeRequest", "POST /maksa payRegistration", "GET /protokoll protocol", "GET /tagasiside feedbackForm", "POST /tagasiside sendFeedback", "POST /tagasiside/peida dismissFeedback", "POST /arvustus/tagasi withdrawPermission", "POST /tingimused terms", "POST /leping acceptContractRoute", "POST /kustuta deleteAccount",
     ]);
     expect(router).toContain('request.method === "GET" ? COURSE_PATH.exec(path) : null');
     expect(router).toContain("LESSON_PATH.exec(path)");

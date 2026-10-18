@@ -86,6 +86,10 @@ const COURSE_CSS = [
   "src/components/admin/InvoiceBlock.module.css",
   "src/components/admin/InvoiceSettings.module.css",
   "src/app/admin/(panel)/arved/arved.module.css",
+  // student reviews, Task 4: Tagasiside's „Arvustused“ and „Lisa arvustus“
+  "src/components/admin/ReviewsPanel.module.css",
+  // student reviews, Task 5: the course page's block and the home page's section
+  "src/components/site/ReviewList.module.css",
 ];
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""); // comments aside

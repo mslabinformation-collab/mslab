@@ -174,6 +174,12 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(certificateExports).toEqual(["saveCertificateSettingsAction", "reissueCertificateAction"]);
     expect(violations(certificateActions.path, certificateActions.source)).toEqual([]);
     expect([...strip(certificateActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(certificateExports);
+    // student reviews, Task 4: Maria's „Avalda“ / „Peida“, „Avalehel“, „Lisa arvustus“ / „Muuda“ and „Kustuta“
+    const reviewActions = files().find((f) => f.path === "server/actions/admin-reviews.ts")!;
+    const reviewExports = [...strip(reviewActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
+    expect(reviewExports).toEqual(["decideReviewAction", "setFeaturedAction", "saveManualReviewAction", "deleteManualReviewAction"]);
+    expect(violations(reviewActions.path, reviewActions.source)).toEqual([]);
+    expect([...strip(reviewActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(reviewExports);
     // It reads and scans every admin source file: about 2 s alone, but well past the 20 s default while the full run keeps every core
     // busy (seen at 38 s); the limit is for the machine's load, not for this test's work.
   }, 120_000);

@@ -51,11 +51,13 @@ describe("the Tagasiside page's reads", () => {
     expect(one.rows[1]).toEqual({
       id: a.id,
       registrationId: a.registrationId,
+      accessId: null,
       clientId: null,
       name: "Mari Maasikas",
       email: "marimaasikas@example.com",
       course: { id: course.id, title: { et: "Kulmude lamineerimine", ru: "Ламинирование бровей" } },
       startsAt: COURSE_DAY,
+      completedAt: null,
       answers: { score: 9, expectations: "met", message: "Aitäh!" },
       locale: "et",
       submittedAt: at(13),

@@ -121,3 +121,110 @@
   margin: 0;
   font: 400 18px/1.55 var(--font-body);
 }
+
+/* Her permission to publish (student reviews, D1), directly under the recommend question: a tick and, ticked, the name to show with its count. It sits
+   close under the question it belongs to. The tick is a row: the real checkbox covers the whole row (invisible, so the keyboard and a screen reader work
+   as with any form, and the target is the row's 44 px at least, as the pills' radios), the box beside the words is drawn. */
+.consent {
+  display: grid;
+  justify-self: stretch;
+  gap: 12px;
+  min-width: 0;
+  margin-top: -6px;
+}
+
+.tick {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-height: 44px;
+  padding: 8px 0;
+  font: 500 15px/1.45 var(--font-body);
+  cursor: pointer;
+}
+
+.tick input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.box {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--paper);
+}
+
+.box svg {
+  opacity: 0;
+}
+
+.tick input:checked + .box {
+  background: var(--ink);
+}
+
+.tick input:checked + .box svg {
+  opacity: 1;
+}
+
+.tick input:focus-visible + .box {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* off until there is an answer to publish: a plain "not allowed", and the words and the box dimmed */
+.tick:has(input:disabled) {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.tick input:disabled {
+  cursor: not-allowed;
+}
+
+.tick input:disabled + .box {
+  border-color: var(--muted-2);
+}
+
+.shownName {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.nameLabel {
+  font: 600 14px/1.3 var(--font-body);
+}
+
+.nameInput {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 15px;
+  border: 1px solid var(--heather);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 16px/1.4 var(--font-body);
+}
+
+.nameInput:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.nameInput[aria-invalid="true"] {
+  border-color: var(--bad);
+}

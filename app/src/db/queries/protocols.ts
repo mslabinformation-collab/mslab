@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, isNotNull, lt, lte, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, isNotNull, lt, lte, or, sql } from "drizzle-orm";
 import type { Db } from "../client";
 import {
   clients, courseAccess, courseFeedback, courses, courseSessions, practicalPhotos, protocols, registrations,
@@ -274,15 +274,23 @@ export async function studentProtocol(db: Db, clientId: number, registrationId: 
 
 // ---------- the admin's Tagasiside and the drawers (Task 9) ----------
 
-/** One answered feedback form, for Maria (spec §7): who, which course and day, the answers as keys, the language she answered in, when. */
+/**
+ * One answered feedback form, for Maria (spec §7): who, which course and day, the answers as keys, the language she answered in, when. A contact
+ * course's answer has `registrationId` and `startsAt` (null for an individual course); an e-course's (student reviews, D3) has `accessId` and
+ * `completedAt`, when her access was completed, and no day: exactly one of `registrationId` and `accessId` is set. `name` and `email` are the
+ * registration's, or the account's for an e-course (her address in place of a name the account does not have); `clientId` is the account that
+ * owns the registration or the access (null for a registration not linked to one).
+ */
 export type FeedbackRow = {
   id: number;
-  registrationId: number;
+  registrationId: number | null;
+  accessId: number | null;
   clientId: number | null;
   name: string;
   email: string;
   course: { id: number; title: I18n };
   startsAt: Date | null;
+  completedAt: Date | null;
   answers: FeedbackAnswers;
   locale: "et" | "ru";
   submittedAt: Date;
@@ -291,38 +299,52 @@ export type FeedbackRow = {
 /** An answer, not an "Ei soovi" (that row has no submitted_at). */
 const ANSWERED = isNotNull(courseFeedback.submittedAt);
 
+/** The answer's course: its registration's or its access's (exactly one of the two is there: course_feedback_one_target). */
+const COURSE_ID = sql<number>`coalesce(${registrations.courseId}, ${courseAccess.courseId})`;
+
+/** The answers' rows with the owner (a registration or an access) and the course, to be filtered and cut by the caller. */
 function feedbackRows(db: Db) {
   return db
     .select({
       id: courseFeedback.id,
       registrationId: courseFeedback.registrationId,
-      clientId: registrations.clientId,
-      name: registrations.name,
-      email: registrations.email,
+      accessId: courseFeedback.accessId,
+      registrationClientId: registrations.clientId,
+      accessClientId: courseAccess.clientId,
+      registrationName: registrations.name,
+      registrationEmail: registrations.email,
+      accountName: clients.name,
+      accountEmail: clients.email,
       courseId: courses.id,
       courseTitle: courses.title,
       startsAt: courseSessions.startsAt,
+      completedAt: courseAccess.completedAt,
       answers: courseFeedback.answers,
       locale: courseFeedback.locale,
       submittedAt: courseFeedback.submittedAt,
     })
     .from(courseFeedback)
-    .innerJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
-    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .leftJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
+    .leftJoin(courseAccess, eq(courseFeedback.accessId, courseAccess.id))
+    .leftJoin(clients, eq(courseAccess.clientId, clients.id))
+    .innerJoin(courses, eq(courses.id, COURSE_ID))
     .leftJoin(courseSessions, eq(registrations.courseSessionId, courseSessions.id));
 }
 
 type FeedbackSelect = Awaited<ReturnType<typeof feedbackRows>>[number];
 
-// (answers, locale and submitted_at are set together by the submit, server/course-feedback.ts; every read here has ANSWERED)
+// (answers, locale and submitted_at are set together by the submit, server/course-feedback.ts; every read here has ANSWERED. An e-course answer's
+// name is the account's, as the assessment screen shows it: her address while she has none)
 const toFeedbackRow = (r: FeedbackSelect): FeedbackRow => ({
   id: r.id,
   registrationId: r.registrationId,
-  clientId: r.clientId,
-  name: r.name,
-  email: r.email,
+  accessId: r.accessId,
+  clientId: r.registrationId !== null ? r.registrationClientId : r.accessClientId,
+  name: r.registrationId !== null ? (r.registrationName ?? "") : ((r.accountName ?? "").trim() || (r.accountEmail ?? "")),
+  email: (r.registrationId !== null ? r.registrationEmail : r.accountEmail) ?? "",
   course: { id: r.courseId, title: r.courseTitle },
   startsAt: r.startsAt,
+  completedAt: r.completedAt,
   answers: r.answers ?? {},
   locale: r.locale === "ru" ? "ru" : "et",
   submittedAt: r.submittedAt!,
@@ -330,13 +352,23 @@ const toFeedbackRow = (r: FeedbackSelect): FeedbackRow => ({
 
 const NEWEST = [desc(courseFeedback.submittedAt), desc(courseFeedback.id)] as const;
 
-/** Tagasiside's list: the answers, newest first, `size` a page; `courseId` keeps one course's. */
+/** Tagasiside's list: the answers of contact courses and e-courses, newest first, `size` a page; `courseId` keeps one course's. */
 export async function pageFeedback(db: Db, courseId: number | null, page: number, size: number = PAGE_SIZE): Promise<Paged<FeedbackRow>> {
-  const where = courseId === null ? ANSWERED : and(ANSWERED, eq(registrations.courseId, courseId));
+  const where = courseId === null ? ANSWERED : and(ANSWERED, eq(COURSE_ID, courseId));
   return paged(
     page,
     size,
-    async () => Number((await db.select({ n: count() }).from(courseFeedback).innerJoin(registrations, eq(courseFeedback.registrationId, registrations.id)).where(where))[0].n),
+    async () =>
+      Number(
+        (
+          await db
+            .select({ n: count() })
+            .from(courseFeedback)
+            .leftJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
+            .leftJoin(courseAccess, eq(courseFeedback.accessId, courseAccess.id))
+            .where(where)
+        )[0].n,
+      ),
     async (range) => (await feedbackRows(db).where(where).orderBy(...NEWEST).limit(range.limit).offset(range.offset)).map(toFeedbackRow),
   );
 }
@@ -347,9 +379,12 @@ export async function feedbackById(db: Db, id: number): Promise<FeedbackRow | nu
   return row ? toFeedbackRow(row) : null;
 }
 
-/** The answers in a registration's drawer (at most one), or in a student's (those of her registrations), newest first. */
+/**
+ * The answers in a registration's drawer (at most one), or in a student's (those of her registrations and of her e-course accesses), newest
+ * first.
+ */
 export async function feedbackOf(db: Db, of: { registrationId: number } | { clientId: number }): Promise<FeedbackRow[]> {
-  const whose = "registrationId" in of ? eq(courseFeedback.registrationId, of.registrationId) : eq(registrations.clientId, of.clientId);
+  const whose = "registrationId" in of ? eq(courseFeedback.registrationId, of.registrationId) : or(eq(registrations.clientId, of.clientId), eq(courseAccess.clientId, of.clientId));
   return (await feedbackRows(db).where(and(ANSWERED, whose)).orderBy(...NEWEST)).map(toFeedbackRow);
 }
 
@@ -357,15 +392,16 @@ export async function feedbackOf(db: Db, of: { registrationId: number } | { clie
 export type CourseFeedbackStats = { course: { id: number; title: I18n }; summary: FeedbackSummary };
 
 /**
- * Every course that has answers, by its Estonian title, with its numbers: the average score and the count of every option of every choice
- * question (spec §7). All the answered rows are read (a few hundred a year) and summed here.
+ * Every course that has answers (contact courses and e-courses), by its Estonian title, with its numbers: the average score and the count of
+ * every option of every choice question (spec §7). All the answered rows are read (a few hundred a year) and summed here.
  */
 export async function feedbackStats(db: Db): Promise<CourseFeedbackStats[]> {
   const rows = await db
     .select({ courseId: courses.id, title: courses.title, answers: courseFeedback.answers })
     .from(courseFeedback)
-    .innerJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
-    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .leftJoin(registrations, eq(courseFeedback.registrationId, registrations.id))
+    .leftJoin(courseAccess, eq(courseFeedback.accessId, courseAccess.id))
+    .innerJoin(courses, eq(courses.id, COURSE_ID))
     .where(ANSWERED);
   const byCourse = new Map<number, { title: I18n; answers: FeedbackAnswers[] }>();
   for (const r of rows) {

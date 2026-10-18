@@ -68,8 +68,8 @@ async function opened(locale: "et" | "ru" = "et") {
 describe("the form opens", () => {
   test("with the sent protocol: GET names the course and says nothing is sent; the dashboard has its card", async () => {
     const { mari, account, cookie } = await opened();
-    expect(await answer(await call(deps().d, cookie, `/tagasiside?id=${mari.id}`))).toEqual([200, { ok: true, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine", ru: "Ламинирование бровей" } }, sent: false }]);
-    expect((await loadDashboard(db, account.id, NOW))!.feedback).toEqual([{ registrationId: mari.id, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine", ru: "Ламинирование бровей" } } }]);
+    expect(await answer(await call(deps().d, cookie, `/tagasiside?id=${mari.id}`))).toEqual([200, { ok: true, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine", ru: "Ламинирование бровей" } }, sent: false, shownName: "Mari M." }]);
+    expect((await loadDashboard(db, account.id, NOW))!.feedback).toEqual([{ target: { registrationId: mari.id }, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine", ru: "Ламинирование бровей" } } }]);
   });
 
   test("a group session that started before today opens it without a protocol (spec §3); one called off does not; one that starts today does not", async () => {
@@ -92,7 +92,7 @@ describe("the form opens", () => {
     for (const id of [String(other.id), "abc", "0"]) expect((await call(deps().d, cookie, `/tagasiside?id=${id}`)).status, id).toBe(404);
     await db.update(registrations).set({ status: "cancelled" }).where(eq(registrations.id, mari.id));
     expect((await call(deps().d, cookie, `/tagasiside?id=${mari.id}`)).status).toBe(404);
-    expect((await call(deps().d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { score: 9 } })).status).toBe(404);
+    expect((await call(deps().d, cookie, "/tagasiside", { id: mari.id, locale: "et", answers: { score: 9 } })).status).toBe(404);
   });
 });
 
@@ -101,7 +101,7 @@ describe("the submit", () => {
     const { mari, account, cookie } = await opened();
     const { d, queued, flush } = deps();
     const answers = { score: 9, expectations: "met", ready: "mostly", message: "  Aitäh!  " };
-    expect(await answer(await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers }))).toEqual([200, { ok: true }]);
+    expect(await answer(await call(d, cookie, "/tagasiside", { id: mari.id, locale: "et", answers }))).toEqual([200, { ok: true }]);
     const [row] = await rows();
     expect(row).toMatchObject({ registrationId: mari.id, answers: { score: 9, expectations: "met", ready: "mostly", message: "Aitäh!" }, locale: "et", submittedAt: NOW, dismissedAt: null });
     expect(mails()).toEqual([]);
@@ -111,7 +111,7 @@ describe("the submit", () => {
     expect([mail.to, mail.subject]).toEqual(["maria@example.test", "Uus tagasiside: Mari Maasikas, Kulmude lamineerimine, 9/10"]);
     expect(mail.text).toContain("Kas koolitus vastas sinu ootustele?\nVastas ootustele");
     expect(net.calls.some((c) => c.url.includes("telegram") && String((c.body as { text: string }).text).startsWith("Uus tagasiside: Mari Maasikas"))).toBe(true);
-    expect(await answer(await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { score: 3 } }))).toEqual([409, { ok: false, error: "sent" }]);
+    expect(await answer(await call(d, cookie, "/tagasiside", { id: mari.id, locale: "et", answers: { score: 3 } }))).toEqual([409, { ok: false, error: "sent" }]);
     expect(queued()).toBe(0); // the replay told nobody: Maria's notice goes out once only
     expect((await rows())[0].answers).toEqual({ score: 9, expectations: "met", ready: "mostly", message: "Aitäh!" });
     expect(await answer(await call(d, cookie, `/tagasiside?id=${mari.id}`))).toEqual([200, expect.objectContaining({ sent: true })]);
@@ -120,19 +120,19 @@ describe("the submit", () => {
 
   test("the answers are checked: none is 'empty', an unknown key, a score of 11 or a text over 2000 names the key; nothing is stored", async () => {
     const { mari, cookie } = await opened();
-    const post = (answers: unknown) => call(deps().d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers });
+    const post = (answers: unknown) => call(deps().d, cookie, "/tagasiside", { id: mari.id, locale: "et", answers });
     expect(await answer(await post({}))).toEqual([400, { ok: false, error: "empty" }]);
     expect(await answer(await post({ score: 9, extra: 1 }))).toEqual([400, { ok: false, error: "answers" }]);
     expect(await answer(await post({ score: 11 }))).toEqual([400, { ok: false, error: "score" }]);
     expect(await answer(await post({ message: "x".repeat(2001) }))).toEqual([400, { ok: false, error: "message" }]);
-    expect(await answer(await call(deps().d, cookie, "/tagasiside", { registrationId: mari.id, locale: "en", answers: { score: 9 } }))).toEqual([400, { ok: false, error: "locale" }]);
+    expect(await answer(await call(deps().d, cookie, "/tagasiside", { id: mari.id, locale: "en", answers: { score: 9 } }))).toEqual([400, { ok: false, error: "locale" }]);
     expect(await rows()).toEqual([]);
   });
 
   test("Review Focus 5: a Russian answer is stored with its language, and Maria's notice is in her Estonian wording", async () => {
     const { mari, cookie } = await opened("ru");
     const { d, flush } = deps();
-    await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "ru", answers: { trainer: "excellent", recommend: "Да, всем советую" } });
+    await call(d, cookie, "/tagasiside", { id: mari.id, locale: "ru", answers: { trainer: "excellent", recommend: "Да, всем советую" } });
     expect((await rows())[0]).toMatchObject({ locale: "ru", answers: { trainer: "excellent", recommend: "Да, всем советую" } });
     await flush();
     const [mail] = mails();
@@ -145,10 +145,10 @@ describe("the submit", () => {
     const { mari, cookie } = await opened();
     const { d } = deps();
     const statuses: number[] = [];
-    for (let i = 0; i < 10; i++) statuses.push((await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { score: 9 } })).status);
+    for (let i = 0; i < 10; i++) statuses.push((await call(d, cookie, "/tagasiside", { id: mari.id, locale: "et", answers: { score: 9 } })).status);
     expect(statuses).toEqual([200, ...Array(9).fill(409)]);
-    expect(await answer(await call(d, cookie, "/tagasiside/peida", { registrationId: mari.id }))).toEqual([429, { ok: false, error: "rate" }]);
-    expect(await answer(await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { score: 9 } }))).toEqual([429, { ok: false, error: "rate" }]);
+    expect(await answer(await call(d, cookie, "/tagasiside/peida", { id: mari.id }))).toEqual([429, { ok: false, error: "rate" }]);
+    expect(await answer(await call(d, cookie, "/tagasiside", { id: mari.id, locale: "et", answers: { score: 9 } }))).toEqual([429, { ok: false, error: "rate" }]);
   });
 });
 
@@ -156,20 +156,20 @@ describe("'Ei soovi'", () => {
   test("the card is gone for good, nothing is answered or told; the form still takes her answers later (the mail's link)", async () => {
     const { mari, account, cookie } = await opened();
     const { d, queued } = deps();
-    expect(await answer(await call(d, cookie, "/tagasiside/peida", { registrationId: mari.id }))).toEqual([200, { ok: true }]);
+    expect(await answer(await call(d, cookie, "/tagasiside/peida", { id: mari.id }))).toEqual([200, { ok: true }]);
     expect((await rows())[0]).toMatchObject({ answers: null, submittedAt: null, dismissedAt: NOW });
     expect(queued()).toBe(0);
     expect((await loadDashboard(db, account.id, NOW))!).not.toHaveProperty("feedback");
-    expect(await answer(await call(d, cookie, "/tagasiside/peida", { registrationId: mari.id }))).toEqual([200, { ok: true }]); // twice: the same
+    expect(await answer(await call(d, cookie, "/tagasiside/peida", { id: mari.id }))).toEqual([200, { ok: true }]); // twice: the same
     expect(queued()).toBe(0);
-    expect((await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { score: 8 } })).status).toBe(200);
+    expect((await call(d, cookie, "/tagasiside", { id: mari.id, locale: "et", answers: { score: 8 } })).status).toBe(200);
     expect((await rows())[0]).toMatchObject({ answers: { score: 8 }, submittedAt: NOW, dismissedAt: NOW });
   });
 
   test("not hers, or not open: 404, nothing stored", async () => {
     const { course, session, cookie } = await opened();
     const other = await student(db, course, session, "Teine");
-    expect(await answer(await call(deps().d, cookie, "/tagasiside/peida", { registrationId: other.id }))).toEqual([404, { ok: false, error: "registration" }]);
+    expect(await answer(await call(deps().d, cookie, "/tagasiside/peida", { id: other.id }))).toEqual([404, { ok: false, error: "registration" }]);
     expect(await rows()).toEqual([]);
   });
 });
@@ -183,8 +183,8 @@ describe("another client's registration", () => {
     const { d, queued } = deps(nextDay);
     expect((await call(d, await cookieOf(other.id), `/tagasiside?id=${teine.id}`)).status).toBe(200); // it is open for its owner
     expect(await answer(await call(d, cookie, `/tagasiside?id=${teine.id}`))).toEqual([404, { ok: false }]);
-    expect(await answer(await call(d, cookie, "/tagasiside", { registrationId: teine.id, locale: "et", answers: { score: 9 } }))).toEqual([404, { ok: false, error: "registration" }]);
-    expect(await answer(await call(d, cookie, "/tagasiside/peida", { registrationId: teine.id }))).toEqual([404, { ok: false, error: "registration" }]);
+    expect(await answer(await call(d, cookie, "/tagasiside", { id: teine.id, locale: "et", answers: { score: 9 } }))).toEqual([404, { ok: false, error: "registration" }]);
+    expect(await answer(await call(d, cookie, "/tagasiside/peida", { id: teine.id }))).toEqual([404, { ok: false, error: "registration" }]);
     expect(await rows()).toEqual([]);
     expect(queued()).toBe(0);
   });
@@ -195,11 +195,11 @@ describe("what is logged", () => {
     const { mari, cookie } = await opened();
     const { d, flush } = deps();
     const secret = "Salajane vastus 7731";
-    await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { score: 9, message: secret } });
+    await call(d, cookie, "/tagasiside", { id: mari.id, locale: "et", answers: { score: 9, message: secret } });
     await flush();
-    await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { message: secret } }); // the replay: 409
-    for (let i = 0; i < 9; i++) await call(d, cookie, "/tagasiside/peida", { registrationId: mari.id });
-    expect((await call(d, cookie, "/tagasiside/peida", { registrationId: mari.id })).status).toBe(429);
+    await call(d, cookie, "/tagasiside", { id: mari.id, locale: "et", answers: { message: secret } }); // the replay: 409
+    for (let i = 0; i < 9; i++) await call(d, cookie, "/tagasiside/peida", { id: mari.id });
+    expect((await call(d, cookie, "/tagasiside/peida", { id: mari.id })).status).toBe(429);
     const log = logged();
     expect(log).toContain(`[feedback] registration ${mari.id}: submitted`);
     expect(log).toContain(`[feedback] registration ${mari.id}: Maria notified`);
@@ -216,7 +216,7 @@ describe("what is logged", () => {
         throw new Error("commit failed");
       }) : Reflect.get(target, prop, target)),
     });
-    await expect(submitFeedback(failing, { clientId: account.id, registrationId: mari.id, answers: { score: 9 }, locale: "et" }, NOW)).rejects.toThrow("commit failed");
+    await expect(submitFeedback(failing, { clientId: account.id, target: { registrationId: mari.id }, answers: { score: 9 }, locale: "et", consent: null }, NOW)).rejects.toThrow("commit failed");
     expect(await rows()).toEqual([]);
     expect(logged()).not.toContain("submitted");
   });
@@ -228,9 +228,9 @@ describe("who may ask", () => {
     const { d, queued } = deps();
     const answers = { score: 9 };
     expect((await call(d, "", `/tagasiside?id=${mari.id}`)).status).toBe(401);
-    expect((await call(d, "", "/tagasiside", { registrationId: mari.id, locale: "et", answers })).status).toBe(401);
-    expect((await call(d, "", "/tagasiside/peida", { registrationId: mari.id })).status).toBe(401);
-    for (const [path, body] of [["/tagasiside", { registrationId: mari.id, locale: "et", answers }], ["/tagasiside/peida", { registrationId: mari.id }]] as const) {
+    expect((await call(d, "", "/tagasiside", { id: mari.id, locale: "et", answers })).status).toBe(401);
+    expect((await call(d, "", "/tagasiside/peida", { id: mari.id })).status).toBe(401);
+    for (const [path, body] of [["/tagasiside", { id: mari.id, locale: "et", answers }], ["/tagasiside/peida", { id: mari.id }]] as const) {
       const request = new Request(`${SITE}/api/konto${path}`, { method: "POST", headers: { cookie, origin: "https://evil.example", "content-type": "application/json" }, body: JSON.stringify(body) });
       expect((await handleAccountApi(request, d))!.status, path).toBe(403);
     }
@@ -241,7 +241,7 @@ describe("who may ask", () => {
   test("a body that is not JSON, not an object, or has no registration id: 400, and the limit is not spent on it", async () => {
     const { mari, cookie } = await opened();
     const { d } = deps();
-    for (const body of [{}, { registrationId: "7", locale: "et", answers: { score: 9 } }, { registrationId: 0, locale: "et", answers: { score: 9 } }]) {
+    for (const body of [{}, { id: "7", locale: "et", answers: { score: 9 } }, { id: 0, locale: "et", answers: { score: 9 } }]) {
       expect((await call(d, cookie, "/tagasiside", body)).status, JSON.stringify(body)).toBe(400);
       expect((await call(d, cookie, "/tagasiside/peida", body)).status, JSON.stringify(body)).toBe(400);
     }
@@ -249,7 +249,7 @@ describe("who may ask", () => {
     expect(garbage!.status).toBe(400);
     // ten good submits are still all there to use
     const statuses: number[] = [];
-    for (let i = 0; i < 10; i++) statuses.push((await call(d, cookie, "/tagasiside", { registrationId: mari.id, locale: "et", answers: { score: 9 } })).status);
+    for (let i = 0; i < 10; i++) statuses.push((await call(d, cookie, "/tagasiside", { id: mari.id, locale: "et", answers: { score: 9 } })).status);
     expect(statuses).toEqual([200, ...Array(9).fill(409)]);
   });
 });

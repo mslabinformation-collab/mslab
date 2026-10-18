@@ -1,11 +1,10 @@
-import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import type { Db } from "../../src/db/client";
-import * as schema from "../../src/db/schema";
 import { deleteClient } from "../../src/server/client-data";
 import { saveProtocol, sendProtocol, type SendDeps } from "../../src/server/protocols";
-import { localDatabaseUrl, onLocalDb, removeClientRows } from "./fixtures";
+import { onLocalDb, removeClientRows } from "./fixtures";
 import { E2E_HEADINGS, insertProtocolFixtures, runName, storedProtocol } from "./protocols";
+import { lockWaits, racePool } from "./race";
 import { submitsForms, test, expect } from "./test";
 
 // Spec §10 "Real Postgres": what the unit tests' single-connection PGlite cannot show. The app's own sendProtocol, in this process, on a pool of
@@ -30,8 +29,7 @@ let pool: postgres.Sql | null = null;
 let db: Db;
 
 test.beforeAll(() => {
-  pool = postgres(localDatabaseUrl(), { max: 6, connect_timeout: 20, onnotice: () => {}, connection: { application_name: APPLICATION } });
-  db = drizzle(pool, { schema }) as unknown as Db;
+  ({ pool, db } = racePool(APPLICATION));
 });
 test.afterAll(async () => {
   await pool?.end();
@@ -44,26 +42,6 @@ test.afterEach(async () => {
   for (const email of made) await removeClientRows(email);
   made.clear();
 });
-
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-type Waiting = { query: string; wait_event: string | null };
-/**
- * This pool's backends that wait for a lock (pg_stat_activity by its application_name: nothing another test or process waits for is read as
- * this one's), asked again every 50 ms until there are `n` of them, or `gone()` says the work it waits for is over, or `ms` have passed: a
- * test proves the wait instead of sleeping and hoping.
- */
-async function lockWaits(n: number, gone: () => boolean, ms = 15_000): Promise<Waiting[]> {
-  const until = Date.now() + ms;
-  for (;;) {
-    const waiting = await onLocalDb(
-      (other) => other<Waiting[]>`select query, wait_event from pg_stat_activity where application_name = ${APPLICATION} and wait_event_type = 'Lock'`,
-      { marksPages: false },
-    );
-    if (waiting.length >= n || gone() || Date.now() > until) return waiting;
-    await pause(50);
-  }
-}
 
 /** The send's dependencies; its mail job (only a send that froze the copy queues one) is collected, never run: nothing is mailed. */
 function deps(jobs: (() => Promise<unknown>)[]): SendDeps {
@@ -132,7 +110,7 @@ test("a send waits while another transaction holds the registration's row lock, 
           () => (finished = true),
           () => (finished = true),
         );
-        const waiting = await lockWaits(1, () => finished);
+        const waiting = await lockWaits(APPLICATION, 1, () => finished);
         expect(finished, "the send went past the registration's lock while it was held").toBe(false);
         expect(waiting, "this pool's backends that wait for a lock: the send's").toHaveLength(1);
         expect(waiting[0].query, "what the send waits at (seats.ts lockRegistration)").toMatch(/from "?registrations"? where [\s\S]*\bfor update\b/i);
@@ -159,7 +137,7 @@ test("the lock order: while another transaction holds her address lock the send 
           () => (finished = true),
           () => (finished = true),
         );
-        const waiting = await lockWaits(1, () => finished);
+        const waiting = await lockWaits(APPLICATION, 1, () => finished);
         expect(finished, "the send went past the address lock while it was held").toBe(false);
         expect(waiting.map((w) => w.wait_event), "this pool's backends that wait for a lock: the send's, at the address lock").toEqual(["advisory"]);
         // the send waits on the address and holds nothing of the registration: another connection locks it at once (NOWAIT fails otherwise, 55P03)
@@ -186,7 +164,7 @@ test("the once-only holds under the address lock: two sends queue behind it, and
         void first.catch(() => {});
         void second.catch(() => {});
         // both have read what they read before the lock, and wait for it
-        const waiting = await lockWaits(2, () => false);
+        const waiting = await lockWaits(APPLICATION, 2, () => false);
         expect(waiting.map((w) => w.wait_event), "this pool's backends that wait for a lock: both sends, at the address lock").toEqual(["advisory", "advisory"]);
         expect((await storedProtocol(mari.id))!.sentAt).toBeNull();
       }),
@@ -214,7 +192,7 @@ test("deleteClient locks her registrations FOR UPDATE: a feedback answer committ
           () => (finished = true),
         );
         // … so the deletion waits, at the statement that locks the registrations (not later, after it has already deleted the feedback it saw)
-        const waiting = await lockWaits(1, () => finished);
+        const waiting = await lockWaits(APPLICATION, 1, () => finished);
         expect(finished, "the deletion went past the registration's lock while it was held").toBe(false);
         expect(waiting, "this pool's backends that wait for a lock: only the deletion's").toHaveLength(1);
         expect(waiting[0].query, "what the deletion waits at").toMatch(/from "registrations" where [\s\S]*\bfor update\b/i);

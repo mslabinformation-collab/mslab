@@ -412,13 +412,29 @@ export function paymentAlertSummary(a: PaymentAlert, adminUrl: string): Summary 
 
 // ---------- the course feedback form (phase protocols, spec §6, §7) ----------
 
-/** A student's answers, for Maria's notice. `course` is the course's Estonian title; `startsAt` its session's start (null: an individual course). */
-export type FeedbackNotice = { registrationId: number; name: string; email: string; course: string; startsAt: Date | null; answers: FeedbackAnswers };
+/**
+ * A student's answers, for Maria's notice. `target`: the registration of a contact course or the access of an e-course (the logs name it).
+ * `course` is the course's Estonian title; `startsAt` its session's start (null: an individual course, and every e-course). `publishable`: she
+ * ticked the permission to publish her recommend answer (student reviews, D1), which Maria is told.
+ */
+export type FeedbackNotice = {
+  target: { registrationId: number } | { accessId: number };
+  name: string;
+  email: string;
+  course: string;
+  startsAt: Date | null;
+  answers: FeedbackAnswers;
+  publishable: boolean;
+};
+
+/** Maria's line when the student allowed publishing (student reviews, D2); „Tagasiside“ is her admin page. */
+const PUBLISHABLE_LINE = "Lubab avaldada — vaata „Tagasiside“ lehel.";
 
 /**
  * "Uus tagasiside: {nimi}, {koolitus}, {score}/10" (spec §6; without the score part when none was given): who answered, the course and its
  * day, then every answered question with its answer in Maria's own wording (the form's Estonian texts, et.ts account.feedback, the one place
- * they are written), whatever language the student answered in; the free texts as she wrote them.
+ * they are written), whatever language the student answered in; the free texts as she wrote them. When she allowed publishing, the line
+ * „Lubab avaldada — vaata „Tagasiside“ lehel.“ stands under who and which course (not buried below the answers), and in the Telegram ping.
  */
 export function feedbackSummary(f: FeedbackNotice, adminUrl: string): Summary {
   const q = feedbackQuestions(et.account.feedback.questions);
@@ -430,10 +446,11 @@ export function feedbackSummary(f: FeedbackNotice, adminUrl: string): Summary {
   const text = [
     subject, "",
     `Õpilane: ${f.name}`, `E-post: ${f.email}`, `Koolitus: ${f.startsAt ? `${f.course}, ${formatDate(f.startsAt, "et")}` : f.course}`, "",
+    ...(f.publishable ? [PUBLISHABLE_LINE, ""] : []),
     ...answered,
     `Admin: ${adminUrl}/tagasiside`, "",
   ].join("\n");
-  return { subject, text, short: subject };
+  return { subject, text, short: f.publishable ? `${subject}\n${PUBLISHABLE_LINE}` : subject };
 }
 
 // ---------- the e-course completion (spec §6: Maria's notices, each with a link to its item) ----------

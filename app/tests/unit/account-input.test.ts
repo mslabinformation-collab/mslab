@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
-  gateName, LIMITS, parseChangeRequest, parseDeletion, parseFavourite, parseMerge, parseNewsletter, parsePassword, parseProfile, parseProgress, parseSlug, parseTerms,
+  checkSlug, gateName, LIMITS, parseChangeRequest, parseDeletion, parseFavourite, parseFeedbackHide, parseFeedbackPost, parseMerge, parseNewsletter, parsePassword, parseProfile, parseProgress,
+  parseReviewWithdrawal, parseSlug, parseTerms,
 } from "@/server/account-input";
 
 // The bodies of the account's data endpoints, parsed without a database: a wrong shape, a wrong type, a value over its limit
@@ -191,4 +192,49 @@ test("parsePassword (phase 2c): any string the database can store, 1 … 800 UTF
   for (const body of [{ password: "" }, { password: 12345678901 }, { password: "x".repeat(801) }, { password: "a\u0000b".repeat(4) }, {}])
     expect(parsePassword(body)).toEqual({ ok: false, error: "password" });
   expect(parsePassword(null)).toEqual({ ok: false, error: "body" });
+});
+
+describe("the feedback form's bodies (student reviews): a target, the answers and the consent", () => {
+  const answers = { score: 9, recommend: "Soovitan." };
+  const post = (over: Record<string, unknown>) => parseFeedbackPost({ locale: "et", answers, ...over });
+
+  test("{ id } is a registration, { kursus } an e-course's slug; exactly one of them; the consent is { name } or null, and absent is null", () => {
+    expect(post({ id: 42 })).toEqual(ok({ target: { registrationId: 42 }, locale: "et", answers, consent: null }));
+    expect(post({ kursus: "kulmud-e", consent: { name: "Kati K." } })).toEqual(ok({ target: { courseSlug: "kulmud-e" }, locale: "et", answers, consent: { name: "Kati K." } }));
+    expect(post({ id: 42, consent: null })).toMatchObject({ ok: true, data: { consent: null } });
+    expect(post({})).toEqual(err("target"));
+    expect(post({ id: 42, kursus: "kulmud-e" })).toEqual(err("target"));
+    expect(post({ registrationId: 42 })).toEqual(err("target")); // the old key names nothing now
+  });
+
+  test("a target that is none: the field is named; the name is any string here (domain/review.ts checkConsent judges it), a consent of another shape is 'consent'", () => {
+    for (const id of ["42", 0, -1, 1.5, 2_147_483_648, null]) expect(post({ id }), String(id)).toEqual(err("id"));
+    for (const kursus of ["", 5, "a".repeat(LIMITS.slug + 1), `a${String.fromCharCode(0)}b`, null]) expect(post({ kursus }), String(kursus)).toEqual(err("kursus"));
+    expect(post({ id: 1, consent: { name: "" } })).toMatchObject({ ok: true, data: { consent: { name: "" } } });
+    expect(post({ id: 1, consent: { name: "K".repeat(500) } })).toMatchObject({ ok: true });
+    for (const consent of ["yes", 5, true, [], { name: 5 }, { name: null }, {}]) expect(post({ id: 1, consent }), JSON.stringify(consent)).toEqual(err("consent"));
+  });
+
+  test("the language and the answers are checked as before: the first wrong field, or the answers' own", () => {
+    expect(parseFeedbackPost({ id: 1, locale: "en", answers })).toEqual(err("locale"));
+    expect(post({ id: 1, answers: {} })).toEqual(err("empty"));
+    expect(post({ id: 1, answers: { score: 11 } })).toEqual(err("score"));
+  });
+
+  test("'Ei soovi' names its form the same way; a withdrawal names a review id", () => {
+    expect(parseFeedbackHide({ id: 7 })).toEqual(ok({ target: { registrationId: 7 } }));
+    expect(parseFeedbackHide({ kursus: "kulmud-e" })).toEqual(ok({ target: { courseSlug: "kulmud-e" } }));
+    expect(parseFeedbackHide({})).toEqual(err("target"));
+    expect(parseFeedbackHide({ id: 7, kursus: "kulmud-e" })).toEqual(err("target"));
+    expect(parseFeedbackHide({ id: "7" })).toEqual(err("id"));
+    expect(parseReviewWithdrawal({ reviewId: 5 })).toEqual(ok({ reviewId: 5 }));
+    for (const reviewId of ["5", 0, 1.5, -2, 2_147_483_648, null, undefined]) expect(parseReviewWithdrawal({ reviewId }), String(reviewId)).toEqual(err("reviewId"));
+    for (const body of NOT_OBJECTS) expect(parseReviewWithdrawal(body), String(body)).toEqual(err("body"));
+  });
+
+  test("checkSlug: a slug already decoded (a query value); parseSlug decodes first", () => {
+    expect(checkSlug("kulmud-e")).toBe("kulmud-e");
+    expect(checkSlug("k%C3%B5rv")).toBe("k%C3%B5rv"); // (not decoded again)
+    for (const value of ["", "a".repeat(LIMITS.slug + 1), `a${String.fromCharCode(0)}b`]) expect(checkSlug(value), value).toBeNull();
+  });
 });

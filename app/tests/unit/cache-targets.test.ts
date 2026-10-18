@@ -25,6 +25,12 @@ describe("the revalidation map", () => {
     expect(paths({ kind: "seats", course: "../x" })).toEqual([`${SITE}/koolitused/[slug] (page)`, `${SITE}/koolituskalender (page)`]);
   });
 
+  test("reviews: that course's page in both languages and the home page (student reviews: its block and the featured ones); every course page when the slug is no slug", () => {
+    expect(paths({ kind: "reviews", course: "kulmude-lami" })).toEqual(["/et/koolitused/kulmude-lami", "/ru/koolitused/kulmude-lami", `${SITE} (page)`]);
+    expect(paths({ kind: "reviews", course: "../x" })).toEqual([`${SITE}/koolitused/[slug] (page)`, `${SITE} (page)`]);
+    expect(paths({ kind: "reviews", course: "" })).toEqual([`${SITE}/koolitused/[slug] (page)`, `${SITE} (page)`]);
+  });
+
   test("home, campaign, practice, posts", () => {
     expect(paths({ kind: "home" })).toEqual([`${SITE} (page)`]);
     expect(paths({ kind: "campaign" })).toEqual([`${SITE} (page)`]);
@@ -76,6 +82,8 @@ describe("the revalidation map", () => {
       { kind: "courses" },
       { kind: "sessions" },
       { kind: "seats" },
+      { kind: "reviews", course: "x" },
+      { kind: "reviews", course: "../x" },
       { kind: "home" },
       { kind: "campaign" },
       { kind: "practice" },
@@ -129,6 +137,12 @@ describe("revalidatePublic", () => {
     expect(store.pendingRevalidatedTags?.map((p) => p.tag)).toEqual(["_N_T_/et/koolitused/kulmude-lami", "_N_T_/ru/koolitused/kulmude-lami", "_N_T_/[locale]/(site)/koolituskalender/page"]);
   });
 
+  test("a review change: that course's page in both languages and the home page", async () => {
+    const { revalidatePublic } = await import("@/server/public-cache");
+    const store = await inAction(() => revalidatePublic({ kind: "reviews", course: "kulmude-lami" }));
+    expect(store.pendingRevalidatedTags?.map((p) => p.tag)).toEqual(["_N_T_/et/koolitused/kulmude-lami", "_N_T_/ru/koolitused/kulmude-lami", "_N_T_/[locale]/(site)/page"]);
+  });
+
   test("every target of every change is one revalidatePath() accepts: no warning (a route pattern without its type does nothing)", async () => {
     const { revalidatePublic } = await import("@/server/public-cache");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -138,6 +152,8 @@ describe("revalidatePublic", () => {
       { kind: "sessions" },
       { kind: "seats", course: "kulmude-lami" },
       { kind: "seats" },
+      { kind: "reviews", course: "kulmude-lami" },
+      { kind: "reviews", course: "../x" },
       { kind: "home" },
       { kind: "campaign" },
       { kind: "practice" },

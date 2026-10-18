@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/site/Icon";
 import ui from "@/components/site/ui.module.css";
 import {
-  cardInvoices, cardKey, cardTag, cardTitle, cardWhen, hasPrepayment, isPastCard, nextStep, type AccountCard, type CardInvoice, type ContactCard,
+  cardInvoices, cardKey, cardTag, cardTitle, cardWhen, hasPrepayment, isPastCard, nextStep, type AccountCard, type CardInvoice, type ContactCard, type EcourseCard, type IndividualCard,
   type PrepaymentInfo as PaySettings,
 } from "@/domain/account-cards";
 import { euro } from "@/domain/invoice";
@@ -22,6 +22,7 @@ import { ContractLine } from "./ContractLine";
 import { NextStepLine } from "./NextStepLine";
 import { PrepaymentInfo } from "./PrepaymentInfo";
 import { ProgressBar } from "./ProgressBar";
+import { ReviewLine } from "./ReviewLine";
 import type { CoursesTexts } from "./texts";
 import styles from "./AccountCourseCard.module.css";
 
@@ -50,6 +51,11 @@ export type CardProps = {
    * (CoursesView's quiet reload), which turns the card into what is true. Answers whether the server answered; absent (the admin's view): nothing to load.
    */
   onContract?(card: ContactCard): Promise<boolean>;
+  /**
+   * Her permission to publish is gone already („Võta luba tagasi“ found no review, a 404: Maria deleted it, or another tab took it back): the cards are loaded
+   * again behind the page (CoursesView's quiet reload), which shows what is true. Answers whether the server answered; absent (the admin's view): nothing to load.
+   */
+  onReviewGone?(card: ContactCard | IndividualCard | EcourseCard): Promise<boolean>;
   /** Her account's name (the dashboard's client.name): the first value of an ended access's "Nimi tunnistusel", as on the e-course page. */
   certificateName?: string;
 };
@@ -150,9 +156,11 @@ function InvoiceLines({ invoices, locale, t, readOnly }: { invoices: CardInvoice
  * the card has one (onlineDue).
  * Her contract (contracts Task 6; ContractLine) is a quiet line above them, „Leping · kinnitatud {date}“ with „Laadi alla (PDF)“; once Maria has
  * asked her to confirm it, the card instead offers „Kinnita leping“, which opens the text on the card with „Kinnitan“.
+ * Her permission to publish (student reviews, D6; ReviewLine) is a quiet line under the contract's, „Lubasid oma soovitust avaldada“ with „Võta luba tagasi“,
+ * while the card has a review.
  * `readOnly`: the buttons are there but aria-disabled, and do nothing.
  */
-export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale, onContract, certificateName = "" }: CardProps) {
+export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale, onContract, onReviewGone, certificateName = "" }: CardProps) {
   const step = nextStep(card, now, pay, locale, payOnline);
   const [open, setOpen] = useState(false);
   const [paying, setPaying] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
@@ -160,6 +168,7 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
   const [made, setMade] = useState<CertificateView | null>(null);
   const titleId = useId();
   const panelId = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
   const when = cardWhen(card, locale);
   const action = step.action;
   const progress = card.kind === "ecourse" && !isPastCard(card, now) ? (card.progress ?? null) : null;
@@ -332,7 +341,7 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
     >
       <span className={styles.tag}>{t.tag[cardTag(card)]}</span>
       {/* tabIndex -1: the dashboard puts the focus here after the card has changed under the student (a refused request) */}
-      <h2 id={titleId} className={styles.title} tabIndex={-1}>
+      <h2 ref={heading} id={titleId} className={styles.title} tabIndex={-1}>
         {cardTitle(card, locale, t.untitled)}
       </h2>
       {when && (
@@ -377,6 +386,7 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
         readOnly={readOnly}
         onChanged={onContract && card.kind === "contact" ? () => onContract(card) : undefined}
       />
+      <ReviewLine card={card} title={cardTitle(card, locale, t.untitled)} t={t} readOnly={readOnly} onGone={onReviewGone} onWithdrawn={() => heading.current?.focus()} />
       {invoices.length > 0 && <InvoiceLines invoices={invoices} locale={locale} t={t} readOnly={readOnly} />}
       {button && <div className={styles.foot}>{button}</div>}
       {paying.error && (
