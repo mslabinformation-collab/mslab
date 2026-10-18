@@ -20,6 +20,9 @@ const copy = (): Plan => structuredClone(plan) as unknown as Plan;
 /** The first check, to break (the real plan must hold at least one). */
 const first = (p: Plan) => p.items[0];
 const words = (n: number) => `${Array.from({ length: n }, (_, i) => `sõna${i + 1}`).join(" ")}.`;
+// A mark set on a branch reads "deploy" until the push stamps it with the push instant (tools/testplan-stamp.mjs): a guard pins the mark, and
+// accepts either form of its time.
+const markedSince = (markedAt: unknown) => markedAt === "deploy" || (typeof markedAt === "string" && !Number.isNaN(Date.parse(markedAt)));
 
 describe("src/data/testplan.json", () => {
   test("passes checkPlan, and holds at least one check", () => {
@@ -231,7 +234,8 @@ describe("the contract checks sit where their preconditions exist", () => {
     expect(gate.steps.findIndex((s) => s.includes("enne kui nime kirjutad"))).toBeLessThan(named);
     expect(gate.steps.map((s) => s === "Vajuta „Alusta koolitust“.").lastIndexOf(true)).toBeGreaterThan(named);
     for (const words of ["lepingu pealkirja", "väli „Nimi“", "„Kirjuta oma nimi.“", "{nimi} kohale", "{koolitus} asemel"]) expect(expectText("ekursus-tingimused-leping"), words).toContain(words);
-    expect([gate.mark, gate.markedAt]).toEqual(["new", "deploy"]);
+    expect(gate.mark).toBe("new");
+    expect(markedSince(gate.markedAt), "its markedAt").toBe(true);
   });
 
   test("a download link whose text another row of the card repeats is named by its row (Proov 7 and Proov 1 have invoice rows with „Laadi alla (PDF)“)", () => {
@@ -254,7 +258,10 @@ describe("the contract checks sit where their preconditions exist", () => {
     }
   });
 
-  test("the new checks keep their marks: new, from the deploy", () => {
-    for (const id of ["konto-leping-kaardil", "konto-leping-kinnita", "konto-leping-vene-keeles"]) expect([item(id).mark, item(id).markedAt], id).toEqual(["new", "deploy"]);
+  test("the new checks keep their mark new, from the deploy or its stamp", () => {
+    for (const id of ["konto-leping-kaardil", "konto-leping-kinnita", "konto-leping-vene-keeles"]) {
+      expect(item(id).mark, id).toBe("new");
+      expect(markedSince(item(id).markedAt), id).toBe(true);
+    }
   });
 });
