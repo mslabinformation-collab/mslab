@@ -190,13 +190,18 @@ describe("e2e client labels", () => {
     expect(contracts.own).toEqual(expect.arrayContaining(["contract-race-a", "contract-race-c"]));
     expect(contracts.templates).toEqual(expect.arrayContaining(["contract-race-b-", "contract-race-d-"]));
     expect(specs.find((s) => s.file === "certificate-race.spec.ts")!.own).toEqual(expect.arrayContaining(["certrace-a", "certrace-twice"]));
+    // the reviews' race (student reviews, Task 6): the same helper shape as contracts-race, and the whole path's own labels
+    const reviews = specs.find((s) => s.file === "reviews-race.spec.ts")!;
+    expect(reviews.own).toEqual(expect.arrayContaining(["revrace-a", "revrace-b"]));
+    expect(reviews.templates).toEqual(expect.arrayContaining(["revrace-c-"]));
+    expect(specs.find((s) => s.file === "reviews.spec.ts")!.own).toEqual(expect.arrayContaining(["reviews-contact", "reviews-ecourse"]));
   });
 
   test("every spec that makes clients has its labels seen: one the helpers cannot be followed through would be checked against nothing", () => {
     expect(specs.filter((s) => s.own.length + s.templates.length === 0).map((s) => s.file)).toEqual([]);
     // the race specs on real Postgres among them
     const races = specs.filter((s) => s.file.endsWith("-race.spec.ts")).map((s) => s.file).sort();
-    expect(races).toEqual(["certificate-race.spec.ts", "completion-race.spec.ts", "contracts-race.spec.ts", "protocols-race.spec.ts"]);
+    expect(races).toEqual(["certificate-race.spec.ts", "completion-race.spec.ts", "contracts-race.spec.ts", "protocols-race.spec.ts", "reviews-race.spec.ts"]);
   });
 
   test("a label is used by one spec file only: the workers share the database, and a test removes its client's rows by address", () => {
