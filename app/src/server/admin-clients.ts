@@ -11,6 +11,7 @@ import { accessState, defaultExpiryDate, grantExpiry, type AccessState } from "@
 import { percentOf, type CourseSteps } from "@/domain/completion";
 import { isEmail, normalizeEmail } from "@/domain/email";
 import { containsPattern, PAGE_SIZE } from "@/domain/paging";
+import type { ReviewStatus } from "@/domain/review";
 import { registrationHeading } from "@/domain/registration-card";
 import { pick, type I18n } from "@/i18n/field";
 import { getDict } from "@/i18n/locales";
@@ -22,6 +23,7 @@ import { contractsOfClient } from "./contracts";
 import { field } from "./edit-check";
 import { courseOutline } from "./lesson-outline";
 import { newsletterState, type NewsletterState } from "./newsletter";
+import { reviewsOfFeedback } from "./reviews";
 
 // The admin's Õpilased (students): the list, one student's drawer, adding a student by e-mail, and e-course access
 // ("Ava ligipääs" / "Lõpeta ligipääs"). Callers have already checked the admin session (server/actions/admin-clients.ts
@@ -123,6 +125,11 @@ export type ClientRequestRow = {
   wish: "cancel" | "change" | null;
   subject: string | null;
 };
+/**
+ * One of her answers to the course feedback form with what became of her permission to publish it (student reviews, Task 4): `review` is the review it
+ * gave rise to — its status and whether it is on the home page — or null when she did not allow publishing (it never became a review).
+ */
+export type ClientFeedbackRow = FeedbackRow & { review: { id: number; status: ReviewStatus; featured: boolean } | null };
 export type ClientDetail = {
   client: { id: number; email: string; name: string; ownName: string; phone: string; locale: "et" | "ru"; createdAt: Date };
   registrations: ClientRegistrationRow[];
@@ -134,8 +141,8 @@ export type ClientDetail = {
   newsletter: NewsletterState;
   /** Her online payments (phase 2b), newest first. */
   payments: PaymentRow[];
-  /** Her answers to the course feedback form (phase protocols, spec §7), newest first. */
-  feedback: FeedbackRow[];
+  /** Her answers to the course feedback form (phase protocols, spec §7; the e-courses' too), newest first, each with its review. */
+  feedback: ClientFeedbackRow[];
 };
 
 /** A certificate row as the drawer shows it (server/certificates.ts viewOf), with whether an admin ended her access. */
@@ -174,7 +181,7 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
     feedbackOf(db, { clientId: id }),
   ]);
   if (!client) return null;
-  const newsletter = await newsletterState(db, client.email);
+  const [newsletter, reviewOf] = await Promise.all([newsletterState(db, client.email), reviewsOfFeedback(db, feedback.map((f) => f.id))]);
   // each e-course's lessons for her: done of total, and the first lesson she cannot open yet ("Ava järgmine õppetund"); and (e-course
   // completion, spec §5.5) each access's steps as her own page reads them, the protocols of her accesses and registrations, her attempts
   const [outlines, steps, accessProtocols, registrationProtocols, attempts, issued] = await Promise.all([
@@ -222,7 +229,7 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
     contracts: contractRows.map(contractView),
     newsletter,
     payments,
-    feedback,
+    feedback: feedback.map((f) => ({ ...f, review: reviewOf.get(f.id) ?? null })),
   };
 }
 

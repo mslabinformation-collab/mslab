@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import { mintLoginToken } from "./account";
 import { adminReady, signInAsAdmin } from "./admin-login";
 import {
-  chip, E2E_HEADINGS, editor, emptyNotes, general, insertDraftProtocol, insertFeedbackAnswer, insertSentProtocol, keptKeys, note, protocolRows, runName, saved, SAVE_ROUTE, saveStatus,
+  chip, E2E_HEADINGS, editor, emptyNotes, general, insertDraftProtocol, insertFeedbackAnswer, insertReview, insertSentProtocol, keptKeys, note, protocolRows, runName, saved, SAVE_ROUTE, saveStatus,
   storedFeedback, storedProtocol, studentContext, studentPage,
 } from "./protocols";
 import { smallTargets } from "./targets";
@@ -291,6 +291,9 @@ test("the screens at 390, 834, 1194 and 1440 px: no sideways scroll, every targe
   await insertDraftProtocol(anu.id, ["Kulmud analüüsitud.", "", ""], "");
   await insertFeedbackAnswer(anu.id, { score: 8, expectations: "exceeded", recommend: "Jah, kindlasti." });
   const answer = (await storedFeedback(anu.id))!;
+  // „Arvustused“ (student reviews, Task 4): Anu's pending review of that answer, and one Maria added (every button of every kind is measured)
+  await insertReview(fx.course.id, answer.id, "Anu A.", "Jah, kindlasti. ".repeat(12));
+  await insertReview(fx.course.id, null, "Liis L.", "Väga hea koolitus, soovitan!");
   await signInAsAdmin(page, context, visitorIp, created);
   const student = await studentPage(browser, mari.email, visitorIp);
   const screens = [
@@ -301,6 +304,9 @@ test("the screens at 390, 834, 1194 and 1440 px: no sideways scroll, every targe
     // … one course's numbers (the average and every option's count), and one answer's drawer
     { page, url: `/admin/tagasiside?koolitus=${fx.course.id}`, scope: "main", admin: true },
     { page, url: `/admin/tagasiside?koolitus=${fx.course.id}&id=${answer.id}`, scope: "dialog[open]", admin: true },
+    // … the reviews' view (the waiting one and the one Maria added), and „Lisa arvustus“ open
+    { page, url: "/admin/tagasiside?vaade=arvustused", scope: "main", admin: true },
+    { page, url: "/admin/tagasiside?vaade=arvustused", scope: "main", admin: true, open: "[data-review-add]", shown: "[data-review-form]" },
     { page: student.page, url: `/konto/protokoll#id=${mari.id}`, scope: "[data-protocol-page]", admin: false },
     { page: student.page, url: `/konto/tagasiside#id=${mari.id}`, scope: "[data-feedback-form]", admin: false },
   ];

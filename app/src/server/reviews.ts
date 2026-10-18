@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
 import { courseAccess, courseFeedback, courses, protocols, registrations, reviews } from "@/db/schema";
 import { tallinnInstant } from "@/domain/calendar";
@@ -245,6 +245,24 @@ export async function adminReviews(db: Db, filter: { status?: ReviewStatus; cour
     note: r.note,
     proof: r.kind === "manual" ? null : r.registrationStatus !== null ? { registrationStatus: r.registrationStatus, protocolSent: r.protocolSentAt !== null } : r.completedAt !== null ? { completedAt: r.completedAt } : null,
   }));
+}
+
+/** The courses Maria's „Lisa arvustus“ can name: every course, drafts too (a review of a draft shows once the course is published), in the public order. */
+export async function reviewCourses(q: Q): Promise<{ id: number; title: I18n; published: boolean }[]> {
+  return q.select({ id: courses.id, title: courses.title, published: courses.published }).from(courses).orderBy(asc(courses.sort), asc(courses.id));
+}
+
+/**
+ * The review each of these feedback answers gave rise to, by feedback id (the student's drawer: whether she allowed publishing, and what became of it).
+ * An answer without an entry gave no permission: it never became a review.
+ */
+export async function reviewsOfFeedback(q: Q, feedbackIds: number[]): Promise<Map<number, { id: number; status: ReviewStatus; featured: boolean }>> {
+  if (feedbackIds.length === 0) return new Map();
+  const rows = await q
+    .select({ feedbackId: reviews.feedbackId, id: reviews.id, status: reviews.status, featured: reviews.featured })
+    .from(reviews)
+    .where(inArray(reviews.feedbackId, feedbackIds));
+  return new Map(rows.flatMap((r) => (r.feedbackId === null ? [] : [[r.feedbackId, { id: r.id, status: r.status, featured: r.featured }] as const])));
 }
 
 /** How many reviews wait for Maria (the „Tagasiside“ page's heading), of every course. */

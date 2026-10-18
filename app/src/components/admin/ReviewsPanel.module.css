@@ -1,0 +1,146 @@
+/* Arvustused (student reviews, Task 4): Tagasiside's second view (ReviewsPanel) and „Lisa arvustus“ (ManualReviewForm). Buttons, tags, fields, the notice
+   and the empty text come from ui.module.css; the grid of the form from editor.module.css. Every control is the admin's 44 px one; colours from
+   tokens.css only. */
+
+.panel {
+  display: grid;
+  gap: 18px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.addCard {
+  padding: 22px;
+}
+
+.status {
+  margin: 0;
+}
+
+.status:empty {
+  display: none;
+}
+
+.list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--paper);
+}
+
+.row {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: -2px;
+}
+
+.row[data-review-status="hidden"] .text {
+  color: var(--muted);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* the words as the student or Maria wrote them: line breaks kept */
+.text {
+  max-width: 70ch;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* „Avalehel“: a switch that stays pressed while the review is on the home page */
+.toggle[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.toggle[aria-pressed="true"]:hover {
+  background: var(--ink-soft);
+}
+
+.confirm {
+  display: grid;
+  gap: 8px;
+}
+
+.confirm p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* the form, new (in a card above the list) or edited (in the row) */
+.form {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+}
+
+.fields {
+  width: 100%;
+}
+
+.count {
+  text-align: right;
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .row {
+    padding: 16px;
+  }
+}

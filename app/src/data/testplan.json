@@ -3050,7 +3050,7 @@
         "Vorm on sama mis kontaktkoolitusel: pealkiri „Sinu kogemus MS LAB koolitusel“ ja kõik küsimused.",
         "Pärast saatmist näed tänuteksti „Aitäh, et oled osa MS LAB koolituskeskuse algusest ja kasvust. …“.",
         "Maria postkasti tuleb „Uus tagasiside: Proov 1, …“ koos reaga „Lubab avaldada — vaata „Tagasiside“ lehel.“.",
-        "Kaart „Kuidas koolitus läks?“ on kadunud ja e-koolituse kaardil on rida „Lubasid oma soovitust avaldada“."
+        "E-koolituse kaardilt on „Kuidas koolitus läks?“ kadunud ja kaardil on rida „Lubasid oma soovitust avaldada“."
       ],
       "why": "Ka e-koolituse läbinu saab anda tagasisidet ja loa seda avaldada.",
       "risk": "high",
@@ -3066,16 +3066,19 @@
       "title": "Võta luba tagasi",
       "href": "/konto",
       "steps": [
+        "Ava halduses „Tagasiside“ ja vajuta nuppu „Arvustused“.",
         "Ava Proov 1 „Minu koolitused“ ja vaata e-koolituse kaardil rida „Lubasid oma soovitust avaldada“.",
         "Vajuta rea juures „Võta luba tagasi“.",
         "Värskenda lehte.",
-        "Ava halduses „Tagasiside“ ja vaata plokki „Arvustused“."
+        "Ava halduses „Tagasiside“ uuesti, vajuta „Arvustused“ ja siis „Vastused“."
       ],
       "expect": [
+        "Enne loa tagasivõtmist ootab Proov 1 e-koolituse arvustus kinnitust ja rea all on „Lõpetatud …“.",
         "Rida ja nupp kaovad kohe, lehte uuendamata.",
         "Kaardil on edasi „Lõpetatud …“.",
         "Pärast värskendamist rida tagasi ei tule.",
-        "Halduses „Arvustused“ ei ole Proov 1 e-koolituse arvustust, aga „Tagasiside“ loendis on tema vastus."
+        "Vaates „Arvustused“ ei ole Proov 1 e-koolituse arvustust enam.",
+        "Vaates „Vastused“ on tema vastus alles ja kuupäeva asemel on „Lõpetatud …“."
       ],
       "why": "Õpilane saab loa igal ajal tagasi võtta ja tema sõnad kaovad lehtedelt.",
       "risk": "high",
@@ -3489,20 +3492,152 @@
         "Ava „Tagasiside“.",
         "Vajuta lehe üleval nupul, millel on Proov 1 koolituse nimi.",
         "Vajuta loendis nimele Proov 1.",
-        "Ava „Registreerimised“ ja Proov 1 paneel."
+        "Ava „Registreerimised“ ja Proov 1 paneel.",
+        "Ava „Õpilased“ ja Proov 1 paneel ning vaata plokki „Tagasiside“."
       ],
       "expect": [
         "Loendis on Proov 1 vastus koos hindega.",
+        "Lehe üleval on nupp „Arvustusi ootab kinnitust: …“.",
         "Nuppude reas on ka „Kõik koolitused“.",
         "Koolituse valikul on „Keskmine hinne: … / 10“ ja iga vastusevariandi arv.",
         "Paneeli üleval on nimi Proov 1 ja e-post, all kõik vastused.",
-        "Registreeringu paneelis on plokk „Tagasiside“."
+        "Registreeringu paneelis on plokk „Tagasiside“.",
+        "Õpilase paneeli plokis „Tagasiside“ on rida „Lubab avaldada: Ootab kinnitust“."
       ],
       "why": "Maria loeb vastused ühest kohast.",
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-arvustus-toend",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arvustuse tõend",
+      "href": "/admin/tagasiside?vaade=arvustused",
+      "steps": [
+        "Ava „Tagasiside“ ja vajuta nuppu „Arvustused“.",
+        "Leia Proov 1 arvustus, mille olek on „Ootab kinnitust“.",
+        "Loe rea all olevaid ridu ja võrdle tõendit „Registreerimised“ paneeliga."
+      ],
+      "expect": [
+        "Arvustusel on nimi ja tekst, mille Proov 1 vormile kirjutas.",
+        "Rea all on koolitus, kuupäev ja „Keel: ET“.",
+        "Tõendi rida on „Registreering: … · Protokoll saadetud“ ja olek on sama mis „Registreerimised“ paneelil.",
+        "Proov 1 sõnadel ei ole nuppe „Muuda“ ega „Kustuta“, ainult „Avalda“ ja „Peida“.",
+        "Märget „Lisatud käsitsi“ sellel arvustusel ei ole."
+      ],
+      "why": "Maria otsustab, kas arvustaja osales koolitusel päriselt.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-arvustus-avalda",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arvustus: Avalda",
+      "href": "/admin/tagasiside?vaade=arvustused",
+      "steps": [
+        "Ava „Tagasiside“, vajuta „Arvustused“ ja Proov 1 arvustuse juures „Avalda“.",
+        "Ava avalik leht kontaktkoolitusest, millele Proov 1 registreerus.",
+        "Keri lehe lõppu."
+      ],
+      "expect": [
+        "Olek on nüüd „Avaldatud“ ja nupud on „Peida“ ja „Avalehel“.",
+        "Lehe üleval olev „Arvustusi ootab kinnitust“ arv on ühe võrra väiksem või nuppu enam ei ole.",
+        "Koolituse lehel on plokk „Õpilaste tagasiside“, kus on Proov 1 sõnad ja nimi.",
+        "Plokis ei ole hinnet, tähti ega keskmist."
+      ],
+      "why": "Avaldatud arvustus ilmub koolituse lehele ainult Maria vajutusega.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-arvustus-avalehel",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arvustus: Avalehel",
+      "href": "/admin/tagasiside?vaade=arvustused",
+      "steps": [
+        "Ava „Tagasiside“, vajuta „Arvustused“ ja Proov 1 arvustuse juures „Avalehel“.",
+        "Ava avaleht ja keri koolitaja jaotise järele.",
+        "Vajuta halduses „Avalehel“ uuesti ja värskenda avalehte.",
+        "Vajuta halduses „Avalehel“ veel kord, et arvustus jääks avalehele."
+      ],
+      "expect": [
+        "Kui arvustus on avalehel, on nupp „Avalehel“ tume.",
+        "Avalehel on jaotis „Õpilaste kogemused“, kus on Proov 1 sõnad, nimi ja koolituse nimi.",
+        "Koolituse nimi on link koolituse lehele.",
+        "Kui nupp on maas, ei ole Proov 1 arvustust avalehel.",
+        "Koolituse lehel on arvustus kogu aeg."
+      ],
+      "why": "Maria valib, millised arvustused avalehele jõuavad.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-arvustus-peida",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Arvustus: Peida",
+      "href": "/admin/tagasiside?vaade=arvustused",
+      "steps": [
+        "Ava „Tagasiside“, vajuta „Arvustused“ ja Proov 1 arvustuse juures „Peida“.",
+        "Ava avaleht ja kontaktkoolituse leht ning keri tagasiside kohale.",
+        "Vajuta halduses „Avalda“ ja ava samad lehed uuesti."
+      ],
+      "expect": [
+        "Olek on „Peidetud“ ja nupp on ainult „Avalda“.",
+        "Koolituse lehel ja avalehel ei ole Proov 1 arvustust.",
+        "Pärast „Avalda“ on arvustus uuesti koolituse lehel ja avalehel, sest „Avalehel“ jäi sisse."
+      ],
+      "why": "Peidetud arvustus kaob kõikidelt lehtedelt, aga ei kao halduses.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-arvustus-lisa",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Lisa arvustus",
+      "href": "/admin/tagasiside?vaade=arvustused",
+      "steps": [
+        "Ava „Tagasiside“, vajuta „Arvustused“ ja siis „Lisa arvustus“.",
+        "Loe vormi hoiatust ja vajuta „Salvesta“ tühja vormiga.",
+        "Vali kontaktkoolitus, millele Proov 1 registreerus, ning kirjuta nimi Proov Käsitsi, tekst Proov käsitsi ja allikas Proov.",
+        "Vajuta „Salvesta“.",
+        "Vajuta uue arvustuse juures „Muuda“, muuda teksti ja vajuta „Salvesta“.",
+        "Ava koolituse leht ja vaata tagasiside plokki.",
+        "Vajuta halduses „Kustuta“ ja siis „Jah, kustuta“."
+      ],
+      "expect": [
+        "Vormi kohal on „Lisa ainult päris õpilase sõnad tema loal.“.",
+        "Tühja vormiga märgitakse puuduvad väljad ja midagi ei salvestata.",
+        "Nime, teksti ja allika all on loendurid „… / 40“, „… / 2000“ ja „… / 500“.",
+        "Uus arvustus on kohe „Avaldatud“, märgiga „Lisatud käsitsi“ ja reaga „Allikas: Proov“.",
+        "Pärast „Muuda“ on tekst uus ja olek jääb „Avaldatud“.",
+        "Koolituse lehel on Proov Käsitsi sõnad, aga allikat seal ei näidata.",
+        "Pärast kustutamist ei ole arvustust ei halduses ega koolituse lehel."
+      ],
+      "why": "Maria saab lisada päris õpilase sõnad, mille ta mujalt sai.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-tana",

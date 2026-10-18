@@ -110,6 +110,20 @@ export async function insertFeedbackAnswer(registrationId: number, answers: Reco
   await localDb((sql) => sql`insert into course_feedback (registration_id, answers, locale, submitted_at) values (${registrationId}, ${sql.json(answers)}, 'et', now())`);
 }
 
+/**
+ * A review for Maria's „Arvustused“ (student reviews, Task 4): a student's, pending, made from the answer `feedbackId`; or, with no answer, one Maria added
+ * (published, with its source note). Both go with the test's course (the cascade), which the fixtures' cleanup removes.
+ */
+export async function insertReview(courseId: number, feedbackId: number | null, name: string, text: string): Promise<void> {
+  await localDb(
+    (sql) =>
+      sql`
+        insert into reviews (course_id, feedback_id, kind, text, name, locale, written_at, status, note)
+        values (${courseId}, ${feedbackId}, ${feedbackId === null ? "manual" : "student"}, ${text}, ${name}, 'et', now(), ${feedbackId === null ? "published" : "pending"},
+                ${feedbackId === null ? "Paberil vormil, 20.09.2026" : null})`,
+  );
+}
+
 export type StoredProtocol = { version: number; stages: Stage[]; generalNote: string; sent: { stages: Stage[]; generalNote: string } | null; sentAt: Date | null; sentVersion: number | null };
 
 /** The registration's protocol as stored, or null when there is none. */

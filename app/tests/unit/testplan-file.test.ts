@@ -265,3 +265,48 @@ describe("the contract checks sit where their preconditions exist", () => {
     }
   });
 });
+
+// The student reviews' checks (student reviews, Task 4; ruling R5): Proov 1's contact review exists only once `kontakt-tagasiside` has sent her form with
+// the tick, so Maria's checks of it come after, and Proov 1's e-course review (sent by `ekursus-tagasiside`) is withdrawn by `ekursus-luba-tagasi`, whose
+// own steps open the „Arvustused“ view and the „Vastused“ list. The decisions run in the order the review passes through: waiting, published, on the home
+// page (Task 5's checks of the public blocks sit between „Avalehel“ and „Peida“), hidden; „Lisa arvustus“ adds and deletes its own review, last.
+describe("the review checks sit where Proov 1's reviews exist", () => {
+  const order = plan.items.map((i) => i.id);
+  const at = (id: string): number => {
+    const n = order.indexOf(id);
+    expect(n, id).toBeGreaterThanOrEqual(0);
+    return n;
+  };
+  const item = (id: string) => plan.items[at(id)];
+  const CONTACT = ["kontakt-arvustus-toend", "kontakt-arvustus-avalda", "kontakt-arvustus-avalehel", "kontakt-arvustus-peida", "kontakt-arvustus-lisa"];
+
+  test("Proov 1's contact review is made (with the tick) before Maria decides it; the decisions come in the order a review passes through", () => {
+    expect(item("kontakt-tagasiside").steps.join("\n")).toContain("Luban seda vastust avaldada");
+    for (const id of CONTACT) expect(at(id), id).toBeGreaterThan(at("kontakt-tagasiside"));
+    for (const [first, second] of [["kontakt-tagasiside-haldus", "kontakt-arvustus-toend"], ...CONTACT.slice(1).map((id, i) => [CONTACT[i], id])]) expect(at(first), `${first} < ${second}`).toBeLessThan(at(second));
+    // her review is hidden, shown again and deleted by Maria's own: nothing is left between them for a public block to count wrongly
+    expect(item("kontakt-arvustus-peida").expect.join("\n")).toContain("Pärast „Avalda“");
+    expect(item("kontakt-arvustus-lisa").steps.join("\n")).toContain("Jah, kustuta");
+  });
+
+  test("the e-course review is made before the check that withdraws it, whose steps open „Arvustused“ and „Vastused“ (both exist where it sits)", () => {
+    expect(at("ekursus-tagasiside")).toBeLessThan(at("ekursus-luba-tagasi"));
+    const steps = item("ekursus-luba-tagasi").steps.join("\n");
+    expect(steps.indexOf("„Arvustused“")).toBeGreaterThan(-1);
+    expect(steps.indexOf("„Vastused“")).toBeGreaterThan(steps.indexOf("Võta luba tagasi"));
+    expect(item("ekursus-luba-tagasi").expect.join("\n")).toContain("ootab Proov 1 e-koolituse arvustus kinnitust");
+    // the e-course card's own question, not the contact card's (Proov 1's contact card may still be there)
+    expect(item("ekursus-tagasiside").expect.at(-1)).toMatch(/^E-koolituse kaardilt on „Kuidas koolitus läks\?“ kadunud/);
+  });
+
+  test("the review checks and the two redone ones carry their marks, from the deploy or its stamp", () => {
+    for (const id of CONTACT) {
+      expect(item(id).mark, id).toBe("new");
+      expect(markedSince(item(id).markedAt), id).toBe(true);
+    }
+    for (const id of ["kontakt-tagasiside-haldus", "kirjad-maria-tagasiside"]) {
+      expect(item(id).mark, id).toBe("redo");
+      expect(markedSince(item(id).markedAt), id).toBe(true);
+    }
+  });
+});

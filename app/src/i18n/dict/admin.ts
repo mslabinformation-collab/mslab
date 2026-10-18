@@ -815,9 +815,77 @@ export const adminEt = {
     inRussian: "Vastas vene keeles",
     toStudent: "Õpilase juurde",
     toRegistration: "Registreeringu juurde",
+    // an e-course's answer has no course day: the day her access was completed stands in its place (student reviews, Task 4; the spec's words)
+    completed: "Lõpetatud {date}",
+    // the page's two views (Draft): the answers, and the reviews (below, `reviews`); ?vaade=arvustused
+    viewsLabel: "Vaade",
+    views: { answers: "Vastused", reviews: "Arvustused" },
+    // the heading's count of the reviews waiting for Maria (Draft); it opens the reviews waiting
+    pendingReviews: "Arvustusi ootab kinnitust: {n}",
     // the Õpilased and Registreerimised drawers
     section: "Tagasiside",
     none: "Tagasisidet pole antud.",
+  },
+
+  // Arvustused (student reviews, Task 4; spec D2, D4, §4, §5): the second view of Tagasiside, /admin/tagasiside?vaade=arvustused, ?olek=ootel|avaldatud|peidetud
+  // (the status filter). Maria decides each review: „Avalda“, „Peida“ and the „Avalehel“ toggle; a student's words are never edited; „Lisa arvustus“ adds one
+  // she received elsewhere, which she can edit and delete. Quoted from the spec as they are: „Arvustused“, the three statuses („Ootab kinnitust“,
+  // „Avaldatud“, „Peidetud“), „Avalda“, „Peida“, „Avalehel“, „Lisa arvustus“, „Kust see pärit on?“, „Lisa ainult päris õpilase sõnad tema loal.“,
+  // „Nimi, mida näidatakse“ and the `gone` answer. Every other text here is a Draft for Dim's wording sheet.
+  // {n} a count, {max} a limit, {date} a day, {name} a name, {status} a status, {protocol} a protocol line, {note} her note.
+  reviews: {
+    title: "Arvustused",
+    lead: "Õpilaste sõnad, mida nad lubasid avaldada, ja arvustused, mille oled ise lisanud. Õpilase teksti ei saa muuta: saad selle avaldada või peita.",
+    filterLabel: "Olek",
+    all: "Kõik",
+    status: { pending: "Ootab kinnitust", published: "Avaldatud", hidden: "Peidetud" },
+    empty: "Arvustusi pole veel.",
+    emptyFiltered: "Selles vaates arvustusi pole.",
+    language: "Keel: {locale}",
+    // the proof of a student's review (D2): what Maria judges by whether the writer took part
+    proof: { registration: "Registreering: {status} · {protocol}", protocolSent: "Protokoll saadetud", protocolNotSent: "Protokolli pole saadetud" },
+    manual: "Lisatud käsitsi",
+    source: "Allikas: {note}",
+    publish: "Avalda",
+    hide: "Peida",
+    featured: "Avalehel",
+    edit: "Muuda",
+    delete: "Kustuta",
+    // the buttons' names for a screen reader: the button's own words first, then whose review it is
+    label: "{action}: {name}",
+    deleteConfirm: "Kas kustutan selle arvustuse? Seda ei saa tagasi võtta.",
+    deleteYes: "Jah, kustuta",
+    deleteNo: "Ei",
+    working: "Salvestan…",
+    deleted: "Arvustus on kustutatud.",
+    // the drawer of a student (Õpilased): whether she allowed publishing and what became of it
+    drawer: { allowed: "Lubab avaldada: {status}", allowedFeatured: "Lubab avaldada: {status}, avalehel", notAllowed: "Avaldamise luba pole antud.", open: "Ava arvustused" },
+    form: {
+      add: "Lisa arvustus",
+      editTitle: "Muuda arvustust",
+      warning: "Lisa ainult päris õpilase sõnad tema loal.",
+      course: "Koolitus",
+      chooseCourse: "Vali koolitus",
+      name: "Nimi, mida näidatakse",
+      text: "Arvustuse tekst",
+      writtenAt: "Kirjutamise kuupäev",
+      locale: "Arvustuse keel",
+      localeOptions: { et: "Eesti keel", ru: "Vene keel" },
+      note: "Kust see pärit on?",
+      noteHint: "Ainult sinule: avalikul lehel seda ei näidata.",
+      count: "{n} / {max}",
+      save: "Salvesta",
+      cancel: "Tühista",
+      errors: { required: "Täida see väli.", tooLong: "Tekst on liiga pikk.", invalid: "Kontrolli seda välja." },
+    },
+    // what an action answers when it did not go through
+    errors: {
+      gone: "Seda arvustust enam pole — õpilane võttis loa tagasi.",
+      notPublished: "Avalehel saab olla ainult avaldatud arvustus.",
+      manualGone: "Seda arvustust enam pole.",
+      notManual: "Õpilase sõnu ei saa muuta ega kustutada. Kui ei taha neid näidata, peida arvustus.",
+      server: "Salvestamine ei õnnestunud. Proovi uuesti.",
+    },
   },
 
   requests: {
