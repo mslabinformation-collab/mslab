@@ -3056,7 +3056,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "ekursus-luba-tagasi",
@@ -3086,7 +3086,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "ekursus-tunnistus",
@@ -3452,7 +3452,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-tagasiside",
@@ -3481,7 +3481,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-tagasiside-haldus",
@@ -3510,7 +3510,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-arvustus-toend",
@@ -3535,7 +3535,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-arvustus-avalda",
@@ -3559,7 +3559,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-arvustus-avalehel",
@@ -3585,7 +3585,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-arvustus-plokk",
@@ -3611,7 +3611,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-arvustus-naita-koiki",
@@ -3642,7 +3642,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-arvustus-avaleht",
@@ -3669,7 +3669,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-arvustus-vene-keeles",
@@ -3694,7 +3694,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-arvustus-peida",
@@ -3717,7 +3717,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-arvustus-tyhi",
@@ -3743,7 +3743,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-arvustus-lisa",
@@ -3774,7 +3774,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kontakt-tana",
@@ -4482,7 +4482,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-18T16:48:36.596Z"
     },
     {
       "id": "kirjad-maria-praktiline",
