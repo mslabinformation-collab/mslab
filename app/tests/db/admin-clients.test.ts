@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
 import { listRegistrations } from "@/db/queries/admin";
-import { clients, clientSessions, courseAccess, courses, courseSessions, courseTests, practicePackages, protocols, registrations, requests, subscribers, termsAcceptances, testAttempts } from "@/db/schema";
+import { clients, clientSessions, contracts, courseAccess, courses, courseSessions, courseTests, practicePackages, protocols, registrations, requests, subscribers, testAttempts } from "@/db/schema";
 import { PAGE_SIZE } from "@/domain/paging";
 import { registrationHeading as heading } from "@/domain/registration-card";
 import { getDict } from "@/i18n/locales";
@@ -135,7 +135,7 @@ describe("listClients", () => {
 });
 
 describe("clientDetail", () => {
-  test("her registrations, requests (named and with their subject, as Päringud), accesses with their state, terms; nothing of anybody else", async () => {
+  test("her registrations, requests (named and with their subject, as Päringud), accesses with their state, contracts; nothing of anybody else", async () => {
     const kati = await client("kati@example.test", { phone: "+372 5555 0101", locale: "ru" });
     const other = await client("other@example.test");
     const reg = await register(kati.id, kati.email, { name: "Kati Kask" });
@@ -153,7 +153,15 @@ describe("clientDetail", () => {
     ]);
     const open = await access(kati.id, { grantedBy: ADMIN, grantedAt: new Date("2026-10-01T10:00:00Z") });
     await access(kati.id, { courseId: draftEcourse.id, expiresAt: new Date("2026-10-01T00:00:00Z"), grantedAt: new Date("2026-04-01T10:00:00Z") });
-    await db.insert(termsAcceptances).values({ clientId: kati.id, courseId: ecourse.id, termsVersion: "2026-10-02T10:00:00.000Z", acceptedAt: new Date("2026-10-02T11:00:00Z") });
+    // her contracts (contracts Task 5): the e-course's from the terms gate, and the registration's, replaced by a newer one; another student's is not hers
+    const fields = { school: { company: "MS LAB OÜ", registryCode: "", address: "" }, student: { name: "Kati Kask", email: kati.email }, course: "Kulmumeistri e-koolitus", session: "", price: "", payment: "" };
+    const made = { locale: "et" as const, fields, body: "Tekst.", version: "1" };
+    await db.insert(contracts).values([
+      { ...made, kind: "ecourse", clientId: kati.id, accessId: open.id, courseId: ecourse.id, title: "E-koolituse tingimused", acceptedAt: new Date("2026-10-02T11:00:00Z"), acceptedVia: "terms" },
+      { ...made, kind: "contact", clientId: kati.id, registrationId: reg.id, title: "Kontaktkoolituse leping", acceptedAt: new Date("2026-10-01T11:00:00Z"), acceptedVia: "form", supersededAt: new Date("2026-10-03T11:00:00Z"), body: "Vana tekst." },
+      { ...made, kind: "contact", clientId: kati.id, registrationId: reg.id, title: "Kontaktkoolituse leping", acceptedAt: new Date("2026-10-03T11:00:00Z"), acceptedVia: "account", sentAt: new Date("2026-10-03T11:05:00Z") },
+      { ...made, kind: "ecourse", clientId: other.id, courseId: ecourse.id, title: "Teise leping", acceptedAt: new Date("2026-10-02T12:00:00Z"), acceptedVia: "terms" },
+    ]);
 
     const d = (await clientDetail(db, kati.id, NOW))!;
     expect(d.client).toMatchObject({ id: kati.id, email: "kati@example.test", name: "Kati Kask", ownName: "", phone: "+372 5555 0101", locale: "ru" });
@@ -172,7 +180,13 @@ describe("clientDetail", () => {
       [draftEcourse.id, "expired", "e2e"],
     ]);
     expect(d.access[0]).toMatchObject({ id: open.id, slug: "e-kulm", title: { et: "Kulmumeistri e-koolitus" } });
-    expect(d.terms).toEqual([{ courseTitle: { et: "Kulmumeistri e-koolitus" }, version: "2026-10-02T10:00:00.000Z", acceptedAt: new Date("2026-10-02T11:00:00Z") }]);
+    // the newest acceptance first, the superseded one too; the text itself stays out of the drawer's data (the PDF has it)
+    expect(d.contracts.map((k) => [k.kind, k.title, k.acceptedVia, k.registrationId, k.supersededAt !== null, k.sentAt !== null])).toEqual([
+      ["contact", "Kontaktkoolituse leping", "account", reg.id, false, true],
+      ["ecourse", "E-koolituse tingimused", "terms", null, false, false],
+      ["contact", "Kontaktkoolituse leping", "form", reg.id, true, false],
+    ]);
+    expect(Object.keys(d.contracts[0]).sort()).toEqual(["acceptedAt", "acceptedVia", "id", "kind", "locale", "registrationId", "sentAt", "supersededAt", "title"]);
     await revokeAccess(db, { clientId: kati.id, accessId: open.id, now: NOW });
     expect((await clientDetail(db, kati.id, NOW))!.access[0].state).toBe("revoked");
     expect(await clientDetail(db, 999_999, NOW)).toBeNull();
@@ -338,7 +352,7 @@ describe("e-course access", () => {
     await grantAccess(db, { clientId: summer.id, courseId: ecourse.id, until: "2027-07-01", by: ADMIN, now: NOW });
     expect((await db.select().from(courseAccess).where(eq(courseAccess.clientId, summer.id)))[0].expiresAt.toISOString()).toBe("2027-07-01T20:59:59.999Z"); // UTC+3
     const dash = (await loadDashboard(db, kati.id, NOW))!;
-    expect(dash.cards).toEqual([{ kind: "ecourse", course: { slug: "e-kulm", title: { et: "Kulmumeistri e-koolitus" } }, grantedAt: NOW.toISOString(), expiresAt: "2027-04-04T20:59:59.999Z", revoked: false, progress: null, completedAt: null, certificateId: null }]);
+    expect(dash.cards).toEqual([{ kind: "ecourse", course: { slug: "e-kulm", title: { et: "Kulmumeistri e-koolitus" } }, grantedAt: NOW.toISOString(), expiresAt: "2027-04-04T20:59:59.999Z", revoked: false, progress: null, completedAt: null, certificateId: null, contract: null, contractRequested: false }]);
     // a draft e-course can be granted (bought before it is published)
     expect(await grantAccess(db, { clientId: kati.id, courseId: draftEcourse.id, until: "2026-10-04", by: ADMIN, now: NOW })).toEqual({ ok: true });
   });

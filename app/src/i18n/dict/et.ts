@@ -283,7 +283,16 @@ export const et = {
     submit: "Saada",
     sending: "Saadan…",
     register: "Registreeru",
+    // the individual request's box (D1: it gets no contract) and its link to „Õppetingimused“
     terms: "Olen tutvunud tingimustega ja nõustun nendega.",
+    // the group registration's box is the contract (contracts, D1: verbatim), with the inline contract („Loe lepingut“, verbatim) filled live
+    // from the form; until a date is chosen, {toimumine} says `contractNoSession` (Draft for Dim's wording sheet). `contractChanged` (Draft for
+    // Dim's wording sheet; ruling R6) is the box's error when the contract's text changed since the page was loaded, in the cart too: the form
+    // shows the new text and the box is cleared
+    contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
+    readContract: "Loe lepingut",
+    contractNoSession: "(vali toimumine)",
+    contractChanged: "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.",
     // Contact-course registration extras (P11, P14, P16)
     modelHelp: "Soovin koolituskeskuse abi modellide leidmisel",
     createAccount: "Loo mulle kohe konto MS LAB keskkonda",
@@ -390,6 +399,8 @@ export const et = {
     emptyTitle: "Ostukorv on tühi",
     emptyText: "Vali endale sobiv e-koolitus — selle saad osta kohe, kui makse avaneb.",
     total: "Kokku",
+    // the purchase's box is the e-course contract (contracts, D1), with `forms.readContract` opening its text in the cart
+    contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
   },
 
   // Online payments (phase 2b, spec 9). {amount} is euros ("175 €"), {title} the course, {date} the last day of an e-course's access. The
@@ -526,6 +537,20 @@ export const et = {
       due: "Tasumise tähtaeg",
       paidOn: "Tasutud",
       attached: "Arve PDF on kirjas manusena.",
+    },
+    // The contract's mail (server/account-mail.ts contractMail, contracts Task 4, ruling R1): after the terms gate, „Kinnitan“ and Maria's copy.
+    // `attached` (verbatim, spec D7) is also the line of the registration's confirmation and of the e-course's paid mail when they carry the
+    // contract. `subject` („MS LAB leping“, the brief's value) and `lead` are Draft for Dim's wording sheet. {date} is the day she accepted it.
+    contractMail: {
+      subject: "MS LAB leping",
+      lead: "Kinnitasid lepingu {date}.",
+      attached: "Leping on lisatud.",
+    },
+    // Maria's ask (server/account-mail.ts contractRequestMail, contracts Task 5, ruling R9; spec D4): „Saada leping kinnitamiseks“ mails the student a plain
+    // link to her account, where the card shows „Kinnita leping“. `subject` is R9's; `lead` is Draft for Dim's wording sheet. {course} is the course's name.
+    contractRequestMail: {
+      subject: "MS LAB leping kinnitamiseks",
+      lead: "Maria palub sul kinnitada lepingu koolituse „{course}“ jaoks.",
     },
     // The e-course completion's mails to the student (server/account-mail.ts completionMail, phase e-course completion, spec §6): each kind
     // has its subject, its one line and its button, which opens the page (she signs in there when she must). {title} is the course, {n} the
@@ -701,6 +726,9 @@ export const et = {
       start: "Alusta koolitust",
       // the acceptance could not be stored (the checkbox stays ticked)
       termsFailed: "Ei õnnestunud salvestada. Proovi uuesti.",
+      // an account with no name gives hers at the gate (contracts, ruling R19): the field and its error, Draft for Dim's wording sheet
+      termsName: "Nimi",
+      termsNameRequired: "Kirjuta oma nimi.",
       access: "Ligipääs kuni {date}",
       soon: "Sisu lisandub peagi.",
       resume: "Jätka",
@@ -920,6 +948,25 @@ export const et = {
       refunded: "Tagastatud",
       payBy: "tasu {date}",
       download: "Laadi alla (PDF)",
+    },
+    // The contract on a course card (components/account/ContractLine.tsx; contracts Task 6, spec §4 Account): a quiet line „Leping · kinnitatud
+    // 15.10.2026“ (`line`, {date} the day she accepted it) with `download` (the PDF); once Maria has asked her to confirm it (spec D4) the card
+    // instead offers `open` („Kinnita leping“), which shows the current text with `accept` („Kinnitan“). `line`, `download`, `open` and `accept` are
+    // the spec's own words; the rest is Draft for Dim's wording sheet. The refusals use the forms' words: `forms.contractChanged` (the text changed
+    // since she opened it, ruling R6), `forms.errorTooMany` and `forms.errorGeneric`.
+    contract: {
+      line: "Leping · kinnitatud {date}",
+      download: "Laadi alla (PDF)",
+      // why the card offers it (Maria pressed „Saada leping kinnitamiseks“)
+      asked: "Maria palub sul lepingu kinnitada.",
+      open: "Kinnita leping",
+      hide: "Peida leping",
+      // the name of the text for a screen reader
+      region: "Leping",
+      loading: "Laadin lepingut…",
+      loadFailed: "Lepingut ei õnnestunud laadida. Proovi uuesti.",
+      accept: "Kinnitan",
+      done: "Leping on kinnitatud.",
     },
     // "Lemmikud" /konto/lemmikud (components/account/FavouritesTab.tsx): the hearted courses as the catalogue's cards, each with ♡ to
     // take it off. {title} is a course's title (the button's name for a screen reader, and what was taken off).

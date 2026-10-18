@@ -5,8 +5,8 @@ import { purchaseExpiryDate } from "@/domain/client-access";
 import type { I18n } from "@/i18n/field";
 import { addClient, grantAccess } from "../admin-clients";
 
-/** What a paid e-course purchase opened: for whom (`created`: a new client), which course, until when. */
-export type Grant = { clientId: number; created: boolean; courseSlug: string; courseTitle: I18n; expiresAt: Date };
+/** What a paid e-course purchase opened: for whom (`created`: a new client), which access row, which course, until when. */
+export type Grant = { clientId: number; created: boolean; accessId: number; courseSlug: string; courseTitle: I18n; expiresAt: Date };
 
 /** The longest name a client keeps (the forms' and Minu andmed's limit). */
 const NAME_MAX = 120;
@@ -48,9 +48,9 @@ export async function grantPurchase(tx: Tx, payment: Payment, now: Date): Promis
   if (!granted.ok) return null;
   await db.update(payments).set({ clientId: client.id }).where(eq(payments.id, payment.id));
   const [access] = await db
-    .select({ expiresAt: courseAccess.expiresAt })
+    .select({ id: courseAccess.id, expiresAt: courseAccess.expiresAt })
     .from(courseAccess)
     .where(and(eq(courseAccess.clientId, client.id), eq(courseAccess.courseId, course.id)))
     .limit(1);
-  return { clientId: client.id, created: client.created, courseSlug: course.slug, courseTitle: course.title, expiresAt: access.expiresAt };
+  return { clientId: client.id, created: client.created, accessId: access.id, courseSlug: course.slug, courseTitle: course.title, expiresAt: access.expiresAt };
 }

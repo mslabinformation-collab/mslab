@@ -23,6 +23,11 @@ export type CoursesTexts = Dict["account"]["dashboard"] & {
   certificate: CertificateTexts;
   /** The invoices on the card (invoices Task 6): the account.invoices words. */
   invoices: Dict["account"]["invoices"];
+  /**
+   * The contract on the card (contracts Task 6): the account.contract words, and the forms' own refusals for „Kinnitan“ (forms.contractChanged: the
+   * text changed since she opened it, ruling R6; forms.errorTooMany; forms.errorGeneric).
+   */
+  contract: Dict["account"]["contract"] & { changed: string; rate: string; failed: string };
 };
 
 /** "Lemmikud": the account.favourites strings and AccountLoader's. */
@@ -86,6 +91,7 @@ export const coursesTexts = (d: Dict): CoursesTexts => ({
   completed: d.account.completion.completedOn,
   certificate: certificateTexts(d),
   invoices: d.account.invoices,
+  contract: { ...d.account.contract, changed: d.forms.contractChanged, rate: d.forms.errorTooMany, failed: d.forms.errorGeneric },
 });
 
 export const favouritesTexts = (d: Dict): FavouritesTexts => ({ ...d.account.favourites, loader: loaderTexts(d) });

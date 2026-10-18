@@ -5,6 +5,7 @@ import { readSetting } from "@/db/queries/public";
 import { clients } from "@/db/schema";
 import { certificateDownloadHeaders } from "@/domain/certificate";
 import { PHOTO_LIMITS, TEST_LIMITS } from "@/domain/completion";
+import { contractDownloadHeaders } from "@/domain/contract";
 import { isEmail, isSampleAddress, normalizeEmail } from "@/domain/email";
 import { invoiceDownloadHeaders } from "@/domain/invoice";
 import { FEEDBACK_TEXT_MAX } from "@/domain/protocols";
@@ -13,8 +14,8 @@ import { LOGIN_MARK } from "@/lib/account-marks";
 import { parseRowId } from "@/lib/row-id";
 import { deletionMail, loginMail, passwordChangedMail, verifyLink } from "./account-mail";
 import {
-  LIMITS, parseChangeRequest, parseDeletion, parseFavourite, parseFeedbackHide, parseFeedbackPost, parseMerge, parseNewsletter, parsePassword, parsePayStart, parseProfile,
-  parseProgress, parseSlug, parseTerms,
+  LIMITS, parseChangeRequest, parseContractAccept, parseDeletion, parseFavourite, parseFeedbackHide, parseFeedbackPost, parseMerge, parseNewsletter, parsePassword, parsePayStart,
+  parseProfile, parseProgress, parseSlug, parseTerms,
 } from "./account-input";
 import { isCrossSite } from "./auth";
 import type { BunnyConfig } from "./bunny";
@@ -24,10 +25,12 @@ import {
   redeemClientLink, redeemClientPassword, reserveLoginMail, type PasswordGate,
 } from "./client-auth";
 import {
-  acceptTerms, createChangeRequest, deleteClient, loadDashboard, loadEcourse, loadFavouriteCards, mergeFavourites, setFavourite, setNewsletter, updateProfile,
+  acceptContract, acceptTerms, contractToAccept, createChangeRequest, deleteClient, loadDashboard, loadEcourse, loadFavouriteCards, mergeFavourites, setFavourite, setNewsletter,
+  updateProfile,
 } from "./client-data";
 import { removeClientPassword, setClientPassword } from "./client-password";
 import { queueCompletionMail } from "./completion";
+import { contractForStudent, contractPdf, mailContract } from "./contracts";
 import { feedbackState, hideFeedback, notifyFeedback, submitFeedback } from "./course-feedback";
 import { invoiceForStudent, invoicePdf } from "./invoices";
 import { PgKv } from "./kv";
@@ -63,7 +66,7 @@ import { sha256 } from "./token";
 // GET /kursus/:slug/:lesson one lesson (an open one with a signed video URL; 403 terms or locked), POST …/:lesson/progress how far a video has
 // been watched, POST …/:lesson/tehtud "Märgi tehtuks" for a text lesson, GET …/:lesson/fail/:file a lesson file, GET /kursus/:slug/test the knowledge test with POST /kursus/:slug/test an attempt and POST …/test/uuesti the "Paranda" answers rewritten (e-course completion), GET /lemmikud the
 // favourites as course cards, POST /lemmikud and /lemmikud/merge favourites, PATCH /andmed the profile, POST /uudiskiri the newsletter, POST /muutmine a request to cancel or
-// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, GET /kursus/:slug/praktiline the practical work of an e-course (e-course completion: her points, her photos and Maria's sent assessment), POST …/praktiline/foto one photo (multipart, made smaller in the browser), DELETE …/praktiline/foto/:id one photo of the round being prepared, POST …/praktiline/saada "Saada hindamiseks" / "Saada uuesti", GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kursus/:slug/tunnistus the certificate of her completed e-course with the name she confirmed and GET /tunnistus/:id its PDF (phase 3d), GET /arve/:id one of her invoices as a PDF (invoices), POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
+// move a registration (Maria is told after the response), POST /maksa an online payment of one of her registrations (phase 2b: the prepayment due, or the rest), GET /protokoll?id= the protocol Maria sent for one of her registrations (phase protocols), GET /tagasiside?id=, POST /tagasiside and POST /tagasiside/peida the course feedback form of one of her registrations (its state, her answers once, 'Ei soovi'), POST /tingimused the e-course terms, GET /kursus/:slug/praktiline the practical work of an e-course (e-course completion: her points, her photos and Maria's sent assessment), POST …/praktiline/foto one photo (multipart, made smaller in the browser), DELETE …/praktiline/foto/:id one photo of the round being prepared, POST …/praktiline/saada "Saada hindamiseks" / "Saada uuesti", GET /praktiline/foto/:id and …/:id/pisi one of her photos (a 302 to a signed address), POST /kursus/:slug/tunnistus the certificate of her completed e-course with the name she confirmed and GET /tunnistus/:id its PDF (phase 3d), GET /arve/:id one of her invoices as a PDF (invoices), GET /leping/:id one of her contracts as a PDF (contracts), GET /leping-tekst/:registrationId the text „Kinnita leping" shows once Maria has asked, POST /leping „Kinnitan" (contracts), POST /kustuta account deletion, POST /parool and DELETE /parool the optional password (each change mailed; 5 changes an hour between them).
 // Each one starts with requireClient and answers through clientResponse (a renewed session's cookies reach the browser); the
 // client is always the session's, never a value from the request. A body that is not what the endpoint expects is 400
 // { ok: false, error: "<field>" } (account-input.ts), a record that is not the client's is 404.
@@ -131,6 +134,8 @@ const CERTIFICATE_ISSUES_PER_HOUR = 10;
 const CERTIFICATE_FILES_PER_HOUR = 10;
 /** Invoice downloads per hour (invoices Task 6, spec §4): each one renders the PDF, as a certificate's does. */
 const INVOICE_FILES_PER_HOUR = 10;
+/** Contract downloads per hour (contracts Task 6, spec §4): each one renders the PDF, as a certificate's and an invoice's do. */
+const CONTRACT_FILES_PER_HOUR = 10;
 /** The issue's body, `{ name }`: a name of at most 80 characters, with room for its JSON escapes. */
 const CERTIFICATE_BODY_CHARS = 1024;
 
@@ -469,8 +474,9 @@ async function photoAnswer(session: ClientSession, store: FileStore, key: string
 }
 
 /**
- * A PDF for its owner (a certificate, phase 3d, spec §5, §7; an invoice, invoices Task 6, spec §4): the bytes as a download named by its number
- * (`download`: domain/certificate.ts certificateDownloadHeaders or domain/invoice.ts invoiceDownloadHeaders), `private, no-store` and not for
+ * A PDF for its owner (a certificate, phase 3d, spec §5, §7; an invoice, invoices Task 6, spec §4; a contract, contracts Task 6): the bytes as a
+ * download named by its number (`download`: domain/certificate.ts certificateDownloadHeaders, domain/invoice.ts invoiceDownloadHeaders or
+ * domain/contract.ts contractDownloadHeaders), `private, no-store` and not for
  * search engines (BASE_HEADERS), nosniff; the cookies of a renewed session go with it, as with clientResponse. The handlers never build a Response
  * of their own.
  * (The cast: the PDF's bytes are a Uint8Array<ArrayBufferLike>, which TypeScript does not take as a BlobPart as it stands.)
@@ -917,6 +923,33 @@ async function invoiceFile(request: Request, deps: AccountDeps, rawId: string): 
 }
 
 /**
+ * GET /leping/:id (contracts Task 6, spec §4): her contract as a PDF (contracts.ts contractPdf, rendered from the frozen row on each download), via
+ * pdfAnswer as `attachment; filename="MS-LAB-leping-{id}.pdf"`. Only her own (contracts.ts contractForStudent, ruling R14: the live client of its
+ * registration or its access, else the client it froze), a superseded one too; 404 `{ ok: false }` for any other id; 429 `{ error: "rate" }` after
+ * 10 in an hour (a 404 counts too, so ids cannot be probed). A render that fails is 500 `{ error: "server" }`, logged by the contract's id.
+ */
+async function contractFile(request: Request, deps: AccountDeps, rawId: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const id = parseRowId(rawId);
+  if (id === null) return clientResponse(session, { ok: false }, 404);
+  if (!(await withinClientLimit(deps, session.clientId, "client-contract-pdf", CONTRACT_FILES_PER_HOUR, 60 * 60))) {
+    logNote("[account] contract downloads rate limited");
+    return clientResponse(session, { ok: false, error: "rate" }, 429);
+  }
+  const contract = await contractForStudent(deps.db, session.clientId, id);
+  if (!contract) return clientResponse(session, { ok: false }, 404);
+  let bytes: Uint8Array;
+  try {
+    bytes = await contractPdf(contract);
+  } catch (e) {
+    logFailure(`[contracts] ${contract.id}: the student's download failed`, e); // its id and the error's class only
+    return clientResponse(session, { ok: false, error: "server" }, 500);
+  }
+  return pdfAnswer(session, bytes, contractDownloadHeaders(contract.id));
+}
+
+/**
  * GET /lemmikud?l=<et|ru>: the Lemmikud tab, `{ ok, favourites, cards }` (client-data.ts FavouriteCards): the client's published favourites
  * as the catalogue's course cards, newest first, in the page's language `l` (anything but "ru" is Estonian).
  */
@@ -1130,18 +1163,71 @@ async function dismissFeedback(request: Request, deps: AccountDeps): Promise<Res
 }
 
 /**
- * POST /tingimused `{ slug, version }`: the client accepts the e-course terms, the version the page showed (`terms.version` of the e-course view).
+ * POST /tingimused `{ slug, version, locale?, name? }`: the client accepts the e-course terms, the version the page showed (`terms.version` of the
+ * e-course view), on a page in `locale`. The acceptance freezes the access's contract (contracts, D1; client-data.ts acceptTerms), which is mailed
+ * to her after the response with its PDF, „MS LAB leping“ in the page's language (contracts.ts mailContract: never to a sample address, nothing in
+ * local development). `name`: the gate's „Nimi“, sent by an account with no name (ruling R19): it is the contract's name and is saved as hers.
  * 404 `{ error: "slug" }` without active access to that course; 409 `{ error: "version" }` when the terms have changed since the page was loaded
- * (nothing is stored: the page loads the course again and shows the new text).
+ * (nothing is stored: the page loads the course again and shows the new text); 400 `{ error: "name" }` when her account has no name and none
+ * usable came (nothing is stored: the gate says so under the field).
  */
 async function terms(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const input = parseTerms(await readObject(request));
   if (!input.ok) return badInput(session, input.error);
-  const result = await acceptTerms(deps.db, session.clientId, input.data.slug, input.data.version, deps.now);
+  const { locale, name } = input.data;
+  const result = await acceptTerms(deps.db, session.clientId, input.data.slug, input.data.version, deps.now, {
+    locale,
+    name,
+    onContract: (contract) => {
+      if (!deps.dev) deps.later(() => mailContract({ db: deps.db, env: deps.env, siteUrl: deps.siteUrl, now: deps.now }, contract, { locale }));
+    },
+  });
   if (result === "accepted") return clientResponse(session, { ok: true });
+  if (result === "name") return badInput(session, "name");
   return result === "stale" ? clientResponse(session, { ok: false, error: "version" }, 409) : clientResponse(session, { ok: false, error: "slug" }, 404);
+}
+
+/**
+ * GET /leping-tekst/:registrationId?l=<et|ru> (contracts Task 6, spec D4): the text „Kinnita leping" opens on a course card, `{ ok: true, title, body,
+ * version, locale }`: the current contact contract filled with her registration (client-data.ts contractToAccept), in the page's language `l`
+ * (D6; `locale` is the language the text is in, Estonian when no Russian text exists; with no `l` her account's language, as POST /leping takes it). `version` goes back with „Kinnitan". Only while Maria's ask is
+ * open on her own, not cancelled, group registration; 404 `{ ok: false }` for everything else (not hers, no ask, cancelled, unknown, not an id).
+ */
+async function contractText(request: Request, deps: AccountDeps, rawId: string): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const id = parseRowId(rawId);
+  // no (or an unknown) language: her account's, as „Kinnitan“ takes it (client-data.ts acceptContract): the text shown is the text frozen
+  const text = id === null ? null : await contractToAccept(deps.db, session.clientId, id, pageLocaleOf(new URL(request.url).searchParams.get("l")));
+  return text ? clientResponse(session, { ok: true, ...text }) : clientResponse(session, { ok: false }, 404);
+}
+
+/**
+ * POST /leping `{ registrationId, version?, locale? }`: „Kinnitan" (contracts Task 6, spec D4; ruling R3). She accepts the current contract text of
+ * a registration Maria asked her to confirm (client-data.ts acceptContract: one transaction under the registration's lock): the new contract
+ * supersedes the old one and Maria's ask is cleared with it. `version` is the one the card was shown (`GET /leping-tekst`); `locale` the page's
+ * language (the contract's, D6). The new contract is mailed to her after the response, „MS LAB leping" with its PDF in the page's language
+ * (contracts.ts mailContract: never to a sample address, nothing in local development), as the terms gate's is.
+ * 404 `{ error: "registration" }`: not hers, not a group registration, cancelled, unknown. 409 `{ error: "version" }`: the text is not the one
+ * shown any more (Maria saved a new one, ruling R6) or no version came: nothing is written, the card reads the text again. 409 `{ error: "nothing" }`:
+ * there is no open ask (never made, or answered: a second tap, another device), nothing is written and no second contract is made.
+ */
+async function acceptContractRoute(request: Request, deps: AccountDeps): Promise<Response> {
+  const session = await requireClient(request, deps);
+  if (session instanceof Response) return session;
+  const input = parseContractAccept(await readObject(request));
+  if (!input.ok) return badInput(session, input.error);
+  const { locale } = input.data;
+  const result = await acceptContract(deps.db, session.clientId, input.data, deps.now, {
+    onContract: (contract) => {
+      if (!deps.dev) deps.later(() => mailContract({ db: deps.db, env: deps.env, siteUrl: deps.siteUrl, now: deps.now }, contract, { locale }));
+    },
+  });
+  if (result === "accepted") return clientResponse(session, { ok: true });
+  if (result === "notFound") return clientResponse(session, { ok: false, error: "registration" }, 404);
+  return clientResponse(session, { ok: false, error: result === "stale" ? "version" : "nothing" }, 409);
 }
 
 /**
@@ -1184,6 +1270,10 @@ const CERT_PATH = /^\/kursus\/([^/]+)\/tunnistus$/;
 const CERT_FILE_PATH = /^\/tunnistus\/([^/]+)$/;
 /** An invoice's PDF (invoices Task 6; the id in the path, never a query): GET /arve/<id>. */
 const INVOICE_FILE_PATH = /^\/arve\/([^/]+)$/;
+/** A contract's PDF (contracts Task 6; the id in the path, never a query): GET /leping/<id>. */
+const CONTRACT_FILE_PATH = /^\/leping\/([^/]+)$/;
+/** The text „Kinnita leping" opens (contracts Task 6; the registration's id in the path, the page's language in the query `l`): GET /leping-tekst/<registrationId>. */
+const CONTRACT_TEXT_PATH = /^\/leping-tekst\/([^/]+)$/;
 
 /** The endpoints behind a session; any other method and path is unknown (404, with or without a session). */
 async function dataRoute(request: Request, path: string, deps: AccountDeps): Promise<Response> {
@@ -1203,6 +1293,7 @@ async function dataRoute(request: Request, path: string, deps: AccountDeps): Pro
     case "POST /tagasiside": return sendFeedback(request, deps);
     case "POST /tagasiside/peida": return dismissFeedback(request, deps);
     case "POST /tingimused": return terms(request, deps);
+    case "POST /leping": return acceptContractRoute(request, deps);
     case "POST /kustuta": return deleteAccount(request, deps);
   }
   const course = request.method === "GET" ? COURSE_PATH.exec(path) : null;
@@ -1234,6 +1325,10 @@ async function dataRoute(request: Request, path: string, deps: AccountDeps): Pro
   if (certFile) return certificateFile(request, deps, certFile[1]);
   const invoiceFilePath = request.method === "GET" ? INVOICE_FILE_PATH.exec(path) : null;
   if (invoiceFilePath) return invoiceFile(request, deps, invoiceFilePath[1]);
+  const contractFilePath = request.method === "GET" ? CONTRACT_FILE_PATH.exec(path) : null;
+  if (contractFilePath) return contractFile(request, deps, contractFilePath[1]);
+  const contractTextPath = request.method === "GET" ? CONTRACT_TEXT_PATH.exec(path) : null;
+  if (contractTextPath) return contractText(request, deps, contractTextPath[1]);
   const lessonPath = LESSON_PATH.exec(path);
   if (lessonPath) {
     const [, slug, id, action, file] = lessonPath;

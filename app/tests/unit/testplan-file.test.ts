@@ -132,3 +132,129 @@ describe("checkPlan: a plan that is not a plan", () => {
     expect(checkPlan({ version: 1, marked: "2026-10-16T00:00:00.000Z", areas: [null], items: [5] })).toEqual(["area 1 is not an object", "item 1 is not an object"]);
   });
 });
+
+// The test page shows the checks in file order and Maria and Dim walk them top to bottom (contracts Task 6, review I-1 and N-1): each contract check
+// sits where what it needs exists. A student has NO account until somebody signs her in or Maria adds her („Lisa õpilane e-posti järgi“): the
+// registration form's „Loo mulle kohe konto“ only mails a code, so a registration is not linked (no ask button, no „Õpilased“ panel) before that.
+// Proov 1 registers in `registreerimine-grupp`; the first check that needs her linked, `registreerimine-leping-plokk`, adds her first. Maria's ask
+// on that registration is opened by `registreerimine-leping-kinnitamiseks` and stays open until `konto-leping-kinnita` answers it, so the plain
+// contract line of that card can only be read after it; Proov 7 registers and signs in (which links her) at `konto-arve-maksa` and is cancelled at
+// `konto-arve-tuhistatud`, so the Russian contract check (which asks again and confirms) sits between them; Proov 5's free access is opened by
+// Maria adding her in `ekursus-ligipaas-ava` before her terms gate.
+describe("the contract checks sit where their preconditions exist", () => {
+  const order = plan.items.map((i) => i.id);
+  const at = (id: string): number => {
+    const n = order.indexOf(id);
+    expect(n, id).toBeGreaterThanOrEqual(0);
+    return n;
+  };
+  const item = (id: string) => plan.items[at(id)];
+  const expectText = (id: string) => item(id).expect.join("\n");
+
+  test("the card's plain contract line is read only after the ask on Proov 1 has been answered", () => {
+    expect(at("registreerimine-grupp")).toBeLessThan(at("registreerimine-leping-kinnitamiseks"));
+    expect(at("registreerimine-leping-kinnitamiseks")).toBeLessThan(at("konto-leping-kinnita"));
+    expect(at("konto-leping-kinnita")).toBeLessThan(at("konto-leping-kaardil"));
+    expect(expectText("konto-leping-kaardil")).toContain("tänase kuupäevaga");
+  });
+
+  test("a check that sits while the ask is open names „Kinnita leping“ as the other thing the card may show", () => {
+    expect(at("konto-minu-koolitused")).toBeGreaterThan(at("registreerimine-leping-kinnitamiseks"));
+    expect(at("konto-minu-koolitused")).toBeLessThan(at("konto-leping-kinnita"));
+    const line = item("konto-minu-koolitused").expect.find((l) => l.includes("Leping · kinnitatud"));
+    expect(line, "the contract line of konto-minu-koolitused").toBeDefined();
+    expect(line).toContain("Kinnita leping");
+  });
+
+  test("nothing is superseded yet where the copy check sits: its line about a replaced contract is conditional", () => {
+    expect(at("registreerimine-leping-koopia")).toBeLessThan(at("konto-leping-kinnita"));
+    const line = item("registreerimine-leping-koopia").expect.find((l) => l.includes("Asendatud"));
+    expect(line).toContain("kui paneelis on selline");
+  });
+
+  test("the Russian check uses Proov 7 between its registration and its cancellation", () => {
+    expect(at("konto-arve-maksa")).toBeLessThan(at("konto-leping-vene-keeles"));
+    expect(at("konto-leping-vene-keeles")).toBeLessThan(at("konto-arve-tuhistatud"));
+    const ru = item("konto-leping-vene-keeles");
+    expect(ru.steps.join("\n")).toContain("Proov 7");
+    expect(ru.steps.join("\n")).not.toContain("Proov 8");
+    expect(item("konto-arve-maksa").steps.join("\n")).toContain("Proov 7");
+  });
+
+  /** The first step, in file order, that contains all of `needles`: where it is (the check, the step's place). */
+  const firstStep = (...needles: string[]) => {
+    for (const id of order) {
+      const n = item(id).steps.findIndex((s) => needles.every((needle) => s.includes(needle)));
+      if (n >= 0) return { id, n };
+    }
+    return null;
+  };
+
+  test("Proov 1 has no account until Maria adds her, as the FIRST step of the first check that needs her registration linked (the ask button, her „Õpilased“ panel)", () => {
+    // the form's box only mails a code: no client is made until somebody signs in or Maria adds her
+    expect(item("registreerimine-grupp").expect.join("\n")).toContain("koodiga");
+    const add = firstStep("Lisa õpilane e-posti järgi", "+proov1");
+    expect(add).toEqual({ id: "registreerimine-leping-plokk", n: 0 });
+    expect(item("registreerimine-leping-plokk").steps[1]).toContain("Vajuta „Lisa õpilane“");
+    // nothing that needs her linked sits before it, and the first Proov 1 sign-in (konto-kood) is later still
+    for (const id of ["registreerimine-leping-plokk", "registreerimine-leping-kinnitamiseks", "konto-minu-koolitused", "konto-leping-kinnita", "konto-leping-kaardil"]) {
+      expect(at(id), id).toBeGreaterThanOrEqual(at(add!.id));
+    }
+    // the ask button and the „Õpilased“ panel are read after the step that adds her, within the same check
+    expect(item("registreerimine-leping-plokk").steps.findIndex((s) => s.includes("Saada leping kinnitamiseks") || s.includes("vaata plokki „Lepingud“"))).toBeGreaterThan(0);
+    expect(at("konto-kood")).toBeLessThan(at("konto-minu-koolitused"));
+    expect(at("konto-kood")).toBeLessThan(at("konto-leping-kinnita"));
+    expect(at("konto-kood")).toBeLessThan(at("konto-leping-kaardil"));
+    // the mail's button of the ask opens the sign-in page for a device nobody has signed in on yet
+    expect(expectText("registreerimine-leping-kinnitamiseks")).toContain("muidu sisselogimise lehe");
+  });
+
+  test("Proov 7 is linked by her first sign-in in konto-arve-maksa, before the Russian check; Proov 5 by Maria adding her before her gate; Proov 1's e-course is bought before its page", () => {
+    const register = firstStep("Registreeri samale kuupäevale", "Proov 7");
+    const signIn = firstStep("Logi sisse kui Proov 7");
+    expect(register).toEqual({ id: "konto-arve-maksa", n: 0 });
+    expect(signIn?.id).toBe("konto-arve-maksa");
+    expect(at("konto-arve-maksa")).toBeLessThan(at("konto-leping-vene-keeles"));
+    expect(firstStep("Lisa õpilane e-posti järgi", "+proov5")?.id).toBe("ekursus-ligipaas-ava");
+    expect(at("ekursus-ligipaas-ava")).toBeLessThan(at("ekursus-tingimused-leping"));
+    expect(at("ekursus-ost")).toBeLessThan(at("ekursus-tingimused"));
+  });
+
+  test("rulings R18, R19: Proov 5 is added by her address only, so her gate asks her name — the check says so, writes it, and expects the filled text", () => {
+    // nothing before her gate gives Proov 5 a name: she is never registered nor named, only added by address and signed in
+    const before = order.slice(0, at("ekursus-tingimused-leping"));
+    for (const id of before) for (const step of item(id).steps) if (step.includes("Proov 5") || step.includes("+proov5")) expect(step, id).not.toMatch(/Nimi|nimi|Registreeri/);
+    const gate = item("ekursus-tingimused-leping");
+    const named = gate.steps.findIndex((s) => s.includes("Kirjuta „Nimi“: Proov 5"));
+    expect(named, "the step that writes her name").toBeGreaterThan(0);
+    // a press without the name comes before the name is written, and the start after it
+    expect(gate.steps.findIndex((s) => s.includes("enne kui nime kirjutad"))).toBeLessThan(named);
+    expect(gate.steps.map((s) => s === "Vajuta „Alusta koolitust“.").lastIndexOf(true)).toBeGreaterThan(named);
+    for (const words of ["lepingu pealkirja", "väli „Nimi“", "„Kirjuta oma nimi.“", "{nimi} kohale", "{koolitus} asemel"]) expect(expectText("ekursus-tingimused-leping"), words).toContain(words);
+    expect([gate.mark, gate.markedAt]).toEqual(["new", "deploy"]);
+  });
+
+  test("a download link whose text another row of the card repeats is named by its row (Proov 7 and Proov 1 have invoice rows with „Laadi alla (PDF)“)", () => {
+    expect(item("konto-leping-vene-keeles").steps.find((s) => s.includes("Скачать (PDF)"))).toContain("Договор · подтверждён");
+    expect(item("konto-leping-kaardil").steps.find((s) => s.includes("Laadi alla (PDF)"))).toContain("rea „Leping“ juures");
+  });
+
+  test("by the time Proov 1 has two mails „MS LAB leping“ (the copy, then the one from „Kinnitan“), the checks name the newest", () => {
+    expect(at("registreerimine-leping-koopia")).toBeLessThan(at("konto-leping-kinnita"));
+    expect(item("konto-leping-kinnita").steps.find((s) => s.includes("„MS LAB leping“"))).toContain("uusim kiri");
+    expect(item("konto-leping-kinnita").expect.find((l) => l.includes("„MS LAB leping“"))).toContain("Uusim kiri");
+    expect(expectText("konto-leping-kaardil")).toContain("uusimas kirjas „MS LAB leping“");
+  });
+
+  test("the transient sentence after „Kinnitan“ is worded as seen for a moment, then the line the card goes to", () => {
+    for (const id of ["konto-leping-kinnita", "konto-leping-vene-keeles"]) {
+      const line = item(id).expect.find((l) => l.includes("kinnitatud.“") || l.includes("подтверждён.“"));
+      expect(line, id).toContain("hetkeks");
+      expect(line, id).toContain("siis rida");
+    }
+  });
+
+  test("the new checks keep their marks: new, from the deploy", () => {
+    for (const id of ["konto-leping-kaardil", "konto-leping-kinnita", "konto-leping-vene-keeles"]) expect([item(id).mark, item(id).markedAt], id).toEqual(["new", "deploy"]);
+  });
+});

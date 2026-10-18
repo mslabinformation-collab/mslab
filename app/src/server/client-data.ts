@@ -1,17 +1,18 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { CourseCardData } from "@/components/site/CourseCard";
 import { courseCardData } from "@/components/site/course-card-data";
-import type { Db } from "@/db/client";
+import type { Db, Q } from "@/db/client";
 import { listPublishedCourses, listUpcomingSessions, readSetting } from "@/db/queries/public";
 import {
-  certificates, clientFavourites, clientLoginTokens, clients, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols, registrations, requests,
-  subscribers, termsAcceptances,
+  certificates, clientFavourites, clientLoginTokens, clients, contracts, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols, registrations,
+  requests, subscribers, termsAcceptances, type Contract,
 } from "@/db/schema";
 import {
-  PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type CardInvoice, type EcourseCard, type FeedbackPrompt, type OpenInvoice, type PrepaymentInfo,
+  PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type CardContract, type CardInvoice, type EcourseCard, type FeedbackPrompt, type OpenInvoice, type PrepaymentInfo,
 } from "@/domain/account-cards";
 import { upcomingFrom } from "@/domain/calendar";
 import type { CourseSteps } from "@/domain/completion";
+import { contractValues, fillContract, type ContractValues } from "@/domain/contract";
 import { DEFAULT_TERMS_VERSION, TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
 import { nextSessionByCourse } from "@/domain/home";
 import type { CourseProgress } from "@/domain/lessons";
@@ -23,7 +24,11 @@ import { href } from "@/i18n/href";
 import { getDict, type Locale } from "@/i18n/locales";
 import { certificateOfAccess, type CertificateView } from "./certificates";
 import { lockAddress } from "./client-auth";
-import { accessFor, completeIfDone, isActive, loadSteps } from "./completion";
+import { gateName } from "./account-input";
+import { accessFor, completeIfDone, isActive, loadSteps, lockAccess } from "./completion";
+import {
+  accessContractFields, contractForAccess, contractForRegistration, contractTemplate, contractTemplates, currentContractsOfClient, registrationContractFields, shownVersionHolds,
+} from "./contracts";
 import { invoicesOfClient, type StudentInvoice } from "./invoices";
 import { courseOutline, ecourseProgress, progressActivity, type OutlineModule } from "./lesson-outline";
 import { logFailure } from "./log";
@@ -73,9 +78,9 @@ export type EcourseView = {
    * `version`: the current terms version (send it back when accepting, so a student who saw the old text cannot accept a new one unseen).
    * `accepted`: nothing is left to accept: the client has accepted that version for this course, or there is no terms text (none stored,
    * or an empty one: nothing to read or agree to, so no notice and no acceptance recorded; when the admin saves a text, the version moves
-   * and the notice shows). `text`: the terms text, only while `accepted` is false (so never null then).
+   * and the notice shows): then nothing else. While `accepted` is false, the gate's contract (GateTerms).
    */
-  terms: { version: string; accepted: boolean; text: I18n | null };
+  terms: { version: string; accepted: true; text: null } | GateTerms;
   /** "5 / 24 õppetundi tehtud" and where "Jätka" goes (domain/lessons.ts courseProgress). */
   progress: CourseProgress;
   /**
@@ -85,6 +90,24 @@ export type EcourseView = {
    * `certificateName` her account's name, the first value of "Nimi tunnistusel". Before the completion they are null and "".
    */
   completion: CourseSteps & { protocolSent: boolean; certificate: CertificateView | null; certificateName: string };
+};
+
+/** One page language's contract at the terms gate: its title and its text. */
+export type GateText = { title: string; body: string };
+
+/**
+ * The terms gate still to pass (contracts, D1; rulings R18, R19). `text`: the contract as acceptTerms freezes it on a page in that language
+ * (contracts.ts contractForAccess via "terms": the e-course template in that language, filled with the access's fields), the title and the text, so
+ * the student reads exactly what she accepts. `askName`: her account has no name (empty after trimming: one Maria added by e-mail only, „Lisa
+ * õpilane“), so the gate asks for it, and fills {nimi} as she types: per language the template unfilled and the values of every placeholder but
+ * {nimi} (whose value is empty there), the one-pass fill (domain/contract.ts fillContract) the server runs again with the name she sends. null:
+ * her account has a name, which `text` holds.
+ */
+export type GateTerms = {
+  version: string;
+  accepted: false;
+  text: Record<"et" | "ru", GateText>;
+  askName: Record<"et" | "ru", { template: GateText; values: ContractValues }> | null;
 };
 
 const iso = (d: Date): string => d.toISOString();
@@ -132,7 +155,7 @@ function groupInvoices(list: StudentInvoice[], key: (inv: StudentInvoice) => num
 }
 
 /** The version of the e-course terms: the settings key `courseTermsVersion` (an ISO time, set when the admin saves the terms text), "1" until then. */
-export async function courseTermsVersion(db: Db): Promise<string> {
+export async function courseTermsVersion(db: Q): Promise<string> {
   const value = await readSetting(db, TERMS_VERSION_KEY);
   return typeof value === "string" && value.trim() ? value : DEFAULT_TERMS_VERSION;
 }
@@ -140,13 +163,13 @@ export async function courseTermsVersion(db: Db): Promise<string> {
 // ---------- the dashboard ----------
 
 /**
- * Seven small queries, run together: registrations (with session and course), requests, e-course access, favourites, the client, the prepayment
- * setting, and her invoices (invoices.ts invoicesOfClient: one query, grouped here onto the registration's or the e-course's card, none per
- * card); then, for each open e-course, its lessons (two queries each) and her last lesson activity (one query), for the cards' progress and
- * the "Pooleli" card (`resume`).
+ * Eight small queries, run together: registrations (with session and course), requests, e-course access, favourites, the client, the prepayment
+ * setting, her invoices (invoices.ts invoicesOfClient: one query, grouped here onto the registration's or the e-course's card, none per
+ * card) and her current contracts (contracts.ts currentContractsOfClient: one query, ruling R14's owner, grouped the same way); then, for each
+ * open e-course, its lessons (two queries each) and her last lesson activity (one query), for the cards' progress and the "Pooleli" card (`resume`).
  */
 export async function loadDashboard(db: Db, clientId: number, now: Date): Promise<Dashboard | null> {
-  const [regRows, requestRows, accessRows, favourites, [client], prepayment, invoiceRows] = await Promise.all([
+  const [regRows, requestRows, accessRows, favourites, [client], prepayment, invoiceRows, contractRows] = await Promise.all([
     db
       .select({
         id: registrations.id,
@@ -156,6 +179,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         paidCents: registrations.paidCents,
         preferredPeriod: registrations.preferredPeriod,
         createdAt: registrations.createdAt,
+        contractRequestedAt: registrations.contractRequestedAt,
         course: { slug: courses.slug, title: courses.title, type: courses.type, price: courses.price, priceGroup: courses.priceGroup, priceIndividual: courses.priceIndividual },
         startsAt: courseSessions.startsAt,
         city: courseSessions.city,
@@ -201,6 +225,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       .where(and(eq(requests.clientId, clientId), inArray(requests.kind, ["individual", "practice", "waitlist"]))),
     db
       .select({
+        id: courseAccess.id,
         courseId: courseAccess.courseId,
         grantedAt: courseAccess.grantedAt,
         expiresAt: courseAccess.expiresAt,
@@ -233,6 +258,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       .limit(1),
     readSetting(db, PREPAYMENT_KEY),
     invoicesOfClient(db, clientId),
+    currentContractsOfClient(db, clientId),
   ]);
   if (!client) return null;
 
@@ -243,6 +269,15 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
     const shown = list.flatMap((i) => cardInvoice(i, payable) ?? []);
     return shown.length ? { invoices: shown } : {};
   };
+
+  // her current contracts on the card they belong to: a registration's, and an e-course's by its access (ruling R14: the owner is read, one query)
+  const contractOfRegistration = new Map<number, CardContract>();
+  const contractOfAccess = new Map<number, CardContract>();
+  for (const c of contractRows) {
+    const on = { id: c.id, acceptedAt: iso(c.acceptedAt) };
+    if (c.registrationId !== null) contractOfRegistration.set(c.registrationId, on);
+    else if (c.accessId !== null) contractOfAccess.set(c.accessId, on);
+  }
 
   const cards: AccountCard[] = [];
   for (const r of regRows) {
@@ -276,6 +311,9 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
         ...(r.protocolSentAt ? { protocolSent: true } : {}),
         ...invoicesOn(mine, payable),
         ...(open ? { openInvoice: open } : {}),
+        contract: contractOfRegistration.get(r.id) ?? null,
+        // Maria's open ask (D4) on a registration that can still be confirmed (the route's rule: a group one, not cancelled)
+        contractRequested: r.contractRequestedAt !== null && r.kind === "group" && r.status !== "cancelled",
       });
     }
   }
@@ -321,6 +359,8 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
       // the certificate (phase 3d): its id while the access is not revoked, so an ended access's card links it; a revoked one's never
       certificateId: a.revokedAt === null ? a.certificateId : null,
       ...invoicesOn(ofCourse.get(a.courseId)),
+      contract: contractOfAccess.get(a.id) ?? null,
+      contractRequested: false, // (Maria asks about a contact registration only)
     };
     if (progressOf.has(a.slug)) card.progress = progressOf.get(a.slug) ?? null;
     cards.push(card);
@@ -375,21 +415,57 @@ export function termsText(body: unknown): I18n | null {
 }
 
 /**
- * The terms notice of an e-course for this client: the current version, whether nothing is left to accept, and the text while
- * something is. The version is read BEFORE the text (see loadEcourse).
+ * The terms notice of an e-course for this client: the current version, whether nothing is left to accept, and while something is, the gate's
+ * contract (GateTerms). The version is read BEFORE the text (see loadEcourse): the contract's text is read after it, so a save of Maria's in
+ * between pairs the old version with the new text, which acceptTerms refuses as stale. Accepted: an acceptance of that version, or a current
+ * contract of her access to the course of that version (contracts, D1: the cart's box, frozen when the purchase was paid, is the acceptance; she
+ * is not asked twice), or no text at all.
  */
 export async function termsState(db: Db, clientId: number, courseId: number): Promise<EcourseView["terms"]> {
   const versionThenText = async () => {
     const current = await courseTermsVersion(db);
     return [current, await db.select({ body: pages.body }).from(pages).where(eq(pages.key, TERMS_PAGE_KEY)).limit(1)] as const;
   };
-  const [[version, page], accepted] = await Promise.all([
+  const [[version, page], accepted, contracted] = await Promise.all([
     versionThenText(),
     db.select({ version: termsAcceptances.termsVersion }).from(termsAcceptances).where(and(eq(termsAcceptances.clientId, clientId), eq(termsAcceptances.courseId, courseId))),
+    db
+      .select({ version: contracts.version })
+      .from(contracts)
+      .innerJoin(courseAccess, eq(contracts.accessId, courseAccess.id))
+      .where(and(eq(courseAccess.clientId, clientId), eq(courseAccess.courseId, courseId), isNull(contracts.supersededAt))),
   ]);
   const text = termsText(page[0]?.body);
-  const isAccepted = text === null || accepted.some((row) => row.version === version);
-  return { version, accepted: isAccepted, text: isAccepted ? null : text };
+  if (text === null || accepted.some((row) => row.version === version) || contracted.some((row) => row.version === version)) return { version, accepted: true, text: null };
+  // (no access row any more, gone between the reads: still not accepted, never open for lack of a text; accepting then finds no access)
+  const none = { title: "", body: "" };
+  return { version, accepted: false, ...((await gateContract(db, clientId, courseId)) ?? { text: { et: none, ru: none }, askName: null }) };
+}
+
+/**
+ * The terms gate's contract (rulings R18, R19; GateTerms): in each page language the e-course template acceptTerms freezes there
+ * (contracts.ts contractTemplates: one read of the text), filled with the access's fields as contractForAccess fills it via "terms"
+ * (accessContractFields: her account's name and address, the course, no price), and, while her account has no name, the template and the values
+ * the gate fills {nimi} from as she types. null: no access row.
+ */
+async function gateContract(db: Db, clientId: number, courseId: number): Promise<Pick<GateTerms, "text" | "askName"> | null> {
+  const [[access], templates] = await Promise.all([
+    db.select({ id: courseAccess.id }).from(courseAccess).where(and(eq(courseAccess.clientId, clientId), eq(courseAccess.courseId, courseId))).limit(1),
+    contractTemplates(db, "ecourse"),
+  ]);
+  if (!access) return null;
+  const parts = async (l: "et" | "ru") => {
+    const template = templates[l];
+    const fields = await accessContractFields(db, access.id, null, template.locale);
+    if (!fields) return null;
+    // a name of blanks is no name: the gate asks for one, and until she types it {nimi} is empty
+    const values = contractValues(fields, "");
+    return { template: { title: template.title, body: template.body }, values: values.nimi.trim() ? values : { ...values, nimi: "" } };
+  };
+  const [et, ru] = await Promise.all([parts("et"), parts("ru")]);
+  if (!et || !ru) return null;
+  const filled = ({ template, values }: { template: GateText; values: ContractValues }): GateText => ({ title: fillContract(template.title, values), body: fillContract(template.body, values) });
+  return { text: { et: filled(et), ru: filled(ru) }, askName: et.values.nimi === "" ? { et, ru } : null };
 }
 
 /**
@@ -447,20 +523,155 @@ export async function loadEcourse(db: Db, clientId: number, slug: string, now: D
 }
 
 /**
- * Stores that the client accepted the terms `version` for the e-course.
+ * Stores that the client accepted the terms `version` for the e-course, and freezes the access's contract with it (contracts, D1, §4: the
+ * gate's box is the acceptance, `terms`): the current e-course text in `opts.locale` (the language of the page she accepted it on; her account's
+ * without it, D6), filled with her account's name and address and the course, no price. Both in one transaction, the access row's lock taken
+ * first (completion.ts lockAccess; contractForAccess takes it again), after the address lock when her account has no name (below); a contract of
+ * this version she has already (an acceptance before, the purchase's) makes no second one.
+ * `opts.onContract` is told the contract it froze (none when it made none), so the caller mails it.
+ *
+ * An account with no name (empty after trimming; ruling R19) gives hers here: `opts.name`, the gate's field „Nimi“, taken on one line and within
+ * Minu andmed's limit (account-input.ts gateName). It is the contract's {nimi} and its student's name in „Pooled“ (what the gate filled as she
+ * typed), and it is saved as her account's name in the same transaction, under the access's lock, only while that is still empty: a name she
+ * saved in Minu andmed meanwhile is never overwritten. An account with a name sends none, and one sent anyway is ignored.
  * - `"noAccess"`: no active access to that course (nothing is stored).
  * - `"stale"`: `version` is not the current terms version (the admin saved new terms after the page was loaded; nothing is stored), or there is no
- *   terms text any more (nothing to accept: nothing is stored, and the page, loaded again, finds the course open).
+ *   terms text any more (nothing to accept: nothing is stored, and the page, loaded again, finds the course open). The version is read again
+ *   after the text the contract freezes: a save that lands in between is stale too, so a contract never holds a text the page did not show.
+ * - `"name"`: her account has no name and `opts.name` gives none (missing, blank, too long, or text the database cannot hold): nothing is stored.
  * - `"accepted"`: stored (accepting twice is fine).
  */
-export async function acceptTerms(db: Db, clientId: number, slug: string, version: string, now: Date): Promise<"accepted" | "noAccess" | "stale"> {
+export async function acceptTerms(
+  db: Db,
+  clientId: number,
+  slug: string,
+  version: string,
+  now: Date,
+  opts: { locale?: "et" | "ru"; name?: string; onContract?: (contract: Contract) => void } = {},
+): Promise<"accepted" | "noAccess" | "stale" | "name"> {
   const access = await activeAccess(db, clientId, slug, now);
   if (!access) return "noAccess";
   if (version !== (await courseTermsVersion(db))) return "stale";
   const [page] = await db.select({ body: pages.body }).from(pages).where(eq(pages.key, TERMS_PAGE_KEY)).limit(1);
   if (termsText(page?.body) === null) return "stale";
-  await db.insert(termsAcceptances).values({ clientId, courseId: access.course.id, termsVersion: version, acceptedAt: now }).onConflictDoNothing();
-  return "accepted";
+  const locale = opts.locale ?? (await clientLocale(db, clientId));
+  const done = await db.transaction(async (tx): Promise<{ result: "accepted" | "noAccess" | "stale" | "name"; contract: Contract | null }> => {
+    const t = tx as unknown as Db;
+    const [client] = await tx.select({ name: clients.name, email: clients.email }).from(clients).where(eq(clients.id, clientId)).limit(1);
+    if (!client) return { result: "noAccess", contract: null };
+    const nameless = client.name.trim() === "";
+    // R19: the account's name is written below, so the address lock comes first, before the access row: the order of settle's grant and of the
+    // account's deletion, which write the client and her access under it (contracts.ts, the locks). An account with a name writes no name.
+    if (nameless) await lockAddress(t, normalizeEmail(client.email));
+    // the access's row lock, held from here: the name is saved under it (contractForAccess takes it again, at no cost)
+    if (!(await lockAccess(t, access.id))) return { result: "noAccess", contract: null };
+    // the text she accepts: its version is read before it (contractTemplate), and again after it (a save between the two: stale)
+    const template = await contractTemplate(tx, "ecourse", locale);
+    if (template.version !== version || (await courseTermsVersion(tx)) !== version) return { result: "stale", contract: null };
+    const name = nameless ? gateName(opts.name) : null;
+    if (nameless && !name) return { result: "name", contract: null };
+    const found = await accessContractFields(tx, access.id, null, template.locale);
+    if (!found) return { result: "noAccess", contract: null };
+    let fields = found;
+    if (name) {
+      // saved only while the account's name is still empty (never over one she saved in Minu andmed meanwhile); the contract names her as she typed
+      await tx.update(clients).set({ name }).where(and(eq(clients.id, clientId), sql`btrim(${clients.name}) = ''`));
+      fields = { ...found, student: { ...found.student, name } };
+    }
+    const contract = await contractForAccess(tx, { accessId: access.id, clientId, courseId: access.course.id, snapshotOrTemplate: template, fields, via: "terms", now });
+    await tx.insert(termsAcceptances).values({ clientId, courseId: access.course.id, termsVersion: version, acceptedAt: now }).onConflictDoNothing();
+    return { result: "accepted", contract };
+  });
+  if (done.contract) opts.onContract?.(done.contract);
+  return done.result;
+}
+
+/** The account's language (D6: the contract's when the page's is not known), Estonian for none. */
+async function clientLocale(db: Db, clientId: number): Promise<"et" | "ru"> {
+  const [row] = await db.select({ locale: clients.locale }).from(clients).where(eq(clients.id, clientId)).limit(1);
+  return row?.locale === "ru" ? "ru" : "et";
+}
+
+// ---------- the contract Maria asked her to confirm ----------
+
+/**
+ * Her registration `registrationId` that Maria has asked her to confirm the contract of (contracts, D4): hers by the live link
+ * (`registrations.client_id`, ruling R14), a group registration, not cancelled. `"gone"`: it is not that (another's, an individual or an unknown
+ * one, a cancelled one); `"nothing"`: it is, and Maria's ask is not open (`contract_requested_at` is null: never asked, or answered). `lock`
+ * reads it FOR UPDATE, the first lock of „Kinnitan“ (ruling R3), so the ask is read as the lock gives it: a second tap that waited for the first
+ * finds it answered.
+ */
+async function askedRegistration(q: Q, clientId: number, registrationId: number, lock: boolean): Promise<{ courseId: number } | "gone" | "nothing"> {
+  const query = q
+    .select({ kind: registrations.kind, status: registrations.status, courseId: registrations.courseId, askedAt: registrations.contractRequestedAt })
+    .from(registrations)
+    .where(and(eq(registrations.id, registrationId), eq(registrations.clientId, clientId)));
+  const [r] = lock ? await query.for("update") : await query;
+  if (!r || r.kind !== "group" || r.status === "cancelled") return "gone";
+  return r.askedAt === null ? "nothing" : { courseId: r.courseId };
+}
+
+/** The text „Kinnita leping“ shows: the current contact contract filled with her registration, in the language it is in, and its version. */
+export type ContractToAccept = { title: string; body: string; version: string; locale: "et" | "ru" };
+
+/**
+ * GET /api/konto/leping-tekst/<registrationId>: the current contract text of her registration, filled as „Kinnitan“ will freeze it (the same
+ * template and fields, contracts.ts registrationContractFields), for the page's language `pageLocale` (D6: Russian when the page is Russian and a
+ * Russian text exists, else Estonian; `locale` of the answer is the language the text is in). With no `pageLocale` it is her account's, the very
+ * fallback acceptContract takes, so the text shown and the text frozen are always in one language (the version is one per kind, not per language).
+ * null unless Maria's ask is open on her own, not cancelled, group registration (askedRegistration): nothing else is shown, and not another's.
+ */
+export async function contractToAccept(db: Db, clientId: number, registrationId: number, pageLocale?: "et" | "ru"): Promise<ContractToAccept | null> {
+  if (typeof (await askedRegistration(db, clientId, registrationId, false)) === "string") return null;
+  const locale = pageLocale ?? (await clientLocale(db, clientId));
+  const made = await registrationContractFields(db, registrationId, locale);
+  if (!made) return null;
+  const values = contractValues(made.fields, made.prepaymentText);
+  return { title: fillContract(made.template.title, values), body: fillContract(made.template.body, values), version: made.template.version, locale: made.template.locale };
+}
+
+/**
+ * POST /api/konto/leping, „Kinnitan“ (contracts, D4; ruling R3): she accepts the current contract text of a registration Maria asked her to
+ * confirm, `via: "account"`. All in ONE transaction, the registration's row lock first (askedRegistration, FOR UPDATE; contractForRegistration
+ * takes the same lock again), the ask read inside it: the new contract supersedes the old one, `contract_requested_at` is cleared with it
+ * (contractForRegistration), and a failure of any part undoes all of it. The text is the current one in `input.locale` (the language of the page
+ * she accepts it on, D6; her account's without it), read with its version first.
+ * - `"notFound"`: not her registration, not a group one, cancelled, or gone (nothing is written).
+ * - `"nothing"`: there is no open ask — never made, or answered already (a second tap, another device): nothing is written, no second contract.
+ * - `"stale"`: `input.version` is not the current text's (Maria saved a new text after the page was loaded, or the page sent none; ruling R6, as
+ *   acceptTerms): nothing is written, and the page reads the text again.
+ * - `"accepted"`: done. `opts.onContract` is told the new contract after the commit, so the caller mails it.
+ */
+export async function acceptContract(
+  db: Db,
+  clientId: number,
+  input: { registrationId: number; version?: string; locale?: "et" | "ru" },
+  now: Date,
+  opts: { onContract?: (contract: Contract) => void } = {},
+): Promise<"accepted" | "notFound" | "nothing" | "stale"> {
+  const locale = input.locale ?? (await clientLocale(db, clientId));
+  const done = await db.transaction(async (tx): Promise<{ result: "accepted" | "notFound" | "nothing" | "stale"; contract: Contract | null }> => {
+    const asked = await askedRegistration(tx, clientId, input.registrationId, true);
+    if (asked === "gone") return { result: "notFound", contract: null };
+    if (asked === "nothing") return { result: "nothing", contract: null };
+    const made = await registrationContractFields(tx, input.registrationId, locale);
+    if (!made) return { result: "notFound", contract: null };
+    // the version she saw is the current one now, read before the text and again after it (shownVersionHolds); a missing version is a mismatch
+    if (!(await shownVersionHolds(tx, "contact", locale, made.template, input.version))) return { result: "stale", contract: null };
+    const contract = await contractForRegistration(tx, {
+      registrationId: input.registrationId,
+      clientId,
+      courseId: asked.courseId,
+      template: made.template,
+      fields: made.fields,
+      prepaymentText: made.prepaymentText,
+      via: "account",
+      now,
+    });
+    return { result: "accepted", contract };
+  });
+  if (done.contract) opts.onContract?.(done.contract);
+  return done.result;
 }
 
 // ---------- favourites ----------

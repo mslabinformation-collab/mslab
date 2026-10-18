@@ -16,6 +16,15 @@ export async function makeTestDb(): Promise<Db> {
   return db;
 }
 
+/**
+ * The version of `kind`'s contract text as a page shows it now (contracts, ruling R6): what the registration form and the cart send with the
+ * box, which the server compares with the current one. Imported when it is asked for, so that the other DB tests do not load the contracts.
+ */
+export async function shownContractVersion(db: Db, kind: "contact" | "ecourse" = "contact"): Promise<string> {
+  const { contractTemplate } = await import("@/server/contracts");
+  return (await contractTemplate(db, kind, "et")).version;
+}
+
 /** Module rows for a course (course_modules), positions 1…n in the given order. */
 export async function addModules(db: Db, courseId: number, titles: I18n[]): Promise<CourseModule[]> {
   return titles.length ? db.insert(courseModules).values(titles.map((title, i) => ({ courseId, position: i + 1, title }))).returning() : [];

@@ -24,6 +24,7 @@ vi.mock("@/components/admin/Shell", async () => {
 vi.mock("@/server/actions/admin-site", () => ({ saveSettings: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({ saveInvoiceSettingsAction: vi.fn() }));
+vi.mock("@/server/actions/admin-contracts", () => ({ saveContractTextsAction: vi.fn(), requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
 
 import SettingsEditPage from "@/app/admin/(panel)/seaded/page";
 
@@ -81,7 +82,7 @@ test("without a setting: the defaults (Maria Sosnina signs), this year's number 
   const card = html.indexOf("data-certificate-settings");
   expect(card).toBeGreaterThan(-1);
   expect(html.indexOf("</form>")).toBeLessThan(card); // the settings' form ends before the card begins
-  expect(html.match(/<form/g)).toHaveLength(3); // (the settings', the certificate's and, after it, the invoices' card: invoices Task 5)
+  expect(html.match(/<form/g)).toHaveLength(5); // (the settings', the certificate's and, after it, the invoices' card: invoices Task 5; then the contracts' save and sample: contracts Task 5)
   expect(html.slice(html.lastIndexOf("<section", card))).toMatch(/^<section id="tunnistus"/); // the card's anchor, for "Seaded → Tunnistus"
   expect(valueOf(html, "place")).toBe(CERT_DEFAULTS.place);
   expect(valueOf(html, "registry")).toBe(CERT_DEFAULTS.registryCode);

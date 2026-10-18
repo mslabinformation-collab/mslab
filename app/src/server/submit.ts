@@ -1,11 +1,12 @@
 import { and, eq, isNull } from "drizzle-orm";
-import type { Db, Q } from "@/db/client";
+import type { Db, Q, Tx } from "@/db/client";
 import { releaseHoldLocked } from "@/db/queries/payments";
 import { readSetting } from "@/db/queries/public";
 import { lockSession, seatsTaken } from "@/db/queries/seats";
 import { courses, courseSessions, practicePackages, registrations, requests, subscribers } from "@/db/schema";
-import type { Course, CourseSession, Registration } from "@/db/schema";
+import type { Contract, Course, CourseSession, Registration } from "@/db/schema";
 import { PREPAYMENT_KEY, parsePrepayment } from "@/domain/account-cards";
+import { contractCourseName, filledContract } from "@/domain/contract";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import { registrationPrice } from "@/domain/registration";
 import { holdUntil, seatState } from "@/domain/sessions";
@@ -32,8 +33,9 @@ import {
   waitlistSummary,
   type Summary,
 } from "./messages";
-import { payLinkUrl, registrationConfirmationMail, requestConfirmationMail, type LoginCode } from "./account-mail";
+import { contractAttachment, payLinkUrl, registrationConfirmationMail, requestConfirmationMail, type LoginCode } from "./account-mail";
 import { CONFIRMATION_MAIL_DAILY_CAP, LOGIN_MAIL_DAILY_CAP, accountOf, fillClientContact, issueClientLogin, reserveLoginMail } from "./client-auth";
+import { contractForRegistration, contractPdfForMail, contractTemplate, markContractSent, registrationContractFields, shownVersionHolds } from "./contracts";
 import { logFailure, logNote } from "./log";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env, type Mail } from "./notify";
 import type { Montonio } from "./payments/montonio";
@@ -88,7 +90,13 @@ const VISITOR_MAILS_PER_ADDRESS_PER_DAY = 3;
  * (the prepayment setting) and returns the builder of the mail, which takes the live login the mail carries (null: none). It runs
  * in the deferred work, before any login or quota is spent, so nothing here can fail the stored submission or waste a quota.
  */
-type Confirmation = { email: string; wantsAccount: boolean; prepare: () => Promise<(login: LoginCode | null) => Mail> };
+type Confirmation = {
+  email: string;
+  wantsAccount: boolean;
+  prepare: () => Promise<(login: LoginCode | null) => Mail>;
+  /** After Resend took the mail: what it records (a registration's contract: its `sent_at`, when the PDF went with it). Never fails the mail. */
+  sent?: () => Promise<void>;
+};
 
 /**
  * What a handler stored and what follows the answer. `subscribe`: "Soovin MS LABi uudiseid ja pakkumisi" was ticked on a registration
@@ -201,7 +209,7 @@ async function liveLogin(deps: Deps, form: FormName, email: string): Promise<Log
  * 4. "Loo mulle kohe konto" ticked: a live login (none when the address has its 3, or on a database failure: no code then);
  * 5. one unit of the day's counter, the `mail_quota` row, which never fails open: the login cap (60) for a mail with a code, the
  *    confirmation cap (30) without one; over the cap, or with the database failing, there is no mail;
- * 6. sent (sendMail).
+ * 6. sent (sendMail), and once Resend took it, what the confirmation records (`sent`: a registration's contract went with it).
  * Never throws: the submission is stored, and a failure is logged without addresses or texts.
  */
 async function sendConfirmation(deps: Deps, form: FormName, confirm: Confirmation): Promise<void> {
@@ -224,6 +232,13 @@ async function sendConfirmation(deps: Deps, form: FormName, confirm: Confirmatio
     }
     const sent = await sendMail(deps.env, build(login));
     console.info(`[forms] ${form}: stored; confirmation e-mail to the visitor sent: ${sent}`);
+    if (sent && confirm.sent) {
+      try {
+        await confirm.sent();
+      } catch (e) {
+        logFailure(`[forms] ${form}: the confirmation was sent, but not recorded`, e);
+      }
+    }
   } catch (e) {
     logFailure(`[forms] ${form}: confirmation e-mail failed`, e);
   }
@@ -329,11 +344,49 @@ async function sessionWithSeats(db: Q, id: number, now: Date): Promise<(CourseSe
 }
 
 /**
+ * The contract of a registration just stored, in its transaction (contracts, D1, §4): the box she ticked is the acceptance, `form`, at the
+ * submit's time. The text is the contact contract the form showed (contracts.ts contractTemplate, read now), filled with the stored
+ * registration (registrationContractFields). It throws when it cannot be made, and the whole registration rolls back with it: a booking never
+ * stands without its contract (D1, Review Focus 1). The registration's row is the transaction's own, so the lock it takes waits for no one.
+ * The text must be the one her page showed (ruling R6): `shown`, the version the form sent, is the current one before and after the text is
+ * read (shownVersionHolds), or ContractChanged rolls the registration back and she is asked to read it again.
+ */
+async function registrationContract(tx: Tx, registration: Registration, shown: string | undefined, now: Date): Promise<Contract> {
+  const made = await registrationContractFields(tx, registration.id);
+  if (!made) throw new Error(`[contracts] registration ${registration.id}: not found in its own transaction`); // ids only
+  if (!(await shownVersionHolds(tx, "contact", registration.locale === "ru" ? "ru" : "et", made.template, shown))) throw new ContractChanged();
+  return contractForRegistration(tx, {
+    registrationId: registration.id,
+    clientId: registration.clientId,
+    courseId: registration.courseId,
+    template: made.template,
+    fields: made.fields,
+    prepaymentText: made.prepaymentText,
+    via: "form",
+    now,
+  });
+}
+
+/** The contract text a form's page showed is not the current one any more (ruling R6): nothing is stored, and the form shows the new text. */
+class ContractChanged extends Error {
+  constructor() {
+    super("the contract's text changed since the page was loaded");
+    this.name = "ContractChanged";
+  }
+}
+
+/** The answer to a form whose page showed another contract text than the current one (R6): terms "changed" (the form re-shows the text, the box cleared). */
+const CONTRACT_CHANGED: ActionResult = { ok: false, errors: { terms: "changed" } };
+
+/**
  * Group registration for one session of a contact course (P12–P16). With online payments (phase 2b) the prepayment starts at once and the
- * answer carries its page (`paymentUrl`).
+ * answer carries its page (`paymentUrl`). The box is the contract (contracts, D1): it is frozen with the registration, in the same transaction,
+ * and a contract that cannot be stored fails the submit (form "server", nothing stored). The confirmation mail carries its PDF. A form whose
+ * page showed another contract text than the current one (its `contractVersion`, ruling R6; none from a page cached before it) stores nothing
+ * and is answered terms "changed": the form shows the new text and asks for the box again.
  */
 export function handleRegistration(deps: Deps, formData: FormData): Promise<ActionResult> {
-  return submission(deps, "register", formData, parseGroupRegistration, async ({ course: slug, courseSessionId, terms: _terms, wantsNewsletter, ...data }) => {
+  return submission(deps, "register", formData, parseGroupRegistration, async ({ course: slug, courseSessionId, terms: _terms, wantsNewsletter, contractVersion, ...data }) => {
     void _terms;
     const course = await contactCourse(deps.db, slug);
     if (!course || course.priceGroup == null) return { result: fail({ form: "invalid" }) };
@@ -341,19 +394,30 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
     // the full check and the insert see the same seats as a payment that starts or settles meanwhile, which takes the same lock. With online
     // payments the registration is stored already holding its seat (30 minutes): whoever is queued on the lock behind it then counts that seat,
     // and "full" is told to the one who really finds none, instead of a second registration being stored for a seat that is held.
-    const stored = await deps.db.transaction(async (tx) => {
-      await lockSession(tx, courseSessionId);
-      const session = await sessionWithSeats(tx, courseSessionId, deps.now);
-      // Another course's session, a cancelled one or one that has begun cannot be booked (upcomingFrom: the same
-      // "upcoming" as the calendar and the course page, so they offer exactly the dates that can be booked).
-      if (!session || session.courseId !== course.id || session.status !== "scheduled" || session.startsAt < upcomingFrom(deps.now)) return { status: "refused" as const, result: fail({ session: "unavailable" }) };
-      if (seatState(session, session.taken) === "full") return { status: "refused" as const, result: fail({ session: "full" }) };
-      const seatHoldUntil = deps.montonio ? holdUntil(deps.now) : null;
-      const registration = await createRegistration(tx, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "", seatHoldUntil });
-      return { status: "stored" as const, session, registration };
-    });
-    if (stored.status === "refused") return { result: stored.result };
-    const { session, registration } = stored;
+    const stored = await deps.db
+      .transaction(async (tx) => {
+        await lockSession(tx, courseSessionId);
+        const session = await sessionWithSeats(tx, courseSessionId, deps.now);
+        // Another course's session, a cancelled one or one that has begun cannot be booked (upcomingFrom: the same
+        // "upcoming" as the calendar and the course page, so they offer exactly the dates that can be booked).
+        if (!session || session.courseId !== course.id || session.status !== "scheduled" || session.startsAt < upcomingFrom(deps.now)) return { status: "refused" as const, result: fail({ session: "unavailable" }) };
+        if (seatState(session, session.taken) === "full") return { status: "refused" as const, result: fail({ session: "full" }) };
+        const seatHoldUntil = deps.montonio ? holdUntil(deps.now) : null;
+        const registration = await createRegistration(tx, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "", seatHoldUntil });
+        // the contract, from the text her page showed (R6: ContractChanged otherwise, which rolls the registration back)
+        const contract = await registrationContract(tx, registration, contractVersion, deps.now);
+        return { status: "stored" as const, session, registration, contract };
+      })
+      .catch((e: unknown) => {
+        // the registration rolled back with the contract it could not make from the text her page showed
+        if (e instanceof ContractChanged) return { status: "refused" as const, result: CONTRACT_CHANGED };
+        throw e;
+      });
+    if (stored.status === "refused") {
+      if (stored.result === CONTRACT_CHANGED) console.info("[forms] register: the contract's text changed since the page was loaded: nothing stored");
+      return { result: stored.result };
+    }
+    const { session, registration, contract } = stored;
     // Phase 2b (spec 6.1): the prepayment starts at once — the seat is held already (stored with the registration), then a payment row and
     // Montonio's order. Without payments, or when it does not start, the registration stands and the answer is today's ("Maksa" is offered
     // later, in the mail and Minu koolitused). A failure here never fails the stored registration: it is logged and the answer is today's.
@@ -376,13 +440,18 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
       { ...data, course: pick(course.title, "et"), startsAt: session.startsAt, city: session.city, venue: session.venue },
       admin(deps),
     );
+    // the contract's PDF, rendered with the confirmation's content (none until then, and none when it failed)
+    let pdf: Uint8Array | null = null;
     const confirm: Confirmation = {
       email: data.email,
       wantsAccount: data.wantsAccount,
+      // the content first (the prepayment setting, the contract's PDF): a PDF that fails to render leaves the mail without it (logged)
       prepare: async () => {
         const prepayment = parsePrepayment(await readSetting(deps.db, PREPAYMENT_KEY));
-        return (login) =>
-          registrationConfirmationMail({
+        pdf = await contractPdfForMail(contract);
+        const attached = pdf;
+        return (login) => {
+          const mail = registrationConfirmationMail({
             siteUrl: deps.siteUrl,
             email: registration.email,
             name: registration.name,
@@ -395,7 +464,14 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
             prepayment,
             payLink: deps.montonio ? payLinkUrl(deps.siteUrl, registration.payToken) : null,
             login,
+            contractAttached: attached !== null,
           });
+          return attached ? { ...mail, attachments: [contractAttachment(contract.id, attached)] } : mail;
+        };
+      },
+      // the PDF reached her: the contract's `sent_at` (D7)
+      sent: async () => {
+        if (pdf) await markContractSent(deps.db, contract.id, deps.now);
       },
     };
     return { result: paymentUrl ? { ok: true, paymentUrl } : OK, notify: { ...summary, replyTo: data.email }, confirm, subscribe: wantsNewsletter ? { email: data.email, locale: data.locale } : undefined };
@@ -470,9 +546,15 @@ export function handlePurchaseInterest(deps: Deps, formData: FormData): Promise<
  * mail (server/payments/settle.ts does that when it is paid). Without payments, or when Montonio says no: form "unavailable", and the cart
  * shows its purchase-interest form instead. An address that paid this course in the last 30 minutes starts nothing: form "alreadyPaid" (the
  * cart says "Makse on juba tehtud — vaata oma e-posti."; Back from the bank would otherwise charge a second time).
+ * The box is the e-course contract (contracts, D1, §4): the payment keeps the contract the cart showed (`contract_snapshot`), the e-course text
+ * in her language filled with the name and the address she typed, the course and its price (domain/contract.ts filledContract, the cart's own
+ * fill), with its version and language and the time of this press (its acceptance, R7); settle freezes that very copy when the payment is paid,
+ * whatever Maria edits in between. The cart sends the version it showed (`contractVersion`, ruling R6): when it is not the current one (or there
+ * is none: a cart cached before it), nothing starts — no payment, no order — and the answer is terms "changed" (the cart shows the new text).
+ * Without payments nothing is read for the contract at all: form "unavailable", as before.
  */
 export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<ActionResult> {
-  return submission(deps, "ecourse", formData, parseEcoursePurchase, async ({ course: slug, name, email, locale, wantsNewsletter, terms: _terms }) => {
+  return submission(deps, "ecourse", formData, parseEcoursePurchase, async ({ course: slug, name, email, locale, wantsNewsletter, terms: _terms, contractVersion }) => {
     void _terms;
     const [course] = await deps.db
       .select()
@@ -480,9 +562,24 @@ export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<A
       .where(and(eq(courses.slug, slug), eq(courses.published, true), eq(courses.type, "e_learning")))
       .limit(1);
     if (!course || course.price == null || course.price <= 0) return { result: fail({ form: "invalid" }) };
+    if (!deps.montonio) return { result: fail({ form: "unavailable" }) };
+    const template = await contractTemplate(deps.db, "ecourse", locale);
+    if (!(await shownVersionHolds(deps.db, "ecourse", locale, template, contractVersion))) {
+      console.info("[forms] ecourse: the contract's text changed since the cart was loaded: nothing started");
+      return { result: CONTRACT_CHANGED };
+    }
+    const shown = filledContract(template, { name, email, course: contractCourseName(course.title, template.locale), session: null, priceCents: course.price, choice: null, locale: template.locale });
     const started = await startEcoursePayment(
-      { db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio ?? null },
-      { courseId: course.id, amountCents: course.price, email, name, locale, newsletter: wantsNewsletter },
+      { db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio },
+      {
+        courseId: course.id,
+        amountCents: course.price,
+        email,
+        name,
+        locale,
+        newsletter: wantsNewsletter,
+        contract: { version: template.version, locale: template.locale, ...shown, acceptedAt: deps.now.toISOString() },
+      },
     );
     if (started.kind === "alreadyPaid") return { result: fail({ form: "alreadyPaid" }) };
     return { result: started.kind === "started" ? { ok: true, paymentUrl: started.paymentUrl } : fail({ form: "unavailable" }) };

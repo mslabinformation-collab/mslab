@@ -3,6 +3,7 @@ import { pgTable, serial, text, integer, boolean, jsonb, timestamp, pgEnum, uniq
 import type { I18n } from "@/i18n/field";
 import type { FeedbackAnswers } from "@/domain/protocols";
 import type { InvoiceBuyer, InvoiceKind, InvoiceLine, InvoiceSeller, InvoiceStatus, PaidMethod } from "@/domain/invoice";
+import type { AcceptedVia, ContractFields, ContractKind, ContractSnapshot } from "@/domain/contract";
 
 export const courseType = pgEnum("course_type", ["e_learning", "contact"]);
 export const courseLevel = pgEnum("course_level", ["basic", "advanced"]);
@@ -111,6 +112,11 @@ export const registrations = pgTable("registrations", {
     .notNull()
     .default(sql`translate(encode(decode(replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), 'hex'), 'base64'), '+/=', '-_')`),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * When Maria pressed „Saada leping kinnitamiseks“ (contracts, D4): the student's account then offers „Kinnita leping“ until she accepts, which
+   * clears it. Null for none. Not a contract: the contract is the row in `contracts`.
+   */
+  contractRequestedAt: timestamp("contract_requested_at", { withTimezone: true }),
 }, (t) => [
   index("registrations_client").on(t.clientId),
   index("registrations_email_lower").on(sql`lower(${t.email})`),
@@ -293,6 +299,12 @@ export const payments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * The contract an e-course purchase showed in the cart (contracts, §4): its filled title and text, version and language, taken when the purchase
+     * starts. When the payment is paid, settle freezes this very copy as the access's contract, so a text Maria edits between the cart and the
+     * payment changes nothing. Null for a payment that showed none (a registration's, and every payment before 0013).
+     */
+    contractSnapshot: jsonb("contract_snapshot").$type<ContractSnapshot | null>(),
   },
   (t) => [
     uniqueIndex("payments_reference").on(t.reference),
@@ -640,6 +652,49 @@ export const invoices = pgTable("invoices", {
   check("invoices_seq_positive", sql`${t.seq} > 0`),
 ]);
 
+// ---------- contracts (phase 4, piece 3) ----------
+
+/**
+ * One contract (spec §3): the frozen copy of what a student accepted, made in the transaction of the act that accepts it — a contact course's
+ * registration (`form`), an e-course's paid purchase (`purchase`), the terms gate (`terms`), or the account's „Kinnitan“ after Maria asked again
+ * (`account`). It holds the text she was shown (`title`, `body`: the placeholders filled, in `locale`), the template's `version`, and `fields`
+ * (the school, the student, the course, the session, the price and the payment choice), so a later edit of the text, the course, the price or Seaded
+ * never alters it. A row never changes after its insert but for `sentAt` (the last mailed copy) and `supersededAt` (a newer contract replaced it);
+ * the PDF is drawn from it on every download. At most one current (not superseded) contract per registration and per access
+ * (contracts_current_registration, contracts_current_access). The links are set null when the registration, the access, the course, the account
+ * or the payment is deleted: the accepted text outlives them.
+ */
+export const contracts = pgTable("contracts", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").$type<ContractKind>().notNull(),
+  registrationId: integer("registration_id").references(() => registrations.id, { onDelete: "set null" }),
+  accessId: integer("access_id").references(() => courseAccess.id, { onDelete: "set null" }),
+  courseId: integer("course_id").references(() => courses.id, { onDelete: "set null" }),
+  clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
+  /** The online payment of an e-course purchase that this contract was frozen with; null for the other ways. */
+  paymentId: integer("payment_id").references(() => payments.id, { onDelete: "set null" }),
+  /** The template's version at the acceptance (the text's version setting). */
+  version: text("version").notNull(),
+  /** The language the student read, which the contract is stored and printed in (D6). */
+  locale: text("locale").$type<"et" | "ru">().notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  fields: jsonb("fields").$type<ContractFields>().notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull(),
+  acceptedVia: text("accepted_via").$type<AcceptedVia>().notNull(),
+  /** The last time the PDF was mailed to the student („Saada koopia õpilasele“ or the acceptance's own mail); null before one. */
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  /** When a newer contract replaced this one (D4); null: this is the current one. */
+  supersededAt: timestamp("superseded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("contracts_registration").on(t.registrationId),
+  index("contracts_access").on(t.accessId),
+  index("contracts_client").on(t.clientId),
+  uniqueIndex("contracts_current_registration").on(t.registrationId).where(sql`${t.supersededAt} is null and ${t.registrationId} is not null`),
+  uniqueIndex("contracts_current_access").on(t.accessId).where(sql`${t.supersededAt} is null and ${t.accessId} is not null`),
+]);
+
 /** text compared byte by byte (collation "C"): the KV keys sort as in Cloudflare KV, and a LIKE 'prefix%' can use the primary key index. */
 const byteText = customType<{ data: string }>({ dataType: () => 'text COLLATE "C"' });
 
@@ -657,6 +712,7 @@ export const settings = pgTable("settings", { key: text("key").primaryKey(), val
 // keys: "contact" {email, phone, address, instagram, facebook}, "newsletter" {discountLabel, welcomeCode}, "trainer" {portraitKey, name, role: I18n, stats: [{value,label:I18n}]}, "prepayment" {receiver, iban, bank, referencePrefix},
 // "certificate" {place, registryCode, practicalLine, trainerName, nextYear, nextSeq} (phase 3d: domain/certificate.ts readCertificateSettings)
 // "invoice" {company, registryCode, address, vatNumber, vatOn, vatRate, prefix, nextYear, nextSeq, termDays, footer} (invoices: domain/invoice.ts readInvoiceSettings)
+// "contractContactVersion" the contact course's contract text's version (contracts: domain/contract.ts CONTRACT_CONTACT_VERSION_KEY), as "courseTermsVersion" is the e-course text's
 
 export const authTokens = pgTable("auth_tokens", { hash: text("hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), usedAt: timestamp("used_at", { withTimezone: true }) });
 export const adminSessions = pgTable("admin_sessions", { idHash: text("id_hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull() });
@@ -709,3 +765,4 @@ export type TestAttempt = typeof testAttempts.$inferSelect;
 export type PracticalPhoto = typeof practicalPhotos.$inferSelect;
 export type Certificate = typeof certificates.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
+export type Contract = typeof contracts.$inferSelect;

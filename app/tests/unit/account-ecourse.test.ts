@@ -10,7 +10,7 @@ import { EcourseView as CourseView } from "@/components/account/EcourseView";
 import { ecourseTexts } from "@/components/account/texts";
 import { formatDate } from "@/i18n/format";
 import { getDict, type Locale } from "@/i18n/locales";
-import type { EcourseView } from "@/server/client-data";
+import type { EcourseView, GateTerms } from "@/server/client-data";
 
 // The e-course page in a browser-like document (happy-dom), with fetch answered here: no access, the terms notice, accepting
 // (and what is sent), a 409 when the admin saved new terms meanwhile, the other failures, and the course view itself (phase 3a
@@ -49,11 +49,25 @@ const PROGRESS: EcourseView["progress"] = { done: 1, total: 4, next: 12 };
 /** A course without a test or points, nothing completed: the "Lõpetamine" block (e-course completion) shows the lessons and the end only, with no link. */
 const COMPLETION: EcourseView["completion"] = { lessons: { done: 1, total: 4, state: "open" }, test: null, practical: null, completedAt: null, protocolSent: false, certificate: null, certificateName: "" };
 
+/** The contract's title on an Estonian and on a Russian page (ruling R18: the gate shows it above the text). */
+const TITLE = { et: "E-koolituse leping", ru: "Договор онлайн-обучения" };
+
+/**
+ * The gate's contract as the server sends it (client-data.ts GateTerms): per page language the title and the text, filled already (`text` gives
+ * the texts, Estonian and Russian; a missing Russian one is the Estonian, as the server falls back; null: an empty contract, no title, no text).
+ */
+const gateText = (text: { et: string; ru?: string } | null, title: { et: string; ru?: string } = TITLE): GateTerms["text"] =>
+  text === null
+    ? { et: { title: "", body: "" }, ru: { title: "", body: "" } }
+    : { et: { title: title.et, body: text.et }, ru: { title: title.ru ?? title.et, body: text.ru ?? text.et } };
+
 const view = (
   over: {
     accepted?: boolean;
     version?: string;
-    text?: EcourseView["terms"]["text"];
+    text?: { et: string; ru?: string } | null;
+    title?: { et: string; ru?: string };
+    askName?: GateTerms["askName"];
     modules?: EcourseView["course"]["modules"];
     progress?: EcourseView["progress"];
     completion?: EcourseView["completion"];
@@ -61,7 +75,14 @@ const view = (
 ): EcourseView => ({
   course: { slug: "veebikursus", title: { et: "Veebikursus", ru: "Онлайн-курс" }, modules: over.modules ?? MODULES },
   access: { expiresAt: EXPIRES },
-  terms: { version: over.version ?? V1, accepted: over.accepted ?? false, text: over.accepted ? null : "text" in over ? (over.text ?? null) : { et: "Esimene lõik.\n\nTeine lõik.", ru: "Первый абзац." } },
+  terms: over.accepted
+    ? { version: over.version ?? V1, accepted: true, text: null }
+    : {
+        version: over.version ?? V1,
+        accepted: false,
+        text: gateText("text" in over ? (over.text ?? null) : { et: "Esimene lõik.\n\nTeine lõik.", ru: "Первый абзац." }, over.title),
+        askName: over.askName ?? null,
+      },
   progress: over.progress ?? PROGRESS,
   completion: over.completion ?? COMPLETION,
 });
@@ -167,7 +188,9 @@ describe("the terms notice", () => {
     await mount();
     const gate = $("[data-terms-gate]")!;
     expect(gate.querySelector("h1")?.textContent).toBe("Enne alustamist");
+    expect(gate.querySelector("[data-terms-text] h2")?.textContent).toBe("E-koolituse leping"); // the contract's own title (R18)
     expect($$("[data-terms-text] [data-legal-body] p").map((p) => p.textContent)).toEqual(["Esimene lõik.", "Teine lõik."]);
+    expect(gate.querySelector("input[name='name']")).toBeNull(); // her account has a name: no field
     expect(gate.querySelectorAll("input[type='checkbox']")).toHaveLength(1);
     expect(gate.querySelector("label")?.textContent).toBe("Olen tutvunud ja nõustun tingimustega");
     expect(gate.querySelectorAll("button, a")).toHaveLength(1);
@@ -181,10 +204,11 @@ describe("the terms notice", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1); // nothing was sent
   });
 
-  test("Russian shows the Russian text; a missing Russian text shows the Estonian one", async () => {
+  test("a Russian page shows the contract the server filled for it: the Russian one, or the Estonian one when there is no Russian text", async () => {
     fetchMock.mockResolvedValue(json(200, view()));
     await mount("ru");
     expect($("[data-terms-gate] h1")?.textContent).toBe("Перед началом");
+    expect($("[data-terms-text] h2")?.textContent).toBe("Договор онлайн-обучения");
     expect($$("[data-legal-body] p").map((p) => p.textContent)).toEqual(["Первый абзац."]);
     expect(button().textContent).toBe("Начать обучение");
     await act(async () => root.unmount());
@@ -202,7 +226,7 @@ describe("the terms notice", () => {
     expect(posts()).toHaveLength(0);
   });
 
-  test("a notice that is somehow sent without its text still shows its title, box and button", async () => {
+  test("a notice that is somehow sent with an empty contract (no title, no text) still shows its title, box and button", async () => {
     fetchMock.mockResolvedValue(json(200, view({ text: null })));
     await mount();
     expect($("[data-terms-text]")).toBeNull();
@@ -228,7 +252,7 @@ describe("accepting", () => {
     await click(button());
     expect(posts()).toHaveLength(1);
     expect(posts()[0][0]).toBe("/api/konto/tingimused");
-    expect(posts()[0][1]).toMatchObject({ method: "POST", credentials: "same-origin", body: JSON.stringify({ slug: "veebikursus", version: V1 }) });
+    expect(posts()[0][1]).toMatchObject({ method: "POST", credentials: "same-origin", body: JSON.stringify({ slug: "veebikursus", version: V1, locale: "et" }) });
     expect(fetchMock).toHaveBeenCalledTimes(2); // the page and the acceptance
 
     expect($("[data-terms-gate]")).toBeNull();
@@ -269,7 +293,7 @@ describe("accepting", () => {
     await mount();
     await tick();
     await click(button());
-    expect(posts()[0][1]).toMatchObject({ body: JSON.stringify({ slug: "veebikursus", version: V1 }) });
+    expect(posts()[0][1]).toMatchObject({ body: JSON.stringify({ slug: "veebikursus", version: V1, locale: "et" }) });
     // while the new answer is on its way the notice stays (no skeleton), still sending, no message; the box is cleared by the new notice
     expect($("[data-account-state='loading']")).toBeNull();
     expect($("[data-terms-gate]")).not.toBeNull();
@@ -292,7 +316,7 @@ describe("accepting", () => {
     fetchMock.mockImplementation(async (_input, init) => (init?.method === "POST" ? json(200, { ok: true }) : json(200, view({ version: V2 }))));
     await tick();
     await click(button());
-    expect(posts()[1][1]).toMatchObject({ body: JSON.stringify({ slug: "veebikursus", version: V2 }) });
+    expect(posts()[1][1]).toMatchObject({ body: JSON.stringify({ slug: "veebikursus", version: V2, locale: "et" }) });
     expect($("[data-ecourse]")).not.toBeNull();
   });
 
@@ -410,6 +434,134 @@ describe("accepting", () => {
     await tick();
     await click(button());
     expect($("[data-terms-failed]")?.textContent).toBe("Не удалось сохранить. Попробуйте ещё раз.");
+  });
+});
+
+describe("the contract at the gate (contracts, rulings R18, R19)", () => {
+  /** Types into the name field as a person would (React listens to the native input event). */
+  const typeName = async (value: string) => {
+    const input = $("input[name='name']") as HTMLInputElement | null;
+    expect(input, "the name field").not.toBeNull();
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+      input!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  };
+  const nameError = () => $("[data-terms-name-error]")?.textContent;
+  const contractTitle = () => $("[data-terms-text] h2")?.textContent;
+  const paragraphs = () => $$("[data-terms-text] [data-legal-body] p").map((p) => p.textContent);
+
+  /** An account with no name: what the server sends (client-data.ts gateContract) — the text filled with an empty {nimi}, and per language the template and the values. */
+  const TEMPLATE = {
+    et: { title: "Leping: {nimi}", body: "Mina, {nimi} ({e-post}), alustan koolitust {koolitus}.\n\n{tundmatu} jääb, nagu kirjutati." },
+    ru: { title: "Договор: {nimi}", body: "Я, {nimi} ({e-post}), начинаю курс {koolitus}." },
+  };
+  const VALUES = { nimi: "", "e-post": "kati@example.test", koolitus: "Veebikursus", toimumine: "", hind: "", ettemaks: "" };
+  const nameless = () =>
+    view({
+      title: { et: "Leping: ", ru: "Договор: " },
+      text: { et: "Mina,  (kati@example.test), alustan koolitust Veebikursus.\n\n{tundmatu} jääb, nagu kirjutati.", ru: "Я,  (kati@example.test), начинаю курс Онлайн-курс." },
+      askName: { et: { template: TEMPLATE.et, values: VALUES }, ru: { template: TEMPLATE.ru, values: { ...VALUES, koolitus: "Онлайн-курс" } } },
+    });
+
+  test("R18: the contract's own title stands above its text as a heading under the page's „Enne alustamist“; with no title, the text alone", async () => {
+    fetchMock.mockResolvedValue(json(200, view({ title: { et: "E-koolituse leping — Kati Kask" } })));
+    await mount();
+    const notice = $("[data-terms-text]")!;
+    expect($("[data-terms-gate] h1")?.textContent).toBe("Enne alustamist");
+    expect(notice.firstElementChild?.tagName).toBe("H2");
+    expect(contractTitle()).toBe("E-koolituse leping — Kati Kask");
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    fetchMock.mockResolvedValue(json(200, view({ title: { et: " " } })));
+    await mount();
+    expect($("[data-terms-text] h2")).toBeNull();
+    expect(paragraphs()).toEqual(["Esimene lõik.", "Teine lõik."]);
+  });
+
+  test("R19: an account with no name gets one required field „Nimi“ above the box, and {nimi} in the title and the text is filled as she types, on one line", async () => {
+    fetchMock.mockResolvedValue(json(200, nameless()));
+    await mount();
+    const input = $("input[name='name']") as HTMLInputElement;
+    expect(input).not.toBeNull();
+    expect(input.required).toBe(true);
+    expect(input.maxLength).toBe(120);
+    expect(input.getAttribute("autocomplete")).toBe("name");
+    expect($(`label[for='${input.id}']`)?.textContent).toBe("Nimi");
+    // the field comes before the box, in the one form
+    const form = $("[data-terms-gate] form")!;
+    expect([...form.querySelectorAll("input")].map((i) => i.name)).toEqual(["name", "terms"]);
+    expect(contractTitle()).toBe("Leping:");
+    expect(paragraphs()).toEqual(["Mina,  (kati@example.test), alustan koolitust Veebikursus.", "{tundmatu} jääb, nagu kirjutati."]);
+    await typeName("  Kati \n  Kask ");
+    expect(contractTitle()).toBe("Leping: Kati Kask");
+    expect(paragraphs()).toEqual(["Mina, Kati Kask (kati@example.test), alustan koolitust Veebikursus.", "{tundmatu} jääb, nagu kirjutati."]);
+    // one pass: a name that looks like a placeholder is not filled again
+    await typeName("{koolitus}");
+    expect(paragraphs()[0]).toBe("Mina, {koolitus} (kati@example.test), alustan koolitust Veebikursus.");
+    expect(posts()).toHaveLength(0);
+  });
+
+  test("R19: pressed without a name, nothing is sent and the field says „Kirjuta oma nimi.“ with the focus on it; with the name, it goes with the acceptance as typed", async () => {
+    fetchMock.mockImplementation(async (_input, init) => (init?.method === "POST" ? json(200, { ok: true }) : json(200, nameless())));
+    await mount();
+    await tick();
+    await typeName("   ");
+    await click(button());
+    expect(posts()).toHaveLength(0);
+    expect(nameError()).toBe("Kirjuta oma nimi.");
+    expect($("input[name='name']")?.getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe($("input[name='name']"));
+    expect($("[data-terms-failed]")?.textContent).toBe("");
+    await typeName(" Kati Kask");
+    expect(nameError()).toBe(""); // a name clears the words
+    await click(button());
+    expect(posts()).toHaveLength(1);
+    expect(posts()[0][1]).toMatchObject({ body: JSON.stringify({ slug: "veebikursus", version: V1, locale: "et", name: " Kati Kask" }) });
+    expect($("[data-ecourse]")).not.toBeNull();
+  });
+
+  test("R19: the server's 400 { error: \"name\" } puts the words under the field; the box stays ticked and nothing is loaded again", async () => {
+    fetchMock.mockImplementation(async (_input, init) => (init?.method === "POST" ? json(400, { ok: false, error: "name" }) : json(200, nameless())));
+    await mount();
+    await tick();
+    await typeName("Kati");
+    await click(button());
+    expect(nameError()).toBe("Kirjuta oma nimi.");
+    expect(($("input[name='terms']") as HTMLInputElement).checked).toBe(true);
+    expect($("[data-terms-failed]")?.textContent).toBe("");
+    expect(fetchMock).toHaveBeenCalledTimes(2); // the page and the acceptance
+    expect(button().getAttribute("aria-disabled")).toBeNull();
+  });
+
+  test("R19: a 400 { error: \"name\" } where no field was shown (her account lost its name since the page was loaded): the page is loaded again and asks", async () => {
+    let loads = 0;
+    fetchMock.mockImplementation(async (_input, init) => {
+      if (init?.method === "POST") return json(400, { ok: false, error: "name" });
+      return json(200, ++loads === 1 ? view() : nameless());
+    });
+    await mount();
+    expect($("input[name='name']")).toBeNull();
+    await tick();
+    await click(button());
+    expect(loads).toBe(2);
+    expect($("input[name='name']")).not.toBeNull();
+    expect($("[data-terms-failed]")?.textContent).toBe("");
+  });
+
+  test("R19 in Russian: „Имя“, the Russian text filled as she types, and „Напишите своё имя.“", async () => {
+    fetchMock.mockResolvedValue(json(200, nameless()));
+    await mount("ru");
+    const input = $("input[name='name']") as HTMLInputElement;
+    expect($(`label[for='${input.id}']`)?.textContent).toBe("Имя");
+    await typeName("Катя");
+    expect(contractTitle()).toBe("Договор: Катя");
+    expect(paragraphs()).toEqual(["Я, Катя (kati@example.test), начинаю курс Онлайн-курс."]);
+    await typeName("");
+    await tick();
+    await click(button());
+    expect(nameError()).toBe("Напишите своё имя.");
+    expect(posts()).toHaveLength(0);
   });
 });
 

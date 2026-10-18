@@ -16,8 +16,9 @@ const phone = { ...devices["Desktop Chrome"], viewport: { width: 390, height: 84
  * calendar 8 rows, the hero 5 slides). So they run after all other tests: "chromium-edit" and "mobile-edit" are the
  * teardown projects of "before-edits-*", on which "chromium" and "mobile" depend, and a teardown starts only when every
  * project depending on its setup has finished. Unlike `dependencies`, a teardown also runs when an earlier test failed.
+ * contracts.spec.ts is one of them (contracts Task 7): it writes the contact contract's text and the seller card, which every registration reads.
  */
-const EDITS = /admin-(edit|site)\.spec\.ts$/;
+const EDITS = /(admin-(edit|site)\.spec\.ts|[\\/]contracts\.spec\.ts)$/;
 const ORDER = /order\.setup\.ts$/;
 /** The visual suite has its own config: playwright.visual.config.ts (npm run visual). */
 const VISUAL = /[\\/]visual[\\/]/;

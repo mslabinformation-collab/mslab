@@ -1,5 +1,6 @@
-import type { Invoice } from "@/db/schema";
+import type { Contract, Invoice } from "@/db/schema";
 import { firstName, groupIban, hasPrepayment, paymentReference, type PrepaymentInfo } from "@/domain/account-cards";
+import { contractFileName } from "@/domain/contract";
 import { euro, invoiceFileName } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { prepaymentDue } from "@/domain/registration";
@@ -7,7 +8,7 @@ import { pick, type I18n } from "@/i18n/field";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { href } from "@/i18n/href";
 import { getDict, type Locale } from "@/i18n/locales";
-import type { Mail } from "./notify";
+import type { Mail, MailAttachment } from "./notify";
 
 // The client account's login e-mail: a big 6-digit code and one "Logi sisse" button, both valid 30 minutes
 // (server/client-auth.ts LOGIN_TTL_MS). The texts are `account.mail` in the dictionaries, and the e-mail has two bodies made
@@ -20,6 +21,10 @@ import type { Mail } from "./notify";
 // After an online payment (phase 2b) the same card says what was paid (registrationPaidMail) or that an e-course is open (ecourseOpenMail).
 // The e-course completion (completionMail) uses the protocol mail's card without a login: one line, the course, one button to the page.
 // Maria's invoice (invoiceMail, invoices Task 5) is the same card again: the course, the amount, the due date and the bank details, the PDF attached.
+// The contract (contractMail, contracts Task 4, ruling R1) is the same card: the day she accepted it, the contract and its course, the PDF attached
+// with „Leping on lisatud.“; the registration's confirmation and the e-course's paid mail carry the same line when their caller attaches the PDF.
+// Maria's ask (contractRequestMail, contracts Task 5, ruling R9) is a short mail with a plain link to the account page, no login in it.
+// This module imports the contracts' types only (contracts.ts imports it, through completion.ts too).
 
 /**
  * The link in the login e-mail: it signs in the device that opens it (api/konto verify). `pageLocale` is the language of
@@ -351,13 +356,16 @@ export type RegistrationConfirmationInput = {
   payLink?: string | null;
   /** A live login for the address, when the visitor ticked "Loo mulle kohe konto" and one could be issued. */
   login: LoginCode | null;
+  /** The registration's contract goes with the mail as a PDF (contracts, spec §4, D7): the line „Leping on lisatud.“. */
+  contractAttached?: boolean;
 };
 
 /**
  * The confirmation of a group registration: what was received, the course and its date and place, the next step (the
  * prepayment amount with "Maksa {summa}" when online payments are on, and where to pay it by transfer, or "Maria saadab sulle arve …")
  * and one button. The next-step sentence is the dashboard card's (`account.next.pay` / `invoice`, domain/account-cards.ts nextStep), the
- * payment rows are the card's own (components/account/PrepaymentInfo.tsx), and "Koht kinnitatakse …" is the registration form's.
+ * payment rows are the card's own (components/account/PrepaymentInfo.tsx), and "Koht kinnitatakse …" is the registration form's. „Leping on
+ * lisatud.“ closes it when the caller attaches the contract (submit.ts).
  */
 export function registrationConfirmationMail(input: RegistrationConfirmationInput): Mail {
   const dict = getDict(input.locale);
@@ -389,6 +397,7 @@ export function registrationConfirmationMail(input: RegistrationConfirmationInpu
     sections.push({ text: dict.account.next.invoice });
   }
   sections.push({ text: dict.course.confirmAfterPrepayment });
+  if (input.contractAttached) sections.push({ text: dict.account.contractMail.attached });
   return confirmationMail({
     email: input.email,
     name: input.name,
@@ -461,11 +470,14 @@ export type EcourseOpenInput = {
   login: LoginCode | null;
   /** The purchase's invoice goes with the mail as a PDF (invoices, spec §4): the line „Arve on lisatud.". */
   invoiceAttached?: boolean;
+  /** The purchase's contract goes with the mail as a PDF, after the invoice (contracts, D7): the line „Leping on lisatud.“. */
+  contractAttached?: boolean;
 };
 
 /**
  * The mail after a paid e-course purchase (phase 2b, spec 6.2.4): "E-koolitus on avatud — {title}", the course with "Ligipääs kuni {date}.",
- * „Arve on lisatud." when the purchase's invoice is attached (settle.ts attaches it), and the login: the code large and "Logi sisse"
+ * „Arve on lisatud." when the purchase's invoice is attached and „Leping on lisatud.“ when its contract is (settle.ts attaches both, the invoice
+ * first), and the login: the code large and "Logi sisse"
  * (verifyLink, like the code login), which opens Minu koolitused with the course on it. It leaves out the login mail's "Kui sa ei palunud
  * sisselogimist, võid selle kirja kustutada.": the buyer has just paid, and that line could make her delete her access. settle.ts never sends
  * it to a sample address and does not count it in the daily caps (it follows a real payment).
@@ -481,7 +493,10 @@ export function ecourseOpenMail(input: EcourseOpenInput): Mail {
     subject: oneLine(fill(m.subjectEcourse, { title })),
     lead: m.leadEcourse,
     box: { title, lines: [fill(m.access, { date: formatDate(input.expiresAt, input.locale) })] },
-    sections: input.invoiceAttached ? [{ text: m.invoiceAttached }] : [],
+    sections: [
+      ...(input.invoiceAttached ? [{ text: m.invoiceAttached }] : []),
+      ...(input.contractAttached ? [{ text: getDict(input.locale).account.contractMail.attached }] : []),
+    ],
     login: input.login,
     afterPurchase: true,
   });
@@ -540,6 +555,78 @@ export function invoiceMail(input: InvoiceMailInput): Mail {
     noAccount: input.second === true,
   });
   return { ...mail, attachments: [{ filename: invoiceFileName(inv.number), content: Buffer.from(input.pdf), contentType: "application/pdf" }] };
+}
+
+// ---------- the contract (contracts, Task 4; ruling R1; spec D7) ----------
+
+/** A contract's PDF as a mail's attachment: „MS-LAB-leping-{id}.pdf“ (domain/contract.ts contractFileName). */
+export const contractAttachment = (id: number, pdf: Uint8Array): MailAttachment => ({ filename: contractFileName(id), content: Buffer.from(pdf), contentType: "application/pdf" });
+
+export type ContractMailInput = {
+  siteUrl: string;
+  /** The student's address (the contract's frozen one). */
+  email: string;
+  name: string;
+  /** The mail's language: the page she accepted it on, or the contract's. */
+  locale: Locale;
+  /** The contract as frozen: its id (the file's name), its title, the day she accepted it, its course and session. */
+  contract: Pick<Contract, "id" | "title" | "acceptedAt" | "fields">;
+  /** The contract's PDF (contracts.ts contractPdfForMail, rendered now); null when it failed to render: no attachment and no line then. */
+  pdf: Uint8Array | null;
+  /** A student who has no account here (Task 5's „Saada koopia õpilasele“): no „Ava minu konto“. */
+  noAccount?: boolean;
+};
+
+/**
+ * „MS LAB leping“ (Russian «Договор MS LAB»): the mail that carries a contract she has just accepted — the terms gate's (Task 4), „Kinnitan“'s
+ * (Task 6) — or a copy Maria sends (Task 5). The greeting, „Kinnitasid lepingu {date}.“ with the day she accepted it, the contract's title with its
+ * course and session in the box, „Leping on lisatud.“ with the PDF attached, and one button, „Ava minu konto“ (none for a student without an
+ * account). No login in it. The caller decides whom and whether to send it (never to a sample address).
+ */
+export function contractMail(input: ContractMailInput): Mail {
+  const m = getDict(input.locale).account.contractMail;
+  const { fields } = input.contract;
+  const mail = confirmationMail({
+    email: input.email,
+    name: input.name,
+    locale: input.locale,
+    siteUrl: input.siteUrl,
+    subject: m.subject,
+    lead: fill(m.lead, { date: formatDate(input.contract.acceptedAt, input.locale) }),
+    box: { title: oneLine(input.contract.title) || m.subject, lines: [fields.course, fields.session].filter((line) => line.trim() !== "") },
+    sections: input.pdf ? [{ text: m.attached }] : [],
+    login: null,
+    noAccount: input.noAccount === true,
+  });
+  return input.pdf ? { ...mail, attachments: [contractAttachment(input.contract.id, input.pdf)] } : mail;
+}
+
+export type ContractRequestMailInput = {
+  siteUrl: string;
+  /** The student's address (the registration's). */
+  email: string;
+  name: string;
+  /** The mail's language: the registration's. */
+  locale: Locale;
+  /** The course's name, in the mail's language. */
+  course: string;
+};
+
+/**
+ * „MS LAB leping kinnitamiseks“ (Russian «Договор MS LAB — подтвердите»; contracts Task 5, ruling R9, spec D4): the mail Maria's „Saada leping
+ * kinnitamiseks“ sends. A short greeting, one line saying Maria asks her to confirm the contract for the course, and one button to her account's
+ * page in her language (/konto, /ru/konto), where the card shows „Kinnita leping“. A plain link, never a login: no token, no code, no address
+ * in it (she signs in as she always does). The caller decides whom and whether to send it (never to a sample address).
+ */
+export function contractRequestMail(input: ContractRequestMailInput): Mail {
+  const dict = getDict(input.locale).account;
+  const m = dict.contractRequestMail;
+  const greeting = hello(dict.dashboard, input.name);
+  const lead = fill(m.lead, { course: oneLine(input.course) });
+  const link = `${input.siteUrl.replace(/\/+$/, "")}${href(input.locale, "/konto")}`;
+  const text = [greeting, "", lead, "", `${dict.mail.confirm.open}:`, link, "", dict.mail.signature].join("\n");
+  const html = mailCard(m.subject, input.locale, [greetingRow(greeting), paragraphRow(lead), buttonRow(link, dict.mail.confirm.open), linkRow(link), signatureRow(dict.mail)]);
+  return { to: input.email, subject: m.subject, text, html };
 }
 
 export type RequestConfirmationInput = {

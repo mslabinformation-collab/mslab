@@ -58,15 +58,14 @@ export function EcoursePage({ slug, locale, t }: { slug: string; locale: Locale;
 function EcourseBody({ data, locale, t, reload }: { data: EcourseData; locale: Locale; t: EcourseTexts; reload: Reload }) {
   const [acceptedVersion, setAcceptedVersion] = useState<string | null>(null);
   const [reshown, setReshown] = useState(false);
-  const { version, text } = data.terms;
+  const { version } = data.terms;
 
   if (!data.terms.accepted && acceptedVersion !== version)
     return (
       <TermsGate
         key={version}
         slug={data.course.slug}
-        version={version}
-        text={text}
+        terms={data.terms}
         locale={locale}
         t={t}
         focusTitle={reshown}

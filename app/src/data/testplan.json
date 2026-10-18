@@ -46,7 +46,7 @@
     {
       "id": "koristamine",
       "name": "Koristamine",
-      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
+      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Nii kustutab ta ka proovi-lepingud: needki jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
     }
   ],
   "items": [
@@ -1067,20 +1067,26 @@
       "area": "haldus",
       "who": "maria",
       "device": "tahvel",
-      "title": "Seaded: e-koolituse tingimused",
+      "title": "Seaded: e-koolituse leping (tingimused)",
       "href": "/admin/seaded",
       "steps": [
-        "Ava „Seaded“ ja keri plokini „E-koolituse tingimused“.",
-        "Kirjuta oma päris tingimuste tekst.",
-        "Vajuta „Salvesta“."
+        "Ava „Seaded“ ja keri plokini „E-koolituse leping (tingimused)“.",
+        "Kirjuta „Pealkiri“: „E-koolituse leping“, ja oma päris lepingu tekst.",
+        "Vajuta „Salvesta“.",
+        "Ava e-koolituse ostukorv."
       ],
       "expect": [
         "Pärast salvestamist näed „Salvestatud.“.",
-        "Seda teksti ei ole avalikul lehel."
+        "Pealkirja all on vihje, mis soovitab pealkirjaks „E-koolituse leping“.",
+        "Teksti all on kohahoidjate loetelu, sama mis kaardil „Lepingud“.",
+        "Ostukorvis on „Loe lepingut“ all uus pealkiri ja tekst.",
+        "Õpilane loeb seda enne ostmist ja enne tasuta avatud koolituse esimest avamist."
       ],
-      "why": "Õpilane nõustub nende tingimustega enne e-koolituse alustamist.",
+      "why": "Õpilane nõustub selle lepinguga enne e-koolituse ostmist või alustamist.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "haldus-seaded-tunnistus",
@@ -1161,6 +1167,62 @@
       "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
+      "id": "haldus-seaded-lepingud",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: lepingud",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja keri kaardini „Lepingud“.",
+        "Jäta „Kontaktkoolituse leping“ all „Pealkiri“ tühjaks ja vajuta „Salvesta lepingud“.",
+        "Kirjuta eesti keeles „Pealkiri“ ja „Tekst“, kus on {nimi}, {koolitus} ja {hind}.",
+        "Vali RU ja kirjuta sama vene keeles.",
+        "Vajuta „Salvesta lepingud“.",
+        "Ava kontaktkoolituse leht, vali tulevane kuupäev ja vajuta ruudu all „Loe lepingut“."
+      ],
+      "expect": [
+        "Teksti all on „Tühi rida alustab uut lõiku.“ ja kuus kohahoidjat: {nimi}, {e-post}, {koolitus}, {toimumine}, {hind}, {ettemaks}.",
+        "Tühja pealkirja korral näed „Täida see väli (eesti keeles).“ ja „Kontrolli märgitud välju.“, midagi ei salvestata.",
+        "Pärast salvestamist näed „Lepingud on salvestatud.“.",
+        "Kontaktkoolituse lehel on „Loe lepingut“ all sinu tekst, kohahoidjad on täidetud.",
+        "Uus tekst on lehel kohe, ootamata.",
+        "Vene lehel on vene tekst."
+      ],
+      "why": "Lepingu teksti kirjutab Maria ise.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
+      "id": "haldus-seaded-naidisleping",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Seaded: näidisleping",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja keri kaardini „Lepingud“.",
+        "Muuda „Pealkiri“ ja „Tekst“, aga ära salvesta.",
+        "Vajuta „Näidisleping (PDF)“.",
+        "Vali RU, kirjuta vene tekst ja vajuta „Näidisleping vene keeles (PDF)“.",
+        "Lae leht uuesti ja vaata „Pealkiri“."
+      ],
+      "expect": [
+        "PDF avaneb uues aknas ja selles on muudetud pealkiri ja tekst, kuigi neid polnud salvestatud.",
+        "Õpilane on „Proov (näidis)“, koolitus „Näidiskoolitus“ ja kohahoidjad on täidetud.",
+        "Ettevõtte andmed on samad mis kaardil „Arve andmed“.",
+        "Venekeelsel näidisel on vene tekst ja sildid, näiteks „Стороны“.",
+        "Pärast lehe uuesti laadimist on endine pealkiri: midagi ei salvestatud."
+      ],
+      "why": "Maria näeb lepingut enne, kui keegi seda kinnitab.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
       "id": "registreerimine-vorm-vead",
       "area": "registreerimine",
       "who": "maria",
@@ -1174,14 +1236,72 @@
       ],
       "expect": [
         "Kuupäevade all on „Vali sobiv kuupäev.“.",
-        "Nime, telefoni ja tingimuste juures on „See väli on kohustuslik.“.",
+        "Nime, telefoni ja lepingu ruudu juures on „See väli on kohustuslik.“.",
         "E-posti all on „Sisesta korrektne e-posti aadress.“.",
         "Pärast kuupäeva valimist kaob kuupäeva viga, teised jäävad.",
         "Midagi ei salvestata ja leht ei liigu edasi."
       ],
       "why": "Vigane vorm peab ütlema, mida parandada.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
+      "id": "registreerimine-leping",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Leping registreerimisvormis",
+      "href": "/koolitused",
+      "steps": [
+        "Ava oma kontaktkoolituse leht ja vali „Grupikoolitus“.",
+        "Vajuta ruudu all „Loe lepingut“.",
+        "Vali tulevane kuupäev ja kirjuta „Nimi“: Proov 1.",
+        "Vali „50% registreerimisel + 50% koolituspäeval“.",
+        "Loe vormi sees avanenud lepingut uuesti.",
+        "Vali „Individuaalkoolitus“."
+      ],
+      "expect": [
+        "Ruudu tekst on „Olen tutvunud lepingu tingimustega ja nõustun nendega.“.",
+        "„Loe lepingut“ avab lepingu teksti vormi sees ja leht jääb samaks.",
+        "Tekst on Seadetes kirjutatud kontaktkoolituse leping, enne selle kirjutamist „Õppetingimused“.",
+        "Kui tekstis on {toimumine}, on enne kuupäeva valimist seal „(vali toimumine)“.",
+        "Tekstis olevad {nimi}, {toimumine}, {hind} ja {ettemaks} täituvad vormi valikute järgi.",
+        "„Individuaalkoolitus“ näitab endist ruutu ja linki „Õppetingimused“."
+      ],
+      "why": "Õpilane loeb lepingu enne, kui ta selle ruuduga kinnitab.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
+      "id": "registreerimine-leping-muutunud",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Leping muutus enne registreerimist",
+      "href": "/koolitused",
+      "steps": [
+        "Ava oma kontaktkoolituse leht ja vali tulevane kuupäev.",
+        "Kirjuta „Nimi“: Proov 1, oma +proov1 e-post ja telefon ning märgi lepingu ruut.",
+        "Ava teises vahelehes Seaded, lisa kontaktkoolituse lepingule (või „Õppetingimused“ tekstile) üks lause ja salvesta.",
+        "Vajuta esimeses vahelehes „Registreeru“.",
+        "Vajuta „Loe lepingut“.",
+        "Pane Seadetes tekst tagasi ja salvesta."
+      ],
+      "expect": [
+        "Ruudu all on „Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.“.",
+        "Lepingu ruut on jälle märkimata.",
+        "„Loe lepingut“ näitab teksti koos lisatud lausega.",
+        "Montonio leht ei avane ja halduses „Registreerimised“ uut registreeringut pole."
+      ],
+      "why": "Õpilane kinnitab ainult seda lepingu teksti, mida ta nägi.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-montonio-esmane",
@@ -1194,7 +1314,7 @@
         "Ava kontaktkoolitus ja vali tulevane kuupäev, kus on vabu kohti.",
         "Kirjuta „Nimi“: Proov 0.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov0.",
-        "Vali „100% kohe“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Vali „100% kohe“, märgi lepingu ruut ja vajuta „Registreeru“.",
         "Kirjuta selle kontrolli märkusesse, mida Montonio leht pakub: pangad, kaart ja nupud.",
         "Tee makse testpangas lõpuni ja kirjuta märkusesse iga samm.",
         "Kirjuta sama ka docs/deploy.md jaotise 11 punkti 6.",
@@ -1226,18 +1346,20 @@
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov1.",
         "Kirjuta „Telefon“: oma telefoninumber.",
         "Vali „50% registreerimisel + 50% koolituspäeval“.",
-        "Märgi „Loo mulle kohe konto MS LAB keskkonda“ ja tingimuste ruut.",
+        "Märgi „Loo mulle kohe konto MS LAB keskkonda“ ja lepingu ruut.",
         "Vajuta „Registreeru“."
       ],
       "expect": [
         "Hetkeks näed teadet „Registreerimine on vastu võetud. …“.",
         "Siis avaneb Montonio makseleht poole koolituse hinnaga.",
-        "Postkasti tuleb kiri „Registreering on vastu võetud — …“ koos koodiga.",
+        "Postkasti tuleb kiri „Registreering on vastu võetud — …“ koos koodiga ja lepingu PDF-iga.",
         "Maria postkasti tuleb teade „Registreerimine: …“ nimega Proov 1."
       ],
       "why": "Registreerimine on lehe kõige tähtsam töö.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-ettemaks",
@@ -1494,7 +1616,7 @@
       "steps": [
         "Registreeri samale kuupäevale: „Nimi“ Proov 2 ja „Telefon“ oma number.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov2.",
-        "Vali „100% kohe“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Vali „100% kohe“, märgi lepingu ruut ja vajuta „Registreeru“.",
         "Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb."
       ],
       "expect": [
@@ -1505,7 +1627,9 @@
       ],
       "why": "Kõik ei maksa kohe; registreering peab ikka alles jääma.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "registreerimine-pangaulekanne",
@@ -1542,7 +1666,7 @@
       "steps": [
         "Registreeri samale kuupäevale: „Nimi“ Proov 6 ja „Telefon“ oma number.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov6.",
-        "Vali „50% registreerimisel + 50% koolituspäeval“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Vali „50% registreerimisel + 50% koolituspäeval“, märgi lepingu ruut ja vajuta „Registreeru“.",
         "Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb.",
         "Halduses ava „Registreerimised“, vajuta nimele Proov 6 ja keri plokini „Arved“.",
         "Vajuta „Koosta arve“, vali „Ettemaks 50%“ ja „Maksmiseks“, siis vajuta „Koosta arve“.",
@@ -1812,6 +1936,83 @@
       "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
+      "id": "registreerimine-leping-plokk",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Leping registreeringu paneelis",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava „Õpilased“ ja kirjuta „Lisa õpilane e-posti järgi“: oma aadress, kuhu lisad enne @-märki +proov1.",
+        "Vajuta „Lisa õpilane“.",
+        "Ava „Registreerimised“ ja vajuta nimele Proov 1.",
+        "Vaata plokki „Leping“ ja vajuta „Laadi alla (PDF)“.",
+        "Ava „Õpilased“, Proov 1 paneel ja vaata plokki „Lepingud“.",
+        "Ava registreering, mille õpilasel pole kontot (kui sellist pole, jäta see samm vahele)."
+      ],
+      "expect": [
+        "Pärast „Lisa õpilane“ avaneb Proov 1 paneel, kus on „Registreerimised“ all tema registreering.",
+        "Plokis „Leping“ on pealkiri ja „Kinnitatud …“ koos kuupäeva ja viisiga „Registreerimisvorm“.",
+        "Plokis on nupud „Saada koopia õpilasele“, „Laadi alla (PDF)“ ja „Saada leping kinnitamiseks“.",
+        "PDF-is on pooled, koolitus, lepingu tekst ja rida „Kinnitatud elektrooniliselt …“.",
+        "Õpilase paneelis on sama leping koos „Laadi alla (PDF)“ ja viitega „Ava registreerimine“.",
+        "Ilma kontota õpilasel on nupu asemel „Õpilasel pole kontot — lisa ta Õpilased lehel.“."
+      ],
+      "why": "Maria hoiab iga registreeringu lepingut ühe puudutuse kaugusel.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
+      "id": "registreerimine-leping-kinnitamiseks",
+      "area": "registreerimine",
+      "who": "koos",
+      "device": "tahvel",
+      "title": "Lepingu kinnitamise küsimine uuesti",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 1 registreeringu paneel ja vajuta „Saada leping kinnitamiseks“.",
+        "Ava Proov 1 postkastis kiri „MS LAB leping kinnitamiseks“ ja vajuta kirjas nuppu.",
+        "Vajuta paneelis uuesti „Saada leping kinnitamiseks“."
+      ],
+      "expect": [
+        "Paneelis näed „Palve on õpilasele saadetud.“ ja rida „Kinnitamist ootab (saadetud …)“.",
+        "Kirjas on lühike tervitus, üks rida, mis nimetab koolitust, ja nupp „Ava minu konto“.",
+        "Nupp avab konto lehe: sisselogituna „Minu koolitused“, muidu sisselogimise lehe; kirjas pole sisselogimise linki.",
+        "Vana leping jääb paneelis alles.",
+        "Uuesti vajutades jääb rida „Kinnitamist ootab (saadetud …)“ tänase kuupäevaga ja tuleb teine kiri."
+      ],
+      "why": "Maria saab õpilaselt uue kinnituse küsida, kui koolitus või tekst muutus.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
+      "id": "registreerimine-leping-koopia",
+      "area": "registreerimine",
+      "who": "koos",
+      "device": "tahvel",
+      "title": "Lepingu koopia õpilasele",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava Proov 1 registreeringu paneel ja vajuta lepingul „Saada koopia õpilasele“.",
+        "Ava Proov 1 postkastis kiri „MS LAB leping“ ja selle manus."
+      ],
+      "expect": [
+        "Näed teadet „Koopia on õpilasele saadetud.“ ja lepingu all rida „Saadetud õpilasele …“ tänase kuupäevaga.",
+        "Kiri on „MS LAB leping“ reaga „Leping on lisatud.“ ja manusega „MS-LAB-leping-….pdf“.",
+        "Manuse tekst on sama mis failil „Laadi alla (PDF)“.",
+        "Asendatud lepingul (kui paneelis on selline) koopia nuppu pole."
+      ],
+      "why": "Õpilane saab lepingu uuesti, kui esimene kiri läks kaduma.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
       "id": "registreerimine-individuaal",
       "area": "registreerimine",
       "who": "maria",
@@ -2034,13 +2235,14 @@
         "Kaardil on silt „Kontaktõpe“, koolitus, kuupäev, kellaaeg ja koht.",
         "Kaardi lause on „Koht on kinnitatud.“, sest kogu summa on makstud.",
         "Kaardil on nupp „Tühista või muuda aega“.",
-        "Kui Proov 1 maksis veebis, on kaardil ka rida „Arve MSL2026-… · … · Tasutud“ ja link „Laadi alla (PDF)“."
+        "Kui Proov 1 maksis veebis, on kaardil ka rida „Arve MSL2026-… · … · Tasutud“ ja link „Laadi alla (PDF)“.",
+        "Kaardil on rida „Leping · kinnitatud …“ ja „Laadi alla (PDF)“ või, kui Maria küsis, „Kinnita leping“."
       ],
       "why": "Õpilane näeb siin oma koolitused ühes kohas.",
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "konto-muutmine",
@@ -2076,7 +2278,7 @@
       "steps": [
         "Registreeri samale kuupäevale: „Nimi“ Proov 7 ja „Telefon“ oma number.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov7.",
-        "Vali „50% registreerimisel + 50% koolituspäeval“, märgi tingimuste ruut ja vajuta „Registreeru“.",
+        "Vali „50% registreerimisel + 50% koolituspäeval“, märgi lepingu ruut ja vajuta „Registreeru“.",
         "Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb.",
         "Koosta halduses Proov 7 jaoks „Ettemaks 50%“ arve valikuga „Maksmiseks“.",
         "Logi sisse kui Proov 7, ava „Minu koolitused“ ja vajuta rea „Arve …“ juures „Laadi alla (PDF)“.",
@@ -2147,6 +2349,34 @@
       "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
+      "id": "konto-leping-vene-keeles",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Leping kaardil vene keeles",
+      "href": "/ru/konto",
+      "steps": [
+        "Ava halduses Proov 7 registreeringu paneel ja vajuta „Saada leping kinnitamiseks“.",
+        "Logi sisse kui Proov 7 ja ava aadress /ru/konto.",
+        "Vajuta kaardil „Подтвердить договор“ ja loe tekst läbi.",
+        "Vajuta „Подтверждаю“.",
+        "Vajuta kaardil rea „Договор · подтверждён …“ juures „Скачать (PDF)“.",
+        "Ava Proov 7 postkastis kiri „Договор MS LAB“."
+      ],
+      "expect": [
+        "Kaardil on lause „Мария просит вас подтвердить договор.“ ja tekstinupp „Подтвердить договор“.",
+        "Lepingu tekst on vene keeles, kuigi Proov 7 registreeris eesti keeles, ja kohahoidjad on täidetud.",
+        "Pärast „Подтверждаю“ näed hetkeks „Договор подтверждён.“, siis rida „Договор · подтверждён …“ tänase kuupäevaga.",
+        "PDF on vene keeles ja selles on sildid, näiteks „Стороны“.",
+        "Kiri „Договор MS LAB“ on vene keeles, manusega ja reaga „Договор во вложении.“."
+      ],
+      "why": "Venekeelne õpilane kinnitab ja loeb lepingu oma keeles.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
       "id": "konto-arve-tuhistatud",
       "area": "konto",
       "who": "maria",
@@ -2168,6 +2398,59 @@
       "writes": true,
       "mark": "new",
       "markedAt": "2026-10-16T22:27:00.452Z"
+    },
+    {
+      "id": "konto-leping-kinnita",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Kinnita leping, kui Maria küsib",
+      "href": "/konto",
+      "steps": [
+        "Veendu, et halduses on Proov 1 paneelis vajutatud „Saada leping kinnitamiseks“ (kontroll „Lepingu kinnitamise küsimine uuesti“).",
+        "Logi sisse kui Proov 1 ja ava „Minu koolitused“.",
+        "Vajuta kaardil „Kinnita leping“ ja loe tekst läbi.",
+        "Vajuta „Kinnitan“.",
+        "Ava Proov 1 postkastis uusim kiri „MS LAB leping“.",
+        "Ava halduses Proov 1 registreeringu paneel."
+      ],
+      "expect": [
+        "Enne kinnitamist on kaardil lause „Maria palub sul lepingu kinnitada.“ ja tekstinupp „Kinnita leping“.",
+        "Nupp avab kaardil lepingu teksti, kus Proov 1 nimi, kuupäev ja hind on täidetud.",
+        "Pärast „Kinnitan“ näed hetkeks „Leping on kinnitatud.“, siis rida „Leping · kinnitatud …“ tänase kuupäevaga.",
+        "Uusim kiri „MS LAB leping“ on manusega „MS-LAB-leping-….pdf“ ja reaga „Leping on lisatud.“.",
+        "Halduses on uus leping viisiga „Õpilase konto“ ja vana on „Asendatud“.",
+        "Rida „Kinnitamist ootab …“ on halduses kadunud ja „Kinnita leping“ on kaardilt kadunud."
+      ],
+      "why": "Õpilane kinnitab Maria küsitud lepingu ise ja vana jääb alles.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
+      "id": "konto-leping-kaardil",
+      "area": "konto",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Leping kaardil ja PDF",
+      "href": "/konto",
+      "steps": [
+        "Ava Proov 1 „Minu koolitused“ pärast kontrolli „Kinnita leping, kui Maria küsib“.",
+        "Vaata kontaktkoolituse kaarti.",
+        "Vajuta kaardil rea „Leping“ juures „Laadi alla (PDF)“."
+      ],
+      "expect": [
+        "Kaardil on vaikne rida „Leping · kinnitatud …“ tänase kuupäevaga ja link „Laadi alla (PDF)“.",
+        "Alla laaditud fail on „MS-LAB-leping-….pdf“ ja sama leping, mis uusimas kirjas „MS LAB leping“.",
+        "PDF-is on sinu nimi, koolitus, kuupäev ja hind ning lõpus „Kinnitatud elektrooniliselt …“.",
+        "Rida ei ole nupp ja kaardil ei ole „Kinnita leping“."
+      ],
+      "why": "Õpilane leiab oma lepingu kontolt ka siis, kui kiri on kadunud.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "konto-lemmikud",
@@ -2330,6 +2613,30 @@
       "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
+      "id": "ekursus-ostukorv-leping",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Leping ostukorvis",
+      "href": "/koolitused",
+      "steps": [
+        "Ava testiks valmistatud e-koolitus ja vajuta „Osta kohe“.",
+        "Kirjuta „Nimi“: Proov 1.",
+        "Vajuta ruudu all „Loe lepingut“."
+      ],
+      "expect": [
+        "Ruudu tekst on „Olen tutvunud lepingu tingimustega ja nõustun nendega.“.",
+        "„Loe lepingut“ avab ostukorvis Seadetes kirjutatud e-koolituse tingimused.",
+        "Kui tekstis on {nimi} või {hind}, on seal sinu kirjutatud nimi ja koolituse hind.",
+        "Linki „Õppetingimused“ ostukorvis enam pole."
+      ],
+      "why": "Ostja loeb e-koolituse lepingu enne maksmist.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
       "id": "ekursus-ost",
       "area": "ekursus",
       "who": "koos",
@@ -2339,7 +2646,7 @@
       "steps": [
         "Ava testiks valmistatud e-koolitus ja vajuta „Osta kohe“.",
         "Kirjuta „Nimi“: Proov 1 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov1.",
-        "Märgi tingimuste ruut ja vajuta „Maksa …“.",
+        "Märgi lepingu ruut ja vajuta „Maksa …“.",
         "Tee makse testpangas, nagu Dimi märkus ütleb.",
         "Vajuta tagasi lehel „Ava e-koolitus“.",
         "Ava 30 minuti jooksul kiri „E-koolitus on avatud — …“ ja vajuta kirjas „Logi sisse“."
@@ -2347,7 +2654,7 @@
       "expect": [
         "Tagasi lehel on „Makse õnnestus.“ ja „Saatsime sulle e-postiga sisselogimislingi.“.",
         "Postkasti tuleb kiri „E-koolitus on avatud — …“ koos koodiga ja kuupäevaga.",
-        "Kirjas on rida „Arve on lisatud.“ ja manusena PDF-fail „MS-LAB-arve-…“, muud manust pole.",
+        "Kirjas on read „Arve on lisatud.“ ja „Leping on lisatud.“ ning kaks PDF-faili.",
         "Kirja nupp „Logi sisse“ avab „Minu koolitused“ koos selle e-koolitusega.",
         "Maria postkasti tuleb „Uus makse: Proov 1, … (e-koolitus), …“.",
         "Halduses „Õpilased“ → Proov 1 all on see e-koolitus märkega „veebimakse“."
@@ -2356,7 +2663,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "ekursus-ost-uuesti",
@@ -2368,7 +2675,7 @@
       "steps": [
         "Ava 30 minuti jooksul pärast ostu sama e-koolituse ostukorv.",
         "Kirjuta sama nimi ja +proov1 aadress.",
-        "Märgi tingimuste ruut ja vajuta „Maksa …“."
+        "Märgi lepingu ruut ja vajuta „Maksa …“."
       ],
       "expect": [
         "Näed „Makse on juba tehtud — vaata oma e-posti.“.",
@@ -2376,30 +2683,29 @@
       ],
       "why": "See hoiab ära, et õpilane maksab sama koolituse eest kaks korda.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "ekursus-tingimused",
       "area": "ekursus",
       "who": "maria",
       "device": "telefon",
-      "title": "E-koolituse tingimused",
+      "title": "E-koolituse tingimused pärast ostu",
       "href": "/konto",
       "steps": [
-        "Logi sisse kui Proov 1 ja vajuta e-koolituse kaardil „Ava koolitus“.",
-        "Loe tingimused läbi.",
-        "Märgi „Olen tutvunud ja nõustun tingimustega“.",
-        "Vajuta „Alusta koolitust“."
+        "Logi sisse kui Proov 1 ja vajuta e-koolituse kaardil „Ava koolitus“."
       ],
       "expect": [
-        "Enne sisu näed pealkirja „Enne alustamist“ ja Seadetes kirjutatud tingimusi.",
-        "„Alusta koolitust“ töötab alles pärast ruudu märkimist.",
-        "Pärast nõustumist avaneb koolituse leht.",
-        "Halduses Proov 1 paneelis on „Tingimustega nõustumised“ all „Nõustus …“."
+        "Koolituse leht avaneb kohe: „Enne alustamist“ ei tule.",
+        "Ostukorvi lepingu ruut oli nõustumine, teist korda ei küsita."
       ],
-      "why": "Õpilane nõustub tingimustega enne esimest tundi.",
+      "why": "Ostja nõustus lepinguga juba ostukorvis.",
       "risk": "high",
-      "writes": true
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "ekursus-leht",
@@ -2844,6 +3150,38 @@
       "writes": true
     },
     {
+      "id": "ekursus-tingimused-leping",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "E-koolituse tingimused ilma ostuta",
+      "href": "/konto",
+      "steps": [
+        "Logi sisse kui Proov 5 ja vajuta e-koolituse kaardil „Ava koolitus“.",
+        "Loe leping läbi ja märgi „Olen tutvunud ja nõustun tingimustega“.",
+        "Vajuta „Alusta koolitust“, enne kui nime kirjutad.",
+        "Kirjuta „Nimi“: Proov 5, ja vaata lepingu teksti.",
+        "Vajuta „Alusta koolitust“.",
+        "Ava „Minu koolitused“ ja vaata e-koolituse kaarti, seejärel „Minu andmed“.",
+        "Ava Proov 5 postkastis kiri „MS LAB leping“ ja selle manus."
+      ],
+      "expect": [
+        "Enne sisu näed „Enne alustamist“, Seadetes kirjutatud lepingu pealkirja ja selle teksti.",
+        "Kui Maria kasutas tekstis kohahoidjaid, on {koolitus} asemel koolituse nimi ja {e-post} asemel Proov 5 aadress.",
+        "Proov 5 lisati ainult aadressiga, seega on ruudu kohal väli „Nimi“.",
+        "Ilma nimeta näed välja all „Kirjuta oma nimi.“ ja koolitus ei avane.",
+        "Kirjutatud nimi ilmub kohe tekstis {nimi} kohale, kui tekstis see on; pärast nõustumist avaneb koolituse leht.",
+        "E-koolituse kaardil on rida „Leping · kinnitatud …“; „Minu andmed“ all on nimi Proov 5.",
+        "Kiri „MS LAB leping“ tuleb reaga „Leping on lisatud.“; manuses on sama tekst Proov 5 nimega.",
+        "Halduses Proov 5 paneelis on „Lepingud“ all „Kinnitatud … · E-koolituse tingimuste kinnitus“ ja „Laadi alla (PDF)“."
+      ],
+      "why": "Maria avatud e-koolitusel on lepinguks tingimuste kinnitus.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
       "id": "ekursus-ava-jargmine",
       "area": "ekursus",
       "who": "maria",
@@ -3142,6 +3480,30 @@
       "writes": false
     },
     {
+      "id": "kirjad-registreering-leping",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: registreeringu leping",
+      "steps": [
+        "Ava Gmailis telefonis Proov 1 kiri „Registreering on vastu võetud — …“.",
+        "Ava kirja manus „MS-LAB-leping-….pdf“.",
+        "Ava sama kiri ja manus Gmailis arvutis."
+      ],
+      "expect": [
+        "Kirjas on rida „Leping on lisatud.“.",
+        "Kirjal on üks manus, PDF-fail „MS-LAB-leping-….pdf“.",
+        "PDF-is on lepingu pealkiri, „Pooled“ ja „Koolitus“ kuupäeva, koha ja hinnaga.",
+        "PDF-i lõpus on „Kinnitatud elektrooniliselt …“ registreerimise aja, nime ja e-postiga.",
+        "Lepingu tekst on sama, mida vorm näitas „Loe lepingut“ all."
+      ],
+      "why": "Õpilasel jääb koopia just sellest lepingust, millega ta nõustus.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
       "id": "kirjad-paring",
       "area": "kirjad",
       "who": "koos",
@@ -3271,7 +3633,7 @@
       "steps": [
         "Registreeri venekeelsel lehel /ru/koolitused samale kuupäevale: „Nimi“ Proov 8 ja „Telefon“ oma number.",
         "Kirjuta „E-post“: oma aadress, kuhu lisad enne @-märki +proov8.",
-        "Vali 50% ettemaksu valik, märgi tingimuste ruut ja vajuta registreerimisnuppu; katkesta makse Montonio lehel.",
+        "Vali 50% ettemaksu valik, märgi lepingu ruut ja vajuta registreerimisnuppu; katkesta makse Montonio lehel.",
         "Koosta halduses Proov 8 jaoks „Ettemaks 50%“ arve valikuga „Maksmiseks“ ja vajuta „Saada õpilasele“.",
         "Ava Gmailis telefonis kiri „Счёт MS LAB …“, mis tuli Proov 8 aadressile.",
         "Ava kirja manus ja vajuta kirjas nuppu „Открыть мой кабинет“."
@@ -3334,6 +3696,29 @@
       "writes": false,
       "mark": "redo",
       "markedAt": "2026-10-16T22:27:00.452Z"
+    },
+    {
+      "id": "kirjad-ekoolitus-lepinguga",
+      "area": "kirjad",
+      "who": "koos",
+      "device": "any",
+      "title": "Kiri: e-koolituse arve ja leping",
+      "steps": [
+        "Ava Gmailis telefonis Proov 1 kiri „E-koolitus on avatud — …“.",
+        "Ava mõlemad manused.",
+        "Ava sama kiri ja manused Gmailis arvutis."
+      ],
+      "expect": [
+        "Kirjas on read „Arve on lisatud.“ ja „Leping on lisatud.“.",
+        "Manusteks on kaks PDF-faili: „MS-LAB-arve-…“ ja „MS-LAB-leping-…“.",
+        "Lepingu PDF-is on makstud hind ja „Kinnitatud elektrooniliselt …“ ostu ajaga.",
+        "Lepingu tekst on see, mida ostukorv „Loe lepingut“ all näitas."
+      ],
+      "why": "Ostja saab arve ja lepingu koopia ühe kirjaga.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
       "id": "kirjad-tervituskiri",
@@ -3853,11 +4238,13 @@
       "expect": [
         "Märkuses on iga aadress täpselt nii, nagu see vormi kirjutati.",
         "Märkuses on iga proovi-registreering nimega.",
-        "Dim kustutab enne avamist need read täpse aadressi järgi."
+        "Dim kustutab enne avamist need read, ka proovi-arved ja -lepingud, täpse aadressi järgi."
       ],
       "why": "Proovi-andmed ei tohi jääda päris õpilaste ja registreeringute sekka.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "2026-10-18T01:56:41.789Z"
     }
   ]
 }

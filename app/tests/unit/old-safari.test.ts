@@ -74,6 +74,8 @@ const BROWSER_FILES = [
   "src/components/admin/TestPlan.tsx",
   "src/components/admin/testplan-outbox.ts",
   "src/components/admin/TestplanCard.tsx",
+  // contracts, Task 1: the placeholders' fill and the session and payment texts the form's and the cart's inline contract and Seaded's sample run in the browser
+  "src/domain/contract.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

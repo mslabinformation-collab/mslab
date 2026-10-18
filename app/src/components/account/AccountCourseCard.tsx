@@ -18,6 +18,7 @@ import { isDone, sendJson } from "@/lib/json-request";
 import { navigate } from "@/lib/navigate";
 import type { CertificateView } from "@/server/certificates";
 import { CertificateForm } from "./CertificateForm";
+import { ContractLine } from "./ContractLine";
 import { NextStepLine } from "./NextStepLine";
 import { PrepaymentInfo } from "./PrepaymentInfo";
 import { ProgressBar } from "./ProgressBar";
@@ -44,6 +45,11 @@ export type CardProps = {
    * the page (CoursesView's quiet reload). Answers whether the server answered the new load; absent (the admin's view): nothing to load.
    */
   onStale?(card: ContactCard): Promise<boolean>;
+  /**
+   * The contract on this card changed under it, or she has just accepted it („Kinnitan“, contracts Task 6): the cards are loaded again behind the page
+   * (CoursesView's quiet reload), which turns the card into what is true. Answers whether the server answered; absent (the admin's view): nothing to load.
+   */
+  onContract?(card: ContactCard): Promise<boolean>;
   /** Her account's name (the dashboard's client.name): the first value of an ended access's "Nimi tunnistusel", as on the e-course page. */
   certificateName?: string;
 };
@@ -142,9 +148,11 @@ function InvoiceLines({ invoices, locale, t, readOnly }: { invoices: CardInvoice
  * as that page needs an active access; once it is made, the link takes its place and the focus.
  * Her invoices (invoices Task 6) are quiet lines under the next-step sentence (InvoiceLines); "Maksa" charges the open unpaid invoice's amount when
  * the card has one (onlineDue).
+ * Her contract (contracts Task 6; ContractLine) is a quiet line above them, „Leping · kinnitatud {date}“ with „Laadi alla (PDF)“; once Maria has
+ * asked her to confirm it, the card instead offers „Kinnita leping“, which opens the text on the card with „Kinnitan“.
  * `readOnly`: the buttons are there but aria-disabled, and do nothing.
  */
-export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale, certificateName = "" }: CardProps) {
+export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale, onContract, certificateName = "" }: CardProps) {
   const step = nextStep(card, now, pay, locale, payOnline);
   const [open, setOpen] = useState(false);
   const [paying, setPaying] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
@@ -361,6 +369,14 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
           <CertificateForm slug={toConfirm.course.slug} startName={certificateName} t={t.certificate} readOnly={readOnly} quiet={false} onIssued={setMade} />
         </div>
       )}
+      <ContractLine
+        card={card}
+        title={cardTitle(card, locale, t.untitled)}
+        locale={locale}
+        t={t}
+        readOnly={readOnly}
+        onChanged={onContract && card.kind === "contact" ? () => onContract(card) : undefined}
+      />
       {invoices.length > 0 && <InvoiceLines invoices={invoices} locale={locale} t={t} readOnly={readOnly} />}
       {button && <div className={styles.foot}>{button}</div>}
       {paying.error && (

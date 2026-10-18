@@ -92,6 +92,13 @@
       "when": 1792184493237,
       "tag": "0012_invoice_footer",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792251265586,
+      "tag": "0013_contracts",
+      "breakpoints": true
     }
   ]
 }

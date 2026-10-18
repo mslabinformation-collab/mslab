@@ -1,0 +1,79 @@
+/* Leping (contracts Task 5): the registration drawer's block (ContractBlock). Buttons, tags and the notice come from ui.module.css. Every control is the
+   admin's 44 px one; colours from tokens.css only. */
+
+.block {
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  gap: 8px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:first-child {
+  padding-top: 0;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ask {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.ask p {
+  margin: 0;
+}
+
+.status {
+  margin: 0;
+}
+
+.status:empty {
+  display: none;
+}
+
+.line {
+  margin: 0;
+}

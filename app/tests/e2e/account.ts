@@ -258,6 +258,15 @@ export async function setTerms(body: { et: string; ru?: string }, version: strin
   return stored;
 }
 
+/**
+ * Takes the terms' turn without changing them (contracts, ruling R6): the e-course terms are the cart's contract, and „Maksa“ is refused when
+ * they changed since the cart was loaded (the cart then asks for the box again). A test that buys from the cart holds this turn from loading the
+ * cart to the end of its presses, so that no test of the terms (takeTerms, setTerms) saves other terms in between. Returns the unlock.
+ */
+export function holdTerms(): Promise<() => Promise<void>> {
+  return holdLocalLock(TERMS_LOCK);
+}
+
 /** Takes the terms page out (no text stored: nothing to accept); takeTerms puts the original back afterwards. */
 export async function removeTermsPage(): Promise<void> {
   await localDb((sql) => sql`delete from pages where key = 'course_terms'`);

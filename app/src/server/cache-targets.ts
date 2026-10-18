@@ -21,7 +21,7 @@ export type PublicChange =
   | { kind: "posts" }
   /** Hüpikaken (the home page's popup: the campaign or the newsletter sign-up) */
   | { kind: "campaign" }
-  /** Seaded: contact and newsletter (footer, every page), privacy, terms; `course_terms` (the e-course terms) and `prepayment` show on no public page */
+  /** Seaded: contact and newsletter (footer, every page), privacy, terms and `contract_contact` (the course pages' contract); `course_terms` (the carts' contract); `prepayment` shows on no public page */
   | { kind: "settings"; parts: string[] };
 
 export type CacheTarget = { path: string; type?: "page" | "layout" };
@@ -75,9 +75,17 @@ export function revalidationTargets(change: PublicChange): CacheTarget[] {
       const parts = new Set(change.parts);
       // contact details and the newsletter discount are in the footer
       if (parts.has("contact") || parts.has("newsletter")) return [EVERY_PAGE];
-      // "course_terms" (the e-course terms) and "prepayment" (where to pay) are read through the account's JSON only
-      // (GET /api/konto/kursus/:slug and GET /api/konto, never cached), so they have no target
-      return [...(parts.has("privacy") ? [page("/privaatsus")] : []), ...(parts.has("terms") ? [page("/tingimused")] : [])];
+      // the contracts (contracts, D1): "contract_contact" (Seaded → Lepingud, Maria's contact contract) is the text the course pages' registration
+      // form shows inline, and "terms" (the public „Õppetingimused“) is that text until she writes her own, so each revalidates the course pages:
+      // the form refuses a stale contract version and refreshes, and a page kept for minutes would show the student the same refusal again.
+      // "course_terms" (the e-course terms) is the e-course contract, which every cart shows inline. "prepayment" (where to pay) is read through
+      // the account's JSON only (GET /api/konto, never cached), so it has no target
+      return [
+        ...(parts.has("privacy") ? [page("/privaatsus")] : []),
+        ...(parts.has("terms") ? [page("/tingimused")] : []),
+        ...(parts.has("terms") || parts.has("contract_contact") ? [COURSE_PAGES] : []),
+        ...(parts.has("course_terms") ? [CARTS] : []),
+      ];
     }
   }
 }

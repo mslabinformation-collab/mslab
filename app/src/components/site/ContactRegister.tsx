@@ -3,11 +3,13 @@
 import { useRouter } from "next/navigation";
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
 import { hasPickableSession, initialSession } from "@/domain/catalogue";
+import { filledContract } from "@/domain/contract";
 import type { SeatState } from "@/domain/sessions";
 import type { Locale } from "@/i18n/locales";
 import { navigate } from "@/lib/navigate";
 import { useUrlQuery } from "@/lib/url-query";
 import { registerContact, submitIndividual } from "@/server/actions/public";
+import { ContractPreview, type FormContract } from "./ContractPreview";
 import { Icon } from "./Icon";
 import ui from "./ui.module.css";
 import styles from "./CourseBuy.module.css";
@@ -16,6 +18,8 @@ type Kind = "group" | "individual";
 
 export type SessionOption = {
   id: number;
+  /** When it starts (ISO): the inline contract's {toimumine} is its date on Tallinn's calendar (domain/contract.ts sessionText). */
+  startsAt: string;
   date: string;
   weekday: string;
   city: string;
@@ -49,8 +53,17 @@ export type ContactRegisterTexts = {
   modelHelp: string;
   createAccount: string;
   newsletterConsent: string;
+  /** The individual request's box and its link (D1: no contract for it). */
   terms: string;
   termsLink: { label: string; href: string };
+  /** The group registration's box: the contract (D1). */
+  contractTerms: string;
+  /** „Loe lepingut“: opens the contract in the form. */
+  readContract: string;
+  /** {toimumine} in the inline contract until a date is chosen: „(vali toimumine)“. */
+  contractNoSession: string;
+  /** The box's error when the contract's text changed since the page was loaded (ruling R6): the new text is shown, the box cleared. */
+  contractChanged: string;
   preferredPeriod: string;
   preferredPeriodPlaceholder: string;
   message: string;
@@ -88,7 +101,14 @@ const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "me
  *   for the individual course instead.
  * - Individual: a request with the preferred period or date; Maria agrees the time and the payment afterwards, so there
  *   is no payment choice and no prepayment line.
- * Both: help finding models (P11), create an account (P16), the newsletter consent and the optional message (phase 2c), terms.
+ * Both: help finding models (P11), create an account (P16), the newsletter consent and the optional message (phase 2c), the box.
+ * - The group registration's box is the contract (contracts, D1): „Olen tutvunud lepingu tingimustega …“ with „Loe lepingut“, which opens
+ *   `contract` in the form, filled live from what the form holds (the chosen date and place, the price, the payment choice, the name and the
+ *   address; „(vali toimumine)“ before a date is chosen) by the server's own fill (domain/contract.ts filledContract, Review Focus 3). Submitting
+ *   with it ticked is the acceptance: the server freezes the contract with the registration. The form sends the version of the text it shows
+ *   (R6); when Maria has saved another text since the page was loaded, nothing is stored, the box's error says so, the box is cleared and the
+ *   page is loaded again with the new text.
+ * - The individual request keeps today's box and its link to „Õppetingimused“ (D1: no contract).
  * After a failed submit, focus goes to the first field with an error (its message is linked with aria-describedby).
  * "?sessioon=12" (the links from the home page and the calendar) preselects that date until the visitor picks one. The
  * page is cached for every visitor, so the address is read in the browser (useUrlQuery: after hydration).
@@ -98,12 +118,15 @@ export function ContactRegister({
   locale,
   kinds,
   sessions,
+  contract,
   t,
 }: {
   course: string;
   locale: Locale;
   kinds: { kind: Kind; price: string }[];
   sessions: SessionOption[];
+  /** The group registration's contract, unfilled (FormContract). */
+  contract: FormContract;
   t: ContactRegisterTexts;
 }) {
   const id = useId();
@@ -137,8 +160,13 @@ export function ContactRegister({
       }
       const errors: Errors = {};
       let rejected: number | undefined;
+      let changed = false;
       for (const [f, code] of Object.entries(result.errors)) {
         if (f === "form") errors.form = code === "rate" ? t.errorTooMany : t.errorGeneric;
+        else if (f === "terms" && code === "changed") {
+          errors.terms = t.contractChanged;
+          changed = true;
+        }
         else if (f === "email") errors.email = t.errorEmail;
         else if (f === "session" && (code === "full" || code === "unavailable")) {
           errors.session = code === "full" ? t.sessionFull : t.sessionUnavailable;
@@ -147,8 +175,11 @@ export function ContactRegister({
         else errors[f as Field] = t.errorRequired;
       }
       if (Object.keys(errors).length === 0) errors.form = t.errorGeneric;
-      // The date list on the page is out of date: load the current seat states.
-      if (rejected !== undefined) router.refresh();
+      // The contract's text changed since the page was loaded (R6): her tick was for the old one, so the box is cleared, and the page is loaded
+      // again for the new text (and its version) to read.
+      if (changed) setChecks((c) => ({ ...c, terms: false }));
+      // The date list on the page is out of date: load the current seat states. The same for a changed contract text.
+      if (rejected !== undefined || changed) router.refresh();
       return { status: "error", kind: k, errors, rejected };
     } catch {
       return { status: "error", kind: k, errors: { form: t.errorGeneric } };
@@ -225,6 +256,22 @@ export function ContactRegister({
   };
 
   const price = (k: Kind) => kinds.find((x) => x.kind === k)?.price ?? "";
+
+  // the group registration's contract as the form fills it now (the server fills the frozen one with the same function, from what is stored)
+  const chosen = sessions.find((s) => s.id === session) ?? null;
+  const contractText = filledContract(
+    contract,
+    {
+      name: values.name,
+      email: values.email,
+      course: contract.course,
+      session: chosen ? { startsAt: new Date(chosen.startsAt), city: chosen.city, venue: chosen.venue } : null,
+      priceCents: contract.priceCents,
+      choice: payment,
+      locale: contract.locale,
+    },
+    t.contractNoSession,
+  );
 
   return (
     <form
@@ -423,17 +470,23 @@ export function ContactRegister({
                   aria-invalid={errors.terms ? true : undefined}
                   aria-describedby={errors.terms ? `${id}-terms-error` : undefined}
                 />
-                <span>{t.terms}</span>
+                <span>{kind === "group" ? t.contractTerms : t.terms}</span>
               </label>
-              <a className={styles.termsLink} href={t.termsLink.href} target="_blank" rel="noopener">
-                {t.termsLink.label} ↗
-              </a>
+              {kind === "group" ? (
+                <ContractPreview label={t.readContract} text={contractText} />
+              ) : (
+                <a className={styles.termsLink} href={t.termsLink.href} target="_blank" rel="noopener">
+                  {t.termsLink.label} ↗
+                </a>
+              )}
               {err("terms")}
             </div>
           </div>
 
           <input type="hidden" name="course" value={course} />
           <input type="hidden" name="locale" value={locale} />
+          {/* the version of the contract this page shows (R6): the server freezes nothing from another text */}
+          {kind === "group" && <input type="hidden" name="contractVersion" value={contract.version} />}
           {/* Honeypot: people never see or fill it. */}
           <div className={styles.honeypot} aria-hidden="true">
             <label>

@@ -749,6 +749,7 @@ describe("GET /api/konto: the dashboard", () => {
           kind: "contact", registrationId: reg.id, course: { slug: "kulmude-lami", title: { et: "Kulmude lamineerimine" } },
           session: { startsAt: seeded.session.startsAt.toISOString(), city: "Pärnu", venue: "Salong", cancelled: false },
           status: "awaiting_prepayment", paymentChoice: "full", priceCents: 35000, paidCents: 0, createdAt: reg.createdAt.toISOString(),
+          contract: null, contractRequested: false,
         },
       ],
       favourites: ["veebikursus"],
@@ -788,9 +789,17 @@ describe("GET /api/konto/kursus/:slug: an e-course", () => {
     seeded = await seedCourses();
     await db.insert(pages).values({ key: "course_terms", title: { et: "Tingimused" }, body: { et: "Ligipääs on isiklik." } });
   });
+  /** A signed-in account with a name (an account with none gives hers at the gate, ruling R19: tests/db/contracts-flows.test.ts). */
+  const named = async () => {
+    const a = await account();
+    await db.update(clients).set({ name: "Kati Tamm" }).where(eq(clients.id, a.client.id));
+    return a;
+  };
+  /** The gate's contract of the stored text, on both pages (client-data.ts GateTerms; no Russian text: the Estonian one). */
+  const GATE = { text: { et: { title: "Tingimused", body: "Ligipääs on isiklik." }, ru: { title: "Tingimused", body: "Ligipääs on isiklik." } }, askName: null };
 
   test("with access: the view, with the terms still to accept; without it, or for another client's access, or an unknown course: 404", async () => {
-    const { deps, cookie, client } = await account();
+    const { deps, cookie, client } = await named();
     const mari = (await db.insert(clients).values({ email: "mari@example.test" }).returning())[0];
     for (const slug of ["veebikursus", "peidus-kursus", "olematu", "kulmude-lami"]) {
       const res = await call(deps, `/kursus/${slug}`, { cookie });
@@ -810,19 +819,19 @@ describe("GET /api/konto/kursus/:slug: an e-course", () => {
         modules: [{ id: expect.any(Number), title: { et: "Sissejuhatus" }, lessons: [] }, { id: expect.any(Number), title: { et: "Praktika" }, lessons: [] }],
       },
       access: { expiresAt: at(180).toISOString() },
-      terms: { version: "1", accepted: false, text: { et: "Ligipääs on isiklik." } },
+      terms: { version: "1", accepted: false, ...GATE },
       progress: { done: 0, total: 0, next: null },
       completion: { lessons: { done: 0, total: 0, state: "done" }, test: null, practical: null, completedAt: null, protocolSent: false, certificate: null, certificateName: "" },
     });
   });
 
   test("active access to a course that was unpublished since stays: the card, the view and the acceptance", async () => {
-    const { deps, cookie, client } = await account();
+    const { deps, cookie, client } = await named();
     await grantAccess(client.id, seeded.hidden.id);
     const view = await call(deps, "/kursus/peidus-kursus", { cookie });
     expect(view.status).toBe(200);
     const { terms } = await view.json();
-    expect(terms).toEqual({ version: "1", accepted: false, text: { et: "Ligipääs on isiklik." } });
+    expect(terms).toEqual({ version: "1", accepted: false, ...GATE });
     expect((await call(deps, "/tingimused", { cookie, body: { slug: "peidus-kursus", version: terms.version } })).status).toBe(200);
     expect((await (await call(deps, "/kursus/peidus-kursus", { cookie })).json()).terms.accepted).toBe(true);
     const { cards } = await (await call(deps, "", { cookie })).json();
@@ -830,7 +839,7 @@ describe("GET /api/konto/kursus/:slug: an e-course", () => {
   });
 
   test("no terms text stored: the view has nothing to accept, and an acceptance is refused as a changed version (nothing stored), so the page loads again", async () => {
-    const { deps, cookie, client } = await account();
+    const { deps, cookie, client } = await named();
     await grantAccess(client.id, seeded.online.id);
     await db.delete(pages);
     const view = await (await call(deps, "/kursus/veebikursus", { cookie })).json();
@@ -842,7 +851,7 @@ describe("GET /api/konto/kursus/:slug: an e-course", () => {
   });
 
   test("access that has ended is a 404; a slug that is not decodable or cannot be one is a 404, not a 500", async () => {
-    const { deps, cookie, client } = await account();
+    const { deps, cookie, client } = await named();
     await grantAccess(client.id, seeded.online.id, { expiresAt: at(-1) });
     expect((await call(deps, "/kursus/veebikursus", { cookie })).status).toBe(404);
     for (const raw of ["%E0%A4%A", "%00", "a%00b", "%01", "x".repeat(300), "a%2Fb"]) {
@@ -853,7 +862,7 @@ describe("GET /api/konto/kursus/:slug: an e-course", () => {
   });
 
   test("the terms: the page sends back the version it showed; accepting stores it, the view then has none to accept; a changed version asks again", async () => {
-    const { deps, cookie, client } = await account();
+    const { deps, cookie, client } = await named();
     await grantAccess(client.id, seeded.online.id);
     const shown = (await (await call(deps, "/kursus/veebikursus", { cookie })).json()).terms;
     expect(shown.version).toBe("1");
@@ -867,7 +876,7 @@ describe("GET /api/konto/kursus/:slug: an e-course", () => {
   });
 
   test("a version that is not the current one: 409 { error: \"version\" }, nothing stored; the current one, after reloading, is accepted", async () => {
-    const { deps, cookie, client } = await account();
+    const { deps, cookie, client } = await named();
     await grantAccess(client.id, seeded.online.id);
     const seen = (await (await call(deps, "/kursus/veebikursus", { cookie })).json()).terms.version; // the page is open with the old text
     await db.insert(settings).values({ key: "courseTermsVersion", value: "2026-10-02T09:00:00.000Z" }); // the admin saves new terms
@@ -882,7 +891,7 @@ describe("GET /api/konto/kursus/:slug: an e-course", () => {
   });
 
   test("accepting terms needs active access: another client's access, none, ended, unknown: 404 { error: \"slug\" }, before the version is looked at", async () => {
-    const { deps, cookie, client } = await account();
+    const { deps, cookie, client } = await named();
     const mari = (await db.insert(clients).values({ email: "mari@example.test" }).returning())[0];
     await grantAccess(mari.id, seeded.online.id);
     await grantAccess(client.id, seeded.hidden.id, { expiresAt: at(-1) });
@@ -897,7 +906,7 @@ describe("GET /api/konto/kursus/:slug: an e-course", () => {
   });
 
   test("a body without a version, or with one that is not a string of at most 64 characters: 400 { error: \"version\" }", async () => {
-    const { deps, cookie, client } = await account();
+    const { deps, cookie, client } = await named();
     await grantAccess(client.id, seeded.online.id);
     for (const version of [undefined, null, 1, ["1"], "", "v".repeat(65), "a\u0000b"]) {
       const res = await call(deps, "/tingimused", { cookie, body: { slug: "veebikursus", version } });
@@ -1262,7 +1271,8 @@ describe("every endpoint behind a session answers through the session", () => {
     ["PATCH", "/andmed", () => ({ name: "Kati", phone: "", locale: "et" }), {}],
     ["POST", "/uudiskiri", () => ({ on: true }), {}],
     ["POST", "/muutmine", (id) => ({ registrationId: id, kind: "cancel", message: "" }), {}],
-    ["POST", "/tingimused", () => ({ slug: "veebikursus", version: "1" }), {}],
+    // (the account has no name: it gives hers with the acceptance, ruling R19)
+    ["POST", "/tingimused", () => ({ slug: "veebikursus", version: "1", name: "Kati Tamm" }), {}],
   ];
   test.each(ENDPOINTS)("%s %s at day 100 sends the renewed session's cookies, on success and on a refusal alike", async (method, path, okBody, bad) => {
     // a date still ahead on day 100 (a change request for a training that has begun is refused)

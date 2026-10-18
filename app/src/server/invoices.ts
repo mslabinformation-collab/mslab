@@ -730,9 +730,9 @@ export async function invoicesCsv(db: Db, month: string): Promise<string> {
 
 // ---------- Seaded → Arve andmed ----------
 
-/** Seaded → Arve andmed as stored, or its defaults. */
-export async function getInvoiceSettings(db: Db, now: Date): Promise<InvoiceSettings> {
-  return readSettings(db, now);
+/** Seaded → Arve andmed as stored, or its defaults (inside a caller's transaction too: the contract's school is read in the registration's). */
+export async function getInvoiceSettings(q: Q, now: Date): Promise<InvoiceSettings> {
+  return readSettings(q, now);
 }
 
 /** The number issued with the highest seq under `prefix` in `year`, for the card's "viimane väljastatud"; null without one. */

@@ -64,6 +64,12 @@ export type CardInvoice = {
  */
 export type OpenInvoice = { id: number; kind: InvoiceKind; amountCents: number };
 
+/**
+ * Her current contract on a card (contracts Task 6; server/client-data.ts loadDashboard): its id (GET /api/konto/leping/<id> is its PDF) and when she
+ * accepted it (ISO). The superseded ones are not on a card.
+ */
+export type CardContract = { id: number; acceptedAt: string };
+
 /** A contact-course registration for one session. */
 export type ContactCard = {
   kind: "contact";
@@ -82,6 +88,13 @@ export type ContactCard = {
   invoices?: CardInvoice[];
   /** The unpaid invoice „Maksa" charges instead of what is due (OpenInvoice); absent without one. */
   openInvoice?: OpenInvoice | null;
+  /** Her current contract of this registration (CardContract); null without one. Present on every card loadDashboard makes. Optional so cards built elsewhere keep compiling. */
+  contract?: CardContract | null;
+  /**
+   * Maria has asked her to confirm the contract (D4: `registrations.contract_requested_at` is set) and the registration is not cancelled: the card
+   * offers „Kinnita leping“ instead of the contract line. Present on every card loadDashboard makes.
+   */
+  contractRequested?: boolean;
 };
 
 /** A registration without a session (an individual course): Maria agrees the time with the student. */
@@ -147,6 +160,10 @@ export type EcourseCard = {
   certificateId?: number | null;
   /** Her invoices of this course's purchases, the oldest first (invoices Task 6): each is born paid. Absent without one. */
   invoices?: CardInvoice[];
+  /** Her current contract of this access (a purchase's or the terms gate's; CardContract); null without one. Present on every card loadDashboard makes. */
+  contract?: CardContract | null;
+  /** Always false on an e-course card (D4: Maria asks about a contact registration only); present on every card loadDashboard makes, for the cards' one shape. */
+  contractRequested?: boolean;
 };
 
 export type AccountCard = ContactCard | IndividualCard | RequestCard | WaitlistCard | EcourseCard;
@@ -345,6 +362,15 @@ export function paymentReference(pay: PrepaymentInfo, registrationId: number): s
 /** The invoices on a card: a registration's or an e-course's own; none for a request or a waitlist entry. */
 export function cardInvoices(card: AccountCard): CardInvoice[] {
   return card.kind === "contact" || card.kind === "individual" || card.kind === "ecourse" ? (card.invoices ?? []) : [];
+}
+
+/**
+ * The contract side of a card (contracts Task 6): her current contract and whether Maria has asked her to confirm it; null for a card that has
+ * no contract at all (an individual registration, a request, a waitlist entry). A card from before the fields existed reads as none and not asked.
+ */
+export function contractOf(card: AccountCard): { contract: CardContract | null; requested: boolean } | null {
+  if (card.kind !== "contact" && card.kind !== "ecourse") return null;
+  return { contract: card.contract ?? null, requested: card.contractRequested === true };
 }
 
 /** The names a card uses when its course or practice package is gone (account.dashboard.untitled). */

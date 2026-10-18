@@ -37,8 +37,8 @@ function requestLabel(q: ClientRequestRow): string {
  * "Testi katsed" and, while her tries are used up, "Ava test uuesti" (an access an admin ended keeps only its line); her certificate (phase 3d, spec §6): its
  * number and day with Maria's download and "Paranda nimi", or, on a completed access, that she has not confirmed her name yet (an ended access keeps the
  * certificate's line and download, marked "ligipääs tühistatud"); then her registrations
- * (each with a link to its own drawer, a contact course's with its protocol), her online payments (phase 2b), her requests and the e-course
- * terms she has accepted.
+ * (each with a link to its own drawer, a contact course's with its protocol), her online payments (phase 2b), her requests and her contracts
+ * (contracts Task 5: the contact course's and the e-course's, each with its PDF).
  */
 export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDetail; ecourses: EcourseOption[]; now: Date }) {
   const t = adminEt.clients.drawer;
@@ -293,20 +293,34 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
         )}
       </section>
 
-      <section className={styles.section} aria-labelledby={`client-${c.id}-terms`} data-client-terms="">
-        <h3 id={`client-${c.id}-terms`} className={ui.h3}>
-          {t.terms}
+      {/* her contracts (contracts Task 5, spec §4): the contact course's and the e-course's, the newest acceptance first, a superseded one marked; this
+          list is where Maria sees a purchaser's e-course contract too (the terms gate's list did not hold her). A contact contract links to its
+          registration's drawer, where she can send a copy or ask again; an e-course contract has no drawer of its own */}
+      <section className={styles.section} aria-labelledby={`client-${c.id}-contracts`} data-client-contracts="">
+        <h3 id={`client-${c.id}-contracts`} className={ui.h3}>
+          {t.contracts}
         </h3>
-        {detail.terms.length === 0 ? (
-          <p className={styles.none}>{t.noTerms}</p>
+        {detail.contracts.length === 0 ? (
+          <p className={styles.none}>{t.noContracts}</p>
         ) : (
           <ul className={styles.rows}>
-            {detail.terms.map((a, i) => (
-              <li key={i} className={styles.row}>
+            {detail.contracts.map((k) => (
+              <li key={k.id} className={styles.row} data-client-contract={k.id} data-contract-state={k.supersededAt ? "superseded" : "current"}>
                 <div className={styles.rowHead}>
-                  <strong>{pick(a.courseTitle, "et")}</strong>
+                  <strong>{k.title || adminEt.contracts.title}</strong>
+                  {k.supersededAt && <span className={ui.tag}>{fill(adminEt.contracts.block.superseded, { date: formatDate(new Date(k.supersededAt), "et") })}</span>}
                 </div>
-                <p className={styles.meta}>{fill(t.accepted, { date: stamp(a.acceptedAt) })}</p>
+                <p className={styles.meta}>{fill(adminEt.contracts.block.accepted, { date: formatDate(new Date(k.acceptedAt), "et"), way: adminEt.contracts.via[k.acceptedVia] })}</p>
+                <div className={styles.links}>
+                  <a className={ui.link} href={`/api/admin/leping/${k.id}`} aria-label={fill(adminEt.contracts.block.downloadLabel, { id: k.id })} data-contract-download={k.id}>
+                    {adminEt.contracts.block.download}
+                  </a>
+                  {k.registrationId !== null && (
+                    <Link className={ui.link} href={`/admin/registreerimised?id=${k.registrationId}`} data-contract-registration={k.registrationId}>
+                      {t.openRegistration}
+                    </Link>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

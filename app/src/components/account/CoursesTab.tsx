@@ -233,6 +233,7 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
                   focusSent={card.kind === "contact" && justSent === card.registrationId}
                   onChangeRequest={openDialog}
                   onStale={reloadForCard}
+                  onContract={reloadForCard}
                   certificateName={data.client.name}
                 />
               </li>

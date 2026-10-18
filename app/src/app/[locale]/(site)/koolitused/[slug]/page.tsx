@@ -19,11 +19,13 @@ import ui from "@/components/site/ui.module.css";
 import { getDb } from "@/db/client";
 import { getCourseBySlug, getPage, listPublishedCourses, listUpcomingSessions } from "@/db/queries/public";
 import { bookableCities, paragraphs } from "@/domain/catalogue";
+import { contractCourseName } from "@/domain/contract";
 import { priceOptions } from "@/domain/course";
 import { firstParagraph, nextSessionByCourse } from "@/domain/home";
 import { formatEUR } from "@/domain/money";
 import { shownBadge } from "@/domain/badge";
 import { recommend } from "@/domain/recommend";
+import { registrationPrice } from "@/domain/registration";
 import { seatState, seatsLeft } from "@/domain/sessions";
 import { pick, pickList } from "@/i18n/field";
 import { fill, formatDate, formatWeekday } from "@/i18n/format";
@@ -32,6 +34,7 @@ import { getDict, isLocale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import styles from "./course.module.css";
 import { upcomingFrom } from "@/domain/calendar";
+import { contractTemplate } from "@/server/contracts";
 import { shareMetadata } from "@/server/share-meta";
 import { getSiteSettings } from "@/server/site-data";
 
@@ -85,11 +88,13 @@ export default async function CoursePage({ params }: Props) {
   const d = getDict(locale);
   const to = (path: string) => href(locale, path);
   const db = getDb();
-  const [all, upcoming, settings, bio] = await Promise.all([
+  const [all, upcoming, settings, bio, template] = await Promise.all([
     listPublishedCourses(db),
     listUpcomingSessions(db, upcomingFrom(new Date())),
     getSiteSettings(),
     getPage(db, "trainer_bio"),
+    // the group registration's contract (contracts, D1), in this page's language when its text has one: the form fills it live
+    course.type === "e_learning" ? null : contractTemplate(db, "contact", locale),
   ]);
 
   const c = d.course;
@@ -137,6 +142,7 @@ export default async function CoursePage({ params }: Props) {
     const left = seatsLeft(s.capacity, s.taken);
     return {
       id: s.id,
+      startsAt: s.startsAt.toISOString(),
       date: formatDate(s.startsAt, locale),
       weekday: formatWeekday(s.startsAt, locale),
       city: s.city,
@@ -231,6 +237,14 @@ export default async function CoursePage({ params }: Props) {
                 locale={locale}
                 kinds={kinds}
                 sessions={sessions}
+                contract={{
+                  version: template?.version ?? "",
+                  title: template?.title ?? "",
+                  body: template?.body ?? "",
+                  locale: template?.locale ?? locale,
+                  course: contractCourseName(course.title, template?.locale ?? locale),
+                  priceCents: registrationPrice(course, "group"),
+                }}
                 t={{
                   participationLabel: c.participationLabel,
                   group: c.group,
@@ -255,6 +269,10 @@ export default async function CoursePage({ params }: Props) {
                   newsletterConsent: d.forms.newsletterConsent,
                   terms: d.forms.terms,
                   termsLink: { label: d.footer.terms, href: to("/tingimused") },
+                  contractTerms: d.forms.contractTerms,
+                  readContract: d.forms.readContract,
+                  contractNoSession: d.forms.contractNoSession,
+                  contractChanged: d.forms.contractChanged,
                   preferredPeriod: d.forms.preferredPeriod,
                   preferredPeriodPlaceholder: d.forms.preferredPeriodPlaceholder,
                   message: d.forms.message,

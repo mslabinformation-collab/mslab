@@ -10,7 +10,7 @@ import { linkBase, requestOrigin } from "@/server/site";
 import { handleRegistration, type Deps } from "@/server/submit";
 import { fakeKv } from "../fakes";
 import { contactCourse, loggedDb, registrationOn, SITE, stubMontonio } from "./payments-fixtures";
-import { makeTestDb } from "./helpers";
+import { makeTestDb, shownContractVersion } from "./helpers";
 
 // "Registreeru" starts the prepayment (phase 2b, spec 6.1): a 30-minute hold, a pending row MSLAB-M<id>, Montonio's order and { ok, paymentUrl }.
 // Without payments, or with Montonio down, the registration stands and the answer is today's. startRegistrationPayment's own checks, the one
@@ -19,8 +19,11 @@ import { makeTestDb } from "./helpers";
 const NOW = new Date("2026-10-09T10:00:00Z");
 const MIN = 60_000;
 let db: Db;
+/** The contact contract's version the course page shows (contracts R6: the group form sends it with the box). */
+let contractVersion = "";
 beforeEach(async () => {
   db = await makeTestDb();
+  contractVersion = await shownContractVersion(db);
   for (const method of ["info", "error"] as const) vi.spyOn(console, method).mockImplementation(() => {});
 });
 afterEach(() => {
@@ -38,7 +41,7 @@ function deps(montonio: Deps["montonio"], opts: { mail?: boolean; db?: Db } = {}
 
 const form = (sessionId: number, over: Record<string, string> = {}) => {
   const fd = new FormData();
-  for (const [k, v] of Object.entries({ course: "kulmumeistri-baaskoolitus", session: String(sessionId), name: "Kati Tamm", email: "kati@example.com", phone: "+372 5555 0101", payment: "half", terms: "on", locale: "ru", ...over })) fd.set(k, v);
+  for (const [k, v] of Object.entries({ course: "kulmumeistri-baaskoolitus", session: String(sessionId), name: "Kati Tamm", email: "kati@example.com", phone: "+372 5555 0101", payment: "half", terms: "on", locale: "ru", contractVersion, ...over })) fd.set(k, v);
   return fd;
 };
 const rows = () => db.select().from(payments);

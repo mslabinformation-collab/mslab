@@ -1,0 +1,74 @@
+/* The contract on a course card (contracts Task 6): a quiet line „Leping · kinnitatud …“ with its PDF as a text link (the invoices' look), or, once
+   Maria has asked, a sentence, the text button „Kinnita leping“ and the text it opens on the card as a panel (ContractPreview's panel: a region
+   that scrolls inside the card, so a long contract never pushes the button out of reach), then „Kinnitan“. Tokens only. */
+
+.contract {
+  align-self: stretch;
+  margin-top: 14px;
+}
+
+/* the line and its download side by side, wrapping on a narrow card */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 14px;
+}
+
+.line {
+  color: var(--ink-soft);
+  font: 400 13px/1.55 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.asked {
+  margin: 0;
+  color: var(--ink);
+  font: 400 14px/1.5 var(--font-body);
+}
+
+.panel {
+  max-height: min(360px, 55vh);
+  margin: 4px 0 12px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--canvas);
+  color: var(--ink-soft);
+  font: 400 13px/1.55 var(--font-body);
+  /* a long address breaks inside the box (anywhere: Safari 15.4+; break-word before it) */
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.panel:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.panel p {
+  margin: 0 0 10px;
+}
+
+.panel p:last-child {
+  margin-bottom: 0;
+}
+
+.title {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* „Kinnitan“: an outline button (the card's one filled button is its own, „Maksa“ or „Ava koolitus“); a whole-width one on a phone, like the card's own */
+.accept {
+  margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .accept {
+    width: 100%;
+  }
+}

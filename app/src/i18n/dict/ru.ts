@@ -267,6 +267,11 @@ export const ru: Dict = {
     sending: "Отправляем…",
     register: "Записаться",
     terms: "Ознакомлен(а) с условиями и принимаю их.",
+    // the contract's box, its inline text and its refusal (contracts Task 4, ruling R6): Draft for Dim's wording sheet
+    contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их.",
+    readContract: "Читать договор",
+    contractNoSession: "(выберите дату)",
+    contractChanged: "Текст договора за это время изменился — прочитайте его снова и подтвердите.",
     modelHelp: "Мне нужна помощь учебного центра в поиске моделей",
     createAccount: "Сразу создайте мне аккаунт в среде MS LAB",
     newsletterConsent: "Хочу получать новости и предложения MS LAB",
@@ -354,6 +359,8 @@ export const ru: Dict = {
     emptyTitle: "Корзина пуста",
     emptyText: "Выберите подходящий онлайн-курс — купить его можно будет, как только откроется оплата.",
     total: "Итого",
+    // the purchase's box is the e-course contract (contracts Task 4): Draft for Dim's wording sheet
+    contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их.",
   },
 
   // Online payments (phase 2b, spec 9); drafts for the native-speaker check (docs/launch-checklist.md §10).
@@ -466,6 +473,17 @@ export const ru: Dict = {
       due: "Оплатить до",
       paidOn: "Оплачено",
       attached: "Счёт в\u00a0формате PDF во\u00a0вложении.",
+    },
+    // the contract's mail (server/account-mail.ts contractMail; contracts Task 4, ruling R1): Draft for Dim's wording sheet
+    contractMail: {
+      subject: "Договор MS LAB",
+      lead: "Вы подтвердили договор {date}.",
+      attached: "Договор во\u00a0вложении.",
+    },
+    // Maria's ask (server/account-mail.ts contractRequestMail; contracts Task 5, ruling R9): `subject` is R9's, `lead` Draft for Dim's wording sheet
+    contractRequestMail: {
+      subject: "Договор MS LAB — подтвердите",
+      lead: "Мария просит вас подтвердить договор по\u00a0курсу «{course}».",
     },
     // the e-course completion's mails (server/account-mail.ts completionMail)
     completionMail: {
@@ -604,6 +622,9 @@ export const ru: Dict = {
       termsAccept: "Ознакомлен(а) с\u00a0условиями и принимаю их",
       start: "Начать обучение",
       termsFailed: "Не удалось сохранить. Попробуйте ещё раз.",
+      // the gate's name field for an account with no name (ruling R19): Draft for Dim's wording sheet
+      termsName: "Имя",
+      termsNameRequired: "Напишите своё имя.",
       access: "Доступ до {date}",
       soon: "Материалы скоро появятся.",
       resume: "Продолжить",
@@ -797,6 +818,20 @@ export const ru: Dict = {
       refunded: "Возвращён",
       payBy: "оплатить до {date}",
       download: "Скачать (PDF)",
+    },
+    // The contract on a course card (components/account/ContractLine.tsx; contracts Task 6): the same as the Estonian one. Draft for Dim's wording
+    // sheet, every line of it. The refusals use the forms' Russian words (`forms.contractChanged`, `forms.errorTooMany`, `forms.errorGeneric`).
+    contract: {
+      line: "Договор · подтверждён {date}",
+      download: "Скачать (PDF)",
+      asked: "Мария просит вас подтвердить договор.",
+      open: "Подтвердить договор",
+      hide: "Скрыть договор",
+      region: "Договор",
+      loading: "Загружаем договор…",
+      loadFailed: "Не удалось загрузить договор. Попробуйте ещё раз.",
+      accept: "Подтверждаю",
+      done: "Договор подтверждён.",
     },
     favourites: {
       title: "Ваше избранное",

@@ -489,6 +489,93 @@ export const adminEt = {
     },
   },
 
+  // Contracts (contracts Task 5, spec §4): the registration drawer's block „Leping“ (components/admin/ContractBlock.tsx), the client drawer's list
+  // (ClientDrawer.tsx), Seaded → „Lepingud“ (components/admin/ContractTexts.tsx) and the sample PDF (server/contract-sample.ts). Verbatim from the
+  // spec: „Leping“, „Lepingud“, „Kontaktkoolituse leping“, „Näidisleping (PDF)“, „Saada leping kinnitamiseks“, „Saada koopia õpilasele“,
+  // „Õpilasel pole kontot — lisa ta Õpilased lehel.“, „Asendatud {date}“, „Laadi alla (PDF)“, „Tühi rida alustab uut lõiku.“ and „Kinnitamist ootab
+  // (saadetud {date})“ (the brief's, Draft). Every other text below is Draft for Dim's wording sheet.
+  contracts: {
+    title: "Leping",
+    // the registration drawer's block
+    block: {
+      none: "Sellele registreeringule pole lepingut.",
+      // {date}: the day it was accepted; {way}: how (`via`)
+      accepted: "Kinnitatud {date} · {way}",
+      superseded: "Asendatud {date}",
+      sent: "Saadetud õpilasele {date}",
+      pending: "Kinnitamist ootab (saadetud {date})",
+      noAccount: "Õpilasel pole kontot — lisa ta Õpilased lehel.",
+      request: "Saada leping kinnitamiseks",
+      requestHint: "Õpilane saab kirja lingiga oma kontole ja kinnitab seal praeguse lepingu teksti. Vana leping jääb alles ja märgitakse asendatuks.",
+      requestDone: "Palve on õpilasele saadetud.",
+      // the request is recorded, the mail was not sent (the mail is not set up here, or the address is a sample)
+      requestDoneNoMail: "Palve on märgitud, aga kirja ei saadetud. Õpilane näeb seda oma kontol ka ilma kirjata.",
+      sendCopy: "Saada koopia õpilasele",
+      sendCopyDone: "Koopia on õpilasele saadetud.",
+      download: "Laadi alla (PDF)",
+      downloadLabel: "Laadi alla (PDF): leping {id}",
+      working: "Saadan…",
+    },
+    // how a contract was accepted (domain/contract.ts AcceptedVia), as the drawers say it
+    via: {
+      form: "Registreerimisvorm",
+      purchase: "E-koolituse ost",
+      account: "Õpilase konto",
+      terms: "E-koolituse tingimuste kinnitus",
+    },
+    // what an action refuses with, in words (server/actions/admin-contracts.ts)
+    errors: {
+      notFound: "Seda registreeringut ei leitud. Laadi leht uuesti.",
+      contractNotFound: "Seda lepingut ei leitud. Laadi leht uuesti.",
+      noAccount: "Õpilasel pole kontot — lisa ta Õpilased lehel.",
+      cancelled: "Tühistatud registreeringu lepingut ei saa kinnitamiseks saata.",
+      mailFailed: "Kirja ei saadetud. Proovi uuesti.",
+      // the copy can never go: a sample address (@example.test, never mailed), or no mail service here (no Resend); Draft for Dim's wording sheet
+      sampleAddress: "Sellele aadressile kirja ei saadeta.",
+      mailOff: "Kirjade saatmine pole siin seadistatud.",
+      // the copy draws the PDF first and sends nothing without it (ruling R15; Draft)
+      pdfFailed: "Lepingu PDF-i ei õnnestunud koostada — proovi uuesti.",
+      server: "Midagi läks valesti. Proovi uuesti.",
+    },
+    // Seaded → „Lepingud“ (components/admin/ContractTexts.tsx)
+    settings: {
+      title: "Lepingud",
+      lead: "Õpilane kinnitab registreerimisel selle lepingu teksti. Kinnitatud leping jääb selliseks, nagu see kinnitati: hilisem muudatus puudutab ainult uusi lepinguid. Kuni siia teksti pole kirjutatud, näeb õpilane lepinguna lehe „Õppetingimused“ teksti.",
+      contact: "Kontaktkoolituse leping",
+      paragraphHint: "Tühi rida alustab uut lõiku.",
+      // the placeholders (domain/contract.ts PLACEHOLDERS), each with what fills it
+      placeholders: "Tekstis võid kasutada kohahoidjaid, mis täituvad lepingu kinnitamisel. Tundmatu sõna looksulgudes jääb tekstis alles.",
+      placeholderMeaning: {
+        nimi: "õpilase nimi",
+        "e-post": "õpilase e-posti aadress",
+        koolitus: "koolituse nimi",
+        toimumine: "kuupäev ja koht",
+        hind: "koolituse hind",
+        ettemaks: "summa, mille õpilane maksab registreerimisel",
+      },
+      save: "Salvesta lepingud",
+      saving: "Salvestan…",
+      saved: "Lepingud on salvestatud.",
+      invalid: "Kontrolli märgitud välju.",
+      error: "Salvestamine ei õnnestunud. Proovi uuesti.",
+      sample: "Näidisleping (PDF)",
+      sampleRu: "Näidisleping vene keeles (PDF)",
+      sampleHint: "Näidis tehakse kaardi praegustest väärtustest, ka salvestamata. Midagi ei salvestata.",
+      // the e-course contract's title (Seaded → „E-koolituse leping (tingimused)“): the page title is the contract's, as Maria writes it (ruling R3)
+      ecourseTitleHint: "See on lepingu pealkiri õpilase kontol ja PDF-is. Soovitus: „E-koolituse leping“.",
+    },
+    // the sample PDF's stand-ins (server/contract-sample.ts): the student, the course and the session are made up; a text the card leaves empty is in brackets
+    sample: {
+      student: "Proov (näidis)",
+      email: "naidis@example.test",
+      course: "Näidiskoolitus",
+      courseRu: "Пример курса",
+      city: "Pärnu",
+      title: "(lepingu pealkiri)",
+      body: "(lepingu tekst)",
+    },
+  },
+
   // The course day's protocols (phase protocols, spec §4): /admin/protokollid?sessioon=<id> | ?registreering=<id> (ProtocolScreen.tsx and its
   // autosave). The status marks are spec §3's. {time} is "HH:MM" in Tallinn, {n} a count, {max} the box's limit, {date} a day and a time.
   protocols: {
@@ -826,9 +913,10 @@ export const adminEt = {
       requests: "Päringud",
       noRequests: "Päringuid pole.",
       openRequests: "Vaata päringutes",
-      terms: "Tingimustega nõustumised",
-      noTerms: "Pole veel nõustunud.",
-      accepted: "Nõustus {date}",
+      // her contracts, the contact course's and the e-course's (contracts Task 5; it replaces the list of the e-course terms she accepted, which a
+      // purchaser is not on): Draft but „Lepingud“
+      contracts: "Lepingud",
+      noContracts: "Lepinguid veel pole.",
     },
     grant: {
       title: "Ava ligipääs",
@@ -1611,8 +1699,9 @@ export const adminEt = {
     referenceHint: "Makse selgitus on see algus ja registreerimise number, nt MSLAB-42. Tühjaks jättes ainult number.",
     privacy: "Privaatsus",
     terms: "Õppetingimused",
-    courseTerms: "E-koolituse tingimused",
-    courseTermsLead: "Õpilane loeb seda enne e-koolituse esimest avamist ja nõustub sellega. Kui salvestad muudetud teksti, peab iga õpilane uuesti nõustuma. Seda teksti ei näe keegi avalikul lehel.",
+    courseTerms: "E-koolituse leping (tingimused)",
+    // Draft (contracts Task 5): the text is the e-course contract, read in the cart before buying and at the terms gate of a course opened without a purchase
+    courseTermsLead: "See on e-koolituse leping. Õpilane loeb seda ostukorvis enne ostmist ja nõustub sellega; ilma ostuta avatud koolituse puhul nõustub ta enne esimest avamist. Kui salvestad muudetud teksti, peab iga õpilane uuesti nõustuma.",
     pageTitle: "Pealkiri",
     pageBody: "Tekst",
     pageHint: "Tühi rida alustab uut lõiku.",

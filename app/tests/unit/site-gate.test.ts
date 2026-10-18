@@ -91,6 +91,8 @@ const GATED = [
   "/api/konto/kursus/x/tunnistus", // the certificate (phase 3d)
   "/api/konto/tunnistus/1",
   "/api/konto/arve/1", // an invoice's PDF (invoices Task 6)
+  "/api/konto/leping/1", // a contract's PDF (contracts Task 6)
+  "/api/konto/leping-tekst/1", // the text „Kinnita leping" shows (contracts Task 6)
   "/api/konto/protokoll",
   "/api/konto/tagasiside",
   "/api/konto/tagasiside/peida",
