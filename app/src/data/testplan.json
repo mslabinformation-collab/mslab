@@ -3167,10 +3167,10 @@
       ],
       "expect": [
         "Enne sisu näed „Enne alustamist“, Seadetes kirjutatud lepingu pealkirja ja selle teksti.",
-        "Tekstis on {koolitus} asemel koolituse nimi ja {e-post} asemel Proov 5 aadress.",
+        "Kui Maria kasutas tekstis kohahoidjaid, on {koolitus} asemel koolituse nimi ja {e-post} asemel Proov 5 aadress.",
         "Proov 5 lisati ainult aadressiga, seega on ruudu kohal väli „Nimi“.",
         "Ilma nimeta näed välja all „Kirjuta oma nimi.“ ja koolitus ei avane.",
-        "Kirjutatud nimi ilmub kohe tekstis {nimi} kohale; pärast nõustumist avaneb koolituse leht.",
+        "Kirjutatud nimi ilmub kohe tekstis {nimi} kohale, kui tekstis see on; pärast nõustumist avaneb koolituse leht.",
         "E-koolituse kaardil on rida „Leping · kinnitatud …“; „Minu andmed“ all on nimi Proov 5.",
         "Kiri „MS LAB leping“ tuleb reaga „Leping on lisatud.“; manuses on sama tekst Proov 5 nimega.",
         "Halduses Proov 5 paneelis on „Lepingud“ all „Kinnitatud … · E-koolituse tingimuste kinnitus“ ja „Laadi alla (PDF)“."
