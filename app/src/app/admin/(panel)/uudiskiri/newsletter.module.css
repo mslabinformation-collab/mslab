@@ -4,6 +4,10 @@
   gap: 10px;
 }
 
+.sync {
+  margin-bottom: 25px;
+}
+
 .card {
   container-type: inline-size;
 }
@@ -15,6 +19,15 @@
 
 .email {
   overflow-wrap: anywhere;
+}
+
+/* A subscriber's address that Resend does not mail: the spec's sentence under it, in the table's small text */
+.blocked {
+  max-width: 460px;
+  margin: 4px 0 0;
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 /* Narrow card: each subscriber as label + value rows. */

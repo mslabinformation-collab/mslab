@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import plan from "@/data/testplan.json";
 import { checkPlan } from "@/domain/testplan";
+import { adminEt } from "@/i18n/dict/admin";
 import { et } from "@/i18n/dict/et";
 import { ru } from "@/i18n/dict/ru";
 
@@ -373,5 +374,45 @@ describe("the review checks sit where Proov 1's reviews exist", () => {
       expect(item(id).mark, id).toBe("redo");
       expect(markedSince(item(id).markedAt), id).toBe(true);
     }
+  });
+});
+
+// The newsletter's sync with Resend (newsletter campaigns, Task 3): Dim's check needs the full-access key, so it is his, and it syncs what exists, so
+// it sits right after the sign-up check that makes Proov 3 a subscriber (the file is walked top to bottom).
+describe("the Resend sync check sits after the subscriber it syncs", () => {
+  const order = plan.items.map((i) => i.id);
+  const at = (id: string): number => {
+    const n = order.indexOf(id);
+    expect(n, id).toBeGreaterThanOrEqual(0);
+    return n;
+  };
+  const item = plan.items[at("avalik-uudiskiri-resend")];
+  const text = [...item.steps, ...item.expect].join("\n");
+
+  test("it is Dim's, and sits in the area of the sign-up check, right after it (Proov 3 is subscribed by then)", () => {
+    expect(item.who).toBe("dim");
+    expect(item.area).toBe(plan.items[at("avalik-uudiskiri")].area);
+    expect(at("avalik-uudiskiri-resend")).toBe(at("avalik-uudiskiri") + 1);
+    expect(plan.items[at("avalik-uudiskiri")].steps.join("\n")).toContain("+proov3");
+    expect(item.expect.join("\n")).toContain("Proov 3");
+    expect(item.writes).toBe(true);
+  });
+
+  test("it is new, from the deploy or its stamp", () => {
+    expect(item.mark).toBe("new");
+    expect(markedSince(item.markedAt)).toBe(true);
+  });
+
+  test("it quotes the page's words: the button, the report's line, the count line, the mark and the refusal for a key that can only send", () => {
+    const sync = adminEt.newsletter.sync;
+    expect(item.title).toBe(sync.button);
+    expect(text).toContain(`„${sync.button}“`);
+    expect(text).toContain("„1 lisatud, 0 eemaldatud, 0 loobus Resendis“");
+    expect(sync.report).toBe("{added} lisatud, {removed} eemaldatud, {unsubscribedPulled} loobus Resendis");
+    expect(text).toContain("„Resendis … kontakti (tasuta pakett: 1000)“");
+    expect(sync.resendContacts).toBe("Resendis {n} kontakti (tasuta pakett: 1000)");
+    expect(text).toContain(`„${sync.siteContacts.replace(": {n}", "")}“`);
+    expect(text).toContain(`„${adminEt.newsletter.suppressed.slice(0, adminEt.newsletter.suppressed.indexOf(" ("))}“`);
+    expect(text).toContain(`„${sync.errors.permission}“`);
   });
 });

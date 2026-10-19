@@ -1509,6 +1509,33 @@ export const adminEt = {
     // Maria's campaign editor (newsletter campaigns; the editor is a later task): the text under a field that domain/newsletter-campaign.ts
     // checkCampaignDraft refuses with `ruLabel` (a button and a Russian text, but no Russian label). Draft for Dim's wording sheet.
     campaignErrors: { ruLabel: "Lisa nupu tekst ka vene keeles." },
+    // The sync with Resend above the list (newsletter campaigns Task 3, spec D2, D8, §5; components/admin/NewsletterSync.tsx). Quoted from the spec:
+    // the button (D2), the warning at 900 (D8, Draft there), the limit line (§5, Draft there) and the connection error (§5, Draft there). The report's
+    // one line and the not-set-up text are the brief's (Draft). Every other text here is Draft for Dim's wording sheet.
+    sync: {
+      button: "Sünkrooni Resendiga",
+      working: "Sünkroonin…",
+      off: "Resendi uudiskirja saatmine pole veel seadistatud.",
+      // Resend's own count of the account's contacts, and the site's count of its subscribers it has synced (it is shown alone when Resend does not answer)
+      resendContacts: "Resendis {n} kontakti (tasuta pakett: 1000)",
+      siteContacts: "Sünkroonitud tellijaid: {n}",
+      siteContactsOnly: "Sünkroonitud tellijaid: {n} (tasuta pakett: 1000)",
+      warn: "Resendi tasuta paketis on 1000 kontakti. Üle selle on vaja tasulist paketti.",
+      limit: "{n} tellijat ei ole Resendis — kontaktide piir on täis.",
+      // the last sync's report: one line, and a line each only when it has something to say
+      report: "{added} lisatud, {removed} eemaldatud, {unsubscribedPulled} loobus Resendis",
+      reportSuppressed: "Resend ei saada kirju {n} tellija aadressile (tagastus või rämpspostiks märgitud).",
+      reportFailed: "{n} kontakti sünkroonimine ebaõnnestus, järgmine sünkroonimine proovib uuesti.",
+      unfinished: "Sünkroonimine jätkub järgmisel korral.",
+      errors: {
+        unavailable: "Resendiga ei saanud ühendust — proovi hiljem uuesti.",
+        notConfigured: "Resendi uudiskirja saatmine pole veel seadistatud.",
+        permission: "Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.",
+        server: "Sünkroonimine ei õnnestunud. Proovi uuesti.",
+      },
+    },
+    // A subscriber's address that Resend does not mail (a bounce or a spam mark; spec D10, Draft there): on her row here and in her drawer in Õpilased
+    suppressed: "Resend ei saada sellele aadressile kirju (tagastus või rämpspostiks märgitud). Seda saab muuta ainult Resendis.",
   },
   // ---------- Task 13B: the site content editors ----------
 

@@ -440,6 +440,34 @@
       "writes": true
     },
     {
+      "id": "avalik-uudiskiri-resend",
+      "area": "avalik",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Sünkrooni Resendiga",
+      "href": "/admin/uudiskiri",
+      "steps": [
+        "Ava halduses „Uudiskiri“ ja vaata lehe ülaosas plokki Resendi kontaktidega.",
+        "Vajuta „Sünkrooni Resendiga“.",
+        "Vajuta „Sünkrooni Resendiga“ uuesti.",
+        "Ava Resendis „Contacts“ ja segment „MS LAB uudiskiri (ET)“."
+      ],
+      "expect": [
+        "Esimesel vajutusel on nupu juures rida „1 lisatud, 0 eemaldatud, 0 loobus Resendis“, arvud võivad olla teised.",
+        "Teisel vajutusel on rida „0 lisatud, 0 eemaldatud, 0 loobus Resendis“.",
+        "Rida „Resendis … kontakti (tasuta pakett: 1000)“ näitab sama arvu nagu Resendi leht „Contacts“.",
+        "Rida „Sünkroonitud tellijaid“ näitab vähemalt 1.",
+        "Segmendis „MS LAB uudiskiri (ET)“ on Proov 3 aadress.",
+        "Kui Resend on mõne aadressi blokeerinud, on tellija real märge „Resend ei saada sellele aadressile kirju“.",
+        "Teate „Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.“ korral vaheta võti."
+      ],
+      "why": "Sünkroon hoiab Resendi kontaktid kooskõlas tellijate nõusolekuga.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "avalik-kontaktivorm",
       "area": "avalik",
       "who": "maria",
