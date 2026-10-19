@@ -34,6 +34,7 @@ What exists today:
   - The free marketing plan allows 1,000 contacts with no cap on the number of mails, and it is billed apart from the transactional quota (free: 100 a day, 3,000 a month). That quota stays for the site's own mails.
   - Sending one mail per subscriber through `/emails` would spend that quota, so it is not used for campaigns.
   - The only exception is „Saada proov" (D6), which sends one transactional mail.
+    - (amended 19.10 during the build, R4) There is no exception any more: „Saada proov" is a broadcast to a one-contact test segment too (D6). No campaign and no test goes through `/emails`.
   - **One Resend account for everything** (Dim, 19.10: "Same account"). Campaigns go out from Maria's existing Resend account and the sending domain `send.mslab.ee` (`MAIL_FROM`), with Maria as the reply-to.
     - Dim accepted the cost: Resend's suppression list covers the whole account, so an address that bounces, or that marks a campaign as spam, also stops getting the site's own mails (login codes, confirmations, protocols, invoices, contracts).
     - D10 makes that visible.
@@ -56,6 +57,8 @@ What exists today:
     - right before every send;
     - from a button „Sünkrooni Resendiga" on the „Uudiskiri" page;
     - in the daily cron (`/api/cron/sweep`).
+  - **One at a time** (amended 19.10 during the build, R9 and R11). A full sync holds a lease: the setting `newsletter_sync_lease`, `{ holder, until }`, taken by one conditional write and given back by its holder at the end; if the holder dies it ends by itself at `until` (the sync's time budget and 30 seconds). The daily cron, the button, the first set-up of the segments, a send (its sync and its broadcasts) and „Saada proov" all run under it. A second caller does nothing and answers „Sünkroonimine juba käib — proovi hetke pärast uuesti." (Draft), so two first syncs can never make the segments twice in Maria's Resend. A holder whose lease ran out and was taken over leaves the new holder's row alone.
+  - **What the sync touches** (amended 19.10 during the build, R6). Sample addresses (`@example.test`) are never synced and never counted as unsynced, and a contact of theirs in the site's segments is removed. Only the two segments are the site's: a contact there without a subscriber row is taken out of them, and deleted only when it is in no other segment of Maria's account; a contact in neither segment is never touched.
 - **D3. Unsubscribing** (my call, from the builder check).
   - **The visible link is the site's own.** The campaign's footer link is the site's existing page, `/api/newsletter/loobu?t=<her token>`, in Estonian or Russian. Resend's hosted page is one English page per account and carries Resend's footer on the free plan.
     - The token reaches the mail as a contact property, which the sync stores on her contact. Broadcasts fill contact properties into the mail.
@@ -65,6 +68,7 @@ What exists today:
     - Every full sync reads the unsubscribed contacts and deletes their rows before anything is sent. A send therefore never goes to someone who unsubscribed through Resend, even if a webhook was lost.
   - **The site's own unsubscribe** (the welcome mail's link, the „Minu andmed" switch) deletes the row, as today, and deletes the Resend contact.
   - **Signing up again.** A person who unsubscribed through Resend and later signs up again on the site is a new consent. The site sets her contact back to subscribed.
+    - (amended 19.10 during the build, R1) **A fresh consent wins.** The full sync deletes the row of a contact that unsubscribed in Resend only when the row has been synced (`synced_at` is set) and its `consent_at` is before the sync began; a row not yet synced is a fresh consent, so its contact is pushed subscribed instead. The webhook deletes the row only when its `consent_at` is before the event's `created_at`, and only `contact.updated` with `unsubscribed: true` acts (the site's own updates fire it too). The cost, if wrong: one more mail to someone who signed up again and unsubscribed in the same minute. Whether Resend fires `contact.updated` on its one-click unsubscribe was not confirmed in the build (no live Resend): Dim's first live check shows it (`docs/deploy.md` section 19), and the full sync is the route if it does not.
 - **D4. Maria writes campaigns in the admin** (my call; see §8 for the cheaper alternative).
   - **The tab.** A new tab „Kampaaniad" on the „Uudiskiri" page. Each campaign has:
     - an internal name;
@@ -75,6 +79,7 @@ What exists today:
     - an optional code, shown in a box like the welcome code;
     - an optional button, with its label (ET and RU) and an address.
   - **Russian.** The Russian fields are optional. When the Russian subject or text is empty, Russian subscribers get the Estonian version, and the admin says so before sending: „Vene keeles tellijad saavad eestikeelse kirja." (Draft).
+    - (amended 19.10 during the build, R2) A Russian text with a button needs its own Russian button label: without it the field says „Lisa nupu tekst ka vene keeles." (Draft), so nothing is mixed and nothing is dropped silently. An empty Russian preview line means none (it is optional).
   - **The preview.** A live preview beside the fields shows the mail as it will look, in both languages.
 - **D5. The mail's look** (my call). It follows the site's account mails: the white card on the pale background, with Jost-like system fonts in mail. It also adds:
   - **A header:** the MS LAB logo at the top, as an image from the site.
@@ -89,14 +94,18 @@ What exists today:
     - It is one transactional mail, at most 10 an hour.
     - Its subject starts with „[Proov]".
     - In the test, the unsubscribe link points to the site's page and says it is a test.
+    - (amended 19.10 during the build, R4 and R7) **It is a broadcast, not a transactional mail** (of the lines above only the subject and the limit of 10 an hour stand). It goes to a segment of one contact, „MS LAB uudiskiri (proov)" (made on first use, its id kept under the setting `resend_test_segment`), that holds the address chosen and no one else, so the test is exactly what a subscriber gets: Resend's placeholder for the unsubscribe link, its own rendering and all. The test contact's `unsubscribe_url` is the site's test page, `/api/newsletter/loobu?proov=1`, which says it is a test and changes nothing, **only when the address is not a subscriber's**. When it is, her own real link stays, and the admin says „Proov läheb tellija-aadressile — selle loobumislink on päris." (Draft), so Maria cannot unsubscribe herself by pressing her own test link. The cost: one extra contact in Resend's count, and a test to an address that is already a Resend contact sets that contact `unsubscribed: false`, account-wide.
   - **„Saada kõigile".** It first runs the full sync (D2), then shows the confirmation: „Saadad kampaania {n} tellijale (eesti keeles {a}, vene keeles {b}). Kas saadame?"
     - On „Saada" the site creates one broadcast per segment that has subscribers and sends it at once.
     - It records the broadcast ids, the counts and the time.
     - Two presses, or two tabs, send once: the campaign row is locked and its status checked.
+    - (amended 19.10 during the build, R14) **The confirmed counts are compared at send time.** „Saada" runs the full sync again, and when the counts after it differ from the ones Maria confirmed, nothing is sent: „Tellijate arv muutus vahepeal — vaata üle ja kinnita uuesti." (Draft), with the new counts to confirm.
+    - (amended 19.10 during the build, R13) **Interrupted means never resent.** A third status, `sending`, is written (with the counts) in the same short transaction that locks the campaign row and checks it is still a draft, before the first broadcast; no row lock is held across a Resend call. A broadcast Resend refused (a 4xx) was not made: with nothing gone the campaign is as it was; with one language gone it is `sent` with that language. A broadcast that got no answer (a timeout, a 5xx) may have gone: the campaign stays `sending`, and nothing offers it again by itself. Maria sees what is recorded, a link to Resend's list of broadcasts and „Ära kopeeri enne, kui oled Resendis kontrollinud." (Draft), because „Kopeeri" would mail everyone again.
   - **After sending.**
     - The campaign is read-only, with „Saadetud {date} · {n} tellijale".
     - A link opens it in Resend's dashboard, where the delivery, bounce and unsubscribe numbers are (tracking is off, D1).
     - „Kopeeri" makes a new draft from it.
+    - (amended 19.10 during the build, R12) **„Saada puuduv keel"** (Draft). A campaign sent in one language only (Resend refused the other) offers this button, which sends only the missing language's segment, under the same lease, sync, count and row-lock rules. „Kopeeri" stays for new campaigns: on such a campaign it would mail the language that already went twice.
 - **D7. Who receives** (my call). Every row of `subscribers` that is confirmed.
   - Rows still unconfirmed from the old two-step sign-up (before 09.10) are not sent to.
   - Students and buyers who never signed up get nothing. Estonian law's "similar products" exception would need an opt-out offered at the purchase, and the forms never offered one.
@@ -129,6 +138,7 @@ What exists today:
   - `synced_at`, nullable. It is null when the row has changed since the last successful sync.
 - **Settings key `resend_segments`:** `{ et, ru }`, the segment ids.
 - **`mail_suppressions`** (D10): `email` (unique, lower-case), `reason` (`bounce`, `complaint` or `other`), `since`, `cleared_at`. One row per address. It is kept separate from `subscribers`, because a student who never subscribed can be suppressed too.
+- (amended 19.10 during the build) The table is `newsletter_campaigns` (the home page's popup owns `campaign`), and its `status` is `draft`, `sending` or `sent` (R13). The settings keys are `resend_segments` `{ et, ru, property }` (the segments and the contact property `unsubscribe_url`), `resend_test_segment` `{ id }` (R4) and `newsletter_sync_lease` `{ holder, until }` (R9 and R11).
 
 ## 4. Configuration (Dim)
 
@@ -147,9 +157,11 @@ What exists today:
   - **A subscriber who changes her language in „Minu andmed":** her contact moves segment.
   - **An address that bounced or complained:** Resend suppresses it for every mail of the account (D1). The site does not delete the row; it marks it (D10), and the full sync reports the count.
   - **Over 1,000 contacts:** the sync stops adding new contacts. Maria sees the warning, and the send goes to those already in Resend. The rows without a contact are counted, never silently dropped: „{n} tellijat ei ole Resendis — kontaktide piir on täis." (Draft).
+    - (amended 19.10 during the build, R5) Resend does not refuse a contact over the plan's limit: it blocks the broadcasts. So the site itself stops adding contacts at 1,000 (the full sync and each sign-up's sync), and „Saada kõigile" goes to those already in Resend. It refuses (`unsynced`) only for rows left unsynced for another reason (a failure, the time budget); the rows left out by the limit are counted in the confirmation. The site counts its own rows, so the page also shows Resend's own count, which includes Maria's other contacts and the test contact.
 - **Before the public launch.**
   - Links in a campaign that point to the site land on the coming-soon page.
   - Images must load through the gate. Builder: confirm that `/media/…` is public.
+    - (amended 19.10 during the build) Confirmed: `/media/…` and `/brand/…` (the logo) go through the coming-soon gate, as do the unsubscribe link (`/api/newsletter/loobu`) and Resend's webhook (`/api/resend/webhook`).
 - **Two admins at once.** A send is refused if the campaign was already sent. Editing a sent campaign is refused.
 
 ## 6. The test plan (standing rule)
@@ -163,6 +175,8 @@ New checks (`"mark": "new"`, `"markedAt": "deploy"`):
 - „Kopeeri".
 
 The checks that send run only with Dim. Until the launch, the subscriber list holds only test addresses, or the check uses a Resend test segment. Builder: say which.
+
+(amended 19.10 during the build) The checks that send use Dim's `+proov` addresses on the real list, and „Saada proov" goes through its own test segment; no Resend test environment is used. The check „Saada kõigile" starts by reading the list and stops if any other address is on it (`app/src/data/testplan.json`; the live order is `docs/deploy.md` section 19, item 11).
 
 ## 7. Out of scope
 

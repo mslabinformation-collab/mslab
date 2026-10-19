@@ -28,8 +28,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px 12px;
-  padding: 12px 0;
+  gap: 0 12px;
+  padding: 0 0 10px;
   border-top: 1px solid var(--line);
 }
 
@@ -37,8 +37,12 @@
   grid-column: 1 / -1;
 }
 
+/* a 44px tall target, whatever the length of the name (tests/e2e/newsletter-campaigns.spec.ts looks at it at four widths) */
 .rowLink {
+  display: flex;
+  align-items: center;
   min-width: 0;
+  min-height: 44px;
   overflow-wrap: anywhere;
   color: var(--ink);
   font-weight: 600;
