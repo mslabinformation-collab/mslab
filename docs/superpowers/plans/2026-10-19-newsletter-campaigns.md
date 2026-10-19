@@ -27,7 +27,7 @@
   - Use local `next dev` against the local Docker `mslab-pg` only (15 migrations; 16 after Task 1).
   - Never read `app/.env.local`.
 - **Keys.**
-  - The marketing calls use `RESEND_MARKETING_KEY`, falling back to `RESEND_API_KEY`.
+  - The marketing calls use `RESEND_MARKETING_KEY`, falling back to `RESEND_API_KEY`. (Amended 19.10 in the final wave, ruling R15: no fallback; `RESEND_MARKETING_KEY` alone is the switch.)
   - The webhook uses `RESEND_WEBHOOK_SECRET`.
   - Without a marketing key, sync and send are "not set up": nothing fails and nothing is sent. The visitor's sign-up still works.
 - **Naming.** The existing `campaign` table, `domain/campaign.ts` and `/admin/kampaania` are the home-page popup („Hüpikaken").
@@ -318,7 +318,7 @@ export async function sendCampaign(deps: MarketingDeps, id: number): Promise<{ o
 - **The webhook e2e:** a signed fake event (the test signs with a local secret) deletes a subscriber row, and a bad signature gives 400.
 - **`docs/deploy.md` §19:**
   - what is synced and when;
-  - the keys (`RESEND_MARKETING_KEY` / `RESEND_API_KEY` full access, `RESEND_WEBHOOK_SECRET`) and the webhook URL with its three events;
+  - the keys (`RESEND_MARKETING_KEY` / `RESEND_API_KEY` full access, `RESEND_WEBHOOK_SECRET`; amended by R15: `RESEND_MARKETING_KEY` only) and the webhook URL with its three events;
   - the full sync and the cron;
   - the logs;
   - the 1,000-contact limit;
