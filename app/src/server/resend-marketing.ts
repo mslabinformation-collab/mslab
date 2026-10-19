@@ -115,6 +115,54 @@ class OutOfTime extends Error {
   }
 }
 
+/**
+ * Another full sync is running (see fullSync's lease): this one did nothing. Not a failure of Resend: the cron logs it and waits for the next day,
+ * the admin's button tells Maria to try again in a moment.
+ */
+export class FullSyncBusy extends Error {
+  constructor() {
+    super("a full sync is already running");
+    this.name = "FullSyncBusy";
+  }
+}
+
+/** The setting that holds the full sync's lease: `{ holder, until }`, `until` in epoch milliseconds. Absent when no sync runs. */
+export const SYNC_LEASE_SETTING = "newsletter_sync_lease";
+/**
+ * The lease outlasts the sync's budget by this much: a call begun at the budget's end has NOTIFY_TIMEOUT_MS (8 s), and once more after a 429 (a
+ * second and 8 s more), and the counts' queries follow. A sync that dies without releasing it holds the others off for this long at most.
+ */
+const LEASE_SLACK_MS = 30_000;
+/** A sync with no time budget (a test, a script) holds its lease for this long at most. */
+const UNBOUNDED_LEASE_MS = 5 * 60_000;
+
+/**
+ * Takes the full sync's lease with one statement: the row is made, or taken over when its `until` has passed (a missing or odd `until` counts as
+ * passed). Its holder is a random id and its `until` is now plus the sync's budget plus LEASE_SLACK_MS. null when another sync holds it. A lease
+ * row, not a session advisory lock: the pool (postgres.js, up to 5 connections) could release a session lock on another connection than the one
+ * that took it, and a transaction lock would keep a connection for the whole sync.
+ */
+async function takeLease(deps: MarketingDeps): Promise<string | null> {
+  const holder = crypto.randomUUID();
+  const now = Date.now();
+  const value = { holder, until: now + (deps.budgetMs ?? UNBOUNDED_LEASE_MS) + LEASE_SLACK_MS };
+  const taken = await deps.db
+    .insert(settings)
+    .values({ key: SYNC_LEASE_SETTING, value })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value },
+      setWhere: sql`case when jsonb_typeof(${settings.value} -> 'until') = 'number' then (${settings.value} ->> 'until')::numeric else 0 end < ${now}::numeric`,
+    })
+    .returning();
+  return taken.length > 0 ? holder : null;
+}
+
+/** Gives the lease back, but only if this holder still has it (it may have run out and been taken over). */
+async function releaseLease(db: Db, holder: string): Promise<void> {
+  await db.delete(settings).where(and(eq(settings.key, SYNC_LEASE_SETTING), sql`${settings.value} ->> 'holder' = ${holder}`));
+}
+
 /** The key of the newsletter's calls: RESEND_MARKETING_KEY, else RESEND_API_KEY (spec §4); undefined without either. */
 export const marketingKey = (env: Pick<Env, "RESEND_MARKETING_KEY" | "RESEND_API_KEY">): string | undefined => env.RESEND_MARKETING_KEY || env.RESEND_API_KEY || undefined;
 
@@ -554,9 +602,25 @@ export type FullSyncReport = {
  * A synced row in its segment is left alone: every push writes the property, and synced_at is set only after a push succeeded (Review Focus 2).
  * After `budgetMs` no call starts: the report says `finished: false`, and what is left waits for the next run. MarketingUnavailable when it
  * is not set up or Resend does not answer the lists (step 1 has to be whole, or nothing could be trusted).
+ * Only one full sync runs at a time (rulings R9, R11): it holds a lease (the setting `newsletter_sync_lease`, see takeLease) from before its first Resend
+ * call to its end, and a second caller (the cron, the admin's button, another tab) gets FullSyncBusy and does nothing. `ensureSegments` runs inside it.
  */
 export async function fullSync(deps: MarketingDeps): Promise<FullSyncReport> {
   if (!marketingConfigured(deps.env)) throw new MarketingUnavailable({ name: "not_configured" });
+  const holder = await takeLease(deps);
+  if (holder === null) {
+    console.info("[newsletter-sync] a full sync is already running: this one is not started");
+    throw new FullSyncBusy();
+  }
+  try {
+    return await syncUnderLease(deps);
+  } finally {
+    // (a lease that cannot be released ends by itself at its `until`)
+    await releaseLease(deps.db, holder).catch((e: unknown) => noteFailure("[newsletter-sync] the sync lease not released", e));
+  }
+}
+
+async function syncUnderLease(deps: MarketingDeps): Promise<FullSyncReport> {
   const deadline = deps.budgetMs === undefined ? Number.POSITIVE_INFINITY : Date.now() + deps.budgetMs;
   const call = pacer(deps, deadline);
   const r = client(deps);
@@ -751,20 +815,52 @@ export async function suppressedAddresses(q: Q, emails: string[]): Promise<Set<s
   return new Set(rows.map((row) => normalizeEmail(row.email)));
 }
 
-/** Resend's contacts (its own count, else counted from the list), for the admin's count against the free 1,000 (D8); null when not set up or not answered. */
-export async function contactCount(deps: MarketingDeps): Promise<number | null> {
-  if (!marketingConfigured(deps.env)) return null;
+/** The names a Resend error has when the key itself is refused (the SDK passes the API's `name` and `statusCode` on as they come). */
+const KEY_ERRORS: ReadonlySet<string> = new Set(["restricted_api_key", "invalid_api_key", "missing_api_key"]);
+
+/**
+ * Did Resend refuse the key, rather than fail? A key that can only send (the site's RESEND_API_KEY of the welcome mails) answers every contact,
+ * segment and broadcast call with 401 `restricted_api_key` ("This API key is restricted to only send emails"); a key it does not know is 403
+ * `invalid_api_key`. Any other 401 or 403 counts too, except a 403 `validation_error`, which is how Resend words refusals that are not about the key.
+ * Takes a Resend error (`name`, `statusCode`) or a MarketingUnavailable (`code`, `statusCode`).
+ */
+export function keyRefused(error: unknown): boolean {
+  const e = (typeof error === "object" && error !== null ? error : {}) as { name?: unknown; code?: unknown; statusCode?: unknown };
+  const names = [e.name, e.code].filter((v): v is string => typeof v === "string");
+  if (names.some((v) => KEY_ERRORS.has(v))) return true;
+  return (e.statusCode === 401 || e.statusCode === 403) && !names.includes("validation_error");
+}
+
+/** Resend's count of the contacts, with whether Resend refused the key for it (the admin page says so at once, M6). */
+export type ContactCountRead = { count: number | null; refused: boolean };
+
+/**
+ * Resend's contacts: its own count (`usage`), counted from the list only when `usage` answered without a number, never when it answered an error
+ * (a second call that would fail the same way costs a pause and a second log line on every view of the admin page). `count` is null when not set
+ * up or not answered, and `refused` is true when the answer was the key's refusal (keyRefused). Never throws; logs the call and the status.
+ */
+export async function readContactCount(deps: MarketingDeps): Promise<ContactCountRead> {
+  if (!marketingConfigured(deps.env)) return { count: null, refused: false };
   try {
     const call = pacer(deps);
     const r = client(deps);
     const usage = await call(() => r.usage.get());
+    if (usage.error) {
+      noteFailure("[newsletter-sync] contact count unavailable", usage.error);
+      return { count: null, refused: keyRefused(usage.error) };
+    }
     const used = usage.data?.contacts?.used;
-    if (typeof used === "number" && Number.isInteger(used) && used >= 0) return used;
-    return (await listAll(call, "contacts.list", (after) => r.contacts.list({ limit: 100, after }))).length;
+    if (typeof used === "number" && Number.isInteger(used) && used >= 0) return { count: used, refused: false };
+    return { count: (await listAll(call, "contacts.list", (after) => r.contacts.list({ limit: 100, after }))).length, refused: false };
   } catch (e) {
     noteFailure("[newsletter-sync] contact count unavailable", e);
-    return null;
+    return { count: null, refused: keyRefused(e) };
   }
+}
+
+/** Resend's contacts (its own count, else counted from the list), for the admin's count against the free 1,000 (D8); null when not set up or not answered. */
+export async function contactCount(deps: MarketingDeps): Promise<number | null> {
+  return (await readContactCount(deps)).count;
 }
 
 // ---------- the webhook ----------

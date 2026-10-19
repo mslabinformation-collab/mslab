@@ -22,7 +22,8 @@ type Answer = { kind: "report"; report: FullSyncReport } | { kind: "error"; code
  * - „Sünkrooni Resendiga“, one press at a time. The answer stays until the page is left: the report in one line, with a line each for the addresses
  *   Resend blocks and the contacts that failed (only when there are some), the plan's limit (from the report: its number of subscribers left out),
  *   and „Sünkroonimine jätkub järgmisel korral.“ when the time ran out; or the refusal in words (the key that can only send is told apart from Resend
- *   being down). A sync that ran refreshes the page (the action), and this component stays, so the answer stays with the new counts.
+ *   being down; another sync running is „juba käib“). When Resend's count already refused the key, the page says so before any press.
+ *   A sync that ran refreshes the page (the action), and this component stays, so the answer stays with the new counts.
  */
 export function NewsletterSync({ state }: { state: SyncState }) {
   const t = adminEt.newsletter.sync;
@@ -54,7 +55,9 @@ export function NewsletterSync({ state }: { state: SyncState }) {
 
   // the real number: the larger of Resend's count (the account's, the plan's) and the site's own
   const used = Math.max(state.resend ?? 0, state.site);
-  const report = answer?.kind === "report" ? answer.report : null;
+  // what the last press answered; before any press, the key's refusal the page already knows from Resend's count (a key that can only send)
+  const shown: Answer | null = answer ?? (state.refused ? { kind: "error", code: "permission" } : null);
+  const report = shown?.kind === "report" ? shown.report : null;
   const limitLeft = report?.limitReached ? report.unsynced : used >= RESEND_FREE_CONTACTS && state.missing > 0 ? state.missing : null;
 
   return (
@@ -85,9 +88,9 @@ export function NewsletterSync({ state }: { state: SyncState }) {
         </button>
         <div role="status" className={styles.status} data-sync-status="">
           {pending && <p className={ui.hint}>{t.working}</p>}
-          {answer?.kind === "error" && (
-            <p className={ui.error} data-sync-error={answer.code}>
-              {t.errors[answer.code]}
+          {!pending && shown?.kind === "error" && (
+            <p className={ui.error} data-sync-error={shown.code}>
+              {t.errors[shown.code]}
             </p>
           )}
           {report && (

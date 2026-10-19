@@ -226,10 +226,11 @@ describe("next.config.ts env (the test page, phase 4)", () => {
   });
 });
 
-describe("next.config.ts is loaded by Next without the tsconfig paths", () => {
-  // Next compiles next.config.ts and what it imports by itself and resolves only relative paths: an "@/…" import anywhere in that chain makes `next dev` and
-  // `next build` stop with "Cannot find module" (it happened once: server/media.ts, imported for MEDIA_CSP, took its key rule from "@/lib/media"). vitest
-  // resolves the paths, so no other test notices. A type-only import is erased and may use them.
+describe("next.config.ts's import chain uses no \"@/…\" path", () => {
+  // Next does give its config loader the tsconfig paths, but an alias comes out relative to the project root and Node resolves it from the importing file:
+  // an "@/…" import in a file below next.config.ts makes `next dev` and `next build` stop with "Cannot find module" (it happened once: server/media.ts,
+  // imported for MEDIA_CSP, took its key rule from "@/lib/media"). vitest resolves the paths itself, so no other test notices. The rule is stricter than
+  // it has to be (an "@/…" import written in next.config.ts itself would resolve), which keeps it simple. A type-only import is erased and may use them.
   test("nothing next.config.ts imports, however deep, is imported by an \"@/…\" path", () => {
     const root = process.cwd();
     const seen = new Set<string>();

@@ -178,6 +178,34 @@ describe("the page with the newsletter's key", () => {
   });
 });
 
+describe("a key that can only send (M2, M6)", () => {
+  const restricted = { name: "restricted_api_key", statusCode: 401, message: "This API key is restricted to only send emails" };
+
+  test("the page says so when it loads: Resend's count is asked once, not twice, and the site's count is shown alone", async () => {
+    fake.fail.set("usage.get", restricted);
+    await sub("kati@example.com", { resendContactId: "ct_1", syncedAt: at(-5) });
+    const html = await render();
+    expect(text(html)).toContain("Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.");
+    expect(html).toContain('data-sync-error="permission"');
+    expect(html).not.toContain("data-sync-resend");
+    expect(text(html)).toContain("Sünkroonitud tellijaid: 1 (tasuta pakett: 1000)");
+    expect(html).toContain("data-sync-run");
+    expect(fake.calls).toEqual(["usage.get"]); // (not a second call to the list, which fails the same way)
+  });
+
+  test("syncState: `refused` for the key's refusal, not for an outage, a slow Resend or a key that works", async () => {
+    const deps = () => ({ ...adminMarketingDeps(), now: NOW });
+    fake.fail.set("usage.get", restricted);
+    expect(await syncState(deps())).toMatchObject({ configured: true, resend: null, refused: true });
+    fake.fail.set("usage.get", DOWN);
+    expect(await syncState(deps())).toMatchObject({ resend: null, refused: false });
+    fake.fail.clear();
+    expect(await syncState(deps())).toMatchObject({ resend: 0, refused: false });
+    fake.r.usage.get = () => new Promise((resolve) => setTimeout(() => resolve({ data: null, error: restricted }), 300));
+    expect(await syncState(deps(), 30)).toMatchObject({ resend: null, refused: false }); // (not known in time)
+  });
+});
+
 describe("syncState: what the sync part is told", () => {
   const deps = () => ({ ...adminMarketingDeps(), now: NOW });
 
@@ -196,7 +224,7 @@ describe("syncState: what the sync part is told", () => {
     await sub("F@Example.Test"); // (in any case)
     await sub("g@example.com", { confirmedAt: null });
     fake.add("x@example.com");
-    expect(await syncState(deps())).toEqual({ configured: true, resend: 1, site: 2, missing: 2 });
+    expect(await syncState(deps())).toEqual({ configured: true, resend: 1, refused: false, site: 2, missing: 2 });
   });
 
   test("Resend's count is null when Resend does not answer, and when it does not answer in time (a slow Resend does not hold the list)", async () => {

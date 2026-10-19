@@ -407,7 +407,10 @@ describe("the Resend sync check sits after the subscriber it syncs", () => {
     const sync = adminEt.newsletter.sync;
     expect(item.title).toBe(sync.button);
     expect(text).toContain(`„${sync.button}“`);
-    expect(text).toContain("„1 lisatud, 0 eemaldatud, 0 loobus Resendis“");
+    // the first press may add nothing (the public sign-up has already synced Proov 3): any numbers are right; the second adds, removes and pulls nothing
+    expect(item.expect[0]).toContain("„… lisatud, … eemaldatud, … loobus Resendis“");
+    expect(item.expect[0]).not.toMatch(/„\d/);
+    expect(item.expect[1]).toContain("„0 lisatud, 0 eemaldatud, 0 loobus Resendis“");
     expect(sync.report).toBe("{added} lisatud, {removed} eemaldatud, {unsubscribedPulled} loobus Resendis");
     expect(text).toContain("„Resendis … kontakti (tasuta pakett: 1000)“");
     expect(sync.resendContacts).toBe("Resendis {n} kontakti (tasuta pakett: 1000)");

@@ -9,7 +9,7 @@ import { logFailure } from "@/server/log";
 import { checkPendingPayments, NO_PAYMENT_SWEEP, type PaymentSweep } from "@/server/payments/check";
 import { paymentProvider } from "@/server/payments/montonio";
 import { revalidatePublic } from "@/server/public-cache";
-import { fullSync, marketingConfigured, subscriberSync, type FullSyncReport } from "@/server/resend-marketing";
+import { FullSyncBusy, fullSync, marketingConfigured, subscriberSync, type FullSyncReport } from "@/server/resend-marketing";
 import { keyMatches } from "@/server/review-key";
 
 export const dynamic = "force-dynamic";
@@ -57,14 +57,16 @@ async function sweepPayments(db: Db, now: Date, until: number): Promise<PaymentS
 
 /**
  * The newsletter's part (newsletter campaigns, spec D2): the full sync with Resend until `until` (server/resend-marketing.ts fullSync, which logs
- * its own line). null without the newsletter's key (no line, no field in the answer: the sweep is today's); "unavailable" when Resend failed it.
+ * its own line). null without the newsletter's key (no line, no field in the answer: the sweep is today's); "unavailable" when Resend failed it;
+ * "busy" when another full sync (Maria's button, an earlier cron) holds the lease: logged by fullSync, skipped here, the next day's run syncs.
  */
-async function syncNewsletter(db: Db, now: Date, until: number): Promise<FullSyncReport | "unavailable" | null> {
+async function syncNewsletter(db: Db, now: Date, until: number): Promise<FullSyncReport | "busy" | "unavailable" | null> {
   const env = { ...serverEnv(), KV: serverKv() };
   if (!marketingConfigured(env)) return null;
   try {
     return await fullSync({ db, env, siteUrl: env.SITE_URL, now, budgetMs: Math.max(0, until - Date.now()) });
   } catch (e) {
+    if (e instanceof FullSyncBusy) return "busy";
     logFailure("[newsletter-sync] the daily full sync failed", e);
     return "unavailable";
   }
@@ -95,7 +97,7 @@ async function syncNewsletter(db: Db, now: Date, until: number): Promise<FullSyn
  * paymentsSettled, paymentsExpired, paymentsLeft, paymentsErrors }` (counts; `deleted` is the kv entries; the payment counts are zeros
  * without online payments; `paymentsErrors`: payments that could not be settled, each one counted and logged by id and error class, none
  * of them a 500), and with the newsletter's key `newsletter`: the full sync's report (`finished: false` when it ran out of time), or
- * `{ error: "unavailable" }` when Resend failed it (not a 500 either); 500 `{ ok: false }` when the database fails. The log line has the counts
+ * `{ error: "unavailable" }` when Resend failed it, or `{ error: "busy" }` when another full sync was running (neither is a 500); 500 `{ ok: false }` when the database fails. The log line has the counts
  * only, no ids.
  */
 export async function GET(request: Request): Promise<Response> {
@@ -138,7 +140,7 @@ export async function GET(request: Request): Promise<Response> {
       paymentsExpired: paid.expired,
       paymentsLeft: paid.left,
       paymentsErrors: paid.errors,
-      ...(newsletter ? { newsletter: newsletter === "unavailable" ? { error: "unavailable" } : newsletter } : {}),
+      ...(newsletter ? { newsletter: typeof newsletter === "string" ? { error: newsletter } : newsletter } : {}),
     });
   } catch (e) {
     logFailure("[cron] sweep failed", e);

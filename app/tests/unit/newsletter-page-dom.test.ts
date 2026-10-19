@@ -42,7 +42,7 @@ const press = async () => {
   await settle();
 };
 
-const ON = (over: Partial<Extract<SyncState, { configured: true }>> = {}): SyncState => ({ configured: true, resend: 12, site: 10, missing: 0, ...over });
+const ON = (over: Partial<Extract<SyncState, { configured: true }>> = {}): SyncState => ({ configured: true, resend: 12, refused: false, site: 10, missing: 0, ...over });
 const REPORT: FullSyncReport = { contacts: 12, added: 2, updated: 1, removed: 1, unsubscribedPulled: 3, suppressed: 0, unsynced: 0, failed: 0, limitReached: false, finished: true };
 
 beforeEach(() => {
@@ -220,6 +220,7 @@ describe("a refusal", () => {
     ["unavailable", "Resendiga ei saanud ühendust — proovi hiljem uuesti."],
     ["notConfigured", "Resendi uudiskirja saatmine pole veel seadistatud."],
     ["permission", "Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit."],
+    ["busy", "Sünkroonimine juba käib — proovi hetke pärast uuesti."],
     ["server", "Sünkroonimine ei õnnestunud. Proovi uuesti."],
   ])("%s is answered in words, and no report is shown with it", async (error, words) => {
     actions.fullSyncAction.mockResolvedValue({ error });
@@ -247,6 +248,48 @@ describe("a refusal", () => {
     await press();
     expect(text('[data-sync-error="server"]')).toBe("Sünkroonimine ei õnnestunud. Proovi uuesti.");
     expect($<HTMLButtonElement>("[data-sync-run]")!.getAttribute("aria-disabled")).toBeNull();
+  });
+});
+
+describe("a key that can only send, known from Resend's count when the page loads", () => {
+  const PERMISSION = "Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.";
+
+  test("the refusal is said at once, before any press; the site's count alone, and the button is still there", async () => {
+    await show(ON({ resend: null, refused: true, site: 3 }));
+    expect(text('[data-sync-error="permission"]')).toBe(PERMISSION);
+    expect(text("[data-sync-status]")).toBe(PERMISSION);
+    expect($("[data-sync-resend]")).toBeNull();
+    expect(text("[data-sync-site]")).toBe("Sünkroonitud tellijaid: 3 (tasuta pakett: 1000)");
+    expect($("[data-sync-run]")).not.toBeNull();
+    expect(container.textContent).not.toContain("Resendiga ei saanud ühendust");
+  });
+
+  test("not said when Resend merely failed to answer, nor when the key is fine", async () => {
+    await show(ON({ resend: null, refused: false }));
+    expect($("[data-sync-error]")).toBeNull();
+    await show(ON());
+    expect($("[data-sync-error]")).toBeNull();
+  });
+
+  test("a press hides it while it works and then shows what the press answered; a report is not shown beside it", async () => {
+    let answer!: (r: FullSyncReport) => void;
+    actions.fullSyncAction.mockReturnValue(new Promise<FullSyncReport>((resolve) => (answer = resolve)));
+    await show(ON({ resend: null, refused: true }));
+    await press();
+    expect($("[data-sync-error]")).toBeNull();
+    expect(text("[data-sync-status]")).toBe("Sünkroonin…");
+    await act(async () => answer(REPORT)); // (the key was replaced meanwhile: the sync ran)
+    await settle();
+    expect($("[data-sync-error]")).toBeNull();
+    expect(text("[data-sync-report]")).toBe("2 lisatud, 1 eemaldatud, 3 loobus Resendis");
+  });
+
+  test("a press that is refused again shows the same words once", async () => {
+    actions.fullSyncAction.mockResolvedValue({ error: "permission" });
+    await show(ON({ resend: null, refused: true }));
+    await press();
+    expect(container.querySelectorAll('[data-sync-error="permission"]')).toHaveLength(1);
+    expect(text("[data-sync-status]")).toBe(PERMISSION);
   });
 });
 

@@ -9,13 +9,17 @@ import type { Env } from "@/server/notify";
 import {
   contactCount,
   ensureSegments,
+  FullSyncBusy,
   fullSync,
   isSubscriberAddress,
+  keyRefused,
   MarketingUnavailable,
   marketingConfigured,
+  readContactCount,
   SEGMENT_NAMES,
   SEGMENTS_SETTING,
   suppressedAddresses,
+  SYNC_LEASE_SETTING,
   syncAddress,
   UNSUBSCRIBE_PLACEHOLDER,
   UNSUBSCRIBE_PROPERTY,
@@ -587,14 +591,67 @@ describe("the review's narrow cases (fix round 1)", () => {
 });
 
 describe("contactCount", () => {
-  test("Resend's own count of the contacts; counted from the list when that is not answered; null when Resend cannot be reached", async () => {
+  test("Resend's own count of the contacts; null when Resend cannot be reached", async () => {
     fake.add("a@example.com");
     fake.add("b@example.com");
     expect(await contactCount(deps())).toBe(2);
     fake.fail.set("usage.get", DOWN);
-    expect(await contactCount(deps())).toBe(2);
-    fake.fail.set("contacts.list", DOWN);
     expect(await contactCount(deps())).toBeNull();
+  });
+
+  test("M2: counted from the list only when `usage` answered without a number — never after it answered an error (no second call, no second log line)", async () => {
+    fake.add("a@example.com");
+    fake.add("b@example.com");
+    fake.r.usage.get = async () => ({ data: { contacts: {} as { used: number; limit: number } }, error: null }); // (answered, but no number)
+    expect(await contactCount(deps())).toBe(2);
+    expect(fake.calls).toEqual(["contacts.list"]);
+  });
+
+  test("M2: an error from `usage` is null at once: one call, one log line", async () => {
+    fake.add("a@example.com");
+    fake.fail.set("usage.get", DOWN);
+    expect(await contactCount(deps())).toBeNull();
+    expect(fake.calls).toEqual(["usage.get"]);
+    expect(logged().match(/contact count unavailable/g)).toHaveLength(1);
+  });
+
+  test("readContactCount: `refused` is the key's refusal (a key that can only send, an unknown key, a bare 401 or 403), not an outage nor a 403 validation_error", async () => {
+    const refuse = (error: { name: string; statusCode: number | null; message: string }) => {
+      fake.r.usage.get = async () => ({ data: null, error });
+    };
+    refuse({ name: "restricted_api_key", statusCode: 401, message: "This API key is restricted to only send emails" });
+    expect(await readContactCount(deps())).toEqual({ count: null, refused: true });
+    refuse({ name: "invalid_api_key", statusCode: 403, message: "API key is invalid" });
+    expect(await readContactCount(deps())).toEqual({ count: null, refused: true });
+    refuse({ name: "unauthorized", statusCode: 401, message: "no" });
+    expect(await readContactCount(deps())).toEqual({ count: null, refused: true });
+    refuse(DOWN);
+    expect(await readContactCount(deps())).toEqual({ count: null, refused: false });
+    refuse({ name: "validation_error", statusCode: 403, message: "something else" });
+    expect(await readContactCount(deps())).toEqual({ count: null, refused: false });
+    fake.add("a@example.com");
+    fake.r.usage.get = async () => ({ data: { contacts: { used: 1, limit: 1000 } }, error: null });
+    expect(await readContactCount(deps())).toEqual({ count: 1, refused: false });
+    expect(await readContactCount(deps({ env: marketingEnv({ RESEND_MARKETING_KEY: undefined }) }))).toEqual({ count: null, refused: false });
+  });
+
+  test("the log of a refused key names the call and the status and says a full-access key is needed; no address", async () => {
+    fake.r.usage.get = async () => ({ data: null, error: { name: "restricted_api_key", statusCode: 401, message: "This API key is restricted to only send emails for kati@example.com" } });
+    await readContactCount(deps());
+    expect(logged()).toContain("RESEND_MARKETING_KEY");
+    expect(logged()).not.toContain("@");
+  });
+});
+
+describe("keyRefused", () => {
+  test("by the API's name or by the status, from a Resend error or from a MarketingUnavailable (whose name is its class, its `code` the API's)", () => {
+    expect(keyRefused({ name: "restricted_api_key", statusCode: 401 })).toBe(true);
+    expect(keyRefused(new MarketingUnavailable({ name: "invalid_api_key", statusCode: 403 }, "contacts.list"))).toBe(true);
+    expect(keyRefused(new MarketingUnavailable({ name: "forbidden", statusCode: 403 }))).toBe(true);
+    expect(keyRefused(new MarketingUnavailable({ name: "internal_server_error", statusCode: 500 }))).toBe(false);
+    expect(keyRefused(new MarketingUnavailable({ name: "validation_error", statusCode: 403 }))).toBe(false);
+    expect(keyRefused(new MarketingUnavailable({ name: "request_failed", statusCode: null }))).toBe(false);
+    for (const odd of [null, undefined, "restricted_api_key", 401, {}]) expect(keyRefused(odd), String(odd)).toBe(false);
   });
 });
 
@@ -850,6 +907,149 @@ describe("the real SDK behind ResendLike", () => {
   });
 });
 
+describe("the full sync's lease (rulings R9, R11): one full sync at a time", () => {
+  const leaseRow = async () => (await db.select().from(settings).where(eq(settings.key, SYNC_LEASE_SETTING)))[0];
+  const putLease = (value: unknown) => db.insert(settings).values({ key: SYNC_LEASE_SETTING, value });
+  /**
+   * The fake Resend with `before` run ahead of each answer of the contacts' list (a full sync's first reads, after its segments are made: the segments are
+   * made in a transaction, and PGlite has one connection, so a query of the test's own would wait for that transaction).
+   */
+  const watched = (before: () => Promise<void>) => ({
+    ...fake.r,
+    contacts: {
+      ...fake.r.contacts,
+      async list(o: Parameters<typeof fake.r.contacts.list>[0]) {
+        await before();
+        return fake.r.contacts.list(o);
+      },
+    },
+  });
+
+  test("two full syncs at once: one runs and the other is busy; the lease is gone afterwards and a third runs", async () => {
+    await sub("kati@example.com");
+    const results = await Promise.allSettled([fullSync(deps()), fullSync(deps())]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const refused = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(refused).toHaveLength(1);
+    expect(refused[0].reason).toBeInstanceOf(FullSyncBusy);
+    expect(refused[0].reason).not.toBeInstanceOf(MarketingUnavailable);
+    expect(fake.calls.filter((c) => c === "contacts.create")).toHaveLength(1); // she was added once
+    expect(await leaseRow()).toBeUndefined();
+    expect(logged()).toContain("already running");
+    expect(await fullSync(deps())).toMatchObject({ added: 0, finished: true });
+  });
+
+  test("a sync begun while another is in the middle of its work is busy and makes no call to Resend", async () => {
+    await sub("kati@example.com");
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let reached!: () => void;
+    const running = new Promise<void>((resolve) => (reached = resolve));
+    const resend = watched(async () => {
+      reached();
+      await held; // (the first sync stands still at its first call to Resend)
+    });
+    const first = fullSync(deps({ resend }));
+    await running;
+    fake.calls.length = 0;
+    await expect(fullSync(deps())).rejects.toBeInstanceOf(FullSyncBusy);
+    expect(fake.calls).toEqual([]);
+    release();
+    expect(await first).toMatchObject({ added: 1, finished: true });
+    expect(await leaseRow()).toBeUndefined();
+  });
+
+  test("the lease is a settings row `{ holder, until }`: a random holder, the same all through the sync, and until = now + the sync's budget + 30 s (5 minutes + 30 s with no budget)", async () => {
+    const seen: { holder: string; until: number }[] = [];
+    const resend = watched(async () => void seen.push((await leaseRow()).value as { holder: string; until: number }));
+    const before = Date.now();
+    await fullSync(deps({ resend, budgetMs: 10_000 }));
+    const after = Date.now();
+    expect(SYNC_LEASE_SETTING).toBe("newsletter_sync_lease");
+    expect(seen.length).toBeGreaterThanOrEqual(3); // (the lists of all the contacts and of the two segments)
+    expect(new Set(seen.map((l) => l.holder)).size).toBe(1);
+    const held = seen[0];
+    expect(held.holder).toMatch(/^[0-9a-f-]{36}$/);
+    expect(held.until).toBeGreaterThanOrEqual(before + 40_000);
+    expect(held.until).toBeLessThanOrEqual(after + 40_000);
+    expect(seen.every((l) => l.until === held.until)).toBe(true);
+    seen.length = 0;
+    await fullSync(deps({ resend })); // (no budget)
+    expect(seen[0].until).toBeGreaterThanOrEqual(before + 330_000);
+    expect(seen[0].until).toBeLessThanOrEqual(Date.now() + 330_000);
+    expect(seen[0].holder).not.toBe(held.holder);
+    expect(await leaseRow()).toBeUndefined();
+  });
+
+  test("an expired lease is taken over, and the sync runs; a missing or odd `until` counts as expired", async () => {
+    await sub("kati@example.com");
+    await putLease({ holder: "crashed", until: Date.now() - 1000 });
+    expect(await fullSync(deps())).toMatchObject({ added: 1, finished: true });
+    expect(await leaseRow()).toBeUndefined();
+    for (const odd of [{}, { holder: "x" }, { holder: "x", until: "soon" }, { holder: "x", until: null }, "x", 5]) {
+      await db.delete(settings).where(eq(settings.key, SYNC_LEASE_SETTING));
+      await putLease(odd);
+      expect(await fullSync(deps()), JSON.stringify(odd)).toMatchObject({ finished: true });
+      expect(await leaseRow()).toBeUndefined();
+    }
+  });
+
+  test("a lease another holds is not taken, not touched and not released: busy, Resend is not asked", async () => {
+    await sub("kati@example.com");
+    const other = { holder: "other", until: Date.now() + 60_000 };
+    await putLease(other);
+    await expect(fullSync(deps())).rejects.toBeInstanceOf(FullSyncBusy);
+    expect(fake.calls).toEqual([]);
+    expect((await leaseRow()).value).toEqual(other);
+    expect((await rowOf("kati@example.com")).syncedAt).toBeNull();
+  });
+
+  test("the lease is released after a throw (Resend not answering the lists, a call that throws), and the next sync runs", async () => {
+    await sub("kati@example.com");
+    fake.fail.set("segments.list", DOWN);
+    await expect(fullSync(deps())).rejects.toBeInstanceOf(MarketingUnavailable);
+    expect(await leaseRow()).toBeUndefined();
+    fake.fail.clear();
+    fake.fail.set("contacts.list", () => {
+      throw new Error("socket hang up for kati@example.com");
+    });
+    await expect(fullSync(deps())).rejects.toBeInstanceOf(MarketingUnavailable);
+    expect(await leaseRow()).toBeUndefined();
+    fake.fail.clear();
+    expect(await fullSync(deps())).toMatchObject({ added: 1, finished: true });
+  });
+
+  test("a sync whose lease ran out and was taken over meanwhile does not release the other's lease", async () => {
+    await sub("kati@example.com");
+    const later = { holder: "later", until: Date.now() + 120_000 };
+    const resend = watched(async () => {
+      await db.update(settings).set({ value: later }).where(eq(settings.key, SYNC_LEASE_SETTING));
+    });
+    expect(await fullSync(deps({ resend }))).toMatchObject({ finished: true });
+    expect((await leaseRow()).value).toEqual(later);
+  });
+
+  test("a lease that cannot be released is logged without an address and does not turn a finished sync into a failure", async () => {
+    await sub("kati@example.com");
+    const failing = new Proxy(db, {
+      get(target, key, receiver) {
+        if (key === "delete")
+          return () => ({
+            where() {
+              throw new TypeError("boom for kati@example.com");
+            },
+          });
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    const report = await fullSync(deps({ db: failing as Db }));
+    expect(report).toMatchObject({ added: 1, finished: true });
+    expect(logged()).toContain("lease not released");
+    expect(logged()).not.toContain("kati");
+    expect((await leaseRow())?.value).toMatchObject({ holder: expect.any(String) }); // (it ends by itself at its `until`)
+  });
+});
+
 describe("the daily cron", () => {
   test("with a marketing key the sweep runs the full sync within its budget and answers its report; Resend failing is reported, not a 500", async () => {
     const { GET } = await import("@/app/api/cron/sweep/route");
@@ -872,6 +1072,21 @@ describe("the daily cron", () => {
     const failed = await call();
     expect(failed.status).toBe(200);
     expect((await failed.json()).newsletter).toEqual({ error: "unavailable" });
+  });
+
+  test("a full sync already running (Maria's button, an earlier run): the sweep skips it, answers `busy` and logs it; nothing is asked of Resend, and it is not a 500", async () => {
+    const { GET } = await import("@/app/api/cron/sweep/route");
+    for (const name of ["MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER"]) vi.stubEnv(name, "");
+    vi.stubEnv("CRON_SECRET", "cron-secret-for-tests-0123456789");
+    vi.stubEnv("RESEND_MARKETING_KEY", "re_marketing_test");
+    await db.insert(settings).values({ key: SYNC_LEASE_SETTING, value: { holder: "button", until: Date.now() + 60_000 } });
+    const f = stubFetch(() => Response.json({}));
+    const res = await GET(new Request("https://mslab.example/api/cron/sweep", { headers: { authorization: "Bearer cron-secret-for-tests-0123456789" } }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).newsletter).toEqual({ error: "busy" });
+    expect(f.calls.filter((c) => c.url.includes("resend"))).toEqual([]);
+    expect(logged()).toContain("already running");
+    expect((await db.select().from(settings).where(eq(settings.key, SYNC_LEASE_SETTING)))[0].value).toMatchObject({ holder: "button" });
   });
 });
 

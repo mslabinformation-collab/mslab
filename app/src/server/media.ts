@@ -4,7 +4,9 @@
 // declared type, the size and the file's first bytes itself. Keys are img/<random uuid>.<ext>, never the visitor's file
 // name, and /media serves nothing else (isMediaKey).
 
-// (a relative path, not "@/…": next.config.ts imports this file for MEDIA_CSP, and Next loads the config without the tsconfig paths)
+// (a relative path, not "@/…": next.config.ts imports this file for MEDIA_CSP. Next does give its config loader the tsconfig paths, but the alias
+// comes out relative to the project root and Node resolves it from the importing file, so an "@/…" import in any file below the config fails with
+// "Cannot find module './src/lib/media'" and `next dev` and `next build` do not start)
 import { isMediaKey } from "../lib/media";
 
 /**

@@ -1531,6 +1531,7 @@ export const adminEt = {
         unavailable: "Resendiga ei saanud ühendust — proovi hiljem uuesti.",
         notConfigured: "Resendi uudiskirja saatmine pole veel seadistatud.",
         permission: "Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.",
+        busy: "Sünkroonimine juba käib — proovi hetke pärast uuesti.",
         server: "Sünkroonimine ei õnnestunud. Proovi uuesti.",
       },
     },

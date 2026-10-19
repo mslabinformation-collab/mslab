@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vi
 import type { Db } from "@/db/client";
 import { mailSuppressions, settings, subscribers } from "@/db/schema";
 import type { Env } from "@/server/notify";
-import { ensureSegments, SEGMENT_NAMES, type MarketingDeps } from "@/server/resend-marketing";
+import { ensureSegments, SEGMENT_NAMES, SYNC_LEASE_SETTING, type MarketingDeps } from "@/server/resend-marketing";
 import { fakeKv, stubFetch } from "../fakes";
 import { makeTestDb } from "./helpers";
 import { DOWN, fakeResend, type FakeResend } from "./resend-fake";
@@ -242,6 +242,52 @@ describe("fullSyncAction: Resend refuses or does not answer", () => {
     });
     expect(await actions.fullSyncAction()).toEqual({ error: "unavailable" });
     expect(cache.refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("fullSyncAction: another full sync is running (rulings R9, R11)", () => {
+  const lease = async () => (await db.select().from(settings).where(eq(settings.key, SYNC_LEASE_SETTING)))[0];
+
+  test("a lease another holds: `busy`; Resend is not asked, no row is touched, the page is not refreshed, and it is not logged as a failure", async () => {
+    await sub("kati@example.com");
+    const other = { holder: "the-cron", until: Date.now() + 60_000 };
+    await db.insert(settings).values({ key: SYNC_LEASE_SETTING, value: other });
+    expect(await actions.fullSyncAction()).toEqual({ error: "busy" });
+    expect(fake.calls).toEqual([]);
+    expect((await rowOf("kati@example.com")).syncedAt).toBeNull();
+    expect((await lease()).value).toEqual(other);
+    expect(cache.refresh).not.toHaveBeenCalled();
+    expect(console.error).not.toHaveBeenCalled();
+    expect(logged()).toContain("already running");
+    expect(adminEt.newsletter.sync.errors.busy).toBe("Sünkroonimine juba käib — proovi hetke pärast uuesti.");
+  });
+
+  test("two presses at once (two tabs): one report and one `busy`; afterwards the lease is gone and the next press runs", async () => {
+    await sub("kati@example.com");
+    const answers = await Promise.all([actions.fullSyncAction(), actions.fullSyncAction()]);
+    expect(answers.filter((a) => "error" in a)).toEqual([{ error: "busy" }]);
+    expect(answers.filter((a) => !("error" in a))).toHaveLength(1);
+    expect(fake.calls.filter((c) => c === "contacts.create")).toHaveLength(1);
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    expect(await lease()).toBeUndefined();
+    expect(await actions.fullSyncAction()).toMatchObject({ finished: true });
+  });
+
+  test("the lease of a sync that died (its `until` has passed) does not stop the press", async () => {
+    await sub("kati@example.com");
+    await db.insert(settings).values({ key: SYNC_LEASE_SETTING, value: { holder: "died", until: Date.now() - 5000 } });
+    expect(await actions.fullSyncAction()).toMatchObject({ added: 1, finished: true });
+    expect(await lease()).toBeUndefined();
+  });
+
+  test("a sync that failed (Resend down, a key that can only send) leaves no lease behind: the press after it is not `busy`", async () => {
+    await sub("kati@example.com");
+    fake.fail.set("segments.list", DOWN);
+    expect(await actions.fullSyncAction()).toEqual({ error: "unavailable" });
+    expect(await lease()).toBeUndefined();
+    fake.fail.set("segments.list", { name: "restricted_api_key", statusCode: 401, message: "This API key is restricted to only send emails" });
+    expect(await actions.fullSyncAction()).toEqual({ error: "permission" });
+    expect(await lease()).toBeUndefined();
   });
 });
 
