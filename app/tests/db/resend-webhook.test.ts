@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { WebhookEventPayload } from "resend";
 import type { Db } from "@/db/client";
 import { kvEntries, mailSuppressions, subscribers } from "@/db/schema";
-import { handleWebhook, SEGMENT_NAMES, type MarketingDeps } from "@/server/resend-marketing";
+import { ensureSegments, handleWebhook, SEGMENT_NAMES, type MarketingDeps } from "@/server/resend-marketing";
 import { fakeKv } from "../fakes";
 import { fakeResend, type FakeResend } from "./resend-fake";
 import { makeTestDb } from "./helpers";
@@ -78,12 +78,12 @@ async function sub(email: string, consentAt = at(-60)) {
 
 describe("the signature", () => {
   test("a bad signature, another secret, a changed body, an old timestamp or a missing header: 400, nothing changes; the answers are never cached", async () => {
-    await sub("kati@example.test");
-    const event = contactUpdated("kati@example.test", true);
+    await sub("kati@example.com");
+    const event = contactUpdated("kati@example.com", true);
     const answers = [
       await post(event, { headers: { "svix-signature": "v1,AAAA" } }),
       await post(event, { secret: `whsec_${randomBytes(24).toString("base64")}` }),
-      await post(event, { signedBody: JSON.stringify(contactUpdated("kati@example.test", false)) }), // signed for another body
+      await post(event, { signedBody: JSON.stringify(contactUpdated("kati@example.com", false)) }), // signed for another body
       await post(event, { timestamp: Math.floor(Date.now() / 1000) - 3600 }),
       await post(event, { headers: { "svix-id": null } }),
       await post(event, { headers: { "svix-timestamp": null } }),
@@ -93,79 +93,79 @@ describe("the signature", () => {
       expect(res.status).toBe(400);
       expect(res.headers.get("cache-control")).toBe("no-store");
     }
-    expect(await emails()).toEqual(["kati@example.test"]);
+    expect(await emails()).toEqual(["kati@example.com"]);
   });
 
   test("no RESEND_WEBHOOK_SECRET set: 400 for every event, signed or not", async () => {
     vi.stubEnv("RESEND_WEBHOOK_SECRET", "");
-    await sub("kati@example.test");
-    expect((await post(contactUpdated("kati@example.test", true))).status).toBe(400);
-    expect(await emails()).toEqual(["kati@example.test"]);
+    await sub("kati@example.com");
+    expect((await post(contactUpdated("kati@example.com", true))).status).toBe(400);
+    expect(await emails()).toEqual(["kati@example.com"]);
   });
 });
 
 describe("verified events", () => {
   test("contact.updated with unsubscribed: the row of that address goes (any case on either side), 200 no-store", async () => {
-    await sub("Kati@Example.test");
-    await sub("mari@example.test");
-    const res = await post(contactUpdated("KATI@example.TEST", true));
+    await sub("Kati@Example.com");
+    await sub("mari@example.com");
+    const res = await post(contactUpdated("KATI@example.COM", true));
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(await emails()).toEqual(["mari@example.test"]);
+    expect(await emails()).toEqual(["mari@example.com"]);
   });
 
   test("R1: a consent given after the event (she signed up again since) keeps her row; the event of her own earlier unsubscribe does not undo it", async () => {
-    await sub("kati@example.test", at(5));
-    expect((await post(contactUpdated("kati@example.test", true, at(0)))).status).toBe(200);
-    expect(await emails()).toEqual(["kati@example.test"]);
+    await sub("kati@example.com", at(5));
+    expect((await post(contactUpdated("kati@example.com", true, at(0)))).status).toBe(200);
+    expect(await emails()).toEqual(["kati@example.com"]);
   });
 
   test("contact.updated without unsubscribed (the site's own updates fire it too), contact.created, email.* and an unknown type: 200, nothing changes", async () => {
-    await sub("kati@example.test");
+    await sub("kati@example.com");
     for (const event of [
-      contactUpdated("kati@example.test", false),
-      { ...contactUpdated("kati@example.test", false), type: "contact.created" },
-      { type: "email.delivered", created_at: at(0).toISOString(), data: { email_id: "em_1", created_at: at(0).toISOString(), from: "x", to: ["kati@example.test"], subject: "S", message_id: "m" } },
+      contactUpdated("kati@example.com", false),
+      { ...contactUpdated("kati@example.com", false), type: "contact.created" },
+      { type: "email.delivered", created_at: at(0).toISOString(), data: { email_id: "em_1", created_at: at(0).toISOString(), from: "x", to: ["kati@example.com"], subject: "S", message_id: "m" } },
       { type: "something.new", created_at: at(0).toISOString(), data: {} },
     ]) {
       const res = await post(event);
       expect(res.status, event.type).toBe(200);
     }
-    expect(await emails()).toEqual(["kati@example.test"]);
+    expect(await emails()).toEqual(["kati@example.com"]);
     expect(await db.select().from(mailSuppressions)).toEqual([]);
   });
 
   test("suppression.added is recorded in lower case with its reason and time; suppression.removed clears it; added again, it is active again", async () => {
-    expect((await post(suppression("suppression.added", "Opilane@Example.test", "complaint", at(-10)))).status).toBe(200);
-    expect(await db.select().from(mailSuppressions)).toMatchObject([{ email: "opilane@example.test", reason: "complaint", since: at(-10), clearedAt: null }]);
-    expect((await post(suppression("suppression.removed", "OPILANE@example.test", "complaint", at(-5)))).status).toBe(200);
-    expect(await db.select().from(mailSuppressions)).toMatchObject([{ email: "opilane@example.test", clearedAt: at(-5) }]);
-    expect((await post(suppression("suppression.added", "opilane@example.test", "manual", at(-1)))).status).toBe(200);
-    expect(await db.select().from(mailSuppressions)).toMatchObject([{ email: "opilane@example.test", reason: "other", since: at(-1), clearedAt: null }]);
+    expect((await post(suppression("suppression.added", "Opilane@Example.com", "complaint", at(-10)))).status).toBe(200);
+    expect(await db.select().from(mailSuppressions)).toMatchObject([{ email: "opilane@example.com", reason: "complaint", since: at(-10), clearedAt: null }]);
+    expect((await post(suppression("suppression.removed", "OPILANE@example.com", "complaint", at(-5)))).status).toBe(200);
+    expect(await db.select().from(mailSuppressions)).toMatchObject([{ email: "opilane@example.com", clearedAt: at(-5) }]);
+    expect((await post(suppression("suppression.added", "opilane@example.com", "manual", at(-1)))).status).toBe(200);
+    expect(await db.select().from(mailSuppressions)).toMatchObject([{ email: "opilane@example.com", reason: "other", since: at(-1), clearedAt: null }]);
     // the subscriber row is the site's: a suppression never deletes it (spec §5)
-    await sub("kati@example.test");
-    await post(suppression("suppression.added", "kati@example.test", "bounce"));
-    expect(await emails()).toEqual(["kati@example.test"]);
+    await sub("kati@example.com");
+    await post(suppression("suppression.added", "kati@example.com", "bounce"));
+    expect(await emails()).toEqual(["kati@example.com"]);
   });
 
   test("the same svix-id twice is handled once (a retry of a delivered event): the second is answered 200 and changes nothing", async () => {
-    await sub("kati@example.test");
-    expect((await post(contactUpdated("kati@example.test", true), { id: "msg_same" })).status).toBe(200);
-    await sub("kati@example.test", at(-60)); // signed up again, with an old consent time (a test of the mark, not of R1)
-    expect((await post(contactUpdated("kati@example.test", true), { id: "msg_same" })).status).toBe(200);
-    expect(await emails()).toEqual(["kati@example.test"]);
+    await sub("kati@example.com");
+    expect((await post(contactUpdated("kati@example.com", true), { id: "msg_same" })).status).toBe(200);
+    await sub("kati@example.com", at(-60)); // signed up again, with an old consent time (a test of the mark, not of R1)
+    expect((await post(contactUpdated("kati@example.com", true), { id: "msg_same" })).status).toBe(200);
+    expect(await emails()).toEqual(["kati@example.com"]);
     expect((await db.select().from(kvEntries)).map((r) => r.key)).toHaveLength(1);
   });
 
   test("the database failing: 500, so Resend sends the event again (and no mark is kept that would skip the retry); no address in the log", async () => {
-    await sub("kati@example.test");
+    await sub("kati@example.com");
     await db.execute(sql`alter table subscribers rename to subscribers_away`);
     try {
-      expect((await post(contactUpdated("kati@example.test", true), { id: "msg_retry" })).status).toBe(500);
+      expect((await post(contactUpdated("kati@example.com", true), { id: "msg_retry" })).status).toBe(500);
     } finally {
       await db.execute(sql`alter table subscribers_away rename to subscribers`);
     }
-    expect((await post(contactUpdated("kati@example.test", true), { id: "msg_retry" })).status).toBe(200);
+    expect((await post(contactUpdated("kati@example.com", true), { id: "msg_retry" })).status).toBe(200);
     expect(await emails()).toEqual([]);
     const lines = (["info", "error", "warn"] as const).flatMap((m) => (console[m] as unknown as { mock: { calls: unknown[][] } }).mock.calls.flat()).map(String).join("\n");
     expect(lines).toContain("[newsletter-sync]");
@@ -186,20 +186,20 @@ describe("handleWebhook", () => {
 
   test("a Resend-side unsubscribe: the row goes first, then her contact (the site keeps no contact without a row)", async () => {
     fake = fakeResend();
-    await fake.r.segments.create({ name: SEGMENT_NAMES.et });
-    fake.add("kati@example.test", { unsubscribed: true, segments: [fake.segment(SEGMENT_NAMES.et)!] });
-    await sub("kati@example.test");
-    await handleWebhook(deps(), contactUpdated("kati@example.test", true) as WebhookEventPayload);
+    await ensureSegments(deps());
+    fake.add("kati@example.com", { unsubscribed: true, segments: [fake.segment(SEGMENT_NAMES.et)!] });
+    await sub("kati@example.com");
+    await handleWebhook(deps(), contactUpdated("kati@example.com", true) as WebhookEventPayload);
     expect(await emails()).toEqual([]);
     expect(fake.contacts.size).toBe(0);
   });
 
   test("an event whose address is not one: ignored", async () => {
     fake = fakeResend();
-    await sub("kati@example.test");
-    await handleWebhook(deps(), { ...contactUpdated("kati@example.test", true), data: { ...contactUpdated("x", true).data, email: 42 } } as unknown as WebhookEventPayload);
+    await sub("kati@example.com");
+    await handleWebhook(deps(), { ...contactUpdated("kati@example.com", true), data: { ...contactUpdated("x", true).data, email: 42 } } as unknown as WebhookEventPayload);
     await handleWebhook(deps(), { type: "suppression.added", created_at: "nonsense", data: null } as unknown as WebhookEventPayload);
-    expect(await emails()).toEqual(["kati@example.test"]);
+    expect(await emails()).toEqual(["kati@example.com"]);
     expect(await db.select().from(mailSuppressions)).toEqual([]);
   });
 });

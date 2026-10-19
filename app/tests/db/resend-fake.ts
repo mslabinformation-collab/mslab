@@ -1,9 +1,11 @@
 import type { ResendLike } from "@/server/resend-marketing";
 
 // An in-memory Resend for the newsletter sync's tests (server/resend-marketing.ts ResendLike): contacts with their `unsubscribed`, properties
-// and segments, the account's segments and contact properties, and the suppression list. It records every call by name, and a test can make a
-// method fail (`fail`), always or from a function that decides per call. The real API is never called. Webhook signatures are checked by the
-// real SDK in the route's tests, so `webhooks.verify` is not faked.
+// and segments, the account's segments and contact properties, and the suppression list. It records every call by name (and with its
+// arguments), and a test can make a method fail (`fail`), always or from a function that decides per call. As Resend does
+// (resend.com/docs/dashboard/contacts/properties), it refuses a contact property that has no definition, or a value of another type than the
+// definition's; `unsubscribed` left out of an update stays as it is (the SDK drops undefined fields). The real API is never called. Webhook
+// signatures are checked by the real SDK in the route's tests, so `webhooks.verify` is not faked.
 
 export type FakeError = { name: string; statusCode: number | null; message: string };
 export type FakeContact = { id: string; email: string; unsubscribed: boolean; properties: Record<string, string>; segments: Set<string> };
@@ -21,6 +23,8 @@ export function fakeResend() {
   const properties: { id: string; key: string; type: "string" }[] = [];
   const suppressions: { id: string; email: string; origin: "bounce" | "complaint" | "manual"; source_id: string | null; created_at: string }[] = [];
   const calls: string[] = [];
+  /** Every call with its arguments, in order. */
+  const requests: { name: string; args: unknown }[] = [];
   const fail = new Map<string, Failure>();
   /** Runs before each call (after it is recorded): a test advances its clock here. */
   let onCall: ((name: string) => void) | null = null;
@@ -38,9 +42,19 @@ export function fakeResend() {
     const start = o.after ? all.findIndex((x) => x.id === o.after) + 1 : 0;
     return ok({ object: "list" as const, data: all.slice(start, start + limit), has_more: start + limit < all.length });
   };
+  /** Resend's refusal of properties: a key without a definition, or a value whose type is not the definition's. */
+  const badProperties = (given: Record<string, unknown>): FakeError | null => {
+    for (const [key, value] of Object.entries(given)) {
+      const definition = properties.find((p) => p.key === key);
+      if (!definition) return { name: "validation_error", statusCode: 422, message: `The property ${key} does not exist` };
+      if (value !== null && typeof value !== definition.type) return { name: "validation_error", statusCode: 422, message: `The property ${key} must be a ${definition.type}` };
+    }
+    return null;
+  };
   /** Records the call; the failure the test set for it, if any. */
   const gate = (name: string, args: unknown): FakeError | null => {
     calls.push(name);
+    requests.push({ name, args });
     onCall?.(name);
     const f = fail.get(name);
     return typeof f === "function" ? f(args) : (f ?? null);
@@ -64,6 +78,8 @@ export function fakeResend() {
         const f = gate("contacts.create", o);
         if (f) return err(f);
         if (find({ email: o.email })) return err({ name: "validation_error", statusCode: 422, message: "Contact already exists" });
+        const refused = badProperties(o.properties);
+        if (refused) return err(refused);
         const c: FakeContact = { id: `ct_${++seq}`, email: o.email.toLowerCase(), unsubscribed: o.unsubscribed, properties: { ...o.properties }, segments: new Set(o.segments.map((s) => s.id)) };
         contacts.set(c.id, c);
         return ok({ object: "contact" as const, id: c.id });
@@ -73,7 +89,9 @@ export function fakeResend() {
         if (f) return err(f);
         const c = find(o);
         if (!c) return err(NOT_FOUND);
-        c.unsubscribed = o.unsubscribed;
+        const refused = badProperties(o.properties);
+        if (refused) return err(refused);
+        if (o.unsubscribed !== undefined) c.unsubscribed = o.unsubscribed;
         Object.assign(c.properties, o.properties);
         return ok({ object: "contact" as const, id: c.id });
       },
@@ -163,6 +181,7 @@ export function fakeResend() {
     properties,
     suppressions,
     calls,
+    requests,
     fail,
     set onCall(f: ((name: string) => void) | null) {
       onCall = f;

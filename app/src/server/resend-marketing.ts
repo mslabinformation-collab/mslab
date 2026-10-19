@@ -3,7 +3,7 @@ import { Resend, type WebhookEventPayload } from "resend";
 import type { Db, Q } from "@/db/client";
 import { readSetting } from "@/db/queries/public";
 import { mailSuppressions, settings, subscribers } from "@/db/schema";
-import { isEmail, normalizeEmail } from "@/domain/email";
+import { isEmail, isSampleAddress, normalizeEmail } from "@/domain/email";
 import { RESEND_FREE_CONTACTS } from "@/domain/newsletter-campaign";
 import { errorSummary, logNote } from "./log";
 import { unsubscribeUrl } from "./newsletter";
@@ -12,7 +12,9 @@ import { NOTIFY_TIMEOUT_MS, RATE_LIMIT_RETRY_MS, rateLimited, withTimeout, type 
 // The newsletter's side in Resend (newsletter campaigns, spec D1–D3, D7, D8, D10). The site's `subscribers` stay the record of consent, and
 // Resend's marketing contacts follow them: every confirmed row has one contact, subscribed, in the segment of its language („MS LAB uudiskiri
 // (ET)" or „(RU)", made on first use and kept under the setting `resend_segments`), with the contact property `unsubscribe_url` holding her own
-// unsubscribe link (the site's page, D3); an address without a confirmed row has no contact. Each change to a row syncs that address after its
+// unsubscribe link (the site's page, D3); an address without a confirmed row, or a sample address (`@example.test`, never mailed), is in
+// neither segment. Only those two segments are the site's (ruling R6): a contact leaving them is deleted only when it is in no other segment
+// of Maria's account, and a contact in neither of them is never touched. Each change to a row syncs that address after its
 // commit (syncAddress, best effort: a failure leaves `synced_at` null and never fails her action), and the full sync (fullSync: before a
 // send, the admin's button, the daily cron) puts everything right. What happens on Resend's side comes back: an unsubscribe there deletes the
 // row (the full sync's read of the contacts, and the webhook's contact.updated), and a suppression (bounce, spam mark) is recorded in
@@ -58,7 +60,7 @@ export type ResendLike = {
     list(o: { segmentId?: string; limit: number; after?: string }): Promise<Answer<Page<ContactView>>>;
     get(o: ContactKey): Promise<Answer<ContactView>>;
     create(o: { email: string; unsubscribed: boolean; properties: Record<string, string>; segments: { id: string }[] }): Promise<Answer<{ id: string }>>;
-    update(o: ContactKey & { unsubscribed: boolean; properties: Record<string, string> }): Promise<Answer<{ id: string }>>;
+    update(o: ContactKey & { unsubscribed?: boolean; properties: Record<string, string> }): Promise<Answer<{ id: string }>>;
     remove(o: ContactKey): Promise<Answer<unknown>>;
     segments: {
       list(o: { contactId: string; limit: number; after?: string }): Promise<Answer<Page<{ id: string }>>>;
@@ -206,10 +208,11 @@ function storedSegments(value: unknown): Segments | null {
 /**
  * The two segments' ids. The first time: under a transaction lock (two first syncs at once make them once), the segments that Resend already has
  * by these names are taken (a run that failed before storing them), the others are made, and so is the string property unsubscribe_url when
- * Resend has no definition of it; the ids are stored under SEGMENTS_SETTING. Afterwards only the setting is read. MarketingUnavailable when Resend
- * fails; nothing is stored then.
+ * Resend has no definition of it; the ids are stored under SEGMENTS_SETTING. Afterwards only the setting is read. MarketingUnavailable when it
+ * is not set up (code not_configured) or Resend fails; nothing is stored then.
  */
 export async function ensureSegments(deps: MarketingDeps): Promise<Segments> {
+  if (!marketingConfigured(deps.env)) throw new MarketingUnavailable({ name: "not_configured" });
   return segmentsWith(deps, pacer(deps));
 }
 
@@ -279,22 +282,29 @@ const COLUMNS = {
 const asRow = (r: Omit<Row, "address">): Row => ({ ...r, address: normalizeEmail(r.email) });
 const sameAddress = (address: string) => sql`lower(${subscribers.email}) = ${address}`;
 
+/**
+ * A row the newsletter goes to: confirmed (D7), and not a sample address (`@example.test`, domain/email.ts isSampleAddress: the live checks and
+ * `npm run db:demo` make such rows, and they are never mailed; ruling R6). Only these have a contact in our segments.
+ */
+const isRecipient = (row: Row): boolean => row.confirmedAt !== null && !isSampleAddress(row.address);
+
 async function rowOf(db: Db, address: string): Promise<Row | null> {
   const [row] = await db.select(COLUMNS).from(subscribers).where(sameAddress(address)).orderBy(subscribers.id).limit(1);
   return row ? asRow(row) : null;
 }
 
 /**
- * Ruling R1: an unsubscribe made in Resend deletes a row only when the row is synced (nothing changed on the site since the site last told
- * Resend she is subscribed) and its consent is older than the sync. An unsynced row is a new consent whose sync has not run yet: it is pushed.
+ * Ruling R1: an unsubscribe made in Resend deletes a row only when the row was synced before this sync started (nothing changed on the site
+ * since the site last told Resend about her, and no sync of hers ran while this one read Resend's contacts) and its consent is older than the
+ * sync too. An unsynced row is a new consent whose sync has not run yet: it is pushed.
  */
-const pullsUnsubscribe = (row: Row, start: Date): boolean => row.syncedAt !== null && row.consentAt < start;
+const pullsUnsubscribe = (row: Row, start: Date): boolean => row.syncedAt !== null && row.syncedAt < start && row.consentAt < start;
 
-/** Deletes a row for a Resend-side unsubscribe, unless it changed meanwhile (R1 checked in the statement); true when it went. */
+/** Deletes a row for a Resend-side unsubscribe, unless it changed meanwhile (R1 checked again in the statement); true when it went. */
 async function pullRow(deps: MarketingDeps, row: Row): Promise<boolean> {
   const gone = await deps.db
     .delete(subscribers)
-    .where(and(eq(subscribers.id, row.id), isNotNull(subscribers.syncedAt), lt(subscribers.consentAt, deps.now)))
+    .where(and(eq(subscribers.id, row.id), lt(subscribers.syncedAt, deps.now), lt(subscribers.consentAt, deps.now)))
     .returning();
   return gone.length > 0;
 }
@@ -308,14 +318,63 @@ async function contactRows(db: Db): Promise<number> {
 /** Her contact as Resend has it: its id, whether it unsubscribed, and its segments. */
 type ContactState = { id: string; unsubscribed: boolean; segments: Set<string> };
 
-type PushContext = { deps: MarketingDeps; r: ResendLike; call: Call; segments: Segments; room: () => Promise<boolean> | boolean };
+/** The segments of a contact (a few at most, so one page). MarketingUnavailable (code not_found for a contact that is gone) when not answered. */
+async function segmentsOf(call: Call, r: ResendLike, contactId: string): Promise<Set<string>> {
+  const listed = await listAll(call, "contacts.segments.list", (after) => r.contacts.segments.list({ contactId, limit: 100, after }));
+  return new Set(listed.map((s) => s.id));
+}
+
+/** What became of a contact taken out of the newsletter. */
+type Release = "deleted" | "unlinked" | "untouched" | "failed";
 
 /**
- * Tells Resend about one confirmed row: a new contact (when `room()` allows one more), or her contact updated. Either way subscribed, with the
- * property unsubscribe_url, in her language's segment and not the other. Then the row is marked synced, with the contact's id, unless it
- * changed meanwhile (its language, its token, its confirmation): then it stays unsynced for the next sync.
+ * Takes a contact out of the newsletter (ruling R6): out of our two segments, and deleted only when it is in no other segment (Maria's own
+ * segments, the „(proov)" test segment of Task 4), so that nothing of hers outside the newsletter is lost. A contact in neither of ours is not
+ * touched ("untouched"), nor is one already gone.
  */
-async function pushRow(ctx: PushContext, row: Row, contact: ContactState | null): Promise<"added" | "updated" | "limit" | "failed"> {
+async function releaseContact(call: Call, r: ResendLike, segments: Segments, contactId: string): Promise<Release> {
+  let theirs: Set<string>;
+  try {
+    theirs = await segmentsOf(call, r, contactId);
+  } catch (e) {
+    if (e instanceof OutOfTime) throw e;
+    if (e instanceof MarketingUnavailable && e.code === "not_found") return "untouched";
+    noteFailure(`[newsletter-sync] contact ${contactId}: its segments not read`, e);
+    return "failed";
+  }
+  const ours = [segments.et, segments.ru].filter((id) => theirs.has(id));
+  if (ours.length === 0) return "untouched";
+  if (ours.length === theirs.size) {
+    const removed = await call(() => r.contacts.remove({ id: contactId }));
+    if (removed.error && !isNotFound(removed.error)) {
+      noteFailure(`[newsletter-sync] contact ${contactId} not deleted`, removed.error);
+      return "failed";
+    }
+    return "deleted";
+  }
+  for (const segmentId of ours) {
+    const out = await call(() => r.contacts.segments.remove({ contactId, segmentId }));
+    if (out.error && !isNotFound(out.error)) {
+      noteFailure(`[newsletter-sync] contact ${contactId} not removed from segment ${segmentId}`, out.error);
+      return "failed";
+    }
+  }
+  return "unlinked";
+}
+
+type PushContext = { deps: MarketingDeps; r: ResendLike; call: Call; segments: Segments; room: () => Promise<boolean> | boolean };
+/** What a push did. "vanished": the row went while it was pushed (she unsubscribed meanwhile), and her contact was taken out again (`release`). */
+type PushOutcome = { kind: "added" } | { kind: "updated" } | { kind: "limit" } | { kind: "failed" } | { kind: "vanished"; created: boolean; release: Release };
+
+/**
+ * Tells Resend about one recipient row: a new contact (when `room()` allows one more), subscribed, or her contact updated. Either way with the
+ * property unsubscribe_url, in her language's segment and not the other. An update sets her back to subscribed only for a fresh consent (R1: the
+ * row is unsynced and her contact unsubscribed in Resend); any other push (the property put right, a segment move) leaves Resend's
+ * `unsubscribed` as it is, so a view read earlier never undoes an unsubscribe made since. Then the row is marked synced, with the contact's id,
+ * unless it changed meanwhile (its language, its token, its confirmation): then it stays unsynced for the next sync. When the row went
+ * meanwhile and the address has no recipient row left, the contact is taken out of the newsletter again at once.
+ */
+async function pushRow(ctx: PushContext, row: Row, contact: ContactState | null): Promise<PushOutcome> {
   const { r, call } = ctx;
   const locale = rowLocale(row.locale);
   const want = ctx.segments[locale];
@@ -323,71 +382,84 @@ async function pushRow(ctx: PushContext, row: Row, contact: ContactState | null)
   const properties = { [UNSUBSCRIBE_PROPERTY]: unsubscribeUrl(ctx.deps.siteUrl, row.token) };
   let id: string;
   if (!contact) {
-    if (!(await ctx.room())) return "limit";
+    if (!(await ctx.room())) return { kind: "limit" };
     const made = await call(() => r.contacts.create({ email: row.address, unsubscribed: false, properties, segments: [{ id: want }] }));
     if (!made.data) {
-      if (contactLimit(made.error)) return "limit";
+      if (contactLimit(made.error)) return { kind: "limit" };
       noteFailure(`[newsletter-sync] subscriber ${row.id}: contact not created`, made.error);
-      return "failed";
+      return { kind: "failed" };
     }
     id = made.data.id;
   } else {
     id = contact.id;
-    const updated = await call(() => r.contacts.update({ id, unsubscribed: false, properties }));
+    const resubscribe = contact.unsubscribed && row.syncedAt === null;
+    const updated = await call(() => r.contacts.update({ id, properties, ...(resubscribe ? { unsubscribed: false } : {}) }));
     if (updated.error) {
       noteFailure(`[newsletter-sync] subscriber ${row.id}: contact ${id} not updated`, updated.error);
-      return "failed";
+      return { kind: "failed" };
     }
     if (!contact.segments.has(want)) {
       const added = await call(() => r.contacts.segments.add({ contactId: id, segmentId: want }));
       if (added.error) {
         noteFailure(`[newsletter-sync] subscriber ${row.id}: contact ${id} not added to segment ${want}`, added.error);
-        return "failed";
+        return { kind: "failed" };
       }
     }
     if (contact.segments.has(other)) {
       const removed = await call(() => r.contacts.segments.remove({ contactId: id, segmentId: other }));
       if (removed.error && !isNotFound(removed.error)) {
         noteFailure(`[newsletter-sync] subscriber ${row.id}: contact ${id} not removed from segment ${other}`, removed.error);
-        return "failed";
+        return { kind: "failed" };
       }
     }
   }
-  await ctx.deps.db
+  const marked = await ctx.deps.db
     .update(subscribers)
     .set({ syncedAt: ctx.deps.now, resendContactId: id })
-    .where(and(eq(subscribers.id, row.id), eq(subscribers.locale, row.locale), eq(subscribers.token, row.token), isNotNull(subscribers.confirmedAt)));
-  return contact ? "updated" : "added";
-}
-
-/** The segments of a contact (two of ours at most, so one page). */
-async function segmentsOf(call: Call, r: ResendLike, contactId: string): Promise<Set<string>> {
-  const listed = await listAll(call, "contacts.segments.list", (after) => r.contacts.segments.list({ contactId, limit: 100, after }));
-  return new Set(listed.map((s) => s.id));
+    .where(and(eq(subscribers.id, row.id), eq(subscribers.locale, row.locale), eq(subscribers.token, row.token), isNotNull(subscribers.confirmedAt)))
+    .returning();
+  if (marked.length > 0) return { kind: contact ? "updated" : "added" };
+  const current = await rowOf(ctx.deps.db, row.address);
+  if (current && isRecipient(current)) return { kind: contact ? "updated" : "added" }; // changed meanwhile: unsynced, for the next sync
+  const release = await releaseContact(call, r, ctx.segments, id);
+  console.info(`[newsletter-sync] subscriber ${row.id} went while it was synced: contact ${id} ${release}`);
+  return { kind: "vanished", created: !contact, release };
 }
 
 export type SyncOutcome = "synced" | "removed" | "skipped" | "failed";
 
 /**
  * Syncs one address after a change to its row has committed. A confirmed row: her contact made or updated (pushRow). No row, or one of the old
- * double opt-in never confirmed: her contact is deleted (none is fine). A contact unsubscribed in Resend whose row is synced and older (R1):
- * the row is deleted, then the contact. "skipped": not set up, or the plan's contacts are used up (the row stays unsynced; the full sync
- * reports it). Never throws: a failure is logged without the address and leaves the row unsynced ("failed").
+ * double opt-in never confirmed: her contact leaves our segments, and is deleted when it is in no other one (R6; none is fine). A contact
+ * unsubscribed in Resend whose row was synced before and is older (R1): the row is deleted, then the contact taken out. "skipped": not set
+ * up, a sample address (never synced, R6), or the plan's contacts are used up (the row stays unsynced; the full sync reports it). Never
+ * throws: a failure is logged without the address and leaves the row unsynced ("failed").
  */
 export async function syncAddress(deps: MarketingDeps, email: string): Promise<SyncOutcome> {
   if (!marketingConfigured(deps.env)) return "skipped";
+  const address = normalizeEmail(email);
+  if (isSampleAddress(address)) {
+    console.info("[newsletter-sync] a sample address (@example.test) is never synced");
+    return "skipped";
+  }
   try {
     const call = pacer(deps);
     const r = client(deps);
-    const address = normalizeEmail(email);
     const row = await rowOf(deps.db, address);
     if (!row?.confirmedAt) {
-      const removed = await call(() => r.contacts.remove({ email: pathEmail(address) }));
-      if (removed.error && !isNotFound(removed.error)) {
-        noteFailure(`[newsletter-sync] address sync: contact not deleted${row ? ` (subscriber ${row.id})` : ""}`, removed.error);
+      const stored = storedSegments(await readSetting(deps.db, SEGMENTS_SETTING));
+      if (!stored) {
+        console.info("[newsletter-sync] address synced: no confirmed subscriber, and no segment of ours yet");
+        return "removed";
+      }
+      const found = await call(() => r.contacts.get({ email: pathEmail(address) }));
+      if (found.error && !isNotFound(found.error)) {
+        noteFailure(`[newsletter-sync] address sync: contact not read${row ? ` (subscriber ${row.id})` : ""}`, found.error);
         return "failed";
       }
-      console.info(`[newsletter-sync] address synced: no confirmed subscriber${row ? ` (subscriber ${row.id} unconfirmed)` : ""}, no contact`);
+      const release = found.data ? await releaseContact(call, r, stored, found.data.id) : "untouched";
+      if (release === "failed") return "failed";
+      console.info(`[newsletter-sync] address synced: no confirmed subscriber${row ? ` (subscriber ${row.id} unconfirmed)` : ""}, contact ${release}`);
       return "removed";
     }
     const segments = await segmentsWith(deps, call);
@@ -397,23 +469,27 @@ export async function syncAddress(deps: MarketingDeps, email: string): Promise<S
     if (found.data) {
       contact = { id: found.data.id, unsubscribed: found.data.unsubscribed, segments: await segmentsOf(call, r, found.data.id) };
       if (contact.unsubscribed && pullsUnsubscribe(row, deps.now) && (await pullRow(deps, row))) {
-        const removed = await call(() => r.contacts.remove({ id: contact!.id }));
-        if (removed.error && !isNotFound(removed.error)) noteFailure(`[newsletter-sync] contact ${contact.id} not deleted`, removed.error);
-        console.info(`[newsletter-sync] subscriber ${row.id} unsubscribed in Resend (contact ${contact.id}): removed`);
-        return "removed";
+        const release = await releaseContact(call, r, segments, contact.id);
+        console.info(`[newsletter-sync] subscriber ${row.id} unsubscribed in Resend (contact ${contact.id} ${release}): removed`);
+        return release === "failed" ? "failed" : "removed";
       }
     } else if (!isNotFound(found.error)) {
       noteFailure(`[newsletter-sync] subscriber ${row.id}: contact not read`, found.error);
       return "failed";
     }
     const outcome = await pushRow({ deps, r, call, segments, room: async () => (await contactRows(deps.db)) < RESEND_FREE_CONTACTS }, row, contact);
-    if (outcome === "limit") {
-      logNote(`[newsletter-sync] subscriber ${row.id} not added: the plan's ${RESEND_FREE_CONTACTS} contacts are used up`);
-      return "skipped";
+    switch (outcome.kind) {
+      case "limit":
+        logNote(`[newsletter-sync] subscriber ${row.id} not added: the plan's ${RESEND_FREE_CONTACTS} contacts are used up`);
+        return "skipped";
+      case "failed":
+        return "failed";
+      case "vanished":
+        return outcome.release === "failed" ? "failed" : "removed";
+      default:
+        console.info(`[newsletter-sync] subscriber ${row.id} synced (${outcome.kind})`);
+        return "synced";
     }
-    if (outcome === "failed") return "failed";
-    console.info(`[newsletter-sync] subscriber ${row.id} synced (${outcome})`);
-    return "synced";
   } catch (e) {
     noteFailure("[newsletter-sync] address sync failed", e);
     return "failed";
@@ -432,13 +508,26 @@ export function subscriberSync(db: Db, env: Env): SubscriberSync | undefined {
   return (email) => syncAddress({ db, env, siteUrl: env.SITE_URL, now: new Date() }, email);
 }
 
+/** Is the address a confirmed subscriber (the comparison lowers both sides)? Task 4's test send keeps her real unsubscribe link then (ruling R7). */
+export async function isSubscriberAddress(q: Q, email: string): Promise<boolean> {
+  const [row] = await q
+    .select({ id: subscribers.id })
+    .from(subscribers)
+    .where(and(sameAddress(normalizeEmail(email)), isNotNull(subscribers.confirmedAt)))
+    .limit(1);
+  return row !== undefined;
+}
+
 // ---------- the full sync ----------
 
 /**
- * `contacts`: Resend's contacts after the sync. `added` / `updated` / `removed`: contacts made, put right, deleted. `unsubscribedPulled`: rows
- * deleted for an unsubscribe made in Resend. `suppressed`: confirmed subscribers whose address Resend suppresses. `unsynced`: confirmed rows
- * still not synced (the limit, a failure, the time budget). `limitReached`: the plan's contacts are used up and some were not added.
- * `finished`: every step ran to its end and every contact that had to go is gone.
+ * `contacts`: Resend's contacts after the sync, all of the account's (the plan's limit counts them all). `added` / `updated`: contacts made,
+ * put right. `removed`: contacts taken out of our segments (deleted, or only unlinked when they are in another segment too). `unsubscribedPulled`:
+ * rows deleted for an unsubscribe made in Resend. `suppressed`: confirmed subscribers whose address Resend suppresses. `unsynced`: recipient
+ * rows still not synced (the limit, a failure, the time budget; sample addresses are never counted). `failed`: pushes and removals that
+ * failed in this run, each logged with its row or contact id (a synced row whose push failed is counted here, not in `unsynced`).
+ * `limitReached`: the plan's contacts are used up and some were not added. `finished`: every step ran to its end and every contact that had to
+ * leave our segments has left.
  */
 export type FullSyncReport = {
   contacts: number;
@@ -448,6 +537,7 @@ export type FullSyncReport = {
   unsubscribedPulled: number;
   suppressed: number;
   unsynced: number;
+  failed: number;
   limitReached: boolean;
   finished: boolean;
 };
@@ -456,9 +546,10 @@ export type FullSyncReport = {
  * Compares every subscriber with Resend and puts the differences right, in this order:
  * 1. reads Resend's contacts and the two segments' members; an unsubscribed contact deletes its row (D3, R1) before any contact is written;
  * 2. reads Resend's suppression list into mail_suppressions (D10; a failure here is logged and the sync goes on);
- * 3. deletes the contacts that have no confirmed row (an unsubscribe on the site whose own sync failed): before any is added, so that a send
- *    never reaches them and the limit counts only real subscribers;
- * 4. pushes every confirmed row that is unsynced, has no contact, or is not in exactly its segment; a new contact only while Resend has fewer
+ * 3. takes out of our segments the contacts there without a recipient row (an unsubscribe on the site whose own sync failed, a sample
+ *    address): before any is added, so that a send never reaches them and the limit counts only what is needed. Ruling R6: a contact is
+ *    deleted only when it is in no other segment, and a contact in neither of our segments is never touched;
+ * 4. pushes every recipient row that is unsynced, has no contact, or is not in exactly its segment; a new contact only while Resend has fewer
  *    than RESEND_FREE_CONTACTS (Resend itself would take more and then refuse every broadcast), and none after Resend refused one for the limit.
  * A synced row in its segment is left alone: every push writes the property, and synced_at is set only after a push succeeded (Review Focus 2).
  * After `budgetMs` no call starts: the report says `finished: false`, and what is left waits for the next run. MarketingUnavailable when it
@@ -469,7 +560,18 @@ export async function fullSync(deps: MarketingDeps): Promise<FullSyncReport> {
   const deadline = deps.budgetMs === undefined ? Number.POSITIVE_INFINITY : Date.now() + deps.budgetMs;
   const call = pacer(deps, deadline);
   const r = client(deps);
-  const report: FullSyncReport = { contacts: 0, added: 0, updated: 0, removed: 0, unsubscribedPulled: 0, suppressed: 0, unsynced: 0, limitReached: false, finished: false };
+  const report: FullSyncReport = {
+    contacts: 0,
+    added: 0,
+    updated: 0,
+    removed: 0,
+    unsubscribedPulled: 0,
+    suppressed: 0,
+    unsynced: 0,
+    failed: 0,
+    limitReached: false,
+    finished: false,
+  };
   let complete = true;
   try {
     const segments = await segmentsWith(deps, call);
@@ -498,54 +600,66 @@ export async function fullSync(deps: MarketingDeps): Promise<FullSyncReport> {
       if (e instanceof OutOfTime) throw e;
       noteFailure("[newsletter-sync] suppression list not read", e);
     }
-    // 3. contacts without a confirmed row
-    const confirmed = new Map(rows.filter((row) => row.confirmedAt).map((row) => [row.address, row]));
+    // 3. contacts in our segments without a recipient row (R6: only ours)
+    const recipients = new Map(rows.filter(isRecipient).map((row) => [row.address, row]));
     const contactOf = new Map<string, ContactView>();
     for (const contact of contacts) {
       const address = normalizeEmail(contact.email);
-      if (confirmed.has(address)) {
+      if (recipients.has(address)) {
         contactOf.set(address, contact);
         continue;
       }
-      const removed = await call(() => r.contacts.remove({ id: contact.id }));
-      if (removed.error && !isNotFound(removed.error)) {
+      if (!members.et.has(contact.id) && !members.ru.has(contact.id)) continue; // not the newsletter's: never touched
+      const release = await releaseContact(call, r, segments, contact.id);
+      if (release === "failed") {
         complete = false;
-        noteFailure(`[newsletter-sync] contact ${contact.id} without a subscriber not deleted`, removed.error);
-        continue;
+        report.failed++;
+      } else if (release !== "untouched") {
+        report.removed++;
+        if (release === "deleted") report.contacts--;
       }
-      report.removed++;
-      report.contacts--;
     }
-    // 4. every confirmed row
+    // 4. every recipient row
     const segmentsOfContact = (id: string) => new Set((["et", "ru"] as const).filter((l) => members[l].has(id)).map((l) => segments[l]));
     let failures = 0;
-    for (const row of [...confirmed.values()].sort((a, b) => a.id - b.id)) {
+    for (const row of [...recipients.values()].sort((a, b) => a.id - b.id)) {
       const view = contactOf.get(row.address);
       const contact: ContactState | null = view ? { id: view.id, unsubscribed: view.unsubscribed, segments: segmentsOfContact(view.id) } : null;
-      // a synced row whose contact unsubscribed and was kept by step 1: a consent given while this sync ran; the next one sees it
+      // a synced row whose contact unsubscribed and was kept by step 1: synced or consented while this sync ran; the next one sees it
       if (contact?.unsubscribed && row.syncedAt) continue;
       const locale = rowLocale(row.locale);
-      if (contact && row.syncedAt && !contact.unsubscribed && contact.segments.has(segments[locale]) && !contact.segments.has(segments[otherLocale(locale)])) {
+      if (contact && row.syncedAt && contact.segments.has(segments[locale]) && !contact.segments.has(segments[otherLocale(locale)])) {
         if (row.resendContactId !== contact.id) await deps.db.update(subscribers).set({ resendContactId: contact.id }).where(eq(subscribers.id, row.id));
         continue;
       }
       if (!contact && report.limitReached) continue;
       const outcome = await pushRow({ deps, r, call, segments, room: () => report.contacts < RESEND_FREE_CONTACTS }, row, contact);
-      if (outcome === "limit") {
+      if (outcome.kind === "limit") {
         report.limitReached = true;
         continue;
       }
-      if (outcome === "failed") {
+      if (outcome.kind === "failed") {
+        report.failed++;
         if (++failures < FAILURES_IN_A_ROW) continue;
         complete = false;
         logNote(`[newsletter-sync] ${FAILURES_IN_A_ROW} contacts failed in a row: the rest waits for the next sync`);
         break;
       }
       failures = 0;
-      if (outcome === "added") {
+      if (outcome.kind === "added") {
         report.added++;
         report.contacts++;
-      } else report.updated++;
+      } else if (outcome.kind === "updated") report.updated++;
+      else {
+        // the row went while it was pushed, and its contact was taken out again
+        const kept = outcome.release !== "deleted";
+        if (outcome.created && kept) report.contacts++;
+        if (!outcome.created && !kept) report.contacts--;
+        if (outcome.release === "failed") {
+          complete = false;
+          report.failed++;
+        } else if (!outcome.created && outcome.release !== "untouched") report.removed++;
+      }
     }
     report.finished = complete;
   } catch (e) {
@@ -553,22 +667,17 @@ export async function fullSync(deps: MarketingDeps): Promise<FullSyncReport> {
     logNote("[newsletter-sync] full sync stopped at its time budget: the rest waits for the next run");
     report.finished = false;
   }
-  report.unsynced = await unsyncedCount(deps.db);
+  report.unsynced = (await allRows(deps.db)).filter((row) => isRecipient(row) && row.syncedAt === null).length;
   report.suppressed = await suppressedSubscribers(deps.db);
   if (report.limitReached) logNote(`[newsletter-sync] the plan's ${RESEND_FREE_CONTACTS} contacts are used up: ${report.unsynced} subscribers are not in Resend`);
   console.info(
-    `[newsletter-sync] full sync: ${report.contacts} contacts, ${report.added} added, ${report.updated} updated, ${report.removed} removed, ${report.unsubscribedPulled} unsubscribed in Resend, ${report.suppressed} suppressed, ${report.unsynced} not synced${report.finished ? "" : ", not finished"}`,
+    `[newsletter-sync] full sync: ${report.contacts} contacts, ${report.added} added, ${report.updated} updated, ${report.removed} removed, ${report.unsubscribedPulled} unsubscribed in Resend, ${report.suppressed} suppressed, ${report.unsynced} not synced, ${report.failed} failed${report.finished ? "" : ", not finished"}`,
   );
   return report;
 }
 
 async function allRows(db: Db): Promise<Row[]> {
   return (await db.select(COLUMNS).from(subscribers).orderBy(subscribers.id)).map(asRow);
-}
-
-async function unsyncedCount(db: Db): Promise<number> {
-  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(subscribers).where(and(isNotNull(subscribers.confirmedAt), isNull(subscribers.syncedAt)));
-  return n;
 }
 
 /** Confirmed subscribers whose address has an active suppression (the addresses compared in lower case on both sides). */
