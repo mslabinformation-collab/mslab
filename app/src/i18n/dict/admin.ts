@@ -1506,7 +1506,7 @@ export const adminEt = {
       yes: "jah",
       no: "ei",
     },
-    // Maria's campaign editor (newsletter campaigns; the editor is a later task): the text under a field that domain/newsletter-campaign.ts
+    // Maria's campaign editor (newsletter campaigns Task 4, `campaigns` below): the text under a field that domain/newsletter-campaign.ts
     // checkCampaignDraft refuses with `ruLabel` (a button and a Russian text, but no Russian label). Draft for Dim's wording sheet.
     campaignErrors: { ruLabel: "Lisa nupu tekst ka vene keeles." },
     // The sync with Resend above the list (newsletter campaigns Task 3, spec D2, D8, §5; components/admin/NewsletterSync.tsx). Quoted from the spec:
@@ -1537,6 +1537,112 @@ export const adminEt = {
     },
     // A subscriber's address that Resend does not mail (a bounce or a spam mark; spec D10, Draft there): on her row here and in her drawer in Õpilased
     suppressed: "Resend ei saada sellele aadressile kirju (tagastus või rämpspostiks märgitud). Seda saab muuta ainult Resendis.",
+    // The page's two views (newsletter campaigns Task 4): the subscribers, and the campaigns (?vaade=kampaaniad). „Kampaaniad“ is the spec's (D4);
+    // the rest is Draft.
+    viewsLabel: "Vaade",
+    views: { subscribers: "Tellijad", campaigns: "Kampaaniad" },
+    // „Kampaaniad“ (newsletter campaigns Task 4; spec D4–D6, §5; rulings R4, R5, R7; components/admin/CampaignsPanel.tsx, NewsletterCampaignEditor.tsx).
+    // Quoted from the spec as they are: „Kampaaniad“, „Saada proov“, „Saada kõigile“, „Saada“, the confirmation, „Saadetud {date} · {n} tellijale“,
+    // „Kopeeri“, „Vene keeles tellijad saavad eestikeelse kirja.“, the contact limit's line and the connection error (the last three Draft there).
+    // „Tühi rida alustab uut lõiku.“ is the site editors' own. Every other text here is a Draft for Dim's wording sheet.
+    // {n} a count, {max} a limit, {date} a time, {a} / {b} the Estonian and the Russian counts, {email} an address, {name} a campaign's name.
+    campaigns: {
+      title: "Kampaaniad",
+      lead: "Kiri kõigile uudiskirja tellijatele: eesti keeles ja soovi korral vene keeles. Vaata eelvaadet, saada endale proov ja siis kõigile.",
+      list: "Kampaaniad",
+      new: "Uus kampaania",
+      empty: "Kampaaniaid veel pole.",
+      status: { draft: "Mustand", sending: "Saatmine pooleli", sent: "Saadetud" },
+      changed: "Muudetud {date}",
+      open: "Ava",
+      notFound: "Seda kampaaniat enam pole.",
+      newTitle: "Uus kampaania",
+      // the editor's fields
+      form: "Kampaania",
+      name: "Nimi",
+      nameHint: "Ainult sulle: tellijad seda ei näe.",
+      subject: "Teema",
+      preheader: "Eelvaate rida",
+      preheaderHint: "Hall rida teema järel enamikus postkastides. Võib jääda tühjaks.",
+      image: "Pilt",
+      imageHint: "Näiteks sinu flaier: kirjas on see kaardi täies laiuses.",
+      body: "Tekst",
+      bodyHint: "Tühi rida alustab uut lõiku.",
+      code: "Kood",
+      codeHint: "Näidatakse kastis nagu tervituskoodi. Ainult tähed, numbrid ja sidekriips.",
+      buttonLabel: "Nupu tekst",
+      buttonHref: "Nupu aadress",
+      buttonHrefHint: "Saidi leht (nt /koolitused) või https:// aadress. Nupp on kirjas siis, kui tekst ja aadress on mõlemad olemas.",
+      count: "{n} / {max}",
+      countI18n: "ET {et} / {max} · RU {ru} / {max}",
+      // the field errors of domain/newsletter-campaign.ts checkCampaignDraft (its `ruLabel` is `campaignErrors.ruLabel` above)
+      errors: { required: "Täida see väli.", tooLong: "Tekst on liiga pikk.", invalid: "Kontrolli seda välja." },
+      // the live preview (the real mail, from the preview route)
+      preview: "Eelvaade",
+      previewSubject: "Teema",
+      previewFallback: "Vene keeles tellijad saavad eestikeelse kirja.",
+      previewFrame: "Kirja eelvaade: {lang}",
+      previewWorking: "Uuendan eelvaadet…",
+      previewError: "Eelvaadet ei saanud näidata. Proovi uuesti.",
+      // the sends
+      send: "Saatmine",
+      off: "Resendi uudiskirja saatmine pole veel seadistatud.",
+      saveFirst: "Salvesta muudatused enne saatmist.",
+      test: {
+        title: "Saada proov",
+        lead: "Proov on täpselt see kiri, mille tellijad saavad, teemas „[Proov]“.",
+        to: "Kellele",
+        toMaria: "Maria: {email}",
+        toMe: "Mina: {email}",
+        language: "Keel",
+        languages: { et: "Eesti keeles", ru: "Vene keeles" },
+        button: "Saada proov",
+        working: "Saadan proovi…",
+        sent: "Proov läks aadressile {email}. Kiri jõuab mõne minuti jooksul.",
+        realLink: "Proov läheb tellija-aadressile — selle loobumislink on päris.",
+      },
+      all: {
+        title: "Saada kõigile",
+        lead: "Enne kinnitust sünkroonitakse tellijad Resendiga ja näed, mitmele kiri läheb.",
+        button: "Saada kõigile",
+        checking: "Sünkroonin tellijad Resendiga…",
+        confirm: "Saadad kampaania {n} tellijale (eesti keeles {a}, vene keeles {b}). Kas saadame?",
+        fallback: "Vene keeles tellijad saavad eestikeelse kirja.",
+        left: "{n} tellijat ei ole Resendis — kontaktide piir on täis.",
+        yes: "Saada",
+        no: "Tühista",
+        working: "Saadan…",
+        done: "Kampaania on saadetud.",
+      },
+      // a sent campaign (read-only), and one whose send stopped half way
+      sentLine: "Saadetud {date} · {n} tellijale",
+      readOnly: "Saadetud kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.",
+      sending: "Saatmine jäi pooleli: pole teada, kas kõik kirjad läksid välja. Vaata Resendist, enne kui kopeerid ja saadad uuesti.",
+      openInResend: "Ava Resendis ({lang})",
+      langNames: { et: "eesti keeles", ru: "vene keeles" },
+      missing: { et: "Eestikeelne kiri jäi saatmata — kopeeri kampaania ja saada uuesti.", ru: "Venekeelne kiri jäi saatmata — kopeeri kampaania ja saada uuesti." },
+      copy: "Kopeeri",
+      copying: "Kopeerin…",
+      // the copy's name: the campaign's own with this after it (cut to the name's limit)
+      copySuffix: " (koopia)",
+      // the page behind a test contact's unsubscribe link (/api/newsletter/loobu?proov=1, ruling R4): it changes nothing
+      testPage: "Proovikiri — päris kirjas viib see link loobumisele.",
+      // what an action answers when it did not go through
+      errorsOf: {
+        notFound: "Seda kampaaniat enam pole.",
+        sent: "See kampaania on juba saadetud.",
+        notConfigured: "Resendi uudiskirja saatmine pole veel seadistatud.",
+        unavailable: "Resendiga ei saanud ühendust — proovi hiljem uuesti.",
+        permission: "Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.",
+        busy: "Sünkroonimine juba käib — proovi hetke pärast uuesti.",
+        unsynced: "Kõiki tellijaid ei saanud Resendiga sünkroonida, seega ei saadetud midagi. Proovi hetke pärast uuesti.",
+        empty: "Resendis pole ühtegi tellijat: kirja pole kellelegi saata.",
+        interrupted: "Saatmine jäi pooleli: pole teada, kas kiri läks välja. Vaata Resendist, enne kui midagi uuesti saadad.",
+        limited: "Proovikirju saab saata kuni 10 tunnis. Proovi hiljem uuesti.",
+        address: "Sellele aadressile ei saa proovi saata.",
+        server: "Ei õnnestunud. Proovi uuesti.",
+      },
+    },
   },
   // ---------- Task 13B: the site content editors ----------
 

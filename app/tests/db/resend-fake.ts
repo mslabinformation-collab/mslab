@@ -1,7 +1,8 @@
 import type { ResendLike } from "@/server/resend-marketing";
 
 // An in-memory Resend for the newsletter sync's tests (server/resend-marketing.ts ResendLike): contacts with their `unsubscribed`, properties
-// and segments, the account's segments and contact properties, and the suppression list. It records every call by name (and with its
+// and segments, the account's segments and contact properties, the suppression list, and the broadcasts sent (Task 4: each with what every
+// recipient got, the placeholders filled as Resend fills them). It records every call by name (and with its
 // arguments), and a test can make a method fail (`fail`), always or from a function that decides per call. As Resend does
 // (resend.com/docs/dashboard/contacts/properties), it refuses a contact property that has no definition, or a value of another type than the
 // definition's; `unsubscribed` left out of an update stays as it is (the SDK drops undefined fields). The real API is never called. Webhook
@@ -9,6 +10,15 @@ import type { ResendLike } from "@/server/resend-marketing";
 
 export type FakeError = { name: string; statusCode: number | null; message: string };
 export type FakeContact = { id: string; email: string; unsubscribed: boolean; properties: Record<string, string>; segments: Set<string> };
+/**
+ * A broadcast made with `send: true` (newsletter campaigns, Task 4): what was asked, and what each recipient got, as Resend sends it: every
+ * subscribed contact of the segment at that moment, with `{{{contact.<key>}}}` filled from the contact's properties (Resend's broadcast placeholders).
+ */
+export type FakeBroadcast = {
+  id: string;
+  args: { segmentId: string; from: string; replyTo?: string; subject: string; html: string; text: string; name: string; send: true } & Record<string, unknown>;
+  delivered: { email: string; html: string; text: string }[];
+};
 type Failure = FakeError | ((args: unknown) => FakeError | null);
 
 export const NOT_FOUND: FakeError = { name: "not_found", statusCode: 404, message: "Contact not found" };
@@ -22,6 +32,7 @@ export function fakeResend() {
   const segments: { id: string; name: string; created_at: string }[] = [];
   const properties: { id: string; key: string; type: "string" }[] = [];
   const suppressions: { id: string; email: string; origin: "bounce" | "complaint" | "manual"; source_id: string | null; created_at: string }[] = [];
+  const broadcasts: FakeBroadcast[] = [];
   const calls: string[] = [];
   /** Every call with its arguments, in order. */
   const requests: { name: string; args: unknown }[] = [];
@@ -172,6 +183,18 @@ export function fakeResend() {
         throw new Error("the fake does not verify webhooks: the route's tests use the real SDK");
       },
     },
+    broadcasts: {
+      async create(o) {
+        const f = gate("broadcasts.create", o);
+        if (f) return err(f);
+        if (!segments.some((s) => s.id === o.segmentId)) return err({ name: "not_found", statusCode: 404, message: "Segment not found" });
+        const fill = (s: string, c: FakeContact) => s.replace(/\{\{\{contact\.([a-z_]+)\}\}\}/g, (_, key: string) => c.properties[key] ?? "");
+        const to = [...contacts.values()].filter((c) => c.segments.has(o.segmentId) && !c.unsubscribed);
+        const b: FakeBroadcast = { id: `bc_${++seq}`, args: { ...o }, delivered: to.map((c) => ({ email: c.email, html: fill(o.html, c), text: fill(o.text, c) })) };
+        broadcasts.push(b);
+        return ok({ id: b.id });
+      },
+    },
   };
 
   return {
@@ -180,6 +203,7 @@ export function fakeResend() {
     segments,
     properties,
     suppressions,
+    broadcasts,
     calls,
     requests,
     fail,

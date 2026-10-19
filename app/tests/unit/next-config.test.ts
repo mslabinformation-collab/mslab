@@ -90,6 +90,13 @@ describe("next.config.ts headers()", () => {
     for (const path of ["/api/admin/leping", "/api/admin/leping/12/x", "/api/admin/lepingud", "/api/admin/naidisleping/x", "/api/admin/naidislepingx"]) expect(valueFor(rules, path, "cache-control"), path).toBe("no-store");
   });
 
+  test("the campaign editor's preview is private and never kept, as the samples are; no other path near it is (newsletter campaigns Task 4)", async () => {
+    const rules = (await (await config()).headers!()) as Rule[];
+    expect(valueFor(rules, "/api/admin/kampaania-eelvaade", "cache-control")).toBe("private, no-store");
+    expect(valueFor(rules, "/api/admin/kampaania-eelvaade", "x-robots-tag")).toBe("noindex, nofollow");
+    for (const path of ["/api/admin/kampaania-eelvaade/x", "/api/admin/kampaania-eelvaadex"]) expect(valueFor(rules, path, "cache-control"), path).toBe("no-store");
+  });
+
   test("the unsubscribe page's POST keeps its Origin: the loobu route is same-origin, never no-referrer (a strict policy makes the form post Origin: null, which is refused as cross-site)", async () => {
     const rules = (await (await config()).headers!()) as Rule[];
     expect(valueFor(rules, "/api/newsletter/loobu", "referrer-policy")).toBe("same-origin");

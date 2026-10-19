@@ -41,6 +41,8 @@ export const LOCAL_ENV = {
   R2_ACCESS_KEY_ID: "",
   R2_SECRET_ACCESS_KEY: "",
   R2_BUCKET: "",
+  // blank, as the R2 ones: the newsletter's Resend side is not set up in an e2e run whatever a .env.local says, so the campaign tests never sync or send
+  RESEND_MARKETING_KEY: "",
   BUNNY_LIBRARY_ID: E2E_BUNNY.libraryId,
   BUNNY_API_KEY: E2E_BUNNY.apiKey,
   BUNNY_TOKEN_KEY: E2E_BUNNY.tokenKey,

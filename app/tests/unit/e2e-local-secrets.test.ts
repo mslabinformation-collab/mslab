@@ -76,6 +76,12 @@ describe("the dev server's environment (LOCAL_ENV)", () => {
     for (const name of R2) expect(env[name as keyof typeof env], name).toBeUndefined();
   });
 
+  test("the newsletter's marketing key is blank too, and RESEND_API_KEY (its fall-back) is refused: an e2e run never syncs with Resend or sends a campaign (Task 4)", () => {
+    expect(LOCAL_ENV).toHaveProperty("RESEND_MARKETING_KEY", "");
+    expect(serverEnv(LOCAL_ENV, false).RESEND_MARKETING_KEY).toBeUndefined();
+    expect(FORBIDDEN_SETTINGS).toHaveProperty("RESEND_API_KEY");
+  });
+
   test("the Bunny settings point at the fake on this machine (never the real library)", () => {
     expect(LOCAL_ENV.BUNNY_FAKE_URL).toBe(`http://localhost:${E2E_BUNNY.port}`);
     expect(bunnyConfig(serverEnv(LOCAL_ENV, false), false)).toMatchObject({ apiBase: E2E_BUNNY.url, tusEndpoint: `${E2E_BUNNY.url}/tusupload`, embedBase: `${E2E_BUNNY.url}/embed` });

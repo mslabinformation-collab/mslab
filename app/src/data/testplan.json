@@ -468,6 +468,141 @@
       "markedAt": "deploy"
     },
     {
+      "id": "avalik-uudiskiri-kampaania",
+      "area": "avalik",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Kampaania kirjutamine ja eelvaade",
+      "href": "/admin/uudiskiri?vaade=kampaaniad",
+      "steps": [
+        "Ava halduses „Uudiskiri“ vaade „Kampaaniad“ ja vajuta „Uus kampaania“.",
+        "Kirjuta „Nimi“: Proov 3 kampaania ja „Teema“: Proov 3 pakkumine.",
+        "Kirjuta „Tekst“ kahe lõiguna, nende vahele tühi rida.",
+        "Vali „Pilt“: mõni oma flaier või foto.",
+        "Kirjuta „Kood“: proov3, „Nupu tekst“: Vaata koolitusi ja „Nupu aadress“: /koolitused.",
+        "Lülita „Teema“, „Tekst“ ja „Nupu tekst“ vene keelele ja kirjuta need vene keeles.",
+        "Vajuta „Salvesta“ ja vaheta eelvaate kohal keelt."
+      ],
+      "expect": [
+        "Eelvaates on logo, pilt kaardi laiuses, kaks lõiku, kood PROOV3 kastis ja nupp „Vaata koolitusi“.",
+        "Eelvaade muutub mõne hetke jooksul, kui teksti kirjutad.",
+        "Vene keele eelvaates on vene tekst ja kirja lõpus „Отписаться от рассылки“.",
+        "Teema all on loendur „ET 17 / 150 · RU … / 150“, teistel väljadel samuti.",
+        "Pärast salvestamist on „Salvestatud.“ ja kampaania on loendis märkega „Mustand“."
+      ],
+      "why": "Maria näeb enne saatmist täpselt, milline kiri tellijale läheb.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "avalik-uudiskiri-kampaania-proov",
+      "area": "avalik",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Saada proov",
+      "href": "/admin/uudiskiri?vaade=kampaaniad",
+      "steps": [
+        "Ava „Kampaaniad“ all Proov 3 kampaania.",
+        "Vali „Saada proov“ all „Kellele“: Maria ja „Keel“: „Eesti keeles“, vajuta „Saada proov“.",
+        "Vali „Kellele“: Mina ja „Keel“: „Vene keeles“, vajuta „Saada proov“.",
+        "Ava oma postkastis venekeelne proov ja vajuta selle lõpus „Отписаться от рассылки“.",
+        "Ava Resendis „Contacts“ ja segment „MS LAB uudiskiri (proov)“."
+      ],
+      "expect": [
+        "Nupu all on „Proov läks aadressile …“ valitud aadressiga.",
+        "Maria postkasti tuleb kiri „[Proov] Proov 3 pakkumine“ logo, pildi, teksti, koodi ja nupuga.",
+        "Sinu postkasti tuleb venekeelne proov, teemas „[Proov]“.",
+        "Link avab lehe „Proovikiri — päris kirjas viib see link loobumisele.“ ja midagi ei muutu.",
+        "Segmendis „MS LAB uudiskiri (proov)“ on ainult sinu aadress.",
+        "Kui valitud aadress on tellija oma, on nupu kohal „Proov läheb tellija-aadressile — selle loobumislink on päris.“."
+      ],
+      "why": "Proov on päris Resendi kiri, nii et ka selle loobumislink on kontrollitud.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "avalik-uudiskiri-kampaania-saada",
+      "area": "avalik",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Saada kõigile",
+      "href": "/admin/uudiskiri?vaade=kampaaniad",
+      "steps": [
+        "Ava „Uudiskiri“ ja kontrolli, et loendis on ainult +proov aadressid.",
+        "Kui loendis on mõni muu aadress, ära jätka ja kirjuta märkus.",
+        "Ava Proov 3 kampaania kahes brauseri vahekaardis.",
+        "Vajuta esimeses vahekaardis „Saada kõigile“, loe kinnitust ja vajuta „Saada“.",
+        "Vajuta teises vahekaardis „Saada kõigile“.",
+        "Vajuta esimeses vahekaardis „Ava Resendis (eesti keeles)“."
+      ],
+      "expect": [
+        "Kinnitus on „Saadad kampaania … tellijale (eesti keeles …, vene keeles …). Kas saadame?“.",
+        "Pärast saatmist on „Saadetud … · … tellijale“ ja välju muuta ei saa.",
+        "Proov 3 postkasti tuleb kiri „Proov 3 pakkumine“ ilma „[Proov]“ märketa.",
+        "Teises vahekaardis on vastus „See kampaania on juba saadetud.“.",
+        "Resend avab selle kampaania kirja oma lehel."
+      ],
+      "why": "Kampaania läheb kõigile tellijatele korraga ja ainult üks kord.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "avalik-uudiskiri-kampaania-loobu",
+      "area": "avalik",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Kampaania loobumislink",
+      "href": "/admin/uudiskiri",
+      "steps": [
+        "Ava Gmailis telefonis kiri „Proov 3 pakkumine“.",
+        "Vajuta kirja lõpus „Loobu uudiskirjast“.",
+        "Vajuta avanenud lehel „Loobu uudiskirjast“.",
+        "Ava halduses „Uudiskiri“."
+      ],
+      "expect": [
+        "Kirja lõpus on „Said selle kirja, sest liitusid MS LAB-i uudiskirjaga.“ ja kooli nimi.",
+        "Link avab lehe „Uudiskirjast loobumine“.",
+        "Pärast nuppu on avalehel „Oled uudiskirjast loobunud.“.",
+        "Halduse tellijate loendis pole enam Proov 3 aadressi."
+      ],
+      "why": "Iga kampaania loobumislink peab tellija päriselt loendist eemaldama.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "avalik-uudiskiri-kampaania-kopeeri",
+      "area": "avalik",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Kopeeri",
+      "href": "/admin/uudiskiri?vaade=kampaaniad",
+      "steps": [
+        "Ava „Kampaaniad“ all saadetud Proov 3 kampaania.",
+        "Vajuta „Kopeeri“.",
+        "Muuda koopia „Teema“: Proov 3 koopia ja vajuta „Salvesta“.",
+        "Ava loendis saadetud Proov 3 kampaania uuesti."
+      ],
+      "expect": [
+        "Saadetud kampaanial pole muudetavaid välju, ainult „Kopeeri“.",
+        "„Kopeeri“ avab uue mustandi „Proov 3 kampaania (koopia)“ samade väljadega.",
+        "Loendis on koopia märkega „Mustand“ ja saadetud kampaania märkega „Saadetud“.",
+        "Saadetud kampaania teema on endiselt „Proov 3 pakkumine“."
+      ],
+      "why": "Saadetud kampaania jääb muutmata, uus saatmine algab koopiast.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "avalik-kontaktivorm",
       "area": "avalik",
       "who": "maria",

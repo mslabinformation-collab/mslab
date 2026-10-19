@@ -20,6 +20,8 @@ import { NOTIFY_TIMEOUT_MS, RATE_LIMIT_RETRY_MS, rateLimited, withTimeout, type 
 // row (the full sync's read of the contacts, and the webhook's contact.updated), and a suppression (bounce, spam mark) is recorded in
 // mail_suppressions. A consent given on the site after a Resend-side unsubscribe wins (ruling R1). Every Resend call has a timeout, a 429 is
 // tried once more, and calls in a row keep MARKETING_GAP_MS apart. The logs carry counts and ids, never an address. Tests inject `resend`.
+// The campaign's broadcasts (Task 4, at the end): the send to our two segments right after a full sync under the same lease (fullSyncThen), and
+// „Saada proov“ as a broadcast to a one-contact test segment (sendTestBroadcast, rulings R4, R7).
 
 /** The contact property that carries her own unsubscribe link: `${SITE_URL}/api/newsletter/loobu?t=<her token>`. */
 export const UNSUBSCRIBE_PROPERTY = "unsubscribe_url";
@@ -79,6 +81,13 @@ export type ResendLike = {
   suppressions: { list(o: { limit: number; after?: string }): Promise<Answer<Page<{ id: string; email: string; origin: string; created_at: string }>>> };
   usage: { get(): Promise<Answer<{ contacts: { used: number; limit: number } }>> };
   webhooks: { verify(o: { payload: string; headers: { id: string; timestamp: string; signature: string }; webhookSecret: string }): WebhookEventPayload };
+  /**
+   * A broadcast made and sent in one call (`send: true`) to one segment (Task 4). No tracking option is set: open and click tracking stay off (spec
+   * D1). The SDK sends `segment_id`, `reply_to`; `name` is what Resend's dashboard lists it by.
+   */
+  broadcasts: {
+    create(o: { segmentId: string; from: string; replyTo?: string; subject: string; html: string; text: string; name: string; send: true }): Promise<Answer<{ id: string }>>;
+  };
 };
 
 /**
@@ -116,8 +125,8 @@ class OutOfTime extends Error {
 }
 
 /**
- * Another full sync is running (see fullSync's lease): this one did nothing. Not a failure of Resend: the cron logs it and waits for the next day,
- * the admin's button tells Maria to try again in a moment.
+ * Another full sync is running (see fullSync's lease; a campaign's send or test holds it too): this one did nothing. Not a failure of Resend: the
+ * cron logs it and waits for the next day, the admin's buttons tell Maria to try again in a moment.
  */
 export class FullSyncBusy extends Error {
   constructor() {
@@ -142,10 +151,10 @@ const UNBOUNDED_LEASE_MS = 5 * 60_000;
  * row, not a session advisory lock: the pool (postgres.js, up to 5 connections) could release a session lock on another connection than the one
  * that took it, and a transaction lock would keep a connection for the whole sync.
  */
-async function takeLease(deps: MarketingDeps): Promise<string | null> {
+async function takeLease(deps: MarketingDeps, extraMs = 0): Promise<string | null> {
   const holder = crypto.randomUUID();
   const now = Date.now();
-  const value = { holder, until: now + (deps.budgetMs ?? UNBOUNDED_LEASE_MS) + LEASE_SLACK_MS };
+  const value = { holder, until: now + (deps.budgetMs ?? UNBOUNDED_LEASE_MS) + LEASE_SLACK_MS + extraMs };
   const taken = await deps.db
     .insert(settings)
     .values({ key: SYNC_LEASE_SETTING, value })
@@ -161,6 +170,24 @@ async function takeLease(deps: MarketingDeps): Promise<string | null> {
 /** Gives the lease back, but only if this holder still has it (it may have run out and been taken over). */
 async function releaseLease(db: Db, holder: string): Promise<void> {
   await db.delete(settings).where(and(eq(settings.key, SYNC_LEASE_SETTING), sql`${settings.value} ->> 'holder' = ${holder}`));
+}
+
+/**
+ * Runs `work` holding the lease (the full sync, the campaign's send after its sync, the test send of Task 4: one at a time), held `extraMs` longer
+ * than a sync's; FullSyncBusy, with nothing done, when another holds it. Released at the end, also after a throw.
+ */
+async function underLease<T>(deps: MarketingDeps, extraMs: number, what: string, work: () => Promise<T>): Promise<T> {
+  const holder = await takeLease(deps, extraMs);
+  if (holder === null) {
+    console.info(`[newsletter-sync] a full sync is already running: ${what} is not started`);
+    throw new FullSyncBusy();
+  }
+  try {
+    return await work();
+  } finally {
+    // (a lease that cannot be released ends by itself at its `until`)
+    await releaseLease(deps.db, holder).catch((e: unknown) => noteFailure("[newsletter-sync] the sync lease not released", e));
+  }
 }
 
 /** The key of the newsletter's calls: RESEND_MARKETING_KEY, else RESEND_API_KEY (spec §4); undefined without either. */
@@ -607,17 +634,7 @@ export type FullSyncReport = {
  */
 export async function fullSync(deps: MarketingDeps): Promise<FullSyncReport> {
   if (!marketingConfigured(deps.env)) throw new MarketingUnavailable({ name: "not_configured" });
-  const holder = await takeLease(deps);
-  if (holder === null) {
-    console.info("[newsletter-sync] a full sync is already running: this one is not started");
-    throw new FullSyncBusy();
-  }
-  try {
-    return await syncUnderLease(deps);
-  } finally {
-    // (a lease that cannot be released ends by itself at its `until`)
-    await releaseLease(deps.db, holder).catch((e: unknown) => noteFailure("[newsletter-sync] the sync lease not released", e));
-  }
+  return underLease(deps, 0, "this one", () => syncUnderLease(deps));
 }
 
 async function syncUnderLease(deps: MarketingDeps): Promise<FullSyncReport> {
@@ -903,4 +920,171 @@ export async function handleWebhook(deps: MarketingDeps, event: WebhookEventPayl
     default:
       return;
   }
+}
+
+// ---------- the campaign's broadcasts (Task 4) ----------
+
+/** The recipients Resend has now, by language: confirmed rows (no sample address) synced into their segment, with a contact (a send's counts). */
+export async function recipientCounts(db: Db): Promise<{ et: number; ru: number }> {
+  const [r] = await db
+    .select({
+      et: sql<number>`(count(*) filter (where ${subscribers.locale} <> 'ru'))::int`,
+      ru: sql<number>`(count(*) filter (where ${subscribers.locale} = 'ru'))::int`,
+    })
+    .from(subscribers)
+    .where(
+      and(
+        isNotNull(subscribers.confirmedAt),
+        isNotNull(subscribers.syncedAt),
+        isNotNull(subscribers.resendContactId),
+        sql`lower(${subscribers.email}) not like '%@example.test'`,
+      ),
+    );
+  return { et: r?.et ?? 0, ru: r?.ru ?? 0 };
+}
+
+/** A broadcast as the site makes it: its name in Resend's dashboard, its subject, its HTML and its text (server/campaign-mail.ts campaignMail). */
+export type BroadcastMail = { name: string; subject: string; html: string; text: string };
+
+/**
+ * What one broadcast came to: its id, or why not. `refused`: Resend answered with a 4xx, so nothing was made (a broadcast is made and sent in one
+ * call); false: no answer, or a 5xx (a timeout, the network, a gateway's error), so it may have been made and sent all the same.
+ */
+export type BroadcastResult = { ok: true; id: string } | { ok: false; refused: boolean; error: MarketingUnavailable };
+
+/** Sends one broadcast at once to the segment of `locale`. */
+export type SendBroadcast = (locale: Locale, mail: BroadcastMail) => Promise<BroadcastResult>;
+
+/** What a send adds to the lease: two broadcasts, each with the gap before it, its timeout, and a 429's second try. */
+export const SEND_LEASE_MS = 2 * (MARKETING_GAP_MS + NOTIFY_TIMEOUT_MS + RATE_LIMIT_RETRY_MS + NOTIFY_TIMEOUT_MS);
+
+/** One broadcast to `segmentId`, made and sent at once: from MAIL_FROM, Maria as the reply-to (none when MARIA_EMAIL is empty), no tracking (D1). */
+async function broadcastTo(deps: MarketingDeps, call: Call, r: ResendLike, segmentId: string, mail: BroadcastMail): Promise<BroadcastResult> {
+  const answer = await call(() =>
+    r.broadcasts.create({
+      segmentId,
+      from: deps.env.MAIL_FROM,
+      ...(deps.env.MARIA_EMAIL ? { replyTo: deps.env.MARIA_EMAIL } : {}),
+      subject: mail.subject,
+      html: mail.html,
+      text: mail.text,
+      name: mail.name,
+      send: true,
+    }),
+  );
+  if (answer.data) return { ok: true, id: answer.data.id };
+  const status = answer.error?.statusCode;
+  return { ok: false, refused: typeof status === "number" && status >= 400 && status < 500, error: new MarketingUnavailable(answer.error, "broadcasts.create") };
+}
+
+/**
+ * The full sync, then `then` with its report and a way to send a broadcast to one of our two segments, both under one lease (rulings R9, R11): no
+ * other sync, send or test runs between the sync and the send, nor during the send. The lease is held SEND_LEASE_MS longer than a sync's. FullSyncBusy
+ * when another holds it, MarketingUnavailable when not set up or when the sync's lists are not answered (`then` does not run then).
+ */
+export async function fullSyncThen<T>(deps: MarketingDeps, then: (report: FullSyncReport, send: SendBroadcast) => Promise<T>): Promise<T> {
+  if (!marketingConfigured(deps.env)) throw new MarketingUnavailable({ name: "not_configured" });
+  return underLease(deps, SEND_LEASE_MS, "the send", async () => {
+    const report = await syncUnderLease(deps);
+    const call = pacer(deps);
+    const r = client(deps);
+    const segments = await segmentsWith(deps, call); // (stored by the sync: a read)
+    await sleep(deps.gapMs ?? MARKETING_GAP_MS); // (the sync's last call was just now)
+    return then(report, (locale, mail) => broadcastTo(deps, call, r, segments[locale], mail));
+  });
+}
+
+/** The one-contact segment of „Saada proov“ (rulings R4, R7): it holds the address the test goes to, and nothing else. */
+export const TEST_SEGMENT_NAME = "MS LAB uudiskiri (proov)";
+/** The setting that keeps the test segment's id: `{ id }` (its own key: clearing `resend_segments` leaves it, and the other way round). */
+export const TEST_SEGMENT_SETTING = "resend_test_segment";
+
+/** The unsubscribe link of a test contact that is no subscriber (ruling R4): the site's page says it is a test, and changes nothing. */
+export const testUnsubscribeUrl = (siteUrl: string): string => `${siteUrl.replace(/\/+$/, "")}/api/newsletter/loobu?proov=1`;
+
+/** The test segment's id: the stored one, else Resend's segment of that name (a run that failed before storing it), else a new one; stored. */
+async function testSegmentWith(deps: MarketingDeps, call: Call, r: ResendLike): Promise<string> {
+  const stored = await readSetting(deps.db, TEST_SEGMENT_SETTING);
+  const id = typeof stored === "object" && stored !== null ? (stored as Record<string, unknown>).id : null;
+  if (typeof id === "string" && id.length > 0) return id;
+  const listed = await call(() => r.segments.list({ limit: 100 }));
+  if (!listed.data) throw new MarketingUnavailable(listed.error, "segments.list");
+  let segment = listed.data.data.find((s) => s.name === TEST_SEGMENT_NAME)?.id;
+  if (!segment) {
+    const made = await call(() => r.segments.create({ name: TEST_SEGMENT_NAME }));
+    if (!made.data) throw new MarketingUnavailable(made.error, "segments.create");
+    segment = made.data.id;
+  }
+  const value = { id: segment };
+  await deps.db.insert(settings).values({ key: TEST_SEGMENT_SETTING, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
+  console.info(`[newsletter] test segment ${segment} set up`);
+  return segment;
+}
+
+/**
+ * „Saada proov“ as a real broadcast (rulings R4, R7): exactly what subscribers get, Resend's filling of the contact's unsubscribe_url and all,
+ * to the test segment holding `address` alone. Under the lease (one sync, send or test at a time; FullSyncBusy otherwise):
+ * 1. our segments and the property exist (ensureSegments' work), and the test segment (made on first use, kept under TEST_SEGMENT_SETTING; one
+ *    deleted in Resend's dashboard is made again);
+ * 2. every other contact leaves the test segment, before this one joins it;
+ * 3. her contact: when the address is no subscriber (isSubscriberAddress), its unsubscribe_url is the test link (testUnsubscribeUrl) and it is set
+ *    to subscribed (an admin's own address, for the test she asked for; a contact outside our segments, which the sync never touches); a
+ *    subscriber's contact keeps her real link (`realLink: true`, ruling R7), and is made with it if the sync has not made it yet;
+ * 4. the broadcast, made and sent at once (broadcastTo).
+ * MarketingUnavailable when not set up or a call fails (nothing is sent then). Logs ids only.
+ */
+export async function sendTestBroadcast(deps: MarketingDeps, address: string, mail: BroadcastMail): Promise<{ id: string; realLink: boolean }> {
+  if (!marketingConfigured(deps.env)) throw new MarketingUnavailable({ name: "not_configured" });
+  return underLease(deps, 0, "the test send", async () => {
+    const call = pacer(deps);
+    const r = client(deps);
+    await segmentsWith(deps, call);
+    const email = normalizeEmail(address);
+    const row = await rowOf(deps.db, email);
+    const subscriber = row?.confirmedAt ? row : null;
+
+    let segment = await testSegmentWith(deps, call, r);
+    let members: ContactView[];
+    try {
+      members = await listAll(call, "contacts.list(proov)", (after) => r.contacts.list({ segmentId: segment, limit: 100, after }));
+    } catch (e) {
+      if (!(e instanceof MarketingUnavailable && e.code === "not_found")) throw e;
+      await deps.db.delete(settings).where(eq(settings.key, TEST_SEGMENT_SETTING));
+      segment = await testSegmentWith(deps, call, r);
+      members = [];
+    }
+    const found = await call(() => r.contacts.get({ email: pathEmail(email) }));
+    if (found.error && !isNotFound(found.error)) throw new MarketingUnavailable(found.error, "contacts.get");
+    const existing = found.data?.id ?? null;
+    for (const member of members) {
+      if (member.id === existing) continue;
+      const out = await call(() => r.contacts.segments.remove({ contactId: member.id, segmentId: segment }));
+      if (out.error && !isNotFound(out.error)) throw new MarketingUnavailable(out.error, "contacts.segments.remove");
+    }
+
+    const testLink = subscriber ? null : testUnsubscribeUrl(deps.siteUrl);
+    let contactId: string;
+    if (existing === null) {
+      const properties = { [UNSUBSCRIBE_PROPERTY]: testLink ?? unsubscribeUrl(deps.siteUrl, subscriber!.token) };
+      const made = await call(() => r.contacts.create({ email, unsubscribed: false, properties, segments: [{ id: segment }] }));
+      if (!made.data) throw new MarketingUnavailable(made.error, "contacts.create");
+      contactId = made.data.id;
+    } else {
+      contactId = existing;
+      if (testLink !== null) {
+        const updated = await call(() => r.contacts.update({ id: contactId, unsubscribed: false, properties: { [UNSUBSCRIBE_PROPERTY]: testLink } }));
+        if (updated.error) throw new MarketingUnavailable(updated.error, "contacts.update");
+      }
+      if (!members.some((m) => m.id === contactId)) {
+        const added = await call(() => r.contacts.segments.add({ contactId, segmentId: segment }));
+        if (added.error) throw new MarketingUnavailable(added.error, "contacts.segments.add");
+      }
+    }
+
+    const sent = await broadcastTo(deps, call, r, segment, mail);
+    if (!sent.ok) throw sent.error;
+    const whose = subscriber ? `subscriber ${subscriber.id}, her own unsubscribe link` : "the test link";
+    console.info(`[newsletter] test broadcast ${sent.id} sent to the test segment ${segment} (contact ${contactId}, ${whose})`);
+    return { id: sent.id, realLink: subscriber !== null };
+  });
 }

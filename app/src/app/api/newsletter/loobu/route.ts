@@ -7,7 +7,7 @@ import { logFailure } from "@/server/log";
 import { subscriberLocale, unsubscribeByToken } from "@/server/newsletter";
 import type { TextKv } from "@/server/ratelimit";
 import { subscriberSync } from "@/server/resend-marketing";
-import { unsubscribePage } from "@/server/unsubscribe-page";
+import { testUnsubscribePage, unsubscribePage } from "@/server/unsubscribe-page";
 import { isTokenShape } from "@/server/token";
 
 /**
@@ -23,11 +23,16 @@ import { isTokenShape } from "@/server/token";
  *   once-a-year welcome mark goes with it, so signing up again later gets a fresh welcome. With the newsletter's Resend key set, her Resend
  *   contact is deleted after the response (newsletter campaigns, spec D3; best effort: the full sync deletes it otherwise).
  * - HEAD (below) does nothing.
+ * - GET with `?proov` (newsletter campaigns ruling R4) is the link of „Saada proov“'s mail to an address that is no subscriber: a page that says
+ *   it is a test („Proovikiri — päris kirjas viib see link loobumisele.“), without a form, whatever else the address carries; it changes nothing.
  * The page's headers other than the type and the cache are next.config.ts's (headers() replaces a route's own): noindex, and Referrer-Policy
  * same-origin. That must never become no-referrer: a form posted from such a document carries `Origin: null`.
  */
 export async function GET(request: Request): Promise<Response> {
-  const token = new URL(request.url).searchParams.get("t") ?? "";
+  const params = new URL(request.url).searchParams;
+  // a test campaign's link (newsletter campaigns ruling R4: „Saada proov“ to an address that is no subscriber): it says so and changes nothing
+  if (params.has("proov")) return new Response(testUnsubscribePage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  const token = params.get("t") ?? "";
   let locale: "et" | "ru" = "et";
   try {
     locale = (await subscriberLocale(getDb(), token)) ?? "et";

@@ -1,3 +1,4 @@
+import { adminEt } from "@/i18n/dict/admin";
 import { getDict, type Locale } from "@/i18n/locales";
 import { esc } from "./account-mail";
 
@@ -28,10 +29,22 @@ const CSS = [
 export function unsubscribePage(locale: Locale, token: string | null): string {
   const t = getDict(locale).newsletter.unsubscribePage;
   const form = token === null ? "" : `<form method="post" action="/api/newsletter/loobu"><input type="hidden" name="t" value="${esc(token)}"><button type="submit">${esc(t.button)}</button></form>`;
+  return page(locale, t.heading, t.lead, form);
+}
+
+/**
+ * The page behind the unsubscribe link of a test campaign that went to an address which is no subscriber (?proov=1, newsletter campaigns ruling
+ * R4): the heading and the line that it is a test (adminEt: only an admin gets a test), no form. In Estonian.
+ */
+export function testUnsubscribePage(): string {
+  return page("et", getDict("et").newsletter.unsubscribePage.heading, adminEt.newsletter.campaigns.testPage, "");
+}
+
+function page(locale: Locale, heading: string, lead: string, form: string): string {
   return [
     "<!doctype html>",
     `<html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">`,
-    `<title>${esc(t.heading)} – MS LAB</title><style>${CSS}</style></head>`,
-    `<body><main><p class="brand">MS LAB</p><h1>${esc(t.heading)}</h1><p>${esc(t.lead)}</p>${form}</main></body></html>`,
+    `<title>${esc(heading)} – MS LAB</title><style>${CSS}</style></head>`,
+    `<body><main><p class="brand">MS LAB</p><h1>${esc(heading)}</h1><p>${esc(lead)}</p>${form}</main></body></html>`,
   ].join("");
 }

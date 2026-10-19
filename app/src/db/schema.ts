@@ -227,11 +227,15 @@ export const newsletterCampaigns = pgTable("newsletter_campaigns", {
   buttonLabel: jsonb("button_label").$type<I18n>(),
   /** An https:// address or a path of the site; set together with `buttonLabel` or both null. */
   buttonHref: text("button_href"),
-  status: text("status").$type<"draft" | "sent">().notNull().default("draft"),
+  /**
+   * `draft` (editable), `sending` (the send has begun: written before the first broadcast, so a send that dies half way is never sent again by
+   * itself; it stays `sending` when a broadcast's outcome is unknown) or `sent` (frozen). server/newsletter-campaigns.ts sendCampaign.
+   */
+  status: text("status").$type<"draft" | "sending" | "sent">().notNull().default("draft"),
   sentAt: timestamp("sent_at", { withTimezone: true }),
-  /** Subscribers the send went to, per language; null while a draft. */
+  /** The subscribers in Resend the send was for, per language (a language whose broadcast is missing did not go); null while a draft. */
   recipients: jsonb("recipients").$type<{ et: number; ru: number } | null>(),
-  /** The Resend broadcast of each language's segment (only the ones that had subscribers); null while a draft. */
+  /** The Resend broadcast of each language's segment that went (one is recorded as soon as it is made); null while a draft. */
   broadcasts: jsonb("broadcasts").$type<{ et?: string; ru?: string } | null>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -820,6 +824,7 @@ export const settings = pgTable("settings", { key: text("key").primaryKey(), val
 // "contractContactVersion" the contact course's contract text's version (contracts: domain/contract.ts CONTRACT_CONTACT_VERSION_KEY), as "courseTermsVersion" is the e-course text's
 // "resend_segments" {et, ru, property}: the newsletter's two Resend segments and its contact property unsubscribe_url (newsletter campaigns: server/resend-marketing.ts ensureSegments)
 // "newsletter_sync_lease" {holder, until}: the lease of the one full sync that runs at a time, `until` in epoch ms; absent when none runs (server/resend-marketing.ts fullSync)
+// "resend_test_segment" {id}: the one-contact Resend segment „MS LAB uudiskiri (proov)" of „Saada proov" (newsletter campaigns Task 4: server/resend-marketing.ts sendTestBroadcast)
 
 export const authTokens = pgTable("auth_tokens", { hash: text("hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), usedAt: timestamp("used_at", { withTimezone: true }) });
 export const adminSessions = pgTable("admin_sessions", { idHash: text("id_hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull() });

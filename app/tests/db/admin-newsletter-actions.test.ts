@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { mailSuppressions, settings, subscribers } from "@/db/schema";
+import { mailSuppressions, newsletterCampaigns, settings, subscribers } from "@/db/schema";
 import type { Env } from "@/server/notify";
 import { ensureSegments, SEGMENT_NAMES, SYNC_LEASE_SETTING, type MarketingDeps } from "@/server/resend-marketing";
 import { fakeKv, stubFetch } from "../fakes";
@@ -324,5 +324,130 @@ describe("the deps of Maria's sync (server/send-deps.ts adminMarketingDeps)", ()
     const row = await sub("kati@example.com");
     expect(await actions.fullSyncAction()).toMatchObject({ added: 1 });
     expect(fake.of("kati@example.com")?.properties).toEqual({ unsubscribe_url: `${SITE}/api/newsletter/loobu?t=${row.token}` });
+  });
+});
+
+// ---------- the campaigns' actions (newsletter campaigns, Task 4) ----------
+
+const CAMPAIGN = {
+  name: "Oktoobri pakkumine",
+  subject: { et: "Sügispakkumine", ru: "" },
+  preheader: { et: "", ru: "" },
+  imageKey: "",
+  body: { et: "Esimene lõik.", ru: "" },
+  code: "",
+  buttonLabel: { et: "", ru: "" },
+  buttonHref: "",
+};
+
+describe("the campaigns' actions: save, copy, test, prepare and send", () => {
+  beforeEach(async () => {
+    await db.delete(newsletterCampaigns);
+    vi.stubEnv("MARIA_EMAIL", "maria@example.com");
+  });
+  const saved = async () => {
+    const r = await actions.saveCampaignAction({ id: null, draft: CAMPAIGN });
+    if (!r.ok || !("id" in r)) throw new Error(JSON.stringify(r));
+    cache.refresh.mockReset();
+    return r.id;
+  };
+
+  test("saveCampaignAction: a new draft (`id: null`) and the same again in place; the page is refreshed; refused fields come back by name", async () => {
+    const r = await actions.saveCampaignAction({ id: null, draft: CAMPAIGN });
+    expect(r).toEqual({ ok: true, id: expect.any(Number) });
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    const id = (r as { id: number }).id;
+    expect(await actions.saveCampaignAction({ id, draft: { ...CAMPAIGN, name: "Uus nimi" } })).toEqual({ ok: true, id });
+    expect((await db.select().from(newsletterCampaigns)).map((c) => c.name)).toEqual(["Uus nimi"]);
+    cache.refresh.mockReset();
+    expect(await actions.saveCampaignAction({ id, draft: { ...CAMPAIGN, name: "" } })).toEqual({ ok: false, fields: { name: "required" } });
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+
+  test("saveCampaignAction: an id the page never sends is refused without a write; a sent campaign is `sent`, one that is gone `notFound`", async () => {
+    for (const id of [0, -1, 1.5, "7" as unknown as number]) expect(await actions.saveCampaignAction({ id, draft: CAMPAIGN }), String(id)).toEqual({ ok: false, error: "notFound" });
+    const id = await saved();
+    await db.update(newsletterCampaigns).set({ status: "sent" }).where(eq(newsletterCampaigns.id, id));
+    expect(await actions.saveCampaignAction({ id, draft: CAMPAIGN })).toEqual({ ok: false, error: "sent" });
+    expect(await actions.saveCampaignAction({ id: id + 100, draft: CAMPAIGN })).toEqual({ ok: false, error: "notFound" });
+  });
+
+  test("copyCampaignAction: the new draft's id, the page refreshed; a campaign that is gone is `notFound`", async () => {
+    const id = await saved();
+    const copied = await actions.copyCampaignAction({ id });
+    expect(copied).toEqual({ ok: true, id: expect.any(Number) });
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    expect(await actions.copyCampaignAction({ id: id + 100 })).toEqual({ ok: false, error: "notFound" });
+  });
+
+  test("sendTestAction: `maria` is MARIA_EMAIL, `me` the signed-in admin's own address; nothing else is ever an address", async () => {
+    const id = await saved();
+    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: true, realLink: false });
+    expect(fake.broadcasts.at(-1)!.delivered.map((d) => d.email)).toEqual(["maria@example.com"]);
+    expect(await actions.sendTestAction({ id, to: "me", locale: "ru" })).toEqual({ ok: true, realLink: false });
+    expect(fake.broadcasts.at(-1)!.delivered.map((d) => d.email)).toEqual(["admin@example.test"]);
+    expect(fake.broadcasts.at(-1)!.args.subject).toBe("[Proov] Sügispakkumine");
+    for (const to of ["someone@example.com", "", null]) expect(await actions.sendTestAction({ id, to: to as "me", locale: "et" }), String(to)).toEqual({ ok: false, error: "address" });
+    expect(await actions.sendTestAction({ id, to: "me", locale: "de" as "et" })).toEqual({ ok: false, error: "address" });
+    vi.stubEnv("MARIA_EMAIL", "");
+    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "address" });
+    expect(fake.broadcasts).toHaveLength(2);
+  });
+
+  test("sendTestAction without the key: `notConfigured`; a campaign that is gone: `notFound`", async () => {
+    const id = await saved();
+    expect(await actions.sendTestAction({ id: id + 100, to: "maria", locale: "et" })).toEqual({ ok: false, error: "notFound" });
+    vi.stubEnv("RESEND_MARKETING_KEY", "");
+    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "notConfigured" });
+    expect(fake.calls).toEqual([]);
+  });
+
+  test("prepareSendAction and sendCampaignAction: the sync with the interactive budget, then the plan; the send, and the page refreshed", async () => {
+    const id = await saved();
+    await sub("kati@example.com");
+    const prepared = await actions.prepareSendAction({ id });
+    expect(prepared).toMatchObject({ ok: true, plan: { et: 1, ru: 0, ruFallsBack: true, left: 0 } });
+    expect(state.budgets.at(-1)).toBe(ADMIN_SYNC_BUDGET_MS);
+    expect(cache.refresh).not.toHaveBeenCalled();
+    expect(fake.broadcasts).toEqual([]);
+    expect(await actions.sendCampaignAction({ id })).toEqual({ ok: true, recipients: { et: 1, ru: 0 }, missing: [], left: 0 });
+    expect(state.budgets.at(-1)).toBe(ADMIN_SYNC_BUDGET_MS);
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    expect(fake.broadcasts).toHaveLength(1);
+    expect(fake.broadcasts[0].args.html).toContain(`src="${SITE}/brand/logo.png"`);
+    expect(await actions.sendCampaignAction({ id })).toEqual({ ok: false, error: "sent" });
+    expect(cache.refresh).toHaveBeenCalledTimes(2); // (a refusal of a campaign that changed meanwhile refreshes too: its row shows the new state)
+  });
+
+  test("the send refused before anything changed (another sync running) does not refresh; an id the page never sends is `notFound`", async () => {
+    const id = await saved();
+    await sub("kati@example.com");
+    await db.insert(settings).values({ key: SYNC_LEASE_SETTING, value: { holder: "the-cron", until: Date.now() + 60_000 } });
+    expect(await actions.sendCampaignAction({ id })).toEqual({ ok: false, error: "busy" });
+    expect(await actions.prepareSendAction({ id })).toEqual({ ok: false, error: "busy" });
+    expect(cache.refresh).not.toHaveBeenCalled();
+    for (const bad of [0, -3, "1" as unknown as number]) {
+      expect(await actions.sendCampaignAction({ id: bad })).toEqual({ ok: false, error: "notFound" });
+      expect(await actions.prepareSendAction({ id: bad })).toEqual({ ok: false, error: "notFound" });
+      expect(await actions.copyCampaignAction({ id: bad })).toEqual({ ok: false, error: "notFound" });
+      expect(await actions.sendTestAction({ id: bad, to: "me", locale: "et" })).toEqual({ ok: false, error: "notFound" });
+    }
+  });
+
+  test("a throw that is not Resend's: `server`, logged by its class only", async () => {
+    state.db = new Proxy({}, {
+      get() {
+        throw new TypeError("boom: kati@example.com");
+      },
+    });
+    try {
+      expect(await actions.saveCampaignAction({ id: null, draft: CAMPAIGN })).toEqual({ ok: false, error: "server" });
+      expect(await actions.sendCampaignAction({ id: 1 })).toEqual({ ok: false, error: "server" });
+      expect(await actions.sendTestAction({ id: 1, to: "me", locale: "et" })).toEqual({ ok: false, error: "server" });
+    } finally {
+      state.db = db;
+    }
+    expect(logged()).toContain("TypeError");
+    for (const secret of ["boom", "kati"]) expect(logged()).not.toContain(secret);
   });
 });

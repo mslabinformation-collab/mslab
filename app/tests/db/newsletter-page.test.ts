@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clients, mailSuppressions, settings, subscribers } from "@/db/schema";
+import { clients, mailSuppressions, newsletterCampaigns, settings, subscribers } from "@/db/schema";
 import { adminEt } from "@/i18n/dict/admin";
 import { NOTIFY_TIMEOUT_MS, RATE_LIMIT_RETRY_MS } from "@/server/notify";
 import { makeTestDb } from "./helpers";
@@ -26,7 +26,15 @@ vi.mock("@/components/admin/Shell", async () => {
   const { createElement } = await import("react");
   return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
 });
-vi.mock("@/server/actions/admin-newsletter", () => ({ fullSyncAction: vi.fn() }));
+vi.mock("@/server/actions/admin-newsletter", () => ({
+  fullSyncAction: vi.fn(),
+  saveCampaignAction: vi.fn(),
+  copyCampaignAction: vi.fn(),
+  sendTestAction: vi.fn(),
+  prepareSendAction: vi.fn(),
+  sendCampaignAction: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn() }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn(), reissueCertificateAction: vi.fn() }));
@@ -55,7 +63,7 @@ import NewsletterPage from "@/app/admin/(panel)/uudiskiri/page";
 import { ClientDetailView } from "@/components/admin/ClientDrawer";
 import { clientDetail } from "@/server/admin-clients";
 import { COUNT_WAIT_MS, syncState } from "@/server/newsletter-admin";
-import { suppressedAddresses } from "@/server/resend-marketing";
+import { MARKETING_GAP_MS, SEND_LEASE_MS, suppressedAddresses } from "@/server/resend-marketing";
 import { adminMarketingDeps } from "@/server/send-deps";
 
 const SITE = "https://mslab.example";
@@ -251,11 +259,94 @@ describe("syncState: what the sync part is told", () => {
   });
 });
 
+describe("the „Kampaaniad“ view (?vaade=kampaaniad, Task 4)", () => {
+  beforeEach(async () => {
+    await db.delete(newsletterCampaigns);
+    vi.stubEnv("MARIA_EMAIL", "maria@example.com");
+  });
+  const DRAFT = {
+    name: "Oktoobri pakkumine",
+    subject: { et: "Sügispakkumine", ru: "" },
+    preheader: { et: "", ru: "" },
+    body: { et: "Esimene lõik.", ru: "" },
+  };
+  const campaign = async (name: string, o: Partial<typeof newsletterCampaigns.$inferInsert> = {}) => {
+    const [row] = await db.insert(newsletterCampaigns).values({ ...DRAFT, name, ...o }).returning();
+    return row;
+  };
+
+  test("both views are named above the page; the subscribers' view is the default, the campaigns' its own heading without the CSV buttons", async () => {
+    const subscribersView = await render();
+    expect(subscribersView).toContain('data-newsletter-views=""');
+    expect(subscribersView).toMatch(/<a[^>]*aria-current="page"[^>]*data-view="subscribers"/);
+    const campaigns = await render({ vaade: "kampaaniad" });
+    expect(campaigns).toMatch(/<a[^>]*aria-current="page"[^>]*data-view="campaigns"/);
+    expect(campaigns).toContain(">Kampaaniad</h1>");
+    expect(campaigns).not.toContain("data-csv");
+    expect(campaigns).not.toContain("data-newsletter-sync");
+    expect(campaigns).not.toContain("data-subscriber=");
+    expect(text(campaigns)).toContain("Kampaaniaid veel pole.");
+    expect(campaigns).toContain(`href="/admin/uudiskiri?vaade=kampaaniad&amp;kampaania=uus"`);
+  });
+
+  test("the list: drafts first, then the sent ones the newest first, each linking to its editor; „Saadetud {date} · {n} tellijale“ for a sent one", async () => {
+    const sent = await campaign("Saadetud", { status: "sent", sentAt: at(-60), recipients: { et: 3, ru: 2 }, broadcasts: { et: "bc_1" } });
+    const draft = await campaign("Mustand");
+    const html = await render({ vaade: "kampaaniad" });
+    const order = [...html.matchAll(/data-campaign-row="(\d+)"/g)].map((m) => Number(m[1]));
+    expect(order).toEqual([draft.id, sent.id]);
+    expect(html).toContain(`href="/admin/uudiskiri?vaade=kampaaniad&amp;kampaania=${draft.id}"`);
+    expect(text(html)).toContain("Saadetud 19.10.2026 12:00 · 3 tellijale");
+    expect(html).toContain('data-campaign-status="draft"');
+    expect(html).not.toContain("data-campaign-form"); // (none chosen)
+  });
+
+  test("a chosen draft opens its editor with its fields; a new one an empty editor; an id that is not there says so", async () => {
+    const draft = await campaign("Mustand");
+    const html = await render({ vaade: "kampaaniad", kampaania: String(draft.id) });
+    expect(html).toContain(`data-campaign-form="${draft.id}"`);
+    expect(html).toContain('value="Mustand"');
+    expect(html).toContain("data-campaign-preview");
+    expect(await render({ vaade: "kampaaniad", kampaania: "uus" })).toContain('data-campaign-form="new"');
+    const gone = await render({ vaade: "kampaaniad", kampaania: "999999" });
+    expect(text(gone)).toContain("Seda kampaaniat enam pole.");
+    expect(gone).not.toContain("data-campaign-form");
+  });
+
+  test("„Saada proov“ offers Maria's address and the signed-in admin's, and marks a subscriber's (ruling R7); without the key no address and the not-set-up text", async () => {
+    const draft = await campaign("Mustand");
+    await sub("maria@example.com");
+    const html = await render({ vaade: "kampaaniad", kampaania: String(draft.id) });
+    expect(html).toContain('data-test-to="maria"');
+    expect(html).toContain('data-test-to="me"');
+    expect(text(html)).toContain("Maria: maria@example.com");
+    expect(text(html)).toContain("Mina: maria@example.test");
+    expect(text(html)).toContain("Proov läheb tellija-aadressile — selle loobumislink on päris."); // Maria's, the first choice, is a subscriber's
+    expect(fake.calls).toEqual([]); // (the page asks Resend nothing)
+    vi.stubEnv("RESEND_MARKETING_KEY", "");
+    const off = await render({ vaade: "kampaaniad", kampaania: String(draft.id) });
+    expect(off).not.toContain("data-test-to");
+    expect(text(off)).toContain("Resendi uudiskirja saatmine pole veel seadistatud.");
+    expect(off).toContain(`data-campaign-form="${draft.id}"`);
+  });
+
+  test("a sent campaign opens read-only: its line, its links to Resend, „Kopeeri“, no field", async () => {
+    const sent = await campaign("Saadetud", { status: "sent", sentAt: at(-60), recipients: { et: 3, ru: 0 }, broadcasts: { et: "bc_1" } });
+    const html = await render({ vaade: "kampaaniad", kampaania: String(sent.id) });
+    expect(html).toContain('data-campaign-sent="sent"');
+    expect(html).toContain('href="https://resend.com/broadcasts/bc_1"');
+    expect(html).toContain("data-campaign-copy");
+    expect(html).not.toContain("data-campaign-form");
+  });
+});
+
 describe("the page's time limit", () => {
-  test("60 seconds: the action's budget, a call begun at its end (8 s, and once more after a 429) and the page's queries fit", () => {
-    expect(page.maxDuration).toBe(60);
-    const worstSeconds = (adminMarketingDeps(25_000).budgetMs! + NOTIFY_TIMEOUT_MS + RATE_LIMIT_RETRY_MS + NOTIFY_TIMEOUT_MS) / 1000;
-    expect(worstSeconds).toBeLessThan(page.maxDuration);
+  test("120 seconds: the send's sync (its budget, a call begun at its end: 8 s, and once more after a 429), its two broadcasts and the page's queries fit (Task 4)", () => {
+    expect(page.maxDuration).toBe(120);
+    const sync = adminMarketingDeps(25_000).budgetMs! + NOTIFY_TIMEOUT_MS + RATE_LIMIT_RETRY_MS + NOTIFY_TIMEOUT_MS;
+    expect(SEND_LEASE_MS).toBe(2 * (MARKETING_GAP_MS + NOTIFY_TIMEOUT_MS + RATE_LIMIT_RETRY_MS + NOTIFY_TIMEOUT_MS));
+    const worstSeconds = (sync + SEND_LEASE_MS) / 1000;
+    expect(worstSeconds).toBeLessThan(page.maxDuration - 30); // (room for the queries and the database's own waits)
   });
 });
 

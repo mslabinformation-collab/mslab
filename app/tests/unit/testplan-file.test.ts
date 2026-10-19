@@ -3,6 +3,7 @@ import plan from "@/data/testplan.json";
 import { checkPlan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { et } from "@/i18n/dict/et";
+import { fill } from "@/i18n/format";
 import { ru } from "@/i18n/dict/ru";
 
 // The test page's plan file (phase 4, piece 1, spec §3, §8): src/data/testplan.json passes checkPlan, and checkPlan names each way a plan can
@@ -417,5 +418,62 @@ describe("the Resend sync check sits after the subscriber it syncs", () => {
     expect(text).toContain(`„${sync.siteContacts.replace(": {n}", "")}“`);
     expect(text).toContain(`„${adminEt.newsletter.suppressed.slice(0, adminEt.newsletter.suppressed.indexOf(" ("))}“`);
     expect(text).toContain(`„${sync.errors.permission}“`);
+  });
+});
+
+// The newsletter's campaigns (newsletter campaigns, Task 4; spec §6): writing one with the preview, „Saada proov“, „Saada kõigile“, the received mail's
+// unsubscribe and „Kopeeri“, in the order a campaign lives, right after the sync check (Proov 3 is a synced subscriber by then, and the send goes to
+// her). The checks that send are Dim's (the key, and test addresses only); the others are Maria's.
+describe("the campaign checks follow the sync check, in the order a campaign lives", () => {
+  const order = plan.items.map((i) => i.id);
+  const IDS = ["avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-proov", "avalik-uudiskiri-kampaania-saada", "avalik-uudiskiri-kampaania-loobu", "avalik-uudiskiri-kampaania-kopeeri"];
+  const item = (id: string) => {
+    const found = plan.items.find((i) => i.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const text = (id: string) => [...item(id).steps, ...item(id).expect].join("\n");
+  const t = adminEt.newsletter.campaigns;
+
+  test("right after „Sünkrooni Resendiga“, one after another, in its area; new, from the deploy or its stamp", () => {
+    const start = order.indexOf("avalik-uudiskiri-resend");
+    expect(IDS.map((id) => order.indexOf(id))).toEqual(IDS.map((_, i) => start + 1 + i));
+    for (const id of IDS) {
+      expect(item(id).area, id).toBe("avalik");
+      expect(item(id).mark, id).toBe("new");
+      expect(markedSince(item(id).markedAt), id).toBe(true);
+      expect(item(id).writes, id).toBe(true);
+    }
+  });
+
+  test("the sends are Dim's; writing, the unsubscribe from Proov 3's mailbox and „Kopeeri“ are Maria's", () => {
+    expect(IDS.map((id) => item(id).who)).toEqual(["maria", "dim", "dim", "maria", "maria"]);
+    // the send goes to test addresses only: Dim stops when the list holds any other
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain("+proov");
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain("ära jätka");
+  });
+
+  test("they quote the page's words: the tab, the buttons, the confirmation, the sent line, the test page and the subscriber warning", () => {
+    expect(adminEt.newsletter.views.campaigns).toBe("Kampaaniad");
+    expect(text("avalik-uudiskiri-kampaania")).toContain(`„${t.new}“`);
+    expect(text("avalik-uudiskiri-kampaania")).toContain(`„${adminEt.editor.saved}“`);
+    expect(text("avalik-uudiskiri-kampaania")).toContain(`„${t.status.draft}“`);
+    expect(item("avalik-uudiskiri-kampaania-proov").title).toBe(t.test.button);
+    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${t.testPage}“`);
+    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${t.test.realLink}“`);
+    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${t.test.sent.slice(0, t.test.sent.indexOf(" {email}"))} …“`);
+    expect(text("avalik-uudiskiri-kampaania-proov")).toContain("„MS LAB uudiskiri (proov)“");
+    expect(item("avalik-uudiskiri-kampaania-saada").title).toBe(t.all.button);
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.all.confirm.replace("{n}", "…").replace("{a}", "…").replace("{b}", "…")}“`);
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.all.yes}“`);
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.sentLine.replace("{date}", "…").replace("{n}", "…")}“`);
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.errorsOf.sent}“`);
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${fill(t.openInResend, { lang: t.langNames.et })}“`);
+    expect(text("avalik-uudiskiri-kampaania-loobu")).toContain(`„${et.mail.campaign.reason}“`);
+    expect(text("avalik-uudiskiri-kampaania-loobu")).toContain(`„${et.mail.campaign.unsubscribe}“`);
+    expect(text("avalik-uudiskiri-kampaania-loobu")).toContain(`„${et.newsletter.unsubscribePage.heading}“`);
+    expect(item("avalik-uudiskiri-kampaania-kopeeri").title).toBe(t.copy);
+    expect(text("avalik-uudiskiri-kampaania-kopeeri")).toContain(`„Proov 3 kampaania${t.copySuffix}“`);
+    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${ru.mail.campaign.unsubscribe}“`);
   });
 });

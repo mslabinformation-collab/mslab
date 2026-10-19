@@ -216,3 +216,21 @@ test("the database failing on POST: the visitor is told so (?uudiskiri=viga), ne
   expect(logged).not.toContain(TOKEN);
   expect(logged).not.toContain("uus@example.com");
 });
+
+// „Saada proov“'s link (newsletter campaigns Task 4, ruling R4): a test contact that is no subscriber gets ?proov=1 as its unsubscribe link. The
+// page says it is a test, has no form, and changes nothing, whatever else the address carries.
+test("?proov=1: the test page in Estonian, „Proovikiri — päris kirjas viib see link loobumisele.“, no form, nothing deleted, never cached", async () => {
+  for (const url of [`${ORIGIN}/api/newsletter/loobu?proov=1`, `${link(TOKEN)}&proov=1`]) {
+    const res = await route.GET(new Request(url));
+    expect(res.status, url).toBe(200);
+    expect(res.headers.get("cache-control"), url).toBe("no-store");
+    expect(res.headers.get("content-type"), url).toMatch(/^text\/html/);
+    const html = await res.text();
+    expect(html, url).toContain('<html lang="et">');
+    expect(html, url).toContain("Proovikiri — päris kirjas viib see link loobumisele.");
+    expect(html, url).not.toContain("<form");
+    expect(html, url).not.toContain("<button");
+    expect(html, url).not.toContain(TOKEN);
+  }
+  expect(await emails()).toEqual(BOTH);
+});

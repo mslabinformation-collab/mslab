@@ -588,6 +588,34 @@ export async function insertAdminPayments(fx: AdminFixtures): Promise<AdminPayme
   return { paid: paid.reference, held: held.reference, voided: voided.reference, pending: pending.reference, ecourse: ecourse.reference };
 }
 
+/** The newsletter campaigns the admin tests write through the editor (newsletter campaigns Task 4): every name starts with this. */
+export const E2E_CAMPAIGN_PREFIX = "E2E kampaania";
+const campaignNames = (name?: string) => (name ? name : `${E2E_CAMPAIGN_PREFIX}%`);
+
+/** A campaign the editor stored, by its name, as the table holds it (newest first). */
+export type StoredCampaign = { id: number; status: string; code: string | null; subject: { et: string; ru?: string }; body: { et: string; ru?: string } };
+export async function storedCampaigns(name: string): Promise<StoredCampaign[]> {
+  const sql = connect(false);
+  try {
+    return [...(await sql<StoredCampaign[]>`select id, status, code, subject, body from newsletter_campaigns where name = ${name} order by id desc`)];
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Deletes the campaigns of one name, or all the admin tests' (E2E_CAMPAIGN_PREFIX); returns how many are left (0 when clean). No page but the admin's shows them. */
+export async function removeCampaignRows(name?: string): Promise<number> {
+  const sql = connect(false);
+  try {
+    const like = campaignNames(name);
+    await sql`delete from newsletter_campaigns where name like ${like}`;
+    const [{ n }] = await sql<{ n: number }[]>`select count(*)::int as n from newsletter_campaigns where name like ${like}`;
+    return Number(n);
+  } finally {
+    await sql.end();
+  }
+}
+
 /** Deletes the admin fixture rows of one tag, or all of them; returns how many are left (0 when clean). */
 export async function removeAdminFixtures(tag?: string): Promise<number> {
   const mails = tag ? `e2e-admin-%-${tag}@example.com` : ADMIN_FIXTURE_EMAIL_PATTERN;
