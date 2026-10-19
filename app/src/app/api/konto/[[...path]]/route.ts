@@ -8,6 +8,7 @@ import { logFailure } from "@/server/log";
 import { mediaStore } from "@/server/media-store";
 import { paymentProvider } from "@/server/payments/montonio";
 import { revalidatePublic } from "@/server/public-cache";
+import { subscriberSync } from "@/server/resend-marketing";
 import { hostOrigin, isLocalHost, linkBase } from "@/server/site";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +19,9 @@ export const maxDuration = 30;
 function deps(request: Request): AccountDeps {
   const h = request.headers;
   const env = { ...serverEnv(), KV: serverKv() };
+  const db = getDb();
   return {
-    db: getDb(),
+    db,
     env,
     now: new Date(),
     // Links in e-mails come from the Host header only (Vercel routes by it); a Host outside the allow-list gives SITE_URL.
@@ -34,6 +36,8 @@ function deps(request: Request): AccountDeps {
     montonio: paymentProvider(),
     // a review withdrawn, an account deleted with reviews: the course's pages and the home page render again before the answer (server/public-cache.ts)
     changed: revalidatePublic,
+    // the newsletter switch, a new language, the account's deletion: the address's Resend contact after the response (none without the key)
+    newsletterSync: subscriberSync(db, env),
   };
 }
 

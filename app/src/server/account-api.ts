@@ -48,6 +48,7 @@ import { addPhoto, photoFor, practicalView, removeKeys, removePhoto, submitPract
 import { isPrefetch } from "./prefetch";
 import { privateFileAnswer } from "./private-file";
 import { belowLimit, clientIp, countFailure, rateKey, rateLimit, releaseSlot, reserveSlot, windowKey } from "./ratelimit";
+import type { SubscriberSync } from "./resend-marketing";
 import { withdrawReview } from "./reviews";
 import { resubmitAnswers, submitAttempt, testView, type SubmitResult } from "./test-attempts";
 import { sha256 } from "./token";
@@ -96,7 +97,21 @@ export type AccountDeps = {
    * a script): nothing to refresh. A failure never undoes the change or fails the answer: it is logged (reviewsChanged).
    */
   changed?: (change: PublicChange) => Promise<void> | void;
+  /**
+   * Syncs an address whose subscriber row changed (the newsletter switch, a change of language, the account's deletion) to Resend, after the
+   * response (newsletter campaigns, spec D2; resend-marketing.ts subscriberSync). Absent (no marketing key, a test): nothing is synced, and the
+   * full sync catches up.
+   */
+  newsletterSync?: SubscriberSync;
 };
+
+/** Told the address of a subscriber row that changed, once committed: its sync to Resend goes after the response (deps.newsletterSync; absent, nothing). */
+const syncLater =
+  (deps: AccountDeps) =>
+  (email: string): void => {
+    const sync = deps.newsletterSync;
+    if (sync) deps.later(() => sync(email));
+  };
 
 const SESSION_MAX_AGE = CLIENT_SESSION_TTL_MS / 1000;
 const RATE_WINDOW_SEC = 10 * 60;
@@ -1024,20 +1039,21 @@ async function mergeFavouriteList(request: Request, deps: AccountDeps): Promise<
   return clientResponse(session, { ok: true, favourites: await mergeFavourites(deps.db, session.clientId, input.data.slugs) });
 }
 
-/** PATCH /andmed `{ name, phone, locale }`. 200 `{ ok: true }`. */
+/** PATCH /andmed `{ name, phone, locale }`. 200 `{ ok: true }`. A new language moves her newsletter row's too, and its Resend segment after the response. */
 async function profile(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const input = parseProfile(await readObject(request));
   if (!input.ok) return badInput(session, input.error);
-  return (await updateProfile(deps.db, session.clientId, input.data)) ? clientResponse(session, { ok: true }) : unauthorized("none");
+  return (await updateProfile(deps.db, session.clientId, input.data, syncLater(deps))) ? clientResponse(session, { ok: true }) : unauthorized("none");
 }
 
 /**
  * POST /uudiskiri `{ on }`: the account's address subscribes (confirmed: the login proved it) or unsubscribes. 200 `{ ok: true }`. Switched
  * on and confirmed now for the first time: the welcome mail after the response (phase 2c; one step since 09.10, with Seaded's code when
  * there is one and always with the unsubscribe link; server/newsletter.ts sendWelcome: once per address, never in development, never to a
- * sample address). The row is confirmed at once, as the public forms' sign-up is: no confirmation mail on this path either.
+ * sample address). The row is confirmed at once, as the public forms' sign-up is: no confirmation mail on this path either. Either way the
+ * address is synced to Resend after the response (her contact made, or deleted).
  */
 async function newsletter(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
@@ -1045,7 +1061,7 @@ async function newsletter(request: Request, deps: AccountDeps): Promise<Response
   const input = parseNewsletter(await readObject(request));
   if (!input.ok) return badInput(session, input.error);
   const before = input.data.on ? await clientNewsletter(deps.db, session.clientId) : null;
-  if (!(await setNewsletter(deps.db, session.clientId, input.data.on, deps.now))) return unauthorized("none");
+  if (!(await setNewsletter(deps.db, session.clientId, input.data.on, deps.now, syncLater(deps)))) return unauthorized("none");
   if (before && before.state !== "yes" && !deps.dev) deps.later(() => sendWelcome(deps, { email: before.email, locale: before.locale }));
   return clientResponse(session, { ok: true });
 }
@@ -1304,14 +1320,14 @@ async function acceptContractRoute(request: Request, deps: AccountDeps): Promise
  * POST /kustuta `{ confirm: true }`: deletes the account (client-data.ts deleteClient: registrations stay with Maria; her reviews go, and the public pages
  * of their courses are refreshed) and answers with both cookies cleared, the one answer that does not go through clientResponse. The confirmation e-mail goes out after the
  * response, never to a sample address (`@example.test`) and never in development. Her practical work's photo files (e-course completion,
- * listed by deleteClient) leave the store after the response too.
+ * listed by deleteClient) leave the store after the response too, and so does her newsletter's Resend contact.
  */
 async function deleteAccount(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
   if (session instanceof Response) return session;
   const input = parseDeletion(await readObject(request));
   if (!input.ok) return badInput(session, input.error);
-  const gone = await deleteClient(deps.db, session.clientId);
+  const gone = await deleteClient(deps.db, session.clientId, syncLater(deps));
   // her reviews went with her feedback: the pages of each of their courses (and the home page) are refreshed now that it is committed (student reviews, D6)
   for (const slug of gone?.reviewCourses ?? []) await reviewsChanged(deps, slug);
   // her practical work's photo files (e-course completion): listed in the deletion's transaction, removed from the store after the answer

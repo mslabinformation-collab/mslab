@@ -818,6 +818,7 @@ export const settings = pgTable("settings", { key: text("key").primaryKey(), val
 // "certificate" {place, registryCode, practicalLine, trainerName, nextYear, nextSeq} (phase 3d: domain/certificate.ts readCertificateSettings)
 // "invoice" {company, registryCode, address, vatNumber, vatOn, vatRate, prefix, nextYear, nextSeq, termDays, footer} (invoices: domain/invoice.ts readInvoiceSettings)
 // "contractContactVersion" the contact course's contract text's version (contracts: domain/contract.ts CONTRACT_CONTACT_VERSION_KEY), as "courseTermsVersion" is the e-course text's
+// "resend_segments" {et, ru, property}: the newsletter's two Resend segments and its contact property unsubscribe_url (newsletter campaigns: server/resend-marketing.ts ensureSegments)
 
 export const authTokens = pgTable("auth_tokens", { hash: text("hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), usedAt: timestamp("used_at", { withTimezone: true }) });
 export const adminSessions = pgTable("admin_sessions", { idHash: text("id_hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull() });

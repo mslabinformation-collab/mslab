@@ -765,31 +765,52 @@ export async function mergeFavourites(db: Db, clientId: number, slugs: string[])
 
 // ---------- profile and newsletter ----------
 
-/** Saves the client's name, phone and language. false when the client is gone. */
-export async function updateProfile(db: Db, clientId: number, profile: { name: string; phone: string; locale: "et" | "ru" }): Promise<boolean> {
-  const rows = await db.update(clients).set({ name: profile.name, phone: profile.phone, locale: profile.locale }).where(eq(clients.id, clientId)).returning();
-  return rows.length > 0;
+/**
+ * Saves the client's name, phone and language. false when the client is gone. A change of language moves her newsletter with it (newsletter
+ * campaigns, spec D2: her Resend segment follows it): the subscriber rows linked to her account (`client_id`) take the new language and are
+ * marked unsynced, in the same transaction, and `changed` is told each one's address once it has committed (the caller syncs them).
+ */
+export async function updateProfile(
+  db: Db,
+  clientId: number,
+  profile: { name: string; phone: string; locale: "et" | "ru" },
+  changed?: (email: string) => void,
+): Promise<boolean> {
+  const moved = await db.transaction(async (tx) => {
+    const [before] = await tx.select({ locale: clients.locale }).from(clients).where(eq(clients.id, clientId)).for("update");
+    if (!before) return null;
+    await tx.update(clients).set({ name: profile.name, phone: profile.phone, locale: profile.locale }).where(eq(clients.id, clientId));
+    if (before.locale === profile.locale) return [];
+    return tx.update(subscribers).set({ locale: profile.locale, syncedAt: null }).where(eq(subscribers.clientId, clientId)).returning();
+  });
+  if (!moved) return false;
+  for (const row of moved) changed?.(row.email);
+  return true;
 }
 
 /**
  * Newsletter on: the account's address becomes a confirmed subscriber (the login proved the address, so no confirmation mail), an
  * address already waiting for confirmation is confirmed now. Off: the subscriber row of the address is deleted. false when the client is gone.
+ * Switched on, the row is marked unsynced (a fresh consent, newsletter campaigns spec D3: her Resend contact is set back to subscribed); `changed`
+ * is told the address after the write, on, or off when a row went (the caller syncs it to Resend).
  */
-export async function setNewsletter(db: Db, clientId: number, on: boolean, now: Date): Promise<boolean> {
+export async function setNewsletter(db: Db, clientId: number, on: boolean, now: Date, changed?: (email: string) => void): Promise<boolean> {
   const [client] = await db.select({ email: clients.email, locale: clients.locale }).from(clients).where(eq(clients.id, clientId)).limit(1);
   if (!client) return false;
   const address = normalizeEmail(client.email);
   const sameAddress = sql`lower(${subscribers.email}) = ${address}`;
   if (!on) {
-    await db.delete(subscribers).where(sameAddress);
+    const gone = await db.delete(subscribers).where(sameAddress).returning();
+    if (gone.length > 0) changed?.(address);
     return true;
   }
   const [existing] = await db.select({ id: subscribers.id, confirmedAt: subscribers.confirmedAt }).from(subscribers).where(sameAddress).limit(1);
   if (existing) {
-    await db.update(subscribers).set({ clientId, confirmedAt: existing.confirmedAt ?? now }).where(eq(subscribers.id, existing.id));
+    await db.update(subscribers).set({ clientId, confirmedAt: existing.confirmedAt ?? now, syncedAt: null }).where(eq(subscribers.id, existing.id));
   } else {
     await db.insert(subscribers).values({ email: address, locale: client.locale, token: newToken(), consentAt: now, confirmedAt: now, clientId }).onConflictDoNothing();
   }
+  changed?.(address);
   return true;
 }
 
@@ -872,10 +893,15 @@ export async function createChangeRequest(
  * upload in flight is either in the list or, after this commit, finds the access gone and removes its own files. The caller removes the
  * listed files from the store after the commit (account-api.ts deleteAccount).
  * Returns the address and language the confirmation mail goes to, the photo files to remove, and the slugs of the courses whose reviews went (sorted, once
- * each); null when the client was already gone.
+ * each); null when the client was already gone. `changed`, when her address had a subscriber row, is told the address once the deletion has committed
+ * (the caller deletes her Resend contact: newsletter campaigns, spec D2).
  */
-export async function deleteClient(db: Db, clientId: number): Promise<{ email: string; locale: "et" | "ru"; photoKeys: string[]; reviewCourses: string[] } | null> {
-  return db.transaction(async (tx) => {
+export async function deleteClient(
+  db: Db,
+  clientId: number,
+  changed?: (email: string) => void,
+): Promise<{ email: string; locale: "et" | "ru"; photoKeys: string[]; reviewCourses: string[] } | null> {
+  const done = await db.transaction(async (tx) => {
     const [existing] = await tx.select({ email: clients.email }).from(clients).where(eq(clients.id, clientId)).limit(1);
     if (!existing) return null;
     const address = normalizeEmail(existing.email);
@@ -897,7 +923,10 @@ export async function deleteClient(db: Db, clientId: number): Promise<{ email: s
     const [row] = await tx.delete(clients).where(eq(clients.id, clientId)).returning(); // (returning(fields) has no common overload on the Db union)
     if (!row) return null;
     await tx.delete(clientLoginTokens).where(eq(clientLoginTokens.email, address));
-    await tx.delete(subscribers).where(sql`lower(${subscribers.email}) = ${address}`);
-    return { email: row.email, locale: row.locale, photoKeys, reviewCourses };
+    const unsubscribed = await tx.delete(subscribers).where(sql`lower(${subscribers.email}) = ${address}`).returning();
+    return { gone: { email: row.email, locale: row.locale, photoKeys, reviewCourses }, address, subscribed: unsubscribed.length > 0 };
   });
+  if (!done) return null;
+  if (done.subscribed) changed?.(done.address);
+  return done.gone;
 }
