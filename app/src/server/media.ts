@@ -4,7 +4,8 @@
 // declared type, the size and the file's first bytes itself. Keys are img/<random uuid>.<ext>, never the visitor's file
 // name, and /media serves nothing else (isMediaKey).
 
-import { isMediaKey } from "@/lib/media";
+// (a relative path, not "@/…": next.config.ts imports this file for MEDIA_CSP, and Next loads the config without the tsconfig paths)
+import { isMediaKey } from "../lib/media";
 
 /**
  * Largest upload accepted (bytes). The browser sends images of at most 2400 px, usually under 2 MB. Vercel Functions
