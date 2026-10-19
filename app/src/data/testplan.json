@@ -4252,7 +4252,7 @@
       "device": "any",
       "title": "Kiri: uudiskirja tervitus ja loobumine",
       "steps": [
-        "Ava Gmailis telefonis kiri „Tere tulemast MS LABi!“.",
+        "Ava Gmailis telefonis Proov 1 kiri „Tere tulemast MS LABi!“, mis tuli „Minu andmed“ lülitist.",
         "Ava sama kiri Gmailis arvutis.",
         "Vajuta kirja viimases reas loobumise linki.",
         "Vajuta avanenud lehel „Loobu uudiskirjast“."
@@ -4262,11 +4262,13 @@
         "Kirjas on „Aitäh, et liitusid MS LABi uudiskirjaga.“.",
         "Kui Seadetes on tervituskood, on kood kirjas.",
         "Link avab lehe „Uudiskirjast loobumine“.",
-        "Pärast nuppu on avalehel „Oled uudiskirjast loobunud.“ ja halduses pole aadressi."
+        "Pärast nuppu on avalehel „Oled uudiskirjast loobunud.“ ja halduses pole Proov 1 aadressi."
       ],
       "why": "Igal uudiskirjal peab olema lihtne loobumine.",
       "risk": "med",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-parool",

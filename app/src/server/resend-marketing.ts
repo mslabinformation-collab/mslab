@@ -363,8 +363,17 @@ const sameAddress = (address: string) => sql`lower(${subscribers.email}) = ${add
  */
 const isRecipient = (row: Row): boolean => row.confirmedAt !== null && !isSampleAddress(row.address);
 
-async function rowOf(db: Db, address: string): Promise<Row | null> {
-  const [row] = await db.select(COLUMNS).from(subscribers).where(sameAddress(address)).orderBy(subscribers.id).limit(1);
+/**
+ * The row of an address (lower case on both sides): its confirmed row when it has one, else its oldest. A legacy pair of rows that differ only in
+ * case can hold an unconfirmed one beside the confirmed one; the confirmed one decides, here and in isSubscriberAddress (one match for both).
+ */
+async function rowOf(q: Q, address: string): Promise<Row | null> {
+  const [row] = await q
+    .select(COLUMNS)
+    .from(subscribers)
+    .where(sameAddress(address))
+    .orderBy(sql`${subscribers.confirmedAt} is null`, subscribers.id)
+    .limit(1);
   return row ? asRow(row) : null;
 }
 
@@ -585,12 +594,7 @@ export function subscriberSync(db: Db, env: Env): SubscriberSync | undefined {
 
 /** Is the address a confirmed subscriber (the comparison lowers both sides)? Task 4's test send keeps her real unsubscribe link then (ruling R7). */
 export async function isSubscriberAddress(q: Q, email: string): Promise<boolean> {
-  const [row] = await q
-    .select({ id: subscribers.id })
-    .from(subscribers)
-    .where(and(sameAddress(normalizeEmail(email)), isNotNull(subscribers.confirmedAt)))
-    .limit(1);
-  return row !== undefined;
+  return Boolean((await rowOf(q, normalizeEmail(email)))?.confirmedAt);
 }
 
 // ---------- the full sync ----------
@@ -1031,60 +1035,85 @@ async function testSegmentWith(deps: MarketingDeps, call: Call, r: ResendLike): 
  *    to subscribed (an admin's own address, for the test she asked for; a contact outside our segments, which the sync never touches); a
  *    subscriber's contact keeps her real link (`realLink: true`, ruling R7), and is made with it if the sync has not made it yet;
  * 4. the broadcast, made and sent at once (broadcastTo).
- * MarketingUnavailable when not set up or a call fails (nothing is sent then). Logs ids only.
+ * A subscriber is told by her confirmed row (rowOf, the match isSubscriberAddress uses), and read again after the test link is written: one who
+ * signed up meanwhile gets her real link back. The calls keep within the test's lease: none starts later than a call's longest time (its timeout,
+ * and once more after a 429) before the lease ends; past that the test stops, nothing sent. MarketingUnavailable when not set up, when a call
+ * fails or the time is up (nothing is sent then). Logs ids only.
  */
 export async function sendTestBroadcast(deps: MarketingDeps, address: string, mail: BroadcastMail): Promise<{ id: string; realLink: boolean }> {
   if (!marketingConfigured(deps.env)) throw new MarketingUnavailable({ name: "not_configured" });
+  // (taken before the lease, so never later than the lease's own start)
+  const deadline = Date.now() + (deps.budgetMs ?? UNBOUNDED_LEASE_MS) + LEASE_SLACK_MS - CALL_MAX_MS;
   return underLease(deps, 0, "the test send", async () => {
-    const call = pacer(deps);
-    const r = client(deps);
-    await segmentsWith(deps, call);
-    const email = normalizeEmail(address);
-    const row = await rowOf(deps.db, email);
-    const subscriber = row?.confirmedAt ? row : null;
-
-    let segment = await testSegmentWith(deps, call, r);
-    let members: ContactView[];
     try {
-      members = await listAll(call, "contacts.list(proov)", (after) => r.contacts.list({ segmentId: segment, limit: 100, after }));
+      return await testBroadcastWith(deps, pacer(deps, deadline), address, mail);
     } catch (e) {
-      if (!(e instanceof MarketingUnavailable && e.code === "not_found")) throw e;
-      await deps.db.delete(settings).where(eq(settings.key, TEST_SEGMENT_SETTING));
-      segment = await testSegmentWith(deps, call, r);
-      members = [];
+      if (e instanceof OutOfTime) throw new MarketingUnavailable({ name: "out_of_time" }, "the test's lease");
+      throw e;
     }
-    const found = await call(() => r.contacts.get({ email: pathEmail(email) }));
-    if (found.error && !isNotFound(found.error)) throw new MarketingUnavailable(found.error, "contacts.get");
-    const existing = found.data?.id ?? null;
-    for (const member of members) {
-      if (member.id === existing) continue;
-      const out = await call(() => r.contacts.segments.remove({ contactId: member.id, segmentId: segment }));
-      if (out.error && !isNotFound(out.error)) throw new MarketingUnavailable(out.error, "contacts.segments.remove");
-    }
-
-    const testLink = subscriber ? null : testUnsubscribeUrl(deps.siteUrl);
-    let contactId: string;
-    if (existing === null) {
-      const properties = { [UNSUBSCRIBE_PROPERTY]: testLink ?? unsubscribeUrl(deps.siteUrl, subscriber!.token) };
-      const made = await call(() => r.contacts.create({ email, unsubscribed: false, properties, segments: [{ id: segment }] }));
-      if (!made.data) throw new MarketingUnavailable(made.error, "contacts.create");
-      contactId = made.data.id;
-    } else {
-      contactId = existing;
-      if (testLink !== null) {
-        const updated = await call(() => r.contacts.update({ id: contactId, unsubscribed: false, properties: { [UNSUBSCRIBE_PROPERTY]: testLink } }));
-        if (updated.error) throw new MarketingUnavailable(updated.error, "contacts.update");
-      }
-      if (!members.some((m) => m.id === contactId)) {
-        const added = await call(() => r.contacts.segments.add({ contactId, segmentId: segment }));
-        if (added.error) throw new MarketingUnavailable(added.error, "contacts.segments.add");
-      }
-    }
-
-    const sent = await broadcastTo(deps, call, r, segment, mail);
-    if (!sent.ok) throw sent.error;
-    const whose = subscriber ? `subscriber ${subscriber.id}, her own unsubscribe link` : "the test link";
-    console.info(`[newsletter] test broadcast ${sent.id} sent to the test segment ${segment} (contact ${contactId}, ${whose})`);
-    return { id: sent.id, realLink: subscriber !== null };
   });
+}
+
+/** The longest one call can take: its timeout, and once more after a 429 with the pause before it. */
+const CALL_MAX_MS = NOTIFY_TIMEOUT_MS + RATE_LIMIT_RETRY_MS + NOTIFY_TIMEOUT_MS;
+
+async function testBroadcastWith(deps: MarketingDeps, call: Call, address: string, mail: BroadcastMail): Promise<{ id: string; realLink: boolean }> {
+  const r = client(deps);
+  await segmentsWith(deps, call);
+  const email = normalizeEmail(address);
+  const row = await rowOf(deps.db, email);
+  let subscriber = row?.confirmedAt ? row : null;
+
+  let segment = await testSegmentWith(deps, call, r);
+  let members: ContactView[];
+  try {
+    members = await listAll(call, "contacts.list(proov)", (after) => r.contacts.list({ segmentId: segment, limit: 100, after }));
+  } catch (e) {
+    if (!(e instanceof MarketingUnavailable && e.code === "not_found")) throw e;
+    await deps.db.delete(settings).where(eq(settings.key, TEST_SEGMENT_SETTING));
+    segment = await testSegmentWith(deps, call, r);
+    members = [];
+  }
+  const found = await call(() => r.contacts.get({ email: pathEmail(email) }));
+  if (found.error && !isNotFound(found.error)) throw new MarketingUnavailable(found.error, "contacts.get");
+  const existing = found.data?.id ?? null;
+  for (const member of members) {
+    if (member.id === existing) continue;
+    const out = await call(() => r.contacts.segments.remove({ contactId: member.id, segmentId: segment }));
+    if (out.error && !isNotFound(out.error)) throw new MarketingUnavailable(out.error, "contacts.segments.remove");
+  }
+
+  const testLink = subscriber ? null : testUnsubscribeUrl(deps.siteUrl);
+  let contactId: string;
+  if (existing === null) {
+    const properties = { [UNSUBSCRIBE_PROPERTY]: testLink ?? unsubscribeUrl(deps.siteUrl, subscriber!.token) };
+    const made = await call(() => r.contacts.create({ email, unsubscribed: false, properties, segments: [{ id: segment }] }));
+    if (!made.data) throw new MarketingUnavailable(made.error, "contacts.create");
+    contactId = made.data.id;
+  } else {
+    contactId = existing;
+    if (testLink !== null) {
+      const updated = await call(() => r.contacts.update({ id: contactId, unsubscribed: false, properties: { [UNSUBSCRIBE_PROPERTY]: testLink } }));
+      if (updated.error) throw new MarketingUnavailable(updated.error, "contacts.update");
+    }
+    if (!members.some((m) => m.id === contactId)) {
+      const added = await call(() => r.contacts.segments.add({ contactId, segmentId: segment }));
+      if (added.error) throw new MarketingUnavailable(added.error, "contacts.segments.add");
+    }
+  }
+  // she signed up while the test link was written: her real link back (her own sync may have run before this write)
+  if (testLink !== null) {
+    const now = await rowOf(deps.db, email);
+    if (now?.confirmedAt) {
+      const back = await call(() => r.contacts.update({ id: contactId, properties: { [UNSUBSCRIBE_PROPERTY]: unsubscribeUrl(deps.siteUrl, now.token) } }));
+      if (back.error) throw new MarketingUnavailable(back.error, "contacts.update");
+      subscriber = now;
+    }
+  }
+
+  const sent = await broadcastTo(deps, call, r, segment, mail);
+  if (!sent.ok) throw sent.error;
+  const whose = subscriber ? `subscriber ${subscriber.id}, her own unsubscribe link` : "the test link";
+  console.info(`[newsletter] test broadcast ${sent.id} sent to the test segment ${segment} (contact ${contactId}, ${whose})`);
+  return { id: sent.id, realLink: subscriber !== null };
 }

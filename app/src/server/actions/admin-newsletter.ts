@@ -7,7 +7,7 @@ import { normalizeEmail } from "@/domain/email";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { adminAction } from "../auth";
 import { logFailure } from "../log";
-import { copyCampaign, prepareSend, saveCampaign, sendCampaign, sendTest, type SendResult } from "../newsletter-campaigns";
+import { copyCampaign, prepareSend, saveCampaign, sendCampaign, sendTest, type SendResult, type SendScope } from "../newsletter-campaigns";
 import { FullSyncBusy, fullSync, keyRefused, MarketingUnavailable, marketingConfigured, type FullSyncReport } from "../resend-marketing";
 import { ADMIN_SYNC_BUDGET_MS, adminMarketingDeps } from "../send-deps";
 
@@ -52,6 +52,11 @@ const rowId = z.number().int().min(1).max(ROW_ID_MAX);
 const idOnly = z.object({ id: rowId });
 const saveTarget = z.object({ id: rowId.nullable() });
 const testInput = z.object({ id: rowId, to: z.enum(["maria", "me"]), locale: z.enum(["et", "ru"]) });
+const scopeInput = z.enum(["all", "missing"]).default("all");
+const prepareInput = z.object({ id: rowId, scope: scopeInput });
+/** A count Maria confirmed: a whole number, never more than the plan's limit could ever hold. */
+const confirmedCount = z.number().int().min(0).max(1_000_000);
+const sendInput = z.object({ id: rowId, et: confirmedCount, ru: confirmedCount, scope: scopeInput });
 
 type Server = { ok: false; error: "server" };
 const SERVER: Server = { ok: false, error: "server" };
@@ -111,13 +116,16 @@ export const sendTestAction = adminAction(async (admin, input: { id: number; to:
   }
 });
 
-/** „Saada kõigile“, before the confirmation: `{ id }`. The sync, then the plan (newsletter-campaigns.ts prepareSend), or a code. Sends nothing. */
-export const prepareSendAction = adminAction(async (_admin, input: { id: number }): Promise<Awaited<ReturnType<typeof prepareSend>> | Server> => {
-  const parsed = idOnly.safeParse(input);
+/**
+ * „Saada kõigile“ (or „Saada puuduv keel“: `scope` "missing", ruling R12), before the confirmation: `{ id, scope }`. The sync, then the plan
+ * (newsletter-campaigns.ts prepareSend), or a code. Sends nothing.
+ */
+export const prepareSendAction = adminAction(async (_admin, input: { id: number; scope?: SendScope }): Promise<Awaited<ReturnType<typeof prepareSend>> | Server> => {
+  const parsed = prepareInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "notFound" };
-  const { id } = parsed.data;
+  const { id, scope } = parsed.data;
   try {
-    const result = await prepareSend(adminMarketingDeps(ADMIN_SYNC_BUDGET_MS), id);
+    const result = await prepareSend(adminMarketingDeps(ADMIN_SYNC_BUDGET_MS), id, scope);
     if (!result.ok && (result.error === "sent" || result.error === "notFound")) refresh(); // (the open page is behind: its row shows the new state)
     return result;
   } catch (e) {
@@ -127,15 +135,16 @@ export const prepareSendAction = adminAction(async (_admin, input: { id: number 
 });
 
 /**
- * „Saada“: `{ id }`. The sync and the send (newsletter-campaigns.ts sendCampaign). The page is refreshed when the campaign changed (sent, left
- * half way) or the open page is behind (sent or gone meanwhile); not after a refusal that changed nothing.
+ * „Saada“: `{ id, et, ru, scope }`, `et` / `ru` the counts Maria confirmed (ruling R14). The sync and the send (newsletter-campaigns.ts
+ * sendCampaign); `changed` with the new plan when the counts moved meanwhile, nothing sent. The page is refreshed when the campaign changed (sent,
+ * left half way) or the open page is behind (sent or gone meanwhile); not after a refusal that changed nothing.
  */
-export const sendCampaignAction = adminAction(async (_admin, input: { id: number }): Promise<SendResult | Server> => {
-  const parsed = idOnly.safeParse(input);
+export const sendCampaignAction = adminAction(async (_admin, input: { id: number; et: number; ru: number; scope?: SendScope }): Promise<SendResult | Server> => {
+  const parsed = sendInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "notFound" };
-  const { id } = parsed.data;
+  const { id, et, ru, scope } = parsed.data;
   try {
-    const result = await sendCampaign(adminMarketingDeps(ADMIN_SYNC_BUDGET_MS), id);
+    const result = await sendCampaign(adminMarketingDeps(ADMIN_SYNC_BUDGET_MS), id, { et, ru }, scope);
     if (result.ok || result.error === "interrupted" || result.error === "sent" || result.error === "notFound") refresh();
     return result;
   } catch (e) {

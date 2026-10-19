@@ -1554,7 +1554,6 @@ export const adminEt = {
       empty: "Kampaaniaid veel pole.",
       status: { draft: "Mustand", sending: "Saatmine pooleli", sent: "Saadetud" },
       changed: "Muudetud {date}",
-      open: "Ava",
       notFound: "Seda kampaaniat enam pole.",
       newTitle: "Uus kampaania",
       // the editor's fields
@@ -1613,14 +1612,21 @@ export const adminEt = {
         no: "Tühista",
         working: "Saadan…",
         done: "Kampaania on saadetud.",
+        // ruling R14: the counts after the send's own sync are not the ones confirmed: nothing is sent, and the new counts are shown to confirm
+        changed: "Tellijate arv muutus vahepeal — vaata üle ja kinnita uuesti.",
       },
       // a sent campaign (read-only), and one whose send stopped half way
       sentLine: "Saadetud {date} · {n} tellijale",
       readOnly: "Saadetud kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.",
       sending: "Saatmine jäi pooleli: pole teada, kas kõik kirjad läksid välja. Vaata Resendist, enne kui kopeerid ja saadad uuesti.",
+      // (the review's M1) Resend's list of broadcasts, where one whose answer never came is found, and the warning beside „Kopeeri“
+      broadcastsList: "Ava Resendi kampaaniate loend",
+      sendingCheck: "Ära kopeeri enne, kui oled Resendis kontrollinud.",
       openInResend: "Ava Resendis ({lang})",
       langNames: { et: "eesti keeles", ru: "vene keeles" },
-      missing: { et: "Eestikeelne kiri jäi saatmata — kopeeri kampaania ja saada uuesti.", ru: "Venekeelne kiri jäi saatmata — kopeeri kampaania ja saada uuesti." },
+      missing: { et: "Eestikeelne kiri jäi saatmata — saada see nupuga „Saada puuduv keel“.", ru: "Venekeelne kiri jäi saatmata — saada see nupuga „Saada puuduv keel“." },
+      // ruling R12: a campaign sent in one language only (Resend refused the other) sends the missing language alone
+      sendMissing: { title: "Saada puuduv keel", lead: "Kiri läheb ainult selle keele tellijatele, kellele see jäi saatmata.", button: "Saada puuduv keel" },
       copy: "Kopeeri",
       copying: "Kopeerin…",
       // the copy's name: the campaign's own with this after it (cut to the name's limit)
@@ -1641,6 +1647,7 @@ export const adminEt = {
         limited: "Proovikirju saab saata kuni 10 tunnis. Proovi hiljem uuesti.",
         address: "Sellele aadressile ei saa proovi saata.",
         server: "Ei õnnestunud. Proovi uuesti.",
+        changed: "Tellijate arv muutus vahepeal — vaata üle ja kinnita uuesti.",
       },
     },
   },

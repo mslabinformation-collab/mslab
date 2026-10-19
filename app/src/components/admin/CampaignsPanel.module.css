@@ -143,6 +143,10 @@
   list-style: none;
 }
 
+.broadcastsList {
+  margin: 12px 0 0;
+}
+
 .readOnly {
   margin: 14px 0;
 }

@@ -476,4 +476,19 @@ describe("the campaign checks follow the sync check, in the order a campaign liv
     expect(text("avalik-uudiskiri-kampaania-kopeeri")).toContain(`„Proov 3 kampaania${t.copySuffix}“`);
     expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${ru.mail.campaign.unsubscribe}“`);
   });
+
+  test("the welcome mail's unsubscribe still has a subscriber to remove: Proov 1, subscribed by „Minu andmed“ before it; Proov 3 is gone by then (review M9)", () => {
+    const welcome = item("kirjad-tervituskiri");
+    expect(welcome.steps[0]).toContain("Proov 1");
+    expect(welcome.expect.join("\n")).toContain("pole Proov 1 aadressi");
+    expect(welcome.mark).toBe("reworded");
+    expect(markedSince(welcome.markedAt)).toBe(true);
+    // Proov 3 unsubscribes in the campaign check, before the welcome mail's; Proov 1 subscribes in konto-andmed, between the two
+    const at = (id: string) => order.indexOf(id);
+    expect(at("avalik-uudiskiri-kampaania-loobu")).toBeLessThan(at("konto-andmed"));
+    expect(at("konto-andmed")).toBeLessThan(at("kirjad-tervituskiri"));
+    expect(item("konto-andmed").steps.join("\n")).toContain("„Saada mulle uudiskirja“");
+    // and nothing between them takes Proov 1 off the list
+    for (const id of order.slice(at("konto-andmed") + 1, at("kirjad-tervituskiri"))) expect(text(id), id).not.toMatch(/Loobu uudiskirjast|uudiskirja(st)? (välja|loobu)/);
+  });
 });

@@ -266,14 +266,14 @@ describe("a draft", () => {
     await show(DRAFT);
     expect(text("[data-send-all]")).toBe("Saada kõigile");
     await click($("[data-send-all]"));
-    expect(actions.prepareSendAction).toHaveBeenCalledWith({ id: 7 });
+    expect(actions.prepareSendAction).toHaveBeenCalledWith({ id: 7, scope: "all" });
     expect(actions.sendCampaignAction).not.toHaveBeenCalled();
     expect(text("[data-send-confirm-text]")).toBe("Saadad kampaania 52 tellijale (eesti keeles 40, vene keeles 12). Kas saadame?");
     expect($("[data-send-fallback]")).toBeNull();
     expect($("[data-send-left]")).toBeNull();
     expect(text("[data-send-yes]")).toBe("Saada");
     await click($("[data-send-yes]"));
-    expect(actions.sendCampaignAction).toHaveBeenCalledWith({ id: 7 });
+    expect(actions.sendCampaignAction).toHaveBeenCalledWith({ id: 7, et: 40, ru: 12, scope: "all" });
     expect(text("[data-send-status]")).toBe("Kampaania on saadetud.");
   });
 
@@ -283,6 +283,46 @@ describe("a draft", () => {
     await click($("[data-send-all]"));
     expect(text("[data-send-fallback]")).toBe("Vene keeles tellijad saavad eestikeelse kirja.");
     expect(text("[data-send-left]")).toBe("3 tellijat ei ole Resendis — kontaktide piir on täis.");
+  });
+
+  test("the counts changed since the confirmation (ruling R14): nothing went, the new counts with the line that says so; „Saada“ then sends with those", async () => {
+    actions.prepareSendAction.mockResolvedValue({ ok: true, plan: PLAN });
+    actions.sendCampaignAction.mockResolvedValueOnce({ ok: false, error: "changed", plan: { ...PLAN, et: 41 } });
+    actions.sendCampaignAction.mockResolvedValueOnce({ ok: true, recipients: { et: 41, ru: 12 }, missing: [], left: 0 });
+    await show(DRAFT);
+    await click($("[data-send-all]"));
+    await click($("[data-send-yes]"));
+    expect(text("[data-send-changed]")).toBe("Tellijate arv muutus vahepeal — vaata üle ja kinnita uuesti.");
+    expect(text("[data-send-confirm-text]")).toBe("Saadad kampaania 53 tellijale (eesti keeles 41, vene keeles 12). Kas saadame?");
+    await click($("[data-send-yes]"));
+    expect(actions.sendCampaignAction).toHaveBeenLastCalledWith({ id: 7, et: 41, ru: 12, scope: "all" });
+    expect(text("[data-send-status]")).toBe("Kampaania on saadetud.");
+    expect($("[data-send-changed]")).toBeNull();
+  });
+
+  test("the open confirmation closes when a field changes or a save lands: „Saada“ then needs a new count (review M5)", async () => {
+    actions.prepareSendAction.mockResolvedValue({ ok: true, plan: PLAN });
+    actions.saveCampaignAction.mockResolvedValue({ ok: true, id: 7 });
+    await show(DRAFT);
+    await click($("[data-send-all]"));
+    expect($("[data-send-confirm]")).not.toBeNull();
+    // a field changed: the confirmation is gone, and the send waits for the save
+    await type($('[data-field="name"]'), "Uus nimi");
+    expect($("[data-send-confirm]")).toBeNull();
+    expect($("[data-send-all]")!.getAttribute("aria-disabled")).toBe("true");
+    // the field back as it was: still no confirmation (it was for the campaign before the change)
+    await type($('[data-field="name"]'), VALUES.name);
+    expect($("[data-send-confirm]")).toBeNull();
+    // a save that lands closes one too, even with the fields as they were
+    await click($("[data-send-all]"));
+    expect(actions.prepareSendAction).toHaveBeenCalledTimes(2);
+    expect($("[data-send-confirm]")).not.toBeNull();
+    await submit();
+    expect(actions.saveCampaignAction).toHaveBeenCalledTimes(1);
+    expect($("[data-send-confirm]")).toBeNull();
+    await click($("[data-send-all]"));
+    expect(actions.prepareSendAction).toHaveBeenCalledTimes(3);
+    expect(actions.sendCampaignAction).not.toHaveBeenCalled();
   });
 
   test("„Tühista“ closes the confirmation and sends nothing", async () => {
@@ -310,7 +350,7 @@ describe("a draft", () => {
     actions.sendCampaignAction.mockResolvedValueOnce({ ok: true, recipients: { et: 40, ru: 0 }, missing: ["ru"], left: 0 });
     await click($("[data-send-all]"));
     await click($("[data-send-yes]"));
-    expect(text("[data-send-status]")).toContain("Venekeelne kiri jäi saatmata — kopeeri kampaania ja saada uuesti.");
+    expect(text("[data-send-status]")).toContain("Venekeelne kiri jäi saatmata — saada see nupuga „Saada puuduv keel“.");
   });
 });
 
@@ -333,17 +373,47 @@ describe("a sent campaign", () => {
   test("a language whose broadcast did not go is said so, and is not counted", async () => {
     await show({ ...SENT, broadcasts: { et: "bc-et" } });
     expect(text("[data-campaign-sent-line]")).toBe("Saadetud 19.10.2026 12:05 · 40 tellijale");
-    expect(text('[data-campaign-missing="ru"]')).toBe("Venekeelne kiri jäi saatmata — kopeeri kampaania ja saada uuesti.");
+    expect(text('[data-campaign-missing="ru"]')).toBe("Venekeelne kiri jäi saatmata — saada see nupuga „Saada puuduv keel“.");
     expect(all("[data-campaign-broadcast]")).toHaveLength(1);
   });
 
-  test("a send left half way (`sending`): Maria is told to look in Resend; no send again, „Kopeeri“ there", async () => {
+  test("a send left half way (`sending`): Maria is told to look in Resend, with its list of broadcasts and any recorded; no send again; „Kopeeri“ with the warning (review M1)", async () => {
     await show({ ...SENT, status: "sending", sentAt: null, broadcasts: { et: "bc-et" } });
     expect($("[data-campaign-sent-line]")).toBeNull();
     expect(text("[data-campaign-sending]")).toContain("Vaata Resendist");
     expect(all("[data-campaign-broadcast]")).toHaveLength(1);
     expect($("[data-send-all]")).toBeNull();
+    expect($("[data-send-missing]")).toBeNull();
     expect($("[data-campaign-copy]")).not.toBeNull();
+    expect(text("[data-campaign-sending-check]")).toBe("Ära kopeeri enne, kui oled Resendis kontrollinud.");
+    const list = $<HTMLAnchorElement>("[data-campaign-broadcasts-list]")!;
+    expect([list.getAttribute("href"), list.getAttribute("target"), list.textContent]).toEqual(["https://resend.com/broadcasts", "_blank", "Ava Resendi kampaaniate loend"]);
+    // the first broadcast without an answer: nothing recorded, the list is still there
+    await show({ ...SENT, id: 9, status: "sending", sentAt: null, broadcasts: {} });
+    expect(all("[data-campaign-broadcast]")).toHaveLength(0);
+    expect($("[data-campaign-broadcasts-list]")).not.toBeNull();
+  });
+
+  test("„Saada puuduv keel“ (ruling R12): a campaign sent in one language only offers it; the plan, the confirmation, and the send of the missing language alone", async () => {
+    actions.prepareSendAction.mockResolvedValue({ ok: true, plan: { ...PLAN, et: 0, ru: 12 } });
+    actions.sendCampaignAction.mockResolvedValue({ ok: true, recipients: { et: 0, ru: 12 }, missing: [], left: 0 });
+    await show({ ...SENT, broadcasts: { et: "bc-et" } });
+    expect($("[data-send-all]")).toBeNull();
+    expect(text("[data-send-missing]")).toBe("Saada puuduv keel");
+    await click($("[data-send-missing]"));
+    expect(actions.prepareSendAction).toHaveBeenCalledWith({ id: 7, scope: "missing" });
+    expect(text("[data-send-confirm-text]")).toBe("Saadad kampaania 12 tellijale (eesti keeles 0, vene keeles 12). Kas saadame?");
+    await click($("[data-send-yes]"));
+    expect(actions.sendCampaignAction).toHaveBeenCalledWith({ id: 7, et: 0, ru: 12, scope: "missing" });
+    expect(text("[data-send-status]")).toBe("Kampaania on saadetud.");
+  });
+
+  test("a campaign sent whole, or without the key, offers no „Saada puuduv keel“", async () => {
+    await show(SENT);
+    expect($("[data-send-missing]")).toBeNull();
+    await show({ ...SENT, id: 9, broadcasts: { et: "bc-et" } }, { configured: false });
+    expect($('[data-campaign-missing="ru"]')).not.toBeNull();
+    expect($("[data-send-missing]")).toBeNull();
   });
 
   test("„Kopeeri“ makes the new draft and opens it", async () => {
