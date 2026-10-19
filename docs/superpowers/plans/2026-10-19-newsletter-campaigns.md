@@ -109,13 +109,13 @@ export type NewsletterCampaign = typeof newsletterCampaigns.$inferSelect;
 // domain/newsletter-campaign.ts (pure, browser-safe)
 export const CAMPAIGN_LIMITS = { name: 80, subject: 150, preheader: 150, body: 10000, buttonLabel: 40, href: 500 } as const;
 export const RESEND_FREE_CONTACTS = 1000; export const CONTACTS_WARN_AT = 900;
-export type CampaignDraft = { name: string; subject: I18n; preheader: I18n; imageKey: string | null; body: I18n; code: string | null; buttonLabel: I18n | null; buttonHref: string | null };
-export function checkCampaignDraft(raw: unknown): { ok: true; value: CampaignDraft } | { ok: false; fields: Record<string, string> };
+export type NewsletterCampaignDraft = { name: string; subject: I18n; preheader: I18n; imageKey: string | null; body: I18n; code: string | null; buttonLabel: I18n | null; buttonHref: string | null };
+export function checkCampaignDraft(raw: unknown): { ok: true; value: NewsletterCampaignDraft } | { ok: false; fields: Record<string, string> };
 //  required: name, subject.et, body.et; the code matches WELCOME_CODE's pattern (domain/welcome-code.ts); the button needs both label.et and href;
 //  href is https:// or a site path starting with "/"; texts cleaned of control characters (newlines kept)
-export function campaignContentFor(c: CampaignDraft, locale: "et" | "ru"): { locale: "et" | "ru"; subject: string; preheader: string; paragraphs: string[]; buttonLabel: string | null };
+export function campaignContentFor(c: NewsletterCampaignDraft, locale: "et" | "ru"): { locale: "et" | "ru"; subject: string; preheader: string; paragraphs: string[]; buttonLabel: string | null };
 //  ru falls back to et as a whole when subject.ru or body.ru is empty (never a mix); `locale` says which text was used
-export function ruFallsBack(c: CampaignDraft): boolean;
+export function ruFallsBack(c: NewsletterCampaignDraft): boolean;
 
 // server/campaign-mail.ts
 export type CampaignMailInput = { content: ReturnType<typeof campaignContentFor>; pageLocale: "et" | "ru"; imageUrl: string | null; code: string | null;
