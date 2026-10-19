@@ -1,7 +1,16 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db, Q } from "@/db/client";
 import { newsletterCampaigns, type NewsletterCampaign } from "@/db/schema";
-import { CAMPAIGN_LIMITS, campaignContentFor, checkCampaignDraft, isCampaignHref, ruFallsBack, type NewsletterCampaignDraft } from "@/domain/newsletter-campaign";
+import {
+  CAMPAIGN_LIMITS,
+  campaignContentFor,
+  checkCampaignDraft,
+  isCampaignHref,
+  ruFallsBack,
+  sendLanguages,
+  unsentCandidate,
+  type NewsletterCampaignDraft,
+} from "@/domain/newsletter-campaign";
 import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import { adminEt } from "@/i18n/dict/admin";
 import { isStorableImageKey, mediaUrl } from "@/lib/media";
@@ -32,12 +41,15 @@ import {
 // (actions/admin-newsletter.ts) and the preview route call these. Logs carry ids and counts, never an address or a text of hers.
 //
 // A send, in order (sendCampaign): the full sync, and under the same lease (no other sync, send or test meanwhile) the refusal while any subscriber
-// is left unsynced for a reason other than the plan's contact limit (ruling R5: those are counted, and the send goes to the ones in Resend); then
-// in one short transaction the campaign row locked (FOR UPDATE), its status checked to be `draft`, and `sending` written with the counts; then one
-// broadcast per segment that has subscribers, each recorded as soon as it is made; then `sent`. No row lock is held across a Resend call. A
-// campaign found `sending` (a send that died, or a broadcast whose outcome is unknown) is never sent again by itself: Maria sees what is recorded
-// and Resend's links, and „Kopeeri“ makes a new draft. The send goes only to the counts Maria confirmed (ruling R14). A campaign sent in one
-// language only (Resend refused the other) offers „Saada puuduv keel“ (ruling R12): the same send, scope "missing", to that language's segment alone.
+// is left unsynced for a reason other than the plan's contact limit or Resend's refusal of an address (rulings R5, R17: those are counted, and the
+// send goes to the ones in Resend); then in one short transaction the campaign row locked (FOR UPDATE), its status checked to be `draft`, and
+// `sending` written with the counts; then one broadcast per segment that has subscribers, each recorded as soon as it is made; then `sent`. No row
+// lock is held across a Resend call. A campaign found `sending` (a send that died, or a broadcast whose outcome is unknown) is never sent again by
+// itself: Maria sees each language's state (sent, with its Resend link, or unknown) and Resend's list of broadcasts, and for the language she does
+// not find there she presses „Märgi saatmata“ (markNotSent, ruling R16); never „Kopeeri“, which would mail the language that went a second time.
+// The send goes only to the counts and the campaign Maria confirmed (ruling R14, the review's M3). A campaign sent in one language only (Resend
+// refused the other, or Maria marked it not sent) offers „Saada puuduv keel“ (ruling R12): the same send, scope "missing", to that language's
+// segment alone.
 
 export type CampaignStatus = NewsletterCampaign["status"];
 type Locale = "et" | "ru";
@@ -245,7 +257,8 @@ function refusalOf(e: unknown, where: string): ResendRefusal {
  * „Saada proov“ (rulings R4, R7): the stored campaign `id` in `locale` (Estonian unless told), as one broadcast to the test segment holding `to`
  * alone (resend-marketing.ts sendTestBroadcast): the very mail of a send, Resend's placeholder for the unsubscribe link included, with „[Proov] “
  * before the subject. `realLink`: `to` is a subscriber's, so the mail carries her real unsubscribe link. At most TEST_SEND_LIMIT an hour (`limited`,
- * nothing asked of Resend); a test that did not go is not counted. `notConfigured` without the newsletter's key, `busy` while a sync or send runs,
+ * nothing asked of Resend); a test that did not go is not counted. `unsubscribed`: `to` is a subscriber's whose contact unsubscribed in Resend, so
+ * nothing would arrive and nothing is sent (the review's M7). `notConfigured` without the newsletter's key, `busy` while a sync or send runs,
  * `permission` / `unavailable` when Resend refuses or does not answer.
  */
 export async function sendTest(
@@ -253,7 +266,7 @@ export async function sendTest(
   id: number,
   to: string,
   locale: Locale = "et",
-): Promise<{ ok: true; realLink: boolean } | { ok: false; error: "notFound" | "limited" | ResendRefusal }> {
+): Promise<{ ok: true; realLink: boolean } | { ok: false; error: "notFound" | "limited" | "unsubscribed" | ResendRefusal }> {
   if (!marketingConfigured(deps.env)) return { ok: false, error: "notConfigured" };
   const row = await getCampaign(deps.db, id);
   if (!row) return { ok: false, error: "notFound" };
@@ -266,6 +279,12 @@ export async function sendTest(
     const draft = draftOf(row);
     const mail = mailOf(draft, locale, { siteUrl: deps.siteUrl, school: await schoolOf(deps.db, deps.now), unsubscribeHref: UNSUBSCRIBE_PLACEHOLDER, test: true });
     const sent = await sendTestBroadcast(deps, to, { name: broadcastName(draft, locale, true), ...mail });
+    if (!sent.sent) {
+      // (the review's M7) a subscriber's contact unsubscribed in Resend: no mail would arrive, so none was sent and the hour is not spent
+      await releaseSlot(deps.env.KV, key, 2 * TEST_WINDOW_SEC).catch(() => {});
+      console.info(`[newsletter] campaign ${id}: no test, the address's contact unsubscribed in Resend`);
+      return { ok: false, error: "unsubscribed" };
+    }
     console.info(`[newsletter] campaign ${id}: test broadcast ${sent.id} (${locale})`);
     return { ok: true, realLink: sent.realLink };
   } catch (e) {
@@ -274,16 +293,37 @@ export async function sendTest(
   }
 }
 
-/** What „Saada kõigile“ asks Maria to confirm: the subscribers in Resend by language, whether the Russian ones get the Estonian text, those left out by the plan's limit, and the sync's report. */
-export type SendPlan = { et: number; ru: number; ruFallsBack: boolean; left: number; report: FullSyncReport };
+/**
+ * What „Saada kõigile“ asks Maria to confirm: the subscribers in Resend by language, whether the Russian ones get the Estonian text, those left out
+ * by the plan's limit (`left`) and those whose address Resend refused (`rejected`, ruling R17), the sync's report, and `updatedAt`, the campaign's
+ * last change as this plan read it (ISO): the send goes only if the campaign is still that one (the review's M3).
+ */
+export type SendPlan = { et: number; ru: number; ruFallsBack: boolean; left: number; rejected: number; updatedAt: string; report: FullSyncReport };
+
+/** What Maria confirmed: the plan's counts and its `updatedAt` (rulings R14, and the review's M3). */
+export type Confirmed = { et: number; ru: number; updatedAt: string };
 
 /**
- * May a send follow this sync (Review Focus 2, ruling R5)? Not when the sync did not finish (its time ran out, or a contact that had to leave our
- * segments is still there), when a push or a removal failed, or when a subscriber is left unsynced while the plan's contacts are not used up. Rows
- * left out by the limit alone do not stop it: they are counted (`left`).
+ * May a send follow this sync (Review Focus 2, rulings R5, R17)? Not when the sync did not finish (its time ran out, or a contact that had to leave
+ * our segments is still there), when a push or a removal failed, or when a subscriber is left unsynced while the plan's contacts are not used up.
+ * Rows left out by the limit alone do not stop it (they are counted, `left`), nor do the rows whose address Resend refused (`rejected`: the
+ * report never counts them `unsynced` or `failed`).
  */
 const syncBlocks = (r: FullSyncReport): boolean => !r.finished || r.failed > 0 || (r.unsynced > 0 && !r.limitReached);
 const leftOut = (r: FullSyncReport): number => (r.limitReached ? r.unsynced : 0);
+
+/** The plan of a send of `row` with these counts after this sync's `report`. */
+const planOf = (row: NewsletterCampaign, counts: Counts, report: FullSyncReport): SendPlan => ({
+  ...counts,
+  ruFallsBack: ruFallsBack(draftOf(row)),
+  left: leftOut(report),
+  rejected: report.rejected,
+  updatedAt: row.updatedAt.toISOString(),
+  report,
+});
+
+/** Is the campaign still the one Maria confirmed (its last change as her confirmation read it)? A time that is no time never is. */
+const sameVersion = (row: NewsletterCampaign, confirmedAt: string): boolean => row.updatedAt.getTime() === Date.parse(confirmedAt);
 
 /**
  * What a send is for: „Saada kõigile“ of a draft (`all`: both segments), or „Saada puuduv keel“ (`missing`, ruling R12) of a sent campaign whose
@@ -342,7 +382,7 @@ export async function prepareSend(
   }
   const counts = await scopedCounts(deps.db, locales);
   if (counts.et + counts.ru === 0) return { ok: false, error: "empty" };
-  return { ok: true, plan: { ...counts, ruFallsBack: ruFallsBack(draftOf(row)), left: leftOut(report), report } };
+  return { ok: true, plan: planOf(row, counts, report) };
 }
 
 export type SendResult =
@@ -352,23 +392,27 @@ export type SendResult =
 
 /**
  * „Saada“ after the confirmation (spec D6, §1, §5; Review Focus 2, 3, 5; rulings R5, R9, R11, R12, R14), under one lease from the sync to the last
- * broadcast. `confirmed`: the counts Maria confirmed (the plan of prepareSend). `scope`: "all" for a draft, "missing" for „Saada puuduv keel“.
+ * broadcast. `confirmed`: the counts Maria confirmed and the campaign's last change as her confirmation read it (the plan of prepareSend).
+ * `scope`: "all" for a draft, "missing" for „Saada puuduv keel“.
  * 1. the full sync again; refused (`unsynced`) as prepareSend refuses, `empty` without a subscriber in Resend in the send's languages;
- * 2. the counts after this sync against the confirmed ones (R14: the spec promises the exact count): when they differ nothing is sent, and the
- *    answer is `changed` with the new plan, for Maria to confirm again;
+ * 2. the counts after this sync against the confirmed ones (R14: the spec promises the exact count), and the campaign against the one confirmed (its
+ *    `updatedAt`, the review's M3: another tab saved it meanwhile): when either moved nothing is sent, and the answer is `changed` with the new plan,
+ *    for Maria to confirm again;
  * 3. one short transaction: the row locked (FOR UPDATE) and its state checked again (`draft`, or for "missing" `sent` with the same languages still
- *    missing; else `sent`: a second press, another tab, a lease that ran out), and `sending` written with the counts (the broadcast that went
- *    before stays recorded), so that from here on nothing can send it again by itself;
+ *    missing; else `sent`: a second press, another tab, a lease that ran out; and still the version confirmed, else `changed`: a save that landed
+ *    during the sync), and `sending` written with the counts (the broadcast that went before stays recorded), so that from here on nothing can
+ *    send it again by itself;
  * 4. one broadcast per segment of the send that has subscribers, Estonian first: from MAIL_FROM, Maria as the reply-to, its language's subject,
  *    the html and text of campaignMail with Resend's placeholder for her unsubscribe link and the segment's language as the footer's; each recorded
  *    at once;
  * 5. `sent` with the time (a „Saada puuduv keel“ keeps the first send's), the counts and the broadcasts.
- * When a broadcast fails: Resend refused it (a 4xx), so it was not made: when nothing of this send went, the campaign is as it was before it (a
- * draft again, or sent with its language missing: a later press may send), else it is `sent` with the one that went (the other in `missing`, for
- * „Saada puuduv keel“). One that got no answer (a timeout, a 5xx) may have gone: the campaign stays `sending` with what is recorded
- * (`interrupted`, ruling R13), and Maria looks in Resend. Nothing is ever sent twice by the site.
+ * When a broadcast fails: Resend refused it (resend-marketing.ts broadcastRefused), so it was not made: when nothing of this send went, the
+ * campaign is as it was before it (a draft again, or sent with its language missing, its last change too: a later press may send), else it is
+ * `sent` with the one that went (the other in `missing`, for „Saada puuduv keel“). One that got any other answer or none (a timeout, a 5xx, a
+ * gateway's 4xx) may have gone: the campaign stays `sending` with what is recorded (`interrupted`, ruling R13), and Maria looks in Resend; once she
+ * has seen that a language is not there, „Märgi saatmata“ (markNotSent, ruling R16) records it so. Nothing is ever sent twice by the site.
  */
-export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: Counts, scope: SendScope = "all"): Promise<SendResult> {
+export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: Confirmed, scope: SendScope = "all"): Promise<SendResult> {
   if (!marketingConfigured(deps.env)) return { ok: false, error: "notConfigured" };
   const before = await getCampaign(deps.db, id);
   if (!before) return { ok: false, error: "notFound" };
@@ -384,7 +428,11 @@ export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: C
       if (counts.et + counts.ru === 0) return { ok: false, error: "empty" };
       if (counts.et !== confirmed.et || counts.ru !== confirmed.ru) {
         console.info(`[newsletter] campaign ${id}: not sent, the subscribers changed since the confirmation (${confirmed.et}+${confirmed.ru} → ${counts.et}+${counts.ru})`);
-        return { ok: false, error: "changed", plan: { ...counts, ruFallsBack: ruFallsBack(draftOf(before)), left: leftOut(report), report } };
+        return { ok: false, error: "changed", plan: planOf(before, counts, report) };
+      }
+      if (!sameVersion(before, confirmed.updatedAt)) {
+        console.info(`[newsletter] campaign ${id}: not sent, the campaign changed since the confirmation`);
+        return { ok: false, error: "changed", plan: planOf(before, counts, report) };
       }
       const school = await schoolOf(deps.db, deps.now);
 
@@ -393,6 +441,7 @@ export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: C
         if (!row) return "notFound" as const;
         const now = scopeLocales(row, scope);
         if (!now || !sameLocales(now, locales)) return "sent" as const;
+        if (!sameVersion(row, confirmed.updatedAt)) return { kind: "changed" as const, row };
         // the counts of the send's languages; a language that went before keeps its own
         const recipients = scope === "all" ? counts : { et: locales.includes("et") ? counts.et : (row.recipients?.et ?? 0), ru: locales.includes("ru") ? counts.ru : (row.recipients?.ru ?? 0) };
         const [sending] = await tx
@@ -400,9 +449,14 @@ export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: C
           .set({ status: "sending", recipients, broadcasts: scope === "all" ? {} : { ...row.broadcasts }, updatedAt: deps.now })
           .where(eq(newsletterCampaigns.id, id))
           .returning();
-        return { previous: row, sending };
+        return { kind: "sending" as const, previous: row, sending };
       });
       if (typeof marked === "string") return { ok: false, error: marked };
+      if (marked.kind === "changed") {
+        // saved (another tab) while this send's sync ran: nothing is sent, Maria confirms the campaign as it is now
+        console.info(`[newsletter] campaign ${id}: not sent, the campaign changed since the confirmation`);
+        return { ok: false, error: "changed", plan: planOf(marked.row, counts, report) };
+      }
 
       const { previous, sending } = marked;
       const draft = draftOf(sending);
@@ -437,10 +491,10 @@ export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: C
         return { ok: false, error: "interrupted" };
       }
       if (sentNow.length === 0) {
-        // nothing of this send went: the campaign as it was before it
+        // nothing of this send went: the campaign as it was before it (its last change too: what Maria confirmed still holds)
         await deps.db
           .update(newsletterCampaigns)
-          .set({ status: previous.status, recipients: previous.recipients, broadcasts: previous.broadcasts })
+          .set({ status: previous.status, recipients: previous.recipients, broadcasts: previous.broadcasts, updatedAt: previous.updatedAt })
           .where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending")));
         console.info(`[newsletter] campaign ${id}: nothing sent, back to ${previous.status}`);
         return { ok: false, error: keyRefused(refused) ? "permission" : "unavailable" };
@@ -455,4 +509,42 @@ export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: C
   } catch (e) {
     return { ok: false, error: refusalOf(e, `[newsletter] campaign ${id}: the send's sync failed`) };
   }
+}
+
+/**
+ * „Märgi saatmata“ (ruling R16): Maria has looked in Resend and the `locale` broadcast of a campaign left `sending` is not there. Under the row's
+ * lock (FOR UPDATE, the same lock a send takes), and only for the language unsentCandidate names (the first of the send without a recorded
+ * broadcast: a send goes Estonian first and stops at the first broadcast without an answer, so every language after it was never tried and is not
+ * sent either):
+ * - with a broadcast recorded (the other language went): `sent`, its time the send's (`sentAt`, or the `sending` marker's time for a first send),
+ *   the not-sent languages missing, so that „Saada puuduv keel“ (ruling R12) sends them alone, under its own lease, sync, counts and lock;
+ * - with none recorded (nothing of the send went): a draft again, as a refused first broadcast leaves it, for „Saada kõigile“.
+ * A language with a recorded broadcast is never marked (`sent`), nor is a campaign that is not `sending` (`sent`: sent, a draft, or marked
+ * meanwhile in another tab); `earlier`: another language before it is still open (only the first one may be marked). Asks nothing of Resend.
+ */
+export async function markNotSent(db: Db, id: number, locale: Locale, now: Date): Promise<{ ok: true; status: "draft" | "sent" } | { ok: false; error: "notFound" | "sent" | "earlier" }> {
+  const result = await db.transaction(async (tx) => {
+    const [row] = await tx.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
+    if (!row) return { ok: false as const, error: "notFound" as const };
+    // (a language with a recorded broadcast, or none of the send's, is never one to mark)
+    const languages = sendLanguages(row);
+    if (row.status !== "sending" || languages.find((l) => l.locale === locale)?.state !== "unknown") return { ok: false as const, error: "sent" as const };
+    if (unsentCandidate(row) !== locale) return { ok: false as const, error: "earlier" as const };
+    const went = languages.filter((l) => l.state === "sent");
+    if (went.length === 0) {
+      await tx
+        .update(newsletterCampaigns)
+        .set({ status: "draft", sentAt: null, recipients: null, broadcasts: null, updatedAt: now })
+        .where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending")));
+      return { ok: true as const, status: "draft" as const };
+    }
+    await tx
+      .update(newsletterCampaigns)
+      .set({ status: "sent", sentAt: row.sentAt ?? row.updatedAt, updatedAt: now })
+      .where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending")));
+    return { ok: true as const, status: "sent" as const };
+  });
+  if (result.ok) console.info(`[newsletter] campaign ${id}: the ${locale} broadcast marked not sent (checked in Resend): ${result.status === "sent" ? "sent, the language missing" : "a draft again"}`);
+  else console.info(`[newsletter] campaign ${id}: the ${locale} broadcast not marked not sent (${result.error})`);
+  return result;
 }

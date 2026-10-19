@@ -15,7 +15,7 @@ export type Env = {
   MARIA_EMAIL: string;
   SITE_URL: string;
   RESEND_API_KEY?: string;
-  /** The newsletter's full-access Resend key; RESEND_API_KEY when unset (server/resend-marketing.ts). */
+  /** The newsletter's full-access Resend key, its one switch (ruling R15): unset, the newsletter is off; never RESEND_API_KEY (server/resend-marketing.ts). */
   RESEND_MARKETING_KEY?: string;
   /** The signing secret of Resend's webhook (/api/resend/webhook). */
   RESEND_WEBHOOK_SECRET?: string;

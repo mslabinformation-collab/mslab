@@ -204,7 +204,10 @@ test.describe("the full sync's lease", () => {
 
 // ---------- (b) the send's row lock ----------
 
-/** Maria's campaign as the editor sends it, saved through the rules; the id. */
+/** When the race's campaign is saved: the time its confirmation carries (CONFIRMED, the review's M3). */
+const SAVED_AT = new Date("2026-10-19T10:00:00.000Z");
+
+/** Maria's campaign as the editor sends it, saved through the rules at SAVED_AT; the id. */
 async function campaign(): Promise<number> {
   const saved = await saveCampaign(
     db,
@@ -219,14 +222,15 @@ async function campaign(): Promise<number> {
       buttonLabel: { et: "Vaata koolitusi", ru: "Смотреть курсы" },
       buttonHref: "/koolitused",
     },
-    new Date(),
+    SAVED_AT,
   );
   if (!saved.ok) throw new Error(`the campaign was refused: ${JSON.stringify(saved)}`);
   return saved.id;
 }
 
-/** The counts Maria confirmed: three subscribers make two Estonian ones and one Russian one (subscribers()). */
-const CONFIRMED = { et: 2, ru: 1 };
+/** What Maria confirmed: three subscribers make two Estonian ones and one Russian one (subscribers()), of the campaign saved at SAVED_AT. */
+const CONFIRMED = { et: 2, ru: 1, updatedAt: SAVED_AT.toISOString() };
+const COUNTS = { et: 2, ru: 1 };
 
 async function stored(id: number) {
   const [row] = await other<{ status: string; recipients: { et: number; ru: number } | null; broadcasts: { et?: string; ru?: string } | null }[]>`
@@ -257,7 +261,7 @@ test.describe("the send's row lock", () => {
       expect(done.length, `round ${round}: sends that went (${JSON.stringify([first, second].map((r) => (r.ok ? "ok" : r.error)))})`).toBe(1);
       expect(refused.map((r) => (r.ok ? "" : r.error))[0], `round ${round}: the other one`).toMatch(/^(busy|sent|changed)$/);
       expectOneSet(fake, `round ${round}`);
-      expect(await stored(id), `round ${round}`).toMatchObject({ status: "sent", recipients: CONFIRMED, broadcasts: { et: expect.any(String), ru: expect.any(String) } });
+      expect(await stored(id), `round ${round}`).toMatchObject({ status: "sent", recipients: COUNTS, broadcasts: { et: expect.any(String), ru: expect.any(String) } });
     }
   });
 
@@ -273,10 +277,10 @@ test.describe("the send's row lock", () => {
     };
     const [a, b] = await inFlight(APPLICATION, holdRow, () => sendCampaign(deps(fake.r), id, CONFIRMED), second, (work) => work(other));
 
-    expect(a, "the first send, first in the row's queue").toMatchObject({ ok: true, recipients: CONFIRMED });
+    expect(a, "the first send, first in the row's queue").toMatchObject({ ok: true, recipients: COUNTS });
     expect(b, "the second send, behind it").toEqual({ ok: false, error: "sent" });
     expectOneSet(fake, "after both");
-    expect(await stored(id)).toMatchObject({ status: "sent", recipients: CONFIRMED });
+    expect(await stored(id)).toMatchObject({ status: "sent", recipients: COUNTS });
     // each broadcast was made once: two calls, by the first send alone
     expect(fake.calls.filter((c) => c === "broadcasts.create")).toHaveLength(2);
     expect(await lease(), "no lease is left behind").toBeNull();

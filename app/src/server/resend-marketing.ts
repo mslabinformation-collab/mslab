@@ -190,11 +190,15 @@ async function underLease<T>(deps: MarketingDeps, extraMs: number, what: string,
   }
 }
 
-/** The key of the newsletter's calls: RESEND_MARKETING_KEY, else RESEND_API_KEY (spec §4); undefined without either. */
-export const marketingKey = (env: Pick<Env, "RESEND_MARKETING_KEY" | "RESEND_API_KEY">): string | undefined => env.RESEND_MARKETING_KEY || env.RESEND_API_KEY || undefined;
+/**
+ * The key of the newsletter's calls: RESEND_MARKETING_KEY alone (spec §4 as amended, ruling R15: the switch Dim sets after his check, and blanks to
+ * switch the newsletter off again); undefined when it is unset or blank. RESEND_API_KEY is the site's own mails' key and never stands in for it,
+ * whatever its permission.
+ */
+export const marketingKey = (env: Pick<Env, "RESEND_MARKETING_KEY">): string | undefined => env.RESEND_MARKETING_KEY || undefined;
 
-/** Is the newsletter's Resend side set up? Without a key nothing is synced or sent, and nothing fails ("not set up"). Logs nothing. */
-export const marketingConfigured = (env: Pick<Env, "RESEND_MARKETING_KEY" | "RESEND_API_KEY">): boolean => Boolean(marketingKey(env));
+/** Is the newsletter's Resend side set up (RESEND_MARKETING_KEY)? Without it nothing is synced or sent, and nothing fails ("not set up"). Logs nothing. */
+export const marketingConfigured = (env: Pick<Env, "RESEND_MARKETING_KEY">): boolean => Boolean(marketingKey(env));
 
 const client = (deps: MarketingDeps): ResendLike => deps.resend ?? new Resend(marketingKey(deps.env));
 
@@ -209,6 +213,18 @@ const pathEmail = (address: string): string => address.replace(/[^A-Za-z0-9._~!$
 const isNotFound = (e: ApiError | null): boolean => e?.name === "not_found" || e?.statusCode === 404;
 /** Did Resend refuse a new contact because the plan's contacts are used up? (Read from the message, which is never logged.) */
 const contactLimit = (e: ApiError | null): boolean => /contacts?\s+(quota|limit)|(quota|limit)\b.*\bcontacts?\b/i.test(e?.message ?? "");
+/** The names of a refusal of a request's fields (Resend's 400 and 422). */
+const FIELD_ERRORS: ReadonlySet<string> = new Set(["validation_error", "invalid_parameter", "missing_required_field"]);
+/**
+ * Did Resend refuse the contact itself, for its address (ruling R17)? A 400 or 422 validation error whose message names the e-mail, but not
+ * "already exists" (a contact made meanwhile: the next sync finds it) nor the plan's limit. Read from the message, which is never logged. Anything
+ * else, a refused property among them (a definition deleted in Resend's dashboard), stays a failure: it blocks a send until it is put right.
+ */
+const contactRejected = (e: ApiError | null): boolean => {
+  if (!e || (e.statusCode !== 400 && e.statusCode !== 422) || !FIELD_ERRORS.has(e.name ?? "")) return false;
+  const message = e.message ?? "";
+  return /e-?mail/i.test(message) && !/already exist/i.test(message) && !contactLimit(e);
+};
 const summaryOf = (e: unknown): string => {
   const summary = (e as ApiError | null)?.summary ?? errorSummary(e);
   return e instanceof MarketingUnavailable && e.step ? `${summary} at ${e.step}` : summary;
@@ -399,6 +415,38 @@ async function contactRows(db: Db): Promise<number> {
   return n;
 }
 
+/**
+ * The setting that keeps the subscribers whose address Resend refused as a contact (ruling R17): `{ "<subscriber id>": "<ISO time of the refusal>" }`.
+ * Written by the sync that was refused, an id taken out by the push that succeeds; „Uudiskiri“ marks those rows (rejectedSubscribers). An id whose
+ * row is gone stays harmlessly (ids are never reused).
+ */
+export const REJECTED_SETTING = "newsletter_rejected";
+
+/** Marks the row as refused by Resend (one statement: two syncs at once each add their own). */
+async function markRejected(db: Db, id: number, now: Date): Promise<void> {
+  const value = { [String(id)]: now.toISOString() };
+  await db
+    .insert(settings)
+    .values({ key: REJECTED_SETTING, value })
+    .onConflictDoUpdate({ target: settings.key, set: { value: sql`${settings.value} || excluded.value` } });
+}
+
+/** Takes the row's mark away, when it has one (no write otherwise). */
+async function clearRejected(db: Db, id: number): Promise<void> {
+  await db
+    .update(settings)
+    .set({ value: sql`${settings.value} - ${String(id)}::text` })
+    .where(and(eq(settings.key, REJECTED_SETTING), sql`(${settings.value} -> ${String(id)}::text) is not null`));
+}
+
+/** The ids among `ids` whose address Resend refused as a contact (ruling R17): „Uudiskiri“ marks those rows. */
+export async function rejectedSubscribers(q: Q, ids: number[]): Promise<Set<number>> {
+  if (ids.length === 0) return new Set();
+  const stored = await readSetting(q, REJECTED_SETTING);
+  const marked = typeof stored === "object" && stored !== null && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
+  return new Set(ids.filter((id) => typeof marked[String(id)] === "string"));
+}
+
 /** Her contact as Resend has it: its id, whether it unsubscribed, and its segments. */
 type ContactState = { id: string; unsubscribed: boolean; segments: Set<string> };
 
@@ -447,8 +495,24 @@ async function releaseContact(call: Call, r: ResendLike, segments: Segments, con
 }
 
 type PushContext = { deps: MarketingDeps; r: ResendLike; call: Call; segments: Segments; room: () => Promise<boolean> | boolean };
-/** What a push did. "vanished": the row went while it was pushed (she unsubscribed meanwhile), and her contact was taken out again (`release`). */
-type PushOutcome = { kind: "added" } | { kind: "updated" } | { kind: "limit" } | { kind: "failed" } | { kind: "vanished"; created: boolean; release: Release };
+/**
+ * What a push did. "rejected": Resend refused the contact for its address (contactRejected, ruling R17): the row stays unsynced and is marked, and
+ * it is no failure. "vanished": the row went while it was pushed (she unsubscribed meanwhile), and her contact was taken out again (`release`).
+ */
+type PushOutcome =
+  | { kind: "added" }
+  | { kind: "updated" }
+  | { kind: "limit" }
+  | { kind: "failed" }
+  | { kind: "rejected" }
+  | { kind: "vanished"; created: boolean; release: Release };
+
+/** Logs and marks a row whose contact Resend refused (ruling R17). */
+async function rejectRow(ctx: PushContext, row: Row, error: ApiError | null): Promise<PushOutcome> {
+  console.error(`[newsletter-sync] subscriber ${row.id}: Resend refused the contact (${summaryOf(error)}): left out, and marked on „Uudiskiri“`);
+  await markRejected(ctx.deps.db, row.id, ctx.deps.now);
+  return { kind: "rejected" };
+}
 
 /**
  * Tells Resend about one recipient row: a new contact (when `room()` allows one more), subscribed, or her contact updated. Either way with the
@@ -470,6 +534,7 @@ async function pushRow(ctx: PushContext, row: Row, contact: ContactState | null)
     const made = await call(() => r.contacts.create({ email: row.address, unsubscribed: false, properties, segments: [{ id: want }] }));
     if (!made.data) {
       if (contactLimit(made.error)) return { kind: "limit" };
+      if (contactRejected(made.error)) return rejectRow(ctx, row, made.error);
       noteFailure(`[newsletter-sync] subscriber ${row.id}: contact not created`, made.error);
       return { kind: "failed" };
     }
@@ -479,6 +544,7 @@ async function pushRow(ctx: PushContext, row: Row, contact: ContactState | null)
     const resubscribe = contact.unsubscribed && row.syncedAt === null;
     const updated = await call(() => r.contacts.update({ id, properties, ...(resubscribe ? { unsubscribed: false } : {}) }));
     if (updated.error) {
+      if (contactRejected(updated.error)) return rejectRow(ctx, row, updated.error);
       noteFailure(`[newsletter-sync] subscriber ${row.id}: contact ${id} not updated`, updated.error);
       return { kind: "failed" };
     }
@@ -502,7 +568,10 @@ async function pushRow(ctx: PushContext, row: Row, contact: ContactState | null)
     .set({ syncedAt: ctx.deps.now, resendContactId: id })
     .where(and(eq(subscribers.id, row.id), eq(subscribers.locale, row.locale), eq(subscribers.token, row.token), isNotNull(subscribers.confirmedAt)))
     .returning();
-  if (marked.length > 0) return { kind: contact ? "updated" : "added" };
+  if (marked.length > 0) {
+    await clearRejected(ctx.deps.db, row.id); // (Resend took her after all: R17's mark goes)
+    return { kind: contact ? "updated" : "added" };
+  }
   const current = await rowOf(ctx.deps.db, row.address);
   if (current && isRecipient(current)) return { kind: contact ? "updated" : "added" }; // changed meanwhile: unsynced, for the next sync
   const release = await releaseContact(call, r, ctx.segments, id);
@@ -510,14 +579,15 @@ async function pushRow(ctx: PushContext, row: Row, contact: ContactState | null)
   return { kind: "vanished", created: !contact, release };
 }
 
-export type SyncOutcome = "synced" | "removed" | "skipped" | "failed";
+export type SyncOutcome = "synced" | "removed" | "skipped" | "failed" | "rejected";
 
 /**
  * Syncs one address after a change to its row has committed. A confirmed row: her contact made or updated (pushRow). No row, or one of the old
  * double opt-in never confirmed: her contact leaves our segments, and is deleted when it is in no other one (R6; none is fine). A contact
  * unsubscribed in Resend whose row was synced before and is older (R1): the row is deleted, then the contact taken out. "skipped": not set
- * up, a sample address (never synced, R6), or the plan's contacts are used up (the row stays unsynced; the full sync reports it). Never
- * throws: a failure is logged without the address and leaves the row unsynced ("failed").
+ * up, a sample address (never synced, R6), or the plan's contacts are used up (the row stays unsynced; the full sync reports it). "rejected":
+ * Resend refused her address as a contact (ruling R17): the row stays unsynced and is marked on „Uudiskiri“. Never throws: a failure is logged
+ * without the address and leaves the row unsynced ("failed").
  */
 export async function syncAddress(deps: MarketingDeps, email: string): Promise<SyncOutcome> {
   if (!marketingConfigured(deps.env)) return "skipped";
@@ -568,6 +638,8 @@ export async function syncAddress(deps: MarketingDeps, email: string): Promise<S
         return "skipped";
       case "failed":
         return "failed";
+      case "rejected":
+        return "rejected";
       case "vanished":
         return outcome.release === "failed" ? "failed" : "removed";
       default:
@@ -586,10 +658,24 @@ export async function syncAddress(deps: MarketingDeps, email: string): Promise<S
  */
 export type SubscriberSync = (email: string) => Promise<unknown>;
 
-/** The production hook: syncAddress on the server's database and settings, with SITE_URL as the link base. undefined without a marketing key. */
+/**
+ * The pause between two Resend calls of a background sync (the review's M5): the daily cron's full sync and a sign-up's own sync. Slower than a
+ * press (MARKETING_GAP_MS), so that a login code or a confirmation sent meanwhile finds room within Resend's 2 requests a second.
+ */
+export const BACKGROUND_GAP_MS = 1000;
+
+/** The deps of a background sync on the server: SITE_URL as the link base, BACKGROUND_GAP_MS between calls, and `budgetMs` (the cron's deadline). */
+export function backgroundMarketingDeps(db: Db, env: Env, now: Date, budgetMs?: number): MarketingDeps {
+  return { db, env, siteUrl: env.SITE_URL, now, gapMs: BACKGROUND_GAP_MS, ...(budgetMs === undefined ? {} : { budgetMs }) };
+}
+
+/**
+ * The production hook: syncAddress on the server's database and settings (backgroundMarketingDeps: SITE_URL, a background sync's pace).
+ * undefined without the marketing key.
+ */
 export function subscriberSync(db: Db, env: Env): SubscriberSync | undefined {
   if (!marketingConfigured(env)) return undefined;
-  return (email) => syncAddress({ db, env, siteUrl: env.SITE_URL, now: new Date() }, email);
+  return (email) => syncAddress(backgroundMarketingDeps(db, env, new Date()), email);
 }
 
 /** Is the address a confirmed subscriber (the comparison lowers both sides)? Task 4's test send keeps her real unsubscribe link then (ruling R7). */
@@ -603,10 +689,11 @@ export async function isSubscriberAddress(q: Q, email: string): Promise<boolean>
  * `contacts`: Resend's contacts after the sync, all of the account's (the plan's limit counts them all). `added` / `updated`: contacts made,
  * put right. `removed`: contacts taken out of our segments (deleted, or only unlinked when they are in another segment too). `unsubscribedPulled`:
  * rows deleted for an unsubscribe made in Resend. `suppressed`: confirmed subscribers whose address Resend suppresses. `unsynced`: recipient
- * rows still not synced (the limit, a failure, the time budget; sample addresses are never counted). `failed`: pushes and removals that
- * failed in this run, each logged with its row or contact id (a synced row whose push failed is counted here, not in `unsynced`).
- * `limitReached`: the plan's contacts are used up and some were not added. `finished`: every step ran to its end and every contact that had to
- * leave our segments has left.
+ * rows still not synced (the limit, a failure, the time budget; sample addresses and the rows `rejected` in this run are never counted).
+ * `failed`: pushes and removals that failed in this run, each logged with its row or contact id (a synced row whose push failed is counted here,
+ * not in `unsynced`). `rejected`: rows whose address Resend refused as a contact in this run (ruling R17): no failure, never in a run of
+ * failures, and never a reason to refuse a send; each is marked on „Uudiskiri“ (REJECTED_SETTING). `limitReached`: the plan's contacts are used
+ * up and some were not added. `finished`: every step ran to its end and every contact that had to leave our segments has left.
  */
 export type FullSyncReport = {
   contacts: number;
@@ -617,6 +704,7 @@ export type FullSyncReport = {
   suppressed: number;
   unsynced: number;
   failed: number;
+  rejected: number;
   limitReached: boolean;
   finished: boolean;
 };
@@ -654,10 +742,13 @@ async function syncUnderLease(deps: MarketingDeps): Promise<FullSyncReport> {
     suppressed: 0,
     unsynced: 0,
     failed: 0,
+    rejected: 0,
     limitReached: false,
     finished: false,
   };
   let complete = true;
+  /** The rows Resend refused in this run (R17): not counted `unsynced`. */
+  const rejected = new Set<number>();
   try {
     const segments = await segmentsWith(deps, call);
     // 1. what Resend has, and the unsubscribes made there
@@ -723,6 +814,12 @@ async function syncUnderLease(deps: MarketingDeps): Promise<FullSyncReport> {
         report.limitReached = true;
         continue;
       }
+      if (outcome.kind === "rejected") {
+        // Resend answered, and refused her address (R17): no failure, and no part of a run of them
+        report.rejected++;
+        rejected.add(row.id);
+        continue;
+      }
       if (outcome.kind === "failed") {
         report.failed++;
         if (++failures < FAILURES_IN_A_ROW) continue;
@@ -752,11 +849,11 @@ async function syncUnderLease(deps: MarketingDeps): Promise<FullSyncReport> {
     logNote("[newsletter-sync] full sync stopped at its time budget: the rest waits for the next run");
     report.finished = false;
   }
-  report.unsynced = (await allRows(deps.db)).filter((row) => isRecipient(row) && row.syncedAt === null).length;
+  report.unsynced = (await allRows(deps.db)).filter((row) => isRecipient(row) && row.syncedAt === null && !rejected.has(row.id)).length;
   report.suppressed = await suppressedSubscribers(deps.db);
   if (report.limitReached) logNote(`[newsletter-sync] the plan's ${RESEND_FREE_CONTACTS} contacts are used up: ${report.unsynced} subscribers are not in Resend`);
   console.info(
-    `[newsletter-sync] full sync: ${report.contacts} contacts, ${report.added} added, ${report.updated} updated, ${report.removed} removed, ${report.unsubscribedPulled} unsubscribed in Resend, ${report.suppressed} suppressed, ${report.unsynced} not synced, ${report.failed} failed${report.finished ? "" : ", not finished"}`,
+    `[newsletter-sync] full sync: ${report.contacts} contacts, ${report.added} added, ${report.updated} updated, ${report.removed} removed, ${report.unsubscribedPulled} unsubscribed in Resend, ${report.suppressed} suppressed, ${report.unsynced} not synced, ${report.failed} failed, ${report.rejected} rejected${report.finished ? "" : ", not finished"}`,
   );
   return report;
 }
@@ -951,10 +1048,39 @@ export async function recipientCounts(db: Db): Promise<{ et: number; ru: number 
 export type BroadcastMail = { name: string; subject: string; html: string; text: string };
 
 /**
- * What one broadcast came to: its id, or why not. `refused`: Resend answered with a 4xx, so nothing was made (a broadcast is made and sent in one
- * call); false: no answer, or a 5xx (a timeout, the network, a gateway's error), so it may have been made and sent all the same.
+ * What one broadcast came to: its id, or why not. `refused`: Resend stated that it refused it (broadcastRefused), so nothing was made (a broadcast
+ * is made and sent in one call); false: anything else (no answer, a timeout, a 5xx, a gateway's error), so it may have been made and sent all
+ * the same.
  */
 export type BroadcastResult = { ok: true; id: string } | { ok: false; refused: boolean; error: MarketingUnavailable };
+
+/** The statuses with which Resend refuses a request it did not carry out (resend.com/docs/api-reference/errors). */
+const REFUSED_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, 404, 422, 429]);
+/** The names Resend gives a request it refused for its content or for its key (the SDK passes them on as they come). */
+const REFUSED_NAMES: ReadonlySet<string> = new Set([
+  "validation_error",
+  "missing_required_field",
+  "invalid_parameter",
+  "invalid_from_address",
+  "invalid_attachment",
+  "invalid_access",
+  "invalid_region",
+  "invalid_idempotency_key",
+  ...KEY_ERRORS,
+]);
+
+/**
+ * Did Resend refuse a broadcast, so that it was certainly not made (the review's M2)? Only a 400, 401, 403, 404, 422 or 429 (a 429 after its second
+ * try), or an error named as a validation or key error (REFUSED_NAMES). Anything else is no refusal: no answer, a timeout, any 5xx whatever its
+ * name (the server may have made it), and the other 4xx unless so named (a 405, 408, 409, 413, 451 or a gateway's 499 can come after Resend took
+ * the request).
+ */
+export function broadcastRefused(error: { name?: string | null; statusCode?: number | null } | null | undefined): boolean {
+  const status = error?.statusCode;
+  if (typeof status === "number" && REFUSED_STATUSES.has(status)) return true;
+  if (typeof status === "number" && status >= 500) return false;
+  return REFUSED_NAMES.has(error?.name ?? "");
+}
 
 /** Sends one broadcast at once to the segment of `locale`. */
 export type SendBroadcast = (locale: Locale, mail: BroadcastMail) => Promise<BroadcastResult>;
@@ -977,8 +1103,7 @@ async function broadcastTo(deps: MarketingDeps, call: Call, r: ResendLike, segme
     }),
   );
   if (answer.data) return { ok: true, id: answer.data.id };
-  const status = answer.error?.statusCode;
-  return { ok: false, refused: typeof status === "number" && status >= 400 && status < 500, error: new MarketingUnavailable(answer.error, "broadcasts.create") };
+  return { ok: false, refused: broadcastRefused(answer.error), error: new MarketingUnavailable(answer.error, "broadcasts.create") };
 }
 
 /**
@@ -1035,12 +1160,17 @@ async function testSegmentWith(deps: MarketingDeps, call: Call, r: ResendLike): 
  *    to subscribed (an admin's own address, for the test she asked for; a contact outside our segments, which the sync never touches); a
  *    subscriber's contact keeps her real link (`realLink: true`, ruling R7), and is made with it if the sync has not made it yet;
  * 4. the broadcast, made and sent at once (broadcastTo).
+ * A subscriber whose contact unsubscribed in Resend would never get it (Resend sends no broadcast to an unsubscribed contact, and R7 leaves her
+ * `unsubscribed` as it is): then nothing of hers is touched and nothing is sent, `{ sent: false, reason: "unsubscribed" }` (the review's M7).
  * A subscriber is told by her confirmed row (rowOf, the match isSubscriberAddress uses), and read again after the test link is written: one who
  * signed up meanwhile gets her real link back. The calls keep within the test's lease: none starts later than a call's longest time (its timeout,
  * and once more after a 429) before the lease ends; past that the test stops, nothing sent. MarketingUnavailable when not set up, when a call
  * fails or the time is up (nothing is sent then). Logs ids only.
  */
-export async function sendTestBroadcast(deps: MarketingDeps, address: string, mail: BroadcastMail): Promise<{ id: string; realLink: boolean }> {
+/** What a test send came to: its broadcast, or none because the address is a subscriber's whose contact unsubscribed in Resend (M7). */
+export type TestBroadcast = { sent: true; id: string; realLink: boolean } | { sent: false; reason: "unsubscribed" };
+
+export async function sendTestBroadcast(deps: MarketingDeps, address: string, mail: BroadcastMail): Promise<TestBroadcast> {
   if (!marketingConfigured(deps.env)) throw new MarketingUnavailable({ name: "not_configured" });
   // (taken before the lease, so never later than the lease's own start)
   const deadline = Date.now() + (deps.budgetMs ?? UNBOUNDED_LEASE_MS) + LEASE_SLACK_MS - CALL_MAX_MS;
@@ -1057,7 +1187,7 @@ export async function sendTestBroadcast(deps: MarketingDeps, address: string, ma
 /** The longest one call can take: its timeout, and once more after a 429 with the pause before it. */
 const CALL_MAX_MS = NOTIFY_TIMEOUT_MS + RATE_LIMIT_RETRY_MS + NOTIFY_TIMEOUT_MS;
 
-async function testBroadcastWith(deps: MarketingDeps, call: Call, address: string, mail: BroadcastMail): Promise<{ id: string; realLink: boolean }> {
+async function testBroadcastWith(deps: MarketingDeps, call: Call, address: string, mail: BroadcastMail): Promise<TestBroadcast> {
   const r = client(deps);
   await segmentsWith(deps, call);
   const email = normalizeEmail(address);
@@ -1077,6 +1207,11 @@ async function testBroadcastWith(deps: MarketingDeps, call: Call, address: strin
   const found = await call(() => r.contacts.get({ email: pathEmail(email) }));
   if (found.error && !isNotFound(found.error)) throw new MarketingUnavailable(found.error, "contacts.get");
   const existing = found.data?.id ?? null;
+  if (subscriber && found.data?.unsubscribed) {
+    // (R7: her `unsubscribed` is hers; a broadcast would reach no one)
+    console.info(`[newsletter] no test broadcast: the contact ${existing} of subscriber ${subscriber.id} unsubscribed in Resend`);
+    return { sent: false, reason: "unsubscribed" };
+  }
   for (const member of members) {
     if (member.id === existing) continue;
     const out = await call(() => r.contacts.segments.remove({ contactId: member.id, segmentId: segment }));
@@ -1115,5 +1250,5 @@ async function testBroadcastWith(deps: MarketingDeps, call: Call, address: strin
   if (!sent.ok) throw sent.error;
   const whose = subscriber ? `subscriber ${subscriber.id}, her own unsubscribe link` : "the test link";
   console.info(`[newsletter] test broadcast ${sent.id} sent to the test segment ${segment} (contact ${contactId}, ${whose})`);
-  return { id: sent.id, realLink: subscriber !== null };
+  return { sent: true, id: sent.id, realLink: subscriber !== null };
 }

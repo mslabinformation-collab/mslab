@@ -151,6 +151,37 @@
   margin: 12px 0 0;
 }
 
+/* a send left half way (ruling R16): each language with what is known of it */
+.languages {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.language {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.language p {
+  margin: 0;
+}
+
+.language > a {
+  justify-self: start;
+}
+
+.mark {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
 .readOnly {
   margin: 14px 0;
 }

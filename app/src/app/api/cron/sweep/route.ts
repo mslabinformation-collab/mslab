@@ -9,7 +9,7 @@ import { logFailure } from "@/server/log";
 import { checkPendingPayments, NO_PAYMENT_SWEEP, type PaymentSweep } from "@/server/payments/check";
 import { paymentProvider } from "@/server/payments/montonio";
 import { revalidatePublic } from "@/server/public-cache";
-import { FullSyncBusy, fullSync, marketingConfigured, subscriberSync, type FullSyncReport } from "@/server/resend-marketing";
+import { backgroundMarketingDeps, FullSyncBusy, fullSync, marketingConfigured, subscriberSync, type FullSyncReport } from "@/server/resend-marketing";
 import { keyMatches } from "@/server/review-key";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +17,9 @@ export const dynamic = "force-dynamic";
 // SWEEP_DEADLINE_MS (35 s) of the run, and a row begun is finished, which takes at most about 20 s (getVideo 10 s, then one delete
 // 10 s), so 35 s + 20 s is under 60. (SWEEP_BATCH rows of each kind bound the work as well.) The payments' part (phase 2b) keeps to the same
 // deadline: no new GET /orders after it, and one begun has 15 s at most (REQUEST_TIMEOUT_MS), so 35 s + 15 s and its settlement is under 60 too.
-// The newsletter's full sync with Resend (newsletter campaigns) keeps to the same deadline: no new Resend call after it, and one begun has 8 s
-// (NOTIFY_TIMEOUT_MS) and, after a 429, a second and 8 s more, so 35 s + 17 s and the counts' queries are under 60 too.
+// The newsletter's full sync with Resend (newsletter campaigns) keeps to the same deadline: no new Resend call after it, and one begun waits its
+// 1 s gap (a background sync's pace, BACKGROUND_GAP_MS) and has 8 s (NOTIFY_TIMEOUT_MS) and, after a 429, a second and 8 s more, so 35 s + 18 s and
+// the counts' queries are under 60 too.
 // The parts run side by side, so their times do not add up.
 export const maxDuration = 60;
 const SWEEP_DEADLINE_MS = 35_000;
@@ -57,14 +58,15 @@ async function sweepPayments(db: Db, now: Date, until: number): Promise<PaymentS
 
 /**
  * The newsletter's part (newsletter campaigns, spec D2): the full sync with Resend until `until` (server/resend-marketing.ts fullSync, which logs
- * its own line). null without the newsletter's key (no line, no field in the answer: the sweep is today's); "unavailable" when Resend failed it;
- * "busy" when another full sync (Maria's button, an earlier cron) holds the lease: logged by fullSync, skipped here, the next day's run syncs.
+ * its own line), at a background sync's pace (backgroundMarketingDeps: 1 s between calls, the review's M5). null without the newsletter's key (no
+ * line, no field in the answer: the sweep is today's); "unavailable" when Resend failed it; "busy" when another full sync (Maria's button, an
+ * earlier cron) holds the lease: logged by fullSync, skipped here, the next day's run syncs.
  */
 async function syncNewsletter(db: Db, now: Date, until: number): Promise<FullSyncReport | "busy" | "unavailable" | null> {
   const env = { ...serverEnv(), KV: serverKv() };
   if (!marketingConfigured(env)) return null;
   try {
-    return await fullSync({ db, env, siteUrl: env.SITE_URL, now, budgetMs: Math.max(0, until - Date.now()) });
+    return await fullSync(backgroundMarketingDeps(db, env, now, Math.max(0, until - Date.now())));
   } catch (e) {
     if (e instanceof FullSyncBusy) return "busy";
     logFailure("[newsletter-sync] the daily full sync failed", e);

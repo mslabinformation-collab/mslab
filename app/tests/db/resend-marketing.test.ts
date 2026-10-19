@@ -7,17 +7,24 @@ import { deleteClient, setNewsletter, updateProfile } from "@/server/client-data
 import { confirmNewsletter, unsubscribeByToken } from "@/server/newsletter";
 import type { Env } from "@/server/notify";
 import {
+  BACKGROUND_GAP_MS,
+  backgroundMarketingDeps,
+  broadcastRefused,
   contactCount,
   ensureSegments,
   FullSyncBusy,
   fullSync,
   isSubscriberAddress,
   keyRefused,
+  MARKETING_GAP_MS,
   MarketingUnavailable,
   marketingConfigured,
   readContactCount,
+  REJECTED_SETTING,
+  rejectedSubscribers,
   SEGMENT_NAMES,
   SEGMENTS_SETTING,
+  subscriberSync,
   suppressedAddresses,
   SYNC_LEASE_SETTING,
   syncAddress,
@@ -28,7 +35,7 @@ import {
 } from "@/server/resend-marketing";
 import { handleSubscribe, subscribeLater, type Deps } from "@/server/submit";
 import { fakeKv, stubFetch } from "../fakes";
-import { CONTACTS_QUOTA, DOWN, fakeResend, RATE_LIMITED, type FakeResend } from "./resend-fake";
+import { CONTACTS_QUOTA, DOWN, fakeResend, INVALID_EMAIL, RATE_LIMITED, type FakeResend } from "./resend-fake";
 import { makeTestDb } from "./helpers";
 
 // The site keeps Resend's marketing contacts in step with `subscribers`, which stays the record of consent (newsletter campaigns, spec D2, D3, D7,
@@ -100,15 +107,30 @@ const logged = () =>
     .join("\n");
 
 describe("the configuration", () => {
-  test("the marketing key is RESEND_MARKETING_KEY, else RESEND_API_KEY; without either nothing is synced and Resend is not asked", async () => {
+  test("ruling R15: RESEND_MARKETING_KEY alone is the switch; RESEND_API_KEY (the site's own mails) never turns the newsletter on", async () => {
     expect(marketingConfigured(marketingEnv())).toBe(true);
-    expect(marketingConfigured(marketingEnv({ RESEND_MARKETING_KEY: undefined, RESEND_API_KEY: "re_send" }))).toBe(true);
-    const none = marketingEnv({ RESEND_MARKETING_KEY: undefined });
-    expect(marketingConfigured(none)).toBe(false);
-    await sub("kati@example.com");
-    expect(await syncAddress(deps({ env: none }), "kati@example.com")).toBe("skipped");
-    expect(await contactCount(deps({ env: none }))).toBeNull();
+    expect(marketingConfigured(marketingEnv({ RESEND_API_KEY: "re_send" }))).toBe(true);
+    // a full-access RESEND_API_KEY without the marketing key: still off, and a blank marketing key is off too (the way to switch it off again)
+    for (const off of [{ RESEND_MARKETING_KEY: undefined, RESEND_API_KEY: "re_full_access" }, { RESEND_MARKETING_KEY: "", RESEND_API_KEY: "re_full_access" }, { RESEND_MARKETING_KEY: undefined }]) {
+      const none = marketingEnv(off);
+      expect(marketingConfigured(none), JSON.stringify(off)).toBe(false);
+      await db.delete(subscribers);
+      await sub("kati@example.com");
+      expect(await syncAddress(deps({ env: none }), "kati@example.com")).toBe("skipped");
+      expect(await contactCount(deps({ env: none }))).toBeNull();
+      await expect(fullSync(deps({ env: none }))).rejects.toMatchObject({ code: "not_configured" });
+      await expect(ensureSegments(deps({ env: none }))).rejects.toMatchObject({ code: "not_configured" });
+      expect(subscriberSync(db, none)).toBeUndefined();
+    }
     expect(fake.calls).toEqual([]);
+  });
+
+  test("ruling R15: the newsletter's calls carry RESEND_MARKETING_KEY, never RESEND_API_KEY, when both are set", async () => {
+    await sub("kati@example.com");
+    const f = stubFetch(() => Response.json({ name: "internal_server_error", message: "down", statusCode: 500 }, { status: 500 }));
+    await syncAddress({ db, env: marketingEnv({ RESEND_API_KEY: "re_transactional" }), siteUrl: SITE, now: NOW, gapMs: 0 }, "kati@example.com");
+    expect(f.calls.length).toBeGreaterThan(0);
+    expect(f.calls.every((c) => c.headers.get("authorization") === "Bearer re_marketing_test")).toBe(true);
   });
 
   test("the placeholder Task 4 puts in a broadcast fills the contact property unsubscribe_url (triple braces: not escaped)", () => {
@@ -590,6 +612,119 @@ describe("the review's narrow cases (fix round 1)", () => {
   });
 });
 
+describe("ruling R17: an address Resend refuses as a contact is `rejected`, never a failure", () => {
+  const refusesBad = (args: unknown) => (/^bad/.test((args as { email: string }).email) ? INVALID_EMAIL : null);
+
+  test("the full sync: `rejected` (not `failed`), the row marked, the rest synced; the sync is finished and nothing is left `unsynced` for it", async () => {
+    await ensureSegments(deps());
+    const bad = await sub("bad@example.com");
+    await sub("kati@example.com");
+    await sub("olga@example.com", { locale: "ru" });
+    fake.fail.set("contacts.create", refusesBad);
+    const report = await fullSync(deps());
+    expect(report).toMatchObject({ added: 2, failed: 0, rejected: 1, unsynced: 0, finished: true });
+    expect((await rowOf("bad@example.com")).syncedAt).toBeNull();
+    expect(await rejectedSubscribers(db, [bad.id, bad.id + 1, bad.id + 2])).toEqual(new Set([bad.id]));
+    expect((await db.select().from(settings).where(eq(settings.key, REJECTED_SETTING)))[0].value).toEqual({ [bad.id]: NOW.toISOString() });
+    expect(logged()).toContain(`subscriber ${bad.id}: Resend refused the contact`);
+    expect(logged()).toMatch(/full sync: .*, 0 failed, 1 rejected/);
+    expect(logged()).not.toContain("bad@example.com");
+  });
+
+  test("refused rows are no run of failures: three or more in a row neither stop the sync nor count toward its three", async () => {
+    await ensureSegments(deps());
+    for (let i = 1; i <= 4; i++) await sub(`bad${i}@example.com`);
+    await sub("kati@example.com");
+    fake.fail.set("contacts.create", refusesBad);
+    expect(await fullSync(deps())).toMatchObject({ added: 1, failed: 0, rejected: 4, unsynced: 0, finished: true });
+    expect(fake.of("kati@example.com")).toBeDefined();
+    expect(logged()).not.toContain("failed in a row");
+  });
+
+  test("still a failure: a 5xx, Resend's 'already exists', a refused property, a 403 validation error — none is `rejected`, and the row is not marked", async () => {
+    await ensureSegments(deps());
+    const row = await sub("kati@example.com");
+    for (const error of [DOWN, { name: "validation_error", statusCode: 422, message: "Contact already exists" }, { name: "validation_error", statusCode: 422, message: "The property unsubscribe_url does not exist" }, { name: "validation_error", statusCode: 403, message: "Invalid `email` field" }]) {
+      fake.fail.set("contacts.create", error);
+      expect(await fullSync(deps()), error.message).toMatchObject({ rejected: 0, failed: 1, unsynced: 1 });
+    }
+    expect(await rejectedSubscribers(db, [row.id])).toEqual(new Set());
+  });
+
+  test("an update Resend refuses for the address is `rejected` too (the row's language changed, the contact exists)", async () => {
+    await ensureSegments(deps());
+    const c = fake.add("kati@example.com", { segments: [ET()] });
+    const row = await sub("kati@example.com", { locale: "ru", resendContactId: c.id });
+    fake.fail.set("contacts.update", INVALID_EMAIL);
+    expect(await fullSync(deps())).toMatchObject({ rejected: 1, failed: 0, unsynced: 0, finished: true });
+    expect(await rejectedSubscribers(db, [row.id])).toEqual(new Set([row.id]));
+  });
+
+  test("the address's own sync (a sign-up): 'rejected', the row marked; once Resend takes her, 'synced' and the mark is gone", async () => {
+    const bad = await sub("bad@example.com");
+    fake.fail.set("contacts.create", refusesBad);
+    expect(await syncAddress(deps(), "bad@example.com")).toBe("rejected");
+    expect(await rejectedSubscribers(db, [bad.id])).toEqual(new Set([bad.id]));
+    fake.fail.clear();
+    expect(await syncAddress(deps({ now: at(5) }), "bad@example.com")).toBe("synced");
+    expect(await rejectedSubscribers(db, [bad.id])).toEqual(new Set());
+    expect((await rowOf("bad@example.com")).syncedAt).toEqual(at(5));
+  });
+
+  test("the full sync that pushes a marked row successfully takes its mark away; another row's mark stays", async () => {
+    await ensureSegments(deps());
+    const bad = await sub("bad@example.com");
+    const worse = await sub("bad2@example.com");
+    fake.fail.set("contacts.create", refusesBad);
+    await fullSync(deps());
+    expect(await rejectedSubscribers(db, [bad.id, worse.id])).toEqual(new Set([bad.id, worse.id]));
+    fake.fail.set("contacts.create", (args) => ((args as { email: string }).email === "bad2@example.com" ? INVALID_EMAIL : null));
+    expect(await fullSync(deps({ now: at(5) }))).toMatchObject({ added: 1, rejected: 1 });
+    expect(await rejectedSubscribers(db, [bad.id, worse.id])).toEqual(new Set([worse.id]));
+  });
+
+  test("no mark at all: an empty set, and no settings row is made by reading", async () => {
+    expect(await rejectedSubscribers(db, [1, 2, 3])).toEqual(new Set());
+    expect(await rejectedSubscribers(db, [])).toEqual(new Set());
+    expect(await db.select().from(settings)).toEqual([]);
+  });
+});
+
+describe("Task 2 N4: nothing is deleted when a contact's segments cannot be read, or its delete fails", () => {
+  test("a contact in our segment without a row, its segments unreadable: `failed`, the sync not finished, the contact kept; the send refuses", async () => {
+    await ensureSegments(deps());
+    const orphan = fake.add("loobunud@example.com", { segments: [ET()] });
+    await sub("kati@example.com");
+    fake.fail.set("contacts.segments.list", DOWN);
+    const report = await fullSync(deps());
+    expect(report).toMatchObject({ failed: 1, finished: false });
+    expect(fake.contacts.get(orphan.id)).toBeDefined();
+    expect([...fake.contacts.get(orphan.id)!.segments]).toEqual([ET()]);
+    expect(fake.calls).not.toContain("contacts.remove");
+    expect(fake.calls).not.toContain("contacts.segments.remove");
+    expect(logged()).toContain(`contact ${orphan.id}: its segments not read`);
+  });
+
+  test("the site's unsubscribe whose contact cannot be deleted: 'failed', the contact kept; the next full sync takes it out", async () => {
+    await ensureSegments(deps());
+    await sub("kati@example.com");
+    expect(await syncAddress(deps(), "kati@example.com")).toBe("synced");
+    const contact = fake.of("kati@example.com")!;
+    await db.delete(subscribers);
+    fake.fail.set("contacts.remove", DOWN);
+    expect(await syncAddress(deps(), "kati@example.com")).toBe("failed");
+    expect(fake.contacts.get(contact.id)).toBeDefined();
+    // its segments unreadable: 'failed' too, and nothing is removed
+    fake.fail.clear();
+    fake.fail.set("contacts.segments.list", DOWN);
+    expect(await syncAddress(deps(), "kati@example.com")).toBe("failed");
+    expect(fake.contacts.get(contact.id)).toBeDefined();
+    fake.fail.clear();
+    expect(await fullSync(deps())).toMatchObject({ removed: 1, failed: 0, finished: true });
+    expect(fake.contacts.get(contact.id)).toBeUndefined();
+  });
+});
+
 describe("contactCount", () => {
   test("Resend's own count of the contacts; null when Resend cannot be reached", async () => {
     fake.add("a@example.com");
@@ -640,6 +775,43 @@ describe("contactCount", () => {
     await readContactCount(deps());
     expect(logged()).toContain("RESEND_MARKETING_KEY");
     expect(logged()).not.toContain("@");
+  });
+});
+
+describe("broadcastRefused (the review's M2): what counts as „the broadcast was refused, nothing sent“", () => {
+  // Resend makes and sends a broadcast in one call: only an answer that says it refused the request means it was not made. Anything else (no
+  // answer, a 5xx, a status no one can read as a refusal) may have gone, and the send is `interrupted` (ruling R13).
+  const TABLE: [string, { name?: string | null; statusCode?: number | null }, boolean][] = [
+    ["400 validation_error", { name: "validation_error", statusCode: 400 }, true],
+    ["401 restricted_api_key", { name: "restricted_api_key", statusCode: 401 }, true],
+    ["401 missing_api_key", { name: "missing_api_key", statusCode: 401 }, true],
+    ["403 invalid_api_key", { name: "invalid_api_key", statusCode: 403 }, true],
+    ["403 validation_error (an unverified domain)", { name: "validation_error", statusCode: 403 }, true],
+    ["404 not_found (the segment is gone)", { name: "not_found", statusCode: 404 }, true],
+    ["422 missing_required_field", { name: "missing_required_field", statusCode: 422 }, true],
+    ["422 invalid_from_address", { name: "invalid_from_address", statusCode: 422 }, true],
+    ["429 rate_limit_exceeded (after its second try)", { name: "rate_limit_exceeded", statusCode: 429 }, true],
+    ["429 daily_quota_exceeded", { name: "daily_quota_exceeded", statusCode: 429 }, true],
+    ["a validation error without a status", { name: "validation_error", statusCode: null }, true],
+    ["a key error without a status", { name: "invalid_api_key" }, true],
+    ["405 method_not_allowed", { name: "method_not_allowed", statusCode: 405 }, false],
+    ["408 from a gateway", { name: "application_error", statusCode: 408 }, false],
+    ["409 concurrent_idempotent_requests", { name: "concurrent_idempotent_requests", statusCode: 409 }, false],
+    ["413 from a gateway", { name: "application_error", statusCode: 413 }, false],
+    ["451 security_error", { name: "security_error", statusCode: 451 }, false],
+    ["499 from a gateway", { name: "application_error", statusCode: 499 }, false],
+    ["500 internal_server_error", { name: "internal_server_error", statusCode: 500 }, false],
+    ["502 from a gateway", { name: "application_error", statusCode: 502 }, false],
+    ["a 5xx that names a validation error (the server may have made it)", { name: "validation_error", statusCode: 500 }, false],
+    ["no answer (the SDK's fetch failed)", { name: "application_error", statusCode: null }, false],
+    ["our own timeout", { name: "request_failed", statusCode: null }, false],
+    ["nothing at all", {}, false],
+  ];
+  test.each(TABLE)("%s → refused: %s", (_, error, refused) => {
+    expect(broadcastRefused(error)).toBe(refused);
+  });
+  test("null is no refusal", () => {
+    expect(broadcastRefused(null)).toBe(false);
   });
 });
 
@@ -907,6 +1079,29 @@ describe("the real SDK behind ResendLike", () => {
   });
 });
 
+describe("the review's M5: a background sync is slower than a press", () => {
+  test("a sign-up's own sync (the production hook) keeps a second between its Resend calls; MARKETING_GAP_MS (a press, a send) stays 600 ms", async () => {
+    expect(BACKGROUND_GAP_MS).toBe(1000);
+    expect(MARKETING_GAP_MS).toBe(600);
+    const background = backgroundMarketingDeps(db, marketingEnv(), NOW, 5000);
+    expect(background.db).toBe(db);
+    expect({ siteUrl: background.siteUrl, now: background.now, gapMs: background.gapMs, budgetMs: background.budgetMs }).toEqual({ siteUrl: SITE, now: NOW, gapMs: BACKGROUND_GAP_MS, budgetMs: 5000 });
+    expect(backgroundMarketingDeps(db, marketingEnv(), NOW)).not.toHaveProperty("budgetMs");
+    await db.insert(settings).values({ key: SEGMENTS_SETTING, value: { et: "seg-et", ru: "seg-ru", property: "prop-1" } });
+    await sub("kati@example.com");
+    const times: number[] = [];
+    stubFetch((href, init) => {
+      times.push(Date.now());
+      if ((init?.method ?? "GET") === "GET") return Response.json({ name: "not_found", message: "Contact not found", statusCode: 404 }, { status: 404 });
+      return Response.json({ object: "contact", id: "ct-1" });
+    });
+    const hookOf = subscriberSync(db, marketingEnv())!;
+    expect(await hookOf("kati@example.com")).toBe("synced");
+    expect(times).toHaveLength(2); // contacts.get, contacts.create
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(BACKGROUND_GAP_MS - 20);
+  });
+});
+
 describe("the full sync's lease (rulings R9, R11): one full sync at a time", () => {
   const leaseRow = async () => (await db.select().from(settings).where(eq(settings.key, SYNC_LEASE_SETTING)))[0];
   const putLease = (value: unknown) => db.insert(settings).values({ key: SYNC_LEASE_SETTING, value });
@@ -1056,10 +1251,12 @@ describe("the daily cron", () => {
     for (const name of ["MONTONIO_ACCESS_KEY", "MONTONIO_SECRET_KEY", "PAYMENT_PROVIDER"]) vi.stubEnv(name, "");
     vi.stubEnv("CRON_SECRET", "cron-secret-for-tests-0123456789");
     vi.stubEnv("RESEND_MARKETING_KEY", "re_marketing_test");
-    // the segments were set up before (each call waits the 600 ms between Resend calls here: the fewer, the shorter the test)
+    // the segments were set up before (each call waits a background sync's 1 s between Resend calls here: the fewer, the shorter the test)
     await db.insert(settings).values({ key: SEGMENTS_SETTING, value: { et: "seg-et", ru: "seg-ru", property: "prop-1" } });
     const empty = () => Response.json({ object: "list", data: [], has_more: false });
+    const times: number[] = [];
     stubFetch((url, init) => {
+      times.push(Date.now());
       if ((init?.method ?? "GET") === "GET") return empty();
       if (url.endsWith("/segments")) return Response.json({ object: "segment", id: `seg-${Math.random()}`, name: "x" });
       return Response.json({ object: "contact_property", id: "prop-1" });
@@ -1067,7 +1264,11 @@ describe("the daily cron", () => {
     const call = () => GET(new Request("https://mslab.example/api/cron/sweep", { headers: { authorization: "Bearer cron-secret-for-tests-0123456789" } }));
     const res = await call();
     expect(res.status).toBe(200);
-    expect((await res.json()).newsletter).toEqual({ contacts: 0, added: 0, updated: 0, removed: 0, unsubscribedPulled: 0, suppressed: 0, unsynced: 0, failed: 0, limitReached: false, finished: true });
+    expect((await res.json()).newsletter).toEqual({ contacts: 0, added: 0, updated: 0, removed: 0, unsubscribedPulled: 0, suppressed: 0, unsynced: 0, failed: 0, rejected: 0, limitReached: false, finished: true });
+    // the review's M5: the cron is a background sync, a second between two calls (a press keeps MARKETING_GAP_MS, 600 ms)
+    expect(times.length).toBeGreaterThanOrEqual(3);
+    const gaps = times.slice(1).map((t, i) => t - times[i]);
+    expect(Math.min(...gaps), JSON.stringify(gaps)).toBeGreaterThanOrEqual(BACKGROUND_GAP_MS - 20);
     stubFetch(() => Response.json({ name: "internal_server_error", message: "down", statusCode: 500 }, { status: 500 }));
     const failed = await call();
     expect(failed.status).toBe(200);

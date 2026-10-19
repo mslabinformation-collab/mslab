@@ -24,6 +24,8 @@ type Failure = FakeError | ((args: unknown) => FakeError | null);
 export const NOT_FOUND: FakeError = { name: "not_found", statusCode: 404, message: "Contact not found" };
 export const RATE_LIMITED: FakeError = { name: "rate_limit_exceeded", statusCode: 429, message: "Too many requests" };
 export const DOWN: FakeError = { name: "internal_server_error", statusCode: 500, message: "Internal server error" };
+/** What Resend answers for an address it will not take as a contact (ruling R17; worded as its `to` field's refusal is). */
+export const INVALID_EMAIL: FakeError = { name: "validation_error", statusCode: 422, message: "Invalid `email` field. The email address needs to follow the `email@example.com` format." };
 /** What Resend answers when the plan's contacts are used up (the wording of its rate-limit page). */
 export const CONTACTS_QUOTA: FakeError = { name: "validation_error", statusCode: 403, message: "You have reached your contacts quota. Please upgrade your plan to send more emails." };
 

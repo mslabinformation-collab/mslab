@@ -109,11 +109,13 @@ describe("fullSyncAction: without the newsletter's key", () => {
     expect(console.error).not.toHaveBeenCalled();
   });
 
-  test("RESEND_API_KEY alone is a key too (the marketing key falls back to it)", async () => {
+  test("ruling R15: RESEND_API_KEY alone is no switch (it is the site's own mails' key): `notConfigured`, and Resend is not asked", async () => {
     vi.stubEnv("RESEND_MARKETING_KEY", "");
-    vi.stubEnv("RESEND_API_KEY", "re_send_only_name");
+    vi.stubEnv("RESEND_API_KEY", "re_full_access_name");
     await sub("kati@example.com");
-    expect(await actions.fullSyncAction()).toMatchObject({ added: 1, finished: true });
+    expect(await actions.fullSyncAction()).toEqual({ error: "notConfigured" });
+    expect(fake.calls).toEqual([]);
+    expect((await rowOf("kati@example.com")).syncedAt).toBeNull();
   });
 });
 
@@ -139,6 +141,7 @@ describe("fullSyncAction: a sync that ran", () => {
       suppressed: 1,
       unsynced: 0,
       failed: 0,
+      rejected: 0,
       limitReached: false,
       finished: true,
     });
@@ -320,6 +323,12 @@ describe("the deps of Maria's sync (server/send-deps.ts adminMarketingDeps)", ()
     expect(adminMarketingDeps()).not.toHaveProperty("budgetMs"); // (the page's count has no budget)
   });
 
+  test("the review's M5: a press and a send keep the interactive pace (no gap of their own: MARKETING_GAP_MS, 600 ms), unlike the background syncs", async () => {
+    const real = await vi.importActual<typeof import("@/server/send-deps")>("@/server/send-deps");
+    expect(real.adminMarketingDeps(ADMIN_SYNC_BUDGET_MS)).not.toHaveProperty("gapMs");
+    expect(real.adminMarketingDeps()).not.toHaveProperty("gapMs");
+  });
+
   test("a contact made by the button carries the unsubscribe link on SITE_URL", async () => {
     const row = await sub("kati@example.com");
     expect(await actions.fullSyncAction()).toMatchObject({ added: 1 });
@@ -351,6 +360,8 @@ describe("the campaigns' actions: save, copy, test, prepare and send", () => {
     cache.refresh.mockReset();
     return r.id;
   };
+  /** The campaign's last change as stored now (ISO): what a confirmation carries (the review's M3). */
+  const version = async (id: number) => (await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)))[0].updatedAt.toISOString();
 
   test("saveCampaignAction: a new draft (`id: null`) and the same again in place; the page is refreshed; refused fields come back by name", async () => {
     const r = await actions.saveCampaignAction({ id: null, draft: CAMPAIGN });
@@ -406,16 +417,17 @@ describe("the campaigns' actions: save, copy, test, prepare and send", () => {
     const id = await saved();
     await sub("kati@example.com");
     const prepared = await actions.prepareSendAction({ id });
-    expect(prepared).toMatchObject({ ok: true, plan: { et: 1, ru: 0, ruFallsBack: true, left: 0 } });
+    expect(prepared).toMatchObject({ ok: true, plan: { et: 1, ru: 0, ruFallsBack: true, left: 0, rejected: 0, updatedAt: await version(id) } });
+    const updatedAt = (prepared as { plan: { updatedAt: string } }).plan.updatedAt;
     expect(state.budgets.at(-1)).toBe(ADMIN_SYNC_BUDGET_MS);
     expect(cache.refresh).not.toHaveBeenCalled();
     expect(fake.broadcasts).toEqual([]);
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0 })).toEqual({ ok: true, recipients: { et: 1, ru: 0 }, missing: [], left: 0 });
+    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0, updatedAt })).toEqual({ ok: true, recipients: { et: 1, ru: 0 }, missing: [], left: 0 });
     expect(state.budgets.at(-1)).toBe(ADMIN_SYNC_BUDGET_MS);
     expect(cache.refresh).toHaveBeenCalledTimes(1);
     expect(fake.broadcasts).toHaveLength(1);
     expect(fake.broadcasts[0].args.html).toContain(`src="${SITE}/brand/logo.png"`);
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0 })).toEqual({ ok: false, error: "sent" });
+    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0, updatedAt })).toEqual({ ok: false, error: "sent" });
     expect(cache.refresh).toHaveBeenCalledTimes(2); // (a refusal of a campaign that changed meanwhile refreshes too: its row shows the new state)
   });
 
@@ -423,11 +435,11 @@ describe("the campaigns' actions: save, copy, test, prepare and send", () => {
     const id = await saved();
     await sub("kati@example.com");
     await db.insert(settings).values({ key: SYNC_LEASE_SETTING, value: { holder: "the-cron", until: Date.now() + 60_000 } });
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0 })).toEqual({ ok: false, error: "busy" });
+    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0, updatedAt: await version(id) })).toEqual({ ok: false, error: "busy" });
     expect(await actions.prepareSendAction({ id })).toEqual({ ok: false, error: "busy" });
     expect(cache.refresh).not.toHaveBeenCalled();
     for (const bad of [0, -3, "1" as unknown as number]) {
-      expect(await actions.sendCampaignAction({ id: bad, et: 1, ru: 0 })).toEqual({ ok: false, error: "notFound" });
+      expect(await actions.sendCampaignAction({ id: bad, et: 1, ru: 0, updatedAt: await version(id) })).toEqual({ ok: false, error: "notFound" });
       expect(await actions.prepareSendAction({ id: bad })).toEqual({ ok: false, error: "notFound" });
       expect(await actions.copyCampaignAction({ id: bad })).toEqual({ ok: false, error: "notFound" });
       expect(await actions.sendTestAction({ id: bad, to: "me", locale: "et" })).toEqual({ ok: false, error: "notFound" });
@@ -438,11 +450,27 @@ describe("the campaigns' actions: save, copy, test, prepare and send", () => {
     const id = await saved();
     await sub("kati@example.com");
     await sub("mari@example.com");
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0 })).toMatchObject({ ok: false, error: "changed", plan: { et: 2, ru: 0 } });
+    const updatedAt = await version(id);
+    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0, updatedAt })).toMatchObject({ ok: false, error: "changed", plan: { et: 2, ru: 0, updatedAt } });
     expect(fake.broadcasts).toEqual([]);
     expect(cache.refresh).not.toHaveBeenCalled();
-    for (const bad of [{ et: -1, ru: 0 }, { et: 1.5, ru: 0 }, { et: "2", ru: 0 }, { ru: 0 }]) expect(await actions.sendCampaignAction({ id, ...(bad as { et: number; ru: number }) }), JSON.stringify(bad)).toEqual({ ok: false, error: "notFound" });
-    expect(await actions.sendCampaignAction({ id, et: 2, ru: 0 })).toMatchObject({ ok: true, recipients: { et: 2, ru: 0 } });
+    for (const bad of [{ et: -1, ru: 0 }, { et: 1.5, ru: 0 }, { et: "2", ru: 0 }, { ru: 0 }]) expect(await actions.sendCampaignAction({ id, updatedAt, ...(bad as { et: number; ru: number }) }), JSON.stringify(bad)).toEqual({ ok: false, error: "notFound" });
+    // the review's M3: a confirmation carries the campaign's last change; one that is no instant the page would send is refused, nothing sent
+    for (const bad of [undefined, "", "eile", 1_760_000_000_000]) expect(await actions.sendCampaignAction({ id, et: 2, ru: 0, updatedAt: bad as string }), String(bad)).toEqual({ ok: false, error: "notFound" });
+    expect(fake.broadcasts).toEqual([]);
+    expect(await actions.sendCampaignAction({ id, et: 2, ru: 0, updatedAt })).toMatchObject({ ok: true, recipients: { et: 2, ru: 0 } });
+  });
+
+  test("the review's M3 through the action: the campaign saved again after the confirmation is `changed` with its new time, nothing sent", async () => {
+    const id = await saved();
+    await sub("kati@example.com");
+    const prepared = (await actions.prepareSendAction({ id })) as { plan: { updatedAt: string } };
+    await new Promise((r) => setTimeout(r, 5)); // (the next save's time is later)
+    expect(await actions.saveCampaignAction({ id, draft: { ...CAMPAIGN, subject: { et: "Teises aknas", ru: "" } } })).toEqual({ ok: true, id });
+    const now = await version(id);
+    expect(now).not.toBe(prepared.plan.updatedAt);
+    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0, updatedAt: prepared.plan.updatedAt })).toMatchObject({ ok: false, error: "changed", plan: { et: 1, ru: 0, updatedAt: now } });
+    expect(fake.broadcasts).toEqual([]);
   });
 
   test("„Saada puuduv keel“ (ruling R12): `scope: \"missing\"` through both actions; a scope the page never sends is refused", async () => {
@@ -450,12 +478,33 @@ describe("the campaigns' actions: save, copy, test, prepare and send", () => {
     await sub("kati@example.com");
     await sub("olga@example.com", { locale: "ru" });
     fake.fail.set("broadcasts.create", (args) => ((args as { segmentId: string }).segmentId === fake.segment(SEGMENT_NAMES.ru) ? { name: "validation_error", statusCode: 422, message: "no" } : null));
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 1 })).toMatchObject({ ok: true, missing: ["ru"] });
+    expect(await actions.sendCampaignAction({ id, et: 1, ru: 1, updatedAt: await version(id) })).toMatchObject({ ok: true, missing: ["ru"] });
     fake.fail.clear();
-    expect(await actions.prepareSendAction({ id, scope: "missing" })).toMatchObject({ ok: true, plan: { et: 0, ru: 1 } });
+    const prepared = await actions.prepareSendAction({ id, scope: "missing" });
+    expect(prepared).toMatchObject({ ok: true, plan: { et: 0, ru: 1, updatedAt: await version(id) } });
     expect(await actions.prepareSendAction({ id, scope: "x" as "all" })).toEqual({ ok: false, error: "notFound" });
-    expect(await actions.sendCampaignAction({ id, et: 0, ru: 1, scope: "missing" })).toMatchObject({ ok: true, recipients: { et: 0, ru: 1 } });
+    const { updatedAt } = (prepared as { plan: { updatedAt: string } }).plan;
+    expect(await actions.sendCampaignAction({ id, et: 0, ru: 1, updatedAt, scope: "missing" })).toMatchObject({ ok: true, recipients: { et: 0, ru: 1 } });
     expect(fake.broadcasts.map((b) => b.args.segmentId)).toEqual([fake.segment(SEGMENT_NAMES.et), fake.segment(SEGMENT_NAMES.ru)]);
+  });
+
+  test("„Märgi saatmata“ (ruling R16) through its action: the language without an answer marked, the page refreshed; a recorded one refused; input the page never sends is `notFound`", async () => {
+    const id = await saved();
+    await sub("kati@example.com");
+    await sub("olga@example.com", { locale: "ru" });
+    fake.fail.set("broadcasts.create", (args) => ((args as { segmentId: string }).segmentId === fake.segment(SEGMENT_NAMES.ru) ? DOWN : null));
+    expect(await actions.sendCampaignAction({ id, et: 1, ru: 1, updatedAt: await version(id) })).toEqual({ ok: false, error: "interrupted" });
+    fake.fail.clear();
+    cache.refresh.mockReset();
+    expect(await actions.markNotSentAction({ id, locale: "et" })).toEqual({ ok: false, error: "sent" });
+    expect(cache.refresh).toHaveBeenCalledTimes(1); // (the open page is behind)
+    for (const bad of [{ id: 0, locale: "ru" }, { id, locale: "de" }, { id: "1", locale: "ru" }, null])
+      expect(await actions.markNotSentAction(bad as { id: number; locale: "ru" }), JSON.stringify(bad)).toEqual({ ok: false, error: "notFound" });
+    expect(await actions.markNotSentAction({ id, locale: "ru" })).toEqual({ ok: true, status: "sent" });
+    expect(cache.refresh).toHaveBeenCalledTimes(2);
+    expect((await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)))[0]).toMatchObject({ status: "sent", broadcasts: { et: fake.broadcasts[0].id } });
+    expect(fake.broadcasts).toHaveLength(1); // (it asks nothing of Resend)
+    expect(await actions.prepareSendAction({ id, scope: "missing" })).toMatchObject({ ok: true, plan: { et: 0, ru: 1 } });
   });
 
   test("a throw that is not Resend's: `server`, logged by its class only", async () => {
@@ -466,8 +515,9 @@ describe("the campaigns' actions: save, copy, test, prepare and send", () => {
     });
     try {
       expect(await actions.saveCampaignAction({ id: null, draft: CAMPAIGN })).toEqual({ ok: false, error: "server" });
-      expect(await actions.sendCampaignAction({ id: 1, et: 1, ru: 0 })).toEqual({ ok: false, error: "server" });
+      expect(await actions.sendCampaignAction({ id: 1, et: 1, ru: 0, updatedAt: new Date().toISOString() })).toEqual({ ok: false, error: "server" });
       expect(await actions.sendTestAction({ id: 1, to: "me", locale: "et" })).toEqual({ ok: false, error: "server" });
+      expect(await actions.markNotSentAction({ id: 1, locale: "ru" })).toEqual({ ok: false, error: "server" });
     } finally {
       state.db = db;
     }

@@ -100,8 +100,9 @@ export function isCampaignHref(value: string): boolean {
  * https:// address or a path of this site (isCampaignHref); a button (its address set) with a Russian text (`body.ru`) needs its Russian label too, so that it never
  * drops out of the Russian mail. The picture's key must be one the site stores (lib/media.ts isStorableImageKey: an upload or a /seed/ picture, never an
  * address of another site). Texts come back cleaned (see `textOf`) and trimmed; nothing is cut.
- * A wrong field is named in `fields` by its key ("name", "subject.et", "buttonLabel.ru", "buttonHref", …) with "required", "tooLong" or "invalid";
- * anything but an object is `{ form: "invalid" }`. Keys it does not know are left out.
+ * A wrong field is named in `fields` by its key ("name", "subject.et", "buttonLabel.ru", "buttonHref", …) with "required", "tooLong" or "invalid",
+ * or with "ruLabel" on "buttonLabel.ru" (a button and a Russian text without the Russian label, ruling R2); anything but an object is
+ * `{ form: "invalid" }`. Keys it does not know are left out.
  */
 export function checkCampaignDraft(raw: unknown): { ok: true; value: NewsletterCampaignDraft } | { ok: false; fields: Record<string, string> } {
   if (!isObject(raw)) return { ok: false, fields: { form: "invalid" } };
@@ -170,4 +171,43 @@ export function campaignContentFor(c: NewsletterCampaignDraft, locale: "et" | "r
   const text = (f: I18n | null): string => (f ? ((used === "ru" ? f.ru : f.et) ?? "").trim() : "");
   const buttonLabel = text(c.buttonLabel);
   return { locale: used, subject: text(c.subject), preheader: text(c.preheader), paragraphs: paragraphs(text(c.body)), buttonLabel: buttonLabel === "" ? null : buttonLabel };
+}
+
+// ---------- what a send came to, per language (ruling R16) ----------
+
+export type CampaignLocale = "et" | "ru";
+const SEND_ORDER: readonly CampaignLocale[] = ["et", "ru"];
+
+/** A campaign's send as it is stored (schema.ts NewsletterCampaign; components/admin/NewsletterCampaignEditor.tsx CampaignEditorView). */
+export type CampaignSend = {
+  status: "draft" | "sending" | "sent";
+  recipients: { et: number; ru: number } | null;
+  broadcasts: { et?: string; ru?: string } | null;
+};
+
+/**
+ * One language of a send: `sent` (its broadcast is recorded: `broadcast`), `unknown` (a send left `sending` has no answer recorded for it: it may
+ * have gone, Maria looks in Resend) or `missing` (a `sent` campaign's language that did not go: „Saada puuduv keel“, ruling R12). `recipients`:
+ * the subscribers the send was for in that language.
+ */
+export type LanguageOfSend = { locale: CampaignLocale; state: "sent" | "unknown" | "missing"; recipients: number; broadcast: string | null };
+
+/** The languages a send was for (planned for subscribers), Estonian first, each with what became of it; none for a draft. */
+export function sendLanguages(c: CampaignSend): LanguageOfSend[] {
+  if (c.status === "draft") return [];
+  return SEND_ORDER.filter((l) => (c.recipients?.[l] ?? 0) > 0 || Boolean(c.broadcasts?.[l])).map((l) => {
+    const broadcast = c.broadcasts?.[l] || null;
+    return { locale: l, state: broadcast ? "sent" : c.status === "sending" ? "unknown" : "missing", recipients: c.recipients?.[l] ?? 0, broadcast };
+  });
+}
+
+/**
+ * The language „Märgi saatmata“ applies to (ruling R16): in a campaign left `sending`, the first language of its send without a recorded broadcast.
+ * A send goes Estonian first and stops at the first broadcast without an answer, so that one is the only language whose fate is unknown: every
+ * language after it was never tried, and is not sent along with it. null when there is none (a draft, a sent campaign, a send whose every
+ * language is recorded). A language with a recorded broadcast is never one.
+ */
+export function unsentCandidate(c: CampaignSend): CampaignLocale | null {
+  if (c.status !== "sending") return null;
+  return sendLanguages(c).find((l) => l.state === "unknown")?.locale ?? null;
 }

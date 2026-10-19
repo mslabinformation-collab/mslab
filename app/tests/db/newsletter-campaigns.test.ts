@@ -3,12 +3,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vi
 import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
 import { mailSuppressions, newsletterCampaigns, settings, subscribers } from "@/db/schema";
-import { CAMPAIGN_LIMITS, RESEND_FREE_CONTACTS } from "@/domain/newsletter-campaign";
+import { CAMPAIGN_LIMITS, RESEND_FREE_CONTACTS, sendLanguages, unsentCandidate } from "@/domain/newsletter-campaign";
 import { INVOICE_KEY } from "@/domain/invoice";
 import type { Env } from "@/server/notify";
 import {
   copyCampaign,
   listCampaigns,
+  markNotSent,
   prepareSend,
   saveCampaign,
   sendCampaign,
@@ -29,7 +30,7 @@ import {
 } from "@/server/resend-marketing";
 import { fakeKv } from "../fakes";
 import { makeTestDb } from "./helpers";
-import { DOWN, fakeResend, type FakeError, type FakeResend } from "./resend-fake";
+import { DOWN, fakeResend, INVALID_EMAIL, type FakeError, type FakeResend } from "./resend-fake";
 
 // Maria's newsletter campaigns on a real (PGlite) database, Resend an in-memory fake (newsletter campaigns, Task 4; spec D4–D8, §5; rulings R2, R4,
 // R5, R7, R9, R11): a draft is saved through the rules (domain/newsletter-campaign.ts) and a sent one never changes; „Kopeeri“ makes a new draft;
@@ -73,10 +74,16 @@ const DRAFT = {
   buttonLabel: { et: "Vaata koolitusi", ru: "Смотреть курсы" },
   buttonHref: "/koolitused",
 };
-/** The counts Maria confirms (ruling R14): one Estonian subscriber; one of each language; one Russian one. */
-const ONE = { et: 1, ru: 0 };
-const BOTH = { et: 1, ru: 1 };
-const RU_ONLY = { et: 0, ru: 1 };
+/**
+ * What Maria confirms (ruling R14 and the review's M3): the counts (one Estonian subscriber; one of each language; one Russian one) and the
+ * campaign's last change as her confirmation read it. Every draft here is saved at NOW, and a send writes its own `now` (NOW unless told).
+ */
+const SAVED = NOW.toISOString();
+const ONE = { et: 1, ru: 0, updatedAt: SAVED };
+const BOTH = { et: 1, ru: 1, updatedAt: SAVED };
+const RU_ONLY = { et: 0, ru: 1, updatedAt: SAVED };
+/** The same counts, confirmed for the campaign as it is stored now (its `updatedAt`). */
+const confirmedNow = async (id: number, counts: { et: number; ru: number }) => ({ ...counts, updatedAt: (await rowOf(id)).updatedAt.toISOString() });
 /** The same without its Russian subject and text: Russian subscribers get the Estonian mail (Review Focus 5). */
 const ET_ONLY = { ...DRAFT, subject: { et: "Sügispakkumine", ru: "" }, body: { et: "Esimene lõik.\n\nTeine lõik.", ru: "" }, preheader: { et: "Eelvaade", ru: "" } };
 
@@ -350,6 +357,25 @@ describe("sendTest: „Saada proov“ as a broadcast to the test segment (ruling
     expect(fake.broadcasts[0].delivered).toEqual([{ email: MARIA, html: expect.stringContaining(`href="${loobu(maria.token)}"`), text: expect.any(String) }]);
   });
 
+  test("the review's M7: a subscriber whose contact unsubscribed in Resend would never get it: nothing is sent, the answer says so, and the hour's slot is not spent", async () => {
+    const id = await draft();
+    const maria = await sub(MARIA);
+    await fullSync(deps({ now: at(-30) }));
+    fake.of(MARIA)!.unsubscribed = true; // (her own sync or the full one would pull it; the test comes first)
+    fake.calls.length = 0;
+    for (let i = 0; i < 11; i++) expect(await sendTest(deps(), id, MARIA)).toEqual({ ok: false, error: "unsubscribed" });
+    expect(fake.calls).not.toContain("broadcasts.create");
+    expect(fake.broadcasts).toEqual([]);
+    // R7: her contact is not touched: still unsubscribed, her own link, not in the test segment
+    expect(fake.of(MARIA)).toMatchObject({ unsubscribed: true, properties: { [UNSUBSCRIBE_PROPERTY]: loobu(maria.token) } });
+    expect(fake.writes().filter((w) => w !== "segments.create")).toEqual([]);
+    expect(logged()).toContain(`campaign ${id}: no test, the address's contact unsubscribed in Resend`);
+    expect(logged()).not.toContain(MARIA);
+    // no slot was spent: once she is subscribed again, the test goes
+    fake.of(MARIA)!.unsubscribed = false;
+    expect(await sendTest(deps(), id, MARIA)).toEqual({ ok: true, realLink: true });
+  });
+
   test("a subscriber whose contact the sync has not made yet: her contact is made with her real link", async () => {
     const id = await draft();
     const maria = await sub("Maria@Example.com");
@@ -497,7 +523,7 @@ describe("prepareSend: the sync, then the counts the confirmation shows", () => 
     const prepared = await prepareSend(deps(), id);
     expect(prepared).toEqual({
       ok: true,
-      plan: { et: 2, ru: 1, ruFallsBack: false, left: 0, report: expect.objectContaining({ added: 3, finished: true, unsynced: 0, failed: 0 }) },
+      plan: { et: 2, ru: 1, ruFallsBack: false, left: 0, rejected: 0, updatedAt: SAVED, report: expect.objectContaining({ added: 3, finished: true, unsynced: 0, failed: 0, rejected: 0 }) },
     });
     expect(fake.broadcasts).toEqual([]);
     expect((await rowOf(id)).status).toBe("draft");
@@ -764,6 +790,36 @@ describe("sendCampaign: „Saada kõigile“", () => {
     expect(fake.broadcasts).toEqual([]);
   });
 
+  test("the review's M2: only a refusal Resend states (400, 401, 403, 404, 422, 429 or a named validation or key error) is „nothing sent“; any other 4xx may have gone, so it is `interrupted`", async () => {
+    const cases: [FakeError, "refused" | "interrupted"][] = [
+      [{ name: "validation_error", statusCode: 400, message: "x" }, "refused"],
+      [{ name: "not_found", statusCode: 404, message: "x" }, "refused"],
+      [{ name: "rate_limit_exceeded", statusCode: 429, message: "x" }, "refused"],
+      [{ name: "invalid_parameter", statusCode: null, message: "x" }, "refused"],
+      [{ name: "application_error", statusCode: 408, message: "x" }, "interrupted"],
+      [{ name: "concurrent_idempotent_requests", statusCode: 409, message: "x" }, "interrupted"],
+      [{ name: "application_error", statusCode: 499, message: "x" }, "interrupted"],
+      [{ name: "validation_error", statusCode: 503, message: "x" }, "interrupted"],
+    ];
+    for (const [error, outcome] of cases) {
+      const id = await draft();
+      await db.delete(subscribers);
+      await sub(`kati${error.statusCode ?? "x"}${error.name}@example.com`);
+      fake.fail.set("broadcasts.create", error);
+      const result = await sendCampaign(deps(), id, ONE);
+      const where = `${error.statusCode} ${error.name}`;
+      if (outcome === "refused") {
+        expect(result, where).toEqual({ ok: false, error: "unavailable" });
+        expect((await rowOf(id)).status, where).toBe("draft");
+      } else {
+        expect(result, where).toEqual({ ok: false, error: "interrupted" });
+        expect(await rowOf(id), where).toMatchObject({ status: "sending", recipients: { et: 1, ru: 0 }, broadcasts: {} });
+      }
+      fake.fail.clear();
+    }
+    expect(fake.broadcasts).toEqual([]);
+  });
+
   test("partial failure: the Russian broadcast refused after the Estonian one went: sent, with the one that went recorded and the Russian one missing", async () => {
     const id = await draft();
     await sub("kati@example.com");
@@ -823,10 +879,10 @@ describe("sendCampaign: the counts Maria confirmed (ruling R14)", () => {
     expect(prepared).toMatchObject({ ok: true, plan: { et: 1, ru: 0 } });
     await sub("mari@example.com");
     const changed = await sendCampaign(deps(), id, ONE);
-    expect(changed).toEqual({ ok: false, error: "changed", plan: { et: 2, ru: 0, ruFallsBack: false, left: 0, report: expect.objectContaining({ finished: true }) } });
+    expect(changed).toEqual({ ok: false, error: "changed", plan: { et: 2, ru: 0, ruFallsBack: false, left: 0, rejected: 0, updatedAt: SAVED, report: expect.objectContaining({ finished: true }) } });
     expect(fake.broadcasts).toEqual([]);
     expect(await rowOf(id)).toMatchObject({ status: "draft", recipients: null, broadcasts: null });
-    expect(await sendCampaign(deps(), id, { et: 2, ru: 0 })).toMatchObject({ ok: true, recipients: { et: 2, ru: 0 } });
+    expect(await sendCampaign(deps(), id, { et: 2, ru: 0, updatedAt: SAVED })).toMatchObject({ ok: true, recipients: { et: 2, ru: 0 } });
     expect(fake.broadcasts).toHaveLength(1);
   });
 
@@ -838,6 +894,57 @@ describe("sendCampaign: the counts Maria confirmed (ruling R14)", () => {
     fake.of("olga@example.com")!.unsubscribed = true;
     expect(await sendCampaign(deps(), id, BOTH)).toMatchObject({ ok: false, error: "changed", plan: { et: 1, ru: 0 } });
     expect(fake.broadcasts).toEqual([]);
+  });
+
+  test("the review's M3: the plan carries the campaign's last change; saved in another tab after the confirmation, nothing is sent (`changed`, with the new version to confirm)", async () => {
+    const id = await draft();
+    await sub("kati@example.com");
+    const prepared = await prepareSend(deps(), id);
+    expect(prepared).toMatchObject({ ok: true, plan: { et: 1, ru: 0, updatedAt: SAVED } });
+    const confirmed = { et: 1, ru: 0, updatedAt: (prepared as { plan: { updatedAt: string } }).plan.updatedAt };
+    // Dim saves his own text in another tab
+    expect(await saveCampaign(db, id, { ...DRAFT, subject: { et: "Dimi teema", ru: DRAFT.subject.ru } }, at(5))).toEqual({ ok: true, id });
+    const changed = await sendCampaign(deps(), id, confirmed);
+    expect(changed).toEqual({ ok: false, error: "changed", plan: { et: 1, ru: 0, ruFallsBack: false, left: 0, rejected: 0, updatedAt: at(5).toISOString(), report: expect.objectContaining({ finished: true }) } });
+    expect(fake.broadcasts).toEqual([]);
+    expect(await rowOf(id)).toMatchObject({ status: "draft", recipients: null, broadcasts: null, updatedAt: at(5) });
+    expect(logged()).toContain(`campaign ${id}: not sent, the campaign changed since the confirmation`);
+    // confirmed for the version that is stored now, it sends that one
+    expect(await sendCampaign(deps(), id, { et: 1, ru: 0, updatedAt: at(5).toISOString() })).toMatchObject({ ok: true });
+    expect(fake.broadcasts.map((b) => b.args.subject)).toEqual(["Dimi teema"]);
+  });
+
+  test("the review's M3: a save that lands while the send's own sync runs (past the early check) is caught under the row lock: nothing is sent", async () => {
+    const id = await draft();
+    await sub("kati@example.com");
+    const saves: Promise<unknown>[] = [];
+    fake.onCall = (name) => {
+      if (name === "contacts.list" && saves.length === 0) saves.push(saveCampaign(db, id, { ...DRAFT, subject: { et: "Dimi teema", ru: DRAFT.subject.ru } }, at(5)));
+    };
+    expect(await sendCampaign(deps(), id, ONE)).toMatchObject({ ok: false, error: "changed", plan: { et: 1, ru: 0, updatedAt: at(5).toISOString() } });
+    await Promise.all(saves);
+    expect(saves).toHaveLength(1);
+    expect(fake.calls).not.toContain("broadcasts.create");
+    expect(await rowOf(id)).toMatchObject({ status: "draft", subject: { et: "Dimi teema" }, updatedAt: at(5) });
+  });
+
+  test("a confirmation the page never sent (no time, or another one) sends nothing", async () => {
+    const id = await draft();
+    await sub("kati@example.com");
+    expect(await sendCampaign(deps(), id, { et: 1, ru: 0, updatedAt: at(-1).toISOString() })).toMatchObject({ ok: false, error: "changed" });
+    expect(await sendCampaign(deps(), id, { et: 1, ru: 0, updatedAt: "" })).toMatchObject({ ok: false, error: "changed" });
+    expect(fake.broadcasts).toEqual([]);
+    expect(await sendCampaign(deps(), id, await confirmedNow(id, { et: 1, ru: 0 }))).toMatchObject({ ok: true });
+  });
+
+  test("a refused broadcast puts the campaign back as it was, its last change included: the confirmation still holds", async () => {
+    const id = await draft();
+    await sub("kati@example.com");
+    fake.fail.set("broadcasts.create", REFUSED);
+    expect(await sendCampaign(deps({ now: at(10) }), id, ONE)).toEqual({ ok: false, error: "unavailable" });
+    expect(await rowOf(id)).toMatchObject({ status: "draft", updatedAt: NOW });
+    fake.fail.clear();
+    expect(await sendCampaign(deps({ now: at(11) }), id, ONE)).toMatchObject({ ok: true });
   });
 
   test("the comparison is per language: the same total in other languages is a change", async () => {
@@ -933,5 +1040,145 @@ describe("„Saada puuduv keel“ (ruling R12): the language Resend refused, and
     expect(await sendCampaign(deps(), id, ONE)).toMatchObject({ ok: true });
     expect(await sendCampaign(deps(), id, ONE, "missing")).toEqual({ ok: false, error: "sent" });
     expect(fake.broadcasts).toHaveLength(1);
+  });
+});
+
+describe("ruling R16: a half-sent campaign says what went, and „Märgi saatmata“ re-opens only the language that did not", () => {
+  /** The first send: Estonian made and recorded, the Russian broadcast without an answer (the review's scenario A). */
+  async function etWentRuUnknown(): Promise<number> {
+    const id = await draft();
+    await sub("kati@example.com");
+    await sub("olga@example.com", { locale: "ru" });
+    fake.fail.set("broadcasts.create", (args) => ((args as { segmentId: string }).segmentId === RU() ? NO_ANSWER : null));
+    expect(await sendCampaign(deps(), id, BOTH)).toEqual({ ok: false, error: "interrupted" });
+    fake.fail.clear();
+    return id;
+  }
+
+  test("the first send (ET went, RU unknown): each language with its state; RU is the one to mark, ET never", async () => {
+    const id = await etWentRuUnknown();
+    const row = await rowOf(id);
+    expect(row).toMatchObject({ status: "sending", sentAt: null, recipients: { et: 1, ru: 1 }, broadcasts: { et: fake.broadcasts[0].id }, updatedAt: NOW });
+    expect(sendLanguages(row)).toEqual([
+      { locale: "et", state: "sent", recipients: 1, broadcast: fake.broadcasts[0].id },
+      { locale: "ru", state: "unknown", recipients: 1, broadcast: null },
+    ]);
+    expect(unsentCandidate(row)).toBe("ru");
+  });
+
+  test("„Märgi saatmata“ is refused for a language whose broadcast is recorded, and for a campaign that is not `sending`: nothing changes", async () => {
+    const id = await etWentRuUnknown();
+    const before = await rowOf(id);
+    expect(await markNotSent(db, id, "et", at(20))).toEqual({ ok: false, error: "sent" });
+    expect(await rowOf(id)).toEqual(before);
+    const draftId = await draft();
+    expect(await markNotSent(db, draftId, "et", at(20))).toEqual({ ok: false, error: "sent" });
+    expect(await markNotSent(db, 999_999, "et", at(20))).toEqual({ ok: false, error: "notFound" });
+    // once marked, a second press (another tab) finds it sent: nothing more changes
+    expect(await markNotSent(db, id, "ru", at(20))).toEqual({ ok: true, status: "sent" });
+    const marked = await rowOf(id);
+    expect(await markNotSent(db, id, "ru", at(21))).toEqual({ ok: false, error: "sent" });
+    expect(await rowOf(id)).toEqual(marked);
+    expect(fake.calls.filter((c) => c === "broadcasts.create")).toHaveLength(2); // the first send's two, nothing since
+  });
+
+  test("after „Märgi saatmata“ the campaign is sent at the send's time with RU missing, and „Saada puuduv keel“ sends RU alone", async () => {
+    const id = await etWentRuUnknown();
+    const etBroadcast = (await rowOf(id)).broadcasts!.et!;
+    expect(await markNotSent(db, id, "ru", at(20))).toEqual({ ok: true, status: "sent" });
+    expect(await rowOf(id)).toMatchObject({ status: "sent", sentAt: NOW, recipients: { et: 1, ru: 1 }, broadcasts: { et: etBroadcast }, updatedAt: at(20) });
+    expect(logged()).toContain(`campaign ${id}: the ru broadcast marked not sent (checked in Resend): sent, the language missing`);
+    const prepared = await prepareSend(deps(), id, "missing");
+    expect(prepared).toMatchObject({ ok: true, plan: { et: 0, ru: 1, updatedAt: at(20).toISOString() } });
+    expect(await sendCampaign(deps({ now: at(30) }), id, { et: 0, ru: 1, updatedAt: at(20).toISOString() }, "missing")).toEqual({ ok: true, recipients: { et: 0, ru: 1 }, missing: [], left: 0 });
+    // the Estonian subscribers got it once: the first send's broadcast; the Russian one only now
+    expect(fake.broadcasts.filter((b) => b.args.segmentId === ET())).toHaveLength(1);
+    expect(fake.broadcasts.filter((b) => b.args.segmentId === RU()).map((b) => b.delivered.map((d) => d.email))).toEqual([["olga@example.com"]]);
+    expect(await rowOf(id)).toMatchObject({ status: "sent", sentAt: NOW, broadcasts: { et: etBroadcast, ru: fake.broadcasts.at(-1)!.id } });
+  });
+
+  test("„Saada puuduv keel“ that got no answer (scenario B): ET still shown sent, RU unknown; marked, it is `sent` with RU missing again and may be sent", async () => {
+    const id = await draft();
+    await sub("kati@example.com");
+    await sub("olga@example.com", { locale: "ru" });
+    fake.fail.set("broadcasts.create", (args) => ((args as { segmentId: string }).segmentId === RU() ? REFUSED : null));
+    await sendCampaign(deps(), id, BOTH);
+    fake.fail.set("broadcasts.create", NO_ANSWER);
+    expect(await sendCampaign(deps({ now: at(10) }), id, RU_ONLY, "missing")).toEqual({ ok: false, error: "interrupted" });
+    fake.fail.clear();
+    const row = await rowOf(id);
+    expect(row).toMatchObject({ status: "sending", sentAt: NOW, updatedAt: at(10) });
+    expect(sendLanguages(row).map((l) => [l.locale, l.state])).toEqual([["et", "sent"], ["ru", "unknown"]]);
+    expect(unsentCandidate(row)).toBe("ru");
+    expect(await markNotSent(db, id, "ru", at(20))).toEqual({ ok: true, status: "sent" });
+    expect(await rowOf(id)).toMatchObject({ status: "sent", sentAt: NOW, broadcasts: { et: fake.broadcasts[0].id } });
+    expect(await sendCampaign(deps({ now: at(30) }), id, { et: 0, ru: 1, updatedAt: at(20).toISOString() }, "missing")).toMatchObject({ ok: true, recipients: { et: 0, ru: 1 } });
+    expect(fake.broadcasts.filter((b) => b.args.segmentId === ET())).toHaveLength(1);
+  });
+
+  test("nothing recorded (the first broadcast got no answer): only ET may be marked; marked, the campaign is a draft again (RU was never tried) and „Saada kõigile“ sends both", async () => {
+    const id = await draft();
+    await sub("kati@example.com");
+    await sub("olga@example.com", { locale: "ru" });
+    fake.fail.set("broadcasts.create", NO_ANSWER);
+    expect(await sendCampaign(deps(), id, BOTH)).toEqual({ ok: false, error: "interrupted" });
+    expect(fake.calls.filter((c) => c === "broadcasts.create")).toHaveLength(1); // the Russian one never tried
+    fake.fail.clear();
+    const row = await rowOf(id);
+    expect(sendLanguages(row).map((l) => [l.locale, l.state])).toEqual([["et", "unknown"], ["ru", "unknown"]]);
+    expect(unsentCandidate(row)).toBe("et");
+    expect(await markNotSent(db, id, "ru", at(20))).toEqual({ ok: false, error: "earlier" });
+    expect(await markNotSent(db, id, "et", at(20))).toEqual({ ok: true, status: "draft" });
+    expect(await rowOf(id)).toMatchObject({ status: "draft", sentAt: null, recipients: null, broadcasts: null, updatedAt: at(20) });
+    expect(await sendCampaign(deps(), id, await confirmedNow(id, { et: 1, ru: 1 }))).toMatchObject({ ok: true, recipients: { et: 1, ru: 1 } });
+    expect(fake.broadcasts.map((b) => b.args.segmentId)).toEqual([ET(), RU()]);
+  });
+
+  test("a send for Russian subscribers only: RU is the first language of it, and ET (no part of the send) is never marked", async () => {
+    const id = await draft();
+    await db.update(newsletterCampaigns).set({ status: "sending", recipients: { et: 0, ru: 1 }, broadcasts: {} }).where(eq(newsletterCampaigns.id, id));
+    expect(sendLanguages(await rowOf(id)).map((l) => l.locale)).toEqual(["ru"]);
+    expect(unsentCandidate(await rowOf(id))).toBe("ru");
+    expect(await markNotSent(db, id, "et", at(20))).toEqual({ ok: false, error: "sent" });
+    expect(await markNotSent(db, id, "ru", at(20))).toEqual({ ok: true, status: "draft" });
+  });
+
+  test("a campaign left `sending` with every language recorded (a send that died before `sent`) has nothing to mark", async () => {
+    const id = await draft();
+    await db.update(newsletterCampaigns).set({ status: "sending", recipients: { et: 1, ru: 1 }, broadcasts: { et: "bc_et", ru: "bc_ru" } }).where(eq(newsletterCampaigns.id, id));
+    expect(unsentCandidate(await rowOf(id))).toBeNull();
+    expect(await markNotSent(db, id, "ru", at(20))).toEqual({ ok: false, error: "sent" });
+    expect(await markNotSent(db, id, "et", at(20))).toEqual({ ok: false, error: "sent" });
+  });
+
+  test("a sent campaign's language that did not go is `missing`, never `unknown`; a draft has no languages", () => {
+    expect(sendLanguages({ status: "sent", recipients: { et: 2, ru: 1 }, broadcasts: { et: "bc" } }).map((l) => [l.locale, l.state])).toEqual([["et", "sent"], ["ru", "missing"]]);
+    expect(sendLanguages({ status: "sent", recipients: { et: 2, ru: 0 }, broadcasts: { et: "bc" } }).map((l) => l.locale)).toEqual(["et"]);
+    expect(sendLanguages({ status: "draft", recipients: null, broadcasts: null })).toEqual([]);
+    expect(unsentCandidate({ status: "sent", recipients: { et: 2, ru: 1 }, broadcasts: { et: "bc" } })).toBeNull();
+  });
+});
+
+describe("rulings R17 and Task 2 N4 at the send", () => {
+  test("R17: an address Resend refuses never blocks „Saada kõigile“: the plan counts it, and the send goes to the others", async () => {
+    const id = await draft();
+    await sub("bad@example.com");
+    await sub("kati@example.com");
+    fake.fail.set("contacts.create", (args) => ((args as { email: string }).email === "bad@example.com" ? INVALID_EMAIL : null));
+    expect(await prepareSend(deps(), id)).toMatchObject({ ok: true, plan: { et: 1, ru: 0, rejected: 1, left: 0, report: expect.objectContaining({ rejected: 1, failed: 0, unsynced: 0 }) } });
+    expect(await sendCampaign(deps(), id, ONE)).toEqual({ ok: true, recipients: { et: 1, ru: 0 }, missing: [], left: 0 });
+    expect(fake.broadcasts[0].delivered.map((d) => d.email)).toEqual(["kati@example.com"]);
+  });
+
+  test("N4: a contact in our segment without a row whose segments cannot be read blocks the send (`unsynced`), and is not deleted", async () => {
+    const id = await draft();
+    await ensureSegments(deps());
+    const orphan = fake.add("loobunud@example.com", { segments: [ET()] });
+    await sub("kati@example.com");
+    fake.fail.set("contacts.segments.list", DOWN);
+    expect(await sendCampaign(deps(), id, ONE)).toEqual({ ok: false, error: "unsynced" });
+    expect(fake.calls).not.toContain("broadcasts.create");
+    expect(fake.contacts.get(orphan.id)).toBeDefined();
+    expect((await rowOf(id)).status).toBe("draft");
   });
 });

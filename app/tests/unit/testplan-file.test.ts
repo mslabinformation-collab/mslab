@@ -477,6 +477,22 @@ describe("the campaign checks follow the sync check, in the order a campaign liv
     expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${ru.mail.campaign.unsubscribe}“`);
   });
 
+  test("the final review's M8: the student's drawer's blocked mark has its own check, Dim's, new, right after the campaigns (a send's bounce is there by then), quoting the mark", () => {
+    const drawer = item("avalik-uudiskiri-blokeeritud-opilane");
+    expect(order.indexOf("avalik-uudiskiri-blokeeritud-opilane")).toBe(order.indexOf("avalik-uudiskiri-kampaania-kopeeri") + 1);
+    expect(drawer).toMatchObject({ area: "avalik", who: "dim", mark: "new", writes: false, href: "/admin/uudiskiri" });
+    expect(markedSince(drawer.markedAt)).toBe(true);
+    expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain(`„${adminEt.newsletter.suppressed}“`);
+    expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain("„Õpilased“");
+    // a blocked address needs a real bounce: without one the check says how to skip it
+    expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain("jäta see kontroll vahele");
+  });
+
+  test("the sync and the test quote the marks and answers the final wave added (rulings R17, M7)", () => {
+    expect(text("avalik-uudiskiri-resend")).toContain(`„${adminEt.newsletter.rejected}“`);
+    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${t.errorsOf.unsubscribed.slice(0, t.errorsOf.unsubscribed.indexOf(":"))} …“`);
+  });
+
   test("the welcome mail's unsubscribe still has a subscriber to remove: Proov 1, subscribed by „Minu andmed“ before it; Proov 3 is gone by then (review M9)", () => {
     const welcome = item("kirjad-tervituskiri");
     expect(welcome.steps[0]).toContain("Proov 1");

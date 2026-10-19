@@ -20,7 +20,8 @@ type Answer = { kind: "report"; report: FullSyncReport } | { kind: "error"; code
  * - the warning from CONTACTS_WARN_AT (900) contacts, and the limit line once the plan is full and subscribers have no contact, both on the larger
  *   of the two counts, so that Maria sees the real number;
  * - „Sünkrooni Resendiga“, one press at a time. The answer stays until the page is left: the report in one line, with a line each for the addresses
- *   Resend blocks and the contacts that failed (only when there are some), the plan's limit (from the report: its number of subscribers left out),
+ *   Resend blocks, the contacts that failed and the addresses Resend refused (ruling R17; only when there are some), the plan's limit (from the
+ *   report: its number of subscribers left out),
  *   and „Sünkroonimine jätkub järgmisel korral.“ when the time ran out; or the refusal in words (the key that can only send is told apart from Resend
  *   being down; another sync running is „juba käib“). When Resend's count already refused the key, the page says so before any press.
  *   A sync that ran refreshes the page (the action), and this component stays, so the answer stays with the new counts.
@@ -106,6 +107,11 @@ export function NewsletterSync({ state }: { state: SyncState }) {
               {report.failed > 0 && (
                 <p className={ui.error} data-sync-report-failed="">
                   {fill(t.reportFailed, { n: report.failed })}
+                </p>
+              )}
+              {report.rejected > 0 && (
+                <p className={ui.hint} data-sync-report-rejected="">
+                  {fill(t.reportRejected, { n: report.rejected })}
                 </p>
               )}
               {!report.finished && (

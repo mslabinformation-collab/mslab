@@ -459,6 +459,7 @@
         "Rida „Sünkroonitud tellijaid“ näitab vähemalt 1.",
         "Segmendis „MS LAB uudiskiri (ET)“ on Proov 3 aadress.",
         "Kui Resend on mõne aadressi blokeerinud, on tellija real märge „Resend ei saada sellele aadressile kirju“.",
+        "Kui Resend ei võtnud mõnda aadressi vastu, on tellija real märge „Resend ei võtnud seda aadressi vastu.“.",
         "Teate „Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.“ korral vaheta võti."
       ],
       "why": "Sünkroon hoiab Resendi kontaktid kooskõlas tellijate nõusolekuga.",
@@ -516,7 +517,8 @@
         "Sinu postkasti tuleb venekeelne proov, teemas „[Proov]“.",
         "Link avab lehe „Proovikiri — päris kirjas viib see link loobumisele.“ ja midagi ei muutu.",
         "Segmendis „MS LAB uudiskiri (proov)“ on ainult sinu aadress.",
-        "Kui valitud aadress on tellija oma, on nupu kohal „Proov läheb tellija-aadressile — selle loobumislink on päris.“."
+        "Kui valitud aadress on tellija oma, on nupu kohal „Proov läheb tellija-aadressile — selle loobumislink on päris.“.",
+        "Kui see tellija on Resendis loobunud, on vastus „Proovi ei saadetud …“, mitte „Proov läks …“."
       ],
       "why": "Proov on päris Resendi kiri, nii et ka selle loobumislink on kontrollitud.",
       "risk": "high",
@@ -599,6 +601,30 @@
       "why": "Saadetud kampaania jääb muutmata, uus saatmine algab koopiast.",
       "risk": "med",
       "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "avalik-uudiskiri-blokeeritud-opilane",
+      "area": "avalik",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Blokeeritud aadress õpilase paneelis",
+      "href": "/admin/uudiskiri",
+      "steps": [
+        "Ava halduses „Uudiskiri“ ja otsi rida märkega „Resend ei saada sellele aadressile kirju“.",
+        "Kui ühelgi real märget pole, kirjuta märkus „blokeeritud aadressi pole“ ja jäta see kontroll vahele.",
+        "Ava „Õpilased“ ja kirjuta otsingusse selle rea aadress.",
+        "Kui sellise aadressiga õpilast pole, kirjuta see märkusesse ja jäta kontroll vahele.",
+        "Vajuta õpilase nimele ja vaata paneeli ülaosa."
+      ],
+      "expect": [
+        "Paneelis on märge „Resend ei saada sellele aadressile kirju (tagastus või rämpspostiks märgitud). Seda saab muuta ainult Resendis.“.",
+        "Proov 1 paneelis seda märget pole."
+      ],
+      "why": "Blokeeritud aadress ei saa ka sisselogimiskoode, kinnitusi ega arveid.",
+      "risk": "low",
+      "writes": false,
       "mark": "new",
       "markedAt": "deploy"
     },

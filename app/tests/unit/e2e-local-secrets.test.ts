@@ -77,7 +77,7 @@ describe("the dev server's environment (LOCAL_ENV)", () => {
     for (const name of R2) expect(env[name as keyof typeof env], name).toBeUndefined();
   });
 
-  test("the newsletter's marketing key is blank too, and RESEND_API_KEY (its fall-back) is refused: an e2e run never syncs with Resend or sends a campaign (Task 4)", () => {
+  test("the newsletter's marketing key is blank too (the one switch, ruling R15), and RESEND_API_KEY is refused as ever: an e2e run never syncs with Resend or sends a campaign (Task 4)", () => {
     expect(LOCAL_ENV).toHaveProperty("RESEND_MARKETING_KEY", "");
     expect(serverEnv(LOCAL_ENV, false).RESEND_MARKETING_KEY).toBeUndefined();
     expect(FORBIDDEN_SETTINGS).toHaveProperty("RESEND_API_KEY");

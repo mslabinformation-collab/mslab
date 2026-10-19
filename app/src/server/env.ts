@@ -21,8 +21,9 @@ export type ServerEnv = {
   MAIL_FROM: string;
   RESEND_API_KEY?: string;
   /**
-   * The newsletter's Resend key (newsletter campaigns, spec §4): contacts, segments and broadcasts need full access, and RESEND_API_KEY may be a
-   * sending-only key. Unset: RESEND_API_KEY is used (server/resend-marketing.ts marketingKey).
+   * The newsletter's Resend key (newsletter campaigns, spec §4 as amended, ruling R15), a full-access key: contacts, segments and broadcasts need
+   * one. It alone switches the newsletter on: unset or blank, nothing is synced or sent (server/resend-marketing.ts marketingKey), whatever
+   * RESEND_API_KEY is (that one is the site's own mails' key only).
    */
   RESEND_MARKETING_KEY?: string;
   /** The signing secret of Resend's webhook (/api/resend/webhook, `whsec_…`). Unset: every event is refused (400). */

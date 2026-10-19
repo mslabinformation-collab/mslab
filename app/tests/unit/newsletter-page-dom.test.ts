@@ -43,7 +43,7 @@ const press = async () => {
 };
 
 const ON = (over: Partial<Extract<SyncState, { configured: true }>> = {}): SyncState => ({ configured: true, resend: 12, refused: false, site: 10, missing: 0, ...over });
-const REPORT: FullSyncReport = { contacts: 12, added: 2, updated: 1, removed: 1, unsubscribedPulled: 3, suppressed: 0, unsynced: 0, failed: 0, limitReached: false, finished: true };
+const REPORT: FullSyncReport = { contacts: 12, added: 2, updated: 1, removed: 1, unsubscribedPulled: 3, suppressed: 0, unsynced: 0, failed: 0, rejected: 0, limitReached: false, finished: true };
 
 beforeEach(() => {
   container = document.createElement("div");
@@ -158,7 +158,7 @@ describe("the press", () => {
     expect($("[data-sync-status]")?.textContent).toBe("");
     await press();
     expect(text("[data-sync-report]")).toBe("2 lisatud, 1 eemaldatud, 3 loobus Resendis");
-    for (const hook of ["[data-sync-report-suppressed]", "[data-sync-report-failed]", "[data-sync-unfinished]", "[data-sync-error]", "[data-sync-limit]"]) expect($(hook), hook).toBeNull();
+    for (const hook of ["[data-sync-report-suppressed]", "[data-sync-report-failed]", "[data-sync-report-rejected]", "[data-sync-unfinished]", "[data-sync-error]", "[data-sync-limit]"]) expect($(hook), hook).toBeNull();
     expect($("[data-sync-status]")?.getAttribute("role")).toBe("status");
   });
 
@@ -168,6 +168,14 @@ describe("the press", () => {
     await press();
     expect(text("[data-sync-report-suppressed]")).toBe("Resend ei saada kirju 2 tellija aadressile (tagastus või rämpspostiks märgitud).");
     expect(text("[data-sync-report-failed]")).toBe("3 kontakti sünkroonimine ebaõnnestus, järgmine sünkroonimine proovib uuesti.");
+  });
+
+  test("ruling R17: the addresses Resend refused get a line of their own (they are marked in the list), never the failure line", async () => {
+    actions.fullSyncAction.mockResolvedValue({ ...REPORT, rejected: 2 });
+    await show(ON());
+    await press();
+    expect(text("[data-sync-report-rejected]")).toBe("Resend ei võtnud vastu 2 aadressi: need on allpool loendis märgitud.");
+    expect($("[data-sync-report-failed]")).toBeNull();
   });
 
   test("a sync that did not finish says it goes on next time; a finished one does not", async () => {

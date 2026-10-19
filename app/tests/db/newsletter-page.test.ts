@@ -33,6 +33,7 @@ vi.mock("@/server/actions/admin-newsletter", () => ({
   sendTestAction: vi.fn(),
   prepareSendAction: vi.fn(),
   sendCampaignAction: vi.fn(),
+  markNotSentAction: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn() }));
@@ -63,7 +64,7 @@ import NewsletterPage from "@/app/admin/(panel)/uudiskiri/page";
 import { ClientDetailView } from "@/components/admin/ClientDrawer";
 import { clientDetail } from "@/server/admin-clients";
 import { COUNT_WAIT_MS, syncState } from "@/server/newsletter-admin";
-import { MARKETING_GAP_MS, SEND_LEASE_MS, suppressedAddresses } from "@/server/resend-marketing";
+import { MARKETING_GAP_MS, REJECTED_SETTING, SEND_LEASE_MS, suppressedAddresses } from "@/server/resend-marketing";
 import { adminMarketingDeps } from "@/server/send-deps";
 
 const SITE = "https://mslab.example";
@@ -330,6 +331,23 @@ describe("the „Kampaaniad“ view (?vaade=kampaaniad, Task 4)", () => {
     expect(off).toContain(`data-campaign-form="${draft.id}"`);
   });
 
+  test("ruling R16: a send left half way says per language in the list and in its view what went; „Märgi saatmata“ for the one without an answer, no send", async () => {
+    const stopped = await campaign("Pooleli", { status: "sending", updatedAt: at(-30), recipients: { et: 3, ru: 2 }, broadcasts: { et: "bc_1" } });
+    const list = await render({ vaade: "kampaaniad" });
+    const line = list.match(new RegExp(`<li[^>]*data-campaign-row="${stopped.id}"[\\s\\S]*?</li>`))?.[0] ?? "";
+    expect(text(line)).toContain("Saatmine pooleli");
+    expect(text(line)).toContain("Saadetud 19.10.2026 12:30 · 3 tellijale (eesti keeles) · pole teada (vene keeles)");
+    const html = await render({ vaade: "kampaaniad", kampaania: String(stopped.id) });
+    expect(html).toContain('data-campaign-sent="sending"');
+    expect(html).toMatch(/data-campaign-language="et"[^>]*data-state="sent"/);
+    expect(html).toMatch(/data-campaign-language="ru"[^>]*data-state="unknown"/);
+    expect(html).toContain('href="https://resend.com/broadcasts/bc_1"');
+    expect(html).toContain('data-mark-not-sent="ru"');
+    expect(html).not.toContain('data-mark-not-sent="et"');
+    expect(html).not.toContain("data-send-all");
+    expect(html).not.toContain("data-send-missing");
+  });
+
   test("a sent campaign opens read-only: its line, its links to Resend, „Kopeeri“, no field", async () => {
     const sent = await campaign("Saadetud", { status: "sent", sentAt: at(-60), recipients: { et: 3, ru: 0 }, broadcasts: { et: "bc_1" } });
     const html = await render({ vaade: "kampaaniad", kampaania: String(sent.id) });
@@ -400,6 +418,20 @@ describe("the mark on the rows (spec D10)", () => {
     expect(vi.mocked(suppressedAddresses).mock.calls[0][1]).toHaveLength(5);
     expect(second.match(/data-subscriber-suppressed/g)).toHaveLength(1);
     expect(row(second, ids[2])).toContain("data-subscriber-suppressed");
+  });
+
+  test("ruling R17: a row not synced whose address Resend refused says „Resend ei võtnud seda aadressi vastu.“; a synced row never does", async () => {
+    const bad = await sub("bad@example.com");
+    const kati = await sub("kati@example.com", { syncedAt: at(-5), resendContactId: "ct_1" });
+    const mari = await sub("mari@example.com");
+    // the sync marked two (kati's mark from before she was synced)
+    await db.insert(settings).values({ key: REJECTED_SETTING, value: { [bad.id]: at(-10).toISOString(), [kati.id]: at(-20).toISOString() } });
+    const html = await render();
+    expect(T.rejected).toBe("Resend ei võtnud seda aadressi vastu.");
+    expect(row(html, bad.id)).toContain("data-subscriber-rejected");
+    expect(text(row(html, bad.id))).toContain("Resend ei võtnud seda aadressi vastu.");
+    for (const unmarked of [kati, mari]) expect(row(html, unmarked.id), unmarked.email).not.toContain("data-subscriber-rejected");
+    expect(html.match(/data-subscriber-rejected/g)).toHaveLength(1);
   });
 
   test("an empty list asks for no marks and still renders", async () => {

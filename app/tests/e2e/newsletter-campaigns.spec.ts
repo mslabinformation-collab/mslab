@@ -18,7 +18,8 @@ import { expect, submitsForms, test } from "./test";
 //    (loaded), the code, the button and the footer (why she got the mail, the way out, the school), and „Salvesta“ stores it;
 // 3. a sent campaign (set in the database, as a send leaves it) is read-only: its sent line, the links to its broadcasts in Resend's dashboard, no
 //    field to change, and „Kopeeri“ makes a new draft (the first draft's copy, „(koopia)“ after its name) that the list marks „Mustand“ while the
-//    sent one keeps its „Saadetud“; a campaign whose send stopped half way (`sending`, ruling R13) offers „Kopeeri“ only after the warning to look in Resend;
+//    sent one keeps its „Saadetud“; a campaign whose send stopped half way (`sending`, rulings R13, R16) says per language what went, warns that
+//    „Kopeeri“ would mail those again, and „Märgi saatmata“ (after its question) makes it sent with the other language missing;
 // 4. the screens are looked at in a phone's, a tablet's, an iPad's and a desktop's width (390, 834, 1194, 1440): no sideways scroll, every target 44 px;
 // 5. Resend's webhook (/api/resend/webhook): a fake event, signed with the run's made-up secret the way Resend (svix) signs, deletes a subscriber's row;
 //    a bad signature is 400 and changes nothing. The app's server is started with the webhook secret and without the marketing key.
@@ -231,7 +232,8 @@ test.describe("without a Resend key", () => {
   });
 
   test("a campaign whose send stopped half way is not offered again by itself; a campaign sent in one language only says which is missing", async ({ page, context, visitorIp }, info) => {
-    const stopped = await insertCampaign({ name: campaignName(info.project.name, "pooleli"), status: "sending", recipients: { et: 2, ru: 1 }, broadcasts: { et: "bc_e2e_et" } });
+    const stoppedName = campaignName(info.project.name, "pooleli");
+    const stopped = await insertCampaign({ name: stoppedName, status: "sending", recipients: { et: 2, ru: 1 }, broadcasts: { et: "bc_e2e_et" } });
     const half = await insertCampaign({ name: campaignName(info.project.name, "pool"), status: "sent", sentAt: new Date(), recipients: { et: 2, ru: 1 }, broadcasts: { et: "bc_e2e_et" } });
     await signIn(page, context, visitorIp);
 
@@ -241,11 +243,18 @@ test.describe("without a Resend key", () => {
     await expect(page.locator(`[data-campaign-row="${stopped}"] [data-campaign-status]`)).toHaveText("Saatmine pooleli");
     await expect(page.locator("[data-campaign-sending]")).toContainText("Saatmine jäi pooleli");
     await expect(page.locator("[data-campaign-broadcasts-list]")).toHaveAttribute("href", "https://resend.com/broadcasts");
-    await expect(page.locator("[data-campaign-sending-check]")).toHaveText("Ära kopeeri enne, kui oled Resendis kontrollinud.");
+    // ruling R16: each language with what is known of it: the Estonian one went (its count, its Resend link), the Russian one is unknown
+    await expect(page.locator(`[data-campaign-row="${stopped}"] [data-campaign-row-line]`)).toContainText("2 tellijale (eesti keeles) · pole teada (vene keeles)");
+    await expect(page.locator('[data-campaign-language="et"]')).toHaveAttribute("data-state", "sent");
+    await expect(page.locator('[data-campaign-language="et"] [data-campaign-language-line]')).toContainText("· 2 tellijale (eesti keeles)");
+    await expect(page.locator('[data-campaign-language="ru"]')).toHaveAttribute("data-state", "unknown");
+    await expect(page.locator("[data-campaign-sending-check]")).toContainText("Ära saada seda kampaaniat uuesti „Kopeeri“ kaudu");
     await expect(page.locator('[data-campaign-broadcast="et"]')).toHaveAttribute("href", "https://resend.com/broadcasts/bc_e2e_et");
-    await expect(page.locator("[data-campaign-sent-line]")).toHaveCount(0); // nothing says it went
+    await expect(page.locator("[data-campaign-sent-line]")).toHaveCount(0);
     await expect(page.locator("[data-send-all], [data-send-missing], [data-campaign-form]")).toHaveCount(0);
-    // „Kopeeri“ is there, but the warning to look in Resend first stands before it
+    await expect(page.locator("[data-mark-not-sent]")).toHaveCount(1);
+    await expect(page.locator('[data-mark-not-sent="ru"]')).toBeVisible();
+    // „Kopeeri“ is there, but the warning that a copy mails those who got it again stands before it
     await expect(page.locator("[data-campaign-copy]")).toBeVisible();
     expect(
       await page.evaluate(() => {
@@ -255,6 +264,19 @@ test.describe("without a Resend key", () => {
       }),
       "the warning comes before „Kopeeri“",
     ).toBe(true);
+
+    // „Märgi saatmata“ after Maria looked in Resend: asked first, then the campaign is sent in Estonian with the Russian language missing
+    await page.locator('[data-mark-not-sent="ru"] [data-mark-start]').click();
+    await expect(page.locator("[data-mark-confirm-text]")).toHaveText("Kas kontrollisid Resendis, et venekeelset kirja seal pole?");
+    await page.locator("[data-mark-no]").click();
+    await expect(page.locator("[data-mark-confirm]")).toHaveCount(0);
+    expect((await storedCampaigns(stoppedName))[0], "„Tühista“ changes nothing").toMatchObject({ status: "sending" });
+    await page.locator('[data-mark-not-sent="ru"] [data-mark-start]').click();
+    await page.locator("[data-mark-yes]").click();
+    await expect(page.locator('[data-campaign-sent="sent"]')).toBeVisible();
+    await expect(page.locator('[data-campaign-missing="ru"]')).toHaveText("Venekeelne kiri jäi saatmata — saada see nupuga „Saada puuduv keel“.");
+    await expect(page.locator('[data-campaign-broadcast="et"]')).toHaveAttribute("href", "https://resend.com/broadcasts/bc_e2e_et");
+    expect((await storedCampaigns(stoppedName))[0]).toMatchObject({ id: stopped, status: "sent" });
 
     await page.goto(`${CAMPAIGNS}&kampaania=${half}`);
     await expect(page.locator('[data-campaign-sent="sent"]')).toBeVisible();
@@ -268,12 +290,14 @@ test.describe("without a Resend key", () => {
     test.skip(isMobile, "sets its own widths: the desktop project only");
     const draft = await insertCampaign({ name: campaignName(info.project.name, "laiused mustand") });
     const sent = await insertCampaign({ name: campaignName(info.project.name, "laiused saadetud"), status: "sent", sentAt: new Date(), recipients: { et: 3, ru: 2 }, broadcasts: { et: "bc_e2e_et", ru: "bc_e2e_ru" } });
+    const half = await insertCampaign({ name: campaignName(info.project.name, "laiused pooleli"), status: "sending", recipients: { et: 3, ru: 2 }, broadcasts: { et: "bc_e2e_et" } });
     await signIn(page, context, visitorIp);
     // `shows`: what the screen must show before it is measured
     const screens = [
       { url: "/admin/uudiskiri", scope: "main", shows: ["[data-sync-off]", "[data-newsletter-views]"] },
       { url: `${CAMPAIGNS}&kampaania=${draft}`, scope: "main", shows: ["[data-campaign-form]", "[data-campaign-preview-frame]", "[data-campaign-send-off]"] },
       { url: `${CAMPAIGNS}&kampaania=${sent}`, scope: "main", shows: ["[data-campaign-sent-line]", "[data-campaign-copy]", "[data-campaign-preview-frame]"] },
+      { url: `${CAMPAIGNS}&kampaania=${half}`, scope: "main", shows: ["[data-campaign-languages]", "[data-mark-not-sent]", "[data-campaign-copy]"] },
     ];
     try {
       for (const [width, height] of [

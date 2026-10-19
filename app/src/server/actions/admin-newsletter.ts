@@ -7,7 +7,7 @@ import { normalizeEmail } from "@/domain/email";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { adminAction } from "../auth";
 import { logFailure } from "../log";
-import { copyCampaign, prepareSend, saveCampaign, sendCampaign, sendTest, type SendResult, type SendScope } from "../newsletter-campaigns";
+import { copyCampaign, markNotSent, prepareSend, saveCampaign, sendCampaign, sendTest, type SendResult, type SendScope } from "../newsletter-campaigns";
 import { FullSyncBusy, fullSync, keyRefused, MarketingUnavailable, marketingConfigured, type FullSyncReport } from "../resend-marketing";
 import { ADMIN_SYNC_BUDGET_MS, adminMarketingDeps } from "../send-deps";
 
@@ -56,7 +56,10 @@ const scopeInput = z.enum(["all", "missing"]).default("all");
 const prepareInput = z.object({ id: rowId, scope: scopeInput });
 /** A count Maria confirmed: a whole number, never more than the plan's limit could ever hold. */
 const confirmedCount = z.number().int().min(0).max(1_000_000);
-const sendInput = z.object({ id: rowId, et: confirmedCount, ru: confirmedCount, scope: scopeInput });
+/** The campaign's last change as the confirmation read it (the plan's `updatedAt`, the review's M3): an ISO instant. */
+const confirmedAt = z.iso.datetime();
+const sendInput = z.object({ id: rowId, et: confirmedCount, ru: confirmedCount, updatedAt: confirmedAt, scope: scopeInput });
+const markInput = z.object({ id: rowId, locale: z.enum(["et", "ru"]) });
 
 type Server = { ok: false; error: "server" };
 const SERVER: Server = { ok: false, error: "server" };
@@ -135,21 +138,43 @@ export const prepareSendAction = adminAction(async (_admin, input: { id: number;
 });
 
 /**
- * „Saada“: `{ id, et, ru, scope }`, `et` / `ru` the counts Maria confirmed (ruling R14). The sync and the send (newsletter-campaigns.ts
- * sendCampaign); `changed` with the new plan when the counts moved meanwhile, nothing sent. The page is refreshed when the campaign changed (sent,
- * left half way) or the open page is behind (sent or gone meanwhile); not after a refusal that changed nothing.
+ * „Saada“: `{ id, et, ru, updatedAt, scope }`, `et` / `ru` the counts Maria confirmed (ruling R14) and `updatedAt` the campaign's last change as her
+ * confirmation read it (the plan's, the review's M3). The sync and the send (newsletter-campaigns.ts sendCampaign); `changed` with the new plan
+ * when the counts or the campaign moved meanwhile, nothing sent. The page is refreshed when the campaign changed (sent, left half way) or the open
+ * page is behind (sent or gone meanwhile); not after a refusal that changed nothing.
  */
-export const sendCampaignAction = adminAction(async (_admin, input: { id: number; et: number; ru: number; scope?: SendScope }): Promise<SendResult | Server> => {
+export const sendCampaignAction = adminAction(async (_admin, input: { id: number; et: number; ru: number; updatedAt: string; scope?: SendScope }): Promise<SendResult | Server> => {
   const parsed = sendInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "notFound" };
-  const { id, et, ru, scope } = parsed.data;
+  const { id, et, ru, updatedAt, scope } = parsed.data;
   try {
-    const result = await sendCampaign(adminMarketingDeps(ADMIN_SYNC_BUDGET_MS), id, { et, ru }, scope);
+    const result = await sendCampaign(adminMarketingDeps(ADMIN_SYNC_BUDGET_MS), id, { et, ru, updatedAt }, scope);
     if (result.ok || result.error === "interrupted" || result.error === "sent" || result.error === "notFound") refresh();
     return result;
   } catch (e) {
     logFailure(`[newsletter] campaign ${id}: the send failed`, e);
     refresh(); // (it may have stopped after `sending` was written: the page shows the state it left)
+    return SERVER;
+  }
+});
+
+/**
+ * „Märgi saatmata“ (ruling R16): `{ id, locale }`, after Maria has looked in Resend and the broadcast of that language of a campaign left `sending` is
+ * not there (the editor asks „Kas kontrollisid Resendis, et … kirja seal pole?“ first). newsletter-campaigns.ts markNotSent: `{ ok: true, status }`
+ * (`sent` with that language missing, for „Saada puuduv keel“, or `draft` when nothing of the send went) and the page refreshed; `sent` for a
+ * language whose broadcast is recorded or a campaign no longer `sending` (refreshed too: the page is behind), `earlier` for a language after
+ * an open one, `notFound`. Asks nothing of Resend.
+ */
+export const markNotSentAction = adminAction(async (_admin, input: { id: number; locale: "et" | "ru" }) => {
+  const parsed = markInput.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: "notFound" as const };
+  const { id, locale } = parsed.data;
+  try {
+    const result = await markNotSent(getDb(), id, locale, new Date());
+    if (result.ok || result.error !== "earlier") refresh();
+    return result;
+  } catch (e) {
+    logFailure(`[newsletter] campaign ${id}: the mark failed`, e);
     return SERVER;
   }
 });

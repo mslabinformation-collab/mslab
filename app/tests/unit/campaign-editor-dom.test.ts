@@ -24,6 +24,7 @@ const actions = vi.hoisted(() => ({
   sendTestAction: vi.fn(),
   prepareSendAction: vi.fn(),
   sendCampaignAction: vi.fn(),
+  markNotSentAction: vi.fn(),
 }));
 vi.mock("@/server/actions/admin-newsletter", () => actions);
 const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }));
@@ -41,13 +42,15 @@ const VALUES = {
   buttonLabel: { et: "Vaata koolitusi", ru: "Смотреть курсы" },
   buttonHref: "/koolitused",
 };
-const DRAFT: CampaignEditorView = { id: 7, status: "draft", values: VALUES, sentAt: null, recipients: null, broadcasts: null };
+const DRAFT: CampaignEditorView = { id: 7, status: "draft", values: VALUES, sentAt: null, updatedAt: "2026-10-19T09:00:00.000Z", recipients: null, broadcasts: null };
 const SENT: CampaignEditorView = { ...DRAFT, status: "sent", sentAt: "2026-10-19T09:05:00.000Z", recipients: { et: 40, ru: 12 }, broadcasts: { et: "bc-et", ru: "bc-ru" } };
 const TARGETS: TestTarget[] = [
   { key: "maria", address: "maria@example.com", subscriber: false },
   { key: "me", address: "dim@example.com", subscriber: true },
 ];
-const PLAN = { et: 40, ru: 12, ruFallsBack: false, left: 0, report: { contacts: 52, added: 0, updated: 0, removed: 0, unsubscribedPulled: 0, suppressed: 0, unsynced: 0, failed: 0, limitReached: false, finished: true } };
+/** The plan prepareSendAction answers: the counts, and the campaign's last change as it read it (the review's M3). */
+const VERSION = "2026-10-19T09:00:00.000Z";
+const PLAN = { et: 40, ru: 12, ruFallsBack: false, left: 0, rejected: 0, updatedAt: VERSION, report: { contacts: 52, added: 0, updated: 0, removed: 0, unsubscribedPulled: 0, suppressed: 0, unsynced: 0, failed: 0, rejected: 0, limitReached: false, finished: true } };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -273,7 +276,7 @@ describe("a draft", () => {
     expect($("[data-send-left]")).toBeNull();
     expect(text("[data-send-yes]")).toBe("Saada");
     await click($("[data-send-yes]"));
-    expect(actions.sendCampaignAction).toHaveBeenCalledWith({ id: 7, et: 40, ru: 12, scope: "all" });
+    expect(actions.sendCampaignAction).toHaveBeenCalledWith({ id: 7, et: 40, ru: 12, updatedAt: VERSION, scope: "all" });
     expect(text("[data-send-status]")).toBe("Kampaania on saadetud.");
   });
 
@@ -295,9 +298,37 @@ describe("a draft", () => {
     expect(text("[data-send-changed]")).toBe("Tellijate arv muutus vahepeal — vaata üle ja kinnita uuesti.");
     expect(text("[data-send-confirm-text]")).toBe("Saadad kampaania 53 tellijale (eesti keeles 41, vene keeles 12). Kas saadame?");
     await click($("[data-send-yes]"));
-    expect(actions.sendCampaignAction).toHaveBeenLastCalledWith({ id: 7, et: 41, ru: 12, scope: "all" });
+    expect(actions.sendCampaignAction).toHaveBeenLastCalledWith({ id: 7, et: 41, ru: 12, updatedAt: VERSION, scope: "all" });
     expect(text("[data-send-status]")).toBe("Kampaania on saadetud.");
     expect($("[data-send-changed]")).toBeNull();
+  });
+
+  test("the review's M3: saved elsewhere after the confirmation (the plan's time moved): nothing went, the confirmation closes, and Maria is told to reload", async () => {
+    actions.prepareSendAction.mockResolvedValue({ ok: true, plan: PLAN });
+    actions.sendCampaignAction.mockResolvedValueOnce({ ok: false, error: "changed", plan: { ...PLAN, updatedAt: "2026-10-19T09:30:00.000Z" } });
+    await show(DRAFT);
+    await click($("[data-send-all]"));
+    await click($("[data-send-yes]"));
+    expect(actions.sendCampaignAction).toHaveBeenCalledWith({ id: 7, et: 40, ru: 12, updatedAt: VERSION, scope: "all" });
+    expect($("[data-send-confirm]")).toBeNull();
+    expect(text("[data-send-status]")).toBe("Kampaaniat muudeti vahepeal mujal (nt teises aknas), seega ei saadetud midagi. Laadi leht uuesti ja vaata kampaania üle.");
+    expect(actions.sendCampaignAction).toHaveBeenCalledTimes(1);
+  });
+
+  test("ruling R17: the confirmation says how many addresses Resend refused (they get nothing; the send goes on)", async () => {
+    actions.prepareSendAction.mockResolvedValue({ ok: true, plan: { ...PLAN, rejected: 2 } });
+    await show(DRAFT);
+    await click($("[data-send-all]"));
+    expect(text("[data-send-rejected]")).toBe("2 tellija aadressi Resend vastu ei võtnud: neile kiri ei lähe.");
+    expect($("[data-send-yes]")).not.toBeNull();
+  });
+
+  test("the review's M7: a test to a subscriber whose contact unsubscribed in Resend says it did not go, never „Proov läks …“", async () => {
+    actions.sendTestAction.mockResolvedValue({ ok: false, error: "unsubscribed" });
+    await show(DRAFT);
+    await click($("[data-test-send]"));
+    expect(text("[data-test-status]")).toBe("Proovi ei saadetud: see aadress on Resendis uudiskirjast loobunud, nii et kampaania sinna ei jõuaks.");
+    expect(text("[data-test-status]")).not.toContain("Proov läks");
   });
 
   test("the open confirmation closes when a field changes or a save lands: „Saada“ then needs a new count (review M5)", async () => {
@@ -377,21 +408,74 @@ describe("a sent campaign", () => {
     expect(all("[data-campaign-broadcast]")).toHaveLength(1);
   });
 
-  test("a send left half way (`sending`): Maria is told to look in Resend, with its list of broadcasts and any recorded; no send again; „Kopeeri“ with the warning (review M1)", async () => {
-    await show({ ...SENT, status: "sending", sentAt: null, broadcasts: { et: "bc-et" } });
+  test("ruling R16, the first send (ET went, RU unknown): each language with its state, ET with its time, count and Resend link; never advice to copy; no send again", async () => {
+    // a first send left `sending`: no sentAt yet, its time is the marker's (updatedAt)
+    await show({ ...SENT, status: "sending", sentAt: null, updatedAt: "2026-10-19T09:05:00.000Z", broadcasts: { et: "bc-et" } });
     expect($("[data-campaign-sent-line]")).toBeNull();
-    expect(text("[data-campaign-sending]")).toContain("Vaata Resendist");
-    expect(all("[data-campaign-broadcast]")).toHaveLength(1);
+    expect(all("[data-campaign-language]").map((li) => [li.dataset.campaignLanguage, li.dataset.state])).toEqual([
+      ["et", "sent"],
+      ["ru", "unknown"],
+    ]);
+    expect(text('[data-campaign-language="et"] [data-campaign-language-line]')).toBe("Saadetud 19.10.2026 12:05 · 40 tellijale (eesti keeles)");
+    expect($<HTMLAnchorElement>('[data-campaign-language="et"] [data-campaign-broadcast="et"]')!.getAttribute("href")).toBe("https://resend.com/broadcasts/bc-et");
+    expect(text('[data-campaign-language="ru"] [data-campaign-language-line]')).toBe("Pole teada, kas kiri läks (vene keeles): Resendilt ei tulnud vastust.");
+    // „Märgi saatmata“ for RU only; nothing ever for ET, whose broadcast is recorded
+    expect(all("[data-mark-not-sent]").map((m) => m.getAttribute("data-mark-not-sent"))).toEqual(["ru"]);
     expect($("[data-send-all]")).toBeNull();
     expect($("[data-send-missing]")).toBeNull();
-    expect($("[data-campaign-copy]")).not.toBeNull();
-    expect(text("[data-campaign-sending-check]")).toBe("Ära kopeeri enne, kui oled Resendis kontrollinud.");
+    // the words never send her to „Kopeeri“ as the way on: they warn that a copy would mail those who got it again
+    for (const selector of ["[data-campaign-sending]", "[data-campaign-sending-check]", "[data-campaign-read-only]"]) expect(text(selector), selector).not.toMatch(/enne,? kui (kopeerid|oled)|kopeeri ja saada/i);
+    expect(text("[data-campaign-sending-check]")).toBe(
+      "Ära saada seda kampaaniat uuesti „Kopeeri“ kaudu: koopia võib minna ka neile, kellele kiri juba läks. Kui Resendis selle keele kirja pole, vajuta selle juures „Märgi saatmata“.",
+    );
+    expect(text("[data-campaign-read-only]")).toBe("Seda kampaaniat ei saa muuta. „Kopeeri“ on uue kampaania jaoks: koopia saatmine läheks ka neile, kellele see kiri juba läks.");
     const list = $<HTMLAnchorElement>("[data-campaign-broadcasts-list]")!;
     expect([list.getAttribute("href"), list.getAttribute("target"), list.textContent]).toEqual(["https://resend.com/broadcasts", "_blank", "Ava Resendi kampaaniate loend"]);
-    // the first broadcast without an answer: nothing recorded, the list is still there
+  });
+
+  test("ruling R16, „Saada puuduv keel“ with no answer (scenario B): ET still says it went at the first send's time; RU unknown with „Märgi saatmata“", async () => {
+    await show({ ...SENT, status: "sending", sentAt: "2026-10-19T09:05:00.000Z", updatedAt: "2026-10-19T10:30:00.000Z", broadcasts: { et: "bc-et" } });
+    expect(text('[data-campaign-language="et"] [data-campaign-language-line]')).toBe("Saadetud 19.10.2026 12:05 · 40 tellijale (eesti keeles)");
+    expect($('[data-campaign-language="ru"]')!.dataset.state).toBe("unknown");
+    expect($('[data-mark-not-sent="ru"]')).not.toBeNull();
+  });
+
+  test("ruling R16, nothing recorded: both languages unknown, and only the first (ET) can be marked: RU was never tried", async () => {
     await show({ ...SENT, id: 9, status: "sending", sentAt: null, broadcasts: {} });
+    expect(all("[data-campaign-language]").map((li) => li.dataset.state)).toEqual(["unknown", "unknown"]);
     expect(all("[data-campaign-broadcast]")).toHaveLength(0);
+    expect(all("[data-mark-not-sent]").map((m) => m.getAttribute("data-mark-not-sent"))).toEqual(["et"]);
     expect($("[data-campaign-broadcasts-list]")).not.toBeNull();
+  });
+
+  test("„Märgi saatmata“: the question names the language; „Tühista“ asks nothing; „Jah“ calls the action, and a refusal is said in words", async () => {
+    actions.markNotSentAction.mockResolvedValueOnce({ ok: false, error: "sent" });
+    actions.markNotSentAction.mockResolvedValueOnce({ ok: true, status: "sent" });
+    await show({ ...SENT, status: "sending", sentAt: null, broadcasts: { et: "bc-et" } });
+    await click($('[data-mark-not-sent="ru"] [data-mark-start]'));
+    expect(text("[data-mark-confirm-text]")).toBe("Kas kontrollisid Resendis, et venekeelset kirja seal pole?");
+    await click($("[data-mark-no]"));
+    expect($("[data-mark-confirm]")).toBeNull();
+    expect(actions.markNotSentAction).not.toHaveBeenCalled();
+    await click($("[data-mark-start]"));
+    await click($("[data-mark-yes]"));
+    expect(actions.markNotSentAction).toHaveBeenCalledWith({ id: 7, locale: "ru" });
+    expect(text("[data-mark-status]")).toBe("See kampaania on juba saadetud.");
+    await click($("[data-mark-start]"));
+    await click($("[data-mark-yes]"));
+    expect(text("[data-mark-status]")).toBe("Märgitud saatmata.");
+    // the Estonian question, for a send whose first broadcast got no answer
+    await show({ ...SENT, id: 9, status: "sending", sentAt: null, broadcasts: {} });
+    await click($('[data-mark-not-sent="et"] [data-mark-start]'));
+    expect(text("[data-mark-confirm-text]")).toBe("Kas kontrollisid Resendis, et eestikeelset kirja seal pole?");
+  });
+
+  test("a campaign sent with a language missing says „Kopeeri“ is for a new campaign; one sent whole keeps the plain line", async () => {
+    await show({ ...SENT, broadcasts: { et: "bc-et" } });
+    expect(text("[data-campaign-read-only]")).toBe("Seda kampaaniat ei saa muuta. „Kopeeri“ on uue kampaania jaoks: koopia saatmine läheks ka neile, kellele see kiri juba läks.");
+    expect($("[data-campaign-languages]")).toBeNull();
+    await show({ ...SENT, id: 9 });
+    expect(text("[data-campaign-read-only]")).toBe("Saadetud kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.");
   });
 
   test("„Saada puuduv keel“ (ruling R12): a campaign sent in one language only offers it; the plan, the confirmation, and the send of the missing language alone", async () => {
@@ -404,7 +488,7 @@ describe("a sent campaign", () => {
     expect(actions.prepareSendAction).toHaveBeenCalledWith({ id: 7, scope: "missing" });
     expect(text("[data-send-confirm-text]")).toBe("Saadad kampaania 12 tellijale (eesti keeles 0, vene keeles 12). Kas saadame?");
     await click($("[data-send-yes]"));
-    expect(actions.sendCampaignAction).toHaveBeenCalledWith({ id: 7, et: 0, ru: 12, scope: "missing" });
+    expect(actions.sendCampaignAction).toHaveBeenCalledWith({ id: 7, et: 0, ru: 12, updatedAt: VERSION, scope: "missing" });
     expect(text("[data-send-status]")).toBe("Kampaania on saadetud.");
   });
 

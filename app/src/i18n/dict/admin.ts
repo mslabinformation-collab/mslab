@@ -1526,6 +1526,8 @@ export const adminEt = {
       report: "{added} lisatud, {removed} eemaldatud, {unsubscribedPulled} loobus Resendis",
       reportSuppressed: "Resend ei saada kirju {n} tellija aadressile (tagastus või rämpspostiks märgitud).",
       reportFailed: "{n} kontakti sünkroonimine ebaõnnestus, järgmine sünkroonimine proovib uuesti.",
+      // ruling R17: the addresses Resend refused as contacts in this sync (each marked on its row below with `rejected`)
+      reportRejected: "Resend ei võtnud vastu {n} aadressi: need on allpool loendis märgitud.",
       unfinished: "Sünkroonimine jätkub järgmisel korral.",
       errors: {
         unavailable: "Resendiga ei saanud ühendust — proovi hiljem uuesti.",
@@ -1537,6 +1539,8 @@ export const adminEt = {
     },
     // A subscriber's address that Resend does not mail (a bounce or a spam mark; spec D10, Draft there): on her row here and in her drawer in Õpilased
     suppressed: "Resend ei saada sellele aadressile kirju (tagastus või rämpspostiks märgitud). Seda saab muuta ainult Resendis.",
+    // ruling R17: a subscriber whose address Resend refused as a contact (she gets no campaign; it never stops a send). Draft.
+    rejected: "Resend ei võtnud seda aadressi vastu.",
     // The page's two views (newsletter campaigns Task 4): the subscribers, and the campaigns (?vaade=kampaaniad). „Kampaaniad“ is the spec's (D4);
     // the rest is Draft.
     viewsLabel: "Vaade",
@@ -1614,14 +1618,34 @@ export const adminEt = {
         done: "Kampaania on saadetud.",
         // ruling R14: the counts after the send's own sync are not the ones confirmed: nothing is sent, and the new counts are shown to confirm
         changed: "Tellijate arv muutus vahepeal — vaata üle ja kinnita uuesti.",
+        // the review's M3: the campaign was saved elsewhere after the confirmation: nothing is sent, and the editor here shows the older text
+        edited: "Kampaaniat muudeti vahepeal mujal (nt teises aknas), seega ei saadetud midagi. Laadi leht uuesti ja vaata kampaania üle.",
+        // ruling R17: subscribers whose address Resend refused as a contact (marked in the list): the send goes to the others
+        rejected: "{n} tellija aadressi Resend vastu ei võtnud: neile kiri ei lähe.",
       },
       // a sent campaign (read-only), and one whose send stopped half way
       sentLine: "Saadetud {date} · {n} tellijale",
       readOnly: "Saadetud kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.",
-      sending: "Saatmine jäi pooleli: pole teada, kas kõik kirjad läksid välja. Vaata Resendist, enne kui kopeerid ja saadad uuesti.",
-      // (the review's M1) Resend's list of broadcasts, where one whose answer never came is found, and the warning beside „Kopeeri“
+      // a campaign sent in part (one language went, or its send stopped half way): „Kopeeri“ is for a new campaign, never to send this one again
+      readOnlyHalf: "Seda kampaaniat ei saa muuta. „Kopeeri“ on uue kampaania jaoks: koopia saatmine läheks ka neile, kellele see kiri juba läks.",
+      sending: "Saatmine jäi pooleli: ühe keele kirja kohta ei tulnud Resendilt vastust. Allpool on iga keele kohta kirjas, mis on teada.",
+      // (the review's M1) Resend's list of broadcasts, where one whose answer never came is found; ruling R16: what to do instead of „Kopeeri“
       broadcastsList: "Ava Resendi kampaaniate loend",
-      sendingCheck: "Ära kopeeri enne, kui oled Resendis kontrollinud.",
+      sendingCheck: "Ära saada seda kampaaniat uuesti „Kopeeri“ kaudu: koopia võib minna ka neile, kellele kiri juba läks. Kui Resendis selle keele kirja pole, vajuta selle juures „Märgi saatmata“.",
+      // ruling R16: each language of a half-sent campaign with its state ({date} the send's time, {n} its subscribers, {lang} langNames)
+      langSent: "Saadetud {date} · {n} tellijale ({lang})",
+      langUnknown: "Pole teada, kas kiri läks ({lang}): Resendilt ei tulnud vastust.",
+      listUnknown: "pole teada ({lang})",
+      // ruling R16: Maria has looked in Resend and that language's mail is not there; {keel} the language as the question needs it
+      markNotSent: {
+        button: "Märgi saatmata",
+        confirm: "Kas kontrollisid Resendis, et {keel} kirja seal pole?",
+        keel: { et: "eestikeelset", ru: "venekeelset" },
+        yes: "Jah, märgi saatmata",
+        no: "Tühista",
+        working: "Märgin…",
+        done: "Märgitud saatmata.",
+      },
       openInResend: "Ava Resendis ({lang})",
       langNames: { et: "eesti keeles", ru: "vene keeles" },
       missing: { et: "Eestikeelne kiri jäi saatmata — saada see nupuga „Saada puuduv keel“.", ru: "Venekeelne kiri jäi saatmata — saada see nupuga „Saada puuduv keel“." },
@@ -1641,10 +1665,14 @@ export const adminEt = {
         unavailable: "Resendiga ei saanud ühendust — proovi hiljem uuesti.",
         permission: "Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.",
         busy: "Sünkroonimine juba käib — proovi hetke pärast uuesti.",
-        unsynced: "Kõiki tellijaid ei saanud Resendiga sünkroonida, seega ei saadetud midagi. Proovi hetke pärast uuesti.",
+        unsynced: "Kõiki tellijaid ei saanud Resendiga sünkroonida, seega ei saadetud midagi. Vaata „Tellijad“ vaates nupu „Sünkrooni Resendiga“ tulemust.",
         empty: "Resendis pole ühtegi tellijat: kirja pole kellelegi saata.",
         interrupted: "Saatmine jäi pooleli: pole teada, kas kiri läks välja. Vaata Resendist, enne kui midagi uuesti saadad.",
         limited: "Proovikirju saab saata kuni 10 tunnis. Proovi hiljem uuesti.",
+        // the review's M7: the test address is a subscriber's whose contact unsubscribed in Resend: Resend would not deliver it, so nothing went
+        unsubscribed: "Proovi ei saadetud: see aadress on Resendis uudiskirjast loobunud, nii et kampaania sinna ei jõuaks.",
+        // ruling R16: only the first language of the send whose mail is not recorded can be marked
+        earlier: "Märgi enne saatmata eestikeelne kiri.",
         address: "Sellele aadressile ei saa proovi saata.",
         server: "Ei õnnestunud. Proovi uuesti.",
         changed: "Tellijate arv muutus vahepeal — vaata üle ja kinnita uuesti.",

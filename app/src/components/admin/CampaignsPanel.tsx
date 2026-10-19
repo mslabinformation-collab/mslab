@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { NewsletterCampaign } from "@/db/schema";
+import { sendLanguages, type LanguageOfSend } from "@/domain/newsletter-campaign";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { NewsletterCampaignEditor, type CampaignEditorView, type TestTarget } from "./NewsletterCampaignEditor";
@@ -13,8 +14,11 @@ import styles from "./CampaignsPanel.module.css";
 const BASE = "/admin/uudiskiri?vaade=kampaaniad";
 export const campaignListHref = (id: number | "new") => `${BASE}&kampaania=${id === "new" ? "uus" : id}`;
 
-/** A row of the list: its name, its status, its last change (a draft) or its send (ISO), and how many the send reached. */
-export type CampaignListRow = { id: number; name: string; status: CampaignEditorView["status"]; at: string; reached: number | null };
+/**
+ * A row of the list: its name, its status, its last change (a draft) or its send (ISO), how many the send reached, and (a send left `sending`,
+ * ruling R16) each language with what is known of it.
+ */
+export type CampaignListRow = { id: number; name: string; status: CampaignEditorView["status"]; at: string; reached: number | null; languages: LanguageOfSend[] };
 
 const both = (v: { et: string; ru?: string } | null) => ({ et: v?.et ?? "", ru: v?.ru ?? "" });
 
@@ -34,6 +38,7 @@ export function campaignEditorView(row: NewsletterCampaign): CampaignEditorView 
       buttonHref: row.buttonHref ?? "",
     },
     sentAt: row.sentAt ? row.sentAt.toISOString() : null,
+    updatedAt: row.updatedAt.toISOString(),
     recipients: row.recipients ?? null,
     broadcasts: row.broadcasts ?? null,
   };
@@ -50,9 +55,18 @@ export const campaignListRow = (row: NewsletterCampaign): CampaignListRow => ({
   id: row.id,
   name: row.name,
   status: row.status,
-  at: (row.status === "sent" && row.sentAt ? row.sentAt : row.updatedAt).toISOString(),
+  // a send's time: the time of the first broadcast's send; for a first send left `sending`, the time it began (the marker's)
+  at: (row.status !== "draft" && row.sentAt ? row.sentAt : row.updatedAt).toISOString(),
   reached: reachedBy(row),
+  languages: row.status === "sending" ? sendLanguages(row) : [],
 });
+
+/** The list's line of a send left `sending` (ruling R16): each language, the one that went with its time and count, the other as unknown. */
+function halfSentLine(c: CampaignListRow, t: typeof adminEt.newsletter.campaigns): string {
+  return c.languages
+    .map((l) => (l.state === "sent" ? fill(t.langSent, { date: stamp(c.at), n: l.recipients, lang: t.langNames[l.locale] }) : fill(t.listUnknown, { lang: t.langNames[l.locale] })))
+    .join(" · ");
+}
 
 const STATUS_TAG: Record<CampaignListRow["status"], string> = { draft: ui.warn, sending: ui.bad, sent: ui.ok };
 const stamp = (iso: string) => {
@@ -102,8 +116,12 @@ export function CampaignsPanel({
                 <span className={`${ui.tag} ${STATUS_TAG[c.status]}`} data-campaign-status={c.status}>
                   {t.status[c.status]}
                 </span>
-                <span className={`${ui.muted} ${ui.small}`}>
-                  {c.status === "sent" && c.reached !== null ? fill(t.sentLine, { date: stamp(c.at), n: c.reached }) : fill(t.changed, { date: stamp(c.at) })}
+                <span className={`${ui.muted} ${ui.small}`} data-campaign-row-line="">
+                  {c.status === "sent" && c.reached !== null
+                    ? fill(t.sentLine, { date: stamp(c.at), n: c.reached })
+                    : c.status === "sending" && c.languages.length > 0
+                      ? halfSentLine(c, t)
+                      : fill(t.changed, { date: stamp(c.at) })}
                 </span>
               </li>
             ))}

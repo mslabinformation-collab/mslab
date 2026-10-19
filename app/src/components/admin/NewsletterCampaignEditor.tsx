@@ -2,13 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, useTransition, type FormEvent, type SyntheticEvent } from "react";
-import { CAMPAIGN_LIMITS, checkCampaignDraft } from "@/domain/newsletter-campaign";
+import { CAMPAIGN_LIMITS, checkCampaignDraft, sendLanguages, unsentCandidate } from "@/domain/newsletter-campaign";
 import { WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { toStorable } from "@/lib/to-storable";
-import { copyCampaignAction, prepareSendAction, saveCampaignAction, sendCampaignAction, sendTestAction } from "@/server/actions/admin-newsletter";
+import { copyCampaignAction, markNotSentAction, prepareSendAction, saveCampaignAction, sendCampaignAction, sendTestAction } from "@/server/actions/admin-newsletter";
 import type { SendPlan } from "@/server/newsletter-campaigns";
 import { Choice } from "./Choice";
 import { I18nInput, LangSwitch, type Lang } from "./I18nInput";
@@ -24,8 +24,9 @@ import styles from "./CampaignsPanel.module.css";
 // Maria's campaign editor on the „Kampaaniad“ tab (newsletter campaigns, Task 4; spec D4–D6, §5; rulings R2, R4, R5, R7). A draft: the fields (the
 // name, the subject, the preview line, the picture, the text in paragraphs, the code, the button), each with its limit and a counter, „Salvesta“,
 // the live preview of the real mail in both languages, and the sends: „Saada proov“ (Maria's address or the signed-in admin's, either language)
-// and „Saada kõigile“ (the sync first, then the spec's confirmation with the counts, then „Saada“). A sent campaign (or one whose send stopped
-// half way) is read-only: „Saadetud {date} · {n} tellijale“, a link to each broadcast in Resend's dashboard, the preview, and „Kopeeri“. Without the
+// and „Saada kõigile“ (the sync first, then the spec's confirmation with the counts, then „Saada“). A sent campaign is read-only: „Saadetud {date} ·
+// {n} tellijale“, a link to each broadcast in Resend's dashboard, the preview, and „Kopeeri“. One whose send stopped half way (ruling R16) shows each
+// language with what is known of it and offers „Märgi saatmata“ for the one Resend has no mail of, never „Kopeeri“ as the way on. Without the
 // newsletter's key the editor and the preview work as ever, and the two sends say that sending is not set up. The rules are domain/newsletter-
 // campaign.ts checkCampaignDraft, run here before anything is sent (the server checks them again); text pasted from Word can carry control
 // characters, which become spaces or line breaks first (`cleanPasted`). This file runs on old iPads: no regular expression with a lookbehind, here
@@ -39,8 +40,10 @@ export type CampaignEditorView = {
   id: number;
   status: "draft" | "sending" | "sent";
   values: CampaignValues;
-  /** ISO time of the send; null until sent. */
+  /** ISO time of the send; null until sent (and for a first send left `sending`, whose time is its `updatedAt`). */
   sentAt: string | null;
+  /** ISO time of its last change: for a send left `sending`, when the send began. */
+  updatedAt: string;
   /** The subscribers in Resend the send was for, per language; null while a draft. */
   recipients: { et: number; ru: number } | null;
   /** The broadcasts that went, per language. */
@@ -498,8 +501,14 @@ function ConfirmSend({ id, scope, open, revision, title, lead, button }: { id: n
     const { plan } = shown;
     setLine({ tone: "busy", text: t.all.working });
     start(async () => {
-      const r = await sendCampaignAction({ id, et: plan.et, ru: plan.ru, scope }).catch(() => ({ ok: false as const, error: "server" as const }));
+      const r = await sendCampaignAction({ id, et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt, scope }).catch(() => ({ ok: false as const, error: "server" as const }));
       if (!r.ok && r.error === "changed" && "plan" in r) {
+        if (r.plan.updatedAt !== plan.updatedAt) {
+          // the campaign was saved elsewhere since the confirmation (the review's M3): nothing went, and this editor shows the older text
+          setConfirm(null);
+          setLine({ tone: "error", text: t.all.edited });
+          return;
+        }
         // the counts moved since the confirmation: nothing went; the new ones, to confirm again
         setConfirm({ plan: r.plan, revision, changed: true });
         setLine(IDLE);
@@ -535,6 +544,11 @@ function ConfirmSend({ id, scope, open, revision, title, lead, button }: { id: n
               {fill(t.all.left, { n: shown.plan.left })}
             </p>
           )}
+          {shown.plan.rejected > 0 && (
+            <p className={ui.notice} data-send-rejected="">
+              {fill(t.all.rejected, { n: shown.plan.rejected })}
+            </p>
+          )}
           <div className={styles.sendRow}>
             <button type="button" className={ui.btn} aria-disabled={!open || sending || undefined} onClick={send} data-send-yes="">
               {sending ? t.all.working : t.all.yes}
@@ -567,6 +581,102 @@ function reachedCount(c: Pick<CampaignEditorView, "recipients" | "broadcasts">):
   return LOCALES.reduce((n, l) => n + (went[l] ? planned[l] : 0), 0);
 }
 
+/** A link to one broadcast in Resend's dashboard. */
+function BroadcastLink({ locale, id }: { locale: Lang; id: string }) {
+  return (
+    <a className={ui.link} href={`${RESEND_BROADCAST}${encodeURIComponent(id)}`} target="_blank" rel="noopener noreferrer" data-campaign-broadcast={locale}>
+      {fill(t.openInResend, { lang: t.langNames[locale] })}
+    </a>
+  );
+}
+
+/**
+ * A campaign whose send stopped half way (`sending`, rulings R13, R16): each language of the send with what is known of it, the one that went with
+ * its time, its count and its Resend link, the one without an answer said so; Resend's list of broadcasts; and, for the language Maria may now
+ * mark (unsentCandidate: the first without a recorded broadcast), „Märgi saatmata“ behind the question whether she has looked in Resend. Never
+ * „Kopeeri“ as the way on: it would mail the language that went a second time.
+ */
+function HalfSent({ campaign }: { campaign: CampaignEditorView }) {
+  const at = campaign.sentAt ?? campaign.updatedAt;
+  const candidate = unsentCandidate(campaign);
+  return (
+    <>
+      <p className={ui.notice} data-campaign-sending="">
+        {t.sending}
+      </p>
+      <ul className={styles.languages} data-campaign-languages="">
+        {sendLanguages(campaign).map((l) => (
+          <li key={l.locale} className={styles.language} data-campaign-language={l.locale} data-state={l.state}>
+            {l.state === "sent" && l.broadcast ? (
+              <>
+                <p className={ui.success} data-campaign-language-line="">
+                  {fill(t.langSent, { date: stamp(at), n: l.recipients, lang: t.langNames[l.locale] })}
+                </p>
+                <BroadcastLink locale={l.locale} id={l.broadcast} />
+              </>
+            ) : (
+              <>
+                <p className={ui.error} data-campaign-language-line="">
+                  {fill(t.langUnknown, { lang: t.langNames[l.locale] })}
+                </p>
+                {candidate === l.locale && <MarkNotSent id={campaign.id} locale={l.locale} />}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className={styles.broadcastsList}>
+        <a className={ui.link} href={RESEND_BROADCASTS} target="_blank" rel="noopener noreferrer" data-campaign-broadcasts-list="">
+          {t.broadcastsList}
+        </a>
+      </p>
+    </>
+  );
+}
+
+/** „Märgi saatmata“ (ruling R16): the question first, then the action; the page comes back with the campaign as it is now (sent with the language missing, or a draft). */
+function MarkNotSent({ id, locale }: { id: number; locale: Lang }) {
+  const [asking, setAsking] = useState(false);
+  const [line, setLine] = useState<Line>(IDLE);
+  const [pending, start] = useTransition();
+  const m = t.markNotSent;
+  const mark = () => {
+    if (pending) return;
+    setLine({ tone: "busy", text: m.working });
+    start(async () => {
+      const r = await markNotSentAction({ id, locale }).catch(() => ({ ok: false as const, error: "server" as const }));
+      setAsking(false);
+      setLine(r.ok ? { tone: "done", text: m.done } : { tone: "error", text: refusal(r.error) });
+    });
+  };
+  return (
+    <div className={styles.mark} data-mark-not-sent={locale}>
+      {asking ? (
+        <div className={styles.confirm} data-mark-confirm="">
+          <p data-mark-confirm-text="">{fill(m.confirm, { keel: m.keel[locale] })}</p>
+          <div className={styles.sendRow}>
+            <button type="button" className={ui.btn} aria-disabled={pending || undefined} onClick={mark} data-mark-yes="">
+              {pending ? m.working : m.yes}
+            </button>
+            <button type="button" className={`${ui.btn} ${ui.secondary}`} onClick={() => !pending && setAsking(false)} data-mark-no="">
+              {m.no}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className={styles.sendRow}>
+          <button type="button" className={`${ui.btn} ${ui.secondary}`} onClick={() => setAsking(true)} data-mark-start="">
+            {m.button}
+          </button>
+        </div>
+      )}
+      <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-mark-status="">
+        {line.text}
+      </p>
+    </div>
+  );
+}
+
 function SentCampaign({ campaign, configured }: { campaign: CampaignEditorView; configured: boolean }) {
   const router = useRouter();
   const uid = useId();
@@ -575,6 +685,7 @@ function SentCampaign({ campaign, configured }: { campaign: CampaignEditorView; 
   const went = campaign.broadcasts ?? {};
   const planned = campaign.recipients ?? { et: 0, ru: 0 };
   const missing = LOCALES.filter((l) => planned[l] > 0 && !went[l]);
+  const half = campaign.status === "sending" || missing.length > 0;
 
   const copy = () => {
     if (pending) return;
@@ -599,31 +710,18 @@ function SentCampaign({ campaign, configured }: { campaign: CampaignEditorView; 
             {fill(t.sentLine, { date: stamp(campaign.sentAt), n: reachedCount(campaign) })}
           </p>
         )}
-        {campaign.status === "sending" && (
-          <>
-            <p className={ui.notice} data-campaign-sending="">
-              {t.sending}
-            </p>
-            <p className={styles.broadcastsList}>
-              <a className={ui.link} href={RESEND_BROADCASTS} target="_blank" rel="noopener noreferrer" data-campaign-broadcasts-list="">
-                {t.broadcastsList}
-              </a>
-            </p>
-          </>
-        )}
+        {campaign.status === "sending" && <HalfSent campaign={campaign} />}
         {campaign.status === "sent" &&
           missing.map((l) => (
             <p key={l} className={ui.error} data-campaign-missing={l}>
               {t.missing[l]}
             </p>
           ))}
-        {LOCALES.some((l) => went[l]) && (
+        {campaign.status === "sent" && LOCALES.some((l) => went[l]) && (
           <ul className={styles.broadcasts}>
             {LOCALES.filter((l) => went[l]).map((l) => (
               <li key={l}>
-                <a className={ui.link} href={`${RESEND_BROADCAST}${encodeURIComponent(went[l]!)}`} target="_blank" rel="noopener noreferrer" data-campaign-broadcast={l}>
-                  {fill(t.openInResend, { lang: t.langNames[l] })}
-                </a>
+                <BroadcastLink locale={l} id={went[l]!} />
               </li>
             ))}
           </ul>
@@ -631,7 +729,9 @@ function SentCampaign({ campaign, configured }: { campaign: CampaignEditorView; 
         {campaign.status === "sent" && missing.length > 0 && configured && (
           <ConfirmSend id={campaign.id} scope="missing" open={configured} revision="sent" title={t.sendMissing.title} lead={t.sendMissing.lead} button={t.sendMissing.button} />
         )}
-        <p className={`${ui.hint} ${styles.readOnly}`}>{t.readOnly}</p>
+        <p className={`${ui.hint} ${styles.readOnly}`} data-campaign-read-only="">
+          {half ? t.readOnlyHalf : t.readOnly}
+        </p>
         {campaign.status === "sending" && (
           <p className={ui.notice} data-campaign-sending-check="">
             {t.sendingCheck}

@@ -19,7 +19,7 @@ import { parseRowId } from "@/lib/row-id";
 import { requireAdmin } from "@/server/auth";
 import { getCampaign, listCampaigns } from "@/server/newsletter-campaigns";
 import { syncState } from "@/server/newsletter-admin";
-import { isSubscriberAddress, marketingConfigured, suppressedAddresses } from "@/server/resend-marketing";
+import { isSubscriberAddress, marketingConfigured, rejectedSubscribers, suppressedAddresses } from "@/server/resend-marketing";
 import { adminMarketingDeps } from "@/server/send-deps";
 import { linkSuggestions } from "@/server/site-links";
 import styles from "./newsletter.module.css";
@@ -46,7 +46,8 @@ const CAMPAIGNS_HREF = "/admin/uudiskiri?vaade=kampaaniad";
  * a row of the old double opt-in that was never confirmed), newest first, and the CSV downloads (confirmed only — the addresses a newsletter may go
  * to — or all). 50 a page (?leht=); the CSV has all. Above the list the sync with Resend (newsletter campaigns, Task 3): „Sünkrooni Resendiga“ with
  * Resend's count beside the site's, or that it is not set up yet. A row whose address Resend does not mail (a bounce or a spam mark, spec D10) says
- * so; all the page's addresses are asked in one query.
+ * so; all the page's addresses are asked in one query. So does a row not synced whose address Resend refused as a contact (ruling R17: she gets
+ * no campaign, and it never stops a send), from the one setting that keeps them.
  * „Kampaaniad“ (?vaade=kampaaniad, Task 4): the campaigns and the editor of the one chosen (&kampaania=<id>, or `uus`; components/admin/CampaignsPanel.tsx).
  */
 export default async function NewsletterPage({ searchParams }: Props) {
@@ -95,7 +96,10 @@ async function subscribersPage(email: string, search: Search) {
   const db = getDb();
   const [list, counts, sync] = await Promise.all([pageSubscribers(db, parsePage(search.leht)), getAdminCounts(), syncState(adminMarketingDeps())]);
   const rows = list.rows;
-  const blocked = await suppressedAddresses(db, rows.map((r) => r.email));
+  const [blocked, rejected] = await Promise.all([
+    suppressedAddresses(db, rows.map((r) => r.email)),
+    rejectedSubscribers(db, rows.filter((r) => r.syncedAt === null).map((r) => r.id)),
+  ]);
   const t = adminEt.newsletter;
 
   return (
@@ -130,6 +134,11 @@ async function subscribersPage(email: string, search: Search) {
                         {blocked.has(normalizeEmail(r.email)) && (
                           <p className={styles.blocked} data-subscriber-suppressed="">
                             {t.suppressed}
+                          </p>
+                        )}
+                        {rejected.has(r.id) && (
+                          <p className={styles.blocked} data-subscriber-rejected="">
+                            {t.rejected}
                           </p>
                         )}
                       </div>
