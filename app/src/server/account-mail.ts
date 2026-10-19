@@ -53,14 +53,17 @@ const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "
 /** Text for an HTML body or attribute: nothing a value holds can open a tag or end an attribute. */
 export const esc = (value: string): string => value.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 
-/** The site's colours (src/styles/tokens.css: --ink, --paper, --canvas, --line, --lilac); an e-mail has no CSS variables. */
-const INK = "#222222";
+/**
+ * The site's colours (src/styles/tokens.css: --ink, --paper, --canvas, --line, --lilac); an e-mail has no CSS variables. The ink, the line and the
+ * font are exported with the card's rows for the campaign mail (server/campaign-mail.ts), which builds its own rows on the same card.
+ */
+export const INK = "#222222";
 const PAPER = "#ffffff";
 const CANVAS = "#f6f4f5";
-const LINE = "#e6e1e3";
+export const LINE = "#e6e1e3";
 const LILAC = "#e8e0e5";
 /** The site's fonts where installed (an e-mail cannot load web fonts), else the client's own. */
-const FONT = "Jost, Manrope, Arial, sans-serif";
+export const FONT = "Jost, Manrope, Arial, sans-serif";
 
 /** The texts of the login e-mail (`account.mail`). */
 type MailTexts = ReturnType<typeof getDict>["account"]["mail"];
@@ -79,20 +82,21 @@ function loginText(mail: MailTexts, code: string, link: string): string {
   ].join("\n");
 }
 
-const textStyle = (size: number, extra = "") => `font:400 ${size}px/1.5 ${FONT};color:${INK};${extra}`;
-const row = (style: string, content: string) => `<tr><td style="${style}">${content}</td></tr>`;
+export const textStyle = (size: number, extra = "") => `font:400 ${size}px/1.5 ${FONT};color:${INK};${extra}`;
+/** One row of the card: a `td` with `style` holding `content`, which the caller has escaped. */
+export const row = (style: string, content: string) => `<tr><td style="${style}">${content}</td></tr>`;
 const greetingRow = (greeting: string) => row(`padding:32px 28px 0;font:600 22px/1.3 ${FONT};color:${INK};`, esc(greeting));
 const signatureRow = (mail: MailTexts) => row(`padding:24px 28px 32px;${textStyle(14)}`, esc(mail.signature));
 
 /** A paragraph of 16 px text. */
-const paragraphRow = (text: string, top = 16) => row(`padding:${top}px 28px 0;${textStyle(16)}`, esc(text));
+export const paragraphRow = (text: string, top = 16) => row(`padding:${top}px 28px 0;${textStyle(16)}`, esc(text));
 
 /** The code large on its own line, in the lilac box of the site's newsletter surface; the whole code is selected by one tap. */
-const codeRow = (code: string) =>
+export const codeRow = (code: string) =>
   row("padding:12px 28px 0;", `<div style="background:${LILAC};border-radius:12px;padding:16px 0 16px 8px;text-align:center;font:600 32px/1.2 ${FONT};letter-spacing:8px;color:${INK};-webkit-user-select:all;user-select:all;">${esc(code)}</div>`);
 
 /** The one button of an e-mail: an ink pill (the site's primary button), 48 px tall, with Outlook's own padding. */
-const buttonRow = (link: string, label: string) =>
+export const buttonRow = (link: string, label: string) =>
   row(
     "padding:16px 28px 0;",
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td align="center" height="48" bgcolor="${INK}" style="background:${INK};border-radius:99px;mso-padding-alt:0 32px;">` +
@@ -101,14 +105,15 @@ const buttonRow = (link: string, label: string) =>
   );
 
 /** The link written out small below the button, for clients that do not show buttons. */
-const linkRow = (link: string) =>
+export const linkRow = (link: string) =>
   row(`padding:12px 28px 0;text-align:center;${textStyle(12, "word-break:break-all;")}`, `<a href="${esc(link)}" style="color:${INK};text-decoration:underline;">${esc(link)}</a>`);
 
 /**
  * The HTML document of an e-mail: a centred card (a 480 px table on the site's canvas colour) holding `rows`. Tables and inline
- * styles only: no images, no external CSS, no web fonts. `subject` is the title, `rows` are built with `row` and escape their own values.
+ * styles only: no external CSS, no web fonts, and no images in the account's own mails (the campaign mail's rows hold the logo and a
+ * picture). `subject` is the title, `rows` are built with `row` and escape their own values.
  */
-function mailCard(subject: string, locale: Locale, rows: string[]): string {
+export function mailCard(subject: string, locale: Locale, rows: string[]): string {
   return [
     "<!doctype html>",
     `<html lang="${esc(locale)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(subject)}</title></head>`,

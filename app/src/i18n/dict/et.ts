@@ -401,6 +401,13 @@ export const et = {
       // the last line before the signature; {link} is the unsubscribe URL (/api/newsletter/loobu?t=<the subscriber's token>)
       unsubscribe: "Kui sa ei liitunud ise või ei soovi enam MS LABi kirju, loobu siit: {link}",
     },
+    // The footer of a newsletter campaign (server/campaign-mail.ts campaignMail; newsletter campaigns, spec D5), in the subscriber's language: why
+    // she got the mail and the link out. The spec's own words, both Draft for Dim's wording sheet. The school's name and address under them come
+    // from Seaded -> "Arve andmed".
+    campaign: {
+      reason: "Said selle kirja, sest liitusid MS LAB-i uudiskirjaga.",
+      unsubscribe: "Loobu uudiskirjast",
+    },
   },
 
   // /ostukorv: e-learning purchase placeholder until bank-link payment arrives (P9).

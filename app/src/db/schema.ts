@@ -198,7 +198,58 @@ export const subscribers = pgTable("subscribers", {
   token: text("token").notNull(), consentAt: timestamp("consent_at", { withTimezone: true }).notNull().defaultNow(),
   confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
   clientId: integer("client_id").references((): AnyPgColumn => clients.id, { onDelete: "set null" }),
+  /** The subscriber's contact in Resend (newsletter campaigns, spec D2); null until the sync has added it. */
+  resendContactId: text("resend_contact_id"),
+  /** When the row was last synced to Resend; null when it has changed since (or was never synced): the next sync takes it up. */
+  syncedAt: timestamp("synced_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("subscribers_email").on(t.email)]);
+
+/**
+ * A newsletter campaign Maria writes in the admin and sends through Resend Broadcasts (newsletter campaigns, spec D4–D6, §3). Not the home page's
+ * popup: that is `campaign` (domain/campaign.ts, /admin/kampaania). The texts are Estonian with an optional Russian side (a Russian subscriber gets
+ * the Estonian mail as a whole when the Russian subject or text is empty: domain/newsletter-campaign.ts campaignContentFor). `status` goes from
+ * `draft` to `sent` once, with the time, the number of subscribers each language reached (`recipients`) and the Resend broadcast of each segment
+ * (`broadcasts`); a sent campaign is never changed.
+ */
+export const newsletterCampaigns = pgTable("newsletter_campaigns", {
+  id: serial("id").primaryKey(),
+  /** Her own name for it, shown in the list; subscribers never see it. */
+  name: text("name").notNull(),
+  subject: jsonb("subject").$type<I18n>().notNull(),
+  /** The grey line after the subject in most inboxes; {"et":""} for none. */
+  preheader: jsonb("preheader").$type<I18n>().notNull(),
+  /** The flyer, an uploaded image's key (lib/media.ts mediaUrl); null for none. */
+  imageKey: text("image_key"),
+  /** The text in paragraphs (a blank line starts a new one). */
+  body: jsonb("body").$type<I18n>().notNull(),
+  /** A code shown in a box like the welcome code (domain/welcome-code.ts shape); null for none. */
+  code: text("code"),
+  buttonLabel: jsonb("button_label").$type<I18n>(),
+  /** An https:// address or a path of the site; set together with `buttonLabel` or both null. */
+  buttonHref: text("button_href"),
+  status: text("status").$type<"draft" | "sent">().notNull().default("draft"),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  /** Subscribers the send went to, per language; null while a draft. */
+  recipients: jsonb("recipients").$type<{ et: number; ru: number } | null>(),
+  /** The Resend broadcast of each language's segment (only the ones that had subscribers); null while a draft. */
+  broadcasts: jsonb("broadcasts").$type<{ et?: string; ru?: string } | null>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * An address Resend will not send to (newsletter campaigns, spec D10): a bounce, a spam mark or another suppression, recorded from the webhook and
+ * the full sync, and shown to Maria. One row per address (unique index, the address always in lower case as the code stores it); a suppression that
+ * Resend lifts gets `clearedAt`, the row stays. Apart from `subscribers`: a student who never subscribed can be suppressed too. The site never
+ * removes a suppression from Resend.
+ */
+export const mailSuppressions = pgTable("mail_suppressions", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  reason: text("reason").$type<"bounce" | "complaint" | "other">().notNull(),
+  since: timestamp("since", { withTimezone: true }).notNull(),
+  clearedAt: timestamp("cleared_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("mail_suppressions_email").on(t.email)]);
 
 export const clients = pgTable("clients", {
   id: serial("id").primaryKey(),
@@ -821,3 +872,4 @@ export type Certificate = typeof certificates.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
 export type Contract = typeof contracts.$inferSelect;
 export type Review = typeof reviews.$inferSelect;
+export type NewsletterCampaign = typeof newsletterCampaigns.$inferSelect;
