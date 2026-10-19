@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
+import { adminEt } from "@/i18n/dict/admin";
 import {
-  CAMPAIGN_LIMITS, CONTACTS_WARN_AT, RESEND_FREE_CONTACTS, campaignContentFor, checkCampaignDraft, ruFallsBack, type CampaignDraft,
+  CAMPAIGN_LIMITS, CONTACTS_WARN_AT, RESEND_FREE_CONTACTS, campaignContentFor, checkCampaignDraft, ruFallsBack, type NewsletterCampaignDraft,
 } from "@/domain/newsletter-campaign";
 
 // The newsletter campaign's pure rules (newsletter campaigns, Task 1; spec D4, D8, §5): the limits, the draft Maria's editor sends checked
@@ -19,6 +20,8 @@ const refused = (raw: unknown) => {
   return r.fields;
 };
 
+/** A key as the upload makes it (server/media.ts putImage: img/<uuid>.<ext>). */
+const KEY = "img/0f8fad5b-d9cb-469f-a165-70867728950e.jpg";
 /** What the editor sends for a campaign with only what is required. */
 const minimal = { name: "Oktoobri pakkumine", subject: { et: "Sügispakkumine" }, body: { et: "Tere!" } };
 /** A complete draft: every field filled in both languages. */
@@ -26,13 +29,13 @@ const full = {
   name: "Oktoobri pakkumine",
   subject: { et: "Sügispakkumine", ru: "Осеннее предложение" },
   preheader: { et: "−15% kõigile koolitustele", ru: "−15% на все курсы" },
-  imageKey: "img/flyer.jpg",
+  imageKey: KEY,
   body: { et: "Esimene lõik.\n\nTeine lõik.", ru: "Первый абзац.\n\nВторой абзац." },
   code: "SUGIS15",
   buttonLabel: { et: "Vaata koolitusi", ru: "Смотреть курсы" },
   buttonHref: "/koolitused",
 };
-const draft = (over: Partial<CampaignDraft> = {}): CampaignDraft => ({ ...ok(full), ...over });
+const draft = (over: Partial<NewsletterCampaignDraft> = {}): NewsletterCampaignDraft => ({ ...ok(full), ...over });
 
 describe("the limits", () => {
   test("the brief's values, and Resend's free plan: 1000 contacts, a warning at 900", () => {
@@ -180,13 +183,74 @@ describe("the button", () => {
   });
 });
 
+describe("the Russian button label (fix round 1, R2)", () => {
+  const button = { buttonLabel: { et: "Vaata koolitusi", ru: "" }, buttonHref: "/koolitused" };
+  const russian = { subject: { et: "Teema", ru: "Тема" }, body: { et: "Tekst", ru: "Текст" } };
+
+  test("a button, a Russian text and no Russian label is refused, on buttonLabel.ru, so that the button never drops out of the Russian mail", () => {
+    expect(refused({ ...minimal, ...russian, ...button })).toEqual({ "buttonLabel.ru": "ruLabel" });
+    expect(refused({ ...minimal, body: { et: "Tekst", ru: "Текст" }, ...button })).toEqual({ "buttonLabel.ru": "ruLabel" }); // (the Russian text alone decides)
+    expect(refused({ ...minimal, ...russian, buttonLabel: { et: "Ava" }, buttonHref: "https://mslab.ee/x" })).toEqual({ "buttonLabel.ru": "ruLabel" }); // (no ru key at all)
+    expect(refused({ ...minimal, ...russian, buttonLabel: { et: "Ava", ru: " \n " }, buttonHref: "/" })).toEqual({ "buttonLabel.ru": "ruLabel" }); // (only white space)
+  });
+
+  test("with the Russian label it is accepted, and so is a button with no Russian text at all", () => {
+    expect(ok({ ...minimal, ...russian, buttonLabel: { et: "Vaata", ru: "Смотреть" }, buttonHref: "/koolitused" }).buttonLabel).toEqual({ et: "Vaata", ru: "Смотреть" });
+    expect(ok({ ...minimal, ...button }).buttonLabel).toEqual({ et: "Vaata koolitusi", ru: "" }); // (no body.ru: the Russian subscriber gets the Estonian mail, with its label)
+    expect(ok({ ...minimal, subject: { et: "Teema", ru: "Тема" }, ...button }).buttonLabel).toEqual({ et: "Vaata koolitusi", ru: "" }); // (a Russian subject alone does not make a Russian mail)
+  });
+
+  test("no button: a Russian text is fine; the other button refusals stand and the Russian one is not added to them", () => {
+    expect(ok({ ...minimal, ...russian }).buttonLabel).toBeNull();
+    expect(refused({ ...minimal, ...russian, buttonLabel: { et: "Ava", ru: "" } })).toEqual({ buttonHref: "required" }); // (no address: the button is not complete yet)
+    expect(refused({ ...minimal, ...russian, ...button, buttonHref: "javascript:x" })).toEqual({ buttonHref: "invalid", "buttonLabel.ru": "ruLabel" });
+    expect(refused({ ...minimal, ...russian, buttonLabel: { et: "", ru: "" }, buttonHref: "/koolitused" })).toEqual({ "buttonLabel.et": "required", "buttonLabel.ru": "ruLabel" });
+  });
+
+  test("the editor's text for it (Draft for Dim's wording sheet) is in the admin dictionary", () => {
+    expect(adminEt.newsletter.campaignErrors.ruLabel).toBe("Lisa nupu tekst ka vene keeles.");
+  });
+
+  test("an empty Russian preview line stays allowed (it is no line, never a mix)", () => {
+    expect(ok({ ...minimal, ...russian, preheader: { et: "Eesti eelrida", ru: "" }, buttonLabel: { et: "Vaata", ru: "Смотреть" }, buttonHref: "/" }).preheader).toEqual({ et: "Eesti eelrida", ru: "" });
+  });
+});
+
+describe("the picture's key (fix round 1)", () => {
+  test("a key the upload made (img/<uuid>.jpg, .png, .webp) or a picture shipped with the site (/seed/….jpg) is accepted", () => {
+    for (const key of [KEY, KEY.replace(".jpg", ".png"), KEY.replace(".jpg", ".webp"), "/seed/flyer.jpg", "/seed/hero-1.webp"]) expect(ok({ ...minimal, imageKey: key }).imageKey, key).toBe(key);
+  });
+
+  test("an absolute address, a protocol-relative one, a foreign key or anything /media does not serve is refused, so that mediaUrl never hands a foreign picture to the mail", () => {
+    const bad = [
+      "https://tracker.example/pixel.png", "http://tracker.example/x.jpg", "HTTPS://tracker.example/x.jpg", "//tracker.example/x.jpg", "/\\tracker.example/x.jpg",
+      "img/flyer.jpg", "img/0f8fad5b-d9cb-469f-a165-70867728950e.gif", "img/0f8fad5b-d9cb-469f-a165-70867728950e.jpg/../x", "img/../seed/x.jpg",
+      "lessons/0f8fad5b-d9cb-469f-a165-70867728950e.jpg", "practical/0f8fad5b-d9cb-469f-a165-70867728950e-t.jpg", "/seed/../x.jpg", "/seed/x.svg", "/other/x.jpg",
+      "data:image/png;base64,AAAA", "javascript:alert(1)", "x", "img/0f8fad5b-d9cb-469f-a165-70867728950e.jpg x", "img/0f8fad5b-d9cb-469f-a165-70867728950e.jpg%00",
+    ];
+    for (const imageKey of bad) {
+      const fields = refused({ ...minimal, imageKey });
+      expect(Object.keys(fields), imageKey).toEqual(["imageKey"]);
+    }
+    expect(refused({ ...minimal, imageKey: "https://tracker.example/pixel.png" })).toEqual({ imageKey: "invalid" });
+  });
+
+  test("a key typed with white space around it is trimmed, as every text is", () => {
+    expect(ok({ ...minimal, imageKey: ` ${KEY}\n` }).imageKey).toBe(KEY);
+  });
+
+  test("no key (empty, white space or null) is no picture", () => {
+    for (const imageKey of ["", "  ", null, undefined]) expect(ok({ ...minimal, imageKey }).imageKey).toBeNull();
+  });
+});
+
 describe("control characters are cleaned and newlines are kept", () => {
   test("a control character pasted into any text is dropped (NUL, BEL, ESC, DEL), the text around it stays", () => {
     const value = ok({
       name: "Ni\u0000mi", subject: { et: "Te\u0007ema", ru: "Те\u001bма" }, preheader: { et: "Ee\u007fl", ru: "" },
-      body: { et: "Te\u0000kst", ru: "Текст\u0008" }, buttonLabel: { et: "A\u0001va", ru: "" }, buttonHref: "/koolitused", code: "AB\u0000C",
+      body: { et: "Te\u0000kst", ru: "Текст\u0008" }, buttonLabel: { et: "A\u0001va", ru: "Кн\u0002опка" }, buttonHref: "/koolitused", code: "AB\u0000C",
     });
-    expect(value).toMatchObject({ name: "Nimi", subject: { et: "Teema", ru: "Тема" }, preheader: { et: "Eel" }, body: { et: "Tekst", ru: "Текст" }, buttonLabel: { et: "Ava" }, code: "ABC" });
+    expect(value).toMatchObject({ name: "Nimi", subject: { et: "Teema", ru: "Тема" }, preheader: { et: "Eel" }, body: { et: "Tekst", ru: "Текст" }, buttonLabel: { et: "Ava", ru: "Кнопка" }, code: "ABC" });
   });
 
   test("the text keeps its line breaks, a blank line between paragraphs included; Windows line breaks become \\n; Word's line and page breaks become line breaks", () => {
@@ -271,7 +335,7 @@ describe("campaignContentFor: the text a subscriber gets", () => {
   });
 
   test("a row as the database returns it (a Russian side that was never stored) works too", () => {
-    const stored = { ...draft(), subject: { et: "Teema" }, preheader: { et: "" }, body: { et: "Tekst" } } as CampaignDraft;
+    const stored = { ...draft(), subject: { et: "Teema" }, preheader: { et: "" }, body: { et: "Tekst" } } as NewsletterCampaignDraft;
     expect(campaignContentFor(stored, "ru")).toMatchObject({ locale: "et", subject: "Teema", preheader: "", paragraphs: ["Tekst"] });
   });
 });
@@ -316,9 +380,11 @@ describe("the module stays pure: the editor imports it in the browser", () => {
     expect(source).not.toContain(["Object", "hasOwn"].join("."));
   });
 
-  test("it takes the code's shape from domain/welcome-code.ts and the paragraph split from domain/catalogue.ts, not copies of them", () => {
+  test("it takes the code's shape from domain/welcome-code.ts, the paragraph split from domain/catalogue.ts and the picture's key rule from lib/media.ts, not copies of them", () => {
     expect(imports).toContain("./welcome-code");
     expect(imports).toContain("./catalogue");
+    expect(imports).toContain("@/lib/media");
     expect(source).not.toContain("A-Z0-9");
+    expect(source).not.toMatch(/img\//);
   });
 });

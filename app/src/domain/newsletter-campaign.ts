@@ -4,6 +4,7 @@
 // (tests/unit/old-safari.test.ts), and no builtin newer than Safari 15. Not to be confused with domain/campaign.ts, the home page's popup.
 
 import type { I18n } from "@/i18n/field";
+import { isStorableImageKey } from "@/lib/media";
 import { toStorable } from "@/lib/to-storable";
 import { paragraphs } from "./catalogue";
 import { WELCOME_CODE_MAX, isWelcomeCode, normalizeWelcomeCode } from "./welcome-code";
@@ -20,7 +21,7 @@ export const CONTACTS_WARN_AT = 900;
  * A campaign as Maria writes it, checked: every optional text is "" (an `I18n` always holds both languages) or null, the code is in capitals, and a
  * button has all of its label (Estonian) and its address or none of them. The database row (schema.ts NewsletterCampaign) has these fields and more.
  */
-export type CampaignDraft = {
+export type NewsletterCampaignDraft = {
   name: string;
   subject: I18n;
   preheader: I18n;
@@ -31,8 +32,11 @@ export type CampaignDraft = {
   buttonHref: string | null;
 };
 
-/** Why a field is refused: nothing in it, more than its limit, or something that is no value of its kind. */
-type FieldError = "required" | "tooLong" | "invalid";
+/**
+ * Why a field is refused: nothing in it, more than its limit, something that is no value of its kind, or (`ruLabel`, on "buttonLabel.ru") a button with
+ * a Russian text and no Russian label (the admin says „Lisa nupu tekst ka vene keeles.“).
+ */
+type FieldError = "required" | "tooLong" | "invalid" | "ruLabel";
 type Errors = Record<string, FieldError>;
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -90,14 +94,16 @@ export function isCampaignHref(value: string): boolean {
 }
 
 /**
- * The editor's form, checked. `raw` is a `CampaignDraft` as the form holds it: texts as typed, an optional one empty, absent or null, a bilingual one
+ * The editor's form, checked. `raw` is a `NewsletterCampaignDraft` as the form holds it: texts as typed, an optional one empty, absent or null, a bilingual one
  * `{ et, ru }`. Required: `name`, `subject.et` and `body.et`. The code is raised to capitals and must have the welcome code's shape
  * (domain/welcome-code.ts); the button needs both its Estonian label and its address (any of its fields typed starts it), and the address is an
- * https:// address or a path of this site (isCampaignHref). Texts come back cleaned (see `textOf`) and trimmed; nothing is cut.
+ * https:// address or a path of this site (isCampaignHref); a button (its address set) with a Russian text (`body.ru`) needs its Russian label too, so that it never
+ * drops out of the Russian mail. The picture's key must be one the site stores (lib/media.ts isStorableImageKey: an upload or a /seed/ picture, never an
+ * address of another site). Texts come back cleaned (see `textOf`) and trimmed; nothing is cut.
  * A wrong field is named in `fields` by its key ("name", "subject.et", "buttonLabel.ru", "buttonHref", …) with "required", "tooLong" or "invalid";
  * anything but an object is `{ form: "invalid" }`. Keys it does not know are left out.
  */
-export function checkCampaignDraft(raw: unknown): { ok: true; value: CampaignDraft } | { ok: false; fields: Record<string, string> } {
+export function checkCampaignDraft(raw: unknown): { ok: true; value: NewsletterCampaignDraft } | { ok: false; fields: Record<string, string> } {
   if (!isObject(raw)) return { ok: false, fields: { form: "invalid" } };
   const errors: Errors = {};
   const L = CAMPAIGN_LIMITS;
@@ -106,6 +112,7 @@ export function checkCampaignDraft(raw: unknown): { ok: true; value: CampaignDra
   const preheader = bilingual(raw.preheader, "preheader", L.preheader, false, true, errors);
   const body = bilingual(raw.body, "body", L.body, true, false, errors);
   const imageKey = field(raw.imageKey, "imageKey", L.href, false, true, errors);
+  if (imageKey !== "" && !errors.imageKey && !isStorableImageKey(imageKey)) errors.imageKey = "invalid";
 
   let code = field(raw.code, "code", WELCOME_CODE_MAX, false, true, errors);
   if (!errors.code) {
@@ -121,6 +128,7 @@ export function checkCampaignDraft(raw: unknown): { ok: true; value: CampaignDra
   if (button) {
     if (label.et === "" && !errors.buttonLabel && !errors["buttonLabel.et"]) errors["buttonLabel.et"] = "required";
     if (href === "" && !errors.buttonHref) errors.buttonHref = "required";
+    if (href !== "" && body.ru !== "" && label.ru === "" && !errors.buttonLabel && !errors["buttonLabel.ru"]) errors["buttonLabel.ru"] = "ruLabel";
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, fields: errors };
@@ -145,7 +153,7 @@ const blank = (text: string | undefined): boolean => text === undefined || text.
  * Does the Russian mail fall back to the Estonian one (Review Focus 5)? Yes when the Russian subject or the Russian text is empty: Maria is told
  * before sending („Vene keeles tellijad saavad eestikeelse kirja.“). The preview line and the button's label are optional and do not decide it.
  */
-export const ruFallsBack = (c: CampaignDraft): boolean => blank(c.subject.ru) || blank(c.body.ru);
+export const ruFallsBack = (c: NewsletterCampaignDraft): boolean => blank(c.subject.ru) || blank(c.body.ru);
 
 /** What a subscriber reads: the texts of one language, the body in paragraphs. `locale` is the language the texts are in. */
 export type CampaignContent = { locale: "et" | "ru"; subject: string; preheader: string; paragraphs: string[]; buttonLabel: string | null };
@@ -154,9 +162,10 @@ export type CampaignContent = { locale: "et" | "ru"; subject: string; preheader:
  * The text of a campaign for a subscriber of `locale`: the Estonian one for an Estonian subscriber, the Russian one for a Russian subscriber, and the
  * Estonian one as a whole for her when the Russian subject or text is empty (ruFallsBack): never a mix, so the returned `locale` says which text was
  * used (the footer follows the subscriber's own language, not this one). In the Russian mail an empty Russian preview line is no line, and an empty
- * Russian label leaves the mail without a button; no Estonian text is borrowed for them.
+ * Russian label leaves the mail without a button; no Estonian text is borrowed for them. (checkCampaignDraft refuses a button with a Russian text and no
+ * Russian label, so only a row stored before that rule can lack one.)
  */
-export function campaignContentFor(c: CampaignDraft, locale: "et" | "ru"): CampaignContent {
+export function campaignContentFor(c: NewsletterCampaignDraft, locale: "et" | "ru"): CampaignContent {
   const used: "et" | "ru" = locale === "ru" && !ruFallsBack(c) ? "ru" : "et";
   const text = (f: I18n | null): string => (f ? ((used === "ru" ? f.ru : f.et) ?? "").trim() : "");
   const buttonLabel = text(c.buttonLabel);

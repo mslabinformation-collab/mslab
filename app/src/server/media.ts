@@ -4,6 +4,8 @@
 // declared type, the size and the file's first bytes itself. Keys are img/<random uuid>.<ext>, never the visitor's file
 // name, and /media serves nothing else (isMediaKey).
 
+import { isMediaKey } from "@/lib/media";
+
 /**
  * Largest upload accepted (bytes). The browser sends images of at most 2400 px, usually under 2 MB. Vercel Functions
  * refuse a request body over 4.5 MB themselves (a bare 413 the admin page cannot explain), so the limit is below that,
@@ -55,15 +57,8 @@ export type FileStore = MediaStore & {
 /** A store with nothing in it: /media answers 404 for every key (production without R2 variables). */
 export const NO_MEDIA: MediaSource = { get: async () => null };
 
-const MEDIA_KEY = /^img\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$/;
-
-/**
- * Is this a key putImage could have made? The only keys /media serves. A lesson file (lessons/<uuid>.<ext>,
- * server/lesson-files.ts) is not one, though its extension may be an image's: the img/ prefix keeps it private.
- */
-export function isMediaKey(key: string): boolean {
-  return MEDIA_KEY.test(key);
-}
+// (isMediaKey, the rule for a key putImage could have made, is lib/media.ts's: the pure rules share it; it stays importable from here)
+export { isMediaKey };
 
 /** The content type that belongs to a media key's extension. */
 export function contentTypeOfKey(key: string): ImageType {

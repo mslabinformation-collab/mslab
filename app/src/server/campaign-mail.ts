@@ -21,6 +21,9 @@ export const TEST_SUBJECT_PREFIX = "[Proov] ";
 /** The school's name when Seaded → „Arve andmed“ has none. */
 const SCHOOL_FALLBACK = "MS LAB";
 
+/** The card's inner width: the account mails' card is 480 px wide (account-mail.ts mailCard) with a 1 px border on each side. Outlook reads the picture's width attribute, so it must not be wider. */
+const CARD_INNER = 478;
+
 /** The footer's quiet colour: the site's --muted (src/styles/tokens.css) on the card's white, with its mix worked out (an e-mail has no color-mix). */
 const MUTED = "#5d5358";
 
@@ -79,7 +82,7 @@ export function campaignMail(input: CampaignMailInput): { subject: string; html:
   const rows = [
     // the logo, with the hidden first line ahead of it
     row("padding:28px 28px 0;text-align:center;", `${preheaderBlock(content.preheader)}<img src="${esc(siteUrl)}/brand/logo.png" alt="MS LAB" width="130" height="50" style="display:inline-block;width:130px;height:auto;border:0;">`),
-    ...(input.imageUrl ? [row("padding:20px 0 0;", `<img src="${esc(input.imageUrl)}" alt="${esc(content.subject)}" width="480" style="display:block;width:100%;max-width:480px;height:auto;border:0;">`)] : []),
+    ...(input.imageUrl ? [row("padding:20px 0 0;", `<img src="${esc(input.imageUrl)}" alt="${esc(content.subject)}" width="${CARD_INNER}" style="display:block;width:100%;max-width:${CARD_INNER}px;height:auto;border:0;">`)] : []),
     ...content.paragraphs.map((p, i) => paragraphRow(p, i === 0 ? 24 : 16)),
     ...(input.code ? [codeRow(input.code)] : []),
     ...(button && content.buttonLabel ? [buttonRow(button, content.buttonLabel), linkRow(button)] : []),

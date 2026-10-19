@@ -1506,6 +1506,9 @@ export const adminEt = {
       yes: "jah",
       no: "ei",
     },
+    // Maria's campaign editor (newsletter campaigns; the editor is a later task): the text under a field that domain/newsletter-campaign.ts
+    // checkCampaignDraft refuses with `ruLabel` (a button and a Russian text, but no Russian label). Draft for Dim's wording sheet.
+    campaignErrors: { ruLabel: "Lisa nupu tekst ka vene keeles." },
   },
   // ---------- Task 13B: the site content editors ----------
 

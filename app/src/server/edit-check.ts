@@ -2,7 +2,7 @@ import { LIMITS } from "@/domain/course-editor";
 import { parseEuroCents } from "@/domain/money";
 import { hasLocalePrefix, isFocal, isHttpsUrl, isSiteHref } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
-import { isMediaKey } from "./media";
+import { isStorableImageKey } from "@/lib/media";
 
 // What every content editor's form handling shares (courses and calendar in admin-content.ts, the site content in
 // admin-site.ts): the result type, the field error codes the editors show, and Check, which collects field errors while
@@ -65,9 +65,8 @@ export const field = (formData: FormData, name: string) => {
   return typeof v === "string" ? v : null;
 };
 
-/** Static images shipped with the site (the seed's photos); the only image keys besides uploads. */
-const SEED_IMAGE = /^\/seed\/[a-z0-9][a-z0-9._-]*\.(jpe?g|png|webp)$/i;
-export const isStorableImageKey = (key: string) => isMediaKey(key) || SEED_IMAGE.test(key);
+// The key rule (an upload or a picture shipped with the site) is lib/media.ts's, shared with the pure rules of the newsletter campaign; it stays importable from here.
+export { isStorableImageKey };
 
 const EMAIL = /^[^\s@<>"'`,;]+@[^\s@<>"'`,;]+\.[^\s@<>"'`,;]{2,}$/;
 const PHONE = /^\+?[0-9][0-9 ()-]{3,38}$/;

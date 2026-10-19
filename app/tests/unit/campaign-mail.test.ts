@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { campaignContentFor, checkCampaignDraft, type CampaignDraft } from "@/domain/newsletter-campaign";
+import { campaignContentFor, checkCampaignDraft, type NewsletterCampaignDraft } from "@/domain/newsletter-campaign";
 import { et } from "@/i18n/dict/et";
 import { ru } from "@/i18n/dict/ru";
 import { campaignMail, type CampaignMailInput } from "@/server/campaign-mail";
@@ -13,7 +13,7 @@ const BASE = "https://mslab.example";
 const PLACEHOLDER = "{{{contact.unsubscribe_url}}}";
 const SCHOOL = { name: "MS LAB Koolituskeskus OÜ", address: "Rüütli 1, Pärnu" };
 
-const checked = (raw: unknown): CampaignDraft => {
+const checked = (raw: unknown): NewsletterCampaignDraft => {
   const r = checkCampaignDraft(raw);
   if (!r.ok) throw new Error(JSON.stringify(r.fields));
   return r.value;
@@ -22,7 +22,7 @@ const FULL = checked({
   name: "Oktoobri pakkumine",
   subject: { et: "Sügispakkumine", ru: "Осеннее предложение" },
   preheader: { et: "−15% kõigile koolitustele", ru: "Скидка 15% на все курсы" },
-  imageKey: "img/flyer.jpg",
+  imageKey: "img/0f8fad5b-d9cb-469f-a165-70867728950e.jpg",
   body: { et: "Esimene lõik.\n\nTeine lõik.", ru: "Первый абзац.\n\nВторой абзац." },
   code: "SUGIS15",
   buttonLabel: { et: "Vaata koolitusi", ru: "Смотреть курсы" },
@@ -30,7 +30,7 @@ const FULL = checked({
 });
 
 /** The input of a send to a subscriber of `pageLocale` (her language); the text is Maria's draft in `textLocale` (the Estonian one by default). */
-function input(over: Partial<CampaignMailInput> = {}, draft: CampaignDraft = FULL, pageLocale: "et" | "ru" = "et"): CampaignMailInput {
+function input(over: Partial<CampaignMailInput> = {}, draft: NewsletterCampaignDraft = FULL, pageLocale: "et" | "ru" = "et"): CampaignMailInput {
   return {
     content: campaignContentFor(draft, pageLocale),
     pageLocale,
@@ -116,6 +116,53 @@ describe("campaignMail: the Estonian mail", () => {
   test("the plain text has no HTML in it and no preview line", () => {
     expect(mail.text).not.toMatch(/<[a-z/]/i);
     expect(mail.text).not.toContain("−15% kõigile koolitustele");
+  });
+});
+
+describe("the images: the logo and the picture (fix round 1)", () => {
+  const html = campaignMail(input()).html;
+  const img = (src: string): string => {
+    const tag = [...html.matchAll(/<img [^>]*>/g)].map((m) => m[0]).find((t) => t.includes(`src="${src}"`));
+    if (!tag) throw new Error(`no <img> with src ${src}`);
+    return tag;
+  };
+  /** The card's inner width: the table of the account mails' card (480 wide) less its 1 px border on each side. */
+  const inner = (): number => {
+    const card = html.match(/<table role="presentation" width="(\d+)"[^>]*border:1px solid/);
+    if (!card) throw new Error("no card");
+    return Number(card[1]) - 2;
+  };
+
+  test("the logo: its address, the text \"MS LAB\" for clients that block images, the file's proportions (332x128 shown at 130x50), no border", () => {
+    const logo = img(`${BASE}/brand/logo.png`);
+    expect(logo).toContain('alt="MS LAB"');
+    expect(logo).toContain('width="130"');
+    expect(logo).toContain('height="50"');
+    expect(logo).toMatch(/style="[^"]*width:130px;/);
+    expect(logo).toMatch(/style="[^"]*height:auto;/);
+    expect(logo).toMatch(/style="[^"]*border:0;/);
+    expect(130 / 50).toBeCloseTo(332 / 128, 1);
+  });
+
+  test("the picture: the subject as its text, the width of the card's inside (Outlook reads the attribute, so 478 and not 480), full width and a free height elsewhere", () => {
+    const picture = img(`${BASE}/media/img/flyer.jpg`);
+    expect(inner()).toBe(478);
+    expect(picture).toContain('alt="Sügispakkumine"');
+    expect(picture).toContain(`width="${inner()}"`);
+    expect(picture).not.toMatch(/ height="/); // (the file's height is not known here: the browser keeps its proportions)
+    expect(picture).toMatch(/style="[^"]*display:block;/);
+    expect(picture).toMatch(/style="[^"]*width:100%;/);
+    expect(picture).toMatch(/style="[^"]*max-width:478px;/);
+    expect(picture).toMatch(/style="[^"]*height:auto;/);
+    expect(picture).toMatch(/style="[^"]*border:0;/);
+  });
+
+  test("the picture's text is the subject as the subscriber reads it (the Russian one for a Russian mail), escaped", () => {
+    expect(img(`${BASE}/media/img/flyer.jpg`)).toContain('alt="Sügispakkumine"');
+    const russian = campaignMail(input({}, FULL, "ru")).html;
+    expect(russian).toMatch(/<img [^>]*src="[^"]*flyer\.jpg"[^>]*alt="Осеннее предложение"/);
+    const quoted = campaignMail(input({ content: { ...input().content, subject: 'a "b" <c>' } })).html;
+    expect(quoted).toMatch(/<img [^>]*src="[^"]*flyer\.jpg"[^>]*alt="a &quot;b&quot; &lt;c&gt;"/);
   });
 });
 
@@ -309,7 +356,8 @@ describe("the parts that are left out when they are empty", () => {
   });
 
   test("a Russian mail whose Russian button label is empty has no button (the Estonian label is not borrowed)", () => {
-    const noLabel = checked({ ...FULL, buttonLabel: { et: "Vaata koolitusi", ru: "" } });
+    // (checkCampaignDraft refuses such a draft now: this is a row stored before that rule, or made by hand)
+    const noLabel: NewsletterCampaignDraft = { ...FULL, buttonLabel: { et: "Vaata koolitusi", ru: "" } };
     const mail = campaignMail(input({}, noLabel, "ru"));
     expect(mail.html).toContain("Первый абзац.");
     expect(buttons(mail.html)).toBe(0);
