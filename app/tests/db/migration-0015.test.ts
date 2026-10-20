@@ -1,14 +1,14 @@
 import { rmSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect, test } from "vitest";
 import * as schema from "@/db/schema";
-import { mailSuppressions, newsletterCampaigns, subscribers } from "@/db/schema";
 import { migrationsThrough } from "./helpers";
 
-// Migration 0015 (newsletter campaigns, phase 4 piece 5) as the Railway database goes through it: 0000–0014 applied, subscribers written by the
+// Migration 0015 (newsletter campaigns, phase 4 piece 5) as the Railway database goes through it (the test stops at 0015 and checks it in plain SQL: migration 0016
+// drops again the Resend columns and the table this one adds, so the code's schema no longer names them): 0000–0014 applied, subscribers written by the
 // code of 0014 (which knows no Resend contact), then 0015. The two new tables are there, empty, and `subscribers` gains two nullable columns
 // without touching a row: the migration only adds. The rules fail by the name of their index (the database's own error, so that another failure
 // cannot pass for it): one suppression per address. `mail_suppressions.email` is a plain unique index; the code stores the address in lower case
@@ -25,6 +25,8 @@ async function violates(statement: PromiseLike<unknown>, constraint: string) {
 }
 
 type Column = { table_name: string; column_name: string };
+/** A timestamp as a raw query gives it: drizzle's PGlite driver returns text in the session's zone ("2026-10-19 10:00:00+02"), not a Date. */
+const time = (v: unknown) => new Date(String(v).replace(" ", "T").replace(/([+-]\d\d)$/, "$1:00"));
 type Info = { column_name: string; data_type: string; is_nullable: string; column_default: string | null };
 const shape = (rows: Info[]) => Object.fromEntries(rows.map((c) => [c.column_name, `${c.data_type} ${c.is_nullable === "NO" ? "not null" : "null"}`]));
 
@@ -69,16 +71,19 @@ test("0015 adds newsletter_campaigns and mail_suppressions, empty, and two nulla
   const tablesAfter = await db.execute<{ table_name: string }>(sql`select table_name from information_schema.tables where table_schema = 'public' order by table_name`);
   expect(tablesAfter.rows.filter((t) => !tablesBefore.rows.some((b) => b.table_name === t.table_name)).map((t) => t.table_name)).toEqual(["mail_suppressions", "newsletter_campaigns"]);
 
-  // (the rest runs on the schema as it stands, so that a later migration does not break what this one checks)
-  await migrate(db, { migrationsFolder: "./drizzle" });
+  // (the rest runs at 0015 itself, in plain SQL: the code's schema no longer names what migration 0016 drops again — subscribers.resend_contact_id and
+  // synced_at, newsletter_campaigns.broadcasts, the table mail_suppressions — so drizzle's typed queries cannot be used for them; and no later migration can
+  // break what this one checks)
 
   // subscribers: the old rows are byte for byte what they were, with the two new columns empty ("not synced")
   const rowsAfter = await db.execute<Record<string, unknown>>(sql`select * from subscribers order by id`);
   expect(rowsAfter.rows.map(({ resend_contact_id, synced_at, ...rest }) => ({ rest, resend_contact_id, synced_at }))).toEqual(
     rowsBefore.rows.map((rest) => ({ rest, resend_contact_id: null, synced_at: null })),
   );
-  const old = await db.select().from(subscribers).orderBy(subscribers.id);
-  expect(old.map((s) => [s.email, s.locale, s.resendContactId, s.syncedAt])).toEqual([
+  const old = await db.execute<{ id: number; email: string; locale: string; resend_contact_id: string | null; synced_at: Date | null }>(
+    sql`select id, email, locale, resend_contact_id, synced_at from subscribers order by id`,
+  );
+  expect(old.rows.map((s) => [s.email, s.locale, s.resend_contact_id, s.synced_at])).toEqual([
     ["kati@example.test", "et", null, null], ["mari@example.test", "ru", null, null], ["liis@example.test", "et", null, null],
   ]);
   const subscriberColumns = await db.execute<Info>(sql`select column_name, data_type, is_nullable, column_default from information_schema.columns where table_name = 'subscribers' order by column_name`);
@@ -88,15 +93,16 @@ test("0015 adds newsletter_campaigns and mail_suppressions, empty, and two nulla
   const indexesAfter = await db.execute<{ indexname: string }>(sql`select indexname from pg_indexes where tablename = 'subscribers' order by indexname`);
   expect(indexesAfter.rows).toEqual(indexesBefore.rows);
   // the sync marks are written by the code, and cleared by it
-  const [kati] = old;
+  const [kati] = old.rows;
   const stamp = new Date("2026-10-19T08:00:00Z");
-  await db.update(subscribers).set({ resendContactId: "c-1", syncedAt: stamp }).where(eq(subscribers.id, kati.id));
-  expect((await db.select().from(subscribers).where(eq(subscribers.id, kati.id)))[0]).toMatchObject({ resendContactId: "c-1", syncedAt: stamp });
-  await db.update(subscribers).set({ syncedAt: null }).where(eq(subscribers.id, kati.id));
-  expect((await db.select().from(subscribers).where(eq(subscribers.id, kati.id)))[0].syncedAt).toBeNull();
+  await db.execute(sql`update subscribers set resend_contact_id = 'c-1', synced_at = ${stamp.toISOString()} where id = ${kati.id}`);
+  const marked = (await db.execute<{ resend_contact_id: string; synced_at: string }>(sql`select resend_contact_id, synced_at from subscribers where id = ${kati.id}`)).rows[0];
+  expect([marked.resend_contact_id, time(marked.synced_at)]).toEqual(["c-1", stamp]);
+  await db.execute(sql`update subscribers set synced_at = null where id = ${kati.id}`);
+  expect((await db.execute<{ synced_at: Date | null }>(sql`select synced_at from subscribers where id = ${kati.id}`)).rows[0].synced_at).toBeNull();
 
   // newsletter_campaigns: empty; the columns, their types, which may be empty; the defaults are 'draft' (status) and now() (the two stamps), none else
-  expect(await db.select().from(newsletterCampaigns)).toEqual([]);
+  expect((await db.execute(sql`select * from newsletter_campaigns`)).rows).toEqual([]);
   const campaignInfo = await db.execute<Info>(sql`select column_name, data_type, is_nullable, column_default from information_schema.columns where table_name = 'newsletter_campaigns' order by column_name`);
   expect(shape(campaignInfo.rows)).toEqual({
     body: "jsonb not null", broadcasts: "jsonb null", button_href: "text null", button_label: "jsonb null", code: "text null",
@@ -108,27 +114,34 @@ test("0015 adds newsletter_campaigns and mail_suppressions, empty, and two nulla
   });
 
   // a draft with only what is required: draft, not sent, nothing recorded, its stamps set
-  const [draft] = await db.insert(newsletterCampaigns).values({ name: "Oktoober", subject: { et: "Sügis" }, preheader: { et: "" }, body: { et: "Tere!" } }).returning();
+  const [draft] = (
+    await db.execute<Record<string, unknown>>(
+      sql`insert into newsletter_campaigns (name, subject, preheader, body) values ('Oktoober', '{"et":"Sügis"}', '{"et":""}', '{"et":"Tere!"}') returning *`,
+    )
+  ).rows;
   expect(draft).toMatchObject({
-    name: "Oktoober", subject: { et: "Sügis" }, preheader: { et: "" }, body: { et: "Tere!" }, imageKey: null, code: null, buttonLabel: null, buttonHref: null,
-    status: "draft", sentAt: null, recipients: null, broadcasts: null,
+    name: "Oktoober", subject: { et: "Sügis" }, preheader: { et: "" }, body: { et: "Tere!" }, image_key: null, code: null, button_label: null, button_href: null,
+    status: "draft", sent_at: null, recipients: null, broadcasts: null,
   });
-  expect(draft.createdAt).toBeInstanceOf(Date);
-  expect(draft.updatedAt).toBeInstanceOf(Date);
+  expect(time(draft.created_at).getTime()).not.toBeNaN();
+  expect(time(draft.updated_at).getTime()).not.toBeNaN();
   // a campaign as it is after the send: the status, the time, the counts and the broadcast ids are stored as they were written
   const sentAt = new Date("2026-10-20T07:00:00Z");
-  const [sent] = await db
-    .insert(newsletterCampaigns)
-    .values({
-      name: "Saadetud", subject: { et: "S", ru: "С" }, preheader: { et: "E", ru: "Р" }, body: { et: "T", ru: "Т" }, imageKey: "img/flyer.jpg", code: "SUGIS15",
-      buttonLabel: { et: "Ava", ru: "Открыть" }, buttonHref: "/koolitused", status: "sent", sentAt, recipients: { et: 12, ru: 3 }, broadcasts: { et: "b-et", ru: "b-ru" },
-    })
-    .returning();
+  const [sent] = (
+    await db.execute<Record<string, unknown>>(
+      sql`insert into newsletter_campaigns (name, subject, preheader, body, image_key, code, button_label, button_href, status, sent_at, recipients, broadcasts) values
+        ('Saadetud', '{"et":"S","ru":"С"}', '{"et":"E","ru":"Р"}', '{"et":"T","ru":"Т"}', 'img/flyer.jpg', 'SUGIS15', '{"et":"Ava","ru":"Открыть"}', '/koolitused', 'sent',
+         ${sentAt.toISOString()}, '{"et":12,"ru":3}', '{"et":"b-et","ru":"b-ru"}') returning *`,
+    )
+  ).rows;
   expect(sent).toMatchObject({
-    status: "sent", sentAt, recipients: { et: 12, ru: 3 }, broadcasts: { et: "b-et", ru: "b-ru" }, buttonLabel: { et: "Ava", ru: "Открыть" }, imageKey: "img/flyer.jpg",
+    status: "sent", recipients: { et: 12, ru: 3 }, broadcasts: { et: "b-et", ru: "b-ru" }, button_label: { et: "Ava", ru: "Открыть" }, image_key: "img/flyer.jpg",
   });
+  expect(time(sent.sent_at)).toEqual(sentAt);
   // (a campaign has no unique rule: two with one name are fine, and "Kopeeri" makes a second draft of the first)
-  const [copy] = await db.insert(newsletterCampaigns).values({ name: draft.name, subject: draft.subject, preheader: draft.preheader, body: draft.body }).returning();
+  const [copy] = (
+    await db.execute<{ id: number }>(sql`insert into newsletter_campaigns (name, subject, preheader, body) select name, subject, preheader, body from newsletter_campaigns where id = ${draft.id as number} returning id`)
+  ).rows;
   expect(copy.id).not.toBe(draft.id);
   // a campaign needs its name, subject, preview line and text (the columns are not null, and have no default)
   await violates(db.execute(sql`insert into newsletter_campaigns (subject, preheader, body) values ('{"et":"s"}', '{"et":""}', '{"et":"t"}')`), "name");
@@ -137,7 +150,7 @@ test("0015 adds newsletter_campaigns and mail_suppressions, empty, and two nulla
   await violates(db.execute(sql`insert into newsletter_campaigns (name, subject, preheader) values ('n', '{"et":"s"}', '{"et":""}')`), "body");
 
   // mail_suppressions: empty; the columns, their types, which may be empty; no defaults at all (the code says when it began)
-  expect(await db.select().from(mailSuppressions)).toEqual([]);
+  expect((await db.execute(sql`select * from mail_suppressions`)).rows).toEqual([]);
   const suppressionInfo = await db.execute<Info>(sql`select column_name, data_type, is_nullable, column_default from information_schema.columns where table_name = 'mail_suppressions' order by column_name`);
   expect(shape(suppressionInfo.rows)).toEqual({
     cleared_at: "timestamp with time zone null", email: "text not null", id: "integer not null", reason: "text not null", since: "timestamp with time zone not null",
@@ -148,27 +161,33 @@ test("0015 adds newsletter_campaigns and mail_suppressions, empty, and two nulla
   expect(indexes.rows.map((i) => i.indexdef.replace("public.", ""))).toEqual(["CREATE UNIQUE INDEX mail_suppressions_email ON mail_suppressions USING btree (email)"]);
 
   // one row per address: a second row for it is refused, a different address is not; a cleared one stays a row (the code sets cleared_at, never inserts again)
+  type Suppression = { id: number; email: string; reason: string; since: string; cleared_at: string | null };
   const since = new Date("2026-10-18T10:00:00Z");
-  const [bounced] = await db.insert(mailSuppressions).values({ email: "kati@example.test", reason: "bounce", since }).returning();
-  expect(bounced).toMatchObject({ email: "kati@example.test", reason: "bounce", since, clearedAt: null });
-  await violates(db.insert(mailSuppressions).values({ email: "kati@example.test", reason: "complaint", since }), "mail_suppressions_email");
-  const [complaint] = await db.insert(mailSuppressions).values({ email: "mari@example.test", reason: "complaint", since }).returning();
+  const suppress = (email: string, reason: string) =>
+    db.execute<Suppression>(sql`insert into mail_suppressions (email, reason, since) values (${email}, ${reason}, ${since.toISOString()}) returning *`);
+  const suppression = async (id: number) => (await db.execute<Suppression>(sql`select * from mail_suppressions where id = ${id}`)).rows[0];
+  const [bounced] = (await suppress("kati@example.test", "bounce")).rows;
+  expect(bounced).toMatchObject({ email: "kati@example.test", reason: "bounce", cleared_at: null });
+  expect(time(bounced.since)).toEqual(since);
+  await violates(suppress("kati@example.test", "complaint"), "mail_suppressions_email");
+  const [complaint] = (await suppress("mari@example.test", "complaint")).rows;
   expect(complaint.id).not.toBe(bounced.id);
   const clearedAt = new Date("2026-10-19T10:00:00Z");
-  await db.update(mailSuppressions).set({ clearedAt }).where(eq(mailSuppressions.id, bounced.id));
-  expect((await db.select().from(mailSuppressions).where(eq(mailSuppressions.id, bounced.id)))[0].clearedAt).toEqual(clearedAt);
-  await violates(db.insert(mailSuppressions).values({ email: "kati@example.test", reason: "other", since }), "mail_suppressions_email"); // (the cleared row still holds the address)
+  await db.execute(sql`update mail_suppressions set cleared_at = ${clearedAt.toISOString()} where id = ${bounced.id}`);
+  expect(time((await suppression(bounced.id)).cleared_at)).toEqual(clearedAt);
+  await violates(suppress("kati@example.test", "other"), "mail_suppressions_email"); // (the cleared row still holds the address)
   // upsert on the address, the way the webhook will write it
-  await db
-    .insert(mailSuppressions)
-    .values({ email: "kati@example.test", reason: "other", since })
-    .onConflictDoUpdate({ target: mailSuppressions.email, set: { reason: "other", since, clearedAt: null } });
-  expect((await db.select().from(mailSuppressions).where(eq(mailSuppressions.id, bounced.id)))[0]).toMatchObject({ reason: "other", since, clearedAt: null });
+  await db.execute(
+    sql`insert into mail_suppressions (email, reason, since) values ('kati@example.test', 'other', ${since.toISOString()})
+      on conflict (email) do update set reason = 'other', since = ${since.toISOString()}, cleared_at = null`,
+  );
+  const upserted = await suppression(bounced.id);
+  expect([upserted.reason, time(upserted.since), upserted.cleared_at]).toEqual(["other", since, null]);
   // an address needs its reason and its time
   await violates(db.execute(sql`insert into mail_suppressions (email, since) values ('x@example.test', now())`), "reason");
   await violates(db.execute(sql`insert into mail_suppressions (email, reason) values ('x@example.test', 'bounce')`), "since");
   await violates(db.execute(sql`insert into mail_suppressions (reason, since) values ('bounce', now())`), "email");
   // a suppression is its own: a subscriber's deletion does not touch it (a student who never subscribed can be suppressed too)
-  await db.delete(subscribers).where(eq(subscribers.id, kati.id));
-  expect((await db.select().from(mailSuppressions)).map((s) => s.email).sort()).toEqual(["kati@example.test", "mari@example.test"]);
+  await db.execute(sql`delete from subscribers where id = ${kati.id}`);
+  expect((await db.execute<{ email: string }>(sql`select email from mail_suppressions order by email`)).rows.map((s) => s.email)).toEqual(["kati@example.test", "mari@example.test"]);
 });

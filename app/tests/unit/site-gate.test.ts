@@ -34,7 +34,6 @@ const THROUGH = [
   "/api/admin/lesson-file",
   "/api/cron/sweep",
   "/api/bunny/webhook",
-  "/api/resend/webhook", // Resend's webhook: unsubscribes and suppressions (newsletter campaigns)
   "/api/payments/notify", // Montonio's webhook (phase 2b)
   "/maksa/AbC_d-0123456789012345678901234567890", // the mail's Maksa link (phase 2b)
   "/api/newsletter/confirm",
@@ -116,14 +115,8 @@ const GATED = [
   "/api/bunny",
   "/api/bunny/webhookx",
   "/api/bunny/other",
-  // Resend's webhook is one exact address too (newsletter campaigns): the rest of /api/resend and look-alikes stay gated
-  "/api/resend",
-  "/api/resend/",
-  "/api/resend/webhook/",
-  "/api/resend/webhookx",
-  "/api/resend/webhook/x",
-  "/api/resend/other",
-  "/api/resendx/webhook",
+  // Resend's webhook is gone (the newsletter keeps no list in Resend): its old address passes no gate
+  "/api/resend/webhook",
   // the webhook is one exact address: the return, the rest of /api/payments and look-alikes of the webhook stay gated (phase 2b)
   "/api/payments",
   "/api/payments/notify/",
@@ -325,7 +318,7 @@ describe("gateDecision", () => {
   test("the method never opens the gate (a server action is a POST to the page's own address) and never closes it", async () => {
     for (const method of METHODS) {
       for (const path of ["/", "/konto/sisene", "/ru/kontakt", "/api/konto/request", "/api/feedback"]) expect(await kind(path, ON, undefined, method), `${method} ${path}`).toBe("gate");
-      for (const path of ["/admin/login", "/api/auth/logout", "/api/admin/upload", "/api/bunny/webhook", "/api/resend/webhook", "/api/payments/notify", "/api/newsletter/confirm", "/api/newsletter/loobu", "/maksa/AbC_d-0123456789012345678901234567890"])
+      for (const path of ["/admin/login", "/api/auth/logout", "/api/admin/upload", "/api/bunny/webhook", "/api/payments/notify", "/api/newsletter/confirm", "/api/newsletter/loobu", "/maksa/AbC_d-0123456789012345678901234567890"])
         expect(await kind(path, ON, undefined, method), `${method} ${path}`).toBe("pass");
     }
   });

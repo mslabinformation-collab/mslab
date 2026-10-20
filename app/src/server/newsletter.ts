@@ -10,7 +10,6 @@ import { reserveNewsletterMail } from "./client-auth";
 import { logFailure, logNote } from "./log";
 import { mailConfigured, sendMail, type Env } from "./notify";
 import { forgetKey, type TextKv } from "./ratelimit";
-import type { SubscriberSync } from "./resend-marketing";
 import { isTokenShape, sha256 } from "./token";
 
 // The newsletter after the sign-up (phase 2c, spec 5; one step since 09.10): where an address stands (the admin's drawer, Minu andmed), the
@@ -90,7 +89,7 @@ export async function sendWelcome(deps: WelcomeDeps, to: { email: string; locale
     }
     let sent = false;
     try {
-      sent = await sendMail(deps.env, welcomeMail(address, code, to.locale === "ru" ? "ru" : "et", unsubscribeUrl(deps.siteUrl, token)));
+      sent = await sendMail(deps.env, welcomeMail(address, code, to.locale === "ru" ? "ru" : "et", unsubscribeUrl(deps.siteUrl, token)), { count: deps.db });
     } catch (e) {
       logFailure("[newsletter] welcome e-mail failed to send", e);
     }
@@ -122,31 +121,28 @@ export async function subscriberLocale(db: Db, token: string): Promise<"et" | "r
 /**
  * The button of the unsubscribe page (POST /api/newsletter/loobu, the only thing that unsubscribes): deletes the subscriber's row, forgets
  * the address's once-a-year welcome mark (so a later sign-up gets a fresh welcome, with a link for its new row), and says which language she
- * gets the answer in. null = no such row (an unknown or malformed token, or the button pressed before): nothing is deleted or forgotten,
- * and the caller answers the same. A store that cannot forget is logged and does not undo the unsubscribing. `told`, when given, is told the
- * address once the row is deleted (the route deletes her Resend contact after the response: newsletter campaigns, spec D3).
+ * gets the answer in, and the id the row had (the logs name a row by it, never by its token). null = no such row (an unknown or malformed token, or the button pressed before): nothing is deleted or forgotten,
+ * and the caller answers the same. A store that cannot forget is logged and does not undo the unsubscribing.
  */
-export async function unsubscribeByToken(db: Db, kv: TextKv, token: string, told?: (email: string) => void): Promise<{ locale: "et" | "ru" } | null> {
+export async function unsubscribeByToken(db: Db, kv: TextKv, token: string): Promise<{ locale: "et" | "ru"; id: number } | null> {
   if (!isTokenShape(token)) return null;
   const [gone] = await db.delete(subscribers).where(eq(subscribers.token, token)).returning();
   if (!gone) return null;
-  told?.(gone.email);
   try {
     await forgetKey(kv, await welcomeMarkKey(normalizeEmail(gone.email)));
   } catch (e) {
     logFailure("[newsletter] welcome mark not forgotten", e);
   }
-  return { locale: gone.locale === "ru" ? "ru" : "et" };
+  return { locale: gone.locale === "ru" ? "ru" : "et", id: gone.id };
 }
 
 /**
  * The confirmation link of the old double opt-in (links already sent are still in mailboxes): sets `confirmedAt` once (later clicks keep the
  * first time). `first` is true for the click that confirmed it (the welcome mail follows that one only, confirmNewsletter). null = unknown token.
- * The confirmation marks the row unsynced: the newsletter's sync to Resend takes it up (newsletter campaigns, spec D2).
  */
 export async function confirmSubscriber(db: Db, token: string, now: Date): Promise<{ sub: Subscriber; first: boolean } | null> {
   if (!isTokenShape(token)) return null;
-  const [confirmed] = await db.update(subscribers).set({ confirmedAt: now, syncedAt: null }).where(and(eq(subscribers.token, token), isNull(subscribers.confirmedAt))).returning();
+  const [confirmed] = await db.update(subscribers).set({ confirmedAt: now }).where(and(eq(subscribers.token, token), isNull(subscribers.confirmedAt))).returning();
   if (confirmed) return { sub: confirmed, first: true };
   const [row] = await db.select().from(subscribers).where(eq(subscribers.token, token)).limit(1);
   return row ? { sub: row, first: false } : null;
@@ -156,21 +152,15 @@ export async function confirmSubscriber(db: Db, token: string, now: Date): Promi
  * The confirmation link of the old flow (/api/newsletter/confirm): the subscriber confirmed; on the first confirmation with a welcome code set,
  * the welcome mail after the response (`later`) and the code for the confirmed page (the redirect's fragment). Without a code set nothing is
  * mailed here, as before. A repeat confirmation gives no code and sends nothing. `locale`: the subscriber's, for the home page it lands on.
- * The first confirmation also syncs the address to Resend after the response (`newsletterSync`, when given: newsletter campaigns, spec D2).
  */
 export async function confirmNewsletter(
-  deps: WelcomeDeps & { later: (task: () => Promise<unknown>) => void; newsletterSync?: SubscriberSync },
+  deps: WelcomeDeps & { later: (task: () => Promise<unknown>) => void },
   token: string,
 ): Promise<{ outcome: "kinnitatud" | "vigane"; locale: "et" | "ru"; code: string | null }> {
   const confirmed = await confirmSubscriber(deps.db, token, deps.now);
   if (!confirmed) return { outcome: "vigane", locale: "et", code: null };
   const locale = confirmed.sub.locale === "ru" ? "ru" : "et";
   if (!confirmed.first) return { outcome: "kinnitatud", locale, code: null };
-  const sync = deps.newsletterSync;
-  if (sync) {
-    const email = confirmed.sub.email;
-    deps.later(() => sync(email));
-  }
   // The confirmation has stood by now, and the next click is no longer "first": a failing settings read must not turn this answer into
   // an error or drop the welcome mail. The page then shows no code (the mail still carries it: sendWelcome reads the setting itself).
   let code = "";

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { defaultReplyTo, notifyMaria, RATE_LIMIT_RETRY_MS, sendMail, sendTelegram, type Env } from "@/server/notify";
+import { defaultReplyTo, notifyMaria, NOTIFY_TIMEOUT_MS, RATE_LIMIT_RETRY_MS, sendMail, sendMailResult, sendTelegram, type Env } from "@/server/notify";
 import { fakeKv, stubFetch } from "../fakes";
 
 const env = (extra: Partial<Env> = {}, kv = fakeKv()): Env => ({
@@ -62,6 +62,21 @@ describe("e-mail (Resend)", () => {
     expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T", attachments: [] })).toBe(true);
     expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T" })).toBe(true);
     for (const call of f.calls.slice(1)) expect((call.body as { attachments?: unknown }).attachments).toBeUndefined();
+  });
+
+  test("a mail's headers go to Resend as they are (the newsletter's List-Unsubscribe pair); a mail without any, or with none in it, carries none", async () => {
+    const f = stubFetch(() => Response.json({ id: "email_123" }));
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const key = env({ RESEND_API_KEY: "re_test" });
+    const headers = {
+      "List-Unsubscribe": "<https://mslab.example/api/newsletter/loobu?t=tok>",
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    };
+    expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T", headers })).toBe(true);
+    expect((f.calls[0].body as { headers: unknown }).headers).toEqual(headers);
+    expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T", headers: {} })).toBe(true);
+    expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T" })).toBe(true);
+    for (const call of f.calls.slice(1)) expect((call.body as { headers?: unknown }).headers).toBeUndefined();
   });
 
   test("a rejected or failed send is reported as false; the log has the error name and status, not the message", async () => {
@@ -242,5 +257,103 @@ describe("Reply-To (spec D8): Maria's inbox for every mail without one of its ow
     vi.spyOn(console, "info").mockImplementation(() => {});
     await sendMail(env({ RESEND_API_KEY: "re_test", MARIA_EMAIL: "" }), { to: "kati@example.com", subject: "S", text: "T" });
     expect(Object.keys(f.calls[0].body as object)).not.toContain("reply_to");
+  });
+});
+
+describe("sendMailResult: which outcome a send had (the simple newsletter, spec §3: each outcome is one status of a campaign's delivery)", () => {
+  const key = () => env({ RESEND_API_KEY: "re_test" });
+  const mail = { to: "private@example.com", subject: "S", text: "T" };
+  /** Resend's error answer as its API gives it: the error's name, its message (which can quote the recipient) and the HTTP status. */
+  const refusal = (name: string, statusCode: number, message = "Refused for private@example.com.") => () => Response.json({ name, message, statusCode }, { status: statusCode });
+  const quiet = () => ({ info: vi.spyOn(console, "info").mockImplementation(() => {}), error: vi.spyOn(console, "error").mockImplementation(() => {}) });
+
+  afterEach(() => vi.useRealTimers());
+
+  test("accepted: { ok: true }, and sendMail's true", async () => {
+    quiet();
+    stubFetch(() => Response.json({ id: "email_1" }));
+    expect(await sendMailResult(key(), mail)).toEqual({ ok: true });
+    expect(await sendMail(key(), mail)).toBe(true);
+  });
+
+  test("a validation_error that names the `to` field is the address's own refusal: `address`", async () => {
+    quiet();
+    for (const message of [
+      "Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format.",
+      "Invalid `to` field. Please use our testing email address instead of domains like `example.com`.",
+      "The to field must be a valid address.",
+    ]) {
+      stubFetch(refusal("validation_error", 422, message));
+      expect(await sendMailResult(key(), mail), message).toEqual({ ok: false, kind: "address" });
+    }
+  });
+
+  test("Resend's daily or monthly limit: `quota`, never tried again", async () => {
+    quiet();
+    for (const name of ["daily_quota_exceeded", "monthly_quota_exceeded"]) {
+      const f = stubFetch(refusal(name, 429));
+      expect(await sendMailResult(key(), mail), name).toEqual({ ok: false, kind: "quota" });
+      expect(f.calls, name).toHaveLength(1);
+    }
+  });
+
+  test("any other 4xx is `refused`: the key, the account's testing mode, the sending domain, another field, the rate limit still after its one retry", async () => {
+    vi.useFakeTimers();
+    quiet();
+    const cases: [string, number, string?][] = [
+      ["invalid_api_key", 403],
+      ["restricted_api_key", 401],
+      ["missing_api_key", 401],
+      ["validation_error", 403, "You can only send testing emails to your own email address (private@example.com). To send emails to other recipients, please verify a domain."],
+      ["validation_error", 403, "The send.example.com domain is not verified. Please, add and verify your domain."],
+      ["validation_error", 422, "Invalid `from` field."],
+      ["invalid_from_address", 422],
+      ["security_error", 451],
+      ["rate_limit_exceeded", 429],
+    ];
+    for (const [name, status, message] of cases) {
+      stubFetch(refusal(name, status, message));
+      const sent = sendMailResult(key(), mail);
+      await vi.advanceTimersByTimeAsync(RATE_LIMIT_RETRY_MS);
+      expect(await sent, `${name} ${status}`).toEqual({ ok: false, kind: "refused" });
+    }
+  });
+
+  test("no answer that says: `unknown` — a 5xx, a 5xx without a JSON body, a network failure, a hung call", async () => {
+    vi.useFakeTimers();
+    quiet();
+    stubFetch(refusal("internal_server_error", 500));
+    expect(await sendMailResult(key(), mail)).toEqual({ ok: false, kind: "unknown" });
+    stubFetch(refusal("application_error", 503));
+    expect(await sendMailResult(key(), mail)).toEqual({ ok: false, kind: "unknown" });
+    stubFetch(() => new Response("<html>Bad gateway</html>", { status: 502 }));
+    expect(await sendMailResult(key(), mail)).toEqual({ ok: false, kind: "unknown" });
+    stubFetch(() => {
+      throw new TypeError("fetch failed");
+    });
+    expect(await sendMailResult(key(), mail)).toEqual({ ok: false, kind: "unknown" });
+    stubFetch(() => new Promise<Response>(() => {}));
+    const hung = sendMailResult(key(), mail);
+    await vi.advanceTimersByTimeAsync(NOTIFY_TIMEOUT_MS);
+    expect(await hung).toEqual({ ok: false, kind: "unknown" });
+  });
+
+  test("without RESEND_API_KEY nothing is asked of Resend: `refused` (nothing went), and sendMail stays false", async () => {
+    quiet();
+    const f = stubFetch(() => Response.json({ id: "email_1" }));
+    expect(await sendMailResult(env(), mail)).toEqual({ ok: false, kind: "refused" });
+    expect(await sendMail(env(), mail)).toBe(false);
+    expect(f.calls).toHaveLength(0);
+  });
+
+  test("sendMail keeps its boolean for every outcome; the log has the error's name and status, never its message", async () => {
+    const { error } = quiet();
+    for (const respond of [refusal("validation_error", 422, "Invalid `to` field: private@example.com"), refusal("daily_quota_exceeded", 429), refusal("invalid_api_key", 403), refusal("internal_server_error", 500)]) {
+      stubFetch(respond);
+      expect(await sendMail(key(), mail)).toBe(false);
+    }
+    const logged = error.mock.calls.flat().join(" ");
+    expect(logged).toContain("validation_error (status 422)");
+    expect(logged).not.toContain("private@example.com");
   });
 });

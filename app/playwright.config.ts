@@ -20,8 +20,10 @@ const phone = { ...devices["Desktop Chrome"], viewport: { width: 390, height: 84
  * reviews-public.spec.ts is one too (student reviews, Task 5): it writes published and featured reviews, which the course pages and the home page show.
  * So is reviews.spec.ts (Task 6), the whole path of one review: it publishes and features one, and adds one of Maria's own. (reviews-race.spec.ts is not:
  * it talks to the database in its own process and no page shows what it writes.)
+ * And newsletter-campaigns.spec.ts (the simple newsletter, Task 5): its real send mails every confirmed subscriber there is (the ones other specs leave in the
+ * database until the run's teardown among them), so it runs after them. (newsletter-race.spec.ts is not: it has a scratch database of its own.)
  */
-const EDITS = /(admin-(edit|site)\.spec\.ts|[\\/]contracts\.spec\.ts|[\\/]reviews(-public)?\.spec\.ts)$/;
+const EDITS = /(admin-(edit|site)\.spec\.ts|[\\/]contracts\.spec\.ts|[\\/]reviews(-public)?\.spec\.ts|[\\/]newsletter-campaigns\.spec\.ts)$/;
 const ORDER = /order\.setup\.ts$/;
 /** The visual suite has its own config: playwright.visual.config.ts (npm run visual). */
 const VISUAL = /[\\/]visual[\\/]/;

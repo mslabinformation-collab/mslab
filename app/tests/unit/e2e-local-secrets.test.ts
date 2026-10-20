@@ -1,12 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 import { bunnyConfig } from "@/server/bunny";
 import { paymentsEnv, serverEnv } from "@/server/env";
+import { outboxFile } from "@/server/mail-outbox";
 import { montonioConfig } from "@/server/payments/montonio";
 import { E2E_BUNNY } from "../e2e/bunny-values";
 import { E2E_MONTONIO } from "../e2e/montonio-values";
-import { E2E_RESEND } from "../e2e/resend-values";
 import { PROD_ENV } from "../e2e/prod-build";
-import { FORBIDDEN_SETTINGS, forbiddenSettingError, LOCAL_ENV, parseEnvFile } from "../local-secrets";
+import { E2E_CRON_SECRET, E2E_MAIL_OUTBOX, FORBIDDEN_SETTINGS, forbiddenSettingError, LOCAL_ENV, parseEnvFile } from "../local-secrets";
 
 // What an e2e run refuses to start with (tests/e2e/global-setup.ts reads these files and the environment): anything that
 // would make the form tests reach real people, the upload tests write to the real R2 bucket, or the video tests create videos in
@@ -77,21 +77,6 @@ describe("the dev server's environment (LOCAL_ENV)", () => {
     for (const name of R2) expect(env[name as keyof typeof env], name).toBeUndefined();
   });
 
-  test("the newsletter's marketing key is blank too (the one switch, ruling R15), and RESEND_API_KEY is refused as ever: an e2e run never syncs with Resend or sends a campaign (Task 4)", () => {
-    expect(LOCAL_ENV).toHaveProperty("RESEND_MARKETING_KEY", "");
-    expect(serverEnv(LOCAL_ENV, false).RESEND_MARKETING_KEY).toBeUndefined();
-    expect(FORBIDDEN_SETTINGS).toHaveProperty("RESEND_API_KEY");
-  });
-
-  test("the webhook's signing secret is set (made up, base64 like Resend's) and the marketing key stays blank: the e2e run checks signed fake events and never syncs or sends (Task 5)", () => {
-    expect(LOCAL_ENV).toHaveProperty("RESEND_WEBHOOK_SECRET", E2E_RESEND.webhookSecret);
-    expect(serverEnv(LOCAL_ENV, false).RESEND_WEBHOOK_SECRET).toBe(E2E_RESEND.webhookSecret);
-    expect(E2E_RESEND.webhookSecret).toMatch(/^whsec_[A-Za-z0-9+/]{20,}={0,2}$/);
-    expect(Buffer.from(E2E_RESEND.webhookSecret.slice("whsec_".length), "base64").toString()).toContain("not-a-real-one"); // (it says so)
-    expect(serverEnv(LOCAL_ENV, false).RESEND_MARKETING_KEY).toBeUndefined();
-    expect(serverEnv(LOCAL_ENV, false).RESEND_API_KEY).toBeUndefined();
-  });
-
   test("the Bunny settings point at the fake on this machine (never the real library)", () => {
     expect(LOCAL_ENV.BUNNY_FAKE_URL).toBe(`http://localhost:${E2E_BUNNY.port}`);
     expect(bunnyConfig(serverEnv(LOCAL_ENV, false), false)).toMatchObject({ apiBase: E2E_BUNNY.url, tusEndpoint: `${E2E_BUNNY.url}/tusupload`, embedBase: `${E2E_BUNNY.url}/embed` });
@@ -141,5 +126,29 @@ describe("the dev server's environment (LOCAL_ENV)", () => {
       else process.env.E2E_MONTONIO_PORT = original;
       vi.resetModules();
     }
+  });
+});
+
+describe("the newsletter on the e2e servers (the simple newsletter, Task 5)", () => {
+  test("a campaign's mails go to the outbox file, an absolute path in the build's own folder, never to Resend; the run still refuses a RESEND_API_KEY", () => {
+    expect(LOCAL_ENV.E2E_MAIL_OUTBOX).toBe(E2E_MAIL_OUTBOX);
+    expect(E2E_MAIL_OUTBOX).toMatch(/[\\/]\.next[\\/]e2e-mail-outbox\.jsonl$/);
+    expect(outboxFile(serverEnv(LOCAL_ENV, false), { production: false, onVercel: false })).toBe(E2E_MAIL_OUTBOX);
+    expect(LOCAL_ENV).not.toHaveProperty("RESEND_API_KEY");
+    expect(FORBIDDEN_SETTINGS).toHaveProperty("RESEND_API_KEY");
+  });
+
+  test("the production build takes the outbox only with its flag, which only PROD_ENV carries; never on Vercel", () => {
+    expect(PROD_ENV).toMatchObject({ E2E_MAIL_IN_PRODUCTION: "1" });
+    expect(LOCAL_ENV).not.toHaveProperty("E2E_MAIL_IN_PRODUCTION");
+    expect(outboxFile(serverEnv(LOCAL_ENV, false), { production: true, onVercel: false })).toBeNull();
+    expect(outboxFile(serverEnv({ ...LOCAL_ENV, ...PROD_ENV }, true), { production: true, onVercel: false })).toBe(E2E_MAIL_OUTBOX);
+    expect(outboxFile(serverEnv({ ...LOCAL_ENV, ...PROD_ENV }, true), { production: true, onVercel: true })).toBeNull();
+  });
+
+  test("the daily jobs have a made-up CRON_SECRET of their own on the e2e servers", () => {
+    expect(LOCAL_ENV.CRON_SECRET).toBe(E2E_CRON_SECRET);
+    expect(E2E_CRON_SECRET.startsWith("e2e-")).toBe(true);
+    expect(serverEnv(LOCAL_ENV, false).CRON_SECRET).toBe(E2E_CRON_SECRET);
   });
 });

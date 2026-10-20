@@ -3,33 +3,32 @@ import Link from "next/link";
 import { AdminIcon } from "@/components/admin/AdminIcon";
 import { CampaignsPanel, campaignEditorView, campaignListRow } from "@/components/admin/CampaignsPanel";
 import { getAdminCounts } from "@/components/admin/data";
-import { NewsletterSync } from "@/components/admin/NewsletterSync";
 import type { TestTarget } from "@/components/admin/NewsletterCampaignEditor";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
 import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
-import { getDb, type Db } from "@/db/client";
+import { getDb } from "@/db/client";
 import { pageSubscribers } from "@/db/queries/admin";
 import { normalizeEmail } from "@/domain/email";
 import { parsePage } from "@/domain/paging";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { parseRowId } from "@/lib/row-id";
+import { gateOn } from "@/lib/site-gate";
 import { requireAdmin } from "@/server/auth";
-import { getCampaign, listCampaigns } from "@/server/newsletter-campaigns";
-import { syncState } from "@/server/newsletter-admin";
-import { isSubscriberAddress, marketingConfigured, rejectedSubscribers, suppressedAddresses } from "@/server/resend-marketing";
-import { adminMarketingDeps } from "@/server/send-deps";
+import { gateEnv, serverEnv } from "@/server/env";
+import { serverKv } from "@/server/kv";
+import { getCampaign, listCampaigns, progressOf, sendRefused } from "@/server/newsletter-campaigns";
 import { linkSuggestions } from "@/server/site-links";
 import styles from "./newsletter.module.css";
 
 export const dynamic = "force-dynamic";
 /**
- * „Sünkrooni Resendiga“, „Saada proov“ and „Saada kõigile“ are server actions of this page (admin-newsletter.ts), so they run under this page's limit.
- * The longest is the send: its sync up to ADMIN_SYNC_BUDGET_MS (25 s) for the calls it starts, one begun at the end with 8 s and once more after a
- * 429 (resend-marketing.ts), then two broadcasts, each with the same (SEND_LEASE_MS, about 35 s): some 77 s at worst. 120 s is our own guard (a
- * function may run up to 300 s on Vercel Hobby). (tests/db/newsletter-page.test.ts pins it.)
+ * „Saada kõigile“, „Peata saatmine“ and „Saada proov“ are server actions of this page (actions/admin-newsletter.ts), so they run under this page's
+ * limit. The longest is the press: its first batch sends for PRESS_BUDGET_MS (60 s), and a send begun at its end has 8 s, and once more after a 429
+ * (notify.ts): some 77 s at worst with its queries. 120 s is our own guard (a function may run up to 300 s on Vercel Hobby).
+ * (tests/db/newsletter-page.test.ts pins it.)
  */
 export const maxDuration = 120;
 export const metadata: Metadata = { title: adminTitle(adminEt.nav.newsletter) };
@@ -44,11 +43,8 @@ const CAMPAIGNS_HREF = "/admin/uudiskiri?vaade=kampaaniad";
 /**
  * „Uudiskiri“: two views. The subscribers (no ?vaade=): e-mail, language, consent time, confirmed or not (new sign-ups are confirmed at once; "not" is
  * a row of the old double opt-in that was never confirmed), newest first, and the CSV downloads (confirmed only — the addresses a newsletter may go
- * to — or all). 50 a page (?leht=); the CSV has all. Above the list the sync with Resend (newsletter campaigns, Task 3): „Sünkrooni Resendiga“ with
- * Resend's count beside the site's, or that it is not set up yet. A row whose address Resend does not mail (a bounce or a spam mark, spec D10) says
- * so; all the page's addresses are asked in one query. So does a row not synced whose address Resend refused as a contact (ruling R17: she gets
- * no campaign, and it never stops a send), from the one setting that keeps them.
- * „Kampaaniad“ (?vaade=kampaaniad, Task 4): the campaigns and the editor of the one chosen (&kampaania=<id>, or `uus`; components/admin/CampaignsPanel.tsx).
+ * to — or all). 50 a page (?leht=); the CSV has all.
+ * „Kampaaniad“ (?vaade=kampaaniad): the campaigns and the editor of the one chosen (&kampaania=<id>, or `uus`; components/admin/CampaignsPanel.tsx).
  */
 export default async function NewsletterPage({ searchParams }: Props) {
   const email = await requireAdmin();
@@ -94,22 +90,14 @@ function Top({ view }: { view: "subscribers" | "campaigns" }) {
 /** The subscribers' view. (A function of the page, not a component: it reads.) */
 async function subscribersPage(email: string, search: Search) {
   const db = getDb();
-  const [list, counts, sync] = await Promise.all([pageSubscribers(db, parsePage(search.leht)), getAdminCounts(), syncState(adminMarketingDeps())]);
+  const [list, counts] = await Promise.all([pageSubscribers(db, parsePage(search.leht)), getAdminCounts()]);
   const rows = list.rows;
-  const [blocked, rejected] = await Promise.all([
-    suppressedAddresses(db, rows.map((r) => r.email)),
-    rejectedSubscribers(db, rows.filter((r) => r.syncedAt === null).map((r) => r.id)),
-  ]);
   const t = adminEt.newsletter;
 
   return (
     <Shell email={email} active="newsletter">
       <div className={ui.page}>
         <Top view="subscribers" />
-
-        <section className={`${ui.card} ${styles.sync}`} aria-label={t.sync.button} data-newsletter-sync="">
-          <NewsletterSync state={sync} />
-        </section>
 
         <section className={`${ui.card} ${styles.card}`} aria-label={t.title}>
           <p className={`${ui.muted} ${ui.small}`}>{fill(t.count, { n: counts.subscribers, confirmed: counts.confirmedSubscribers })}</p>
@@ -129,19 +117,7 @@ async function subscribersPage(email: string, search: Search) {
                 {rows.map((r) => (
                   <tr key={r.id} data-subscriber={r.id}>
                     <td data-label={t.col.email} className={styles.email}>
-                      <div>
-                        {r.email}
-                        {blocked.has(normalizeEmail(r.email)) && (
-                          <p className={styles.blocked} data-subscriber-suppressed="">
-                            {t.suppressed}
-                          </p>
-                        )}
-                        {rejected.has(r.id) && (
-                          <p className={styles.blocked} data-subscriber-rejected="">
-                            {t.rejected}
-                          </p>
-                        )}
-                      </div>
+                      {r.email}
                     </td>
                     <td data-label={t.col.locale}>{r.locale === "ru" ? adminEt.common.locale.ru : adminEt.common.locale.et}</td>
                     <td data-label={t.col.consent} className={ui.nowrap}>
@@ -167,42 +143,43 @@ async function subscribersPage(email: string, search: Search) {
 }
 
 /**
- * The addresses „Saada proov“ offers: Maria's (MARIA_EMAIL) and the signed-in admin's, one when they are the same, Maria's left out when it is not
- * set; each with whether it is a subscriber's (ruling R7: then the test carries her real unsubscribe link, and the editor warns).
+ * The addresses „Saada proov“ offers: Maria's (MARIA_EMAIL) and the signed-in admin's, one when they are the same, Maria's left out when it is not set
+ * (actions/admin-newsletter.ts sendTestAction takes the address from the same two sources, never from the browser).
  */
-async function testTargetsOf(db: Db, mariaEmail: string, adminEmail: string): Promise<TestTarget[]> {
+function testTargetsOf(mariaEmail: string, adminEmail: string): TestTarget[] {
   const maria = normalizeEmail(mariaEmail);
   const me = normalizeEmail(adminEmail);
-  const wanted: { key: TestTarget["key"]; address: string }[] = [...(maria ? [{ key: "maria" as const, address: maria }] : []), ...(me && me !== maria ? [{ key: "me" as const, address: me }] : [])];
-  return Promise.all(wanted.map(async (w) => ({ ...w, subscriber: await isSubscriberAddress(db, w.address) })));
+  return [...(maria ? [{ key: "maria" as const, address: maria }] : []), ...(me && me !== maria ? [{ key: "me" as const, address: me }] : [])];
 }
 
-/** The campaigns' view: the list, and the editor of the one chosen (`kampaania`: an id, `uus` for a new one, or nothing). (It reads.) */
+/**
+ * The campaigns' view: the list (each campaign going out with its progress), and the editor of the one chosen (`kampaania`: an id, `uus` for a new one,
+ * or nothing), which once it is no draft carries where its deliveries stand and whether the last batch was refused. (It reads.) `gated`: the coming-soon
+ * gate is on (SITE_GATE, read as the middleware reads it), so the confirmation of „Saada kõigile“ and the result of „Saada proov“ say that the mail's
+ * links open „Tulekul“ (final review I1); the editor, a browser component, never reads the environment.
+ */
 async function campaignsPage(email: string, kampaania: string) {
   const db = getDb();
-  const deps = adminMarketingDeps();
-  const configured = marketingConfigured(deps.env);
   const id = kampaania === "uus" ? null : parseRowId(kampaania);
-  const [rows, links, chosen, testTargets] = await Promise.all([
-    listCampaigns(db),
-    linkSuggestions(db),
-    id === null ? Promise.resolve(null) : getCampaign(db, id),
-    configured ? testTargetsOf(db, deps.env.MARIA_EMAIL, email) : Promise.resolve([]),
-  ]);
+  const [rows, links, chosen] = await Promise.all([listCampaigns(db), linkSuggestions(db), id === null ? Promise.resolve(null) : getCampaign(db, id)]);
   const selected = kampaania === "uus" ? "new" : chosen ? chosen.id : null;
+  // the deliveries of every campaign going out (one at a time, by the design) and of the one chosen, if it is no draft
+  const shown = new Set([...rows.filter((r) => r.status === "sending").map((r) => r.id), ...(chosen && chosen.status !== "draft" ? [chosen.id] : [])]);
+  const progress = new Map(await Promise.all([...shown].map(async (campaignId) => [campaignId, await progressOf(db, campaignId)] as const)));
+  const refused = chosen?.status === "sending" ? await sendRefused(serverKv(), chosen.id) : false;
 
   return (
     <Shell email={email} active="newsletter">
       <div className={ui.page}>
         <Top view="campaigns" />
         <CampaignsPanel
-          campaigns={rows.map(campaignListRow)}
+          campaigns={rows.map((r) => campaignListRow(r, progress.get(r.id) ?? null))}
           selected={selected}
-          editing={chosen ? campaignEditorView(chosen) : null}
+          editing={chosen ? campaignEditorView(chosen, { progress: progress.get(chosen.id) ?? null, refused }) : null}
           notFound={kampaania !== "" && kampaania !== "uus" && chosen === null}
-          configured={configured}
-          testTargets={testTargets}
           links={links}
+          testTargets={testTargetsOf(serverEnv().MARIA_EMAIL, email)}
+          gated={gateOn(gateEnv().SITE_GATE)}
         />
       </div>
     </Shell>

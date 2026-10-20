@@ -2,12 +2,13 @@ import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { not, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { expect } from "vitest";
 import * as schema from "@/db/schema";
 import type { Db } from "@/db/client";
-import { courseModules, type CourseModule } from "@/db/schema";
+import { courseModules, mailQuota, type CourseModule } from "@/db/schema";
 import type { I18n } from "@/i18n/field";
 
 export async function makeTestDb(): Promise<Db> {
@@ -23,6 +24,18 @@ export async function makeTestDb(): Promise<Db> {
 export async function shownContractVersion(db: Db, kind: "contact" | "ecourse" = "contact"): Promise<string> {
   const { contractTemplate } = await import("@/server/contracts");
   return (await contractTemplate(db, kind, "et")).version;
+}
+
+/**
+ * The `mail_quota` rows of the caps: the logins' and confirmations' "<day>", the newsletter's "<day>:nl". Without "<day>:all", the day's count of every
+ * mail the site sent (client-auth.ts countSentMail), to which each mail Resend accepted adds, whatever its kind: a test of what takes a place of a cap
+ * reads these rows.
+ */
+export const capRows = (db: Db) => db.select().from(mailQuota).where(not(like(mailQuota.day, "%:all")));
+
+/** How many mails the site has counted as sent (the "<day>:all" rows together; the day is the one the mails went on). */
+export async function countedMails(db: Db): Promise<number> {
+  return (await db.select().from(mailQuota).where(like(mailQuota.day, "%:all"))).reduce((n, r) => n + r.sent, 0);
 }
 
 /** Module rows for a course (course_modules), positions 1…n in the given order. */

@@ -339,6 +339,25 @@ describe("profile and newsletter", () => {
     expect(await updateProfile(db, 987654, { name: "x", phone: "", locale: "et" })).toBe(false);
   });
 
+  test("updateProfile: a change of language moves the newsletter rows linked to her account (not another client's, not an unlinked row); the same language leaves them", async () => {
+    const kati = await client("kati@example.test", { locale: "et" });
+    const mari = await client("mari@example.test", { locale: "et" });
+    await db.insert(subscribers).values([
+      { email: "kati@example.test", token: "t1", clientId: kati.id },
+      { email: "mari@example.test", token: "t2", clientId: mari.id },
+      { email: "vaba@example.test", token: "t3" },
+    ]);
+    const locales = async () => (await db.select({ email: subscribers.email, locale: subscribers.locale }).from(subscribers).orderBy(subscribers.email)).map((r) => `${r.email} ${r.locale}`);
+    // saved in the language she already reads: a newsletter row of another language is left as it is
+    await db.update(subscribers).set({ locale: "ru" }).where(eq(subscribers.email, "kati@example.test"));
+    expect(await updateProfile(db, kati.id, { name: "Kati", phone: "", locale: "et" })).toBe(true);
+    expect(await locales()).toEqual(["kati@example.test ru", "mari@example.test et", "vaba@example.test et"]);
+    // a new language moves her linked row only
+    await db.update(subscribers).set({ locale: "et" }).where(eq(subscribers.email, "kati@example.test"));
+    expect(await updateProfile(db, kati.id, { name: "Kati", phone: "", locale: "ru" })).toBe(true);
+    expect(await locales()).toEqual(["kati@example.test ru", "mari@example.test et", "vaba@example.test et"]);
+  });
+
   test("newsletter on makes a confirmed subscriber of the account's address, linked to the client, in its language; on again changes nothing", async () => {
     const kati = await client("kati@example.test", { locale: "ru" });
     expect(await setNewsletter(db, kati.id, true, NOW)).toBe(true);

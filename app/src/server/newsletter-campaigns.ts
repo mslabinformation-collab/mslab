@@ -1,66 +1,50 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Db, Q } from "@/db/client";
-import { newsletterCampaigns, type NewsletterCampaign } from "@/db/schema";
+import { newsletterCampaigns, newsletterDeliveries, settings, subscribers, type DeliveryStatus, type NewsletterCampaign, type NewsletterDelivery } from "@/db/schema";
+import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import {
+  CAMPAIGN_DAILY_ROOM,
   CAMPAIGN_LIMITS,
+  CAMPAIGN_ROOM_KEY,
   campaignContentFor,
+  campaignRoomSetting,
   checkCampaignDraft,
   isCampaignHref,
   ruFallsBack,
-  sendLanguages,
-  unsentCandidate,
   type NewsletterCampaignDraft,
 } from "@/domain/newsletter-campaign";
 import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import { adminEt } from "@/i18n/dict/admin";
 import { isStorableImageKey, mediaUrl } from "@/lib/media";
 import { toStorable } from "@/lib/to-storable";
-import { campaignMail, TEST_SUBJECT_PREFIX } from "./campaign-mail";
+import { campaignMail } from "./campaign-mail";
+import { mailsSentToday } from "./client-auth";
 import { getInvoiceSettings } from "./invoices";
-import { logFailure, logNote } from "./log";
-import { releaseSlot, reserveSlot, windowKey } from "./ratelimit";
-import {
-  FullSyncBusy,
-  fullSync,
-  fullSyncThen,
-  keyRefused,
-  MarketingUnavailable,
-  marketingConfigured,
-  recipientCounts,
-  sendTestBroadcast,
-  testUnsubscribeUrl,
-  underNewsletterLease,
-  UNSUBSCRIBE_PLACEHOLDER,
-  type BroadcastMail,
-  type FullSyncReport,
-  type MarketingDeps,
-} from "./resend-marketing";
+import { logFailure } from "./log";
+import { unsubscribeUrl } from "./newsletter";
+import { sendMailResult, type Env, type MailOutcome } from "./notify";
+import { forgetKey, releaseSlot, reserveSlot, windowKey, type TextKv } from "./ratelimit";
 
 // Maria's newsletter campaigns (newsletter campaigns, Task 4; spec D4–D8, §5; rulings R2, R4, R5, R7, R9, R11): the drafts she writes on the
-// „Kampaaniad“ tab, „Kopeeri“, the live preview, „Saada proov“ and „Saada kõigile“. The rules of a draft are domain/newsletter-campaign.ts, the mail is
-// campaign-mail.ts campaignMail, and Resend's side (the sync, the broadcasts, the test segment) is resend-marketing.ts. Without Next.js: the actions
-// (actions/admin-newsletter.ts) and the preview route call these. Logs carry ids and counts, never an address or a text of hers.
+// „Kampaaniad“ tab, „Kopeeri“ and the live preview. The rules of a draft are domain/newsletter-campaign.ts and the mail is campaign-mail.ts
+// campaignMail. Without Next.js: the actions (actions/admin-newsletter.ts), the preview route and the daily job (api/cron/uudiskiri) call these.
+// Logs carry ids and counts, never an address, a token or a text of hers.
 //
-// A send, in order (sendCampaign): the full sync, and under the same lease (no other sync, send or test meanwhile) the refusal while any subscriber
-// is left unsynced for a reason other than the plan's contact limit or Resend's refusal of an address (rulings R5, R17: those are counted, and the
-// send goes to the ones in Resend); then in one short transaction the campaign row locked (FOR UPDATE), its status checked to be `draft`, and
-// `sending` written with the counts; then one broadcast per segment that has subscribers, each recorded as soon as it is made; then `sent`. No row
-// lock is held across a Resend call. A campaign found `sending` (a send that died, or a broadcast whose outcome is unknown) is never sent again by
-// itself: Maria sees each language's state (sent, with its Resend link, or unknown) and Resend's list of broadcasts, and for the language she does
-// not find there she presses „Märgi saatmata“ (markNotSent, ruling R16); never „Kopeeri“, which would mail the language that went a second time.
-// The send goes only to the counts and the campaign Maria confirmed (ruling R14, the review's M3). A campaign sent in one language only (Resend
-// refused the other, or Maria marked it not sent) offers „Saada puuduv keel“ (ruling R12): the same send, scope "missing", to that language's
-// segment alone.
+// The sending is the 20.10 design's (docs/superpowers/specs/2026-10-20-newsletter-simple-design.md §3, §5): one ordinary mail per subscriber.
+// - The press („Saada kõigile“, startSend) writes one `newsletter_deliveries` row for each confirmed subscriber at that moment and sends the first
+//   batch at once; the daily job (runDueCampaigns) sends the rest, a batch a day, until no row waits.
+// - A batch (runBatch) sends while the day's count of every mail the site sent (client-auth.ts mailsSentToday) is below CAMPAIGN_DAILY_ROOM and
+//   its time lasts (and, only when the settings row newsletter_daily_room is there, while this campaign's own mails of the day are below it: a lower
+//   room for a check, `roomSetting`). It claims one row at a time (FOR UPDATE SKIP LOCKED, committed before the send: two runners never take one row), sends it,
+//   and writes its outcome to that row only while it is still `claimed`. Each outcome is one status (at most once, notify.ts MailOutcome): accepted
+//   `sent`; the address refused `failed`; no answer `unknown`, never sent again; Resend's day or month limit, or any other refusal, back to
+//   `waiting` and the batch stops (`skipped` instead when „Peata saatmine“ came meanwhile: no row waits under a sent campaign, and a campaign that is no
+//   longer going out is claimed from no more: goingOut). A claim older than STALE_CLAIM_MS belongs to a runner that died: `unknown`, never `waiting` again.
+// - One campaign at a time: a press while another campaign is going out is `busy`.
+// - „Peata saatmine“ (stopSend) skips what waits; „Saada proov“ (sendTest) is one counted mail to Maria or the signed-in admin.
 
 export type CampaignStatus = NewsletterCampaign["status"];
 type Locale = "et" | "ru";
-const LOCALES: readonly Locale[] = ["et", "ru"];
-
-/** „Saada proov“ at most this many an hour (spec D6). */
-export const TEST_SEND_LIMIT = 10;
-const TEST_WINDOW_SEC = 60 * 60;
-/** The test sends' counter (a fixed clock hour: ratelimit.ts windowKey; the entry lives for two windows). */
-const TEST_KEY = "newsletter:proov";
 
 /** The stored row as the rules' draft (the editor's values, the preview, the mails). */
 export function draftOf(row: NewsletterCampaign): NewsletterCampaignDraft {
@@ -183,8 +167,14 @@ function mailOf(draft: NewsletterCampaignDraft, locale: Locale, o: MailOptions):
   });
 }
 
-/** The broadcast's name in Resend's dashboard: her name for the campaign and the language („[Proov] “ in front for a test). */
-const broadcastName = (draft: NewsletterCampaignDraft, locale: Locale, test: boolean) => `${test ? TEST_SUBJECT_PREFIX : ""}${draft.name} (${locale.toUpperCase()})`;
+/** The unsubscribe link of a mail that is no real send: it opens the page that says it is a test and changes nothing (api/newsletter/loobu, `?proov`). */
+const testUnsubscribeUrl = (siteUrl: string): string => `${siteUrl.replace(/\/+$/, "")}/api/newsletter/loobu?proov=1`;
+
+/**
+ * The headers of the mail program's own unsubscribe button (RFC 2369, RFC 8058 one-click): the same address as the mail's link. The route takes the
+ * one-click POST (api/newsletter/loobu: the body `List-Unsubscribe=One-Click`, the token in the address).
+ */
+const unsubscribeHeaders = (href: string): Record<string, string> => ({ "List-Unsubscribe": `<${href}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
 
 // ---------- the preview ----------
 
@@ -241,333 +231,518 @@ export async function campaignPreview(q: Q, siteUrl: string, raw: unknown, now: 
   return { et: one("et"), ru: one("ru"), ruFallsBack: ruFallsBack(draft) };
 }
 
-// ---------- the sends ----------
+// ---------- the sending (the 20.10 design) ----------
 
-type ResendRefusal = "notConfigured" | "busy" | "permission" | "unavailable";
+/**
+ * How long a claimed delivery may wait for its outcome before it counts as `unknown` (Review Focus 1): longer than any runner can live (the daily
+ * job's maxDuration, 300 s, api/cron/uudiskiri; the page's, 120 s, admin/uudiskiri) plus a margin. An older claim belongs to a runner that was
+ * stopped after it claimed the row, perhaps after Resend accepted the mail: it is never sent again, and never put back to `waiting`.
+ */
+export const STALE_CLAIM_MS = 6 * 60_000;
+/** The pause between two sends of a batch: Resend takes about 2 requests a second, shared with the site's other mails. */
+export const SEND_GAP_MS = 600;
+/**
+ * The press's own time („Saada kõigile“ waits for its first batch): no new mail after it. A send begun at its end has 8 s, and once more after a 429
+ * (notify.ts), so the page's maxDuration of 120 s holds (tests/db/newsletter-page.test.ts).
+ */
+export const PRESS_BUDGET_MS = 60_000;
+/** The daily job's own time: its maxDuration (300 s) less a margin for a send begun at the end (17 s at most) and the queries. */
+export const CRON_BUDGET_MS = 270_000;
+/** This many answers in a row that say nothing (`unknown`) stop a batch: Resend is down, and the rest wait instead of all turning `unknown`. */
+const UNKNOWN_IN_A_ROW = 3;
+/** The rows the press writes in one statement. */
+const INSERT_CHUNK = 500;
 
-/** A refusal of Resend's side in a code: not set up, another sync running, a key that may not do this, Resend not answering. Anything else is thrown on. */
-function refusalOf(e: unknown, where: string): ResendRefusal {
-  if (e instanceof FullSyncBusy) return "busy"; // (logged by the lease)
-  if (!(e instanceof MarketingUnavailable)) throw e;
-  if (e.code === "not_configured") return "notConfigured";
-  logFailure(where, e);
-  return keyRefused(e) ? "permission" : "unavailable";
+/**
+ * What a send needs. `siteUrl` is SITE_URL: the links of the mails (the picture, the logo, her unsubscribe link), never a request's address, for a
+ * mail is kept long after it. `now` is the clock (the room's UTC day, the claims' times). `deadline` (epoch ms): no new mail after it. `gapMs`: the
+ * pause between two sends (SEND_GAP_MS unless told; the tests give 0). `send`: notify.ts sendMailResult unless a test fakes it; it is given the
+ * database, and counts an accepted mail on the day's count as sendMailResult does.
+ */
+export type SendDeps = { db: Db; env: Env; siteUrl: string; now: () => Date; deadline: number; gapMs?: number; send?: typeof sendMailResult };
+
+/** Where a campaign's deliveries stand. `waiting` includes the rows claimed now (their outcome not written yet); `total` is every row. */
+export type Progress = { total: number; sent: number; waiting: number; failed: number; unknown: number; skipped: number };
+
+/**
+ * Why a batch stopped while rows still wait: `room` (the day's count reached CAMPAIGN_DAILY_ROOM, or Resend's own daily or monthly limit), `refused`
+ * (Resend refused for a reason other than the address, or gave no answer that says three times in a row: „Saatmine peatus: Resend keeldus. Kirjuta
+ * Dimile.“), `time` (the deadline). null: nothing waits any more, or the campaign is not going out.
+ */
+export type BatchStop = null | "room" | "refused" | "time";
+export type BatchResult = { progress: Progress; stopped: BatchStop };
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The lowered room, when Dim has set the settings row for a check (domain/newsletter-campaign.ts CAMPAIGN_ROOM_KEY): the most mails one campaign may send
+ * in a UTC day. null: no row (the usual case: the only cost is this one read per batch), or a value that is no number (said in the log, never the value).
+ * It can only lower the room, never raise it (campaignRoomSetting).
+ */
+async function roomSetting(q: Q): Promise<number | null> {
+  const [row] = await q.select({ value: settings.value }).from(settings).where(eq(settings.key, CAMPAIGN_ROOM_KEY)).limit(1);
+  if (!row) return null;
+  const room = campaignRoomSetting(row.value);
+  if (room === null) console.warn(`[newsletter] the setting ${CAMPAIGN_ROOM_KEY} is no number: ignored`);
+  return room;
+}
+
+/** The mails campaign `id` has sent in the UTC day of `now` (its deliveries `sent` that day). */
+async function campaignMailsOfDay(q: Q, id: number, now: Date): Promise<number> {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const [row] = await q
+    .select({ n: count() })
+    .from(newsletterDeliveries)
+    .where(
+      and(
+        eq(newsletterDeliveries.campaignId, id),
+        eq(newsletterDeliveries.status, "sent"),
+        gte(newsletterDeliveries.sentAt, start),
+        lt(newsletterDeliveries.sentAt, new Date(start.getTime() + 86_400_000)),
+      ),
+    );
+  return row?.n ?? 0;
 }
 
 /**
- * „Saada proov“ (rulings R4, R7): the stored campaign `id` in `locale` (Estonian unless told), as one broadcast to the test segment holding `to`
- * alone (resend-marketing.ts sendTestBroadcast): the very mail of a send, Resend's placeholder for the unsubscribe link included, with „[Proov] “
- * before the subject. `realLink`: `to` is a subscriber's, so the mail carries her real unsubscribe link. At most TEST_SEND_LIMIT an hour (`limited`,
- * nothing asked of Resend); a test that did not go is not counted. `unsubscribed`: `to` is a subscriber's whose contact unsubscribed in Resend, so
- * nothing would arrive and nothing is sent (the review's M7). `notConfigured` without the newsletter's key, `busy` while a sync or send runs,
- * `permission` / `unavailable` when Resend refuses or does not answer.
+ * Is there room for one more mail of campaign `id` now: the day's count of every mail below CAMPAIGN_DAILY_ROOM, and the campaign's own mails of the day
+ * below the lowered room when there is one. (The lowered room is the campaign's own, so a check needs no sum with the day's other mails or with the
+ * campaigns sent earlier the same day.)
  */
-export async function sendTest(
-  deps: MarketingDeps,
+async function hasRoom(db: Db, id: number, now: Date, lowered: number | null): Promise<boolean> {
+  if ((await mailsSentToday(db, now)) >= CAMPAIGN_DAILY_ROOM) return false;
+  return lowered === null || (await campaignMailsOfDay(db, id, now)) < lowered;
+}
+
+/** The deliveries of campaign `id` by status. */
+export async function progressOf(q: Q, id: number): Promise<Progress> {
+  const rows = await q
+    .select({ status: newsletterDeliveries.status, n: count() })
+    .from(newsletterDeliveries)
+    .where(eq(newsletterDeliveries.campaignId, id))
+    .groupBy(newsletterDeliveries.status);
+  const n = (status: DeliveryStatus) => rows.find((r) => r.status === status)?.n ?? 0;
+  const p = { sent: n("sent"), waiting: n("waiting") + n("claimed"), failed: n("failed"), unknown: n("unknown"), skipped: n("skipped") };
+  return { total: p.sent + p.waiting + p.failed + p.unknown + p.skipped, ...p };
+}
+
+type Recipient = { email: string; locale: Locale; token: string };
+
+/**
+ * Who a press writes the list for (spec D7, §3; the plan's "Consent"): every confirmed `subscribers` row at this moment, oldest first, by its
+ * address in lower case and once per address (a legacy pair of rows that differ only in case gets one mail: the older row's). Never a sample address
+ * (`@example.test`, domain/email.ts isSampleAddress: the live checks and the demo data make such rows, and they are never mailed).
+ */
+async function recipientsNow(q: Q): Promise<Recipient[]> {
+  const rows = await q
+    .select({ email: subscribers.email, locale: subscribers.locale, token: subscribers.token })
+    .from(subscribers)
+    .where(isNotNull(subscribers.confirmedAt))
+    .orderBy(asc(subscribers.id));
+  const seen = new Set<string>();
+  const list: Recipient[] = [];
+  for (const r of rows) {
+    const email = normalizeEmail(r.email);
+    if (isSampleAddress(email) || seen.has(email)) continue;
+    seen.add(email);
+    list.push({ email, locale: r.locale === "ru" ? "ru" : "et", token: r.token });
+  }
+  return list;
+}
+
+const countsOf = (list: Recipient[]) => ({ et: list.filter((r) => r.locale === "et").length, ru: list.filter((r) => r.locale === "ru").length });
+
+/**
+ * Every press takes this transaction lock first, so two presses (two tabs, two campaigns) are one after the other: one campaign at a time holds. (Exported for the
+ * race test, tests/e2e/newsletter-race.spec.ts, which holds it on another connection while two presses start.)
+ */
+export const PRESS_LOCK = "newsletter-press";
+
+type PressRefusal = "notFound" | "sent" | "busy" | "empty";
+
+/**
+ * What a press is decided on, inside its transaction: the press lock, then the campaign's row (FOR UPDATE), then the checks. The campaign is there
+ * (`notFound`), still a draft (`sent`: sent, or going out already), no other campaign is going out (`busy`: spec §3 "One campaign at a time"), and
+ * there is someone to send to (`empty`); with the recipients at this moment.
+ */
+async function pressState(t: Q, id: number): Promise<{ row: NewsletterCampaign; list: Recipient[] } | { error: PressRefusal }> {
+  await t.execute(sql`select pg_advisory_xact_lock(hashtext(${PRESS_LOCK}))`);
+  const [row] = await t.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
+  if (!row) return { error: "notFound" };
+  if (row.status !== "draft") return { error: "sent" };
+  const [other] = await t
+    .select({ id: newsletterCampaigns.id })
+    .from(newsletterCampaigns)
+    .where(and(eq(newsletterCampaigns.status, "sending"), ne(newsletterCampaigns.id, id)))
+    .limit(1);
+  if (other) return { error: "busy" };
+  const list = await recipientsNow(t);
+  if (list.length === 0) return { error: "empty" };
+  return { row, list };
+}
+
+/**
+ * „Saada kõigile“, before the confirmation: the confirmed subscribers by language as a press would write them now, whether the Russian ones get the
+ * Estonian text (ruFallsBack), and `updatedAt`, the campaign's last change as this read it (ISO): the press goes only if both are still so. A
+ * refusal in a code (pressState). Writes nothing.
+ */
+export async function prepareSend(
+  db: Db,
   id: number,
-  to: string,
-  locale: Locale = "et",
-): Promise<{ ok: true; realLink: boolean } | { ok: false; error: "notFound" | "limited" | "unsubscribed" | ResendRefusal }> {
-  if (!marketingConfigured(deps.env)) return { ok: false, error: "notConfigured" };
+): Promise<{ ok: true; et: number; ru: number; ruFallsBack: boolean; updatedAt: string } | { ok: false; error: PressRefusal }> {
+  return db.transaction(async (t) => {
+    const state = await pressState(t, id);
+    if ("error" in state) return { ok: false as const, error: state.error };
+    return { ok: true as const, ...countsOf(state.list), ruFallsBack: ruFallsBack(draftOf(state.row)), updatedAt: state.row.updatedAt.toISOString() };
+  });
+}
+
+/**
+ * „Saada kõigile“ after the confirmation: `confirmed` is what it showed (prepareSend's counts and `updatedAt`). In one transaction (pressState):
+ * `changed` when the counts by language or the campaign moved since (nothing written, still a draft); else one delivery for each recipient, the
+ * campaign `sending` with `recipients` the counts written. Then, after the commit, the first batch (runBatch) within `deps.deadline`.
+ */
+export async function startSend(
+  deps: SendDeps,
+  id: number,
+  confirmed: { et: number; ru: number; updatedAt: string },
+): Promise<({ ok: true } & BatchResult) | { ok: false; error: PressRefusal | "changed" }> {
+  const written = await deps.db.transaction(async (t) => {
+    const state = await pressState(t, id);
+    if ("error" in state) return state.error;
+    const counts = countsOf(state.list);
+    if (counts.et !== confirmed.et || counts.ru !== confirmed.ru || state.row.updatedAt.getTime() !== Date.parse(confirmed.updatedAt)) return "changed" as const;
+    for (let i = 0; i < state.list.length; i += INSERT_CHUNK) {
+      await t.insert(newsletterDeliveries).values(state.list.slice(i, i + INSERT_CHUNK).map((r) => ({ campaignId: id, ...r })));
+    }
+    await t.update(newsletterCampaigns).set({ status: "sending", recipients: counts }).where(eq(newsletterCampaigns.id, id));
+    return counts;
+  });
+  if (typeof written === "string") {
+    console.info(`[newsletter] campaign ${id}: not pressed (${written})`);
+    return { ok: false, error: written };
+  }
+  console.info(`[newsletter] campaign ${id}: pressed, ${written.et + written.ru} deliveries written (et ${written.et}, ru ${written.ru})`);
+  return { ok: true, ...(await runBatch(deps, id)) };
+}
+
+/**
+ * A claimed delivery older than STALE_CLAIM_MS becomes `unknown` (Review Focus 1): of campaign `id`, or of every campaign (the daily job, which
+ * also reaches a campaign stopped while a dead runner held a claim). Never `waiting`: its mail may have gone.
+ */
+async function expireStaleClaims(db: Db, now: Date, id?: number): Promise<void> {
+  const stale = await db
+    .update(newsletterDeliveries)
+    .set({ status: "unknown" })
+    .where(
+      and(
+        eq(newsletterDeliveries.status, "claimed"),
+        lt(newsletterDeliveries.claimedAt, new Date(now.getTime() - STALE_CLAIM_MS)),
+        id === undefined ? undefined : eq(newsletterDeliveries.campaignId, id),
+      ),
+    )
+    .returning();
+  if (stale.length > 0) console.info(`[newsletter] ${stale.length} stale claims marked unknown (campaign ${[...new Set(stale.map((s) => s.campaignId))].join(", ")})`);
+}
+
+/**
+ * Is campaign `id` still going out? Read FOR SHARE, in the caller's transaction and held to its end: „Peata saatmine“ (stopSend) takes the same row FOR
+ * UPDATE first, so a claim or a put-back meets a stop either before it (the stop then finds the row claimed and leaves it to finish) or after it (the
+ * campaign is `sent`, and the answer is no). It waits for a stop in progress, which is a moment; any number of runners share the lock.
+ */
+async function goingOut(t: Q, id: number): Promise<boolean> {
+  const [row] = await t
+    .select({ id: newsletterCampaigns.id })
+    .from(newsletterCampaigns)
+    .where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending")))
+    .for("share");
+  return row !== undefined;
+}
+
+/**
+ * The next waiting delivery of campaign `id`, claimed: in its own short transaction, the campaign still going out (goingOut: the stop's lock), then the
+ * row locked FOR UPDATE SKIP LOCKED (a row another runner is claiming is passed over, never waited for) and set `claimed` at `now`, committed before its
+ * send. null: the campaign was stopped, none waits (or every waiting one is being claimed by another runner right now).
+ */
+async function claimNext(db: Db, id: number, now: Date): Promise<NewsletterDelivery | null> {
+  return db.transaction(async (t) => {
+    if (!(await goingOut(t, id))) return null;
+    const [next] = await t
+      .select({ id: newsletterDeliveries.id })
+      .from(newsletterDeliveries)
+      .where(and(eq(newsletterDeliveries.campaignId, id), eq(newsletterDeliveries.status, "waiting")))
+      .orderBy(asc(newsletterDeliveries.id))
+      .limit(1)
+      .for("update", { skipLocked: true });
+    if (!next) return null;
+    const [claimed] = await t
+      .update(newsletterDeliveries)
+      .set({ status: "claimed", claimedAt: now })
+      .where(and(eq(newsletterDeliveries.id, next.id), eq(newsletterDeliveries.status, "waiting")))
+      .returning();
+    return claimed ?? null;
+  });
+}
+
+/**
+ * Her consent right before her turn (spec §3 "On the way"): the token of her confirmed `subscribers` row, the one the press read (by its token) or one
+ * of her address made since (she left and signed up again: the mail carries her new link); null when there is none (she unsubscribed: `skipped`).
+ */
+async function consentToken(q: Q, d: NewsletterDelivery): Promise<string | null> {
+  const [row] = await q
+    .select({ token: subscribers.token })
+    .from(subscribers)
+    .where(and(isNotNull(subscribers.confirmedAt), or(eq(subscribers.token, d.token), sql`lower(trim(${subscribers.email})) = ${d.email}`)))
+    .orderBy(sql`${subscribers.token} = ${d.token} desc`, asc(subscribers.id))
+    .limit(1);
+  return row?.token ?? null;
+}
+
+/** The status an outcome gives its delivery (the plan's "At most once"): Resend's limits and its other refusals put it back to `waiting`. */
+const statusOf = (o: MailOutcome): "sent" | "failed" | "unknown" | "waiting" =>
+  o.ok ? "sent" : o.kind === "address" ? "failed" : o.kind === "unknown" ? "unknown" : "waiting";
+
+/**
+ * Writes a claimed delivery's outcome, only while it is still `claimed` (by its id and that status): nothing else is ever overwritten. `waiting` (Resend
+ * refused, nothing went) is written only while the campaign is still going out (goingOut, in one transaction with the write): a stop that came meanwhile
+ * has skipped what waited and left this claimed row to finish, and a row that did not go must not wait on under a sent campaign (the final review's M4),
+ * where no batch takes it: it is `skipped`, as the stop skipped the rest.
+ */
+async function settle(db: Db, d: Pick<NewsletterDelivery, "id" | "campaignId">, status: "sent" | "failed" | "unknown" | "waiting" | "skipped", now: Date): Promise<void> {
+  const write = async (q: Q, to: typeof status) =>
+    q
+      .update(newsletterDeliveries)
+      .set(to === "waiting" ? { status: to, claimedAt: null } : to === "sent" ? { status: to, sentAt: now } : { status: to })
+      .where(and(eq(newsletterDeliveries.id, d.id), eq(newsletterDeliveries.status, "claimed")))
+      .returning();
+  const done =
+    status === "waiting"
+      ? await db.transaction(async (t) => {
+          const going = await goingOut(t, d.campaignId);
+          if (!going) console.info(`[newsletter] campaign ${d.campaignId}: stopped meanwhile, delivery ${d.id} skipped instead of waiting`);
+          return write(t, going ? "waiting" : "skipped");
+        })
+      : await write(db, status);
+  if (done.length === 0) console.info(`[newsletter] delivery ${d.id}: no longer claimed, its outcome (${status}) not written`);
+}
+
+/** The deliveries of campaign `id` that went, by language. */
+async function sentCounts(q: Q, id: number): Promise<{ et: number; ru: number }> {
+  const rows = await q
+    .select({ locale: newsletterDeliveries.locale, n: count() })
+    .from(newsletterDeliveries)
+    .where(and(eq(newsletterDeliveries.campaignId, id), eq(newsletterDeliveries.status, "sent")))
+    .groupBy(newsletterDeliveries.locale);
+  return { et: rows.find((r) => r.locale === "et")?.n ?? 0, ru: rows.find((r) => r.locale === "ru")?.n ?? 0 };
+}
+
+/**
+ * When no delivery of campaign `id` waits or is claimed any more, the campaign is done: one going out becomes `sent`, at `now`, with `recipients` the
+ * mails that went by language; one stopped meanwhile (`sent` already) gets its `recipients` again, now that its last claimed rows have their
+ * outcome. true when done. (A row that is no longer waiting or claimed never changes again, so the counts stay right.)
+ */
+async function finishIfDone(db: Db, id: number, now: Date): Promise<boolean> {
+  const [open] = await db
+    .select({ id: newsletterDeliveries.id })
+    .from(newsletterDeliveries)
+    .where(and(eq(newsletterDeliveries.campaignId, id), inArray(newsletterDeliveries.status, ["waiting", "claimed"])))
+    .limit(1);
+  if (open) return false;
+  const row = await getCampaign(db, id);
+  if (!row || row.status === "draft") return false;
+  const recipients = await sentCounts(db, id);
+  if (row.status === "sent") {
+    await db.update(newsletterCampaigns).set({ recipients }).where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sent")));
+    return true;
+  }
+  const done = await db
+    .update(newsletterCampaigns)
+    .set({ status: "sent", sentAt: now, recipients })
+    .where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending")))
+    .returning();
+  if (done.length > 0) console.info(`[newsletter] campaign ${id}: sent, ${recipients.et + recipients.ru} mails went (et ${recipients.et}, ru ${recipients.ru})`);
+  return true;
+}
+
+/**
+ * The mark of a campaign whose last batch stopped because Resend refused (`refused`), so that the page can say so whoever ran the batch (the press or
+ * the daily job); it goes with the campaign's next mail that Resend accepts. In the KV store, for a month at most. The page reads it only while the
+ * campaign is going out (uudiskiri/page.tsx).
+ */
+const refusedKey = (id: number) => `newsletter:refused:${id}`;
+const REFUSED_MARK_SEC = 30 * 24 * 60 * 60;
+
+/** Did the last batch of campaign `id` stop because Resend refused, with no mail of it accepted since? */
+export async function sendRefused(kv: TextKv, id: number): Promise<boolean> {
+  return (await kv.get(refusedKey(id))) !== null;
+}
+
+/**
+ * One batch of campaign `id` (the press's first, or the daily job's). First, its stale claims become `unknown`. Then, while the day's count of every
+ * mail is below CAMPAIGN_DAILY_ROOM (and the campaign's own mails of the day below the lowered room, when the settings row is there: hasRoom) and
+ * `deps.deadline` has not come: claim one waiting row (claimNext), skip it when her consent is gone
+ * (consentToken: `skipped`), else send her the campaign in her language (the Estonian text under her own footer when the Russian one is missing)
+ * with her own unsubscribe link and the List-Unsubscribe headers, and write the outcome (statusOf). SEND_GAP_MS between two sends. Resend's limits
+ * stop the batch (`room`), and so does any other refusal (`refused`, and the mark: sendRefused) or three unknown answers in a row. When no row waits
+ * or is claimed any more, the campaign is `sent` (finishIfDone). A campaign that is not going out is left as it is.
+ */
+export async function runBatch(deps: SendDeps, id: number): Promise<BatchResult> {
+  const { db } = deps;
+  await expireStaleClaims(db, deps.now(), id);
+  const row = await getCampaign(db, id);
+  if (!row || row.status !== "sending") return { progress: await progressOf(db, id), stopped: null };
+  const draft = draftOf(row);
+  const school = await schoolOf(db, deps.now());
+  const send = deps.send ?? sendMailResult;
+  const gapMs = deps.gapMs ?? SEND_GAP_MS;
+  const kv = deps.env.KV;
+  const lowered = await roomSetting(db);
+  if (lowered !== null) console.info(`[newsletter] room override ${lowered}`); // (a row left behind after a check shows in the logs)
+  let marked = await sendRefused(kv, id).catch((e) => {
+    logFailure(`[newsletter] campaign ${id}: the refusal mark unavailable`, e);
+    return false;
+  });
+  const tally = { sent: 0, failed: 0, unknown: 0, skipped: 0 };
+  let stopped: BatchStop = null;
+  let mailed = false; // a mail went to Resend just before: the next one waits gapMs
+  let unknownInARow = 0;
+  for (;;) {
+    if (mailed && gapMs > 0) await sleep(gapMs);
+    mailed = false;
+    if (deps.now().getTime() >= deps.deadline) {
+      stopped = "time";
+      break;
+    }
+    if (!(await hasRoom(db, id, deps.now(), lowered))) {
+      stopped = "room";
+      break;
+    }
+    const delivery = await claimNext(db, id, deps.now());
+    if (!delivery) break;
+    const token = await consentToken(db, delivery);
+    if (token === null) {
+      await settle(db, delivery, "skipped", deps.now());
+      tally.skipped++;
+      continue;
+    }
+    const href = unsubscribeUrl(deps.siteUrl, token);
+    const mail = mailOf(draft, delivery.locale, { siteUrl: deps.siteUrl, school, unsubscribeHref: href, test: false });
+    let outcome: MailOutcome;
+    try {
+      outcome = await send(deps.env, { to: delivery.email, ...mail, headers: unsubscribeHeaders(href) }, { count: db });
+    } catch (e) {
+      logFailure(`[newsletter] campaign ${id}: delivery ${delivery.id}: the send failed`, e);
+      outcome = { ok: false, kind: "unknown" };
+    }
+    mailed = true;
+    await settle(db, delivery, statusOf(outcome), deps.now());
+    if (outcome.ok) {
+      tally.sent++;
+      unknownInARow = 0;
+      if (marked) {
+        await forgetKey(kv, refusedKey(id)).catch((e) => logFailure(`[newsletter] campaign ${id}: the refusal mark not removed`, e));
+        marked = false;
+      }
+      continue;
+    }
+    if (outcome.kind === "address") {
+      tally.failed++;
+      unknownInARow = 0;
+      continue;
+    }
+    if (outcome.kind === "unknown") {
+      tally.unknown++;
+      if (++unknownInARow < UNKNOWN_IN_A_ROW) continue;
+    }
+    stopped = outcome.kind === "quota" ? "room" : "refused";
+    break;
+  }
+  if (await finishIfDone(db, id, deps.now())) stopped = null;
+  else if (stopped === "refused") {
+    await kv.put(refusedKey(id), deps.now().toISOString(), { expirationTtl: REFUSED_MARK_SEC }).catch((e) => logFailure(`[newsletter] campaign ${id}: the refusal mark not written`, e));
+  }
+  const progress = await progressOf(db, id);
+  console.info(
+    `[newsletter] campaign ${id}: batch: ${tally.sent} sent, ${tally.failed} failed, ${tally.unknown} unknown, ${tally.skipped} skipped; ${progress.waiting} of ${progress.total} left${stopped ? `, stopped (${stopped})` : ""}`,
+  );
+  return { progress, stopped };
+}
+
+/**
+ * „Peata saatmine“ (spec §3, Draft): every waiting delivery of campaign `id` becomes `skipped` and the campaign is `sent` at `now`, `recipients` the
+ * mails that went, in one transaction that holds the campaign's row FOR UPDATE from its first statement: the lock a batch takes FOR SHARE at every claim
+ * and every put-back to `waiting` (goingOut), so the two agree. A row claimed by a batch that runs meanwhile is left to it (Review Focus 5): it finishes
+ * that one, sends nothing more (nothing waits, and no claim succeeds once the campaign is `sent`); if Resend refuses that mail its row is `skipped`, never
+ * `waiting` under the sent campaign (the final review's M4); the campaign's counts follow (finishIfDone). `notFound`; `notSending` for a draft or a
+ * campaign sent already.
+ */
+export async function stopSend(db: Db, id: number, now: Date): Promise<{ ok: true; progress: Progress } | { ok: false; error: "notFound" | "notSending" }> {
+  const result = await db.transaction(async (t) => {
+    const [row] = await t.select({ status: newsletterCampaigns.status }).from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
+    if (!row) return "notFound" as const;
+    if (row.status !== "sending") return "notSending" as const;
+    const skipped = await t
+      .update(newsletterDeliveries)
+      .set({ status: "skipped" })
+      .where(and(eq(newsletterDeliveries.campaignId, id), eq(newsletterDeliveries.status, "waiting")))
+      .returning();
+    await t.update(newsletterCampaigns).set({ status: "sent", sentAt: now, recipients: await sentCounts(t, id) }).where(eq(newsletterCampaigns.id, id));
+    return skipped.length;
+  });
+  if (typeof result === "string") return { ok: false, error: result };
+  console.info(`[newsletter] campaign ${id}: stopped, ${result} waiting deliveries skipped`);
+  return { ok: true, progress: await progressOf(db, id) };
+}
+
+/** „Saada proov“ at most this many an hour (spec D6). */
+export const TEST_SEND_LIMIT = 10;
+const TEST_WINDOW_SEC = 60 * 60;
+/** The test sends' counter (a fixed clock hour: ratelimit.ts windowKey; the entry lives for two windows). */
+const TEST_KEY = "newsletter:proov";
+
+/**
+ * „Saada proov“: the stored campaign `id` in `locale` as one ordinary mail to `to` (Maria's address or the signed-in admin's: the action decides),
+ * the very mail of a send but for „[Proov] “ before the subject and the test page behind its link and its List-Unsubscribe headers
+ * (api/newsletter/loobu?proov=1: it changes nothing). Counted like every mail. At most TEST_SEND_LIMIT an hour (`limited`, nothing sent); one that
+ * did not go (`mail`) is not counted against the hour. Any campaign, sent or not: Maria can still write and test.
+ */
+export async function sendTest(deps: SendDeps, id: number, to: string, locale: Locale): Promise<{ ok: true } | { ok: false; error: "notFound" | "mail" | "limited" }> {
   const row = await getCampaign(deps.db, id);
   if (!row) return { ok: false, error: "notFound" };
-  const key = windowKey(TEST_KEY, deps.now, TEST_WINDOW_SEC);
-  if (!(await reserveSlot(deps.env.KV, key, TEST_SEND_LIMIT, 2 * TEST_WINDOW_SEC))) {
+  const now = deps.now();
+  const kv = deps.env.KV;
+  const key = windowKey(TEST_KEY, now, TEST_WINDOW_SEC);
+  if (!(await reserveSlot(kv, key, TEST_SEND_LIMIT, 2 * TEST_WINDOW_SEC))) {
     console.info(`[newsletter] campaign ${id}: a test refused, ${TEST_SEND_LIMIT} this hour already`);
     return { ok: false, error: "limited" };
   }
+  let went = false;
   try {
-    const draft = draftOf(row);
-    const mail = mailOf(draft, locale, { siteUrl: deps.siteUrl, school: await schoolOf(deps.db, deps.now), unsubscribeHref: UNSUBSCRIBE_PLACEHOLDER, test: true });
-    const sent = await sendTestBroadcast(deps, to, { name: broadcastName(draft, locale, true), ...mail });
-    if (!sent.sent) {
-      // (the review's M7) a subscriber's contact unsubscribed in Resend: no mail would arrive, so none was sent and the hour is not spent
-      await releaseSlot(deps.env.KV, key, 2 * TEST_WINDOW_SEC).catch(() => {});
-      console.info(`[newsletter] campaign ${id}: no test, the address's contact unsubscribed in Resend`);
-      return { ok: false, error: "unsubscribed" };
-    }
-    console.info(`[newsletter] campaign ${id}: test broadcast ${sent.id} (${locale})`);
-    return { ok: true, realLink: sent.realLink };
-  } catch (e) {
-    await releaseSlot(deps.env.KV, key, 2 * TEST_WINDOW_SEC).catch(() => {});
-    return { ok: false, error: refusalOf(e, `[newsletter] campaign ${id}: the test failed`) };
+    const href = testUnsubscribeUrl(deps.siteUrl);
+    const mail = mailOf(draftOf(row), locale, { siteUrl: deps.siteUrl, school: await schoolOf(deps.db, now), unsubscribeHref: href, test: true });
+    const outcome = await (deps.send ?? sendMailResult)(deps.env, { to, ...mail, headers: unsubscribeHeaders(href) }, { count: deps.db });
+    went = outcome.ok;
+    if (!outcome.ok) console.info(`[newsletter] campaign ${id}: the test did not go (${outcome.kind})`);
+  } finally {
+    if (!went) await releaseSlot(kv, key, 2 * TEST_WINDOW_SEC).catch((e) => logFailure(`[newsletter] campaign ${id}: the test's place not given back`, e));
   }
+  if (!went) return { ok: false, error: "mail" };
+  console.info(`[newsletter] campaign ${id}: a test sent (${locale})`);
+  return { ok: true };
 }
 
 /**
- * What „Saada kõigile“ asks Maria to confirm: the subscribers in Resend by language, whether the Russian ones get the Estonian text, those left out
- * by the plan's limit (`left`) and those whose address Resend refused (`rejected`, ruling R17), the sync's report, and `updatedAt`, the campaign's
- * last change as this plan read it (ISO): the send goes only if the campaign is still that one (the review's M3).
+ * The daily job (api/cron/uudiskiri): every stale claim becomes `unknown`, then the one campaign going out, if any, gets its batch. `campaignId` null:
+ * nothing is going out.
  */
-export type SendPlan = { et: number; ru: number; ruFallsBack: boolean; left: number; rejected: number; updatedAt: string; report: FullSyncReport };
-
-/** What Maria confirmed: the plan's counts and its `updatedAt` (rulings R14, and the review's M3). */
-export type Confirmed = { et: number; ru: number; updatedAt: string };
-
-/**
- * May a send follow this sync (Review Focus 2, rulings R5, R17)? Not when the sync did not finish (its time ran out, or a contact that had to leave
- * our segments is still there), when a push or a removal failed, or when a subscriber is left unsynced while the plan's contacts are not used up.
- * Rows left out by the limit alone do not stop it (they are counted, `left`), nor do the rows whose address Resend refused (`rejected`: the
- * report never counts them `unsynced` or `failed`).
- */
-const syncBlocks = (r: FullSyncReport): boolean => !r.finished || r.failed > 0 || (r.unsynced > 0 && !r.limitReached);
-const leftOut = (r: FullSyncReport): number => (r.limitReached ? r.unsynced : 0);
-
-/** The plan of a send of `row` with these counts after this sync's `report`. */
-const planOf = (row: NewsletterCampaign, counts: Counts, report: FullSyncReport): SendPlan => ({
-  ...counts,
-  ruFallsBack: ruFallsBack(draftOf(row)),
-  left: leftOut(report),
-  rejected: report.rejected,
-  updatedAt: row.updatedAt.toISOString(),
-  report,
-});
-
-/** Is the campaign still the one Maria confirmed (its last change as her confirmation read it)? A time that is no time never is. */
-const sameVersion = (row: NewsletterCampaign, confirmedAt: string): boolean => row.updatedAt.getTime() === Date.parse(confirmedAt);
-
-/**
- * What a send is for: „Saada kõigile“ of a draft (`all`: both segments), or „Saada puuduv keel“ (`missing`, ruling R12) of a sent campaign whose
- * other language Resend refused: only that language's segment, never the one that already got it.
- */
-export type SendScope = "all" | "missing";
-
-type Counts = { et: number; ru: number };
-
-/** The languages of a sent campaign that did not go: planned for subscribers at its send, and without a broadcast recorded (R12). */
-export function missingLocales(row: Pick<NewsletterCampaign, "recipients" | "broadcasts">): Locale[] {
-  return LOCALES.filter((l) => (row.recipients?.[l] ?? 0) > 0 && !row.broadcasts?.[l]);
-}
-
-/** The languages a send of `scope` may go to now, or null when there is none: `all` needs a draft; `missing` a sent campaign with a language missing. */
-function scopeLocales(row: NewsletterCampaign, scope: SendScope): Locale[] | null {
-  if (scope === "all") return row.status === "draft" ? [...LOCALES] : null;
-  if (row.status !== "sent") return null;
-  const missing = missingLocales(row);
-  return missing.length > 0 ? missing : null;
-}
-
-const sameLocales = (a: Locale[], b: Locale[]) => a.length === b.length && a.every((l) => b.includes(l));
-
-/** The subscribers in Resend, by language, of the languages the send goes to (the others count 0). */
-async function scopedCounts(db: Db, locales: Locale[]): Promise<Counts> {
-  const all = await recipientCounts(db);
-  return { et: locales.includes("et") ? all.et : 0, ru: locales.includes("ru") ? all.ru : 0 };
-}
-
-/**
- * „Saada kõigile“ (or „Saada puuduv keel“: `scope` "missing", ruling R12), before the confirmation: the full sync (D2; its lease: `busy` while
- * another runs), then the plan, counted for the languages the send would go to. `sent` for a campaign that is sent or being sent (with
- * "missing": one that has no language missing), `unsynced` when the sync leaves a subscriber out for any reason but the plan's limit
- * (syncBlocks), `empty` when Resend has no subscriber of ours in those languages. Sends nothing.
- */
-export async function prepareSend(
-  deps: MarketingDeps,
-  id: number,
-  scope: SendScope = "all",
-): Promise<{ ok: true; plan: SendPlan } | { ok: false; error: "notFound" | "sent" | "unsynced" | "empty" | ResendRefusal }> {
-  if (!marketingConfigured(deps.env)) return { ok: false, error: "notConfigured" };
-  const row = await getCampaign(deps.db, id);
-  if (!row) return { ok: false, error: "notFound" };
-  const locales = scopeLocales(row, scope);
-  if (!locales) return { ok: false, error: "sent" };
-  let report: FullSyncReport;
-  try {
-    report = await fullSync(deps);
-  } catch (e) {
-    return { ok: false, error: refusalOf(e, `[newsletter] campaign ${id}: the sync before the send failed`) };
-  }
-  if (syncBlocks(report)) {
-    console.info(`[newsletter] campaign ${id}: not ready to send, ${report.unsynced} subscribers not synced, ${report.failed} failed`);
-    return { ok: false, error: "unsynced" };
-  }
-  const counts = await scopedCounts(deps.db, locales);
-  if (counts.et + counts.ru === 0) return { ok: false, error: "empty" };
-  return { ok: true, plan: planOf(row, counts, report) };
-}
-
-export type SendResult =
-  | { ok: true; recipients: Counts; missing: Locale[]; left: number }
-  | { ok: false; error: "changed"; plan: SendPlan }
-  | { ok: false; error: "notFound" | "sent" | "unsynced" | "empty" | "interrupted" | ResendRefusal };
-
-/**
- * „Saada“ after the confirmation (spec D6, §1, §5; Review Focus 2, 3, 5; rulings R5, R9, R11, R12, R14), under one lease from the sync to the last
- * broadcast. `confirmed`: the counts Maria confirmed and the campaign's last change as her confirmation read it (the plan of prepareSend).
- * `scope`: "all" for a draft, "missing" for „Saada puuduv keel“.
- * 1. the full sync again; refused (`unsynced`) as prepareSend refuses, `empty` without a subscriber in Resend in the send's languages;
- * 2. the counts after this sync against the confirmed ones (R14: the spec promises the exact count), and the campaign against the one confirmed (its
- *    `updatedAt`, the review's M3: another tab saved it meanwhile): when either moved nothing is sent, and the answer is `changed` with the new plan,
- *    for Maria to confirm again;
- * 3. one short transaction: the row locked (FOR UPDATE) and its state checked again (`draft`, or for "missing" `sent` with the same languages still
- *    missing; else `sent`: a second press, another tab, a lease that ran out; and still the version confirmed, else `changed`: a save that landed
- *    during the sync), and `sending` written with the counts (the broadcast that went before stays recorded), so that from here on nothing can
- *    send it again by itself;
- * 4. one broadcast per segment of the send that has subscribers, Estonian first: from MAIL_FROM, Maria as the reply-to, its language's subject,
- *    the html and text of campaignMail with Resend's placeholder for her unsubscribe link and the segment's language as the footer's; each recorded
- *    at once;
- * 5. `sent` with the time (a „Saada puuduv keel“ keeps the first send's), the counts and the broadcasts.
- * When a broadcast fails: Resend refused it (resend-marketing.ts broadcastRefused), so it was not made: when nothing of this send went, the
- * campaign is as it was before it (a draft again, or sent with its language missing, its last change too: a later press may send), else it is
- * `sent` with the one that went (the other in `missing`, for „Saada puuduv keel“). One that got any other answer or none (a timeout, a 5xx, a
- * gateway's 4xx) may have gone: the campaign stays `sending` with what is recorded (`interrupted`, ruling R13), and Maria looks in Resend; once she
- * has seen that a language is not there, „Märgi saatmata“ (markNotSent, ruling R16) records it so. Nothing is ever sent twice by the site.
- */
-export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: Confirmed, scope: SendScope = "all"): Promise<SendResult> {
-  if (!marketingConfigured(deps.env)) return { ok: false, error: "notConfigured" };
-  const before = await getCampaign(deps.db, id);
-  if (!before) return { ok: false, error: "notFound" };
-  const locales = scopeLocales(before, scope);
-  if (!locales) return { ok: false, error: "sent" };
-  try {
-    return await fullSyncThen(deps, async (report, broadcast): Promise<SendResult> => {
-      if (syncBlocks(report)) {
-        console.info(`[newsletter] campaign ${id}: not sent, ${report.unsynced} subscribers not synced, ${report.failed} failed`);
-        return { ok: false, error: "unsynced" };
-      }
-      const counts = await scopedCounts(deps.db, locales);
-      if (counts.et + counts.ru === 0) return { ok: false, error: "empty" };
-      if (counts.et !== confirmed.et || counts.ru !== confirmed.ru) {
-        console.info(`[newsletter] campaign ${id}: not sent, the subscribers changed since the confirmation (${confirmed.et}+${confirmed.ru} → ${counts.et}+${counts.ru})`);
-        return { ok: false, error: "changed", plan: planOf(before, counts, report) };
-      }
-      if (!sameVersion(before, confirmed.updatedAt)) {
-        console.info(`[newsletter] campaign ${id}: not sent, the campaign changed since the confirmation`);
-        return { ok: false, error: "changed", plan: planOf(before, counts, report) };
-      }
-      const school = await schoolOf(deps.db, deps.now);
-
-      const marked = await deps.db.transaction(async (tx) => {
-        const [row] = await tx.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
-        if (!row) return "notFound" as const;
-        const now = scopeLocales(row, scope);
-        if (!now || !sameLocales(now, locales)) return "sent" as const;
-        if (!sameVersion(row, confirmed.updatedAt)) return { kind: "changed" as const, row };
-        // the counts of the send's languages; a language that went before keeps its own
-        const recipients = scope === "all" ? counts : { et: locales.includes("et") ? counts.et : (row.recipients?.et ?? 0), ru: locales.includes("ru") ? counts.ru : (row.recipients?.ru ?? 0) };
-        const [sending] = await tx
-          .update(newsletterCampaigns)
-          .set({ status: "sending", recipients, broadcasts: scope === "all" ? {} : { ...row.broadcasts }, updatedAt: deps.now })
-          .where(eq(newsletterCampaigns.id, id))
-          .returning();
-        return { kind: "sending" as const, previous: row, sending };
-      });
-      if (typeof marked === "string") return { ok: false, error: marked };
-      if (marked.kind === "changed") {
-        // saved (another tab) while this send's sync ran: nothing is sent, Maria confirms the campaign as it is now
-        console.info(`[newsletter] campaign ${id}: not sent, the campaign changed since the confirmation`);
-        return { ok: false, error: "changed", plan: planOf(marked.row, counts, report) };
-      }
-
-      const { previous, sending } = marked;
-      // every later write of this send lands only on the `sending` row it wrote itself (the re-review's N1): a row reset meanwhile (by hand, or a
-      // lease that ran out) is never written onto, so no broadcast is ever recorded on a draft that a later „Saada kõigile“ would send again
-      const ours = and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending"), eq(newsletterCampaigns.updatedAt, sending.updatedAt));
-      const lost = (what: string): SendResult => {
-        logNote(`[newsletter] campaign ${id}: ${what}, but the campaign is no longer this send's \`sending\` row: nothing recorded, nothing more sent`);
-        return { ok: false, error: "interrupted" };
-      };
-      const draft = draftOf(sending);
-      const went: { et?: string; ru?: string } = { ...sending.broadcasts };
-      const sentNow: Locale[] = [];
-      const missing: Locale[] = [];
-      let refused: MarketingUnavailable | null = null;
-      let unknown = false;
-      for (const locale of locales) {
-        if (counts[locale] === 0) continue;
-        if (refused || unknown) {
-          missing.push(locale);
-          continue;
-        }
-        const mail = mailOf(draft, locale, { siteUrl: deps.siteUrl, school, unsubscribeHref: UNSUBSCRIBE_PLACEHOLDER, test: false });
-        const result = await broadcast(locale, { name: broadcastName(draft, locale, false), ...mail } satisfies BroadcastMail);
-        if (result.ok) {
-          went[locale] = result.id;
-          sentNow.push(locale);
-          const recorded = await deps.db.update(newsletterCampaigns).set({ broadcasts: { ...went } }).where(ours).returning();
-          if (recorded.length === 0) return lost(`broadcast ${result.id} went (${locale})`);
-          console.info(`[newsletter] campaign ${id}: broadcast ${result.id} sent to ${counts[locale]} subscribers (${locale})`);
-          continue;
-        }
-        logFailure(`[newsletter] campaign ${id}: the ${locale} broadcast ${result.refused ? "was refused" : "got no answer"}`, result.error);
-        missing.push(locale);
-        if (result.refused) refused = result.error;
-        else unknown = true;
-      }
-
-      if (unknown) {
-        console.info(`[newsletter] campaign ${id}: left sending, a broadcast's outcome is not known`);
-        return { ok: false, error: "interrupted" };
-      }
-      if (sentNow.length === 0) {
-        // nothing of this send went: the campaign as it was before it (its last change too: what Maria confirmed still holds)
-        await deps.db
-          .update(newsletterCampaigns)
-          .set({ status: previous.status, recipients: previous.recipients, broadcasts: previous.broadcasts, updatedAt: previous.updatedAt })
-          .where(ours);
-        console.info(`[newsletter] campaign ${id}: nothing sent, back to ${previous.status}`);
-        return { ok: false, error: keyRefused(refused) ? "permission" : "unavailable" };
-      }
-      const done = await deps.db
-        .update(newsletterCampaigns)
-        .set({ status: "sent", sentAt: previous.sentAt ?? deps.now, broadcasts: went, updatedAt: deps.now })
-        .where(ours)
-        .returning();
-      if (done.length === 0) return lost(`the send ended (${sentNow.join(" and ")} went)`);
-      console.info(`[newsletter] campaign ${id}: sent${missing.length ? `, the ${missing.join(" and ")} broadcast not` : ""}`);
-      return { ok: true, recipients: { et: sentNow.includes("et") ? counts.et : 0, ru: sentNow.includes("ru") ? counts.ru : 0 }, missing, left: leftOut(report) };
-    });
-  } catch (e) {
-    return { ok: false, error: refusalOf(e, `[newsletter] campaign ${id}: the send's sync failed`) };
-  }
-}
-
-/**
- * „Märgi saatmata“ (rulings R16, R18): Maria has looked in Resend and the `locale` broadcast of a campaign left `sending` is not there. Under the
- * newsletter's lease (ruling R18, the re-review's N1: a send that is still running holds it, so a mark pressed meanwhile, from another tab or after
- * a reload, is `busy` and changes nothing; and no send can start while the mark writes), then under the row's lock (FOR UPDATE, the same lock a
- * send takes), and only for the language unsentCandidate names (the first of the send without a recorded broadcast: a send goes Estonian first and
- * stops at the first broadcast without an answer, so every language after it was never tried, `notTried`, and is not sent either):
- * - with a broadcast recorded (the other language went): `sent`, its time the send's (`sentAt`, or the `sending` marker's time for a first send),
- *   the not-sent languages missing, so that „Saada puuduv keel“ (ruling R12) sends them alone, under its own lease, sync, counts and lock;
- * - with none recorded (nothing of the send went): a draft again, as a refused first broadcast leaves it, for „Saada kõigile“.
- * A language with a recorded broadcast is never marked (`sent`), nor is a campaign that is not `sending` (`sent`: sent, a draft, or marked
- * meanwhile in another tab); `earlier`: a language never tried (the one before it is the open one). Asks nothing of Resend.
- */
-export async function markNotSent(
-  db: Db,
-  id: number,
-  locale: Locale,
-  now: Date,
-): Promise<{ ok: true; status: "draft" | "sent" } | { ok: false; error: "notFound" | "sent" | "earlier" | "busy" }> {
-  let result: { ok: true; status: "draft" | "sent" } | { ok: false; error: "notFound" | "sent" | "earlier" | "busy" };
-  try {
-    result = await underNewsletterLease(db, "the mark", () => markUnderLock(db, id, locale, now));
-  } catch (e) {
-    if (!(e instanceof FullSyncBusy)) throw e;
-    result = { ok: false, error: "busy" }; // (a sync or a send is running: the lease said so in the log)
-  }
-  if (result.ok) console.info(`[newsletter] campaign ${id}: the ${locale} broadcast marked not sent (checked in Resend): ${result.status === "sent" ? "sent, the language missing" : "a draft again"}`);
-  else console.info(`[newsletter] campaign ${id}: the ${locale} broadcast not marked not sent (${result.error})`);
-  return result;
-}
-
-async function markUnderLock(db: Db, id: number, locale: Locale, now: Date): Promise<{ ok: true; status: "draft" | "sent" } | { ok: false; error: "notFound" | "sent" | "earlier" }> {
-  return db.transaction(async (tx) => {
-    const [row] = await tx.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
-    if (!row) return { ok: false as const, error: "notFound" as const };
-    // (a language with a recorded broadcast, or none of the send's, is never one to mark; one never tried waits for the one before it)
-    const languages = sendLanguages(row);
-    const state = languages.find((l) => l.locale === locale)?.state;
-    if (row.status !== "sending" || (state !== "unknown" && state !== "notTried")) return { ok: false as const, error: "sent" as const };
-    if (unsentCandidate(row) !== locale) return { ok: false as const, error: "earlier" as const };
-    const went = languages.filter((l) => l.state === "sent");
-    const stillSending = and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending"));
-    if (went.length === 0) {
-      await tx.update(newsletterCampaigns).set({ status: "draft", sentAt: null, recipients: null, broadcasts: null, updatedAt: now }).where(stillSending);
-      return { ok: true as const, status: "draft" as const };
-    }
-    await tx.update(newsletterCampaigns).set({ status: "sent", sentAt: row.sentAt ?? row.updatedAt, updatedAt: now }).where(stillSending);
-    return { ok: true as const, status: "sent" as const };
-  });
+export async function runDueCampaigns(deps: SendDeps): Promise<{ campaignId: number | null; progress: Progress | null; stopped: BatchStop }> {
+  await expireStaleClaims(deps.db, deps.now());
+  const [due] = await deps.db
+    .select({ id: newsletterCampaigns.id })
+    .from(newsletterCampaigns)
+    .where(eq(newsletterCampaigns.status, "sending"))
+    .orderBy(asc(newsletterCampaigns.id))
+    .limit(1);
+  if (!due) return { campaignId: null, progress: null, stopped: null };
+  return { campaignId: due.id, ...(await runBatch(deps, due.id)) };
 }

@@ -6,7 +6,6 @@ import { logFailure } from "@/server/log";
 import { paymentProvider } from "@/server/payments/montonio";
 import { handleNotify } from "@/server/payments/routes";
 import { revalidatePublic } from "@/server/public-cache";
-import { subscriberSync } from "@/server/resend-marketing";
 
 export const dynamic = "force-dynamic";
 /** A token in doubt asks Montonio (15 s at most): the function must not hang for the plan's default 300 s. */
@@ -20,17 +19,14 @@ export const maxDuration = 30;
 export async function POST(request: Request): Promise<Response> {
   try {
     const env = { ...serverEnv(), KV: serverKv() };
-    const db = getDb();
     return await handleNotify(request, {
-      db,
+      db: getDb(),
       env,
       now: new Date(),
       siteUrl: env.SITE_URL,
       later: (task) => after(() => task().catch((e) => logFailure("[payments] background task failed", e))),
       changed: revalidatePublic,
       montonio: paymentProvider(),
-      // a paid e-course purchase's newsletter box: its sync to Resend (newsletter campaigns); none without the newsletter's key
-      newsletterSync: subscriberSync(db, env),
     });
   } catch (e) {
     logFailure("[payments] webhook failed", e);

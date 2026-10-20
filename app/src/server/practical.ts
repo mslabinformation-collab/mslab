@@ -318,7 +318,7 @@ export async function submitPractical(deps: PracticalDeps, clientId: number, slu
     const notice = { accessId: known.id, name: done.who.name.trim() || done.who.email, email: done.who.email, course: known.course.title.et, round: done.round };
     deps.later(async () => {
       const s = practicalSubmittedSummary(notice, adminUrl(deps.siteUrl));
-      const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: notice.email, siteUrl: deps.siteUrl });
+      const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: notice.email, siteUrl: deps.siteUrl, count: deps.db });
       console.info(`[practical] access ${notice.accessId}: Maria notified by e-mail: ${r.mail}, Telegram: ${r.telegram}`);
     });
   }

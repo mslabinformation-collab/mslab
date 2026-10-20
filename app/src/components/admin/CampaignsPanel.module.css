@@ -1,5 +1,5 @@
 /* The „Kampaaniad“ tab of „Uudiskiri“ (newsletter campaigns, Task 4): the list of campaigns above, the editor of the one chosen under it
-   (its fields and, beside them, the preview of the real mail and the sends; site-editor.module.css .cols puts them in one column on a narrow
+   (its fields and, beside them, the preview of the real mail; site-editor.module.css .cols puts them in one column on a narrow
    screen). */
 
 .panel {
@@ -35,6 +35,17 @@
 
 .row > :last-child {
   grid-column: 1 / -1;
+}
+
+/* the radio pill of an address in „Saada proov“ ("Maria: …", "Mina: …"): a long address wraps instead of widening the screen */
+.address {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* the line under a name (sent, going out with its progress, or the last change): never wider than the screen */
+.rowLine {
+  overflow-wrap: anywhere;
 }
 
 /* a 44px tall target, whatever the length of the name (tests/e2e/newsletter-campaigns.spec.ts looks at it at four widths) */
@@ -100,7 +111,7 @@
   border: 0;
 }
 
-/* ---------- the sends ---------- */
+/* ---------- the sends: „Saada proov“, „Saada kõigile“ and its confirmation, „Peata saatmine“ ---------- */
 
 .sendPart {
   display: grid;
@@ -137,53 +148,30 @@
   border-radius: 14px;
 }
 
-/* ---------- a sent campaign ---------- */
-
-.broadcasts {
-  display: grid;
-  gap: 6px;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.broadcastsList {
-  margin: 12px 0 0;
-}
-
-/* a send left half way (ruling R16): each language with what is known of it */
-.languages {
-  display: grid;
-  gap: 12px;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.language {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-}
-
-.language p {
+.confirm p {
   margin: 0;
 }
 
-.language > a {
-  justify-self: start;
-}
-
-.mark {
-  display: grid;
-  gap: 10px;
-  margin-top: 4px;
-}
+/* ---------- a sent campaign, or one going out ---------- */
 
 .readOnly {
   margin: 14px 0;
+}
+
+/* the failed and unknown counts, one line each, only when they are not 0 */
+.lines {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.lines p {
+  margin: 0;
+}
+
+/* the progress line of a campaign going out (and its list row): the numbers may be long, never wider than the screen */
+.progress {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 640px) {

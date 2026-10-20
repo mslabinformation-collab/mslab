@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
 import { releaseHoldLocked } from "@/db/queries/payments";
 import { readSetting } from "@/db/queries/public";
@@ -41,7 +41,6 @@ import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env, type Mail } 
 import type { Montonio } from "./payments/montonio";
 import { startEcoursePayment, startRegistrationPayment } from "./payments/start";
 import { RATE_LIMIT, RATE_WINDOW_SEC, rateKey, rateLimit } from "./ratelimit";
-import type { SubscriberSync } from "./resend-marketing";
 import type { PublicChange } from "./cache-targets";
 import { sendWelcome } from "./newsletter";
 import { newToken, sha256 } from "./token";
@@ -74,11 +73,6 @@ export type Deps = {
   changed?: (change: PublicChange) => Promise<void> | void;
   /** Online payments (phase 2b, server/payments/montonio.ts paymentProvider); absent or null: the forms of today. */
   montonio?: Montonio | null;
-  /**
-   * Syncs an address whose subscriber row a sign-up changed to Resend (newsletter campaigns, spec D2; resend-marketing.ts subscriberSync), run
-   * in the work after the response. Absent (no marketing key, the tests of other things): nothing is synced, and the full sync catches up.
-   */
-  newsletterSync?: SubscriberSync;
 };
 
 export type FormName = "contact" | "subscribe" | "register" | "individual" | "interest" | "ecourse" | "practice" | "waitlist";
@@ -115,8 +109,6 @@ type Stored = {
   confirm?: Confirmation;
   subscribe?: { email: string; locale: "et" | "ru" };
   welcome?: WelcomeDue;
-  /** The address whose subscriber row the newsletter's own forms changed: synced to Resend after the welcome mail (syncSubscriber). */
-  synced?: string;
 };
 
 /** A rate limit that fails open: when KV is unavailable (or over its daily write quota) the submission goes through. */
@@ -165,20 +157,18 @@ async function submission<T>(
   const { notify, confirm } = out;
   if (notify) {
     deps.later(async () => {
-      const r = await notifyMaria(deps.env, notify.subject, notify.text, { short: notify.short, replyTo: notify.replyTo, siteUrl: deps.siteUrl });
+      const r = await notifyMaria(deps.env, notify.subject, notify.text, { short: notify.short, replyTo: notify.replyTo, siteUrl: deps.siteUrl, count: deps.db });
       console.info(`[forms] ${form}: stored; Maria notified by e-mail: ${r.mail}, Telegram: ${r.telegram}`);
     });
   }
   // One task, in this order: the visitor's own confirmation (it carries the prepayment details) first, then the newsletter's mail (the
-  // welcome mail of a marketing sign-up), then the sign-up's sync to Resend (newsletter campaigns). The two mails count on different daily
-  // counters, so they do not compete for a place; the order stays so that the transactional mail is always the first out, and the mails go
-  // before the sync's calls to the same account. sendConfirmation, subscribeLater, welcomeLater and syncSubscriber each catch their own
+  // welcome mail of a marketing sign-up). The two count on different daily counters, so they do not compete for a place; the order stays
+  // so that the transactional mail is always the first out. sendConfirmation, subscribeLater and welcomeLater each catch their own
   // failures, but whatever either does one day, a throw from the confirmation must never skip the sign-up the visitor ticked: it is caught
   // here and logged (the error class and code only, never an address).
   const wish = out.subscribe;
   const welcome = out.welcome;
-  const synced = out.synced;
-  if (confirm || wish || welcome || synced) {
+  if (confirm || wish || welcome) {
     deps.later(async () => {
       if (confirm) {
         try {
@@ -189,7 +179,6 @@ async function submission<T>(
       }
       if (wish) await subscribeLater(deps, form, wish);
       if (welcome) await welcomeLater(deps, form, welcome);
-      if (synced) await syncSubscriber(deps, form, synced);
     });
   }
   return out.result;
@@ -241,7 +230,7 @@ async function sendConfirmation(deps: Deps, form: FormName, confirm: Confirmatio
       logNote(`[forms] ${form}: daily mail cap reached: no confirmation e-mail to the visitor`);
       return;
     }
-    const sent = await sendMail(deps.env, build(login));
+    const sent = await sendMail(deps.env, build(login), { count: deps.db });
     console.info(`[forms] ${form}: stored; confirmation e-mail to the visitor sent: ${sent}`);
     if (sent && confirm.sent) {
       try {
@@ -665,10 +654,8 @@ type WelcomeDue = { email: string; locale: "et" | "ru" };
  * page) and subscribeLater (the registration forms' box). Since the owner's decision of 09.10 it is one step: the sign-up itself is the
  * consent and the subscription. A new address is stored confirmed (`confirmedAt` = `consentAt` = the time of the submission); a row of the
  * old double opt-in that was never confirmed is confirmed now, with its language; an address that is confirmed already is left exactly as
- * it is, but for its Resend mark: signing up again is a fresh consent (newsletter campaigns, spec D3), so the row is marked unsynced and the
- * sync after the answer sets her contact back to subscribed, should she have unsubscribed in Resend meanwhile (ruling R1). Returns what is due
- * after that — the welcome mail (welcomeLater) — or null when nothing is: the address was subscribed already. Every case leaves the address to
- * be synced (syncSubscriber). `form` is the calling form's name, for the log lines. The answer to the visitor is the same whichever it was.
+ * it is. Returns what is due after that — the welcome mail (welcomeLater) — or null when nothing is: the address was subscribed already.
+ * `form` is the calling form's name, for the log lines. The answer to the visitor is the same whichever of the three it was.
  */
 async function subscribeAddress(deps: Deps, form: FormName, email: string, locale: "et" | "ru"): Promise<WelcomeDue | null> {
   const [created] = await deps.db
@@ -684,22 +671,8 @@ async function subscribeAddress(deps: Deps, form: FormName, email: string, local
     .where(and(eq(subscribers.email, email), isNull(subscribers.confirmedAt)))
     .returning();
   if (confirmed) return { email, locale };
-  await deps.db.update(subscribers).set({ syncedAt: null }).where(sql`lower(${subscribers.email}) = ${normalizeEmail(email)}`);
-  console.info(`[forms] ${form}: already subscribed, nothing changed (marked for the Resend sync)`);
+  console.info(`[forms] ${form}: already subscribed, nothing changed`);
   return null;
-}
-
-/**
- * The address's sync to Resend after a sign-up changed its row (deps.newsletterSync: absent, nothing). Never throws: the sign-up is stored, and
- * a failure is logged without the address (the row keeps its "not synced" mark for the next sync).
- */
-async function syncSubscriber(deps: Deps, form: FormName, email: string): Promise<void> {
-  if (!deps.newsletterSync) return;
-  try {
-    await deps.newsletterSync(email);
-  } catch (e) {
-    logFailure(`[forms] ${form}: newsletter sync failed`, e);
-  }
 }
 
 /**
@@ -734,14 +707,13 @@ async function welcomeLater(deps: Deps, form: FormName, due: WelcomeDue): Promis
 
 /**
  * "Soovin MS LABi uudiseid ja pakkumisi" ticked on a registration form (phase 2c): the newsletter's own sign-up (subscribeAddress, then
- * its welcome mail with all the guards, then the address's sync to Resend) after the answer. Never throws: the registration is stored whatever
- * happens here, and a failure is logged without the address. settle.ts calls it too, when a paid e-course purchase had the box ticked (phase 2b).
+ * its welcome mail with all the guards) after the answer. Never throws: the registration is stored whatever happens here, and a failure is
+ * logged without the address. settle.ts calls it too, when a paid e-course purchase had the box ticked (phase 2b).
  */
 export async function subscribeLater(deps: Deps, form: FormName, wish: { email: string; locale: "et" | "ru" }): Promise<void> {
   try {
     const due = await subscribeAddress(deps, form, wish.email, wish.locale);
     if (due) await welcomeLater(deps, form, due);
-    await syncSubscriber(deps, form, wish.email);
   } catch (e) {
     logFailure(`[forms] ${form}: newsletter sign-up failed`, e);
   }
@@ -759,6 +731,6 @@ export async function subscribeLater(deps: Deps, form: FormName, wish: { email: 
 export function handleSubscribe(deps: Deps, formData: FormData): Promise<ActionResult> {
   return submission(deps, "subscribe", formData, parseSubscribe, async ({ email, locale }) => {
     const welcome = await subscribeAddress(deps, "subscribe", email, locale);
-    return welcome ? { result: OK, welcome, synced: email } : { result: OK, synced: email };
+    return welcome ? { result: OK, welcome } : { result: OK };
   });
 }

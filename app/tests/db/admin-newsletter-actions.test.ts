@@ -1,342 +1,53 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { mailSuppressions, newsletterCampaigns, settings, subscribers } from "@/db/schema";
-import type { Env } from "@/server/notify";
-import { ensureSegments, SEGMENT_NAMES, SYNC_LEASE_SETTING, type MarketingDeps } from "@/server/resend-marketing";
-import { fakeKv, stubFetch } from "../fakes";
+import { kvEntries, mailQuota, newsletterCampaigns, settings, subscribers } from "@/db/schema";
+import { CAMPAIGN_ROOM_KEY } from "@/domain/newsletter-campaign";
+import { adminEt } from "@/i18n/dict/admin";
+import { PgKv } from "@/server/kv";
+import { getCampaign, progressOf, sendRefused } from "@/server/newsletter-campaigns";
+import { stubFetch } from "../fakes";
 import { makeTestDb } from "./helpers";
-import { DOWN, fakeResend, type FakeResend } from "./resend-fake";
 
-// Maria's „Sünkrooni Resendiga“ on a real (PGlite) database and Resend as an in-memory fake (newsletter campaigns, Task 3; spec D2, D8, §5): what the
-// action answers (the full sync's report as it is, or one of four refusals), that a sync that ran refreshes the open page and one that did not does
-// not, that the key which can only send is told apart from Resend being down (ledger note for Task 3: the real SDK's answer to a restricted key is
-// tried here too, with a stubbed fetch), that a failure is logged by its class and ids only, and that the deps carry SITE_URL (never the request's
-// address) and the interactive time budget. The admin session, the cache and the request are stand-ins (the guard is tests/unit/admin-guards.test.ts's).
+// Maria's campaign actions on a real (PGlite) database (newsletter campaigns, Task 4; the sending half is the 20.10 design's, Task 3): „Salvesta“,
+// „Kopeeri“, and the sends („Saada kõigile“ in its two steps, „Peata saatmine“, „Saada proov“, the progress) through their actions: what they answer,
+// that a change refreshes the open page and a refusal does not, and that a failure is logged by its class only. The admin session and the cache are
+// stand-ins (the guard is tests/unit/admin-guards.test.ts's); Resend is never called: its HTTP API is stubbed (tests/fakes.ts stubFetch).
 
-const state = vi.hoisted(() => ({ db: null as unknown, fake: null as unknown, budgets: [] as (number | undefined)[] }));
+const state = vi.hoisted(() => ({ db: null as unknown }));
 const cache = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("next/cache", () => cache);
-// (the sync must never read the request: a read fails loudly)
-vi.mock("next/headers", () => ({
-  headers: async () => {
-    throw new Error("the newsletter sync read the request's headers");
-  },
-}));
-vi.mock("next/server", () => ({ after: () => {} }));
 vi.mock("@/server/auth", () => ({ adminAction: (fn: (admin: unknown, ...args: unknown[]) => unknown) => (...args: unknown[]) => fn({ email: "admin@example.test" }, ...args) }));
-// the real deps builder, with the in-memory Resend and no pause between calls put into its deps (state.fake null: the real SDK, on a stubbed fetch)
-vi.mock("@/server/send-deps", async (importOriginal) => {
-  const real = await importOriginal<typeof import("@/server/send-deps")>();
-  return {
-    ...real,
-    adminMarketingDeps: (budgetMs?: number) => {
-      state.budgets.push(budgetMs);
-      const fake = state.fake as FakeResend | null;
-      return { ...real.adminMarketingDeps(budgetMs), ...(fake ? { resend: fake.r, gapMs: 0 } : {}) };
-    },
-  };
-});
 
 const actions = await import("@/server/actions/admin-newsletter");
-const { ADMIN_SYNC_BUDGET_MS, adminMarketingDeps } = await import("@/server/send-deps");
-const { adminEt } = await import("@/i18n/dict/admin");
-
-const SITE = "https://mslab.example";
-const NOW = new Date();
-const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
 
 let db: Db;
-let fake: FakeResend;
-
-let n = 0;
-/** A confirmed subscriber (an hour before now) unless told otherwise. */
-async function sub(email: string, o: Partial<typeof subscribers.$inferInsert> = {}) {
-  const [row] = await db
-    .insert(subscribers)
-    .values({ email, locale: "et", token: `tok${++n}`, consentAt: at(-60), confirmedAt: at(-60), ...o })
-    .returning();
-  return row;
-}
-const rowOf = async (email: string) => (await db.select().from(subscribers).where(eq(subscribers.email, email)))[0];
 
 beforeAll(async () => {
   db = await makeTestDb();
   state.db = db;
 });
 beforeEach(async () => {
+  await db.delete(newsletterCampaigns);
   await db.delete(subscribers);
-  await db.delete(mailSuppressions);
-  await db.delete(settings);
-  fake = fakeResend();
-  state.fake = fake;
-  state.budgets.length = 0;
+  await db.delete(mailQuota);
+  await db.delete(kvEntries);
   cache.refresh.mockReset();
-  vi.stubEnv("SITE_URL", SITE);
-  vi.stubEnv("RESEND_MARKETING_KEY", "re_marketing_test");
-  vi.stubEnv("RESEND_API_KEY", "");
   for (const method of ["info", "error", "warn", "log"] as const) vi.spyOn(console, method).mockImplementation(() => {});
 });
 afterEach(() => {
-  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-/** Every line the sync logged, joined. */
+/** Every line the actions logged, joined. */
 const logged = () =>
   (["info", "error", "warn", "log"] as const)
     .flatMap((m) => (console[m] as unknown as { mock: { calls: unknown[][] } }).mock.calls.flat())
     .map(String)
     .join("\n");
-
-/** The deps the sync would run on, for the setup that has to be done before a press (the segments and the property). */
-const setup = (): MarketingDeps => {
-  const env: Env = { KV: fakeKv(), MAIL_FROM: "MS LAB <info@send.example.test>", MARIA_EMAIL: "maria@example.com", SITE_URL: SITE, RESEND_MARKETING_KEY: "re_marketing_test" };
-  return { db, env, siteUrl: SITE, now: NOW, resend: fake.r, gapMs: 0 };
-};
-
-describe("fullSyncAction: without the newsletter's key", () => {
-  test("`notConfigured`: Resend is not asked, nothing is stored or refreshed, and nothing is logged as a failure", async () => {
-    vi.stubEnv("RESEND_MARKETING_KEY", "");
-    await sub("kati@example.com");
-    expect(await actions.fullSyncAction()).toEqual({ error: "notConfigured" });
-    expect(fake.calls).toEqual([]);
-    expect((await rowOf("kati@example.com")).syncedAt).toBeNull();
-    expect(cache.refresh).not.toHaveBeenCalled();
-    expect(console.error).not.toHaveBeenCalled();
-  });
-
-  test("ruling R15: RESEND_API_KEY alone is no switch (it is the site's own mails' key): `notConfigured`, and Resend is not asked", async () => {
-    vi.stubEnv("RESEND_MARKETING_KEY", "");
-    vi.stubEnv("RESEND_API_KEY", "re_full_access_name");
-    await sub("kati@example.com");
-    expect(await actions.fullSyncAction()).toEqual({ error: "notConfigured" });
-    expect(fake.calls).toEqual([]);
-    expect((await rowOf("kati@example.com")).syncedAt).toBeNull();
-  });
-});
-
-describe("fullSyncAction: a sync that ran", () => {
-  test("answers the full sync's report as it is, and the open page is refreshed once", async () => {
-    await ensureSegments(setup());
-    const et = fake.segment(SEGMENT_NAMES.et)!;
-    // Mari unsubscribed in Resend (her row goes, her contact with it); Anu is synced and Resend suppresses her address; Kati is new
-    const mari = fake.add("mari@example.com", { unsubscribed: true, segments: [et] });
-    await sub("mari@example.com", { syncedAt: at(-30), resendContactId: mari.id });
-    const anu = fake.add("anu@example.com", { segments: [et] });
-    await sub("anu@example.com", { syncedAt: at(-30), resendContactId: anu.id });
-    fake.suppressions.push({ id: "sup_1", email: "anu@example.com", origin: "bounce", source_id: null, created_at: "2026-10-18T10:00:00.000Z" });
-    await sub("kati@example.com");
-
-    const report = await actions.fullSyncAction();
-    expect(report).toEqual({
-      contacts: 2,
-      added: 1,
-      updated: 0,
-      removed: 1,
-      unsubscribedPulled: 1,
-      suppressed: 1,
-      unsynced: 0,
-      failed: 0,
-      rejected: 0,
-      limitReached: false,
-      finished: true,
-    });
-    expect(await rowOf("mari@example.com")).toBeUndefined();
-    expect((await rowOf("kati@example.com")).syncedAt).toBeInstanceOf(Date);
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-  });
-
-  test("the contact limit is in the report (`limitReached`, the rows left out in `unsynced`); the page is refreshed", async () => {
-    await ensureSegments(setup());
-    for (let i = 0; i < 1000; i++) fake.add(`other${i}@example.com`); // Maria's other contacts fill the plan
-    await sub("kati@example.com");
-    expect(await actions.fullSyncAction()).toMatchObject({ added: 0, unsynced: 1, limitReached: true, contacts: 1000 });
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-  });
-
-  test("the interactive time budget: the deps carry ADMIN_SYNC_BUDGET_MS, and a sync that runs out of it is `finished: false` (the rest waits), still refreshed", async () => {
-    expect(ADMIN_SYNC_BUDGET_MS).toBe(25_000);
-    for (const email of ["a@example.com", "b@example.com", "c@example.com"]) await sub(email);
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(NOW);
-    fake.onCall = (name) => {
-      if (name === "contacts.create") vi.setSystemTime(Date.now() + 20_000);
-    };
-    const report = await actions.fullSyncAction();
-    expect(state.budgets).toEqual([ADMIN_SYNC_BUDGET_MS]);
-    expect(report).toMatchObject({ added: 2, unsynced: 1, finished: false });
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("fullSyncAction: Resend refuses or does not answer", () => {
-  test("Resend down: `unavailable`; no row is touched, the page is not refreshed, the log has the call and the status and no address", async () => {
-    await sub("kati@example.com");
-    fake.fail.set("segments.list", DOWN);
-    expect(await actions.fullSyncAction()).toEqual({ error: "unavailable" });
-    expect((await rowOf("kati@example.com")).syncedAt).toBeNull();
-    expect(cache.refresh).not.toHaveBeenCalled();
-    expect(logged()).toContain("[newsletter-sync]");
-    expect(logged()).toContain("status 500");
-    expect(logged()).not.toContain("@");
-  });
-
-  test("a network failure (the call throws) is `unavailable` too", async () => {
-    await sub("kati@example.com");
-    fake.fail.set("segments.list", () => {
-      throw new Error("socket hang up for kati@example.com");
-    });
-    expect(await actions.fullSyncAction()).toEqual({ error: "unavailable" });
-    expect(logged()).not.toContain("kati");
-  });
-
-  test.each([
-    ["a key that may only send (401 restricted_api_key)", { name: "restricted_api_key", statusCode: 401, message: "This API key is restricted to only send emails" }],
-    ["a key Resend does not know (403 invalid_api_key)", { name: "invalid_api_key", statusCode: 403, message: "API key is invalid" }],
-    ["a refusal by status alone (401, an unnamed error)", { name: "unauthorized", statusCode: 401, message: "no" }],
-    ["a refusal by status alone (403, an unnamed error)", { name: "forbidden", statusCode: 403, message: "no" }],
-  ])("%s: `permission`, in whichever call it first shows", async (_name, error) => {
-    await sub("kati@example.com");
-    for (const call of ["segments.list", "contacts.list"]) {
-      fake.fail.clear();
-      fake.calls.length = 0;
-      // (the segments are made once: after they are stored the first Resend call is the contacts' list)
-      fake.fail.set(call, error);
-      if (call === "contacts.list") await ensureSegments(setup());
-      expect(await actions.fullSyncAction(), call).toEqual({ error: "permission" });
-    }
-    expect(cache.refresh).not.toHaveBeenCalled();
-    expect(logged()).not.toContain("@");
-  });
-
-  test("403 validation_error is not about the key (it is how Resend words other refusals): `unavailable`", async () => {
-    await sub("kati@example.com");
-    fake.fail.set("segments.list", { name: "validation_error", statusCode: 403, message: "something else" });
-    expect(await actions.fullSyncAction()).toEqual({ error: "unavailable" });
-  });
-
-  test("the real SDK, as Resend answers a key that can only send (401, `restricted_api_key`): `permission`, never the generic text", async () => {
-    state.fake = null; // the real client on a stubbed fetch; the first call fails, so no pause is waited for
-    await sub("kati@example.com");
-    const f = stubFetch(() => Response.json({ statusCode: 401, name: "restricted_api_key", message: "This API key is restricted to only send emails" }, { status: 401 }));
-    const answer = await actions.fullSyncAction();
-    expect(answer).toEqual({ error: "permission" });
-    expect(f.calls).toHaveLength(1);
-    expect(f.calls[0].url).toContain("api.resend.com");
-    expect(f.calls[0].headers.get("authorization")).toBe("Bearer re_marketing_test");
-    expect(adminEt.newsletter.sync.errors.permission).toBe("Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.");
-    expect(adminEt.newsletter.sync.errors.permission).not.toBe(adminEt.newsletter.sync.errors.unavailable);
-    expect(logged()).toContain("restricted_api_key");
-  });
-
-  test("the real SDK on a 403 `invalid_api_key`: `permission`; on a 500 and on no answer at all: `unavailable`", async () => {
-    state.fake = null;
-    await sub("kati@example.com");
-    stubFetch(() => Response.json({ statusCode: 403, name: "invalid_api_key", message: "API key is invalid" }, { status: 403 }));
-    expect(await actions.fullSyncAction()).toEqual({ error: "permission" });
-    stubFetch(() => Response.json({ statusCode: 500, name: "internal_server_error", message: "oops" }, { status: 500 }));
-    expect(await actions.fullSyncAction()).toEqual({ error: "unavailable" });
-    stubFetch(() => {
-      throw new TypeError("fetch failed");
-    });
-    expect(await actions.fullSyncAction()).toEqual({ error: "unavailable" });
-    expect(cache.refresh).not.toHaveBeenCalled();
-  });
-});
-
-describe("fullSyncAction: another full sync is running (rulings R9, R11)", () => {
-  const lease = async () => (await db.select().from(settings).where(eq(settings.key, SYNC_LEASE_SETTING)))[0];
-
-  test("a lease another holds: `busy`; Resend is not asked, no row is touched, the page is not refreshed, and it is not logged as a failure", async () => {
-    await sub("kati@example.com");
-    const other = { holder: "the-cron", until: Date.now() + 60_000 };
-    await db.insert(settings).values({ key: SYNC_LEASE_SETTING, value: other });
-    expect(await actions.fullSyncAction()).toEqual({ error: "busy" });
-    expect(fake.calls).toEqual([]);
-    expect((await rowOf("kati@example.com")).syncedAt).toBeNull();
-    expect((await lease()).value).toEqual(other);
-    expect(cache.refresh).not.toHaveBeenCalled();
-    expect(console.error).not.toHaveBeenCalled();
-    expect(logged()).toContain("already running");
-    expect(adminEt.newsletter.sync.errors.busy).toBe("Sünkroonimine juba käib — proovi hetke pärast uuesti.");
-  });
-
-  test("two presses at once (two tabs): one report and one `busy`; afterwards the lease is gone and the next press runs", async () => {
-    await sub("kati@example.com");
-    const answers = await Promise.all([actions.fullSyncAction(), actions.fullSyncAction()]);
-    expect(answers.filter((a) => "error" in a)).toEqual([{ error: "busy" }]);
-    expect(answers.filter((a) => !("error" in a))).toHaveLength(1);
-    expect(fake.calls.filter((c) => c === "contacts.create")).toHaveLength(1);
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-    expect(await lease()).toBeUndefined();
-    expect(await actions.fullSyncAction()).toMatchObject({ finished: true });
-  });
-
-  test("the lease of a sync that died (its `until` has passed) does not stop the press", async () => {
-    await sub("kati@example.com");
-    await db.insert(settings).values({ key: SYNC_LEASE_SETTING, value: { holder: "died", until: Date.now() - 5000 } });
-    expect(await actions.fullSyncAction()).toMatchObject({ added: 1, finished: true });
-    expect(await lease()).toBeUndefined();
-  });
-
-  test("a sync that failed (Resend down, a key that can only send) leaves no lease behind: the press after it is not `busy`", async () => {
-    await sub("kati@example.com");
-    fake.fail.set("segments.list", DOWN);
-    expect(await actions.fullSyncAction()).toEqual({ error: "unavailable" });
-    expect(await lease()).toBeUndefined();
-    fake.fail.set("segments.list", { name: "restricted_api_key", statusCode: 401, message: "This API key is restricted to only send emails" });
-    expect(await actions.fullSyncAction()).toEqual({ error: "permission" });
-    expect(await lease()).toBeUndefined();
-  });
-});
-
-describe("fullSyncAction: a throw that is not Resend's", () => {
-  test("`server`: logged by the class only (never the message, which can hold an address); the page is not refreshed", async () => {
-    state.db = new Proxy({}, {
-      get() {
-        throw new TypeError("boom: kati@example.com");
-      },
-    });
-    try {
-      expect(await actions.fullSyncAction()).toEqual({ error: "server" });
-    } finally {
-      state.db = db;
-    }
-    expect(logged()).toContain("TypeError");
-    for (const secret of ["boom", "kati", "@"]) expect(logged()).not.toContain(secret);
-    expect(cache.refresh).not.toHaveBeenCalled();
-  });
-});
-
-describe("the deps of Maria's sync (server/send-deps.ts adminMarketingDeps)", () => {
-  test("the links in the contacts are SITE_URL's, never the request's address: the request's headers are not even read", () => {
-    const deps = adminMarketingDeps(ADMIN_SYNC_BUDGET_MS);
-    expect(deps.siteUrl).toBe(SITE);
-    expect(deps.env.SITE_URL).toBe(SITE);
-    expect(deps.budgetMs).toBe(25_000);
-    expect(deps.env.RESEND_MARKETING_KEY).toBe("re_marketing_test");
-    expect(deps.now).toBeInstanceOf(Date);
-    expect(adminMarketingDeps()).not.toHaveProperty("budgetMs"); // (the page's count has no budget)
-  });
-
-  test("the review's M5: a press and a send keep the interactive pace (no gap of their own: MARKETING_GAP_MS, 600 ms), unlike the background syncs", async () => {
-    const real = await vi.importActual<typeof import("@/server/send-deps")>("@/server/send-deps");
-    expect(real.adminMarketingDeps(ADMIN_SYNC_BUDGET_MS)).not.toHaveProperty("gapMs");
-    expect(real.adminMarketingDeps()).not.toHaveProperty("gapMs");
-  });
-
-  test("a contact made by the button carries the unsubscribe link on SITE_URL", async () => {
-    const row = await sub("kati@example.com");
-    expect(await actions.fullSyncAction()).toMatchObject({ added: 1 });
-    expect(fake.of("kati@example.com")?.properties).toEqual({ unsubscribe_url: `${SITE}/api/newsletter/loobu?t=${row.token}` });
-  });
-});
-
-// ---------- the campaigns' actions (newsletter campaigns, Task 4) ----------
 
 const CAMPAIGN = {
   name: "Oktoobri pakkumine",
@@ -349,19 +60,13 @@ const CAMPAIGN = {
   buttonHref: "",
 };
 
-describe("the campaigns' actions: save, copy, test, prepare and send", () => {
-  beforeEach(async () => {
-    await db.delete(newsletterCampaigns);
-    vi.stubEnv("MARIA_EMAIL", "maria@example.com");
-  });
+describe("the campaigns' actions: save and copy", () => {
   const saved = async () => {
     const r = await actions.saveCampaignAction({ id: null, draft: CAMPAIGN });
     if (!r.ok || !("id" in r)) throw new Error(JSON.stringify(r));
     cache.refresh.mockReset();
     return r.id;
   };
-  /** The campaign's last change as stored now (ISO): what a confirmation carries (the review's M3). */
-  const version = async (id: number) => (await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)))[0].updatedAt.toISOString();
 
   test("saveCampaignAction: a new draft (`id: null`) and the same again in place; the page is refreshed; refused fields come back by name", async () => {
     const r = await actions.saveCampaignAction({ id: null, draft: CAMPAIGN });
@@ -391,129 +96,12 @@ describe("the campaigns' actions: save, copy, test, prepare and send", () => {
     expect(await actions.copyCampaignAction({ id: id + 100 })).toEqual({ ok: false, error: "notFound" });
   });
 
-  test("sendTestAction: `maria` is MARIA_EMAIL, `me` the signed-in admin's own address; nothing else is ever an address", async () => {
-    const id = await saved();
-    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: true, realLink: false });
-    expect(fake.broadcasts.at(-1)!.delivered.map((d) => d.email)).toEqual(["maria@example.com"]);
-    expect(await actions.sendTestAction({ id, to: "me", locale: "ru" })).toEqual({ ok: true, realLink: false });
-    expect(fake.broadcasts.at(-1)!.delivered.map((d) => d.email)).toEqual(["admin@example.test"]);
-    expect(fake.broadcasts.at(-1)!.args.subject).toBe("[Proov] Sügispakkumine");
-    for (const to of ["someone@example.com", "", null]) expect(await actions.sendTestAction({ id, to: to as "me", locale: "et" }), String(to)).toEqual({ ok: false, error: "address" });
-    expect(await actions.sendTestAction({ id, to: "me", locale: "de" as "et" })).toEqual({ ok: false, error: "address" });
-    vi.stubEnv("MARIA_EMAIL", "");
-    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "address" });
-    expect(fake.broadcasts).toHaveLength(2);
-  });
-
-  test("sendTestAction without the key: `notConfigured`; a campaign that is gone: `notFound`", async () => {
-    const id = await saved();
-    expect(await actions.sendTestAction({ id: id + 100, to: "maria", locale: "et" })).toEqual({ ok: false, error: "notFound" });
-    vi.stubEnv("RESEND_MARKETING_KEY", "");
-    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "notConfigured" });
-    expect(fake.calls).toEqual([]);
-  });
-
-  test("prepareSendAction and sendCampaignAction: the sync with the interactive budget, then the plan; the send, and the page refreshed", async () => {
-    const id = await saved();
-    await sub("kati@example.com");
-    const prepared = await actions.prepareSendAction({ id });
-    expect(prepared).toMatchObject({ ok: true, plan: { et: 1, ru: 0, ruFallsBack: true, left: 0, rejected: 0, updatedAt: await version(id) } });
-    const updatedAt = (prepared as { plan: { updatedAt: string } }).plan.updatedAt;
-    expect(state.budgets.at(-1)).toBe(ADMIN_SYNC_BUDGET_MS);
+  test("an id the page never sends to „Kopeeri“ is `notFound` without a read", async () => {
+    for (const id of [0, -1, 1.5, "7" as unknown as number]) expect(await actions.copyCampaignAction({ id }), String(id)).toEqual({ ok: false, error: "notFound" });
     expect(cache.refresh).not.toHaveBeenCalled();
-    expect(fake.broadcasts).toEqual([]);
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0, updatedAt })).toEqual({ ok: true, recipients: { et: 1, ru: 0 }, missing: [], left: 0 });
-    expect(state.budgets.at(-1)).toBe(ADMIN_SYNC_BUDGET_MS);
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-    expect(fake.broadcasts).toHaveLength(1);
-    expect(fake.broadcasts[0].args.html).toContain(`src="${SITE}/brand/logo.png"`);
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0, updatedAt })).toEqual({ ok: false, error: "sent" });
-    expect(cache.refresh).toHaveBeenCalledTimes(2); // (a refusal of a campaign that changed meanwhile refreshes too: its row shows the new state)
   });
 
-  test("the send refused before anything changed (another sync running) does not refresh; an id the page never sends is `notFound`", async () => {
-    const id = await saved();
-    await sub("kati@example.com");
-    await db.insert(settings).values({ key: SYNC_LEASE_SETTING, value: { holder: "the-cron", until: Date.now() + 60_000 } });
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0, updatedAt: await version(id) })).toEqual({ ok: false, error: "busy" });
-    expect(await actions.prepareSendAction({ id })).toEqual({ ok: false, error: "busy" });
-    expect(cache.refresh).not.toHaveBeenCalled();
-    for (const bad of [0, -3, "1" as unknown as number]) {
-      expect(await actions.sendCampaignAction({ id: bad, et: 1, ru: 0, updatedAt: await version(id) })).toEqual({ ok: false, error: "notFound" });
-      expect(await actions.prepareSendAction({ id: bad })).toEqual({ ok: false, error: "notFound" });
-      expect(await actions.copyCampaignAction({ id: bad })).toEqual({ ok: false, error: "notFound" });
-      expect(await actions.sendTestAction({ id: bad, to: "me", locale: "et" })).toEqual({ ok: false, error: "notFound" });
-    }
-  });
-
-  test("sendCampaignAction sends only to the counts Maria confirmed (ruling R14): `changed` with the new plan, nothing sent, no refresh; counts the page never sends are refused", async () => {
-    const id = await saved();
-    await sub("kati@example.com");
-    await sub("mari@example.com");
-    const updatedAt = await version(id);
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0, updatedAt })).toMatchObject({ ok: false, error: "changed", plan: { et: 2, ru: 0, updatedAt } });
-    expect(fake.broadcasts).toEqual([]);
-    expect(cache.refresh).not.toHaveBeenCalled();
-    for (const bad of [{ et: -1, ru: 0 }, { et: 1.5, ru: 0 }, { et: "2", ru: 0 }, { ru: 0 }]) expect(await actions.sendCampaignAction({ id, updatedAt, ...(bad as { et: number; ru: number }) }), JSON.stringify(bad)).toEqual({ ok: false, error: "notFound" });
-    // the review's M3: a confirmation carries the campaign's last change; one that is no instant the page would send is refused, nothing sent
-    for (const bad of [undefined, "", "eile", 1_760_000_000_000]) expect(await actions.sendCampaignAction({ id, et: 2, ru: 0, updatedAt: bad as string }), String(bad)).toEqual({ ok: false, error: "notFound" });
-    expect(fake.broadcasts).toEqual([]);
-    expect(await actions.sendCampaignAction({ id, et: 2, ru: 0, updatedAt })).toMatchObject({ ok: true, recipients: { et: 2, ru: 0 } });
-  });
-
-  test("the review's M3 through the action: the campaign saved again after the confirmation is `changed` with its new time, nothing sent", async () => {
-    const id = await saved();
-    await sub("kati@example.com");
-    const prepared = (await actions.prepareSendAction({ id })) as { plan: { updatedAt: string } };
-    await new Promise((r) => setTimeout(r, 5)); // (the next save's time is later)
-    expect(await actions.saveCampaignAction({ id, draft: { ...CAMPAIGN, subject: { et: "Teises aknas", ru: "" } } })).toEqual({ ok: true, id });
-    const now = await version(id);
-    expect(now).not.toBe(prepared.plan.updatedAt);
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 0, updatedAt: prepared.plan.updatedAt })).toMatchObject({ ok: false, error: "changed", plan: { et: 1, ru: 0, updatedAt: now } });
-    expect(fake.broadcasts).toEqual([]);
-  });
-
-  test("„Saada puuduv keel“ (ruling R12): `scope: \"missing\"` through both actions; a scope the page never sends is refused", async () => {
-    const id = await saved();
-    await sub("kati@example.com");
-    await sub("olga@example.com", { locale: "ru" });
-    fake.fail.set("broadcasts.create", (args) => ((args as { segmentId: string }).segmentId === fake.segment(SEGMENT_NAMES.ru) ? { name: "validation_error", statusCode: 422, message: "no" } : null));
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 1, updatedAt: await version(id) })).toMatchObject({ ok: true, missing: ["ru"] });
-    fake.fail.clear();
-    const prepared = await actions.prepareSendAction({ id, scope: "missing" });
-    expect(prepared).toMatchObject({ ok: true, plan: { et: 0, ru: 1, updatedAt: await version(id) } });
-    expect(await actions.prepareSendAction({ id, scope: "x" as "all" })).toEqual({ ok: false, error: "notFound" });
-    const { updatedAt } = (prepared as { plan: { updatedAt: string } }).plan;
-    expect(await actions.sendCampaignAction({ id, et: 0, ru: 1, updatedAt, scope: "missing" })).toMatchObject({ ok: true, recipients: { et: 0, ru: 1 } });
-    expect(fake.broadcasts.map((b) => b.args.segmentId)).toEqual([fake.segment(SEGMENT_NAMES.et), fake.segment(SEGMENT_NAMES.ru)]);
-  });
-
-  test("„Märgi saatmata“ (ruling R16) through its action: the language without an answer marked, the page refreshed; a recorded one refused; input the page never sends is `notFound`", async () => {
-    const id = await saved();
-    await sub("kati@example.com");
-    await sub("olga@example.com", { locale: "ru" });
-    fake.fail.set("broadcasts.create", (args) => ((args as { segmentId: string }).segmentId === fake.segment(SEGMENT_NAMES.ru) ? DOWN : null));
-    expect(await actions.sendCampaignAction({ id, et: 1, ru: 1, updatedAt: await version(id) })).toEqual({ ok: false, error: "interrupted" });
-    fake.fail.clear();
-    cache.refresh.mockReset();
-    expect(await actions.markNotSentAction({ id, locale: "et" })).toEqual({ ok: false, error: "sent" });
-    expect(cache.refresh).toHaveBeenCalledTimes(1); // (the open page is behind)
-    for (const bad of [{ id: 0, locale: "ru" }, { id, locale: "de" }, { id: "1", locale: "ru" }, null])
-      expect(await actions.markNotSentAction(bad as { id: number; locale: "ru" }), JSON.stringify(bad)).toEqual({ ok: false, error: "notFound" });
-    // ruling R18: while a sync or a send holds the lease the mark is `busy`, nothing changes and the page is not refreshed
-    await db.insert(settings).values({ key: SYNC_LEASE_SETTING, value: { holder: "the-send", until: Date.now() + 60_000 } });
-    expect(await actions.markNotSentAction({ id, locale: "ru" })).toEqual({ ok: false, error: "busy" });
-    expect(cache.refresh).toHaveBeenCalledTimes(1);
-    expect((await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)))[0].status).toBe("sending");
-    await db.delete(settings).where(eq(settings.key, SYNC_LEASE_SETTING));
-    expect(await actions.markNotSentAction({ id, locale: "ru" })).toEqual({ ok: true, status: "sent" });
-    expect(cache.refresh).toHaveBeenCalledTimes(2);
-    expect((await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)))[0]).toMatchObject({ status: "sent", broadcasts: { et: fake.broadcasts[0].id } });
-    expect(fake.broadcasts).toHaveLength(1); // (it asks nothing of Resend)
-    expect(await actions.prepareSendAction({ id, scope: "missing" })).toMatchObject({ ok: true, plan: { et: 0, ru: 1 } });
-  });
-
-  test("a throw that is not Resend's: `server`, logged by its class only", async () => {
+  test("a throw: `server`, logged by its class only (never the message, which can hold an address)", async () => {
     state.db = new Proxy({}, {
       get() {
         throw new TypeError("boom: kati@example.com");
@@ -521,9 +109,193 @@ describe("the campaigns' actions: save, copy, test, prepare and send", () => {
     });
     try {
       expect(await actions.saveCampaignAction({ id: null, draft: CAMPAIGN })).toEqual({ ok: false, error: "server" });
-      expect(await actions.sendCampaignAction({ id: 1, et: 1, ru: 0, updatedAt: new Date().toISOString() })).toEqual({ ok: false, error: "server" });
-      expect(await actions.sendTestAction({ id: 1, to: "me", locale: "et" })).toEqual({ ok: false, error: "server" });
-      expect(await actions.markNotSentAction({ id: 1, locale: "ru" })).toEqual({ ok: false, error: "server" });
+      expect(await actions.copyCampaignAction({ id: 1 })).toEqual({ ok: false, error: "server" });
+    } finally {
+      state.db = db;
+    }
+    expect(logged()).toContain("TypeError");
+    for (const secret of ["boom", "kati"]) expect(logged()).not.toContain(secret);
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saada proov“, the progress", () => {
+  const SITE = "https://mslab.example";
+  /** The environment of a send: SITE_URL, Maria's address, the key (Resend itself is stubbed). */
+  const configured = (o: Record<string, string> = {}) => {
+    for (const [name, value] of Object.entries({ SITE_URL: SITE, MAIL_FROM: "MS LAB <info@send.example.com>", MARIA_EMAIL: "maria@example.com", RESEND_API_KEY: "re_test", ...o })) vi.stubEnv(name, value);
+  };
+  /** Resend's HTTP API stubbed: accepted, or the answer given. */
+  const resend = (respond: () => Response = () => Response.json({ id: "email_1" })) => {
+    const f = stubFetch(respond);
+    return { f, mails: () => f.calls.filter((c) => c.url === "https://api.resend.com/emails").map((c) => c.body as { to: string; subject: string; html: string }) };
+  };
+  const subscriber = (email: string, locale: "et" | "ru" = "et") =>
+    db.insert(subscribers).values({ email, locale, token: `tok_${email.replace(/[^a-z0-9]/gi, "_")}_0123456789`, confirmedAt: new Date() });
+  const saved = async () => {
+    const r = await actions.saveCampaignAction({ id: null, draft: CAMPAIGN });
+    if (!r.ok || !("id" in r)) throw new Error(JSON.stringify(r));
+    cache.refresh.mockReset();
+    return r.id;
+  };
+
+  test("prepareSendAction: the confirmation's counts and the campaign's version; nothing sent, nothing refreshed; `empty`, `busy`, and an id the page never sends `notFound`", async () => {
+    configured();
+    const { f } = resend();
+    const id = await saved();
+    expect(await actions.prepareSendAction({ id })).toEqual({ ok: false, error: "empty" });
+    await subscriber("kati@example.com");
+    await subscriber("olga@example.com", "ru");
+    const plan = await actions.prepareSendAction({ id });
+    expect(plan).toEqual({ ok: true, et: 1, ru: 1, ruFallsBack: true, updatedAt: expect.any(String) });
+    expect(f.calls).toHaveLength(0);
+    expect(cache.refresh).not.toHaveBeenCalled();
+    for (const bad of [0, -1, 1.5, "7" as unknown as number]) expect(await actions.prepareSendAction({ id: bad }), String(bad)).toEqual({ ok: false, error: "notFound" });
+    const other = await saved();
+    await db.update(newsletterCampaigns).set({ status: "sending" }).where(eq(newsletterCampaigns.id, other));
+    expect(await actions.prepareSendAction({ id })).toEqual({ ok: false, error: "busy" });
+    expect(adminEt.newsletter.campaigns.errorsOf.busy).toBe("Eelmine kampaania on veel pooleli — see läheb välja, kui eelmine on saadetud.");
+  });
+
+  test("startSendAction: the press with what the confirmation showed — the first batch goes at once on SITE_URL's links, the page is refreshed; `changed` refreshes nothing", async () => {
+    configured();
+    const r = resend();
+    const id = await saved();
+    await subscriber("kati@example.com");
+    const plan = await actions.prepareSendAction({ id });
+    if (!plan.ok) throw new Error("no plan");
+    expect(await actions.startSendAction({ id, et: plan.et + 1, ru: plan.ru, updatedAt: plan.updatedAt })).toEqual({ ok: false, error: "changed" });
+    expect(cache.refresh).not.toHaveBeenCalled();
+    expect(r.mails()).toHaveLength(0);
+    const sent = await actions.startSendAction({ id, et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt });
+    expect(sent).toEqual({ ok: true, progress: { total: 1, sent: 1, waiting: 0, failed: 0, unknown: 0, skipped: 0 }, stopped: null });
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    expect(r.mails().map((m) => m.to)).toEqual(["kati@example.com"]);
+    expect(r.mails()[0].html).toContain(`${SITE}/api/newsletter/loobu?t=`);
+    // the second tab: `sent`, and its page is refreshed (it is behind)
+    expect(await actions.startSendAction({ id, et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt })).toEqual({ ok: false, error: "sent" });
+    expect(cache.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  test("startSendAction: input the page never sends is `notFound` without a write", async () => {
+    configured();
+    const id = await saved();
+    await subscriber("kati@example.com");
+    const plan = await actions.prepareSendAction({ id });
+    if (!plan.ok) throw new Error("no plan");
+    for (const bad of [
+      { id: 0, et: 1, ru: 0, updatedAt: plan.updatedAt },
+      { id, et: -1, ru: 0, updatedAt: plan.updatedAt },
+      { id, et: 1.5, ru: 0, updatedAt: plan.updatedAt },
+      { id, et: 1, ru: 0, updatedAt: "eile" },
+      { id, et: 1 } as unknown as { id: number; et: number; ru: number; updatedAt: string },
+    ])
+      expect(await actions.startSendAction(bad), JSON.stringify(bad)).toEqual({ ok: false, error: "notFound" });
+    expect((await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)))[0].status).toBe("draft");
+  });
+
+  test("stopSendAction: after a refusal of Resend the page's own reads (progressOf, sendRefused) show the line; „Peata saatmine“ skips the rest and refreshes the page", async () => {
+    configured();
+    resend(() => Response.json({ name: "invalid_api_key", message: "no", statusCode: 403 }, { status: 403 }));
+    const id = await saved();
+    await subscriber("kati@example.com");
+    await subscriber("mari@example.com");
+    const plan = await actions.prepareSendAction({ id });
+    if (!plan.ok) throw new Error("no plan");
+    expect(await actions.startSendAction({ id, et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt })).toEqual({ ok: true, progress: { total: 2, sent: 0, waiting: 2, failed: 0, unknown: 0, skipped: 0 }, stopped: "refused" });
+    expect(adminEt.newsletter.campaigns.errorsOf.refused).toBe("Saatmine peatus: Resend keeldus. Kirjuta Dimile.");
+    expect((await getCampaign(db, id))?.status).toBe("sending");
+    expect(await sendRefused(new PgKv(db), id)).toBe(true);
+    expect(await progressOf(db, id)).toEqual({ total: 2, sent: 0, waiting: 2, failed: 0, unknown: 0, skipped: 0 });
+    cache.refresh.mockReset();
+    expect(await actions.stopSendAction({ id })).toEqual({ ok: true, progress: { total: 2, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 2 } });
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    expect((await getCampaign(db, id))?.status).toBe("sent");
+    expect(await progressOf(db, id)).toEqual({ total: 2, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 2 });
+    expect(await actions.stopSendAction({ id })).toEqual({ ok: false, error: "notSending" });
+    expect(await actions.stopSendAction({ id: 0 })).toEqual({ ok: false, error: "notFound" });
+  });
+
+  test("sendTestAction: to MARIA_EMAIL („maria“) or the signed-in admin's own address („me“), never one the browser names; `address` without one; „[Proov]“; nothing refreshed", async () => {
+    configured();
+    const r = resend();
+    const id = await saved();
+    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: true });
+    expect(await actions.sendTestAction({ id, to: "me", locale: "ru" })).toEqual({ ok: true });
+    expect(r.mails().map((m) => [m.to, m.subject])).toEqual([
+      ["maria@example.com", "[Proov] Sügispakkumine"],
+      ["admin@example.test", "[Proov] Sügispakkumine"],
+    ]);
+    expect(r.mails()[0].html).toContain(`${SITE}/api/newsletter/loobu?proov=1`);
+    for (const bad of [{ id, to: "kati@example.com", locale: "et" }, { id, to: "maria", locale: "en" }] as unknown as { id: number; to: "maria"; locale: "et" }[])
+      expect(await actions.sendTestAction(bad), JSON.stringify(bad)).toEqual({ ok: false, error: "address" });
+    expect(await actions.sendTestAction({ id: 0, to: "maria", locale: "et" })).toEqual({ ok: false, error: "notFound" });
+    vi.stubEnv("MARIA_EMAIL", "");
+    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "address" });
+    expect(r.mails()).toHaveLength(2);
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+
+  test("sendTestAction: `mail` when Resend refuses it; `limited` after ten an hour", async () => {
+    configured();
+    const id = await saved();
+    resend(() => Response.json({ name: "invalid_api_key", message: "no", statusCode: 403 }, { status: 403 }));
+    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "mail" });
+    const r = resend();
+    for (let i = 0; i < 10; i++) expect(await actions.sendTestAction({ id, to: "maria", locale: "et" }), String(i)).toEqual({ ok: true });
+    expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "limited" });
+    expect(r.mails()).toHaveLength(10);
+    for (const code of ["limited", "mail", "address", "changed", "empty", "notSending"] as const) expect(adminEt.newsletter.campaigns.errorsOf[code], code).toMatch(/\S/);
+  });
+
+  test("the check Dim does, through the actions: with the room lowered the press sends up to it and answers `room` with the progress the line is made from; the page's reads and „Peata saatmine“ follow", async () => {
+    configured();
+    const r = resend();
+    await db.insert(settings).values({ key: CAMPAIGN_ROOM_KEY, value: 2 });
+    try {
+      const id = await saved();
+      for (const email of ["a@example.com", "b@example.com", "c@example.com"]) await subscriber(email);
+      const plan = await actions.prepareSendAction({ id });
+      if (!plan.ok) throw new Error("no plan");
+      expect(await actions.startSendAction({ id, et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt })).toEqual({
+        ok: true,
+        progress: { total: 3, sent: 2, waiting: 1, failed: 0, unknown: 0, skipped: 0 },
+        stopped: "room",
+      });
+      expect(r.mails().map((m) => m.to)).toEqual(["a@example.com", "b@example.com"]);
+      expect(cache.refresh).toHaveBeenCalledTimes(1);
+      // the page is made from the campaign's own state: still going out, nothing refused
+      expect((await getCampaign(db, id))?.status).toBe("sending");
+      expect(await sendRefused(new PgKv(db), id)).toBe(false);
+      expect(await progressOf(db, id)).toEqual({ total: 3, sent: 2, waiting: 1, failed: 0, unknown: 0, skipped: 0 });
+      // „Peata saatmine“: the third never goes, the campaign is sent with the two that did
+      expect(await actions.stopSendAction({ id })).toEqual({ ok: true, progress: { total: 3, sent: 2, waiting: 0, failed: 0, unknown: 0, skipped: 1 } });
+      const [row] = await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id));
+      expect(row).toMatchObject({ status: "sent", recipients: { et: 2, ru: 0 } });
+      expect(r.mails()).toHaveLength(2);
+    } finally {
+      await db.delete(settings).where(eq(settings.key, CAMPAIGN_ROOM_KEY));
+    }
+  });
+
+  test("every code the send actions answer has its words in the editor's table (an unknown code would fall back to the general line)", () => {
+    const codes = ["notFound", "sent", "busy", "empty", "changed", "notSending", "refused", "limited", "mail", "address", "server"] as const;
+    for (const code of codes) expect(adminEt.newsletter.campaigns.errorsOf[code], code).toMatch(/\S/);
+    expect(new Set(codes.map((c) => adminEt.newsletter.campaigns.errorsOf[c])).size).toBe(codes.length); // (no two codes say the same)
+  });
+
+  test("a throw in a send's action: `server`, logged by its class only", async () => {
+    configured();
+    state.db = new Proxy({}, {
+      get() {
+        throw new TypeError("boom: kati@example.com");
+      },
+    });
+    try {
+      expect(await actions.prepareSendAction({ id: 1 })).toEqual({ ok: false, error: "server" });
+      expect(await actions.startSendAction({ id: 1, et: 1, ru: 0, updatedAt: new Date().toISOString() })).toEqual({ ok: false, error: "server" });
+      expect(await actions.stopSendAction({ id: 1 })).toEqual({ ok: false, error: "server" });
+      expect(await actions.sendTestAction({ id: 1, to: "maria", locale: "et" })).toEqual({ ok: false, error: "server" });
     } finally {
       state.db = db;
     }

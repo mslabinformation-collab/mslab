@@ -1,11 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { adminEt } from "@/i18n/dict/admin";
-import {
-  CAMPAIGN_LIMITS, CONTACTS_WARN_AT, RESEND_FREE_CONTACTS, campaignContentFor, checkCampaignDraft, ruFallsBack, type NewsletterCampaignDraft,
-} from "@/domain/newsletter-campaign";
+import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_LIMITS, CAMPAIGN_ROOM_KEY, campaignContentFor, campaignRoomSetting, checkCampaignDraft, ruFallsBack, type NewsletterCampaignDraft } from "@/domain/newsletter-campaign";
 
-// The newsletter campaign's pure rules (newsletter campaigns, Task 1; spec D4, D8, §5): the limits, the draft Maria's editor sends checked
+// The newsletter campaign's pure rules (newsletter campaigns, Task 1; spec D4, §5): the limits, the draft Maria's editor sends checked
 // field by field, and the text a subscriber of each language gets (the Estonian one as a whole when the Russian subject or text is empty,
 // Review Focus 5). The mail built from it is tests/unit/campaign-mail.test.ts. Not to be confused with domain/campaign.ts, the home page's popup.
 
@@ -38,10 +36,8 @@ const full = {
 const draft = (over: Partial<NewsletterCampaignDraft> = {}): NewsletterCampaignDraft => ({ ...ok(full), ...over });
 
 describe("the limits", () => {
-  test("the brief's values, and Resend's free plan: 1000 contacts, a warning at 900", () => {
+  test("the brief's values", () => {
     expect(CAMPAIGN_LIMITS).toEqual({ name: 80, subject: 150, preheader: 150, body: 10000, buttonLabel: 40, href: 500 });
-    expect(RESEND_FREE_CONTACTS).toBe(1000);
-    expect(CONTACTS_WARN_AT).toBe(900);
   });
 });
 
@@ -358,6 +354,29 @@ describe("ruFallsBack: Maria is told before sending", () => {
     for (const c of [draft(), draft({ subject: { et: "S", ru: "" } }), draft({ body: { et: "T", ru: "" } }), ok(minimal)]) {
       expect(campaignContentFor(c, "ru").locale === "et").toBe(ruFallsBack(c));
     }
+  });
+});
+
+describe("campaignRoomSetting: a lower room for the campaigns, set by hand for a check", () => {
+  test("the row is called newsletter_daily_room", () => {
+    expect(CAMPAIGN_ROOM_KEY).toBe("newsletter_daily_room");
+  });
+
+  test("a whole number from 1 to the room is taken as it is", () => {
+    for (const n of [1, 2, 3, 17, CAMPAIGN_DAILY_ROOM - 1, CAMPAIGN_DAILY_ROOM]) expect(campaignRoomSetting(n), String(n)).toBe(n);
+  });
+
+  test("it only ever lowers the room: above it is the room, below 1 is 1, a fraction is cut", () => {
+    expect(campaignRoomSetting(CAMPAIGN_DAILY_ROOM + 1)).toBe(CAMPAIGN_DAILY_ROOM);
+    expect(campaignRoomSetting(100_000)).toBe(CAMPAIGN_DAILY_ROOM);
+    expect(campaignRoomSetting(0)).toBe(1);
+    expect(campaignRoomSetting(-5)).toBe(1);
+    expect(campaignRoomSetting(0.9)).toBe(1);
+    expect(campaignRoomSetting(2.7)).toBe(2);
+  });
+
+  test("anything that is no number is no setting (null: the room is the room)", () => {
+    for (const v of ["2", "", null, undefined, true, [2], { n: 2 }, Number.NaN, Number.POSITIVE_INFINITY]) expect(campaignRoomSetting(v), String(v)).toBeNull();
   });
 });
 

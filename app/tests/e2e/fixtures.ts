@@ -617,16 +617,14 @@ export async function storedCampaigns(name: string): Promise<StoredCampaign[]> {
 }
 
 /**
- * A campaign as a send leaves it (newsletter campaigns, Task 5): the e2e run has no Resend key, so a send itself is Dim's live check, and the
- * states it leaves are set here, in the database. `draft` is the default; `sent` and `sending` carry the counts and broadcasts a send records.
- * Returns the id. (Removed by removeCampaignRows: the name starts with E2E_CAMPAIGN_PREFIX.)
+ * A campaign in the state a send leaves it in (newsletter campaigns, Task 5): set here, in the database. `draft` is the default; `sent` and `sending`
+ * carry the counts a send records. Returns the id. (Removed by removeCampaignRows: the name starts with E2E_CAMPAIGN_PREFIX.)
  */
 export type CampaignFixture = {
   name: string;
   status?: "draft" | "sending" | "sent";
   imageKey?: string | null;
   recipients?: { et: number; ru: number } | null;
-  broadcasts?: { et?: string; ru?: string } | null;
   sentAt?: Date | null;
 };
 export async function insertCampaign(f: CampaignFixture): Promise<number> {
@@ -634,13 +632,45 @@ export async function insertCampaign(f: CampaignFixture): Promise<number> {
   const sql = connect(false);
   try {
     const [row] = await sql<{ id: number }[]>`
-      insert into newsletter_campaigns (name, subject, preheader, image_key, body, code, button_label, button_href, status, sent_at, recipients, broadcasts)
+      insert into newsletter_campaigns (name, subject, preheader, image_key, body, code, button_label, button_href, status, sent_at, recipients)
       values (${f.name}, ${sql.json({ et: "E2E saadetud teema", ru: "E2E отправленная тема" })}, ${sql.json({ et: "E2E eelvaate rida" })}, ${f.imageKey ?? null},
               ${sql.json({ et: "E2E esimene lõik.\n\nE2E teine lõik.", ru: "E2E первый абзац." })}, 'E2E-KOOD',
               ${sql.json({ et: "Vaata koolitusi", ru: "Смотреть курсы" })}, '/koolitused', ${f.status ?? "draft"}, ${f.sentAt ?? null},
-              ${f.recipients ? sql.json(f.recipients) : null}, ${f.broadcasts ? sql.json(f.broadcasts) : null})
+              ${f.recipients ? sql.json(f.recipients) : null})
       returning id`;
     return row.id;
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * The deliveries of a campaign set in the state a send leaves them in (the 20.10 design): so many rows of each status, for a campaign the test made with
+ * insertCampaign (`sending`). Nothing is sent; the rows go with the campaign (ON DELETE CASCADE, removeCampaignRows). Their addresses are made up.
+ */
+export async function insertDeliveries(campaignId: number, counts: Partial<Record<"waiting" | "sent" | "failed" | "unknown" | "skipped", number>>): Promise<void> {
+  const sql = connect(false);
+  try {
+    let k = 0;
+    for (const [status, n] of Object.entries(counts)) {
+      for (let i = 0; i < (n ?? 0); i++) {
+        k++;
+        await sql`
+          insert into newsletter_deliveries (campaign_id, email, locale, token, status, sent_at)
+          values (${campaignId}, ${`e2e-delivery-${campaignId}-${k}@example.com`}, 'et', ${`e2e-token-${campaignId}-${k}-0123456789abcdef`}, ${status}, ${status === "sent" ? new Date() : null})`;
+      }
+    }
+  } finally {
+    await sql.end();
+  }
+}
+
+/** How many deliveries of a campaign are in each status (only the statuses that have rows). */
+export async function deliveryCounts(campaignId: number): Promise<Record<string, number>> {
+  const sql = connect(false);
+  try {
+    const rows = await sql<{ status: string; n: number }[]>`select status, count(*)::int as n from newsletter_deliveries where campaign_id = ${campaignId} group by status`;
+    return Object.fromEntries(rows.map((r) => [r.status, Number(r.n)]));
   } finally {
     await sql.end();
   }

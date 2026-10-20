@@ -6,6 +6,7 @@ import { LOCAL_ADMINS } from "../local-secrets";
 import { adminReady, signInAsAdmin } from "./admin-login";
 import { holdContractTexts } from "./contracts";
 import { onLocalDb, POST_SLUG_PREFIX, removeAdminRows, removePostRows, snapshotRows, storedSubscriber, testEmail } from "./fixtures";
+import { holdNewsletter } from "./newsletter";
 
 // Task 13B: the site content editors (home page, practice, trainer, news, campaign, settings), each followed through to
 // the public site. They change shared seed content, so they run after every other test (playwright.config.ts: the
@@ -434,6 +435,7 @@ test.describe("the newsletter popup (phase 2c)", () => {
 
   test("it opens on the home page with its texts and the form; a sign-up says so inside and is never shown again in this browser", async ({ page }, info) => {
     test.skip(phone(info), "one popup row: desktop changes it");
+    undo.push(await holdNewsletter(info)); // (a confirmed subscriber is a recipient of the newsletter e2e test's press: they take turns)
     await changing(["campaign"]);
     await showNewsletter();
     await page.goto("/");
@@ -593,6 +595,7 @@ test.describe("settings", () => {
 
   test("Tervituskood: saved in Seaded; the first confirmation link lands on the home page with the code, the second without", async ({ page, context, visitorIp }, info) => {
     test.skip(phone(info), "desktop changes the newsletter setting");
+    undo.push(await holdNewsletter(info)); // (the confirmed row it makes is a recipient of the newsletter e2e test's press: they take turns)
     await changing(["settings", { column: "key", value: "newsletter" }]);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/seaded");

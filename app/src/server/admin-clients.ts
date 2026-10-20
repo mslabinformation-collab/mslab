@@ -23,7 +23,6 @@ import { contractsOfClient } from "./contracts";
 import { field } from "./edit-check";
 import { courseOutline } from "./lesson-outline";
 import { newsletterState, type NewsletterState } from "./newsletter";
-import { suppressedAddresses } from "./resend-marketing";
 import { reviewsOfFeedback } from "./reviews";
 
 // The admin's Õpilased (students): the list, one student's drawer, adding a student by e-mail, and e-course access
@@ -140,11 +139,6 @@ export type ClientDetail = {
   contracts: ContractView[];
   /** Her address's newsletter (phase 2c): confirmed, waiting for its confirmation, or none. */
   newsletter: NewsletterState;
-  /**
-   * Resend does not mail her address (a bounce or a spam mark, mail_suppressions; newsletter campaigns, spec D10). Resend's suppression list is the
-   * account's, so it also stops the site's own mails (login codes, protocols, invoices), whether or not she subscribed. Only Resend can lift it.
-   */
-  suppressed: boolean;
   /** Her online payments (phase 2b), newest first. */
   payments: PaymentRow[];
   /** Her answers to the course feedback form (phase protocols, spec §7; the e-courses' too), newest first, each with its review. */
@@ -187,7 +181,7 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
     feedbackOf(db, { clientId: id }),
   ]);
   if (!client) return null;
-  const [newsletter, blocked, reviewOf] = await Promise.all([newsletterState(db, client.email), suppressedAddresses(db, [client.email]), reviewsOfFeedback(db, feedback.map((f) => f.id))]);
+  const [newsletter, reviewOf] = await Promise.all([newsletterState(db, client.email), reviewsOfFeedback(db, feedback.map((f) => f.id))]);
   // each e-course's lessons for her: done of total, and the first lesson she cannot open yet ("Ava järgmine õppetund"); and (e-course
   // completion, spec §5.5) each access's steps as her own page reads them, the protocols of her accesses and registrations, her attempts
   const [outlines, steps, accessProtocols, registrationProtocols, attempts, issued] = await Promise.all([
@@ -234,7 +228,6 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
     }),
     contracts: contractRows.map(contractView),
     newsletter,
-    suppressed: blocked.size > 0,
     payments,
     feedback: feedback.map((f) => ({ ...f, review: reviewOf.get(f.id) ?? null })),
   };

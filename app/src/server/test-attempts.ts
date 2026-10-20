@@ -143,7 +143,7 @@ const noticeOf = (job: CompletionJob): CompletionNotice => ({ accessId: job.acce
 
 /** Maria's notice by mail and Telegram (spec §6), Reply-To the student; logged by the attempt's id only. */
 async function notify(deps: TestDeps, label: string, s: Summary, replyTo: string): Promise<void> {
-  const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo, siteUrl: deps.siteUrl });
+  const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo, siteUrl: deps.siteUrl, count: deps.db });
   console.info(`${label}: Maria notified by e-mail: ${r.mail}, Telegram: ${r.telegram}`);
 }
 
@@ -224,7 +224,7 @@ export async function submitAttempt(deps: TestDeps, clientId: number, slug: stri
       const label = `[test] attempt ${row.id}`;
       if (status === "review") after.push(() => notify(deps, label, testReviewSummary({ ...noticeOf(job), attemptId: row.id, number: row.number }, adminUrl(deps.siteUrl)), job.email));
       if (view.state.kind === "used") after.push(() => notify(deps, label, triesUsedSummary({ ...noticeOf(job), tries: allowed }, adminUrl(deps.siteUrl)), job.email));
-      if (completed) after.push(() => mailCompletion(deps.env, deps.siteUrl, job, "completed"));
+      if (completed) after.push(() => mailCompletion(deps.env, deps.siteUrl, job, "completed", { count: deps.db }));
     }
     return { result: { kind: "submitted", view }, after, attempt: { id: row.id, status } };
   });
@@ -311,7 +311,7 @@ export async function reviewAttempt(deps: TestDeps, adminEmail: string, attemptI
     const job = await completionJob(t, access.id, deps.now);
     const active = isActive(access, deps.now); // an ended access: no mail sends her to a page she can only read
     const kind: CompletionMailKind | null = completed ? "completed" : !active ? null : status === "fix" ? "testFix" : job?.hasPoints ? "testPassed" : null;
-    return { result: { kind: "reviewed", status, completed }, after: job && kind ? [() => mailCompletion(deps.env, deps.siteUrl, job, kind)] : [] };
+    return { result: { kind: "reviewed", status, completed }, after: job && kind ? [() => mailCompletion(deps.env, deps.siteUrl, job, kind, { count: deps.db })] : [] };
   });
   if (done.result.kind === "reviewed") console.info(`[test] attempt ${attemptId}: reviewed (${done.result.status})`);
   queue(deps, done.after);
@@ -344,7 +344,7 @@ export async function reopenTest(deps: TestDeps, adminEmail: string, accessId: n
     return {
       result: { kind: "reopened", triesLeft: Math.max(0, triesAllowed(setup.tries, extraTries) - rows.length) },
       // an ended access: the tries wait for an extension, and no mail invites her to a test she cannot take now
-      after: job && isActive(access, deps.now) ? [() => mailCompletion(deps.env, deps.siteUrl, job, "reopened")] : [],
+      after: job && isActive(access, deps.now) ? [() => mailCompletion(deps.env, deps.siteUrl, job, "reopened", { count: deps.db })] : [],
     };
   });
   if (done.result.kind === "reopened") console.info(`[test] access ${accessId}: reopened`);

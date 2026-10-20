@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { applySeatFixtures, ensureCourseTermsPage, LOCAL_FIXTURES, scheduleSampleSessions, removeAdminFixtures, removeAdminRows, removeClientRows, removeEditRows, removeFormRows, removeLeftoverReviewFixtures, removePostRows, restoreLeftoverCourses, restoreLeftoverRows } from "./fixtures";
-import { forbiddenSettingError, SERVER_ENV_FILES } from "../local-secrets";
+import { E2E_MAIL_OUTBOX, forbiddenSettingError, SERVER_ENV_FILES } from "../local-secrets";
 import { assertLocalDatabases } from "./local-db";
 import { removeLeftoverComments } from "./local-kv";
 import { assertAppOnFakeMontonio } from "./montonio-guard";
@@ -18,6 +18,7 @@ export default async function globalSetup(): Promise<void> {
   }
   refuseForbiddenSettings();
   assertLocalDatabases(); // before any write: the fixtures' database and the server's are both on this machine
+  rmSync(E2E_MAIL_OUTBOX, { force: true }); // the mails the servers wrote to their outbox (the newsletter e2e) of an earlier run
   await assertAppOnFakeMontonio(TARGET || LOCAL_URL); // a server of your own with the owner's sandbox keys must not create real Montonio orders
   await removeFormRows();
   await removeAdminRows(); // e2e-auth-… leftovers of an interrupted run

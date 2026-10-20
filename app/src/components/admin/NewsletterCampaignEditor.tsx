@@ -1,15 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useState, useTransition, type FormEvent, type SyntheticEvent } from "react";
-import { CAMPAIGN_LIMITS, checkCampaignDraft, sendLanguages, unsentCandidate } from "@/domain/newsletter-campaign";
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type SyntheticEvent } from "react";
+import { CAMPAIGN_LIMITS, checkCampaignDraft } from "@/domain/newsletter-campaign";
 import { WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { toStorable } from "@/lib/to-storable";
-import { copyCampaignAction, markNotSentAction, prepareSendAction, saveCampaignAction, sendCampaignAction, sendTestAction } from "@/server/actions/admin-newsletter";
-import type { SendPlan } from "@/server/newsletter-campaigns";
+import { copyCampaignAction, prepareSendAction, saveCampaignAction, sendTestAction, startSendAction, stopSendAction } from "@/server/actions/admin-newsletter";
+import type { Progress } from "@/server/newsletter-campaigns";
 import { Choice } from "./Choice";
 import { I18nInput, LangSwitch, type Lang } from "./I18nInput";
 import { SaveBar } from "./SaveBar";
@@ -21,16 +21,19 @@ import site from "./site-editor.module.css";
 import ui from "./ui.module.css";
 import styles from "./CampaignsPanel.module.css";
 
-// Maria's campaign editor on the „Kampaaniad“ tab (newsletter campaigns, Task 4; spec D4–D6, §5; rulings R2, R4, R5, R7). A draft: the fields (the
-// name, the subject, the preview line, the picture, the text in paragraphs, the code, the button), each with its limit and a counter, „Salvesta“,
-// the live preview of the real mail in both languages, and the sends: „Saada proov“ (Maria's address or the signed-in admin's, either language)
-// and „Saada kõigile“ (the sync first, then the spec's confirmation with the counts, then „Saada“). A sent campaign is read-only: „Saadetud {date} ·
-// {n} tellijale“, a link to each broadcast in Resend's dashboard, the preview, and „Kopeeri“. One whose send stopped half way (ruling R16) shows each
-// language with what is known of it and offers „Märgi saatmata“ for the one Resend has no mail of, never „Kopeeri“ as the way on. Without the
-// newsletter's key the editor and the preview work as ever, and the two sends say that sending is not set up. The rules are domain/newsletter-
-// campaign.ts checkCampaignDraft, run here before anything is sent (the server checks them again); text pasted from Word can carry control
-// characters, which become spaces or line breaks first (`cleanPasted`). This file runs on old iPads: no regular expression with a lookbehind, here
-// or in anything it imports (tests/unit/old-safari.test.ts).
+// Maria's campaign editor on the „Kampaaniad“ tab (newsletter campaigns, Task 4; spec D4, D5; ruling R2; the 20.10 design §3:
+// docs/superpowers/specs/2026-10-20-newsletter-simple-design.md). Three states, decided by the campaign's `status` and nothing else:
+// - a draft: the fields (the name, the subject, the preview line, the picture, the text in paragraphs, the code, the button), each with its limit and
+//   a counter, „Salvesta“, the live preview of the real mail in both languages, and the sends: „Saada proov“ (Maria's address or the signed-in
+//   admin's, either language) and „Saada kõigile“ (the confirmation with the counts, then the result line of the first batch);
+// - going out (`sending`): read-only, with „Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.“, the failed and unknown counts when
+//   they are not 0, the line of a batch Resend refused, and „Peata saatmine“ (which asks first), the preview and „Kopeeri“;
+// - sent: read-only, „Saadetud {date} · {n} tellijale“ (and the same counts), the preview and „Kopeeri“.
+// What an action returns (the progress, `stopped`) is only the line right after a press: the page is refreshed by the action and the state comes
+// from the campaign's row (a batch can stop with rows still claimed by another runner, so `stopped: null` does not mean done).
+// The rules are domain/newsletter-campaign.ts checkCampaignDraft, run here before anything is saved (the server checks them again); text pasted from
+// Word can carry control characters, which become spaces or line breaks first (`cleanPasted`). This file runs on old iPads: no regular expression
+// with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
 
 type Both = { et: string; ru: string };
 /** The editor's fields as the form holds them: every text a string ("" for none), the picture's key "" for none. */
@@ -40,17 +43,19 @@ export type CampaignEditorView = {
   id: number;
   status: "draft" | "sending" | "sent";
   values: CampaignValues;
-  /** ISO time of the send; null until sent (and for a first send left `sending`, whose time is its `updatedAt`). */
+  /** ISO time of the send; null until sent. */
   sentAt: string | null;
-  /** ISO time of its last change: for a send left `sending`, when the send began. */
+  /** ISO time of its last change. */
   updatedAt: string;
-  /** The subscribers in Resend the send was for, per language; null while a draft. */
+  /** The subscribers the send was for, per language; null while a draft. */
   recipients: { et: number; ru: number } | null;
-  /** The broadcasts that went, per language. */
-  broadcasts: { et?: string; ru?: string } | null;
+  /** Where its deliveries stand (server/newsletter-campaigns.ts progressOf); null while a draft. */
+  progress: Progress | null;
+  /** While going out: the last batch stopped because Resend refused (server/newsletter-campaigns.ts sendRefused). */
+  refused: boolean;
 };
-/** An address „Saada proov“ may go to: MARIA_EMAIL's (`maria`) or the signed-in admin's (`me`); `subscriber`: a subscriber's address (ruling R7). */
-export type TestTarget = { key: "maria" | "me"; address: string; subscriber: boolean };
+/** An address „Saada proov“ may go to: MARIA_EMAIL's (`maria`) or the signed-in admin's (`me`). */
+export type TestTarget = { key: "maria" | "me"; address: string };
 
 export const EMPTY_CAMPAIGN: CampaignValues = {
   name: "",
@@ -66,10 +71,6 @@ export const EMPTY_CAMPAIGN: CampaignValues = {
 const PREVIEW_URL = "/api/admin/kampaania-eelvaade";
 /** The pause after the last key before the preview is asked again (ms). */
 const PREVIEW_PAUSE_MS = 300;
-/** Resend dashboard: the list of broadcasts, and one broadcast (its id after the slash). */
-const RESEND_BROADCASTS = "https://resend.com/broadcasts";
-const RESEND_BROADCAST = `${RESEND_BROADCASTS}/`;
-const LOCALES: readonly Lang[] = ["et", "ru"];
 const campaignHref = (id: number) => `/admin/uudiskiri?vaade=kampaaniad&kampaania=${id}`;
 
 /**
@@ -102,28 +103,34 @@ const IDLE: Line = { tone: "idle", text: "" };
 const toneClass = (tone: Tone) => (tone === "error" ? ui.error : tone === "done" ? ui.success : ui.hint);
 
 const t = adminEt.newsletter.campaigns;
+const LOCALES: readonly Lang[] = ["et", "ru"];
 /** An action's refusal in words (an unknown code: the general one). */
 const refusal = (code: string): string => (t.errorsOf as Record<string, string>)[code] ?? t.errorsOf.server;
+/** What a lost connection or a thrown action is to the editor: the general refusal. */
+const LOST = { ok: false as const, error: "server" as const };
+/** „Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.“ for the deliveries as they stand. */
+const progressText = (p: Progress): string => fill(t.progress, { sent: p.sent, n: p.total, left: p.waiting });
 /** A field's refusal in words (domain/newsletter-campaign.ts checkCampaignDraft's codes). */
 const fieldError = (code: string | undefined): string | undefined =>
   code === undefined ? undefined : code === "ruLabel" ? adminEt.newsletter.campaignErrors.ruLabel : ((t.errors as Record<string, string>)[code] ?? t.errors.invalid);
 
 export function NewsletterCampaignEditor({
   campaign,
-  configured,
-  testTargets,
   links,
+  testTargets,
+  gated,
 }: {
   /** The campaign, or null for „Uus kampaania“ (saved, it opens at its own address). */
   campaign: CampaignEditorView | null;
-  /** Is the newsletter's Resend side set up (a marketing key)? Without it the sends say so and send nothing. */
-  configured: boolean;
-  testTargets: TestTarget[];
   /** The site's pages for the button's address (server/site-links.ts). */
   links: string[];
+  /** The addresses „Saada proov“ offers. */
+  testTargets: TestTarget[];
+  /** The coming-soon gate is on (the page reads SITE_GATE, lib/site-gate.ts gateOn; this component never reads the environment): the mail's links open „Tulekul“. */
+  gated: boolean;
 }) {
   const readOnly = campaign !== null && campaign.status !== "draft";
-  return readOnly ? <SentCampaign campaign={campaign} configured={configured} /> : <DraftEditor campaign={campaign} configured={configured} testTargets={testTargets} links={links} />;
+  return readOnly ? <SentCampaign campaign={campaign} /> : <DraftEditor campaign={campaign} links={links} testTargets={testTargets} gated={gated} />;
 }
 
 // ---------- the preview ----------
@@ -213,7 +220,7 @@ function PreviewCard({ values }: { values: CampaignValues }) {
 
 // ---------- a draft ----------
 
-function DraftEditor({ campaign, configured, testTargets, links }: { campaign: CampaignEditorView | null; configured: boolean; testTargets: TestTarget[]; links: string[] }) {
+function DraftEditor({ campaign, links, testTargets, gated }: { campaign: CampaignEditorView | null; links: string[]; testTargets: TestTarget[]; gated: boolean }) {
   const router = useRouter();
   const uid = useId();
   const L = CAMPAIGN_LIMITS;
@@ -225,7 +232,8 @@ function DraftEditor({ campaign, configured, testTargets, links }: { campaign: C
   const [saves, setSaves] = useState(0);
   const [pending, start] = useTransition();
   const dirty = JSON.stringify(values) !== JSON.stringify(saved);
-  // what an open confirmation of „Saada kõigile“ was given for: any change of a field, or a save that lands, closes it (the review's M5)
+  // what an open confirmation of „Saada kõigile“ was given for: any change of a field, or a save that lands, closes it, so „Saada“ never sends what
+  // Maria did not confirm
   const revision = `${saves}:${JSON.stringify(values)}`;
 
   // Another campaign chosen (the list's links, „Uus kampaania“): its fields (adjusting state while rendering). Not when the page comes back with the
@@ -282,7 +290,7 @@ function DraftEditor({ campaign, configured, testTargets, links }: { campaign: C
     setFields({});
     start(async () => {
       // (a lost connection rejects the call: words, not an error page)
-      const r = await saveCampaignAction({ id, draft: checked.value }).catch(() => ({ ok: false as const, error: "server" as const }));
+      const r = await saveCampaignAction({ id, draft: checked.value }).catch(() => LOST);
       if (r.ok) {
         setSaved(cleaned);
         setSaves((n) => n + 1);
@@ -369,7 +377,7 @@ function DraftEditor({ campaign, configured, testTargets, links }: { campaign: C
 
         <div className={site.aside}>
           <PreviewCard values={values} />
-          <Sends key={id ?? "new"} id={id} configured={configured} saved={id !== null && !dirty} revision={revision} testTargets={testTargets} />
+          <Sends key={id ?? "new"} id={id} saved={id !== null && !dirty} revision={revision} testTargets={testTargets} gated={gated} />
         </div>
       </div>
       <SaveBar status={status} pending={pending} reloadHref={id === null ? "/admin/uudiskiri?vaade=kampaaniad" : campaignHref(id)} />
@@ -377,38 +385,38 @@ function DraftEditor({ campaign, configured, testTargets, links }: { campaign: C
   );
 }
 
-// ---------- the sends ----------
+// ---------- the sends of a draft ----------
 
-function Sends({ id, configured, saved, revision, testTargets }: { id: number | null; configured: boolean; saved: boolean; revision: string; testTargets: TestTarget[] }) {
+/**
+ * The sends: „Saada proov“ (one ordinary mail to Maria or to the signed-in admin, in either language) and „Saada kõigile“ (the confirmation, then the
+ * press). Both need a saved draft (`saved`): what goes out is the stored campaign. `gated`: the gate is on (the notice under the result and the confirmation);
+ * the section says so in `data-gated`, which is what the page's test reads of the server's side.
+ */
+function Sends({ id, saved, revision, testTargets, gated }: { id: number | null; saved: boolean; revision: string; testTargets: TestTarget[]; gated: boolean }) {
   const uid = useId();
   const [to, setTo] = useState<TestTarget["key"]>(testTargets[0]?.key ?? "me");
   const [locale, setLocale] = useState<Lang>("et");
   const [testLine, setTestLine] = useState<Line>(IDLE);
   const [testing, startTest] = useTransition();
   const target = testTargets.find((x) => x.key === to) ?? testTargets[0];
-  const open = configured && saved && id !== null;
+  const open = saved && id !== null;
 
   const test = () => {
     if (id === null || !open || testing || !target) return;
     setTestLine({ tone: "busy", text: t.test.working });
     startTest(async () => {
-      const r = await sendTestAction({ id, to: target.key, locale }).catch(() => ({ ok: false as const, error: "server" as const }));
-      if (r.ok) setTestLine({ tone: "done", text: [fill(t.test.sent, { email: target.address }), r.realLink ? t.test.realLink : ""].filter(Boolean).join(" ") });
+      const r = await sendTestAction({ id, to: target.key, locale }).catch(() => LOST);
+      if (r.ok) setTestLine({ tone: "done", text: fill(t.test.sent, { email: target.address }) });
       else setTestLine({ tone: "error", text: refusal(r.error) });
     });
   };
 
   return (
-    <section className={ui.card} aria-labelledby={`${uid}-send`} data-campaign-send="">
+    <section className={ui.card} aria-labelledby={`${uid}-send`} data-campaign-send="" data-gated={gated ? "" : undefined}>
       <h2 id={`${uid}-send`} className={ui.h3}>
         {t.send}
       </h2>
-      {!configured && (
-        <p className={ui.notice} data-campaign-send-off="">
-          {t.off}
-        </p>
-      )}
-      {configured && !(saved && id !== null) && (
+      {!open && (
         <p className={ui.hint} data-campaign-save-first="">
           {t.saveFirst}
         </p>
@@ -417,14 +425,14 @@ function Sends({ id, configured, saved, revision, testTargets }: { id: number | 
       <div className={styles.sendPart} data-campaign-test="">
         <h3 className={styles.sendTitle}>{t.test.title}</h3>
         <p className={`${ui.muted} ${ui.small}`}>{t.test.lead}</p>
-        {configured && testTargets.length > 0 && (
+        {testTargets.length > 0 && (
           <fieldset className={ed.fieldset}>
             <legend className={ui.legend}>{t.test.to}</legend>
             <div className={ed.choices}>
               {testTargets.map((x) => (
                 <Choice
                   key={x.key}
-                  className={ed.choice}
+                  className={`${ed.choice} ${styles.address}`}
                   type="radio"
                   name={`${uid}-to`}
                   value={x.key}
@@ -437,21 +445,14 @@ function Sends({ id, configured, saved, revision, testTargets }: { id: number | 
             </div>
           </fieldset>
         )}
-        {configured && (
-          <fieldset className={ed.fieldset}>
-            <legend className={ui.legend}>{t.test.language}</legend>
-            <div className={ed.choices}>
-              {LOCALES.map((l) => (
-                <Choice key={l} className={ed.choice} type="radio" name={`${uid}-locale`} value={l} checked={locale === l} onChange={() => setLocale(l)} label={t.test.languages[l]} data-test-locale={l} />
-              ))}
-            </div>
-          </fieldset>
-        )}
-        {configured && target?.subscriber && (
-          <p className={ui.notice} data-test-real-link="">
-            {t.test.realLink}
-          </p>
-        )}
+        <fieldset className={ed.fieldset}>
+          <legend className={ui.legend}>{t.test.language}</legend>
+          <div className={ed.choices}>
+            {LOCALES.map((l) => (
+              <Choice key={l} className={ed.choice} type="radio" name={`${uid}-locale`} value={l} checked={locale === l} onChange={() => setLocale(l)} label={t.test.languages[l]} data-test-locale={l} />
+            ))}
+          </div>
+        </fieldset>
         <div className={styles.sendRow}>
           <button type="button" className={`${ui.btn} ${ui.secondary}`} aria-disabled={!open || testing || !target || undefined} onClick={test} data-test-send="">
             {testing ? t.test.working : t.test.button}
@@ -460,37 +461,59 @@ function Sends({ id, configured, saved, revision, testTargets }: { id: number | 
         <p role="status" className={`${styles.status} ${toneClass(testLine.tone)}`} data-test-status="">
           {testLine.text}
         </p>
+        {gated && testLine.tone === "done" && <GateNotice />}
       </div>
 
-      <ConfirmSend id={id} scope="all" open={open} revision={revision} title={t.all.title} lead={t.all.lead} button={t.all.button} />
+      <ConfirmSend id={id} open={open} revision={revision} gated={gated} />
     </section>
   );
 }
 
 /**
- * „Saada kõigile“ (scope "all") or „Saada puuduv keel“ (scope "missing", ruling R12): the press asks for the sync and the plan (prepareSendAction),
- * the confirmation shows the spec's counts (with the Russian fall-back and the plan's limit when they apply), and „Saada“ sends with the counts
- * shown (ruling R14): when the subscribers changed meanwhile the confirmation comes back with the new counts and the line that says so. The
- * confirmation belongs to `revision` (the fields and the saves of the draft): any change of a field, or a save that lands, closes it, so „Saada“
- * never sends what Maria did not confirm (the review's M5).
+ * While the coming-soon gate is on, the links and the button of the mail open the „Tulekul“ page (final review I1, ruling R9): one line under the
+ * confirmation of „Saada kõigile“ and under the result of „Saada proov“. A notice, not a block: a „we open soon“ campaign is a legitimate one.
  */
-function ConfirmSend({ id, scope, open, revision, title, lead, button }: { id: number | null; scope: "all" | "missing"; open: boolean; revision: string; title: string; lead: string; button: string }) {
+function GateNotice() {
+  return (
+    <p className={ui.notice} data-gate-notice="">
+      {t.gateNotice}
+    </p>
+  );
+}
+
+/** What the confirmation was given for (prepareSendAction): the counts by language, the Russian fall-back, and the campaign's version. */
+type Plan = { et: number; ru: number; ruFallsBack: boolean; updatedAt: string };
+
+/**
+ * „Saada kõigile“: the press asks for the plan (prepareSendAction), the confirmation shows the spec's counts (with the Russian fall-back when it
+ * applies), and „Saada“ sends with the counts shown: when the subscribers or the campaign changed meanwhile nothing is sent and the line says so.
+ * The confirmation belongs to `revision` (the fields and the saves of the draft): any change of a field, or a save that lands, closes it. While
+ * another campaign is going out, the plan comes back `busy` and the line is the one-at-a-time text instead of the confirmation. After the press the
+ * line is made from the answer, the progress of the first batch: it is all the page shows until the refresh the action asked for lands, when the
+ * campaign's own state (sending or sent) replaces this card.
+ */
+function ConfirmSend({ id, open, revision, gated }: { id: number | null; open: boolean; revision: string; gated: boolean }) {
   const [line, setLine] = useState<Line>(IDLE);
-  const [confirm, setConfirm] = useState<{ plan: SendPlan; revision: string; changed: boolean } | null>(null);
+  const [confirm, setConfirm] = useState<{ plan: Plan; revision: string } | null>(null);
   const [sending, start] = useTransition();
   // a field changed or a save landed since the confirmation: it is closed for good (adjusting state while rendering), even if the fields come back
   if (confirm && confirm.revision !== revision) setConfirm(null);
   const shown = confirm && confirm.revision === revision ? confirm : null;
-  const startHook = scope === "all" ? { "data-send-all": "" } : { "data-send-missing": "" };
+  // the pressed button is gone when the confirmation opens, so the question takes the focus (as StopSend's and the other admin confirms do)
+  const asking = shown !== null;
+  const question = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (asking) question.current?.focus();
+  }, [asking]);
 
   const prepare = () => {
     if (id === null || !open || sending) return;
     setConfirm(null);
     setLine({ tone: "busy", text: t.all.checking });
     start(async () => {
-      const r = await prepareSendAction({ id, scope }).catch(() => ({ ok: false as const, error: "server" as const }));
+      const r = await prepareSendAction({ id }).catch(() => LOST);
       if (r.ok) {
-        setConfirm({ plan: r.plan, revision, changed: false });
+        setConfirm({ plan: { et: r.et, ru: r.ru, ruFallsBack: r.ruFallsBack, updatedAt: r.updatedAt }, revision });
         setLine(IDLE);
       } else setLine({ tone: "error", text: refusal(r.error) });
     });
@@ -501,54 +524,29 @@ function ConfirmSend({ id, scope, open, revision, title, lead, button }: { id: n
     const { plan } = shown;
     setLine({ tone: "busy", text: t.all.working });
     start(async () => {
-      const r = await sendCampaignAction({ id, et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt, scope }).catch(() => ({ ok: false as const, error: "server" as const }));
-      if (!r.ok && r.error === "changed" && "plan" in r) {
-        if (r.plan.updatedAt !== plan.updatedAt) {
-          // the campaign was saved elsewhere since the confirmation (the review's M3): nothing went, and this editor shows the older text
-          setConfirm(null);
-          setLine({ tone: "error", text: t.all.edited });
-          return;
-        }
-        // the counts moved since the confirmation: nothing went; the new ones, to confirm again
-        setConfirm({ plan: r.plan, revision, changed: true });
-        setLine(IDLE);
-        return;
-      }
+      const r = await startSendAction({ id, et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt }).catch(() => LOST);
       setConfirm(null);
       if (!r.ok) return setLine({ tone: "error", text: refusal(r.error) });
-      const lines = r.missing.length > 0 ? r.missing.map((l) => t.missing[l]) : [t.all.done];
-      if (r.left > 0) lines.push(fill(t.all.left, { n: r.left }));
-      setLine({ tone: r.missing.length > 0 ? "error" : "done", text: lines.join(" ") });
+      if (r.stopped === "refused") return setLine({ tone: "error", text: t.errorsOf.refused });
+      setLine({ tone: "done", text: r.progress.waiting > 0 ? progressText(r.progress) : t.all.done });
     });
   };
 
   return (
-    <div className={styles.sendPart} data-campaign-all={scope}>
-      <h3 className={styles.sendTitle}>{title}</h3>
-      <p className={`${ui.muted} ${ui.small}`}>{lead}</p>
+    <div className={styles.sendPart} data-campaign-all="">
+      <h3 className={styles.sendTitle}>{t.all.title}</h3>
+      <p className={`${ui.muted} ${ui.small}`}>{t.all.lead}</p>
       {shown ? (
         <div className={styles.confirm} data-send-confirm="">
-          {shown.changed && (
-            <p className={ui.notice} data-send-changed="">
-              {t.all.changed}
-            </p>
-          )}
-          <p data-send-confirm-text="">{fill(t.all.confirm, { n: shown.plan.et + shown.plan.ru, a: shown.plan.et, b: shown.plan.ru })}</p>
+          <p ref={question} tabIndex={-1} data-send-confirm-text="">
+            {fill(t.all.confirm, { n: shown.plan.et + shown.plan.ru, a: shown.plan.et, b: shown.plan.ru })}
+          </p>
           {shown.plan.ruFallsBack && shown.plan.ru > 0 && (
             <p className={ui.notice} data-send-fallback="">
               {t.all.fallback}
             </p>
           )}
-          {shown.plan.left > 0 && (
-            <p className={ui.notice} data-send-left="">
-              {fill(t.all.left, { n: shown.plan.left })}
-            </p>
-          )}
-          {shown.plan.rejected > 0 && (
-            <p className={ui.notice} data-send-rejected="">
-              {fill(t.all.rejected, { n: shown.plan.rejected })}
-            </p>
-          )}
+          {gated && <GateNotice />}
           <div className={styles.sendRow}>
             <button type="button" className={ui.btn} aria-disabled={!open || sending || undefined} onClick={send} data-send-yes="">
               {sending ? t.all.working : t.all.yes}
@@ -560,8 +558,8 @@ function ConfirmSend({ id, scope, open, revision, title, lead, button }: { id: n
         </div>
       ) : (
         <div className={styles.sendRow}>
-          <button type="button" className={ui.btn} aria-disabled={!open || sending || undefined} onClick={prepare} {...startHook}>
-            {button}
+          <button type="button" className={ui.btn} aria-disabled={!open || sending || undefined} onClick={prepare} data-send-all="">
+            {t.all.button}
           </button>
         </div>
       )}
@@ -572,131 +570,98 @@ function ConfirmSend({ id, scope, open, revision, title, lead, button }: { id: n
   );
 }
 
-// ---------- a sent campaign ----------
+// ---------- a campaign that is no draft ----------
 
-/** The subscribers a send reached: the counts of the languages whose broadcast went (CampaignsPanel.tsx reachedBy counts the list the same way). */
-function reachedCount(c: Pick<CampaignEditorView, "recipients" | "broadcasts">): number {
-  const went = c.broadcasts ?? {};
-  const planned = c.recipients ?? { et: 0, ru: 0 };
-  return LOCALES.reduce((n, l) => n + (went[l] ? planned[l] : 0), 0);
-}
-
-/** A link to one broadcast in Resend's dashboard. */
-function BroadcastLink({ locale, id }: { locale: Lang; id: string }) {
+/** The lines of a campaign's counts that are worth a line only when they are not 0: the addresses that failed, the mails with no answer. */
+function CountLines({ progress }: { progress: Progress | null }) {
+  if (!progress || (progress.failed === 0 && progress.unknown === 0)) return null;
   return (
-    <a className={ui.link} href={`${RESEND_BROADCAST}${encodeURIComponent(id)}`} target="_blank" rel="noopener noreferrer" data-campaign-broadcast={locale}>
-      {fill(t.openInResend, { lang: t.langNames[locale] })}
-    </a>
+    <div className={styles.lines}>
+      {progress.failed > 0 && (
+        <p className={ui.notice} data-campaign-failed="">
+          {fill(t.failedLine, { n: progress.failed })}
+        </p>
+      )}
+      {progress.unknown > 0 && (
+        <p className={ui.notice} data-campaign-unknown="">
+          {fill(t.unknownLine, { n: progress.unknown })}
+        </p>
+      )}
+    </div>
   );
 }
 
 /**
- * A campaign whose send stopped half way (`sending`, rulings R13, R16): each language of the send with what is known of it, the one that went with
- * its time, its count and its Resend link, the one without an answer said so, and one after it as never sent (the re-review's N2); Resend's list of
- * broadcasts; and, for the language Maria may now
- * mark (unsentCandidate: the first without a recorded broadcast), „Märgi saatmata“ behind the question whether she has looked in Resend. Never
- * „Kopeeri“ as the way on: it would mail the language that went a second time.
+ * „Peata saatmine“ (spec §3, Draft): asks first (the number that will not go out), then stops: what waits is skipped and the campaign is sent with
+ * its counts (stopSendAction, which refreshes the page: the card then shows the sent campaign).
  */
-function HalfSent({ campaign }: { campaign: CampaignEditorView }) {
-  const at = campaign.sentAt ?? campaign.updatedAt;
-  const candidate = unsentCandidate(campaign);
-  return (
-    <>
-      <p className={ui.notice} data-campaign-sending="">
-        {t.sending}
-      </p>
-      <ul className={styles.languages} data-campaign-languages="">
-        {sendLanguages(campaign).map((l) => (
-          <li key={l.locale} className={styles.language} data-campaign-language={l.locale} data-state={l.state}>
-            {l.state === "sent" && l.broadcast ? (
-              <>
-                <p className={ui.success} data-campaign-language-line="">
-                  {fill(t.langSent, { date: stamp(at), n: l.recipients, lang: t.langNames[l.locale] })}
-                </p>
-                <BroadcastLink locale={l.locale} id={l.broadcast} />
-              </>
-            ) : l.state === "notTried" ? (
-              <p className={ui.hint} data-campaign-language-line="">
-                {fill(t.langNotTried, { lang: t.langNames[l.locale] })}
-              </p>
-            ) : (
-              <>
-                <p className={ui.error} data-campaign-language-line="">
-                  {fill(t.langUnknown, { lang: t.langNames[l.locale] })}
-                </p>
-                {candidate === l.locale && <MarkNotSent id={campaign.id} locale={l.locale} />}
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
-      <p className={styles.broadcastsList}>
-        <a className={ui.link} href={RESEND_BROADCASTS} target="_blank" rel="noopener noreferrer" data-campaign-broadcasts-list="">
-          {t.broadcastsList}
-        </a>
-      </p>
-    </>
-  );
-}
-
-/** „Märgi saatmata“ (ruling R16): the question first, then the action; the page comes back with the campaign as it is now (sent with the language missing, or a draft). */
-function MarkNotSent({ id, locale }: { id: number; locale: Lang }) {
-  const [asking, setAsking] = useState(false);
+function StopSend({ id, waiting }: { id: number; waiting: number }) {
+  const [confirming, setConfirming] = useState(false);
   const [line, setLine] = useState<Line>(IDLE);
   const [pending, start] = useTransition();
-  const m = t.markNotSent;
-  const mark = () => {
+  const question = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (confirming) question.current?.focus();
+  }, [confirming]);
+
+  const stop = () => {
     if (pending) return;
-    setLine({ tone: "busy", text: m.working });
+    setLine({ tone: "busy", text: t.stop.working });
     start(async () => {
-      const r = await markNotSentAction({ id, locale }).catch(() => ({ ok: false as const, error: "server" as const }));
-      setAsking(false);
-      setLine(r.ok ? { tone: "done", text: m.done } : { tone: "error", text: refusal(r.error) });
+      const r = await stopSendAction({ id }).catch(() => LOST);
+      setConfirming(false);
+      if (r.ok) setLine({ tone: "done", text: t.stop.done });
+      else setLine({ tone: "error", text: refusal(r.error) });
     });
   };
+
   return (
-    <div className={styles.mark} data-mark-not-sent={locale}>
-      {asking ? (
-        <div className={styles.confirm} data-mark-confirm="">
-          <p data-mark-confirm-text="">{fill(m.confirm, { keel: m.keel[locale] })}</p>
+    <div className={styles.sendPart} data-campaign-stop-part="">
+      {confirming ? (
+        <div className={styles.confirm} data-stop-confirm="">
+          <p ref={question} tabIndex={-1} data-stop-confirm-text="">
+            {fill(t.stop.confirm, { n: waiting })}
+          </p>
           <div className={styles.sendRow}>
-            <button type="button" className={ui.btn} aria-disabled={pending || undefined} onClick={mark} data-mark-yes="">
-              {pending ? m.working : m.yes}
+            <button type="button" className={`${ui.btn} ${ui.danger}`} aria-disabled={pending || undefined} onClick={stop} data-stop-yes="">
+              {pending ? t.stop.working : t.stop.yes}
             </button>
-            <button type="button" className={`${ui.btn} ${ui.secondary}`} onClick={() => !pending && setAsking(false)} data-mark-no="">
-              {m.no}
+            <button type="button" className={`${ui.btn} ${ui.secondary}`} onClick={() => !pending && setConfirming(false)} data-stop-no="">
+              {t.stop.no}
             </button>
           </div>
         </div>
       ) : (
         <div className={styles.sendRow}>
-          <button type="button" className={`${ui.btn} ${ui.secondary}`} onClick={() => setAsking(true)} data-mark-start="">
-            {m.button}
+          <button type="button" className={`${ui.btn} ${ui.danger}`} onClick={() => setConfirming(true)} data-campaign-stop="">
+            {t.stop.button}
           </button>
         </div>
       )}
-      <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-mark-status="">
+      <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-stop-status="">
         {line.text}
       </p>
     </div>
   );
 }
 
-function SentCampaign({ campaign, configured }: { campaign: CampaignEditorView; configured: boolean }) {
+/**
+ * A campaign sent or going out: read-only (a sent campaign never changes). Going out (`sending`): the progress line, the failed and unknown counts
+ * when they are not 0, the line of a batch Resend refused, and „Peata saatmine“. Sent: the sent line and the same counts. Both: the preview and
+ * „Kopeeri“, which makes a new draft of it.
+ */
+function SentCampaign({ campaign }: { campaign: CampaignEditorView }) {
   const router = useRouter();
   const uid = useId();
   const [line, setLine] = useState<Line>(IDLE);
   const [pending, start] = useTransition();
-  const went = campaign.broadcasts ?? {};
-  const planned = campaign.recipients ?? { et: 0, ru: 0 };
-  const missing = LOCALES.filter((l) => planned[l] > 0 && !went[l]);
-  const half = campaign.status === "sending" || missing.length > 0;
+  const going = campaign.status === "sending";
 
   const copy = () => {
     if (pending) return;
     setLine({ tone: "busy", text: t.copying });
     start(async () => {
-      const r = await copyCampaignAction({ id: campaign.id }).catch(() => ({ ok: false as const, error: "server" as const }));
+      const r = await copyCampaignAction({ id: campaign.id }).catch(() => LOST);
       if (r.ok) {
         setLine(IDLE);
         router.push(campaignHref(r.id));
@@ -710,38 +675,26 @@ function SentCampaign({ campaign, configured }: { campaign: CampaignEditorView; 
         <h2 id={`${uid}-sent`} className={ui.h3}>
           {campaign.values.name}
         </h2>
-        {campaign.status === "sent" && campaign.sentAt && (
+        {going && campaign.progress && (
+          <p className={`${ui.hint} ${styles.progress}`} data-campaign-progress="">
+            {progressText(campaign.progress)}
+          </p>
+        )}
+        {going && campaign.refused && (
+          <p className={ui.error} data-campaign-refused="">
+            {t.errorsOf.refused}
+          </p>
+        )}
+        {campaign.status === "sent" && campaign.sentAt && campaign.recipients && (
           <p className={ui.success} data-campaign-sent-line="">
-            {fill(t.sentLine, { date: stamp(campaign.sentAt), n: reachedCount(campaign) })}
+            {fill(t.sentLine, { date: stamp(campaign.sentAt), n: campaign.recipients.et + campaign.recipients.ru })}
           </p>
         )}
-        {campaign.status === "sending" && <HalfSent campaign={campaign} />}
-        {campaign.status === "sent" &&
-          missing.map((l) => (
-            <p key={l} className={ui.error} data-campaign-missing={l}>
-              {t.missing[l]}
-            </p>
-          ))}
-        {campaign.status === "sent" && LOCALES.some((l) => went[l]) && (
-          <ul className={styles.broadcasts}>
-            {LOCALES.filter((l) => went[l]).map((l) => (
-              <li key={l}>
-                <BroadcastLink locale={l} id={went[l]!} />
-              </li>
-            ))}
-          </ul>
-        )}
-        {campaign.status === "sent" && missing.length > 0 && configured && (
-          <ConfirmSend id={campaign.id} scope="missing" open={configured} revision="sent" title={t.sendMissing.title} lead={t.sendMissing.lead} button={t.sendMissing.button} />
-        )}
+        <CountLines progress={campaign.progress} />
         <p className={`${ui.hint} ${styles.readOnly}`} data-campaign-read-only="">
-          {half ? t.readOnlyHalf : t.readOnly}
+          {going ? t.readOnlySending : t.readOnly}
         </p>
-        {campaign.status === "sending" && (
-          <p className={ui.notice} data-campaign-sending-check="">
-            {t.sendingCheck}
-          </p>
-        )}
+        {going && <StopSend key={campaign.id} id={campaign.id} waiting={campaign.progress?.waiting ?? 0} />}
         <div className={styles.sendRow}>
           <button type="button" className={`${ui.btn} ${ui.secondary}`} aria-disabled={pending || undefined} onClick={copy} data-campaign-copy="">
             {pending ? t.copying : t.copy}

@@ -80,11 +80,6 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
         <p className={`${ui.muted} ${ui.small}`} data-client-newsletter={detail.newsletter}>
           {fill(t.newsletter, { state: t.newsletterStates[detail.newsletter] })}
         </p>
-        {detail.suppressed && (
-          <p className={`${ui.small} ${styles.suppressed}`} data-client-suppressed="">
-            {adminEt.newsletter.suppressed}
-          </p>
-        )}
         <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/opilased/${c.id}/vaade`} data-view-as="">
           {t.viewAs}
         </Link>

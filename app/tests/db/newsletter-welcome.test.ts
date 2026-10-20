@@ -8,7 +8,7 @@ import { clientNewsletter, confirmNewsletter, newsletterState, sendWelcome } fro
 import type { Env } from "@/server/notify";
 import { newToken, sha256 } from "@/server/token";
 import { fakeKv, stubFetch } from "../fakes";
-import { makeTestDb } from "./helpers";
+import { capRows, countedMails, makeTestDb } from "./helpers";
 
 // Phase 2c (spec 5), one step since 09.10: the welcome mail goes out to a newly subscribed address — the sign-up (actions.test.ts), "Saada mulle
 // uudiskirja" in Minu andmed, or a confirmation link of the old flow (confirmNewsletter, which still sends it only when Seaded has a code) — once,
@@ -85,7 +85,8 @@ test("never twice for one address: switched off and on again (a new row), the we
   expect((await two.result).code).toBe("TERE10"); // the page still shows the code of a first confirmation
   await two.run();
   expect(mails()).toHaveLength(1);
-  expect((await db.select().from(mailQuota))[0].sent).toBe(1);
+  expect((await capRows(db))[0].sent).toBe(1);
+  expect(await countedMails(db)).toBe(1); // the day's count of every mail has it, once
 });
 
 test("the newsletter's own daily cap reached: no welcome mail; the shared counter full (the logins', the registrations' confirmations') does not stop it", async () => {
@@ -158,7 +159,8 @@ test("a welcome mail that Resend refuses leaves no 'once a year' mark: the next 
   await sendWelcome(deps, { email: "uus@example.com", locale: "et" });
   expect(resend()).toHaveLength(2); // sent now
   expect((resend()[1].body as { to: string }).to).toBe("uus@example.com");
-  expect((await db.select().from(mailQuota)).map((r) => r.sent)).toEqual([2]); // the refused try's place is not given back
+  expect((await capRows(db)).map((r) => r.sent)).toEqual([2]); // the refused try's place is not given back
+  expect(await countedMails(db)).toBe(1); // the day's count of every mail has only the one Resend took
   await sendWelcome(deps, { email: "uus@example.com", locale: "et" });
   expect(resend()).toHaveLength(2); // delivered: the mark holds for the year
   expect([...kv.store.keys()].filter((k) => k.startsWith("rl:welcome:"))).toHaveLength(1);
@@ -219,7 +221,7 @@ test("sendWelcome for an address that has no row any more (it unsubscribed meanw
   await setCode("TERE10");
   await sendWelcome({ db, env: env(), now: NOW, siteUrl: SITE }, { email: "uus@example.com", locale: "et" });
   expect(mails()).toEqual([]);
-  expect(await db.select().from(mailQuota)).toEqual([]);
+  expect(await capRows(db)).toEqual([]);
   expect([...kv.store.keys()].filter((k) => k.startsWith("rl:welcome:"))).toEqual([]);
 });
 

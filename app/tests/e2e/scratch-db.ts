@@ -4,8 +4,8 @@ import postgres from "postgres";
 import { localDatabaseUrl } from "./fixtures";
 import { assertLocalDatabases } from "./local-db";
 
-// A scratch database for a race spec that must not touch the local test database's rows (newsletter campaigns, Task 5: the sync writes the
-// subscribers and the settings of the whole table, which the other specs read). It is made on the same server as the local test database (so
+// A scratch database for a race spec that must not touch the local test database's rows (the simple newsletter, Task 5: the spec empties the
+// campaigns, subscribers, settings and mail-counter tables and presses real sends of its own, tables the other specs read). It is made on the same server as the local test database (so
 // only ever a database on this machine, local-db.ts), migrated with the app's own migrations, and dropped when the spec is done. Every name
 // starts with SCRATCH_PREFIX, and only a name that matches NAME is ever created or dropped: nothing else on the server can be reached through here.
 

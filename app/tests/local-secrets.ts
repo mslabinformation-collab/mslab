@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { E2E_BUNNY } from "./e2e/bunny-values";
 import { E2E_MONTONIO } from "./e2e/montonio-values";
-import { E2E_RESEND } from "./e2e/resend-values";
 
 // The settings of local development and the tests, read from .env.example: placeholders, never a real address (the real
 // ones are Environment Variables of the Vercel project). The Playwright configs hand them to the server they start
@@ -22,6 +21,16 @@ const vars = parseEnvFile(readFileSync(join(process.cwd(), ".env.example"), "utf
 for (const key of ["DATABASE_URL", "SITE_URL", "ADMIN_EMAILS", "ADMIN_NAMES", "MARIA_EMAIL", "MAIL_FROM"]) if (!vars[key]) throw new Error(`.env.example: ${key} is missing`);
 
 /**
+ * The e2e servers' mail outbox (server/mail-outbox.ts): a newsletter campaign's mails are written here, one JSON line each, instead of being sent
+ * (the servers have no RESEND_API_KEY, and the run refuses to start with one). In the production build's own folder, which `next build` empties; the
+ * newsletter e2e test reads it (tests/e2e/newsletter-campaigns.spec.ts).
+ */
+export const E2E_MAIL_OUTBOX = resolve(process.cwd(), ".next", "e2e-mail-outbox.jsonl");
+
+/** The daily jobs' secret on the e2e servers (`Authorization: Bearer <it>`, /api/cron/*): made up, local only, never a real project's. */
+export const E2E_CRON_SECRET = "e2e-cron-secret-local-only-9f3a6c1d";
+
+/**
  * What the server of an e2e run is started with (server/env.ts): the six required settings, so the production build
  * (whose configuration must be complete) starts too: the local database and the admin allow-list the tests sign in with.
  * These win over a .env.local of your own, so a run is the same on every machine. The R2 variables are blank
@@ -29,7 +38,8 @@ for (const key of ["DATABASE_URL", "SITE_URL", "ADMIN_EMAILS", "ADMIN_NAMES", "M
  * says; global-setup also refuses to run when one is set anywhere (FORBIDDEN_SETTINGS). The Bunny settings point at the
  * fake Bunny on this machine (tests/e2e/fake-bunny.ts, BUNNY_FAKE_URL) with made-up keys, never the real library.
  * The payments go to the fake Montonio on this machine (tests/e2e/fake-montonio.ts, PAYMENT_PROVIDER=mock) with made-up keys: these win
- * over the sandbox keys of your own .env.local, so a run never reaches the real sandbox.
+ * over the sandbox keys of your own .env.local, so a run never reaches the real sandbox. A newsletter campaign's mails go to the outbox file
+ * (E2E_MAIL_OUTBOX), never to Resend, and the daily jobs have a CRON_SECRET of their own (E2E_CRON_SECRET) for the test that calls them.
  */
 export const LOCAL_ENV = {
   DATABASE_URL: vars.DATABASE_URL,
@@ -42,10 +52,6 @@ export const LOCAL_ENV = {
   R2_ACCESS_KEY_ID: "",
   R2_SECRET_ACCESS_KEY: "",
   R2_BUCKET: "",
-  // blank, as the R2 ones: the newsletter's Resend side is not set up in an e2e run whatever a .env.local says, so the campaign tests never sync or send
-  RESEND_MARKETING_KEY: "",
-  // the webhook alone is set up: /api/resend/webhook checks the signature of the spec's fake events against this made-up secret (tests/e2e/resend-values.ts)
-  RESEND_WEBHOOK_SECRET: E2E_RESEND.webhookSecret,
   BUNNY_LIBRARY_ID: E2E_BUNNY.libraryId,
   BUNNY_API_KEY: E2E_BUNNY.apiKey,
   BUNNY_TOKEN_KEY: E2E_BUNNY.tokenKey,
@@ -56,6 +62,8 @@ export const LOCAL_ENV = {
   MONTONIO_SECRET_KEY: E2E_MONTONIO.secretKey,
   PAYMENT_PROVIDER: "mock",
   MONTONIO_FAKE_URL: E2E_MONTONIO.url,
+  E2E_MAIL_OUTBOX,
+  CRON_SECRET: E2E_CRON_SECRET,
 };
 
 /**

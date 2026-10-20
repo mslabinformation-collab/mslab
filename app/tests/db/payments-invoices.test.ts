@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
 import { attachOrder, insertPayment } from "@/db/queries/payments";
-import { clients, clientSessions, courses, invoices, mailQuota, payments, registrations, type Invoice, type Payment, type Registration } from "@/db/schema";
+import { clients, clientSessions, courses, invoices, payments, registrations, type Invoice, type Payment, type Registration } from "@/db/schema";
 import { formatEUR } from "@/domain/money";
 import { invoiceDue, invoicePaymentKind, payableDue, type DueInput } from "@/domain/payments";
 import { ecourseOpenMail, registrationPaidMail, type EcourseOpenInput, type RegistrationPaidInput } from "@/server/account-mail";
@@ -19,7 +19,7 @@ import { startRegistrationPayment } from "@/server/payments/start";
 import { newToken, sha256 } from "@/server/token";
 import { fakeKv } from "../fakes";
 import { readPdf } from "../pdf-read";
-import { makeTestDb } from "./helpers";
+import { capRows, countedMails, makeTestDb } from "./helpers";
 import { contactCourse, loggedDb, orderToken, registrationOn, settleDeps, SITE, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
 
 // Payments that make and pay invoices (invoices, Task 4; spec D5, §4, §6.1–§6.2): a paid Montonio payment gets its invoice (born paid, or the
@@ -666,14 +666,15 @@ describe("the locks: the order of the plan's Global Constraints", () => {
 });
 
 describe("the mail quota: invoice mails are not counted (controller ruling, as the paid and protocol mails)", () => {
-  test("a paid mail with its invoice leaves no mail_quota row", async () => {
+  test("a paid mail with its invoice takes no place of a cap; the day's count of every mail has it", async () => {
     const m = stubMontonio();
     await ready();
     const r = await registrationOn(db, await contactCourse(db));
     await start(m, r);
     await pay(m, await newest());
     expect(sent(m)[0].attachments).toHaveLength(1);
-    expect(await db.select().from(mailQuota)).toEqual([]);
+    expect(await capRows(db)).toEqual([]);
+    expect(await countedMails(db)).toBe(sent(m).length);
   });
 });
 

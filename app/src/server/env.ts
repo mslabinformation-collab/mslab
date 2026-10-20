@@ -20,14 +20,6 @@ export type ServerEnv = {
   /** The From header of outgoing mail. */
   MAIL_FROM: string;
   RESEND_API_KEY?: string;
-  /**
-   * The newsletter's Resend key (newsletter campaigns, spec §4 as amended, ruling R15), a full-access key: contacts, segments and broadcasts need
-   * one. It alone switches the newsletter on: unset or blank, nothing is synced or sent (server/resend-marketing.ts marketingKey), whatever
-   * RESEND_API_KEY is (that one is the site's own mails' key only).
-   */
-  RESEND_MARKETING_KEY?: string;
-  /** The signing secret of Resend's webhook (/api/resend/webhook, `whsec_…`). Unset: every event is refused (400). */
-  RESEND_WEBHOOK_SECRET?: string;
   TELEGRAM_BOT_TOKEN?: string;
   /** Overrides the chat id stored in the KV under `tg:chat`. */
   TELEGRAM_CHAT_ID?: string;
@@ -65,6 +57,13 @@ export type ServerEnv = {
   PAYMENT_PROVIDER?: string;
   MONTONIO_FAKE_URL?: string;
   PAYMENT_MOCK_IN_PRODUCTION?: string;
+  /**
+   * The e2e run's mail outbox (server/mail-outbox.ts): an absolute file path. A newsletter campaign's mails (the press, the daily job, „Saada proov“) are
+   * then written to that file as JSON lines instead of being sent, and counted as accepted. Never set anywhere but the e2e run's servers
+   * (tests/local-secrets.ts); refused on Vercel; in a production build only with E2E_MAIL_IN_PRODUCTION=1.
+   */
+  E2E_MAIL_OUTBOX?: string;
+  E2E_MAIL_IN_PRODUCTION?: string;
   /**
    * What this environment's Montonio references start with (server/payments/montonio.ts): 2 to 16 capitals, digits or hyphens, not ending in a
    * digit. Unset: MSLAB-M on Vercel's production, MSLAB-P on a preview, MSLAB-L anywhere else. Any other value turns payments off.
@@ -108,8 +107,6 @@ function isPostgresUrl(value: string): boolean {
 
 const OPTIONAL = [
   "RESEND_API_KEY",
-  "RESEND_MARKETING_KEY",
-  "RESEND_WEBHOOK_SECRET",
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_CHAT_ID",
   "ADMIN_KEY",
@@ -132,6 +129,8 @@ const OPTIONAL = [
   "PAYMENT_PROVIDER",
   "MONTONIO_FAKE_URL",
   "PAYMENT_MOCK_IN_PRODUCTION",
+  "E2E_MAIL_OUTBOX",
+  "E2E_MAIL_IN_PRODUCTION",
   "MONTONIO_REFERENCE_PREFIX",
 ] as const;
 

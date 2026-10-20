@@ -6,11 +6,11 @@ import { campaignMail, type CampaignMailInput } from "@/server/campaign-mail";
 
 // The newsletter campaign's mail (newsletter campaigns, Task 1; spec D5, D6): the account mails' card with the logo on top, the picture, the
 // hidden preview line, the paragraphs, the code, the button and the footer (why she got it, the way out, the school). Every text of Maria's
-// is escaped; the unsubscribe address is placed as it is given, because it will be Resend's placeholder. The Russian footer texts are drafts
+// is escaped; the unsubscribe address is placed as it is given, because it is the subscriber's own link. The Russian footer texts are drafts
 // for the native-speaker check; they are held to the account's typography rule (a no-break space after the one-letter words в, с, к, о, у).
 
 const BASE = "https://mslab.example";
-const PLACEHOLDER = "{{{contact.unsubscribe_url}}}";
+const LINK = "https://mslab.example/api/newsletter/loobu?t=abc_DEF-123";
 const SCHOOL = { name: "MS LAB Koolituskeskus OÜ", address: "Rüütli 1, Pärnu" };
 
 const checked = (raw: unknown): NewsletterCampaignDraft => {
@@ -39,7 +39,7 @@ function input(over: Partial<CampaignMailInput> = {}, draft: NewsletterCampaignD
     buttonHref: draft.buttonHref,
     siteUrl: BASE,
     school: SCHOOL,
-    unsubscribeHref: PLACEHOLDER,
+    unsubscribeHref: LINK,
     test: false,
     ...over,
   };
@@ -54,7 +54,7 @@ const visibleText = (html: string) => html.replace(/<title>.*?<\/title>/, "").re
 describe("campaignMail: the Estonian mail", () => {
   const mail = campaignMail(input());
 
-  test("the subject is the campaign's; there is no recipient, no greeting and no signature (a broadcast is one text for all)", () => {
+  test("the subject is the campaign's; there is no recipient, no greeting and no signature (the mail is one text for all subscribers)", () => {
     expect(mail.subject).toBe("Sügispakkumine");
     expect(Object.keys(mail).sort()).toEqual(["html", "subject", "text"]);
     expect(lines(mail.text)[0]).toBe("Esimene lõik.");
@@ -89,7 +89,7 @@ describe("campaignMail: the Estonian mail", () => {
 
   test("the footer in the subscriber's language: why she got it, the unsubscribe link, the school's name and address", () => {
     expect(mail.html).toContain("Said selle kirja, sest liitusid MS LAB-i uudiskirjaga.");
-    expect(mail.html).toContain(`<a href="${PLACEHOLDER}"`);
+    expect(mail.html).toContain(`<a href="${LINK}"`);
     expect(mail.html).toMatch(/<a href="[^"]*"[^>]*>Loobu uudiskirjast<\/a>/);
     expect(mail.html).toContain("MS LAB Koolituskeskus OÜ");
     expect(mail.html).toContain("Rüütli 1, Pärnu");
@@ -102,7 +102,7 @@ describe("campaignMail: the Estonian mail", () => {
     expect(text).toContain("SUGIS15");
     expect(text).toContain(`Vaata koolitusi: ${BASE}/koolitused`);
     expect(text).toContain("Said selle kirja, sest liitusid MS LAB-i uudiskirjaga.");
-    expect(text).toContain(`Loobu uudiskirjast: ${PLACEHOLDER}`);
+    expect(text).toContain(`Loobu uudiskirjast: ${LINK}`);
     expect(text).toContain("MS LAB Koolituskeskus OÜ");
     expect(text).toContain("Rüütli 1, Pärnu");
     expect(text.at(-1)).toBe("Rüütli 1, Pärnu");
@@ -237,14 +237,13 @@ describe("what is escaped: every text of Maria's", () => {
 });
 
 describe("the unsubscribe address is placed as it is given", () => {
-  test("Resend's placeholder reaches href verbatim, and the plain text too", () => {
-    const mail = campaignMail(input({ unsubscribeHref: "{{{contact.unsubscribe_url}}}" }));
-    expect(mail.html).toContain('<a href="{{{contact.unsubscribe_url}}}"');
-    expect(mail.html).not.toContain("&#123;");
-    expect(mail.text).toContain("Loobu uudiskirjast: {{{contact.unsubscribe_url}}}");
+  test("the subscriber's own link reaches href verbatim, and the plain text too", () => {
+    const mail = campaignMail(input({ unsubscribeHref: "https://mslab.example/api/newsletter/loobu?t=Zx9_k-0123456789" }));
+    expect(mail.html).toContain('<a href="https://mslab.example/api/newsletter/loobu?t=Zx9_k-0123456789"');
+    expect(mail.text).toContain("Loobu uudiskirjast: https://mslab.example/api/newsletter/loobu?t=Zx9_k-0123456789");
   });
 
-  test("a site address with a query is not rewritten (& stays &), the way the placeholder is not", () => {
+  test("a site address with a query is not rewritten (& stays &)", () => {
     const href = "https://mslab.example/api/newsletter/loobu?t=abc_DEF-123&l=ru";
     expect(campaignMail(input({ unsubscribeHref: href })).html).toContain(`<a href="${href}"`);
   });
@@ -270,7 +269,7 @@ describe("the footer is in the subscriber's language, whatever language the text
     expect(mail.html).toContain(ru.mail.campaign.unsubscribe);
     expect(mail.html).toContain('<html lang="et">'); // (the text's language: it is Estonian text)
     expect(lines(mail.text)).toContain(ru.mail.campaign.reason);
-    expect(lines(mail.text)).toContain(`${ru.mail.campaign.unsubscribe}: ${PLACEHOLDER}`);
+    expect(lines(mail.text)).toContain(`${ru.mail.campaign.unsubscribe}: ${LINK}`);
   });
 
   test("a Russian subscriber with a Russian campaign: Russian text, Russian footer, the button opens the Russian page of the site", () => {

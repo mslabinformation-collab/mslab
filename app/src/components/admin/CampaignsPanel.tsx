@@ -1,29 +1,33 @@
 import Link from "next/link";
 import type { NewsletterCampaign } from "@/db/schema";
-import { sendLanguages, type LanguageOfSend } from "@/domain/newsletter-campaign";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
+import type { Progress } from "@/server/newsletter-campaigns";
 import { NewsletterCampaignEditor, type CampaignEditorView, type TestTarget } from "./NewsletterCampaignEditor";
 import ui from "./ui.module.css";
 import styles from "./CampaignsPanel.module.css";
 
-// The „Kampaaniad“ tab of „Uudiskiri“ (newsletter campaigns, Task 4; spec D4, D6): the campaigns (drafts first, then the sent ones, the newest first;
-// server/newsletter-campaigns.ts listCampaigns), „Uus kampaania“, and the editor of the one chosen (?kampaania=<id>, or `uus`). A server component:
-// the list is links; the editor (NewsletterCampaignEditor) is the browser's part.
+// The „Kampaaniad“ tab of „Uudiskiri“ (newsletter campaigns, Task 4; spec D4; the 20.10 design §3): the campaigns (drafts first, then the sent ones and
+// the one going out, the newest first; server/newsletter-campaigns.ts listCampaigns) each with its state and, for the one going out, its progress
+// („Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.“), „Uus kampaania“, and the editor of the one chosen (?kampaania=<id>, or `uus`).
+// A server component: the list is links; the editor (NewsletterCampaignEditor) is the browser's part.
 
 const BASE = "/admin/uudiskiri?vaade=kampaaniad";
 export const campaignListHref = (id: number | "new") => `${BASE}&kampaania=${id === "new" ? "uus" : id}`;
 
 /**
- * A row of the list: its name, its status, its last change (a draft) or its send (ISO), how many the send reached, and (a send left `sending`,
- * ruling R16) each language with what is known of it.
+ * A row of the list: its name, its status, its last change (a draft) or its send (ISO), how many the send reached, and, for a campaign going out,
+ * where its deliveries stand.
  */
-export type CampaignListRow = { id: number; name: string; status: CampaignEditorView["status"]; at: string; reached: number | null; languages: LanguageOfSend[] };
+export type CampaignListRow = { id: number; name: string; status: CampaignEditorView["status"]; at: string; reached: number | null; progress: Progress | null };
 
 const both = (v: { et: string; ru?: string } | null) => ({ et: v?.et ?? "", ru: v?.ru ?? "" });
 
-/** A stored campaign as the editor shows it: its fields as strings ("" for none), and what its send recorded. */
-export function campaignEditorView(row: NewsletterCampaign): CampaignEditorView {
+/**
+ * A stored campaign as the editor shows it: its fields as strings ("" for none), what its send recorded, and, once it is no draft, where its deliveries
+ * stand (`progress`) and whether the last batch was refused by Resend (`refused`); the page reads both (server/newsletter-campaigns.ts progressOf, sendRefused).
+ */
+export function campaignEditorView(row: NewsletterCampaign, delivery: { progress: Progress | null; refused: boolean } = { progress: null, refused: false }): CampaignEditorView {
   return {
     id: row.id,
     status: row.status,
@@ -40,52 +44,47 @@ export function campaignEditorView(row: NewsletterCampaign): CampaignEditorView 
     sentAt: row.sentAt ? row.sentAt.toISOString() : null,
     updatedAt: row.updatedAt.toISOString(),
     recipients: row.recipients ?? null,
-    broadcasts: row.broadcasts ?? null,
+    progress: row.status === "draft" ? null : delivery.progress,
+    refused: row.status === "sending" && delivery.refused,
   };
 }
 
-/** The subscribers a send reached: the counts of the languages whose broadcast went. */
-const reachedBy = (row: NewsletterCampaign): number | null => {
-  if (row.status !== "sent" || !row.recipients) return null;
-  const went = row.broadcasts ?? {};
-  return (went.et ? row.recipients.et : 0) + (went.ru ? row.recipients.ru : 0);
-};
+/** The subscribers a send was for: the counts of its two languages. */
+const reachedBy = (row: NewsletterCampaign): number | null => (row.status === "sent" && row.recipients ? row.recipients.et + row.recipients.ru : null);
 
-export const campaignListRow = (row: NewsletterCampaign): CampaignListRow => ({
+export const campaignListRow = (row: NewsletterCampaign, progress: Progress | null = null): CampaignListRow => ({
   id: row.id,
   name: row.name,
   status: row.status,
-  // a send's time: the time of the first broadcast's send; for a first send left `sending`, the time it began (the marker's)
+  // a send's time; a draft's last change
   at: (row.status !== "draft" && row.sentAt ? row.sentAt : row.updatedAt).toISOString(),
   reached: reachedBy(row),
-  languages: row.status === "sending" ? sendLanguages(row) : [],
+  progress: row.status === "sending" ? progress : null,
 });
 
-/** The list's line of a send left `sending` (ruling R16): each language, the one that went with its time and count, the other as unknown or never sent. */
-function halfSentLine(c: CampaignListRow, t: typeof adminEt.newsletter.campaigns): string {
-  return c.languages
-    .map((l) =>
-      l.state === "sent"
-        ? fill(t.langSent, { date: stamp(c.at), n: l.recipients, lang: t.langNames[l.locale] })
-        : fill(l.state === "notTried" ? t.listNotTried : t.listUnknown, { lang: t.langNames[l.locale] }),
-    )
-    .join(" · ");
-}
-
-const STATUS_TAG: Record<CampaignListRow["status"], string> = { draft: ui.warn, sending: ui.bad, sent: ui.ok };
+// (a campaign going out is the routine state of a big one: the plain tag, never the red of an error)
+const STATUS_TAG: Record<CampaignListRow["status"], string> = { draft: ui.warn, sending: "", sent: ui.ok };
 const stamp = (iso: string) => {
   const d = new Date(iso);
   return `${formatDate(d, "et")} ${formatTime(d, "et")}`;
 };
+
+/** What a row says under its name: the send's line (sent), the progress (going out), or the last change (a draft). */
+function rowLine(c: CampaignListRow): string {
+  const t = adminEt.newsletter.campaigns;
+  if (c.status === "sent" && c.reached !== null) return fill(t.sentLine, { date: stamp(c.at), n: c.reached });
+  if (c.status === "sending" && c.progress) return fill(t.progress, { sent: c.progress.sent, n: c.progress.total, left: c.progress.waiting });
+  return fill(t.changed, { date: stamp(c.at) });
+}
 
 export function CampaignsPanel({
   campaigns,
   selected,
   editing,
   notFound,
-  configured,
-  testTargets,
   links,
+  testTargets,
+  gated,
 }: {
   campaigns: CampaignListRow[];
   /** The campaign chosen (?kampaania=): its id, "new" for „Uus kampaania“, or null for none. */
@@ -94,9 +93,11 @@ export function CampaignsPanel({
   editing: CampaignEditorView | null;
   /** ?kampaania= names a campaign that is not there (deleted, or a link from elsewhere). */
   notFound: boolean;
-  configured: boolean;
-  testTargets: TestTarget[];
   links: string[];
+  /** The addresses „Saada proov“ offers. */
+  testTargets: TestTarget[];
+  /** The coming-soon gate is on (the page reads it: NewsletterCampaignEditor never reads the environment). */
+  gated: boolean;
 }) {
   const t = adminEt.newsletter.campaigns;
   return (
@@ -120,12 +121,8 @@ export function CampaignsPanel({
                 <span className={`${ui.tag} ${STATUS_TAG[c.status]}`} data-campaign-status={c.status}>
                   {t.status[c.status]}
                 </span>
-                <span className={`${ui.muted} ${ui.small}`} data-campaign-row-line="">
-                  {c.status === "sent" && c.reached !== null
-                    ? fill(t.sentLine, { date: stamp(c.at), n: c.reached })
-                    : c.status === "sending" && c.languages.length > 0
-                      ? halfSentLine(c, t)
-                      : fill(t.changed, { date: stamp(c.at) })}
+                <span className={`${ui.muted} ${ui.small} ${styles.rowLine}`} data-campaign-row-line="">
+                  {rowLine(c)}
                 </span>
               </li>
             ))}
@@ -139,7 +136,7 @@ export function CampaignsPanel({
         </p>
       )}
       {/* (no key: the editor follows another campaign itself, and keeps its state when the page comes back with the one it has just saved) */}
-      {(selected === "new" || editing) && <NewsletterCampaignEditor campaign={editing} configured={configured} testTargets={testTargets} links={links} />}
+      {(selected === "new" || editing) && <NewsletterCampaignEditor campaign={editing} links={links} testTargets={testTargets} gated={gated} />}
     </div>
   );
 }

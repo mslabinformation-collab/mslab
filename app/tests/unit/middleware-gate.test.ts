@@ -141,7 +141,7 @@ describe("gate on, a visitor (no valid preview cookie)", () => {
     expect(await answer("/admin/login")).toMatchObject({ status: 200, next: "1", rewrite: null });
     expect(await answer("/admin")).toMatchObject({ status: 200, next: "1", rewrite: null });
     expect(await answer("/admin/")).toMatchObject({ status: 308, location: "/admin", robots: "noindex, nofollow" });
-    for (const path of ["/api/auth/verify?t=x", "/api/auth/logout", "/api/admin/preview", "/api/cron/sweep", "/api/bunny/webhook", "/api/resend/webhook", "/api/newsletter/confirm?t=x", "/api/newsletter/loobu?t=x", "/media/img/a.jpg", "/favicon.ico", "/robots.txt", "/og.jpg", "/brand/logo.png", "/icon.svg"])
+    for (const path of ["/api/auth/verify?t=x", "/api/auth/logout", "/api/admin/preview", "/api/cron/sweep", "/api/bunny/webhook", "/api/newsletter/confirm?t=x", "/api/newsletter/loobu?t=x", "/media/img/a.jpg", "/favicon.ico", "/robots.txt", "/og.jpg", "/brand/logo.png", "/icon.svg"])
       expect(await answer(path), path).toMatchObject({ status: 200, next: "1", rewrite: null });
     expect(await answer("/api/auth/logout", { method: "POST" })).toMatchObject({ status: 200, next: "1" });
   });

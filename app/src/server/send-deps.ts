@@ -4,8 +4,9 @@ import { getDb } from "@/db/client";
 import { serverEnv } from "./env";
 import { serverKv } from "./kv";
 import { logFailure } from "./log";
+import { campaignMailSend } from "./mail-outbox";
+import type { SendDeps as CampaignSendDeps } from "./newsletter-campaigns";
 import type { SendDeps } from "./protocols";
-import type { MarketingDeps } from "./resend-marketing";
 import { linkBase, requestOrigin } from "./site";
 
 // What an admin action's send needs (the protocol screen's sends, server/actions/admin-protocols.ts; Maria's assessment, the test review and
@@ -26,16 +27,15 @@ export async function adminSendDeps(log: string): Promise<SendDeps> {
   };
 }
 
-/** The interactive time budget of Maria's „Sünkrooni Resendiga“: no new Resend call after it. A call begun at its end has 8 s, and once more after a 429, so the page's maxDuration (60 s) holds. */
-export const ADMIN_SYNC_BUDGET_MS = 25_000;
-
 /**
- * The deps of the newsletter's Resend work in the admin (Maria's „Uudiskiri“: the page's count, „Sünkrooni Resendiga“; resend-marketing.ts), built as the
- * daily sweep builds them. The base of the unsubscribe link in each contact is SITE_URL, never the request's address (the link is kept in Resend and
- * mailed long after this request), so this reads no headers and, unlike adminSendDeps, needs no request. `budgetMs`: the full sync's time budget
- * (none: no limit).
+ * The deps of a newsletter campaign's send (newsletter-campaigns.ts SendDeps): the press and „Saada proov“ (actions/admin-newsletter.ts), the daily job
+ * (api/cron/uudiskiri). The base of every link in the mails is SITE_URL, never the request's address (a campaign's mail is kept long after the
+ * request, and the daily job has no visitor's address at all), so this reads no headers. `budgetMs`: the run's own time, from now (no new mail after
+ * it); the send is notify.ts sendMailResult, except on the e2e run's own servers, where it is the outbox's (mail-outbox.ts: E2E_MAIL_OUTBOX, a file the
+ * mails are written to, never sent; ignored on Vercel).
  */
-export function adminMarketingDeps(budgetMs?: number): MarketingDeps {
+export function campaignSendDeps(budgetMs: number): CampaignSendDeps {
   const env = { ...serverEnv(), KV: serverKv() };
-  return { db: getDb(), env, siteUrl: env.SITE_URL, now: new Date(), ...(budgetMs === undefined ? {} : { budgetMs }) };
+  const send = campaignMailSend(env);
+  return { db: getDb(), env, siteUrl: env.SITE_URL, now: () => new Date(), deadline: Date.now() + budgetMs, ...(send ? { send } : {}) };
 }

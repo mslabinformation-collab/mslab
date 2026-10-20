@@ -9,7 +9,6 @@ import { logFailure } from "../log";
 import { paymentProvider } from "../payments/montonio";
 import { revalidatePublic } from "../public-cache";
 import { clientIp } from "../ratelimit";
-import { subscriberSync } from "../resend-marketing";
 import { linkBase, requestOrigin } from "../site";
 import {
   handleContact,
@@ -37,9 +36,8 @@ async function run(form: FormName, handler: (deps: Deps, formData: FormData) => 
     async (): Promise<Deps> => {
       const env = { ...serverEnv(), KV: serverKv() };
       const h = await headers();
-      const db = getDb();
       return {
-        db,
+        db: getDb(),
         env,
         // Without x-forwarded-for (never on Vercel) `next dev` uses one local bucket.
         ip: clientIp(h) ?? (process.env.NODE_ENV === "development" ? "local" : null),
@@ -52,8 +50,6 @@ async function run(form: FormName, handler: (deps: Deps, formData: FormData) => 
         changed: revalidatePublic,
         // online payments (phase 2b): null without the keys, and the forms are today's
         montonio: paymentProvider(),
-        // a newsletter sign-up's sync to Resend (newsletter campaigns), in the work after the response; none without the newsletter's key
-        newsletterSync: subscriberSync(db, env),
       };
     },
     handler,

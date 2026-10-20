@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { subscribers } from "@/db/schema";
@@ -233,4 +234,185 @@ test("?proov=1: the test page in Estonian, „Proovikiri — päris kirjas viib 
     expect(html, url).not.toContain(TOKEN);
   }
   expect(await emails()).toEqual(BOTH);
+});
+
+// The mail program's own unsubscribe button (the simple newsletter, spec §3; RFC 8058): each campaign mail carries List-Unsubscribe-Post:
+// List-Unsubscribe=One-Click, so the mail program POSTs the body `List-Unsubscribe=One-Click` to the address of List-Unsubscribe, the token only in
+// that address (?t=…). That POST unsubscribes at once and answers 200 with a tiny plain body, never a redirect (a mail server follows none). No
+// browser, no Origin header. The button's form POST is the same route and answers as before.
+const ONE_CLICK = "List-Unsubscribe=One-Click";
+/** The mail program's POST: the fixed body, the token in the address (or not at all), the content type the RFC names. */
+const oneClick = (token: string | null, extra: { headers?: Record<string, string>; body?: string } = {}) =>
+  route.POST(
+    new Request(token === null ? `${ORIGIN}/api/newsletter/loobu` : `${ORIGIN}/api/newsletter/loobu?t=${token}`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", ...extra.headers },
+      body: extra.body ?? ONE_CLICK,
+    }),
+  );
+
+test("one-click: the fixed body with ?t=<token> deletes that row (and only it) and answers 200 with a tiny plain body, never cached, no redirect", async () => {
+  const res = await oneClick(TOKEN);
+  expect([res.status, res.headers.get("location"), res.headers.get("cache-control")]).toEqual([200, null, "no-store"]);
+  expect(res.headers.get("content-type")).toMatch(/^text\/plain/);
+  expect((await res.text()).length).toBeLessThan(40);
+  expect(await emails()).toEqual(["uus-ru@example.com"]);
+  const ru = await oneClick(TOKEN_RU);
+  expect(ru.status).toBe(200); // a Russian subscriber too: the answer is the same, in no language
+  expect(await emails()).toEqual([]);
+});
+
+test("one-click forgets the address's welcome mark like the button does, so a later sign-up gets a fresh welcome", async () => {
+  const kv = new PgKv(db);
+  const mark = `rl:welcome:${await sha256("uus@example.com")}`;
+  await kv.put(mark, "1", { expirationTtl: 365 * 24 * 60 * 60 });
+  expect((await oneClick(TOKEN)).status).toBe(200);
+  expect(await kv.get(mark)).toBeNull();
+});
+
+test("one-click needs no Origin (a mail server sends none), and an Origin it does carry does not refuse it: the token is the authority (final review M1)", async () => {
+  // A mail provider's POST is cross-origin by nature, and a web mail client's own button is a browser's POST with an Origin of its site (or "null"). The
+  // cross-site check protects the button's form, which has no secret but the page it came from; the token in the address is the whole capability here.
+  expect((await oneClick(TOKEN)).status).toBe(200);
+  expect(await emails()).toEqual(["uus-ru@example.com"]);
+  const origins = ["https://webmail.example", "https://evil.example", "http://mslab.example", "null", "not a url", ORIGIN];
+  await db.insert(subscribers).values(origins.map((_, i) => ({ email: `o${i}@example.com`, locale: "et", token: String(i).repeat(43), consentAt: new Date(), confirmedAt: new Date() })));
+  for (const [i, origin] of origins.entries()) {
+    const res = await oneClick(String(i).repeat(43), { headers: { origin } });
+    expect([res.status, res.headers.get("cache-control"), res.headers.get("location")], origin).toEqual([200, "no-store", null]);
+  }
+  expect(await emails(), "every row POSTed with an Origin went").toEqual(["uus-ru@example.com"]);
+  // and with Origin: null and a Sec-Fetch-Site of any kind
+  const res = await oneClick(TOKEN_RU, { headers: { origin: "null", "sec-fetch-site": "cross-site" } });
+  expect(res.status).toBe(200);
+  expect(await emails()).toEqual([]);
+});
+
+// The body of a one-click POST is `List-Unsubscribe=One-Click` (RFC 8058: application/x-www-form-urlencoded), but a sender may type it otherwise: no
+// Content-Type at all, text/plain, a JSON type, multipart. The body decides, not the type (the final review's M1: she must not stay subscribed while her mail
+// program thinks she left). The button's own field `t` is read only from a form body, as before.
+test("one-click with any Content-Type, or none: the body `List-Unsubscribe=One-Click` is enough, and the answer is 200", async () => {
+  const kinds: [string, Record<string, string>][] = [
+    ["none", {}],
+    ["text/plain", { "content-type": "text/plain" }],
+    ["text/plain; charset=utf-8", { "content-type": "text/plain; charset=utf-8" }],
+    ["application/json", { "content-type": "application/json" }],
+    ["application/octet-stream", { "content-type": "application/octet-stream" }],
+    ["application/x-www-form-urlencoded; charset=UTF-8", { "content-type": "application/x-www-form-urlencoded; charset=UTF-8" }],
+  ];
+  for (const [kind, headers] of kinds) {
+    await db.delete(subscribers);
+    await db.insert(subscribers).values({ email: "uus@example.com", locale: "et", token: TOKEN, consentAt: new Date(), confirmedAt: new Date() });
+    const res = await route.POST(new Request(link(TOKEN), { method: "POST", headers, body: ONE_CLICK }));
+    expect([res.status, res.headers.get("location"), res.headers.get("cache-control")], kind).toEqual([200, null, "no-store"]);
+    expect(await emails(), kind).toEqual([]);
+  }
+});
+
+test("one-click: the body may carry more fields, a trailing line break, or be a multipart form; the address's token is still the only one", async () => {
+  const bodies: [string, string, Record<string, string>][] = [
+    ["more fields", `x=1&${ONE_CLICK}&y=2`, { "content-type": "application/x-www-form-urlencoded" }],
+    ["a trailing line break", `${ONE_CLICK}\r\n`, { "content-type": "text/plain" }],
+    ["multipart", `--b\r\nContent-Disposition: form-data; name="List-Unsubscribe"\r\n\r\nOne-Click\r\n--b--\r\n`, { "content-type": "multipart/form-data; boundary=b" }],
+  ];
+  for (const [kind, body, headers] of bodies) {
+    await db.delete(subscribers);
+    await db.insert(subscribers).values({ email: "uus@example.com", locale: "et", token: TOKEN, consentAt: new Date(), confirmedAt: new Date() });
+    const res = await route.POST(new Request(link(TOKEN), { method: "POST", headers, body }));
+    expect([res.status, res.headers.get("location")], kind).toEqual([200, null]);
+    expect(await emails(), kind).toEqual([]);
+  }
+});
+
+test("a POST with no body at all and the token in the address (a sender that forgot the body) unsubscribes too, as long as it is no browser's form post", async () => {
+  const senders: Record<string, string>[] = [{}, { "content-type": "application/x-www-form-urlencoded" }, { "content-type": "text/plain" }, { origin: "https://webmail.example" }];
+  for (const headers of senders) {
+    await db.delete(subscribers);
+    await db.insert(subscribers).values({ email: "uus@example.com", locale: "et", token: TOKEN, consentAt: new Date(), confirmedAt: new Date() });
+    const res = await route.POST(new Request(link(TOKEN), { method: "POST", headers }));
+    expect([res.status, res.headers.get("location"), res.headers.get("cache-control")], JSON.stringify(headers)).toEqual([200, null, "no-store"]);
+    expect(await emails(), JSON.stringify(headers)).toEqual([]);
+  }
+  // a browser's navigation (Sec-Fetch-Mode: navigate) is the button's POST: the button's answer, and nothing is deleted without its field
+  await db.insert(subscribers).values({ email: "uus@example.com", locale: "et", token: TOKEN, consentAt: new Date(), confirmedAt: new Date() });
+  const browser = await route.POST(new Request(link(TOKEN), { method: "POST", headers: { "sec-fetch-mode": "navigate" } }));
+  expect([browser.status, where(browser)]).toEqual([303, "/?uudiskiri=loobutud"]);
+  expect(await emails()).toEqual(["uus@example.com"]);
+});
+
+test("the button is as before: a cross-site form POST is refused with 403 even with the token in its address, and nothing is deleted", async () => {
+  // a body that is neither empty nor one-click is the button's, and the button keeps its cross-site check
+  const cross = await route.POST(
+    new Request(link(TOKEN), {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://evil.example" },
+      body: new URLSearchParams({ t: TOKEN }).toString(),
+    }),
+  );
+  expect([cross.status, cross.headers.get("location")]).toEqual([403, null]);
+  expect(await emails()).toEqual(BOTH);
+});
+
+test("a one-click that unsubscribes is logged with the row's id, never the token or the address; one that finds no row says so; a body it cannot read is noted", async () => {
+  const [row] = await db.select({ id: subscribers.id }).from(subscribers).where(eq(subscribers.token, TOKEN));
+  const info = () => (console.info as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => c.join(" "));
+  const noted = () => (console.error as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => c.join(" "));
+  expect((await oneClick(TOKEN)).status).toBe(200);
+  expect(info()).toContain(`[newsletter] one-click unsubscribe: subscriber ${row.id}`);
+  expect((await oneClick(TOKEN)).status).toBe(200); // pressed twice, or a token that never was one: 200, and the log says nothing was found
+  expect((await oneClick("x".repeat(43))).status).toBe(200);
+  expect((await oneClick(null)).status).toBe(200);
+  expect(info().filter((l) => l === "[newsletter] one-click unsubscribe: no subscriber for the token")).toHaveLength(3);
+  // a POST with a token in its address and a body that is neither the button's nor one-click's: the button's answer, and a note (nothing is lost silently)
+  const odd = await oneClick(TOKEN_RU, { body: "list-unsubscribe=one-click" });
+  expect(odd.status).toBe(303);
+  expect(noted()).toContain("[newsletter] unsubscribe POST: a token in the address and a body that is neither the button's nor one-click's; nothing deleted");
+  const logged = JSON.stringify([...info(), ...noted()]);
+  expect(logged).not.toContain(TOKEN);
+  expect(logged).not.toContain(TOKEN_RU);
+  expect(logged).not.toContain("uus@example.com");
+  expect(logged).not.toContain("uus-ru@example.com");
+});
+
+test("one-click with an unknown, used, malformed or missing token answers 200 and the same tiny body as a real one: nothing else is deleted, nothing is revealed", async () => {
+  const real = await (await oneClick(TOKEN)).text();
+  for (const token of ["x".repeat(43), TOKEN, "not-a-token", "' or 1=1 --", "h".repeat(42), "", null]) {
+    const res = await oneClick(token);
+    expect([res.status, res.headers.get("cache-control"), await res.text()], String(token)).toEqual([200, "no-store", real]);
+  }
+  expect(await emails()).toEqual(["uus-ru@example.com"]);
+});
+
+test("the token of one-click is the address's only: the form field of the same POST counts for nothing, and a form POST gets no help from the address", async () => {
+  // one-click body, the token only in the form: nothing to unsubscribe
+  const inForm = await oneClick(null, { body: `${ONE_CLICK}&t=${TOKEN}` });
+  expect(inForm.status).toBe(200);
+  expect(await emails()).toEqual(BOTH);
+  // the button's POST (its own field `t`, no List-Unsubscribe field) with another row's token in the address: the field decides, as before
+  const mixed = await route.POST(
+    new Request(`${link(TOKEN_RU)}`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ t: TOKEN }).toString() }),
+  );
+  expect([mixed.status, where(mixed)]).toEqual([303, "/?uudiskiri=loobutud"]);
+  expect(await emails()).toEqual(["uus-ru@example.com"]); // TOKEN's row went (the field), TOKEN_RU's stays (the address)
+  // a POST that is neither (another body, a JSON body) with a good token in the address deletes nothing and answers like the button
+  // (an empty body is one-click now: the final review's M1, below)
+  for (const body of ["List-Unsubscribe=Other", "list-unsubscribe=one-click", "x=1"]) {
+    const res = await oneClick(TOKEN_RU, { body });
+    expect([res.status, where(res)], body).toEqual([303, "/?uudiskiri=loobutud"]);
+  }
+  expect(await emails()).toEqual(["uus-ru@example.com"]);
+});
+
+test("one-click while the database fails: not 200 (she is not unsubscribed), the row stays, and the log holds neither the token nor the address", async () => {
+  const gone = vi.spyOn(db, "delete").mockImplementation(() => {
+    throw new Error(`no database connection for t=${TOKEN} uus@example.com`);
+  });
+  const res = await oneClick(TOKEN);
+  gone.mockRestore();
+  expect([res.status, res.headers.get("cache-control")]).toEqual([500, "no-store"]);
+  expect(await res.text()).not.toContain(TOKEN);
+  expect(await emails()).toEqual(BOTH);
+  const logged = JSON.stringify((console.error as unknown as { mock: { calls: unknown[] } }).mock.calls);
+  expect(logged).not.toContain(TOKEN);
+  expect(logged).not.toContain("uus@example.com");
 });
