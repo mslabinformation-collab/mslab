@@ -477,6 +477,10 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     const line = adminEt.clients.drawer.newsletter.replace(": {state}", "");
     expect(item("avalik-uudiskiri-blokeeritud-opilane")).toMatchObject({ area: "avalik", who: "maria", writes: false, href: "/admin/opilased" });
     expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain(`„${line}: …“`);
+    // it sits at 24, long before Proov 1 has an account (registreerimine-leping-plokk): it asks for any student, and skips when there is none
+    expect(order.indexOf("avalik-uudiskiri-blokeeritud-opilane")).toBeLessThan(order.indexOf("registreerimine-leping-plokk"));
+    expect(text("avalik-uudiskiri-blokeeritud-opilane")).not.toContain("Proov 1");
+    expect(item("avalik-uudiskiri-blokeeritud-opilane").steps.join("\n")).toContain("jäta kontroll vahele");
     for (const state of Object.values(adminEt.clients.drawer.newsletterStates)) expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain(`„${state}“`);
   });
 

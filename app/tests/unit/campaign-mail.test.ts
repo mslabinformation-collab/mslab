@@ -54,7 +54,7 @@ const visibleText = (html: string) => html.replace(/<title>.*?<\/title>/, "").re
 describe("campaignMail: the Estonian mail", () => {
   const mail = campaignMail(input());
 
-  test("the subject is the campaign's; there is no recipient, no greeting and no signature (a broadcast is one text for all)", () => {
+  test("the subject is the campaign's; there is no recipient, no greeting and no signature (the mail is one text for all subscribers)", () => {
     expect(mail.subject).toBe("Sügispakkumine");
     expect(Object.keys(mail).sort()).toEqual(["html", "subject", "text"]);
     expect(lines(mail.text)[0]).toBe("Esimene lõik.");

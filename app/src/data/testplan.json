@@ -633,7 +633,8 @@
       "href": "/admin/opilased",
       "steps": [
         "Ava halduses „Õpilased“.",
-        "Vajuta Proov 1 nimele.",
+        "Kui õpilasi veel pole, kirjuta see märkusesse ja jäta kontroll vahele.",
+        "Vajuta mõne õpilase nimele.",
         "Vaata paneeli ülaosas uudiskirja rida."
       ],
       "expect": [
