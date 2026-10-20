@@ -726,6 +726,63 @@ describe("stopSend: „Peata saatmine“", () => {
     expect(await runDueCampaigns(deps(fakeSend().send))).toEqual({ campaignId: null, progress: null, stopped: null });
     expect(await progressOf(db, id)).toEqual({ total: 2, sent: 0, waiting: 0, failed: 0, unknown: 1, skipped: 1 });
   });
+
+  // The final review's M4: "Peata saatmine" must never leave a `waiting` row under a campaign that is `sent`. A row already claimed finishes as it is, but when
+  // Resend then refuses it (its limit, or any refusal) the mail did not go, and the old code put it back to `waiting`: a row that never goes under a sent campaign
+  // (and, in a second runner's loop, a row that would still be claimed and sent after the stop). Now the outcome `waiting` is written only while the campaign is
+  // still going out, under the lock the stop takes; after a stop that row is `skipped`, as the stop skipped the rest.
+  for (const kind of ["quota", "refused"] as const) {
+    test(`M4: the stop lands while a mail is on its way and Resend then answers ${kind}: that row is \`skipped\`, no row waits under the sent campaign, nothing more goes`, async () => {
+      await subscribeMany(5);
+      const id = await campaign();
+      const plan = await prepareSend(db, id);
+      if (!plan.ok) throw new Error("no plan");
+      const g = gate();
+      const resend = fakeSend(async (_m, n) => {
+        if (n === 1) await g.shut;
+        return { ok: false, kind };
+      });
+      const running = startSend(deps(resend.send), id, { et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt });
+      await until(async () => resend.mails.length === 1, "the first mail on its way");
+      expect(await stopSend(db, id, new Date())).toEqual({ ok: true, progress: { total: 5, sent: 0, waiting: 1, failed: 0, unknown: 0, skipped: 4 } }); // (the claimed row counts as waiting)
+      g.open();
+      expect(await running).toEqual({ ok: true, progress: { total: 5, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 5 }, stopped: null });
+      expect(Object.values(await statuses(id))).toEqual(Array(5).fill("skipped"));
+      expect(await campaignRow(id)).toMatchObject({ status: "sent", recipients: { et: 0, ru: 0 } });
+      expect(await sendRefused(kv, id), "a refusal after the stop is no news to the page").toBe(false);
+      expect(await runDueCampaigns(deps(resend.send))).toEqual({ campaignId: null, progress: null, stopped: null });
+      expect(resend.mails).toHaveLength(1);
+    });
+  }
+
+  test("M4: a refusal while the campaign still goes out puts the row back to `waiting` as before; the stop that comes after skips it with the others", async () => {
+    await subscribeMany(3);
+    const id = await campaign();
+    const resend = fakeSend(() => ({ ok: false, kind: "quota" }));
+    expect(await press(id, deps(resend.send))).toMatchObject({ ok: true, stopped: "room", progress: { total: 3, sent: 0, waiting: 3 } });
+    expect(await statuses(id)).toEqual({ "k1@example.com": "waiting", "k2@example.com": "waiting", "k3@example.com": "waiting" });
+    expect(await stopSend(db, id, new Date())).toEqual({ ok: true, progress: { total: 3, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 3 } });
+  });
+
+  test("M4: a batch whose campaign was stopped meanwhile claims nothing more (the campaign is `sending` at every claim), even where a row still waits", async () => {
+    await subscribeMany(3);
+    const id = await campaign();
+    const plan = await prepareSend(db, id);
+    if (!plan.ok) throw new Error("no plan");
+    const g = gate();
+    const resend = fakeSend(async (_m, n) => {
+      if (n === 1) await g.shut;
+      return { ok: true };
+    });
+    const running = startSend(deps(resend.send), id, { et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt });
+    await until(async () => resend.mails.length === 1, "the first mail on its way");
+    // the campaign is sent while two rows still wait (a damaged state: the stop itself skips them; this is what the claim must not go on with)
+    await db.update(newsletterCampaigns).set({ status: "sent", sentAt: new Date() }).where(eq(newsletterCampaigns.id, id));
+    g.open();
+    expect(await running).toMatchObject({ ok: true });
+    expect(resend.to(), "the first row finished; the two that wait were not claimed").toEqual(["k1@example.com"]);
+    expect(await statuses(id)).toEqual({ "k1@example.com": "sent", "k2@example.com": "waiting", "k3@example.com": "waiting" });
+  });
 });
 
 describe("sendTest: „Saada proov“", () => {

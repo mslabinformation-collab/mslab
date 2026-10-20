@@ -38,7 +38,8 @@ import { forgetKey, releaseSlot, reserveSlot, windowKey, type TextKv } from "./r
 //   room for a check, `roomSetting`). It claims one row at a time (FOR UPDATE SKIP LOCKED, committed before the send: two runners never take one row), sends it,
 //   and writes its outcome to that row only while it is still `claimed`. Each outcome is one status (at most once, notify.ts MailOutcome): accepted
 //   `sent`; the address refused `failed`; no answer `unknown`, never sent again; Resend's day or month limit, or any other refusal, back to
-//   `waiting` and the batch stops. A claim older than STALE_CLAIM_MS belongs to a runner that died: `unknown`, never `waiting` again.
+//   `waiting` and the batch stops (`skipped` instead when „Peata saatmine“ came meanwhile: no row waits under a sent campaign, and a campaign that is no
+//   longer going out is claimed from no more: goingOut). A claim older than STALE_CLAIM_MS belongs to a runner that died: `unknown`, never `waiting` again.
 // - One campaign at a time: a press while another campaign is going out is `busy`.
 // - „Peata saatmine“ (stopSend) skips what waits; „Saada proov“ (sendTest) is one counted mail to Maria or the signed-in admin.
 
@@ -445,12 +446,27 @@ async function expireStaleClaims(db: Db, now: Date, id?: number): Promise<void> 
 }
 
 /**
- * The next waiting delivery of campaign `id`, claimed: in its own short transaction, the row locked FOR UPDATE SKIP LOCKED (a row another runner is
- * claiming is passed over, never waited for) and set `claimed` at `now`, committed before its send. null: none waits (or every waiting one is being
- * claimed by another runner right now).
+ * Is campaign `id` still going out? Read FOR SHARE, in the caller's transaction and held to its end: „Peata saatmine“ (stopSend) takes the same row FOR
+ * UPDATE first, so a claim or a put-back meets a stop either before it (the stop then finds the row claimed and leaves it to finish) or after it (the
+ * campaign is `sent`, and the answer is no). It waits for a stop in progress, which is a moment; any number of runners share the lock.
+ */
+async function goingOut(t: Q, id: number): Promise<boolean> {
+  const [row] = await t
+    .select({ id: newsletterCampaigns.id })
+    .from(newsletterCampaigns)
+    .where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending")))
+    .for("share");
+  return row !== undefined;
+}
+
+/**
+ * The next waiting delivery of campaign `id`, claimed: in its own short transaction, the campaign still going out (goingOut: the stop's lock), then the
+ * row locked FOR UPDATE SKIP LOCKED (a row another runner is claiming is passed over, never waited for) and set `claimed` at `now`, committed before its
+ * send. null: the campaign was stopped, none waits (or every waiting one is being claimed by another runner right now).
  */
 async function claimNext(db: Db, id: number, now: Date): Promise<NewsletterDelivery | null> {
   return db.transaction(async (t) => {
+    if (!(await goingOut(t, id))) return null;
     const [next] = await t
       .select({ id: newsletterDeliveries.id })
       .from(newsletterDeliveries)
@@ -486,15 +502,28 @@ async function consentToken(q: Q, d: NewsletterDelivery): Promise<string | null>
 const statusOf = (o: MailOutcome): "sent" | "failed" | "unknown" | "waiting" =>
   o.ok ? "sent" : o.kind === "address" ? "failed" : o.kind === "unknown" ? "unknown" : "waiting";
 
-/** Writes a claimed delivery's outcome, only while it is still `claimed` (by its id and that status): nothing else is ever overwritten. */
-async function settle(db: Db, deliveryId: number, status: "sent" | "failed" | "unknown" | "waiting" | "skipped", now: Date): Promise<void> {
-  const set = status === "waiting" ? { status, claimedAt: null } : status === "sent" ? { status, sentAt: now } : { status };
-  const done = await db
-    .update(newsletterDeliveries)
-    .set(set)
-    .where(and(eq(newsletterDeliveries.id, deliveryId), eq(newsletterDeliveries.status, "claimed")))
-    .returning();
-  if (done.length === 0) console.info(`[newsletter] delivery ${deliveryId}: no longer claimed, its outcome (${status}) not written`);
+/**
+ * Writes a claimed delivery's outcome, only while it is still `claimed` (by its id and that status): nothing else is ever overwritten. `waiting` (Resend
+ * refused, nothing went) is written only while the campaign is still going out (goingOut, in one transaction with the write): a stop that came meanwhile
+ * has skipped what waited and left this claimed row to finish, and a row that did not go must not wait on under a sent campaign (the final review's M4),
+ * where no batch takes it: it is `skipped`, as the stop skipped the rest.
+ */
+async function settle(db: Db, d: Pick<NewsletterDelivery, "id" | "campaignId">, status: "sent" | "failed" | "unknown" | "waiting" | "skipped", now: Date): Promise<void> {
+  const write = async (q: Q, to: typeof status) =>
+    q
+      .update(newsletterDeliveries)
+      .set(to === "waiting" ? { status: to, claimedAt: null } : to === "sent" ? { status: to, sentAt: now } : { status: to })
+      .where(and(eq(newsletterDeliveries.id, d.id), eq(newsletterDeliveries.status, "claimed")))
+      .returning();
+  const done =
+    status === "waiting"
+      ? await db.transaction(async (t) => {
+          const going = await goingOut(t, d.campaignId);
+          if (!going) console.info(`[newsletter] campaign ${d.campaignId}: stopped meanwhile, delivery ${d.id} skipped instead of waiting`);
+          return write(t, going ? "waiting" : "skipped");
+        })
+      : await write(db, status);
+  if (done.length === 0) console.info(`[newsletter] delivery ${d.id}: no longer claimed, its outcome (${status}) not written`);
 }
 
 /** The deliveries of campaign `id` that went, by language. */
@@ -592,7 +621,7 @@ export async function runBatch(deps: SendDeps, id: number): Promise<BatchResult>
     if (!delivery) break;
     const token = await consentToken(db, delivery);
     if (token === null) {
-      await settle(db, delivery.id, "skipped", deps.now());
+      await settle(db, delivery, "skipped", deps.now());
       tally.skipped++;
       continue;
     }
@@ -606,7 +635,7 @@ export async function runBatch(deps: SendDeps, id: number): Promise<BatchResult>
       outcome = { ok: false, kind: "unknown" };
     }
     mailed = true;
-    await settle(db, delivery.id, statusOf(outcome), deps.now());
+    await settle(db, delivery, statusOf(outcome), deps.now());
     if (outcome.ok) {
       tally.sent++;
       unknownInARow = 0;
@@ -641,8 +670,11 @@ export async function runBatch(deps: SendDeps, id: number): Promise<BatchResult>
 
 /**
  * „Peata saatmine“ (spec §3, Draft): every waiting delivery of campaign `id` becomes `skipped` and the campaign is `sent` at `now`, `recipients` the
- * mails that went. A row claimed by a batch that runs meanwhile is left to it (Review Focus 5): it finishes that one, sends nothing more (nothing
- * waits), and the campaign's counts follow (finishIfDone). `notFound`; `notSending` for a draft or a campaign sent already.
+ * mails that went, in one transaction that holds the campaign's row FOR UPDATE from its first statement: the lock a batch takes FOR SHARE at every claim
+ * and every put-back to `waiting` (goingOut), so the two agree. A row claimed by a batch that runs meanwhile is left to it (Review Focus 5): it finishes
+ * that one, sends nothing more (nothing waits, and no claim succeeds once the campaign is `sent`); if Resend refuses that mail its row is `skipped`, never
+ * `waiting` under the sent campaign (the final review's M4); the campaign's counts follow (finishIfDone). `notFound`; `notSending` for a draft or a
+ * campaign sent already.
  */
 export async function stopSend(db: Db, id: number, now: Date): Promise<{ ok: true; progress: Progress } | { ok: false; error: "notFound" | "notSending" }> {
   const result = await db.transaction(async (t) => {

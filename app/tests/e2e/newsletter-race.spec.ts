@@ -9,10 +9,11 @@ import {
   runDueCampaigns,
   saveCampaign,
   startSend,
+  stopSend,
   type SendDeps,
 } from "../../src/server/newsletter-campaigns";
 import type { Env, Mail, MailOutcome } from "../../src/server/notify";
-import { inFlight, pause, racePool, type OnDb } from "./race";
+import { inFlight, lockWaits, pause, racePool, type OnDb } from "./race";
 import { createScratchDatabase, type Scratch } from "./scratch-db";
 import { expect, submitsForms, test } from "./test";
 
@@ -38,6 +39,13 @@ import { expect, submitsForms, test } from "./test";
 //     longer than STALE_CLAIM_MS (a gate holds it), the daily job's sweep (by a clock 7 minutes on) marks the stale claim `unknown`, and then the slow
 //     runner's answer arrives ("accepted"): its settle must not write `sent` over `unknown`. The row stays `unknown`, nothing is sent again, the campaign
 //     finishes with the mails the rows say went. Without the guard the row turns `sent` and the test says so.
+// (d) „PEATA SAATMINE“ AND A CLAIM (newsletter-campaigns.ts stopSend, claimNext, settle: the campaign's row is the lock they agree on, the stop FOR UPDATE, a
+//     claim and a put-back to `waiting` FOR SHARE; the final review's M4).
+//     - the stop is in progress (it has the campaign's row and waits at a waiting row another connection holds) when a batch comes to claim: the claim must wait
+//       for the stop's lock, not pass over the held row and take the next one. When the stop ends, the campaign is `sent` and the claim finds nothing: every
+//       row `skipped`, no mail went. Without the lock the claim takes the next row at once and the test says so.
+//     - a slow runner's mail is on its way when the stop lands, and Resend then refuses it (its limit): that row is `skipped`, not `waiting` under the sent
+//       campaign.
 // Nothing here depends on the screen: the desktop project runs these once.
 
 test.skip(({ isMobile }) => isMobile, "nothing here depends on the screen: the desktop project runs these once");
@@ -346,5 +354,70 @@ test.describe("a runner writes its outcome only while its row is still claimed",
     // an `unknown` row is never sent again: another batch finds nothing to do
     await runBatch(deps(sent.send), id);
     expect(perAddress(sent.to()), "each address was given to Resend once").toEqual({ [slowAddress]: 1, [otherAddress]: 1 });
+  });
+});
+
+// ---------- (d) the stop and the claim ----------
+
+test.describe("„Peata saatmine“ and a claim meet at the campaign's row", () => {
+  test("a batch that comes while the stop is in progress waits for it and then claims nothing: every row is skipped and no mail goes", async () => {
+    await subscribers(4);
+    const id = await campaign();
+    const sent = fakeSend();
+    // the press writes the rows and no batch runs after it (its time is over at once): the campaign is `sending`, four rows wait
+    expect(await startSend(deps(sent.send, { deadline: 0 }), id, await plan(id))).toMatchObject({ ok: true });
+    expect((await deliveries(id)).map((d) => d.status)).toEqual(Array(4).fill("waiting"));
+
+    // another connection holds the first row, as a runner in the middle of claiming it would: the stop, which has the campaign's row, waits at it
+    const [first] = await other<{ id: number }[]>`select id from newsletter_deliveries where campaign_id = ${id} order by id limit 1`;
+    const release = await holdRow(first.id);
+    let stop: ReturnType<typeof stopSend> | undefined;
+    let batch: ReturnType<typeof runBatch> | undefined;
+    try {
+      stop = stopSend(db, id, new Date());
+      expect((await lockWaits(APPLICATION, 1, () => false)).length, "the stop waits at the held row").toBe(1);
+      // a batch now: its claim must queue behind the stop's lock on the campaign. Passing over the held row (SKIP LOCKED) to the second one is what it did before.
+      batch = runBatch(deps(sent.send), id);
+      const waiting = await lockWaits(APPLICATION, 2, () => sent.mails.length > 0);
+      expect(sent.mails.length, "a mail went while the stop was in progress: the claim did not wait for the stop's lock").toBe(0);
+      expect(waiting.length, "the stop and the claim both wait").toBe(2);
+    } finally {
+      await release(); // the stop goes on: it skips the four rows and ends the campaign
+      await Promise.allSettled([stop, batch]);
+    }
+    expect(await stop).toEqual({ ok: true, progress: { total: 4, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 4 } });
+    expect(await batch).toEqual({ progress: { total: 4, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 4 }, stopped: null });
+    expect((await deliveries(id)).map((d) => d.status)).toEqual(Array(4).fill("skipped"));
+    expect(await campaignRow(id)).toEqual({ status: "sent", recipients: { et: 0, ru: 0 } });
+    expect(sent.mails, "no mail went").toHaveLength(0);
+  });
+
+  test("the stop lands while a mail is on its way and Resend then refuses it: that row is skipped, no row waits under the sent campaign", async () => {
+    await subscribers(3);
+    const id = await campaign();
+    const slow = gate();
+    const mails: Mail[] = [];
+    const send = (async (_env: Env, mail: Mail): Promise<MailOutcome> => {
+      mails.push(mail);
+      await slow.hold();
+      return { ok: false, kind: "quota" }; // Resend's day limit: nothing went
+    }) as NonNullable<SendDeps["send"]>;
+    const press = startSend(deps(send), id, await plan(id));
+    try {
+      await slow.entered;
+      expect((await deliveries(id)).map((d) => d.status)).toEqual(["claimed", "waiting", "waiting"]);
+      expect(await stopSend(db, id, new Date()), "the claimed row counts as waiting until it settles").toEqual({
+        ok: true,
+        progress: { total: 3, sent: 0, waiting: 1, failed: 0, unknown: 0, skipped: 2 },
+      });
+    } finally {
+      slow.open(); // the answer is "quota": the settle runs
+      await Promise.allSettled([press]);
+    }
+    expect(await press).toEqual({ ok: true, progress: { total: 3, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 3 }, stopped: null });
+    expect((await deliveries(id)).map((d) => d.status), "the refused row is skipped with the others").toEqual(["skipped", "skipped", "skipped"]);
+    expect(await campaignRow(id)).toEqual({ status: "sent", recipients: { et: 0, ru: 0 } });
+    expect(await progressOf(db, id)).toEqual({ total: 3, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 3 });
+    expect(mails, "nothing was tried after the stop").toHaveLength(1);
   });
 });
