@@ -4,6 +4,8 @@ import type { Db } from "@/db/client";
 import { kvEntries, mailQuota, newsletterCampaigns, settings, subscribers } from "@/db/schema";
 import { CAMPAIGN_ROOM_KEY } from "@/domain/newsletter-campaign";
 import { adminEt } from "@/i18n/dict/admin";
+import { PgKv } from "@/server/kv";
+import { getCampaign, progressOf, sendRefused } from "@/server/newsletter-campaigns";
 import { stubFetch } from "../fakes";
 import { makeTestDb } from "./helpers";
 
@@ -192,7 +194,7 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     expect((await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)))[0].status).toBe("draft");
   });
 
-  test("progressAction and stopSendAction: the line while it goes out, a refusal of Resend said; „Peata saatmine“ skips the rest and refreshes the page", async () => {
+  test("stopSendAction: after a refusal of Resend the page's own reads (progressOf, sendRefused) show the line; „Peata saatmine“ skips the rest and refreshes the page", async () => {
     configured();
     resend(() => Response.json({ name: "invalid_api_key", message: "no", statusCode: 403 }, { status: 403 }));
     const id = await saved();
@@ -202,15 +204,16 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     if (!plan.ok) throw new Error("no plan");
     expect(await actions.startSendAction({ id, et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt })).toEqual({ ok: true, progress: { total: 2, sent: 0, waiting: 2, failed: 0, unknown: 0, skipped: 0 }, stopped: "refused" });
     expect(adminEt.newsletter.campaigns.errorsOf.refused).toBe("Saatmine peatus: Resend keeldus. Kirjuta Dimile.");
-    expect(await actions.progressAction({ id })).toEqual({ ok: true, status: "sending", refused: true, progress: { total: 2, sent: 0, waiting: 2, failed: 0, unknown: 0, skipped: 0 } });
+    expect((await getCampaign(db, id))?.status).toBe("sending");
+    expect(await sendRefused(new PgKv(db), id)).toBe(true);
+    expect(await progressOf(db, id)).toEqual({ total: 2, sent: 0, waiting: 2, failed: 0, unknown: 0, skipped: 0 });
     cache.refresh.mockReset();
     expect(await actions.stopSendAction({ id })).toEqual({ ok: true, progress: { total: 2, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 2 } });
     expect(cache.refresh).toHaveBeenCalledTimes(1);
-    expect(await actions.progressAction({ id })).toEqual({ ok: true, status: "sent", refused: false, progress: { total: 2, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 2 } });
+    expect((await getCampaign(db, id))?.status).toBe("sent");
+    expect(await progressOf(db, id)).toEqual({ total: 2, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 2 });
     expect(await actions.stopSendAction({ id })).toEqual({ ok: false, error: "notSending" });
     expect(await actions.stopSendAction({ id: 0 })).toEqual({ ok: false, error: "notFound" });
-    expect(await actions.progressAction({ id: id + 100 })).toEqual({ ok: false, error: "notFound" });
-    expect(await actions.progressAction({ id: 0 })).toEqual({ ok: false, error: "notFound" });
   });
 
   test("sendTestAction: to MARIA_EMAIL („maria“) or the signed-in admin's own address („me“), never one the browser names; `address` without one; „[Proov]“; nothing refreshed", async () => {
@@ -245,7 +248,7 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     for (const code of ["limited", "mail", "address", "changed", "empty", "notSending"] as const) expect(adminEt.newsletter.campaigns.errorsOf[code], code).toMatch(/\S/);
   });
 
-  test("the check Dim does, through the actions: with the room lowered the press sends up to it and answers `room` with the progress the line is made from; `progressAction` and „Peata saatmine“ follow", async () => {
+  test("the check Dim does, through the actions: with the room lowered the press sends up to it and answers `room` with the progress the line is made from; the page's reads and „Peata saatmine“ follow", async () => {
     configured();
     const r = resend();
     await db.insert(settings).values({ key: CAMPAIGN_ROOM_KEY, value: 2 });
@@ -262,7 +265,9 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
       expect(r.mails().map((m) => m.to)).toEqual(["a@example.com", "b@example.com"]);
       expect(cache.refresh).toHaveBeenCalledTimes(1);
       // the page is made from the campaign's own state: still going out, nothing refused
-      expect(await actions.progressAction({ id })).toEqual({ ok: true, status: "sending", refused: false, progress: { total: 3, sent: 2, waiting: 1, failed: 0, unknown: 0, skipped: 0 } });
+      expect((await getCampaign(db, id))?.status).toBe("sending");
+      expect(await sendRefused(new PgKv(db), id)).toBe(false);
+      expect(await progressOf(db, id)).toEqual({ total: 3, sent: 2, waiting: 1, failed: 0, unknown: 0, skipped: 0 });
       // „Peata saatmine“: the third never goes, the campaign is sent with the two that did
       expect(await actions.stopSendAction({ id })).toEqual({ ok: true, progress: { total: 3, sent: 2, waiting: 0, failed: 0, unknown: 0, skipped: 1 } });
       const [row] = await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id));
@@ -291,7 +296,6 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
       expect(await actions.startSendAction({ id: 1, et: 1, ru: 0, updatedAt: new Date().toISOString() })).toEqual({ ok: false, error: "server" });
       expect(await actions.stopSendAction({ id: 1 })).toEqual({ ok: false, error: "server" });
       expect(await actions.sendTestAction({ id: 1, to: "maria", locale: "et" })).toEqual({ ok: false, error: "server" });
-      expect(await actions.progressAction({ id: 1 })).toEqual({ ok: false, error: "server" });
     } finally {
       state.db = db;
     }

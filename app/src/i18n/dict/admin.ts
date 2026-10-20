@@ -1612,7 +1612,7 @@ export const adminEt = {
       // the page behind a test mail's unsubscribe link (/api/newsletter/loobu?proov=1, ruling R4): it changes nothing
       testPage: "Proovikiri — päris kirjas viib see link loobumisele.",
       // what an action answers when it did not go through (actions/admin-newsletter.ts); `busy` and `refused` are the spec's own (Draft), `refused`
-      // is also the line of a batch that stopped because Resend refused (startSendAction's `stopped`, progressAction's `refused`)
+      // is also the line of a batch that stopped because Resend refused (startSendAction's `stopped`, the page's `refused`: sendRefused)
       errorsOf: {
         notFound: "Seda kampaaniat enam pole.",
         sent: "See kampaania on juba saadetud.",

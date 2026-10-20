@@ -538,7 +538,7 @@ async function finishIfDone(db: Db, id: number, now: Date): Promise<boolean> {
 /**
  * The mark of a campaign whose last batch stopped because Resend refused (`refused`), so that the page can say so whoever ran the batch (the press or
  * the daily job); it goes with the campaign's next mail that Resend accepts. In the KV store, for a month at most. The page reads it only while the
- * campaign is going out (actions/admin-newsletter.ts progressAction).
+ * campaign is going out (uudiskiri/page.tsx).
  */
 const refusedKey = (id: number) => `newsletter:refused:${id}`;
 const REFUSED_MARK_SEC = 30 * 24 * 60 * 60;

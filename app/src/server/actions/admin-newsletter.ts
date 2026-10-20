@@ -6,21 +6,15 @@ import { getDb } from "@/db/client";
 import { normalizeEmail } from "@/domain/email";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { adminAction } from "../auth";
-import { serverKv } from "../kv";
 import { logFailure } from "../log";
 import {
   copyCampaign,
-  getCampaign,
   prepareSend,
   PRESS_BUDGET_MS,
-  progressOf,
   saveCampaign,
-  sendRefused,
   sendTest,
   startSend,
   stopSend,
-  type CampaignStatus,
-  type Progress,
 } from "../newsletter-campaigns";
 import { campaignSendDeps } from "../send-deps";
 
@@ -157,26 +151,3 @@ export const sendTestAction = adminAction(async (admin, input: { id: number; to:
     return SERVER;
   }
 });
-
-/**
- * The progress of a campaign, read again (the page can also read it while it renders): `{ ok: true, status, progress, refused }`, `refused` true
- * while the campaign is going out and its last batch stopped because Resend refused (newsletter-campaigns.ts sendRefused: „Saatmine peatus: Resend
- * keeldus. Kirjuta Dimile.“); `notFound`.
- */
-export const progressAction = adminAction(
-  async (_admin, input: { id: number }): Promise<{ ok: true; status: CampaignStatus; progress: Progress; refused: boolean } | { ok: false; error: "notFound" } | Server> => {
-    const parsed = idOnly.safeParse(input);
-    if (!parsed.success) return { ok: false, error: "notFound" };
-    const { id } = parsed.data;
-    try {
-      const db = getDb();
-      const row = await getCampaign(db, id);
-      if (!row) return { ok: false, error: "notFound" };
-      const refused = row.status === "sending" && (await sendRefused(serverKv(), id));
-      return { ok: true, status: row.status, progress: await progressOf(db, id), refused };
-    } catch (e) {
-      logFailure(`[newsletter] campaign ${id}: the progress failed`, e);
-      return SERVER;
-    }
-  },
-);
