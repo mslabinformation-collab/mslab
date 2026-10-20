@@ -1,5 +1,5 @@
 /* The „Kampaaniad“ tab of „Uudiskiri“ (newsletter campaigns, Task 4): the list of campaigns above, the editor of the one chosen under it
-   (its fields and, beside them, the preview of the real mail and the sends; site-editor.module.css .cols puts them in one column on a narrow
+   (its fields and, beside them, the preview of the real mail; site-editor.module.css .cols puts them in one column on a narrow
    screen). */
 
 .panel {
@@ -100,24 +100,7 @@
   border: 0;
 }
 
-/* ---------- the sends ---------- */
-
-.sendPart {
-  display: grid;
-  gap: 10px;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
-}
-
-.sendPart p {
-  margin: 0;
-}
-
-.sendTitle {
-  margin: 0;
-  font: 600 15px/1.3 var(--font-body);
-}
+/* ---------- the buttons and their status line ---------- */
 
 .sendRow {
   display: flex;
@@ -129,58 +112,7 @@
   display: none;
 }
 
-.confirm {
-  display: grid;
-  gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--ink);
-  border-radius: 14px;
-}
-
 /* ---------- a sent campaign ---------- */
-
-.broadcasts {
-  display: grid;
-  gap: 6px;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.broadcastsList {
-  margin: 12px 0 0;
-}
-
-/* a send left half way (ruling R16): each language with what is known of it */
-.languages {
-  display: grid;
-  gap: 12px;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.language {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-}
-
-.language p {
-  margin: 0;
-}
-
-.language > a {
-  justify-self: start;
-}
-
-.mark {
-  display: grid;
-  gap: 10px;
-  margin-top: 4px;
-}
 
 .readOnly {
   margin: 14px 0;

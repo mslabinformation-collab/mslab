@@ -617,16 +617,14 @@ export async function storedCampaigns(name: string): Promise<StoredCampaign[]> {
 }
 
 /**
- * A campaign as a send leaves it (newsletter campaigns, Task 5): the e2e run has no Resend key, so a send itself is Dim's live check, and the
- * states it leaves are set here, in the database. `draft` is the default; `sent` and `sending` carry the counts and broadcasts a send records.
- * Returns the id. (Removed by removeCampaignRows: the name starts with E2E_CAMPAIGN_PREFIX.)
+ * A campaign in the state a send leaves it in (newsletter campaigns, Task 5): set here, in the database. `draft` is the default; `sent` and `sending`
+ * carry the counts a send records. Returns the id. (Removed by removeCampaignRows: the name starts with E2E_CAMPAIGN_PREFIX.)
  */
 export type CampaignFixture = {
   name: string;
   status?: "draft" | "sending" | "sent";
   imageKey?: string | null;
   recipients?: { et: number; ru: number } | null;
-  broadcasts?: { et?: string; ru?: string } | null;
   sentAt?: Date | null;
 };
 export async function insertCampaign(f: CampaignFixture): Promise<number> {
@@ -634,11 +632,11 @@ export async function insertCampaign(f: CampaignFixture): Promise<number> {
   const sql = connect(false);
   try {
     const [row] = await sql<{ id: number }[]>`
-      insert into newsletter_campaigns (name, subject, preheader, image_key, body, code, button_label, button_href, status, sent_at, recipients, broadcasts)
+      insert into newsletter_campaigns (name, subject, preheader, image_key, body, code, button_label, button_href, status, sent_at, recipients)
       values (${f.name}, ${sql.json({ et: "E2E saadetud teema", ru: "E2E отправленная тема" })}, ${sql.json({ et: "E2E eelvaate rida" })}, ${f.imageKey ?? null},
               ${sql.json({ et: "E2E esimene lõik.\n\nE2E teine lõik.", ru: "E2E первый абзац." })}, 'E2E-KOOD',
               ${sql.json({ et: "Vaata koolitusi", ru: "Смотреть курсы" })}, '/koolitused', ${f.status ?? "draft"}, ${f.sentAt ?? null},
-              ${f.recipients ? sql.json(f.recipients) : null}, ${f.broadcasts ? sql.json(f.broadcasts) : null})
+              ${f.recipients ? sql.json(f.recipients) : null})
       returning id`;
     return row.id;
   } finally {

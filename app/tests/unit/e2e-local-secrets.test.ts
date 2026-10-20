@@ -4,7 +4,6 @@ import { paymentsEnv, serverEnv } from "@/server/env";
 import { montonioConfig } from "@/server/payments/montonio";
 import { E2E_BUNNY } from "../e2e/bunny-values";
 import { E2E_MONTONIO } from "../e2e/montonio-values";
-import { E2E_RESEND } from "../e2e/resend-values";
 import { PROD_ENV } from "../e2e/prod-build";
 import { FORBIDDEN_SETTINGS, forbiddenSettingError, LOCAL_ENV, parseEnvFile } from "../local-secrets";
 
@@ -75,21 +74,6 @@ describe("the dev server's environment (LOCAL_ENV)", () => {
   test("and the server reads blank as not set: with them uploads use the local folder (media-store)", () => {
     const env = serverEnv(LOCAL_ENV, false);
     for (const name of R2) expect(env[name as keyof typeof env], name).toBeUndefined();
-  });
-
-  test("the newsletter's marketing key is blank too (the one switch, ruling R15), and RESEND_API_KEY is refused as ever: an e2e run never syncs with Resend or sends a campaign (Task 4)", () => {
-    expect(LOCAL_ENV).toHaveProperty("RESEND_MARKETING_KEY", "");
-    expect(serverEnv(LOCAL_ENV, false).RESEND_MARKETING_KEY).toBeUndefined();
-    expect(FORBIDDEN_SETTINGS).toHaveProperty("RESEND_API_KEY");
-  });
-
-  test("the webhook's signing secret is set (made up, base64 like Resend's) and the marketing key stays blank: the e2e run checks signed fake events and never syncs or sends (Task 5)", () => {
-    expect(LOCAL_ENV).toHaveProperty("RESEND_WEBHOOK_SECRET", E2E_RESEND.webhookSecret);
-    expect(serverEnv(LOCAL_ENV, false).RESEND_WEBHOOK_SECRET).toBe(E2E_RESEND.webhookSecret);
-    expect(E2E_RESEND.webhookSecret).toMatch(/^whsec_[A-Za-z0-9+/]{20,}={0,2}$/);
-    expect(Buffer.from(E2E_RESEND.webhookSecret.slice("whsec_".length), "base64").toString()).toContain("not-a-real-one"); // (it says so)
-    expect(serverEnv(LOCAL_ENV, false).RESEND_MARKETING_KEY).toBeUndefined();
-    expect(serverEnv(LOCAL_ENV, false).RESEND_API_KEY).toBeUndefined();
   });
 
   test("the Bunny settings point at the fake on this machine (never the real library)", () => {

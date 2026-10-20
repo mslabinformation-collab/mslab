@@ -20,7 +20,6 @@ import { logFailure, logNote } from "../log";
 import { overpaymentSummary, paymentAlertSummary, paymentSummary, recordedAfterAlertSummary, stuckPaymentSummary, type PaymentNotice } from "../messages";
 import { adminUrl, mailConfigured, notifyMaria, sendMail, type Env, type MailAttachment } from "../notify";
 import { forgetKey, releaseSlot, reserveSlot } from "../ratelimit";
-import type { SubscriberSync } from "../resend-marketing";
 import { subscribeLater } from "../submit";
 import { grantPurchase, type Grant } from "./grant";
 import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken } from "./montonio";
@@ -76,8 +75,6 @@ export type SettleDeps = {
   /** Told when a payment changed the seats, so the calendar and the course page render again (server/public-cache.ts). */
   changed?: (change: PublicChange) => Promise<void> | void;
   montonio: Montonio;
-  /** The newsletter's sync to Resend of a purchase's "Soovin MS LABi uudiseid" (submit.ts Deps.newsletterSync); absent: none. */
-  newsletterSync?: SubscriberSync;
 };
 
 /** What Montonio says about a payment: from a token, or from GET /orders/:uuid (factsOf). */
@@ -245,7 +242,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
       // the cart's "Soovin MS LABi uudiseid ja pakkumisi": the one-step sign-up, acted on now that it is paid (spec 6.2.3); it never throws,
       // and a failing notice to Maria does not skip it
       if (won.payment.kind === "ecourse" && won.payment.newsletter)
-        await subscribeLater({ db: deps.db, env: deps.env, ip: null, siteUrl: deps.siteUrl, now: deps.now, later: deps.later, newsletterSync: deps.newsletterSync }, "ecourse", { email: won.payment.email, locale: won.payment.locale });
+        await subscribeLater({ db: deps.db, env: deps.env, ip: null, siteUrl: deps.siteUrl, now: deps.now, later: deps.later }, "ecourse", { email: won.payment.email, locale: won.payment.locale });
     }
   });
   if (won.registration) alertIfOverpaid(deps, won.payment, won.registration);

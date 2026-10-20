@@ -40,13 +40,6 @@
   font-size: 14px;
 }
 
-/* Her address is one Resend does not mail (newsletter campaigns, spec D10): the spec's sentence under the newsletter line */
-.suppressed {
-  margin: 0;
-  color: var(--warn);
-  line-height: 1.45;
-}
-
 .head > a:last-child {
   margin-top: 8px;
 }

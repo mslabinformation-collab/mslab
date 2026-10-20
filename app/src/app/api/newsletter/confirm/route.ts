@@ -6,7 +6,6 @@ import { serverKv } from "@/server/kv";
 import { logFailure } from "@/server/log";
 import { confirmNewsletter } from "@/server/newsletter";
 import { isPrefetch } from "@/server/prefetch";
-import { subscriberSync } from "@/server/resend-marketing";
 import { linkBase } from "@/server/site";
 
 /**
@@ -26,16 +25,13 @@ export async function GET(request: Request): Promise<Response> {
   let code: string | null = null;
   try {
     const env = { ...serverEnv(), KV: serverKv() };
-    const db = getDb();
     const result = await confirmNewsletter(
       {
-        db,
+        db: getDb(),
         env,
         now: new Date(),
         siteUrl: linkBase(url.origin, env.SITE_URL), // the base of the unsubscribe link in the welcome mail
-        later: (task) => after(() => task().catch((e) => logFailure("[newsletter] work after the confirmation failed", e))),
-        // the confirmed row's sync to Resend (newsletter campaigns), after the response; none without the newsletter's key
-        newsletterSync: subscriberSync(db, env),
+        later: (task) => after(() => task().catch((e) => logFailure("[newsletter] welcome e-mail failed", e))),
       },
       url.searchParams.get("t") ?? "",
     );

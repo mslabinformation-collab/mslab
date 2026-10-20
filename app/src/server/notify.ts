@@ -15,10 +15,6 @@ export type Env = {
   MARIA_EMAIL: string;
   SITE_URL: string;
   RESEND_API_KEY?: string;
-  /** The newsletter's full-access Resend key, its one switch (ruling R15): unset, the newsletter is off; never RESEND_API_KEY (server/resend-marketing.ts). */
-  RESEND_MARKETING_KEY?: string;
-  /** The signing secret of Resend's webhook (/api/resend/webhook). */
-  RESEND_WEBHOOK_SECRET?: string;
   TELEGRAM_BOT_TOKEN?: string;
   /** Optional override of the chat; otherwise the chat id stored in KV under `tg:chat` (copied from the old review site's KV by db:copy-kv). */
   TELEGRAM_CHAT_ID?: string;
@@ -43,8 +39,8 @@ export const RATE_LIMIT_RETRY_MS = 1000;
 
 class TimeoutError extends Error {}
 
-/** Resolves or rejects like `p`, or rejects with a TimeoutError after `ms` (the newsletter's Resend calls use it too, server/resend-marketing.ts). */
-export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+/** Resolves or rejects like `p`, or rejects with a TimeoutError after `ms`. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new TimeoutError()), ms);
@@ -63,7 +59,7 @@ export function mailConfigured(env: Env): boolean {
 }
 
 /** Did Resend refuse this send for sending too fast? (A used-up daily or monthly quota is also a 429, and waiting a second does not help it.) */
-export const rateLimited = (e: { name?: string | null; statusCode?: number | null }): boolean =>
+const rateLimited = (e: { name?: string | null; statusCode?: number | null }): boolean =>
   e.name === "rate_limit_exceeded" || (e.statusCode === 429 && !/quota/.test(e.name ?? ""));
 
 /**

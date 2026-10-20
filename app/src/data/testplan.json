@@ -442,31 +442,26 @@
     {
       "id": "avalik-uudiskiri-resend",
       "area": "avalik",
-      "who": "dim",
+      "who": "maria",
       "device": "arvuti",
-      "title": "Sünkrooni Resendiga",
+      "title": "Tellijate loend ja CSV",
       "href": "/admin/uudiskiri",
       "steps": [
-        "Ava halduses „Uudiskiri“ ja vaata lehe ülaosas plokki Resendi kontaktidega.",
-        "Vajuta „Sünkrooni Resendiga“.",
-        "Vajuta „Sünkrooni Resendiga“ uuesti.",
-        "Ava Resendis „Contacts“ ja segment „MS LAB uudiskiri (ET)“."
+        "Ava halduses „Uudiskiri“.",
+        "Vaata tellijate loendit ja rida loendi kohal.",
+        "Vajuta „Lae alla kinnitatud (CSV)“ ja ava fail."
       ],
       "expect": [
-        "Pärast esimest vajutust on nupu juures rida „… lisatud, … eemaldatud, … loobus Resendis“, mis tahes arvudega.",
-        "Teisel vajutusel on rida „0 lisatud, 0 eemaldatud, 0 loobus Resendis“.",
-        "Rida „Resendis … kontakti (tasuta pakett: 1000)“ näitab sama arvu nagu Resendi leht „Contacts“.",
-        "Rida „Sünkroonitud tellijaid“ näitab vähemalt 1.",
-        "Segmendis „MS LAB uudiskiri (ET)“ on Proov 3 aadress.",
-        "Kui Resend on mõne aadressi blokeerinud, on tellija real märge „Resend ei saada sellele aadressile kirju“.",
-        "Kui Resend ei võtnud mõnda aadressi vastu, on tellija real märge „Resend ei võtnud seda aadressi vastu.“.",
-        "Teate „Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.“ korral vaheta võti."
+        "Loendis on Proov 3 aadress koos keele, nõusoleku aja ja kinnitusajaga.",
+        "Loendi kohal on rida „Tellijaid: …, neist kinnitatud …“.",
+        "Lehe ülaosas on vaated „Tellijad“ ja „Kampaaniad“ ning kaks allalaadimise nuppu.",
+        "Fail sisaldab kinnitatud tellijaid, ka Proov 3 aadressi."
       ],
-      "why": "Sünkroon hoiab Resendi kontaktid kooskõlas tellijate nõusolekuga.",
-      "risk": "high",
-      "writes": true,
+      "why": "Maria saab tellijate aadressid alati kätte ja kampaania läheb ainult nendele.",
+      "risk": "low",
+      "writes": false,
       "mark": "new",
-      "markedAt": "2026-10-20T06:45:17.159Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania",
@@ -509,22 +504,20 @@
         "Vali „Saada proov“ all „Kellele“: Maria ja „Keel“: „Eesti keeles“, vajuta „Saada proov“.",
         "Vali „Kellele“: Mina ja „Keel“: „Vene keeles“, vajuta „Saada proov“.",
         "Ava oma postkastis venekeelne proov ja vajuta selle lõpus „Отписаться от рассылки“.",
-        "Ava Resendis „Contacts“ ja segment „MS LAB uudiskiri (proov)“."
+        "Ava halduses „Uudiskiri“."
       ],
       "expect": [
-        "Nupu all on „Proov läks aadressile …“ valitud aadressiga.",
-        "Maria postkasti tuleb kiri „[Proov] Proov 3 pakkumine“ logo, pildi, teksti, koodi ja nupuga.",
+        "Nupu all on teade, et proov läks valitud aadressile.",
+        "Maria postkasti tuleb tavaline kiri „[Proov] Proov 3 pakkumine“ logo, pildi, teksti, koodi ja nupuga.",
         "Sinu postkasti tuleb venekeelne proov, teemas „[Proov]“.",
         "Link avab lehe „Proovikiri — päris kirjas viib see link loobumisele.“ ja midagi ei muutu.",
-        "Segmendis „MS LAB uudiskiri (proov)“ on ainult sinu aadress.",
-        "Kui valitud aadress on tellija oma, on nupu kohal „Proov läheb tellija-aadressile — selle loobumislink on päris.“.",
-        "Kui see tellija on Resendis loobunud, on vastus „Proovi ei saadetud …“, mitte „Proov läks …“."
+        "Tellijate loendis on Proov 3 aadress endiselt olemas."
       ],
-      "why": "Proov on päris Resendi kiri, nii et ka selle loobumislink on kontrollitud.",
-      "risk": "high",
+      "why": "Proov on tavaline kiri, mille tellijad saavad, nii et ka selle välimus ja loobumislink on kontrollitud.",
+      "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "2026-10-20T06:45:17.159Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-muudetud",
@@ -543,7 +536,7 @@
         "Laadi esimene vahekaart uuesti."
       ],
       "expect": [
-        "Esimeses vahekaardis on „Kampaaniat muudeti vahepeal mujal (nt teises aknas), seega ei saadetud midagi. …“.",
+        "Esimeses vahekaardis on teade, et kampaaniat muudeti vahepeal mujal ja midagi ei saadetud.",
         "Proov 3 postkasti kampaaniat ei tule.",
         "Pärast uuesti laadimist on „Eelvaate rida“ Proov 3 muudetud ja kampaania on loendis märkega „Mustand“."
       ],
@@ -551,7 +544,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "2026-10-20T06:45:17.159Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-saada",
@@ -566,20 +559,20 @@
         "Ava Proov 3 kampaania kahes brauseri vahekaardis.",
         "Vajuta esimeses vahekaardis „Saada kõigile“, loe kinnitust ja vajuta „Saada“.",
         "Vajuta teises vahekaardis „Saada kõigile“.",
-        "Vajuta esimeses vahekaardis „Ava Resendis (eesti keeles)“."
+        "Ava Proov 3 postkastis saadud kiri ja vaata selle originaali: kirja menüüst leiad kirja päised."
       ],
       "expect": [
         "Kinnitus on „Saadad kampaania … tellijale (eesti keeles …, vene keeles …). Kas saadame?“.",
+        "Kiri läheb kohe välja ja Proov 3 postkasti tuleb tavaline kiri „Proov 3 pakkumine“ ilma „[Proov]“ märketa.",
         "Pärast saatmist on „Saadetud … · … tellijale“ ja välju muuta ei saa.",
-        "Proov 3 postkasti tuleb kiri „Proov 3 pakkumine“ ilma „[Proov]“ märketa.",
         "Teises vahekaardis on vastus „See kampaania on juba saadetud.“.",
-        "Resend avab selle kampaania kirja oma lehel."
+        "Kirja päistes on List-Unsubscribe ja List-Unsubscribe-Post: List-Unsubscribe=One-Click."
       ],
-      "why": "Kampaania läheb kõigile tellijatele korraga ja ainult üks kord.",
+      "why": "Kampaania läheb igale tellijale oma kirjana ja ainult üks kord.",
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "2026-10-20T06:45:17.159Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-loobu",
@@ -604,7 +597,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "2026-10-20T06:45:17.159Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-kopeeri",
@@ -634,26 +627,24 @@
     {
       "id": "avalik-uudiskiri-blokeeritud-opilane",
       "area": "avalik",
-      "who": "dim",
+      "who": "maria",
       "device": "arvuti",
-      "title": "Blokeeritud aadress õpilase paneelis",
-      "href": "/admin/uudiskiri",
+      "title": "Õpilase paneeli uudiskirja rida",
+      "href": "/admin/opilased",
       "steps": [
-        "Ava halduses „Uudiskiri“ ja otsi rida märkega „Resend ei saada sellele aadressile kirju“.",
-        "Kui ühelgi real märget pole, kirjuta märkus „blokeeritud aadressi pole“ ja jäta see kontroll vahele.",
-        "Ava „Õpilased“ ja kirjuta otsingusse selle rea aadress.",
-        "Kui sellise aadressiga õpilast pole, kirjuta see märkusesse ja jäta kontroll vahele.",
-        "Vajuta õpilase nimele ja vaata paneeli ülaosa."
+        "Ava halduses „Õpilased“.",
+        "Vajuta Proov 1 nimele.",
+        "Vaata paneeli ülaosas uudiskirja rida."
       ],
       "expect": [
-        "Paneelis on märge „Resend ei saada sellele aadressile kirju (tagastus või rämpspostiks märgitud). Seda saab muuta ainult Resendis.“.",
-        "Proov 1 paneelis seda märget pole."
+        "Paneeli ülaosas on rida „Uudiskiri: …“, kus on „jah“, „ootab kinnitust“ või „ei“.",
+        "Paneeli ülaosas on ka õpilase nimi ja e-posti aadress."
       ],
-      "why": "Blokeeritud aadress ei saa ka sisselogimiskoode, kinnitusi ega arveid.",
+      "why": "Paneelist näeb Maria kohe, kas õpilane uudiskirja saab.",
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "2026-10-20T06:45:17.159Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-kontaktivorm",

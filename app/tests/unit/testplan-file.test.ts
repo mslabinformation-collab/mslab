@@ -3,7 +3,6 @@ import plan from "@/data/testplan.json";
 import { checkPlan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { et } from "@/i18n/dict/et";
-import { fill } from "@/i18n/format";
 import { ru } from "@/i18n/dict/ru";
 
 // The test page's plan file (phase 4, piece 1, spec §3, §8): src/data/testplan.json passes checkPlan, and checkPlan names each way a plan can
@@ -378,55 +377,27 @@ describe("the review checks sit where Proov 1's reviews exist", () => {
   });
 });
 
-// The newsletter's sync with Resend (newsletter campaigns, Task 3): Dim's check needs the full-access key, so it is his, and it syncs what exists, so
-// it sits right after the sign-up check that makes Proov 3 a subscriber (the file is walked top to bottom).
-describe("the Resend sync check sits after the subscriber it syncs", () => {
+// The newsletter's checks (newsletter campaigns, Task 4, then the 20.10 simplification: docs/superpowers/specs/2026-10-20-newsletter-simple-design.md §6):
+// the list and the CSV where the Resend sync was, writing a campaign with the preview, „Saada proov“, „Saada kõigile“, the received mail's unsubscribe and
+// „Kopeeri“, in the order a campaign lives, right after the sign-up check that makes Proov 3 a subscriber (the file is walked top to bottom). The checks that
+// send are Dim's (test addresses only); the others are Maria's. Nothing in them names a list kept in Resend, a segment, a contact, a sync or a blocked mark.
+describe("the newsletter checks follow the simple flow, in the order a campaign lives", () => {
   const order = plan.items.map((i) => i.id);
   const at = (id: string): number => {
     const n = order.indexOf(id);
     expect(n, id).toBeGreaterThanOrEqual(0);
     return n;
   };
-  const item = plan.items[at("avalik-uudiskiri-resend")];
-  const text = [...item.steps, ...item.expect].join("\n");
-
-  test("it is Dim's, and sits in the area of the sign-up check, right after it (Proov 3 is subscribed by then)", () => {
-    expect(item.who).toBe("dim");
-    expect(item.area).toBe(plan.items[at("avalik-uudiskiri")].area);
-    expect(at("avalik-uudiskiri-resend")).toBe(at("avalik-uudiskiri") + 1);
-    expect(plan.items[at("avalik-uudiskiri")].steps.join("\n")).toContain("+proov3");
-    expect(item.expect.join("\n")).toContain("Proov 3");
-    expect(item.writes).toBe(true);
-  });
-
-  test("it is new, from the deploy or its stamp", () => {
-    expect(item.mark).toBe("new");
-    expect(markedSince(item.markedAt)).toBe(true);
-  });
-
-  test("it quotes the page's words: the button, the report's line, the count line, the mark and the refusal for a key that can only send", () => {
-    const sync = adminEt.newsletter.sync;
-    expect(item.title).toBe(sync.button);
-    expect(text).toContain(`„${sync.button}“`);
-    // the first press may add nothing (the public sign-up has already synced Proov 3): any numbers are right; the second adds, removes and pulls nothing
-    expect(item.expect[0]).toContain("„… lisatud, … eemaldatud, … loobus Resendis“");
-    expect(item.expect[0]).not.toMatch(/„\d/);
-    expect(item.expect[1]).toContain("„0 lisatud, 0 eemaldatud, 0 loobus Resendis“");
-    expect(sync.report).toBe("{added} lisatud, {removed} eemaldatud, {unsubscribedPulled} loobus Resendis");
-    expect(text).toContain("„Resendis … kontakti (tasuta pakett: 1000)“");
-    expect(sync.resendContacts).toBe("Resendis {n} kontakti (tasuta pakett: 1000)");
-    expect(text).toContain(`„${sync.siteContacts.replace(": {n}", "")}“`);
-    expect(text).toContain(`„${adminEt.newsletter.suppressed.slice(0, adminEt.newsletter.suppressed.indexOf(" ("))}“`);
-    expect(text).toContain(`„${sync.errors.permission}“`);
-  });
-});
-
-// The newsletter's campaigns (newsletter campaigns, Task 4; spec §6): writing one with the preview, „Saada proov“, „Saada kõigile“, the received mail's
-// unsubscribe and „Kopeeri“, in the order a campaign lives, right after the sync check (Proov 3 is a synced subscriber by then, and the send goes to
-// her). The checks that send are Dim's (the key, and test addresses only); the others are Maria's.
-describe("the campaign checks follow the sync check, in the order a campaign lives", () => {
-  const order = plan.items.map((i) => i.id);
-  const IDS = ["avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-proov", "avalik-uudiskiri-kampaania-muudetud", "avalik-uudiskiri-kampaania-saada", "avalik-uudiskiri-kampaania-loobu", "avalik-uudiskiri-kampaania-kopeeri"];
+  const IDS = [
+    "avalik-uudiskiri-resend",
+    "avalik-uudiskiri-kampaania",
+    "avalik-uudiskiri-kampaania-proov",
+    "avalik-uudiskiri-kampaania-muudetud",
+    "avalik-uudiskiri-kampaania-saada",
+    "avalik-uudiskiri-kampaania-loobu",
+    "avalik-uudiskiri-kampaania-kopeeri",
+    "avalik-uudiskiri-blokeeritud-opilane",
+  ];
   const item = (id: string) => {
     const found = plan.items.find((i) => i.id === id);
     expect(found, id).toBeDefined();
@@ -435,73 +406,85 @@ describe("the campaign checks follow the sync check, in the order a campaign liv
   const text = (id: string) => [...item(id).steps, ...item(id).expect].join("\n");
   const t = adminEt.newsletter.campaigns;
 
-  test("right after „Sünkrooni Resendiga“, one after another, in its area; new, from the deploy or its stamp", () => {
-    const start = order.indexOf("avalik-uudiskiri-resend");
-    expect(IDS.map((id) => order.indexOf(id))).toEqual(IDS.map((_, i) => start + 1 + i));
-    for (const id of IDS) {
-      expect(item(id).area, id).toBe("avalik");
+  test("right after the sign-up check, one after another, in its area; Proov 3 is a subscriber by then", () => {
+    expect(IDS.map((id) => at(id))).toEqual(IDS.map((_, n) => at("avalik-uudiskiri") + 1 + n));
+    expect(item("avalik-uudiskiri").steps.join("\n")).toContain("+proov3");
+    for (const id of IDS) expect(item(id).area, id).toBe(item("avalik-uudiskiri").area);
+  });
+
+  test("the ids kept their place and carry the mark new, from the deploy or its stamp; a mark is never weaker than it was", () => {
+    for (const id of IDS.filter((id) => id !== "avalik-uudiskiri-kampaania" && id !== "avalik-uudiskiri-kampaania-kopeeri")) {
       expect(item(id).mark, id).toBe("new");
       expect(markedSince(item(id).markedAt), id).toBe(true);
-      expect(item(id).writes, id).toBe(true);
+    }
+    // the two whose words and meaning did not change keep the instant the 18.10 deploy stamped
+    for (const id of ["avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-kopeeri"]) {
+      expect(item(id).mark, id).toBe("new");
+      expect(markedSince(item(id).markedAt), id).toBe(true);
     }
   });
 
-  test("the sends are Dim's; writing, the unsubscribe from Proov 3's mailbox and „Kopeeri“ are Maria's", () => {
-    expect(IDS.map((id) => item(id).who)).toEqual(["maria", "dim", "dim", "dim", "maria", "maria"]);
+  test("the sends and the mail's headers are Dim's; the list, writing, the unsubscribe from Proov 3's mailbox, „Kopeeri“ and the drawer are Maria's", () => {
+    expect(IDS.map((id) => item(id).who)).toEqual(["maria", "maria", "dim", "dim", "dim", "maria", "maria", "maria"]);
     // the send goes to test addresses only: Dim stops when the list holds any other
-    expect(text("avalik-uudiskiri-kampaania-saada")).toContain("+proov");
-    expect(text("avalik-uudiskiri-kampaania-saada")).toContain("ära jätka");
+    for (const id of ["avalik-uudiskiri-kampaania-muudetud", "avalik-uudiskiri-kampaania-saada"]) {
+      expect(text(id), id).toContain("+proov");
+      expect(text(id), id).toContain("ära jätka");
+    }
+    // what only reads writes nothing; what sends or saves does
+    expect(IDS.map((id) => item(id).writes)).toEqual([false, true, true, true, true, true, true, false]);
   });
 
-  test("they quote the page's words: the tab, the buttons, the confirmation, the sent line, the test page and the subscriber warning", () => {
+  test("the list check quotes the page's words: the tab, the count line, the CSV button and the other view", () => {
+    const n = adminEt.newsletter;
+    expect(item("avalik-uudiskiri-resend").title).toBe("Tellijate loend ja CSV");
+    expect(text("avalik-uudiskiri-resend")).toContain(`„${n.csvConfirmed}“`);
+    expect(text("avalik-uudiskiri-resend")).toContain(`„${n.count.replace("{n}", "…").replace("{confirmed}", "…")}“`);
+    expect(text("avalik-uudiskiri-resend")).toContain(`„${n.views.subscribers}“`);
+    expect(text("avalik-uudiskiri-resend")).toContain(`„${n.views.campaigns}“`);
+  });
+
+  test("they quote the page's and the mail's words: the editor, the buttons, the confirmation, the sent line, the test page and the footer", () => {
     expect(adminEt.newsletter.views.campaigns).toBe("Kampaaniad");
     expect(text("avalik-uudiskiri-kampaania")).toContain(`„${t.new}“`);
     expect(text("avalik-uudiskiri-kampaania")).toContain(`„${adminEt.editor.saved}“`);
     expect(text("avalik-uudiskiri-kampaania")).toContain(`„${t.status.draft}“`);
-    expect(item("avalik-uudiskiri-kampaania-proov").title).toBe(t.test.button);
+    expect(item("avalik-uudiskiri-kampaania-proov").title).toBe("Saada proov"); // (the spec's)
     expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${t.testPage}“`);
-    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${t.test.realLink}“`);
-    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${t.test.sent.slice(0, t.test.sent.indexOf(" {email}"))} …“`);
-    expect(text("avalik-uudiskiri-kampaania-proov")).toContain("„MS LAB uudiskiri (proov)“");
-    expect(item("avalik-uudiskiri-kampaania-saada").title).toBe(t.all.button);
-    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.all.confirm.replace("{n}", "…").replace("{a}", "…").replace("{b}", "…")}“`);
-    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.all.yes}“`);
+    expect(text("avalik-uudiskiri-kampaania-proov")).toContain("„[Proov] Proov 3 pakkumine“");
+    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${ru.mail.campaign.unsubscribe}“`);
+    expect(item("avalik-uudiskiri-kampaania-saada").title).toBe("Saada kõigile"); // (the spec's)
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain("„Saadad kampaania … tellijale (eesti keeles …, vene keeles …). Kas saadame?“"); // (the spec's)
     expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.sentLine.replace("{date}", "…").replace("{n}", "…")}“`);
     expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.errorsOf.sent}“`);
-    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${fill(t.openInResend, { lang: t.langNames.et })}“`);
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain("„Proov 3 pakkumine“");
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain("List-Unsubscribe-Post: List-Unsubscribe=One-Click"); // the mail program's own button
     expect(text("avalik-uudiskiri-kampaania-loobu")).toContain(`„${et.mail.campaign.reason}“`);
     expect(text("avalik-uudiskiri-kampaania-loobu")).toContain(`„${et.mail.campaign.unsubscribe}“`);
     expect(text("avalik-uudiskiri-kampaania-loobu")).toContain(`„${et.newsletter.unsubscribePage.heading}“`);
     expect(item("avalik-uudiskiri-kampaania-kopeeri").title).toBe(t.copy);
     expect(text("avalik-uudiskiri-kampaania-kopeeri")).toContain(`„Proov 3 kampaania${t.copySuffix}“`);
-    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${ru.mail.campaign.unsubscribe}“`);
   });
 
-  test("the final review's M8: the student's drawer's blocked mark has its own check, Dim's, new, right after the campaigns (a send's bounce is there by then), quoting the mark", () => {
-    const drawer = item("avalik-uudiskiri-blokeeritud-opilane");
-    expect(order.indexOf("avalik-uudiskiri-blokeeritud-opilane")).toBe(order.indexOf("avalik-uudiskiri-kampaania-kopeeri") + 1);
-    expect(drawer).toMatchObject({ area: "avalik", who: "dim", mark: "new", writes: false, href: "/admin/uudiskiri" });
-    expect(markedSince(drawer.markedAt)).toBe(true);
-    expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain(`„${adminEt.newsletter.suppressed}“`);
-    expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain("„Õpilased“");
-    // a blocked address needs a real bounce: without one the check says how to skip it
-    expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain("jäta see kontroll vahele");
-  });
-
-  test("the final wave's extra round, N4: the refusal of a campaign changed in another tab has its check, Dim's, between the test and the send, quoting the page", () => {
-    const changed = item("avalik-uudiskiri-kampaania-muudetud");
-    expect(changed).toMatchObject({ who: "dim", mark: "new" });
-    expect(text("avalik-uudiskiri-kampaania-muudetud")).toContain(`„${t.all.edited.slice(0, t.all.edited.indexOf(" Laadi"))} …“`);
-    expect(text("avalik-uudiskiri-kampaania-muudetud")).toContain(`„${t.all.button}“`);
-    expect(text("avalik-uudiskiri-kampaania-muudetud")).toContain(`„${t.all.yes}“`);
-    // it changes only the preview line, so the send's check after it still finds its subject
+  test("the edit in another tab changes only the preview line, so the send's check after it still finds its subject", () => {
+    expect(at("avalik-uudiskiri-kampaania-muudetud")).toBeLessThan(at("avalik-uudiskiri-kampaania-saada"));
     expect(text("avalik-uudiskiri-kampaania-muudetud")).toContain("„Eelvaate rida“");
-    expect(text("avalik-uudiskiri-kampaania-saada")).toContain("„Proov 3 pakkumine“");
+    expect(text("avalik-uudiskiri-kampaania-muudetud")).toContain("„Saada kõigile“");
+    expect(text("avalik-uudiskiri-kampaania-muudetud")).toContain("midagi ei saadetud");
   });
 
-  test("the sync and the test quote the marks and answers the final wave added (rulings R17, M7)", () => {
-    expect(text("avalik-uudiskiri-resend")).toContain(`„${adminEt.newsletter.rejected}“`);
-    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${t.errorsOf.unsubscribed.slice(0, t.errorsOf.unsubscribed.indexOf(":"))} …“`);
+  test("the student's drawer check reads her newsletter line and nothing about a blocked address", () => {
+    const line = adminEt.clients.drawer.newsletter.replace(": {state}", "");
+    expect(item("avalik-uudiskiri-blokeeritud-opilane")).toMatchObject({ area: "avalik", who: "maria", writes: false, href: "/admin/opilased" });
+    expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain(`„${line}: …“`);
+    for (const state of Object.values(adminEt.clients.drawer.newsletterStates)) expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain(`„${state}“`);
+  });
+
+  test("no newsletter check names a list kept in Resend, a segment, a contact, a sync, a blocked mark, „Märgi saatmata“ or „Saada puuduv keel“", () => {
+    for (const id of IDS) {
+      const all = [item(id).title, ...item(id).steps, ...item(id).expect, item(id).why].join("\n");
+      expect(all, id).not.toMatch(/Resend|segment|kontakt|Sünkroon|sünkroon|blokeeri|Märgi saatmata|Saada puuduv keel/);
+    }
   });
 
   test("the welcome mail's unsubscribe still has a subscriber to remove: Proov 1, subscribed by „Minu andmed“ before it; Proov 3 is gone by then (review M9)", () => {
@@ -511,7 +494,6 @@ describe("the campaign checks follow the sync check, in the order a campaign liv
     expect(welcome.mark).toBe("reworded");
     expect(markedSince(welcome.markedAt)).toBe(true);
     // Proov 3 unsubscribes in the campaign check, before the welcome mail's; Proov 1 subscribes in konto-andmed, between the two
-    const at = (id: string) => order.indexOf(id);
     expect(at("avalik-uudiskiri-kampaania-loobu")).toBeLessThan(at("konto-andmed"));
     expect(at("konto-andmed")).toBeLessThan(at("kirjad-tervituskiri"));
     expect(item("konto-andmed").steps.join("\n")).toContain("„Saada mulle uudiskirja“");

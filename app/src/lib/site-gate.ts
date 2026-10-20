@@ -54,8 +54,7 @@ export function gateOn(value: string | undefined): boolean {
  * Addresses answered by the app itself, gate or not. Each ends at a path boundary or is one exact file, as in
  * lib/site-routing.ts ("/administrator" or "/admin.php" are gated):
  * - the admin area and its API, and signing in and out (api/auth: request, verify, logout);
- * - Vercel's daily cron, Bunny's webhook, Resend's webhook (api/resend/webhook, newsletter campaigns: the unsubscribes and suppressions made in
- *   Resend; only that one address), Montonio's webhook (api/payments/notify, phase 2b: it must reach the app while the site is gated,
+ * - Vercel's daily cron, Bunny's webhook, Montonio's webhook (api/payments/notify, phase 2b: it must reach the app while the site is gated,
  *   and only that one address: the return and the rest of /api/payments stay gated), the pay page of the registration mail's "Maksa" link
  *   (/maksa/<token>, its GET and its POST; phase 2b: a mail sent before the launch must open it), and the newsletter's links (api/newsletter: the unsubscribe link of the welcome mail, which opens its own page and
  *   sends the visitor on to "/" after the button, and the old confirm link, which sends the visitor on to "/"; there the coming-soon page shows the notice);
@@ -66,7 +65,7 @@ export function gateOn(value: string | undefined): boolean {
  * Fonts are Next.js's files (/_next/static/media). Not here, so gated: the client account and its API, /api/feedback,
  * the hub and every page of the site.
  */
-const THROUGH = new RegExp(`^\\/(admin(\\/|$)|api\\/(auth|admin|cron|newsletter)(\\/|$)|api\\/bunny\\/webhook$|api\\/resend\\/webhook$|api\\/payments\\/notify$|maksa\\/[^/]+$|_next\\/|media(\\/|$)|${ROOT_FILE_SOURCE})`);
+const THROUGH = new RegExp(`^\\/(admin(\\/|$)|api\\/(auth|admin|cron|newsletter)(\\/|$)|api\\/bunny\\/webhook$|api\\/payments\\/notify$|maksa\\/[^/]+$|_next\\/|media(\\/|$)|${ROOT_FILE_SOURCE})`);
 
 /**
  * A path the router could read as another one: a dot segment ("/admin/../konto"), an encoded dot, slash or backslash, a

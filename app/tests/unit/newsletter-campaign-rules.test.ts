@@ -1,11 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { adminEt } from "@/i18n/dict/admin";
-import {
-  CAMPAIGN_LIMITS, CONTACTS_WARN_AT, RESEND_FREE_CONTACTS, campaignContentFor, checkCampaignDraft, ruFallsBack, type NewsletterCampaignDraft,
-} from "@/domain/newsletter-campaign";
+import { CAMPAIGN_LIMITS, campaignContentFor, checkCampaignDraft, ruFallsBack, type NewsletterCampaignDraft } from "@/domain/newsletter-campaign";
 
-// The newsletter campaign's pure rules (newsletter campaigns, Task 1; spec D4, D8, §5): the limits, the draft Maria's editor sends checked
+// The newsletter campaign's pure rules (newsletter campaigns, Task 1; spec D4, §5): the limits, the draft Maria's editor sends checked
 // field by field, and the text a subscriber of each language gets (the Estonian one as a whole when the Russian subject or text is empty,
 // Review Focus 5). The mail built from it is tests/unit/campaign-mail.test.ts. Not to be confused with domain/campaign.ts, the home page's popup.
 
@@ -38,10 +36,8 @@ const full = {
 const draft = (over: Partial<NewsletterCampaignDraft> = {}): NewsletterCampaignDraft => ({ ...ok(full), ...over });
 
 describe("the limits", () => {
-  test("the brief's values, and Resend's free plan: 1000 contacts, a warning at 900", () => {
+  test("the brief's values", () => {
     expect(CAMPAIGN_LIMITS).toEqual({ name: 80, subject: 150, preheader: 150, body: 10000, buttonLabel: 40, href: 500 });
-    expect(RESEND_FREE_CONTACTS).toBe(1000);
-    expect(CONTACTS_WARN_AT).toBe(900);
   });
 });
 

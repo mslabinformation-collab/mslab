@@ -20,14 +20,6 @@ export type ServerEnv = {
   /** The From header of outgoing mail. */
   MAIL_FROM: string;
   RESEND_API_KEY?: string;
-  /**
-   * The newsletter's Resend key (newsletter campaigns, spec §4 as amended, ruling R15), a full-access key: contacts, segments and broadcasts need
-   * one. It alone switches the newsletter on: unset or blank, nothing is synced or sent (server/resend-marketing.ts marketingKey), whatever
-   * RESEND_API_KEY is (that one is the site's own mails' key only).
-   */
-  RESEND_MARKETING_KEY?: string;
-  /** The signing secret of Resend's webhook (/api/resend/webhook, `whsec_…`). Unset: every event is refused (400). */
-  RESEND_WEBHOOK_SECRET?: string;
   TELEGRAM_BOT_TOKEN?: string;
   /** Overrides the chat id stored in the KV under `tg:chat`. */
   TELEGRAM_CHAT_ID?: string;
@@ -108,8 +100,6 @@ function isPostgresUrl(value: string): boolean {
 
 const OPTIONAL = [
   "RESEND_API_KEY",
-  "RESEND_MARKETING_KEY",
-  "RESEND_WEBHOOK_SECRET",
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_CHAT_ID",
   "ADMIN_KEY",

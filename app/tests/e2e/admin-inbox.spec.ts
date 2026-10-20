@@ -528,9 +528,9 @@ test.describe("signed in", () => {
     expect(body).not.toContain(f.subscribers.pending);
   });
 
-  // „Kampaaniad“ (newsletter campaigns, Task 4): the editor with the live preview of both languages, saved; the run has no marketing key
-  // (tests/local-secrets.ts LOCAL_ENV), so the two sends say that sending is not set up, and nothing is ever synced or sent.
-  test("newsletter campaigns: a new campaign, the preview of the real mail in both languages, saved; without the key the sends send nothing", async ({ page, context, visitorIp }, info) => {
+  // „Kampaaniad“ (newsletter campaigns, Task 4): the editor with the live preview of both languages, saved. The editor has no sending on it yet
+  // (the sends are the 20.10 design's), and the run sends no mail (tests/local-secrets.ts LOCAL_ENV has no RESEND_API_KEY).
+  test("newsletter campaigns: a new campaign, the preview of the real mail in both languages, saved; the editor sends nothing", async ({ page, context, visitorIp }, info) => {
     const name = `${E2E_CAMPAIGN_PREFIX} ${info.project.name} ${Date.now()}`;
     // the mail's logo and links hang on the server's SITE_URL (the dev server's own address, or the production build's: headers.spec.ts)
     const site = PROD_BUILD ? PROD_ENV.SITE_URL : DEV_ENV.SITE_URL;
@@ -584,8 +584,8 @@ test.describe("signed in", () => {
       await expect(page.locator("[data-campaign-preview-fallback]")).toHaveCount(0);
       await expect(page.locator("[data-campaign-preview-subject]")).toHaveText("E2E тема");
 
-      // not set up: the sends say so before and after the save
-      await expect(page.locator("[data-campaign-send-off]")).toHaveText("Resendi uudiskirja saatmine pole veel seadistatud.");
+      // no sending on the editor, before and after the save
+      await expect(page.locator("[data-campaign-send], [data-test-send], [data-send-all]")).toHaveCount(0);
       await page.getByRole("button", { name: "Salvesta" }).click();
       await expect(page).toHaveURL(/kampaania=\d+$/);
       await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
@@ -593,13 +593,7 @@ test.describe("signed in", () => {
       expect(row).toMatchObject({ status: "draft", code: "E2E-KOOD", subject: { et: "E2E teema", ru: "E2E тема" }, body: { et: "E2E esimene lõik.\n\nE2E teine lõik.", ru: "E2E русский абзац." } });
       await expect(form).toHaveAttribute("data-campaign-form", String(row.id));
       await expect(page.locator(`[data-campaign-row="${row.id}"] [data-campaign-status]`)).toHaveText("Mustand");
-      await expect(page.locator("[data-test-to]")).toHaveCount(0);
-      for (const button of ["[data-test-send]", "[data-send-all]"]) {
-        await expect(page.locator(button)).toHaveAttribute("aria-disabled", "true");
-        await page.locator(button).dispatchEvent("click"); // (a press anyway: nothing happens)
-      }
-      await expect(page.locator("[data-send-confirm]")).toHaveCount(0);
-      await expect(page.locator("[data-send-status]")).toHaveText("");
+      await expect(page.locator("[data-campaign-send], [data-test-send], [data-send-all], [data-test-to], [data-send-confirm]")).toHaveCount(0);
       expect((await storedCampaigns(name))[0].status).toBe("draft");
 
       // opened again: the stored fields

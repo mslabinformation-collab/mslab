@@ -1,4 +1,4 @@
-// The newsletter campaign's pure rules (newsletter campaigns, Task 1; spec D4, D5, D8, §5): the limits, the draft Maria's editor sends checked field by
+// The newsletter campaign's pure rules (newsletter campaigns, Task 1; spec D4, D5, §5): the limits, the draft Maria's editor sends checked field by
 // field, and the text a subscriber of each language gets. No database, no React: the server (the send, the test mail), Maria's editor and its preview
 // share them. It runs in the browser too (the editor), on iOS Safari before 16.4 as well: no lookbehind here nor in what it imports
 // (tests/unit/old-safari.test.ts), and no builtin newer than Safari 15. Not to be confused with domain/campaign.ts, the home page's popup.
@@ -11,11 +11,6 @@ import { WELCOME_CODE_MAX, isWelcomeCode, normalizeWelcomeCode } from "./welcome
 
 /** The longest each text may be, in characters; `href` is the button's address and the picture's key. */
 export const CAMPAIGN_LIMITS = { name: 80, subject: 150, preheader: 150, body: 10000, buttonLabel: 40, href: 500 } as const;
-
-/** Resend's free plan holds this many contacts (D8); over it a paid plan is needed. */
-export const RESEND_FREE_CONTACTS = 1000;
-/** From this many contacts the „Uudiskiri“ page warns (D8). */
-export const CONTACTS_WARN_AT = 900;
 
 /**
  * A campaign as Maria writes it, checked: every optional text is "" (an `I18n` always holds both languages) or null, the code is in capitals, and a
@@ -171,54 +166,4 @@ export function campaignContentFor(c: NewsletterCampaignDraft, locale: "et" | "r
   const text = (f: I18n | null): string => (f ? ((used === "ru" ? f.ru : f.et) ?? "").trim() : "");
   const buttonLabel = text(c.buttonLabel);
   return { locale: used, subject: text(c.subject), preheader: text(c.preheader), paragraphs: paragraphs(text(c.body)), buttonLabel: buttonLabel === "" ? null : buttonLabel };
-}
-
-// ---------- what a send came to, per language (ruling R16) ----------
-
-export type CampaignLocale = "et" | "ru";
-const SEND_ORDER: readonly CampaignLocale[] = ["et", "ru"];
-
-/** A campaign's send as it is stored (schema.ts NewsletterCampaign; components/admin/NewsletterCampaignEditor.tsx CampaignEditorView). */
-export type CampaignSend = {
-  status: "draft" | "sending" | "sent";
-  recipients: { et: number; ru: number } | null;
-  broadcasts: { et?: string; ru?: string } | null;
-};
-
-/**
- * One language of a send: `sent` (its broadcast is recorded: `broadcast`), `unknown` (the first language of a send left `sending` without a recorded
- * broadcast: its call got no answer, so it may have gone, and Maria looks in Resend), `notTried` (a language after that one: the send stopped
- * before it, so it was never sent; the re-review's N2) or `missing` (a `sent` campaign's language that did not go: „Saada puuduv keel“, ruling
- * R12). `recipients`: the subscribers the send was for in that language.
- */
-export type LanguageOfSend = { locale: CampaignLocale; state: "sent" | "unknown" | "notTried" | "missing"; recipients: number; broadcast: string | null };
-
-/**
- * The languages a send was for (planned for subscribers), Estonian first, each with what became of it; none for a draft. A send goes Estonian
- * first and stops at the first broadcast without an answer (newsletter-campaigns.ts sendCampaign), so in a campaign left `sending` only the first
- * language without a recorded broadcast is `unknown`, and any after it `notTried`.
- */
-export function sendLanguages(c: CampaignSend): LanguageOfSend[] {
-  if (c.status === "draft") return [];
-  let open = false;
-  return SEND_ORDER.filter((l) => (c.recipients?.[l] ?? 0) > 0 || Boolean(c.broadcasts?.[l])).map((l) => {
-    const broadcast = c.broadcasts?.[l] || null;
-    const recipients = c.recipients?.[l] ?? 0;
-    if (broadcast) return { locale: l, state: "sent", recipients, broadcast };
-    if (c.status !== "sending") return { locale: l, state: "missing", recipients, broadcast };
-    const state = open ? "notTried" : "unknown";
-    open = true;
-    return { locale: l, state, recipients, broadcast };
-  });
-}
-
-/**
- * The language „Märgi saatmata“ applies to (ruling R16): in a campaign left `sending`, the first language of its send without a recorded broadcast.
- * A send goes Estonian first and stops at the first broadcast without an answer, so that one is the only language whose fate is unknown: every
- * language after it was never tried (`notTried`), and is marked not sent along with it. null when there is none (a draft, a sent campaign, a send whose every
- * language is recorded). A language with a recorded broadcast is never one.
- */
-export function unsentCandidate(c: CampaignSend): CampaignLocale | null {
-  if (c.status !== "sending") return null;
-  return sendLanguages(c).find((l) => l.state === "unknown")?.locale ?? null;
 }

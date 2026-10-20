@@ -6,12 +6,12 @@ import { FONT, INK, LINE, buttonRow, codeRow, esc, linkRow, mailCard, paragraphR
 // The newsletter campaign's mail (newsletter campaigns, Task 1; spec D5, D6): the account mails' card (account-mail.ts mailCard) with the school's
 // logo on top, Maria's picture at the full width of the card, her paragraphs, the code in its lilac box, the one button, and a footer: why the
 // subscriber got the mail, the way out, the school's name and address. One text for all, so no greeting and no signature. A hidden first line (the
-// preheader) is what the inbox shows after the subject. HTML with a plain-text fallback made from the same parts; both are a broadcast's body for
-// Resend, or the test mail's.
+// preheader) is what the inbox shows after the subject. HTML with a plain-text fallback made from the same parts; both are the body of an ordinary
+// mail: a subscriber's own, or the test mail's.
 //
 // - Every text of Maria's is escaped (esc): the subject, the preview line, the paragraphs, the code, the label, the school's name and address.
-// - The unsubscribe address is placed as it is given (`unsubscribeHref`): in a send it is Resend's placeholder for the contact's own address (the site's
-//   unsubscribe page, filled in by the sync), which must reach the HTML as written. Only what could end the attribute or open a tag is escaped.
+// - The unsubscribe address is placed as it is given (`unsubscribeHref`): in a send it is the subscriber's own link (the site's unsubscribe page with her
+//   token), in a test the test page, and it must reach the HTML as written. Only what could end the attribute or open a tag is escaped.
 // - The footer follows the subscriber's language (`pageLocale`), the text follows the campaign's (`content.locale`): a Russian subscriber whose
 //   campaign has no Russian text gets the Estonian text under a Russian footer, with the Russian unsubscribe page behind its link (Review Focus 5).
 
@@ -42,7 +42,7 @@ export type CampaignMailInput = {
   siteUrl: string;
   /** From Seaded → „Arve andmed“: the caller passes "MS LAB" and an empty address when there are none. */
   school: { name: string; address: string };
-  /** The unsubscribe link's address, as it must appear in href (Resend's placeholder for a send, the site's page for a test). */
+  /** The unsubscribe link's address, as it must appear in href (the subscriber's own link for a send, the site's test page for a test). */
   unsubscribeHref: string;
   /** A test mail („Saada proov“): the subject starts with „[Proov]“. */
   test: boolean;
@@ -68,7 +68,7 @@ const attribute = (value: string): string => value.replace(/["<>]/g, (c) => (c =
 
 /**
  * The campaign mail for one subscriber: its subject (with „[Proov] “ in front for a test), the HTML and the plain text. Pure; the caller sends it
- * (the broadcast's `html`, `text` and `subject`, or the one transactional mail of „Saada proov“).
+ * (as an ordinary mail: its `subject`, `html` and `text`).
  */
 export function campaignMail(input: CampaignMailInput): { subject: string; html: string; text: string } {
   const { content } = input;

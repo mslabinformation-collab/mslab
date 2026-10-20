@@ -50,7 +50,7 @@ async function gated(req: NextRequest, env: GateEnv): Promise<NextResponse> {
   if (!env.PREVIEW_SECRET && !notedNoSecret) {
     notedNoSecret = true;
     logNote(
-      "[gate] SITE_GATE is on but PREVIEW_SECRET is not set or shorter than 32 characters: no preview cookie is valid, so admins see the coming-soon page too; only /admin, /api/auth, /api/admin, /api/cron, /api/bunny/webhook, /api/resend/webhook, /api/payments/notify, /maksa/<token>, /api/newsletter, /_next, /media and the static files go through",
+      "[gate] SITE_GATE is on but PREVIEW_SECRET is not set or shorter than 32 characters: no preview cookie is valid, so admins see the coming-soon page too; only /admin, /api/auth, /api/admin, /api/cron, /api/bunny/webhook, /api/payments/notify, /maksa/<token>, /api/newsletter, /_next, /media and the static files go through",
     );
   }
   const { pathname } = req.nextUrl;

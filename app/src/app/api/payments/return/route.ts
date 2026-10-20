@@ -6,7 +6,6 @@ import { logFailure } from "@/server/log";
 import { paymentProvider } from "@/server/payments/montonio";
 import { handleReturn, returnPending } from "@/server/payments/routes";
 import { revalidatePublic } from "@/server/public-cache";
-import { subscriberSync } from "@/server/resend-marketing";
 import { hostOrigin, linkBase } from "@/server/site";
 
 export const dynamic = "force-dynamic";
@@ -22,17 +21,14 @@ export const maxDuration = 30;
 export async function GET(request: Request): Promise<Response> {
   try {
     const env = { ...serverEnv(), KV: serverKv() };
-    const db = getDb();
     return await handleReturn(request, {
-      db,
+      db: getDb(),
       env,
       now: new Date(),
       siteUrl: linkBase(hostOrigin(request.headers), env.SITE_URL),
       later: (task) => after(() => task().catch((e) => logFailure("[payments] background task failed", e))),
       changed: revalidatePublic,
       montonio: paymentProvider(),
-      // a paid e-course purchase's newsletter box: its sync to Resend (newsletter campaigns); none without the newsletter's key
-      newsletterSync: subscriberSync(db, env),
     });
   } catch (e) {
     logFailure("[payments] return failed", e);

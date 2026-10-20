@@ -3,63 +3,20 @@
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { normalizeEmail } from "@/domain/email";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { adminAction } from "../auth";
 import { logFailure } from "../log";
-import { copyCampaign, markNotSent, prepareSend, saveCampaign, sendCampaign, sendTest, type SendResult, type SendScope } from "../newsletter-campaigns";
-import { FullSyncBusy, fullSync, keyRefused, MarketingUnavailable, marketingConfigured, type FullSyncReport } from "../resend-marketing";
-import { ADMIN_SYNC_BUDGET_MS, adminMarketingDeps } from "../send-deps";
+import { copyCampaign, saveCampaign } from "../newsletter-campaigns";
 
-// Maria's newsletter actions (newsletter campaigns, Task 3, spec D2, §5): every export is wrapped in adminAction (a signed-in admin, or a redirect to
+// Maria's campaign actions (newsletter campaigns, the „Kampaaniad“ tab): every export is wrapped in adminAction (a signed-in admin, or a redirect to
 // /admin/login; tests/unit/admin-guards.test.ts fails otherwise), and Next.js refuses an action called from another origin. The work is
-// resend-marketing.ts fullSync; here it is run with an interactive time budget (it is a press, not the daily cron), its refusals get a code that
-// the page turns into Estonian words (adminEt.newsletter.sync.errors), and a sync that ran refreshes the open page, so that its counts are the new ones.
-// The action's own time is the page's (uudiskiri/page.tsx maxDuration).
-//
-// The campaigns' actions (Task 4, the „Kampaaniad“ tab): the work is newsletter-campaigns.ts; here the input is checked once more (an id the page
-// never sends is `notFound` without a read, and „Saada proov“'s address is MARIA_EMAIL or the signed-in admin's own, never one the browser names),
-// each refusal is a code the editor puts into words (adminEt.newsletter.campaigns.errorsOf), a throw is `server` (logged by the error's class and
-// the campaign's id, never a message), and a change refreshes the open page. The sends run on SITE_URL (adminMarketingDeps) with the sync's
-// interactive budget.
-
-/**
- * „Sünkrooni Resendiga“: the full sync of the subscribers with Resend's contacts (resend-marketing.ts fullSync: Resend-side unsubscribes pulled, the
- * suppression list read, contacts put right), for at most ADMIN_SYNC_BUDGET_MS. Ran: the sync's report as it is (`finished: false` when the time
- * ran out and the rest waits for the next run), and the open page is refreshed. Not run, in a code: `notConfigured` (no marketing key: nothing is
- * asked of Resend), `busy` (another full sync holds the lease, fullSync: the cron, another tab; not an error, so not logged as one),
- * `permission` (the key can only send, or is not accepted: a full-access key is needed), `unavailable` (Resend does not answer), `server`
- * (anything else, such as the database: logged by the error's class, never its message).
- */
-export const fullSyncAction = adminAction(
-  async (): Promise<FullSyncReport | { error: "notConfigured" | "busy" | "permission" | "unavailable" | "server" }> => {
-    try {
-      const deps = adminMarketingDeps(ADMIN_SYNC_BUDGET_MS);
-      if (!marketingConfigured(deps.env)) return { error: "notConfigured" };
-      const report = await fullSync(deps);
-      refresh();
-      return report;
-    } catch (e) {
-      if (e instanceof FullSyncBusy) return { error: "busy" }; // (fullSync logged it)
-      logFailure("[newsletter-sync] the admin's sync failed", e);
-      if (e instanceof MarketingUnavailable) return { error: keyRefused(e) ? "permission" : "unavailable" };
-      return { error: "server" };
-    }
-  },
-);
+// newsletter-campaigns.ts; here the input is checked once more (an id the page never sends is `notFound` without a read), each refusal is a code the
+// editor puts into words (adminEt.newsletter.campaigns.errorsOf), a throw is `server` (logged by the error's class and the campaign's id, never a
+// message), and a change refreshes the open page.
 
 const rowId = z.number().int().min(1).max(ROW_ID_MAX);
 const idOnly = z.object({ id: rowId });
 const saveTarget = z.object({ id: rowId.nullable() });
-const testInput = z.object({ id: rowId, to: z.enum(["maria", "me"]), locale: z.enum(["et", "ru"]) });
-const scopeInput = z.enum(["all", "missing"]).default("all");
-const prepareInput = z.object({ id: rowId, scope: scopeInput });
-/** A count Maria confirmed: a whole number, never more than the plan's limit could ever hold. */
-const confirmedCount = z.number().int().min(0).max(1_000_000);
-/** The campaign's last change as the confirmation read it (the plan's `updatedAt`, the review's M3): an ISO instant. */
-const confirmedAt = z.iso.datetime();
-const sendInput = z.object({ id: rowId, et: confirmedCount, ru: confirmedCount, updatedAt: confirmedAt, scope: scopeInput });
-const markInput = z.object({ id: rowId, locale: z.enum(["et", "ru"]) });
 
 type Server = { ok: false; error: "server" };
 const SERVER: Server = { ok: false, error: "server" };
@@ -94,88 +51,6 @@ export const copyCampaignAction = adminAction(async (_admin, input: { id: number
     return result;
   } catch (e) {
     logFailure(`[newsletter] campaign ${id}: the copy failed`, e);
-    return SERVER;
-  }
-});
-
-/**
- * „Saada proov“: `{ id, to, locale }`, `to` "maria" (MARIA_EMAIL) or "me" (the signed-in admin's own address). The stored campaign as one test
- * broadcast (newsletter-campaigns.ts sendTest): `{ ok: true, realLink }`, or a code. `address`: no such address (MARIA_EMAIL empty, an address
- * the page never sends). Nothing on the page changes, so nothing is refreshed.
- */
-export const sendTestAction = adminAction(async (admin, input: { id: number; to: "maria" | "me"; locale: "et" | "ru" }) => {
-  if (!rowId.safeParse((input as { id?: unknown } | null)?.id).success) return { ok: false as const, error: "notFound" as const };
-  const parsed = testInput.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: "address" as const };
-  const { id, to, locale } = parsed.data;
-  try {
-    const deps = adminMarketingDeps(ADMIN_SYNC_BUDGET_MS);
-    const address = normalizeEmail(to === "maria" ? deps.env.MARIA_EMAIL : admin.email);
-    if (address === "") return { ok: false as const, error: "address" as const };
-    return await sendTest(deps, id, address, locale);
-  } catch (e) {
-    logFailure(`[newsletter] campaign ${id}: the test failed`, e);
-    return SERVER;
-  }
-});
-
-/**
- * „Saada kõigile“ (or „Saada puuduv keel“: `scope` "missing", ruling R12), before the confirmation: `{ id, scope }`. The sync, then the plan
- * (newsletter-campaigns.ts prepareSend), or a code. Sends nothing.
- */
-export const prepareSendAction = adminAction(async (_admin, input: { id: number; scope?: SendScope }): Promise<Awaited<ReturnType<typeof prepareSend>> | Server> => {
-  const parsed = prepareInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "notFound" };
-  const { id, scope } = parsed.data;
-  try {
-    const result = await prepareSend(adminMarketingDeps(ADMIN_SYNC_BUDGET_MS), id, scope);
-    if (!result.ok && (result.error === "sent" || result.error === "notFound")) refresh(); // (the open page is behind: its row shows the new state)
-    return result;
-  } catch (e) {
-    logFailure(`[newsletter] campaign ${id}: the send's preparation failed`, e);
-    return SERVER;
-  }
-});
-
-/**
- * „Saada“: `{ id, et, ru, updatedAt, scope }`, `et` / `ru` the counts Maria confirmed (ruling R14) and `updatedAt` the campaign's last change as her
- * confirmation read it (the plan's, the review's M3). The sync and the send (newsletter-campaigns.ts sendCampaign); `changed` with the new plan
- * when the counts or the campaign moved meanwhile, nothing sent. The page is refreshed when the campaign changed (sent, left half way) or the open
- * page is behind (sent or gone meanwhile); not after a refusal that changed nothing.
- */
-export const sendCampaignAction = adminAction(async (_admin, input: { id: number; et: number; ru: number; updatedAt: string; scope?: SendScope }): Promise<SendResult | Server> => {
-  const parsed = sendInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "notFound" };
-  const { id, et, ru, updatedAt, scope } = parsed.data;
-  try {
-    const result = await sendCampaign(adminMarketingDeps(ADMIN_SYNC_BUDGET_MS), id, { et, ru, updatedAt }, scope);
-    if (result.ok || result.error === "interrupted" || result.error === "sent" || result.error === "notFound") refresh();
-    return result;
-  } catch (e) {
-    logFailure(`[newsletter] campaign ${id}: the send failed`, e);
-    refresh(); // (it may have stopped after `sending` was written: the page shows the state it left)
-    return SERVER;
-  }
-});
-
-/**
- * „Märgi saatmata“ (ruling R16): `{ id, locale }`, after Maria has looked in Resend and the broadcast of that language of a campaign left `sending` is
- * not there (the editor asks „Kas kontrollisid Resendis, et … kirja seal pole?“ first). newsletter-campaigns.ts markNotSent: `{ ok: true, status }`
- * (`sent` with that language missing, for „Saada puuduv keel“, or `draft` when nothing of the send went) and the page refreshed; `sent` for a
- * language whose broadcast is recorded or a campaign no longer `sending` (refreshed too: the page is behind), `earlier` for a language after
- * an open one, `busy` while a sync or a send holds the newsletter's lease (ruling R18: never during a send that is still running), `notFound`. Asks
- * nothing of Resend.
- */
-export const markNotSentAction = adminAction(async (_admin, input: { id: number; locale: "et" | "ru" }) => {
-  const parsed = markInput.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: "notFound" as const };
-  const { id, locale } = parsed.data;
-  try {
-    const result = await markNotSent(getDb(), id, locale, new Date());
-    if (result.ok || result.error === "sent" || result.error === "notFound") refresh();
-    return result;
-  } catch (e) {
-    logFailure(`[newsletter] campaign ${id}: the mark failed`, e);
     return SERVER;
   }
 });
