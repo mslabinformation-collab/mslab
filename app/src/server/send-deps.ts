@@ -4,6 +4,7 @@ import { getDb } from "@/db/client";
 import { serverEnv } from "./env";
 import { serverKv } from "./kv";
 import { logFailure } from "./log";
+import type { SendDeps as CampaignSendDeps } from "./newsletter-campaigns";
 import type { SendDeps } from "./protocols";
 import { linkBase, requestOrigin } from "./site";
 
@@ -23,4 +24,15 @@ export async function adminSendDeps(log: string): Promise<SendDeps> {
     now: new Date(),
     later: (task) => after(() => task().catch((e) => logFailure(`${log} a mail failed`, e))),
   };
+}
+
+/**
+ * The deps of a newsletter campaign's send (newsletter-campaigns.ts SendDeps): the press and „Saada proov“ (actions/admin-newsletter.ts), the daily job
+ * (api/cron/uudiskiri). The base of every link in the mails is SITE_URL, never the request's address (a campaign's mail is kept long after the
+ * request, and the daily job has no visitor's address at all), so this reads no headers. `budgetMs`: the run's own time, from now (no new mail after
+ * it); the send is notify.ts sendMailResult.
+ */
+export function campaignSendDeps(budgetMs: number): CampaignSendDeps {
+  const env = { ...serverEnv(), KV: serverKv() };
+  return { db: getDb(), env, siteUrl: env.SITE_URL, now: () => new Date(), deadline: Date.now() + budgetMs };
 }

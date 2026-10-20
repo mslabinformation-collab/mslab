@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { clients, newsletterCampaigns, subscribers } from "@/db/schema";
+import { PRESS_BUDGET_MS, SEND_GAP_MS } from "@/server/newsletter-campaigns";
+import { NOTIFY_TIMEOUT_MS, RATE_LIMIT_RETRY_MS } from "@/server/notify";
 import { makeTestDb } from "./helpers";
 
 // Maria's „Uudiskiri“ page and the student's drawer on a real (PGlite) database (newsletter campaigns, Task 4; the sending half is the 20.10 design's):
@@ -91,8 +93,10 @@ describe("the subscribers' view", () => {
     expect(html).toContain('data-csv="all"');
   });
 
-  test("the page sets no time limit of its own: nothing on it waits for Resend any more", () => {
-    expect((page as Record<string, unknown>).maxDuration).toBeUndefined();
+  test("120 seconds: „Saada kõigile“ is a server action of this page and runs the first batch (PRESS_BUDGET_MS, a send begun at its end included)", () => {
+    expect((page as Record<string, unknown>).maxDuration).toBe(120);
+    const oneSend = NOTIFY_TIMEOUT_MS + RATE_LIMIT_RETRY_MS + NOTIFY_TIMEOUT_MS; // a call, a 429, the one retry
+    expect((PRESS_BUDGET_MS + SEND_GAP_MS + oneSend) / 1000).toBeLessThan(120 - 30); // (room for the queries and the database's own waits)
   });
 });
 

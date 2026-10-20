@@ -19,6 +19,13 @@ import { linkSuggestions } from "@/server/site-links";
 import styles from "./newsletter.module.css";
 
 export const dynamic = "force-dynamic";
+/**
+ * „Saada kõigile“, „Peata saatmine“ and „Saada proov“ are server actions of this page (actions/admin-newsletter.ts), so they run under this page's
+ * limit. The longest is the press: its first batch sends for PRESS_BUDGET_MS (60 s), and a send begun at its end has 8 s, and once more after a 429
+ * (notify.ts): some 77 s at worst with its queries. 120 s is our own guard (a function may run up to 300 s on Vercel Hobby).
+ * (tests/db/newsletter-page.test.ts pins it.)
+ */
+export const maxDuration = 120;
 export const metadata: Metadata = { title: adminTitle(adminEt.nav.newsletter) };
 
 type Search = Record<string, string | string[] | undefined>;

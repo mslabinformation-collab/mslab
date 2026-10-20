@@ -4,10 +4,12 @@ import { expect, test } from "vitest";
 
 // The day's count of every mail the site sends ("<day>:all", client-auth.ts countSentMail) is what a newsletter campaign measures its room by
 // (domain/newsletter-campaign.ts CAMPAIGN_DAILY_ROOM): a mail path that forgets to pass its database to sendMail is a mail the count never sees,
-// and the campaign would overshoot Resend's 100 a day. So every call of the functions that send a mail (sendMail, notifyMaria, and the two
-// that call notifyMaria or sendMail for their callers, mailCompletion and notifyFeedback) must pass `count`. A caller with no database says so
+// and the campaign would overshoot Resend's 100 a day. So every call of the functions that send a mail (sendMail, its sibling sendMailResult that
+// says which outcome a send had, notifyMaria, and the two that call notifyMaria or sendMail for their callers, mailCompletion and notifyFeedback)
+// must pass `count`. (A campaign's batch calls sendMailResult through its `send` seam, newsletter-campaigns.ts SendDeps, which this scan cannot
+// follow: tests/db/newsletter-send.test.ts checks that its accepted mails are counted.) A caller with no database says so
 // here, by name, with the reason.
-const CALLS = /\b(sendMail|notifyMaria|mailCompletion|notifyFeedback)\(/g;
+const CALLS = /\b(sendMail|sendMailResult|notifyMaria|mailCompletion|notifyFeedback)\(/g;
 const WITHOUT_DATABASE: string[] = [];
 
 const SRC = join(process.cwd(), "src");

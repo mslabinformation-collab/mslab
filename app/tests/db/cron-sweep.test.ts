@@ -286,9 +286,12 @@ describe("sweepClientRows", () => {
 describe("vercel.json", () => {
   const config = JSON.parse(readFileSync(join(process.cwd(), "vercel.json"), "utf8")) as { regions?: string[]; crons?: { path: string; schedule: string }[] };
 
-  test("functions in Frankfurt (the database is in Europe); the sweep once a day (Vercel Hobby allows daily crons)", () => {
+  test("functions in Frankfurt (the database is in Europe); the sweep once a day, the newsletter's job an hour later (Vercel Hobby allows daily crons)", () => {
     expect(config.regions).toEqual(["fra1"]);
-    expect(config.crons).toEqual([{ path: "/api/cron/sweep", schedule: "0 3 * * *" }]);
+    expect(config.crons).toEqual([
+      { path: "/api/cron/sweep", schedule: "0 3 * * *" },
+      { path: "/api/cron/uudiskiri", schedule: "0 4 * * *" },
+    ]);
   });
 });
 

@@ -205,7 +205,7 @@ export const subscribers = pgTable("subscribers", {
  * page's popup: that is `campaign` (domain/campaign.ts, /admin/kampaania). The texts are Estonian with an optional Russian side (a Russian
  * subscriber gets the Estonian mail as a whole when the Russian subject or text is empty: domain/newsletter-campaign.ts campaignContentFor).
  * `status` goes from `draft` to `sending` (the press has written its `newsletter_deliveries`; the rest goes out over the coming days) to `sent`
- * (frozen, with the time and the number of subscribers each language was written for in `recipients`).
+ * (frozen, with the time and the mails of each language that went in `recipients`).
  */
 export const newsletterCampaigns = pgTable("newsletter_campaigns", {
   id: serial("id").primaryKey(),
@@ -226,7 +226,10 @@ export const newsletterCampaigns = pgTable("newsletter_campaigns", {
   /** `draft` (editable), `sending` (going out over the coming days: its `newsletter_deliveries` are being worked off) or `sent` (frozen). */
   status: text("status").$type<"draft" | "sending" | "sent">().notNull().default("draft"),
   sentAt: timestamp("sent_at", { withTimezone: true }),
-  /** The subscribers the press wrote the list for, per language (the confirmed rows at that moment); null while a draft. */
+  /**
+   * Per language: while `sending`, the subscribers the press wrote the list for (the confirmed rows at that moment); once `sent`, the mails that went
+   * (server/newsletter-campaigns.ts finishIfDone, stopSend). null while a draft.
+   */
   recipients: jsonb("recipients").$type<{ et: number; ru: number } | null>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

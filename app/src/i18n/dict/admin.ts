@@ -1563,11 +1563,20 @@ export const adminEt = {
       copySuffix: " (koopia)",
       // the page behind a test mail's unsubscribe link (/api/newsletter/loobu?proov=1, ruling R4): it changes nothing
       testPage: "Proovikiri — päris kirjas viib see link loobumisele.",
-      // what an action answers when it did not go through
+      // what an action answers when it did not go through (actions/admin-newsletter.ts); `busy` and `refused` are the spec's own (Draft), `refused`
+      // is also the line of a batch that stopped because Resend refused (startSendAction's `stopped`, progressAction's `refused`)
       errorsOf: {
         notFound: "Seda kampaaniat enam pole.",
         sent: "See kampaania on juba saadetud.",
         server: "Ei õnnestunud. Proovi uuesti.",
+        busy: "Eelmine kampaania on veel pooleli — see läheb välja, kui eelmine on saadetud.",
+        changed: "Kampaaniat või tellijate arvu muudeti vahepeal. Midagi ei saadetud: vaata üle ja vajuta uuesti „Saada kõigile“.",
+        empty: "Kinnitatud tellijaid pole: kirja pole kellelegi saata.",
+        notSending: "Selle kampaania saatmine ei ole pooleli.",
+        refused: "Saatmine peatus: Resend keeldus. Kirjuta Dimile.",
+        limited: "Selle tunni 10 proovi on saadetud. Proovi tunni pärast uuesti.",
+        mail: "Proovi ei saanud saata. Proovi uuesti.",
+        address: "Sellele aadressile ei saa proovi saata.",
       },
     },
   },

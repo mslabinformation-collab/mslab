@@ -80,6 +80,40 @@ const rateLimited = (e: { name?: string | null; statusCode?: number | null }): b
   e.name === "rate_limit_exceeded" || (e.statusCode === 429 && !/quota/.test(e.name ?? ""));
 
 /**
+ * Why a send did not go (sendMailResult), for a caller that must tell the outcomes apart: a newsletter campaign maps each one to one status of its
+ * delivery (the simple newsletter, spec §3 "at most once"; newsletter-campaigns.ts runBatch).
+ * - `address`: Resend refused this recipient's address itself (a `validation_error` whose message names the `to` field): nothing went, and another
+ *   try would not help.
+ * - `quota`: Resend's daily or monthly limit is reached (`daily_quota_exceeded`, `monthly_quota_exceeded`, both 429): nothing went.
+ * - `refused`: any other refusal, a 4xx that is not this address's fault: the key (`invalid_api_key`, `restricted_api_key`, `missing_api_key`), the
+ *   account in Resend's testing mode or an unverified domain (a `validation_error` that does not name `to`), another field, `security_error`, the
+ *   rate limit still after its one retry; and RESEND_API_KEY not set at all. Nothing went.
+ * - `unknown`: no answer that says: a timeout (NOTIFY_TIMEOUT_MS), a 5xx (`internal_server_error`, or the SDK's `application_error` with the status),
+ *   the network (the SDK's `application_error` with no status), anything thrown. The mail may or may not have gone.
+ */
+export type MailFailure = "address" | "quota" | "refused" | "unknown";
+export type MailOutcome = { ok: true } | { ok: false; kind: MailFailure };
+
+/** The SDK's error names (resend 6.31 RESEND_ERROR_CODE_KEY) of the two limits of the account. */
+const QUOTA_ERRORS = new Set(["daily_quota_exceeded", "monthly_quota_exceeded"]);
+
+/**
+ * Does a validation error concern the recipient? Resend's message names the field in backquotes ("Invalid `to` field. The email address needs to
+ * follow the …"); its testing-mode refusal ("You can only send testing emails to your own email address …") names no field: it is the account's,
+ * so it is `refused`, never `address` (that would fail every subscriber in turn). The message is only read here, never logged: it can quote the address.
+ */
+const namesRecipient = (message: unknown): boolean => typeof message === "string" && /`to`|\bto field\b/i.test(message);
+
+/** The outcome of an error answer of Resend (the SDK's ErrorResponse: name, statusCode, message). */
+function failureOf(e: { name?: string | null; statusCode?: number | null; message?: string | null }): MailFailure {
+  if (QUOTA_ERRORS.has(e.name ?? "")) return "quota";
+  const status = e.statusCode;
+  if (typeof status !== "number" || status < 400 || status >= 500) return "unknown";
+  if (e.name === "validation_error" && namesRecipient(e.message)) return "address";
+  return "refused";
+}
+
+/**
  * Maria's inbox for a mail that has no Reply-To of its own, unless the mail goes to her (spec D8): a student who answers a mail from the
  * sending-only send.mslab.ee address reaches Maria. The addresses are compared trimmed and in lower case; undefined when MARIA_EMAIL is empty.
  */
@@ -90,15 +124,25 @@ export function defaultReplyTo(env: Pick<Env, "MARIA_EMAIL">, to: string): strin
 }
 
 /**
- * Sends one e-mail: plain text, plus HTML when `mail.html` is set. true = Resend accepted it. When Resend answers that it is being asked
+ * Sends one e-mail: plain text, plus HTML when `mail.html` is set. true = Resend accepted it (sendMailResult's `ok`; every other outcome is
+ * false).
+ */
+export async function sendMail(env: Env, mail: Mail, opts: SendOptions = {}): Promise<boolean> {
+  return (await sendMailResult(env, mail, { count: opts.count })).ok;
+}
+
+/**
+ * Sends one e-mail as sendMail does, and says which outcome it had (MailOutcome: accepted, or why not). When Resend answers that it is being asked
  * too often (429; its default limit is about 2 requests a second) the send is tried once more after RATE_LIMIT_RETRY_MS, never a third time.
  * The Reply-To is the mail's own, else Maria's inbox (defaultReplyTo), else none. The mail's attachments go with it, each file's bytes as
  * Base64 (one of the two forms Resend takes, and the smaller one in the request's JSON). The mail's headers go as they are. A mail Resend
  * accepted is added to the day's count when `opts.count` is given (SendOptions); a refused or failed one never is, and a count that fails does
- * not change the answer.
+ * not change the answer. So a mail whose answer never came (`unknown`: a timeout) is not counted either, though it may have gone: the day's count
+ * can be a little low, and a campaign's room (CAMPAIGN_DAILY_ROOM) is soft by those few. That is accepted: such answers are rare, and Resend's own
+ * daily limit is still 30 mails above the room.
  */
-export async function sendMail(env: Env, mail: Mail, opts: SendOptions = {}): Promise<boolean> {
-  if (!mailConfigured(env)) return false;
+export async function sendMailResult(env: Env, mail: Mail, opts: SendOptions = {}): Promise<MailOutcome> {
+  if (!mailConfigured(env)) return { ok: false, kind: "refused" }; // (nothing was asked of Resend)
   const replyTo = mail.replyTo ?? defaultReplyTo(env, mail.to);
   try {
     const send = () =>
@@ -127,14 +171,14 @@ export async function sendMail(env: Env, mail: Mail, opts: SendOptions = {}): Pr
     if (error) {
       // error.message can quote the recipient: only the error name and HTTP status are logged.
       console.error(`[notify] Resend rejected the e-mail: ${errorSummary(error)}`);
-      return false;
+      return { ok: false, kind: failureOf(error) };
     }
     console.info(`[notify] Resend accepted the e-mail: ${data?.id ?? "?"}`);
     if (opts.count) await countSentMail(opts.count);
-    return true;
+    return { ok: true };
   } catch (e) {
     console.error(`[notify] Resend request failed: ${errorSummary(e)}`);
-    return false;
+    return { ok: false, kind: "unknown" };
   }
 }
 
