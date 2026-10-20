@@ -461,7 +461,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-20T15:31:39.437Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania",
@@ -518,7 +518,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-20T15:31:39.437Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-muudetud",
@@ -545,7 +545,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-20T15:31:39.437Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-saada",
@@ -575,7 +575,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-20T15:31:39.437Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-loobu",
@@ -600,7 +600,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-20T15:31:39.437Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-kopeeri",
@@ -657,7 +657,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-20T15:31:39.437Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-peata",
@@ -688,7 +688,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-20T15:31:39.437Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-ykslink",
@@ -715,7 +715,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-20T15:31:39.437Z"
     },
     {
       "id": "avalik-uudiskiri-blokeeritud-opilane",
@@ -738,7 +738,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-20T15:31:39.437Z"
     },
     {
       "id": "avalik-kontaktivorm",
