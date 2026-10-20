@@ -1,4 +1,4 @@
-> **Note (20.10.2026):** the sending half of this design (D1–D3, D6, D8, D10 and the amendments made to them) is replaced by `2026-10-20-newsletter-simple-design.md`. D4, D5, D7 and D9 still stand.
+> **Note (20.10.2026):** the sending half of this design (D1–D3, D6, D8, D10 and the amendments made to them) is replaced by `2026-10-20-newsletter-simple-design.md`, and so are §3 (Data: that design's §4, migration 0016), §4 (Configuration: nothing is configured now) and §8 (Left to the builder). D4, D5 and D7 still stand, and D9 too but for its last sentence ("D2 adds the new subscriber to Resend"), which no longer applies: D2 is replaced, and nothing is kept in Resend.
 
 # Newsletter campaigns („Uudiskirjad") — design
 
@@ -123,7 +123,7 @@ What exists today:
   - **How the site learns.** It records an address that Resend has suppressed (a bounce or a spam mark) from the webhook `suppression.added` and clears it on `suppression.removed`. The full sync also reads the suppression list if Resend's API offers it. (amended 19.10 during the build) Checked: it does, and the full sync reads `suppressions.list` (resend 6.31) every run; an address no longer on it is cleared.
   - **Where Maria sees it.** „Uudiskiri" marks such a subscriber, and the student's drawer (Õpilased) marks her account: „Resend ei saada sellele aadressile kirju (tagastus või rämpspostiks märgitud). Seda saab muuta ainult Resendis." (Draft).
   - **What the site does not do.** It never removes a suppression itself.
-- **D9. The welcome mail stays as it is** (transactional, with the site's own unsubscribe link). D2 adds the new subscriber to Resend.
+- **D9. The welcome mail stays as it is** (transactional, with the site's own unsubscribe link). ~~D2 adds the new subscriber to Resend.~~ (No longer applies since 20.10: D2 is replaced and nothing is kept in Resend.)
 
 ## 3. Data (migration 0015, additive)
 
