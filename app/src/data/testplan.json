@@ -572,7 +572,7 @@
       "why": "Kampaania läheb igale tellijale oma kirjana ja ainult üks kord.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
+      "mark": "redo",
       "markedAt": "deploy"
     },
     {
@@ -633,21 +633,22 @@
       "title": "Kampaania, mis ei mahu päeva, jätkub järgmisel päeval",
       "href": "/admin/uudiskiri?vaade=kampaaniad",
       "steps": [
-        "Ava „Uudiskiri“ ja kontrolli, et loendis on ainult +proov aadressid.",
-        "Kui loendis on mõni muu aadress, ära jätka ja kirjuta märkus.",
+        "Ava „Uudiskiri“; kui loendis on mõni muu kui +proov aadress, ära jätka ja kirjuta märkus.",
         "Liitu avalehe plokis „MS LABi kirjad“ kolme oma aadressiga, kuhu lisad enne @-märki +proov3, +proov3b ja +proov3c.",
-        "Käivita andmebaasis: insert into settings (key, value) values ('newsletter_daily_room', '2') on conflict (key) do update set value = excluded.value.",
+        "Ühendu Railway Postgresiga avaliku aadressega, nagu docs/deploy.md peatükis 6 (aadress ainult kestas), ja käivita seal järgmised laused.",
+        "insert into settings (key, value) values ('newsletter_daily_room', '2') on conflict (key) do update set value = excluded.value.",
         "Ava „Kampaaniad“ all mustand „Proov 3 kampaania (koopia)“, vajuta „Saada kõigile“ ja siis „Saada“.",
-        "Käivita andmebaasis: delete from settings where key = 'newsletter_daily_room'.",
-        "Käivita päevatöö: ava aadress /api/cron/uudiskiri päisega Authorization: Bearer ja CRON_SECRET.",
-        "Laadi kampaania leht uuesti ja vaata kolme postkasti."
+        "Kustuta rida alati, ka kontrolli katkestades: delete from settings where key = 'newsletter_daily_room'.",
+        "Käivita päevatöö Vercelis: ava projekt, Settings → Cron Jobs ja vajuta /api/cron/uudiskiri juures „Run“.",
+        "Kui „Run“ puudub, käivita: curl -H \"Authorization: Bearer <CRON_SECRET Verceli keskkonnamuutujatest>\" https://mslab.ee/api/cron/uudiskiri."
       ],
       "expect": [
         "Pärast „Saada“ on kaardil „Saadetud 2 / … — ülejäänud … lähevad järgmisel päeval.“.",
         "Loendis on kampaania märkega „Saatmine pooleli“ ja sama edenemise rida.",
         "Kaks +proov aadressi saavad kirja „Proov 3 koopia“, kolmas ei saa midagi.",
         "Kaardil on nupp „Peata saatmine“ ja välju muuta ei saa.",
-        "Pärast päevatööd saab ka kolmas postkast kirja „Proov 3 koopia“.",
+        "Käsk curl vastab koodiga 200 ja „ok“: true; 401 tähendab valet CRON_SECRET-it.",
+        "Pärast päevatööd ja lehe uuesti laadimist saab ka kolmas postkast kirja „Proov 3 koopia“.",
         "Kaardil on siis „Saadetud … · 3 tellijale“ ja loendis märge „Saadetud“."
       ],
       "why": "Suur kampaania ei kaota kirju: mis päevas välja ei mahu, läheb järgmisel päeval.",
@@ -664,13 +665,14 @@
       "title": "Peata saatmine",
       "href": "/admin/uudiskiri?vaade=kampaaniad",
       "steps": [
-        "Ava „Uudiskiri“ ja kontrolli, et loendis on ainult +proov aadressid.",
-        "Kui loendis on mõni muu aadress, ära jätka ja kirjuta märkus.",
-        "Käivita andmebaasis: insert into settings (key, value) values ('newsletter_daily_room', '1') on conflict (key) do update set value = excluded.value.",
+        "Ava „Uudiskiri“; kui loendis on mõni muu kui +proov aadress, ära jätka ja kirjuta märkus.",
+        "Kui eelmise kontrolli kampaania on veel „Saatmine pooleli“, lõpeta see enne: käivita päevatöö või vajuta „Peata saatmine“.",
+        "Ühendu Railway Postgresiga avaliku aadressega, nagu docs/deploy.md peatükis 6 (aadress ainult kestas), ja käivita seal järgmised laused.",
+        "insert into settings (key, value) values ('newsletter_daily_room', '1') on conflict (key) do update set value = excluded.value.",
         "Ava „Kampaaniad“ all saadetud „Proov 3 kampaania (koopia)“ ja vajuta „Kopeeri“.",
         "Vajuta uuel mustandil „Saada kõigile“ ja siis „Saada“.",
         "Vajuta „Peata saatmine“ ja kõigepealt „Ei“, siis uuesti „Peata saatmine“ ja „Jah, peata“.",
-        "Käivita andmebaasis: delete from settings where key = 'newsletter_daily_room'."
+        "Kustuta rida alati, ka kontrolli katkestades: delete from settings where key = 'newsletter_daily_room'."
       ],
       "expect": [
         "Pärast „Saada“ on kaardil „Saadetud 1 / … — ülejäänud … lähevad järgmisel päeval.“ ja nupp „Peata saatmine“.",

@@ -62,7 +62,8 @@ export const campaignListRow = (row: NewsletterCampaign, progress: Progress | nu
   progress: row.status === "sending" ? progress : null,
 });
 
-const STATUS_TAG: Record<CampaignListRow["status"], string> = { draft: ui.warn, sending: ui.bad, sent: ui.ok };
+// (a campaign going out is the routine state of a big one: the plain tag, never the red of an error)
+const STATUS_TAG: Record<CampaignListRow["status"], string> = { draft: ui.warn, sending: "", sent: ui.ok };
 const stamp = (iso: string) => {
   const d = new Date(iso);
   return `${formatDate(d, "et")} ${formatTime(d, "et")}`;

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -336,6 +337,38 @@ describe("a draft: „Saada proov“ and „Saada kõigile“", () => {
     expect(confirmOpen()).toBeNull();
     expect(text("[data-send-all]")).toBe("Saada kõigile");
     expect(actions.startSendAction).not.toHaveBeenCalled();
+  });
+
+  test("the confirmation takes the focus (the button that was pressed is gone), as the stop question and the other admin confirms do", async () => {
+    actions.prepareSendAction.mockResolvedValue(PLAN);
+    await show(DRAFT);
+    $<HTMLButtonElement>("[data-send-all]")!.focus();
+    expect(document.activeElement).toBe($("[data-send-all]"));
+    await click($("[data-send-all]"));
+    expect(document.activeElement).toBe($("[data-send-confirm-text]"));
+    expect($("[data-send-confirm-text]")!.getAttribute("tabindex")).toBe("-1");
+    // a refusal opens no confirmation and steals no focus from the page
+    await click($("[data-send-no]"));
+    actions.prepareSendAction.mockResolvedValueOnce({ ok: false, error: "busy" });
+    await click($("[data-send-all]"));
+    expect(confirmOpen()).toBeNull();
+    expect(document.activeElement).not.toBe($("[data-send-confirm-text]"));
+  });
+
+  test("a long address in the choice of the test wraps instead of widening the screen: its pill has the wrapping class, and the rule is in the stylesheet", async () => {
+    await show(DRAFT, [
+      { key: "maria", address: "maria.sosnina.kooli.uudiskirja.proovid.tahtis.lihtsalt.pikk@aadress-on-ulipikk.example.com" },
+      { key: "me", address: "admin@example.test" },
+    ]);
+    const pills = all("[data-test-to]").map((r) => r.closest("label")!);
+    expect(pills).toHaveLength(2);
+    const [first] = pills;
+    // (the class names are the stylesheet's own: the pill carries one more than the shared `choice`, which the language pills do not)
+    const language = $("[data-test-locale]")!.closest("label")!;
+    expect(first.className.split(" ").length).toBe(language.className.split(" ").length + 1);
+    const css = readFileSync("src/components/admin/CampaignsPanel.module.css", "utf8");
+    expect(css).toMatch(/\.address\s*\{[^}]*overflow-wrap:\s*anywhere/);
+    expect(css).toMatch(/\.address\s*\{[^}]*max-width:\s*100%/);
   });
 
   test("the Russian note only when the Russian subscribers get the Estonian text and there are some", async () => {

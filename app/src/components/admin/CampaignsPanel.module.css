@@ -37,6 +37,12 @@
   grid-column: 1 / -1;
 }
 
+/* the radio pill of an address in „Saada proov“ ("Maria: …", "Mina: …"): a long address wraps instead of widening the screen */
+.address {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 /* the line under a name (sent, going out with its progress, or the last change): never wider than the screen */
 .rowLine {
   overflow-wrap: anywhere;

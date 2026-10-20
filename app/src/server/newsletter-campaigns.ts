@@ -565,6 +565,7 @@ export async function runBatch(deps: SendDeps, id: number): Promise<BatchResult>
   const gapMs = deps.gapMs ?? SEND_GAP_MS;
   const kv = deps.env.KV;
   const lowered = await roomSetting(db);
+  if (lowered !== null) console.info(`[newsletter] room override ${lowered}`); // (a row left behind after a check shows in the logs)
   let marked = await sendRefused(kv, id).catch((e) => {
     logFailure(`[newsletter] campaign ${id}: the refusal mark unavailable`, e);
     return false;

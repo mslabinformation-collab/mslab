@@ -536,6 +536,8 @@ describe("runBatch: the lowered room (the settings row newsletter_daily_room)", 
     expect(await press(id, deps(resend.send))).toMatchObject({ ok: true, progress: { total: 3, sent: 2, waiting: 1 }, stopped: "room" });
     expect(resend.to()).toEqual(["k1@example.com", "k2@example.com"]);
     expect((await campaignRow(id)).status).toBe("sending");
+    // the row left behind is visible in the logs: every batch says the room it works under (a count, no address)
+    expect(logged()).toContain("[newsletter] room override 2");
     // the same day, the row still there: nothing more
     expect(await runDueCampaigns(deps(resend.send))).toMatchObject({ campaignId: id, progress: { sent: 2, waiting: 1 }, stopped: "room" });
     expect(resend.mails).toHaveLength(2);
@@ -604,13 +606,15 @@ describe("runBatch: the lowered room (the settings row newsletter_daily_room)", 
     expect(await press(await campaign(), deps(resend.send))).toMatchObject({ progress: { sent: 3, waiting: 0 }, stopped: null });
     expect(logged()).toContain("newsletter_daily_room");
     expect(logged()).not.toContain("kaks");
+    expect(logged()).not.toContain("room override"); // (no number, no override)
   });
 
-  test("with no row there is no extra query, no log: the room is CAMPAIGN_DAILY_ROOM as before", async () => {
+  test("with no row nothing is logged about a room and the batch is as before: the room is CAMPAIGN_DAILY_ROOM", async () => {
     await subscribeMany(2);
     const resend = fakeSend();
     expect(await press(await campaign(), deps(resend.send))).toMatchObject({ progress: { sent: 2, waiting: 0 }, stopped: null });
     expect(logged()).not.toContain("newsletter_daily_room");
+    expect(logged()).not.toContain("room override");
   });
 });
 

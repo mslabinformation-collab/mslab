@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import plan from "@/data/testplan.json";
 import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_ROOM_KEY } from "@/domain/newsletter-campaign";
-import { checkPlan } from "@/domain/testplan";
+import { appliesAt, checkPlan, type TestItem, type TestPlan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { et } from "@/i18n/dict/et";
 import { ru } from "@/i18n/dict/ru";
@@ -418,11 +418,17 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     for (const id of IDS) expect(item(id).area, id).toBe(item("avalik-uudiskiri").area);
   });
 
-  test("the ids kept their place and carry the mark new, from the deploy or its stamp; a mark is never weaker than it was", () => {
-    for (const id of IDS.filter((id) => id !== "avalik-uudiskiri-kampaania" && id !== "avalik-uudiskiri-kampaania-kopeeri")) {
+  test("the ids kept their place and carry the mark new, from the deploy or its stamp; the send check is a redo; a mark is never weaker than it was", () => {
+    for (const id of IDS.filter((id) => id !== "avalik-uudiskiri-kampaania" && id !== "avalik-uudiskiri-kampaania-kopeeri" && id !== "avalik-uudiskiri-kampaania-saada")) {
       expect(item(id).mark, id).toBe("new");
       expect(markedSince(item(id).markedAt), id).toBe(true);
     }
+    // "the first batch and the progress line" (spec §6) is a `redo`: only a redo reopens an answer given to the check before (appliesAt), and this
+    // check's whole behaviour changed (the first batch, the progress line, the stop); a `new` would leave that answer standing
+    const send = item("avalik-uudiskiri-kampaania-saada");
+    expect(send.mark).toBe("redo");
+    expect(markedSince(send.markedAt)).toBe(true);
+    expect(appliesAt(send as unknown as TestItem, plan as unknown as TestPlan, "2026-10-21T00:00:00.000Z")).not.toBeNull();
     // the two whose words and meaning did not change keep the instant the 18.10 deploy stamped
     for (const id of ["avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-kopeeri"]) {
       expect(item(id).mark, id).toBe("new");
@@ -497,8 +503,21 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     expect(steps.findIndex((s) => s.includes("delete from settings"))).toBeLessThan(steps.findIndex((s) => s.includes("/api/cron/uudiskiri")));
     // three subscribers of his own (Proov 3 left the list in the unsubscribe check), the daily job's address and its secret
     for (const address of ["+proov3,", "+proov3b", "+proov3c"]) expect(steps.join("\n"), address).toContain(address);
-    expect(text(NEXT)).toContain("Authorization: Bearer");
-    expect(text(NEXT)).toContain("CRON_SECRET");
+    // the daily job is run so that Dim can follow it exactly: Vercel's own button first (it sends the secret itself), else one curl line with the
+    // header, the host and where the secret is found; the answer is told
+    const cron = steps.filter((s) => s.includes("/api/cron/uudiskiri"));
+    expect(cron).toHaveLength(2);
+    expect(cron[0]).toContain("Vercelis");
+    expect(cron[0]).toContain("Settings → Cron Jobs");
+    expect(cron[0]).toContain("„Run“");
+    expect(cron[1]).toContain('curl -H "Authorization: Bearer <CRON_SECRET Verceli keskkonnamuutujatest>" https://mslab.ee/api/cron/uudiskiri');
+    expect(item(NEXT).expect.join(" ")).toContain("200");
+    expect(item(NEXT).expect.join(" ")).toContain("401");
+    // the SQL says where it runs: Railway's Postgres, the way docs/deploy.md §6 connects, the address in the shell only
+    expect(steps.some((s) => s.includes("Railway Postgresiga") && s.includes("docs/deploy.md peatükis 6") && s.includes("ainult kestas"))).toBe(true);
+    expect(steps.findIndex((s) => s.includes("Railway Postgresiga"))).toBeLessThan(steps.findIndex((s) => s.includes("insert into settings")));
+    // and the row goes even if the check is stopped half way (a row left behind throttles every campaign to that many a day)
+    expect(steps.find((s) => s.includes("delete from settings"))).toContain("ka kontrolli katkestades");
     // what he sees: two of three went and the rest waits (the progress line), the campaign is going out, then the third goes and it is sent
     expect(text(NEXT)).toContain(`„${t.progress.replace("{sent}", "2").replace("{n}", "…").replace("{left}", "…")}“`);
     expect(text(NEXT)).toContain(`„${t.status.sending}“`);
@@ -518,6 +537,13 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     expect(markedSince(item(STOP).markedAt)).toBe(true);
     expect(lowers(STOP, 1)).toBe(true);
     expect(unlowers(STOP)).toBe(true);
+    // the same Railway database, the same deletion even when stopped; and one campaign at a time: the check before must be finished first
+    expect(item(STOP).steps.some((s) => s.includes("Railway Postgresiga") && s.includes("docs/deploy.md peatükis 6") && s.includes("ainult kestas"))).toBe(true);
+    expect(item(STOP).steps.find((s) => s.includes("delete from settings"))).toContain("ka kontrolli katkestades");
+    const before = item(STOP).steps.findIndex((s) => s.includes("eelmise kontrolli kampaania") && s.includes("lõpeta see enne"));
+    expect(before).toBeGreaterThanOrEqual(0);
+    expect(item(STOP).steps[before]).toContain(`„${t.status.sending}“`);
+    expect(before).toBeLessThan(item(STOP).steps.findIndex((s) => s.includes("„Saada kõigile“")));
     expect(text(STOP)).toContain(`„${t.stop.confirm.replace("{n}", "…")}“`);
     for (const word of [t.stop.button, t.stop.yes, t.stop.no, t.status.sending, t.status.sent, t.copy]) expect(text(STOP), word).toContain(`„${word}“`);
     expect(text(STOP)).toContain(`„${t.progress.replace("{sent}", "1").replace("{n}", "…").replace("{left}", "…")}“`);

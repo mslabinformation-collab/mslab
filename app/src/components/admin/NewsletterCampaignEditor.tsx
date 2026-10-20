@@ -428,7 +428,7 @@ function Sends({ id, saved, revision, testTargets }: { id: number | null; saved:
               {testTargets.map((x) => (
                 <Choice
                   key={x.key}
-                  className={ed.choice}
+                  className={`${ed.choice} ${styles.address}`}
                   type="radio"
                   name={`${uid}-to`}
                   value={x.key}
@@ -482,6 +482,12 @@ function ConfirmSend({ id, open, revision }: { id: number | null; open: boolean;
   // a field changed or a save landed since the confirmation: it is closed for good (adjusting state while rendering), even if the fields come back
   if (confirm && confirm.revision !== revision) setConfirm(null);
   const shown = confirm && confirm.revision === revision ? confirm : null;
+  // the pressed button is gone when the confirmation opens, so the question takes the focus (as StopSend's and the other admin confirms do)
+  const asking = shown !== null;
+  const question = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (asking) question.current?.focus();
+  }, [asking]);
 
   const prepare = () => {
     if (id === null || !open || sending) return;
@@ -515,7 +521,9 @@ function ConfirmSend({ id, open, revision }: { id: number | null; open: boolean;
       <p className={`${ui.muted} ${ui.small}`}>{t.all.lead}</p>
       {shown ? (
         <div className={styles.confirm} data-send-confirm="">
-          <p data-send-confirm-text="">{fill(t.all.confirm, { n: shown.plan.et + shown.plan.ru, a: shown.plan.et, b: shown.plan.ru })}</p>
+          <p ref={question} tabIndex={-1} data-send-confirm-text="">
+            {fill(t.all.confirm, { n: shown.plan.et + shown.plan.ru, a: shown.plan.et, b: shown.plan.ru })}
+          </p>
           {shown.plan.ruFallsBack && shown.plan.ru > 0 && (
             <p className={ui.notice} data-send-fallback="">
               {t.all.fallback}
