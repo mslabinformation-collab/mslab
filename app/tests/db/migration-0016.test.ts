@@ -9,9 +9,9 @@ import { newsletterCampaigns, newsletterDeliveries, settings, subscribers } from
 import { migrationsThrough } from "./helpers";
 
 // Migration 0016 (the simple newsletter) as the Railway database goes through it: 0000–0015 applied, with what the 0015 code could have written
-// (a subscriber with a Resend contact, a campaign with its broadcasts, a suppression, the two settings rows of the Resend lists), then 0016.
+// (a subscriber with a Resend contact, a campaign with its broadcasts, a suppression, the three settings rows of the Resend lists), then 0016.
 // It drops what only the Resend lists used (`subscribers.resend_contact_id`, `subscribers.synced_at`, `newsletter_campaigns.broadcasts`, the table
-// `mail_suppressions`) and deletes the two settings rows `resend_segments` and `newsletter_sync_lease`; it adds `newsletter_deliveries` and
+// `mail_suppressions`) and deletes the three settings rows `resend_segments`, `resend_test_segment` and `newsletter_sync_lease`; it adds `newsletter_deliveries` and
 // changes nothing else: every other row, column, table and settings row is as it was. The new table's rules fail by the name of their index or
 // constraint (the database's own error, so that another failure cannot pass for it): one delivery per address and campaign, a delivery needs its
 // campaign, and a campaign's deletion takes its deliveries.
@@ -30,7 +30,7 @@ type Column = { table_name: string; column_name: string };
 type Info = { column_name: string; data_type: string; is_nullable: string; column_default: string | null };
 const shape = (rows: Info[]) => Object.fromEntries(rows.map((c) => [c.column_name, `${c.data_type} ${c.is_nullable === "NO" ? "not null" : "null"}`]));
 
-test("0016 drops the Resend list columns and mail_suppressions, deletes the two settings rows, adds newsletter_deliveries with its rules, and touches nothing else", async () => {
+test("0016 drops the Resend list columns and mail_suppressions, deletes the three settings rows, adds newsletter_deliveries with its rules, and touches nothing else", async () => {
   const db = drizzle(new PGlite(), { schema });
   const through = async (tag: string) => {
     const dir = migrationsThrough(tag);
@@ -57,6 +57,7 @@ test("0016 drops the Resend list columns and mail_suppressions, deletes the two 
   await db.execute(
     sql`insert into settings (key, value) values
       ('resend_segments', '{"et":"seg-et","ru":"seg-ru","property":"unsubscribe_url"}'),
+      ('resend_test_segment', '{"id":"seg-test"}'),
       ('newsletter_sync_lease', '{"holder":"x","until":1792400000000}'),
       ('contact', '{"email":"info@example.test"}'),
       ('newsletter', '{"discountLabel":"-15%","welcomeCode":"SUGIS15"}')`,
@@ -111,7 +112,7 @@ test("0016 drops the Resend list columns and mail_suppressions, deletes the two 
   const campaigns = await db.select().from(newsletterCampaigns).orderBy(newsletterCampaigns.id);
   expect(campaigns.map((c) => [c.name, c.status, c.recipients, c.code])).toEqual([["Saadetud", "sent", { et: 12, ru: 3 }, "SUGIS15"], ["Mustand", "draft", null, null]]);
 
-  // the settings: the two rows of the Resend lists are deleted, every other row is untouched
+  // the settings: the three rows of the Resend lists are deleted, every other row is untouched
   const keys = (await db.select().from(settings).orderBy(settings.key)).map((s) => s.key);
   expect(keys).toEqual(["contact", "newsletter"]);
   expect((await db.select().from(settings).where(eq(settings.key, "newsletter")))[0].value).toEqual({ discountLabel: "-15%", welcomeCode: "SUGIS15" });

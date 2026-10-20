@@ -16,4 +16,4 @@ DROP TABLE "mail_suppressions" CASCADE;--> statement-breakpoint
 ALTER TABLE "newsletter_campaigns" DROP COLUMN "broadcasts";--> statement-breakpoint
 ALTER TABLE "subscribers" DROP COLUMN "resend_contact_id";--> statement-breakpoint
 ALTER TABLE "subscribers" DROP COLUMN "synced_at";--> statement-breakpoint
-DELETE FROM "settings" WHERE "key" IN ('resend_segments', 'newsletter_sync_lease');
+DELETE FROM "settings" WHERE "key" IN ('resend_segments', 'resend_test_segment', 'newsletter_sync_lease');
