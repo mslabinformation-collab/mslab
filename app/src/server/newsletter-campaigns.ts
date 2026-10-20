@@ -351,8 +351,11 @@ async function recipientsNow(q: Q): Promise<Recipient[]> {
 
 const countsOf = (list: Recipient[]) => ({ et: list.filter((r) => r.locale === "et").length, ru: list.filter((r) => r.locale === "ru").length });
 
-/** Every press takes this transaction lock first, so two presses (two tabs, two campaigns) are one after the other: one campaign at a time holds. */
-const PRESS_LOCK = "newsletter-press";
+/**
+ * Every press takes this transaction lock first, so two presses (two tabs, two campaigns) are one after the other: one campaign at a time holds. (Exported for the
+ * race test, tests/e2e/newsletter-race.spec.ts, which holds it on another connection while two presses start.)
+ */
+export const PRESS_LOCK = "newsletter-press";
 
 type PressRefusal = "notFound" | "sent" | "busy" | "empty";
 
