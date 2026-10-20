@@ -534,6 +534,8 @@
       "title": "Muudetud teises vahekaardis",
       "href": "/admin/uudiskiri?vaade=kampaaniad",
       "steps": [
+        "Ava „Uudiskiri“ ja kontrolli, et loendis on ainult +proov aadressid.",
+        "Kui loendis on mõni muu aadress, ära jätka ja kirjuta märkus.",
         "Ava Proov 3 kampaania kahes brauseri vahekaardis.",
         "Vajuta esimeses vahekaardis „Saada kõigile“ ja oota kinnitust, aga ära vajuta veel „Saada“.",
         "Kirjuta teises vahekaardis „Eelvaate rida“: Proov 3 muudetud ja vajuta „Salvesta“.",
