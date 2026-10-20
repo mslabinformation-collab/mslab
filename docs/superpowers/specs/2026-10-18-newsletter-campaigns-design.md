@@ -1,3 +1,5 @@
+> **Note (20.10.2026):** the sending half of this design (D1–D3, D6, D8, D10 and the amendments made to them) is replaced by `2026-10-20-newsletter-simple-design.md`. D4, D5, D7 and D9 still stand.
+
 # Newsletter campaigns („Uudiskirjad") — design
 
 Phase 4, piece 5 of 6. Dim agreed the order on 16.10.2026. Dim (18.10.2026): "We will use resend for everything." Dim chose to skip the questions for phase 4, so every decision not attributed to Dim or Maria is my call and says so.

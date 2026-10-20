@@ -18,7 +18,8 @@ export const E2E_REVIEW_KEY = "e2e-review-key";
  * On top of LOCAL_ENV: its own address as the site's (links in comments and e-mails; `next dev` on localhost:3000 is
  * allow-listed instead, server/site.ts), the page cache with the tests' switch (next.config.ts), uploads kept in the
  * local folder as under `next dev` (server/media-store.ts; a production build has no store without R2), the comment
- * list's key, and the fake Montonio, which a production build takes only with this explicit flag (server/payments/montonio.ts).
+ * list's key, the fake Montonio, which a production build takes only with this explicit flag (server/payments/montonio.ts), and the mail outbox of the
+ * newsletter's campaigns (server/mail-outbox.ts, E2E_MAIL_OUTBOX in tests/local-secrets.ts), which a production build takes only with its flag too.
  */
 export const PROD_ENV = {
   SITE_URL: PROD_URL,
@@ -26,6 +27,7 @@ export const PROD_ENV = {
   MEDIA_LOCAL: "1",
   ADMIN_KEY: E2E_REVIEW_KEY,
   PAYMENT_MOCK_IN_PRODUCTION: "1",
+  E2E_MAIL_IN_PRODUCTION: "1",
 };
 
 /**
