@@ -64,6 +64,21 @@ describe("e-mail (Resend)", () => {
     for (const call of f.calls.slice(1)) expect((call.body as { attachments?: unknown }).attachments).toBeUndefined();
   });
 
+  test("a mail's headers go to Resend as they are (the newsletter's List-Unsubscribe pair); a mail without any, or with none in it, carries none", async () => {
+    const f = stubFetch(() => Response.json({ id: "email_123" }));
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const key = env({ RESEND_API_KEY: "re_test" });
+    const headers = {
+      "List-Unsubscribe": "<https://mslab.example/api/newsletter/loobu?t=tok>",
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    };
+    expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T", headers })).toBe(true);
+    expect((f.calls[0].body as { headers: unknown }).headers).toEqual(headers);
+    expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T", headers: {} })).toBe(true);
+    expect(await sendMail(key, { to: "x@example.com", subject: "S", text: "T" })).toBe(true);
+    for (const call of f.calls.slice(1)) expect((call.body as { headers?: unknown }).headers).toBeUndefined();
+  });
+
   test("a rejected or failed send is reported as false; the log has the error name and status, not the message", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     stubFetch(() =>

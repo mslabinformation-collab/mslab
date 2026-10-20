@@ -266,7 +266,7 @@ function alertIfOverpaid(deps: SettleDeps, p: Payment, r: RegistrationPaid): voi
       { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: pick(r.course.title, "et"), startsAt: r.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, paidCents: r.registration.paidCents, priceCents: price },
       adminUrl(deps.siteUrl),
     );
-    await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+    await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl, count: deps.db });
   });
 }
 
@@ -491,7 +491,7 @@ function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded
         { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" ? facts.uuid : null, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
         adminUrl(deps.siteUrl),
       );
-      const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+      const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl, count: deps.db });
       told = r.mail || r.telegram;
     } finally {
       if (record && !told) await releaseAlertRecord(deps, record, DOUBLE_ALERT_TTL_SECONDS);
@@ -528,7 +528,7 @@ export function alertUnsettled(deps: SettleDeps, row: Payment, snapshot: OrderSn
         { kind: row.kind, name: row.name, email: row.email, amountCents: row.amountCents, course: courseName(ctx, row.kind), startsAt: ctx.session?.startsAt ?? null, reference: row.reference, providerUuid: row.providerUuid, paidCents: snapshot.amountCents, currency: snapshot.currency },
         adminUrl(deps.siteUrl),
       );
-      const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: row.email, siteUrl: deps.siteUrl });
+      const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: row.email, siteUrl: deps.siteUrl, count: deps.db });
       told = r.mail || r.telegram;
     } finally {
       if (!told) await releaseAlertRecord(deps, record, STUCK_ALERT_TTL_SECONDS);
@@ -569,7 +569,7 @@ async function followUpUnsettled(deps: SettleDeps, p: Payment): Promise<void> {
       { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid },
       adminUrl(deps.siteUrl),
     );
-    await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+    await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl, count: deps.db });
   } finally {
     try {
       await forgetKey(deps.env.KV, record);
@@ -586,7 +586,7 @@ async function tellMaria(deps: SettleDeps, p: Payment, outcome: Pick<PaymentNoti
     { kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, method: p.method, bank: p.bank, reference: p.reference, providerUuid: p.providerUuid, ...outcome },
     adminUrl(deps.siteUrl),
   );
-  const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl });
+  const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl, count: deps.db });
   console.info(`[payments] payment ${p.id}: Maria notified by e-mail: ${r.mail}, Telegram: ${r.telegram}`);
 }
 
@@ -625,7 +625,7 @@ async function mailEcourseOpen(deps: SettleDeps, p: Payment, g: Grant, invoice: 
       invoiceAttached: attachment !== null, contractAttached: contractFile !== null,
     });
     const attachments = [...(attachment ? [attachment] : []), ...(contract && contractFile ? [contractAttachment(contract.id, contractFile)] : [])];
-    const sent = await sendMail(deps.env, attachments.length ? { ...mail, attachments } : mail);
+    const sent = await sendMail(deps.env, attachments.length ? { ...mail, attachments } : mail, { count: deps.db });
     console.info(`[payments] payment ${p.id}: the e-course mail sent: ${sent}`);
     // the mail is out once Resend took it: a failure to record that (sent_at) is logged on its own, as contracts.ts mailContract logs it
     if (sent && contract && contractFile) {
@@ -663,7 +663,7 @@ async function mailRegistrationPaid(deps: SettleDeps, p: Payment, r: Registratio
       full: r.full,
       invoiceAttached: attachment !== null,
     });
-    const sent = await sendMail(deps.env, attachment ? { ...mail, attachments: [attachment] } : mail);
+    const sent = await sendMail(deps.env, attachment ? { ...mail, attachments: [attachment] } : mail, { count: deps.db });
     console.info(`[payments] payment ${p.id}: the payer's mail sent: ${sent}`);
   } catch (e) {
     logFailure(`[payments] payment ${p.id}: the payer's mail failed`, e);

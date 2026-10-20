@@ -157,7 +157,7 @@ async function submission<T>(
   const { notify, confirm } = out;
   if (notify) {
     deps.later(async () => {
-      const r = await notifyMaria(deps.env, notify.subject, notify.text, { short: notify.short, replyTo: notify.replyTo, siteUrl: deps.siteUrl });
+      const r = await notifyMaria(deps.env, notify.subject, notify.text, { short: notify.short, replyTo: notify.replyTo, siteUrl: deps.siteUrl, count: deps.db });
       console.info(`[forms] ${form}: stored; Maria notified by e-mail: ${r.mail}, Telegram: ${r.telegram}`);
     });
   }
@@ -230,7 +230,7 @@ async function sendConfirmation(deps: Deps, form: FormName, confirm: Confirmatio
       logNote(`[forms] ${form}: daily mail cap reached: no confirmation e-mail to the visitor`);
       return;
     }
-    const sent = await sendMail(deps.env, build(login));
+    const sent = await sendMail(deps.env, build(login), { count: deps.db });
     console.info(`[forms] ${form}: stored; confirmation e-mail to the visitor sent: ${sent}`);
     if (sent && confirm.sent) {
       try {

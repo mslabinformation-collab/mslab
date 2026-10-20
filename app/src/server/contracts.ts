@@ -525,7 +525,7 @@ export async function mailContractRequest(deps: { db: Db; env: Env; siteUrl: str
     }
     if (!mailConfigured(deps.env)) return false;
     const locale = row.locale === "ru" ? "ru" : "et";
-    const sent = await sendMail(deps.env, contractRequestMail({ siteUrl: deps.siteUrl, email: row.email, name: row.name, locale, course: contractCourseName(row.title, locale) }));
+    const sent = await sendMail(deps.env, contractRequestMail({ siteUrl: deps.siteUrl, email: row.email, name: row.name, locale, course: contractCourseName(row.title, locale) }), { count: deps.db });
     console.info(`[contracts] registration ${registrationId}: the ask was mailed: ${sent}`);
     return sent;
   } catch (e) {
@@ -557,7 +557,7 @@ export async function mailContract(
     if (!mailConfigured(deps.env)) return false;
     // (`opts.pdf`: the caller rendered it already and has seen it render, as Maria's copy does: it is not drawn twice)
     const pdf = opts.pdf ?? (await contractPdfForMail(c));
-    const sent = await sendMail(deps.env, contractMail({ siteUrl: deps.siteUrl, email, name, locale: opts.locale ?? c.locale, contract: c, pdf, noAccount: opts.noAccount }));
+    const sent = await sendMail(deps.env, contractMail({ siteUrl: deps.siteUrl, email, name, locale: opts.locale ?? c.locale, contract: c, pdf, noAccount: opts.noAccount }), { count: deps.db });
     console.info(`[contracts] contract ${c.id}: mailed: ${sent}`);
     // the mail is out once Resend took it: a failure to record that (sent_at) is logged on its own, and the answer stays true
     if (sent && pdf) {

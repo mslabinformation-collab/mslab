@@ -7,10 +7,10 @@ import type { Db } from "@/db/client";
 import * as schema from "@/db/schema";
 import { attachOrder, insertPayment } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
-import { mailQuota, payments, registrations, type Payment } from "@/db/schema";
+import { payments, registrations, type Payment } from "@/db/schema";
 import { settlePayment, settleToken, type Facts } from "@/server/payments/settle";
 import { contactCourse, orderToken, pendingPayment, registrationOn, settleDeps, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
-import { makeTestDb } from "./helpers";
+import { capRows, countedMails, makeTestDb } from "./helpers";
 
 // The properties the one door must keep, each pinned on its own (phase 2b, spec 7.3, 7.4; the security review of Task 3): the token's keys,
 // the exact amount, once-only work for callers holding a stale row, one transaction, no secret in a log, no payment mail in the daily caps.
@@ -539,7 +539,7 @@ describe("one lock order for every payment path: course_sessions → registratio
 });
 
 describe("mail, revalidation and logs", () => {
-  test("payment mails are not counted in the daily mail caps: no mail_quota row, whatever was sent", async () => {
+  test("payment mails are not counted in the daily mail caps: no cap row, whatever was sent; the day's count of every mail has them all", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
     const { deps, flush } = settleDeps(db, m.montonio, NOW);
@@ -549,7 +549,8 @@ describe("mail, revalidation and logs", () => {
     await settleToken(deps, m.montonio.verifyOrderToken(orderToken(held, { grandTotal: 1 })));
     await flush();
     expect(m.mails().length).toBeGreaterThanOrEqual(3);
-    expect(await db.select().from(mailQuota)).toEqual([]);
+    expect(await capRows(db)).toEqual([]);
+    expect(await countedMails(db)).toBe(m.mails().length); // Maria's notices and the payer's mails, each counted once Resend took it
   });
 
   test("a revalidation that fails (it throws, or it rejects) does not undo the payment or lose its mails", async () => {

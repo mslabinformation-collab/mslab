@@ -303,7 +303,7 @@ async function login(request: Request, deps: AccountDeps): Promise<Response> {
     // The language is read before the daily counter is raised, so a database failure in between cannot count a mail that is never queued.
     const mail = loginMail(deps.siteUrl, address, issued.token, issued.code, await mailLocale(deps.db, address, page), page);
     if (await reserveLoginMail(deps.db, deps.now)) {
-      deps.later(() => sendMail(deps.env, mail));
+      deps.later(() => sendMail(deps.env, mail, { count: deps.db }));
     } else {
       logNote("[account] daily login mail cap reached");
     }
@@ -615,7 +615,7 @@ function mailPasswordChange(deps: AccountDeps, to: { email: string; locale: Loca
       return null;
     });
     const email = (contact as { email?: unknown } | null)?.email;
-    await sendMail(deps.env, passwordChangedMail(to.email, to.locale, typeof email === "string" ? email.trim() : ""));
+    await sendMail(deps.env, passwordChangedMail(to.email, to.locale, typeof email === "string" ? email.trim() : ""), { count: deps.db });
   });
 }
 
@@ -1109,7 +1109,7 @@ async function changeRequest(request: Request, deps: AccountDeps): Promise<Respo
   const info = await createChangeRequest(deps.db, session.clientId, registrationId, kind, message, deps.now);
   if (!info) return clientResponse(session, { ok: false, error: "registration" }, 404);
   const summary = changeRequestSummary({ ...info, kind, message }, adminUrl(deps.siteUrl));
-  deps.later(() => notifyMaria(deps.env, summary.subject, summary.text, { short: summary.short, replyTo: info.email, siteUrl: deps.siteUrl }));
+  deps.later(() => notifyMaria(deps.env, summary.subject, summary.text, { short: summary.short, replyTo: info.email, siteUrl: deps.siteUrl, count: deps.db }));
   return clientResponse(session, { ok: true });
 }
 
@@ -1193,7 +1193,7 @@ async function sendFeedback(request: Request, deps: AccountDeps): Promise<Respon
   if (result.kind === "notFound") return clientResponse(session, { ok: false, error: "registration" }, 404);
   if (result.kind === "sent") return clientResponse(session, { ok: false, error: "sent" }, 409);
   const notice = result.notice;
-  deps.later(() => notifyFeedback(deps.env, deps.siteUrl, notice));
+  deps.later(() => notifyFeedback(deps.env, deps.siteUrl, notice, { count: deps.db }));
   return clientResponse(session, { ok: true });
 }
 
@@ -1321,7 +1321,7 @@ async function deleteAccount(request: Request, deps: AccountDeps): Promise<Respo
   }
   if (gone && !deps.dev && !isSampleAddress(gone.email)) {
     const mail = deletionMail(gone.email, gone.locale);
-    deps.later(() => sendMail(deps.env, mail));
+    deps.later(() => sendMail(deps.env, mail, { count: deps.db }));
   }
   return accountResponse({ ok: true }, 200, clearedCookies());
 }

@@ -89,7 +89,7 @@ export async function sendWelcome(deps: WelcomeDeps, to: { email: string; locale
     }
     let sent = false;
     try {
-      sent = await sendMail(deps.env, welcomeMail(address, code, to.locale === "ru" ? "ru" : "et", unsubscribeUrl(deps.siteUrl, token)));
+      sent = await sendMail(deps.env, welcomeMail(address, code, to.locale === "ru" ? "ru" : "et", unsubscribeUrl(deps.siteUrl, token)), { count: deps.db });
     } catch (e) {
       logFailure("[newsletter] welcome e-mail failed to send", e);
     }

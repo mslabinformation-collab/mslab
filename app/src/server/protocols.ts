@@ -382,7 +382,7 @@ async function mailProtocol(deps: SendDeps, job: ProtocolMailJob): Promise<boole
   if (isSampleAddress(job.email) || !mailConfigured(deps.env)) return false;
   try {
     const login = await protocolLogin(deps, job);
-    if (await sendMail(deps.env, protocolMail({ siteUrl: deps.siteUrl, ...job, login }))) console.info(`[protocols] registration ${job.registrationId}: the mail sent`);
+    if (await sendMail(deps.env, protocolMail({ siteUrl: deps.siteUrl, ...job, login }), { count: deps.db })) console.info(`[protocols] registration ${job.registrationId}: the mail sent`);
     else logNote(`[protocols] registration ${job.registrationId}: the mail was not sent`);
   } catch (e) {
     logFailure(`[protocols] registration ${job.registrationId}: the mail failed`, e);

@@ -61,7 +61,7 @@ export async function sendInvoice(deps: Pick<SendDeps, "db" | "env" | "siteUrl" 
   for (const [i, address] of targets.entries()) {
     if (isSampleAddress(address)) went.push(true);
     // (the second address's copy greets no one by name and has no „Ava minu konto“: its reader is not the student, m9)
-    else went.push(await sendMail(deps.env, invoiceMail({ siteUrl: deps.siteUrl, email: address, name: inv.buyer.name, locale, invoice: inv, pdf, second: i > 0 })));
+    else went.push(await sendMail(deps.env, invoiceMail({ siteUrl: deps.siteUrl, email: address, name: inv.buyer.name, locale, invoice: inv, pdf, second: i > 0 }), { count: deps.db }));
     // (the student's first: when hers is not accepted the second is not tried)
     if (!went[0]) break;
   }

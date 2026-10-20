@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { makeTestDb, shownContractVersion } from "./helpers";
+import { capRows, makeTestDb, shownContractVersion } from "./helpers";
 import type { Db } from "@/db/client";
 import { clientLoginTokens, courses, courseSessions, mailQuota, practicePackages, registrations, requests, settings, subscribers } from "@/db/schema";
 import type { PublicChange } from "@/server/cache-targets";
@@ -529,7 +529,7 @@ describe("newsletter sign-up in one step (owner decision 09.10)", () => {
     await flush();
     expect(await db.select().from(subscribers)).toMatchObject([{ locale: "ru", consentAt: old, confirmedAt: old }]); // nothing changed, not even the language
     expect(mails()).toEqual([]);
-    expect(await db.select().from(mailQuota)).toEqual([]);
+    expect(await capRows(db)).toEqual([]);
     // a new address: signed up twice → one row, one welcome
     await signUp(deps, "uus@example.com");
     await signUp(deps, "UUS@example.com");
@@ -604,7 +604,7 @@ describe("newsletter sign-up in one step (owner decision 09.10)", () => {
     // The newsletter's places are the `mail_quota` row "<day>:nl" (25 a day); the shared row "<day>" is the logins' and the registration and
     // request confirmations' (60 / 30), and a sign-up neither takes from it nor is stopped by it.
     const NL = "2026-10-01:nl";
-    const quotaToday = async () => Object.fromEntries((await db.select().from(mailQuota)).map((r) => [r.day, r.sent]));
+    const quotaToday = async () => Object.fromEntries((await capRows(db)).map((r) => [r.day, r.sent]));
 
     test("below the cap a sign-up takes one place of the newsletter's counter, one for each mail", async () => {
       const { mails } = outbox();
@@ -692,7 +692,7 @@ describe("confirmation e-mails to the visitor (phase 2a Task 10)", () => {
   const codeOf = (text: string) => /^\d{6}$/m.exec(text)?.[0];
   const tokenOf = (text: string) => /\/api\/konto\/verify\?t=([A-Za-z0-9_-]+)/.exec(text)?.[1];
   const buttons = (html: string | undefined) => (html?.match(/mso-padding-alt/g) ?? []).length;
-  const quota = async () => (await db.select().from(mailQuota)).map((r) => r.sent);
+  const quota = async () => (await capRows(db)).map((r) => r.sent);
   const visitorKeys = (kv: ReturnType<typeof fakeKv>) => [...kv.store.keys()].filter((k) => k.startsWith("rl:visitor-confirm:"));
   const logs = () => (["error", "warn", "info", "log"] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
 
@@ -895,7 +895,7 @@ describe("confirmation e-mails to the visitor (phase 2a Task 10)", () => {
       await handleRegistration(deps, group({ locale: "et", account: "on", session: String(ids.other), email: "test@example.com" }));
       await flush();
       expect(to(mails(), "test@example.com")).toHaveLength(2);
-      const byDay = Object.fromEntries((await db.select().from(mailQuota)).map((r) => [r.day, r.sent]));
+      const byDay = Object.fromEntries((await capRows(db)).map((r) => [r.day, r.sent]));
       expect(byDay).toEqual({ "2026-10-01": 2, "2026-10-01:nl": NEWSLETTER_MAIL_DAILY_CAP });
     });
 
@@ -1143,10 +1143,10 @@ describe("the newsletter consent on the registration forms (phase 2c)", () => {
 
   // The registration forms' box and the newsletter's own forms share one sign-up (subscribeAddress), so its four guards hold for both.
   describe("the sign-up's guards hold for the registration forms' box too", () => {
-    const quota = async () => (await db.select().from(mailQuota)).map((r) => [r.day, r.sent]);
+    const quota = async () => (await capRows(db)).map((r) => [r.day, r.sent]);
 
     const NL = "2026-10-01:nl";
-    const quotaMap = async () => Object.fromEntries((await db.select().from(mailQuota)).map((r) => [r.day, r.sent]));
+    const quotaMap = async () => Object.fromEntries((await capRows(db)).map((r) => [r.day, r.sent]));
 
     test("the newsletter's cap reached: the subscriber is stored (confirmed), no welcome mail goes out and no place is taken", async () => {
       const { mails } = outbox();

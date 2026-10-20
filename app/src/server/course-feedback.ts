@@ -208,9 +208,9 @@ export async function hideFeedback(db: Db, input: { clientId: number; target: Fe
   });
 }
 
-/** Maria's "Uus tagasiside: …" by mail and Telegram (spec §6), after the response; never fails the answer. */
-export async function notifyFeedback(env: Env, siteUrl: string, notice: FeedbackNotice): Promise<void> {
+/** Maria's "Uus tagasiside: …" by mail and Telegram (spec §6), after the response; never fails the answer. `opts.count`: the database of the day's mail count (notify.ts SendOptions). */
+export async function notifyFeedback(env: Env, siteUrl: string, notice: FeedbackNotice, opts: { count?: Q } = {}): Promise<void> {
   const s = feedbackSummary(notice, adminUrl(siteUrl));
-  const r = await notifyMaria(env, s.subject, s.text, { short: s.short, replyTo: notice.email, siteUrl });
+  const r = await notifyMaria(env, s.subject, s.text, { short: s.short, replyTo: notice.email, siteUrl, count: opts.count });
   console.info(`[feedback] ${ownerText(notice.target)}: Maria notified by e-mail: ${r.mail}, Telegram: ${r.telegram}`);
 }

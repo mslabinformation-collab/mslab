@@ -81,7 +81,7 @@ export async function handleLoginRequest(deps: LoginDeps, input: unknown): Promi
   // RESEND_API_KEY in its environment still sends nobody a mail (the e2e tests sign in many times per run).
   if (dev) return { status: 200, body: { ok: true, devLink: link } };
   deps.later(async () => {
-    const sent = await sendMail(deps.env, { to: email, subject: adminEt.mail.subject, text: fill(adminEt.mail.text, { link }) });
+    const sent = await sendMail(deps.env, { to: email, subject: adminEt.mail.subject, text: fill(adminEt.mail.text, { link }) }, { count: deps.db });
     console.info(`[auth] login link e-mailed: ${sent}`);
   });
   return { status: 200, body: { ok: true } };

@@ -13,6 +13,13 @@ import { WELCOME_CODE_MAX, isWelcomeCode, normalizeWelcomeCode } from "./welcome
 export const CAMPAIGN_LIMITS = { name: 80, subject: 150, preheader: 150, body: 10000, buttonLabel: 40, href: 500 } as const;
 
 /**
+ * How many mails the site may have sent in a UTC day for a campaign to send another: a campaign sends only while the day's count of every mail
+ * (server/client-auth.ts mailsSentToday) is below this. It leaves 30 of Resend's free 100 a day for the site's other mails (logins, confirmations,
+ * protocols, invoices, contracts, Maria's notices, welcome mails); what does not fit goes out the next day (spec §3).
+ */
+export const CAMPAIGN_DAILY_ROOM = 70;
+
+/**
  * A campaign as Maria writes it, checked: every optional text is "" (an `I18n` always holds both languages) or null, the code is in capitals, and a
  * button has all of its label (Estonian) and its address or none of them. The database row (schema.ts NewsletterCampaign) has these fields and more.
  */

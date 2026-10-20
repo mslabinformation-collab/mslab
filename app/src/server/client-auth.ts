@@ -4,6 +4,7 @@ import type { Db, Q } from "@/db/client";
 import * as schema from "@/db/schema";
 import { clientLoginTokens, clients, clientSessions, mailQuota, registrations, requests, subscribers } from "@/db/schema";
 import { normalizeEmail } from "@/domain/email";
+import { logFailure } from "./log";
 import { DUMMY_HASH, verifyPassword } from "./password";
 import { isTokenShape, newToken, sha256 } from "./token";
 
@@ -21,12 +22,21 @@ export const CLIENT_LOGIN_CAP = 3;
  *   same submission, which this counter does not see, so 30 confirmations are about 60 mails; the last 30 of the 60 are left for sign-ins;
  * - the newsletter's own, the row "<day>:nl": the welcome mail (one for each sign-up) takes its 25 places, so a rush of sign-ups
  *   can never use up the places the registrations' and requests' confirmations and the logins need, nor the other way round. 60 + 25 = 85 is the most the two counters let out in a day, under Resend's 100.
+ *
+ * A third row, "<day>:all", only counts: every mail Resend accepted, whatever its kind (countSentMail, mailsSentToday). A newsletter campaign reads
+ * it to stay under its room; it stops no other mail.
  */
 export const LOGIN_MAIL_DAILY_CAP = 60;
 export const CONFIRMATION_MAIL_DAILY_CAP = 30;
 export const NEWSLETTER_MAIL_DAILY_CAP = 25;
 /** What follows the date in the `mail_quota` row of the newsletter's counter. */
 const NEWSLETTER_QUOTA_SUFFIX = ":nl";
+/**
+ * What follows the date in the `mail_quota` row that counts every mail the site sends in a day (sendMail adds to it when Resend accepted a mail): the
+ * mails above, the invoices, contracts, protocols, Maria's notices, the welcome mails and the newsletter campaigns. It limits nothing by itself: a
+ * campaign sends only while it is below its room (domain/newsletter-campaign.ts CAMPAIGN_DAILY_ROOM).
+ */
+const ALL_MAIL_QUOTA_SUFFIX = ":all";
 /** Renew the session expiry at most once a day (fewer writes). */
 const RENEW_AFTER_MS = 86_400_000;
 
@@ -217,7 +227,7 @@ const MAIL_QUOTA_KEEP_DAYS = 7;
  *   but only when somebody asks for a login;
  * - `sessions`: sessions ended (logout, replaced) or run out more than 30 days ago;
  * - `mailDays`: the `mail_quota` rows of days more than a week before today (UTC, as the counter's own day), the newsletter's
- *   "<day>:nl" rows with them (the date is the row's first 10 characters).
+ *   "<day>:nl" rows and the day's count of all mails "<day>:all" with them (the date is the row's first 10 characters).
  * A failing database throws.
  */
 export async function sweepClientRows(db: Db, now: Date = new Date()): Promise<{ logins: number; sessions: number; mailDays: number }> {
@@ -252,6 +262,26 @@ export async function reserveLoginMail(db: Q, now = new Date(), cap = LOGIN_MAIL
 /** One more place of today's newsletter counter (the welcome mail), unless `cap` is reached. */
 export async function reserveNewsletterMail(db: Q, now = new Date(), cap = NEWSLETTER_MAIL_DAILY_CAP): Promise<boolean> {
   return reserveMailPlace(db, dayOf(now) + NEWSLETTER_QUOTA_SUFFIX, cap);
+}
+
+/**
+ * One more mail in today's count of every mail the site sends (the row "<UTC day>:all"; a place is not reserved, the mail has gone already). Best
+ * effort, like the notifications themselves: a database that fails is logged (the class and the code, never the message) and the mail stays sent,
+ * so this never throws.
+ */
+export async function countSentMail(db: Q, now = new Date()): Promise<void> {
+  try {
+    await db.insert(mailQuota).values({ day: dayOf(now) + ALL_MAIL_QUOTA_SUFFIX, sent: 1 })
+      .onConflictDoUpdate({ target: mailQuota.day, set: { sent: sql`${mailQuota.sent} + 1` } });
+  } catch (e) {
+    logFailure("[mail] the day's mail count not written", e);
+  }
+}
+
+/** How many mails the site has sent in the UTC day of `now` (the row "<day>:all"): 0 for a day with no mail. A failing database throws. */
+export async function mailsSentToday(db: Q, now = new Date()): Promise<number> {
+  const [row] = await db.select({ sent: mailQuota.sent }).from(mailQuota).where(eq(mailQuota.day, dayOf(now) + ALL_MAIL_QUOTA_SUFFIX)).limit(1);
+  return row?.sent ?? 0;
 }
 
 /**

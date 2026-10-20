@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import type { Db } from "@/db/client";
+import type { Db, Q } from "@/db/client";
 import { clients, courseAccess, courses, courseTests, protocols, testAttempts, type TestQuestion } from "@/db/schema";
 import { courseSteps, isComplete, practicalStatus, readQuestions, TEST_DEFAULTS, testState, triesAllowed, type CourseSteps, type StepInputs } from "@/domain/completion";
 import { isSampleAddress } from "@/domain/email";
@@ -167,8 +167,9 @@ export async function completionJob(db: Db, accessId: number, now: Date): Promis
 /**
  * Sends completionMail of `kind` to the job's student: never to a sample address, nothing when Resend is not set up (local runs, e2e). A mail
  * Resend does not take is logged by the access's id and never undoes what was saved. Logs `[completion] access N: the <kind> mail …`.
+ * `extra.fixCount`: how many points the mail asks her to fix again; `extra.count`: the database of the day's mail count (notify.ts SendOptions).
  */
-export async function mailCompletion(env: Env, siteUrl: string, job: CompletionJob, kind: CompletionMailKind, fixCount?: number): Promise<void> {
+export async function mailCompletion(env: Env, siteUrl: string, job: CompletionJob, kind: CompletionMailKind, extra: { fixCount?: number; count?: Q } = {}): Promise<void> {
   if (isSampleAddress(job.email) || !mailConfigured(env)) return;
   try {
     const mail = completionMail({
@@ -181,9 +182,9 @@ export async function mailCompletion(env: Env, siteUrl: string, job: CompletionJ
       kind,
       hasPoints: job.hasPoints,
       accessActive: job.active,
-      ...(fixCount !== undefined ? { fixCount } : {}),
+      ...(extra.fixCount !== undefined ? { fixCount: extra.fixCount } : {}),
     });
-    if (await sendMail(env, mail)) console.info(`[completion] access ${job.accessId}: the ${kind} mail sent`);
+    if (await sendMail(env, mail, { count: extra.count })) console.info(`[completion] access ${job.accessId}: the ${kind} mail sent`);
     else logNote(`[completion] access ${job.accessId}: the ${kind} mail was not sent`);
   } catch (e) {
     logFailure(`[completion] access ${job.accessId}: the ${kind} mail failed`, e);
@@ -194,6 +195,6 @@ export async function mailCompletion(env: Env, siteUrl: string, job: CompletionJ
 export function queueCompletionMail(deps: { db: Db; env: Env; siteUrl: string; now: Date; later: (task: () => Promise<unknown>) => void }, accessId: number): void {
   deps.later(async () => {
     const job = await completionJob(deps.db, accessId, deps.now);
-    if (job) await mailCompletion(deps.env, deps.siteUrl, job, "completed");
+    if (job) await mailCompletion(deps.env, deps.siteUrl, job, "completed", { count: deps.db });
   });
 }

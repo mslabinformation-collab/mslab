@@ -1,5 +1,7 @@
 import { Resend } from "resend";
+import type { Q } from "@/db/client";
 import { normalizeEmail } from "@/domain/email";
+import { countSentMail } from "./client-auth";
 import { errorSummary } from "./log";
 import type { TextKv } from "./ratelimit";
 
@@ -25,9 +27,24 @@ export type MailAttachment = { filename: string; content: Buffer; contentType: s
 
 /**
  * `text` is always there; `html`, when given, is the same message for clients that show HTML (the text stays as the fallback);
- * `attachments`, when given, the files it carries.
+ * `attachments`, when given, the files it carries; `headers`, when given and not empty, extra headers of the message (a campaign mail's
+ * List-Unsubscribe and List-Unsubscribe-Post, the mail program's own unsubscribe button).
  */
-export type Mail = { to: string; subject: string; text: string; html?: string; replyTo?: string; attachments?: MailAttachment[] };
+export type Mail = {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  replyTo?: string;
+  attachments?: MailAttachment[];
+  headers?: Record<string, string>;
+};
+
+/**
+ * What a send may be given besides the mail. `count`: the database of the day's mail count; a mail Resend accepted is added to it
+ * (client-auth.ts countSentMail, best effort). Without it nothing is counted, so a caller that has a database passes it.
+ */
+export type SendOptions = { count?: Q };
 
 const TELEGRAM_MAX = 3900;
 export const TG_CHAT_KEY = "tg:chat";
@@ -76,9 +93,11 @@ export function defaultReplyTo(env: Pick<Env, "MARIA_EMAIL">, to: string): strin
  * Sends one e-mail: plain text, plus HTML when `mail.html` is set. true = Resend accepted it. When Resend answers that it is being asked
  * too often (429; its default limit is about 2 requests a second) the send is tried once more after RATE_LIMIT_RETRY_MS, never a third time.
  * The Reply-To is the mail's own, else Maria's inbox (defaultReplyTo), else none. The mail's attachments go with it, each file's bytes as
- * Base64 (one of the two forms Resend takes, and the smaller one in the request's JSON).
+ * Base64 (one of the two forms Resend takes, and the smaller one in the request's JSON). The mail's headers go as they are. A mail Resend
+ * accepted is added to the day's count when `opts.count` is given (SendOptions); a refused or failed one never is, and a count that fails does
+ * not change the answer.
  */
-export async function sendMail(env: Env, mail: Mail): Promise<boolean> {
+export async function sendMail(env: Env, mail: Mail, opts: SendOptions = {}): Promise<boolean> {
   if (!mailConfigured(env)) return false;
   const replyTo = mail.replyTo ?? defaultReplyTo(env, mail.to);
   try {
@@ -94,6 +113,7 @@ export async function sendMail(env: Env, mail: Mail): Promise<boolean> {
           ...(mail.attachments?.length
             ? { attachments: mail.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64"), contentType: a.contentType })) }
             : {}),
+          ...(mail.headers && Object.keys(mail.headers).length ? { headers: mail.headers } : {}),
         }),
         NOTIFY_TIMEOUT_MS,
       );
@@ -110,6 +130,7 @@ export async function sendMail(env: Env, mail: Mail): Promise<boolean> {
       return false;
     }
     console.info(`[notify] Resend accepted the e-mail: ${data?.id ?? "?"}`);
+    if (opts.count) await countSentMail(opts.count);
     return true;
   } catch (e) {
     console.error(`[notify] Resend request failed: ${errorSummary(e)}`);
@@ -160,16 +181,16 @@ export const adminUrl = (base: string) => `${base.replace(/\/+$/, "")}/admin`;
 /**
  * Tells Maria about a new submission: the full plain-text summary by e-mail (reply goes to the visitor when
  * `replyTo` is given) and a short Telegram ping (`short`, default the subject) with the admin link under `siteUrl`
- * (default SITE_URL).
+ * (default SITE_URL). `count`: the database of the day's mail count (SendOptions) for her e-mail; the Telegram ping is no mail.
  */
 export async function notifyMaria(
   env: Env,
   subject: string,
   text: string,
-  opts: { short?: string; replyTo?: string; siteUrl?: string } = {},
+  opts: { short?: string; replyTo?: string; siteUrl?: string; count?: Q } = {},
 ): Promise<{ mail: boolean; telegram: boolean }> {
   const [mail, telegram] = await Promise.all([
-    sendMail(env, { to: env.MARIA_EMAIL, subject, text, replyTo: opts.replyTo }),
+    sendMail(env, { to: env.MARIA_EMAIL, subject, text, replyTo: opts.replyTo }, { count: opts.count }),
     sendTelegram(env, `${opts.short ?? subject}\n\n${adminUrl(opts.siteUrl ?? env.SITE_URL)}`),
   ]);
   return { mail, telegram };

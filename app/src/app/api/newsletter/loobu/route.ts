@@ -18,6 +18,11 @@ import { isTokenShape } from "@/server/token";
  *   twice, gets the very same answer in Estonian. Only when the database could not be reached is the visitor told so (?uudiskiri=viga),
  *   never that she is unsubscribed when she is not. A cross-site POST is refused with 403, like the other routes' writes. The row's
  *   once-a-year welcome mark goes with it, so signing up again later gets a fresh welcome.
+ * - POST with the body `List-Unsubscribe=One-Click` (RFC 8058: the mail program's own unsubscribe button, for a mail that carries the headers
+ *   List-Unsubscribe and List-Unsubscribe-Post; the simple newsletter, spec §3) is a server-to-server call, no browser: the token is only in the
+ *   address (`?t=`), nothing is redirected, and the answer is 200 with a tiny plain body, the same for a token that is unknown, used or malformed
+ *   (nothing is revealed and nothing else is deleted). Only a database that cannot be reached is told apart (500): she is not unsubscribed then.
+ *   The form field `t` of such a body counts for nothing, and the address's `t` counts for nothing in the button's own POST.
  * - HEAD (below) does nothing.
  * - GET with `?proov` (newsletter campaigns ruling R4) is the link of „Saada proov“'s mail to an address that is no subscriber: a page that says
  *   it is a test („Proovikiri — päris kirjas viib see link loobumisele.“), without a form, whatever else the address carries; it changes nothing.
@@ -40,16 +45,32 @@ export async function GET(request: Request): Promise<Response> {
   });
 }
 
+/** The one-click answer: a few plain characters and a status, never cached; nothing in it depends on the token. */
+const plain = (status: 200 | 500) =>
+  new Response(status === 200 ? "OK" : "Error", { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+
 export async function POST(request: Request): Promise<Response> {
   if (crossSiteFormPost(request)) return Response.json({ ok: false, error: "forbidden" }, { status: 403, headers: { "cache-control": "no-store" } });
+  const url = new URL(request.url);
   let token = "";
+  let oneClick = false;
   try {
-    const field = (await request.formData()).get("t");
+    const form = await request.formData();
+    oneClick = form.get("List-Unsubscribe") === "One-Click";
+    const field = form.get("t");
     if (typeof field === "string") token = field;
   } catch {
     // not a form: no token
   }
-  const url = new URL(request.url);
+  if (oneClick) {
+    try {
+      await unsubscribeByToken(getDb(), serverKv(), url.searchParams.get("t") ?? "");
+    } catch (e) {
+      logFailure("[newsletter] one-click unsubscribe failed", e); // never the message: it would contain the token
+      return plain(500);
+    }
+    return plain(200);
+  }
   let page = "/";
   let outcome = "loobutud";
   try {
