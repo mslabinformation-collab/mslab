@@ -570,7 +570,7 @@ describe("newsletter sign-up in one step (owner decision 09.10)", () => {
     const [first] = await db.select().from(subscribers);
     expect(mails()).toHaveLength(1);
     expect(mails()[0].text).toContain(`/api/newsletter/loobu?t=${first.token}`);
-    expect(await unsubscribeByToken(db, kv, first.token)).toEqual({ locale: "et" });
+    expect(await unsubscribeByToken(db, kv, first.token)).toEqual({ locale: "et", id: first.id });
     expect(await db.select().from(subscribers)).toEqual([]);
     expect([...kv.store.keys()].filter((k) => k.startsWith("rl:welcome:"))).toEqual([]);
     expect(await signUp(deps)).toEqual({ ok: true });
@@ -581,7 +581,7 @@ describe("newsletter sign-up in one step (owner decision 09.10)", () => {
     expect(mails()[1].text).toContain(`/api/newsletter/loobu?t=${second.token}`);
     expect(mails()[1].text).not.toContain(first.token);
     // and that link works: the row goes again, the mark with it
-    expect(await unsubscribeByToken(db, kv, second.token)).toEqual({ locale: "et" });
+    expect(await unsubscribeByToken(db, kv, second.token)).toEqual({ locale: "et", id: second.id });
     expect(await db.select().from(subscribers)).toEqual([]);
   });
 
@@ -593,7 +593,7 @@ describe("newsletter sign-up in one step (owner decision 09.10)", () => {
     await flush();
     const [sub] = await db.select().from(subscribers);
     const broken = { ...kv, delete: async () => { throw new Error("kv down for uus@example.com"); } };
-    expect(await unsubscribeByToken(db, broken, sub.token)).toEqual({ locale: "et" });
+    expect(await unsubscribeByToken(db, broken, sub.token)).toEqual({ locale: "et", id: sub.id });
     expect(await db.select().from(subscribers)).toEqual([]);
     const logged = error.mock.calls.flat().map(String).join("\n");
     expect(logged).toContain("[newsletter] welcome mark not forgotten");

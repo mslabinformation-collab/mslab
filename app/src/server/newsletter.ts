@@ -121,10 +121,10 @@ export async function subscriberLocale(db: Db, token: string): Promise<"et" | "r
 /**
  * The button of the unsubscribe page (POST /api/newsletter/loobu, the only thing that unsubscribes): deletes the subscriber's row, forgets
  * the address's once-a-year welcome mark (so a later sign-up gets a fresh welcome, with a link for its new row), and says which language she
- * gets the answer in. null = no such row (an unknown or malformed token, or the button pressed before): nothing is deleted or forgotten,
+ * gets the answer in, and the id the row had (the logs name a row by it, never by its token). null = no such row (an unknown or malformed token, or the button pressed before): nothing is deleted or forgotten,
  * and the caller answers the same. A store that cannot forget is logged and does not undo the unsubscribing.
  */
-export async function unsubscribeByToken(db: Db, kv: TextKv, token: string): Promise<{ locale: "et" | "ru" } | null> {
+export async function unsubscribeByToken(db: Db, kv: TextKv, token: string): Promise<{ locale: "et" | "ru"; id: number } | null> {
   if (!isTokenShape(token)) return null;
   const [gone] = await db.delete(subscribers).where(eq(subscribers.token, token)).returning();
   if (!gone) return null;
@@ -133,7 +133,7 @@ export async function unsubscribeByToken(db: Db, kv: TextKv, token: string): Pro
   } catch (e) {
     logFailure("[newsletter] welcome mark not forgotten", e);
   }
-  return { locale: gone.locale === "ru" ? "ru" : "et" };
+  return { locale: gone.locale === "ru" ? "ru" : "et", id: gone.id };
 }
 
 /**
