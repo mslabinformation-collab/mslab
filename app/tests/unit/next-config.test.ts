@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { MEDIA_CSP } from "@/server/media";
 
@@ -86,6 +88,13 @@ describe("next.config.ts headers()", () => {
       expect(valueFor(rules, path, "content-security-policy"), path).toBe("frame-ancestors 'self'");
     }
     for (const path of ["/api/admin/leping", "/api/admin/leping/12/x", "/api/admin/lepingud", "/api/admin/naidisleping/x", "/api/admin/naidislepingx"]) expect(valueFor(rules, path, "cache-control"), path).toBe("no-store");
+  });
+
+  test("the campaign editor's preview is private and never kept, as the samples are; no other path near it is (newsletter campaigns Task 4)", async () => {
+    const rules = (await (await config()).headers!()) as Rule[];
+    expect(valueFor(rules, "/api/admin/kampaania-eelvaade", "cache-control")).toBe("private, no-store");
+    expect(valueFor(rules, "/api/admin/kampaania-eelvaade", "x-robots-tag")).toBe("noindex, nofollow");
+    for (const path of ["/api/admin/kampaania-eelvaade/x", "/api/admin/kampaania-eelvaadex"]) expect(valueFor(rules, path, "cache-control"), path).toBe("no-store");
   });
 
   test("the unsubscribe page's POST keeps its Origin: the loobu route is same-origin, never no-referrer (a strict policy makes the form post Origin: null, which is refused as cross-site)", async () => {
@@ -221,5 +230,38 @@ describe("next.config.ts env (the test page, phase 4)", () => {
 
   test("the review tools' flag is still there beside it", async () => {
     expect((await config()).env?.NEXT_PUBLIC_REVIEW_TOOLS).toBe("1");
+  });
+});
+
+describe("next.config.ts's import chain uses no \"@/…\" path", () => {
+  // Next does give its config loader the tsconfig paths, but an alias comes out relative to the project root and Node resolves it from the importing file:
+  // an "@/…" import in a file below next.config.ts makes `next dev` and `next build` stop with "Cannot find module" (it happened once: server/media.ts,
+  // imported for MEDIA_CSP, took its key rule from "@/lib/media"). vitest resolves the paths itself, so no other test notices. The rule is stricter than
+  // it has to be (an "@/…" import written in next.config.ts itself would resolve), which keeps it simple. A type-only import is erased and may use them.
+  test("nothing next.config.ts imports, however deep, is imported by an \"@/…\" path", () => {
+    const root = process.cwd();
+    const seen = new Set<string>();
+    const aliased: string[] = [];
+    const resolveFile = (from: string, spec: string): string | null => {
+      const base = join(dirname(from), spec);
+      return [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts")].find((p) => existsSync(p) && /\.tsx?$/.test(p)) ?? null;
+    };
+    const visit = (file: string) => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      const source = readFileSync(file, "utf8");
+      for (const m of source.matchAll(/\b(?:import|export)\s+(type\s+)?(?:[^'"]*?\s+from\s+)?["']([^"']+)["']/g)) {
+        if (m[1]) continue; // type-only
+        const spec = m[2];
+        if (spec.startsWith("@/")) aliased.push(`${file.slice(root.length + 1)} imports ${spec}`);
+        else if (spec.startsWith(".")) {
+          const next = resolveFile(file, spec);
+          if (next) visit(next);
+        }
+      }
+    };
+    visit(join(root, "next.config.ts"));
+    expect(seen.size).toBeGreaterThan(1); // (next.config.ts does import the media rules: the walk is not vacuous)
+    expect(aliased).toEqual([]);
   });
 });

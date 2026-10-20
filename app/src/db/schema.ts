@@ -198,7 +198,62 @@ export const subscribers = pgTable("subscribers", {
   token: text("token").notNull(), consentAt: timestamp("consent_at", { withTimezone: true }).notNull().defaultNow(),
   confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
   clientId: integer("client_id").references((): AnyPgColumn => clients.id, { onDelete: "set null" }),
+  /** The subscriber's contact in Resend (newsletter campaigns, spec D2); null until the sync has added it. */
+  resendContactId: text("resend_contact_id"),
+  /** When the row was last synced to Resend; null when it has changed since (or was never synced): the next sync takes it up. */
+  syncedAt: timestamp("synced_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("subscribers_email").on(t.email)]);
+
+/**
+ * A newsletter campaign Maria writes in the admin and sends through Resend Broadcasts (newsletter campaigns, spec D4–D6, §3). Not the home page's
+ * popup: that is `campaign` (domain/campaign.ts, /admin/kampaania). The texts are Estonian with an optional Russian side (a Russian subscriber gets
+ * the Estonian mail as a whole when the Russian subject or text is empty: domain/newsletter-campaign.ts campaignContentFor). `status` goes from
+ * `draft` to `sent` once, with the time, the number of subscribers each language reached (`recipients`) and the Resend broadcast of each segment
+ * (`broadcasts`); a sent campaign is never changed.
+ */
+export const newsletterCampaigns = pgTable("newsletter_campaigns", {
+  id: serial("id").primaryKey(),
+  /** Her own name for it, shown in the list; subscribers never see it. */
+  name: text("name").notNull(),
+  subject: jsonb("subject").$type<I18n>().notNull(),
+  /** The grey line after the subject in most inboxes; {"et":""} for none. */
+  preheader: jsonb("preheader").$type<I18n>().notNull(),
+  /** The flyer, an uploaded image's key (lib/media.ts mediaUrl); null for none. */
+  imageKey: text("image_key"),
+  /** The text in paragraphs (a blank line starts a new one). */
+  body: jsonb("body").$type<I18n>().notNull(),
+  /** A code shown in a box like the welcome code (domain/welcome-code.ts shape); null for none. */
+  code: text("code"),
+  buttonLabel: jsonb("button_label").$type<I18n>(),
+  /** An https:// address or a path of the site; set together with `buttonLabel` or both null. */
+  buttonHref: text("button_href"),
+  /**
+   * `draft` (editable), `sending` (the send has begun: written before the first broadcast, so a send that dies half way is never sent again by
+   * itself; it stays `sending` when a broadcast's outcome is unknown) or `sent` (frozen). server/newsletter-campaigns.ts sendCampaign.
+   */
+  status: text("status").$type<"draft" | "sending" | "sent">().notNull().default("draft"),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  /** The subscribers in Resend the send was for, per language (a language whose broadcast is missing did not go); null while a draft. */
+  recipients: jsonb("recipients").$type<{ et: number; ru: number } | null>(),
+  /** The Resend broadcast of each language's segment that went (one is recorded as soon as it is made); null while a draft. */
+  broadcasts: jsonb("broadcasts").$type<{ et?: string; ru?: string } | null>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * An address Resend will not send to (newsletter campaigns, spec D10): a bounce, a spam mark or another suppression, recorded from the webhook and
+ * the full sync, and shown to Maria. One row per address (unique index, the address always in lower case as the code stores it); a suppression that
+ * Resend lifts gets `clearedAt`, the row stays. Apart from `subscribers`: a student who never subscribed can be suppressed too. The site never
+ * removes a suppression from Resend.
+ */
+export const mailSuppressions = pgTable("mail_suppressions", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  reason: text("reason").$type<"bounce" | "complaint" | "other">().notNull(),
+  since: timestamp("since", { withTimezone: true }).notNull(),
+  clearedAt: timestamp("cleared_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("mail_suppressions_email").on(t.email)]);
 
 export const clients = pgTable("clients", {
   id: serial("id").primaryKey(),
@@ -767,6 +822,9 @@ export const settings = pgTable("settings", { key: text("key").primaryKey(), val
 // "certificate" {place, registryCode, practicalLine, trainerName, nextYear, nextSeq} (phase 3d: domain/certificate.ts readCertificateSettings)
 // "invoice" {company, registryCode, address, vatNumber, vatOn, vatRate, prefix, nextYear, nextSeq, termDays, footer} (invoices: domain/invoice.ts readInvoiceSettings)
 // "contractContactVersion" the contact course's contract text's version (contracts: domain/contract.ts CONTRACT_CONTACT_VERSION_KEY), as "courseTermsVersion" is the e-course text's
+// "resend_segments" {et, ru, property}: the newsletter's two Resend segments and its contact property unsubscribe_url (newsletter campaigns: server/resend-marketing.ts ensureSegments)
+// "newsletter_sync_lease" {holder, until}: the lease of the one full sync that runs at a time, `until` in epoch ms; absent when none runs (server/resend-marketing.ts fullSync)
+// "resend_test_segment" {id}: the one-contact Resend segment „MS LAB uudiskiri (proov)" of „Saada proov" (newsletter campaigns Task 4: server/resend-marketing.ts sendTestBroadcast)
 
 export const authTokens = pgTable("auth_tokens", { hash: text("hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), usedAt: timestamp("used_at", { withTimezone: true }) });
 export const adminSessions = pgTable("admin_sessions", { idHash: text("id_hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull() });
@@ -821,3 +879,4 @@ export type Certificate = typeof certificates.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
 export type Contract = typeof contracts.$inferSelect;
 export type Review = typeof reviews.$inferSelect;
+export type NewsletterCampaign = typeof newsletterCampaigns.$inferSelect;

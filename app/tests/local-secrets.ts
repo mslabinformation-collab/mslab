@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { E2E_BUNNY } from "./e2e/bunny-values";
 import { E2E_MONTONIO } from "./e2e/montonio-values";
+import { E2E_RESEND } from "./e2e/resend-values";
 
 // The settings of local development and the tests, read from .env.example: placeholders, never a real address (the real
 // ones are Environment Variables of the Vercel project). The Playwright configs hand them to the server they start
@@ -41,6 +42,10 @@ export const LOCAL_ENV = {
   R2_ACCESS_KEY_ID: "",
   R2_SECRET_ACCESS_KEY: "",
   R2_BUCKET: "",
+  // blank, as the R2 ones: the newsletter's Resend side is not set up in an e2e run whatever a .env.local says, so the campaign tests never sync or send
+  RESEND_MARKETING_KEY: "",
+  // the webhook alone is set up: /api/resend/webhook checks the signature of the spec's fake events against this made-up secret (tests/e2e/resend-values.ts)
+  RESEND_WEBHOOK_SECRET: E2E_RESEND.webhookSecret,
   BUNNY_LIBRARY_ID: E2E_BUNNY.libraryId,
   BUNNY_API_KEY: E2E_BUNNY.apiKey,
   BUNNY_TOKEN_KEY: E2E_BUNNY.tokenKey,

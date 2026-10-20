@@ -588,6 +588,77 @@ export async function insertAdminPayments(fx: AdminFixtures): Promise<AdminPayme
   return { paid: paid.reference, held: held.reference, voided: voided.reference, pending: pending.reference, ecourse: ecourse.reference };
 }
 
+/** The newsletter campaigns the admin tests write through the editor (newsletter campaigns Task 4): every name starts with this. */
+export const E2E_CAMPAIGN_PREFIX = "E2E kampaania";
+const campaignNames = (name?: string) => (name ? name : `${E2E_CAMPAIGN_PREFIX}%`);
+
+/** A campaign the editor stored, by its name, as the table holds it (newest first). */
+export type StoredCampaign = {
+  id: number;
+  status: string;
+  code: string | null;
+  subject: { et: string; ru?: string };
+  body: { et: string; ru?: string };
+  imageKey: string | null;
+  buttonLabel: { et: string; ru?: string } | null;
+  buttonHref: string | null;
+};
+export async function storedCampaigns(name: string): Promise<StoredCampaign[]> {
+  const sql = connect(false);
+  try {
+    return [
+      ...(await sql<StoredCampaign[]>`
+        select id, status, code, subject, body, image_key as "imageKey", button_label as "buttonLabel", button_href as "buttonHref"
+        from newsletter_campaigns where name = ${name} order by id desc`),
+    ];
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * A campaign as a send leaves it (newsletter campaigns, Task 5): the e2e run has no Resend key, so a send itself is Dim's live check, and the
+ * states it leaves are set here, in the database. `draft` is the default; `sent` and `sending` carry the counts and broadcasts a send records.
+ * Returns the id. (Removed by removeCampaignRows: the name starts with E2E_CAMPAIGN_PREFIX.)
+ */
+export type CampaignFixture = {
+  name: string;
+  status?: "draft" | "sending" | "sent";
+  imageKey?: string | null;
+  recipients?: { et: number; ru: number } | null;
+  broadcasts?: { et?: string; ru?: string } | null;
+  sentAt?: Date | null;
+};
+export async function insertCampaign(f: CampaignFixture): Promise<number> {
+  if (!f.name.startsWith(E2E_CAMPAIGN_PREFIX)) throw new Error(`e2e: a campaign fixture's name starts with "${E2E_CAMPAIGN_PREFIX}"`);
+  const sql = connect(false);
+  try {
+    const [row] = await sql<{ id: number }[]>`
+      insert into newsletter_campaigns (name, subject, preheader, image_key, body, code, button_label, button_href, status, sent_at, recipients, broadcasts)
+      values (${f.name}, ${sql.json({ et: "E2E saadetud teema", ru: "E2E отправленная тема" })}, ${sql.json({ et: "E2E eelvaate rida" })}, ${f.imageKey ?? null},
+              ${sql.json({ et: "E2E esimene lõik.\n\nE2E teine lõik.", ru: "E2E первый абзац." })}, 'E2E-KOOD',
+              ${sql.json({ et: "Vaata koolitusi", ru: "Смотреть курсы" })}, '/koolitused', ${f.status ?? "draft"}, ${f.sentAt ?? null},
+              ${f.recipients ? sql.json(f.recipients) : null}, ${f.broadcasts ? sql.json(f.broadcasts) : null})
+      returning id`;
+    return row.id;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Deletes the campaigns of one name, or all the admin tests' (E2E_CAMPAIGN_PREFIX); returns how many are left (0 when clean). No page but the admin's shows them. */
+export async function removeCampaignRows(name?: string): Promise<number> {
+  const sql = connect(false);
+  try {
+    const like = campaignNames(name);
+    await sql`delete from newsletter_campaigns where name like ${like}`;
+    const [{ n }] = await sql<{ n: number }[]>`select count(*)::int as n from newsletter_campaigns where name like ${like}`;
+    return Number(n);
+  } finally {
+    await sql.end();
+  }
+}
+
 /** Deletes the admin fixture rows of one tag, or all of them; returns how many are left (0 when clean). */
 export async function removeAdminFixtures(tag?: string): Promise<number> {
   const mails = tag ? `e2e-admin-%-${tag}@example.com` : ADMIN_FIXTURE_EMAIL_PATTERN;

@@ -360,6 +360,12 @@ export const ru: Dict = {
       invoice: "Мария вычтет скидку из вашего счёта.",
       unsubscribe: "Если вы не подписывались сами или больше не хотите получать письма MS LAB, отпишитесь здесь: {link}",
     },
+    // The footer of a newsletter campaign (server/campaign-mail.ts campaignMail; newsletter campaigns, spec D5): Draft for Dim's wording sheet, both
+    // lines (the Estonian ones are the spec's own words, also Draft). `unsubscribe` is the label of the unsubscribe page's own button.
+    campaign: {
+      reason: "Вы получили это письмо, потому что подписались на рассылку MS LAB.",
+      unsubscribe: "Отписаться от рассылки",
+    },
   },
 
   cart: {

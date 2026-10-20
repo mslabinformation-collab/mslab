@@ -89,8 +89,9 @@ const nextConfig: NextConfig = {
       { source: "/api/auth/:path*", headers: noStore },
       { source: "/api/admin/:path*", headers: noStore },
       // Maria's invoice and contract downloads (invoices Task 5; contracts Task 5): the PDF, the month's CSV and the samples are private as well as never kept
-      // (the rule above would leave them at plain no-store: a header given here replaces the route's own)
-      ...["/api/admin/arve/:id", "/api/admin/arved", "/api/admin/naidisarve", "/api/admin/leping/:id", "/api/admin/naidisleping"].map((source) => ({
+      // (the rule above would leave them at plain no-store: a header given here replaces the route's own); so is the campaign editor's preview (newsletter
+      // campaigns Task 4), the mail of a campaign not yet saved
+      ...["/api/admin/arve/:id", "/api/admin/arved", "/api/admin/naidisarve", "/api/admin/leping/:id", "/api/admin/naidisleping", "/api/admin/kampaania-eelvaade"].map((source) => ({
         source,
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
       })),

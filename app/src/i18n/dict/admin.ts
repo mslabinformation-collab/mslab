@@ -1506,6 +1506,181 @@ export const adminEt = {
       yes: "jah",
       no: "ei",
     },
+    // Maria's campaign editor (newsletter campaigns Task 4, `campaigns` below): the text under a field that domain/newsletter-campaign.ts
+    // checkCampaignDraft refuses with `ruLabel` (a button and a Russian text, but no Russian label). Draft for Dim's wording sheet.
+    campaignErrors: { ruLabel: "Lisa nupu tekst ka vene keeles." },
+    // The sync with Resend above the list (newsletter campaigns Task 3, spec D2, D8, §5; components/admin/NewsletterSync.tsx). Quoted from the spec:
+    // the button (D2), the warning at 900 (D8, Draft there), the limit line (§5, Draft there) and the connection error (§5, Draft there). The report's
+    // one line and the not-set-up text are the brief's (Draft). Every other text here is Draft for Dim's wording sheet.
+    sync: {
+      button: "Sünkrooni Resendiga",
+      working: "Sünkroonin…",
+      off: "Resendi uudiskirja saatmine pole veel seadistatud.",
+      // Resend's own count of the account's contacts, and the site's count of its subscribers it has synced (it is shown alone when Resend does not answer)
+      resendContacts: "Resendis {n} kontakti (tasuta pakett: 1000)",
+      siteContacts: "Sünkroonitud tellijaid: {n}",
+      siteContactsOnly: "Sünkroonitud tellijaid: {n} (tasuta pakett: 1000)",
+      warn: "Resendi tasuta paketis on 1000 kontakti. Üle selle on vaja tasulist paketti.",
+      limit: "{n} tellijat ei ole Resendis — kontaktide piir on täis.",
+      // the last sync's report: one line, and a line each only when it has something to say
+      report: "{added} lisatud, {removed} eemaldatud, {unsubscribedPulled} loobus Resendis",
+      reportSuppressed: "Resend ei saada kirju {n} tellija aadressile (tagastus või rämpspostiks märgitud).",
+      reportFailed: "{n} kontakti sünkroonimine ebaõnnestus, järgmine sünkroonimine proovib uuesti.",
+      // ruling R17: the addresses Resend refused as contacts in this sync (each marked on its row below with `rejected`)
+      reportRejected: "Resend ei võtnud vastu {n} aadressi: need on allpool loendis märgitud.",
+      unfinished: "Sünkroonimine jätkub järgmisel korral.",
+      errors: {
+        unavailable: "Resendiga ei saanud ühendust — proovi hiljem uuesti.",
+        notConfigured: "Resendi uudiskirja saatmine pole veel seadistatud.",
+        permission: "Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.",
+        busy: "Sünkroonimine juba käib — proovi hetke pärast uuesti.",
+        server: "Sünkroonimine ei õnnestunud. Proovi uuesti.",
+      },
+    },
+    // A subscriber's address that Resend does not mail (a bounce or a spam mark; spec D10, Draft there): on her row here and in her drawer in Õpilased
+    suppressed: "Resend ei saada sellele aadressile kirju (tagastus või rämpspostiks märgitud). Seda saab muuta ainult Resendis.",
+    // ruling R17: a subscriber whose address Resend refused as a contact (she gets no campaign; it never stops a send). Draft.
+    rejected: "Resend ei võtnud seda aadressi vastu.",
+    // The page's two views (newsletter campaigns Task 4): the subscribers, and the campaigns (?vaade=kampaaniad). „Kampaaniad“ is the spec's (D4);
+    // the rest is Draft.
+    viewsLabel: "Vaade",
+    views: { subscribers: "Tellijad", campaigns: "Kampaaniad" },
+    // „Kampaaniad“ (newsletter campaigns Task 4; spec D4–D6, §5; rulings R4, R5, R7; components/admin/CampaignsPanel.tsx, NewsletterCampaignEditor.tsx).
+    // Quoted from the spec as they are: „Kampaaniad“, „Saada proov“, „Saada kõigile“, „Saada“, the confirmation, „Saadetud {date} · {n} tellijale“,
+    // „Kopeeri“, „Vene keeles tellijad saavad eestikeelse kirja.“, the contact limit's line and the connection error (the last three Draft there).
+    // „Tühi rida alustab uut lõiku.“ is the site editors' own. Every other text here is a Draft for Dim's wording sheet.
+    // {n} a count, {max} a limit, {date} a time, {a} / {b} the Estonian and the Russian counts, {email} an address, {name} a campaign's name.
+    campaigns: {
+      title: "Kampaaniad",
+      lead: "Kiri kõigile uudiskirja tellijatele: eesti keeles ja soovi korral vene keeles. Vaata eelvaadet, saada endale proov ja siis kõigile.",
+      list: "Kampaaniad",
+      new: "Uus kampaania",
+      empty: "Kampaaniaid veel pole.",
+      status: { draft: "Mustand", sending: "Saatmine pooleli", sent: "Saadetud" },
+      changed: "Muudetud {date}",
+      notFound: "Seda kampaaniat enam pole.",
+      newTitle: "Uus kampaania",
+      // the editor's fields
+      form: "Kampaania",
+      name: "Nimi",
+      nameHint: "Ainult sulle: tellijad seda ei näe.",
+      subject: "Teema",
+      preheader: "Eelvaate rida",
+      preheaderHint: "Hall rida teema järel enamikus postkastides. Võib jääda tühjaks.",
+      image: "Pilt",
+      imageHint: "Näiteks sinu flaier: kirjas on see kaardi täies laiuses.",
+      body: "Tekst",
+      bodyHint: "Tühi rida alustab uut lõiku.",
+      code: "Kood",
+      codeHint: "Näidatakse kastis nagu tervituskoodi. Ainult tähed, numbrid ja sidekriips.",
+      buttonLabel: "Nupu tekst",
+      buttonHref: "Nupu aadress",
+      buttonHrefHint: "Saidi leht (nt /koolitused) või https:// aadress. Nupp on kirjas siis, kui tekst ja aadress on mõlemad olemas.",
+      count: "{n} / {max}",
+      countI18n: "ET {et} / {max} · RU {ru} / {max}",
+      // the field errors of domain/newsletter-campaign.ts checkCampaignDraft (its `ruLabel` is `campaignErrors.ruLabel` above)
+      errors: { required: "Täida see väli.", tooLong: "Tekst on liiga pikk.", invalid: "Kontrolli seda välja." },
+      // the live preview (the real mail, from the preview route)
+      preview: "Eelvaade",
+      previewSubject: "Teema",
+      previewFallback: "Vene keeles tellijad saavad eestikeelse kirja.",
+      previewFrame: "Kirja eelvaade: {lang}",
+      previewWorking: "Uuendan eelvaadet…",
+      previewError: "Eelvaadet ei saanud näidata. Proovi uuesti.",
+      // the sends
+      send: "Saatmine",
+      off: "Resendi uudiskirja saatmine pole veel seadistatud.",
+      saveFirst: "Salvesta muudatused enne saatmist.",
+      test: {
+        title: "Saada proov",
+        lead: "Proov on täpselt see kiri, mille tellijad saavad, teemas „[Proov]“.",
+        to: "Kellele",
+        toMaria: "Maria: {email}",
+        toMe: "Mina: {email}",
+        language: "Keel",
+        languages: { et: "Eesti keeles", ru: "Vene keeles" },
+        button: "Saada proov",
+        working: "Saadan proovi…",
+        sent: "Proov läks aadressile {email}. Kiri jõuab mõne minuti jooksul.",
+        realLink: "Proov läheb tellija-aadressile — selle loobumislink on päris.",
+      },
+      all: {
+        title: "Saada kõigile",
+        lead: "Enne kinnitust sünkroonitakse tellijad Resendiga ja näed, mitmele kiri läheb.",
+        button: "Saada kõigile",
+        checking: "Sünkroonin tellijad Resendiga…",
+        confirm: "Saadad kampaania {n} tellijale (eesti keeles {a}, vene keeles {b}). Kas saadame?",
+        fallback: "Vene keeles tellijad saavad eestikeelse kirja.",
+        left: "{n} tellijat ei ole Resendis — kontaktide piir on täis.",
+        yes: "Saada",
+        no: "Tühista",
+        working: "Saadan…",
+        done: "Kampaania on saadetud.",
+        // ruling R14: the counts after the send's own sync are not the ones confirmed: nothing is sent, and the new counts are shown to confirm
+        changed: "Tellijate arv muutus vahepeal — vaata üle ja kinnita uuesti.",
+        // the review's M3: the campaign was saved elsewhere after the confirmation: nothing is sent, and the editor here shows the older text
+        edited: "Kampaaniat muudeti vahepeal mujal (nt teises aknas), seega ei saadetud midagi. Laadi leht uuesti ja vaata kampaania üle.",
+        // ruling R17: subscribers whose address Resend refused as a contact (marked in the list): the send goes to the others
+        rejected: "{n} tellija aadressi Resend vastu ei võtnud: neile kiri ei lähe.",
+      },
+      // a sent campaign (read-only), and one whose send stopped half way
+      sentLine: "Saadetud {date} · {n} tellijale",
+      readOnly: "Saadetud kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.",
+      // a campaign sent in part (one language went, or its send stopped half way): „Kopeeri“ is for a new campaign, never to send this one again
+      readOnlyHalf: "Seda kampaaniat ei saa muuta. „Kopeeri“ on uue kampaania jaoks: koopia saatmine läheks ka neile, kellele see kiri juba läks.",
+      sending: "Saatmine jäi pooleli: ühe keele kirja kohta ei tulnud Resendilt vastust. Allpool on iga keele kohta kirjas, mis on teada.",
+      // (the review's M1) Resend's list of broadcasts, where one whose answer never came is found; ruling R16: what to do instead of „Kopeeri“
+      broadcastsList: "Ava Resendi kampaaniate loend",
+      sendingCheck: "Ära saada seda kampaaniat uuesti „Kopeeri“ kaudu: koopia võib minna ka neile, kellele kiri juba läks. Kui Resendis selle keele kirja pole, vajuta selle juures „Märgi saatmata“.",
+      // ruling R16: each language of a half-sent campaign with its state ({date} the send's time, {n} its subscribers, {lang} langNames)
+      langSent: "Saadetud {date} · {n} tellijale ({lang})",
+      langUnknown: "Pole teada, kas kiri läks ({lang}): Resendilt ei tulnud vastust.",
+      // the re-review's N2: a language after the one without an answer was never tried
+      langNotTried: "Ei saadetud ({lang}) — eelmine keel jäi vastuseta.",
+      listUnknown: "pole teada ({lang})",
+      listNotTried: "ei saadetud ({lang})",
+      // ruling R16: Maria has looked in Resend and that language's mail is not there; {keel} the language as the question needs it
+      markNotSent: {
+        button: "Märgi saatmata",
+        confirm: "Kas kontrollisid Resendis, et {keel} kirja seal pole?",
+        keel: { et: "eestikeelset", ru: "venekeelset" },
+        yes: "Jah, märgi saatmata",
+        no: "Tühista",
+        working: "Märgin…",
+        done: "Märgitud saatmata.",
+      },
+      openInResend: "Ava Resendis ({lang})",
+      langNames: { et: "eesti keeles", ru: "vene keeles" },
+      missing: { et: "Eestikeelne kiri jäi saatmata — saada see nupuga „Saada puuduv keel“.", ru: "Venekeelne kiri jäi saatmata — saada see nupuga „Saada puuduv keel“." },
+      // ruling R12: a campaign sent in one language only (Resend refused the other) sends the missing language alone
+      sendMissing: { title: "Saada puuduv keel", lead: "Kiri läheb ainult selle keele tellijatele, kellele see jäi saatmata.", button: "Saada puuduv keel" },
+      copy: "Kopeeri",
+      copying: "Kopeerin…",
+      // the copy's name: the campaign's own with this after it (cut to the name's limit)
+      copySuffix: " (koopia)",
+      // the page behind a test contact's unsubscribe link (/api/newsletter/loobu?proov=1, ruling R4): it changes nothing
+      testPage: "Proovikiri — päris kirjas viib see link loobumisele.",
+      // what an action answers when it did not go through
+      errorsOf: {
+        notFound: "Seda kampaaniat enam pole.",
+        sent: "See kampaania on juba saadetud.",
+        notConfigured: "Resendi uudiskirja saatmine pole veel seadistatud.",
+        unavailable: "Resendiga ei saanud ühendust — proovi hiljem uuesti.",
+        permission: "Resendi võtmel pole õigusi kontakte hallata — vaja on täisõigustega võtit.",
+        busy: "Sünkroonimine juba käib — proovi hetke pärast uuesti.",
+        unsynced: "Kõiki tellijaid ei saanud Resendiga sünkroonida, seega ei saadetud midagi. Vaata „Tellijad“ vaates nupu „Sünkrooni Resendiga“ tulemust.",
+        empty: "Resendis pole ühtegi tellijat: kirja pole kellelegi saata.",
+        interrupted: "Saatmine jäi pooleli: pole teada, kas kiri läks välja. Vaata Resendist, enne kui midagi uuesti saadad.",
+        limited: "Proovikirju saab saata kuni 10 tunnis. Proovi hiljem uuesti.",
+        // the review's M7: the test address is a subscriber's whose contact unsubscribed in Resend: Resend would not deliver it, so nothing went
+        unsubscribed: "Proovi ei saadetud: see aadress on Resendis uudiskirjast loobunud, nii et kampaania sinna ei jõuaks.",
+        // ruling R16: only the first language of the send whose mail is not recorded can be marked
+        earlier: "Märgi enne saatmata eestikeelne kiri.",
+        address: "Sellele aadressile ei saa proovi saata.",
+        server: "Ei õnnestunud. Proovi uuesti.",
+        changed: "Tellijate arv muutus vahepeal — vaata üle ja kinnita uuesti.",
+      },
+    },
   },
   // ---------- Task 13B: the site content editors ----------
 

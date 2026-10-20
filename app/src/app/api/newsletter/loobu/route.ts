@@ -1,10 +1,13 @@
-import { NextResponse } from "next/server";
-import { getDb } from "@/db/client";
+import { after, NextResponse } from "next/server";
+import { getDb, type Db } from "@/db/client";
 import { crossSiteFormPost } from "@/server/auth";
+import { serverEnv } from "@/server/env";
 import { serverKv } from "@/server/kv";
 import { logFailure } from "@/server/log";
 import { subscriberLocale, unsubscribeByToken } from "@/server/newsletter";
-import { unsubscribePage } from "@/server/unsubscribe-page";
+import type { TextKv } from "@/server/ratelimit";
+import { subscriberSync } from "@/server/resend-marketing";
+import { testUnsubscribePage, unsubscribePage } from "@/server/unsubscribe-page";
 import { isTokenShape } from "@/server/token";
 
 /**
@@ -17,13 +20,19 @@ import { isTokenShape } from "@/server/token";
  *   with the notice ?uudiskiri=loobutud. Unsubscribing is idempotent and reveals nothing: an unknown or malformed token, or a button pressed
  *   twice, gets the very same answer in Estonian. Only when the database could not be reached is the visitor told so (?uudiskiri=viga),
  *   never that she is unsubscribed when she is not. A cross-site POST is refused with 403, like the other routes' writes. The row's
- *   once-a-year welcome mark goes with it, so signing up again later gets a fresh welcome.
+ *   once-a-year welcome mark goes with it, so signing up again later gets a fresh welcome. With the newsletter's Resend key set, her Resend
+ *   contact is deleted after the response (newsletter campaigns, spec D3; best effort: the full sync deletes it otherwise).
  * - HEAD (below) does nothing.
+ * - GET with `?proov` (newsletter campaigns ruling R4) is the link of „Saada proov“'s mail to an address that is no subscriber: a page that says
+ *   it is a test („Proovikiri — päris kirjas viib see link loobumisele.“), without a form, whatever else the address carries; it changes nothing.
  * The page's headers other than the type and the cache are next.config.ts's (headers() replaces a route's own): noindex, and Referrer-Policy
  * same-origin. That must never become no-referrer: a form posted from such a document carries `Origin: null`.
  */
 export async function GET(request: Request): Promise<Response> {
-  const token = new URL(request.url).searchParams.get("t") ?? "";
+  const params = new URL(request.url).searchParams;
+  // a test campaign's link (newsletter campaigns ruling R4: „Saada proov“ to an address that is no subscriber): it says so and changes nothing
+  if (params.has("proov")) return new Response(testUnsubscribePage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  const token = params.get("t") ?? "";
   let locale: "et" | "ru" = "et";
   try {
     locale = (await subscriberLocale(getDb(), token)) ?? "et";
@@ -48,7 +57,9 @@ export async function POST(request: Request): Promise<Response> {
   let page = "/";
   let outcome = "loobutud";
   try {
-    const gone = await unsubscribeByToken(getDb(), serverKv(), token);
+    const db = getDb();
+    const kv = serverKv();
+    const gone = await unsubscribeByToken(db, kv, token, (email) => deleteContactLater(db, kv, email));
     if (gone?.locale === "ru") page = "/ru";
   } catch (e) {
     logFailure("[newsletter] unsubscribe failed", e); // never the message: it would contain the token
@@ -59,6 +70,19 @@ export async function POST(request: Request): Promise<Response> {
   const res = NextResponse.redirect(target, 303);
   res.headers.set("cache-control", "no-store");
   return res;
+}
+
+/**
+ * Her Resend contact goes after the response (newsletter campaigns, spec D3; resend-marketing.ts subscriberSync): nothing without the newsletter's
+ * key, and nothing here can undo or fail the unsubscribe that has happened (the full sync deletes the contact otherwise).
+ */
+function deleteContactLater(db: Db, kv: TextKv, email: string): void {
+  try {
+    const sync = subscriberSync(db, { ...serverEnv(), KV: kv });
+    if (sync) after(() => sync(email));
+  } catch (e) {
+    logFailure("[newsletter] unsubscribe: the Resend contact's deletion was not scheduled", e);
+  }
 }
 
 /** Mail scanners and link previews often send HEAD first; Next would run GET for it. Nothing happens here. */

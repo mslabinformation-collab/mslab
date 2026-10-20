@@ -2,16 +2,22 @@ import { readFileSync } from "node:fs";
 import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
 import { signInAsAdmin } from "./admin-login";
+import { PROD_ENV } from "./prod-build";
+import { DEV_ENV } from "./server";
+import { PROD_BUILD } from "./target";
 import { smallTargets } from "./targets";
 import {
   deleteStoredRequest,
+  E2E_CAMPAIGN_PREFIX,
   insertAdminFixtures,
   insertAdminPayments,
   removeAdminFixtures,
   removeAdminRows,
+  removeCampaignRows,
   requestHandled,
   setStoredStatus,
   storedAdminRegistration,
+  storedCampaigns,
   type AdminFixtures,
 } from "./fixtures";
 
@@ -520,6 +526,92 @@ test.describe("signed in", () => {
     const body = await confirmed.text();
     expect(body).toContain(f.subscribers.confirmed);
     expect(body).not.toContain(f.subscribers.pending);
+  });
+
+  // „Kampaaniad“ (newsletter campaigns, Task 4): the editor with the live preview of both languages, saved; the run has no marketing key
+  // (tests/local-secrets.ts LOCAL_ENV), so the two sends say that sending is not set up, and nothing is ever synced or sent.
+  test("newsletter campaigns: a new campaign, the preview of the real mail in both languages, saved; without the key the sends send nothing", async ({ page, context, visitorIp }, info) => {
+    const name = `${E2E_CAMPAIGN_PREFIX} ${info.project.name} ${Date.now()}`;
+    // the mail's logo and links hang on the server's SITE_URL (the dev server's own address, or the production build's: headers.spec.ts)
+    const site = PROD_BUILD ? PROD_ENV.SITE_URL : DEV_ENV.SITE_URL;
+    try {
+      await signIn(page, context, visitorIp);
+      await page.goto("/admin/uudiskiri");
+      await page.locator("[data-newsletter-views]").getByRole("link", { name: "Kampaaniad" }).click();
+      await expect(page).toHaveURL(/\/admin\/uudiskiri\?vaade=kampaaniad$/);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Kampaaniad");
+      await page.locator("[data-campaign-new]").click();
+      await expect(page).toHaveURL(/kampaania=uus$/);
+      const form = page.locator("[data-campaign-form]");
+      await expect(form).toHaveAttribute("data-campaign-form", "new");
+
+      await form.locator('[data-field="name"]').fill(name);
+      await form.locator('[data-i18n="subject"]').fill("E2E teema");
+      await form.locator('[data-i18n="body"]').fill("E2E esimene lõik.\n\nE2E teine lõik.");
+      await form.locator('[data-field="code"]').fill("e2e-kood");
+      await form.locator('[data-i18n="buttonLabel"]').fill("Vaata koolitusi");
+      await form.locator('[data-field="buttonHref"]').fill("/koolitused");
+      await expect(form.locator('[data-campaign-count="subject"]')).toHaveText("ET 9 / 150 · RU 0 / 150");
+
+      // the Estonian preview: the real mail, its links on SITE_URL, the unsubscribe link the test page's
+      const et = page.frameLocator('[data-campaign-preview-frame="et"]');
+      await expect(et.getByText("E2E teine lõik.")).toBeVisible();
+      await expect(et.getByText("E2E-KOOD")).toBeVisible();
+      await expect(et.locator('img[alt="MS LAB"]')).toHaveAttribute("src", `${site}/brand/logo.png`);
+      await expect(et.getByRole("link", { name: "Vaata koolitusi" }).first()).toHaveAttribute("href", `${site}/koolitused`);
+      await expect(et.getByRole("link", { name: "Loobu uudiskirjast" })).toHaveAttribute("href", `${site}/api/newsletter/loobu?proov=1`);
+      await expect(page.locator("[data-campaign-preview-subject]")).toHaveText("E2E teema");
+
+      // the Russian preview without a Russian text: the Estonian text under the Russian footer, and it says so
+      const preview = page.locator("[data-campaign-preview]");
+      await preview.locator('[data-lang="ru"]').click();
+      await expect(page.locator("[data-campaign-preview-fallback]")).toHaveText("Vene keeles tellijad saavad eestikeelse kirja.");
+      const ru = page.frameLocator('[data-campaign-preview-frame="ru"]');
+      await expect(ru.getByText("E2E teine lõik.")).toBeVisible();
+      await expect(ru.getByText("Отписаться от рассылки")).toBeVisible();
+
+      // with its Russian texts: the Russian preview follows the typing
+      for (const [key, value] of [
+        ["subject", "E2E тема"],
+        ["body", "E2E русский абзац."],
+        ["buttonLabel", "Смотреть курсы"],
+      ] as const) {
+        const field = form.locator(`[data-i18n="${key}"]`);
+        await field.locator("xpath=..").locator('[data-lang="ru"]').click();
+        await form.locator(`[data-i18n="${key}"]`).fill(value);
+      }
+      await expect(ru.getByText("E2E русский абзац.")).toBeVisible();
+      await expect(page.locator("[data-campaign-preview-fallback]")).toHaveCount(0);
+      await expect(page.locator("[data-campaign-preview-subject]")).toHaveText("E2E тема");
+
+      // not set up: the sends say so before and after the save
+      await expect(page.locator("[data-campaign-send-off]")).toHaveText("Resendi uudiskirja saatmine pole veel seadistatud.");
+      await page.getByRole("button", { name: "Salvesta" }).click();
+      await expect(page).toHaveURL(/kampaania=\d+$/);
+      await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
+      const [row] = await storedCampaigns(name);
+      expect(row).toMatchObject({ status: "draft", code: "E2E-KOOD", subject: { et: "E2E teema", ru: "E2E тема" }, body: { et: "E2E esimene lõik.\n\nE2E teine lõik.", ru: "E2E русский абзац." } });
+      await expect(form).toHaveAttribute("data-campaign-form", String(row.id));
+      await expect(page.locator(`[data-campaign-row="${row.id}"] [data-campaign-status]`)).toHaveText("Mustand");
+      await expect(page.locator("[data-test-to]")).toHaveCount(0);
+      for (const button of ["[data-test-send]", "[data-send-all]"]) {
+        await expect(page.locator(button)).toHaveAttribute("aria-disabled", "true");
+        await page.locator(button).dispatchEvent("click"); // (a press anyway: nothing happens)
+      }
+      await expect(page.locator("[data-send-confirm]")).toHaveCount(0);
+      await expect(page.locator("[data-send-status]")).toHaveText("");
+      expect((await storedCampaigns(name))[0].status).toBe("draft");
+
+      // opened again: the stored fields
+      await page.reload();
+      await expect(form.locator('[data-field="name"]')).toHaveValue(name);
+      await expect(form.locator('[data-field="code"]')).toHaveValue("E2E-KOOD");
+      expect(await noOverflow(page)).toBe(true);
+      // (the picture's file input is pressed through its label, as in admin-site.spec.ts's phone check)
+      if (info.project.name === "mobile") expect((await smallTargets(page.locator("main"))).filter((html) => !html.includes('type="file"'))).toEqual([]);
+    } finally {
+      expect(await removeCampaignRows(name)).toBe(0);
+    }
   });
 
   test("phone: the sidebar is a top bar with a menu drawer (Esc closes it)", async ({ page, context, visitorIp, isMobile }) => {

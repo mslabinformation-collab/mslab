@@ -1,0 +1,52 @@
+/* The sync with Resend above Maria's „Uudiskiri“ list (NewsletterSync). Buttons, the notice, hints and the success/error lines come from
+   ui.module.css; colours from tokens.css only. The button is the admin's 44 px one. */
+
+.sync {
+  display: grid;
+  gap: 14px;
+}
+
+/* the notice's own bottom margin is for a page; here the grid's gap spaces it */
+.sync > p {
+  margin: 0;
+}
+
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+}
+
+.count {
+  margin: 0;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+}
+
+.status {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.status:empty {
+  display: none;
+}
+
+.status > p {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .run > button {
+    width: 100%;
+  }
+}

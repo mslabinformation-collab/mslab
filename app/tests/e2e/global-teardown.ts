@@ -1,4 +1,4 @@
-import { LOCAL_FIXTURES, removeAdminFixtures, removeAdminRows, removeClientRows, removeEditRows, removeFormRows, removeLeftoverReviewFixtures, removePostRows, removeSeatFixtures, restoreLeftoverCourses, restoreLeftoverRows } from "./fixtures";
+import { LOCAL_FIXTURES, removeAdminFixtures, removeAdminRows, removeCampaignRows, removeClientRows, removeEditRows, removeFormRows, removeLeftoverReviewFixtures, removePostRows, removeSeatFixtures, restoreLeftoverCourses, restoreLeftoverRows } from "./fixtures";
 import { assertLocalDatabases } from "./local-db";
 import { removeLeftoverComments, removeRateLimitRows } from "./local-kv";
 
@@ -11,7 +11,17 @@ export default async function globalTeardown(): Promise<void> {
   assertLocalDatabases();
   await removeRateLimitRows(); // the tests' rate limit counters (one per visitor, holding addresses); not a failure, so removed first
   // a course still snapshotted means a content test did not restore it (restored now, but the run fails)
-  const left = (await removeFormRows()) + (await removeAdminRows()) + (await removeAdminFixtures()) + (await removeEditRows()) + (await restoreLeftoverCourses()) + (await restoreLeftoverRows()) + (await removePostRows()) + (await removeClientRows()) + (await removeLeftoverReviewFixtures());
+  const left =
+    (await removeFormRows()) +
+    (await removeAdminRows()) +
+    (await removeAdminFixtures()) +
+    (await removeCampaignRows()) +
+    (await removeEditRows()) +
+    (await restoreLeftoverCourses()) +
+    (await restoreLeftoverRows()) +
+    (await removePostRows()) +
+    (await removeClientRows()) +
+    (await removeLeftoverReviewFixtures());
   await removeSeatFixtures();
   if (left !== 0) throw new Error(`e2e: ${left} rows of the form / sign-in / account / admin inbox / review / content tests were left in the database`);
   // review comments the feedback tests posted to the dev server's local KV (each test deletes its own)
