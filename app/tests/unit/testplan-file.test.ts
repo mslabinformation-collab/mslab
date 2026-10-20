@@ -426,7 +426,7 @@ describe("the Resend sync check sits after the subscriber it syncs", () => {
 // her). The checks that send are Dim's (the key, and test addresses only); the others are Maria's.
 describe("the campaign checks follow the sync check, in the order a campaign lives", () => {
   const order = plan.items.map((i) => i.id);
-  const IDS = ["avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-proov", "avalik-uudiskiri-kampaania-saada", "avalik-uudiskiri-kampaania-loobu", "avalik-uudiskiri-kampaania-kopeeri"];
+  const IDS = ["avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-proov", "avalik-uudiskiri-kampaania-muudetud", "avalik-uudiskiri-kampaania-saada", "avalik-uudiskiri-kampaania-loobu", "avalik-uudiskiri-kampaania-kopeeri"];
   const item = (id: string) => {
     const found = plan.items.find((i) => i.id === id);
     expect(found, id).toBeDefined();
@@ -447,7 +447,7 @@ describe("the campaign checks follow the sync check, in the order a campaign liv
   });
 
   test("the sends are Dim's; writing, the unsubscribe from Proov 3's mailbox and „Kopeeri“ are Maria's", () => {
-    expect(IDS.map((id) => item(id).who)).toEqual(["maria", "dim", "dim", "maria", "maria"]);
+    expect(IDS.map((id) => item(id).who)).toEqual(["maria", "dim", "dim", "dim", "maria", "maria"]);
     // the send goes to test addresses only: Dim stops when the list holds any other
     expect(text("avalik-uudiskiri-kampaania-saada")).toContain("+proov");
     expect(text("avalik-uudiskiri-kampaania-saada")).toContain("ära jätka");
@@ -486,6 +486,17 @@ describe("the campaign checks follow the sync check, in the order a campaign liv
     expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain("„Õpilased“");
     // a blocked address needs a real bounce: without one the check says how to skip it
     expect(text("avalik-uudiskiri-blokeeritud-opilane")).toContain("jäta see kontroll vahele");
+  });
+
+  test("the final wave's extra round, N4: the refusal of a campaign changed in another tab has its check, Dim's, between the test and the send, quoting the page", () => {
+    const changed = item("avalik-uudiskiri-kampaania-muudetud");
+    expect(changed).toMatchObject({ who: "dim", mark: "new" });
+    expect(text("avalik-uudiskiri-kampaania-muudetud")).toContain(`„${t.all.edited.slice(0, t.all.edited.indexOf(" Laadi"))} …“`);
+    expect(text("avalik-uudiskiri-kampaania-muudetud")).toContain(`„${t.all.button}“`);
+    expect(text("avalik-uudiskiri-kampaania-muudetud")).toContain(`„${t.all.yes}“`);
+    // it changes only the preview line, so the send's check after it still finds its subject
+    expect(text("avalik-uudiskiri-kampaania-muudetud")).toContain("„Eelvaate rida“");
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain("„Proov 3 pakkumine“");
   });
 
   test("the sync and the test quote the marks and answers the final wave added (rulings R17, M7)", () => {

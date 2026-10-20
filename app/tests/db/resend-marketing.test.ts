@@ -651,13 +651,16 @@ describe("ruling R17: an address Resend refuses as a contact is `rejected`, neve
     expect(await rejectedSubscribers(db, [row.id])).toEqual(new Set());
   });
 
-  test("an update Resend refuses for the address is `rejected` too (the row's language changed, the contact exists)", async () => {
+  test("the re-review's N3: only a refused new contact is `rejected`; a refused update stays a failure (her contact stays where it was) and the row is not marked", async () => {
     await ensureSegments(deps());
     const c = fake.add("kati@example.com", { segments: [ET()] });
     const row = await sub("kati@example.com", { locale: "ru", resendContactId: c.id });
     fake.fail.set("contacts.update", INVALID_EMAIL);
-    expect(await fullSync(deps())).toMatchObject({ rejected: 1, failed: 0, unsynced: 0, finished: true });
-    expect(await rejectedSubscribers(db, [row.id])).toEqual(new Set([row.id]));
+    expect(await fullSync(deps())).toMatchObject({ rejected: 0, failed: 1, unsynced: 1 });
+    expect(await rejectedSubscribers(db, [row.id])).toEqual(new Set());
+    expect([...fake.contacts.get(c.id)!.segments]).toEqual([ET()]); // (still in the old language's segment: why it must stop a send)
+    expect(await syncAddress(deps(), "kati@example.com")).toBe("failed");
+    expect(logged()).toContain(`subscriber ${row.id}: contact ${c.id} not updated`);
   });
 
   test("the address's own sync (a sign-up): 'rejected', the row marked; once Resend takes her, 'synced' and the mark is gone", async () => {

@@ -1635,7 +1635,10 @@ export const adminEt = {
       // ruling R16: each language of a half-sent campaign with its state ({date} the send's time, {n} its subscribers, {lang} langNames)
       langSent: "Saadetud {date} · {n} tellijale ({lang})",
       langUnknown: "Pole teada, kas kiri läks ({lang}): Resendilt ei tulnud vastust.",
+      // the re-review's N2: a language after the one without an answer was never tried
+      langNotTried: "Ei saadetud ({lang}) — eelmine keel jäi vastuseta.",
       listUnknown: "pole teada ({lang})",
+      listNotTried: "ei saadetud ({lang})",
       // ruling R16: Maria has looked in Resend and that language's mail is not there; {keel} the language as the question needs it
       markNotSent: {
         button: "Märgi saatmata",

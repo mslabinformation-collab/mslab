@@ -592,7 +592,8 @@ function BroadcastLink({ locale, id }: { locale: Lang; id: string }) {
 
 /**
  * A campaign whose send stopped half way (`sending`, rulings R13, R16): each language of the send with what is known of it, the one that went with
- * its time, its count and its Resend link, the one without an answer said so; Resend's list of broadcasts; and, for the language Maria may now
+ * its time, its count and its Resend link, the one without an answer said so, and one after it as never sent (the re-review's N2); Resend's list of
+ * broadcasts; and, for the language Maria may now
  * mark (unsentCandidate: the first without a recorded broadcast), „Märgi saatmata“ behind the question whether she has looked in Resend. Never
  * „Kopeeri“ as the way on: it would mail the language that went a second time.
  */
@@ -614,6 +615,10 @@ function HalfSent({ campaign }: { campaign: CampaignEditorView }) {
                 </p>
                 <BroadcastLink locale={l.locale} id={l.broadcast} />
               </>
+            ) : l.state === "notTried" ? (
+              <p className={ui.hint} data-campaign-language-line="">
+                {fill(t.langNotTried, { lang: t.langNames[l.locale] })}
+              </p>
             ) : (
               <>
                 <p className={ui.error} data-campaign-language-line="">

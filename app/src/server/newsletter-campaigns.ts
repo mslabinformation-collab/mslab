@@ -17,7 +17,7 @@ import { isStorableImageKey, mediaUrl } from "@/lib/media";
 import { toStorable } from "@/lib/to-storable";
 import { campaignMail, TEST_SUBJECT_PREFIX } from "./campaign-mail";
 import { getInvoiceSettings } from "./invoices";
-import { logFailure } from "./log";
+import { logFailure, logNote } from "./log";
 import { releaseSlot, reserveSlot, windowKey } from "./ratelimit";
 import {
   FullSyncBusy,
@@ -29,6 +29,7 @@ import {
   recipientCounts,
   sendTestBroadcast,
   testUnsubscribeUrl,
+  underNewsletterLease,
   UNSUBSCRIBE_PLACEHOLDER,
   type BroadcastMail,
   type FullSyncReport,
@@ -459,6 +460,13 @@ export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: C
       }
 
       const { previous, sending } = marked;
+      // every later write of this send lands only on the `sending` row it wrote itself (the re-review's N1): a row reset meanwhile (by hand, or a
+      // lease that ran out) is never written onto, so no broadcast is ever recorded on a draft that a later „Saada kõigile“ would send again
+      const ours = and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending"), eq(newsletterCampaigns.updatedAt, sending.updatedAt));
+      const lost = (what: string): SendResult => {
+        logNote(`[newsletter] campaign ${id}: ${what}, but the campaign is no longer this send's \`sending\` row: nothing recorded, nothing more sent`);
+        return { ok: false, error: "interrupted" };
+      };
       const draft = draftOf(sending);
       const went: { et?: string; ru?: string } = { ...sending.broadcasts };
       const sentNow: Locale[] = [];
@@ -476,7 +484,8 @@ export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: C
         if (result.ok) {
           went[locale] = result.id;
           sentNow.push(locale);
-          await deps.db.update(newsletterCampaigns).set({ broadcasts: { ...went } }).where(eq(newsletterCampaigns.id, id));
+          const recorded = await deps.db.update(newsletterCampaigns).set({ broadcasts: { ...went } }).where(ours).returning();
+          if (recorded.length === 0) return lost(`broadcast ${result.id} went (${locale})`);
           console.info(`[newsletter] campaign ${id}: broadcast ${result.id} sent to ${counts[locale]} subscribers (${locale})`);
           continue;
         }
@@ -495,14 +504,16 @@ export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: C
         await deps.db
           .update(newsletterCampaigns)
           .set({ status: previous.status, recipients: previous.recipients, broadcasts: previous.broadcasts, updatedAt: previous.updatedAt })
-          .where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending")));
+          .where(ours);
         console.info(`[newsletter] campaign ${id}: nothing sent, back to ${previous.status}`);
         return { ok: false, error: keyRefused(refused) ? "permission" : "unavailable" };
       }
-      await deps.db
+      const done = await deps.db
         .update(newsletterCampaigns)
         .set({ status: "sent", sentAt: previous.sentAt ?? deps.now, broadcasts: went, updatedAt: deps.now })
-        .where(eq(newsletterCampaigns.id, id));
+        .where(ours)
+        .returning();
+      if (done.length === 0) return lost(`the send ended (${sentNow.join(" and ")} went)`);
       console.info(`[newsletter] campaign ${id}: sent${missing.length ? `, the ${missing.join(" and ")} broadcast not` : ""}`);
       return { ok: true, recipients: { et: sentNow.includes("et") ? counts.et : 0, ru: sentNow.includes("ru") ? counts.ru : 0 }, missing, left: leftOut(report) };
     });
@@ -512,39 +523,51 @@ export async function sendCampaign(deps: MarketingDeps, id: number, confirmed: C
 }
 
 /**
- * „Märgi saatmata“ (ruling R16): Maria has looked in Resend and the `locale` broadcast of a campaign left `sending` is not there. Under the row's
- * lock (FOR UPDATE, the same lock a send takes), and only for the language unsentCandidate names (the first of the send without a recorded
- * broadcast: a send goes Estonian first and stops at the first broadcast without an answer, so every language after it was never tried and is not
- * sent either):
+ * „Märgi saatmata“ (rulings R16, R18): Maria has looked in Resend and the `locale` broadcast of a campaign left `sending` is not there. Under the
+ * newsletter's lease (ruling R18, the re-review's N1: a send that is still running holds it, so a mark pressed meanwhile, from another tab or after
+ * a reload, is `busy` and changes nothing; and no send can start while the mark writes), then under the row's lock (FOR UPDATE, the same lock a
+ * send takes), and only for the language unsentCandidate names (the first of the send without a recorded broadcast: a send goes Estonian first and
+ * stops at the first broadcast without an answer, so every language after it was never tried, `notTried`, and is not sent either):
  * - with a broadcast recorded (the other language went): `sent`, its time the send's (`sentAt`, or the `sending` marker's time for a first send),
  *   the not-sent languages missing, so that „Saada puuduv keel“ (ruling R12) sends them alone, under its own lease, sync, counts and lock;
  * - with none recorded (nothing of the send went): a draft again, as a refused first broadcast leaves it, for „Saada kõigile“.
  * A language with a recorded broadcast is never marked (`sent`), nor is a campaign that is not `sending` (`sent`: sent, a draft, or marked
- * meanwhile in another tab); `earlier`: another language before it is still open (only the first one may be marked). Asks nothing of Resend.
+ * meanwhile in another tab); `earlier`: a language never tried (the one before it is the open one). Asks nothing of Resend.
  */
-export async function markNotSent(db: Db, id: number, locale: Locale, now: Date): Promise<{ ok: true; status: "draft" | "sent" } | { ok: false; error: "notFound" | "sent" | "earlier" }> {
-  const result = await db.transaction(async (tx) => {
-    const [row] = await tx.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
-    if (!row) return { ok: false as const, error: "notFound" as const };
-    // (a language with a recorded broadcast, or none of the send's, is never one to mark)
-    const languages = sendLanguages(row);
-    if (row.status !== "sending" || languages.find((l) => l.locale === locale)?.state !== "unknown") return { ok: false as const, error: "sent" as const };
-    if (unsentCandidate(row) !== locale) return { ok: false as const, error: "earlier" as const };
-    const went = languages.filter((l) => l.state === "sent");
-    if (went.length === 0) {
-      await tx
-        .update(newsletterCampaigns)
-        .set({ status: "draft", sentAt: null, recipients: null, broadcasts: null, updatedAt: now })
-        .where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending")));
-      return { ok: true as const, status: "draft" as const };
-    }
-    await tx
-      .update(newsletterCampaigns)
-      .set({ status: "sent", sentAt: row.sentAt ?? row.updatedAt, updatedAt: now })
-      .where(and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending")));
-    return { ok: true as const, status: "sent" as const };
-  });
+export async function markNotSent(
+  db: Db,
+  id: number,
+  locale: Locale,
+  now: Date,
+): Promise<{ ok: true; status: "draft" | "sent" } | { ok: false; error: "notFound" | "sent" | "earlier" | "busy" }> {
+  let result: { ok: true; status: "draft" | "sent" } | { ok: false; error: "notFound" | "sent" | "earlier" | "busy" };
+  try {
+    result = await underNewsletterLease(db, "the mark", () => markUnderLock(db, id, locale, now));
+  } catch (e) {
+    if (!(e instanceof FullSyncBusy)) throw e;
+    result = { ok: false, error: "busy" }; // (a sync or a send is running: the lease said so in the log)
+  }
   if (result.ok) console.info(`[newsletter] campaign ${id}: the ${locale} broadcast marked not sent (checked in Resend): ${result.status === "sent" ? "sent, the language missing" : "a draft again"}`);
   else console.info(`[newsletter] campaign ${id}: the ${locale} broadcast not marked not sent (${result.error})`);
   return result;
+}
+
+async function markUnderLock(db: Db, id: number, locale: Locale, now: Date): Promise<{ ok: true; status: "draft" | "sent" } | { ok: false; error: "notFound" | "sent" | "earlier" }> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)).for("update");
+    if (!row) return { ok: false as const, error: "notFound" as const };
+    // (a language with a recorded broadcast, or none of the send's, is never one to mark; one never tried waits for the one before it)
+    const languages = sendLanguages(row);
+    const state = languages.find((l) => l.locale === locale)?.state;
+    if (row.status !== "sending" || (state !== "unknown" && state !== "notTried")) return { ok: false as const, error: "sent" as const };
+    if (unsentCandidate(row) !== locale) return { ok: false as const, error: "earlier" as const };
+    const went = languages.filter((l) => l.state === "sent");
+    const stillSending = and(eq(newsletterCampaigns.id, id), eq(newsletterCampaigns.status, "sending"));
+    if (went.length === 0) {
+      await tx.update(newsletterCampaigns).set({ status: "draft", sentAt: null, recipients: null, broadcasts: null, updatedAt: now }).where(stillSending);
+      return { ok: true as const, status: "draft" as const };
+    }
+    await tx.update(newsletterCampaigns).set({ status: "sent", sentAt: row.sentAt ?? row.updatedAt, updatedAt: now }).where(stillSending);
+    return { ok: true as const, status: "sent" as const };
+  });
 }

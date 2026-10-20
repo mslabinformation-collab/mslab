@@ -527,6 +527,31 @@
       "markedAt": "deploy"
     },
     {
+      "id": "avalik-uudiskiri-kampaania-muudetud",
+      "area": "avalik",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Muudetud teises vahekaardis",
+      "href": "/admin/uudiskiri?vaade=kampaaniad",
+      "steps": [
+        "Ava Proov 3 kampaania kahes brauseri vahekaardis.",
+        "Vajuta esimeses vahekaardis „Saada kõigile“ ja oota kinnitust, aga ära vajuta veel „Saada“.",
+        "Kirjuta teises vahekaardis „Eelvaate rida“: Proov 3 muudetud ja vajuta „Salvesta“.",
+        "Vajuta esimeses vahekaardis „Saada“.",
+        "Laadi esimene vahekaart uuesti."
+      ],
+      "expect": [
+        "Esimeses vahekaardis on „Kampaaniat muudeti vahepeal mujal (nt teises aknas), seega ei saadetud midagi. …“.",
+        "Proov 3 postkasti kampaaniat ei tule.",
+        "Pärast uuesti laadimist on „Eelvaate rida“ Proov 3 muudetud ja kampaania on loendis märkega „Mustand“."
+      ],
+      "why": "Kampaania läheb välja ainult sellisena, nagu see kinnitati.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "avalik-uudiskiri-kampaania-saada",
       "area": "avalik",
       "who": "dim",

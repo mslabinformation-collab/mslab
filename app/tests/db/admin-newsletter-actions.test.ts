@@ -500,6 +500,12 @@ describe("the campaigns' actions: save, copy, test, prepare and send", () => {
     expect(cache.refresh).toHaveBeenCalledTimes(1); // (the open page is behind)
     for (const bad of [{ id: 0, locale: "ru" }, { id, locale: "de" }, { id: "1", locale: "ru" }, null])
       expect(await actions.markNotSentAction(bad as { id: number; locale: "ru" }), JSON.stringify(bad)).toEqual({ ok: false, error: "notFound" });
+    // ruling R18: while a sync or a send holds the lease the mark is `busy`, nothing changes and the page is not refreshed
+    await db.insert(settings).values({ key: SYNC_LEASE_SETTING, value: { holder: "the-send", until: Date.now() + 60_000 } });
+    expect(await actions.markNotSentAction({ id, locale: "ru" })).toEqual({ ok: false, error: "busy" });
+    expect(cache.refresh).toHaveBeenCalledTimes(1);
+    expect((await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)))[0].status).toBe("sending");
+    await db.delete(settings).where(eq(settings.key, SYNC_LEASE_SETTING));
     expect(await actions.markNotSentAction({ id, locale: "ru" })).toEqual({ ok: true, status: "sent" });
     expect(cache.refresh).toHaveBeenCalledTimes(2);
     expect((await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id)))[0]).toMatchObject({ status: "sent", broadcasts: { et: fake.broadcasts[0].id } });

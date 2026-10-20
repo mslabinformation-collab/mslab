@@ -1116,6 +1116,83 @@ describe("ruling R16: a half-sent campaign says what went, and „Märgi saatmat
     expect(fake.broadcasts.filter((b) => b.args.segmentId === ET())).toHaveLength(1);
   });
 
+  test("ruling R18: „Märgi saatmata“ pressed while the send still runs (another tab, a reload) is `busy` and changes nothing; the send completes with one broadcast per language", async () => {
+    const id = await draft();
+    await sub("kati@example.com");
+    await sub("olga@example.com", { locale: "ru" });
+    const marks: Promise<unknown>[] = [];
+    // the other view sees `sending` with nothing recorded, and its „Märgi saatmata“ is pressed while each broadcast is on its way
+    fake.onCall = (name) => {
+      if (name === "broadcasts.create") marks.push(markNotSent(db, id, marks.length === 0 ? "et" : "ru", at(1)));
+    };
+    expect(await sendCampaign(deps(), id, BOTH)).toEqual({ ok: true, recipients: { et: 1, ru: 1 }, missing: [], left: 0 });
+    expect(await Promise.all(marks)).toEqual([
+      { ok: false, error: "busy" },
+      { ok: false, error: "busy" },
+    ]);
+    expect(fake.broadcasts.map((b) => b.args.segmentId)).toEqual([ET(), RU()]);
+    expect(await rowOf(id)).toMatchObject({ status: "sent", broadcasts: { et: fake.broadcasts[0].id, ru: fake.broadcasts[1].id } });
+    expect(logged()).toContain(`campaign ${id}: the et broadcast not marked not sent (busy)`);
+    expect(await db.select().from(settings).where(eq(settings.key, SYNC_LEASE_SETTING))).toEqual([]); // (the send gave its lease back)
+  });
+
+  test("ruling R18, the re-review's double-send scenario: the mark pressed while ET is on its way, RU then without an answer: one ET broadcast in the end", async () => {
+    const id = await draft();
+    await sub("kati@example.com");
+    await sub("olga@example.com", { locale: "ru" });
+    const create = fake.r.broadcasts.create;
+    let mark: unknown = null;
+    fake.r.broadcasts.create = async (o) => {
+      if (o.segmentId === ET() && mark === null) mark = await markNotSent(db, id, "et", at(1)); // Resend's list shows no ET yet: Maria answers yes
+      return create(o);
+    };
+    fake.fail.set("broadcasts.create", (args) => ((args as { segmentId: string }).segmentId === RU() ? NO_ANSWER : null));
+    expect(await sendCampaign(deps(), id, BOTH)).toEqual({ ok: false, error: "interrupted" });
+    expect(mark).toEqual({ ok: false, error: "busy" });
+    fake.fail.clear();
+    // the row is the send's, with ET recorded: never a draft that „Saada kõigile“ would send again
+    expect(await rowOf(id)).toMatchObject({ status: "sending", broadcasts: { et: fake.broadcasts[0].id } });
+    expect(await sendCampaign(deps(), id, await confirmedNow(id, { et: 1, ru: 1 }))).toEqual({ ok: false, error: "sent" });
+    // now nothing runs: RU is marked, and „Saada puuduv keel“ sends RU alone
+    expect(await markNotSent(db, id, "ru", at(20))).toEqual({ ok: true, status: "sent" });
+    expect(await sendCampaign(deps({ now: at(30) }), id, { et: 0, ru: 1, updatedAt: at(20).toISOString() }, "missing")).toMatchObject({ ok: true, recipients: { et: 0, ru: 1 } });
+    expect(fake.broadcasts.filter((b) => b.args.segmentId === ET())).toHaveLength(1);
+    expect(fake.broadcasts.filter((b) => b.args.segmentId === RU())).toHaveLength(1);
+  });
+
+  test("ruling R18: another sync, send or test holds the lease: the mark is `busy`, nothing changes, the other's lease is left; the mark gives its own lease back", async () => {
+    const id = await draft();
+    await db.update(newsletterCampaigns).set({ status: "sending", recipients: { et: 1, ru: 0 }, broadcasts: {} }).where(eq(newsletterCampaigns.id, id));
+    const before = await rowOf(id);
+    await holdLease();
+    expect(await markNotSent(db, id, "et", at(20))).toEqual({ ok: false, error: "busy" });
+    expect(await rowOf(id)).toEqual(before);
+    expect((await db.select().from(settings).where(eq(settings.key, SYNC_LEASE_SETTING)))[0].value).toMatchObject({ holder: "another" });
+    await db.delete(settings).where(eq(settings.key, SYNC_LEASE_SETTING));
+    expect(await markNotSent(db, id, "et", at(20))).toEqual({ ok: true, status: "draft" });
+    expect(await db.select().from(settings).where(eq(settings.key, SYNC_LEASE_SETTING))).toEqual([]);
+    expect(fake.calls).toEqual([]); // (the mark asks nothing of Resend, and needs no marketing key)
+  });
+
+  test("the re-review's N1, hardened: a send whose row was reset meanwhile (by hand, or a lease that ran out) records nothing on it and sends nothing more", async () => {
+    const id = await draft();
+    await sub("kati@example.com");
+    await sub("olga@example.com", { locale: "ru" });
+    const create = fake.r.broadcasts.create;
+    let reset = false;
+    fake.r.broadcasts.create = async (o) => {
+      if (!reset) {
+        reset = true;
+        await db.update(newsletterCampaigns).set({ status: "draft", recipients: null, broadcasts: null, updatedAt: at(1) }).where(eq(newsletterCampaigns.id, id));
+      }
+      return create(o);
+    };
+    expect(await sendCampaign(deps(), id, BOTH)).toEqual({ ok: false, error: "interrupted" });
+    expect(fake.broadcasts.map((b) => b.args.segmentId)).toEqual([ET()]); // (RU is not sent after the row was lost)
+    expect(await rowOf(id)).toMatchObject({ status: "draft", recipients: null, broadcasts: null, updatedAt: at(1) });
+    expect(logged()).toContain(`campaign ${id}: broadcast ${fake.broadcasts[0].id} went (et), but the campaign is no longer this send's \`sending\` row: nothing recorded, nothing more sent`);
+  });
+
   test("nothing recorded (the first broadcast got no answer): only ET may be marked; marked, the campaign is a draft again (RU was never tried) and „Saada kõigile“ sends both", async () => {
     const id = await draft();
     await sub("kati@example.com");
@@ -1125,7 +1202,7 @@ describe("ruling R16: a half-sent campaign says what went, and „Märgi saatmat
     expect(fake.calls.filter((c) => c === "broadcasts.create")).toHaveLength(1); // the Russian one never tried
     fake.fail.clear();
     const row = await rowOf(id);
-    expect(sendLanguages(row).map((l) => [l.locale, l.state])).toEqual([["et", "unknown"], ["ru", "unknown"]]);
+    expect(sendLanguages(row).map((l) => [l.locale, l.state])).toEqual([["et", "unknown"], ["ru", "notTried"]]);
     expect(unsentCandidate(row)).toBe("et");
     expect(await markNotSent(db, id, "ru", at(20))).toEqual({ ok: false, error: "earlier" });
     expect(await markNotSent(db, id, "et", at(20))).toEqual({ ok: true, status: "draft" });
@@ -1168,6 +1245,19 @@ describe("rulings R17 and Task 2 N4 at the send", () => {
     expect(await prepareSend(deps(), id)).toMatchObject({ ok: true, plan: { et: 1, ru: 0, rejected: 1, left: 0, report: expect.objectContaining({ rejected: 1, failed: 0, unsynced: 0 }) } });
     expect(await sendCampaign(deps(), id, ONE)).toEqual({ ok: true, recipients: { et: 1, ru: 0 }, missing: [], left: 0 });
     expect(fake.broadcasts[0].delivered.map((d) => d.email)).toEqual(["kati@example.com"]);
+  });
+
+  test("the re-review's N3: an update Resend refuses (her language changed) is a failure, so the send stops for it as before", async () => {
+    const id = await draft();
+    await ensureSegments(deps());
+    const c = fake.add("kati@example.com", { segments: [ET()] });
+    await sub("kati@example.com", { locale: "ru", resendContactId: c.id });
+    await sub("mari@example.com");
+    fake.fail.set("contacts.update", INVALID_EMAIL);
+    expect(await prepareSend(deps(), id)).toEqual({ ok: false, error: "unsynced" });
+    expect(await sendCampaign(deps(), id, ONE)).toEqual({ ok: false, error: "unsynced" });
+    expect(fake.calls).not.toContain("broadcasts.create");
+    expect((await rowOf(id)).status).toBe("draft");
   });
 
   test("N4: a contact in our segment without a row whose segments cannot be read blocks the send (`unsynced`), and is not deleted", async () => {

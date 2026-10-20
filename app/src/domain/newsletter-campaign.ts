@@ -186,25 +186,36 @@ export type CampaignSend = {
 };
 
 /**
- * One language of a send: `sent` (its broadcast is recorded: `broadcast`), `unknown` (a send left `sending` has no answer recorded for it: it may
- * have gone, Maria looks in Resend) or `missing` (a `sent` campaign's language that did not go: „Saada puuduv keel“, ruling R12). `recipients`:
- * the subscribers the send was for in that language.
+ * One language of a send: `sent` (its broadcast is recorded: `broadcast`), `unknown` (the first language of a send left `sending` without a recorded
+ * broadcast: its call got no answer, so it may have gone, and Maria looks in Resend), `notTried` (a language after that one: the send stopped
+ * before it, so it was never sent; the re-review's N2) or `missing` (a `sent` campaign's language that did not go: „Saada puuduv keel“, ruling
+ * R12). `recipients`: the subscribers the send was for in that language.
  */
-export type LanguageOfSend = { locale: CampaignLocale; state: "sent" | "unknown" | "missing"; recipients: number; broadcast: string | null };
+export type LanguageOfSend = { locale: CampaignLocale; state: "sent" | "unknown" | "notTried" | "missing"; recipients: number; broadcast: string | null };
 
-/** The languages a send was for (planned for subscribers), Estonian first, each with what became of it; none for a draft. */
+/**
+ * The languages a send was for (planned for subscribers), Estonian first, each with what became of it; none for a draft. A send goes Estonian
+ * first and stops at the first broadcast without an answer (newsletter-campaigns.ts sendCampaign), so in a campaign left `sending` only the first
+ * language without a recorded broadcast is `unknown`, and any after it `notTried`.
+ */
 export function sendLanguages(c: CampaignSend): LanguageOfSend[] {
   if (c.status === "draft") return [];
+  let open = false;
   return SEND_ORDER.filter((l) => (c.recipients?.[l] ?? 0) > 0 || Boolean(c.broadcasts?.[l])).map((l) => {
     const broadcast = c.broadcasts?.[l] || null;
-    return { locale: l, state: broadcast ? "sent" : c.status === "sending" ? "unknown" : "missing", recipients: c.recipients?.[l] ?? 0, broadcast };
+    const recipients = c.recipients?.[l] ?? 0;
+    if (broadcast) return { locale: l, state: "sent", recipients, broadcast };
+    if (c.status !== "sending") return { locale: l, state: "missing", recipients, broadcast };
+    const state = open ? "notTried" : "unknown";
+    open = true;
+    return { locale: l, state, recipients, broadcast };
   });
 }
 
 /**
  * The language „Märgi saatmata“ applies to (ruling R16): in a campaign left `sending`, the first language of its send without a recorded broadcast.
  * A send goes Estonian first and stops at the first broadcast without an answer, so that one is the only language whose fate is unknown: every
- * language after it was never tried, and is not sent along with it. null when there is none (a draft, a sent campaign, a send whose every
+ * language after it was never tried (`notTried`), and is marked not sent along with it. null when there is none (a draft, a sent campaign, a send whose every
  * language is recorded). A language with a recorded broadcast is never one.
  */
 export function unsentCandidate(c: CampaignSend): CampaignLocale | null {

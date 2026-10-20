@@ -147,15 +147,15 @@ const UNBOUNDED_LEASE_MS = 5 * 60_000;
 
 /**
  * Takes the full sync's lease with one statement: the row is made, or taken over when its `until` has passed (a missing or odd `until` counts as
- * passed). Its holder is a random id and its `until` is now plus the sync's budget plus LEASE_SLACK_MS. null when another sync holds it. A lease
- * row, not a session advisory lock: the pool (postgres.js, up to 5 connections) could release a session lock on another connection than the one
- * that took it, and a transaction lock would keep a connection for the whole sync.
+ * passed). Its holder is a random id and its `until` is now plus `holdMs` (a sync's: its budget plus LEASE_SLACK_MS, holdOf). null when another
+ * holds it. A lease row, not a session advisory lock: the pool (postgres.js, up to 5 connections) could release a session lock on another
+ * connection than the one that took it, and a transaction lock would keep a connection for the whole sync.
  */
-async function takeLease(deps: MarketingDeps, extraMs = 0): Promise<string | null> {
+async function takeLease(db: Db, holdMs: number): Promise<string | null> {
   const holder = crypto.randomUUID();
   const now = Date.now();
-  const value = { holder, until: now + (deps.budgetMs ?? UNBOUNDED_LEASE_MS) + LEASE_SLACK_MS + extraMs };
-  const taken = await deps.db
+  const value = { holder, until: now + holdMs };
+  const taken = await db
     .insert(settings)
     .values({ key: SYNC_LEASE_SETTING, value })
     .onConflictDoUpdate({
@@ -172,12 +172,15 @@ async function releaseLease(db: Db, holder: string): Promise<void> {
   await db.delete(settings).where(and(eq(settings.key, SYNC_LEASE_SETTING), sql`${settings.value} ->> 'holder' = ${holder}`));
 }
 
+/** How long a sync's lease is held: its budget (UNBOUNDED_LEASE_MS without one), LEASE_SLACK_MS, and `extraMs` (a send's broadcasts). */
+const holdOf = (deps: MarketingDeps, extraMs = 0): number => (deps.budgetMs ?? UNBOUNDED_LEASE_MS) + LEASE_SLACK_MS + extraMs;
+
 /**
- * Runs `work` holding the lease (the full sync, the campaign's send after its sync, the test send of Task 4: one at a time), held `extraMs` longer
- * than a sync's; FullSyncBusy, with nothing done, when another holds it. Released at the end, also after a throw.
+ * Runs `work` holding the lease for `holdMs` at most (the full sync, the campaign's send after its sync, the test send of Task 4, the mark of
+ * ruling R18: one at a time); FullSyncBusy, with nothing done, when another holds it. Released at the end, also after a throw.
  */
-async function underLease<T>(deps: MarketingDeps, extraMs: number, what: string, work: () => Promise<T>): Promise<T> {
-  const holder = await takeLease(deps, extraMs);
+async function underLease<T>(db: Db, holdMs: number, what: string, work: () => Promise<T>): Promise<T> {
+  const holder = await takeLease(db, holdMs);
   if (holder === null) {
     console.info(`[newsletter-sync] a full sync is already running: ${what} is not started`);
     throw new FullSyncBusy();
@@ -186,8 +189,17 @@ async function underLease<T>(deps: MarketingDeps, extraMs: number, what: string,
     return await work();
   } finally {
     // (a lease that cannot be released ends by itself at its `until`)
-    await releaseLease(deps.db, holder).catch((e: unknown) => noteFailure("[newsletter-sync] the sync lease not released", e));
+    await releaseLease(db, holder).catch((e: unknown) => noteFailure("[newsletter-sync] the sync lease not released", e));
   }
+}
+
+/**
+ * Runs a short piece of the site's own work under the newsletter's lease (ruling R18: „Märgi saatmata“), so that it never meets a sync or a send
+ * that is running (FullSyncBusy, nothing done) and none can start while it runs. Held LEASE_SLACK_MS at most (a few queries); asks nothing of
+ * Resend, so it needs no marketing key.
+ */
+export function underNewsletterLease<T>(db: Db, what: string, work: () => Promise<T>): Promise<T> {
+  return underLease(db, LEASE_SLACK_MS, what, work);
 }
 
 /**
@@ -216,7 +228,8 @@ const contactLimit = (e: ApiError | null): boolean => /contacts?\s+(quota|limit)
 /** The names of a refusal of a request's fields (Resend's 400 and 422). */
 const FIELD_ERRORS: ReadonlySet<string> = new Set(["validation_error", "invalid_parameter", "missing_required_field"]);
 /**
- * Did Resend refuse the contact itself, for its address (ruling R17)? A 400 or 422 validation error whose message names the e-mail, but not
+ * Did Resend refuse to make the contact, for its address (ruling R17; only contacts.create asks it: an update stays a failure, the re-review's
+ * N3)? A 400 or 422 validation error whose message names the e-mail, but not
  * "already exists" (a contact made meanwhile: the next sync finds it) nor the plan's limit. Read from the message, which is never logged. Anything
  * else, a refused property among them (a definition deleted in Resend's dashboard), stays a failure: it blocks a send until it is put right.
  */
@@ -496,8 +509,9 @@ async function releaseContact(call: Call, r: ResendLike, segments: Segments, con
 
 type PushContext = { deps: MarketingDeps; r: ResendLike; call: Call; segments: Segments; room: () => Promise<boolean> | boolean };
 /**
- * What a push did. "rejected": Resend refused the contact for its address (contactRejected, ruling R17): the row stays unsynced and is marked, and
- * it is no failure. "vanished": the row went while it was pushed (she unsubscribed meanwhile), and her contact was taken out again (`release`).
+ * What a push did. "rejected": Resend refused to make her contact, for its address (contactRejected, ruling R17): the row stays unsynced and is
+ * marked, and it is no failure. Only a new contact's refusal counts (the re-review's N3): a refused update leaves her contact where it is (an old
+ * segment, an old link), so it stays a failure and stops a send. "vanished": the row went while it was pushed (she unsubscribed meanwhile), and her contact was taken out again (`release`).
  */
 type PushOutcome =
   | { kind: "added" }
@@ -544,7 +558,6 @@ async function pushRow(ctx: PushContext, row: Row, contact: ContactState | null)
     const resubscribe = contact.unsubscribed && row.syncedAt === null;
     const updated = await call(() => r.contacts.update({ id, properties, ...(resubscribe ? { unsubscribed: false } : {}) }));
     if (updated.error) {
-      if (contactRejected(updated.error)) return rejectRow(ctx, row, updated.error);
       noteFailure(`[newsletter-sync] subscriber ${row.id}: contact ${id} not updated`, updated.error);
       return { kind: "failed" };
     }
@@ -726,7 +739,7 @@ export type FullSyncReport = {
  */
 export async function fullSync(deps: MarketingDeps): Promise<FullSyncReport> {
   if (!marketingConfigured(deps.env)) throw new MarketingUnavailable({ name: "not_configured" });
-  return underLease(deps, 0, "this one", () => syncUnderLease(deps));
+  return underLease(deps.db, holdOf(deps), "this one", () => syncUnderLease(deps));
 }
 
 async function syncUnderLease(deps: MarketingDeps): Promise<FullSyncReport> {
@@ -1113,7 +1126,7 @@ async function broadcastTo(deps: MarketingDeps, call: Call, r: ResendLike, segme
  */
 export async function fullSyncThen<T>(deps: MarketingDeps, then: (report: FullSyncReport, send: SendBroadcast) => Promise<T>): Promise<T> {
   if (!marketingConfigured(deps.env)) throw new MarketingUnavailable({ name: "not_configured" });
-  return underLease(deps, SEND_LEASE_MS, "the send", async () => {
+  return underLease(deps.db, holdOf(deps, SEND_LEASE_MS), "the send", async () => {
     const report = await syncUnderLease(deps);
     const call = pacer(deps);
     const r = client(deps);
@@ -1174,7 +1187,7 @@ export async function sendTestBroadcast(deps: MarketingDeps, address: string, ma
   if (!marketingConfigured(deps.env)) throw new MarketingUnavailable({ name: "not_configured" });
   // (taken before the lease, so never later than the lease's own start)
   const deadline = Date.now() + (deps.budgetMs ?? UNBOUNDED_LEASE_MS) + LEASE_SLACK_MS - CALL_MAX_MS;
-  return underLease(deps, 0, "the test send", async () => {
+  return underLease(deps.db, holdOf(deps), "the test send", async () => {
     try {
       return await testBroadcastWith(deps, pacer(deps, deadline), address, mail);
     } catch (e) {

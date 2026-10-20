@@ -337,6 +337,10 @@ describe("the „Kampaaniad“ view (?vaade=kampaaniad, Task 4)", () => {
     const line = list.match(new RegExp(`<li[^>]*data-campaign-row="${stopped.id}"[\\s\\S]*?</li>`))?.[0] ?? "";
     expect(text(line)).toContain("Saatmine pooleli");
     expect(text(line)).toContain("Saadetud 19.10.2026 12:30 · 3 tellijale (eesti keeles) · pole teada (vene keeles)");
+    // the re-review's N2: a send whose first broadcast got no answer lists the second as never sent
+    const first = await campaign("Esimene pooleli", { status: "sending", updatedAt: at(-20), recipients: { et: 3, ru: 2 }, broadcasts: {} });
+    const firstLine = (await render({ vaade: "kampaaniad" })).match(new RegExp(`<li[^>]*data-campaign-row="${first.id}"[\\s\\S]*?</li>`))?.[0] ?? "";
+    expect(text(firstLine)).toContain("pole teada (eesti keeles) · ei saadetud (vene keeles)");
     const html = await render({ vaade: "kampaaniad", kampaania: String(stopped.id) });
     expect(html).toContain('data-campaign-sent="sending"');
     expect(html).toMatch(/data-campaign-language="et"[^>]*data-state="sent"/);

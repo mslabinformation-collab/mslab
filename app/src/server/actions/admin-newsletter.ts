@@ -163,7 +163,8 @@ export const sendCampaignAction = adminAction(async (_admin, input: { id: number
  * not there (the editor asks „Kas kontrollisid Resendis, et … kirja seal pole?“ first). newsletter-campaigns.ts markNotSent: `{ ok: true, status }`
  * (`sent` with that language missing, for „Saada puuduv keel“, or `draft` when nothing of the send went) and the page refreshed; `sent` for a
  * language whose broadcast is recorded or a campaign no longer `sending` (refreshed too: the page is behind), `earlier` for a language after
- * an open one, `notFound`. Asks nothing of Resend.
+ * an open one, `busy` while a sync or a send holds the newsletter's lease (ruling R18: never during a send that is still running), `notFound`. Asks
+ * nothing of Resend.
  */
 export const markNotSentAction = adminAction(async (_admin, input: { id: number; locale: "et" | "ru" }) => {
   const parsed = markInput.safeParse(input);
@@ -171,7 +172,7 @@ export const markNotSentAction = adminAction(async (_admin, input: { id: number;
   const { id, locale } = parsed.data;
   try {
     const result = await markNotSent(getDb(), id, locale, new Date());
-    if (result.ok || result.error !== "earlier") refresh();
+    if (result.ok || result.error === "sent" || result.error === "notFound") refresh();
     return result;
   } catch (e) {
     logFailure(`[newsletter] campaign ${id}: the mark failed`, e);

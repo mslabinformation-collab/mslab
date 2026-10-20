@@ -61,10 +61,14 @@ export const campaignListRow = (row: NewsletterCampaign): CampaignListRow => ({
   languages: row.status === "sending" ? sendLanguages(row) : [],
 });
 
-/** The list's line of a send left `sending` (ruling R16): each language, the one that went with its time and count, the other as unknown. */
+/** The list's line of a send left `sending` (ruling R16): each language, the one that went with its time and count, the other as unknown or never sent. */
 function halfSentLine(c: CampaignListRow, t: typeof adminEt.newsletter.campaigns): string {
   return c.languages
-    .map((l) => (l.state === "sent" ? fill(t.langSent, { date: stamp(c.at), n: l.recipients, lang: t.langNames[l.locale] }) : fill(t.listUnknown, { lang: t.langNames[l.locale] })))
+    .map((l) =>
+      l.state === "sent"
+        ? fill(t.langSent, { date: stamp(c.at), n: l.recipients, lang: t.langNames[l.locale] })
+        : fill(l.state === "notTried" ? t.listNotTried : t.listUnknown, { lang: t.langNames[l.locale] }),
+    )
     .join(" · ");
 }
 

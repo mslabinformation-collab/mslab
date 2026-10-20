@@ -440,12 +440,23 @@ describe("a sent campaign", () => {
     expect($('[data-mark-not-sent="ru"]')).not.toBeNull();
   });
 
-  test("ruling R16, nothing recorded: both languages unknown, and only the first (ET) can be marked: RU was never tried", async () => {
+  test("ruling R16 and the re-review's N2, nothing recorded: ET is unknown and the one to mark; RU, never tried, says it was not sent (never „Pole teada“)", async () => {
     await show({ ...SENT, id: 9, status: "sending", sentAt: null, broadcasts: {} });
-    expect(all("[data-campaign-language]").map((li) => li.dataset.state)).toEqual(["unknown", "unknown"]);
+    expect(all("[data-campaign-language]").map((li) => li.dataset.state)).toEqual(["unknown", "notTried"]);
+    expect(text('[data-campaign-language="et"] [data-campaign-language-line]')).toBe("Pole teada, kas kiri läks (eesti keeles): Resendilt ei tulnud vastust.");
+    expect(text('[data-campaign-language="ru"] [data-campaign-language-line]')).toBe("Ei saadetud (vene keeles) — eelmine keel jäi vastuseta.");
     expect(all("[data-campaign-broadcast]")).toHaveLength(0);
     expect(all("[data-mark-not-sent]").map((m) => m.getAttribute("data-mark-not-sent"))).toEqual(["et"]);
     expect($("[data-campaign-broadcasts-list]")).not.toBeNull();
+  });
+
+  test("ruling R18: a mark pressed while a sync or a send runs says so in the busy words and changes nothing", async () => {
+    actions.markNotSentAction.mockResolvedValue({ ok: false, error: "busy" });
+    await show({ ...SENT, status: "sending", sentAt: null, broadcasts: { et: "bc-et" } });
+    await click($('[data-mark-not-sent="ru"] [data-mark-start]'));
+    await click($("[data-mark-yes]"));
+    expect(text("[data-mark-status]")).toBe("Sünkroonimine juba käib — proovi hetke pärast uuesti.");
+    expect($('[data-mark-not-sent="ru"] [data-mark-start]')).not.toBeNull(); // (it can be pressed again once the send is over)
   });
 
   test("„Märgi saatmata“: the question names the language; „Tühista“ asks nothing; „Jah“ calls the action, and a refusal is said in words", async () => {
