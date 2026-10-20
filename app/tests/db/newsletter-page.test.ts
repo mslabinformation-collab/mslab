@@ -159,6 +159,22 @@ describe("the „Kampaaniad“ view (?vaade=kampaaniad)", () => {
     expect(gone).not.toContain("data-campaign-form");
   });
 
+  // The coming-soon gate (final review I1): the page reads SITE_GATE the way the middleware does (lib/site-gate.ts gateOn) and hands the editor the flag, so the
+  // editor's confirmation and test result can say that the mail's links open „Tulekul“. The sends' section carries it as `data-gated`.
+  test("the page tells the editor whether the coming-soon gate is on: SITE_GATE as the middleware reads it (unset, blank, 0, false, off, no: off; anything else: on)", async () => {
+    const draft = await campaign("Mustand");
+    const gated = async (value: string) => {
+      vi.stubEnv("SITE_GATE", value);
+      const html = await render({ vaade: "kampaaniad", kampaania: String(draft.id) });
+      expect(html, `SITE_GATE=${JSON.stringify(value)}: the sends are there`).toContain("data-campaign-send");
+      return /data-campaign-send="" data-gated=""/.test(html);
+    };
+    for (const on of ["1", "true", "on", " 1 ", "yes", "typo"]) expect(await gated(on), `SITE_GATE=${JSON.stringify(on)}`).toBe(true);
+    for (const off of ["", "  ", "0", "false", "off", "no", "OFF"]) expect(await gated(off), `SITE_GATE=${JSON.stringify(off)}`).toBe(false);
+    vi.stubEnv("SITE_GATE", undefined as unknown as string); // (unset)
+    expect(await render({ vaade: "kampaaniad", kampaania: String(draft.id) })).not.toContain("data-gated");
+  });
+
   /** The deliveries of a campaign: so many of each status (their addresses are made up; nothing is sent). */
   async function deliveries(campaignId: number, counts: Partial<Record<"sent" | "waiting" | "failed" | "unknown" | "skipped", number>>) {
     let k = 0;

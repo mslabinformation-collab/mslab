@@ -418,22 +418,33 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     for (const id of IDS) expect(item(id).area, id).toBe(item("avalik-uudiskiri").area);
   });
 
-  test("the ids kept their place and carry the mark new, from the deploy or its stamp; the send check is a redo; a mark is never weaker than it was", () => {
-    for (const id of IDS.filter((id) => id !== "avalik-uudiskiri-kampaania" && id !== "avalik-uudiskiri-kampaania-kopeeri" && id !== "avalik-uudiskiri-kampaania-saada")) {
+  test("the ids kept their place and carry the mark new, from the deploy or its stamp; the checks whose meaning changed are a redo; a mark is never weaker than it was", () => {
+    const redone = ["avalik-uudiskiri-resend", "avalik-uudiskiri-kampaania-proov", "avalik-uudiskiri-kampaania-saada", "avalik-uudiskiri-blokeeritud-opilane"];
+    for (const id of IDS.filter((id) => id !== "avalik-uudiskiri-kampaania" && id !== "avalik-uudiskiri-kampaania-kopeeri" && !redone.includes(id))) {
       expect(item(id).mark, id).toBe("new");
       expect(markedSince(item(id).markedAt), id).toBe(true);
     }
     // "the first batch and the progress line" (spec §6) is a `redo`: only a redo reopens an answer given to the check before (appliesAt), and this
-    // check's whole behaviour changed (the first batch, the progress line, the stop); a `new` would leave that answer standing
-    const send = item("avalik-uudiskiri-kampaania-saada");
-    expect(send.mark).toBe("redo");
-    expect(markedSince(send.markedAt)).toBe(true);
-    expect(appliesAt(send as unknown as TestItem, plan as unknown as TestPlan, "2026-10-21T00:00:00.000Z")).not.toBeNull();
+    // check's whole behaviour changed (the first batch, the progress line, the stop); a `new` would leave that answer standing. So are the three whose
+    // words were rewritten into a different check under the same id (the final review's M2): „Sünkrooni Resendiga“ became the list and the CSV, the
+    // Resend blocked mark became the drawer's newsletter line, the test-segment broadcast of „Saada proov“ became one ordinary mail. An answer Dim gave the
+    // 18.10 version after its stamp (a „Jäta vahele“ on the sync, which needed the key, is the likely one) must not stand on the new check.
+    for (const id of redone) {
+      const check = item(id);
+      expect(check.mark, id).toBe("redo");
+      expect(markedSince(check.markedAt), id).toBe(true);
+      expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-21T00:00:00.000Z"), id).not.toBeNull();
+    }
     // the two whose words and meaning did not change keep the instant the 18.10 deploy stamped
     for (const id of ["avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-kopeeri"]) {
       expect(item(id).mark, id).toBe("new");
       expect(markedSince(item(id).markedAt), id).toBe(true);
     }
+  });
+
+  test("the confirmation of „Saada kõigile“ and the result of „Saada proov“ name the gate notice in the page's words (the final review's I1)", () => {
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.gateNotice}“`);
+    expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${t.gateNotice}“`);
   });
 
   test("the sends and the mail's headers are Dim's; the list, writing, the unsubscribe from Proov 3's mailbox, „Kopeeri“ and the drawer are Maria's", () => {

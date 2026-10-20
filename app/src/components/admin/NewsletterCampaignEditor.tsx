@@ -118,6 +118,7 @@ export function NewsletterCampaignEditor({
   campaign,
   links,
   testTargets,
+  gated,
 }: {
   /** The campaign, or null for „Uus kampaania“ (saved, it opens at its own address). */
   campaign: CampaignEditorView | null;
@@ -125,9 +126,11 @@ export function NewsletterCampaignEditor({
   links: string[];
   /** The addresses „Saada proov“ offers. */
   testTargets: TestTarget[];
+  /** The coming-soon gate is on (the page reads SITE_GATE, lib/site-gate.ts gateOn; this component never reads the environment): the mail's links open „Tulekul“. */
+  gated: boolean;
 }) {
   const readOnly = campaign !== null && campaign.status !== "draft";
-  return readOnly ? <SentCampaign campaign={campaign} /> : <DraftEditor campaign={campaign} links={links} testTargets={testTargets} />;
+  return readOnly ? <SentCampaign campaign={campaign} /> : <DraftEditor campaign={campaign} links={links} testTargets={testTargets} gated={gated} />;
 }
 
 // ---------- the preview ----------
@@ -217,7 +220,7 @@ function PreviewCard({ values }: { values: CampaignValues }) {
 
 // ---------- a draft ----------
 
-function DraftEditor({ campaign, links, testTargets }: { campaign: CampaignEditorView | null; links: string[]; testTargets: TestTarget[] }) {
+function DraftEditor({ campaign, links, testTargets, gated }: { campaign: CampaignEditorView | null; links: string[]; testTargets: TestTarget[]; gated: boolean }) {
   const router = useRouter();
   const uid = useId();
   const L = CAMPAIGN_LIMITS;
@@ -374,7 +377,7 @@ function DraftEditor({ campaign, links, testTargets }: { campaign: CampaignEdito
 
         <div className={site.aside}>
           <PreviewCard values={values} />
-          <Sends key={id ?? "new"} id={id} saved={id !== null && !dirty} revision={revision} testTargets={testTargets} />
+          <Sends key={id ?? "new"} id={id} saved={id !== null && !dirty} revision={revision} testTargets={testTargets} gated={gated} />
         </div>
       </div>
       <SaveBar status={status} pending={pending} reloadHref={id === null ? "/admin/uudiskiri?vaade=kampaaniad" : campaignHref(id)} />
@@ -386,9 +389,10 @@ function DraftEditor({ campaign, links, testTargets }: { campaign: CampaignEdito
 
 /**
  * The sends: „Saada proov“ (one ordinary mail to Maria or to the signed-in admin, in either language) and „Saada kõigile“ (the confirmation, then the
- * press). Both need a saved draft (`saved`): what goes out is the stored campaign.
+ * press). Both need a saved draft (`saved`): what goes out is the stored campaign. `gated`: the gate is on (the notice under the result and the confirmation);
+ * the section says so in `data-gated`, which is what the page's test reads of the server's side.
  */
-function Sends({ id, saved, revision, testTargets }: { id: number | null; saved: boolean; revision: string; testTargets: TestTarget[] }) {
+function Sends({ id, saved, revision, testTargets, gated }: { id: number | null; saved: boolean; revision: string; testTargets: TestTarget[]; gated: boolean }) {
   const uid = useId();
   const [to, setTo] = useState<TestTarget["key"]>(testTargets[0]?.key ?? "me");
   const [locale, setLocale] = useState<Lang>("et");
@@ -408,7 +412,7 @@ function Sends({ id, saved, revision, testTargets }: { id: number | null; saved:
   };
 
   return (
-    <section className={ui.card} aria-labelledby={`${uid}-send`} data-campaign-send="">
+    <section className={ui.card} aria-labelledby={`${uid}-send`} data-campaign-send="" data-gated={gated ? "" : undefined}>
       <h2 id={`${uid}-send`} className={ui.h3}>
         {t.send}
       </h2>
@@ -457,10 +461,23 @@ function Sends({ id, saved, revision, testTargets }: { id: number | null; saved:
         <p role="status" className={`${styles.status} ${toneClass(testLine.tone)}`} data-test-status="">
           {testLine.text}
         </p>
+        {gated && testLine.tone === "done" && <GateNotice />}
       </div>
 
-      <ConfirmSend id={id} open={open} revision={revision} />
+      <ConfirmSend id={id} open={open} revision={revision} gated={gated} />
     </section>
+  );
+}
+
+/**
+ * While the coming-soon gate is on, the links and the button of the mail open the „Tulekul“ page (final review I1, ruling R9): one line under the
+ * confirmation of „Saada kõigile“ and under the result of „Saada proov“. A notice, not a block: a „we open soon“ campaign is a legitimate one.
+ */
+function GateNotice() {
+  return (
+    <p className={ui.notice} data-gate-notice="">
+      {t.gateNotice}
+    </p>
   );
 }
 
@@ -475,7 +492,7 @@ type Plan = { et: number; ru: number; ruFallsBack: boolean; updatedAt: string };
  * line is made from the answer, the progress of the first batch: it is all the page shows until the refresh the action asked for lands, when the
  * campaign's own state (sending or sent) replaces this card.
  */
-function ConfirmSend({ id, open, revision }: { id: number | null; open: boolean; revision: string }) {
+function ConfirmSend({ id, open, revision, gated }: { id: number | null; open: boolean; revision: string; gated: boolean }) {
   const [line, setLine] = useState<Line>(IDLE);
   const [confirm, setConfirm] = useState<{ plan: Plan; revision: string } | null>(null);
   const [sending, start] = useTransition();
@@ -529,6 +546,7 @@ function ConfirmSend({ id, open, revision }: { id: number | null; open: boolean;
               {t.all.fallback}
             </p>
           )}
+          {gated && <GateNotice />}
           <div className={styles.sendRow}>
             <button type="button" className={ui.btn} aria-disabled={!open || sending || undefined} onClick={send} data-send-yes="">
               {sending ? t.all.working : t.all.yes}

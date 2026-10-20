@@ -15,8 +15,9 @@ import { parsePage } from "@/domain/paging";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { parseRowId } from "@/lib/row-id";
+import { gateOn } from "@/lib/site-gate";
 import { requireAdmin } from "@/server/auth";
-import { serverEnv } from "@/server/env";
+import { gateEnv, serverEnv } from "@/server/env";
 import { serverKv } from "@/server/kv";
 import { getCampaign, listCampaigns, progressOf, sendRefused } from "@/server/newsletter-campaigns";
 import { linkSuggestions } from "@/server/site-links";
@@ -153,7 +154,9 @@ function testTargetsOf(mariaEmail: string, adminEmail: string): TestTarget[] {
 
 /**
  * The campaigns' view: the list (each campaign going out with its progress), and the editor of the one chosen (`kampaania`: an id, `uus` for a new one,
- * or nothing), which once it is no draft carries where its deliveries stand and whether the last batch was refused. (It reads.)
+ * or nothing), which once it is no draft carries where its deliveries stand and whether the last batch was refused. (It reads.) `gated`: the coming-soon
+ * gate is on (SITE_GATE, read as the middleware reads it), so the confirmation of „Saada kõigile“ and the result of „Saada proov“ say that the mail's
+ * links open „Tulekul“ (final review I1); the editor, a browser component, never reads the environment.
  */
 async function campaignsPage(email: string, kampaania: string) {
   const db = getDb();
@@ -176,6 +179,7 @@ async function campaignsPage(email: string, kampaania: string) {
           notFound={kampaania !== "" && kampaania !== "uus" && chosen === null}
           links={links}
           testTargets={testTargetsOf(serverEnv().MARIA_EMAIL, email)}
+          gated={gateOn(gateEnv().SITE_GATE)}
         />
       </div>
     </Shell>

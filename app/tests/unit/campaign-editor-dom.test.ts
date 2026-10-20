@@ -69,8 +69,8 @@ const later = () =>
     await new Promise((r) => setTimeout(r, 450));
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   });
-const show = async (campaign: CampaignEditorView | null, testTargets: TestTarget[] = TARGETS) => {
-  await act(async () => root.render(createElement(NewsletterCampaignEditor, { campaign, links: ["/koolitused"], testTargets })));
+const show = async (campaign: CampaignEditorView | null, testTargets: TestTarget[] = TARGETS, gated = false) => {
+  await act(async () => root.render(createElement(NewsletterCampaignEditor, { campaign, links: ["/koolitused"], testTargets, gated })));
   await later();
 };
 const click = async (el: Element | null) => {
@@ -337,6 +337,50 @@ describe("a draft: „Saada proov“ and „Saada kõigile“", () => {
     expect(confirmOpen()).toBeNull();
     expect(text("[data-send-all]")).toBe("Saada kõigile");
     expect(actions.startSendAction).not.toHaveBeenCalled();
+  });
+
+  // The coming-soon gate (final review I1, ruling R9; Draft): while SITE_GATE is on, the mail's links and its button open the „Tulekul“ page. The page
+  // passes the flag (the editor never reads the environment); the line is a notice under the confirmation and under the test's result, never a block.
+  const GATE_LINE = "Koduleht pole veel avatud — kirja lingid ja nupp viivad „Tulekul“ lehele.";
+
+  test("gate on: the confirmation of „Saada kõigile“ carries the gate notice, and „Saada“ still sends (a notice, not a block)", async () => {
+    actions.prepareSendAction.mockResolvedValue(PLAN);
+    actions.startSendAction.mockResolvedValue({ ok: true, stopped: null, progress: { ...NONE, total: 12, sent: 12 } });
+    await show(DRAFT, TARGETS, true);
+    expect($("[data-gate-notice]")).toBeNull(); // (nothing before the question: the notice belongs to the confirmation)
+    await click($("[data-send-all]"));
+    expect(confirmOpen()).not.toBeNull();
+    expect(all("[data-gate-notice]")).toHaveLength(1);
+    expect(text("[data-send-confirm] [data-gate-notice]")).toBe(GATE_LINE);
+    expect($("[data-send-yes]")!.getAttribute("aria-disabled")).toBeNull();
+    await click($("[data-send-yes]"));
+    expect(actions.startSendAction).toHaveBeenCalledWith({ id: 7, et: 9, ru: 3, updatedAt: "2026-10-19T09:00:00.000Z" });
+    expect(text("[data-send-status]")).toBe("Kampaania on saadetud.");
+  });
+
+  test("gate on: the result of „Saada proov“ carries the same line; not before the test went, not after a refusal", async () => {
+    await show(DRAFT, TARGETS, true);
+    expect($("[data-campaign-test] [data-gate-notice]")).toBeNull();
+    actions.sendTestAction.mockResolvedValueOnce({ ok: false, error: "mail" });
+    await click($("[data-test-send]"));
+    expect($("[data-campaign-test] [data-gate-notice]")).toBeNull(); // (the mail did not go: nothing to open)
+    actions.sendTestAction.mockResolvedValueOnce({ ok: true });
+    await click($("[data-test-send]"));
+    expect(text("[data-test-status]")).toBe("Proov läks aadressile maria@example.com. Kiri jõuab mõne minuti jooksul.");
+    expect(text("[data-campaign-test] [data-gate-notice]")).toBe(GATE_LINE);
+    expect($("[data-send-confirm]")).toBeNull(); // (a test is no press: the confirmation is not opened by it)
+  });
+
+  test("gate off: neither the confirmation nor the test's result says anything about the gate", async () => {
+    actions.prepareSendAction.mockResolvedValue(PLAN);
+    actions.sendTestAction.mockResolvedValue({ ok: true });
+    await show(DRAFT, TARGETS, false);
+    await click($("[data-test-send]"));
+    await click($("[data-send-all]"));
+    expect(confirmOpen()).not.toBeNull();
+    expect($("[data-gate-notice]")).toBeNull();
+    expect(container.textContent).not.toContain("Tulekul");
+    expect($("[data-campaign-send]")!.hasAttribute("data-gated")).toBe(false);
   });
 
   test("the confirmation takes the focus (the button that was pressed is gone), as the stop question and the other admin confirms do", async () => {

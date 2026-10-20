@@ -1584,6 +1584,9 @@ export const adminEt = {
         working: "Saadan…",
         done: "Kampaania on saadetud.",
       },
+      // while the coming-soon gate is on (SITE_GATE, lib/site-gate.ts) the mail's links and button open the „Tulekul“ page: a notice under the
+      // confirmation of „Saada kõigile“ and under the result of „Saada proov“, never a block (final review I1, ruling R9; Draft)
+      gateNotice: "Koduleht pole veel avatud — kirja lingid ja nupp viivad „Tulekul“ lehele.",
       // a campaign that is going out (status `sending`): the progress, and „Peata saatmine“ (spec §3, Draft). {sent} the mails that went, {n} every
       // subscriber it was written for, {left} those still waiting (they go the next day, or when the day has room)
       progress: "Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.",

@@ -84,6 +84,7 @@ export function CampaignsPanel({
   notFound,
   links,
   testTargets,
+  gated,
 }: {
   campaigns: CampaignListRow[];
   /** The campaign chosen (?kampaania=): its id, "new" for „Uus kampaania“, or null for none. */
@@ -95,6 +96,8 @@ export function CampaignsPanel({
   links: string[];
   /** The addresses „Saada proov“ offers. */
   testTargets: TestTarget[];
+  /** The coming-soon gate is on (the page reads it: NewsletterCampaignEditor never reads the environment). */
+  gated: boolean;
 }) {
   const t = adminEt.newsletter.campaigns;
   return (
@@ -133,7 +136,7 @@ export function CampaignsPanel({
         </p>
       )}
       {/* (no key: the editor follows another campaign itself, and keeps its state when the page comes back with the one it has just saved) */}
-      {(selected === "new" || editing) && <NewsletterCampaignEditor campaign={editing} links={links} testTargets={testTargets} />}
+      {(selected === "new" || editing) && <NewsletterCampaignEditor campaign={editing} links={links} testTargets={testTargets} gated={gated} />}
     </div>
   );
 }
