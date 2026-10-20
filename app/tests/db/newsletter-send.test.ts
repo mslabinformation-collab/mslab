@@ -1,8 +1,8 @@
 import { asc, eq } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { mailQuota, newsletterCampaigns, newsletterDeliveries, subscribers } from "@/db/schema";
-import { CAMPAIGN_DAILY_ROOM } from "@/domain/newsletter-campaign";
+import { mailQuota, newsletterCampaigns, newsletterDeliveries, settings, subscribers } from "@/db/schema";
+import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_ROOM_KEY } from "@/domain/newsletter-campaign";
 import { getDict } from "@/i18n/locales";
 import { countSentMail, mailsSentToday } from "@/server/client-auth";
 import { unsubscribeUrl } from "@/server/newsletter";
@@ -515,6 +515,102 @@ describe("runBatch: the room, the time, the pace", () => {
     expect(CRON_BUDGET_MS + SEND_GAP_MS + oneSend).toBeLessThan(300_000 - 10_000);
     expect(STALE_CLAIM_MS).toBe(6 * 60_000);
     expect(STALE_CLAIM_MS).toBeGreaterThan(300_000);
+  });
+});
+
+// The lowered room: the settings row `newsletter_daily_room` (domain/newsletter-campaign.ts CAMPAIGN_ROOM_KEY), read only when it is there. It is how
+// Dim checks "a campaign larger than the day's room continues the next day" on staging without 70 subscribers (testplan.json): he sets it by hand in
+// the database for the check and deletes it after. It caps the mails ONE campaign sends in a UTC day (so the check needs no arithmetic with the day's
+// other mails, or with the campaigns Dim sent earlier the same day), on top of the day's count of every mail; it can only make the room smaller.
+// Maria never sees it.
+describe("runBatch: the lowered room (the settings row newsletter_daily_room)", () => {
+  const lower = (value: unknown) => db.insert(settings).values({ key: CAMPAIGN_ROOM_KEY, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
+  const unlower = () => db.delete(settings).where(eq(settings.key, CAMPAIGN_ROOM_KEY));
+  afterEach(unlower);
+
+  test("the check Dim does: room 2, three subscribers — two mails go in the press and the campaign goes on; the row deleted, the next run sends the third", async () => {
+    await subscribeMany(3);
+    await lower(2);
+    const id = await campaign();
+    const resend = fakeSend();
+    expect(await press(id, deps(resend.send))).toMatchObject({ ok: true, progress: { total: 3, sent: 2, waiting: 1 }, stopped: "room" });
+    expect(resend.to()).toEqual(["k1@example.com", "k2@example.com"]);
+    expect((await campaignRow(id)).status).toBe("sending");
+    // the same day, the row still there: nothing more
+    expect(await runDueCampaigns(deps(resend.send))).toMatchObject({ campaignId: id, progress: { sent: 2, waiting: 1 }, stopped: "room" });
+    expect(resend.mails).toHaveLength(2);
+    // the row deleted: the daily job sends the third and the campaign is sent
+    await unlower();
+    expect(await runDueCampaigns(deps(resend.send))).toMatchObject({ campaignId: id, progress: { sent: 3, waiting: 0 }, stopped: null });
+    expect(resend.to()).toEqual(["k1@example.com", "k2@example.com", "k3@example.com"]);
+    expect(await campaignRow(id)).toMatchObject({ status: "sent", recipients: { et: 3, ru: 0 } });
+  });
+
+  test("it caps the campaign's own mails of the day, not the day's count: the site's other mails do not use it up", async () => {
+    await subscribeMany(4);
+    await daySent(10); // ten mails of the site today
+    await lower(2);
+    const resend = fakeSend();
+    expect(await press(await campaign(), deps(resend.send))).toMatchObject({ ok: true, progress: { sent: 2, waiting: 2 }, stopped: "room" });
+    expect(await mailsSentToday(db)).toBe(12);
+  });
+
+  test("the next day it starts again: the day before's campaign mails are not counted", async () => {
+    await subscribeMany(5);
+    await lower(2);
+    const id = await campaign();
+    const resend = fakeSend();
+    expect(await press(id, deps(resend.send))).toMatchObject({ progress: { sent: 2, waiting: 3 }, stopped: "room" });
+    vi.setSystemTime(NOW.getTime() + DAY);
+    expect(await runDueCampaigns(deps(resend.send))).toMatchObject({ progress: { sent: 4, waiting: 1 }, stopped: "room" });
+    vi.setSystemTime(NOW.getTime() + 2 * DAY);
+    expect(await runDueCampaigns(deps(resend.send))).toMatchObject({ progress: { sent: 5, waiting: 0 }, stopped: null });
+  });
+
+  test("each campaign has the room to itself: an earlier campaign's mails and a test mail the same day do not use it up (the check needs no arithmetic)", async () => {
+    await subscribeMany(3);
+    await lower(2);
+    const resend = fakeSend();
+    const first = await campaign();
+    expect(await press(first, deps(resend.send))).toMatchObject({ progress: { sent: 2, waiting: 1 }, stopped: "room" });
+    expect(await sendTest(deps(resend.send), first, "maria@example.com", "et")).toEqual({ ok: true }); // (a test is no campaign mail)
+    await stopSend(db, first, new Date()); // (the first is ended, as Dim does in the next check)
+    // the second campaign, the same day: two more go, whatever the first sent
+    const second = await campaign();
+    expect(await press(second, deps(resend.send))).toMatchObject({ progress: { sent: 2, waiting: 1 }, stopped: "room" });
+    expect(resend.mails.filter((m) => m.subject === "Sügispakkumine")).toHaveLength(4); // (the test mail's subject starts with „[Proov]“)
+    // and the room is still the campaign's: the same day the job sends it nothing more
+    expect(await runDueCampaigns(deps(resend.send))).toMatchObject({ campaignId: second, progress: { sent: 2, waiting: 1 }, stopped: "room" });
+  });
+
+  test("it only lowers the room: a larger number changes nothing, the day's 70 still holds; 0 and below is one", async () => {
+    await subscribeMany(3);
+    await lower(1_000);
+    await daySent(CAMPAIGN_DAILY_ROOM - 2);
+    const resend = fakeSend();
+    expect(await press(await campaign(), deps(resend.send))).toMatchObject({ progress: { sent: 2, waiting: 1 }, stopped: "room" });
+    await db.delete(mailQuota);
+    await db.delete(newsletterCampaigns);
+    await db.delete(subscribers);
+    await subscribeMany(3);
+    await lower(0);
+    expect(await press(await campaign(), deps(fakeSend().send))).toMatchObject({ progress: { sent: 1, waiting: 2 }, stopped: "room" });
+  });
+
+  test("a value that is no number is ignored (and said in the log, without the value): the room is the room", async () => {
+    await subscribeMany(3);
+    await lower("kaks");
+    const resend = fakeSend();
+    expect(await press(await campaign(), deps(resend.send))).toMatchObject({ progress: { sent: 3, waiting: 0 }, stopped: null });
+    expect(logged()).toContain("newsletter_daily_room");
+    expect(logged()).not.toContain("kaks");
+  });
+
+  test("with no row there is no extra query, no log: the room is CAMPAIGN_DAILY_ROOM as before", async () => {
+    await subscribeMany(2);
+    const resend = fakeSend();
+    expect(await press(await campaign(), deps(resend.send))).toMatchObject({ progress: { sent: 2, waiting: 0 }, stopped: null });
+    expect(logged()).not.toContain("newsletter_daily_room");
   });
 });
 

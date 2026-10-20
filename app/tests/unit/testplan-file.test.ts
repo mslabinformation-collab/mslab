@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import plan from "@/data/testplan.json";
+import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_ROOM_KEY } from "@/domain/newsletter-campaign";
 import { checkPlan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { et } from "@/i18n/dict/et";
@@ -378,8 +379,10 @@ describe("the review checks sit where Proov 1's reviews exist", () => {
 });
 
 // The newsletter's checks (newsletter campaigns, Task 4, then the 20.10 simplification: docs/superpowers/specs/2026-10-20-newsletter-simple-design.md §6):
-// the list and the CSV where the Resend sync was, writing a campaign with the preview, „Saada proov“, „Saada kõigile“, the received mail's unsubscribe and
-// „Kopeeri“, in the order a campaign lives, right after the sign-up check that makes Proov 3 a subscriber (the file is walked top to bottom). The checks that
+// the list and the CSV where the Resend sync was, writing a campaign with the preview, „Saada proov“, „Saada kõigile“ (the first batch and the progress
+// line), the received mail's unsubscribe, „Kopeeri“, then three checks that need a campaign larger than the day's room (Dim lowers the room by hand with the
+// settings row newsletter_daily_room and deletes it after): the campaign that goes on the next day, „Peata saatmine“ and the mail program's own unsubscribe
+// button — in the order a campaign lives, right after the sign-up check that makes Proov 3 a subscriber (the file is walked top to bottom). The checks that
 // send are Dim's (test addresses only); the others are Maria's. Nothing in them names a list kept in Resend, a segment, a contact, a sync or a blocked mark.
 describe("the newsletter checks follow the simple flow, in the order a campaign lives", () => {
   const order = plan.items.map((i) => i.id);
@@ -396,6 +399,9 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     "avalik-uudiskiri-kampaania-saada",
     "avalik-uudiskiri-kampaania-loobu",
     "avalik-uudiskiri-kampaania-kopeeri",
+    "avalik-uudiskiri-kampaania-jatkub",
+    "avalik-uudiskiri-kampaania-peata",
+    "avalik-uudiskiri-kampaania-ykslink",
     "avalik-uudiskiri-blokeeritud-opilane",
   ];
   const item = (id: string) => {
@@ -425,14 +431,14 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
   });
 
   test("the sends and the mail's headers are Dim's; the list, writing, the unsubscribe from Proov 3's mailbox, „Kopeeri“ and the drawer are Maria's", () => {
-    expect(IDS.map((id) => item(id).who)).toEqual(["maria", "maria", "dim", "dim", "dim", "maria", "maria", "maria"]);
+    expect(IDS.map((id) => item(id).who)).toEqual(["maria", "maria", "dim", "dim", "dim", "maria", "maria", "dim", "dim", "dim", "maria"]);
     // the send goes to test addresses only: Dim stops when the list holds any other
-    for (const id of ["avalik-uudiskiri-kampaania-muudetud", "avalik-uudiskiri-kampaania-saada"]) {
+    for (const id of ["avalik-uudiskiri-kampaania-muudetud", "avalik-uudiskiri-kampaania-saada", "avalik-uudiskiri-kampaania-jatkub", "avalik-uudiskiri-kampaania-peata"]) {
       expect(text(id), id).toContain("+proov");
       expect(text(id), id).toContain("ära jätka");
     }
     // what only reads writes nothing; what sends or saves does
-    expect(IDS.map((id) => item(id).writes)).toEqual([false, true, true, true, true, true, true, false]);
+    expect(IDS.map((id) => item(id).writes)).toEqual([false, true, true, true, true, true, true, true, true, true, false]);
   });
 
   test("the list check quotes the page's words: the tab, the count line, the CSV button and the other view", () => {
@@ -453,7 +459,11 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${t.testPage}“`);
     expect(text("avalik-uudiskiri-kampaania-proov")).toContain("„[Proov] Proov 3 pakkumine“");
     expect(text("avalik-uudiskiri-kampaania-proov")).toContain(`„${ru.mail.campaign.unsubscribe}“`);
-    expect(item("avalik-uudiskiri-kampaania-saada").title).toBe("Saada kõigile"); // (the spec's)
+    // the send check is "the first batch and the progress line" (spec §6); „Saada kõigile“ (the spec's) is its start
+    expect(item("avalik-uudiskiri-kampaania-saada").title).toBe("Saada kõigile: esimene partii ja edenemise rida");
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain("„Saada kõigile“");
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.progress.replace("{sent}", "…").replace("{n}", "…").replace("{left}", "…")}“`);
+    expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.stop.button}“`);
     expect(text("avalik-uudiskiri-kampaania-saada")).toContain("„Saadad kampaania … tellijale (eesti keeles …, vene keeles …). Kas saadame?“"); // (the spec's)
     expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.sentLine.replace("{date}", "…").replace("{n}", "…")}“`);
     expect(text("avalik-uudiskiri-kampaania-saada")).toContain(`„${t.errorsOf.sent}“`);
@@ -464,6 +474,74 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     expect(text("avalik-uudiskiri-kampaania-loobu")).toContain(`„${et.newsletter.unsubscribePage.heading}“`);
     expect(item("avalik-uudiskiri-kampaania-kopeeri").title).toBe(t.copy);
     expect(text("avalik-uudiskiri-kampaania-kopeeri")).toContain(`„Proov 3 kampaania${t.copySuffix}“`);
+  });
+
+  /** The row Dim sets and deletes by hand, as the check says it (the statement names the real key). */
+  const lowers = (id: string, room: number) =>
+    item(id).steps.some((s) => s.includes(`insert into settings (key, value) values ('${CAMPAIGN_ROOM_KEY}', '${room}')`) && s.includes("on conflict (key) do update set value = excluded.value"));
+  const unlowers = (id: string) => item(id).steps.some((s) => s.includes(`delete from settings where key = '${CAMPAIGN_ROOM_KEY}'`));
+  const NEXT = "avalik-uudiskiri-kampaania-jatkub";
+  const STOP = "avalik-uudiskiri-kampaania-peata";
+  const ONE_CLICK = "avalik-uudiskiri-kampaania-ykslink";
+
+  test("a campaign larger than the day's room continues the next day: Dim lowers the room to 2 by hand, three subscribers, then deletes the row and runs the daily job", () => {
+    expect(item(NEXT)).toMatchObject({ area: "avalik", who: "dim", writes: true, mark: "new", href: "/admin/uudiskiri?vaade=kampaaniad" });
+    expect(markedSince(item(NEXT).markedAt)).toBe(true);
+    // the room is the settings row the engine reads, set to 2 and deleted afterwards (never left behind), and lower than the day's room
+    expect(lowers(NEXT, 2)).toBe(true);
+    expect(unlowers(NEXT)).toBe(true);
+    expect(2).toBeLessThan(CAMPAIGN_DAILY_ROOM);
+    const steps = item(NEXT).steps;
+    expect(steps.findIndex((s) => s.includes("insert into settings"))).toBeLessThan(steps.findIndex((s) => s.includes("„Saada“")));
+    expect(steps.findIndex((s) => s.includes("„Saada“"))).toBeLessThan(steps.findIndex((s) => s.includes("delete from settings")));
+    expect(steps.findIndex((s) => s.includes("delete from settings"))).toBeLessThan(steps.findIndex((s) => s.includes("/api/cron/uudiskiri")));
+    // three subscribers of his own (Proov 3 left the list in the unsubscribe check), the daily job's address and its secret
+    for (const address of ["+proov3,", "+proov3b", "+proov3c"]) expect(steps.join("\n"), address).toContain(address);
+    expect(text(NEXT)).toContain("Authorization: Bearer");
+    expect(text(NEXT)).toContain("CRON_SECRET");
+    // what he sees: two of three went and the rest waits (the progress line), the campaign is going out, then the third goes and it is sent
+    expect(text(NEXT)).toContain(`„${t.progress.replace("{sent}", "2").replace("{n}", "…").replace("{left}", "…")}“`);
+    expect(text(NEXT)).toContain(`„${t.status.sending}“`);
+    expect(text(NEXT)).toContain(`„${t.stop.button}“`);
+    expect(text(NEXT)).toContain(`„${t.sentLine.replace("{date}", "…").replace("{n}", "3")}“`);
+    expect(text(NEXT)).toContain(`„${t.status.sent}“`);
+    // it sends the draft that "Kopeeri" left (subject „Proov 3 koopia“), so it sits after that check
+    expect(text("avalik-uudiskiri-kampaania-kopeeri")).toContain("Proov 3 koopia");
+    expect(text(NEXT)).toContain(`„Proov 3 kampaania${t.copySuffix}“`);
+    expect(text(NEXT)).toContain("„Proov 3 koopia“");
+    expect(at("avalik-uudiskiri-kampaania-kopeeri")).toBeLessThan(at(NEXT));
+    expect(item(NEXT).risk).toBe("med");
+  });
+
+  test("„Peata saatmine“: the room lowered to 1, the question with the number that will not go, „Ei“ then „Jah, peata“, the row deleted", () => {
+    expect(item(STOP)).toMatchObject({ area: "avalik", who: "dim", writes: true, mark: "new", title: t.stop.button });
+    expect(markedSince(item(STOP).markedAt)).toBe(true);
+    expect(lowers(STOP, 1)).toBe(true);
+    expect(unlowers(STOP)).toBe(true);
+    expect(text(STOP)).toContain(`„${t.stop.confirm.replace("{n}", "…")}“`);
+    for (const word of [t.stop.button, t.stop.yes, t.stop.no, t.status.sending, t.status.sent, t.copy]) expect(text(STOP), word).toContain(`„${word}“`);
+    expect(text(STOP)).toContain(`„${t.progress.replace("{sent}", "1").replace("{n}", "…").replace("{left}", "…")}“`);
+    expect(text(STOP)).toContain(`„${t.sentLine.replace("{date}", "…").replace("{n}", "1")}“`);
+    // it copies the campaign of the check before (sent by then) and presses the copy: it follows that check
+    expect(at(NEXT)).toBeLessThan(at(STOP));
+    expect(item(STOP).steps.join("\n")).toContain(`„Proov 3 kampaania${t.copySuffix}“`);
+  });
+
+  test("the mail program's own unsubscribe button: on a mail of the campaign that went out, it removes the address from the list; the others leave by the link", () => {
+    expect(item(ONE_CLICK)).toMatchObject({ area: "avalik", who: "dim", writes: true, mark: "new", href: "/admin/uudiskiri" });
+    expect(markedSince(item(ONE_CLICK).markedAt)).toBe(true);
+    expect(text(ONE_CLICK)).toContain("List-Unsubscribe-Post");
+    expect(text(ONE_CLICK)).toContain(`„${et.mail.campaign.unsubscribe}“`);
+    expect(text(ONE_CLICK)).toContain("+proov3b");
+    expect(text(ONE_CLICK)).toContain("„Proov 3 koopia“");
+    expect(at(STOP)).toBeLessThan(at(ONE_CLICK));
+    // it leaves the three test subscribers gone, so the list is as it was before the three checks
+    expect(item(ONE_CLICK).expect.join("\n")).toContain("Loendis pole ühtegi kolmest +proov3 aadressist.");
+  });
+
+  test("the checks that need three subscribers do not touch Proov 1, whose account and subscription come later", () => {
+    for (const id of [NEXT, STOP, ONE_CLICK]) expect(text(id), id).not.toMatch(/Proov 1(?!\d)/);
+    for (const id of [NEXT, STOP, ONE_CLICK]) expect(at(id), id).toBeLessThan(at("registreerimine-leping-plokk"));
   });
 
   test("the edit in another tab changes only the preview line, so the send's check after it still finds its subject", () => {

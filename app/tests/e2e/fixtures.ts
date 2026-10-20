@@ -644,6 +644,38 @@ export async function insertCampaign(f: CampaignFixture): Promise<number> {
   }
 }
 
+/**
+ * The deliveries of a campaign set in the state a send leaves them in (the 20.10 design): so many rows of each status, for a campaign the test made with
+ * insertCampaign (`sending`). Nothing is sent; the rows go with the campaign (ON DELETE CASCADE, removeCampaignRows). Their addresses are made up.
+ */
+export async function insertDeliveries(campaignId: number, counts: Partial<Record<"waiting" | "sent" | "failed" | "unknown" | "skipped", number>>): Promise<void> {
+  const sql = connect(false);
+  try {
+    let k = 0;
+    for (const [status, n] of Object.entries(counts)) {
+      for (let i = 0; i < (n ?? 0); i++) {
+        k++;
+        await sql`
+          insert into newsletter_deliveries (campaign_id, email, locale, token, status, sent_at)
+          values (${campaignId}, ${`e2e-delivery-${campaignId}-${k}@example.com`}, 'et', ${`e2e-token-${campaignId}-${k}-0123456789abcdef`}, ${status}, ${status === "sent" ? new Date() : null})`;
+      }
+    }
+  } finally {
+    await sql.end();
+  }
+}
+
+/** How many deliveries of a campaign are in each status (only the statuses that have rows). */
+export async function deliveryCounts(campaignId: number): Promise<Record<string, number>> {
+  const sql = connect(false);
+  try {
+    const rows = await sql<{ status: string; n: number }[]>`select status, count(*)::int as n from newsletter_deliveries where campaign_id = ${campaignId} group by status`;
+    return Object.fromEntries(rows.map((r) => [r.status, Number(r.n)]));
+  } finally {
+    await sql.end();
+  }
+}
+
 /** Deletes the campaigns of one name, or all the admin tests' (E2E_CAMPAIGN_PREFIX); returns how many are left (0 when clean). No page but the admin's shows them. */
 export async function removeCampaignRows(name?: string): Promise<number> {
   const sql = connect(false);

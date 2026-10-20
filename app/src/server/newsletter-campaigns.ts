@@ -1,8 +1,18 @@
-import { and, asc, count, desc, eq, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Db, Q } from "@/db/client";
-import { newsletterCampaigns, newsletterDeliveries, subscribers, type DeliveryStatus, type NewsletterCampaign, type NewsletterDelivery } from "@/db/schema";
+import { newsletterCampaigns, newsletterDeliveries, settings, subscribers, type DeliveryStatus, type NewsletterCampaign, type NewsletterDelivery } from "@/db/schema";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
-import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_LIMITS, campaignContentFor, checkCampaignDraft, isCampaignHref, ruFallsBack, type NewsletterCampaignDraft } from "@/domain/newsletter-campaign";
+import {
+  CAMPAIGN_DAILY_ROOM,
+  CAMPAIGN_LIMITS,
+  CAMPAIGN_ROOM_KEY,
+  campaignContentFor,
+  campaignRoomSetting,
+  checkCampaignDraft,
+  isCampaignHref,
+  ruFallsBack,
+  type NewsletterCampaignDraft,
+} from "@/domain/newsletter-campaign";
 import { isWelcomeCode, normalizeWelcomeCode, WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import { adminEt } from "@/i18n/dict/admin";
 import { isStorableImageKey, mediaUrl } from "@/lib/media";
@@ -24,7 +34,8 @@ import { forgetKey, releaseSlot, reserveSlot, windowKey, type TextKv } from "./r
 // - The press („Saada kõigile“, startSend) writes one `newsletter_deliveries` row for each confirmed subscriber at that moment and sends the first
 //   batch at once; the daily job (runDueCampaigns) sends the rest, a batch a day, until no row waits.
 // - A batch (runBatch) sends while the day's count of every mail the site sent (client-auth.ts mailsSentToday) is below CAMPAIGN_DAILY_ROOM and
-//   its time lasts. It claims one row at a time (FOR UPDATE SKIP LOCKED, committed before the send: two runners never take one row), sends it,
+//   its time lasts (and, only when the settings row newsletter_daily_room is there, while this campaign's own mails of the day are below it: a lower
+//   room for a check, `roomSetting`). It claims one row at a time (FOR UPDATE SKIP LOCKED, committed before the send: two runners never take one row), sends it,
 //   and writes its outcome to that row only while it is still `claimed`. Each outcome is one status (at most once, notify.ts MailOutcome): accepted
 //   `sent`; the address refused `failed`; no answer `unknown`, never sent again; Resend's day or month limit, or any other refusal, back to
 //   `waiting` and the batch stops. A claim older than STALE_CLAIM_MS belongs to a runner that died: `unknown`, never `waiting` again.
@@ -262,6 +273,46 @@ export type BatchResult = { progress: Progress; stopped: BatchStop };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * The lowered room, when Dim has set the settings row for a check (domain/newsletter-campaign.ts CAMPAIGN_ROOM_KEY): the most mails one campaign may send
+ * in a UTC day. null: no row (the usual case: the only cost is this one read per batch), or a value that is no number (said in the log, never the value).
+ * It can only lower the room, never raise it (campaignRoomSetting).
+ */
+async function roomSetting(q: Q): Promise<number | null> {
+  const [row] = await q.select({ value: settings.value }).from(settings).where(eq(settings.key, CAMPAIGN_ROOM_KEY)).limit(1);
+  if (!row) return null;
+  const room = campaignRoomSetting(row.value);
+  if (room === null) console.warn(`[newsletter] the setting ${CAMPAIGN_ROOM_KEY} is no number: ignored`);
+  return room;
+}
+
+/** The mails campaign `id` has sent in the UTC day of `now` (its deliveries `sent` that day). */
+async function campaignMailsOfDay(q: Q, id: number, now: Date): Promise<number> {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const [row] = await q
+    .select({ n: count() })
+    .from(newsletterDeliveries)
+    .where(
+      and(
+        eq(newsletterDeliveries.campaignId, id),
+        eq(newsletterDeliveries.status, "sent"),
+        gte(newsletterDeliveries.sentAt, start),
+        lt(newsletterDeliveries.sentAt, new Date(start.getTime() + 86_400_000)),
+      ),
+    );
+  return row?.n ?? 0;
+}
+
+/**
+ * Is there room for one more mail of campaign `id` now: the day's count of every mail below CAMPAIGN_DAILY_ROOM, and the campaign's own mails of the day
+ * below the lowered room when there is one. (The lowered room is the campaign's own, so a check needs no sum with the day's other mails or with the
+ * campaigns sent earlier the same day.)
+ */
+async function hasRoom(db: Db, id: number, now: Date, lowered: number | null): Promise<boolean> {
+  if ((await mailsSentToday(db, now)) >= CAMPAIGN_DAILY_ROOM) return false;
+  return lowered === null || (await campaignMailsOfDay(db, id, now)) < lowered;
+}
+
 /** The deliveries of campaign `id` by status. */
 export async function progressOf(q: Q, id: number): Promise<Progress> {
   const rows = await q
@@ -496,7 +547,8 @@ export async function sendRefused(kv: TextKv, id: number): Promise<boolean> {
 
 /**
  * One batch of campaign `id` (the press's first, or the daily job's). First, its stale claims become `unknown`. Then, while the day's count of every
- * mail is below CAMPAIGN_DAILY_ROOM and `deps.deadline` has not come: claim one waiting row (claimNext), skip it when her consent is gone
+ * mail is below CAMPAIGN_DAILY_ROOM (and the campaign's own mails of the day below the lowered room, when the settings row is there: hasRoom) and
+ * `deps.deadline` has not come: claim one waiting row (claimNext), skip it when her consent is gone
  * (consentToken: `skipped`), else send her the campaign in her language (the Estonian text under her own footer when the Russian one is missing)
  * with her own unsubscribe link and the List-Unsubscribe headers, and write the outcome (statusOf). SEND_GAP_MS between two sends. Resend's limits
  * stop the batch (`room`), and so does any other refusal (`refused`, and the mark: sendRefused) or three unknown answers in a row. When no row waits
@@ -512,6 +564,7 @@ export async function runBatch(deps: SendDeps, id: number): Promise<BatchResult>
   const send = deps.send ?? sendMailResult;
   const gapMs = deps.gapMs ?? SEND_GAP_MS;
   const kv = deps.env.KV;
+  const lowered = await roomSetting(db);
   let marked = await sendRefused(kv, id).catch((e) => {
     logFailure(`[newsletter] campaign ${id}: the refusal mark unavailable`, e);
     return false;
@@ -527,7 +580,7 @@ export async function runBatch(deps: SendDeps, id: number): Promise<BatchResult>
       stopped = "time";
       break;
     }
-    if ((await mailsSentToday(db, deps.now())) >= CAMPAIGN_DAILY_ROOM) {
+    if (!(await hasRoom(db, id, deps.now(), lowered))) {
       stopped = "room";
       break;
     }

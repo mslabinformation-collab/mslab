@@ -3,18 +3,22 @@ import Link from "next/link";
 import { AdminIcon } from "@/components/admin/AdminIcon";
 import { CampaignsPanel, campaignEditorView, campaignListRow } from "@/components/admin/CampaignsPanel";
 import { getAdminCounts } from "@/components/admin/data";
+import type { TestTarget } from "@/components/admin/NewsletterCampaignEditor";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
 import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { pageSubscribers } from "@/db/queries/admin";
+import { normalizeEmail } from "@/domain/email";
 import { parsePage } from "@/domain/paging";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { parseRowId } from "@/lib/row-id";
 import { requireAdmin } from "@/server/auth";
-import { getCampaign, listCampaigns } from "@/server/newsletter-campaigns";
+import { serverEnv } from "@/server/env";
+import { serverKv } from "@/server/kv";
+import { getCampaign, listCampaigns, progressOf, sendRefused } from "@/server/newsletter-campaigns";
 import { linkSuggestions } from "@/server/site-links";
 import styles from "./newsletter.module.css";
 
@@ -137,23 +141,41 @@ async function subscribersPage(email: string, search: Search) {
   );
 }
 
-/** The campaigns' view: the list, and the editor of the one chosen (`kampaania`: an id, `uus` for a new one, or nothing). (It reads.) */
+/**
+ * The addresses „Saada proov“ offers: Maria's (MARIA_EMAIL) and the signed-in admin's, one when they are the same, Maria's left out when it is not set
+ * (actions/admin-newsletter.ts sendTestAction takes the address from the same two sources, never from the browser).
+ */
+function testTargetsOf(mariaEmail: string, adminEmail: string): TestTarget[] {
+  const maria = normalizeEmail(mariaEmail);
+  const me = normalizeEmail(adminEmail);
+  return [...(maria ? [{ key: "maria" as const, address: maria }] : []), ...(me && me !== maria ? [{ key: "me" as const, address: me }] : [])];
+}
+
+/**
+ * The campaigns' view: the list (each campaign going out with its progress), and the editor of the one chosen (`kampaania`: an id, `uus` for a new one,
+ * or nothing), which once it is no draft carries where its deliveries stand and whether the last batch was refused. (It reads.)
+ */
 async function campaignsPage(email: string, kampaania: string) {
   const db = getDb();
   const id = kampaania === "uus" ? null : parseRowId(kampaania);
   const [rows, links, chosen] = await Promise.all([listCampaigns(db), linkSuggestions(db), id === null ? Promise.resolve(null) : getCampaign(db, id)]);
   const selected = kampaania === "uus" ? "new" : chosen ? chosen.id : null;
+  // the deliveries of every campaign going out (one at a time, by the design) and of the one chosen, if it is no draft
+  const shown = new Set([...rows.filter((r) => r.status === "sending").map((r) => r.id), ...(chosen && chosen.status !== "draft" ? [chosen.id] : [])]);
+  const progress = new Map(await Promise.all([...shown].map(async (campaignId) => [campaignId, await progressOf(db, campaignId)] as const)));
+  const refused = chosen?.status === "sending" ? await sendRefused(serverKv(), chosen.id) : false;
 
   return (
     <Shell email={email} active="newsletter">
       <div className={ui.page}>
         <Top view="campaigns" />
         <CampaignsPanel
-          campaigns={rows.map(campaignListRow)}
+          campaigns={rows.map((r) => campaignListRow(r, progress.get(r.id) ?? null))}
           selected={selected}
-          editing={chosen ? campaignEditorView(chosen) : null}
+          editing={chosen ? campaignEditorView(chosen, { progress: progress.get(chosen.id) ?? null, refused }) : null}
           notFound={kampaania !== "" && kampaania !== "uus" && chosen === null}
           links={links}
+          testTargets={testTargetsOf(serverEnv().MARIA_EMAIL, email)}
         />
       </div>
     </Shell>

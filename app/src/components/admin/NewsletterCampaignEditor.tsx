@@ -1,27 +1,36 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useState, useTransition, type FormEvent, type SyntheticEvent } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type SyntheticEvent } from "react";
 import { CAMPAIGN_LIMITS, checkCampaignDraft } from "@/domain/newsletter-campaign";
 import { WELCOME_CODE_MAX } from "@/domain/welcome-code";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { toStorable } from "@/lib/to-storable";
-import { copyCampaignAction, saveCampaignAction } from "@/server/actions/admin-newsletter";
+import { copyCampaignAction, prepareSendAction, saveCampaignAction, sendTestAction, startSendAction, stopSendAction } from "@/server/actions/admin-newsletter";
+import type { Progress } from "@/server/newsletter-campaigns";
+import { Choice } from "./Choice";
 import { I18nInput, LangSwitch, type Lang } from "./I18nInput";
 import { SaveBar } from "./SaveBar";
 import { SingleImage } from "./SingleImage";
 import { TextField } from "./TextField";
 import type { SaveStatus } from "./useSiteDraft";
+import ed from "./editor.module.css";
 import site from "./site-editor.module.css";
 import ui from "./ui.module.css";
 import styles from "./CampaignsPanel.module.css";
 
-// Maria's campaign editor on the „Kampaaniad“ tab (newsletter campaigns, Task 4; spec D4, D5; ruling R2). A draft: the fields (the name, the
-// subject, the preview line, the picture, the text in paragraphs, the code, the button), each with its limit and a counter, „Salvesta“, and the live
-// preview of the real mail in both languages. A campaign that is sent or going out is read-only: „Saadetud {date} · {n} tellijale“, the preview and
-// „Kopeeri“. (The sends, „Saada proov“ and „Saada kõigile“, are the 20.10 design's: docs/superpowers/specs/2026-10-20-newsletter-simple-design.md.)
+// Maria's campaign editor on the „Kampaaniad“ tab (newsletter campaigns, Task 4; spec D4, D5; ruling R2; the 20.10 design §3:
+// docs/superpowers/specs/2026-10-20-newsletter-simple-design.md). Three states, decided by the campaign's `status` and nothing else:
+// - a draft: the fields (the name, the subject, the preview line, the picture, the text in paragraphs, the code, the button), each with its limit and
+//   a counter, „Salvesta“, the live preview of the real mail in both languages, and the sends: „Saada proov“ (Maria's address or the signed-in
+//   admin's, either language) and „Saada kõigile“ (the confirmation with the counts, then the result line of the first batch);
+// - going out (`sending`): read-only, with „Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.“, the failed and unknown counts when
+//   they are not 0, the line of a batch Resend refused, and „Peata saatmine“ (which asks first), the preview and „Kopeeri“;
+// - sent: read-only, „Saadetud {date} · {n} tellijale“ (and the same counts), the preview and „Kopeeri“.
+// What an action returns (the progress, `stopped`) is only the line right after a press: the page is refreshed by the action and the state comes
+// from the campaign's row (a batch can stop with rows still claimed by another runner, so `stopped: null` does not mean done).
 // The rules are domain/newsletter-campaign.ts checkCampaignDraft, run here before anything is saved (the server checks them again); text pasted from
 // Word can carry control characters, which become spaces or line breaks first (`cleanPasted`). This file runs on old iPads: no regular expression
 // with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
@@ -40,7 +49,13 @@ export type CampaignEditorView = {
   updatedAt: string;
   /** The subscribers the send was for, per language; null while a draft. */
   recipients: { et: number; ru: number } | null;
+  /** Where its deliveries stand (server/newsletter-campaigns.ts progressOf); null while a draft. */
+  progress: Progress | null;
+  /** While going out: the last batch stopped because Resend refused (server/newsletter-campaigns.ts sendRefused). */
+  refused: boolean;
 };
+/** An address „Saada proov“ may go to: MARIA_EMAIL's (`maria`) or the signed-in admin's (`me`). */
+export type TestTarget = { key: "maria" | "me"; address: string };
 
 export const EMPTY_CAMPAIGN: CampaignValues = {
   name: "",
@@ -88,8 +103,13 @@ const IDLE: Line = { tone: "idle", text: "" };
 const toneClass = (tone: Tone) => (tone === "error" ? ui.error : tone === "done" ? ui.success : ui.hint);
 
 const t = adminEt.newsletter.campaigns;
+const LOCALES: readonly Lang[] = ["et", "ru"];
 /** An action's refusal in words (an unknown code: the general one). */
 const refusal = (code: string): string => (t.errorsOf as Record<string, string>)[code] ?? t.errorsOf.server;
+/** What a lost connection or a thrown action is to the editor: the general refusal. */
+const LOST = { ok: false as const, error: "server" as const };
+/** „Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.“ for the deliveries as they stand. */
+const progressText = (p: Progress): string => fill(t.progress, { sent: p.sent, n: p.total, left: p.waiting });
 /** A field's refusal in words (domain/newsletter-campaign.ts checkCampaignDraft's codes). */
 const fieldError = (code: string | undefined): string | undefined =>
   code === undefined ? undefined : code === "ruLabel" ? adminEt.newsletter.campaignErrors.ruLabel : ((t.errors as Record<string, string>)[code] ?? t.errors.invalid);
@@ -97,14 +117,17 @@ const fieldError = (code: string | undefined): string | undefined =>
 export function NewsletterCampaignEditor({
   campaign,
   links,
+  testTargets,
 }: {
   /** The campaign, or null for „Uus kampaania“ (saved, it opens at its own address). */
   campaign: CampaignEditorView | null;
   /** The site's pages for the button's address (server/site-links.ts). */
   links: string[];
+  /** The addresses „Saada proov“ offers. */
+  testTargets: TestTarget[];
 }) {
   const readOnly = campaign !== null && campaign.status !== "draft";
-  return readOnly ? <SentCampaign campaign={campaign} /> : <DraftEditor campaign={campaign} links={links} />;
+  return readOnly ? <SentCampaign campaign={campaign} /> : <DraftEditor campaign={campaign} links={links} testTargets={testTargets} />;
 }
 
 // ---------- the preview ----------
@@ -194,7 +217,7 @@ function PreviewCard({ values }: { values: CampaignValues }) {
 
 // ---------- a draft ----------
 
-function DraftEditor({ campaign, links }: { campaign: CampaignEditorView | null; links: string[] }) {
+function DraftEditor({ campaign, links, testTargets }: { campaign: CampaignEditorView | null; links: string[]; testTargets: TestTarget[] }) {
   const router = useRouter();
   const uid = useId();
   const L = CAMPAIGN_LIMITS;
@@ -203,8 +226,12 @@ function DraftEditor({ campaign, links }: { campaign: CampaignEditorView | null;
   const [saved, setSaved] = useState<CampaignValues>(campaign?.values ?? EMPTY_CAMPAIGN);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [saveLine, setSaveLine] = useState<Line>(IDLE);
+  const [saves, setSaves] = useState(0);
   const [pending, start] = useTransition();
   const dirty = JSON.stringify(values) !== JSON.stringify(saved);
+  // what an open confirmation of „Saada kõigile“ was given for: any change of a field, or a save that lands, closes it, so „Saada“ never sends what
+  // Maria did not confirm
+  const revision = `${saves}:${JSON.stringify(values)}`;
 
   // Another campaign chosen (the list's links, „Uus kampaania“): its fields (adjusting state while rendering). Not when the page comes back with the
   // new campaign this editor has just saved: its fields and its „Salvestatud.“ stay.
@@ -260,9 +287,10 @@ function DraftEditor({ campaign, links }: { campaign: CampaignEditorView | null;
     setFields({});
     start(async () => {
       // (a lost connection rejects the call: words, not an error page)
-      const r = await saveCampaignAction({ id, draft: checked.value }).catch(() => ({ ok: false as const, error: "server" as const }));
+      const r = await saveCampaignAction({ id, draft: checked.value }).catch(() => LOST);
       if (r.ok) {
         setSaved(cleaned);
+        setSaves((n) => n + 1);
         setSaveLine({ tone: "done", text: adminEt.editor.saved });
         if (id === null) {
           setId(r.id);
@@ -346,6 +374,7 @@ function DraftEditor({ campaign, links }: { campaign: CampaignEditorView | null;
 
         <div className={site.aside}>
           <PreviewCard values={values} />
+          <Sends key={id ?? "new"} id={id} saved={id !== null && !dirty} revision={revision} testTargets={testTargets} />
         </div>
       </div>
       <SaveBar status={status} pending={pending} reloadHref={id === null ? "/admin/uudiskiri?vaade=kampaaniad" : campaignHref(id)} />
@@ -353,20 +382,260 @@ function DraftEditor({ campaign, links }: { campaign: CampaignEditorView | null;
   );
 }
 
+// ---------- the sends of a draft ----------
+
+/**
+ * The sends: „Saada proov“ (one ordinary mail to Maria or to the signed-in admin, in either language) and „Saada kõigile“ (the confirmation, then the
+ * press). Both need a saved draft (`saved`): what goes out is the stored campaign.
+ */
+function Sends({ id, saved, revision, testTargets }: { id: number | null; saved: boolean; revision: string; testTargets: TestTarget[] }) {
+  const uid = useId();
+  const [to, setTo] = useState<TestTarget["key"]>(testTargets[0]?.key ?? "me");
+  const [locale, setLocale] = useState<Lang>("et");
+  const [testLine, setTestLine] = useState<Line>(IDLE);
+  const [testing, startTest] = useTransition();
+  const target = testTargets.find((x) => x.key === to) ?? testTargets[0];
+  const open = saved && id !== null;
+
+  const test = () => {
+    if (id === null || !open || testing || !target) return;
+    setTestLine({ tone: "busy", text: t.test.working });
+    startTest(async () => {
+      const r = await sendTestAction({ id, to: target.key, locale }).catch(() => LOST);
+      if (r.ok) setTestLine({ tone: "done", text: fill(t.test.sent, { email: target.address }) });
+      else setTestLine({ tone: "error", text: refusal(r.error) });
+    });
+  };
+
+  return (
+    <section className={ui.card} aria-labelledby={`${uid}-send`} data-campaign-send="">
+      <h2 id={`${uid}-send`} className={ui.h3}>
+        {t.send}
+      </h2>
+      {!open && (
+        <p className={ui.hint} data-campaign-save-first="">
+          {t.saveFirst}
+        </p>
+      )}
+
+      <div className={styles.sendPart} data-campaign-test="">
+        <h3 className={styles.sendTitle}>{t.test.title}</h3>
+        <p className={`${ui.muted} ${ui.small}`}>{t.test.lead}</p>
+        {testTargets.length > 0 && (
+          <fieldset className={ed.fieldset}>
+            <legend className={ui.legend}>{t.test.to}</legend>
+            <div className={ed.choices}>
+              {testTargets.map((x) => (
+                <Choice
+                  key={x.key}
+                  className={ed.choice}
+                  type="radio"
+                  name={`${uid}-to`}
+                  value={x.key}
+                  checked={to === x.key}
+                  onChange={() => setTo(x.key)}
+                  label={fill(x.key === "maria" ? t.test.toMaria : t.test.toMe, { email: x.address })}
+                  data-test-to={x.key}
+                />
+              ))}
+            </div>
+          </fieldset>
+        )}
+        <fieldset className={ed.fieldset}>
+          <legend className={ui.legend}>{t.test.language}</legend>
+          <div className={ed.choices}>
+            {LOCALES.map((l) => (
+              <Choice key={l} className={ed.choice} type="radio" name={`${uid}-locale`} value={l} checked={locale === l} onChange={() => setLocale(l)} label={t.test.languages[l]} data-test-locale={l} />
+            ))}
+          </div>
+        </fieldset>
+        <div className={styles.sendRow}>
+          <button type="button" className={`${ui.btn} ${ui.secondary}`} aria-disabled={!open || testing || !target || undefined} onClick={test} data-test-send="">
+            {testing ? t.test.working : t.test.button}
+          </button>
+        </div>
+        <p role="status" className={`${styles.status} ${toneClass(testLine.tone)}`} data-test-status="">
+          {testLine.text}
+        </p>
+      </div>
+
+      <ConfirmSend id={id} open={open} revision={revision} />
+    </section>
+  );
+}
+
+/** What the confirmation was given for (prepareSendAction): the counts by language, the Russian fall-back, and the campaign's version. */
+type Plan = { et: number; ru: number; ruFallsBack: boolean; updatedAt: string };
+
+/**
+ * „Saada kõigile“: the press asks for the plan (prepareSendAction), the confirmation shows the spec's counts (with the Russian fall-back when it
+ * applies), and „Saada“ sends with the counts shown: when the subscribers or the campaign changed meanwhile nothing is sent and the line says so.
+ * The confirmation belongs to `revision` (the fields and the saves of the draft): any change of a field, or a save that lands, closes it. While
+ * another campaign is going out, the plan comes back `busy` and the line is the one-at-a-time text instead of the confirmation. After the press the
+ * line is made from the answer, the progress of the first batch: it is all the page shows until the refresh the action asked for lands, when the
+ * campaign's own state (sending or sent) replaces this card.
+ */
+function ConfirmSend({ id, open, revision }: { id: number | null; open: boolean; revision: string }) {
+  const [line, setLine] = useState<Line>(IDLE);
+  const [confirm, setConfirm] = useState<{ plan: Plan; revision: string } | null>(null);
+  const [sending, start] = useTransition();
+  // a field changed or a save landed since the confirmation: it is closed for good (adjusting state while rendering), even if the fields come back
+  if (confirm && confirm.revision !== revision) setConfirm(null);
+  const shown = confirm && confirm.revision === revision ? confirm : null;
+
+  const prepare = () => {
+    if (id === null || !open || sending) return;
+    setConfirm(null);
+    setLine({ tone: "busy", text: t.all.checking });
+    start(async () => {
+      const r = await prepareSendAction({ id }).catch(() => LOST);
+      if (r.ok) {
+        setConfirm({ plan: { et: r.et, ru: r.ru, ruFallsBack: r.ruFallsBack, updatedAt: r.updatedAt }, revision });
+        setLine(IDLE);
+      } else setLine({ tone: "error", text: refusal(r.error) });
+    });
+  };
+
+  const send = () => {
+    if (id === null || !open || sending || !shown) return;
+    const { plan } = shown;
+    setLine({ tone: "busy", text: t.all.working });
+    start(async () => {
+      const r = await startSendAction({ id, et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt }).catch(() => LOST);
+      setConfirm(null);
+      if (!r.ok) return setLine({ tone: "error", text: refusal(r.error) });
+      if (r.stopped === "refused") return setLine({ tone: "error", text: t.errorsOf.refused });
+      setLine({ tone: "done", text: r.progress.waiting > 0 ? progressText(r.progress) : t.all.done });
+    });
+  };
+
+  return (
+    <div className={styles.sendPart} data-campaign-all="">
+      <h3 className={styles.sendTitle}>{t.all.title}</h3>
+      <p className={`${ui.muted} ${ui.small}`}>{t.all.lead}</p>
+      {shown ? (
+        <div className={styles.confirm} data-send-confirm="">
+          <p data-send-confirm-text="">{fill(t.all.confirm, { n: shown.plan.et + shown.plan.ru, a: shown.plan.et, b: shown.plan.ru })}</p>
+          {shown.plan.ruFallsBack && shown.plan.ru > 0 && (
+            <p className={ui.notice} data-send-fallback="">
+              {t.all.fallback}
+            </p>
+          )}
+          <div className={styles.sendRow}>
+            <button type="button" className={ui.btn} aria-disabled={!open || sending || undefined} onClick={send} data-send-yes="">
+              {sending ? t.all.working : t.all.yes}
+            </button>
+            <button type="button" className={`${ui.btn} ${ui.secondary}`} onClick={() => !sending && setConfirm(null)} data-send-no="">
+              {t.all.no}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className={styles.sendRow}>
+          <button type="button" className={ui.btn} aria-disabled={!open || sending || undefined} onClick={prepare} data-send-all="">
+            {t.all.button}
+          </button>
+        </div>
+      )}
+      <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-send-status="">
+        {line.text}
+      </p>
+    </div>
+  );
+}
+
 // ---------- a campaign that is no draft ----------
 
-/** A campaign sent or going out: read-only (a sent campaign never changes), with its preview and „Kopeeri“, which makes a new draft of it. */
+/** The lines of a campaign's counts that are worth a line only when they are not 0: the addresses that failed, the mails with no answer. */
+function CountLines({ progress }: { progress: Progress | null }) {
+  if (!progress || (progress.failed === 0 && progress.unknown === 0)) return null;
+  return (
+    <div className={styles.lines}>
+      {progress.failed > 0 && (
+        <p className={ui.notice} data-campaign-failed="">
+          {fill(t.failedLine, { n: progress.failed })}
+        </p>
+      )}
+      {progress.unknown > 0 && (
+        <p className={ui.notice} data-campaign-unknown="">
+          {fill(t.unknownLine, { n: progress.unknown })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * „Peata saatmine“ (spec §3, Draft): asks first (the number that will not go out), then stops: what waits is skipped and the campaign is sent with
+ * its counts (stopSendAction, which refreshes the page: the card then shows the sent campaign).
+ */
+function StopSend({ id, waiting }: { id: number; waiting: number }) {
+  const [confirming, setConfirming] = useState(false);
+  const [line, setLine] = useState<Line>(IDLE);
+  const [pending, start] = useTransition();
+  const question = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (confirming) question.current?.focus();
+  }, [confirming]);
+
+  const stop = () => {
+    if (pending) return;
+    setLine({ tone: "busy", text: t.stop.working });
+    start(async () => {
+      const r = await stopSendAction({ id }).catch(() => LOST);
+      setConfirming(false);
+      if (r.ok) setLine({ tone: "done", text: t.stop.done });
+      else setLine({ tone: "error", text: refusal(r.error) });
+    });
+  };
+
+  return (
+    <div className={styles.sendPart} data-campaign-stop-part="">
+      {confirming ? (
+        <div className={styles.confirm} data-stop-confirm="">
+          <p ref={question} tabIndex={-1} data-stop-confirm-text="">
+            {fill(t.stop.confirm, { n: waiting })}
+          </p>
+          <div className={styles.sendRow}>
+            <button type="button" className={`${ui.btn} ${ui.danger}`} aria-disabled={pending || undefined} onClick={stop} data-stop-yes="">
+              {pending ? t.stop.working : t.stop.yes}
+            </button>
+            <button type="button" className={`${ui.btn} ${ui.secondary}`} onClick={() => !pending && setConfirming(false)} data-stop-no="">
+              {t.stop.no}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className={styles.sendRow}>
+          <button type="button" className={`${ui.btn} ${ui.danger}`} onClick={() => setConfirming(true)} data-campaign-stop="">
+            {t.stop.button}
+          </button>
+        </div>
+      )}
+      <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-stop-status="">
+        {line.text}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * A campaign sent or going out: read-only (a sent campaign never changes). Going out (`sending`): the progress line, the failed and unknown counts
+ * when they are not 0, the line of a batch Resend refused, and „Peata saatmine“. Sent: the sent line and the same counts. Both: the preview and
+ * „Kopeeri“, which makes a new draft of it.
+ */
 function SentCampaign({ campaign }: { campaign: CampaignEditorView }) {
   const router = useRouter();
   const uid = useId();
   const [line, setLine] = useState<Line>(IDLE);
   const [pending, start] = useTransition();
+  const going = campaign.status === "sending";
 
   const copy = () => {
     if (pending) return;
     setLine({ tone: "busy", text: t.copying });
     start(async () => {
-      const r = await copyCampaignAction({ id: campaign.id }).catch(() => ({ ok: false as const, error: "server" as const }));
+      const r = await copyCampaignAction({ id: campaign.id }).catch(() => LOST);
       if (r.ok) {
         setLine(IDLE);
         router.push(campaignHref(r.id));
@@ -380,14 +649,26 @@ function SentCampaign({ campaign }: { campaign: CampaignEditorView }) {
         <h2 id={`${uid}-sent`} className={ui.h3}>
           {campaign.values.name}
         </h2>
+        {going && campaign.progress && (
+          <p className={`${ui.hint} ${styles.progress}`} data-campaign-progress="">
+            {progressText(campaign.progress)}
+          </p>
+        )}
+        {going && campaign.refused && (
+          <p className={ui.error} data-campaign-refused="">
+            {t.errorsOf.refused}
+          </p>
+        )}
         {campaign.status === "sent" && campaign.sentAt && campaign.recipients && (
           <p className={ui.success} data-campaign-sent-line="">
             {fill(t.sentLine, { date: stamp(campaign.sentAt), n: campaign.recipients.et + campaign.recipients.ru })}
           </p>
         )}
+        <CountLines progress={campaign.progress} />
         <p className={`${ui.hint} ${styles.readOnly}`} data-campaign-read-only="">
-          {t.readOnly}
+          {going ? t.readOnlySending : t.readOnly}
         </p>
+        {going && <StopSend key={campaign.id} id={campaign.id} waiting={campaign.progress?.waiting ?? 0} />}
         <div className={styles.sendRow}>
           <button type="button" className={`${ui.btn} ${ui.secondary}`} aria-disabled={pending || undefined} onClick={copy} data-campaign-copy="">
             {pending ? t.copying : t.copy}

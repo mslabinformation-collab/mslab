@@ -551,7 +551,7 @@
       "area": "avalik",
       "who": "dim",
       "device": "arvuti",
-      "title": "Saada kõigile",
+      "title": "Saada kõigile: esimene partii ja edenemise rida",
       "href": "/admin/uudiskiri?vaade=kampaaniad",
       "steps": [
         "Ava „Uudiskiri“ ja kontrolli, et loendis on ainult +proov aadressid.",
@@ -563,8 +563,9 @@
       ],
       "expect": [
         "Kinnitus on „Saadad kampaania … tellijale (eesti keeles …, vene keeles …). Kas saadame?“.",
-        "Kiri läheb kohe välja ja Proov 3 postkasti tuleb tavaline kiri „Proov 3 pakkumine“ ilma „[Proov]“ märketa.",
-        "Pärast saatmist on „Saadetud … · … tellijale“ ja välju muuta ei saa.",
+        "Esimene partii läheb kohe välja ja Proov 3 postkasti tuleb tavaline kiri „Proov 3 pakkumine“ ilma „[Proov]“ märketa.",
+        "Kui kõik mahtusid esimesse partiisse, on kampaania kaardil „Saadetud … · … tellijale“ ja välju muuta ei saa.",
+        "Kui mitte, on „Saadetud … / … — ülejäänud … lähevad järgmisel päeval.“ ja nupp „Peata saatmine“.",
         "Teises vahekaardis on vastus „See kampaania on juba saadetud.“.",
         "Kirja päistes on List-Unsubscribe ja List-Unsubscribe-Post: List-Unsubscribe=One-Click."
       ],
@@ -623,6 +624,94 @@
       "writes": true,
       "mark": "new",
       "markedAt": "2026-10-20T06:45:17.159Z"
+    },
+    {
+      "id": "avalik-uudiskiri-kampaania-jatkub",
+      "area": "avalik",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Kampaania, mis ei mahu päeva, jätkub järgmisel päeval",
+      "href": "/admin/uudiskiri?vaade=kampaaniad",
+      "steps": [
+        "Ava „Uudiskiri“ ja kontrolli, et loendis on ainult +proov aadressid.",
+        "Kui loendis on mõni muu aadress, ära jätka ja kirjuta märkus.",
+        "Liitu avalehe plokis „MS LABi kirjad“ kolme oma aadressiga, kuhu lisad enne @-märki +proov3, +proov3b ja +proov3c.",
+        "Käivita andmebaasis: insert into settings (key, value) values ('newsletter_daily_room', '2') on conflict (key) do update set value = excluded.value.",
+        "Ava „Kampaaniad“ all mustand „Proov 3 kampaania (koopia)“, vajuta „Saada kõigile“ ja siis „Saada“.",
+        "Käivita andmebaasis: delete from settings where key = 'newsletter_daily_room'.",
+        "Käivita päevatöö: ava aadress /api/cron/uudiskiri päisega Authorization: Bearer ja CRON_SECRET.",
+        "Laadi kampaania leht uuesti ja vaata kolme postkasti."
+      ],
+      "expect": [
+        "Pärast „Saada“ on kaardil „Saadetud 2 / … — ülejäänud … lähevad järgmisel päeval.“.",
+        "Loendis on kampaania märkega „Saatmine pooleli“ ja sama edenemise rida.",
+        "Kaks +proov aadressi saavad kirja „Proov 3 koopia“, kolmas ei saa midagi.",
+        "Kaardil on nupp „Peata saatmine“ ja välju muuta ei saa.",
+        "Pärast päevatööd saab ka kolmas postkast kirja „Proov 3 koopia“.",
+        "Kaardil on siis „Saadetud … · 3 tellijale“ ja loendis märge „Saadetud“."
+      ],
+      "why": "Suur kampaania ei kaota kirju: mis päevas välja ei mahu, läheb järgmisel päeval.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "avalik-uudiskiri-kampaania-peata",
+      "area": "avalik",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Peata saatmine",
+      "href": "/admin/uudiskiri?vaade=kampaaniad",
+      "steps": [
+        "Ava „Uudiskiri“ ja kontrolli, et loendis on ainult +proov aadressid.",
+        "Kui loendis on mõni muu aadress, ära jätka ja kirjuta märkus.",
+        "Käivita andmebaasis: insert into settings (key, value) values ('newsletter_daily_room', '1') on conflict (key) do update set value = excluded.value.",
+        "Ava „Kampaaniad“ all saadetud „Proov 3 kampaania (koopia)“ ja vajuta „Kopeeri“.",
+        "Vajuta uuel mustandil „Saada kõigile“ ja siis „Saada“.",
+        "Vajuta „Peata saatmine“ ja kõigepealt „Ei“, siis uuesti „Peata saatmine“ ja „Jah, peata“.",
+        "Käivita andmebaasis: delete from settings where key = 'newsletter_daily_room'."
+      ],
+      "expect": [
+        "Pärast „Saada“ on kaardil „Saadetud 1 / … — ülejäänud … lähevad järgmisel päeval.“ ja nupp „Peata saatmine“.",
+        "Nupule vajutades küsitakse „Kas peatan saatmise? Veel saatmata … kirja ei lähe välja. Seda ei saa tagasi võtta.“.",
+        "„Ei“ jätab kõik, nagu oli, ja kampaania on endiselt märkega „Saatmine pooleli“.",
+        "Pärast „Jah, peata“ on kampaania märkega „Saadetud“ ja kaardil „Saadetud … · 1 tellijale“.",
+        "Nuppu „Peata saatmine“ pole enam ja välju muuta ei saa.",
+        "Ülejäänud aadresside postkasti see kiri ei tule."
+      ],
+      "why": "Maria saab vea või vale teksti märgates kampaania pooleli jätta.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "avalik-uudiskiri-kampaania-ykslink",
+      "area": "avalik",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Postiprogrammi loobumisnupp",
+      "href": "/admin/uudiskiri",
+      "steps": [
+        "Ava Gmailis kiri „Proov 3 koopia“, mis tuli aadressile +proov3b.",
+        "Vajuta postiprogrammi enda loobumisnuppu (Gmailis „Tühista tellimus“ või „Loobu“) ja kinnita küsimus.",
+        "Kui nuppu pole, ava kirja originaal ja kontrolli, et päised List-Unsubscribe ja List-Unsubscribe-Post on olemas.",
+        "Ava halduses „Uudiskiri“ ja vaata tellijate loendit.",
+        "Ava kahe teise aadressi kirjades „Loobu uudiskirjast“ ja vajuta avanenud lehel „Loobu uudiskirjast“.",
+        "Vaata tellijate loendit uuesti."
+      ],
+      "expect": [
+        "Postiprogramm näitab oma loobumisnuppu ja kinnitamise järel ei küsi see sinult midagi lisaks.",
+        "Halduse loendis pole enam seda aadressi, mille kirjas nuppu vajutasid.",
+        "Kahe teise aadressi read on loendis kuni sammuni 5, pärast seda pole neid ka.",
+        "Loendis pole ühtegi kolmest +proov3 aadressist."
+      ],
+      "why": "Postiprogrammi enda nupp peab tellija loendist päriselt eemaldama.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-blokeeritud-opilane",

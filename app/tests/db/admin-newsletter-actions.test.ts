@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { kvEntries, mailQuota, newsletterCampaigns, subscribers } from "@/db/schema";
+import { kvEntries, mailQuota, newsletterCampaigns, settings, subscribers } from "@/db/schema";
+import { CAMPAIGN_ROOM_KEY } from "@/domain/newsletter-campaign";
 import { adminEt } from "@/i18n/dict/admin";
 import { stubFetch } from "../fakes";
 import { makeTestDb } from "./helpers";
@@ -242,6 +243,40 @@ describe("the sends' actions: „Saada kõigile“, „Peata saatmine“, „Saa
     expect(await actions.sendTestAction({ id, to: "maria", locale: "et" })).toEqual({ ok: false, error: "limited" });
     expect(r.mails()).toHaveLength(10);
     for (const code of ["limited", "mail", "address", "changed", "empty", "notSending"] as const) expect(adminEt.newsletter.campaigns.errorsOf[code], code).toMatch(/\S/);
+  });
+
+  test("the check Dim does, through the actions: with the room lowered the press sends up to it and answers `room` with the progress the line is made from; `progressAction` and „Peata saatmine“ follow", async () => {
+    configured();
+    const r = resend();
+    await db.insert(settings).values({ key: CAMPAIGN_ROOM_KEY, value: 2 });
+    try {
+      const id = await saved();
+      for (const email of ["a@example.com", "b@example.com", "c@example.com"]) await subscriber(email);
+      const plan = await actions.prepareSendAction({ id });
+      if (!plan.ok) throw new Error("no plan");
+      expect(await actions.startSendAction({ id, et: plan.et, ru: plan.ru, updatedAt: plan.updatedAt })).toEqual({
+        ok: true,
+        progress: { total: 3, sent: 2, waiting: 1, failed: 0, unknown: 0, skipped: 0 },
+        stopped: "room",
+      });
+      expect(r.mails().map((m) => m.to)).toEqual(["a@example.com", "b@example.com"]);
+      expect(cache.refresh).toHaveBeenCalledTimes(1);
+      // the page is made from the campaign's own state: still going out, nothing refused
+      expect(await actions.progressAction({ id })).toEqual({ ok: true, status: "sending", refused: false, progress: { total: 3, sent: 2, waiting: 1, failed: 0, unknown: 0, skipped: 0 } });
+      // „Peata saatmine“: the third never goes, the campaign is sent with the two that did
+      expect(await actions.stopSendAction({ id })).toEqual({ ok: true, progress: { total: 3, sent: 2, waiting: 0, failed: 0, unknown: 0, skipped: 1 } });
+      const [row] = await db.select().from(newsletterCampaigns).where(eq(newsletterCampaigns.id, id));
+      expect(row).toMatchObject({ status: "sent", recipients: { et: 2, ru: 0 } });
+      expect(r.mails()).toHaveLength(2);
+    } finally {
+      await db.delete(settings).where(eq(settings.key, CAMPAIGN_ROOM_KEY));
+    }
+  });
+
+  test("every code the send actions answer has its words in the editor's table (an unknown code would fall back to the general line)", () => {
+    const codes = ["notFound", "sent", "busy", "empty", "changed", "notSending", "refused", "limited", "mail", "address", "server"] as const;
+    for (const code of codes) expect(adminEt.newsletter.campaigns.errorsOf[code], code).toMatch(/\S/);
+    expect(new Set(codes.map((c) => adminEt.newsletter.campaigns.errorsOf[c])).size).toBe(codes.length); // (no two codes say the same)
   });
 
   test("a throw in a send's action: `server`, logged by its class only", async () => {

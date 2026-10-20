@@ -37,6 +37,11 @@
   grid-column: 1 / -1;
 }
 
+/* the line under a name (sent, going out with its progress, or the last change): never wider than the screen */
+.rowLine {
+  overflow-wrap: anywhere;
+}
+
 /* a 44px tall target, whatever the length of the name (tests/e2e/newsletter-campaigns.spec.ts looks at it at four widths) */
 .rowLink {
   display: flex;
@@ -100,7 +105,24 @@
   border: 0;
 }
 
-/* ---------- the buttons and their status line ---------- */
+/* ---------- the sends: „Saada proov“, „Saada kõigile“ and its confirmation, „Peata saatmine“ ---------- */
+
+.sendPart {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.sendPart p {
+  margin: 0;
+}
+
+.sendTitle {
+  margin: 0;
+  font: 600 15px/1.3 var(--font-body);
+}
 
 .sendRow {
   display: flex;
@@ -112,10 +134,38 @@
   display: none;
 }
 
-/* ---------- a sent campaign ---------- */
+.confirm {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--ink);
+  border-radius: 14px;
+}
+
+.confirm p {
+  margin: 0;
+}
+
+/* ---------- a sent campaign, or one going out ---------- */
 
 .readOnly {
   margin: 14px 0;
+}
+
+/* the failed and unknown counts, one line each, only when they are not 0 */
+.lines {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.lines p {
+  margin: 0;
+}
+
+/* the progress line of a campaign going out (and its list row): the numbers may be long, never wider than the screen */
+.progress {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 640px) {

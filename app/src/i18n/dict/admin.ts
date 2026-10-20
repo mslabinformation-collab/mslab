@@ -1514,12 +1514,15 @@ export const adminEt = {
     viewsLabel: "Vaade",
     views: { subscribers: "Tellijad", campaigns: "Kampaaniad" },
     // „Kampaaniad“ (newsletter campaigns Task 4; spec D4, D5; components/admin/CampaignsPanel.tsx, NewsletterCampaignEditor.tsx).
-    // Quoted from the spec as they are: „Kampaaniad“, „Saadetud {date} · {n} tellijale“, „Kopeeri“, „Vene keeles tellijad saavad eestikeelse kirja.“
+    // Quoted from the spec as they are: „Kampaaniad“, „Saada proov“, „Saada kõigile“, the confirmation „Saadad kampaania {n} tellijale (eesti keeles {a},
+    // vene keeles {b}). Kas saadame?“, „Saadetud {date} · {n} tellijale“, „Kopeeri“, „Vene keeles tellijad saavad eestikeelse kirja.“ The spec marks
+    // as Draft „Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.“, „Peata saatmine“ and the two lines of `errorsOf` (`refused`, `busy`).
     // „Tühi rida alustab uut lõiku.“ is the site editors' own. Every other text here is a Draft for Dim's wording sheet.
-    // {n} a count, {max} a limit, {date} a time.
+    // {n} a count, {max} a limit, {date} a time, {a} / {b} the Estonian and the Russian counts, {sent} / {left} the mails that went and those waiting,
+    // {email} an address.
     campaigns: {
       title: "Kampaaniad",
-      lead: "Kiri kõigile uudiskirja tellijatele: eesti keeles ja soovi korral vene keeles. Vaata eelvaadet, saada endale proov ja siis kõigile.",
+      lead: "Kiri kõigile uudiskirja tellijatele: eesti keeles ja soovi korral vene keeles. Vaata eelvaadet, saada endale proov ja siis kõigile. Mis päevas ei mahu välja, läheb järgmisel päeval.",
       list: "Kampaaniad",
       new: "Uus kampaania",
       empty: "Kampaaniaid veel pole.",
@@ -1554,9 +1557,51 @@ export const adminEt = {
       previewFrame: "Kirja eelvaade: {lang}",
       previewWorking: "Uuendan eelvaadet…",
       previewError: "Eelvaadet ei saanud näidata. Proovi uuesti.",
-      // a sent campaign (read-only)
+      // the sends of a draft (spec §3): „Saada proov“ and „Saada kõigile“ with its confirmation
+      send: "Saatmine",
+      saveFirst: "Salvesta muudatused enne saatmist.",
+      test: {
+        title: "Saada proov",
+        lead: "Proov on täpselt see kiri, mille tellijad saavad, teemas „[Proov]“. Selle loobumislink ei loobu kellegi uudiskirjast.",
+        to: "Kellele",
+        toMaria: "Maria: {email}",
+        toMe: "Mina: {email}",
+        language: "Keel",
+        languages: { et: "Eesti keeles", ru: "Vene keeles" },
+        button: "Saada proov",
+        working: "Saadan proovi…",
+        sent: "Proov läks aadressile {email}. Kiri jõuab mõne minuti jooksul.",
+      },
+      all: {
+        title: "Saada kõigile",
+        lead: "Enne kinnitust näed, mitmele tellijale kiri läheb. Päevas läheb välja nii palju kirju, kui mahub; ülejäänud lähevad järgmisel päeval.",
+        button: "Saada kõigile",
+        checking: "Vaatan tellijaid…",
+        confirm: "Saadad kampaania {n} tellijale (eesti keeles {a}, vene keeles {b}). Kas saadame?",
+        fallback: "Vene keeles tellijad saavad eestikeelse kirja.",
+        yes: "Saada",
+        no: "Tühista",
+        working: "Saadan…",
+        done: "Kampaania on saadetud.",
+      },
+      // a campaign that is going out (status `sending`): the progress, and „Peata saatmine“ (spec §3, Draft). {sent} the mails that went, {n} every
+      // subscriber it was written for, {left} those still waiting (they go the next day, or when the day has room)
+      progress: "Saadetud {sent} / {n} — ülejäänud {left} lähevad järgmisel päeval.",
+      // the counts that are worth a line only when they are not 0 (spec §3: a failure count is added to the sent line if there were any)
+      failedLine: "Kiri ei läinud {n} aadressile: aadress ei sobinud.",
+      unknownLine: "{n} kirja kohta pole teada, kas see läks. Neid ei saadeta uuesti.",
+      stop: {
+        button: "Peata saatmine",
+        confirm: "Kas peatan saatmise? Veel saatmata {n} kirja ei lähe välja. Seda ei saa tagasi võtta.",
+        yes: "Jah, peata",
+        no: "Ei",
+        working: "Peatan…",
+        done: "Saatmine peatatud.",
+      },
+      // a sent campaign (read-only), and one going out
       sentLine: "Saadetud {date} · {n} tellijale",
       readOnly: "Saadetud kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.",
+      readOnlySending: "Pooleli kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.",
       copy: "Kopeeri",
       copying: "Kopeerin…",
       // the copy's name: the campaign's own with this after it (cut to the name's limit)
@@ -1570,7 +1615,7 @@ export const adminEt = {
         sent: "See kampaania on juba saadetud.",
         server: "Ei õnnestunud. Proovi uuesti.",
         busy: "Eelmine kampaania on veel pooleli — see läheb välja, kui eelmine on saadetud.",
-        changed: "Kampaaniat või tellijate arvu muudeti vahepeal. Midagi ei saadetud: vaata üle ja vajuta uuesti „Saada kõigile“.",
+        changed: "Kampaaniat või tellijate arvu muudeti vahepeal. Midagi ei saadetud: laadi leht uuesti, vaata kampaania üle ja vajuta uuesti „Saada kõigile“.",
         empty: "Kinnitatud tellijaid pole: kirja pole kellelegi saata.",
         notSending: "Selle kampaania saatmine ei ole pooleli.",
         refused: "Saatmine peatus: Resend keeldus. Kirjuta Dimile.",

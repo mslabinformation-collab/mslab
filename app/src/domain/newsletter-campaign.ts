@@ -20,6 +20,23 @@ export const CAMPAIGN_LIMITS = { name: 80, subject: 150, preheader: 150, body: 1
 export const CAMPAIGN_DAILY_ROOM = 70;
 
 /**
+ * The `settings` row that lowers the room of a campaign, and only lowers it: the most mails ONE campaign may send in a UTC day (on top of the day's
+ * CAMPAIGN_DAILY_ROOM for every mail). It is read only when it is there. Dim sets it by hand in the database for the check "a campaign larger than the
+ * day's room continues the next day" (src/data/testplan.json) and deletes it after; it is per campaign so that the check is "set it to 2", whatever
+ * else the site or the earlier checks sent that day. Maria never sees it, and the editor knows nothing of it.
+ */
+export const CAMPAIGN_ROOM_KEY = "newsletter_daily_room";
+
+/**
+ * The value of the row CAMPAIGN_ROOM_KEY as a room: a whole number from 1 to CAMPAIGN_DAILY_ROOM (a fraction is cut, a smaller number is 1, a larger one
+ * is the room itself, so a slip of the hand never raises the room above Resend's limit). Anything that is no number is no setting: null.
+ */
+export function campaignRoomSetting(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.min(CAMPAIGN_DAILY_ROOM, Math.max(1, Math.floor(value)));
+}
+
+/**
  * A campaign as Maria writes it, checked: every optional text is "" (an `I18n` always holds both languages) or null, the code is in capitals, and a
  * button has all of its label (Estonian) and its address or none of them. The database row (schema.ts NewsletterCampaign) has these fields and more.
  */

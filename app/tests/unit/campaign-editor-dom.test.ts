@@ -4,11 +4,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CAMPAIGN_LIMITS } from "@/domain/newsletter-campaign";
 
-// Maria's campaign editor on the „Kampaaniad“ tab (newsletter campaigns, Task 4; spec D4, D5) in a browser-like document (happy-dom), with the
-// server actions and the preview route answered here: a draft with its fields, limits and counters, the live preview of both languages in an
-// <iframe srcdoc sandbox> fed by the preview route, the save (pasted control characters cleaned first, a refused field named in words, a new one
-// opening at its own address), and a campaign that is no draft read-only with „Saadetud {date} · {n} tellijale“ and „Kopeeri“. The sends („Saada
-// proov“, „Saada kõigile“) are the 20.10 design's and are not on the editor yet.
+// Maria's campaign editor on the „Kampaaniad“ tab (newsletter campaigns, Task 4; spec D4, D5; the 20.10 design §3) in a browser-like document
+// (happy-dom), with the server actions and the preview route answered here: a draft with its fields, limits and counters, the live preview of both
+// languages in an <iframe srcdoc sandbox> fed by the preview route, the save (pasted control characters cleaned first, a refused field named in
+// words, a new one opening at its own address) and its two sends („Saada proov“, and „Saada kõigile“ with its confirmation and its result line); a
+// campaign going out, with its progress line, the failed and unknown counts when they are not 0, the refused line and „Peata saatmine“ (which asks
+// first); and a sent one, read-only, with „Saadetud {date} · {n} tellijale“ and „Kopeeri“. The state is the campaign's `status`: what an action
+// returns is only the line right after a press.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -18,12 +20,17 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const actions = vi.hoisted(() => ({
   saveCampaignAction: vi.fn(),
   copyCampaignAction: vi.fn(),
+  prepareSendAction: vi.fn(),
+  startSendAction: vi.fn(),
+  stopSendAction: vi.fn(),
+  sendTestAction: vi.fn(),
 }));
 vi.mock("@/server/actions/admin-newsletter", () => actions);
 const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
-import { NewsletterCampaignEditor, type CampaignEditorView } from "@/components/admin/NewsletterCampaignEditor";
+import { NewsletterCampaignEditor, type CampaignEditorView, type TestTarget } from "@/components/admin/NewsletterCampaignEditor";
+import type { Progress } from "@/server/newsletter-campaigns";
 
 const VALUES = {
   name: "Oktoobri pakkumine",
@@ -35,8 +42,15 @@ const VALUES = {
   buttonLabel: { et: "Vaata koolitusi", ru: "Смотреть курсы" },
   buttonHref: "/koolitused",
 };
-const DRAFT: CampaignEditorView = { id: 7, status: "draft", values: VALUES, sentAt: null, updatedAt: "2026-10-19T09:00:00.000Z", recipients: null };
-const SENT: CampaignEditorView = { ...DRAFT, status: "sent", sentAt: "2026-10-19T09:05:00.000Z", recipients: { et: 40, ru: 12 } };
+const NONE: Progress = { total: 0, sent: 0, waiting: 0, failed: 0, unknown: 0, skipped: 0 };
+const DRAFT: CampaignEditorView = { id: 7, status: "draft", values: VALUES, sentAt: null, updatedAt: "2026-10-19T09:00:00.000Z", recipients: null, progress: null, refused: false };
+const SENT: CampaignEditorView = { ...DRAFT, status: "sent", sentAt: "2026-10-19T09:05:00.000Z", recipients: { et: 40, ru: 12 }, progress: { ...NONE, total: 52, sent: 52 } };
+/** A campaign going out: 12 subscribers, 5 mails went, 7 wait. */
+const GOING: CampaignEditorView = { ...DRAFT, status: "sending", sentAt: null, recipients: { et: 9, ru: 3 }, progress: { ...NONE, total: 12, sent: 5, waiting: 7 } };
+const TARGETS: TestTarget[] = [
+  { key: "maria", address: "maria@example.com" },
+  { key: "me", address: "admin@example.test" },
+];
 
 let container: HTMLDivElement;
 let root: Root;
@@ -54,8 +68,8 @@ const later = () =>
     await new Promise((r) => setTimeout(r, 450));
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   });
-const show = async (campaign: CampaignEditorView | null) => {
-  await act(async () => root.render(createElement(NewsletterCampaignEditor, { campaign, links: ["/koolitused"] })));
+const show = async (campaign: CampaignEditorView | null, testTargets: TestTarget[] = TARGETS) => {
+  await act(async () => root.render(createElement(NewsletterCampaignEditor, { campaign, links: ["/koolitused"], testTargets })));
   await later();
 };
 const click = async (el: Element | null) => {
@@ -214,38 +228,358 @@ describe("a draft", () => {
     expect($<HTMLInputElement>('[data-field="name"]')!.value).toBe("");
   });
 
-  test("no sending on the editor yet: no „Saada proov“, no „Saada kõigile“, no address to send a test to (the sends are the 20.10 design's)", async () => {
+});
+
+// ---------- the sends of a draft ----------
+
+/** What the confirmation shows (actions/admin-newsletter.ts prepareSendAction): 9 Estonian and 3 Russian subscribers, the Russian text missing. */
+const PLAN = { ok: true, et: 9, ru: 3, ruFallsBack: true, updatedAt: "2026-10-19T09:00:00.000Z" };
+/** The press's answer when every mail went in its first batch. */
+const ALL_WENT = { ok: true, progress: { ...NONE, total: 12, sent: 12 }, stopped: null };
+/** An action that is still working: `release` lets it answer. */
+function pending<T>() {
+  let release!: (value: T) => void;
+  const answer = new Promise<T>((resolve) => (release = resolve));
+  return { answer, release };
+}
+const confirmOpen = () => $("[data-send-confirm]");
+const sendLine = () => text("[data-send-status]");
+
+describe("a draft: „Saada proov“ and „Saada kõigile“", () => {
+  test("both are there once the draft is saved, with the choices of the test; none of the old half-sent or Resend UI", async () => {
     await show(DRAFT);
-    for (const hook of ["data-campaign-send", "data-test-send", "data-test-to", "data-send-all", "data-send-missing", "data-mark-not-sent"]) expect($(`[${hook}]`), hook).toBeNull();
-    expect(container.textContent).not.toContain("Saada proov");
-    expect(container.textContent).not.toContain("Saada kõigile");
-    expect(container.textContent).not.toMatch(/Resend/);
-    expect($('[data-field="name"]')).not.toBeNull();
-    expect(frame()).not.toBeNull();
+    expect(text("[data-campaign-send] h2")).toBe("Saatmine");
+    expect(text("[data-test-send]")).toBe("Saada proov");
+    expect(text("[data-send-all]")).toBe("Saada kõigile");
+    expect($("[data-test-send]")!.getAttribute("aria-disabled")).toBeNull();
+    expect($("[data-send-all]")!.getAttribute("aria-disabled")).toBeNull();
+    expect($("[data-campaign-save-first]")).toBeNull();
+    expect(all("[data-test-to]").map((r) => r.getAttribute("data-test-to"))).toEqual(["maria", "me"]);
+    expect(all("[data-test-to]").map((r) => r.closest("label")!.textContent)).toEqual(["Maria: maria@example.com", "Mina: admin@example.test"]);
+    expect(all("[data-test-locale]").map((r) => r.closest("label")!.textContent)).toEqual(["Eesti keeles", "Vene keeles"]);
+    expect($<HTMLInputElement>('[data-test-to="maria"]')!.checked).toBe(true);
+    expect($<HTMLInputElement>('[data-test-locale="et"]')!.checked).toBe(true);
+    for (const hook of ["data-mark-not-sent", "data-send-missing", "data-send-confirm", "data-campaign-stop"]) expect($(`[${hook}]`), hook).toBeNull();
+    for (const gone of ["Märgi saatmata", "Saada puuduv keel", "Resend", "Sünkrooni"]) expect(container.textContent, gone).not.toContain(gone);
+  });
+
+  test("a new campaign, and a draft with unsaved changes, say „Salvesta muudatused enne saatmist.“ and press nothing", async () => {
+    await show(null);
+    expect(text("[data-campaign-save-first]")).toBe("Salvesta muudatused enne saatmist.");
+    expect($("[data-send-all]")!.getAttribute("aria-disabled")).toBe("true");
+    expect($("[data-test-send]")!.getAttribute("aria-disabled")).toBe("true");
+    await click($("[data-send-all]"));
+    await click($("[data-test-send]"));
+    expect(actions.prepareSendAction).not.toHaveBeenCalled();
+    expect(actions.sendTestAction).not.toHaveBeenCalled();
+    await show(DRAFT);
+    expect($("[data-campaign-save-first]")).toBeNull();
+    await type($('[data-field="name"]'), "Muudetud");
+    expect(text("[data-campaign-save-first]")).toBe("Salvesta muudatused enne saatmist.");
+    await click($("[data-send-all]"));
+    expect(actions.prepareSendAction).not.toHaveBeenCalled();
+  });
+
+  test("„Saada proov“: to Maria in Estonian unless chosen otherwise; the call carries the campaign, the address and the language; the line names the address", async () => {
+    actions.sendTestAction.mockResolvedValue({ ok: true });
+    await show(DRAFT);
+    await click($("[data-test-send]"));
+    expect(actions.sendTestAction).toHaveBeenLastCalledWith({ id: 7, to: "maria", locale: "et" });
+    expect(text("[data-test-status]")).toBe("Proov läks aadressile maria@example.com. Kiri jõuab mõne minuti jooksul.");
+    await click($('[data-test-to="me"]'));
+    await click($('[data-test-locale="ru"]'));
+    await click($("[data-test-send]"));
+    expect(actions.sendTestAction).toHaveBeenLastCalledWith({ id: 7, to: "me", locale: "ru" });
+    expect(text("[data-test-status]")).toBe("Proov läks aadressile admin@example.test. Kiri jõuab mõne minuti jooksul.");
+    // a test is no press: no confirmation, nothing prepared
+    expect(actions.prepareSendAction).not.toHaveBeenCalled();
+    expect(confirmOpen()).toBeNull();
+  });
+
+  test("„Saada proov“ refused is said in words: ten an hour, it did not go, no such address, a lost connection", async () => {
+    await show(DRAFT);
+    const said: [unknown, string][] = [
+      [{ ok: false, error: "limited" }, "Selle tunni 10 proovi on saadetud. Proovi tunni pärast uuesti."],
+      [{ ok: false, error: "mail" }, "Proovi ei saanud saata. Proovi uuesti."],
+      [{ ok: false, error: "address" }, "Sellele aadressile ei saa proovi saata."],
+      [{ ok: false, error: "notFound" }, "Seda kampaaniat enam pole."],
+    ];
+    for (const [answer, words] of said) {
+      actions.sendTestAction.mockResolvedValueOnce(answer);
+      await click($("[data-test-send]"));
+      expect(text("[data-test-status]"), words).toBe(words);
+    }
+    actions.sendTestAction.mockRejectedValueOnce(new Error("offline"));
+    await click($("[data-test-send]"));
+    expect(text("[data-test-status]")).toBe("Ei õnnestunud. Proovi uuesti.");
+  });
+
+  test("without Maria's address only the signed-in admin's is offered, and it is the one chosen", async () => {
+    actions.sendTestAction.mockResolvedValue({ ok: true });
+    await show(DRAFT, [{ key: "me", address: "admin@example.test" }]);
+    expect(all("[data-test-to]").map((r) => r.getAttribute("data-test-to"))).toEqual(["me"]);
+    await click($("[data-test-send]"));
+    expect(actions.sendTestAction).toHaveBeenCalledWith({ id: 7, to: "me", locale: "et" });
+  });
+
+  test("„Saada kõigile“ asks first: the counts of the confirmation, the Russian note; „Tühista“ closes it and nothing is pressed", async () => {
+    actions.prepareSendAction.mockResolvedValue(PLAN);
+    await show(DRAFT);
+    await click($("[data-send-all]"));
+    expect(actions.prepareSendAction).toHaveBeenCalledWith({ id: 7 });
+    expect(text("[data-send-confirm-text]")).toBe("Saadad kampaania 12 tellijale (eesti keeles 9, vene keeles 3). Kas saadame?");
+    expect(text("[data-send-fallback]")).toBe("Vene keeles tellijad saavad eestikeelse kirja.");
+    expect(text("[data-send-yes]")).toBe("Saada");
+    expect(text("[data-send-no]")).toBe("Tühista");
+    expect($("[data-send-all]")).toBeNull(); // (the confirmation is in its place)
+    await click($("[data-send-no]"));
+    expect(confirmOpen()).toBeNull();
+    expect(text("[data-send-all]")).toBe("Saada kõigile");
+    expect(actions.startSendAction).not.toHaveBeenCalled();
+  });
+
+  test("the Russian note only when the Russian subscribers get the Estonian text and there are some", async () => {
+    await show(DRAFT);
+    actions.prepareSendAction.mockResolvedValueOnce({ ...PLAN, ruFallsBack: false });
+    await click($("[data-send-all]"));
+    expect(confirmOpen()).not.toBeNull();
+    expect($("[data-send-fallback]")).toBeNull();
+    await click($("[data-send-no]"));
+    actions.prepareSendAction.mockResolvedValueOnce({ ...PLAN, ru: 0 });
+    await click($("[data-send-all]"));
+    expect(text("[data-send-confirm-text]")).toBe("Saadad kampaania 9 tellijale (eesti keeles 9, vene keeles 0). Kas saadame?");
+    expect($("[data-send-fallback]")).toBeNull();
+  });
+
+  test("„Saada“ presses what the confirmation showed; every mail went in the first batch: „Kampaania on saadetud.“", async () => {
+    actions.prepareSendAction.mockResolvedValue(PLAN);
+    actions.startSendAction.mockResolvedValue(ALL_WENT);
+    await show(DRAFT);
+    await click($("[data-send-all]"));
+    await click($("[data-send-yes]"));
+    expect(actions.startSendAction).toHaveBeenCalledTimes(1);
+    expect(actions.startSendAction).toHaveBeenCalledWith({ id: 7, et: 9, ru: 3, updatedAt: "2026-10-19T09:00:00.000Z" });
+    expect(sendLine()).toBe("Kampaania on saadetud.");
+    expect(confirmOpen()).toBeNull();
+  });
+
+  test("the first batch stopped at the day's room or its time: the line is the progress line (from the answer), whatever `stopped` says", async () => {
+    actions.prepareSendAction.mockResolvedValue(PLAN);
+    await show(DRAFT);
+    const partial = { ...NONE, total: 12, sent: 8, waiting: 4 };
+    for (const stopped of ["room", "time", null]) {
+      // (null with rows still waiting: another runner holds them — the batch is not done, so the line is the progress and not „saadetud“)
+      actions.startSendAction.mockResolvedValueOnce({ ok: true, progress: partial, stopped });
+      await click($("[data-send-all]"));
+      await click($("[data-send-yes]"));
+      expect(sendLine(), String(stopped)).toBe("Saadetud 8 / 12 — ülejäänud 4 lähevad järgmisel päeval.");
+    }
+    // the editor itself follows the campaign's status, which only a new page can change: it is still the draft's form
+    expect($("[data-campaign-form]")).not.toBeNull();
+  });
+
+  test("Resend refused the first batch: „Saatmine peatus: Resend keeldus. Kirjuta Dimile.“", async () => {
+    actions.prepareSendAction.mockResolvedValue(PLAN);
+    actions.startSendAction.mockResolvedValue({ ok: true, progress: { ...NONE, total: 12, waiting: 12 }, stopped: "refused" });
+    await show(DRAFT);
+    await click($("[data-send-all]"));
+    await click($("[data-send-yes]"));
+    expect(sendLine()).toBe("Saatmine peatus: Resend keeldus. Kirjuta Dimile.");
+  });
+
+  test("another campaign is going out: „Saada kõigile“ answers with the one-at-a-time text instead of the confirmation", async () => {
+    actions.prepareSendAction.mockResolvedValue({ ok: false, error: "busy" });
+    await show(DRAFT);
+    await click($("[data-send-all]"));
+    expect(confirmOpen()).toBeNull();
+    expect(sendLine()).toBe("Eelmine kampaania on veel pooleli — see läheb välja, kui eelmine on saadetud.");
+    expect(actions.startSendAction).not.toHaveBeenCalled();
+  });
+
+  test("every other refusal of the press is said in words and the confirmation is closed: nothing was sent", async () => {
+    await show(DRAFT);
+    const prepare: [unknown, string][] = [
+      [{ ok: false, error: "empty" }, "Kinnitatud tellijaid pole: kirja pole kellelegi saata."],
+      [{ ok: false, error: "sent" }, "See kampaania on juba saadetud."],
+      [{ ok: false, error: "notFound" }, "Seda kampaaniat enam pole."],
+      [{ ok: false, error: "server" }, "Ei õnnestunud. Proovi uuesti."],
+    ];
+    for (const [answer, words] of prepare) {
+      actions.prepareSendAction.mockResolvedValueOnce(answer);
+      await click($("[data-send-all]"));
+      expect(confirmOpen()).toBeNull();
+      expect(sendLine(), words).toBe(words);
+    }
+    actions.prepareSendAction.mockRejectedValueOnce(new Error("offline"));
+    await click($("[data-send-all]"));
+    expect(sendLine()).toBe("Ei õnnestunud. Proovi uuesti.");
+    // the press itself
+    actions.prepareSendAction.mockResolvedValue(PLAN);
+    const press: [unknown, string][] = [
+      [{ ok: false, error: "changed" }, "Kampaaniat või tellijate arvu muudeti vahepeal. Midagi ei saadetud: laadi leht uuesti, vaata kampaania üle ja vajuta uuesti „Saada kõigile“."],
+      [{ ok: false, error: "busy" }, "Eelmine kampaania on veel pooleli — see läheb välja, kui eelmine on saadetud."],
+      [{ ok: false, error: "sent" }, "See kampaania on juba saadetud."],
+      [{ ok: false, error: "empty" }, "Kinnitatud tellijaid pole: kirja pole kellelegi saata."],
+    ];
+    for (const [answer, words] of press) {
+      actions.startSendAction.mockResolvedValueOnce(answer);
+      await click($("[data-send-all]"));
+      await click($("[data-send-yes]"));
+      expect(confirmOpen(), words).toBeNull();
+      expect(sendLine(), words).toBe(words);
+    }
+    actions.startSendAction.mockRejectedValueOnce(new Error("offline"));
+    await click($("[data-send-all]"));
+    await click($("[data-send-yes]"));
+    expect(sendLine()).toBe("Ei õnnestunud. Proovi uuesti.");
+  });
+
+  test("while the press works „Saada“ is pressed once: a second press does nothing", async () => {
+    actions.prepareSendAction.mockResolvedValue(PLAN);
+    const working = pending<unknown>();
+    actions.startSendAction.mockReturnValue(working.answer);
+    await show(DRAFT);
+    await click($("[data-send-all]"));
+    await click($("[data-send-yes]"));
+    expect(text("[data-send-yes]")).toBe("Saadan…");
+    expect($("[data-send-yes]")!.getAttribute("aria-disabled")).toBe("true");
+    await click($("[data-send-yes]"));
+    expect(actions.startSendAction).toHaveBeenCalledTimes(1);
+    await act(async () => working.release(ALL_WENT));
+    await settle();
+    expect(sendLine()).toBe("Kampaania on saadetud.");
+  });
+
+  test("a field changed while the confirmation is open closes it: „Saada“ never sends what was not confirmed", async () => {
+    actions.prepareSendAction.mockResolvedValue(PLAN);
+    await show(DRAFT);
+    await click($("[data-send-all]"));
+    expect(confirmOpen()).not.toBeNull();
+    await type($('[data-field="name"]'), "Muudetud nimi");
+    expect(confirmOpen()).toBeNull();
+    expect(actions.startSendAction).not.toHaveBeenCalled();
   });
 });
 
-describe("a campaign that is no draft", () => {
-  test("read-only: „Saadetud {date} · {n} tellijale“, the preview, „Kopeeri“, and no field or send", async () => {
+describe("a campaign going out (`status` sending)", () => {
+  test("the progress line, „Peata saatmine“, „Kopeeri“ and the preview; nothing to change, no send, no sent line", async () => {
+    await show(GOING);
+    expect($("[data-campaign-sent]")!.getAttribute("data-campaign-sent")).toBe("sending");
+    expect(text("[data-campaign-progress]")).toBe("Saadetud 5 / 12 — ülejäänud 7 lähevad järgmisel päeval.");
+    expect($("[data-campaign-sent-line]")).toBeNull();
+    expect(text("[data-campaign-stop]")).toBe("Peata saatmine");
+    expect(text("[data-campaign-copy]")).toBe("Kopeeri");
+    expect(text("[data-campaign-read-only]")).toBe("Pooleli kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.");
+    expect(frame()).not.toBeNull();
+    expect(all("input, textarea")).toEqual([]);
+    for (const hook of ["data-campaign-send", "data-test-send", "data-send-all", "data-campaign-form", "data-save-bar", "data-campaign-refused"]) expect($(`[${hook}]`), hook).toBeNull();
+    for (const gone of ["Märgi saatmata", "Saada puuduv keel", "Resend", "katkes"]) expect(container.textContent, gone).not.toContain(gone);
+  });
+
+  test("the failed and unknown counts are lines only when they are not 0", async () => {
+    await show(GOING);
+    expect($("[data-campaign-failed]")).toBeNull();
+    expect($("[data-campaign-unknown]")).toBeNull();
+    await show({ ...GOING, progress: { ...NONE, total: 12, sent: 5, waiting: 4, failed: 1, unknown: 2 } });
+    expect(text("[data-campaign-progress]")).toBe("Saadetud 5 / 12 — ülejäänud 4 lähevad järgmisel päeval.");
+    expect(text("[data-campaign-failed]")).toBe("Kiri ei läinud 1 aadressile: aadress ei sobinud.");
+    expect(text("[data-campaign-unknown]")).toBe("2 kirja kohta pole teada, kas see läks. Neid ei saadeta uuesti.");
+    await show({ ...GOING, progress: { ...NONE, total: 12, sent: 5, waiting: 6, unknown: 1 } });
+    expect($("[data-campaign-failed]")).toBeNull();
+    expect(text("[data-campaign-unknown]")).toBe("1 kirja kohta pole teada, kas see läks. Neid ei saadeta uuesti.");
+  });
+
+  test("the batch stopped because Resend refused: the line says so; not otherwise", async () => {
+    await show({ ...GOING, refused: true });
+    expect(text("[data-campaign-refused]")).toBe("Saatmine peatus: Resend keeldus. Kirjuta Dimile.");
+    expect(text("[data-campaign-progress]")).toBe("Saadetud 5 / 12 — ülejäänud 7 lähevad järgmisel päeval.");
+    expect(text("[data-campaign-stop]")).toBe("Peata saatmine"); // (she can still stop it)
+    await show(GOING);
+    expect($("[data-campaign-refused]")).toBeNull();
+  });
+
+  test("the state is the campaign's status, not its numbers: `sending` with nothing waiting (the last mail is on its way) is still going out", async () => {
+    await show({ ...GOING, progress: { ...NONE, total: 12, sent: 11, waiting: 0, skipped: 1 } });
+    expect($("[data-campaign-sent]")!.getAttribute("data-campaign-sent")).toBe("sending");
+    expect(text("[data-campaign-progress]")).toBe("Saadetud 11 / 12 — ülejäänud 0 lähevad järgmisel päeval.");
+    expect($("[data-campaign-sent-line]")).toBeNull();
+    expect($("[data-campaign-stop]")).not.toBeNull();
+  });
+
+  test("„Peata saatmine“ asks first, with the number that will not go; „Ei“ closes it and nothing is stopped", async () => {
+    await show(GOING);
+    await click($("[data-campaign-stop]"));
+    expect(text("[data-stop-confirm-text]")).toBe("Kas peatan saatmise? Veel saatmata 7 kirja ei lähe välja. Seda ei saa tagasi võtta.");
+    expect(text("[data-stop-yes]")).toBe("Jah, peata");
+    expect(text("[data-stop-no]")).toBe("Ei");
+    expect(actions.stopSendAction).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe($("[data-stop-confirm-text]")); // (the question takes the focus, as the site editors' deletes do)
+    await click($("[data-stop-no]"));
+    expect($("[data-stop-confirm]")).toBeNull();
+    expect(text("[data-campaign-stop]")).toBe("Peata saatmine");
+    expect(actions.stopSendAction).not.toHaveBeenCalled();
+  });
+
+  test("„Jah, peata“ stops it, once; the page is refreshed by the action and shows the sent campaign", async () => {
+    const working = pending<unknown>();
+    actions.stopSendAction.mockReturnValue(working.answer);
+    await show(GOING);
+    await click($("[data-campaign-stop]"));
+    await click($("[data-stop-yes]"));
+    expect(actions.stopSendAction).toHaveBeenCalledWith({ id: 7 });
+    expect(text("[data-stop-yes]")).toBe("Peatan…");
+    expect($("[data-stop-yes]")!.getAttribute("aria-disabled")).toBe("true");
+    await click($("[data-stop-yes]"));
+    expect(actions.stopSendAction).toHaveBeenCalledTimes(1);
+    await act(async () => working.release({ ok: true, progress: { ...NONE, total: 12, sent: 5, skipped: 7 } }));
+    await settle();
+    expect(text("[data-stop-status]")).toBe("Saatmine peatatud.");
+    expect($("[data-stop-confirm]")).toBeNull();
+  });
+
+  test("„Peata saatmine“ refused is said in words and the question is closed", async () => {
+    await show(GOING);
+    const said: [unknown, string][] = [
+      [{ ok: false, error: "notSending" }, "Selle kampaania saatmine ei ole pooleli."],
+      [{ ok: false, error: "notFound" }, "Seda kampaaniat enam pole."],
+      [{ ok: false, error: "server" }, "Ei õnnestunud. Proovi uuesti."],
+    ];
+    for (const [answer, words] of said) {
+      actions.stopSendAction.mockResolvedValueOnce(answer);
+      await click($("[data-campaign-stop]"));
+      await click($("[data-stop-yes]"));
+      expect($("[data-stop-confirm]"), words).toBeNull();
+      expect(text("[data-stop-status]"), words).toBe(words);
+    }
+    actions.stopSendAction.mockRejectedValueOnce(new Error("offline"));
+    await click($("[data-campaign-stop]"));
+    await click($("[data-stop-yes]"));
+    expect(text("[data-stop-status]")).toBe("Ei õnnestunud. Proovi uuesti.");
+  });
+});
+
+describe("a sent campaign", () => {
+  test("read-only: „Saadetud {date} · {n} tellijale“, the preview, „Kopeeri“, and no field, send or stop", async () => {
     await show(SENT);
     expect(text("[data-campaign-sent-line]")).toBe("Saadetud 19.10.2026 12:05 · 52 tellijale");
     expect(text("[data-campaign-read-only]")).toBe("Saadetud kampaaniat ei saa muuta. „Kopeeri“ teeb sellest uue mustandi.");
     expect(frame()).not.toBeNull();
     expect(all("input, textarea")).toEqual([]);
-    expect($("[data-save-bar]")).toBeNull();
-    expect($("[data-test-send]")).toBeNull();
-    expect($("[data-send-all]")).toBeNull();
+    for (const hook of ["data-save-bar", "data-test-send", "data-send-all", "data-campaign-stop", "data-campaign-progress", "data-campaign-failed", "data-campaign-unknown", "data-campaign-refused"]) {
+      expect($(`[${hook}]`), hook).toBeNull();
+    }
     expect(text("[data-campaign-copy]")).toBe("Kopeeri");
     expect(container.textContent).not.toMatch(/Resend/);
   });
 
-  test("one going out (`sending`) reads the same, without the sent line: nothing on it can be changed", async () => {
-    await show({ ...SENT, status: "sending", sentAt: null, recipients: { et: 40, ru: 12 } });
-    expect($("[data-campaign-sent]")!.getAttribute("data-campaign-sent")).toBe("sending");
-    expect($("[data-campaign-sent-line]")).toBeNull();
-    expect($("[data-campaign-read-only]")).not.toBeNull();
-    expect(all("input, textarea")).toEqual([]);
-    expect(text("[data-campaign-copy]")).toBe("Kopeeri");
+  test("a failure count is added when there were any (spec §3), and the mails with no answer; nothing for 0", async () => {
+    await show({ ...SENT, progress: { ...NONE, total: 55, sent: 52, failed: 2, unknown: 1 } });
+    expect(text("[data-campaign-sent-line]")).toBe("Saadetud 19.10.2026 12:05 · 52 tellijale");
+    expect(text("[data-campaign-failed]")).toBe("Kiri ei läinud 2 aadressile: aadress ei sobinud.");
+    expect(text("[data-campaign-unknown]")).toBe("1 kirja kohta pole teada, kas see läks. Neid ei saadeta uuesti.");
+    await show({ ...SENT, progress: { ...NONE, total: 55, sent: 52, skipped: 3 } });
+    expect($("[data-campaign-failed]")).toBeNull();
+    expect($("[data-campaign-unknown]")).toBeNull();
   });
 
   test("„Kopeeri“ makes the new draft and opens it", async () => {

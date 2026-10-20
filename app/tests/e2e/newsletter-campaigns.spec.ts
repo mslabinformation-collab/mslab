@@ -2,21 +2,22 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { BrowserContext, FrameLocator, Locator, Page } from "@playwright/test";
 import { adminReady, signInAsAdmin } from "./admin-login";
-import { E2E_CAMPAIGN_PREFIX, insertCampaign, onLocalDb, removeAdminRows, removeCampaignRows, storedCampaigns } from "./fixtures";
+import { E2E_CAMPAIGN_PREFIX, deliveryCounts, insertCampaign, insertDeliveries, onLocalDb, removeAdminRows, removeCampaignRows, storedCampaigns } from "./fixtures";
 import { PROD_ENV } from "./prod-build";
 import { DEV_ENV } from "./server";
 import { PROD_BUILD } from "./target";
-import { smallTargets } from "./targets";
+import { LABELLED, smallPills, smallTargets } from "./targets";
 import { expect, submitsForms, test } from "./test";
 
-// Newsletter campaigns, the write / preview / copy path on this machine (newsletter campaigns, Task 5; spec D4, D5; ruling R2; the sending half is
-// the 20.10 design's and has its own end-to-end test). What it checks is what Maria sees and what the site stores:
+// Newsletter campaigns, the write / preview / copy path on this machine (newsletter campaigns, Task 5; spec D4, D5; ruling R2; the 20.10 design's
+// sending UI: the progress line and „Peata saatmine“, Task 4 of that plan; a send itself, with a fake Resend, has its own end-to-end test). What it checks
+// is what Maria sees and what the site stores:
 // 1. „Uudiskiri“ is the list of subscribers and its two CSV downloads again, with the tab „Kampaaniad“ beside it;
 // 2. Maria writes a campaign with a picture, a code and a button, in both languages: the Estonian and the Russian preview show her texts, the picture
 //    (loaded), the code, the button and the footer (why she got the mail, the way out, the school), and „Salvesta“ stores it;
 // 3. a campaign that was sent (set in the database, as a send leaves it) is read-only: its sent line, no field to change, and „Kopeeri“ makes a new
 //    draft (the first draft's copy, „(koopia)“ after its name) that the list marks „Mustand“ while the sent one keeps its „Saadetud“; one going out
-//    (`sending`) is read-only too;
+//    (`sending`) shows its progress line, the failed and unknown counts, and „Peata saatmine“, which asks first and then ends it as sent;
 // 4. the screens are looked at in a phone's, a tablet's, an iPad's and a desktop's width (390, 834, 1194, 1440): no sideways scroll, every target 44 px.
 // The signed-in tests sign in through the devLink (the production build: a stored link, admin-login.ts) and look at rows each test makes for itself.
 
@@ -140,7 +141,7 @@ test.describe("„Uudiskiri“ and „Kampaaniad“", () => {
     });
 
     let id!: number;
-    await test.step("„Salvesta“ stores a draft; the editor has no sending on it", async () => {
+    await test.step("„Salvesta“ stores a draft; the editor now has its sends, open", async () => {
       await page.getByRole("button", { name: "Salvesta" }).click();
       await expect(page).toHaveURL(/kampaania=\d+$/);
       await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
@@ -156,7 +157,11 @@ test.describe("„Uudiskiri“ and „Kampaaniad“", () => {
       });
       expect(row.imageKey).toMatch(/^img\/[0-9a-f-]{36}\.jpg$/);
       await expect(page.locator(`[data-campaign-row="${id}"] [data-campaign-status]`)).toHaveText("Mustand");
-      await expect(page.locator("[data-campaign-send], [data-test-send], [data-send-all]")).toHaveCount(0);
+      await expect(page.locator("[data-campaign-save-first]")).toHaveCount(0);
+      await expect(page.locator("[data-test-send]")).toHaveText("Saada proov");
+      await expect(page.locator("[data-send-all]")).toHaveText("Saada kõigile");
+      await expect(page.locator("[data-test-send]")).not.toHaveAttribute("aria-disabled", "true");
+      await expect(page.locator("[data-send-all]")).not.toHaveAttribute("aria-disabled", "true");
     });
 
     await test.step("a campaign that was sent (set in the database, as a send leaves it) is read-only", async () => {
@@ -213,33 +218,72 @@ test.describe("„Uudiskiri“ and „Kampaaniad“", () => {
     });
   });
 
-  test("a campaign that is going out (`sending`) is read-only and can only be copied", async ({ page, context, visitorIp }, info) => {
+  test("a campaign that is going out (`sending`) shows its progress and the counts, is read-only, can be copied, and „Peata saatmine“ asks first and ends it", async ({ page, context, visitorIp }, info) => {
     const goingName = campaignName(info.project.name, "pooleli");
-    const going = await insertCampaign({ name: goingName, status: "sending", recipients: { et: 2, ru: 1 } });
+    const going = await insertCampaign({ name: goingName, status: "sending", recipients: { et: 4, ru: 2 } });
+    // 3 mails went, 2 wait for the next day, 1 address was refused, 1 mail got no answer
+    await insertDeliveries(going, { sent: 3, waiting: 2, failed: 1, unknown: 1 });
     await signIn(page, context, visitorIp);
     await page.goto(`${CAMPAIGNS}&kampaania=${going}`);
     await adminReady(page);
     await expect(page.locator('[data-campaign-sent="sending"]')).toBeVisible();
     await expect(page.locator(`[data-campaign-row="${going}"] [data-campaign-status]`)).toHaveText("Saatmine pooleli");
+    // the list row and the card say the same: the progress, from the deliveries
+    const progress = "Saadetud 3 / 7 — ülejäänud 2 lähevad järgmisel päeval.";
+    await expect(page.locator(`[data-campaign-row="${going}"] [data-campaign-row-line]`)).toHaveText(progress);
+    await expect(page.locator("[data-campaign-progress]")).toHaveText(progress);
+    await expect(page.locator("[data-campaign-failed]")).toHaveText("Kiri ei läinud 1 aadressile: aadress ei sobinud.");
+    await expect(page.locator("[data-campaign-unknown]")).toHaveText("1 kirja kohta pole teada, kas see läks. Neid ei saadeta uuesti.");
+    await expect(page.locator("[data-campaign-refused]")).toHaveCount(0);
     await expect(page.locator("[data-campaign-sent-line]")).toHaveCount(0);
     await expect(page.locator("[data-campaign-form], [data-send-all], [data-test-send]")).toHaveCount(0);
     await expect(page.locator("main input, main textarea, main select")).toHaveCount(0);
     await expect(page.locator("[data-campaign-copy]")).toBeVisible();
-    await expect(page.locator("main")).not.toContainText("Resend");
+    await expect(page.locator("main")).not.toContainText("Märgi saatmata");
+    expect(await noOverflow(page)).toBe(true);
+
+    await test.step("„Peata saatmine“ asks first; „Ei“ leaves everything as it was", async () => {
+      await page.locator("[data-campaign-stop]").click();
+      await expect(page.locator("[data-stop-confirm-text]")).toHaveText("Kas peatan saatmise? Veel saatmata 2 kirja ei lähe välja. Seda ei saa tagasi võtta.");
+      await expect(page.locator("[data-stop-confirm-text]")).toBeFocused();
+      await page.locator("[data-stop-no]").click();
+      await expect(page.locator("[data-stop-confirm]")).toHaveCount(0);
+      expect(await deliveryCounts(going)).toEqual({ sent: 3, waiting: 2, failed: 1, unknown: 1 });
+      expect((await storedCampaigns(goingName))[0].status).toBe("sending");
+    });
+
+    await test.step("„Jah, peata“ skips what waits and the campaign is sent with the mails that went", async () => {
+      await page.locator("[data-campaign-stop]").click();
+      await page.locator("[data-stop-yes]").click();
+      // the page is refreshed by the action: the sent state replaces the progress
+      await expect(page.locator('[data-campaign-sent="sent"]')).toBeVisible();
+      await expect(page.locator("[data-campaign-sent-line]")).toHaveText(/^Saadetud \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} · 3 tellijale$/);
+      await expect(page.locator("[data-campaign-progress], [data-campaign-stop]")).toHaveCount(0);
+      await expect(page.locator("[data-campaign-failed]")).toHaveText("Kiri ei läinud 1 aadressile: aadress ei sobinud.");
+      await expect(page.locator(`[data-campaign-row="${going}"] [data-campaign-status]`)).toHaveText("Saadetud");
+      expect(await deliveryCounts(going)).toEqual({ sent: 3, skipped: 2, failed: 1, unknown: 1 });
+      expect((await storedCampaigns(goingName))[0].status).toBe("sent");
+      await expect(page.locator("[data-campaign-copy]")).toBeVisible();
+    });
   });
 
   test("the screens at 390, 834, 1194 and 1440 px — no sideways scroll, every target 44 px", async ({ page, context, visitorIp, isMobile }, info) => {
     test.skip(isMobile, "sets its own widths: the desktop project only");
     const draft = await insertCampaign({ name: campaignName(info.project.name, "laiused mustand") });
     const sent = await insertCampaign({ name: campaignName(info.project.name, "laiused saadetud"), status: "sent", sentAt: new Date(), recipients: { et: 3, ru: 2 } });
+    const sentWithCounts = await insertCampaign({ name: campaignName(info.project.name, "laiused saadetud arvudega"), status: "sent", sentAt: new Date(), recipients: { et: 3, ru: 2 } });
+    await insertDeliveries(sentWithCounts, { sent: 5, failed: 2, unknown: 1, skipped: 1 });
     const going = await insertCampaign({ name: campaignName(info.project.name, "laiused pooleli"), status: "sending", recipients: { et: 3, ru: 2 } });
+    await insertDeliveries(going, { sent: 3, waiting: 2, failed: 1, unknown: 1 });
     await signIn(page, context, visitorIp);
-    // `shows`: what the screen must show before it is measured
-    const screens = [
+    // `shows`: what the screen must show before it is measured; `first`: what is pressed first (the question of „Peata saatmine“), then shown too
+    const screens: { url: string; scope: string; shows: string[]; first?: { press: string; shows: string } }[] = [
       { url: "/admin/uudiskiri", scope: "main", shows: ["[data-newsletter-views]", '[data-csv="all"]'] },
-      { url: `${CAMPAIGNS}&kampaania=${draft}`, scope: "main", shows: ["[data-campaign-form]", "[data-campaign-preview-frame]"] },
+      { url: `${CAMPAIGNS}&kampaania=${draft}`, scope: "main", shows: ["[data-campaign-form]", "[data-campaign-preview-frame]", "[data-test-send]", "[data-send-all]", "[data-test-locale]"] },
       { url: `${CAMPAIGNS}&kampaania=${sent}`, scope: "main", shows: ["[data-campaign-sent-line]", "[data-campaign-copy]", "[data-campaign-preview-frame]"] },
-      { url: `${CAMPAIGNS}&kampaania=${going}`, scope: "main", shows: ["[data-campaign-read-only]", "[data-campaign-copy]", "[data-campaign-preview-frame]"] },
+      { url: `${CAMPAIGNS}&kampaania=${sentWithCounts}`, scope: "main", shows: ["[data-campaign-sent-line]", "[data-campaign-failed]", "[data-campaign-unknown]", "[data-campaign-copy]"] },
+      { url: `${CAMPAIGNS}&kampaania=${going}`, scope: "main", shows: ["[data-campaign-progress]", "[data-campaign-failed]", "[data-campaign-unknown]", "[data-campaign-stop]", "[data-campaign-copy]", "[data-campaign-preview-frame]"] },
+      { url: `${CAMPAIGNS}&kampaania=${going}`, scope: "main", shows: ["[data-campaign-progress]"], first: { press: "[data-campaign-stop]", shows: "[data-stop-yes]" } },
     ];
     try {
       for (const [width, height] of [
@@ -254,10 +298,15 @@ test.describe("„Uudiskiri“ and „Kampaaniad“", () => {
           await adminReady(page);
           const scope = page.locator(screen.scope);
           for (const part of screen.shows) await expect(scope.locator(part).first()).toBeVisible();
-          const where = `${screen.url} at ${width} px`;
+          if (screen.first) {
+            await scope.locator(screen.first.press).click();
+            await expect(scope.locator(screen.first.shows)).toBeVisible();
+          }
+          const where = `${screen.url}${screen.first ? ` after ${screen.first.press}` : ""} at ${width} px`;
           expect(await noOverflow(page), where).toBe(true);
-          // (the picture's file field is pressed through its label, as in admin-site.spec.ts)
-          expect((await smallTargets(scope)).filter((html) => !html.includes('type="file"')), where).toEqual([]);
+          // (the picture's file field and the radios of „Saada proov“ are pressed through their labels, as in admin-site.spec.ts: the labels are measured)
+          expect((await smallTargets(scope)).filter((html) => !LABELLED.test(html)), where).toEqual([]);
+          expect(await smallPills(scope), `${where}: the radios' labels`).toEqual([]);
         }
       }
     } finally {
