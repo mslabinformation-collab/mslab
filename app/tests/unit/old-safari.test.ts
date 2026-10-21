@@ -80,6 +80,10 @@ const BROWSER_FILES = [
   "src/domain/review.ts",
   // newsletter campaigns, Task 1: the draft's rules and the text of each language, which Maria's campaign editor and its preview run in the browser (it pulls domain/welcome-code.ts, domain/catalogue.ts and lib/to-storable.ts with it)
   "src/domain/newsletter-campaign.ts",
+  // admin UX pass, Task 4: the menu state the sidebar reads from /api/admin/margid
+  "src/components/admin/menu-state.ts",
+  // admin UX pass, Task 3: the menu's sections and groups, and the address-to-entry rule the sidebar runs in the browser
+  "src/components/admin/sections.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));
