@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Logo } from "@/components/site/Logo";
 import { fill } from "@/i18n/format";
 import { lockPageScroll } from "@/lib/modal";
 import { AdminIcon, type AdminIconName } from "./AdminIcon";
-import { activeSection, GROUPS, type GroupId, type Section } from "./sections";
+import { readMenuState, type MenuState, type NavBadge, type TodayCard } from "./menu-state";
+import { activeSection, GROUPS, sectionHref, type GroupId, type Section } from "./sections";
 import styles from "./Sidebar.module.css";
 
-export type NavItem = { key: Section; href: string; icon: AdminIconName; label: string; badge?: { n: number; label: string } };
+export type NavItem = { key: Section; href: string; icon: AdminIconName; label: string; badge?: NavBadge };
 
 export type SidebarTexts = {
   label: string;
@@ -29,8 +30,10 @@ export type SidebarTexts = {
   todayLine: string;
 };
 
-/** A session on today's date, as the phone menu's card shows it (filled by the shell). */
-export type TodayCard = { href: string; time: string; course: string };
+export type { TodayCard };
+
+/** The menu's badges, as /api/admin/margid answers them (menu.ts menuOf builds the same for the first paint). */
+const BADGES_URL = "/api/admin/margid";
 
 /** From this width the sidebar stands on the left; below it the page has the phone top bar with the menu (README §1.1; Sidebar.module.css and Shell.module.css say the same). */
 const WIDE = "(min-width: 900px)";
@@ -135,7 +138,7 @@ function NavContent({ items, active, t, fold }: { items: NavItem[]; active: Sect
                     <span className={styles.text}>{item.label}</span>
                     {item.badge && (
                       <span className={styles.badge} data-badge={item.key}>
-                        <span aria-hidden="true">{item.badge.n}</span>
+                        <span aria-hidden="true">{"text" in item.badge ? item.badge.text : item.badge.n}</span>
                         <span className={styles.sr}>, {item.badge.label}</span>
                       </span>
                     )}
@@ -186,6 +189,62 @@ function BarTitle({ title, t }: { title: string | null; t: SidebarTexts }) {
   );
 }
 
+/**
+ * The menu's badges while the visitor moves around. The first paint has the shell's (the props); the layout does not render again on a
+ * client-side move, so the badges are asked for again (BADGES_URL) when the address changes after the first paint and when the window comes
+ * back (focus, or the tab becoming visible). An answer that is not the latest request's is dropped, and so is an answer to a request made for
+ * props that have since been replaced: a server action's refresh() renders the layout again and its numbers win. A failed or unreadable answer
+ * leaves what is shown. Null: show the props.
+ */
+function useLiveMenu(items: NavItem[], route: string): MenuState | null {
+  const [live, setLive] = useState<{ items: NavItem[]; menu: MenuState } | null>(null);
+  const current = useRef(items);
+  const request = useRef<{ seq: number; abort: AbortController | null }>({ seq: 0, abort: null });
+  const shownFor = useRef(route);
+
+  useEffect(() => {
+    current.current = items;
+  }, [items]);
+
+  const refetch = useCallback(() => {
+    const mine = ++request.current.seq;
+    request.current.abort?.abort();
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    request.current.abort = controller;
+    const asked = current.current;
+    fetch(BADGES_URL, { cache: "no-store", credentials: "same-origin", headers: { accept: "application/json" }, signal: controller?.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: unknown) => {
+        const menu = readMenuState(body);
+        if (menu && mine === request.current.seq) setLive({ items: asked, menu });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (shownFor.current === route) return; // the first paint: the shell has just read them
+    shownFor.current = route;
+    refetch();
+  }, [route, refetch]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refetch();
+    };
+    window.addEventListener("focus", refetch);
+    document.addEventListener("visibilitychange", onVisible);
+    const asking = request.current;
+    return () => {
+      window.removeEventListener("focus", refetch);
+      document.removeEventListener("visibilitychange", onVisible);
+      asking.seq++; // nothing in flight may set state after this
+      asking.abort?.abort();
+    };
+  }, [refetch]);
+
+  return live !== null && live.items === items ? live.menu : null;
+}
+
 type SidebarProps = { items: NavItem[]; t: SidebarTexts; total: number; email: string; today: TodayCard | null };
 
 /**
@@ -198,12 +257,16 @@ type SidebarProps = { items: NavItem[]; t: SidebarTexts; total: number; email: s
  * useSearchParams is answered while the page is rendered on the server and needs no <Suspense> boundary: the menu is in the first HTML with its
  * entry marked, its fold and its phone bar title right, and no second copy of it follows.
  */
-export function Sidebar({ items, t, total, email, today }: SidebarProps) {
+export function Sidebar({ items: served, t, total: servedTotal, email, today: servedToday }: SidebarProps) {
   const pathname = usePathname();
   const search = useSearchParams();
   const active = activeSection(pathname, search);
   // the address the menu was last shown for
   const route = `${pathname}?${search.toString()}`;
+  const live = useLiveMenu(served, route);
+  const items = live ? served.map((item) => ({ ...item, href: live.hrefs[item.key] ?? sectionHref(item.key), badge: live.badges[item.key] })) : served;
+  const total = live ? live.total : servedTotal;
+  const today = live ? live.today : servedToday;
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
   const title = active !== "overview" ? (items.find((item) => item.key === active)?.label ?? null) : null;

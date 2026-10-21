@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Form from "next/form";
 import Link from "next/link";
-import { getAdminCounts } from "@/components/admin/data";
 import { ClientDetailView } from "@/components/admin/ClientDrawer";
 import { AddStudentForm } from "@/components/admin/ClientForms";
 import { Drawer } from "@/components/admin/Drawer";
@@ -63,12 +62,10 @@ export default async function ClientsPage({ searchParams }: Props) {
   const db = getDb();
   const now = new Date();
   const filter: ClientFilter = view.vorm ?? "all";
-  // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
   const [list, open, ecourses] = await Promise.all([
     listClients(db, { filter, q: view.otsi, page: view.leht }),
     view.id ? clientDetail(db, view.id, now) : null,
     view.id ? listEcourses(db, now) : [],
-    getAdminCounts(),
   ]);
   const t = adminEt.clients;
   const filtered = view.vorm !== null || view.otsi !== "";

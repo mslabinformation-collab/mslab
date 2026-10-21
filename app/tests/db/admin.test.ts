@@ -26,6 +26,9 @@ const form = (fields: Record<string, string>) => {
   return fd;
 };
 
+// (a day with no session on it: the fixture's session is on 14.11.2026)
+const NOW = new Date("2026-10-21T09:00:00Z");
+
 let db: Db;
 let contact: { id: number };
 let online: { id: number };
@@ -216,13 +219,17 @@ describe("pages of 50 (?leht=)", () => {
 
 describe("adminCounts", () => {
   test("registrations waiting for the prepayment, open requests per kind (purchase interest apart), subscribers", async () => {
-    expect(await adminCounts(db)).toEqual({
+    expect(await adminCounts(db, "maria@example.test", NOW)).toEqual({
       awaitingPrepayment: 0,
       openRequests: { contact: 0, individual: 0, practice: 0, waitlist: 0, change_request: 0 },
       openPurchaseInterest: 0,
       subscribers: 0,
       confirmedSubscribers: 0,
       assessment: 0,
+      todaySessions: [],
+      waitingReviews: 0,
+      paymentsAttention: 0,
+      ownFaults: 0,
     });
     await register();
     await register({ status: "confirmed" });
@@ -240,13 +247,17 @@ describe("adminCounts", () => {
       { email: "s1@example.com", token: "t1", confirmedAt: new Date() },
       { email: "s2@example.com", token: "t2" },
     ]);
-    expect(await adminCounts(db)).toEqual({
+    expect(await adminCounts(db, "maria@example.test", NOW)).toEqual({
       awaitingPrepayment: 2,
       openRequests: { contact: 2, individual: 0, practice: 1, waitlist: 1, change_request: 0 },
       openPurchaseInterest: 1,
       subscribers: 2,
       confirmedSubscribers: 1,
       assessment: 0,
+      todaySessions: [],
+      waitingReviews: 0,
+      paymentsAttention: 0,
+      ownFaults: 0,
     });
   });
 });

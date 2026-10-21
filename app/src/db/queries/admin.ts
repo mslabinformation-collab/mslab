@@ -1,11 +1,15 @@
 import { and, asc, count, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "../client";
-import { campaign, courseAccess, courseImages, courseModules, courseSessions, courses, courseTests, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, registrations, requests, settings, subscribers } from "../schema";
+import { campaign, courseAccess, courseImages, courseModules, courseSessions, courses, courseTests, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, payments, registrations, requests, reviews, settings, subscribers } from "../schema";
 import type { Campaign, Course, CourseImage, CourseSession, CourseTest, FaqItem, GalleryItem, HeroSlide, Page, PopupKind, Post, PracticePackage, Registration, Request as RequestRow, Subscriber, TestQuestion } from "../schema";
-import { pageInfo, PAGE_SIZE, type PageInfo } from "@/domain/paging";
+import { PAGE_SIZE } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
-import type { I18n } from "@/i18n/field";
+import { pick, type I18n } from "@/i18n/field";
+import { ownFaultCount } from "@/server/testplan";
 import { assessmentCount } from "./assessment";
+import { paged, type Paged, type Range } from "./paged";
+import { NEEDS_ATTENTION } from "./payment-checks";
+import { todaySessions } from "./protocols";
 import { hasFreeSeat, takesSeat } from "./seats";
 
 // Admin (write) queries. Callers must already have checked the admin session; nothing here does authorization.
@@ -283,21 +287,8 @@ export async function upsertSession(db: Db, input: SessionInput): Promise<Course
 
 // ---------- registrations and requests ----------
 
-/** A slice of a list: `limit` rows from `offset` on. Without one the whole list is returned (the CSV export). */
-export type Range = { limit: number; offset: number };
-/** One page of an admin list: its rows and where it is (page, pages, total). */
-export type Paged<T> = PageInfo & { rows: T[] };
-
-/**
- * Page `requested` (clamped to 1…last) of a list. The count and the rows are read together; only when the requested
- * page lies beyond the end (an old link, a typed ?leht=) are the rows of the last page read once more.
- */
-export async function paged<T>(requested: number, size: number, total: () => Promise<number>, rows: (range: Range) => Promise<T[]>): Promise<Paged<T>> {
-  const guess = pageInfo(requested, Number.POSITIVE_INFINITY, size);
-  const [n, first] = await Promise.all([total(), rows({ limit: size, offset: guess.offset })]);
-  const info = pageInfo(requested, n, size);
-  return { ...info, rows: info.offset === guess.offset ? first : await rows({ limit: size, offset: info.offset }) };
-}
+// (paging lives in paged.ts so that protocols.ts and payments.ts can page without importing this file back; the names stay exported from here)
+export { paged, type Paged, type Range };
 
 /**
  * Manual status change by Maria (e.g. confirm after the prepayment arrived). Returns null when the id does not exist,
@@ -470,11 +461,22 @@ export type AdminCounts = {
   confirmedSubscribers: number;
   /** What waits in Hindamine (e-course completion, spec §5.2): practical work to assess, open answers to review, students out of tries. */
   assessment: number;
+  /** The scheduled sessions on today's Tallinn date, earliest first: „Täna“ in the menu (admin UX pass, B6). */
+  todaySessions: { id: number; startsAt: Date; course: string }[];
+  /** Reviews waiting for „Avalda“ (Tagasiside's menu badge). */
+  waitingReviews: number;
+  /** What „Maksed ja arved“ asks Maria to look at (spec S7): paid payments no invoice names, `held` ones, and ones voided after they were paid. */
+  paymentsAttention: number;
+  /** The signed-in admin's own standing „Viga“ answers on the test page (Testimine's menu badge). */
+  ownFaults: number;
 };
 
-/** The numbers of the overview and the menu badges. */
-export async function adminCounts(db: Db): Promise<AdminCounts> {
-  const [[awaiting], byKind, [interest], [subs], assessment] = await Promise.all([
+/**
+ * The numbers of the overview and the menu badges, for the admin `email` at `now`: each count is one query, all read together. The test page's
+ * answers are one settings row, read by server/testplan.ts ownFaultCount.
+ */
+export async function adminCounts(db: Db, email: string, now: Date): Promise<AdminCounts> {
+  const [[awaiting], byKind, [interest], [subs], assessment, today, [waiting], [attention], ownFaults] = await Promise.all([
     db.select({ n: count() }).from(registrations).where(eq(registrations.status, "awaiting_prepayment")),
     db.select({ kind: requests.kind, n: count() }).from(requests).where(eq(requests.handled, false)).groupBy(requests.kind),
     db
@@ -483,6 +485,12 @@ export async function adminCounts(db: Db): Promise<AdminCounts> {
       .where(and(eq(requests.kind, "contact"), eq(requests.handled, false), sql`${requests.payload}->>'intent' = 'purchase'`)),
     db.select({ total: count(), confirmed: count(subscribers.confirmedAt) }).from(subscribers),
     assessmentCount(db),
+    todaySessions(db, now),
+    // (the number of the Tagasiside heading: server/reviews.ts pendingReviewCount)
+    db.select({ n: count() }).from(reviews).where(eq(reviews.status, "pending")),
+    // (payment-checks.ts: the unbilled paid payments, the held ones and the ones voided after they were paid)
+    db.select({ n: count() }).from(payments).where(NEEDS_ATTENTION),
+    ownFaultCount(db, email),
   ]);
   const openRequests: Record<RequestKind, number> = { contact: 0, individual: 0, practice: 0, waitlist: 0, change_request: 0 };
   for (const row of byKind) openRequests[row.kind] = Number(row.n);
@@ -493,6 +501,10 @@ export async function adminCounts(db: Db): Promise<AdminCounts> {
     subscribers: Number(subs.total),
     confirmedSubscribers: Number(subs.confirmed),
     assessment,
+    todaySessions: today.map((s) => ({ id: s.id, startsAt: s.startsAt, course: pick(s.title, "et") })),
+    waitingReviews: Number(waiting.n),
+    paymentsAttention: Number(attention.n),
+    ownFaults,
   };
 }
 

@@ -1,29 +1,23 @@
 import { adminEt } from "@/i18n/dict/admin";
-import { fill } from "@/i18n/format";
 import { adminName } from "@/server/auth";
 import { getAdminCounts } from "./data";
+import { menuOf } from "./menu";
 import { ReadyMark } from "./ReadyMark";
-import { SECTIONS, type Section } from "./sections";
+import { SECTIONS } from "./sections";
 import { Sidebar, type NavItem, type SidebarTexts } from "./Sidebar";
 import styles from "./Shell.module.css";
 
 /**
  * Prototype B `adminShell()`: the dark sidebar on the left, the main column with the top line ("MS LAB ·
  * Halduskeskkond" and who is signed in) and the page. The (panel) layout renders it once around every admin page
- * (admin UX pass, spec C2), so loading.tsx and error.tsx keep the menu on screen. The menu badges are read here: open
- * registrations and requests, and what waits in Hindamine. The active entry is not known here: the sidebar reads it
- * from the address (sections.ts activeSection).
+ * (admin UX pass, spec C2), so loading.tsx and error.tsx keep the menu on screen. The menu's badges are read here for the first paint
+ * (menu.ts menuOf); the layout does not render again when the visitor moves between pages, so the sidebar asks /api/admin/margid for them
+ * again then. The active entry is not known here: the sidebar reads it from the address (sections.ts activeSection).
  */
 export async function Shell({ email, children }: { email: string; children: React.ReactNode }) {
-  const counts = await getAdminCounts();
+  const menu = menuOf(await getAdminCounts(email));
   const t = adminEt.shell;
-  const openRequests = Object.values(counts.openRequests).reduce((a, b) => a + b, 0);
-  const badges: Partial<Record<Section, NavItem["badge"]>> = {
-    registrations: counts.awaitingPrepayment ? { n: counts.awaitingPrepayment, label: fill(t.badgeRegistrations, { n: counts.awaitingPrepayment }) } : undefined,
-    assessment: counts.assessment ? { n: counts.assessment, label: fill(t.badgeAssessment, { n: counts.assessment }) } : undefined,
-    requests: openRequests ? { n: openRequests, label: fill(t.badgeRequests, { n: openRequests }) } : undefined,
-  };
-  const items: NavItem[] = SECTIONS.map((s) => ({ ...s, label: adminEt.nav[s.key], badge: badges[s.key] }));
+  const items: NavItem[] = SECTIONS.map((s) => ({ ...s, href: menu.hrefs[s.key] ?? s.href, label: adminEt.nav[s.key], badge: menu.badges[s.key] }));
   const name = adminName(email);
   const texts: SidebarTexts = {
     label: t.label,
@@ -41,12 +35,12 @@ export async function Shell({ email, children }: { email: string; children: Reac
   };
   const sidebar = {
     items,
-    // the phone's ≡ button: what the menu's badges add up to
-    total: items.reduce((sum, item) => sum + (item.badge?.n ?? 0), 0),
+    // the phone's ≡ button: what the menu's numeric badges add up to
+    total: menu.total,
     t: texts,
     email,
-    // a session on today's date for the phone menu's card; nothing reads it yet (the overview's „Täna“ card will)
-    today: null,
+    // the first session on today's date, for the phone menu's card
+    today: menu.today,
   };
 
   return (

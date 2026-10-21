@@ -13,7 +13,7 @@ import {
 } from "@/domain/protocols";
 import type { RegStatus } from "@/domain/registration";
 import type { I18n } from "@/i18n/field";
-import { paged, type Paged } from "./admin";
+import { paged, type Paged } from "./paged";
 
 // The protocols' reads (phase protocols, spec §8): the course day's screen (Task 2), today's sessions (Task 5), the student's page (Task 7) and
 // the admin's feedback page (Task 9). Phase e-course completion: the screen of one e-course access, with its practical work (Maria's assessment).

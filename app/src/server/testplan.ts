@@ -4,7 +4,7 @@ import type { Db } from "@/db/client";
 import { settings } from "@/db/schema";
 import planFile from "@/data/testplan.json";
 import {
-  answerOf, markPinged, mergeAnswers, pingsFor, planCounts, readAnswersDoc, testerOf,
+  answerOf, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, testerOf,
   type AnswersDoc, type IncomingAnswer, type Ping, type Status, type TestPlan,
 } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
@@ -140,4 +140,12 @@ export function pingText(ping: Ping, plan: TestPlan, doc: AnswersDoc, names: str
 export async function testplanCard(db: Db, email: string, names: string | undefined): Promise<{ open: number; bad: number } | null> {
   const { open, bad } = planCounts(testPlan, await readAnswers(db), testplanBuildAt(), testerOf(email, names));
   return open + bad === 0 ? null : { open, bad };
+}
+
+/**
+ * The number on Testimine's menu badge (admin UX pass B6): how many „Viga“ answers the signed-in admin has standing (domain/testplan.ts ownFaults).
+ * One read of the answers row. (queries/admin.ts adminCounts calls it with the other menu numbers.)
+ */
+export async function ownFaultCount(db: Db, email: string): Promise<number> {
+  return ownFaults(testPlan, await readAnswers(db), testplanBuildAt(), email);
 }

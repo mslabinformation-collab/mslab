@@ -1641,6 +1641,35 @@
       "markedAt": "deploy"
     },
     {
+      "id": "haldus-menuu-margid",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Menüü märgid ja filtreeritud lehed",
+      "href": "/admin",
+      "steps": [
+        "Ava halduse ülevaade arvutis ja vaata menüü märke.",
+        "Vajuta märgiga rida „Registreerimised“ ja siis märgiga rida „Tagasiside“.",
+        "Märgi lehel „Päringud“ üks päring tehtuks ja ava menüüst „Ülevaade“.",
+        "Märgi lehel „Testimine“ üks kontroll tulemusega „Viga“ ja ava menüüst „Ülevaade“.",
+        "Koolituspäeval vaata menüü rida „Protokollid“."
+      ],
+      "expect": [
+        "Märk on näha ainult siis, kui arv on üle nulli, ja arv on see, mis ootab sind.",
+        "„Registreerimised“ märk on ettemaksu ootavad registreerimised; vajutus avab lehe filtriga „Ootab ettemaksu“.",
+        "„Tagasiside“ märk on „Avalda“ ootavad arvustused; vajutus avab arvustused filtriga „Ootab kinnitust“.",
+        "„Maksed ja arved“ märk loeb arveta makstud maksed, „Ootel kontrollil“ maksed ja pärast maksmist pangas tühistatud maksed.",
+        "„Päringud“ märk on pärast tehtuks märkimist ja menüüst lehe vahetamist ühe võrra väiksem.",
+        "„Testimine“ märk on sinu enda tulemusega „Viga“ kontrollide arv; teise inimese vead seda ei tõsta.",
+        "„Protokollid“ juures on koolituspäeval sõna „Täna“ ilma arvuta."
+      ],
+      "why": "Märk peab näitama täpselt seda, mis ootab, ja viima otse õigele lehele.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-vorm-vead",
       "area": "registreerimine",
       "who": "maria",
@@ -3235,13 +3264,15 @@
       ],
       "expect": [
         "Enne avamist on küsimus „Kas avan testi „…“ uuesti? …“.",
-        "Pärast näed „Test on uuesti avatud: katseid jäänud …“.",
+        "Pärast kaob Proov 1 grupist „Katsed otsas“ ja menüüs „Hindamine“ näitab märk ühe võrra vähem.",
         "Proov 1 postkasti tuleb kiri „Test on sinu jaoks uuesti avatud“.",
         "Õpilase testi lehel on jälle „Esita test“."
       ],
       "why": "Maria annab õpilasele uued katsed.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-test-oige",

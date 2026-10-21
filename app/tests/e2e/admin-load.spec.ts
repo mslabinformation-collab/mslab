@@ -129,7 +129,8 @@ test("the sidebar stays on screen and marks the entry of the address after a cli
   await page.locator("aside").first().evaluate((el) => el.setAttribute("data-kept", "1"));
 
   await entry("registrations").click();
-  await expect(page).toHaveURL(/admin.registreerimised$/);
+  // (a badged row opens its page already filtered: the waiting registrations)
+  await expect(page).toHaveURL(/admin.registreerimised(\?staatus=ootab)?$/);
   await expect(entry("registrations")).toHaveAttribute("aria-current", "page");
   await expect(entry("payments")).not.toHaveAttribute("aria-current", "page");
   await expect(page.locator("html[data-admin-ready]")).toBeAttached();

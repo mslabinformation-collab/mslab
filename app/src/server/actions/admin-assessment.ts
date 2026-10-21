@@ -1,6 +1,6 @@
 "use server";
 
-import { refresh } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { z } from "zod";
 import { sendAssessment, type AssessmentInput, type AssessmentResult } from "../assessment";
 import { adminAction } from "../auth";
@@ -11,9 +11,8 @@ import { reopenTest, reviewAttempt, type ReviewResult } from "../test-attempts";
 // Maria's assessment (phase e-course completion, spec §5.3): every export is wrapped in adminAction (a signed-in admin, or a redirect to
 // /admin/login; tests/unit/admin-guards.test.ts fails otherwise), and Next.js refuses an action called from another origin. The work is in
 // ../assessment.ts. "Saada hinnang" refreshes nothing: the screen keeps its own state. The test review's "Saada" refreshes the open admin page once
-// reviewed (the attempt is read-only now, Hindamine's badge has one less). "Ava test uuesti" refreshes nothing either: its row leaves Hindamine's
-// "Katsed otsas" once the test is open, and a refresh would take the confirmation (and the mail's notice) away with it; the page is right again on
-// the next load.
+// reviewed (the attempt is read-only now, Hindamine's badge has one less). "Ava test uuesti" revalidates the whole admin once the test is open
+// (admin UX pass, B6): its row leaves Hindamine's "Katsed otsas", so the badge and the overview must count one less.
 
 const item = z.object({
   accessId: z.number().int().positive().max(2_147_483_647),
@@ -71,14 +70,17 @@ type ReopenOutcome = Awaited<ReturnType<typeof reopenTest>> | { kind: "failed" }
 
 /**
  * "Ava test uuesti" (spec §5.2, §5.5), after its confirmation: the course's tries once more for an access whose tries are used up; she is mailed
- * while her access runs. The open page is NOT refreshed: the row would leave Hindamine's "Katsed otsas" and ReopenTest, with the line that tells
- * Maria the test is open, would unmount. The row stays with that line until the next load.
+ * while her access runs. Once the test is open (or was open already) the admin is revalidated, so Hindamine's menu badge and the overview's
+ * "Ootab hindamist" count one less: on Hindamine the page then comes back without the row, and ReopenTest, with the line that tells Maria the
+ * test is open, goes with it; in the student's drawer the line stays (the access is still there).
  */
 export const reopenTestAction = adminAction(async ({ email }, input: { accessId: number }): Promise<ReopenOutcome> => {
   const parsed = accessInput.safeParse(input);
   if (!parsed.success) return { kind: "notFound" };
   try {
-    return await reopenTest(await adminSendDeps("[test]"), email, parsed.data.accessId);
+    const result = await reopenTest(await adminSendDeps("[test]"), email, parsed.data.accessId);
+    if (result.kind === "reopened" || result.kind === "notNeeded") revalidatePath("/admin", "layout");
+    return result;
   } catch (e) {
     logFailure(`[test] access ${parsed.data.accessId}: the reopen failed`, e);
     return { kind: "failed" };

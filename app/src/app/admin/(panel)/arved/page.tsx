@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAdminCounts } from "@/components/admin/data";
 import { InvoiceCatchUp } from "@/components/admin/InvoiceCatchUp";
 import { InvoiceRow } from "@/components/admin/InvoiceRow";
 import { invoiceView } from "@/components/admin/invoice-view";
@@ -59,12 +58,10 @@ export default async function InvoicesPage({ searchParams }: Props) {
   const view = parse(await searchParams);
   const db = getDb();
   const now = new Date();
-  // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
   const [list, uninvoiced, seller] = await Promise.all([
     listInvoices(db, { month: view.kuu ?? undefined, status: view.staatus ?? undefined }, view.leht),
     uninvoicedPaymentRows(db),
     getInvoiceSettings(db, now),
-    getAdminCounts(),
   ]);
   const t = adminEt.invoices.page;
   const u = adminEt.invoices.uninvoiced;

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAdminCounts } from "@/components/admin/data";
 import { ContractBlock } from "@/components/admin/ContractBlock";
 import { contractView, type ContractView } from "@/components/admin/contract-view";
 import { Drawer } from "@/components/admin/Drawer";
@@ -91,7 +90,6 @@ export default async function RegistrationsPage({ searchParams }: Props) {
   const view = parse(await searchParams);
   const db = getDb();
   const filter: RegistrationFilter = { type: view.vorm ? FORMS[view.vorm] : undefined, status: view.staatus ?? undefined };
-  // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
   const now = new Date();
   const [list, open, online, answers, invoiceList, invoiceSeller, contractList] = await Promise.all([
     pageRegistrations(db, filter, view.leht),
@@ -103,7 +101,6 @@ export default async function RegistrationsPage({ searchParams }: Props) {
     view.id ? getInvoiceSettings(db, now) : null,
     // the drawer's „Leping“ (contracts Task 5): the registration's contracts, the current one first
     view.id ? contractsOfRegistration(db, view.id) : [],
-    getAdminCounts(),
   ]);
   const rows = list.rows;
   const t = adminEt.registrations;

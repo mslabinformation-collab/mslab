@@ -38,7 +38,7 @@ export default async function Overview() {
   const now = new Date();
   const db = getDb();
   const [counts, sessions, today, waiting, testing] = await Promise.all([
-    getAdminCounts(),
+    getAdminCounts(email),
     listUpcomingSessions(db, startOfDayTallinn(now)),
     todaySessions(db, now),
     assessmentQueue(db),

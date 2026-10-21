@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAdminCounts } from "@/components/admin/data";
 import listTable from "@/components/admin/list-table.module.css";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
@@ -26,8 +25,7 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
  */
 export default async function CertificateRegisterPage({ searchParams }: Props) {
   await requireAdmin();
-  // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
-  const [list] = await Promise.all([listCertificates(getDb(), parsePage((await searchParams).leht)), getAdminCounts()]);
+  const list = await listCertificates(getDb(), parsePage((await searchParams).leht));
   const t = adminEt.certificates.register;
   // the register says "nimi parandatud", "ligipääs tühistatud" and "Laada alla" in the drawer's words: one set of texts
   const d = adminEt.certificates.drawer;

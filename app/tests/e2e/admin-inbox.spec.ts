@@ -11,11 +11,13 @@ import {
   E2E_CAMPAIGN_PREFIX,
   insertAdminFixtures,
   insertAdminPayments,
+  openRequestCount,
   removeAdminFixtures,
   removeAdminRows,
   removeCampaignRows,
   requestHandled,
   setStoredStatus,
+  storeRequestHandled,
   storedAdminRegistration,
   storedCampaigns,
   type AdminFixtures,
@@ -296,7 +298,7 @@ test.describe("signed in", () => {
     const f = await fixtures(info.project.name);
     const p = await insertAdminPayments(f);
     await signIn(page, context, visitorIp);
-    await (await menu(page, isMobile)).getByRole("link", { name: "Maksed ja arved", exact: true }).click();
+    await (await menu(page, isMobile)).getByRole("link", { name: /^Maksed ja arved/ }).click(); // (its badge, when there is one, is part of the name)
     await expect(page).toHaveURL(/\/admin\/maksed$/);
     if (isMobile) await expect(page.locator("[data-admin-drawer]")).toBeHidden(); // the link closed the drawer
     await expect(page).toHaveTitle(/Maksed ja arved — Haldus/);
@@ -490,6 +492,56 @@ test.describe("signed in", () => {
     await page.goto("/admin/paringud?liik=individuaal");
     await targets(page.locator(`[data-request="${f.individual.id}"]`), 2);
     expect(await noOverflow(page)).toBe(true);
+  });
+
+  test("menu badges follow a client-side move: the Päringud badge counts what is open now after a click on the menu and after Back", async ({ page, context, visitorIp, isMobile }, info) => {
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    await page.goto("/admin/paringud?liik=praktika");
+    // the badge as the sidebar (hidden on a phone, where the menu is in the panel) shows it: the number, or none
+    const shown = async () => {
+      const badge = page.locator('aside [data-badge="requests"] [aria-hidden]');
+      return (await badge.count()) === 0 ? 0 : Number(await badge.textContent());
+    };
+    // the sidebar's question to the server (a move, or the window coming back, asks it)
+    const answered = () => page.waitForResponse((res) => new URL(res.url()).pathname === "/api/admin/margid" && res.status() === 200);
+    // The badge is what the database says. Other tests' rows come and go meanwhile, so while the two differ the window "comes back" and the
+    // sidebar asks again.
+    const rightNow = () =>
+      expect
+        .poll(async () => {
+          if ((await shown()) === (await openRequestCount())) return true;
+          await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+          return false;
+        })
+        .toBe(true);
+    const practice = page.locator(`[data-request="${f.practice.id}"]`);
+    await expect(practice).toBeVisible();
+    expect(await shown()).toBeGreaterThanOrEqual(5);
+    await practice.getByRole("button", { name: "Märgi tehtuks" }).click(); // (the page is refreshed by its action)
+    await expect.poll(() => requestHandled(f.practice.id)).toBe(true);
+
+    // a request done elsewhere (the other tab, the other admin) is behind this page's back; a move through the menu is client-side, so the layout
+    // does not render again: the sidebar asks for the numbers
+    await storeRequestHandled(f.individual.id, true);
+    await page.evaluate(() => ((window as unknown as { __stays: boolean }).__stays = true));
+    const nav = await menu(page, isMobile);
+    // a badged row opens its page already filtered (the fixture's registration is waiting for its prepayment)
+    await expect(nav.locator('a[data-nav="registrations"]')).toHaveAttribute("href", "/admin/registreerimised?staatus=ootab");
+    const moved = answered();
+    await nav.getByRole("link", { name: "Kalender" }).click();
+    await moved;
+    await expect(page).toHaveURL(/\/admin\/kalender/);
+    await rightNow();
+
+    // and again, and Back
+    await storeRequestHandled(f.individual.id, false);
+    const back = answered();
+    await page.goBack();
+    await back;
+    await expect(page).toHaveURL(/\/admin\/paringud\?liik=praktika/);
+    await rightNow();
+    expect(await page.evaluate(() => (window as unknown as { __stays?: boolean }).__stays)).toBe(true); // no full load on the way
   });
 
   test("requests: a failed 'Märgi tehtuks' says so instead of failing silently", async ({ page, context, visitorIp }, info) => {

@@ -85,11 +85,11 @@ function value(r: RequestRow, key: string, lookup: Lookup): React.ReactNode {
 
 /** Requests (A3): tabs Kontakt / Individuaal / Praktika / Ootenimekiri, open ones first, "Märgi tehtuks" toggles. */
 export default async function RequestsPage({ searchParams }: Props) {
-  await requireAdmin();
+  const email = await requireAdmin();
   const sp = await searchParams;
   const tab: Tab = TABS.find((x) => x === sp.liik) ?? "kontakt";
   const db = getDb();
-  const [list, counts, courses] = await Promise.all([pageRequests(db, KIND[tab], parsePage(sp.leht)), getAdminCounts(), listCourseNames(db)]);
+  const [list, counts, courses] = await Promise.all([pageRequests(db, KIND[tab], parsePage(sp.leht)), getAdminCounts(email), listCourseNames(db)]);
   const rows = list.rows;
   const sessionIds = tab === "ootenimekiri" ? rows.map((r) => Number(r.payload.session)).filter((n) => Number.isInteger(n) && n > 0) : [];
   const changeIds = tab === "muutmine" ? rows.map(changedRegistration).filter((n): n is number => n !== null) : [];

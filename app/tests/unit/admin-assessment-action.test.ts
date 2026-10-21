@@ -7,7 +7,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 const work = vi.hoisted(() => ({ sendAssessment: vi.fn() }));
 // the test review's work and the page refresh: the action file imports both once Task 12 has added its two actions (their tests are Task 12's)
 const tests = vi.hoisted(() => ({ reviewAttempt: vi.fn(), reopenTest: vi.fn() }));
-const cache = vi.hoisted(() => ({ refresh: vi.fn() }));
+const cache = vi.hoisted(() => ({ refresh: vi.fn(), revalidatePath: vi.fn() }));
 vi.mock("@/server/assessment", () => work);
 vi.mock("@/server/test-attempts", () => tests);
 vi.mock("next/cache", () => cache);
@@ -25,6 +25,7 @@ beforeEach(() => {
   tests.reviewAttempt.mockReset();
   tests.reopenTest.mockReset();
   cache.refresh.mockReset();
+  cache.revalidatePath.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -71,18 +72,22 @@ test("the test review passes on the attempt, the review and the time the page sh
   expect(cache.refresh).toHaveBeenCalledTimes(1);
 });
 
-test("'Ava test uuesti' passes on the access and never refreshes the page (its row, with the confirmation, stays until the next load); bad input is notFound; a throw is 'failed'", async () => {
+test("'Ava test uuesti' passes on the access and revalidates the whole admin once it is open (Hindamine's badge and the overview follow); bad input is notFound; a throw is 'failed'", async () => {
   tests.reopenTest.mockResolvedValueOnce({ kind: "reopened", triesLeft: 3 });
   expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "reopened", triesLeft: 3 });
   expect(tests.reopenTest.mock.calls[0].slice(1)).toEqual(["admin@example.test", 9]);
-  expect(cache.refresh).not.toHaveBeenCalled(); // a refresh would take the row out of "Katsed otsas" and its "Test on uuesti avatud" line with it
-  tests.reopenTest.mockResolvedValueOnce({ kind: "notNeeded" });
+  expect(cache.revalidatePath.mock.calls).toEqual([["/admin", "layout"]]);
+  tests.reopenTest.mockResolvedValueOnce({ kind: "notNeeded" }); // opened already, perhaps on her other device: the numbers changed all the same
   expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "notNeeded" });
-  expect(cache.refresh).not.toHaveBeenCalled();
+  expect(cache.revalidatePath).toHaveBeenCalledTimes(2);
+  tests.reopenTest.mockResolvedValueOnce({ kind: "notFound" });
+  expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "notFound" });
+  expect(cache.revalidatePath).toHaveBeenCalledTimes(2); // nothing was opened: nothing to revalidate
   for (const bad of [{ accessId: 0 }, { accessId: 1.5 }, {}]) expect(await reopenTestAction(bad as never), JSON.stringify(bad)).toEqual({ kind: "notFound" });
-  expect(tests.reopenTest).toHaveBeenCalledTimes(2);
+  expect(tests.reopenTest).toHaveBeenCalledTimes(3);
   tests.reopenTest.mockRejectedValueOnce(new TypeError("boom"));
   expect(await reopenTestAction({ accessId: 9 })).toEqual({ kind: "failed" });
   expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain("[test] access 9: the reopen failed: TypeError");
-  expect(cache.refresh).not.toHaveBeenCalled();
+  expect(cache.revalidatePath).toHaveBeenCalledTimes(2);
+  expect(cache.refresh).not.toHaveBeenCalled(); // (it is revalidatePath that does it, not the page-only refresh)
 });

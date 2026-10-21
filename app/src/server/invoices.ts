@@ -1,6 +1,7 @@
-import { and, asc, count, desc, eq, gte, inArray, lt, max, ne, notExists, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, lt, max, ne, or, sql, type SQL } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
 import { addRegistrationPayment, paged, setSetting, type Paged } from "@/db/queries/admin";
+import { UNINVOICED_PAID } from "@/db/queries/payment-checks";
 import { readSetting } from "@/db/queries/public";
 import { lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, invoices, payments, registrations, type CourseSession, type Invoice, type Payment, type Registration } from "@/db/schema";
@@ -214,7 +215,7 @@ export async function createInvoice(
     const uninvoiced = await tx
       .select({ id: payments.id, kind: payments.kind, invoiceId: payments.invoiceId, amountCents: payments.amountCents })
       .from(payments)
-      .where(and(eq(payments.registrationId, r.id), eq(payments.status, "paid"), notExists(tx.select({ one: sql`1` }).from(invoices).where(eq(invoices.paymentId, payments.id)))));
+      .where(and(eq(payments.registrationId, r.id), UNINVOICED_PAID));
     const covering = coveringInvoices(r, invoiced, uninvoiced);
     const open = price === null ? undefined : openAmounts({ priceCents: price, paymentChoice: r.paymentChoice, paidCents: r.paidCents }, covering)[input.mode].find((o) => o.kind === input.kind);
     if (!open) return { ok: false, error: "notOpen" };
@@ -679,11 +680,7 @@ export async function listInvoices(db: Db, filter: { month?: string; status?: In
  * empty, or whose invoice step failed (one started for an invoice included: its catch-up pays that invoice) — the oldest first.
  */
 export async function uninvoicedPayments(db: Db): Promise<Payment[]> {
-  return db
-    .select()
-    .from(payments)
-    .where(and(eq(payments.status, "paid"), notExists(db.select({ one: sql`1` }).from(invoices).where(eq(invoices.paymentId, payments.id)))))
-    .orderBy(asc(payments.paidAt), asc(payments.id));
+  return db.select().from(payments).where(UNINVOICED_PAID).orderBy(asc(payments.paidAt), asc(payments.id));
 }
 
 /** A row of „Arveta maksed“: the paid payment, the course it was for, and the number of the unpaid invoice its catch-up will pay (null: it will make a new one). */

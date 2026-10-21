@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  NOTE_MAX, answerOf, appliesAt, checkState, cleanNote, markPinged, mergeAnswers, pingsFor, planCounts, readAnswersDoc, testerOf,
+  NOTE_MAX, answerOf, appliesAt, checkState, cleanNote, markPinged, mergeAnswers, ownFaults, pingsFor, planCounts, readAnswersDoc, testerOf,
   type AnswersDoc, type IncomingAnswer, type Ping, type Status, type StoredAnswer, type TestItem, type TestPlan,
 } from "@/domain/testplan";
 
@@ -510,5 +510,39 @@ describe("planCounts: what the header and the Avaleht card show (spec §4, §5)"
 
   test("an answer to an id outside the plan does not count, and an empty plan counts nothing", () => {
     expect(planCounts({ ...PLAN, items: [] }, FULL, BUILD, null)).toEqual({ total: 0, done: 0, open: 0, bad: 0, redo: 0 });
+  });
+});
+
+describe("ownFaults: the number on Testimine's menu badge (admin UX pass, B6)", () => {
+  const ME = "maria@example.test";
+  const DIM = "dim@example.test";
+
+  test("counts the standing „Viga“ answers the signed-in admin gave, not another admin's and not their OK or skip", () => {
+    const answers = doc({
+      "maria-1": answer("bad", "2026-10-17T10:00:00.000Z", { by: ME }),
+      "dim-1": answer("bad", "2026-10-21T10:00:00.000Z", { by: DIM }),
+      "koos-1": answer("ok", "2026-10-21T10:00:00.000Z", { by: ME }),
+    });
+    expect(ownFaults(PLAN, answers, BUILD, ME)).toBe(1);
+    expect(ownFaults(PLAN, answers, BUILD, DIM)).toBe(1);
+    expect(ownFaults(PLAN, answers, BUILD, "nobody@example.test")).toBe(0);
+    expect(ownFaults(PLAN, doc(), BUILD, ME)).toBe(0);
+  });
+
+  test("the address is compared without regard to case or white space; an empty address owns nothing", () => {
+    const answers = doc({ "maria-1": answer("bad", "2026-10-17T10:00:00.000Z", { by: "Maria@Example.test" }) });
+    expect(ownFaults(PLAN, answers, BUILD, " maria@EXAMPLE.test ")).toBe(1);
+    expect(ownFaults(PLAN, answers, BUILD, "")).toBe(0);
+    expect(ownFaults(PLAN, doc({ "maria-1": answer("bad", "2026-10-17T10:00:00.000Z", { by: "" }) }), BUILD, "")).toBe(0);
+  });
+
+  test("a Viga that a redo has reopened is open again and no longer counts; neither does an answer to a check the plan lost", () => {
+    // dim-1 is a redo marked 20.10: a failure of 19.10 is overtaken, one of 21.10 stands
+    const answers = doc({
+      "dim-1": answer("bad", "2026-10-19T10:00:00.000Z", { by: ME }),
+      "koos-1": answer("bad", "2026-10-21T10:00:00.000Z", { by: ME }),
+      gone: answer("bad", "2026-10-21T10:00:00.000Z", { by: ME }),
+    });
+    expect(ownFaults(PLAN, answers, BUILD, ME)).toBe(1);
   });
 });

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAdminCounts } from "@/components/admin/data";
 import { ReopenTest } from "@/components/admin/ReopenTest";
 import { adminTitle } from "@/components/admin/sections";
 import ui from "@/components/admin/ui.module.css";
@@ -27,8 +26,7 @@ const stamp = (d: Date) => `${formatDate(d, "et")} ${formatTime(d, "et")}`;
  */
 export default async function AssessmentPage() {
   await requireAdmin();
-  // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
-  const [queue] = await Promise.all([assessmentQueue(getDb()), getAdminCounts()]);
+  const queue = await assessmentQueue(getDb());
   const t = adminEt.assessment;
   const reopen = { ...t.reopen, saving: adminEt.common.saving, error: adminEt.common.saveError };
   const nothing = queue.practicals.length + queue.tests.length + queue.triesUsed.length === 0;

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAdminCounts } from "@/components/admin/data";
 import { adminTitle } from "@/components/admin/sections";
 import { TestReview } from "@/components/admin/TestReview";
 import ui from "@/components/admin/ui.module.css";
@@ -33,7 +32,7 @@ export default async function TestReviewPage({ searchParams }: Props) {
   const attemptId = parseRowId(one(sp.id));
   const accessId = attemptId === null ? parseRowId(one(sp.ligipaas)) : null;
   const db = getDb();
-  const [attempt, list] = await Promise.all([attemptId === null ? null : attemptForReview(db, attemptId), accessId === null ? null : attemptsOf(db, accessId), getAdminCounts()]);
+  const [attempt, list] = await Promise.all([attemptId === null ? null : attemptForReview(db, attemptId), accessId === null ? null : attemptsOf(db, accessId)]);
   const t = adminEt.assessment.review;
 
   return (

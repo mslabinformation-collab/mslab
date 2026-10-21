@@ -107,6 +107,13 @@ export const adminEt = {
     badgeRequests: "{n} tegemata",
     // Hindamine's badge (e-course completion, spec §5.2): practical work, open answers and students out of tries, together
     badgeAssessment: "{n} ootab hindamist",
+    // the badges of the admin UX pass (B6), as a screen reader says them (Dim, 21.10): reviews waiting for „Avalda“, payments to look at (unbilled,
+    // „kontroll“, voided after paid), the signed-in admin's own „Viga“ checks, and a course day (the badge itself shows „Täna“)
+    badgeFeedback: "{n} arvustust ootab",
+    badgePayments: "{n} vajab kontrolli",
+    badgeTesting: "{n} viga",
+    badgeToday: "Täna on koolituspäev",
+    badgeTodayText: "Täna",
   },
 
   nav: {

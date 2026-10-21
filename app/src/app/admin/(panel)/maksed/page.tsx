@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAdminCounts } from "@/components/admin/data";
 import listTable from "@/components/admin/list-table.module.css";
 import { Pager } from "@/components/admin/Pager";
 import { PAYMENT_TONE, paymentMethodText, paymentStatusLabel } from "@/components/admin/PaymentLines";
@@ -56,8 +55,7 @@ function href(view: View): string {
 export default async function PaymentsPage({ searchParams }: Props) {
   await requireAdmin();
   const view = parse(await searchParams);
-  // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
-  const [list] = await Promise.all([pagePayments(getDb(), view.staatus ?? "all", view.leht), getAdminCounts()]);
+  const list = await pagePayments(getDb(), view.staatus ?? "all", view.leht);
   const t = adminEt.payments;
   const filters: { key: PaymentStatus | null; label: string }[] = [
     { key: null, label: t.filter.all },

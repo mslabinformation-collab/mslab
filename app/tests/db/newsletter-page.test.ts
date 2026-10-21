@@ -21,7 +21,7 @@ vi.mock("next/server", () => ({ after: () => {} }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
 vi.mock("@/components/admin/data", async () => {
   const { adminCounts } = await import("@/db/queries/admin");
-  return { getAdminCounts: async () => adminCounts(state.db as Db) };
+  return { getAdminCounts: async (email: string) => adminCounts(state.db as Db, email, new Date()) };
 });
 vi.mock("@/server/actions/admin-newsletter", () => ({
   saveCampaignAction: vi.fn(),

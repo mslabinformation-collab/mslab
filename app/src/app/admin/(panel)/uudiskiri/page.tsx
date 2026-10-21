@@ -48,7 +48,7 @@ const CAMPAIGNS_HREF = "/admin/uudiskiri?vaade=kampaaniad";
 export default async function NewsletterPage({ searchParams }: Props) {
   const email = await requireAdmin();
   const search = await searchParams;
-  return search.vaade === "kampaaniad" ? campaignsPage(email, one(search.kampaania)) : subscribersPage(search);
+  return search.vaade === "kampaaniad" ? campaignsPage(email, one(search.kampaania)) : subscribersPage(email, search);
 }
 
 /** The page's heading and its two views. */
@@ -87,9 +87,9 @@ function Top({ view }: { view: "subscribers" | "campaigns" }) {
 }
 
 /** The subscribers' view. (A function of the page, not a component: it reads.) */
-async function subscribersPage(search: Search) {
+async function subscribersPage(email: string, search: Search) {
   const db = getDb();
-  const [list, counts] = await Promise.all([pageSubscribers(db, parsePage(search.leht)), getAdminCounts()]);
+  const [list, counts] = await Promise.all([pageSubscribers(db, parsePage(search.leht)), getAdminCounts(email)]);
   const rows = list.rows;
   const t = adminEt.newsletter;
 

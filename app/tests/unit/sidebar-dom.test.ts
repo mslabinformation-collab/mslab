@@ -75,6 +75,8 @@ const iconPath = (el: Element | null) => el?.querySelector("svg path")?.getAttri
 beforeEach(() => {
   mockPath = "/admin";
   mockSearch = "";
+  // the sidebar asks /api/admin/margid for its badges when the address changes: no test reaches a network (the badges' own tests answer it)
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, json: async () => null })));
   localStorage.clear();
   container = document.createElement("div");
   document.body.append(container);
@@ -84,6 +86,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   document.documentElement.style.overflow = "";
 });
 
@@ -365,5 +368,205 @@ describe("the phone bar and its menu", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+// ---------- the badges (admin UX pass, B6) ----------
+
+describe("the badges: the words „Täna“ and the new counts", () => {
+  it("„Täna“ is a word badge: it shows the word, says „Täna on koolituspäev“ to a screen reader, and adds nothing to the phone's sum", async () => {
+    await show({
+      badges: { protocols: { text: "Täna", label: "Täna on koolituspäev" }, feedback: badge(1, "1 arvustust ootab"), payments: badge(6, "6 vajab kontrolli"), testing: badge(2, "2 viga") },
+      total: 9,
+    });
+    const b = (key: string) => aside().querySelector(`[data-badge="${key}"]`);
+    expect([text(b("protocols")), text(b("feedback")), text(b("payments")), text(b("testing"))]).toEqual(["Täna, Täna on koolituspäev", "1, 1 arvustust ootab", "6, 6 vajab kontrolli", "2, 2 viga"]);
+    expect(b("protocols")!.querySelector("[aria-hidden]")!.textContent).toBe("Täna");
+    expect(text(container.querySelector("header [data-admin-menu]"))).toBe("9");
+  });
+});
+
+describe("the badges follow a client-side move", () => {
+  const URL = "/api/admin/margid";
+  const answer = (over: Record<string, unknown> = {}) => ({
+    ok: true,
+    badges: { requests: { n: 4, label: "4 tegemata" }, protocols: { text: "Täna", label: "Täna on koolituspäev" } },
+    hrefs: {},
+    total: 4,
+    today: { href: "/admin/protokollid?sessioon=7", time: "10:00", course: "Kulmumeistri baaskoolitus" },
+    ...over,
+  });
+  const reply = (body: unknown, ok = true) => ({ ok, json: async () => body });
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const badges = () => Object.fromEntries(Array.from(aside().querySelectorAll("[data-badge]")).map((el) => [el.getAttribute("data-badge"), text(el)]));
+  const sum = () => text(container.querySelector("header [data-admin-menu]"));
+  /** One set of props until the test says otherwise: the shell's props stay the same objects while the visitor moves between pages. */
+  let current: ReturnType<typeof propsOf>;
+  const propsOf = (over: Over) => ({ items: items(over.badges ?? {}), t: sidebarTexts, total: over.total ?? 0, email: EMAIL, today: over.today ?? null });
+  const serve = (over: Over) => act(async () => root.render(createElement(Sidebar, (current = propsOf(over)))));
+  /** The visitor moves: only the address changes, the layout (and so the sidebar's props) is not rendered again. */
+  const moveTo = async (path: string, search = "") => {
+    mockPath = path;
+    mockSearch = search;
+    await act(async () => root.render(createElement(Sidebar, current)));
+  };
+  const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 0))));
+
+  beforeEach(() => {
+    fetchMock = vi.fn(async () => reply(answer()));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the shell's badges at first and asks for nothing", async () => {
+    await serve({ badges: BADGES, total: 12 });
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(badges()).toEqual({ registrations: "3, 3 ootab ettemaksu", assessment: "2, 2 ootab hindamist", requests: "7, 7 tegemata" });
+  });
+
+  it("asks /api/admin/margid when the address changes and shows the new counts, the new sum and the new card", async () => {
+    await serve({ badges: BADGES, total: 12 });
+    await moveTo("/admin/paringud");
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect([url, init.cache, init.credentials]).toEqual([URL, "no-store", "same-origin"]);
+    expect(badges()).toEqual({ requests: "4, 4 tegemata", protocols: "Täna, Täna on koolituspäev" });
+    expect(sum()).toBe("4");
+    await openMenu();
+    expect(dialog().querySelector("[data-admin-today]")!.getAttribute("href")).toBe("/admin/protokollid?sessioon=7");
+    expect(text(dialog().querySelector('[data-badge="requests"]'))).toBe("4, 4 tegemata");
+  });
+
+  it("a search change is a new address too; the same address is not asked again", async () => {
+    await serve({ badges: BADGES, total: 12 });
+    await moveTo("/admin/registreerimised", "?staatus=ootab");
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await moveTo("/admin/registreerimised", "?staatus=ootab"); // rendered again for another reason
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await moveTo("/admin/registreerimised", "?staatus=kinnitatud");
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a badged row opens its filtered page (Registreerimised, Tagasiside) for as long as it carries a badge", async () => {
+    fetchMock.mockResolvedValue(
+      reply(
+        answer({
+          badges: { registrations: { n: 2, label: "2 ootab ettemaksu" }, feedback: { n: 1, label: "1 arvustust ootab" }, requests: { n: 1, label: "1 tegemata" } },
+          hrefs: { registrations: "/admin/registreerimised?staatus=ootab", feedback: "/admin/tagasiside?vaade=arvustused&olek=ootel" },
+          total: 4,
+        }),
+      ),
+    );
+    await serve({ badges: BADGES, total: 12 });
+    const href = (key: string) => aside().querySelector(`a[data-nav="${key}"]`)!.getAttribute("href");
+    expect([href("registrations"), href("feedback"), href("requests")]).toEqual(["/admin/registreerimised", "/admin/tagasiside", "/admin/paringud"]);
+    await moveTo("/admin/kalender");
+    await settle();
+    expect([href("registrations"), href("feedback"), href("requests")]).toEqual(["/admin/registreerimised?staatus=ootab", "/admin/tagasiside?vaade=arvustused&olek=ootel", "/admin/paringud"]);
+    // and the plain page again once the badge is gone
+    fetchMock.mockResolvedValue(reply(answer({ badges: {}, hrefs: {}, total: 0, today: null })));
+    await moveTo("/admin/seaded");
+    await settle();
+    expect([href("registrations"), href("feedback")]).toEqual(["/admin/registreerimised", "/admin/tagasiside"]);
+    expect(badges()).toEqual({});
+    expect(sum()).toBe("");
+  });
+
+  it("asks again when the window comes back (focus) or the tab becomes visible, not while it is hidden", async () => {
+    await serve({ badges: BADGES, total: 12 });
+    await act(async () => void window.dispatchEvent(new Event("focus")));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(badges().requests).toBe("4, 4 tegemata");
+
+    const visibility = vi.spyOn(document, "visibilityState", "get");
+    visibility.mockReturnValue("hidden");
+    await act(async () => void document.dispatchEvent(new Event("visibilitychange")));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    visibility.mockReturnValue("visible");
+    await act(async () => void document.dispatchEvent(new Event("visibilitychange")));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops a slow answer to an older request: the newest request's answer stays", async () => {
+    const waiting: ((value: unknown) => void)[] = [];
+    fetchMock.mockImplementation(() => new Promise((resolve) => waiting.push(resolve)));
+    await serve({ badges: BADGES, total: 12 });
+    await moveTo("/admin/paringud"); // request 1
+    await moveTo("/admin/maksed"); // request 2
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const newest = reply(answer({ badges: { payments: { n: 5, label: "5 vajab kontrolli" } }, total: 5, today: null }));
+    const older = reply(answer({ badges: { requests: { n: 9, label: "9 tegemata" } }, total: 9, today: null }));
+    await act(async () => waiting[1](newest));
+    await settle();
+    expect(badges()).toEqual({ payments: "5, 5 vajab kontrolli" });
+    await act(async () => waiting[0](older)); // arrives last, but is older
+    await settle();
+    expect(badges()).toEqual({ payments: "5, 5 vajab kontrolli" });
+    expect(sum()).toBe("5");
+  });
+
+  it("aborts the request it replaces, and the one in flight when the sidebar goes away", async () => {
+    const signals: AbortSignal[] = [];
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      signals.push(init.signal as AbortSignal);
+      return new Promise(() => {});
+    });
+    await serve({ badges: BADGES, total: 12 });
+    await moveTo("/admin/paringud");
+    await moveTo("/admin/maksed");
+    expect(signals.map((s) => s.aborted)).toEqual([true, false]);
+    await act(async () => root.unmount());
+    expect(signals[1].aborted).toBe(true);
+    root = createRoot(container); // (afterEach unmounts this one)
+  });
+
+  it("keeps the last values when a request fails: a network error, a refusal, a body that is not the menu, a body that is not JSON", async () => {
+    await serve({ badges: BADGES, total: 12 });
+    const before = badges();
+    fetchMock.mockRejectedValueOnce(new TypeError("offline"));
+    await moveTo("/admin/paringud");
+    await settle();
+    expect(badges()).toEqual(before);
+    fetchMock.mockResolvedValueOnce(reply({ ok: false, error: "unauthorized" }, false));
+    await moveTo("/admin/maksed");
+    await settle();
+    expect(badges()).toEqual(before);
+    fetchMock.mockResolvedValueOnce(reply({ some: "other page" }));
+    await moveTo("/admin/seaded");
+    await settle();
+    expect(badges()).toEqual(before);
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => Promise.reject(new SyntaxError("not json")) });
+    await moveTo("/admin/kalender");
+    await settle();
+    expect(badges()).toEqual(before);
+    expect(sum()).toBe("12");
+  });
+
+  it("when the layout renders again (a server action's refresh) its numbers win over an answer fetched before, and over one still on its way", async () => {
+    await serve({ badges: BADGES, total: 12 });
+    await moveTo("/admin/paringud");
+    await settle();
+    expect(badges().requests).toBe("4, 4 tegemata");
+    await serve({ badges: { requests: badge(2, "2 tegemata") }, total: 2 }); // refresh(): new props, new objects
+    expect(badges()).toEqual({ requests: "2, 2 tegemata" });
+    expect(sum()).toBe("2");
+
+    // a request made for the old props, answered after the new ones arrived
+    let late!: (value: unknown) => void;
+    fetchMock.mockImplementationOnce(() => new Promise((resolve) => (late = resolve)));
+    await moveTo("/admin/maksed");
+    await serve({ badges: { requests: badge(1, "1 tegemata") }, total: 1 });
+    await act(async () => late(reply(answer())));
+    await settle();
+    expect(badges()).toEqual({ requests: "1, 1 tegemata" });
   });
 });

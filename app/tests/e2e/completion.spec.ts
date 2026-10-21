@@ -405,9 +405,8 @@ test("§9 e2e 6: out of tries — her page says so; Maria reopens the test from 
   await expect(item).toContainText("parim tulemus 50 %");
   await item.locator("[data-reopen]").click();
   await confirmStep(item.locator("[data-reopen-confirm]"));
-  // the page is not refreshed (Task 12): the row keeps its line saying what was done until the next visit, which no longer lists her
-  await expect(item.locator("[data-reopen-done]")).toHaveText("Test on uuesti avatud: katseid jäänud 2.");
-  await expect(item.locator("[data-reopen]")).toHaveCount(0);
+  // the admin is revalidated (admin UX pass, B6: Hindamine's badge and the overview count one less): the page comes back without her row
+  await expect(item).toHaveCount(0);
   expect(await storedAccessRow(s.accessId)).toMatchObject({ extraTries: 2 });
   await expect(await hindamine(page, "tries", s.accessId)).toHaveCount(0);
 

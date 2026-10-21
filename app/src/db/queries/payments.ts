@@ -8,7 +8,7 @@ import type { Db, Q } from "../client";
 import { dbErrorCode } from "../safe-error";
 import * as schema from "../schema";
 import { courses, courseSessions, payments, registrations, type Payment, type PaymentKind, type PaymentStatus } from "../schema";
-import { paged, type Paged } from "./admin";
+import { paged, type Paged } from "./paged";
 import { lockRegistration } from "./seats";
 
 // The payments table (phase 2b, spec 5.1): one row per online payment attempt. The rows are written here and by server/payments/settle.ts

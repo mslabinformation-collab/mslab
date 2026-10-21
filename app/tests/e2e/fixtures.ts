@@ -759,6 +759,27 @@ export async function requestHandled(id: number): Promise<boolean> {
   }
 }
 
+/** Marks a request handled (or not) in the database, behind the open page's back: nothing in the browser learns of it. */
+export async function storeRequestHandled(id: number, handled: boolean): Promise<void> {
+  const sql = connect();
+  try {
+    await sql`update requests set handled = ${handled} where id = ${id}`;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** How many requests are open (not marked handled) right now, of every kind: what the menu's Päringud badge counts. */
+export async function openRequestCount(): Promise<number> {
+  const sql = connect();
+  try {
+    const [row] = await sql<{ n: string }[]>`select count(*) as n from requests where handled = false`;
+    return Number(row.n);
+  } finally {
+    await sql.end();
+  }
+}
+
 // ---------- content editor rows (admin-edit.spec.ts) ----------
 // The content tests change real seed courses (a title, a badge, the gallery, the order) and add sessions to a seed
 // course, then put everything back. They run after all other tests (playwright.config.ts), so no other test sees the

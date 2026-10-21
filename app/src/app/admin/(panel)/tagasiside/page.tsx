@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAdminCounts } from "@/components/admin/data";
 import { Drawer } from "@/components/admin/Drawer";
 import { FeedbackAnswers, formatScore } from "@/components/admin/FeedbackAnswers";
 import listTable from "@/components/admin/list-table.module.css";
@@ -119,7 +118,7 @@ function Top({ pending, active }: { pending: number; active: "answers" | "review
 async function reviewsPage(olek: StatusWord | null) {
   const db = getDb();
   const t = adminEt.reviews;
-  const [rows, courses, pending] = await Promise.all([adminReviews(db, olek === null ? {} : { status: STATUS_WORD[olek] }), reviewCourses(db), pendingReviewCount(db), getAdminCounts()]);
+  const [rows, courses, pending] = await Promise.all([adminReviews(db, olek === null ? {} : { status: STATUS_WORD[olek] }), reviewCourses(db), pendingReviewCount(db)]);
   const filters: { key: StatusWord | null; label: string }[] = [{ key: null, label: t.all }, ...STATUS_WORDS.map((word) => ({ key: word, label: t.status[STATUS_WORD[word]] }))];
 
   return (
@@ -145,8 +144,7 @@ async function reviewsPage(olek: StatusWord | null) {
 /** "Vastused": the answers (see FeedbackPage). */
 async function answersPage(view: Parsed) {
   const db = getDb();
-  // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
-  const [list, stats, open, pending] = await Promise.all([pageFeedback(db, view.koolitus, view.leht), feedbackStats(db), view.id ? feedbackById(db, view.id) : null, pendingReviewCount(db), getAdminCounts()]);
+  const [list, stats, open, pending] = await Promise.all([pageFeedback(db, view.koolitus, view.leht), feedbackStats(db), view.id ? feedbackById(db, view.id) : null, pendingReviewCount(db)]);
   const t = adminEt.feedback;
   const chosen = view.koolitus === null ? null : (stats.find((s) => s.course.id === view.koolitus) ?? null);
   const filters: { key: number | null; label: string }[] = [{ key: null, label: t.all }, ...stats.map((s) => ({ key: s.course.id, label: pick(s.course.title, "et") }))];
