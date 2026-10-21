@@ -1248,6 +1248,17 @@ export const adminEt = {
     empty: "Ridu veel pole.",
   },
 
+  // The admin's lists (admin UX pass, README §1.10; components/admin/ListToolbar.tsx and ListStates.tsx): the sentence frames the pages fill with
+  // their own word for the things in the list: {Asju} capitalised („Registreerimisi“), {asju} as it stands in a sentence („registreerimisi“).
+  lists: {
+    empty: "{Asju} veel pole.",
+    emptyFiltered: "Selle valikuga {asju} pole.",
+    clearAll: "Tühjenda otsing ja filtrid",
+    // the ✕ in the search field
+    clearSearch: "Tühjenda otsing",
+    count: "{Asju}: {n}",
+  },
+
   // ImageUpload: the browser makes the image smaller (≤ 2400 px) and saves it anew, which drops the camera data.
   upload: {
     choose: "Lisa pilte",

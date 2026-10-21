@@ -1,14 +1,44 @@
-/* An admin list (Registreerimised, Õpilased): the table is as wide as its card allows; in a narrow card (phone, tablet
-   with the sidebar) every row becomes a small block of label + value lines (each cell's data-label) instead of a table
-   that scrolls sideways. The row's name is its drawer's link, a 44 px target. Colours from tokens.css only. */
+/* An admin list (Registreerimised, Õpilased, Maksed, Tagasiside, Tunnistused): the table is as wide as its card allows; in a narrow card (a
+   phone, a tablet with the sidebar: below 760 px, so a 1360 px laptop keeps its table) every row becomes a small block of label + value lines
+   (each cell's data-label) instead of a table that scrolls sideways. Colours from tokens.css only (--row-highlight is the admin's #faf6f8).
+
+   The whole row is the link (admin UX pass, README §1.10). The row's name stays a real Link, the one target of the keyboard and the screen
+   reader (a 44 px target, below); its ::after is stretched over the row, so a click anywhere on the row follows it. Other controls in a row
+   (the e-mail and phone links, a download, a button) sit above it: `position: relative; z-index: 2`, the ::after being z-index 1. (The ::after
+   needs its 1: the cells after the name's are positioned too, as contexts, and paint above a z-index:auto child of an earlier cell.)
+
+   What the ::after is stretched over is its positioning context, and in the table that is not the row: `position: relative` on a <tr> has
+   not always been a containing block for its descendants (WebKit long did not make it one; current Safari and Chrome do, and what iOS 15 and
+   16 do is not known here). Where it is not, a stretched link goes to the next positioned ancestor, so every row's link would cover the whole
+   card and the last row would win. So in the table every cell is the context (`td { position: relative }`), which every engine honours: the
+   link is as tall as its cell, which is as tall as its row (a table stretches its cells), and reaches 2000 px to either side to cover the
+   cells before and after it; the card cuts that off at its own edge (`overflow: clip`, `hidden` where clip is unknown). If a cell failed to
+   be the context, the link would be the cell, never the card. In the narrow card the rows are blocks, and a block is positioned everywhere,
+   so there the <tr> is the context and the cells are not. */
 
 .card {
   container-type: inline-size;
+  overflow: hidden;
+  overflow: clip;
+  isolation: isolate;
 }
 
 .table th:first-child,
 .table td:first-child {
   padding-left: 0;
+}
+
+.table td {
+  position: relative;
+}
+
+/* Other controls in a row stay above the row's link (an a, a button, a field; not the name, which is the row's link itself). */
+.table a:not(.name),
+.table button,
+.table input,
+.table select {
+  position: relative;
+  z-index: 2;
 }
 
 .who {
@@ -37,7 +67,27 @@
   text-decoration-color: var(--ink);
 }
 
-@container (max-width: 980px) {
+/* The row's link: its ::after covers the row (a.name: a name that is no link, a plain span, covers nothing). */
+a.name::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: -2000px;
+  right: -2000px;
+  cursor: pointer;
+}
+
+/* The row lights up under the pointer; multiplied, so the text under the highlight stays as it is. */
+@media (hover: hover) {
+  a.name:hover::after {
+    background: var(--row-highlight);
+    mix-blend-mode: multiply;
+  }
+}
+
+@container (max-width: 760px) {
   .table thead {
     position: absolute;
     width: 1px;
@@ -55,6 +105,7 @@
   }
 
   .table tr {
+    position: relative;
     padding: 14px 0;
     border-bottom: 1px solid var(--line);
   }
@@ -65,6 +116,7 @@
 
   .table td,
   .table td:first-child {
+    position: static;
     display: grid;
     grid-template-columns: minmax(96px, 30%) minmax(0, 1fr);
     justify-items: start;

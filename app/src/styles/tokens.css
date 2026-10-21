@@ -14,6 +14,7 @@
   --ok: #2f5d46;
   --warn: #6b4f5c;
   --bad: #8a3b3b;
+  --row-highlight: #faf6f8; /* the admin's one extra colour: a selected or linked list row, and the row under the pointer */
 
   /* Text shades mixed from the palette only (no colours of their own): prototype B's greys #3a3437, #5e5559 and
      #716a6d as ink + rose / fog. Contrast on paper: 11.9, 7.4 and 5.2 : 1. */

@@ -1735,6 +1735,32 @@
       "markedAt": "deploy"
     },
     {
+      "id": "haldus-loend-terve-rida",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Loendi rida on tervikuna link",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava „Registreerimised“ ja vajuta mõnel real koolituse nimele, mitte inimese nimele.",
+        "Sulge paneel ja vajuta samal real e-posti aadressile.",
+        "Tee sama lehtedel „Õpilased“, „Maksed“, „Tagasiside“ ja „Tunnistused“.",
+        "Tee brauseri aken kitsaks nagu telefonil ja vajuta rea mis tahes kohale."
+      ],
+      "expect": [
+        "Rea mis tahes kohale vajutus avab selle rea paneeli või lehe.",
+        "E-posti aadressile vajutus avab kirjaprogrammi, mitte paneeli.",
+        "Hiirega rea kohal muutub rea taust natuke heledaks.",
+        "Arvutis on loend tabel; kitsas aknas on iga rida väike kaart.",
+        "Leht ei lähe küljele laiali."
+      ],
+      "why": "Kogu rida on nüüd link, aga e-posti ja telefoni lingid peavad ikka töötama.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-vorm-vead",
       "area": "registreerimine",
       "who": "maria",

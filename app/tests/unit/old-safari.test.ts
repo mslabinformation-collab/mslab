@@ -88,6 +88,8 @@ const BROWSER_FILES = [
   "src/domain/autosave.ts",
   // admin UX pass, Task 9: the editors' autosave engine (useAutosave's, no React; it pulls lib/version.ts and protocol-autosave.ts's constants)
   "src/components/admin/autosave/engine.ts",
+  // admin UX pass, Task 13: the list addresses (withListParams, listHref) the ListToolbar builds its replaces from in the browser (the toolbar is a "use client" file, walked anyway)
+  "src/components/admin/list-params.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

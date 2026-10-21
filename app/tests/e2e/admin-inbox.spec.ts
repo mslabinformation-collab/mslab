@@ -487,7 +487,17 @@ test.describe("signed in", () => {
     const row = page.locator(`[data-registration="${f.registration.id}"]`);
     await targets(row, 2); // e-mail and phone
     await disjoint(row.locator('[data-label="Nimi"]'));
-    await row.getByRole("link", { name: `Ava ${f.registration.name}` }).click();
+    // The whole row is one link (list-table.module.css, Task 13) and the controls in it stay above it: what is under the middle of the e-mail
+    // and of the phone is that link, under the middle of the course cell the row's own link, the name's.
+    const under = (target: Locator) =>
+      target.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest("a")?.getAttribute("href") ?? null;
+      });
+    const nameLink = row.getByRole("link", { name: `Ava ${f.registration.name}` });
+    for (const a of await row.locator("a[href^='mailto:'], a[href^='tel:']").all()) expect(await under(a)).toBe(await a.getAttribute("href"));
+    expect(await under(row.locator('[data-label="Koolitus"]'))).toBe(await nameLink.getAttribute("href"));
+    await nameLink.click();
     await targets(page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` }), 2);
     await page.goto("/admin/paringud?liik=individuaal");
     await targets(page.locator(`[data-request="${f.individual.id}"]`), 2);

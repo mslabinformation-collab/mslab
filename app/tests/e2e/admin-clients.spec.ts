@@ -316,6 +316,58 @@ test("the list: Kõik / E-õpe / Kontaktõpe, search by name or e-mail, the numb
   expect(await noOverflow(page)).toBe(true);
 });
 
+test("the whole row is the link: at 1360 px Õpilased stays a table and a click anywhere on a row opens its drawer; in a narrow card the rows are blocks and it works there too", async ({ page, context, visitorIp }, info) => {
+  const email = await fresh("row", info.project.name);
+  const name = `Rita E2E ${info.project.name}`;
+  await insertAccountFixtures(email, { name, cards: ["ecourse"] });
+  await signInAsAdmin(page, context, visitorIp, created);
+  const own = page.viewportSize()!;
+
+  // a click at the middle of a cell, away from the name (the name's own link would be too easy): the cell's text is not the link, the row is
+  const clickCell = async (cell: Locator) => {
+    const box = (await cell.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  };
+  const open = async () => {
+    await expect(page).toHaveURL(/[?&]id=\d+/);
+    await expect(drawer(page).getByRole("heading", { level: 2 })).toHaveText(name);
+    await page.keyboard.press("Escape");
+    await expect(drawer(page)).toBeHidden();
+    await expect(page).not.toHaveURL(/[?&]id=/);
+  };
+
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.goto(`/admin/opilased?otsi=${encodeURIComponent(email)}`);
+  await adminReady(page);
+  const table = page.locator("table").first();
+  const row = page.locator("tr[data-client]");
+  await expect(row).toHaveCount(1);
+  await expect(table).toHaveCSS("display", "table"); // 1360 px is still a table (the cards begin below a 760 px card)
+  await expect(row).toHaveCSS("display", "table-row");
+  const link = row.getByRole("link", { name: `Ava ${name}` });
+  const [cell, linkBox] = [row.locator("[data-client-courses]"), (await link.boundingBox())!];
+  expect((await cell.boundingBox())!.x, "the courses cell sits beside the name, not under it").toBeGreaterThan(linkBox.x + linkBox.width);
+  await clickCell(row.locator("[data-client-courses]"));
+  await open();
+  await clickCell(row.locator("td").nth(1)); // the date
+  await open();
+  await link.click(); // the name itself still works
+  await open();
+  expect(await noOverflow(page)).toBe(true);
+
+  // a card narrower than 760 px: each row a block of label + value lines
+  await page.setViewportSize({ width: 700, height: 900 });
+  await page.reload();
+  await adminReady(page);
+  await expect(table).toHaveCSS("display", "block");
+  await expect(row).toHaveCSS("display", "block");
+  await clickCell(row.locator("[data-client-courses]"));
+  await open();
+  expect(await noOverflow(page)).toBe(true);
+
+  await page.setViewportSize(own);
+});
+
 test("Vaata tema vaadet: her cards, every action disabled and doing nothing; her own session untouched and still working", async ({ page, context, browser, visitorIp }, info) => {
   info.setTimeout(info.timeout + LOCK_WAIT_MS); // the wait for the shared prepayment setting is not taken from the test's own time
   const release = await holdLocalLock("e2e-prepayment-setting");
