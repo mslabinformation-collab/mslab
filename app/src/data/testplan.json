@@ -11,7 +11,7 @@
     {
       "id": "avalik",
       "name": "Avalik leht",
-      "note": "Alusta siit. Ainult märkega „Loob andmeid“ kontrollid saadavad vormi."
+      "note": "Alusta siit. Ainult märkega „Loob andmeid“ kontrollid saadavad vormi. Arvutis või külili tahvlis on menüürühm „KODULEHT JA UUDISKIRI“ algul kinni: vajuta selle päist, et näha halduse lehte „Uudiskiri“."
     },
     {
       "id": "haldus",
@@ -1689,6 +1689,7 @@
         "Vajuta märgiga rida „Registreerimised“ ja siis märgiga rida „Tagasiside“.",
         "Märgi lehel „Päringud“ üks päring tehtuks ja ava menüüst „Ülevaade“.",
         "Märgi lehel „Testimine“ üks kontroll tulemusega „Viga“ ja ava menüüst „Ülevaade“.",
+        "Märgi sama kontroll uuesti tulemusega „OK“ ja ava menüüst „Ülevaade“.",
         "Koolituspäeval vaata menüü rida „Protokollid“."
       ],
       "expect": [
@@ -1698,6 +1699,7 @@
         "„Maksed ja arved“ märk loeb arveta makstud maksed, „Ootel kontrollil“ maksed ja pärast maksmist pangas tühistatud maksed.",
         "„Päringud“ märk on pärast tehtuks märkimist ja menüüst lehe vahetamist ühe võrra väiksem.",
         "„Testimine“ märk on sinu enda tulemusega „Viga“ kontrollide arv; teise inimese vead seda ei tõsta.",
+        "„Testimine“ märk on pärast tulemuse „OK“ märkimist ja menüüst lehe vahetamist jälle ühe võrra väiksem.",
         "„Protokollid“ juures on koolituspäeval sõna „Täna“ ilma arvuta."
       ],
       "why": "Märk peab näitama täpselt seda, mis ootab, ja viima otse õigele lehele.",
