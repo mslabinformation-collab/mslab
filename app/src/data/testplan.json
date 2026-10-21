@@ -1670,6 +1670,34 @@
       "markedAt": "deploy"
     },
     {
+      "id": "haldus-lahkumine-salvestamata",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Paneeli sulgemine ja salvestamata tekst",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava „Registreerimised“ ja vajuta mõnele reale: paremal avaneb paneel.",
+        "Sulge paneel nupuga ✕, siis uuesti avatuna klahviga Esc, siis klõpsuga paneelist vasakule.",
+        "Tee sama lehtedel „Õpilased“ ja „Kalender“.",
+        "Ava „Koolitused“, oma e-koolitus ja mõne õppetunni paneel.",
+        "Kirjuta „Lühike tekst“ väljale midagi ja vajuta ✕.",
+        "Vasta küsimusele „Ei“, siis vajuta uuesti ✕ ja vasta „Jah, sulge“."
+      ],
+      "expect": [
+        "Iga paneel sulgub kohe ✕, Esc ja kõrvale klõpsuga, ilma küsimuseta.",
+        "Pärast sulgemist on fookus real, millelt paneeli avasid.",
+        "Õppetunni paneel küsib „Salvestamata muudatused lähevad kaotsi. Sulgen?“ ja jääb lahti.",
+        "Pärast „Ei“ on kirjutatud tekst alles ja kursor on väljal „Lühike tekst“.",
+        "Pärast „Jah, sulge“ paneel sulgub."
+      ],
+      "why": "Paneeli sulgemine käib nüüd läbi kontrolli, mis hoiab salvestamata teksti alles.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-vorm-vead",
       "area": "registreerimine",
       "who": "maria",

@@ -3,10 +3,14 @@
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import { AdminIcon } from "./AdminIcon";
+import { GuardScope, LeaveNotice, useLeaveGuard } from "./LeaveGuard";
 import ui from "./ui.module.css";
 import styles from "./Drawer.module.css";
 
-/** The question a drawer asks before it closes over unsaved changes ("Salvestamata muudatused lähevad kaotsi. Sulgen?"). */
+/**
+ * The question a drawer asks before it closes over unsaved changes ("Salvestamata muudatused lähevad kaotsi. Sulgen?").
+ * @deprecated piece 3: LessonDrawer moves to useAutosave
+ */
 export type CloseQuestion = { question: string; yes: string; no: string };
 
 /** What a part of the drawer reports while it has changes that are not saved: where "Ei" puts the focus back. */
@@ -16,6 +20,7 @@ const UnsavedContext = createContext<((part: string, unsaved: Unsaved | null) =>
 /**
  * A part of the drawer with its own "Salvesta" reports here while its fields differ from the stored values; the drawer then
  * asks before it closes (only when it was given `confirmClose`). `focusBack`: where "Ei" puts the focus (the changed field).
+ * @deprecated piece 3: LessonDrawer moves to useAutosave
  */
 export function useUnsavedInDrawer(dirty: boolean, focusBack: () => void): void {
   const report = useContext(UnsavedContext);
@@ -32,13 +37,18 @@ export function useUnsavedInDrawer(dirty: boolean, focusBack: () => void): void 
 
 /**
  * Detail panel on the right (full width on a phone), opened by a link with `?id=` so every detail has its own address.
- * A modal dialog: focus stays inside, the page behind does not scroll. Esc, the close button and a click on the
- * backdrop close it; then the address goes back to `closeHref` (the list without the id) and the focus to
+ * A modal dialog: focus stays inside, the page behind does not scroll. Esc, the close button („Sulge“, `closeLabel`: adminEt.common.close)
+ * and a click on the backdrop close it; then the address goes back to `closeHref` (the list without the id) and the focus to
  * `returnFocus` (the row's link). The dialog is closed first, so the page behind is no longer inert when it is focused.
  *
- * `confirmClose`: while a part of the drawer has unsaved changes (useUnsavedInDrawer), Esc, the close button and the backdrop
- * ask first, in place ("Jah, sulge" / "Ei"), as the admin's other confirming steps do. `fallbackFocus`: when the drawer goes
- * away by a navigation (its item deleted) and `returnFocus` is gone with it, the focus goes to this element instead of <body>.
+ * Each of the three asks the leave guard first (LeaveGuard.tsx, README §1.5, screens §2.4): an autosave inside the drawer that is not confirmed
+ * is saved (the drawer waits for it, at most 3 s), or the guard's notice asks at the top of the drawer. The drawer's content is the guard's
+ * "drawer" scope: a close leaves only its sources, not the page's.
+ *
+ * `confirmClose` (deprecated, the lesson drawer until it autosaves): while a part of the drawer has unsaved changes (useUnsavedInDrawer), Esc,
+ * the close button and the backdrop ask its question first, in place ("Jah, sulge" / "Ei"), as today; such a drawer does not ask the guard too.
+ * `fallbackFocus`: when the drawer goes away by a navigation (its item deleted) and `returnFocus` is gone with it, the focus goes to this
+ * element instead of <body>.
  */
 export function Drawer({
   label,
@@ -54,6 +64,7 @@ export function Drawer({
   closeLabel: string;
   returnFocus?: string;
   fallbackFocus?: string;
+  /** @deprecated piece 3: LessonDrawer moves to useAutosave */
   confirmClose?: CloseQuestion;
   children: React.ReactNode;
 }) {
@@ -61,6 +72,9 @@ export function Drawer({
   const ref = useRef<HTMLDialogElement>(null);
   const overflow = useRef("");
   const router = useRouter();
+  const guard = useLeaveGuard();
+  /** The close is the drawer's own (the guard or the question let it go): the dialog's close event goes on to the address and the focus. */
+  const allowed = useRef(false);
   const unsaved = useRef(new Map<string, Unsaved>());
   /** "Jah, sulge" was pressed: the next close goes through. */
   const confirmed = useRef(false);
@@ -99,9 +113,16 @@ export function Drawer({
 
   /** Unsaved changes to ask about before closing (only with `confirmClose`). */
   const mustAsk = () => Boolean(confirmClose) && !confirmed.current && unsaved.current.size > 0;
+  const close = () => {
+    allowed.current = true;
+    ref.current?.close();
+  };
+  /** ✕, Esc and the backdrop: the drawer's own question when it has one (deprecated), else the leave guard. */
   const requestClose = () => {
-    if (mustAsk()) setAsking(true);
-    else ref.current?.close();
+    if (confirmClose) {
+      if (mustAsk()) setAsking(true);
+      else close();
+    } else guard.requestLeave(close, "drawer");
   };
 
   return (
@@ -111,16 +132,17 @@ export function Drawer({
       aria-label={label}
       data-drawer=""
       onCancel={(e) => {
-        // Esc: asked first while something is not saved
-        if (!mustAsk()) return;
+        // Esc: the drawer closes itself (requestClose), after its question or the guard
         e.preventDefault();
-        setAsking(true);
+        requestClose();
       }}
       onClose={() => {
-        // a close the browser forced past the question (a second Esc at once): open again and ask
-        if (mustAsk()) {
+        const own = allowed.current;
+        allowed.current = false;
+        // a close the browser forced past the question or the guard (a second Esc at once): open again and ask
+        if (!own && (!confirmClose || mustAsk())) {
           ref.current?.showModal();
-          setAsking(true);
+          requestClose();
           return;
         }
         document.documentElement.style.overflow = overflow.current;
@@ -136,6 +158,7 @@ export function Drawer({
           <button type="button" className={styles.close} aria-label={closeLabel} onClick={requestClose}>
             <AdminIcon name="close" size={20} />
           </button>
+          <LeaveNotice where="drawer" />
           {asking && confirmClose && (
             <div className={styles.ask} role="group" aria-labelledby={`${uid}-ask`} data-drawer-confirm="">
               <p id={`${uid}-ask`} ref={question} tabIndex={-1} className={`${ui.notice} ${styles.question}`}>
@@ -148,7 +171,7 @@ export function Drawer({
                   onClick={() => {
                     confirmed.current = true;
                     setAsking(false);
-                    ref.current?.close();
+                    close();
                   }}
                 >
                   {confirmClose.yes}
@@ -167,7 +190,7 @@ export function Drawer({
               </div>
             </div>
           )}
-          {children}
+          <GuardScope>{children}</GuardScope>
         </div>
       </UnsavedContext.Provider>
     </dialog>

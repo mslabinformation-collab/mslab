@@ -92,7 +92,7 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
           key={lesson.id}
           label={fill(adminEt.lessons.drawer.label, { title: pick(lesson.title, "et") })}
           closeHref={`/admin/koolitused/${course.id}`}
-          closeLabel={adminEt.lessons.drawer.close}
+          closeLabel={adminEt.common.close}
           returnFocus={`edit-lesson-${lesson.id}`}
           // deleted from the drawer: its row is gone, the focus goes to its module's "Uue õppetunni nimi"
           fallbackFocus={`add-lesson-${lesson.moduleId}`}

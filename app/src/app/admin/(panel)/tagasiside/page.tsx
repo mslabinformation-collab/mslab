@@ -212,7 +212,7 @@ async function answersPage(view: Parsed) {
       </div>
 
       {view.id !== null && (
-        <Drawer label={open ? fill(t.drawer.label, { name: open.name }) : t.drawer.notFound} closeHref={href(view)} closeLabel={t.drawer.close} returnFocus={open ? `feedback-${open.id}` : undefined}>
+        <Drawer label={open ? fill(t.drawer.label, { name: open.name }) : t.drawer.notFound} closeHref={href(view)} closeLabel={adminEt.common.close} returnFocus={open ? `feedback-${open.id}` : undefined}>
           {open ? <FeedbackDetail f={open} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}
         </Drawer>
       )}

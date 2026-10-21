@@ -68,7 +68,7 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
   if (openId === "uus" && courses.length > 0) {
     const initial: SessionValues = { id: null, courseId: null, date: "", time: "10:00", city: "", venue: "", language: "ET", capacity: 4, status: "scheduled" };
     drawer = (
-      <Drawer label={t.drawer.newLabel} closeHref={href(past)} closeLabel={t.drawer.close} returnFocus="add-session">
+      <Drawer label={t.drawer.newLabel} closeHref={href(past)} closeLabel={adminEt.common.close} returnFocus="add-session">
         <div className={styles.drawer}>
           <h2 className={ui.h2}>{t.drawer.newLabel}</h2>
           <SessionForm initial={initial} courses={courseOptions} />
@@ -79,7 +79,7 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
     const name = open ? pick(open.course.title, "et") : "";
     const label = open ? fill(t.drawer.editLabel, { name: `${name}, ${formatDate(open.startsAt, "et")}` }) : t.drawer.notFound;
     drawer = (
-      <Drawer label={label} closeHref={href(past)} closeLabel={t.drawer.close} returnFocus={`session-${openId}`}>
+      <Drawer label={label} closeHref={href(past)} closeLabel={adminEt.common.close} returnFocus={`session-${openId}`}>
         <div className={styles.drawer}>
           {open ? (
             <>

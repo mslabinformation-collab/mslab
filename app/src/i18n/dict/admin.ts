@@ -190,6 +190,21 @@ export const adminEt = {
     goneThing: "asja",
   },
 
+  // The leave guard (admin UX pass, README §1.5, screens §2.4): leaving a page or closing a drawer while a change cannot be saved yet. {field} is the
+  // visible name of the field concerned. The offline reason is the Part 1 prototype's; the other four Dim approved on 21.10.
+  leave: {
+    notice: "Muudatust „{field}“ ei saanud veel salvestada.",
+    stay: "Jää siia",
+    go: "Sulge, tekst jääb seadmesse",
+    reasons: {
+      offline: "Ühendus puudub. Proovin uuesti, kuni jääd siia.",
+      error: "Salvestamine ei õnnestunud.",
+      invalid: "Üks väli vajab parandamist.",
+      signedOut: "Logi uuesti sisse.",
+      upload: "Üleslaadimine käib.",
+    },
+  },
+
   overview: {
     lead: "Sinu koolituskeskuse järgmised sammud.",
     primary: "Vaata registreerimisi",
@@ -263,7 +278,6 @@ export const adminEt = {
     open: "Ava {name}",
     drawer: {
       label: "Registreerimine: {name}",
-      close: "Sulge",
       notFound: "Seda registreerimist ei leitud.",
       details: "Registreerimise andmed",
       email: "E-post",
@@ -877,7 +891,7 @@ export const adminEt = {
     empty: "Tagasisidet pole veel antud.",
     emptyFiltered: "Selle koolituse kohta pole tagasisidet.",
     col: { date: "Kuupäev", student: "Õpilane", course: "Koolitus", score: "Hinne", answers: "Vastuseid", average: "Keskmine hinne" },
-    drawer: { label: "Tagasiside: {name}", close: "Sulge", notFound: "Seda tagasisidet ei leitud." },
+    drawer: { label: "Tagasiside: {name}", notFound: "Seda tagasisidet ei leitud." },
     submitted: "Saadetud {date}",
     inRussian: "Vastas vene keeles",
     toStudent: "Õpilase juurde",
@@ -1025,7 +1039,6 @@ export const adminEt = {
     },
     drawer: {
       label: "Õpilane: {name}",
-      close: "Sulge",
       notFound: "Seda õpilast ei leitud.",
       noName: "Nimi puudub",
       created: "Konto loodud {date}",
@@ -1432,7 +1445,6 @@ export const adminEt = {
     },
     drawer: {
       label: "Õppetund: {title}",
-      close: "Sulge",
       name: "Õppetunni nimi",
       body: "Lühike tekst",
       bodyHint: "Näidatakse õppetunni lehel. Tühi rida alustab uut lõiku.",
@@ -1525,7 +1537,6 @@ export const adminEt = {
     drawer: {
       newLabel: "Uus toimumine",
       editLabel: "Toimumine: {name}",
-      close: "Sulge",
       notFound: "Seda toimumist ei leitud.",
     },
     form: {

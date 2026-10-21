@@ -175,7 +175,7 @@ export default async function ClientsPage({ searchParams }: Props) {
         <Drawer
           label={open ? fill(t.drawer.label, { name: open.client.name || open.client.email }) : t.drawer.notFound}
           closeHref={href(view)}
-          closeLabel={t.drawer.close}
+          closeLabel={adminEt.common.close}
           returnFocus={open ? `client-${open.client.id}` : undefined}
         >
           {open ? <ClientDetailView key={open.client.id} detail={open} ecourses={ecourses} now={now} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}

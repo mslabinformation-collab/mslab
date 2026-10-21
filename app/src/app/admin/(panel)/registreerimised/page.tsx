@@ -224,7 +224,7 @@ export default async function RegistrationsPage({ searchParams }: Props) {
         <Drawer
           label={open ? fill(t.drawer.label, { name: open.name }) : t.drawer.notFound}
           closeHref={href(view)}
-          closeLabel={t.drawer.close}
+          closeLabel={adminEt.common.close}
           returnFocus={open ? `reg-${open.id}` : undefined}
         >
           {open ? (

@@ -1,0 +1,86 @@
+/* The leave guard's notice (admin UX pass, README §1.5, screens §2.4). The metrics are the Part 1 prototype's drawer notice (handoff
+   "MS LAB Admin UX Pass.dc.html" §3.2, the Kalender drawer ?id=12): bg #f0ebed, a 2px left border #9e8993 (var(--rose)), radius 0 10 10 0,
+   padding 14px 16px, a column with gap 10; the sentence 14px bold, the reason 13px #3a3437 (var(--ink-soft)); the buttons 8px apart, 44px pills,
+   padding 0 18px, 600 13px: „Jää siia“ the ink pill, „Sulge, tekst jääb seadmesse“ outlined #b9b1b5. */
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-left: 2px solid var(--rose);
+  border-radius: 0 10px 10px 0;
+  background: #f0ebed;
+  color: var(--ink);
+  font: 400 13px/1.5 var(--font-body);
+}
+
+/* the focus is put here when it appears; the ring is for the keyboard, not the mouse */
+.notice:focus {
+  outline: none;
+}
+
+.notice:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* at the top of the page, under the shell's top line */
+.onPage {
+  margin: 0 0 25px;
+}
+
+/* at the top of the drawer, clear of its ✕ (as the drawer's own question, Drawer.module.css .ask) */
+.inDrawer {
+  margin: 0 56px 22px 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.reason {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--ink);
+  border-radius: 99px;
+  font: 600 13px/1.2 var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.primary {
+  background: var(--ink);
+  color: #fff;
+}
+
+.primary:hover {
+  background: #40383c;
+}
+
+.secondary {
+  border-color: #b9b1b5;
+  background: transparent;
+  color: var(--ink);
+}
+
+.secondary:hover {
+  background: #ece7e9;
+}
