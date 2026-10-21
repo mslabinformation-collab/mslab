@@ -12,8 +12,8 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 // - a field its check (`validate`, or the server's 400) refuses is held back: the others still save, and the status is `invalid`;
 // - a save that fails (no answer, 10 s without one, a server error) is tried again after 2, 5, 10, 20, then every 30 s, and at once when the
 //   browser is back online, the tab is shown again or focused; signed out (401, 403) is tried the same way: she may sign in in another tab;
-//   a refusal that would repeat (413, a 400 that names no field of the patch, a 409 that is not a conflict's) waits instead: no timer, once
-//   more on the next edit, focus or `online` (status `retry`, reason "error");
+//   a refusal that would repeat (413, a 400 that is not a save or names no field of the patch, a 409 that is not a conflict's) waits instead:
+//   no timer, once more on the next edit, focus or `online` (status `retry`, reason "error"); an edit that leaves nothing to send ends the wait;
 // - the tab hidden sends a waiting save at once; the page put away (pagehide) sends it as a keepalive request while the page's bodies fit the
 //   browsers' 64 KiB for them (KEEPALIVE_MAX_BYTES, shared by every engine of the page), else leaves it to the copy;
 // - a refusal (409) brings the server's version and value: this form's own text (another tab typed the same) or one of its saves whose answer
@@ -230,7 +230,11 @@ export class AutosaveEngine {
     if (this.uncertain()) this.keep();
     else this.dropCopy();
     if (this.sendable()) this.schedule(DEBOUNCE_MS);
-    else this.clearDebounce();
+    else {
+      // nothing left to send (typed back, or only held fields): a refusal that waited for this edit (wait) no longer stands
+      this.clearDebounce();
+      if (this.waiting) this.answered();
+    }
     this.refresh();
   }
 
@@ -395,11 +399,13 @@ export class AutosaveEngine {
     if (status === 400 && reply?.error === "invalid" && isRecord(reply.fields)) {
       const named = Object.keys(reply.fields).filter((n) => n in patch);
       if (named.length > 0) {
-        // the route's own word on these fields: they are held back (held), no earlier failure stands, and the rest goes at once; never a patch
-        // that still holds a field it named (it would be refused again, at once, without end)
-        for (const n of named) this.serverInvalid.add(n);
+        // the route's own word on these fields: each still holding the refused value is held back (held; one corrected while the save was on
+        // its way goes with the rest), no earlier failure stands, and the rest goes at once; never a patch that still holds a refused value (it
+        // would be refused again, at once, without end)
+        const refused = named.filter((n) => same(this.fields[n], patch[n]));
+        for (const n of refused) this.serverInvalid.add(n);
         this.answered();
-        if (Object.keys(this.patch()).some((n) => named.includes(n))) return this.wait();
+        if (Object.keys(this.patch()).some((n) => refused.includes(n))) return this.wait();
         return this.goOn();
       }
     }

@@ -576,6 +576,85 @@ describe("a refused field never loops, and a field error clears a stale failure 
   });
 });
 
+describe("an edit after a waiting refusal, and a correction typed during a refused save (review, fix round 2)", () => {
+  const tooBig = { status: 413, body: { ok: false, error: "size" } };
+  const tooLong = { status: 400, body: { ok: false, error: "invalid", fields: { title: "tooLong" } } };
+
+  test("413, then typed back to the confirmed text: saved, nothing unconfirmed, nothing sent", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("body", "Liiga suur");
+    void e.flush();
+    await tick();
+    s.calls[0].answer(tooBig);
+    await tick();
+    e.setField("body", "Tekst");
+    expect(e.snapshot().status).toEqual({ kind: "saved", at: null });
+    expect(e.unconfirmed()).toBeNull();
+    await tick(120_000);
+    expect(s.calls).toHaveLength(1);
+    expect(stored()).toBeNull();
+  });
+
+  test("413, then the only changed field is one its check refuses: invalid, reason invalid", async () => {
+    const s = server();
+    const e = make(s.send, { validate: (f): Record<string, string> => (f.body === "" ? { body: "required" } : {}) });
+    e.setField("body", "Liiga suur");
+    void e.flush();
+    await tick();
+    s.calls[0].answer(tooBig);
+    await tick();
+    e.setField("body", "");
+    expect(e.snapshot().status).toEqual({ kind: "invalid", fields: ["body"] });
+    expect(e.unconfirmed()).toEqual({ field: "body", reason: "invalid" });
+    await tick(120_000);
+    expect(s.calls).toHaveLength(1);
+  });
+
+  test("a lost answer, then a 400 on a title corrected while that save was on its way: the correction is not held, and it is sent", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("title", "A");
+    void e.flush();
+    await tick();
+    s.calls[0].answer(null); // lost
+    await tick();
+    e.setField("title", "Liiga pikk pealkiri");
+    void e.flush();
+    await tick();
+    e.setField("title", "Hea"); // corrected during the flight
+    s.calls[1].answer(tooLong);
+    await tick();
+    expect(e.snapshot().status).toEqual({ kind: "dirty" });
+    await tick(DEBOUNCE_MS);
+    expect(s.calls[2].body).toEqual({ version: "v1", patch: { title: "Hea" } });
+    s.calls[2].answer(ok("v2"));
+    await tick(120_000);
+    expect(e.snapshot().status.kind).toBe("saved");
+    expect(s.calls).toHaveLength(3);
+  });
+
+  test("a lost answer, then a 400 on a title typed back to the confirmed text during that save: the confirmed text is sent, not held", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("title", "A");
+    void e.flush();
+    await tick();
+    s.calls[0].answer(null); // lost: the server may hold "A"
+    await tick();
+    e.setField("title", "Liiga pikk pealkiri");
+    void e.flush();
+    await tick();
+    e.setField("title", "Pealkiri"); // back to the confirmed text during the flight
+    s.calls[1].answer(tooLong);
+    await tick(DEBOUNCE_MS);
+    expect(s.calls[2].body).toEqual({ version: "v1", patch: { title: "Pealkiri" } }); // (the server may hold "A")
+    s.calls[2].answer(ok("v2"));
+    await tick();
+    expect(e.snapshot().status.kind).toBe("saved");
+  });
+});
+
 describe("another tab or device saved first (409)", () => {
   test("409 → status conflict, the local text kept; restore() saves it over the server's version", async () => {
     const s = server();
