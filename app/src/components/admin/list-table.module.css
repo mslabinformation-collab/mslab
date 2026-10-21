@@ -5,10 +5,18 @@
    The whole row is the link (admin UX pass, README §1.10). The row's name stays a real Link, the one target of the keyboard and the screen
    reader (a 44 px target, below). A click anywhere else on the row, away from the row's own controls, is forwarded to it by ListRows.tsx (a
    small delegated click handler round the table), so nothing is stretched or clipped: the table keeps its own width, text in a row can still be
-   selected and copied, and it works the same on an old iPad. Here the row only looks clickable: a pointer, and the highlight under the mouse. */
+   selected and copied, and it works the same on an old iPad. Here the row only looks clickable: a pointer, the highlight under the mouse, and
+   the same tint while it is pressed (a finger too). */
 
 .card {
   container-type: inline-size;
+}
+
+/* ListRows' wrapper, the element that holds the click listener. iOS Safari paints its grey tap flash over the element with the listener, which
+   is the whole table here, so the flash is switched off (the property is inherited, so the links inside lose it too) and the row says it was
+   pressed itself, with the :active tint below. */
+.rows {
+  -webkit-tap-highlight-color: transparent;
 }
 
 .table th:first-child,
@@ -23,6 +31,19 @@
 
 @media (hover: hover) {
   .table tbody tr:has(a.name):hover {
+    background: var(--row-highlight);
+  }
+}
+
+/* The press (a finger, or the mouse button down): the same tint, for as long as it lasts, so a tap on a phone is answered by the row and not
+   by the browser's flash over the table. iOS 15.0-15.3 does not know :has (15.4 does), and there the rule above would be dropped altogether, so
+   the fallback tints every row of the table while it is pressed: a row with no name link tints too, which is harmless on those few devices. */
+.table tbody tr:has(a.name):active {
+  background: var(--row-highlight);
+}
+
+@supports not selector(:has(a)) {
+  .table tbody tr:active {
     background: var(--row-highlight);
   }
 }

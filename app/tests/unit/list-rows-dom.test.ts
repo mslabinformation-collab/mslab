@@ -132,10 +132,11 @@ describe("ListRows", () => {
     expect(opened).toHaveLength(0);
   });
 
-  it("the table stays as it is: the wrapper is a plain block with no class and no style", () => {
+  it("the table stays as it is: the wrapper is a plain block with one class (the tap flash off) and no style", () => {
     const box = container.firstElementChild as HTMLElement;
     expect(box.tagName).toBe("DIV");
-    expect(box.getAttribute("class")).toBeNull();
+    expect(listTable.rows).toBeTruthy();
+    expect(box.getAttribute("class")).toBe(listTable.rows);
     expect(box.getAttribute("style")).toBeNull();
     expect(box.firstElementChild!.tagName).toBe("TABLE");
   });
@@ -175,6 +176,17 @@ describe("list tables (the stylesheet)", () => {
   it("a row with a name link shows a pointer, and the highlight under a mouse only", () => {
     expect(css).toMatch(/\.table tbody tr:has\(a\.name\) \{\s*cursor: pointer;/);
     expect(css).toMatch(/@media \(hover: hover\) \{\s*\.table tbody tr:has\(a\.name\):hover \{\s*background: var\(--row-highlight\);/);
+  });
+
+  it("iOS: the wrapper holding the click listener has no grey tap flash; a pressed row tints itself instead (with a fallback where :has is unknown)", () => {
+    // the wrapper's own rule: the flash off
+    expect(squash(/\n\.rows \{([^}]*)\}/.exec(css)?.[1] ?? "")).toBe("-webkit-tap-highlight-color: transparent;");
+    // the press tint on a row with a name link, from the same token as the hover
+    expect(css).toMatch(/\.table tbody tr:has\(a\.name\):active \{\s*background: var\(--row-highlight\);/);
+    // iOS 15.0-15.3 drops the rule above (no :has): the fallback tints the pressed row without it, and only where :has is unknown
+    expect(css).toMatch(/@supports not selector\(:has\(a\)\) \{\s*\.table tbody tr:active \{\s*background: var\(--row-highlight\);/);
+    // the press tint is not inside the (hover: hover) block: a finger has no hover, and :active does not stick the way :hover does
+    expect(block("@media (hover: hover)")).not.toMatch(/:active/);
   });
 
   it("every page's own container queries agree: Registreerimised and Maksed stack at 980 with the card, the rest at 760", () => {
