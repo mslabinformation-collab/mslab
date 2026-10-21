@@ -75,3 +75,17 @@
 .errorBody {
   margin: 0;
 }
+
+/* The same card when even the shell could not be built (app/admin/error.tsx): there is no menu round it, so the card sits alone on the
+   admin's canvas, in a column. */
+.rootError {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 36px 20px;
+  background: var(--canvas);
+}
+
+.rootError .error {
+  max-width: 560px;
+  margin: 0 auto;
+}

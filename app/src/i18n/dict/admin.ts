@@ -79,7 +79,8 @@ export const adminEt = {
     /** an admin without a greeting name in ADMIN_NAMES */
     helloNoName: "Tere.",
     logout: "Logi välja",
-    // error.tsx of the (panel) group (README §1.10): a page that could not be loaded; the menu stays
+    // error.tsx of the (panel) group (README §1.10): a page that could not be loaded; the menu stays. The same words are on app/admin/error.tsx,
+    // the net for a layout that failed (no menu then)
     errorTitle: "Seda lehte ei saanud praegu laadida.",
     errorBody: "Sinu salvestatud andmed on alles. Proovi mõne hetke pärast uuesti.",
     errorRetry: "Proovi uuesti",

@@ -1,5 +1,7 @@
+import { emptyCounts, type AdminCounts } from "@/db/queries/admin";
 import { adminEt } from "@/i18n/dict/admin";
 import { adminName } from "@/server/auth";
+import { logFailure } from "@/server/log";
 import { getAdminCounts } from "./data";
 import { menuOf } from "./menu";
 import { ReadyMark } from "./ReadyMark";
@@ -13,9 +15,18 @@ import styles from "./Shell.module.css";
  * (admin UX pass, spec C2), so loading.tsx and error.tsx keep the menu on screen. The menu's badges are read here for the first paint
  * (menu.ts menuOf); the layout does not render again when the visitor moves between pages, so the sidebar asks /api/admin/margid for them
  * again then. The active entry is not known here: the sidebar reads it from the address (sections.ts activeSection).
+ * A badge is a nicety, so a count that cannot be read must not take every admin page down (a layout's error is not caught by the (panel)'s
+ * error.tsx): the failure is logged and the menu is painted with every badge at zero; the sidebar's refetch fills them in a moment later.
  */
 export async function Shell({ email, children }: { email: string; children: React.ReactNode }) {
-  const menu = menuOf(await getAdminCounts(email));
+  let counts: AdminCounts;
+  try {
+    counts = await getAdminCounts(email);
+  } catch (err) {
+    logFailure("admin shell: menu counts unavailable", err);
+    counts = emptyCounts();
+  }
+  const menu = menuOf(counts);
   const t = adminEt.shell;
   const items: NavItem[] = SECTIONS.map((s) => ({ ...s, href: menu.hrefs[s.key] ?? s.href, label: adminEt.nav[s.key], badge: menu.badges[s.key] }));
   const name = adminName(email);

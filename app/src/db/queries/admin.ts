@@ -472,6 +472,25 @@ export type AdminCounts = {
 };
 
 /**
+ * Every count at zero and no session today: what the menu paints when the numbers could not be read (components/admin/Shell.tsx), so that a
+ * failing count cannot take the whole admin down with it. A fresh object on every call.
+ */
+export function emptyCounts(): AdminCounts {
+  return {
+    awaitingPrepayment: 0,
+    openRequests: { contact: 0, individual: 0, practice: 0, waitlist: 0, change_request: 0 },
+    openPurchaseInterest: 0,
+    subscribers: 0,
+    confirmedSubscribers: 0,
+    assessment: 0,
+    todaySessions: [],
+    waitingReviews: 0,
+    paymentsAttention: 0,
+    ownFaults: 0,
+  };
+}
+
+/**
  * The numbers of the overview and the menu badges, for the admin `email` at `now`: each count is one query, all read together. The test page's
  * answers are one settings row, read by server/testplan.ts ownFaultCount.
  */
@@ -492,7 +511,7 @@ export async function adminCounts(db: Db, email: string, now: Date): Promise<Adm
     db.select({ n: count() }).from(payments).where(NEEDS_ATTENTION),
     ownFaultCount(db, email),
   ]);
-  const openRequests: Record<RequestKind, number> = { contact: 0, individual: 0, practice: 0, waitlist: 0, change_request: 0 };
+  const openRequests = emptyCounts().openRequests;
   for (const row of byKind) openRequests[row.kind] = Number(row.n);
   return {
     awaitingPrepayment: Number(awaiting.n),
