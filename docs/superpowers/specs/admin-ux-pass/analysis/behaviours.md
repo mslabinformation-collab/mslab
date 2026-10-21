@@ -910,7 +910,7 @@ These change server behaviour, and HO Part 1 says such changes go on the B list.
 5. B18: hidden new lessons, text drafts.
 6. Contract texts with „Avalda uus leping“.
 
-**Phase 4: money (after the instalments piece ships with 0017)**
+**Phase 4: money (after the instalments piece ships; the UX pass took 0017 in piece 1, so instalments takes the next free number)**
 1. B4 (0019), including R10's receipt-undo branch and the unpaid-request check.
 2. B11.
 3. Maksed search and CSV.
@@ -927,7 +927,7 @@ These change server behaviour, and HO Part 1 says such changes go on the B list.
 - B1 → B3, B13, B2 → B18, contract texts.
 - B8 → B16.
 - B14 and B4 → B6's Maksed badge; B22 → `checked_at` → the badge clears.
-- Instalments (0017) → B22.
+- Instalments (next free migration number, the UX pass having taken 0017) → B22.
 - ConfirmPanel → B9, B10, B11, B17, contract texts.
 - UndoBar → B5, B12.
 - B1's 401 state ↔ B19.
