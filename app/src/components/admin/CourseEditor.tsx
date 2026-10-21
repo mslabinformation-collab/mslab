@@ -15,6 +15,7 @@ import type { EditResult, FieldError } from "@/server/admin-content";
 import { saveCourse } from "@/server/actions/admin-content";
 import { BadgeEditor } from "./BadgeEditor";
 import { Choice } from "./Choice";
+import { LangSwitch } from "./EditLang";
 import { GalleryEditor } from "./GalleryEditor";
 import { I18nInput } from "./I18nInput";
 import { ListEditor } from "./ListEditor";
@@ -189,11 +190,14 @@ export function CourseEditor({ initial, others, next, publicHref, created, typeL
             )}
           </div>
         </div>
-        {publicHref && (
-          <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={publicHref} target="_blank" rel="noopener">
-            {t.viewSite} ↗
-          </a>
-        )}
+        <div className={ui.headAside}>
+          <LangSwitch />
+          {publicHref && (
+            <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={publicHref} target="_blank" rel="noopener">
+              {t.viewSite} ↗
+            </a>
+          )}
+        </div>
       </div>
 
       {created && (

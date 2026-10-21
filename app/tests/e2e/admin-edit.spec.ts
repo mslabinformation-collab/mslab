@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type { BrowserContext, Locator, Page, TestInfo } from "@playwright/test";
 import { test } from "./edit-lock";
 import { submitsForms, expect } from "./test";
-import { adminReady, signInAsAdmin } from "./admin-login";
+import { adminReady, editLang, signInAsAdmin } from "./admin-login";
 import {
   courseOrder,
   EDIT_CITY_PREFIX,
@@ -117,23 +117,74 @@ test.describe("course editor", () => {
     await page.goto(`/ru/koolitused/${c.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(newTitle); // no Russian title yet: the Estonian one
 
-    // the Russian title: the RU tab shows the ET text as its placeholder and "tõlge tulekul" until it is written
+    // the Russian title: the page's RU switch shows the ET text above the field and as its placeholder, and "tõlge tulekul" stays until it is written
     await page.goto(`/admin/koolitused/${id}`);
     await adminReady(page);
-    const langs = page.getByRole("group", { name: "Keel: Koolituse nimi" });
-    await expect(langs.getByRole("button", { name: /RU/ })).toContainText("tõlge tulekul");
-    await langs.getByRole("button", { name: /RU/ }).click();
-    await expect(langs.getByRole("button", { name: /RU/ })).toHaveAttribute("aria-pressed", "true");
+    // (:visible — a page that is still being swapped in by the stream holds a hidden server copy of itself, which a plain CSS locator would find as well)
+    const titleBox = page.locator("[data-i18n-box]:visible", { has: page.locator('[data-i18n="title"]') });
+    await expect(titleBox.locator("[data-ru-pending]")).toHaveText("tõlge tulekul"); // (in ET mode too)
+    await editLang(page, "ru");
     const ru = page.getByRole("textbox", { name: "Koolituse nimi (vene keeles)" });
+    await expect(titleBox.locator("[data-et-ref]")).toHaveText(`ET${newTitle}`);
     await expect(ru).toHaveAttribute("placeholder", newTitle);
+    await expect(titleBox.locator("[data-ru-pending]")).toHaveText("tõlge tulekul");
     await ru.fill("Форма бровей E2E");
-    await expect(langs.getByRole("button", { name: /RU/ })).not.toContainText("tõlge tulekul");
+    await expect(titleBox.locator("[data-ru-pending]")).toHaveCount(0);
     await save(page);
     expect((await storedCourse(c.slug)).title).toEqual({ et: newTitle, ru: "Форма бровей E2E" });
     await page.goto(`/ru/koolitused/${c.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Форма бровей E2E");
     await page.goto(`/koolitused/${c.slug}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(newTitle);
+  });
+
+  test("one ET | RU switch in the heading sets every field, is kept on reload, counts the empty Russian fields and walks them; „Kopeeri eesti keelest“ fills one", async ({ page, context, visitorIp }, info) => {
+    const c = mine(info);
+    const id = await changing(c.slug); // (nothing is saved here, the page is only changed on the screen; put back all the same)
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/koolitused/${id}`);
+    await adminReady(page);
+
+    // one control, at the right of the heading; no pills on the fields
+    const bar = page.locator("[data-edit-lang-bar]:visible");
+    await expect(bar).toContainText("Sisu keel");
+    await expect(bar.locator("[data-edit-lang-switch] button")).toHaveText(["ET", "RU"]);
+    await expect(page.locator("[data-lang-switch]")).toHaveCount(0);
+    await expect(page.locator("[data-edit-lang='et']:visible")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("[data-ru-missing]")).toHaveCount(0); // (the line is for RU mode)
+    const fields = page.locator("[data-lang-field]:visible");
+    expect(await fields.count()).toBeGreaterThan(3);
+    await expect(fields.and(page.locator('[data-lang-field="ru"]'))).toHaveCount(0);
+    expect(await noOverflow(page)).toBe(true);
+    // the track is 44 px tall, and so is the tap target of each segment (the pill you see inside it is 38)
+    expect((await bar.locator("[data-edit-lang-switch]").boundingBox())!.height).toBe(44);
+    for (const segment of await bar.locator("[data-edit-lang-switch] button").all()) expect((await segment.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+    await editLang(page, "ru");
+    await expect(fields.and(page.locator('[data-lang-field="et"]'))).toHaveCount(0); // every field on the page is in Russian now
+    // the choice is kept on this device: the page opens in Russian
+    await page.reload();
+    await adminReady(page);
+    await expect(page.locator("[data-edit-lang='ru']:visible")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('[data-lang-field="ru"]:visible').first()).toBeVisible();
+    await expect(fields.and(page.locator('[data-lang-field="et"]'))).toHaveCount(0);
+
+    // an empty Russian title: counted, with the way to it and the copy of the Estonian text
+    const titleBox = page.locator("[data-i18n-box]:visible", { has: page.locator('[data-i18n="title"]') });
+    const ru = page.getByRole("textbox", { name: "Koolituse nimi (vene keeles)" });
+    await ru.fill("");
+    const line = page.locator("[data-ru-missing]");
+    await expect(line).toContainText(/^RU puudub \d+ väljal/);
+    await page.locator("[data-ru-next]").click();
+    await expect(ru).toBeFocused();
+    const copy = titleBox.getByRole("button", { name: "Kopeeri eesti keelest" });
+    await expect(copy).toBeVisible();
+    expect((await copy.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await copy.click();
+    await expect(ru).toHaveValue(c.title);
+    await expect(copy).toHaveCount(0);
+    await expect(ru).toBeFocused();
+    expect(await noOverflow(page)).toBe(true);
   });
 
   test("badge 'Uus' in Orhidee (D badge editor): the live card preview, then the public card; 'Puudub' takes it off", async ({ page, context, visitorIp }, info) => {
@@ -215,7 +266,7 @@ test.describe("course editor", () => {
     const typeSwitch = page.locator("[data-type-switch]");
     await expect(typeSwitch.getByRole("radio", { name: "E-õpe" })).toBeChecked();
     await expect(page.getByLabel("Hind (€)")).toHaveValue(c.price);
-    // (text fields by role: an ET / RU switch is labelled "Keel: <field>", which getByLabel would find too)
+    // (text fields by role)
     const field = (name: string | RegExp) => page.getByRole("textbox", { name, exact: typeof name === "string" });
     for (const name of ["Ligipääs (kuud)", "Videotunde", /^Soodustus järgmiselt koolituselt/]) await expect(field(name)).toHaveCount(1);
     for (const name of ["Grupikoolituse hind (€)", "Individuaalkoolituse hind (€)", /^Kestus/]) await expect(field(name)).toHaveCount(0);
@@ -288,9 +339,9 @@ test.describe("course editor", () => {
     await expect(rows).toHaveCount(count + 1);
     await expect(rows.nth(count).locator("[data-lang-field]")).toBeFocused();
     await page.keyboard.type("E2E õpiväljund");
-    await outcomes.getByRole("button", { name: /^RU/ }).click();
+    await editLang(page, "ru");
     await rows.nth(count).locator("[data-lang-field]").fill("E2E результат");
-    await outcomes.getByRole("button", { name: "ET", exact: true }).click();
+    await editLang(page, "et");
     await outcomes.getByRole("button", { name: "Eemalda rida 3" }).click();
     await expect(rows).toHaveCount(count);
     await save(page);

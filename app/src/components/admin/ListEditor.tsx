@@ -5,7 +5,7 @@ import { moveItem } from "@/domain/course-editor";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
-import { I18nInput, LangSwitch, type Lang } from "./I18nInput";
+import { I18nInput } from "./I18nInput";
 import ui from "./ui.module.css";
 import styles from "./editor.module.css";
 
@@ -13,7 +13,7 @@ let rowCount = 0;
 const newKey = () => `row-${++rowCount}`;
 
 type Props = {
-  /** The heading of the list (also the name of the language switch). */
+  /** The heading of the list. */
   title: string;
   /** The label of one row, numbered: "Õpiväljund 2". */
   itemLabel: string;
@@ -28,14 +28,13 @@ type Props = {
 };
 
 /**
- * An ordered list of texts in two languages (outcomes, programme, "Koolitus sisaldab"): add, remove, ↑ / ↓. One ET / RU
- * switch for all rows. The arrows are aria-disabled at the ends (a disabled button would drop the focus); after
- * adding a row its field gets the focus, after removing one the next row's field (or "Lisa rida") does.
+ * An ordered list of texts in two languages (outcomes, programme, "Koolitus sisaldab"): add, remove, ↑ / ↓. The rows take the page's
+ * language (EditLang.tsx: the one ET | RU switch in the page heading). The arrows are aria-disabled at the ends (a disabled button would
+ * drop the focus); after adding a row its field gets the focus, after removing one the next row's field (or "Lisa rida") does.
  */
 export function ListEditor({ title, itemLabel, items, onChange, hint, error, multiline, maxLength, name }: Props) {
   const t = adminEt.list;
   const uid = useId();
-  const [lang, setLang] = useState<Lang>("et");
   const [keys, setKeys] = useState<string[]>(() => items.map(newKey));
   // the list was replaced from outside (the editor reloads the saved course): new rows, new keys
   if (keys.length !== items.length) setKeys(items.map(newKey));
@@ -69,7 +68,6 @@ export function ListEditor({ title, itemLabel, items, onChange, hint, error, mul
     if (j < 0 || j >= items.length) return;
     set(moveItem(items, i, j), moveItem(keys, i, j));
   };
-  const missingRu = items.some((x) => x.et.trim() && !(x.ru && x.ru.trim()));
 
   return (
     <div
@@ -86,7 +84,6 @@ export function ListEditor({ title, itemLabel, items, onChange, hint, error, mul
         <h3 id={`${uid}-title`} className={ui.h3}>
           {title}
         </h3>
-        <LangSwitch lang={lang} onChange={setLang} label={title} missingRu={missingRu} />
       </div>
       {hint && <p className={ui.hint}>{hint}</p>}
       {items.length === 0 ? (
@@ -106,8 +103,6 @@ export function ListEditor({ title, itemLabel, items, onChange, hint, error, mul
                   labelHidden
                   value={item}
                   onChange={(v) => onChange(items.map((x, j) => (j === i ? v : x)))}
-                  lang={lang}
-                  onLangChange={setLang}
                   multiline={multiline}
                   rows={2}
                   maxLength={maxLength}

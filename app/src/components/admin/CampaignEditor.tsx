@@ -12,7 +12,8 @@ import { pick } from "@/i18n/field";
 import { mediaUrl } from "@/lib/media";
 import { saveCampaign } from "@/server/actions/admin-site";
 import { Choice } from "./Choice";
-import { I18nInput, LangSwitch, type Lang } from "./I18nInput";
+import { LangSwitch } from "./EditLang";
+import { I18nInput, PreviewLangSwitch, type Lang } from "./I18nInput";
 import { SaveBar } from "./SaveBar";
 import { SingleImage } from "./SingleImage";
 import { TextField } from "./TextField";
@@ -83,6 +84,9 @@ export function CampaignEditor({ initial, links }: { initial: Loaded<{ campaign:
           <h1 className={ui.h1}>{t.title}</h1>
           <p className={ui.lead}>{t.lead}</p>
         </div>
+        <div className={ui.headAside}>
+          <LangSwitch />
+        </div>
       </div>
 
       <section className={ui.card} aria-labelledby={`${uid}-shown`}>
@@ -132,7 +136,7 @@ export function CampaignEditor({ initial, links }: { initial: Loaded<{ campaign:
               <h2 id={`${uid}-preview`} className={ui.h3}>
                 {t.preview}
               </h2>
-              <LangSwitch lang={langC} onChange={setLangC} label={t.preview} missingRu={false} />
+              <PreviewLangSwitch lang={langC} onChange={setLangC} label={t.preview} missingRu={false} />
             </div>
             {shown !== "campaign" && <p className={`${ui.notice} ${styles.cardLead}`}>{t.off}</p>}
             {/* inert: the preview's button and copy button are pictures of the real ones */}
@@ -181,7 +185,7 @@ export function CampaignEditor({ initial, links }: { initial: Loaded<{ campaign:
               <h2 id={`${uid}-nl-preview`} className={ui.h3}>
                 {t.preview}
               </h2>
-              <LangSwitch lang={langN} onChange={setLangN} label={`${t.preview}: ${t.newsletterForm}`} missingRu={false} />
+              <PreviewLangSwitch lang={langN} onChange={setLangN} label={`${t.preview}: ${t.newsletterForm}`} missingRu={false} />
             </div>
             {shown !== "newsletter" && <p className={`${ui.notice} ${styles.cardLead}`}>{t.off}</p>}
             {/* inert: the form in the preview is a picture of the real one (`preview`: no <form> inside this editor's form, nothing is sent from here) */}

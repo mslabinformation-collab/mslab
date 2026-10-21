@@ -7,6 +7,7 @@ import { fill } from "@/i18n/format";
 import { mediaUrl } from "@/lib/media";
 import { saveTrainer } from "@/server/actions/admin-site";
 import type { TrainerValues } from "@/server/admin-site";
+import { LangSwitch } from "./EditLang";
 import { FocalPoint } from "./FocalPoint";
 import { GalleryEditor } from "./GalleryEditor";
 import { I18nInput } from "./I18nInput";
@@ -90,9 +91,12 @@ export function TrainerEditor({ initial, storyTitles }: { initial: Loaded<Traine
           <h1 className={ui.h1}>{t.title}</h1>
           <p className={ui.lead}>{t.lead}</p>
         </div>
-        <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/koolitaja" target="_blank" rel="noopener">
-          {adminEt.editor.viewSite} ↗<span className={ui.sr}> ({adminEt.editor.newWindow})</span>
-        </a>
+        <div className={ui.headAside}>
+          <LangSwitch />
+          <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/koolitaja" target="_blank" rel="noopener">
+            {adminEt.editor.viewSite} ↗<span className={ui.sr}> ({adminEt.editor.newWindow})</span>
+          </a>
+        </div>
       </div>
 
       <div className={styles.stack}>

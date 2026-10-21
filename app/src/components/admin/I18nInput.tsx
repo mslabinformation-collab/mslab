@@ -1,23 +1,24 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
+import { useEditLang, type Lang } from "./EditLang";
 import ui from "./ui.module.css";
 import styles from "./editor.module.css";
 
-export type Lang = "et" | "ru";
+export type { Lang };
 
 const hasRu = (v: I18n) => Boolean(v.ru && v.ru.trim());
 /** An Estonian text without its Russian translation (an empty field is not "missing" anything yet). */
 const lacksRu = (v: I18n) => Boolean(v.et.trim()) && !hasRu(v);
 
 /**
- * ET / RU switch: two pills. RU carries "tõlge tulekul" while the translation is missing (only the admin sees this;
- * the public site shows the Estonian text instead).
+ * ET / RU switch of a preview (the popup's and the newsletter's): two pills, which show the preview in one language or the other. The page's
+ * own switch, which sets the language of the fields, is `LangSwitch` in EditLang.tsx.
  */
-export function LangSwitch({ lang, onChange, label, missingRu }: { lang: Lang; onChange: (l: Lang) => void; label: string; missingRu: boolean }) {
+export function PreviewLangSwitch({ lang, onChange, label, missingRu }: { lang: Lang; onChange: (l: Lang) => void; label: string; missingRu: boolean }) {
   const t = adminEt.i18n;
   return (
     <span className={styles.langs} role="group" aria-label={fill(t.switch, { label })} data-lang-switch="">
@@ -41,9 +42,6 @@ type Props = {
   hint?: string;
   error?: string;
   placeholder?: string;
-  /** Shared language (ListEditor: one switch for all rows); without it each field has its own switch. */
-  lang?: Lang;
-  onLangChange?: (l: Lang) => void;
   /** The label only for screen readers (list rows). */
   labelHidden?: boolean;
   /** data-i18n attribute (tests, the first-error focus). */
@@ -51,27 +49,44 @@ type Props = {
 };
 
 /**
- * A content field in two languages ({ et, ru? }): the Estonian text is the one the site always has; the Russian one is
- * optional. One language is edited at a time; the RU field shows the Estonian text as its placeholder, which is what
- * the Russian page shows while the translation is missing.
+ * A content field in two languages ({ et, ru? }): the Estonian text is the one the site always has; the Russian one is optional. The language
+ * shown is the page's (EditLang.tsx: one switch in the page heading sets every field, README §1.9). In RU mode the Estonian text stands above the
+ * input (it is also the placeholder: what the Russian page shows while the translation is missing), an empty RU field offers „Kopeeri eesti
+ * keelest“, and „tõlge tulekul“ stays on the field. The field tells the page when its Russian text is missing, for „RU puudub {n} väljal“.
  */
-export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLength, hint, error, placeholder, lang: shared, onLangChange, labelHidden, name }: Props) {
+export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLength, hint, error, placeholder, labelHidden, name }: Props) {
   const uid = useId();
-  const [own, setOwn] = useState<Lang>("et");
-  const lang = shared ?? own;
-  const setLang = onLangChange ?? setOwn;
+  const { lang, register } = useEditLang();
   const t = adminEt.i18n;
+  const box = useRef<HTMLDivElement>(null);
   const inputId = `${uid}-${lang}`;
-  // the "missing translation" line under the field (list rows have it on their shared switch instead)
-  const showMissing = lang === "ru" && lacksRu(value) && !labelHidden;
+  const ru = lang === "ru";
+  const pending = lacksRu(value);
+  // the "missing translation" line under the field (list rows have no room for it: they have the tag and the copy link)
+  const showMissing = ru && pending && !labelHidden;
   const describedBy = [hint ? `${uid}-hint` : "", error ? `${uid}-error` : "", showMissing ? `${uid}-missing` : ""].filter(Boolean).join(" ") || undefined;
-  const text = (lang === "ru" ? value.ru : value.et) ?? "";
-  const set = (v: string) => onChange(lang === "ru" ? { ...value, ru: v } : { ...value, et: v });
+  const text = (ru ? value.ru : value.et) ?? "";
+  const set = (v: string) => onChange(ru ? { ...value, ru: v } : { ...value, et: v });
+
+  const input = useCallback(() => box.current?.querySelector<HTMLElement>("[data-lang-field]") ?? null, []);
+  /** „Järgmine →“: the cursor in the field, and the field in the middle of the screen. */
+  const focusField = useCallback(() => {
+    const el = input();
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    el.scrollIntoView?.({ block: "center" });
+  }, [input]);
+  useEffect(() => register(uid, pending, focusField), [register, uid, pending, focusField]);
+  const copy = () => {
+    onChange({ ...value, ru: value.et });
+    input()?.focus(); // (the link is gone with the copy: the cursor goes to the text, ready to be edited)
+  };
+
   const common = {
     id: inputId,
     value: text,
     maxLength,
-    placeholder: lang === "ru" ? value.et || placeholder : placeholder,
+    placeholder: ru ? value.et || placeholder : placeholder,
     "aria-invalid": error ? true : undefined,
     "aria-describedby": describedBy,
     lang,
@@ -80,18 +95,35 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLeng
   } as const;
 
   return (
-    <div className={styles.i18n}>
+    <div ref={box} id={uid} className={styles.i18n} data-i18n-box="">
       <div className={styles.i18nHead}>
-        <label htmlFor={inputId} className={labelHidden ? ui.sr : styles.label}>
+        <label id={`${uid}-label`} htmlFor={inputId} className={labelHidden ? ui.sr : styles.label}>
           {label}
           <span className={ui.sr}> ({t.langName[lang]})</span>
         </label>
-        {!shared && <LangSwitch lang={lang} onChange={setLang} label={label} missingRu={lacksRu(value)} />}
+        {pending && (
+          <span className={styles.missing} data-ru-pending="">
+            {t.missing}
+          </span>
+        )}
       </div>
+      {ru && value.et.trim() && (
+        <p className={styles.etRef} lang="et" data-et-ref="">
+          <span className={styles.etTag} data-et-tag="">
+            {t.etTag}
+          </span>
+          {value.et}
+        </p>
+      )}
       {multiline ? (
         <textarea {...common} className={ui.textarea} rows={rows} onChange={(e) => set(e.target.value)} />
       ) : (
         <input {...common} className={ui.input} type="text" autoComplete="off" onChange={(e) => set(e.target.value)} />
+      )}
+      {ru && pending && (
+        <button type="button" className={styles.copy} onClick={copy} aria-describedby={`${uid}-label`} data-copy-et="">
+          {t.copyFromEt}
+        </button>
       )}
       {hint && (
         <p id={`${uid}-hint`} className={ui.hint}>

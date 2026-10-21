@@ -11,7 +11,7 @@ import { toStorable } from "@/lib/to-storable";
 import { copyCampaignAction, prepareSendAction, saveCampaignAction, sendTestAction, startSendAction, stopSendAction } from "@/server/actions/admin-newsletter";
 import type { Progress } from "@/server/newsletter-campaigns";
 import { Choice } from "./Choice";
-import { I18nInput, LangSwitch, type Lang } from "./I18nInput";
+import { I18nInput, PreviewLangSwitch, type Lang } from "./I18nInput";
 import { SaveBar } from "./SaveBar";
 import { SingleImage } from "./SingleImage";
 import { TextField } from "./TextField";
@@ -179,7 +179,7 @@ function PreviewCard({ values }: { values: CampaignValues }) {
         <h2 id={`${uid}-preview`} className={ui.h3}>
           {t.preview}
         </h2>
-        <LangSwitch lang={lang} onChange={setLang} label={t.preview} missingRu={false} />
+        <PreviewLangSwitch lang={lang} onChange={setLang} label={t.preview} missingRu={false} />
       </div>
       {mail && (
         <p className={`${ui.small} ${styles.previewSubject}`}>

@@ -1,3 +1,4 @@
+import { EditLangProvider } from "@/components/admin/EditLang";
 import { LeaveGuardProvider } from "@/components/admin/LeaveGuard";
 import { Shell } from "@/components/admin/Shell";
 import { UndoProvider } from "@/components/admin/UndoBar";
@@ -11,13 +12,16 @@ export const dynamic = "force-dynamic";
 // or fails (error.tsx), and the sidebar reads its active entry from the address.
 // The UndoProvider (README §1.7) sits inside Shell's main, round the page: one „Võta tagasi“ bar for every screen (useUndo). The leave guard
 // (README §1.5) is round it: a menu click, Back or a drawer's close waits for (or asks about) the page's unsaved text, and its notice is at the
-// top of the page.
+// top of the page. The EditLangProvider (README §1.9) is round the page too: the ET | RU switch in a page's heading sets the language of its fields, and the
+// choice stays when the visitor moves to the next page.
 export default async function PanelLayout({ children }: { children: React.ReactNode }) {
   const email = await requireAdmin();
   return (
     <Shell email={email}>
       <LeaveGuardProvider>
-        <UndoProvider>{children}</UndoProvider>
+        <UndoProvider>
+          <EditLangProvider>{children}</EditLangProvider>
+        </UndoProvider>
       </LeaveGuardProvider>
     </Shell>
   );

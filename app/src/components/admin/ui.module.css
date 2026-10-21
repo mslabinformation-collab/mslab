@@ -13,6 +13,15 @@
   margin-bottom: 30px;
 }
 
+/* the right of a page heading: the page's ET | RU switch (EditLang.tsx LangSwitch) and, on most pages, "Vaata lehel ↗" */
+.headAside {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 20px;
+}
+
 .eyebrow {
   display: flex;
   align-items: center;
@@ -491,6 +500,11 @@
   .heading {
     flex-wrap: wrap;
     align-items: flex-start;
+  }
+
+  .headAside {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .h1 {

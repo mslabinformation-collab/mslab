@@ -109,3 +109,14 @@ async function signInWithLocalSession(page: Page, context: BrowserContext, creat
 export async function adminReady(page: Page): Promise<void> {
   await expect(page.locator("html[data-admin-ready]")).toBeAttached({ timeout: 15_000 });
 }
+
+/**
+ * The page's „Sisu keel“ switch (EditLang.tsx LangSwitch, in the page heading): one tap sets the language of every bilingual field on the page, and the
+ * browser keeps the choice (localStorage `mslab-edit-lang`), so a later page of the same test opens in it. Waits until the choice shows.
+ */
+export async function editLang(page: Page, lang: "et" | "ru"): Promise<void> {
+  // (:visible — a page still being swapped in by the stream holds a hidden server copy of itself)
+  const segment = page.locator(`[data-edit-lang-switch] [data-edit-lang="${lang}"]:visible`);
+  await segment.click();
+  await expect(segment).toHaveAttribute("aria-pressed", "true");
+}

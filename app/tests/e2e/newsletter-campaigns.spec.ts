@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { BrowserContext, FrameLocator, Locator, Page } from "@playwright/test";
 import { E2E_CRON_SECRET, LOCAL_ENV } from "../local-secrets";
-import { adminReady, signInAsAdmin } from "./admin-login";
+import { adminReady, editLang, signInAsAdmin } from "./admin-login";
 import { test } from "./edit-lock";
 import { E2E_CAMPAIGN_PREFIX, deliveryCounts, insertCampaign, insertDeliveries, onLocalDb, removeAdminRows, removeCampaignRows, storedCampaigns, storedSubscriber, testEmail } from "./fixtures";
 import {
@@ -83,10 +83,9 @@ function campaignName(project: string, label: string): string {
   return name;
 }
 
-/** Types into the language `lang` of an I18nInput (`data-i18n`): it switches to that language first. */
+/** Types into the language `lang` of an I18nInput (`data-i18n`): the page's ET | RU switch (in the heading, above the form) goes to that language first. */
 async function fillIn(form: Locator, key: string, lang: "et" | "ru", value: string): Promise<void> {
-  const field = form.locator(`[data-i18n="${key}"]`);
-  await field.locator("xpath=..").locator(`[data-lang="${lang}"]`).click();
+  await editLang(form.page(), lang);
   await form.locator(`[data-i18n="${key}"]`).fill(value);
 }
 
@@ -260,6 +259,9 @@ test.describe("„Uudiskiri“ and „Kampaaniad“", () => {
       await expect(form.locator('[data-field="name"]')).toHaveValue(copyName);
       await expect(form.locator('[data-field="code"]')).toHaveValue("E2E-SUGIS15");
       await expect(form.locator('[data-field="buttonHref"]')).toHaveValue("/koolitused");
+      // (the page opens in the language last chosen on this device: Russian, from the steps above)
+      await expect(form.locator('[data-i18n="subject"]')).toHaveValue("E2E осеннее предложение");
+      await editLang(page, "et");
       await expect(form.locator('[data-i18n="subject"]')).toHaveValue("E2E sügispakkumine");
       await expect(form.locator("[data-current-image]")).toHaveAttribute("data-current-image", /^img\/[0-9a-f-]{36}\.jpg$/);
       const [copy] = await storedCampaigns(copyName);

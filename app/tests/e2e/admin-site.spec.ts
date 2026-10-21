@@ -3,7 +3,7 @@ import type { BrowserContext, Locator, Page, Route, TestInfo } from "@playwright
 import { test } from "./edit-lock";
 import { submitsForms, expect } from "./test";
 import { LOCAL_ADMINS } from "../local-secrets";
-import { adminReady, signInAsAdmin } from "./admin-login";
+import { adminReady, editLang, signInAsAdmin } from "./admin-login";
 import { holdContractTexts } from "./contracts";
 import { onLocalDb, POST_SLUG_PREFIX, removeAdminRows, removePostRows, snapshotRows, storedSubscriber, testEmail } from "./fixtures";
 import { holdNewsletter } from "./newsletter";
@@ -72,7 +72,7 @@ test.describe("practice packages (A8, R3)", () => {
     await items.getByRole("button", { name: "Lisa rida" }).click();
     await expect(rows.nth(count).locator("[data-lang-field]")).toBeFocused();
     await page.keyboard.type("E2E punkt");
-    await items.getByRole("button", { name: /^RU/ }).click();
+    await editLang(page, "ru");
     await rows.nth(count).locator("[data-lang-field]").fill("E2E пункт");
     expect(await noOverflow(page)).toBe(true);
     await save(page);
@@ -181,7 +181,7 @@ test.describe("home page", () => {
     const et = editor.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
     await expect(et).toHaveValue(/^Kulmu- ja ripsmetehnikate meister ja koolitaja\. Õpetan nii, nagu oleksin ise tahtnud õppida/);
     await et.fill("E2E koolitaja tekst.");
-    await editor.getByRole("group", { name: /^Keel/ }).getByRole("button", { name: /^RU/ }).click();
+    await editLang(page, "ru");
     await editor.getByRole("textbox", { name: "Tekst (vene keeles)", exact: true }).fill("E2E текст преподавателя.");
     await save(page);
     expect(await one((sql) => sql<{ body: unknown }[]>`select body from pages where key = 'trainer_teaser'`)).toEqual({ body: { et: "E2E koolitaja tekst.", ru: "E2E текст преподавателя." } });
@@ -207,7 +207,7 @@ test.describe("home page", () => {
     const q = `E2E küsimus ${unique()}?`;
     await page.keyboard.type(q);
     await faq.getByRole("textbox", { name: `Vastus ${n} (eesti keeles)`, exact: true }).fill("E2E vastus.");
-    await faq.getByRole("group", { name: /^Keel/ }).getByRole("button", { name: /^RU/ }).click();
+    await editLang(page, "ru");
     await faq.getByRole("textbox", { name: `Küsimus ${n} (vene keeles)`, exact: true }).fill("E2E вопрос?");
     await faq.getByRole("textbox", { name: `Vastus ${n} (vene keeles)`, exact: true }).fill("E2E ответ.");
     for (let i = n; i > 1; i--) await faq.getByRole("button", { name: `Liiguta küsimus ${i} üles` }).click();
@@ -375,7 +375,7 @@ test.describe("campaign (M2–M5)", () => {
     await href.fill("/koolitused/lash-lift-botox");
     // an empty button text in both languages: "Leia enda koolitus" (M4); the seed's Russian text is cleared too
     await camp.getByRole("textbox", { name: "Nupu tekst (eesti keeles)", exact: true }).fill("");
-    await camp.getByRole("group", { name: "Keel: Nupu tekst" }).getByRole("button", { name: /^RU/ }).click();
+    await editLang(page, "ru");
     await camp.getByRole("textbox", { name: "Nupu tekst (vene keeles)", exact: true }).fill("");
     await save(page);
 
@@ -667,9 +667,8 @@ test.describe("settings", () => {
     expect(await one((sql) => sql<{ n: number }[]>`select count(*)::int as n from pages where key = 'contract_contact'`)).toEqual({ n: 0 });
 
     // the Russian text makes the Russian sample available; then the save
-    await card.getByRole("button", { name: /^RU/ }).first().click();
+    await editLang(page, "ru"); // (one switch for the whole page: both fields of the card, and the e-course card's too)
     await card.getByRole("textbox", { name: "Pealkiri (vene keeles)", exact: true }).fill("E2E Договор очного обучения");
-    await card.getByRole("button", { name: /^RU/ }).last().click();
     await card.getByRole("textbox", { name: "Tekst (vene keeles)", exact: true }).fill("E2E Ученик {nimi}.");
     await expect(sample.getByRole("button", { name: "Näidisleping vene keeles (PDF)", exact: true })).toBeVisible();
     await card.getByRole("button", { name: "Salvesta lepingud", exact: true }).click();
@@ -680,6 +679,7 @@ test.describe("settings", () => {
     expect(Math.abs(Date.now() - new Date(version.v).getTime())).toBeLessThan(120_000);
 
     // the e-course card: the title written there is the e-course contract's page title, and the text is not touched
+    await editLang(page, "et");
     const before = await one((sql) => sql<{ body: unknown }[]>`select body from pages where key = 'course_terms'`);
     await ecourseTitle.fill("E2E E-koolituse leping");
     await save(page);

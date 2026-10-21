@@ -19,6 +19,7 @@ const actions = vi.hoisted(() => ({ saveContractTextsAction: vi.fn(), requestCon
 vi.mock("@/server/actions/admin-contracts", () => actions);
 
 import { ContractTexts } from "@/components/admin/ContractTexts";
+import { EditLangProvider, LangSwitch } from "@/components/admin/EditLang";
 import type { ContractCard } from "@/server/contracts";
 
 const EMPTY: ContractCard = { title: { et: "", ru: "" }, body: { et: "", ru: "" } };
@@ -35,16 +36,16 @@ const settle = () =>
   act(async () => {
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   });
-/** The card as the page renders it (a new key: a new card, as a new page load gives). */
+/** The card as the page renders it (a new key: a new card, as a new page load gives), under the panel's EditLangProvider with the page's ET | RU switch (Seaded has it in its heading). */
 const show = async (initial: ContractCard = WRITTEN) => {
-  await act(async () => root.render(createElement(ContractTexts, { key: JSON.stringify(initial), initial })));
+  await act(async () => root.render(createElement(EditLangProvider, null, createElement(LangSwitch), createElement(ContractTexts, { key: JSON.stringify(initial), initial }))));
   await settle();
 };
 /** The field of the language now shown: title or body. */
 const field = (name: "title" | "body") => $<HTMLInputElement | HTMLTextAreaElement>(`[data-i18n="contract.${name}"]`)!;
-const switchTo = async (name: "title" | "body", lang: "et" | "ru") => {
-  const wrap = field(name).closest("div")!; // the field's own box: its label, its ET / RU switch, the field, its hint
-  await act(async () => wrap.querySelector<HTMLButtonElement>(`[data-lang="${lang}"]`)!.click());
+/** The page's ET | RU switch: both fields (and every other on the page) change language with it. */
+const switchTo = async (lang: "et" | "ru") => {
+  await act(async () => $<HTMLButtonElement>(`[data-edit-lang-switch] [data-edit-lang="${lang}"]`)!.click());
 };
 const type = async (el: HTMLInputElement | HTMLTextAreaElement, value: string) =>
   act(async () => {
@@ -60,6 +61,7 @@ const hidden = (name: string) => $<HTMLInputElement>(`[data-contract-sample-form
 const status = () => $('[role="status"]')!.textContent;
 
 beforeEach(() => {
+  localStorage.clear(); // (the language is kept per device)
   for (const fn of Object.values(actions)) fn.mockReset();
   container = document.createElement("div");
   document.body.append(container);
@@ -82,11 +84,10 @@ describe("ContractTexts: the card", () => {
     expect($("[data-contract-save]")!.textContent).toBe("Salvesta lepingud");
   });
 
-  test("the Russian texts are behind the RU switch, each with its own field", async () => {
+  test("the Russian texts are behind the page's RU switch, each in its own field", async () => {
     await show();
-    await switchTo("title", "ru");
+    await switchTo("ru");
     expect(field("title").value).toBe("Договор очного обучения");
-    await switchTo("body", "ru");
     expect(field("body").value).toBe("Ученик {nimi} записывается на курс {koolitus}.");
   });
 
@@ -123,9 +124,8 @@ describe("ContractTexts: the save", () => {
     await show();
     await type(field("title"), "  Uus leping ");
     await type(field("body"), " Uus tekst. ");
-    await switchTo("title", "ru");
+    await switchTo("ru");
     await type(field("title"), " Новый договор ");
-    await switchTo("body", "ru");
     await type(field("body"), " Новый текст. ");
     await submit();
     expect(actions.saveContractTextsAction).toHaveBeenCalledTimes(1);
@@ -135,9 +135,8 @@ describe("ContractTexts: the save", () => {
     });
     expect(status()).toBe("Lepingud on salvestatud.");
     expect(field("body").value).toBe("Новый текст."); // the RU tab is still shown, now as stored
-    await switchTo("body", "et");
+    await switchTo("et");
     expect(field("body").value).toBe("Uus tekst.");
-    await switchTo("title", "et");
     expect(field("title").value).toBe("Uus leping");
   });
 
@@ -203,7 +202,7 @@ describe("ContractTexts: „Näidisleping (PDF)“", () => {
     await type(field("title"), "Muudetud pealkiri");
     await type(field("body"), "Muudetud tekst, {nimi}.");
     expect([hidden("titleEt"), hidden("bodyEt")]).toEqual(["Muudetud pealkiri", "Muudetud tekst, {nimi}."]);
-    await switchTo("body", "ru");
+    await switchTo("ru");
     await type(field("body"), "Измененный текст.");
     expect(hidden("bodyRu")).toBe("Измененный текст.");
     expect(actions.saveContractTextsAction).not.toHaveBeenCalled();
@@ -212,7 +211,7 @@ describe("ContractTexts: „Näidisleping (PDF)“", () => {
   test("the Russian sample is offered only once a Russian text is written; an Estonian one alone has the one sample", async () => {
     await show(EMPTY);
     expect(all("button[data-contract-sample]").map((b) => b.textContent)).toEqual(["Näidisleping (PDF)"]);
-    await switchTo("body", "ru");
+    await switchTo("ru");
     await type(field("body"), "Текст.");
     expect(all("button[data-contract-sample]").map((b) => b.textContent)).toEqual(["Näidisleping (PDF)", "Näidisleping vene keeles (PDF)"]);
     await type(field("body"), "   ");

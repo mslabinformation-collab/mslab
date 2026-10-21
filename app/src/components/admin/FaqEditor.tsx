@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef } from "react";
 import { moveItem } from "@/domain/course-editor";
 import { SITE_LIMITS, type FaqDraft } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
-import { I18nInput, LangSwitch, type Lang } from "./I18nInput";
+import { I18nInput } from "./I18nInput";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import styles from "./site-editor.module.css";
@@ -13,13 +13,12 @@ import styles from "./site-editor.module.css";
 let added = 0;
 
 /**
- * The home page FAQ: question and answer pairs in two languages (one ET / RU switch for the list), ↑ / ↓, ×, "Lisa
+ * The home page FAQ: question and answer pairs in two languages (they take the page's language, EditLang.tsx), ↑ / ↓, ×, "Lisa
  * küsimus". As in ListEditor, the arrows are aria-disabled at the ends and the focus follows adds and removals.
  */
 export function FaqEditor({ items, onChange, err }: { items: FaqDraft[]; onChange: (items: FaqDraft[]) => void; err: (name: string) => string | undefined }) {
   const t = adminEt.home.faq;
   const uid = useId();
-  const [lang, setLang] = useState<Lang>("et");
   const root = useRef<HTMLDivElement>(null);
   const focus = useRef<{ uid: string; what: "q" | "up" | "down" } | "add" | null>(null);
 
@@ -51,17 +50,13 @@ export function FaqEditor({ items, onChange, err }: { items: FaqDraft[]; onChang
     focus.current = { uid: item.uid, what: "q" };
     onChange([...items, item]);
   };
-  const missingRu = items.some((x) => (x.q.et.trim() && !x.q.ru?.trim()) || (x.a.et.trim() && !x.a.ru?.trim()));
   const listError = err("faq");
 
   return (
     <div ref={root} className={ed.list} data-faq-editor="" role="group" aria-labelledby={`${uid}-title`} data-invalid={listError ? "" : undefined} tabIndex={listError ? -1 : undefined}>
-      <div className={ed.listHead}>
-        <h3 id={`${uid}-title`} className={ui.sr}>
-          {t.title}
-        </h3>
-        <LangSwitch lang={lang} onChange={setLang} label={t.title} missingRu={missingRu} />
-      </div>
+      <h3 id={`${uid}-title`} className={ui.sr}>
+        {t.title}
+      </h3>
       {items.length === 0 ? (
         <p className={`${ui.muted} ${ui.small}`}>{t.empty}</p>
       ) : (
@@ -74,8 +69,8 @@ export function FaqEditor({ items, onChange, err }: { items: FaqDraft[]; onChang
                   {String(n).padStart(2, "0")}
                 </span>
                 <div className={styles.faqFields}>
-                  <I18nInput label={`${t.question} ${n}`} value={item.q} onChange={(q) => edit(i, { q })} lang={lang} onLangChange={setLang} maxLength={SITE_LIMITS.question} error={err(`faq.${i}.q`)} name={`faq.${i}.q`} />
-                  <I18nInput label={`${t.answer} ${n}`} value={item.a} onChange={(a) => edit(i, { a })} lang={lang} onLangChange={setLang} multiline rows={3} maxLength={SITE_LIMITS.answer} error={err(`faq.${i}.a`)} name={`faq.${i}.a`} />
+                  <I18nInput label={`${t.question} ${n}`} value={item.q} onChange={(q) => edit(i, { q })} maxLength={SITE_LIMITS.question} error={err(`faq.${i}.q`)} name={`faq.${i}.q`} />
+                  <I18nInput label={`${t.answer} ${n}`} value={item.a} onChange={(a) => edit(i, { a })} multiline rows={3} maxLength={SITE_LIMITS.answer} error={err(`faq.${i}.a`)} name={`faq.${i}.a`} />
                 </div>
                 <span className={ed.tools}>
                   <button type="button" className={ed.iconBtn} data-tool="up" aria-label={fill(t.up, { n })} aria-disabled={i === 0 || undefined} onClick={() => move(i, -1)}>

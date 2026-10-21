@@ -8,6 +8,7 @@ import { fill } from "@/i18n/format";
 import { deletePost, savePost } from "@/server/actions/admin-site";
 import type { EditResult } from "@/server/edit-check";
 import { Choice } from "./Choice";
+import { LangSwitch } from "./EditLang";
 import { I18nInput } from "./I18nInput";
 import { SaveBar } from "./SaveBar";
 import { SingleImage } from "./SingleImage";
@@ -68,11 +69,14 @@ export function PostEditor({ initial, created }: { initial: Loaded<{ post: PostD
             </span>
           </div>
         </div>
-        {!isNew && saved.published && (
-          <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/uudised/${saved.slug}`} target="_blank" rel="noopener">
-            {adminEt.editor.viewSite} ↗<span className={ui.sr}> ({adminEt.editor.newWindow})</span>
-          </a>
-        )}
+        <div className={ui.headAside}>
+          <LangSwitch />
+          {!isNew && saved.published && (
+            <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/uudised/${saved.slug}`} target="_blank" rel="noopener">
+              {adminEt.editor.viewSite} ↗<span className={ui.sr}> ({adminEt.editor.newWindow})</span>
+            </a>
+          )}
+        </div>
       </div>
 
       {created && (

@@ -30,6 +30,7 @@ vi.mock("@/server/actions/admin-newsletter", () => actions);
 const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
+import { EditLangProvider, LangSwitch } from "@/components/admin/EditLang";
 import { NewsletterCampaignEditor, type CampaignEditorView, type TestTarget } from "@/components/admin/NewsletterCampaignEditor";
 import type { Progress } from "@/server/newsletter-campaigns";
 
@@ -69,8 +70,11 @@ const later = () =>
     await new Promise((r) => setTimeout(r, 450));
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   });
+// (the page's ET | RU switch is in the page's heading, not in the editor: the test puts it beside it, under the panel's provider)
 const show = async (campaign: CampaignEditorView | null, testTargets: TestTarget[] = TARGETS, gated = false) => {
-  await act(async () => root.render(createElement(NewsletterCampaignEditor, { campaign, links: ["/koolitused"], testTargets, gated })));
+  await act(async () =>
+    root.render(createElement(EditLangProvider, null, createElement(LangSwitch), createElement(NewsletterCampaignEditor, { campaign, links: ["/koolitused"], testTargets, gated }))),
+  );
   await later();
 };
 const click = async (el: Element | null) => {
@@ -97,6 +101,7 @@ const submit = async () => {
 const frame = () => $<HTMLIFrameElement>("[data-campaign-preview-frame]");
 
 beforeEach(() => {
+  localStorage.clear(); // (the language is kept per device)
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -158,8 +163,8 @@ describe("a draft", () => {
     expect(frame()!.getAttribute("srcdoc")).toBe("<!doctype html><p>RU Первый абзац.</p>");
     expect(text("[data-campaign-preview-subject]")).toBe("Осеннее предложение");
     expect($("[data-campaign-preview-fallback]")).toBeNull();
-    // the text field's own switch to Russian, and the Russian text emptied: the Russian subscribers get the Estonian mail
-    await click($('[data-i18n="body"]')!.parentElement!.querySelector('[data-lang="ru"]'));
+    // the page's switch to Russian (the preview's own is left as it is), and the Russian text emptied: the Russian subscribers get the Estonian mail
+    await click($('[data-edit-lang-switch] [data-edit-lang="ru"]'));
     expect($('[data-i18n="body"]')!.getAttribute("data-lang-field")).toBe("ru");
     await type($('[data-i18n="body"]'), "");
     await later();

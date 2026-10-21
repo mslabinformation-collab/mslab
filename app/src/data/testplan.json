@@ -476,7 +476,7 @@
         "Kirjuta „Tekst“ kahe lõiguna, nende vahele tühi rida.",
         "Vali „Pilt“: mõni oma flaier või foto.",
         "Kirjuta „Kood“: proov3, „Nupu tekst“: Vaata koolitusi ja „Nupu aadress“: /koolitused.",
-        "Lülita „Teema“, „Tekst“ ja „Nupu tekst“ vene keelele ja kirjuta need vene keeles.",
+        "Vali lehe päises „Sisu keel“ juures RU ning kirjuta „Teema“, „Tekst“ ja „Nupu tekst“ vene keeles.",
         "Vajuta „Salvesta“ ja vaheta eelvaate kohal keelt."
       ],
       "expect": [
@@ -489,8 +489,8 @@
       "why": "Maria näeb enne saatmist täpselt, milline kiri tellijale läheb.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-20T06:45:17.159Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-uudiskiri-kampaania-proov",
@@ -1071,18 +1071,51 @@
       "href": "/admin/koolitused",
       "steps": [
         "Ava mõni koolitus.",
-        "Vajuta välja „Lühikirjeldus“ juures „RU“.",
-        "Vaata, mis on välja juures, kui vene tekst puudub.",
+        "Vajuta lehe päises „Sisu keel“ juures „RU“.",
+        "Vaata välja „Lühikirjeldus“ juures, mis on näha, kui vene tekst puudub.",
         "Ava sama koolitus avalikul lehel vene keeles."
       ],
       "expect": [
+        "Välja kohal on eestikeelne tekst märkega „ET“.",
         "Tühja vene välja juures on märge „tõlge tulekul“.",
         "Vene lehel on siis näha eestikeelne tekst.",
         "Täidetud vene tekst on vene lehel näha."
       ],
       "why": "Vene pool ei tohi jääda tühjaks.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-keel-lehel",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Sisu keel lehe päises",
+      "href": "/admin/avaleht",
+      "steps": [
+        "Ava „Avaleht“ ja vaata lehe päist: seal on „Sisu keel“ ja kaks nuppu, „ET“ ja „RU“.",
+        "Vajuta „RU“.",
+        "Vaata päist: kui mõnel väljal on eestikeelne tekst ja vene tekst puudub, on seal rida „RU puudub … väljal“.",
+        "Vajuta „Järgmine →“ paar korda.",
+        "Lae leht uuesti ja ava „Koolitaja“.",
+        "Vajuta tühja vene välja all „Kopeeri eesti keelest“.",
+        "Vajuta „ET“."
+      ],
+      "expect": [
+        "Kõik lehe väljad lülituvad korraga vene keelele ja iga välja kohal on eestikeelne tekst märkega „ET“.",
+        "Rida „RU puudub … väljal“ loendab väljad, kus vene tekst puudub.",
+        "„Järgmine →“ viib kursori järgmisele tühjale vene väljale, lehe järjekorras.",
+        "Pärast uuesti laadimist ja teisel lehel on valitud keel sama.",
+        "„Kopeeri eesti keelest“ paneb välja eestikeelse teksti, märge „tõlge tulekul“ kaob ja loendur väheneb.",
+        "Nupul „ET“ näed eestikeelset teksti, vene tekst jääb alles."
+      ],
+      "why": "Maria näeb ühe pilguga, mis jäi venekeelsena kirjutamata.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitus-margis",
@@ -1480,7 +1513,7 @@
         "Ava „Seaded“ ja keri kaardini „Lepingud“.",
         "Jäta „Kontaktkoolituse leping“ all „Pealkiri“ tühjaks ja vajuta „Salvesta lepingud“.",
         "Kirjuta eesti keeles „Pealkiri“ ja „Tekst“, kus on {nimi}, {koolitus} ja {hind}.",
-        "Vali RU ja kirjuta sama vene keeles.",
+        "Vali lehe päises „Sisu keel“ juures RU ja kirjuta sama vene keeles.",
         "Vajuta „Salvesta lepingud“.",
         "Ava kontaktkoolituse leht, vali tulevane kuupäev ja vajuta ruudu all „Loe lepingut“."
       ],
@@ -1495,8 +1528,8 @@
       "why": "Lepingu teksti kirjutab Maria ise.",
       "risk": "high",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-naidisleping",
@@ -1509,7 +1542,7 @@
         "Ava „Seaded“ ja keri kaardini „Lepingud“.",
         "Muuda „Pealkiri“ ja „Tekst“, aga ära salvesta.",
         "Vajuta „Näidisleping (PDF)“.",
-        "Vali RU, kirjuta vene tekst ja vajuta „Näidisleping vene keeles (PDF)“.",
+        "Vali lehe päises „Sisu keel“ juures RU, kirjuta vene tekst ja vajuta „Näidisleping vene keeles (PDF)“.",
         "Lae leht uuesti ja vaata „Pealkiri“."
       ],
       "expect": [
@@ -1522,8 +1555,8 @@
       "why": "Maria näeb lepingut enne, kui keegi seda kinnitab.",
       "risk": "med",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-laadimine-viga",

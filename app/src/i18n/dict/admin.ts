@@ -1223,11 +1223,19 @@ export const adminEt = {
   },
 
   // Content fields in two languages (I18nInput, ListEditor). RU may stay empty: the public site then shows the ET text,
-  // and only the admin sees "tõlge tulekul".
+  // and only the admin sees "tõlge tulekul". One page-level switch („Sisu keel“, EditLang.tsx LangSwitch) sets the language of every field
+  // (README §1.9); `switch` is the name of a preview's own switch (PreviewLangSwitch).
   i18n: {
     lang: { et: "ET", ru: "RU" },
     langName: { et: "eesti keeles", ru: "vene keeles" },
     switch: "Keel: {label}",
+    contentLang: "Sisu keel",
+    // beside the switch in RU mode, while fields have Estonian text and no Russian: „RU puudub 3 väljal“ and the jump to the next of them
+    ruMissing: "RU puudub {n} väljal",
+    next: "Järgmine →",
+    // in RU mode, above a field: the Estonian text with this tag; an empty RU field offers the copy
+    etTag: "ET",
+    copyFromEt: "Kopeeri eesti keelest",
     missing: "tõlge tulekul",
     missingHint: "Venekeelne tekst puudub: vene lehel on seni näha eestikeelne.",
   },

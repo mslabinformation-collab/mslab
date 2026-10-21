@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
-import { signInAsAdmin } from "./admin-login";
+import { editLang, signInAsAdmin } from "./admin-login";
 import { PROD_ENV } from "./prod-build";
 import { DEV_ENV } from "./server";
 import { PROD_BUILD } from "./target";
@@ -649,14 +649,13 @@ test.describe("signed in", () => {
       await expect(ru.getByText("E2E teine lõik.")).toBeVisible();
       await expect(ru.getByText("Отписаться от рассылки")).toBeVisible();
 
-      // with its Russian texts: the Russian preview follows the typing
+      // with its Russian texts (the page's switch: every field of the editor in Russian): the Russian preview follows the typing
+      await editLang(page, "ru");
       for (const [key, value] of [
         ["subject", "E2E тема"],
         ["body", "E2E русский абзац."],
         ["buttonLabel", "Смотреть курсы"],
       ] as const) {
-        const field = form.locator(`[data-i18n="${key}"]`);
-        await field.locator("xpath=..").locator('[data-lang="ru"]').click();
         await form.locator(`[data-i18n="${key}"]`).fill(value);
       }
       await expect(ru.getByText("E2E русский абзац.")).toBeVisible();

@@ -5,6 +5,7 @@ import { SITE_LIMITS, type PackageDraft } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { savePractice } from "@/server/actions/admin-site";
+import { LangSwitch } from "./EditLang";
 import { I18nInput } from "./I18nInput";
 import { ListEditor } from "./ListEditor";
 import { SaveBar } from "./SaveBar";
@@ -32,9 +33,12 @@ export function PracticeEditor({ initial, codes }: { initial: Loaded<Record<stri
           <h1 className={ui.h1}>{t.title}</h1>
           <p className={ui.lead}>{t.lead}</p>
         </div>
-        <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/praktika" target="_blank" rel="noopener">
-          {adminEt.editor.viewSite} ↗<span className={ui.sr}> ({adminEt.editor.newWindow})</span>
-        </a>
+        <div className={ui.headAside}>
+          <LangSwitch />
+          <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/praktika" target="_blank" rel="noopener">
+            {adminEt.editor.viewSite} ↗<span className={ui.sr}> ({adminEt.editor.newWindow})</span>
+          </a>
+        </div>
       </div>
 
       {codes.length === 0 ? (

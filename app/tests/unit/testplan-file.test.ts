@@ -435,11 +435,16 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
       expect(markedSince(check.markedAt), id).toBe(true);
       expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-21T00:00:00.000Z"), id).not.toBeNull();
     }
-    // the two whose words and meaning did not change keep the instant the 18.10 deploy stamped
-    for (const id of ["avalik-uudiskiri-kampaania", "avalik-uudiskiri-kampaania-kopeeri"]) {
-      expect(item(id).mark, id).toBe("new");
-      expect(markedSince(item(id).markedAt), id).toBe(true);
-    }
+    // the one whose words and meaning did not change keeps the instant the 18.10 deploy stamped
+    expect(item("avalik-uudiskiri-kampaania-kopeeri").mark).toBe("new");
+    expect(markedSince(item("avalik-uudiskiri-kampaania-kopeeri").markedAt)).toBe(true);
+    // „Kampaania kirjutamine ja eelvaade“: its Russian step names the page's „Sisu keel“ switch now (admin UX pass, Task 12) instead of a switch on each field. Same
+    // check, same meaning, other words: `reworded`, which reopens no answer.
+    const writing = item("avalik-uudiskiri-kampaania");
+    expect(writing.mark).toBe("reworded");
+    expect(writing.markedAt).toBe("deploy");
+    expect(text("avalik-uudiskiri-kampaania")).toContain("„Sisu keel“");
+    expect(appliesAt(writing as unknown as TestItem, plan as unknown as TestPlan, "2026-10-21T00:00:00.000Z")).toBeNull();
   });
 
   test("the confirmation of „Saada kõigile“ and the result of „Saada proov“ name the gate notice in the page's words (the final review's I1)", () => {
@@ -618,5 +623,34 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     expect(item("konto-andmed").steps.join("\n")).toContain("„Saada mulle uudiskirja“");
     // and nothing between them takes Proov 1 off the list
     for (const id of order.slice(at("konto-andmed") + 1, at("kirjad-tervituskiri"))) expect(text(id), id).not.toMatch(/Loobu uudiskirjast|uudiskirja(st)? (välja|loobu)/);
+  });
+});
+
+describe("the page's language switch (admin UX pass, Task 12)", () => {
+  const find = (id: string) => {
+    const found = plan.items.find((i) => i.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const whole = (id: string) => [...find(id).steps, ...find(id).expect].join("\n");
+  const t = adminEt.i18n;
+
+  test("„Sisu keel lehe päises“ is a new check in Haldus, quoting the switch's words as the page shows them", () => {
+    const check = find("haldus-keel-lehel");
+    expect(check).toMatchObject({ area: "haldus", who: "maria", writes: false, mark: "new", markedAt: "deploy", href: "/admin/avaleht" });
+    for (const word of [t.contentLang, t.lang.et, t.lang.ru, t.next, t.copyFromEt, t.missing, t.etTag]) expect(whole("haldus-keel-lehel"), word).toContain(`„${word}“`);
+    expect(whole("haldus-keel-lehel")).toContain(`„${t.ruMissing.replace("{n} ", "… ")}“`);
+  });
+
+  test("the checks that switched a field's language by its own pills name the page's „Sisu keel“ now, and are reworded (no answer reopens)", () => {
+    for (const id of ["haldus-ru-tekst", "haldus-seaded-lepingud", "haldus-seaded-naidisleping", "avalik-uudiskiri-kampaania"]) {
+      const check = find(id);
+      expect(check.mark, id).toBe("reworded");
+      expect(check.markedAt, id).toBe("deploy");
+      expect(find(id).steps.join("\n"), id).toContain(`„${t.contentLang}“`);
+      expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-21T00:00:00.000Z"), id).toBeNull();
+    }
+    // no check sends her to a switch on a field any more
+    expect(plan.items.flatMap((i) => i.steps).filter((s) => /välja „[^“]+“ juures „RU“/.test(s))).toEqual([]);
   });
 });

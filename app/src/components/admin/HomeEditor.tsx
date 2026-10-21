@@ -6,6 +6,7 @@ import { SITE_LIMITS } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import { saveHome } from "@/server/actions/admin-site";
 import type { HomeValues } from "@/server/admin-site";
+import { LangSwitch } from "./EditLang";
 import { FaqEditor } from "./FaqEditor";
 import { I18nInput } from "./I18nInput";
 import { SaveBar } from "./SaveBar";
@@ -34,9 +35,12 @@ export function HomeEditor({ initial, links }: { initial: Loaded<HomeValues>; li
           <h1 className={ui.h1}>{t.title}</h1>
           <p className={ui.lead}>{t.lead}</p>
         </div>
-        <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/" target="_blank" rel="noopener">
-          {adminEt.editor.viewSite} ↗<span className={ui.sr}> ({adminEt.editor.newWindow})</span>
-        </a>
+        <div className={ui.headAside}>
+          <LangSwitch />
+          <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/" target="_blank" rel="noopener">
+            {adminEt.editor.viewSite} ↗<span className={ui.sr}> ({adminEt.editor.newWindow})</span>
+          </a>
+        </div>
       </div>
 
       <div className={styles.stack}>

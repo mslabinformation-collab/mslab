@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AdminIcon } from "@/components/admin/AdminIcon";
 import { CampaignsPanel, campaignEditorView, campaignListRow } from "@/components/admin/CampaignsPanel";
 import { getAdminCounts } from "@/components/admin/data";
+import { LangSwitch } from "@/components/admin/EditLang";
 import type { TestTarget } from "@/components/admin/NewsletterCampaignEditor";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
@@ -51,8 +52,8 @@ export default async function NewsletterPage({ searchParams }: Props) {
   return search.vaade === "kampaaniad" ? campaignsPage(email, one(search.kampaania)) : subscribersPage(email, search);
 }
 
-/** The page's heading and its two views. */
-function Top({ view }: { view: "subscribers" | "campaigns" }) {
+/** The page's heading and its two views. `editing`: a campaign's editor is open, so the heading has the page's ET | RU switch for its fields. */
+function Top({ view, editing = false }: { view: "subscribers" | "campaigns"; editing?: boolean }) {
   const t = adminEt.newsletter;
   return (
     <>
@@ -71,6 +72,11 @@ function Top({ view }: { view: "subscribers" | "campaigns" }) {
             <a className={`${ui.btn} ${ui.secondary}`} href="/api/admin/subscribers.csv" download data-csv="all">
               {t.csvAll}
             </a>
+          </div>
+        )}
+        {view === "campaigns" && editing && (
+          <div className={ui.headAside}>
+            <LangSwitch />
           </div>
         )}
       </div>
@@ -167,7 +173,7 @@ async function campaignsPage(email: string, kampaania: string) {
 
   return (
     <div className={ui.page}>
-      <Top view="campaigns" />
+      <Top view="campaigns" editing={selected !== null} />
       <CampaignsPanel
         campaigns={rows.map((r) => campaignListRow(r, progress.get(r.id) ?? null))}
         selected={selected}

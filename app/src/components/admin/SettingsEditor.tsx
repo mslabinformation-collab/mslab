@@ -7,6 +7,7 @@ import { adminEt } from "@/i18n/dict/admin";
 import { saveSettings } from "@/server/actions/admin-site";
 import type { SettingsValues } from "@/server/admin-site";
 import { ContractPlaceholders } from "./ContractTexts";
+import { LangSwitch } from "./EditLang";
 import { I18nInput } from "./I18nInput";
 import { SaveBar } from "./SaveBar";
 import { TextField } from "./TextField";
@@ -64,6 +65,9 @@ export function SettingsEditor({ initial, admins }: { initial: Loaded<SettingsVa
           <p className={ui.eyebrow}>{t.eyebrow}</p>
           <h1 className={ui.h1}>{t.title}</h1>
           <p className={ui.lead}>{t.lead}</p>
+        </div>
+        <div className={ui.headAside}>
+          <LangSwitch />
         </div>
       </div>
 
