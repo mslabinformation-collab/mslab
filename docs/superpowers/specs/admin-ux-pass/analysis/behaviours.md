@@ -39,7 +39,7 @@ Read-only analysis, 21.10.2026, `main` at 6832ccf. Nothing in the repo was edite
    - the UI.
 
    The hand-off's "certificates keep their running number (no yearly reset)" is wrong: certificates reset yearly too (certificate spec D2).
-8. **Migrations:** 5 new ones are required (0018–0022), because 0017 is already claimed by the instalments spec (`docs/…/2026-10-20-instalments-design.md:62`). Up to 3 more are optional (see "Migrations needed").
+8. **Migrations:** 5 new ones are required, and the UX pass takes **0017** (`content_drafts`) first: the instalments spec had claimed 0017 (`docs/…/2026-10-20-instalments-design.md:62`), but that work waits on Montonio and renumbers to the next free number (the UX pass spec §7). The numbers 0018–0022 below were counted from 0018; each later migration takes the next free number when built. Up to 3 more are optional (see "Migrations needed").
 
 ---
 
@@ -862,16 +862,16 @@ These change server behaviour, and HO Part 1 says such changes go on the B list.
 
 ## Migrations needed
 
-**0017 is taken.** The instalments spec claims it (`docs/…/2026-10-20-instalments-design.md:62`: `payment_choice` gains `financing`, plus the `financing` setting). The UX pass therefore starts at **0018**. Per `docs/deploy.md:103-115`: apply on Railway by hand before the deploy, keep everything additive, and update the migration count in deploy.md.
+**0017 goes to the UX pass.** The instalments spec had claimed it (`docs/…/2026-10-20-instalments-design.md:62`: `payment_choice` gains `financing`, plus the `financing` setting), but that work waits on Montonio, so it renumbers to the next free number (the UX pass spec §7) and the UX pass starts at **0017** (`0017_content_drafts`, piece 1). The numbers in the table below were counted from 0018 and move down by one in the same way: each takes the next free number when built. Per `docs/deploy.md:103-115`: apply on Railway by hand before the deploy, keep everything additive, and update the migration count in deploy.md.
 
 **Required: 5**
 
 | # | For | Change |
 |---|---|---|
-| 0018 | B2, B18, and the contract texts (unless those use a `settings` key) | new table `content_drafts(entity text, entity_id int, part text, value jsonb, base_version text, version int, updated_at, updated_by)`, unique (entity, entity_id, part) |
+| 0017 (first written as 0018) | B2, B18, and the contract texts (unless those use a `settings` key) | new table `content_drafts(entity text, entity_id int, part text, value jsonb, base_version text, version int, updated_at, updated_by)`, unique (entity, entity_id, part) |
 | 0019 | B4 | new table `manual_payments(id, registration_id fk, amount_cents, paid_on, method, invoice_id fk null, request_key unique, created_at, created_by)` |
 | 0020 | B5 | `lesson_files.removed_at timestamptz null` (plus an index if wanted) |
-| 0021 | B15 | `test_attempts.review_draft jsonb null`, `review_draft_for timestamptz null`. Skip it if B15 stores its draft in 0018's table, which brings the count to 4. |
+| 0021 | B15 | `test_attempts.review_draft jsonb null`, `review_draft_for timestamptz null`. Skip it if B15 stores its draft in 0017's table, which brings the count to 4. |
 | 0022 | B22, plus B6's badge clearing | `ALTER TYPE payment_status ADD VALUE 'replaced'`; `payments.check_reason text not null default ''`; `payments.checked_at timestamptz null` |
 
 **Optional: up to 3, each avoidable**
@@ -902,7 +902,7 @@ These change server behaviour, and HO Part 1 says such changes go on the B list.
 - Then port the protocol screen to the shared engine, with B13's „Taasta minu tekst“.
 - Then B3 per editor as each one moves.
 
-**Phase 3: draft layer (0018)**
+**Phase 3: draft layer (0017)**
 1. B2 infrastructure: the table, publish/discard, `draftMode` preview, PublishBar.
 2. Popup, home, trainer and practice.
 3. Posts.

@@ -18,7 +18,7 @@ Every phase after this one changes behaviour that some checks describe. So the p
 
 ## 2. Decisions
 
-- **D1. Where.** A page of the admin, `/admin/testimine`, titled "Testimine". It is for the two admins only (the admin session): reading and answering both need it. It is not in the main menu, because it is a temporary tool until the launch. It is linked from Avaleht as a card "Testimine: N avatud, M viga", visible to both admins.
+- **D1. Where.** A page of the admin, `/admin/testimine`, titled "Testimine". It is for the two admins only (the admin session): reading and answering both need it. It was not in the main menu at first, because it was a temporary tool until the launch; **since the admin UX pass (piece 1, 22.10; its spec Q5) „Testimine“ is in the menu for every admin**, with a badge of the admin's own failed checks. It is also linked from Avaleht as a card "Testimine: N avatud, M viga", visible to both admins.
 - **D2. Language** (my call). The plan and the page are in **Estonian only**. Maria tests in Estonian; Dim reads Estonian, because he approves the site's Estonian texts. The Russian side of the site is tested by checks that open a `/ru/` page and ask for what is visible. The Russian wording itself stays with the native-speaker check in the launch checklist.
 - **D3. The plan is a committed file**, `app/src/data/testplan.json`. It is replaced as a whole when the plan changes, and nothing in the code hard-codes an item id or a count.
 - **D4. The answers are one `settings` row**, key `testplan_answers`: `{ v: 1, answers: { <itemId>: { status, note, at, by } } }`. No migration.
