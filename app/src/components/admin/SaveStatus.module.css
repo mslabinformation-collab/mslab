@@ -1,0 +1,52 @@
+/* SaveStatus (admin UX pass, README §1.4): a chip 32px tall, radius 99, 600 12px. Three tones:
+   saved #eaf0eb / #2f5d46 · neutral (dirty, saving, checking) #ebe8e9 / #5e5559 · error (retry, invalid, signedOut, conflict, gone) #f3e6e6 / #8a3b3b.
+   Where it stands (the H1 row, a drawer's header, under the H1 on a phone) is the screen's business. */
+
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 99px;
+  font: 600 12px/1.25 var(--font-body);
+}
+
+.saved {
+  background: #eaf0eb;
+  color: var(--ok);
+}
+
+.neutral {
+  background: #ebe8e9;
+  color: #5e5559;
+}
+
+.error {
+  background: #f3e6e6;
+  color: var(--bad);
+}
+
+/* the words may wrap on a narrow screen; the chip then grows past its 32px rather than cut them */
+.text {
+  padding: 6px 0;
+}
+
+/* „Näita“: a 44px tap target that takes no more height than the chip (the negative margin gives the chip's 32px back) */
+.show {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -6px -8px -6px 0;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}

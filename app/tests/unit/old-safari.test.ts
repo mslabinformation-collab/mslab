@@ -84,6 +84,8 @@ const BROWSER_FILES = [
   "src/components/admin/menu-state.ts",
   // admin UX pass, Task 3: the menu's sections and groups, and the address-to-entry rule the sidebar runs in the browser
   "src/components/admin/sections.ts",
+  // admin UX pass, Task 8: the autosave's status and the save endpoints' answer (types), which SaveStatus and the editors' autosave share
+  "src/domain/autosave.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

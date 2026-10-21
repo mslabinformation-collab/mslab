@@ -167,6 +167,29 @@ export const adminEt = {
     undo: "Võta tagasi",
   },
 
+  // SaveStatus (admin UX pass, README §1.4; strings.md D1, D2): the one status chip of a screen. {time} is "HH:MM" in Tallinn; {thing} is the partitive
+  // of what the screen edits („registreerimist“). The saved chip shows a ✓ in front (the component's, not the text's).
+  autosave: {
+    saved: "Salvestatud {time}",
+    savedNoTime: "Salvestatud",
+    draft: "Mustand salvestatud {time}",
+    draftNoTime: "Mustand salvestatud",
+    // the phone page's short form of the draft chip (the plain one is just the time); drawers keep the full form
+    draftShort: "Mustand {time}",
+    draftShortNoTime: "Mustand",
+    dirty: "Salvestamata muudatused",
+    saving: "Salvestan…",
+    checking: "Kontrollin salvestatud teksti…",
+    retry: "Salvestamata — proovin uuesti",
+    invalid: "Salvestamata — kontrolli märgitud välja",
+    show: "Näita",
+    signedOut: "Salvestamata — logi uuesti sisse",
+    conflict: "Muudeti teises aknas — vaata üle",
+    gone: "Seda {thing} enam ei ole. Tekst on selles seadmes alles.",
+    // README's „{asja}“, for a screen that does not name its thing
+    goneThing: "asja",
+  },
+
   overview: {
     lead: "Sinu koolituskeskuse järgmised sammud.",
     primary: "Vaata registreerimisi",
