@@ -477,7 +477,8 @@
         "Vali „Pilt“: mõni oma flaier või foto.",
         "Kirjuta „Kood“: proov3, „Nupu tekst“: Vaata koolitusi ja „Nupu aadress“: /koolitused.",
         "Vali lehe päises „Sisu keel“ juures RU ning kirjuta „Teema“, „Tekst“ ja „Nupu tekst“ vene keeles.",
-        "Vajuta „Salvesta“ ja vaheta eelvaate kohal keelt."
+        "Vajuta „Salvesta“ ja vaheta eelvaate kohal keelt.",
+        "Vajuta lehe päises „Sisu keel“ juures „ET“."
       ],
       "expect": [
         "Eelvaates on logo, pilt kaardi laiuses, kaks lõiku, kood PROOV3 kastis ja nupp „Vaata koolitusi“.",
@@ -1073,10 +1074,10 @@
         "Ava mõni koolitus.",
         "Vajuta lehe päises „Sisu keel“ juures „RU“.",
         "Vaata välja „Lühikirjeldus“ juures, mis on näha, kui vene tekst puudub.",
+        "Vajuta lehe päises „Sisu keel“ juures „ET“.",
         "Ava sama koolitus avalikul lehel vene keeles."
       ],
       "expect": [
-        "Välja kohal on eestikeelne tekst märkega „ET“.",
         "Tühja vene välja juures on märge „tõlge tulekul“.",
         "Vene lehel on siis näha eestikeelne tekst.",
         "Täidetud vene tekst on vene lehel näha."
@@ -1096,20 +1097,21 @@
       "href": "/admin/avaleht",
       "steps": [
         "Ava „Avaleht“ ja vaata lehe päist: seal on „Sisu keel“ ja kaks nuppu, „ET“ ja „RU“.",
-        "Vajuta „RU“.",
-        "Vaata päist: kui mõnel väljal on eestikeelne tekst ja vene tekst puudub, on seal rida „RU puudub … väljal“.",
-        "Vajuta „Järgmine →“ paar korda.",
-        "Lae leht uuesti ja ava „Koolitaja“.",
-        "Vajuta tühja vene välja all „Kopeeri eesti keelest“.",
-        "Vajuta „ET“."
+        "Vajuta „RU“, lae leht uuesti, ava „Koolitaja“ ja siis uuesti „Avaleht“.",
+        "Tühjenda vene väljad „Küsimus 1“ ja „Vastus 1“ ning ära salvesta.",
+        "Vaata päist: seal on rida „RU puudub … väljal“ ja „Järgmine →“.",
+        "Vajuta „Järgmine →“ kaks korda.",
+        "Vajuta tühja välja „Küsimus 1“ all „Kopeeri eesti keelest“.",
+        "Vajuta lehe päises „Sisu keel“ juures „ET“.",
+        "Lae leht uuesti ilma salvestamata."
       ],
       "expect": [
         "Kõik lehe väljad lülituvad korraga vene keelele ja iga välja kohal on eestikeelne tekst märkega „ET“.",
-        "Rida „RU puudub … väljal“ loendab väljad, kus vene tekst puudub.",
-        "„Järgmine →“ viib kursori järgmisele tühjale vene väljale, lehe järjekorras.",
         "Pärast uuesti laadimist ja teisel lehel on valitud keel sama.",
+        "Rida „RU puudub … väljal“ loendab ka kokkuvolditud slaidide väljad, kus vene tekst puudub.",
+        "„Järgmine →“ viib kursori järgmisele tühjale vene väljale, lehe järjekorras, ja avab vajadusel slaidi.",
         "„Kopeeri eesti keelest“ paneb välja eestikeelse teksti, märge „tõlge tulekul“ kaob ja loendur väheneb.",
-        "Nupul „ET“ näed eestikeelset teksti, vene tekst jääb alles."
+        "Pärast nuppu „ET“ on väljad eesti keeles."
       ],
       "why": "Maria näeb ühe pilguga, mis jäi venekeelsena kirjutamata.",
       "risk": "low",
@@ -1515,6 +1517,7 @@
         "Kirjuta eesti keeles „Pealkiri“ ja „Tekst“, kus on {nimi}, {koolitus} ja {hind}.",
         "Vali lehe päises „Sisu keel“ juures RU ja kirjuta sama vene keeles.",
         "Vajuta „Salvesta lepingud“.",
+        "Vajuta lehe päises „Sisu keel“ juures „ET“.",
         "Ava kontaktkoolituse leht, vali tulevane kuupäev ja vajuta ruudu all „Loe lepingut“."
       ],
       "expect": [
@@ -1543,6 +1546,7 @@
         "Muuda „Pealkiri“ ja „Tekst“, aga ära salvesta.",
         "Vajuta „Näidisleping (PDF)“.",
         "Vali lehe päises „Sisu keel“ juures RU, kirjuta vene tekst ja vajuta „Näidisleping vene keeles (PDF)“.",
+        "Vajuta lehe päises „Sisu keel“ juures „ET“.",
         "Lae leht uuesti ja vaata „Pealkiri“."
       ],
       "expect": [

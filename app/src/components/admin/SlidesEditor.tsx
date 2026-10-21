@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { moveItem } from "@/domain/course-editor";
 import { mobileFocalForTone, newSlideDraft, SITE_LIMITS, type SlideDraft } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { mediaUrl } from "@/lib/media";
 import { Choice } from "./Choice";
+import { useEditLang } from "./EditLang";
 import { FocalPoint } from "./FocalPoint";
-import { I18nInput } from "./I18nInput";
+import { I18nInput, lacksRu } from "./I18nInput";
 import { SingleImage } from "./SingleImage";
 import { TextField } from "./TextField";
 import ui from "./ui.module.css";
@@ -16,6 +17,26 @@ import ed from "./editor.module.css";
 import styles from "./site-editor.module.css";
 
 let added = 0;
+
+/** The slide's texts in two languages, in the order they stand in its body. */
+const RU_FIELDS = ["kicker", "title", "text", "ctaLabel"] as const;
+type RuField = (typeof RU_FIELDS)[number];
+
+/**
+ * A collapsed slide's fields are not on the page (the body mounts when the slide is opened), so the ones that have Estonian text and no
+ * Russian tell the page themselves: „RU puudub {n} väljal“ counts them and „Järgmine →“ opens the slide and puts the cursor in the field. An open
+ * slide's fields register for themselves (I18nInput), so this stands only for the closed ones. It renders nothing.
+ */
+function CollapsedRu({ slide, anchor, reveal }: { slide: SlideDraft; anchor: string; reveal: (key: string, field: RuField) => void }) {
+  const { register } = useEditLang();
+  const missing = RU_FIELDS.filter((f) => lacksRu(slide[f])).join(",");
+  const key = slide.uid;
+  useEffect(() => {
+    const off = (missing ? missing.split(",") : []).map((f) => register(`${anchor}-${f}`, true, () => reveal(key, f as RuField), anchor));
+    return () => off.forEach((undo) => undo());
+  }, [register, anchor, missing, reveal, key]);
+  return null;
+}
 
 type Props = {
   slides: SlideDraft[];
@@ -38,7 +59,7 @@ export function SlidesEditor({ slides, update, err, hasErrors, links }: Props) {
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const root = useRef<HTMLDivElement>(null);
   // the element that gets the focus after the next render: a slide's control, or "Lisa slaid"
-  const focus = useRef<{ uid: string; tool: string } | "add" | null>(null);
+  const focus = useRef<{ uid: string; tool: string; field?: RuField } | "add" | null>(null);
 
   // the slides a refused save marked open by themselves (once per refusal; she may fold them again)
   const erroring = slides.filter((_, i) => hasErrors(`slides.${i}.`)).map((s) => s.uid);
@@ -54,9 +75,20 @@ export function SlidesEditor({ slides, update, err, hasErrors, links }: Props) {
     if (!target) return;
     focus.current = null;
     if (target === "add") root.current?.querySelector<HTMLElement>("[data-add-slide]")?.focus();
-    else root.current?.querySelector<HTMLElement>(`[data-slide="${CSS.escape(target.uid)}"] [data-tool="${target.tool}"]`)?.focus();
+    else if (target.field) {
+      // „Järgmine →“ opened the slide: the cursor goes into the field's Russian text, and the field to the middle of the screen
+      const i = slides.findIndex((s) => s.uid === target.uid);
+      const field = root.current?.querySelector<HTMLElement>(`[data-slide="${CSS.escape(target.uid)}"] [data-i18n="slides.${i}.${target.field}"]`);
+      field?.focus({ preventScroll: true });
+      field?.scrollIntoView?.({ block: "center" });
+    } else root.current?.querySelector<HTMLElement>(`[data-slide="${CSS.escape(target.uid)}"] [data-tool="${target.tool}"]`)?.focus();
   });
 
+  /** „Järgmine →“ at a collapsed slide's field: open the slide (a new Set even when it is open, so the page renders and the cursor follows). */
+  const reveal = useCallback((key: string, field: RuField) => {
+    focus.current = { uid: key, tool: "toggle", field };
+    setOpen((o) => new Set([...o, key]));
+  }, []);
   const toggle = (id: string) =>
     setOpen((o) => {
       const n = new Set(o);
@@ -99,7 +131,8 @@ export function SlidesEditor({ slides, update, err, hasErrors, links }: Props) {
             const bodyId = `${uid}-${s.uid}`;
             const firstLine = s.title.et.split("\n").join(" ").trim();
             return (
-              <li key={s.uid} className={styles.slide} data-slide={s.uid} data-tone={s.tone}>
+              <li key={s.uid} id={`${bodyId}-slide`} className={styles.slide} data-slide={s.uid} data-tone={s.tone}>
+                {!expanded && <CollapsedRu slide={s} anchor={`${bodyId}-slide`} reveal={reveal} />}
                 <div className={styles.slideHead}>
                   <button type="button" className={styles.slideToggle} aria-expanded={expanded} aria-controls={bodyId} onClick={() => toggle(s.uid)} data-tool="toggle">
                     {s.imageKey ? (

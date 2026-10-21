@@ -7,7 +7,8 @@ import { EditLangProvider, LangSwitch } from "@/components/admin/EditLang";
 import { FaqEditor } from "@/components/admin/FaqEditor";
 import { I18nInput, PreviewLangSwitch } from "@/components/admin/I18nInput";
 import { ListEditor } from "@/components/admin/ListEditor";
-import type { FaqDraft } from "@/domain/site-editor";
+import { SlidesEditor } from "@/components/admin/SlidesEditor";
+import { newSlideDraft, type FaqDraft, type SlideDraft } from "@/domain/site-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import type { I18n } from "@/i18n/field";
 import { Check } from "@/server/edit-check";
@@ -345,6 +346,76 @@ describe("lists and the FAQ follow the page", () => {
     expect(row.querySelector("[data-et-ref]")!.textContent).toBe("ETEsimene");
     await click(row.querySelector("[data-copy-et]"));
     expect(row.querySelector<HTMLInputElement>("[data-lang-field]")!.value).toBe("Esimene");
+  });
+});
+
+describe("a collapsed slide", () => {
+  // The home page's slides start folded, and a slide's fields are only on the page once it is opened: the folded ones still count, and „Järgmine →“ opens one.
+  const slide = (uid: string, patch: Partial<SlideDraft>): SlideDraft => ({ ...newSlideDraft(uid), ...patch });
+  const SLIDES: SlideDraft[] = [
+    slide("s1", { kicker: { et: "Lisa 1", ru: "Доп 1" }, title: { et: "Pealkiri 1", ru: "" }, text: { et: "Tekst 1", ru: "Текст 1" }, ctaLabel: { et: "Vaata", ru: "Смотреть" } }),
+    slide("s2", { kicker: { et: "Lisa 2", ru: "Доп 2" }, title: { et: "Pealkiri 2", ru: "Заголовок 2" }, text: { et: "Tekst 2", ru: "Текст 2" }, ctaLabel: { et: "Vaata", ru: "Смотреть" } }),
+    slide("s3", { kicker: { et: "Lisa 3", ru: "" }, title: { et: "Pealkiri 3", ru: "Заголовок 3" }, text: { et: "Tekst 3", ru: "" }, ctaLabel: { et: "", ru: "" } }),
+  ];
+  function Slides({ initial = SLIDES }: { initial?: SlideDraft[] }) {
+    const [slides, setSlides] = useState(initial);
+    return createElement(
+      "div",
+      null,
+      createElement(SlidesEditor, { slides, update: (fn: (s: SlideDraft[]) => SlideDraft[]) => setSlides(fn), err: () => undefined, hasErrors: () => false, links: [] }),
+      createElement(I18nInput, { label: "Lause", name: "statement", value: { et: "Lause", ru: "" }, onChange: () => {} }),
+    );
+  }
+  const toggle = (uid: string) => $<HTMLButtonElement>(`[data-slide="${uid}"] [data-tool="toggle"]`)!;
+
+  test("the fields of folded slides are counted: ET text and no RU, wherever they stand", async () => {
+    await show(createElement(Slides));
+    expect($$("[data-slide] [data-lang-field]")).toHaveLength(0); // all three are folded: none of their fields is on the page
+    expect(missingLine()).toBeNull(); // (ET mode)
+    await click(seg("ru"));
+    // slide 1's title, slide 3's kicker and text, and the field under the slides
+    expect(missingLine()!.textContent).toBe("RU puudub 4 väljal" + "Järgmine →");
+  });
+
+  test("„Järgmine →“ opens the slide and puts the cursor in its Russian field, slide by slide, in page order, and on round the page", async () => {
+    await show(createElement(Slides));
+    await click(seg("ru"));
+    await click(nextButton());
+    expect(toggle("s1").getAttribute("aria-expanded")).toBe("true");
+    expect(toggle("s2").getAttribute("aria-expanded")).toBe("false");
+    let active = document.activeElement as HTMLInputElement;
+    expect(active.getAttribute("data-i18n")).toBe("slides.0.title");
+    expect(active.getAttribute("data-lang-field")).toBe("ru");
+    expect(active.value).toBe("");
+    expect(active.placeholder).toBe("Pealkiri 1");
+    expect(missingLine()!.textContent).toContain("RU puudub 4 väljal"); // the opened slide's field is counted once, not twice
+
+    await click(nextButton());
+    expect(toggle("s3").getAttribute("aria-expanded")).toBe("true");
+    expect(toggle("s2").getAttribute("aria-expanded")).toBe("false"); // the slide with nothing missing stays folded
+    active = document.activeElement as HTMLInputElement;
+    expect(active.getAttribute("data-i18n")).toBe("slides.2.kicker");
+    await click(nextButton());
+    expect((document.activeElement as HTMLElement).getAttribute("data-i18n")).toBe("slides.2.text");
+    await click(nextButton());
+    expect((document.activeElement as HTMLElement).getAttribute("data-i18n")).toBe("statement");
+    await click(nextButton());
+    expect((document.activeElement as HTMLElement).getAttribute("data-i18n")).toBe("slides.0.title"); // round: slide 1 is open already
+  });
+
+  test("a field written in an opened slide is no longer counted; a slide folded again counts what it still lacks", async () => {
+    await show(createElement(Slides));
+    await click(seg("ru"));
+    await click(nextButton());
+    await type(document.activeElement, "Заголовок 1");
+    expect(missingLine()!.textContent).toContain("RU puudub 3 väljal");
+    await click(toggle("s3"));
+    await click(toggle("s3")); // opened and folded again: its two fields are counted by the folded slide now
+    expect(missingLine()!.textContent).toContain("RU puudub 3 väljal");
+    await click(toggle("s1")); // folded: its title is written, so it adds nothing
+    expect(missingLine()!.textContent).toContain("RU puudub 3 väljal");
+    await click(seg("et"));
+    expect(missingLine()).toBeNull();
   });
 });
 

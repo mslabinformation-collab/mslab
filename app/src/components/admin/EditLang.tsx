@@ -61,7 +61,7 @@ class LangStore {
 /** What a field reads the language from, and where the switch writes it. */
 type LangSource = { subscribe: (listener: () => void) => () => void; get: () => Lang; set: (lang: Lang) => void };
 
-type Entry = { missing: boolean; focus: () => void };
+type Entry = { missing: boolean; focus: () => void; anchor?: string };
 
 /**
  * The bilingual fields on the page, as they tell it: which of them have Estonian text and no Russian, and how to put the cursor in one.
@@ -84,9 +84,12 @@ class Registry {
 
   count = () => this.missing;
 
-  /** `id` is the id of the field's box in the document (its place on the page is its order); `focus` puts the cursor in it. Returns the way out. */
-  register = (id: string, missingRu: boolean, focus: () => void) => {
-    const entry: Entry = { missing: missingRu, focus };
+  /**
+   * `id` is the id of the field's box in the document (its place on the page is its order); `focus` puts the cursor in it. A field that is not on the
+   * page (a collapsed slide's) has no box of its own: `anchorId` is the id of the element it hides in, which gives it its place. Returns the way out.
+   */
+  register = (id: string, missingRu: boolean, focus: () => void, anchorId?: string) => {
+    const entry: Entry = { missing: missingRu, focus, anchor: anchorId };
     this.entries.set(id, entry);
     this.tally();
     return () => {
@@ -102,10 +105,12 @@ class Registry {
 
   /** Puts the cursor in the next field without its Russian text: the first after the one she was in, in page order, and the first of all after the last. */
   next = () => {
-    const open = [...this.entries].filter(([, e]) => e.missing).map(([id, e]) => ({ el: document.getElementById(id), focus: e.focus }));
+    const open = [...this.entries]
+      .filter(([, e]) => e.missing)
+      .map(([id, e]) => ({ el: document.getElementById(id) ?? (e.anchor ? document.getElementById(e.anchor) : null), focus: e.focus }));
     if (open.length === 0) return;
-    // in the order of the page, whatever order the fields registered in (one that became empty later registered later)
-    open.sort((a, b) => (a.el && b.el ? (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1) : a.el ? -1 : b.el ? 1 : 0));
+    // in the order of the page, whatever order the fields registered in (one that became empty later registered later); fields in one place keep theirs
+    open.sort((a, b) => (a.el && b.el ? (a.el === b.el ? 0 : a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1) : a.el ? -1 : b.el ? 1 : 0));
     const from = this.anchor?.isConnected ? this.anchor : null;
     const target = (from && open.find((x) => x.el && from.compareDocumentPosition(x.el) & Node.DOCUMENT_POSITION_FOLLOWING)) || open[0];
     target.focus();

@@ -191,6 +191,32 @@ test.describe("home page", () => {
     await expect(page.locator("[data-trainer-teaser]")).toContainText("E2E текст преподавателя.");
   });
 
+  test("„RU puudub“ counts the folded slides too, and „Järgmine →“ opens one and puts the cursor in its Russian field (nothing is saved)", async ({ page, context, visitorIp }) => {
+    await signIn(page, context, visitorIp);
+    await page.goto("/admin/avaleht");
+    await adminReady(page);
+    await editLang(page, "ru");
+    const first = page.locator("[data-slide]:visible").first();
+    const toggle = first.locator("[data-tool='toggle']");
+    const line = page.locator("[data-ru-missing]:visible");
+    const count = async () => Number(/(\d+) väljal/.exec((await line.textContent()) ?? "")?.[1]);
+    // slide 1 opened, its Russian title emptied on the screen, and folded again: the field is gone from the page, the count still has it
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
+    await first.locator('[data-i18n="slides.0.title"]').fill("");
+    await expect(line).toBeVisible();
+    const open = await count();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(first.locator("[data-lang-field]")).toHaveCount(0);
+    await expect.poll(count).toBe(open);
+    // „Järgmine →“: the slide opens and the cursor is in one of its Russian fields (the first missing one on the page)
+    await page.locator("[data-ru-next]:visible").click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(first.locator('[data-lang-field="ru"]:focus')).toHaveCount(1);
+    expect(await count()).toBe(open); // opened, its fields count once, not twice
+  });
+
   test("FAQ: a new question in ET and RU, moved to the top; the home page shows it first", async ({ page, context, visitorIp }, info) => {
     test.skip(!phone(info), "the phone project changes the FAQ; desktop the hero slides");
     await changing(["faq"]);

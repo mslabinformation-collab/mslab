@@ -642,6 +642,35 @@ describe("the page's language switch (admin UX pass, Task 12)", () => {
     expect(whole("haldus-keel-lehel")).toContain(`„${t.ruMissing.replace("{n} ", "… ")}“`);
   });
 
+  test("it makes its own gap: two Russian fields are emptied on the screen and not saved, so the count, „Järgmine →“ and the copy show whatever the data is; it says the line counts folded slides", () => {
+    const steps = find("haldus-keel-lehel").steps.join("\n");
+    expect(steps).toContain("Tühjenda vene väljad „Küsimus 1“ ja „Vastus 1“ ning ära salvesta.");
+    expect(steps.indexOf("Tühjenda")).toBeLessThan(steps.indexOf(`„${t.next}“`));
+    expect(steps.indexOf("Tühjenda")).toBeLessThan(steps.indexOf(`„${t.copyFromEt}“`));
+    expect(find("haldus-keel-lehel").writes).toBe(false);
+    expect(find("haldus-keel-lehel").expect.join("\n")).toContain("kokkuvolditud slaidide väljad");
+  });
+
+  test("a check that goes to RU ends with „ET“ under „Sisu keel“: the device keeps the language, and the next check starts in Estonian", () => {
+    for (const id of ["haldus-ru-tekst", "haldus-seaded-lepingud", "haldus-seaded-naidisleping", "avalik-uudiskiri-kampaania", "haldus-keel-lehel"]) {
+      const mentions = find(id).steps.filter((s) => s.includes(`„${t.contentLang}“`));
+      const last = mentions[mentions.length - 1];
+      expect(last, id).toContain(`„${t.lang.et}“`);
+      expect(last, id).not.toContain(t.lang.ru);
+    }
+    // what comes right after the campaign check edits the copy's Estonian „Teema“: nothing between puts it back in Russian
+    const order = plan.items.map((i) => i.id);
+    expect(order.indexOf("avalik-uudiskiri-kampaania-kopeeri")).toBeGreaterThan(order.indexOf("avalik-uudiskiri-kampaania"));
+  });
+
+  test("„Venekeelne tekst“ is reworded, not extended: its expectations are the ones it had", () => {
+    expect(find("haldus-ru-tekst").expect).toEqual([
+      "Tühja vene välja juures on märge „tõlge tulekul“.",
+      "Vene lehel on siis näha eestikeelne tekst.",
+      "Täidetud vene tekst on vene lehel näha.",
+    ]);
+  });
+
   test("the checks that switched a field's language by its own pills name the page's „Sisu keel“ now, and are reworded (no answer reopens)", () => {
     for (const id of ["haldus-ru-tekst", "haldus-seaded-lepingud", "haldus-seaded-naidisleping", "avalik-uudiskiri-kampaania"]) {
       const check = find(id);

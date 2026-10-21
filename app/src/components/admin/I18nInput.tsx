@@ -12,7 +12,7 @@ export type { Lang };
 
 const hasRu = (v: I18n) => Boolean(v.ru && v.ru.trim());
 /** An Estonian text without its Russian translation (an empty field is not "missing" anything yet). */
-const lacksRu = (v: I18n) => Boolean(v.et.trim()) && !hasRu(v);
+export const lacksRu = (v: I18n) => Boolean(v.et.trim()) && !hasRu(v);
 
 /**
  * ET / RU switch of a preview (the popup's and the newsletter's): two pills, which show the preview in one language or the other. The page's
