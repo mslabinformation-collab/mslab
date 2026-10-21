@@ -50,7 +50,7 @@ Everything in the design, in the README's order:
 - §2 the A screens;
 - §3 the B screens;
 - §4 the C screens;
-- §5 the behaviour changes B1–B22, each as its own commit;
+- §5 the behaviour changes B1–B22 (B11–B22 each as its own commit, as the README asks);
 - §6 the parked items as resolved there;
 - §7 the tokens.
 
@@ -61,41 +61,58 @@ Everything in the design, in the README's order:
 - **D1. Which source wins:**
   1. the README;
   2. where it is silent, the desktop prototype;
-  3. a phone short form only where a phone prototype draws one;
+  3. the phone prototype, for what only the phone shows (the top bar's page name, the badge sum on ≡, phone short forms);
   4. the notes in the prototypes last.
 
-  `analysis/strings.md` §4–5 lists the 28 disagreements and the 21 double wordings. Each is settled by this order.
-- **D2. B11–B22 are accepted.** The README's first page says B11–B20 are "still to decide". Its §5, parts 3 and 4, and the deck all say B1–B22 are accepted.
-- **D3. Hüpikaken (C4) is built from the README.**
-  - The „Lehel näidatakse" choice stays, is instant, and has an UndoBar.
-  - Each popup has one preview, which follows LangSwitch.
-  - The „Reeglid" text stays.
+  `analysis/strings.md` §4–5 lists the 28 disagreements and the 21 double wordings. The outcome of each, by this order, is written in its „Outcome" column. Two examples:
+  - The saved chip shows the ✓ the desktop mock draws.
+  - „Saada hinnang · {k} kinnitatud" drops „, 0 paranda" when nothing is to fix, as the mocks draw it.
 
-  Part 4 draws a single popup with the fields „Soodustus (%)" and „Kood kehtib"; the README does not, so they are not built. The route stays `/admin/kampaania`, as the README says ("Routes don't change"); Part 4 prints `/admin/hupikaken`.
-- **D4. The menu entry for the assessment screen.** The README highlights „Protokollid" for every `/admin/protokollid…` address. But `/admin/protokollid?ligipaas=` is A4's practical-work screen, whose header the design gives as „← Hindamine". That address highlights „Hindamine"; `?sessioon=` and `?registreering=` highlight „Protokollid".
+  Where the order cannot decide, the row says so, and Dim answers before the piece that needs it.
+- **D2. B11–B22 are accepted.** The README's first page says B11–B20 are "still to decide". Its §5, parts 3 and 4, and the deck all say B1–B22 are accepted.
+- **D3. Hüpikaken (C4): question for Dim, answered before piece 4.**
+  - **The README:** "„Lehel näidatakse" choice is instant with UndoBar; one preview that follows LangSwitch; the „Reeglid" text stays".
+  - **The Part 4 desktop mock** (the next source where the README is silent) draws:
+    - one popup, the newsletter sign-up with a discount code („Pakkumine": Pealkiri, Tekst, „Soodustus (%)", „Kood kehtib (päeva)");
+    - a two-state switch with „Avaneb uuele külastajale 8 s pärast · üks kord 30 päeva jooksul";
+    - the UndoBar „Hüpikaken peidetud.".
+  - **Today** there are two popups (the campaign offer and the newsletter sign-up), a three-way choice, and 6 s once per visit.
+  - **The conflict:** building the mock drops the campaign-offer popup and changes the public timing. Only a Part 3 note keeps the choice.
+  - The route stays `/admin/kampaania` ("Routes don't change"). Part 4 prints `/admin/hupikaken`.
+- **D4. The menu entry for the assessment screen.** The README highlights „Protokollid" for every `/admin/protokollid…` address. But the README's own A4 heading lists `?ligipaas=` (the practical-work screen) under Hindamine, and Part 2's practical-work frame draws the menu with „Hindamine" active. So that address highlights „Hindamine", and `?sessioon=` and `?registreering=` highlight „Protokollid".
 - **D5. Focus in Tagasiside** stays on the row after an action, as the README says; Part 4 says it moves to the next card.
-- **D6. Certificate numbers stay as they are** (B21's "keep their running number"). Today they restart each year (certificate D2), and nothing changes.
+- **D6. Certificate numbers: question for Dim, answered before piece 3.**
+  - **The design (B21):** "Certificates keep their running number (no yearly reset) unless Maria asks."
+  - **Today** they do restart each year: „MS LAB {year}-{nn}" (certificate D2).
+  - **The conflict:** the sentence reads as if it describes today. Read literally, it asks to stop the yearly reset.
 
 ## 5. Where the design is silent
 
-These are defaults for the builder. None of them adds a control, a field or a screen.
+These are defaults for the builder. None of them adds a control, a field, a text or a screen.
 
-- **S1. „Lisa laekumine" when a payment request is open.** If the registration has an unpaid request invoice („Maksmiseks"), the panel's receipt option marks that invoice paid (today's `markInvoicePaid`) instead of making a second invoice. Otherwise the student's „Maksa" would still charge it. The panel looks as designed.
-- **S2. Lesson media on a published course.** A video or file belongs to its lesson row, so an upload or removal acts on the row at once. On a course in a draft:
-  - a new module or lesson is a real row, kept out of the public page and the students' outline until „Avalda muudatused" (a flag, §7);
-  - everything else in the course, modules and lessons is drafted, as B18 says.
-- **S3. Text the design leaves unwritten.** The builder writes it in the design's style, marked Draft, and Dim sees it on the test page. The places:
+- **S2. Draft rows for new modules and lessons.**
+  - On a published course, a new module or lesson needs a real row, because videos and files hang on it. That row is kept out of the public page and the students' outline until „Avalda muudatused" (a flag, §7).
+  - Everything else is drafted, as B18 and §1.3/§1.8 say. That includes a lesson's file and video references: the upload goes to storage at once, and the reference waits in the draft.
+- **S3. Text the design leaves unwritten** is asked from Dim before the piece that needs it. Nothing is invented. The places:
   - the „Lisa laekumine" result when the payment stays under 50 %, when no receipt is made, and when the seller data is missing;
   - the screen-reader labels of the new badges;
   - an access that ran out by date;
-  - the facts line of the request cards.
-- **S4. „Saatsid juba 3 linki…" (B20)** is counted per typed address, allowed or not. The message then reveals nothing about which addresses are admins. The 1-minute wait in the sent text („saada uuesti 1 minuti pärast") is built as a rule.
+  - the facts line of the Individuaal, Praktika, Ootenimekiri and Muutmine request cards;
+  - the „Kustuta mustand" question (B17);
+  - UndoBar texts the design doesn't draw (a lesson file's „Eemalda", list-row removals);
+  - the fallback for S6.
+- **S4. „Saatsid juba 3 linki…" (B20)** is counted per typed address, allowed or not, so the message reveals nothing about which addresses are admins. „saada uuesti 1 minuti pärast" is shown as the design's advice. No rule is built behind it.
 - **S5. „Saada protokoll {eesnimi}le".** The ending follows the name: +„le" after a vowel, +„ile" after a consonant, for Latin and Cyrillic names alike.
-- **S6. „Töötlemisel {n}%"** uses Bunny's encode progress. Where Bunny gives none, it shows „Töötlemisel…".
-- **S7. The Maksed ja arved badge** counts what the design lists. A „Tühistatud pangas" payment counts for 14 days, the window the daily check already watches, because there is nothing that marks it handled.
+- **S6. „Töötlemisel {n}%"** uses Bunny's encode progress. The text for when Bunny gives none is in S3.
+- **S7. The Maksed ja arved badge** counts exactly what the design lists: unbilled paid payments, `kontroll` payments, and voided-after-paid ones.
 - **S8. A new post** („Lisa postitus +") gets a unique placeholder slug, so two new posts don't collide. The slug follows the title until the post is first published.
 
 ## 6. How the code does it
+
+The README names three mechanisms that the code does differently, with the same outcome:
+- its `save{Thing}Part` actions become route handlers (C1);
+- its `draft_json` becomes the `content_drafts` table (§7), because the home, trainer and popup parts span several tables, and a draft on `courses` would travel with the public course row;
+- its "preview cookie + `?mustand=1`" becomes `draftMode()` (C3).
 
 - **C1. Autosave goes through route handlers** under `/api/admin/…`.
   - Server actions can't send with `keepalive` on `pagehide`, and they redirect when the session has ended. A route answers 401, and the chip shows the design's signed-out state.
@@ -116,7 +133,7 @@ These are defaults for the builder. None of them adds a control, a field or a sc
 **Four migrations, all additive:**
 - **A drafts table** for B2, B18, the contract texts and B15: `content_drafts (entity, entity_id, part, value jsonb, base_version, version, updated_at, updated_by)`, unique on (entity, entity_id, part).
 - **A "not yet published" flag** on `course_modules` and `lessons`, for S2.
-- **`removed_at`** on the tables whose rows get an UndoBar removal (B5). Rows are purged after 10 s, plus the daily sweep.
+- **`removed_at`** on the tables whose rows get an UndoBar removal (B5): lesson files and manual reviews. Rows are purged after 10 s, plus the daily sweep. Each table gets its column in the piece that adds its UndoBar.
 - **On `payments`:** status `replaced` (B22) and `check_reason`, which holds „Topeltmakse — tagasta".
 
 **Numbering:** they take the next free numbers when built. The instalments spec reserved 0017, but that work waits on Montonio, so whichever ships second renumbers. Each migration is applied on Railway before the push (`docs/deploy.md`).
@@ -126,19 +143,19 @@ These are defaults for the builder. None of them adds a control, a field or a sc
 The design's order is global components first, then the A screens, then B, then C. That makes four pieces. Each piece gets its own plan, the subagent build, a final review, and a deploy to mslab.ee, still behind the gate.
 
 1. **Global components (README §1):**
-   - the sidebar and Shell (C2);
+   - the sidebar with its groups and badges (B6), and Shell (C2). The menu's „Protokollid" row opens the new index, so the index and its one-session shortcut (B8, B16, from A3) come here too;
    - `useAutosave`, SaveStatus, `useLeaveGuard` with the Drawer change;
    - ConfirmPanel and UndoBar;
    - the draft layer with PublishBar (C3);
    - LangSwitch with I18nInput, ListToolbar and the list tables;
    - the glossary.
 
-   Migrations: the drafts table, and `removed_at`.
-2. **The A screens (§2):** A1–A7, with B4, B6, B7, B8, B10, B11, B12, B14, B15, B16 and B22. Migration: `payments`.
-3. **The B screens (§3):** B1–B5, with B17, B18 and B21. Migration: the module and lesson flag.
-4. **The C screens (§4):** C1–C8, with B19 and B20.
+   Migration: the drafts table.
+2. **The A screens (§2):** A1–A7, with B4, B7, B10, B11, B12, B14, B15 and B22. Migration: `payments`.
+3. **The B screens (§3):** B1–B5, with B9, B17, B18 and B21. Migrations: the module and lesson flag, and `removed_at` on lesson files.
+4. **The C screens (§4):** C1–C8, with B19 and B20. Migration: `removed_at` on reviews.
 
-**B21 goes first, as the opening commit of piece 1.** Its server part, invoice numbers per year, must be live before 1 December 2026: today a December invoice silently erases a next-year number preset. Its Seaded line comes with B4 in piece 3.
+**B21 ahead of the order: Dim's OK asked.** Invoice numbers per year (B21) belong to the Seaded screen in piece 3, but its server part must be live before 1 December 2026: today a December invoice silently erases a next-year number preset. With Dim's OK it is the opening commit of piece 1, and its Seaded line comes with piece 3.
 
 **In every piece:**
 - The test plan follows the code (standing rule). Each behaviour change updates `src/data/testplan.json` with `redo`, `reworded` or `new` and `markedAt "deploy"`. Run the stamp before each push, then the test-plan tests again.
@@ -166,10 +183,14 @@ Each is amended in the commit that changes its rule:
 These are listed so nobody is surprised on the test page. They are not changed:
 - A cancelled registration can't be put back from the drawer. The status pills are „Ootab ettemaksu" / „Kinnitatud" only.
 - A payment added with „Lisa laekumine" and no receipt has no undo. The design undoes money through the receipt.
+- „Lisa laekumine" with the receipt ticked makes a new „Juba tasutud" invoice even when a payment request („Maksmiseks") is open. Part 2 draws exactly this case. The request stays „Tasumata", and the student's „Maksa" still offers it until Maria cancels it with „Tühista arve".
 - „Saada hinnang" with every point approved completes the course, issues the certificate and mails the student, with one press.
 - An unpublished e-course that already has students saves straight to the record. Those students see an edit at once.
-- On „Testimine", the „Muudetud" filter (the deploy's re-test marks) and „Jäta vahele" are gone.
-- The sign-in's sent text reads „Saatsime lingi aadressile {email}." for any address.
+- **On „Testimine":**
+  - The „Muudetud" filter and „Jäta vahele" are gone.
+  - „Kes" is „Mina" / „Kõik" instead of Kõik / Maria / Dim / Koos.
+  - The check rows draw no „Uuesti testida" / „Sõnastus muutus" / „Uus" tag. A check the deploy marks for re-testing simply shows as „Avatud" again.
+- The sign-in's sent text reads „Saatsime lingi aadressile {email}. See kehtib 15 minutit." for any address.
 
 ## 11. Out of scope
 
@@ -187,4 +208,4 @@ What the design leaves out, as its §6 lists:
 - How the components are split into files, and CSS beyond the design's numbers.
 - One generic autosave route or one per editor (C1).
 - How each editor's fields map to draft parts.
-- The Draft texts of S3.
+- Nothing else. The texts of S3 and the questions D3 and D6 go to Dim.
