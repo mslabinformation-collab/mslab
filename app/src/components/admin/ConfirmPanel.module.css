@@ -1,11 +1,15 @@
 /* ConfirmPanel (admin UX pass, README §1.6). The panel is ui.notice: bg #f0ebed, a 2px left border #9e8993 (var(--rose)) and the radius 0 14 14 0 below.
-   It stands where its trigger button stood. `div.panel` (and `.actions …`) outrank ui.notice and ui.btn whichever stylesheet loads last. */
+   It stands where its trigger button stood. `div.panel` (and `.actions …`) outrank ui.notice and ui.btn whichever stylesheet loads last.
+   The metrics are the prototype's ConfirmPanel (handoff "MS LAB Admin UX Pass.dc.html" §3.3, both mock-ups): padding 16px 18px, a column with
+   gap 10 between the question, each line and the buttons, the question 15px bold, the lines 13px, the buttons 8px apart with 4px of padding above. */
 
 div.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin: 0 0 16px;
-  padding: 16px 20px;
+  padding: 16px 18px;
   border-radius: 0 14px 14px 0;
-  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -21,14 +25,15 @@ div.panel:focus-visible {
 
 .question {
   margin: 0;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 /* the consequences, one plain line each */
 .lines {
   display: grid;
-  gap: 4px;
-  margin: 8px 0 0;
+  gap: 10px;
+  margin: 0;
   padding: 0 0 0 18px;
   color: var(--ink-soft);
   font-size: 13px;
@@ -37,8 +42,8 @@ div.panel:focus-visible {
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 14px;
+  gap: 8px;
+  padding-top: 4px;
 }
 
 /* the danger "yes": outline #c9a3a3 on #f5ebeb, text #8a3b3b (the send "yes" is the plain ink pill, ui.btn) */

@@ -1,4 +1,6 @@
 /* UndoBar (admin UX pass, README §1.7): bottom left, bg #222, radius 14, min-height 52; the button #3a3338, 44px. Full width on a phone.
+   The metrics are the prototype's UndoBar (handoff "MS LAB Admin UX Pass.dc.html" §3.3, and the same bar in Parts 2 and 4): padding 0 6px 0 16px,
+   gap 14, text 13px regular, the button a pill (radius 99, padding 0 14px, 600); on a phone the bar is absolute left 12 / right 12 / bottom 16.
    The region is fixed to the screen and takes no room (and no clicks) of its own; only the bar takes them. */
 
 .region {
@@ -7,16 +9,18 @@
   bottom: 16px;
   bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   z-index: 60;
-  width: min(480px, calc(100vw - 32px));
+  /* as wide as its words (the prototype's bar is align-self: flex-start), not wider than a comfortable line */
+  max-width: min(480px, calc(100vw - 32px));
   pointer-events: none;
 }
 
 .bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 14px;
   min-height: 52px;
-  padding: 4px 4px 4px 18px;
+  padding: 0 6px 0 16px;
   border-radius: 14px;
   background: #222;
   color: #fff;
@@ -27,16 +31,16 @@
 .text {
   flex: 1 1 auto;
   margin: 0;
-  font: 500 14px/1.4 var(--font-body);
+  font: 400 13px/1.4 var(--font-body);
 }
 
 .button {
   flex: none;
   min-width: 44px;
   min-height: 44px;
-  padding: 0 18px;
+  padding: 0 14px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 99px;
   background: #3a3338;
   color: #fff;
   font: 600 13px/1.2 var(--font-body);
@@ -54,7 +58,8 @@
 
 @media (max-width: 640px) {
   .region {
-    right: 16px;
-    width: auto;
+    left: 12px;
+    right: 12px;
+    max-width: none;
   }
 }
