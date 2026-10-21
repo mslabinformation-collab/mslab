@@ -132,11 +132,16 @@ export function Drawer({
       aria-label={label}
       data-drawer=""
       onCancel={(e) => {
+        // a file picker dismissed inside the drawer fires a bubbling cancel at its <input type=file>, which React hands on to here: not
+        // the drawer's Esc
+        if (e.target !== e.currentTarget) return;
         // Esc: the drawer closes itself (requestClose), after its question or the guard
         e.preventDefault();
         requestClose();
       }}
-      onClose={() => {
+      onClose={(e) => {
+        // the close of something inside the drawer (a dialog in it), handed on by React: not the drawer's
+        if (e.target !== e.currentTarget) return;
         const own = allowed.current;
         allowed.current = false;
         // a close the browser forced past the question or the guard (a second Esc at once): open again and ask

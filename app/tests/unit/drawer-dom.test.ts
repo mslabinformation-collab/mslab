@@ -150,6 +150,41 @@ describe("Drawer", () => {
     expect(document.querySelector("[data-leave-notice]")).toBeNull();
   });
 
+  it.each([
+    ["without confirmClose", false],
+    ["with confirmClose and unsaved text", true],
+  ])("a file picker dismissed inside the drawer (its bubbling cancel) does not close it nor ask, %s", async (_how, withConfirm) => {
+    const q = { question: adminEt.lessons.drawer.closeQuestion, yes: adminEt.lessons.drawer.closeYes, no: adminEt.lessons.drawer.closeNo };
+    const parts = [createElement("input", { key: "pick", type: "file", id: "pick" }), withConfirm && createElement(OldPart, { key: "old", dirty: true })];
+    await render(page(drawer(parts, withConfirm ? { confirmClose: q } : {})));
+    // the browser's cancel of a dismissed picker: at the input, bubbling (Chrome 113+, Firefox 91+, Safari 16.4+); never cancelable
+    const e = new Event("cancel", { bubbles: true, cancelable: false });
+    await act(async () => void document.getElementById("pick")!.dispatchEvent(e));
+    expect(dialog().open).toBe(true);
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(dialog().querySelector("[data-drawer-confirm]")).toBeNull();
+    expect(document.querySelector("[data-leave-notice]")).toBeNull();
+    // the drawer's own Esc still closes (and asks, with confirmClose)
+    await esc();
+    if (withConfirm) expect(dialog().querySelector("[data-drawer-confirm]")).not.toBeNull();
+    else expect(router.replace).toHaveBeenCalledWith("/admin/kalender", { scroll: false });
+  });
+
+  it.each([
+    ["without confirmClose", false],
+    ["with confirmClose and unsaved text", true],
+  ])("a close event of something inside the drawer (a dialog in it) is not the drawer's close, %s", async (_how, withConfirm) => {
+    const q = { question: adminEt.lessons.drawer.closeQuestion, yes: adminEt.lessons.drawer.closeYes, no: adminEt.lessons.drawer.closeNo };
+    const parts = [createElement("dialog", { key: "inner", id: "inner" }, "Sees"), withConfirm && createElement(OldPart, { key: "old", dirty: true })];
+    await render(page(drawer(parts, withConfirm ? { confirmClose: q } : {})));
+    const inner = document.getElementById("inner") as HTMLDialogElement;
+    // as React hands it on: a close that bubbles from the inner element up to the drawer's dialog
+    await act(async () => void inner.dispatchEvent(new Event("close", { bubbles: true })));
+    expect(dialog().open).toBe(true);
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(dialog().querySelector("[data-drawer-confirm]")).toBeNull();
+  });
+
   it("every admin drawer names its ✕ „Sulge“ (adminEt.common.close); the pages' own close words are gone", () => {
     const root = join(process.cwd(), "src", "app", "admin");
     const files: string[] = [];
