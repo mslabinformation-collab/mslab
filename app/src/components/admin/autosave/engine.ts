@@ -12,6 +12,8 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 // - a field its check (`validate`, or the server's 400) refuses is held back: the others still save, and the status is `invalid`;
 // - a save that fails (no answer, 10 s without one, a server error) is tried again after 2, 5, 10, 20, then every 30 s, and at once when the
 //   browser is back online, the tab is shown again or focused; signed out (401, 403) is tried the same way: she may sign in in another tab;
+//   a refusal that would repeat (413, a 400 that names no field of the patch, a 409 that is not a conflict's) waits instead: no timer, once
+//   more on the next edit, focus or `online` (status `retry`, reason "error");
 // - the tab hidden sends a waiting save at once; the page put away (pagehide) sends it as a keepalive request while the page's bodies fit the
 //   browsers' 64 KiB for them (KEEPALIVE_MAX_BYTES, shared by every engine of the page), else leaves it to the copy;
 // - a refusal (409) brings the server's version and value: this form's own text (another tab typed the same) or one of its saves whose answer
@@ -158,6 +160,8 @@ export class AutosaveEngine {
   private signedOut = false;
   /** Why the last save failed (null: it did not): no answer, or an answer that was not a save. */
   private lastFailure: "offline" | "error" | null = null;
+  /** The last save was refused in a way that would repeat (wait): it goes again on the next edit, focus or `online`, not on a timer. */
+  private waiting = false;
   /** The part's value as each save sent without an answer would have left it: any of them may be stored (a lost answer). */
   private unanswered: Fields[] = [];
   /** The same of the save on its way. */
@@ -290,20 +294,22 @@ export class AutosaveEngine {
     return this.flying !== null || this.unanswered.length > 0 || Object.keys(this.fields).some((n) => !same(this.fields[n], this.confirmed[n]));
   }
 
-  /** The changed fields its check refuses (the form's own or the server's), in the form's order: held back. */
-  private held(): string[] {
-    const codes = this.validate(this.fields);
-    return Object.keys(this.fields).filter((n) => (n in codes || this.serverInvalid.has(n)) && !same(this.fields[n], this.confirmed[n]));
+  /** Would a save send this field: changed since the confirmed text, or sent by a save without an answer (the server may hold that one)? */
+  private due(n: string): boolean {
+    return !same(this.fields[n], this.confirmed[n]) || this.unanswered.some((u) => n in u && !same(u[n], this.confirmed[n]));
   }
 
-  /** The fields a save sends: those changed since the confirmed text, and those a save without an answer sent (the server may hold them), minus the held ones. */
+  /** The fields a save would send that their check refuses (the form's own or the server's), in the form's order: held back. */
+  private held(): string[] {
+    const codes = this.validate(this.fields);
+    return Object.keys(this.fields).filter((n) => (n in codes || this.serverInvalid.has(n)) && this.due(n));
+  }
+
+  /** The fields a save sends: the due ones, minus the held ones (by the same rule, so a refused field is never in it). */
   private patch(): Fields {
     const held = new Set(this.held());
     const out: Fields = {};
-    for (const n of Object.keys(this.fields)) {
-      if (held.has(n)) continue;
-      if (!same(this.fields[n], this.confirmed[n]) || this.unanswered.some((u) => n in u && !same(u[n], this.confirmed[n]))) out[n] = this.fields[n];
-    }
+    for (const n of Object.keys(this.fields)) if (!held.has(n) && this.due(n)) out[n] = this.fields[n];
     return out;
   }
 
@@ -345,13 +351,12 @@ export class AutosaveEngine {
     if (Object.keys(patch).length === 0) {
       // nothing to send (all confirmed, or only held fields): nothing to try again
       this.clearRetry();
-      this.attempts = 0;
-      this.signedOut = false;
-      this.lastFailure = null;
+      this.answered();
       this.rest();
       return this.unconfirmed() === null;
     }
     this.clearRetry();
+    this.waiting = false;
     const version = this.version;
     const sent: Fields = { ...this.confirmed, ...patch };
     this.flying = sent;
@@ -390,8 +395,12 @@ export class AutosaveEngine {
     if (status === 400 && reply?.error === "invalid" && isRecord(reply.fields)) {
       const named = Object.keys(reply.fields).filter((n) => n in patch);
       if (named.length > 0) {
+        // the route's own word on these fields: they are held back (held), no earlier failure stands, and the rest goes at once; never a patch
+        // that still holds a field it named (it would be refused again, at once, without end)
         for (const n of named) this.serverInvalid.add(n);
-        return this.goOn(); // the rest goes at once
+        this.answered();
+        if (Object.keys(this.patch()).some((n) => named.includes(n))) return this.wait();
+        return this.goOn();
       }
     }
     if (status === 401 || status === 403) {
@@ -403,10 +412,34 @@ export class AutosaveEngine {
       this.rest();
       return false;
     }
+    // the route's refusals left (413, a 400 that is not a save or names no field of the patch, a 409 that is not a conflict's): not stored, and
+    // sent again as it is they would be refused again
+    if (answer && REFUSALS.has(status)) return this.wait();
     // no answer, a server error, or an answer that is not the route's (a Wi-Fi login page): the text may be stored all the same (the next
-    // refusal tells). Only the route's own refusals are sure not to have stored it.
-    if (!answer || !REFUSALS.has(status)) this.unanswered = remember(this.unanswered, sent);
+    // refusal tells), so it is remembered, and tried again on the timer
+    this.unanswered = remember(this.unanswered, sent);
     return this.failed(answer ? "error" : "offline");
+  }
+
+  /** The route answered (a save, a refusal of fields, a conflict): no earlier failure, sign-in or wait stands. */
+  private answered(): void {
+    this.attempts = 0;
+    this.signedOut = false;
+    this.lastFailure = null;
+    this.waiting = false;
+  }
+
+  /**
+   * A refusal that would repeat: no timer (a part over the size limit would upload again every 30 s), but once more on the next edit, focus or
+   * `online` (onBack). The text and the copy stay; the status is `retry`, the reason "error".
+   */
+  private wait(): false {
+    this.answered();
+    this.lastFailure = "error";
+    this.waiting = true;
+    this.clearRetry();
+    this.rest();
+    return false;
   }
 
   /** The server holds `value` at `version`: the form's confirmed text. */
@@ -415,9 +448,7 @@ export class AutosaveEngine {
     this.confirmed = value;
     this.savedAt = at;
     this.unanswered = [];
-    this.attempts = 0;
-    this.signedOut = false;
-    this.lastFailure = null;
+    this.answered();
   }
 
   /** After a confirmed save: what is still changed goes at once, unless it is still being typed (its 1.5 s wait runs). */
@@ -435,7 +466,7 @@ export class AutosaveEngine {
     const stored = this.over(value);
     const mine = remember(this.unanswered, sent);
     this.unanswered = [];
-    this.attempts = 0;
+    this.answered();
     if (same(stored, this.fields) || mine.some((m) => same(m, stored))) {
       this.confirm(version, stored, new Date());
       return this.goOn();
@@ -463,9 +494,9 @@ export class AutosaveEngine {
 
   // ---------- the browser's events ----------
 
-  /** Back online, the tab shown or focused: a failed or signed-out save goes at once, and its waits start again. */
+  /** Back online, the tab shown or focused: a failed, signed-out or waiting save goes at once, and its waits start again. */
   private readonly onBack = (): void => {
-    if (this.retry === null && !this.signedOut) return;
+    if (this.retry === null && !this.signedOut && !this.waiting) return;
     this.attempts = 0;
     this.clearRetry();
     void this.queue(false);

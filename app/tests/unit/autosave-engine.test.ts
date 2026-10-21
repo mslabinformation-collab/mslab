@@ -433,6 +433,149 @@ describe("a field held back by its check", () => {
   });
 });
 
+describe("a refused field never loops, and a field error clears a stale failure (review, fix round 1)", () => {
+  const required = { status: 400, body: { ok: false, error: "invalid", fields: { title: "required" } } };
+  const newRow = (send: SendPatch, validate?: (f: Fields) => Record<string, string>) => {
+    // a new row: the title is empty, and its check requires one
+    engine = new AutosaveEngine({ owner: "post", key: "1", version: "v1", fields: { title: "", body: "x" }, send, validate, tab: "t1" });
+    engine.start(localStorage);
+    return engine;
+  };
+
+  test("a field the server refuses, typed back to the confirmed value after a lost answer, is held back: never re-sent at once", async () => {
+    const s = server();
+    const e = newRow(s.send);
+    e.setField("title", "A");
+    void e.flush();
+    await tick();
+    s.calls[0].answer(null); // lost: the server may hold "A"
+    await tick();
+    e.setField("title", ""); // typed back to the empty title
+    await tick(DEBOUNCE_MS);
+    expect(s.calls[1].body).toEqual({ version: "v1", patch: { title: "" } }); // (the server may hold "A": so the title goes)
+    s.calls[1].answer(required);
+    await tick();
+    expect(s.calls).toHaveLength(2); // not again at once
+    expect(e.snapshot().status).toEqual({ kind: "invalid", fields: ["title"] });
+    expect(e.unconfirmed()).toEqual({ field: "title", reason: "invalid" });
+    await tick(120_000);
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("online"));
+    await tick();
+    expect(s.calls).toHaveLength(2);
+    // typed in again: tried again
+    e.setField("title", "B");
+    await tick(DEBOUNCE_MS);
+    expect(s.calls[2].body).toEqual({ version: "v1", patch: { title: "B" } });
+  });
+
+  test("the form's own check holds back the same field: nothing is sent, the lost save's retry included", async () => {
+    const s = server();
+    const e = newRow(s.send, (f): Record<string, string> => (f.title === "" ? { title: "required" } : {}));
+    e.setField("title", "A");
+    void e.flush();
+    await tick();
+    s.calls[0].answer(null);
+    await tick();
+    e.setField("title", "");
+    await tick(120_000);
+    expect(s.calls).toHaveLength(1);
+    expect(e.snapshot().status).toEqual({ kind: "invalid", fields: ["title"] });
+  });
+
+  test("a failure, then a 400 on the only field: invalid, reason invalid, and no retry left", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("title", "Liiga pikk pealkiri");
+    void e.flush();
+    await tick();
+    s.calls[0].answer({ status: 503, body: null });
+    await tick();
+    await tick(RETRY_MS[0]);
+    s.calls[1].answer({ status: 400, body: { ok: false, error: "invalid", fields: { title: "tooLong" } } });
+    await tick();
+    expect(e.snapshot().status).toEqual({ kind: "invalid", fields: ["title"] });
+    expect(e.unconfirmed()).toEqual({ field: "title", reason: "invalid" });
+    await tick(120_000);
+    expect(s.calls).toHaveLength(2);
+  });
+
+  test("401, then a 400 on the only field: invalid, not signed out", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("title", "Liiga pikk pealkiri");
+    void e.flush();
+    await tick();
+    s.calls[0].answer({ status: 401, body: { ok: false, error: "unauthorized" } });
+    await tick();
+    window.dispatchEvent(new Event("focus")); // signed in again in another tab
+    await tick();
+    s.calls[1].answer({ status: 400, body: { ok: false, error: "invalid", fields: { title: "tooLong" } } });
+    await tick();
+    expect(e.snapshot().status).toEqual({ kind: "invalid", fields: ["title"] });
+    expect(e.unconfirmed()).toEqual({ field: "title", reason: "invalid" });
+    await tick(120_000);
+    expect(s.calls).toHaveLength(2);
+  });
+
+  test("a refusal that would repeat (413) is not tried again on a timer: once on the next edit, focus or online", async () => {
+    const s = server();
+    const e = make(s.send);
+    const tooBig = { status: 413, body: { ok: false, error: "size" } };
+    e.setField("body", "Liiga suur");
+    void e.flush();
+    await tick();
+    s.calls[0].answer(tooBig);
+    await tick();
+    expect(e.snapshot().status).toEqual({ kind: "retry" });
+    expect(e.unconfirmed()).toEqual({ field: "body", reason: "error" });
+    await tick(120_000);
+    expect(s.calls).toHaveLength(1);
+    expect(stored()?.fields.body).toBe("Liiga suur"); // the text stays in this browser
+    // the next edit: one send (after its 1.5 s)
+    e.setField("body", "Väiksem");
+    await tick(DEBOUNCE_MS);
+    expect(s.calls).toHaveLength(2);
+    s.calls[1].answer(tooBig);
+    await tick(120_000);
+    expect(s.calls).toHaveLength(2);
+    // focus: once
+    window.dispatchEvent(new Event("focus"));
+    await tick();
+    expect(s.calls).toHaveLength(3);
+    s.calls[2].answer(tooBig);
+    await tick();
+    // online: once
+    window.dispatchEvent(new Event("online"));
+    await tick();
+    expect(s.calls).toHaveLength(4);
+    s.calls[3].answer(ok("v2"));
+    await tick();
+    expect(e.snapshot().status.kind).toBe("saved");
+  });
+
+  test.each([
+    ["a 400 that is not a save", { status: 400, body: { ok: false, error: "body" } }],
+    ["a 400 that names no field of the patch", { status: 400, body: { ok: false, error: "invalid", fields: { other: "unknown" } } }],
+    ["a 409 that is not a conflict's", { status: 409, body: { ok: false, error: "conflict" } }],
+  ])("%s waits for the next edit the same way", async (_name, refusal) => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("title", "Uus");
+    void e.flush();
+    await tick();
+    s.calls[0].answer(refusal);
+    await tick();
+    expect(e.snapshot().status).toEqual({ kind: "retry" });
+    expect(e.unconfirmed()?.reason).toBe("error");
+    await tick(120_000);
+    expect(s.calls).toHaveLength(1);
+    e.setField("title", "Uuem");
+    await tick(DEBOUNCE_MS);
+    expect(s.calls.map((c) => c.body)).toEqual([{ version: "v1", patch: { title: "Uus" } }, { version: "v1", patch: { title: "Uuem" } }]);
+  });
+});
+
 describe("another tab or device saved first (409)", () => {
   test("409 → status conflict, the local text kept; restore() saves it over the server's version", async () => {
     const s = server();
