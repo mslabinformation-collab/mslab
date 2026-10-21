@@ -70,7 +70,7 @@ Everything in the design, in the README's order:
 
   Where the order cannot decide, the row says so, and Dim answers before the piece that needs it.
 - **D2. B11–B22 are accepted.** The README's first page says B11–B20 are "still to decide". Its §5, parts 3 and 4, and the deck all say B1–B22 are accepted.
-- **D3. Hüpikaken (C4): question for Dim, answered before piece 4.**
+- **D3. Hüpikaken (C4). Dim (21.10): "As Part 4 draws it."** One popup, the newsletter sign-up with its discount code, with the two-state switch, the 8 s / once in 30 days line, and the „Reeglid" text Part 4 prints. The campaign-offer popup and the three-way choice go. The analysis that led to the question:
   - **The README:** "„Lehel näidatakse" choice is instant with UndoBar; one preview that follows LangSwitch; the „Reeglid" text stays".
   - **The Part 4 desktop mock** (the next source where the README is silent) draws:
     - one popup, the newsletter sign-up with a discount code („Pakkumine": Pealkiri, Tekst, „Soodustus (%)", „Kood kehtib (päeva)");
@@ -81,7 +81,7 @@ Everything in the design, in the README's order:
   - The route stays `/admin/kampaania` ("Routes don't change"). Part 4 prints `/admin/hupikaken`.
 - **D4. The menu entry for the assessment screen.** The README highlights „Protokollid" for every `/admin/protokollid…` address. But the README's own A4 heading lists `?ligipaas=` (the practical-work screen) under Hindamine, and Part 2's practical-work frame draws the menu with „Hindamine" active. So that address highlights „Hindamine", and `?sessioon=` and `?registreering=` highlight „Protokollid".
 - **D5. Focus in Tagasiside** stays on the row after an action, as the README says; Part 4 says it moves to the next card.
-- **D6. Certificate numbers: question for Dim, answered before piece 3.**
+- **D6. Certificate numbers. Dim (21.10): "Keep the yearly restart."** Certificates are unchanged. The analysis that led to the question:
   - **The design (B21):** "Certificates keep their running number (no yearly reset) unless Maria asks."
   - **Today** they do restart each year: „MS LAB {year}-{nn}" (certificate D2).
   - **The conflict:** the sentence reads as if it describes today. Read literally, it asks to stop the yearly reset.
@@ -155,7 +155,7 @@ The design's order is global components first, then the A screens, then B, then 
 3. **The B screens (§3):** B1–B5, with B9, B17, B18 and B21. Migrations: the module and lesson flag, and `removed_at` on lesson files.
 4. **The C screens (§4):** C1–C8, with B19 and B20. Migration: `removed_at` on reviews.
 
-**B21 ahead of the order: Dim's OK asked.** Invoice numbers per year (B21) belong to the Seaded screen in piece 3, but its server part must be live before 1 December 2026: today a December invoice silently erases a next-year number preset. With Dim's OK it is the opening commit of piece 1, and its Seaded line comes with piece 3.
+**B21 goes first. Dim (21.10): "Yes, first."** Invoice numbers per year belong to the Seaded screen in piece 3. But the server part must be live before 1 December 2026, because today a December invoice silently erases a next-year number preset. So B21 is the opening commit of piece 1, and the rest of the Seaded screen comes with piece 3.
 
 **In every piece:**
 - The test plan follows the code (standing rule). Each behaviour change updates `src/data/testplan.json` with `redo`, `reworded` or `new` and `markedAt "deploy"`. Run the stamp before each push, then the test-plan tests again.
@@ -186,6 +186,9 @@ These are listed so nobody is surprised on the test page. They are not changed:
 - „Lisa laekumine" with the receipt ticked makes a new „Juba tasutud" invoice even when a payment request („Maksmiseks") is open. Part 2 draws exactly this case. The request stays „Tasumata", and the student's „Maksa" still offers it until Maria cancels it with „Tühista arve".
 - „Saada hinnang" with every point approved completes the course, issues the certificate and mails the student, with one press.
 - An unpublished e-course that already has students saves straight to the record. Those students see an edit at once.
+- **Hüpikaken (D3):**
+  - There is one popup, the newsletter sign-up with a discount code. The campaign-offer popup is gone.
+  - On the public site it opens after 8 s, once in 30 days. Today it opens after 6 s, once per visit.
 - **On „Testimine":**
   - The „Muudetud" filter and „Jäta vahele" are gone.
   - „Kes" is „Mina" / „Kõik" instead of Kõik / Maria / Dim / Koos.
@@ -208,4 +211,4 @@ What the design leaves out, as its §6 lists:
 - How the components are split into files, and CSS beyond the design's numbers.
 - One generic autosave route or one per editor (C1).
 - How each editor's fields map to draft parts.
-- Nothing else. The texts of S3 and the questions D3 and D6 go to Dim.
+- Nothing else. The texts of S3 go to Dim before the piece that needs them. Piece 1's eight texts were approved on 21.10: four badge labels and four reasons for the leave guard.

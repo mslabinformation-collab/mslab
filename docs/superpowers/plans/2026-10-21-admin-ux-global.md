@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Built as designed.** Layout, behaviour and strings follow the README, then the desktop prototype, then the phone prototype, then the notes (spec D1). Quote every string exactly: from the README, or from the „Outcome" column of `analysis/strings.md`. Do not invent text. A text this plan marks **[Dim]** is waiting for Dim's wording. Use the placeholder given and leave a `// TODO(Dim wording)` comment; the controller replaces it before review.
+- **Built as designed.** Layout, behaviour and strings follow the README, then the desktop prototype, then the phone prototype, then the notes (spec D1). Quote every string exactly: from the README, from the „Outcome" column of `analysis/strings.md`, or from this plan, where Dim approved the texts on 21.10. Do not invent text.
 - **Strings.** Every admin string lives in `adminEt` (`src/i18n/dict/admin.ts`) and is filled with `fill()` from `src/i18n/format.ts`. Admin text is Estonian only. Group labels are stored in sentence case and shown in capitals by CSS (`text-transform: uppercase; letter-spacing: .16em`).
 - **Look.** Use the existing tokens (`styles/tokens.css`, G11) and the admin colours. The only new colour is `#faf6f8`. Tap targets are at least 44 px. Keep the focus ring (`2px solid var(--rose)`, offset 2). No motion under `prefers-reduced-motion`.
 - **Old iPads.**
@@ -335,7 +335,7 @@ Expected: FAIL.
 
   - A badge shows only when it is above 0.
   - The phone sum is the numeric badges added up.
-- **Screen-reader labels [Dim]:** use placeholders `shell.badgeFeedback` "{n} arvustust ootab", `shell.badgePayments` "{n} vajab kontrolli", `shell.badgeTesting` "{n} viga" and `shell.badgeToday` "Täna on koolituspäev", each with `// TODO(Dim wording)`.
+- **Screen-reader labels** (Dim, 21.10): `shell.badgeFeedback` „{n} arvustust ootab“, `shell.badgePayments` „{n} vajab kontrolli“, `shell.badgeTesting` „{n} viga“, `shell.badgeToday` „Täna on koolituspäev“.
 - **`today` for Sidebar:** the first of `todaySessions` as `{ href: "/admin/protokollid?sessioon=<id>", time: formatTime(startsAt), course }`, or null.
 - **`reopenTestAction`:** after success, call `revalidatePath("/admin", "layout")` so the Hindamine badge and the overview update.
 
@@ -656,7 +656,7 @@ Expected: FAIL.
 - **Back:** `popstate`. When it is held, push the current URL back and show the notice.
 - **Reasons:**
   - offline: „Ühendus puudub. Proovin uuesti, kuni jääd siia.“ (Part 1 prototype);
-  - error, invalid, signedOut and upload **[Dim]**: placeholders "Salvestamine ei õnnestunud.", "Üks väli vajab parandamist.", "Logi uuesti sisse.", "Üleslaadimine käib.", each with `// TODO(Dim wording)`.
+  - the other four (Dim, 21.10): error „Salvestamine ei õnnestunud.“, invalid „Üks väli vajab parandamist.“, signedOut „Logi uuesti sisse.“, upload „Üleslaadimine käib.“.
 - **Buttons:** „Jää siia“ (primary) and „Sulge, tekst jääb seadmesse“.
 
 - [ ] **Step 4: Run them and see them pass**, plus the drawer e2e
