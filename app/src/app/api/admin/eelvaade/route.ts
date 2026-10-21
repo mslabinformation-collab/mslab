@@ -24,7 +24,9 @@ export const GET = withAdmin(async (request) => {
   const draft = await draftMode();
   if (leave) draft.disable();
   else draft.enable();
-  const res = NextResponse.redirect(new URL(previewPath(url.searchParams.get("tee"), url.origin), url.origin), 303);
+  // the second guard: the redirect itself must stay on this site, whatever previewPath let through
+  const target = new URL(previewPath(url.searchParams.get("tee"), url.origin), url.origin);
+  const res = NextResponse.redirect(target.origin === url.origin ? target : new URL("/", url.origin), 303);
   res.headers.set("cache-control", "no-store");
   if (!leave) await setPreviewCookie(res);
   return res;

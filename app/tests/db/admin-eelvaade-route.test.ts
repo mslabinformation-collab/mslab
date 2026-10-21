@@ -61,6 +61,17 @@ afterEach(() => {
 const call = (query: string) => GET(new Request(`${ORIGIN}/api/admin/eelvaade${query}`), undefined);
 const location = (res: Response) => res.headers.get("location");
 
+/** Paths that leave the site once their dot segments are taken out ("/.//evil.example" is "//evil.example"), "%2e" being a dot too. */
+const OFF_SITE = ["/.//evil.example", "/..//evil.example", "/a/..//evil.example", "/%2e//evil.example", "/%2E%2E//evil.example", "/a/b/../..//evil.example", "/././/evil.example/x?y=1"];
+/** The same as queries: as typed, encoded once, and `/%252e//…` and `/./%2F…`, which the query's own decoding turns into `/%2e//…` and `/.//…`. */
+const OFF_SITE_QUERIES = [
+  ...OFF_SITE.map((p) => `?tee=${p.replace("?", "%3F")}`),
+  ...OFF_SITE.map((p) => `?tee=${encodeURIComponent(p)}`),
+  "?tee=/%252e//evil.example",
+  "?tee=/./%2Fevil.example",
+  "?tee=/.%2F%2Fevil.example",
+];
+
 describe("previewPath (the route's check of `tee`)", () => {
   test("a path of this site is kept, with its query and fragment", () => {
     for (const path of ["/", "/koolitused/kulmud", "/ru/koolitused/kulmud", "/uudised/uus-postitus?x=1", "/#kkk", "/praktika/", "/koolitused/kulmud-%C3%B5pe"])
@@ -72,6 +83,10 @@ describe("previewPath (the route's check of `tee`)", () => {
       null, "", "koolitused", "./koolitused", "//evil.example", "//evil.example/x", "/\\evil.example", "/\\/evil.example", "\\\\evil.example",
       "https://evil.example/", "https://mslab.example/koolitused", "javascript:alert(1)", "data:text/html,x", "/\t/evil.example", "/\n/evil.example",
       "/\r/evil.example", "/koolitused\u0000", "/a\u007fb", "/koolitused\\..\\x", " /koolitused", "/" + "a".repeat(2100),
+      // dot segments that the parser takes out, leaving "//host" (fix round 1): a path that only becomes another site once parsed
+      ...OFF_SITE,
+      // and what only decoding makes a second slash or a backslash of
+      "/./%2Fevil.example", "/%2F/evil.example", "/%2f%2fevil.example", "/%5Cevil.example", "/a/%5c..%5cx",
     ];
     for (const tee of refused) expect(previewPath(tee, ORIGIN), JSON.stringify(tee)).toBe("/");
   });
@@ -104,11 +119,27 @@ describe("GET /api/admin/eelvaade", () => {
 
   test("a `tee` that is not a path of this site, or none: 303 to the home page (draft mode still on)", async () => {
     state.cookie = await createSession(db, ME);
-    for (const query of ["", "?tee=", "?tee=%2F%2Fevil.example", "?tee=%2F%5Cevil.example", "?tee=https%3A%2F%2Fevil.example%2F", "?tee=%2F%09%2Fevil.example", "?tee=koolitused"]) {
+    for (const query of ["", "?tee=", "?tee=%2F%2Fevil.example", "?tee=%2F%5Cevil.example", "?tee=https%3A%2F%2Fevil.example%2F", "?tee=%2F%09%2Fevil.example", "?tee=koolitused", ...OFF_SITE_QUERIES]) {
       const res = await call(query);
       expect([res.status, location(res)], query).toEqual([303, `${ORIGIN}/`]);
     }
     expect(state.draft.enabled).toBe(true);
+  });
+
+  test("the route's own guard: a redirect that would leave the site goes to the home page even if previewPath let it through", async () => {
+    state.cookie = await createSession(db, ME);
+    vi.resetModules();
+    vi.doMock("@/server/preview", async (original) => ({ ...(await original<typeof import("@/server/preview")>()), previewPath: () => "//evil.example/x" }));
+    try {
+      const { GET: guarded } = await import("@/app/api/admin/eelvaade/route");
+      for (const query of ["?tee=%2Fkoolitused", "?lopeta=1&tee=%2Fkoolitused"]) {
+        const res = await guarded(new Request(`${ORIGIN}/api/admin/eelvaade${query}`), undefined);
+        expect([res.status, location(res)], query).toEqual([303, `${ORIGIN}/`]);
+      }
+    } finally {
+      vi.doUnmock("@/server/preview");
+      vi.resetModules();
+    }
   });
 
   test("?lopeta=1 leaves draft mode and goes to `tee` (or the home page); it gives no new preview cookie", async () => {
@@ -120,6 +151,10 @@ describe("GET /api/admin/eelvaade", () => {
     expect(state.draft).toEqual({ enabled: false, enable: 0, disable: 1 });
     expect(res.headers.getSetCookie().filter((c) => c.startsWith(`${PREVIEW_COOKIE}=`))).toEqual([]);
     expect(location(await call("?lopeta=1&tee=%2F%2Fevil.example"))).toBe(`${ORIGIN}/`);
+    for (const query of OFF_SITE_QUERIES) {
+      const off = await call(`?lopeta=1&${query.slice(1)}`);
+      expect([off.status, location(off)], query).toEqual([303, `${ORIGIN}/`]);
+    }
     expect(location(await call("?lopeta=1"))).toBe(`${ORIGIN}/`);
   });
 });

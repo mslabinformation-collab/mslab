@@ -37,10 +37,29 @@ export async function setPreviewCookie(res: NextResponse): Promise<void> {
 const PREVIEW_PATH_MAX = 2048;
 
 /**
- * Where the draft preview (api/admin/eelvaade) sends the admin: `tee` when it is a path of this site — one `/` first, then not a second `/` or a
- * `\`, no `\` or control character anywhere (a browser reads `\` as `/` and drops tabs and line breaks, which could make `//other.site`), and still
- * on `origin` once parsed — else "/". Absolute URLs are refused even when they name this site: the link is built from a path. The answer is the
- * parsed path with its query and fragment, so it is always a same-origin redirect.
+ * A parsed path that would read as another site, or as a path the router could take for another one: it starts with `//` (taken as `//host` by
+ * whatever resolves it next), or has a `\` (a browser reads it as `/`), as it is or once percent-decoded (`/%2F…`, `%5C`). One that does not
+ * decode counts as one too.
+ */
+function offSitePath(pathname: string): boolean {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return true;
+  }
+  return [pathname, decoded].some((p) => p.startsWith("//") || p.includes("\\"));
+}
+
+/**
+ * Where the draft preview (api/admin/eelvaade) sends the admin: `tee` when it is a path of this site, else "/".
+ * - Before parsing: one `/` first, then not a second `/` or a `\`; no `\` or control character anywhere (a browser reads `\` as `/` and drops tabs
+ *   and line breaks, which could make `//other.site`).
+ * - After parsing: still on `origin`, and the path is not `//…` nor a `\` once decoded (offSitePath). The parser takes dot segments out, `%2e`
+ *   included, so `/.//evil.example`, `/a/..//evil.example` or `/%2e//evil.example` become `//evil.example`: the check must look at what is
+ *   returned, not only at what came in (fix round 1 of the review).
+ * Absolute URLs are refused even when they name this site: the link is built from a path. The answer is the parsed path with its query and
+ * fragment. The route checks the redirect it builds from it once more (same origin, or "/").
  */
 export function previewPath(tee: string | null, origin: string): string {
   if (!tee || tee.length > PREVIEW_PATH_MAX || tee[0] !== "/" || tee[1] === "/" || tee.includes("\\")) return "/";
@@ -50,7 +69,8 @@ export function previewPath(tee: string | null, origin: string): string {
   }
   try {
     const url = new URL(tee, origin);
-    return url.origin === origin ? url.pathname + url.search + url.hash : "/";
+    if (url.origin !== origin || offSitePath(url.pathname)) return "/";
+    return url.pathname + url.search + url.hash;
   } catch {
     return "/";
   }
