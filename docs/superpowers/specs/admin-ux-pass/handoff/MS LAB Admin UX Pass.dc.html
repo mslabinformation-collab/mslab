@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#e9e5e7;font-family:Manrope,sans-serif;color:#222;font-size:15px;line-height:1.6}a{color:#222}a:hover{color:#5e5559}*{box-sizing:border-box}input,textarea,select,button{font-family:inherit}</style>
+</helmet>
+<div style="width:1560px;padding:72px 60px 120px;display:flex;flex-direction:column;gap:56px">
+
+<header style="display:flex;flex-direction:column;gap:12px;max-width:1100px">
+  <div style="font:400 12px 'JetBrains Mono',monospace;letter-spacing:.08em;color:#716a6d">MS LAB HALDUS · UX-PASS · OSA 1 / 3 · 20.10.2026</div>
+  <h1 style="margin:0;font:300 52px/1.05 Jost,sans-serif">Playback, navigation and global patterns</h1>
+  <p style="margin:0;font-size:17px;color:#3a3437;text-wrap:pretty">Steps 1–3 of your brief, before any screen is designed. Everything below is built from the README inventory and the 91 screenshots, uses the existing tokens (G11) and existing components where possible. Admin text is quoted in Estonian; new or changed wording is collected in the tables at the end of this part for your approval. The mock-ups are interactive: click the menu, type in the fields, try the buttons.</p>
+  <nav style="display:flex;flex-wrap:wrap;gap:8px;padding-top:6px">
+    <a href="#s1" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font-size:13px;font-weight:600">1 · Playback</a>
+    <a href="#s2" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font-size:13px;font-weight:600">2 · Navigation</a>
+    <a href="#p1" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font-size:13px;font-weight:600">3.1 · Saving</a>
+    <a href="#p2" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font-size:13px;font-weight:600">3.2 · Drawers</a>
+    <a href="#p3" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font-size:13px;font-weight:600">3.3 · Confirmations</a>
+    <a href="#p4" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font-size:13px;font-weight:600">3.4 · ET/RU</a>
+    <a href="#p5" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font-size:13px;font-weight:600">3.5 · Lists</a>
+    <a href="#p6" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font-size:13px;font-weight:600">3.6 · Words</a>
+    <a href="#s4" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font-size:13px;font-weight:600">Lists so far</a>
+  </nav>
+</header>
+
+<!-- 1 PLAYBACK -->
+<section id="s1" data-screen-label="1 Playback" style="background:#fff;border-radius:28px;padding:48px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:56px">
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">1 · PLAYBACK</div>
+    <h2 style="margin:0;font:300 34px/1.15 Jost">What I understood</h2>
+    <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:10px;color:#3a3437;text-wrap:pretty">
+      <li>The admin works and the business rules stay. The job is fewer clicks, one way to save, and no lost input.</li>
+      <li>Maria is the main user. At a 1360 px laptop she handles money, courses, content and newsletters. On a phone or tablet she handles the course day, registrations, students and assessing practical photos. She is often away from the desk, so the phone matters for daily work, not for the site editors.</li>
+      <li>Today there are five save models side by side (obs. 1, G4). Only the protocol screen works the way the whole admin should (obs. 14). Its autosave engine (<span style="font-family:'JetBrains Mono';font-size:13px">protocol-autosave.ts</span>) becomes the base for every form.</li>
+      <li>Explicit buttons remain only for actions that leave the admin (mail, protocol, assessment, invoice, contract, newsletter) and for anything that cannot be undone.</li>
+      <li>The work has to fit the existing app: server-rendered pages, CSS modules, drawers opened by a URL parameter, 44 px targets, old Safari. The look is refined, not rebranded.</li>
+      <li>Wherever a better flow needs the server to behave differently, it goes on a separate behaviour-change list for you to decide.</li>
+    </ul>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">QUESTIONS THAT CHANGE THE DESIGN</div>
+    <p style="margin:0;color:#3a3437">I'm continuing with the default shown for each one. Every default marked <b>My call</b> is easy to change later.</p>
+    <div style="display:flex;flex-direction:column;border-top:1px solid #e6e1e3">
+      <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:14px;padding:16px 0;border-bottom:1px solid #e6e1e3"><span style="font:400 13px 'JetBrains Mono';color:#716a6d">Q1</span><div style="display:flex;flex-direction:column;gap:6px"><b>Do autosaved edits on published content go live at once?</b><span style="color:#3a3437">Today a course or home-page edit goes public when she presses „Salvesta“. With autosave, the text would appear on the site about 1.5 s after she stops typing. The alternative is a draft layer with an „Avalda muudatused“ button, which is a second save model.</span><span style="background:#f0ebed;border-left:2px solid #9e8993;border-radius:0 10px 10px 0;padding:8px 12px;font-size:14px"><b>Decided:</b> draft layer. On published content, autosave writes a draft; the header shows „Avaldamata muudatused: {n}“ with „Eelvaade ↗“ and the explicit „Avalda muudatused“. Unpublished items save straight to the record.</span></div></div>
+      <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:14px;padding:16px 0;border-bottom:1px solid #e6e1e3"><span style="font:400 13px 'JetBrains Mono';color:#716a6d">Q2</span><div style="display:flex;flex-direction:column;gap:6px"><b>Is money received autosaved or explicit?</b><span style="color:#3a3437">The figure in „Laekunud summa“ can confirm or un-confirm a place (obs. 4). Saving it as she types could flip a status halfway through a number.</span><span style="background:#f0ebed;border-left:2px solid #9e8993;border-radius:0 10px 10px 0;padding:8px 12px;font-size:14px"><b>Decided:</b> explicit. Money is recorded as a payment with one button („Lisa laekumine“), which adds to the total and checks seats. This merges the two money paths and is listed as a behaviour change.</span></div></div>
+      <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:14px;padding:16px 0;border-bottom:1px solid #e6e1e3"><span style="font:400 13px 'JetBrains Mono';color:#716a6d">Q3</span><div style="display:flex;flex-direction:column;gap:6px"><b>Which tablet is used on the course day, and how is it held?</b><span style="color:#3a3437">At 641–900 px the current layout uses a narrow 190 px sidebar, which leaves little room for the protocol on an iPad held upright (834 px).</span><span style="background:#f0ebed;border-left:2px solid #9e8993;border-radius:0 10px 10px 0;padding:8px 12px;font-size:14px"><b>Decided:</b> below 900 px the phone top bar is used. The sidebar starts at 900 px.</span></div></div>
+      <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:14px;padding:16px 0;border-bottom:1px solid #e6e1e3"><span style="font:400 13px 'JetBrains Mono';color:#716a6d">Q4</span><div style="display:flex;flex-direction:column;gap:6px"><b>Who writes the Russian, and when?</b><span style="color:#3a3437">If it happens in a separate pass, possibly by someone else, the design should favour a side-by-side view. If Maria writes both languages as she goes, an inline switch is enough.</span><span style="background:#f0ebed;border-left:2px solid #9e8993;border-radius:0 10px 10px 0;padding:8px 12px;font-size:14px"><b>Decided:</b> Maria writes both as she goes. One page switch with ET and RU; no side-by-side mode.</span></div></div>
+      <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:14px;padding:16px 0;border-bottom:1px solid #e6e1e3"><span style="font:400 13px 'JetBrains Mono';color:#716a6d">Q5</span><div style="display:flex;flex-direction:column;gap:6px"><b>Should „Testimine“ appear in Maria's menu?</b><span style="color:#3a3437">Today the overview card is its only entry point, and the card disappears once nothing is open (obs. 7).</span><span style="background:#f0ebed;border-left:2px solid #9e8993;border-radius:0 10px 10px 0;padding:8px 12px;font-size:14px"><b>Decided:</b> yes, last in the „Haldus“ group for every admin. Its badge counts only the signed-in person's open checks.</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 NAVIGATION -->
+<section id="s2" data-screen-label="2 Navigation" style="display:flex;flex-direction:column;gap:28px">
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:1100px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">2 · NAVIGATION</div>
+    <h2 style="margin:0;font:300 40px/1.1 Jost">Five groups in place of a flat list of 16</h2>
+    <p style="margin:0;color:#3a3437;text-wrap:pretty">The groups follow how often Maria visits: daily work first, then courses, then the site, then setup. The four pages that had no menu entry (obs. 7) now have one. Two of them become tabs on the page they belong to, so the menu grows by only two rows. „Koduleht ja uudiskiri“ folds into a single row, so the menu fits a 768 px tall laptop screen. It stays open when the current page is inside it. Icons are the existing <span style="font-family:'JetBrains Mono';font-size:13px">AdminIcon</span> set and aren't shown in this mock.</p>
+  </div>
+
+  <div style="display:flex;gap:40px;align-items:flex-start">
+    <!-- desktop shell -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font:400 12px 'JetBrains Mono';color:#716a6d">DESKTOP · 1440 × 900 · click the menu</div>
+      <div style="width:1010px;height:900px;display:grid;grid-template-columns:235px 1fr;background:#f6f4f5;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+        <aside style="background:#242124;color:#ccc0c8;display:flex;flex-direction:column;padding:22px 14px 16px;gap:4px;overflow:auto">
+          <div style="width:132px;height:52px;overflow:hidden;margin:0 0 4px 8px;flex:none"><img src="assets/logo.png" alt="MS LAB" style="width:200px;height:200px;margin:-74px 0 0 -34px;display:block;filter:invert(1)"></div>
+          <div style="font-size:11px;color:#a99ba4;margin:0 0 10px 10px">Koolituskeskuse haldus</div>
+          <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="5">
+            <div style="display:flex;flex-direction:column;gap:2px;padding-top:{{ g.pt }}px">
+              <sc-if value="{{ g.isLabel }}" hint-placeholder-val="{{ true }}"><div style="font:600 10px Manrope;letter-spacing:.16em;color:#a99ba4;padding:6px 10px 4px">{{ g.label }}</div></sc-if>
+              <sc-if value="{{ g.isFold }}" hint-placeholder-val="{{ false }}"><div onClick="{{ g.toggle }}" style="cursor:pointer;height:44px;border-radius:9px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font:600 10px Manrope;letter-spacing:.16em;color:#a99ba4" style-hover="background:#3a3338">{{ g.label }}<span style="font-size:13px;letter-spacing:0">{{ g.chev }}</span></div></sc-if>
+              <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+                <div onClick="{{ it.go }}" style="cursor:pointer;height:44px;border-radius:9px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font:500 13px Manrope;background:{{ it.bg }};color:{{ it.fg }}" style-hover="background:#3a3338">
+                  <span>{{ it.t }}</span>
+                  <sc-if value="{{ it.hasBadge }}" hint-placeholder-val="{{ false }}"><span style="min-width:22px;height:22px;padding:0 7px;border-radius:99px;background:#e6dce2;color:#242124;font:600 11px Manrope;display:grid;place-items:center">{{ it.badge }}</span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+          <div style="margin-top:auto;border-top:1px solid #3a3338;padding:12px 10px 0;display:flex;flex-direction:column;gap:2px">
+            <span style="font-size:11px;color:#a99ba4">Sisse logitud</span>
+            <span style="font-size:12px;color:#ccc0c8">maria@example.test</span>
+            <span style="height:44px;display:flex;align-items:center;font:500 13px Manrope;color:#ccc0c8">Logi välja</span>
+          </div>
+        </aside>
+        <main style="padding:30px 40px;display:flex;flex-direction:column;gap:22px;overflow:hidden">
+          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;padding-bottom:18px;font:500 12px Manrope">
+            <span>MS LAB · Halduskeskkond</span>
+            <div style="display:flex;align-items:center;gap:14px"><span style="text-decoration:underline;text-decoration-color:#a49b9f;text-underline-offset:4px">Vaata kodulehte ↗</span><span>Maria</span><span style="width:36px;height:36px;border-radius:50%;background:#e6dce2;display:grid;place-items:center">M</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="display:flex;align-items:center;gap:10px;font-size:13px;color:#3a3437"><span style="width:22px;height:1px;background:#716a6d"></span>{{ crumb }}</span>
+            <h3 style="margin:0;font:300 42px/1.08 Jost">{{ pageTitle }}</h3>
+          </div>
+          <sc-if value="{{ hasTabs }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px"><sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="2"><span style="height:44px;padding:0 18px;border-radius:99px;display:flex;align-items:center;font:600 13px Manrope;background:{{ tb.bg }};color:{{ tb.fg }};border:1px solid {{ tb.bd }}">{{ tb.t }}</span></sc-for></div>
+          </sc-if>
+          <div style="background:#fff;border-radius:22px;padding:28px;display:flex;flex-direction:column;gap:12px;color:#3a3437">
+            <b style="color:#222">{{ pageNote }}</b>
+            <span style="font-size:14px">{{ pageNote2 }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;opacity:.55">
+            <div style="height:120px;background:#fff;border-radius:15px"></div><div style="height:120px;background:#fff;border-radius:15px"></div><div style="height:120px;background:#fff;border-radius:15px"></div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- phone -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font:400 12px 'JetBrains Mono';color:#716a6d">PHONE AND UPRIGHT TABLET · BELOW 900 PX · tap ≡</div>
+      <div style="width:390px;height:844px;background:#f6f4f5;border-radius:28px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);position:relative;display:flex;flex-direction:column">
+        <div style="height:64px;background:#242124;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 16px;flex:none">
+          <div style="display:flex;align-items:center;gap:12px"><div style="width:99px;height:39px;overflow:hidden"><img src="assets/logo.png" alt="MS LAB" style="width:150px;height:150px;margin:-55px 0 0 -25px;display:block;filter:invert(1)"></div><span style="color:#ccc0c8;font:500 13px Manrope">{{ pageTitle }}</span></div>
+          <span onClick="{{ toggleMenu }}" style="cursor:pointer;position:relative;width:44px;height:44px;border-radius:50%;border:1px solid #51434c;color:#fff;display:grid;place-items:center;font-size:18px">{{ menuGlyph }}<span style="position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:99px;background:#e6dce2;color:#242124;font:700 10px Manrope;display:grid;place-items:center;padding:0 5px">13</span></span>
+        </div>
+        <sc-if value="{{ menuClosed }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:22px 16px;display:flex;flex-direction:column;gap:16px">
+            <span style="display:flex;align-items:center;gap:10px;font-size:13px;color:#3a3437"><span style="width:22px;height:1px;background:#716a6d"></span>Teisipäev, 20. oktoober</span>
+            <h3 style="margin:0;font:300 32px/1.08 Jost">Tere, Maria.</h3>
+            <div style="background:#222;color:#fff;border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:10px">
+              <span style="font:600 11px Manrope;letter-spacing:.14em;color:#c0b7bb">TÄNA 10:00 · PÄRNU</span>
+              <span style="font:400 22px/1.2 Jost">Kulmumeistri baaskoolitus</span>
+              <span style="font-size:13px;color:#d5d0d3">3 õpilast · 1 protokoll saadetud</span>
+              <span style="align-self:flex-start;height:44px;padding:0 20px;border-radius:99px;background:#fff;color:#222;display:flex;align-items:center;font:600 13px Manrope">Protokollid</span>
+            </div>
+            <div style="font:400 12px 'JetBrains Mono';color:#716a6d">The overview stays the landing page; screen designs come in part 2.</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:64px 0 0 0;background:rgba(34,34,34,.35)"></div>
+          <div style="position:absolute;top:64px;bottom:0;left:0;width:320px;background:#242124;color:#ccc0c8;overflow:auto;padding:14px 12px 20px;display:flex;flex-direction:column;gap:4px">
+            <div style="background:#3a3338;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;margin-bottom:6px"><span style="font:600 10px Manrope;letter-spacing:.16em;color:#a99ba4">TÄNA 10:00</span><span style="font:500 14px Manrope;color:#fff">Protokollid · Kulmumeistri baaskoolitus</span></div>
+            <sc-for list="{{ phoneGroups }}" as="g" hint-placeholder-count="5">
+              <div style="display:flex;flex-direction:column;gap:2px;padding-top:{{ g.pt }}px">
+                <sc-if value="{{ g.hasLabel }}" hint-placeholder-val="{{ true }}"><div style="font:600 10px Manrope;letter-spacing:.16em;color:#a99ba4;padding:6px 10px 4px">{{ g.label }}</div></sc-if>
+                <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+                  <div onClick="{{ it.goPhone }}" style="cursor:pointer;height:44px;border-radius:9px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font:500 14px Manrope;background:{{ it.bg }};color:{{ it.fg }}">
+                    <span>{{ it.t }}</span>
+                    <sc-if value="{{ it.hasBadge }}" hint-placeholder-val="{{ false }}"><span style="min-width:22px;height:22px;padding:0 7px;border-radius:99px;background:#e6dce2;color:#242124;font:600 11px Manrope;display:grid;place-items:center">{{ it.badge }}</span></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+            <div style="border-top:1px solid #3a3338;margin-top:10px;padding:12px 10px 0;display:flex;flex-direction:column;gap:2px"><span style="font-size:12px">maria@example.test</span><span style="height:44px;display:flex;align-items:center;font:500 14px Manrope">Vaata kodulehte ↗</span><span style="height:44px;display:flex;align-items:center;font:500 14px Manrope">Logi välja</span></div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px">
+    <div style="background:#fff;border-radius:22px;padding:32px;display:flex;flex-direction:column;gap:14px">
+      <h3 style="margin:0;font:400 22px Jost">Pages that had no menu entry (obs. 7)</h3>
+      <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:0;font-size:14px">
+        <b style="padding:12px 0;border-top:1px solid #e6e1e3">„Protokollid“</b><span style="padding:12px 0;border-top:1px solid #e6e1e3;color:#3a3437">Gets its own row in „Igapäevane töö“. With no parameter it opens a session list for <b>today and the past 14 days</b>, each with student and draft counts, and today's session sits on top. The badge reads „Täna“ on a course day. The five existing entry points stay.</span>
+        <b style="padding:12px 0;border-top:1px solid #e6e1e3">„Arved“</b><span style="padding:12px 0;border-top:1px solid #e6e1e3;color:#3a3437">Becomes a tab beside „Maksed“ under a single menu row, „Maksed ja arved“. The badge counts paid payments that have no invoice yet („Arveta maksed“). This also covers the parked item about linking the overview to Arved.</span>
+        <b style="padding:12px 0;border-top:1px solid #e6e1e3">„Tunnistused“</b><span style="padding:12px 0;border-top:1px solid #e6e1e3;color:#3a3437">Becomes a tab on „Hindamine“: „Ootab hindamist“ | „Tunnistused“. The header button „Väljastatud tunnistused“ is removed.</span>
+        <b style="padding:12px 0;border-top:1px solid #e6e1e3;border-bottom:1px solid #e6e1e3">„Testimine“</b><span style="padding:12px 0;border-top:1px solid #e6e1e3;border-bottom:1px solid #e6e1e3;color:#3a3437">Gets its own row in „Haldus“, so it can be reached when nothing is open. The overview card stays as it is.</span>
+      </div>
+      <p style="margin:0;font-size:14px;color:#716a6d">The tabs are the existing pill links (<span style="font-family:'JetBrains Mono';font-size:12px">ui.filters</span>, same as „Tellijad | Kampaaniad“), so each tab keeps its own URL and the routes don't change.</p>
+    </div>
+    <div style="background:#fff;border-radius:22px;padding:32px;display:flex;flex-direction:column;gap:14px">
+      <h3 style="margin:0;font:400 22px Jost">Badges: one rule</h3>
+      <p style="margin:0;font-size:14px;color:#3a3437">A badge counts things <b>Maria has to act on</b>, never totals. Clicking a badged row opens the page already filtered to those items. Badges are the existing pale pill (#e6dce2). On the phone, the menu button shows the sum.</p>
+      <div style="display:grid;grid-template-columns:170px minmax(0,1fr) 120px;font-size:14px">
+        <b style="padding:10px 0;border-top:1px solid #e6e1e3">Registreerimised</b><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#3a3437">awaiting prepayment → <span style="font-family:'JetBrains Mono';font-size:12px">?staatus=ootab</span></span><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#716a6d">as today</span>
+        <b style="padding:10px 0;border-top:1px solid #e6e1e3">Protokollid</b><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#3a3437">the word „Täna“ on a day with a session</span><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#2f5d46">new</span>
+        <b style="padding:10px 0;border-top:1px solid #e6e1e3">Hindamine</b><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#3a3437">practical work + open answers + out of tries</span><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#716a6d">as today; refreshes after „Ava test uuesti“</span>
+        <b style="padding:10px 0;border-top:1px solid #e6e1e3">Päringud</b><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#3a3437">every request not done, including „Muutmine“; the overview tile uses the same number (obs. 12)</span><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#716a6d">as today</span>
+        <b style="padding:10px 0;border-top:1px solid #e6e1e3">Tagasiside</b><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#3a3437">reviews waiting for „Avalda“</span><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#2f5d46">new</span>
+        <b style="padding:10px 0;border-top:1px solid #e6e1e3">Maksed ja arved</b><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#3a3437">payments without an invoice + payments held „Ootel kontrollil“</span><span style="padding:10px 0;border-top:1px solid #e6e1e3;color:#2f5d46">new</span>
+        <b style="padding:10px 0;border-top:1px solid #e6e1e3;border-bottom:1px solid #e6e1e3">Testimine</b><span style="padding:10px 0;border-top:1px solid #e6e1e3;border-bottom:1px solid #e6e1e3;color:#3a3437">the signed-in admin's checks marked „Viga“</span><span style="padding:10px 0;border-top:1px solid #e6e1e3;border-bottom:1px solid #e6e1e3;color:#2f5d46">new</span>
+      </div>
+      <p style="margin:0;font-size:14px;color:#716a6d">Top line: „Vaata kodulehte ↗“ appears <b>once</b>, in the top line. The copy in the sidebar footer and the overview's „Kiirlingid“ link are removed (obs. 11). The signed-in e-mail is shown as text above „Logi välja“, because a hover tooltip isn't available on touch screens.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3.1 SAVING -->
+<section id="p1" data-screen-label="3.1 Saving" style="background:#fff;border-radius:28px;padding:48px;display:flex;flex-direction:column;gap:32px">
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">3.1 · SAVING (G4, G5, OBS. 1)</div>
+      <h2 style="margin:0;font:300 36px/1.12 Jost">Everything saves itself, and one status line per screen says so</h2>
+      <p style="margin:0;color:#3a3437;text-wrap:pretty">The protocol engine is generalised into <b>useAutosave</b>, and every editor and drawer uses it. A field saves 1.5 s after typing stops, on blur, when the tab is hidden, and before leaving the page. Choices, toggles, reordering and uploads save at the moment of the tap. A local copy is kept until the server confirms, and edits from two devices are caught by the same version check the protocols use today.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;font-size:14px;color:#3a3437">
+      <b style="color:#222">What replaces what</b>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-top:1px solid #e6e1e3">
+        <span style="padding:9px 0;border-bottom:1px solid #e6e1e3">SaveBar „Salvesta“ (Avaleht, Praktika, Koolitaja, Hüpikaken, Seaded, Uudised, Uudiskiri, course editor)</span><span style="padding:9px 0 9px 14px;border-bottom:1px solid #e6e1e3">removed → <b>SaveStatus</b> in the page header</span>
+        <span style="padding:9px 0;border-bottom:1px solid #e6e1e3">„Salvesta tunnistuse andmed“, „Salvesta arve andmed“, „Salvesta lepingud“</span><span style="padding:9px 0 9px 14px;border-bottom:1px solid #e6e1e3">removed; these cards autosave like the rest of the page</span>
+        <span style="padding:9px 0;border-bottom:1px solid #e6e1e3">„Salvesta toimumine“, „Salvesta staatus“, the per-module „Salvesta“, the lesson drawer's „Salvesta“, „Salvesta saaja“</span><span style="padding:9px 0 9px 14px;border-bottom:1px solid #e6e1e3">removed; the drawer header shows SaveStatus</span>
+        <span style="padding:9px 0;border-bottom:1px solid #e6e1e3">„Salvesta summa“</span><span style="padding:9px 0 9px 14px;border-bottom:1px solid #e6e1e3">replaced by the explicit „Lisa laekumine“ (Q2, behaviour change)</span>
+        <span style="padding:9px 0;border-bottom:1px solid #e6e1e3">„Lisa toimumine“, „Lisa õpilane“, „Lisa koolitus +“, „Lisa postitus +“</span><span style="padding:9px 0 9px 14px;border-bottom:1px solid #e6e1e3">stay as the single explicit <b>create</b>; after that the item autosaves</span>
+        <span style="padding:9px 0;border-bottom:1px solid #e6e1e3">„Saada…“, „Koosta arve“, „Märgi tasutuks“, „Ava ligipääs“, „Kopeeri“</span><span style="padding:9px 0 9px 14px;border-bottom:1px solid #e6e1e3">stay explicit: they leave the admin or create a record</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:32px;align-items:start">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <b>SaveStatus: all states</b>
+      <div style="display:flex;flex-direction:column;gap:10px;background:#f6f4f5;border-radius:22px;padding:24px">
+        <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 14px;border-radius:99px;background:#eaf0eb;color:#2f5d46;font:600 12px Manrope;display:flex;align-items:center;gap:6px">✓ Salvestatud 12:04</span><span style="font-size:13px;color:#716a6d">at rest; the time of the last confirmed save</span></div>
+        <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 14px;border-radius:99px;background:#ebe8e9;color:#5e5559;font:600 12px Manrope;display:flex;align-items:center">Salvestamata muudatused</span><span style="font-size:13px;color:#716a6d">during the 1.5 s wait after typing</span></div>
+        <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 14px;border-radius:99px;background:#ebe8e9;color:#5e5559;font:600 12px Manrope;display:flex;align-items:center">Salvestan…</span><span style="font-size:13px;color:#716a6d">request in flight</span></div>
+        <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 14px;border-radius:99px;background:#ebe8e9;color:#5e5559;font:600 12px Manrope;display:flex;align-items:center">Kontrollin salvestatud teksti…</span><span style="font-size:13px;color:#716a6d">re-reading after Back, a hidden tab or a reconnect</span></div>
+        <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 14px;border-radius:99px;background:#f3e6e6;color:#8a3b3b;font:600 12px Manrope;display:flex;align-items:center">Salvestamata — proovin uuesti</span><span style="font-size:13px;color:#716a6d">offline or a server error; retries 2/5/10/20/30 s</span></div>
+        <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 14px;border-radius:99px;background:#f3e6e6;color:#8a3b3b;font:600 12px Manrope;display:flex;align-items:center;gap:10px">Salvestamata — kontrolli märgitud välja <u style="cursor:pointer">Näita</u></span><span style="font-size:13px;color:#716a6d">one field fails validation; the other fields still save</span></div>
+        <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 14px;border-radius:99px;background:#f3e6e6;color:#8a3b3b;font:600 12px Manrope;display:flex;align-items:center">Salvestamata — logi uuesti sisse</span><span style="font-size:13px;color:#716a6d">401; the text is kept on this device</span></div>
+        <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 14px;border-radius:99px;background:#f3e6e6;color:#8a3b3b;font:600 12px Manrope;display:flex;align-items:center">Muudeti teises aknas — vaata üle</span><span style="font-size:13px;color:#716a6d">version conflict → opens the protocols' notice, with a new „Taasta minu tekst“</span></div>
+      </div>
+      <p style="margin:0;font-size:13px;color:#716a6d">Placement: the right end of the page-heading row, aligned with the H1 and beside „Vaata lehel ↗“ where there is one. In a drawer it sits in the header beside ✕. On a phone it sits under the H1. On the protocol screen it stays in the card corner. There is only one per screen. It is <span style="font-family:'JetBrains Mono';font-size:12px">role=status</span> and announces only changes of state, not every save.</p>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <b>Try it: type, wait, or cut the network</b>
+      <div style="background:#f6f4f5;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#716a6d">Koolitused / Muuda koolitust</span><span style="font:300 30px/1.1 Jost">Kulmude LAMI</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="height:32px;padding:0 14px;border-radius:99px;background:{{ ssBg }};color:{{ ssFg }};font:600 12px Manrope;display:flex;align-items:center;white-space:nowrap">{{ ssText }}</span><span style="font:600 13px Manrope;text-decoration:underline;text-decoration-color:#a49b9f;text-underline-offset:4px;white-space:nowrap">Vaata lehel ↗</span></div>
+        </div>
+        <div style="background:#fff;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:16px">
+          <label style="display:flex;flex-direction:column;gap:6px;font:600 12px Manrope">Koolituse nimi<input value="{{ demoName }}" onInput="{{ onDemoName }}" style="min-height:48px;border:1px solid {{ nameBd }};border-radius:10px;padding:12px 15px;font:400 15px Manrope;outline-color:#9e8993"></label>
+          <sc-if value="{{ nameInvalid }}" hint-placeholder-val="{{ false }}"><span style="font:600 13px Manrope;color:#8a3b3b;margin-top:-10px">Täida see väli (eesti keeles).</span></sc-if>
+          <label style="display:flex;flex-direction:column;gap:6px;font:600 12px Manrope">Grupikoolituse hind (€)<input value="{{ demoPrice }}" onInput="{{ onDemoPrice }}" style="min-height:48px;border:1px solid #d9d2d5;border-radius:10px;padding:12px 15px;font:400 15px Manrope;outline-color:#9e8993"></label>
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font:600 12px Manrope">Õppevorm</span><div style="display:flex;gap:8px"><sc-for list="{{ formChoices }}" as="c" hint-placeholder-count="2"><span onClick="{{ c.go }}" style="cursor:pointer;height:44px;padding:0 16px;border-radius:99px;border:1px solid {{ c.bd }};background:{{ c.bg }};display:flex;align-items:center;gap:8px;font-size:14px"><span style="width:14px;height:14px;border-radius:50%;border:1px solid #716a6d;background:{{ c.dot }}"></span>{{ c.t }}</span></sc-for></div><span style="font-size:12px;color:#716a6d">A tap saves at once, with no wait.</span></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <span onClick="{{ toggleOffline }}" style="cursor:pointer;height:44px;padding:0 16px;border-radius:99px;border:1px dashed #9e8993;display:flex;align-items:center;font:600 12px Manrope;color:#5e5559">{{ offlineLabel }}</span>
+          <span style="font-size:12px;color:#716a6d;align-self:center">Prototype control only. Clear the name to see a field held back.</span>
+        </div>
+      </div>
+      <div style="font-size:13px;color:#3a3437;display:flex;flex-direction:column;gap:6px">
+        <b style="color:#222">Rules</b>
+        <span>• A field that fails validation is held back, marked, and listed in the status. Valid fields keep saving, so one bad price never blocks a description.</span>
+        <span>• New records are created by their one explicit button. Before that the drawer shows „Täida kohustuslikud väljad“, not a save status.</span>
+        <span>• Removing a list row, image or file is instant and offers „Võta tagasi“ for 8 s (see 3.3). Nothing waits for a save that may never happen.</span>
+        <span>• <b>Published items</b> (course, home page, post, popup, practice): autosave writes a draft. The header adds „Avaldamata muudatused: {n}“, „Eelvaade ↗“, „Avalda muudatused“ (explicit, it changes the public site) and „Loobu muudatustest“ (ConfirmPanel).</span>
+        <span>• Changing „Õppevorm“ updates the modules card below immediately, which fixes the stale-card friction (appendix 02).</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3.2 DRAWERS -->
+<section id="p2" data-screen-label="3.2 Drawers" style="background:#fff;border-radius:28px;padding:48px;display:grid;grid-template-columns:minmax(0,1fr) 560px;gap:48px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">3.2 · DRAWERS AND UNSAVED INPUT (G6, OBS. 2)</div>
+    <h2 style="margin:0;font:300 36px/1.12 Jost">Closing a drawer never loses anything</h2>
+    <p style="margin:0;color:#3a3437;text-wrap:pretty">Drawers stay what they are today: <span style="font-family:'JetBrains Mono';font-size:13px">Drawer.tsx</span>, opened by a URL parameter, 560 px wide, full screen on a phone. Because they now autosave, closing them with ✕, Esc or the backdrop is safe. The only time closing has to wait is when something isn't confirmed yet.</p>
+    <div style="display:flex;flex-direction:column;border-top:1px solid #e6e1e3;font-size:14px">
+      <div style="display:grid;grid-template-columns:200px minmax(0,1fr);padding:12px 0;border-bottom:1px solid #e6e1e3"><b>Everything saved</b><span style="color:#3a3437">Closes at once. Focus returns to the row, as today.</span></div>
+      <div style="display:grid;grid-template-columns:200px minmax(0,1fr);padding:12px 0;border-bottom:1px solid #e6e1e3"><b>Save in flight or waiting</b><span style="color:#3a3437">The pending save is sent first and the drawer closes when it's confirmed, usually in under a second. Nothing is asked.</span></div>
+      <div style="display:grid;grid-template-columns:200px minmax(0,1fr);padding:12px 0;border-bottom:1px solid #e6e1e3"><b>Can't save (offline, error, invalid field)</b><span style="color:#3a3437">An in-place question appears at the top of the drawer: what isn't saved and why. „Jää siia“ is the primary button and returns focus to the field. „Sulge, tekst jääb seadmesse“ keeps the local copy and restores it the next time the drawer opens.</span></div>
+      <div style="display:grid;grid-template-columns:200px minmax(0,1fr);padding:12px 0;border-bottom:1px solid #e6e1e3"><b>An upload is still running</b><span style="color:#3a3437">Same question; the upload carries on while she stays.</span></div>
+    </div>
+    <p style="margin:0;font-size:14px;color:#3a3437"><b>Navigating within the admin</b> (sidebar, links, Back) uses the same guard through one <b>useLeaveGuard</b> hook in <span style="font-family:'JetBrains Mono';font-size:13px">Shell</span>. That covers the parked "unsaved warning on in-admin navigation" item. The browser's own prompt (beforeunload) stays only for closing a tab while text is unconfirmed.</p>
+    <p style="margin:0;font-size:14px;color:#716a6d">Drawers that only show information (feedback answers) have no status line. The scroll lock gets <span style="font-family:'JetBrains Mono';font-size:12px">scrollbar-gutter: stable</span>, which closes the parked layout-shift item on Windows.</p>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:400 12px 'JetBrains Mono';color:#716a6d">DRAWER · KALENDER ?id=12 · try ✕ in each state</div>
+    <div style="height:640px;background:#fff;border-radius:22px 0 0 22px;box-shadow:-20px 0 60px rgba(34,34,34,.15);display:flex;flex-direction:column;overflow:hidden;border:1px solid #e6e1e3">
+      <div style="padding:20px 24px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid #e6e1e3">
+        <div style="display:flex;flex-direction:column;gap:6px"><span style="font:300 26px/1.1 Jost">Kulmumeistri baaskoolitus</span><span style="height:28px;align-self:flex-start;padding:0 12px;border-radius:99px;background:{{ dsBg }};color:{{ dsFg }};font:600 11px Manrope;display:flex;align-items:center">{{ dsText }}</span></div>
+        <span onClick="{{ drawerClose }}" style="cursor:pointer;flex:none;width:44px;height:44px;border-radius:50%;border:1px solid #d5d0d3;display:grid;place-items:center;font-size:16px">✕</span>
+      </div>
+      <sc-if value="{{ askClose }}" hint-placeholder-val="{{ false }}">
+        <div tabindex="-1" style="margin:16px 24px 0;background:#f0ebed;border-left:2px solid #9e8993;border-radius:0 10px 10px 0;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+          <b style="font-size:14px">Muudatust „Kohti“ ei saanud veel salvestada.</b>
+          <span style="font-size:13px;color:#3a3437">Ühendus puudub. Proovin uuesti, kuni jääd siia.</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><span onClick="{{ stay }}" style="cursor:pointer;height:44px;padding:0 18px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 13px Manrope">Jää siia</span><span onClick="{{ closeAnyway }}" style="cursor:pointer;height:44px;padding:0 18px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 13px Manrope">Sulge, tekst jääb seadmesse</span></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ drawerClosed }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:16px 24px 0;background:#eaf0eb;border-radius:10px;padding:12px 16px;font-size:13px;color:#2f5d46;font-weight:600">The drawer closed and focus went back to the row. <u onClick="{{ reopen }}" style="cursor:pointer">Open again</u></div>
+      </sc-if>
+      <div style="padding:20px 24px;display:flex;flex-direction:column;gap:16px;opacity:{{ drawerOp }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <label style="display:flex;flex-direction:column;gap:6px;font:600 12px Manrope">Kuupäev<span style="min-height:48px;border:1px solid #d9d2d5;border-radius:10px;padding:12px 15px;font:400 15px Manrope">20.10.2026</span></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font:600 12px Manrope">Kohti<span style="min-height:48px;border:1px solid #d9d2d5;border-radius:10px;padding:12px 15px;font:400 15px Manrope">{{ seats }}</span></label>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:6px;font:600 12px Manrope">Toimumiskoht<span style="min-height:48px;border:1px solid #d9d2d5;border-radius:10px;padding:12px 15px;font:400 15px Manrope">MS LAB stuudio</span></label>
+        <span style="font-size:12px;color:#716a6d">Fields sketched; the Kalender drawer itself is redesigned in part 2.</span>
+      </div>
+      <div style="margin-top:auto;padding:16px 24px;border-top:1px solid #e6e1e3;display:flex;flex-direction:column;gap:8px">
+        <span style="font:600 11px Manrope;letter-spacing:.12em;color:#716a6d">PROTOTYPE: STATE BEFORE ✕</span>
+        <div style="display:flex;gap:8px"><sc-for list="{{ drawerModes }}" as="m" hint-placeholder-count="3"><span onClick="{{ m.go }}" style="cursor:pointer;height:44px;padding:0 14px;border-radius:99px;border:1px dashed #9e8993;background:{{ m.bg }};display:flex;align-items:center;font:600 12px Manrope;color:#5e5559">{{ m.t }}</span></sc-for></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3.3 CONFIRMATIONS -->
+<section id="p3" data-screen-label="3.3 Confirmations" style="background:#fff;border-radius:28px;padding:48px;display:flex;flex-direction:column;gap:32px">
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">3.3 · CONFIRMATIONS (G8, OBS. 5, 13)</div>
+      <h2 style="margin:0;font:300 36px/1.12 Jost">One ConfirmPanel, one rule, one set of words</h2>
+      <p style="margin:0;color:#3a3437;text-wrap:pretty">Patterns A, B and C (G8) become one component, <b>ConfirmPanel</b>. It opens in place of the button that triggered it and takes focus. It states the question and lists the consequences in plain lines: who gets mail, what changes in public, and what can't be undone. The "yes" button repeats the action and its count, so it reads as a sentence. „Katkesta“ returns focus to the trigger.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;font-size:14px">
+      <b>When a confirmation is needed</b>
+      <div style="display:grid;grid-template-columns:150px minmax(0,1fr);border-top:1px solid #e6e1e3">
+        <span style="padding:10px 0;border-bottom:1px solid #e6e1e3;font-weight:600">ConfirmPanel</span><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">The action can't be undone, <b>or</b> it mails more than one person, <b>or</b> it changes what a student has right away (access, seat, test). Examples: „Kustuta …“, „Lukusta ja saada kõik“, „Saada kõigile“, „Tühista registreerimine“, „Tühista arve“, „Võta tasumine tagasi“, „Lõpeta ligipääs“, „Peata saatmine“, and saving a changed e-course contract that makes students re-accept.</span>
+        <span style="padding:10px 0;border-bottom:1px solid #e6e1e3;font-weight:600">Informed button</span><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">A send to one person, with the summary written on the button itself: one tap, nothing hidden. Examples: „Saada protokoll Eliisele“, „Saada hinnang · 3 kinnitatud, 1 paranda“, „Saada test tagasi · 1 vale“. The protocol send and the test-review send now behave the same way (obs. 5, 13).</span>
+        <span style="padding:10px 0;border-bottom:1px solid #e6e1e3;font-weight:600">UndoBar</span><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">A reversible one-tap action: remove an image, file or list row, hide or publish a review, mark a request done. Shows „{Mis juhtus}. Võta tagasi“ for 8 s.</span>
+        <span style="padding:10px 0;border-bottom:1px solid #e6e1e3;font-weight:600">Refuse early</span><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">An action that isn't possible isn't offered, and the reason is shown where the button would be. For example, a booked session shows „Toimumisel on registreeringuid — märgi see „Tühistatud“.“ in place of „Kustuta toimumine“, so she doesn't need three taps to find out (appendix 03).</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:start">
+    <div style="background:#f6f4f5;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:14px">
+      <span style="font:400 12px 'JetBrains Mono';color:#716a6d">CONFIRMPANEL · DESTRUCTIVE · try it</span>
+      <sc-if value="{{ cIdle }}" hint-placeholder-val="{{ true }}"><span onClick="{{ cOpen }}" style="cursor:pointer;align-self:flex-start;height:44px;padding:0 18px;border-radius:99px;border:1px solid #c9a3a3;color:#8a3b3b;display:flex;align-items:center;font:600 13px Manrope" style-hover="background:#f5ebeb">Tühista registreerimine</span></sc-if>
+      <sc-if value="{{ cAsk }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#fff;border-left:2px solid #9e8993;border-radius:0 14px 14px 0;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+          <b style="font-size:15px">Kas tühistan Kati Kase registreerimise?</b>
+          <span style="font-size:13px;color:#3a3437">• Koht 05.12 Pärnu koolitusel vabaneb kohe avalikus kalendris.</span>
+          <span style="font-size:13px;color:#3a3437">• Laekunud 175 € ja arve MSL2026-004 jäävad alles.</span>
+          <span style="font-size:13px;color:#3a3437">• Õpilasele kirja ei saadeta.</span>
+          <div style="display:flex;gap:8px;padding-top:4px"><span onClick="{{ cYes }}" style="cursor:pointer;height:44px;padding:0 18px;border-radius:99px;border:1px solid #c9a3a3;background:#f5ebeb;color:#8a3b3b;display:flex;align-items:center;font:600 13px Manrope">Jah, tühista</span><span onClick="{{ cNo }}" style="cursor:pointer;height:44px;padding:0 18px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 13px Manrope">Katkesta</span></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ cDone }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:8px"><span style="font:600 13px Manrope;color:#2f5d46">Registreerimine on tühistatud.</span><u onClick="{{ cNo }}" style="cursor:pointer;font-size:12px;color:#716a6d">reset demo</u></div></sc-if>
+    </div>
+    <div style="background:#f6f4f5;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:14px">
+      <span style="font:400 12px 'JetBrains Mono';color:#716a6d">CONFIRMPANEL · BULK SEND</span>
+      <div style="background:#fff;border-left:2px solid #9e8993;border-radius:0 14px 14px 0;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+        <b style="font-size:15px">Kas saadan kirja „Jõulupakkumine“?</b>
+        <span style="font-size:13px;color:#3a3437">• 4 kinnitatud tellijat: 3 eesti, 1 vene keeles.</span>
+        <span style="font-size:13px;color:#3a3437">• Näidisaadressidele (@example.test) ei saadeta.</span>
+        <span style="font-size:13px;color:#3a3437">• Saadetud kirja ei saa tagasi võtta ega muuta.</span>
+        <div style="display:flex;gap:8px;padding-top:4px"><span style="height:44px;padding:0 18px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 13px Manrope">Jah, saada 4 tellijale</span><span style="height:44px;padding:0 18px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 13px Manrope">Katkesta</span></div>
+      </div>
+      <span style="font-size:12px;color:#716a6d">A send uses the ink primary button; a destructive action uses the danger outline. The count matches the tile on the overview (obs. 12).</span>
+    </div>
+    <div style="background:#f6f4f5;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:14px">
+      <span style="font:400 12px 'JetBrains Mono';color:#716a6d">INFORMED BUTTON + UNDOBAR</span>
+      <span style="align-self:flex-start;height:49px;padding:0 22px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 13px Manrope">Saada hinnang · 3 kinnitatud, 1 paranda</span>
+      <span style="font-size:12px;color:#716a6d;margin-top:-6px">One tap. The counts update as she taps verdicts.</span>
+      <div style="height:1px;background:#e6e1e3;margin:4px 0"></div>
+      <sc-if value="{{ uHas }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:12px"><div style="width:72px;height:56px;border-radius:14px;background:#ebe8e9 url(assets/stock/eye2.jpg) center/cover"></div><span onClick="{{ uRemove }}" style="cursor:pointer;height:44px;padding:0 14px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">Eemalda pilt</span></div></sc-if>
+      <sc-if value="{{ uGone }}" hint-placeholder-val="{{ false }}"><div style="align-self:flex-start;background:#222;color:#fff;border-radius:14px;padding:0 6px 0 16px;min-height:52px;display:flex;align-items:center;gap:14px;font-size:13px">Pilt eemaldatud.<span onClick="{{ uUndo }}" style="cursor:pointer;height:44px;padding:0 14px;border-radius:99px;background:#3a3338;display:flex;align-items:center;font-weight:600">Võta tagasi</span></div></sc-if>
+      <span style="font-size:12px;color:#716a6d">UndoBar sits bottom-left (bottom, full width on a phone) and isn't stacked; a new action replaces the previous bar. It's role=status, and Esc dismisses it.</span>
+    </div>
+  </div>
+</section>
+
+<!-- 3.4 ET/RU -->
+<section id="p4" data-screen-label="3.4 ET/RU" style="background:#fff;border-radius:28px;padding:48px;display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:48px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">3.4 · ET/RU EDITING (G7, OBS. 10)</div>
+    <h2 style="margin:0;font:300 36px/1.12 Jost">One language switch per page</h2>
+    <p style="margin:0;color:#3a3437;text-wrap:pretty">The ET/RU pills on each field are removed. A single <b>LangSwitch</b> in the page header sets the content language for every <span style="font-family:'JetBrains Mono';font-size:13px">I18nInput</span> on the page, through context. ET is the default, and the choice is remembered per device. Maria writes both languages as she goes (Q4), so two modes are enough.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;color:#3a3437">
+      <span>• In RU mode, each field shows its Estonian text in grey above the input, so there is no switching back to check.</span>
+      <span>• An empty RU field keeps the „tõlge tulekul“ tag and offers „Kopeeri eesti keelest“ (a 44 px link) to start from the Estonian.</span>
+      <span>• The switch counts untranslated fields: „RU puudub 3 väljal“, with „Järgmine →“ to jump to the next one.</span>
+      <span>• The rules stay the same: ET is required when RU is filled, and the error text is unchanged.</span>
+      <span>• Admin labels are always Estonian. Only the content switches.</span>
+    </div>
+    <p style="margin:0;font-size:14px;color:#716a6d">Clicks for a Russian pass over a course with 12 bilingual fields: <b>12 → 1</b> (one tap on RU), plus one tap per „Järgmine“ if she uses it.</p>
+  </div>
+  <div style="background:#f6f4f5;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px"><span style="font:600 12px Manrope">Sisu keel</span>
+        <div style="display:flex;background:#fff;border:1px solid #d9d2d5;border-radius:99px;padding:3px">
+          <sc-for list="{{ langOpts }}" as="l" hint-placeholder-count="3"><span onClick="{{ l.go }}" style="cursor:pointer;height:38px;min-width:44px;padding:0 14px;border-radius:99px;display:flex;align-items:center;justify-content:center;font:600 13px Manrope;background:{{ l.bg }};color:{{ l.fg }}">{{ l.t }}</span></sc-for>
+        </div>
+      </div>
+      <sc-if value="{{ ruMissingShow }}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;color:#6b4f5c;font-weight:600;display:flex;align-items:center;gap:10px">{{ ruMissingText }}<u style="cursor:pointer">Järgmine →</u></span></sc-if>
+    </div>
+    <div style="background:#fff;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:20px">
+      <sc-for list="{{ langFields }}" as="f" hint-placeholder-count="2">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font:600 12px Manrope;display:flex;align-items:center;gap:8px">{{ f.label }}<sc-if value="{{ f.showTag }}" hint-placeholder-val="{{ false }}"><span style="height:20px;padding:0 8px;border-radius:99px;background:#e9e1e5;color:#6b4f5c;font:600 10px Manrope;display:flex;align-items:center">tõlge tulekul</span></sc-if></span>
+          <sc-if value="{{ f.single }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <sc-if value="{{ f.showRef }}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;color:#716a6d;padding:0 2px"><span style="font:600 10px Manrope;letter-spacing:.1em;margin-right:6px">ET</span>{{ f.et }}</span></sc-if>
+              <input value="{{ f.val }}" onInput="{{ f.onInput }}" placeholder="{{ f.ph }}" style="min-height:48px;border:1px solid #d9d2d5;border-radius:10px;padding:12px 15px;font:400 15px Manrope;outline-color:#9e8993">
+              <sc-if value="{{ f.showCopy }}" hint-placeholder-val="{{ false }}"><span onClick="{{ f.copy }}" style="cursor:pointer;align-self:flex-start;min-height:44px;display:flex;align-items:center;font:600 12px Manrope;text-decoration:underline;text-decoration-color:#a49b9f;text-underline-offset:4px">Kopeeri eesti keelest</span></sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ f.both }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:4px"><span style="font:600 10px Manrope;letter-spacing:.1em;color:#716a6d">ET</span><input value="{{ f.et }}" onInput="{{ f.onEt }}" style="min-height:48px;border:1px solid #d9d2d5;border-radius:10px;padding:12px 15px;font:400 15px Manrope"></div>
+              <div style="display:flex;flex-direction:column;gap:4px"><span style="font:600 10px Manrope;letter-spacing:.1em;color:#716a6d">RU</span><input value="{{ f.ru }}" onInput="{{ f.onRu }}" placeholder="{{ f.et }}" style="min-height:48px;border:1px solid #d9d2d5;border-radius:10px;padding:12px 15px;font:400 15px Manrope"></div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</section>
+
+<!-- 3.5 LISTS -->
+<section id="p5" data-screen-label="3.5 Lists" style="background:#fff;border-radius:28px;padding:48px;display:flex;flex-direction:column;gap:28px">
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">3.5 · LISTS (G9, OBS. 6)</div>
+      <h2 style="margin:0;font:300 36px/1.12 Jost">One ListToolbar on every list of people or money</h2>
+      <p style="margin:0;color:#3a3437;text-wrap:pretty"><b>ListToolbar</b> combines search, the existing filter pills (now with counts), one optional scope select and the count line. All of it lives in the URL, so a drawer's back link and „Tagasi“ return to the same filtered view (appendix 07–10). The pager stays as it is (50 rows).</p>
+    </div>
+    <div style="display:grid;grid-template-columns:150px minmax(0,1fr);font-size:14px;border-top:1px solid #e6e1e3">
+      <b style="padding:9px 0;border-bottom:1px solid #e6e1e3">Search</b><span style="padding:9px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">Name, e-mail or phone; invoice number on Arved; Montonio id on Maksed. Filters as she types (300 ms), <span style="font-family:'JetBrains Mono';font-size:12px">?otsi=</span>. Added to Registreerimised, Päringud, Maksed, Arved, Tagasiside, Tunnistused and Uudiskiri.</span>
+      <b style="padding:9px 0;border-bottom:1px solid #e6e1e3">Scope select</b><span style="padding:9px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">„Koolitus / toimumine“ on Registreerimised; „Kuu“ on Arved, applied on change, so „Näita“ is removed and the CSV always matches what's on screen.</span>
+      <b style="padding:9px 0;border-bottom:1px solid #e6e1e3">Pill counts</b><span style="padding:9px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">The existing <span style="font-family:'JetBrains Mono';font-size:12px">pillCount</span> bubble, on every status row.</span>
+      <b style="padding:9px 0;border-bottom:1px solid #e6e1e3">Rows</b><span style="padding:9px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">The <b>whole row</b> opens the drawer, not only the name. The table switches to label/value cards below a 760 px card width (today 980), so it stays a table on her 1360 px laptop (parked item).</span>
+    </div>
+  </div>
+
+  <div style="background:#f6f4f5;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:16px">
+    <div style="font:400 12px 'JetBrains Mono';color:#716a6d">LISTTOOLBAR · REGISTREERIMISED · type „kas“ or „+372 5000 0007“</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <div style="flex:1 1 360px;display:flex;align-items:center;gap:8px;min-height:48px;background:#fff;border:1px solid #d9d2d5;border-radius:99px;padding:0 8px 0 18px"><span style="color:#716a6d">⌕</span><input value="{{ q }}" onInput="{{ onQ }}" placeholder="Otsi nime, e-posti või telefoni järgi" style="flex:1;border:0;outline:0;font:400 15px Manrope;background:transparent;min-height:44px"><sc-if value="{{ hasQ }}" hint-placeholder-val="{{ false }}"><span onClick="{{ clearQ }}" style="cursor:pointer;width:36px;height:36px;border-radius:50%;background:#ebe8e9;display:grid;place-items:center;font-size:12px">✕</span></sc-if></div>
+      <div style="min-height:48px;background:#fff;border:1px solid #d9d2d5;border-radius:10px;padding:0 15px;display:flex;align-items:center;gap:30px;font-size:15px">Kõik koolitused ja toimumised<span style="font-size:11px">▾</span></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <sc-for list="{{ chips }}" as="c" hint-placeholder-count="4"><span onClick="{{ c.go }}" style="cursor:pointer;height:44px;padding:0 8px 0 16px;border-radius:99px;display:flex;align-items:center;gap:8px;font:600 13px Manrope;background:{{ c.bg }};color:{{ c.fg }};border:1px solid {{ c.bd }}">{{ c.t }}<span style="min-width:24px;height:24px;padding:0 7px;border-radius:99px;background:{{ c.cb }};color:#222;font:600 11px Manrope;display:grid;place-items:center">{{ c.n }}</span></span></sc-for>
+    </div>
+    <div style="background:#fff;border-radius:22px;padding:8px 24px 16px">
+      <div style="display:flex;justify-content:space-between;padding:12px 0;font-size:12px;color:#716a6d"><span>{{ countLine }}</span><span>Uuemad eespool</span></div>
+      <div style="display:grid;grid-template-columns:110px minmax(0,1.4fr) minmax(0,1.3fr) 130px 110px 140px;gap:16px;font:500 11px Manrope;color:#716a6d;padding-bottom:10px;border-bottom:1px solid #e6e1e3"><span>Kuupäev</span><span>Nimi ja kontakt</span><span>Koolitus ja toimumine</span><span>Laekunud</span><span>Makse</span><span>Staatus</span></div>
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="4">
+        <div style="cursor:pointer;display:grid;grid-template-columns:110px minmax(0,1.4fr) minmax(0,1.3fr) 130px 110px 140px;gap:16px;align-items:center;min-height:60px;padding:8px 0;border-bottom:1px solid #e6e1e3;font-size:13px" style-hover="background:#faf8f9">
+          <span>{{ r.date }}</span>
+          <span style="display:flex;flex-direction:column"><b style="font-weight:600">{{ r.name }}</b><span style="color:#716a6d;font-size:12px">{{ r.contact }}</span></span>
+          <span style="display:flex;flex-direction:column"><span>{{ r.course }}</span><span style="color:#716a6d;font-size:12px">{{ r.session }}</span></span>
+          <span style="font-weight:600">{{ r.paid }}</span>
+          <span style="color:#716a6d">{{ r.choice }}</span>
+          <span style="justify-self:start;height:24px;padding:0 10px;border-radius:99px;background:{{ r.sbg }};color:{{ r.sfg }};font:600 11px Manrope;display:flex;align-items:center">{{ r.status }}</span>
+        </div>
+      </sc-for>
+      <sc-if value="{{ noRows }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:36px 0;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center"><span style="color:#3a3437">„{{ q }}“ järgi registreerimisi ei leitud.</span><span onClick="{{ clearAll }}" style="cursor:pointer;height:44px;padding:0 18px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 13px Manrope">Tühjenda otsing ja filtrid</span></div>
+      </sc-if>
+    </div>
+    <p style="margin:0;font-size:12px;color:#716a6d">„Laekunud“ shows the money actually received; „Makse“ is her 100 % / 50 % choice (obs. 6). The columns „Modelli abi“ and „Konto“ move into the drawer; the exact columns are decided in part 2.</p>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px">
+    <div style="background:#f6f4f5;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:12px">
+      <span style="font:400 12px 'JetBrains Mono';color:#716a6d">EMPTY · two kinds</span>
+      <div style="background:#fff;border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:6px"><b style="font-size:14px">Registreerimisi veel pole.</b><span style="font-size:13px;color:#716a6d">Nothing exists: say so, offer nothing.</span></div>
+      <div style="background:#fff;border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:10px"><b style="font-size:14px">Selle valikuga registreerimisi pole.</b><span style="align-self:flex-start;height:44px;padding:0 16px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">Tühjenda otsing ja filtrid</span></div>
+    </div>
+    <div style="background:#f6f4f5;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:12px">
+      <span style="font:400 12px 'JetBrains Mono';color:#716a6d">LOADING · new loading.tsx</span>
+      <div style="background:#fff;border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:14px">
+        <div style="height:12px;width:40%;border-radius:6px;background:#ebe8e9"></div>
+        <div style="height:12px;width:90%;border-radius:6px;background:#ebe8e9"></div>
+        <div style="height:12px;width:75%;border-radius:6px;background:#ebe8e9"></div>
+        <div style="height:12px;width:85%;border-radius:6px;background:#ebe8e9"></div>
+      </div>
+      <span style="font-size:12px;color:#716a6d">Static grey rows with no shimmer (reduced motion). Shown only after 300 ms, so fast pages don't flash. The page header and toolbar stay in place.</span>
+    </div>
+    <div style="background:#f6f4f5;border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:12px">
+      <span style="font:400 12px 'JetBrains Mono';color:#716a6d">ERROR · new error.tsx</span>
+      <div style="background:#fff;border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:10px;border-left:2px solid #8a3b3b">
+        <b style="font-size:14px">Seda lehte ei saanud praegu laadida.</b>
+        <span style="font-size:13px;color:#3a3437">Sinu salvestatud andmed on alles. Proovi mõne hetke pärast uuesti.</span>
+        <span style="align-self:flex-start;height:44px;padding:0 16px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 12px Manrope">Proovi uuesti</span>
+      </div>
+      <span style="font-size:12px;color:#716a6d">One error.tsx for the panel layout, so the sidebar stays. Today a failed read takes down the whole page.</span>
+    </div>
+  </div>
+</section>
+
+<!-- 3.6 WORDS -->
+<section id="p6" data-screen-label="3.6 Words" style="background:#fff;border-radius:28px;padding:48px;display:grid;grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr);gap:48px">
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">3.6 · ONE WORD PER ACTION (OBS. 11)</div>
+    <h2 style="margin:0;font:300 36px/1.12 Jost">A short glossary, applied everywhere</h2>
+    <p style="margin:0;color:#3a3437;text-wrap:pretty">The main rule is that <b>„Tühista“</b> is only ever a business action: cancelling a registration, an invoice or a session. Stepping out of a form or a question is always <b>„Katkesta“</b>. That keeps „Tühista“ from meaning "never mind" on one screen and "cancel the invoice" on the next.</p>
+  </div>
+  <div style="display:grid;grid-template-columns:200px 220px minmax(0,1fr);font-size:14px;border-top:1px solid #222">
+    <b style="padding:10px 0;border-bottom:1px solid #222;font-size:12px">Action</b><b style="padding:10px 0;border-bottom:1px solid #222;font-size:12px">The one word</b><b style="padding:10px 0;border-bottom:1px solid #222;font-size:12px">Replaces</b>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Leave a form / say no</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„Katkesta“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">„Ei“, „Tagasi“ (in confirmations), „Tühista“ (review form, campaign confirm)</span>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Say yes</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„Jah, {tegusõna}“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">„Saada“ inside confirmations → „Jah, saada {n} …“</span>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Cancel a business record</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„Tühista {asi}“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">unchanged („Tühista registreerimine“, „Tühista arve“)</span>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Download a file</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„Laadi alla ({vorming})“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">„Laada alla“ (certificates), „Lae alla … (CSV)“ (newsletter, overview)</span>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Open the public site</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„Vaata kodulehte ↗“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">„Vaata lehte ↗“ (sidebar, Kiirlingid), shown once in the top line</span>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Open this item on the site</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„Vaata lehel ↗“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">already used in editors; keep</span>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Close a drawer or viewer</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„Sulge“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">mixed aria labels per page; one label</span>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Back to a parent page</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„← {Lehe nimi}“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">„Tagasi“, „Hindamisse“, „Kalendrisse“, „Registreeringu juurde“</span>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Send / send again</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„Saada …“ / „Saada uuesti“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">unchanged; adds the recipient or summary (3.3)</span>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Undo the last tap</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„Võta tagasi“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">new (UndoBar); matches the existing „Võta tasumine tagasi“</span>
+    <span style="padding:10px 0;border-bottom:1px solid #e6e1e3">Popup vs newsletter</span><b style="padding:10px 0;border-bottom:1px solid #e6e1e3">„Hüpikaken“ / „Kirjad“</b><span style="padding:10px 0;border-bottom:1px solid #e6e1e3;color:#3a3437">„Uudiskiri → Kampaaniad“ becomes „Kirjad“, so „kampaania“ only ever means the popup offer</span>
+  </div>
+</section>
+
+<!-- LISTS SO FAR -->
+<section id="s4" data-screen-label="Lists so far" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:start">
+  <div style="background:#fff;border-radius:22px;padding:32px;display:flex;flex-direction:column;gap:14px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">TEXT CHANGES · OLD → NEW (PART 1)</div>
+    <div style="display:flex;flex-direction:column;font-size:13px">
+      <sc-for list="{{ textChanges }}" as="t" hint-placeholder-count="8">
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 20px minmax(0,1fr);gap:6px;padding:9px 0;border-top:1px solid #e6e1e3"><span style="color:#716a6d">{{ t.o }}</span><span>→</span><span style="font-weight:600">{{ t.n }}</span></div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="background:#fff;border-radius:22px;padding:32px;display:flex;flex-direction:column;gap:14px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#8a3b3b">BEHAVIOUR CHANGES · FOR YOUR DECISION</div>
+    <div style="display:flex;flex-direction:column;font-size:13px">
+      <sc-for list="{{ behaviour }}" as="b" hint-placeholder-count="8">
+        <div style="display:grid;grid-template-columns:34px minmax(0,1fr);gap:6px;padding:9px 0;border-top:1px solid #e6e1e3"><span style="font:400 12px 'JetBrains Mono';color:#716a6d">{{ b.id }}</span><span style="color:#3a3437"><b style="color:#222">{{ b.t }}</b> {{ b.d }}</span></div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="background:#fff;border-radius:22px;padding:32px;display:flex;flex-direction:column;gap:14px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">COMPONENTS · NEW AND CHANGED</div>
+    <div style="display:flex;flex-direction:column;font-size:13px">
+      <sc-for list="{{ comps }}" as="c" hint-placeholder-count="8">
+        <div style="display:flex;flex-direction:column;gap:2px;padding:9px 0;border-top:1px solid #e6e1e3"><span><b>{{ c.n }}</b> <span style="font-size:11px;font-weight:600;color:{{ c.kc }}">{{ c.k }}</span></span><span style="color:#3a3437">{{ c.d }}</span></div>
+      </sc-for>
+    </div>
+    <p style="margin:6px 0 0;font-size:12px;color:#716a6d">Parked items closed by part 1: in-admin unsaved warning, scroll-lock shift, sticky save line (Testimine), Seaded card guards, overview → Arved link, list cards at 1360 px, Arved month/CSV mismatch, review-badge gap.</p>
+  </div>
+</section>
+
+<section style="background:#222;color:#fff;border-radius:28px;padding:40px 48px;display:flex;justify-content:space-between;align-items:center;gap:32px">
+  <div style="display:flex;flex-direction:column;gap:6px"><span style="font:600 12px Manrope;letter-spacing:.16em;color:#c0b7bb">NEXT</span><span style="font:300 28px/1.2 Jost">Part 2: the A screens (daily work) at 1440 and 390, with change notes and click counts before → after.</span></div>
+  <span style="font-size:14px;color:#d5d0d3;max-width:420px">Part 2 starts once you've approved or changed the five defaults, the navigation and the six patterns.</span>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const NAV = [
+  {label:null, items:[{id:'ov',t:'Ülevaade'}]},
+  {label:'IGAPÄEVANE TÖÖ', items:[
+    {id:'reg',t:'Registreerimised',badge:'3'},{id:'prot',t:'Protokollid',badge:'Täna'},{id:'hind',t:'Hindamine',badge:'2'},
+    {id:'par',t:'Päringud',badge:'7'},{id:'opi',t:'Õpilased'},{id:'tag',t:'Tagasiside',badge:'1'},{id:'mak',t:'Maksed ja arved',badge:'6'}]},
+  {label:'KOOLITUSED', items:[{id:'kool',t:'Koolitused'},{id:'kal',t:'Kalender'},{id:'pra',t:'Praktika'}]},
+  {label:'KODULEHT JA UUDISKIRI', fold:true, items:[{id:'ava',t:'Avaleht'},{id:'koo',t:'Koolitaja'},{id:'uud',t:'Uudised'},{id:'hup',t:'Hüpikaken'},{id:'uk',t:'Uudiskiri'}]},
+  {label:'HALDUS', items:[{id:'sea',t:'Seaded'},{id:'test',t:'Testimine'}]}
+];
+const PAGES = {
+  ov:['Teisipäev, 20. oktoober','Tere, Maria.',null,'Overview: unchanged as the landing page.','Redesigned in part 2. „Kiirlingid“ loses its duplicate site link.'],
+  reg:['Kontaktõpe ja e-õpe','Registreerimised',null,'The badge opens ?staatus=ootab.','ListToolbar with search and a course/session scope (3.5).'],
+  prot:['Koolituspäev','Protokollid',null,'New: session list for today and the last 14 days.','Today on top, with student, draft and sent counts. One tap into the existing protocol screen.'],
+  hind:['E-õpe','Hindamine',['Ootab hindamist','Tunnistused'],'„Tunnistused“ is now a tab here.','The header button „Väljastatud tunnistused“ is removed.'],
+  par:['Postkast','Päringud',null,'Badge = every request not done, the same number as the overview tile.','ListToolbar search added.'],
+  opi:['Kontaktõpe ja e-õpe','Õpilased',null,'Unchanged entry.','Table stays a table at 1360 px (container query at 760 px).'],
+  tag:['Õpilased','Tagasiside',['Vastused','Arvustused'],'New badge: reviews waiting for „Avalda“.','The badge opens Arvustused filtered to „Ootab kinnitust“.'],
+  mak:['Montonio','Maksed ja arved',['Maksed','Arved'],'„Arved“ is now a tab here.','Badge = paid without an invoice + held „Ootel kontrollil“.'],
+  kool:['Kontaktõpe ja e-õpe','Koolitused',null,'Unchanged entry.','The course editor is reworked in part 3 (obs. 9).'],
+  kal:['Kontaktõpe','Kalender',null,'Unchanged entry.','The drawer autosaves (3.2).'],
+  pra:['Praktika','Praktikapaketid',null,'Unchanged entry.','The SaveBar is replaced by SaveStatus.'],
+  ava:['Koduleht','Avaleht',null,'Inside the folded group; the group stays open while you are here.','SaveStatus and LangSwitch in the header.'],
+  koo:['Koduleht','Koolitaja',null,'Inside the folded group.','SaveStatus and LangSwitch in the header.'],
+  uud:['Blogi','Uudised',null,'Inside the folded group.','„Lisa postitus +“ creates; the post then autosaves.'],
+  hup:['Turundus','Hüpikaken',null,'Name kept; it is the only "kampaania" now.','The newsletter tab is renamed to „Kirjad“ (3.6).'],
+  uk:['Uudiskiri','Uudiskiri',['Tellijad','Kirjad'],'„Kampaaniad“ tab → „Kirjad“.','Sends stay explicit with ConfirmPanel.'],
+  sea:['Seaded','Seaded',null,'One page, one SaveStatus; the four save buttons are gone.','Split into anchored sections in part 3.'],
+  test:['Haldus','Testimine',null,'New menu entry; reachable when nothing is open.','Badge = your own checks marked „Viga“.']
+};
+const SS = {
+  saved:['#eaf0eb','#2f5d46'], dirty:['#ebe8e9','#5e5559'], saving:['#ebe8e9','#5e5559'],
+  retry:['#f3e6e6','#8a3b3b'], invalid:['#f3e6e6','#8a3b3b']
+};
+const ROWS = [
+  {date:'19.10.2026',name:'Grete Ots (näidis)',contact:'grete.ots.naidis@example.test · +372 5000 0008',course:'Lash Lift BOTOX baaskoolitus',session:'12.12.2026 · Tallinn',paid:'0 €',choice:'100%',st:'ootab'},
+  {date:'18.10.2026',name:'Helen Kukk (näidis)',contact:'helen.kukk.naidis@example.test · +372 5000 0010',course:'Kulmude LAMI',session:'19.12.2026 · Tartu',paid:'220 €',choice:'100%',st:'ok'},
+  {date:'17.10.2026',name:'Triin Lepp (näidis)',contact:'triin.lepp.naidis@example.test · +372 5000 0007',course:'Lash Lift BOTOX baaskoolitus',session:'12.12.2026 · Tallinn',paid:'0 €',choice:'50% ettemaks',st:'ootab'},
+  {date:'15.10.2026',name:'Мария Кузнецова (näidis)',contact:'maria.kuznetsova.naidis@example.test · +372 5000 0009',course:'Kulmude LAMI',session:'19.12.2026 · Tartu',paid:'50 €',choice:'50% ettemaks',st:'ootab'},
+  {date:'06.10.2026',name:'Kristiina Pärn (näidis)',contact:'kristiina.parn.naidis@example.test · +372 5000 0011',course:'Kulmude LAMI',session:'19.12.2026 · Tartu',paid:'0 €',choice:'50% ettemaks',st:'bad'},
+  {date:'01.10.2026',name:'Kati Kask (näidis)',contact:'kati.kask.naidis@example.test · +372 5000 0001',course:'Kulmumeistri baaskoolitus',session:'05.12.2026 · Pärnu',paid:'175 €',choice:'50% ettemaks',st:'ok'}
+];
+const STS = {ootab:['Ootab ettemaksu','#e9e1e5','#6b4f5c'],ok:['Kinnitatud','#eaf0eb','#2f5d46'],bad:['Tühistatud','#f3e6e6','#8a3b3b']};
+const TEXT = [
+  {o:'Sidebar: flat list of 16',n:'Group labels „Igapäevane töö“, „Koolitused“, „Koduleht ja uudiskiri“, „Haldus“'},
+  {o:'„Maksed“ (menu)',n:'„Maksed ja arved“'},
+  {o:'— (no entry)',n:'Menu: „Protokollid“, „Testimine“; tabs „Arved“, „Tunnistused“, „Ootab hindamist“'},
+  {o:'„Väljastatud tunnistused“ (button)',n:'removed (tab)'},
+  {o:'„Vaata lehte ↗“ (sidebar, Kiirlingid)',n:'removed; „Vaata kodulehte ↗“ once'},
+  {o:'Avatar tooltip „Sisse logitud: {email}“',n:'„Sisse logitud“ + e-mail as text above „Logi välja“'},
+  {o:'„Salvesta“ and all „Salvesta …“ buttons',n:'removed → SaveStatus'},
+  {o:'„Salvestatud.“',n:'„Salvestatud {HH:MM}“'},
+  {o:'„Muudatusi pole.“',n:'removed'},
+  {o:'„Kontrolli märgitud välju.“',n:'„Salvestamata — kontrolli märgitud välja“ + „Näita“'},
+  {o:'Stale: „Seda osa salvestati vahepeal mujal …“ + „Laadi uuesti“',n:'„Muudeti teises aknas — vaata üle“ + the protocols\' notice + „Taasta minu tekst“'},
+  {o:'„Salvestamata muudatused lähevad kaotsi. Sulgen?“ / „Jah, sulge“ / „Ei“',n:'„Muudatust „{väli}“ ei saanud veel salvestada.“ / „Jää siia“ / „Sulge, tekst jääb seadmesse“'},
+  {o:'„Salvesta summa“',n:'„Lisa laekumine“ (Q2)'},
+  {o:'Confirm "no": „Ei“, „Tagasi“, „Tühista“',n:'„Katkesta“'},
+  {o:'Confirm "yes" in panels: „Saada“',n:'„Jah, saada {n} …“'},
+  {o:'„Laada alla“, „Lae alla … (CSV)“',n:'„Laadi alla (PDF)“ / „Laadi alla (CSV)“'},
+  {o:'„Hindamisse“, „Kalendrisse“, „Registreeringu juurde“, „Tagasi“',n:'„← {Lehe nimi}“'},
+  {o:'—',n:'„Avaldamata muudatused: {n}“, „Eelvaade ↗“, „Avalda muudatused“, „Loobu muudatustest“'},
+  {o:'Per-field „ET“/„RU“ pills',n:'Page „Sisu keel: ET · RU“; „Kopeeri eesti keelest“; „RU puudub {n} väljal“ + „Järgmine →“'},
+  {o:'„Otsi nime või e-posti järgi“',n:'„Otsi nime, e-posti või telefoni järgi“ (all people lists)'},
+  {o:'„Selle valikuga … pole.“',n:'same + button „Tühjenda otsing ja filtrid“'},
+  {o:'—',n:'UndoBar „{Mis juhtus}. Võta tagasi“'},
+  {o:'—',n:'error.tsx „Seda lehte ei saanud praegu laadida.“ / „Sinu salvestatud andmed on alles. …“ / „Proovi uuesti“'},
+  {o:'„Uudiskiri → Kampaaniad“, „Uus kampaania“',n:'„Kirjad“, „Uus kiri“'},
+  {o:'„Arved → Kuu“ + „Näita“',n:'„Kuu“ applies on change; „Näita“ removed'}
+];
+const BEH = [
+  {id:'B1',t:'Autosave everywhere.',d:'Per-part save endpoints for every editor and drawer (the protocols\' versioned POST pattern). Today they save the whole form on „Salvesta“.'},
+  {id:'B2',t:'Draft layer on published content.',d:'Autosave writes a draft for published courses, pages and posts; „Avalda muudatused“ copies it live (Q1). Supersedes "live on save".'},
+  {id:'B3',t:'Partial saves.',d:'Valid fields save while an invalid one is held. Today a single error refuses the whole save.'},
+  {id:'B4',t:'One money path.',d:'„Laekunud summa“ is no longer typed over. „Lisa laekumine“ adds a payment with a seat check, the same as „Märgi tasutuks“ (obs. 4, Q2).'},
+  {id:'B5',t:'Undo for removals.',d:'Removing an image, file or row is instant, with an 8 s restore window. Needs soft delete or a delayed purge for files.'},
+  {id:'B6',t:'New counts.',d:'Badges for Tagasiside (waiting reviews), Maksed ja arved (unpaid-invoice and held payments), Testimine („Viga“). The Hindamine badge refreshes after „Ava test uuesti“.'},
+  {id:'B7',t:'Search on all people/money lists.',d:'?otsi= on Registreerimised, Päringud, Maksed, Arved, Tagasiside, Tunnistused, Uudiskiri, plus a course/session filter on Registreerimised.'},
+  {id:'B8',t:'Protokollid index.',d:'/admin/protokollid without a parameter lists today\'s and the last 14 days\' sessions.'},
+  {id:'B9',t:'Overview counts agree.',d:'The newsletter tile counts only sendable confirmed subscribers, matching „Saada kõigile“ (obs. 12).'},
+  {id:'B10',t:'Confirm on cancel registration.',d:'„Tühista registreerimine“ gains a ConfirmPanel. The single-student protocol send gets an informed button with no confirm.'}
+];
+const COMPS = [
+  {n:'SaveStatus',k:'NEW',kc:'#2f5d46',d:'One status chip per screen; replaces SaveBar and every status line.'},
+  {n:'useAutosave',k:'NEW (from protocol-autosave.ts)',kc:'#2f5d46',d:'Debounce, blur, hide, retry, local copy, version check; one owner per form part.'},
+  {n:'useLeaveGuard',k:'NEW',kc:'#2f5d46',d:'In Shell; guards sidebar links, Back and drawer close while anything is unconfirmed.'},
+  {n:'ConfirmPanel',k:'NEW',kc:'#2f5d46',d:'Replaces G8 A/B/C: question, consequence lines, „Jah, …“, „Katkesta“.'},
+  {n:'UndoBar',k:'NEW',kc:'#2f5d46',d:'8 s „Võta tagasi“ after a reversible one-tap action.'},
+  {n:'LangSwitch',k:'NEW',kc:'#2f5d46',d:'Page-level ET / RU / Kõrvuti; context read by I18nInput; missing count + „Järgmine →“.'},
+  {n:'ListToolbar',k:'NEW',kc:'#2f5d46',d:'Search, filter pills with counts, scope select, count line; all in the URL.'},
+  {n:'Sidebar',k:'CHANGED',kc:'#6b4f5c',d:'Groups, folding group, new entries, e-mail in footer, one site link.'},
+  {n:'Drawer',k:'CHANGED',kc:'#6b4f5c',d:'SaveStatus in header, close guard via useLeaveGuard, scrollbar-gutter.'},
+  {n:'I18nInput',k:'CHANGED',kc:'#6b4f5c',d:'No own pills; ET reference, side-by-side and copy-from-ET modes.'},
+  {n:'list-table.module.css',k:'CHANGED',kc:'#6b4f5c',d:'Whole row is the link; card breakpoint 980 → 760 px.'},
+  {n:'SaveBar',k:'REMOVED',kc:'#8a3b3b',d:'Along with the course editor\'s copy and the three Seaded card buttons.'}
+];
+
+class Component extends DCLogic {
+  state = {active:'ov', fold:true, menuOpen:false, ss:'saved', savedAt:'12:04', demoName:'Kulmude LAMI', demoPrice:'220', vorm:'k', offline:false,
+    dMode:'saved', askClose:false, closed:false,
+    c:'idle', u:'has', lang:'et', f:{name:{et:'Kulmude LAMI',ru:''},short:{et:'Laminatsioon samm-sammult, praktikaga modellil.',ru:'Ламинирование шаг за шагом.'}},
+    q:'', chip:'all'};
+  componentWillUnmount(){ clearTimeout(this.t1); clearTimeout(this.t2); clearTimeout(this.ut); }
+  now(){ const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+  touch(){
+    clearTimeout(this.t1); clearTimeout(this.t2);
+    this.setState({ss:'dirty'});
+    this.t1=setTimeout(()=>{
+      const s=this.state;
+      if(s.offline){ this.setState({ss:'retry'}); return; }
+      this.setState({ss:'saving'});
+      this.t2=setTimeout(()=>{ const inv=!this.state.demoName.trim(); this.setState({ss:inv?'invalid':'saved', savedAt:this.now()}); },700);
+    },1500);
+  }
+  tapSave(){ clearTimeout(this.t1); clearTimeout(this.t2); if(this.state.offline){this.setState({ss:'retry'});return;} this.setState({ss:'saving'}); this.t2=setTimeout(()=>this.setState({ss:this.state.demoName.trim()?'saved':'invalid',savedAt:this.now()}),500); }
+  renderVals(){
+    const s=this.state;
+    const mk=(it,phone)=>({...it,hasBadge:!!it.badge,bg:s.active===it.id?'#51434c':'transparent',fg:s.active===it.id?'#fff':'#ccc0c8',
+      go:()=>this.setState({active:it.id}), goPhone:()=>this.setState({active:it.id,menuOpen:false})});
+    const inFold=NAV[3].items.some(i=>i.id===s.active);
+    const navGroups=NAV.map((g,i)=>{const open=!g.fold||!s.fold||inFold;return{label:g.label,isLabel:!!g.label&&!g.fold,isFold:!!g.fold,pt:i?10:0,chev:open?'▾':'▸',
+      toggle:()=>this.setState({fold:!s.fold}),items:open?g.items.map(x=>mk(x)):[]};});
+    const phoneGroups=NAV.map((g,i)=>({label:g.label,hasLabel:!!g.label,pt:i?8:0,items:g.items.map(x=>mk(x,true))}));
+    const p=PAGES[s.active];
+    const ssMap={saved:'✓ Salvestatud '+s.savedAt,dirty:'Salvestamata muudatused',saving:'Salvestan…',retry:'Salvestamata — proovin uuesti',invalid:'Salvestamata — kontrolli märgitud välja'};
+    const dm={saved:['✓ Salvestatud 12:04','#eaf0eb','#2f5d46'],pending:['Salvestan…','#ebe8e9','#5e5559'],fail:['Salvestamata — proovin uuesti','#f3e6e6','#8a3b3b']}[s.dMode];
+    const L=s.lang, F=s.f;
+    const setF=(k,lng,v)=>this.setState(st=>({f:{...st.f,[k]:{...st.f[k],[lng]:v}}}));
+    const langFields=[['name','Koolituse nimi'],['short','Lühikirjeldus']].map(([k,label])=>{const v=F[k];return{
+      label, et:v.et, ru:v.ru, single:L!=='both', both:L==='both', showRef:L==='ru', showTag:!!v.et&&!v.ru,
+      val:L==='ru'?v.ru:v.et, ph:L==='ru'?v.et:'', showCopy:L==='ru'&&!v.ru&&!!v.et,
+      onInput:e=>setF(k,L==='ru'?'ru':'et',e.target.value), onEt:e=>setF(k,'et',e.target.value), onRu:e=>setF(k,'ru',e.target.value),
+      copy:()=>setF(k,'ru',v.et)};});
+    const missing=Object.values(F).filter(v=>v.et&&!v.ru).length;
+    const ql=s.q.trim().toLowerCase().replace(/\s/g,'');
+    const match=r=>!ql||(r.name+r.contact).toLowerCase().replace(/\s/g,'').includes(ql);
+    const base=ROWS.filter(match);
+    const cnt=k=>base.filter(r=>k==='all'||r.st===k).length;
+    const rows=base.filter(r=>s.chip==='all'||r.st===s.chip).map(r=>({...r,status:STS[r.st][0],sbg:STS[r.st][1],sfg:STS[r.st][2]}));
+    return {
+      navGroups, phoneGroups, crumb:p[0], pageTitle:p[1], hasTabs:!!p[2], tabs:(p[2]||[]).map((t,i)=>({t,bg:i?'transparent':'#222',fg:i?'#222':'#fff',bd:i?'#cfc6ca':'#222'})),
+      pageNote:p[3], pageNote2:p[4],
+      menuOpen:s.menuOpen, menuClosed:!s.menuOpen, menuGlyph:s.menuOpen?'✕':'≡', toggleMenu:()=>this.setState({menuOpen:!s.menuOpen}),
+      ssText:ssMap[s.ss], ssBg:SS[s.ss][0], ssFg:SS[s.ss][1],
+      demoName:s.demoName, demoPrice:s.demoPrice, nameInvalid:s.ss==='invalid', nameBd:s.ss==='invalid'?'#8a3b3b':'#d9d2d5',
+      onDemoName:e=>{this.setState({demoName:e.target.value}); this.touch();},
+      onDemoPrice:e=>{this.setState({demoPrice:e.target.value}); this.touch();},
+      formChoices:[['e','E-õpe'],['k','Kontaktõpe']].map(([k,t])=>({t,bg:s.vorm===k?'#ebe8e9':'#fff',bd:s.vorm===k?'#222':'#d5d0d3',dot:s.vorm===k?'#222':'transparent',go:()=>{this.setState({vorm:k}); this.tapSave();}})),
+      offlineLabel:s.offline?'Simuleeri: võrk tagasi':'Simuleeri: võrk kadus',
+      toggleOffline:()=>{const off=!s.offline; this.setState({offline:off}); if(!off&&s.ss==='retry') this.tapSave();},
+      dsText:dm[0], dsBg:dm[1], dsFg:dm[2], seats:s.dMode==='saved'?'4':'5', askClose:s.askClose, drawerClosed:s.closed, drawerOp:s.closed?.35:1,
+      drawerClose:()=>{ if(s.dMode==='fail') this.setState({askClose:true}); else if(s.dMode==='pending'){ this.setState({dMode:'saved'}); setTimeout(()=>this.setState({closed:true}),600);} else this.setState({closed:true}); },
+      stay:()=>this.setState({askClose:false}), closeAnyway:()=>this.setState({askClose:false,closed:true}), reopen:()=>this.setState({closed:false}),
+      drawerModes:[['saved','Kõik salvestatud'],['pending','Salvestamine käib'],['fail','Võrk puudub']].map(([k,t])=>({t,bg:s.dMode===k?'#f0ebed':'transparent',go:()=>this.setState({dMode:k,askClose:false,closed:false})})),
+      cIdle:s.c==='idle', cAsk:s.c==='ask', cDone:s.c==='done', cOpen:()=>this.setState({c:'ask'}), cYes:()=>this.setState({c:'done'}), cNo:()=>this.setState({c:'idle'}),
+      uHas:s.u==='has', uGone:s.u==='gone',
+      uRemove:()=>{this.setState({u:'gone'}); clearTimeout(this.ut); this.ut=setTimeout(()=>this.setState({u:'has'}),8000);},
+      uUndo:()=>{clearTimeout(this.ut); this.setState({u:'has'});},
+      langOpts:[['et','ET'],['ru','RU']].map(([k,t])=>({t,bg:L===k?'#222':'transparent',fg:L===k?'#fff':'#222',go:()=>this.setState({lang:k})})),
+      langFields, ruMissingShow:L!=='et'&&missing>0, ruMissingText:'RU puudub '+missing+(missing===1?' väljal':' väljal'),
+      q:s.q, hasQ:!!s.q, onQ:e=>this.setState({q:e.target.value}), clearQ:()=>this.setState({q:''}), clearAll:()=>this.setState({q:'',chip:'all'}),
+      chips:[['all','Kõik'],['ootab','Ootab ettemaksu'],['ok','Kinnitatud'],['bad','Tühistatud']].map(([k,t])=>({t,n:cnt(k),bg:s.chip===k?'#222':'#fff',fg:s.chip===k?'#fff':'#222',bd:s.chip===k?'#222':'#cfc6ca',cb:s.chip===k?'#e6dce2':'#ebe8e9',go:()=>this.setState({chip:k})})),
+      rows, noRows:rows.length===0, countLine:'Registreerimisi: '+rows.length+(s.q?' · otsing „'+s.q+'“':''),
+      textChanges:TEXT, behaviour:BEH, comps:COMPS
+    };
+  }
+}
+</script>
+</body>
+</html>

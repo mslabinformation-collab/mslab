@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#e9e5e7;font-family:Manrope,sans-serif;color:#222;font-size:15px;line-height:1.55}a{color:#222}a:hover{color:#5e5559}*{box-sizing:border-box}</style>
+</helmet>
+<div style="width:2480px;padding:72px 60px 120px;display:flex;flex-direction:column;gap:72px">
+
+<header style="display:flex;flex-direction:column;gap:12px;max-width:1200px">
+  <div style="font:400 12px 'JetBrains Mono',monospace;letter-spacing:.08em;color:#716a6d">MS LAB HALDUS · UX-PASS · OSA 2 / 3 · A-EKRAANID (IGAPÄEVANE TÖÖ)</div>
+  <h1 style="margin:0;font:300 52px/1.05 Jost,sans-serif">Daily work: seven screens, desktop 1440 and phone 390</h1>
+  <p style="margin:0;font-size:17px;color:#3a3437;text-wrap:pretty">These are built on the part 1 decisions: the grouped menu, SaveStatus, drawers that don't lose input, ConfirmPanel, UndoBar, the page-level ET/RU switch and ListToolbar. Each screen has a change note on the left with clicks before → after (the "before" counts are the README's). All data is sample data. Loading and error states are shared and shown in part 1 (3.5), so they appear here only where a screen adds its own.</p>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;padding-top:4px">
+    <a href="#a1" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font:600 13px Manrope">A1 Ülevaade</a>
+    <a href="#a2" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font:600 13px Manrope">A2 Registreerimised</a>
+    <a href="#a3" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font:600 13px Manrope">A3 Protokollid</a>
+    <a href="#a4" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font:600 13px Manrope">A4 Hindamine</a>
+    <a href="#a5" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font:600 13px Manrope">A5 Õpilased</a>
+    <a href="#a6" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font:600 13px Manrope">A6 Maksed ja arved</a>
+    <a href="#a7" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font:600 13px Manrope">A7 Päringud</a>
+    <a href="#a8" style="text-decoration:none;border:1px solid #b9b1b5;border-radius:99px;padding:10px 16px;font:600 13px Manrope">Lists for part 2</a>
+  </div>
+</header>
+
+<!-- ================= A1 ÜLEVAADE ================= -->
+<section id="a1" data-screen-label="A1 Ülevaade" style="display:grid;grid-template-columns:420px 1440px 390px;gap:48px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">A1 · ÜLEVAADE · /admin</div>
+    <h2 style="margin:0;font:300 36px/1.1 Jost">One queue of things to do</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;color:#3a3437">
+      <b style="color:#222">What changed and why</b>
+      <span>• The four tiles, the „Ootab hindamist“ card and the „Päringud“ card become one list, <b>„Sinu järjekord“</b>. Each row is something to act on, with a one-line hint and a link to the filtered view. Rows at 0 disappear.</span>
+      <span>• „Täna“ moves to the top on a course day and shows protocol progress.</span>
+      <span>• Removed: the „Vaata registreerimisi →“ button (the menu does this), the „Kinnitatud uudiskirja tellijad“ tile (the number moves to Uudiskiri) and „Kiirlingid“ (duplicate site link; the CSV moves to Uudiskiri → Tellijad). Obs. 11, 12.</span>
+      <span>• Upcoming-course rows now open that session's Kalender drawer. Today they don't respond to a click.</span>
+      <span>• The Päringud row counts „Muutmine“ too, so it matches the badge (obs. 12).</span>
+      <span>• The Testimine card stays the same and is shown only to the admin with open checks.</span>
+    </div>
+    <div style="display:flex;flex-direction:column;font-size:13px;border-top:1px solid #cfc6ca">
+      <b style="padding:10px 0;font-size:12px;letter-spacing:.1em;color:#716a6d">CLICKS · BEFORE → AFTER</b>
+      <sc-for list="{{ c1 }}" as="c" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:10px;padding:8px 0;border-top:1px solid #d9d2d5"><span>{{ c.t }}</span><b style="text-align:right">{{ c.v }}</b></div></sc-for>
+    </div>
+  </div>
+  <div style="width:1440px;height:1000px;display:grid;grid-template-columns:235px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#f6f4f5;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+    <dc-import name="AdminSidebar" style="height:100%;min-height:0;overflow:hidden" active="ov" hint-size="235px,1000px"></dc-import>
+    <main style="padding:30px 45px;display:flex;flex-direction:column;gap:26px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;padding-bottom:18px;font:500 12px Manrope"><span>MS LAB · Halduskeskkond</span><span style="display:flex;align-items:center;gap:14px"><u style="text-decoration-color:#a49b9f;text-underline-offset:4px">Vaata kodulehte ↗</u>Maria<span style="width:36px;height:36px;border-radius:50%;background:#e6dce2;display:grid;place-items:center">M</span></span></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><span style="display:flex;align-items:center;gap:10px;font-size:13px;color:#3a3437"><span style="width:22px;height:1px;background:#716a6d"></span>Teisipäev, 20. oktoober</span><h3 style="margin:0;font:300 42px/1.08 Jost">Tere, Maria.</h3></div>
+      <div style="background:#222;color:#fff;border-radius:22px;padding:26px 30px;display:flex;justify-content:space-between;align-items:center;gap:24px">
+        <div style="display:flex;flex-direction:column;gap:6px"><span style="font:600 11px Manrope;letter-spacing:.14em;color:#c0b7bb">TÄNA 10:00 · PÄRNU, MS LAB STUUDIO</span><span style="font:400 28px/1.15 Jost">Kulmumeistri baaskoolitus</span><span style="font-size:14px;color:#d5d0d3">3 õpilast · protokollid: 1 saadetud, 1 mustand, 1 alustamata</span></div>
+        <span style="height:49px;padding:0 24px;border-radius:99px;background:#fff;color:#222;display:flex;align-items:center;font:600 13px Manrope;white-space:nowrap">Ava protokollid →</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:22px;align-items:start">
+        <div style="background:#fff;border-radius:22px;padding:24px 28px">
+          <h4 style="margin:0 0 6px;font:300 27px Jost">Sinu järjekord</h4>
+          <sc-for list="{{ queue }}" as="q" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:56px minmax(0,1fr) 24px;gap:14px;align-items:center;min-height:64px;padding:8px 0;border-top:1px solid #e6e1e3">
+              <span style="font:300 30px Jost">{{ q.n }}</span>
+              <span style="display:flex;flex-direction:column"><b style="font-weight:600;font-size:14px">{{ q.t }}</b><span style="font-size:13px;color:#716a6d">{{ q.s }}</span></span>
+              <span style="color:#86707d">→</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="background:#fff;border-radius:22px;padding:24px 28px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><h4 style="margin:0 0 10px;font:300 27px Jost">Tulevased koolitused</h4><span style="font-size:13px;color:#716a6d">järgmise 30 päeva jooksul: 4</span></div>
+          <div style="display:grid;grid-template-columns:90px minmax(0,1fr) 70px;gap:10px;font:500 11px Manrope;color:#716a6d;padding:6px 0 8px;border-bottom:1px solid #e6e1e3"><span>Kuupäev</span><span>Koolitus ja linn</span><span style="text-align:right">Vabu kohti</span></div>
+          <sc-for list="{{ upcoming }}" as="u" hint-placeholder-count="5">
+            <div style="display:grid;grid-template-columns:90px minmax(0,1fr) 70px;gap:10px;align-items:center;min-height:52px;border-bottom:1px solid #e6e1e3;font-size:13px"><span>{{ u.d }}</span><span style="display:flex;flex-direction:column"><b style="font-weight:600">{{ u.c }}</b><span style="color:#716a6d;font-size:12px">{{ u.city }}</span></span><span style="text-align:right;font-weight:600;color:{{ u.col }}">{{ u.left }}</span></div>
+          </sc-for>
+          <span style="display:block;padding-top:12px;font:600 13px Manrope">Kalender →</span>
+        </div>
+      </div>
+    </main>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="width:390px;height:844px;background:#f6f4f5;border-radius:28px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column">
+      <div style="height:64px;background:#242124;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 16px;flex:none"><div style="width:99px;height:39px;overflow:hidden"><img src="assets/logo.png" alt="MS LAB" style="width:150px;height:150px;margin:-55px 0 0 -25px;display:block;filter:invert(1)"></div><span style="position:relative;width:44px;height:44px;border-radius:50%;border:1px solid #51434c;color:#fff;display:grid;place-items:center">≡<span style="position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:99px;background:#e6dce2;color:#242124;font:700 10px Manrope;display:grid;place-items:center;padding:0 5px">13</span></span></div>
+      <div style="padding:20px 16px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:#3a3437">Teisipäev, 20. oktoober</span><h3 style="margin:0;font:300 32px/1.08 Jost">Tere, Maria.</h3></div>
+        <div style="background:#222;color:#fff;border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:8px"><span style="font:600 11px Manrope;letter-spacing:.14em;color:#c0b7bb">TÄNA 10:00 · PÄRNU</span><span style="font:400 22px/1.2 Jost">Kulmumeistri baaskoolitus</span><span style="font-size:13px;color:#d5d0d3">3 õpilast · 1 saadetud</span><span style="align-self:stretch;height:49px;border-radius:99px;background:#fff;color:#222;display:grid;place-items:center;font:600 14px Manrope;margin-top:4px">Ava protokollid</span></div>
+        <div style="background:#fff;border-radius:22px;padding:6px 18px">
+          <sc-for list="{{ queue }}" as="q" hint-placeholder-count="6"><div style="display:grid;grid-template-columns:40px minmax(0,1fr) 16px;gap:10px;align-items:center;min-height:58px;border-top:{{ q.bt }}"><span style="font:300 24px Jost">{{ q.n }}</span><span style="display:flex;flex-direction:column"><b style="font-weight:600;font-size:14px">{{ q.t }}</b><span style="font-size:12px;color:#716a6d">{{ q.s }}</span></span><span style="color:#86707d">→</span></div></sc-for>
+        </div>
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:8px">
+      <span style="font:400 11px 'JetBrains Mono';color:#716a6d">EMPTY QUEUE</span>
+      <b style="font:300 22px Jost">Järjekord on tühi.</b>
+      <span style="font-size:13px;color:#716a6d">„Kõik on tehtud. Uued registreerimised ja päringud ilmuvad siia.“ The upcoming courses stay below it.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= A2 REGISTREERIMISED ================= -->
+<section id="a2" data-screen-label="A2 Registreerimised" style="display:grid;grid-template-columns:420px 1440px 390px;gap:48px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">A2 · REGISTREERIMISED · list + drawer ?id=</div>
+    <h2 style="margin:0;font:300 36px/1.1 Jost">Money first, everything else folded</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;color:#3a3437">
+      <b style="color:#222">What changed and why</b>
+      <span>• <b>List:</b> ListToolbar with search (name, e-mail, phone), a course/session scope and status pills with counts (obs. 6). „Laekunud“ shows money received as „0 / 290 €“. „Liik“, „Modelli abi“ and „Konto“ move into the drawer. The whole row opens the drawer.</span>
+      <span>• <b>Drawer order follows Maria's daily inputs (obs. 3):</b> head with contact → <b>Raha</b> with „Lisa laekumine“ → status and note → invoices → folded Leping, Tagasiside and details → „Tühista registreerimine“.</span>
+      <span>• <b>One money path (B4, obs. 4):</b> „Lisa laekumine“ adds a payment. The amount still owed up to 50 % is preselected and a receipt is ticked by default, so one action records the money, confirms the place (with a seat check) and makes the receipt. „Laekunud summa“ is no longer typed over. A wrong entry is undone through the receipt's „Võta tasumine tagasi“.</span>
+      <span>• Status and „Märkus“ autosave. The status pills are a manual override with two choices; cancelling happens only through „Tühista registreerimine“ and its ConfirmPanel (B10).</span>
+      <span>• Invoices: only one „Koosta arve“ button appears, never two (obs. 3). Rarely used invoice actions sit under „Veel ▾“.</span>
+      <span>• The phone drawer shows head, money and status on the first screen. Today it takes three screens.</span>
+    </div>
+    <div style="display:flex;flex-direction:column;font-size:13px;border-top:1px solid #cfc6ca">
+      <b style="padding:10px 0;font-size:12px;letter-spacing:.1em;color:#716a6d">CLICKS · BEFORE → AFTER</b>
+      <sc-for list="{{ c2 }}" as="c" hint-placeholder-count="6"><div style="display:grid;grid-template-columns:minmax(0,1fr) 130px;gap:10px;padding:8px 0;border-top:1px solid #d9d2d5"><span>{{ c.t }}</span><b style="text-align:right">{{ c.v }}</b></div></sc-for>
+    </div>
+  </div>
+
+  <div style="width:1440px;height:1340px;display:grid;grid-template-columns:235px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#f6f4f5;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);position:relative">
+    <dc-import name="AdminSidebar" style="height:100%;min-height:0;overflow:hidden" active="reg" hint-size="235px,1340px"></dc-import>
+    <main style="padding:30px 45px;display:flex;flex-direction:column;gap:20px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;padding-bottom:18px;font:500 12px Manrope"><span>MS LAB · Halduskeskkond</span><span style="display:flex;align-items:center;gap:14px"><u>Vaata kodulehte ↗</u>Maria<span style="width:36px;height:36px;border-radius:50%;background:#e6dce2;display:grid;place-items:center">M</span></span></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><span style="display:flex;align-items:center;gap:10px;font-size:13px;color:#3a3437"><span style="width:22px;height:1px;background:#716a6d"></span>Kontaktõpe ja e-õpe</span><h3 style="margin:0;font:300 42px/1.08 Jost">Registreerimised</h3><span style="color:#716a6d">Koht on kinnitatud, kui laekunud on vähemalt 50% koolituse hinnast.</span></div>
+      <div style="display:flex;gap:12px"><div style="flex:1;min-height:48px;background:#fff;border:1px solid #d9d2d5;border-radius:99px;padding:0 18px;display:flex;align-items:center;gap:10px;color:#716a6d"><span>⌕</span>Otsi nime, e-posti või telefoni järgi</div><div style="min-width:320px;min-height:48px;background:#fff;border:1px solid #d9d2d5;border-radius:10px;padding:0 15px;display:flex;align-items:center;justify-content:space-between">Kõik koolitused ja toimumised<span style="font-size:11px">▾</span></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ regChips }}" as="c" hint-placeholder-count="4"><span style="height:44px;padding:0 8px 0 16px;border-radius:99px;display:flex;align-items:center;gap:8px;font:600 13px Manrope;background:{{ c.bg }};color:{{ c.fg }};border:1px solid {{ c.bd }}">{{ c.t }}<span style="min-width:24px;height:24px;padding:0 7px;border-radius:99px;background:{{ c.cb }};color:#222;font:600 11px Manrope;display:grid;place-items:center">{{ c.n }}</span></span></sc-for><span style="width:12px"></span><sc-for list="{{ typeChips }}" as="c" hint-placeholder-count="3"><span style="height:44px;padding:0 16px;border-radius:99px;display:flex;align-items:center;font:600 13px Manrope;background:{{ c.bg }};color:{{ c.fg }};border:1px solid {{ c.bd }}">{{ c.t }}</span></sc-for></div>
+      <div style="background:#fff;border-radius:22px;padding:8px 24px 12px">
+        <div style="padding:12px 0;font-size:12px;color:#716a6d">Registreerimisi: 17</div>
+        <div style="display:grid;grid-template-columns:90px minmax(0,1.3fr) minmax(0,1.3fr) 110px 130px;gap:14px;font:500 11px Manrope;color:#716a6d;padding-bottom:8px;border-bottom:1px solid #e6e1e3"><span>Kuupäev</span><span>Nimi ja kontakt</span><span>Koolitus ja toimumine</span><span>Laekunud</span><span>Staatus</span></div>
+        <sc-for list="{{ regRows }}" as="r" hint-placeholder-count="8">
+          <div style="display:grid;grid-template-columns:90px minmax(0,1.3fr) minmax(0,1.3fr) 110px 130px;gap:14px;align-items:center;min-height:58px;padding:6px 0;border-bottom:1px solid #e6e1e3;font-size:13px;background:{{ r.hl }}">
+            <span>{{ r.date }}</span><span style="display:flex;flex-direction:column"><b style="font-weight:600">{{ r.name }}</b><span style="color:#716a6d;font-size:12px">{{ r.phone }}</span></span><span style="display:flex;flex-direction:column"><span>{{ r.course }}</span><span style="color:#716a6d;font-size:12px">{{ r.session }}</span></span><span style="font-weight:600">{{ r.paid }}</span><span style="justify-self:start;height:24px;padding:0 10px;border-radius:99px;background:{{ r.sbg }};color:{{ r.sfg }};font:600 11px Manrope;display:flex;align-items:center">{{ r.status }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+    <div style="position:absolute;inset:0;background:rgba(34,34,34,.35)"></div>
+    <!-- drawer -->
+    <div style="position:absolute;top:0;right:0;bottom:0;width:560px;background:#fff;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:22px 28px 18px;border-bottom:1px solid #e6e1e3;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span style="height:24px;padding:0 10px;border-radius:99px;background:#e9e1e5;color:#6b4f5c;font:600 11px Manrope;display:flex;align-items:center">Ootab ettemaksu</span><div style="display:flex;align-items:center;gap:10px"><span style="height:28px;padding:0 12px;border-radius:99px;background:#eaf0eb;color:#2f5d46;font:600 11px Manrope;display:flex;align-items:center">✓ Salvestatud 12:04</span><span style="width:44px;height:44px;border-radius:50%;border:1px solid #d5d0d3;display:grid;place-items:center">✕</span></div></div>
+        <span style="font:300 30px/1.1 Jost">Triin Lepp (näidis)</span>
+        <span style="font-size:14px;color:#3a3437">Lash Lift BOTOX baaskoolitus · 12.12.2026 10:00 · Tallinn, Stuudio Kalamaja · Grupp</span>
+        <div style="display:flex;gap:16px;font:600 13px Manrope"><u style="min-height:32px;display:flex;align-items:center">+372 5000 0007</u><u style="min-height:32px;display:flex;align-items:center">triin.lepp.naidis@example.test</u></div>
+      </div>
+      <div style="padding:20px 28px;display:flex;flex-direction:column;gap:18px;overflow:hidden">
+        <div style="background:#f6f4f5;border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font:400 20px Jost">Raha</b><span style="font-size:13px;color:#716a6d">Valitud: ettemaks 50%</span></div>
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font:300 34px Jost">0 €</span><span style="color:#716a6d">/ 290 € laekunud</span></div>
+          <div style="position:relative;height:8px;border-radius:4px;background:#e6e1e3"><div style="position:absolute;left:50%;top:-5px;bottom:-5px;width:2px;background:#222"></div></div>
+          <span style="font-size:12px;color:#716a6d">Koht kinnitub 145 € juures · vabu kohti 2 / 4</span>
+          <span style="font-size:13px;color:#3a3437">Veebimakse 17.10 20:35 · 145 € · <span style="color:#6b4f5c;font-weight:600">Pooleli</span></span>
+          <div style="background:#fff;border-left:2px solid #9e8993;border-radius:0 14px 14px 0;padding:16px;display:flex;flex-direction:column;gap:12px">
+            <b style="font-size:14px">Lisa laekumine</b>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #222;background:#ebe8e9;display:flex;align-items:center;font-size:13px;font-weight:600">145 € · ettemaks</span><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #d5d0d3;display:flex;align-items:center;font-size:13px">290 € · kogu summa</span><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #d5d0d3;display:flex;align-items:center;font-size:13px">Muu summa</span></div>
+            <div style="display:grid;grid-template-columns:150px 1fr;gap:10px"><span style="min-height:44px;border:1px solid #d9d2d5;border-radius:10px;padding:0 12px;display:flex;align-items:center;font-size:14px">20.10.2026</span><div style="display:flex;gap:6px"><span style="height:44px;padding:0 12px;border-radius:99px;border:1px solid #222;background:#ebe8e9;display:flex;align-items:center;font-size:12px;font-weight:600">Pangaülekanne</span><span style="height:44px;padding:0 12px;border-radius:99px;border:1px solid #d5d0d3;display:flex;align-items:center;font-size:12px">Sularaha</span><span style="height:44px;padding:0 12px;border-radius:99px;border:1px solid #d5d0d3;display:flex;align-items:center;font-size:12px">Kaart</span></div></div>
+            <span style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="width:20px;height:20px;border-radius:5px;background:#222;color:#fff;display:grid;place-items:center;font-size:11px">✓</span>Koosta kviitung (arve „Juba tasutud“)</span>
+            <div style="display:flex;gap:8px"><span style="height:49px;padding:0 22px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 13px Manrope">Lisa 145 € · koht kinnitub</span><span style="height:49px;padding:0 18px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 13px Manrope">Katkesta</span></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <b style="font:400 20px Jost">Staatus ja märkus</b>
+          <div style="display:flex;gap:8px"><span style="height:44px;padding:0 16px;border-radius:99px;border:1px solid #222;background:#ebe8e9;display:flex;align-items:center;gap:8px;font-size:13px"><span style="width:12px;height:12px;border-radius:50%;background:#222"></span>Ootab ettemaksu</span><span style="height:44px;padding:0 16px;border-radius:99px;border:1px solid #d5d0d3;display:flex;align-items:center;gap:8px;font-size:13px"><span style="width:12px;height:12px;border-radius:50%;border:1px solid #716a6d"></span>Kinnitatud</span></div>
+          <div style="min-height:64px;border:1px solid #d9d2d5;border-radius:10px;padding:10px 14px;font-size:14px;color:#716a6d">Märkus — näeb ainult haldus</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <b style="font:400 20px Jost">Arved</b>
+          <div style="border:1px solid #e6e1e3;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px"><div style="display:flex;justify-content:space-between;font-size:14px"><span><b>MSL2026-001</b> <span style="height:22px;padding:0 8px;border-radius:99px;background:#e9e1e5;color:#6b4f5c;font:600 10px Manrope;display:inline-flex;align-items:center">Tasumata</span></span><b>145,00 €</b></div><span style="font-size:12px;color:#716a6d">Ettemaks 50% · Maksta kuni 27.10.2026</span><div style="display:flex;gap:8px"><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">Saada õpilasele</span><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">Laadi alla (PDF)</span><span style="height:44px;padding:0 14px;display:flex;align-items:center;font:600 12px Manrope">Veel ▾</span></div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;border-top:1px solid #e6e1e3">
+          <sc-for list="{{ folds }}" as="f" hint-placeholder-count="3"><div style="min-height:52px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;font-size:14px"><b style="font-weight:600">{{ f.t }}</b><span style="color:#716a6d;font-size:13px">{{ f.s }} ▸</span></div></sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="width:390px;height:844px;background:#f6f4f5;border-radius:28px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column">
+      <div style="height:64px;background:#242124;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 16px;flex:none"><span style="color:#ccc0c8;font:500 14px Manrope">Registreerimised</span><span style="width:44px;height:44px;border-radius:50%;border:1px solid #51434c;color:#fff;display:grid;place-items:center">≡</span></div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+        <div style="min-height:48px;background:#fff;border:1px solid #d9d2d5;border-radius:99px;padding:0 16px;display:flex;align-items:center;gap:8px;color:#716a6d;font-size:14px">⌕ Otsi nime, e-posti või telefoni järgi</div>
+        <div style="display:flex;gap:6px;overflow:hidden"><span style="flex:none;height:44px;padding:0 14px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 12px Manrope">Kõik 17</span><span style="flex:none;height:44px;padding:0 14px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;font:600 12px Manrope">Ootab ettemaksu 3</span><span style="flex:none;height:44px;padding:0 14px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;font:600 12px Manrope">Kinnitatud 13</span></div>
+        <sc-for list="{{ regRowsPhone }}" as="r" hint-placeholder-count="5"><div style="background:#fff;border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:4px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:15px">{{ r.name }}</b><span style="height:22px;padding:0 8px;border-radius:99px;background:{{ r.sbg }};color:{{ r.sfg }};font:600 10px Manrope;display:flex;align-items:center;white-space:nowrap">{{ r.status }}</span></div><span style="font-size:13px;color:#3a3437">{{ r.course }}</span><span style="font-size:12px;color:#716a6d">{{ r.session }} · laekunud {{ r.paid }}</span></div></sc-for>
+      </div>
+    </div>
+    <div style="width:390px;height:844px;background:#fff;border-radius:28px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column">
+      <div style="padding:16px 16px 14px;border-bottom:1px solid #e6e1e3;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span style="height:24px;padding:0 10px;border-radius:99px;background:#e9e1e5;color:#6b4f5c;font:600 11px Manrope;display:flex;align-items:center">Ootab ettemaksu</span><span style="width:44px;height:44px;border-radius:50%;border:1px solid #d5d0d3;display:grid;place-items:center">✕</span></div>
+        <span style="font:300 26px/1.1 Jost">Triin Lepp (näidis)</span>
+        <span style="font-size:13px;color:#3a3437">Lash Lift BOTOX · 12.12 Tallinn · Grupp</span>
+        <div style="display:flex;justify-content:space-between;align-items:center"><u style="font:600 13px Manrope;min-height:44px;display:flex;align-items:center">+372 5000 0007</u><span style="height:26px;padding:0 10px;border-radius:99px;background:#eaf0eb;color:#2f5d46;font:600 10px Manrope;display:flex;align-items:center">✓ Salvestatud 12:04</span></div>
+      </div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:14px">
+        <div style="background:#f6f4f5;border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:6px"><span style="font:300 30px Jost">0 €</span><span style="color:#716a6d;font-size:13px">/ 290 € · kinnitub 145 € juures</span></div>
+          <div style="position:relative;height:8px;border-radius:4px;background:#e6e1e3"><div style="position:absolute;left:50%;top:-5px;bottom:-5px;width:2px;background:#222"></div></div>
+          <span style="height:49px;border-radius:99px;background:#222;color:#fff;display:grid;place-items:center;font:600 14px Manrope">Lisa laekumine</span>
+        </div>
+        <b style="font:400 19px Jost">Staatus ja märkus</b>
+        <div style="display:flex;gap:6px"><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #222;background:#ebe8e9;display:flex;align-items:center;font-size:13px">Ootab ettemaksu</span><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #d5d0d3;display:flex;align-items:center;font-size:13px">Kinnitatud</span></div>
+        <div style="min-height:60px;border:1px solid #d9d2d5;border-radius:10px;padding:10px 14px;font-size:14px;color:#716a6d">Märkus</div>
+        <div style="display:flex;flex-direction:column;border-top:1px solid #e6e1e3"><div style="min-height:52px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;font-size:14px"><b style="font-weight:600">Arved</b><span style="color:#716a6d;font-size:13px">1 tasumata ▸</span></div><div style="min-height:52px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;font-size:14px"><b style="font-weight:600">Leping</b><span style="color:#716a6d;font-size:13px">puudub ▸</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- A2 states strip -->
+<div style="display:grid;grid-template-columns:420px repeat(3,minmax(0,1fr));gap:24px;margin-top:-40px">
+  <div></div>
+  <div style="background:#fff;border-radius:22px;padding:22px;display:flex;flex-direction:column;gap:8px"><span style="font:400 11px 'JetBrains Mono';color:#716a6d">SEAT CHECK FAILS</span><div style="border-left:2px solid #8a3b3b;background:#f3e6e6;border-radius:0 12px 12px 0;padding:12px 14px;font-size:13px;color:#8a3b3b;font-weight:600">145 € lisatud. Koolitus on vahepeal täis, nii et koht jäi kinnitamata.</div><span style="font-size:12px;color:#716a6d">Same server text as „Märgi tasutuks“ today. Payment and receipt are kept; Maria decides on the waitlist.</span></div>
+  <div style="background:#fff;border-radius:22px;padding:22px;display:flex;flex-direction:column;gap:8px"><span style="font:400 11px 'JetBrains Mono';color:#716a6d">AFTER „LISA LAEKUMINE“</span><div style="background:#222;color:#fff;border-radius:14px;padding:12px 16px;font-size:13px">145 € lisatud · kviitung MSL2026-005 · koht kinnitatud.</div><span style="font-size:12px;color:#716a6d">Status pill turns „Kinnitatud“. No undo bar here: undoing money goes through the receipt's „Võta tasumine tagasi“ (ConfirmPanel).</span></div>
+  <div style="background:#fff;border-radius:22px;padding:22px;display:flex;flex-direction:column;gap:8px"><span style="font:400 11px 'JetBrains Mono';color:#716a6d">DRAWER NOT FOUND</span><b style="font:300 22px Jost">Seda registreerimist ei leitud.</b><span style="height:44px;align-self:flex-start;padding:0 16px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">← Registreerimised</span></div>
+</div>
+
+<!-- ================= A3 PROTOKOLLID ================= -->
+<section id="a3" data-screen-label="A3 Protokollid" style="display:grid;grid-template-columns:420px 1440px 390px;gap:48px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">A3 · PROTOKOLLID · new index + existing screen</div>
+    <h2 style="margin:0;font:300 36px/1.1 Jost">Keep what works and add a front door</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;color:#3a3437">
+      <b style="color:#222">What changed and why</b>
+      <span>• <b>New index</b> (B8): today's sessions and the last 14 days, with per-session counts. Individual courses are listed below. On a day with exactly one session, the menu goes straight to that session's protocol screen.</span>
+      <span>• The protocol screen (obs. 14) stays as it is: chips, one card, autosave in the corner. Only the words change. The status chip is now SaveStatus; the back link is „← Protokollid“; the per-student send is an informed button („Saada protokoll Eliisele“), still with no second step; „Lukusta ja saada kõik“ becomes „Saada kõigile (2)“ with ConfirmPanel words („Jah, saada 2 protokolli“ / „Katkesta“). There is no separate "lock" step, so the word is dropped.</span>
+      <span>• The conflict notice gets „Taasta minu tekst“, which puts this screen's lost words back into the boxes. Today they have to be copied by hand.</span>
+    </div>
+    <div style="display:flex;flex-direction:column;font-size:13px;border-top:1px solid #cfc6ca">
+      <b style="padding:10px 0;font-size:12px;letter-spacing:.1em;color:#716a6d">CLICKS · BEFORE → AFTER</b>
+      <sc-for list="{{ c3 }}" as="c" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:10px;padding:8px 0;border-top:1px solid #d9d2d5"><span>{{ c.t }}</span><b style="text-align:right">{{ c.v }}</b></div></sc-for>
+    </div>
+  </div>
+  <div style="width:1440px;height:980px;display:grid;grid-template-columns:235px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#f6f4f5;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+    <dc-import name="AdminSidebar" style="height:100%;min-height:0;overflow:hidden" active="prot" hint-size="235px,980px"></dc-import>
+    <main style="padding:30px 45px;display:flex;flex-direction:column;gap:22px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;padding-bottom:18px;font:500 12px Manrope"><span>MS LAB · Halduskeskkond</span><span style="display:flex;align-items:center;gap:14px"><u>Vaata kodulehte ↗</u>Maria<span style="width:36px;height:36px;border-radius:50%;background:#e6dce2;display:grid;place-items:center">M</span></span></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><span style="display:flex;align-items:center;gap:10px;font-size:13px;color:#3a3437"><span style="width:22px;height:1px;background:#716a6d"></span>Koolituspäev</span><h3 style="margin:0;font:300 42px/1.08 Jost">Protokollid</h3><span style="color:#716a6d">Täna ja viimased 14 päeva. Vanemad leiad Kalendrist.</span></div>
+      <div style="background:#fff;border-radius:22px;padding:8px 28px">
+        <sc-for list="{{ protRows }}" as="p" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:150px minmax(0,1fr) 300px 150px;gap:18px;align-items:center;min-height:84px;border-bottom:1px solid #e6e1e3">
+            <span style="display:flex;flex-direction:column"><b style="font:400 22px Jost">{{ p.d }}</b><span style="font-size:12px;color:#716a6d">{{ p.w }}</span></span>
+            <span style="display:flex;flex-direction:column"><b style="font-weight:600">{{ p.c }}</b><span style="font-size:13px;color:#716a6d">{{ p.place }}</span></span>
+            <span style="font-size:13px;color:{{ p.col }};font-weight:600">{{ p.s }}</span>
+            <span style="justify-self:end;height:44px;padding:0 18px;border-radius:99px;background:{{ p.bbg }};color:{{ p.bfg }};border:1px solid #b9b1b5;display:flex;align-items:center;font:600 13px Manrope">{{ p.b }}</span>
+          </div>
+        </sc-for>
+        <div style="padding:16px 0 10px;font:600 11px Manrope;letter-spacing:.14em;color:#716a6d">INDIVIDUAALKOOLITUSED</div>
+        <div style="display:grid;grid-template-columns:150px minmax(0,1fr) 300px 150px;gap:18px;align-items:center;min-height:72px;border-top:1px solid #e6e1e3"><span style="font-size:13px;color:#716a6d">Aeg kokkuleppel</span><span style="display:flex;flex-direction:column"><b style="font-weight:600">Piret Kalda (näidis)</b><span style="font-size:13px;color:#716a6d">Kulmumeistri baaskoolitus</span></span><span style="font-size:13px;color:#716a6d">Alustamata</span><span style="justify-self:end;height:44px;padding:0 18px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 13px Manrope">Ava</span></div>
+      </div>
+    </main>
+  </div>
+  <div style="width:390px;height:844px;background:#f6f4f5;border-radius:28px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column">
+    <div style="height:64px;background:#242124;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 16px;flex:none"><span style="color:#ccc0c8;font:500 14px Manrope">Protokollid</span><span style="width:44px;height:44px;border-radius:50%;border:1px solid #51434c;color:#fff;display:grid;place-items:center">≡</span></div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <span style="font:600 13px Manrope;min-height:44px;display:flex;align-items:center">← Protokollid</span>
+      <h3 style="margin:-8px 0 0;font:300 28px/1.1 Jost">Kulmumeistri baaskoolitus</h3>
+      <span style="font-size:13px;color:#716a6d;margin-top:-6px">Täna 10:00 · Pärnu, MS LAB stuudio</span>
+      <span style="height:49px;border-radius:99px;background:#222;color:#fff;display:grid;place-items:center;font:600 14px Manrope">Saada kõigile (2)</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="height:48px;padding:0 12px;border-radius:14px;border:2px solid #222;background:#fff;display:flex;align-items:center;font-size:13px;font-weight:600">Eliise T.</span><span style="height:48px;padding:0 12px;border-radius:14px;border:1px solid #e6e1e3;background:#fff;display:flex;align-items:center;gap:6px;font-size:13px">Kadri L. <span style="height:20px;padding:0 6px;border-radius:99px;background:#eaf0eb;color:#2f5d46;font:600 10px Manrope;display:flex;align-items:center">Saadetud</span></span><span style="height:48px;padding:0 12px;border-radius:14px;border:1px solid #e6e1e3;background:#fff;display:flex;align-items:center;gap:6px;font-size:13px">Маргарита О. <span style="height:20px;padding:0 6px;border-radius:99px;background:#e9e1e5;color:#6b4f5c;font:600 10px Manrope;display:flex;align-items:center">Mustand</span></span></div>
+      <div style="background:#fff;border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span style="font:300 22px Jost">Eliise Tamm (näidis)</span><span style="height:26px;padding:0 10px;border-radius:99px;background:#eaf0eb;color:#2f5d46;font:600 10px Manrope;display:flex;align-items:center">✓ 12:41</span></div>
+        <b style="font:400 17px Jost">Praktiline osa</b>
+        <span style="font:600 12px Manrope">Ettevalmistus</span><div style="min-height:56px;border:1px solid #d9d2d5;border-radius:10px;padding:10px 12px;font-size:14px">Puhas töökoht, värvid segatud täpselt.</div>
+        <span style="font:600 12px Manrope">Kulmude analüüs</span><div style="min-height:56px;border:1px solid #d9d2d5;border-radius:10px"></div>
+        <span style="font:600 12px Manrope">Värvimine</span><div style="min-height:56px;border:1px solid #d9d2d5;border-radius:10px"></div>
+        <span style="height:49px;border-radius:99px;border:1px solid #b9b1b5;display:grid;place-items:center;font:600 13px Manrope;margin-top:4px">Saada protokoll Eliisele</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= A4 HINDAMINE ================= -->
+<section id="a4" data-screen-label="A4 Hindamine" style="display:grid;grid-template-columns:420px 1440px 390px;gap:48px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">A4 · HINDAMINE · queue, practical work, test review</div>
+    <h2 style="margin:0;font:300 36px/1.1 Jost">Approve all in one tap, then send</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;color:#3a3437">
+      <b style="color:#222">What changed and why</b>
+      <span>• Tabs „Ootab hindamist“ | „Tunnistused“. The register moves here from a header button (obs. 7).</span>
+      <span>• <b>Practical work (obs. 13):</b> „Kinnita kõik“ marks every point that has no verdict yet; she then switches only the ones that need „Paranda“. The verdict is one segmented control per point and still saves on the tap. A comment box opens automatically for „Paranda“ and is one tap away for „Kinnitatud“.</span>
+      <span>• Photos are 260 px instead of 88 px, and a tap opens the existing PhotoViewer with swipe. On a phone they are full width.</span>
+      <span>• The send is an informed button: „Saada hinnang · 3 kinnitatud“. It needs no second step, because the summary is already on the button. The test review works the same way („Saada · 1 õige, 1 vale“), so both screens match (obs. 5, 13).</span>
+      <span>• Test review: a pressed verdict can be cleared by tapping it again, as on the practical screen. Marks autosave to the server, no longer only to localStorage.</span>
+    </div>
+    <div style="display:flex;flex-direction:column;font-size:13px;border-top:1px solid #cfc6ca">
+      <b style="padding:10px 0;font-size:12px;letter-spacing:.1em;color:#716a6d">CLICKS · BEFORE → AFTER</b>
+      <sc-for list="{{ c4 }}" as="c" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:10px;padding:8px 0;border-top:1px solid #d9d2d5"><span>{{ c.t }}</span><b style="text-align:right">{{ c.v }}</b></div></sc-for>
+    </div>
+    <div style="background:#fff;border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:10px">
+      <span style="font:400 11px 'JetBrains Mono';color:#716a6d">QUEUE · /admin/hindamine</span>
+      <div style="display:flex;gap:6px"><span style="height:40px;padding:0 14px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 12px Manrope">Ootab hindamist 2</span><span style="height:40px;padding:0 14px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;font:600 12px Manrope">Tunnistused</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e6e1e3;padding-top:10px"><span style="display:flex;flex-direction:column;font-size:13px"><b>Merilin Kuusk · praktiline töö</b><span style="color:#716a6d">1. kord · 20.10 18:35</span></span><span style="height:44px;padding:0 16px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 12px Manrope">Hinda</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e6e1e3;padding-top:10px"><span style="display:flex;flex-direction:column;font-size:13px"><b>Светлана Петрова · testi vastus</b><span style="color:#716a6d">katse 2/3 · 20.10 19:35</span></span><span style="height:44px;padding:0 16px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">Vaata</span></div>
+      <span style="font-size:12px;color:#716a6d">One list, oldest first, instead of three cards. Empty: „Hindamist ootavaid töid pole.“</span>
+    </div>
+  </div>
+  <div style="width:1440px;height:1100px;display:grid;grid-template-columns:235px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#f6f4f5;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+    <dc-import name="AdminSidebar" style="height:100%;min-height:0;overflow:hidden" active="hind" hint-size="235px,1100px"></dc-import>
+    <main style="padding:30px 45px;display:flex;flex-direction:column;gap:20px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;padding-bottom:18px;font:500 12px Manrope"><span>MS LAB · Halduskeskkond</span><span style="display:flex;align-items:center;gap:14px"><u>Vaata kodulehte ↗</u>Maria<span style="width:36px;height:36px;border-radius:50%;background:#e6dce2;display:grid;place-items:center">M</span></span></div>
+      <span style="font:600 13px Manrope">← Hindamine</span>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px"><div style="display:flex;flex-direction:column;gap:4px"><h3 style="margin:0;font:300 40px/1.08 Jost">Merilin Kuusk (näidis)</h3><span style="color:#716a6d">Kulmumeistri e-koolitus · Praktiline töö, 1. kord · saadetud 20.10.2026 18:35</span></div><span style="height:32px;padding:0 14px;border-radius:99px;background:#eaf0eb;color:#2f5d46;font:600 12px Manrope;display:flex;align-items:center;white-space:nowrap">✓ Salvestatud 20:41</span></div>
+      <div style="background:#fff;border-radius:22px;padding:16px 22px;display:flex;justify-content:space-between;align-items:center;gap:16px"><span style="font-size:14px;color:#3a3437">3 punkti · 3 hinnatud</span><div style="display:flex;gap:10px"><span style="height:49px;padding:0 20px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 13px Manrope">Kinnita kõik</span><span style="height:49px;padding:0 22px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 13px Manrope">Saada hinnang · 2 kinnitatud, 1 paranda</span></div></div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px">
+        <sc-for list="{{ points }}" as="pt" hint-placeholder-count="3">
+          <div style="background:#fff;border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:12px">
+            <div style="height:260px;border-radius:14px;background:{{ pt.img }}"></div>
+            <b style="font:400 19px Jost">{{ pt.t }}</b>
+            <div style="display:grid;grid-template-columns:1fr 1fr;border:1px solid #d5d0d3;border-radius:99px;padding:3px"><span style="height:42px;border-radius:99px;display:grid;place-items:center;font:600 13px Manrope;background:{{ pt.okBg }};color:{{ pt.okFg }}">Kinnitatud</span><span style="height:42px;border-radius:99px;display:grid;place-items:center;font:600 13px Manrope;background:{{ pt.fxBg }};color:{{ pt.fxFg }}">Paranda</span></div>
+            <sc-if value="{{ pt.fix }}" hint-placeholder-val="{{ false }}"><div style="min-height:80px;border:1px solid #d9d2d5;border-radius:10px;padding:10px 12px;font-size:14px">Joon on liiga terav sabas — pehmenda üleminekut.</div></sc-if>
+            <sc-if value="{{ pt.ok }}" hint-placeholder-val="{{ true }}"><span style="font:600 12px Manrope;min-height:44px;display:flex;align-items:center;text-decoration:underline;text-decoration-color:#a49b9f;text-underline-offset:4px">Lisa märkus</span></sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background:#fff;border-radius:22px;padding:20px 22px;display:flex;flex-direction:column;gap:8px"><b style="font:400 19px Jost">Üldised märkused</b><div style="min-height:80px;border:1px solid #d9d2d5;border-radius:10px"></div></div>
+    </main>
+  </div>
+  <div style="width:390px;height:844px;background:#f6f4f5;border-radius:28px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column">
+    <div style="height:64px;background:#242124;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 16px;flex:none"><span style="color:#ccc0c8;font:500 14px Manrope">Hindamine</span><span style="width:44px;height:44px;border-radius:50%;border:1px solid #51434c;color:#fff;display:grid;place-items:center">≡</span></div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;flex:1;overflow:hidden">
+      <span style="font:600 13px Manrope">← Hindamine</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:300 26px/1.1 Jost">Merilin Kuusk</span><span style="font-size:11px;color:#2f5d46;font-weight:600">✓ 20:41</span></div>
+      <span style="height:44px;border-radius:99px;border:1px solid #b9b1b5;display:grid;place-items:center;font:600 13px Manrope">Kinnita kõik</span>
+      <div style="background:#fff;border-radius:22px;padding:14px;display:flex;flex-direction:column;gap:10px"><div style="height:230px;border-radius:14px;background:url(assets/stock/eye1.jpg) center/cover"></div><b style="font:400 18px Jost">Kulmude kaardistus</b><div style="display:grid;grid-template-columns:1fr 1fr;border:1px solid #d5d0d3;border-radius:99px;padding:3px"><span style="height:42px;border-radius:99px;display:grid;place-items:center;font:600 13px Manrope;background:#2f5d46;color:#fff">Kinnitatud</span><span style="height:42px;border-radius:99px;display:grid;place-items:center;font:600 13px Manrope">Paranda</span></div><span style="font-size:12px;color:#716a6d">Puuduta pilti, et avada täissuuruses.</span></div>
+    </div>
+    <div style="padding:12px 16px 20px;background:#fff;border-top:1px solid #e6e1e3"><span style="height:49px;border-radius:99px;background:#222;color:#fff;display:grid;place-items:center;font:600 13px Manrope">Saada hinnang · 2 kinnitatud, 1 paranda</span></div>
+  </div>
+</section>
+
+<!-- ================= A5 ÕPILASED ================= -->
+<section id="a5" data-screen-label="A5 Õpilased" style="display:grid;grid-template-columns:420px 1440px 390px;gap:48px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">A5 · ÕPILASED · list + drawer ?id=</div>
+    <h2 style="margin:0;font:300 36px/1.1 Jost">One list of her courses, with actions on each row</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;color:#3a3437">
+      <b style="color:#222">What changed and why</b>
+      <span>• <b>List:</b> ListToolbar (search filters as she types, so the „Otsi“ button is removed). The table stays a table at 1360 px (parked item). The „Koolitusi“ explainer line becomes a tooltip on the column header. „Lisa õpilane“ moves to a header button that opens a small inline form, as an explicit create.</span>
+      <span>• <b>Drawer:</b> e-courses and contact registrations become one list, „Koolitused“, newest first. Each row has its state and its own actions: „Hinda“, „Pikenda“, „Ava registreering“, „Ava protokoll“. Rarer actions sit under „Veel ▾“: „Ava järgmine õppetund“, „Testi katsed“, „Vaata tema vaadet“, „Lõpeta ligipääs“.</span>
+      <span>• <b>„Pikenda“</b> (new, explicit) offers +1 kuu, +3 kuud, +6 kuud or a date, with UndoBar afterwards. Today she has to re-pick the course in „Ava ligipääs“ (appendix 07–10). The two meanings of „Lõpetatud“ are split into „Läbitud {date}“ (completed) and „Ligipääs lõpetatud {date}“ (ended by an admin).</span>
+      <span>• „Ava ligipääs e-koolitusele“ folds into a row at the end. Maksed, Lepingud, Päringud and Tagasiside become folded rows with counts.</span>
+      <span>• The (mustand) (avatud kuni …) double brackets in the course select become „{course} · mustand · avatud kuni {date}“ (parked).</span>
+    </div>
+    <div style="display:flex;flex-direction:column;font-size:13px;border-top:1px solid #cfc6ca">
+      <b style="padding:10px 0;font-size:12px;letter-spacing:.1em;color:#716a6d">CLICKS · BEFORE → AFTER</b>
+      <sc-for list="{{ c5 }}" as="c" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:10px;padding:8px 0;border-top:1px solid #d9d2d5"><span>{{ c.t }}</span><b style="text-align:right">{{ c.v }}</b></div></sc-for>
+    </div>
+  </div>
+  <div style="width:1440px;height:980px;display:grid;grid-template-columns:235px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#f6f4f5;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);position:relative">
+    <dc-import name="AdminSidebar" style="height:100%;min-height:0;overflow:hidden" active="opi" hint-size="235px,980px"></dc-import>
+    <main style="padding:30px 45px;display:flex;flex-direction:column;gap:20px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;padding-bottom:18px;font:500 12px Manrope"><span>MS LAB · Halduskeskkond</span><span>Maria</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end"><div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;color:#3a3437">— Kontaktõpe ja e-õpe</span><h3 style="margin:0;font:300 42px/1.08 Jost">Õpilased</h3></div><span style="height:49px;padding:0 22px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 13px Manrope">Lisa õpilane +</span></div>
+      <div style="min-height:48px;background:#fff;border:1px solid #d9d2d5;border-radius:99px;padding:0 18px;display:flex;align-items:center;gap:10px;color:#716a6d">⌕ Otsi nime, e-posti või telefoni järgi</div>
+      <div style="background:#fff;border-radius:22px;padding:8px 24px;opacity:.9">
+        <sc-for list="{{ students }}" as="s" hint-placeholder-count="7"><div style="display:grid;grid-template-columns:minmax(0,1fr) 140px 120px;gap:14px;align-items:center;min-height:56px;border-bottom:1px solid #e6e1e3;font-size:13px"><span style="display:flex;flex-direction:column"><b style="font-weight:600">{{ s.n }}</b><span style="color:#716a6d;font-size:12px">{{ s.e }}</span></span><span>20.10.2026</span><span>{{ s.k }}</span></div></sc-for>
+      </div>
+    </main>
+    <div style="position:absolute;inset:0;background:rgba(34,34,34,.35)"></div>
+    <div style="position:absolute;top:0;right:0;bottom:0;width:560px;background:#fff;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:22px 28px 18px;border-bottom:1px solid #e6e1e3;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start"><span style="font:300 30px/1.1 Jost">Merilin Kuusk (näidis)</span><span style="width:44px;height:44px;border-radius:50%;border:1px solid #d5d0d3;display:grid;place-items:center;flex:none">✕</span></div>
+        <div style="display:flex;gap:16px;font:600 13px Manrope"><u>+372 5000 0161</u><u>ux-pass-merilin.kuusk@example.test</u></div>
+        <span style="font-size:12px;color:#716a6d">Konto loodud 20.10.2026 · Keel ET · Uudiskiri: ei</span>
+      </div>
+      <div style="padding:20px 28px;display:flex;flex-direction:column;gap:14px">
+        <b style="font:400 20px Jost">Koolitused</b>
+        <div style="border:1px solid #e6e1e3;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center"><span style="display:flex;flex-direction:column"><span style="font:600 10px Manrope;letter-spacing:.12em;color:#716a6d">E-ÕPE</span><b style="font-size:15px">Kulmumeistri e-koolitus</b></span><span style="height:24px;padding:0 10px;border-radius:99px;background:#eaf0eb;color:#2f5d46;font:600 11px Manrope;display:flex;align-items:center">Avatud kuni 17.03.2027</span></div>
+          <span style="font-size:13px;color:#3a3437">Õppetunnid 3/3 · Test läbitud (100 %) · Praktiline töö ootab hindamist</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><span style="height:44px;padding:0 16px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 12px Manrope">Hinda</span><span style="height:44px;padding:0 16px;border-radius:99px;border:1px solid #222;background:#ebe8e9;display:flex;align-items:center;font:600 12px Manrope">Pikenda ▾</span><span style="height:44px;padding:0 12px;display:flex;align-items:center;font:600 12px Manrope">Veel ▾</span></div>
+          <div style="background:#f6f4f5;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#716a6d">Pikenda ligipääsu (praegu kuni 17.03.2027)</span><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #b9b1b5;background:#fff;display:flex;align-items:center;font:600 12px Manrope">+1 kuu</span><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #b9b1b5;background:#fff;display:flex;align-items:center;font:600 12px Manrope">+3 kuud</span><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #b9b1b5;background:#fff;display:flex;align-items:center;font:600 12px Manrope">+6 kuud</span><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #b9b1b5;background:#fff;display:flex;align-items:center;font:600 12px Manrope">Kuupäev…</span></div></div>
+        </div>
+        <div style="border:1px solid #e6e1e3;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center"><span style="display:flex;flex-direction:column"><span style="font:600 10px Manrope;letter-spacing:.12em;color:#716a6d">KONTAKTÕPE · 20.10.2026 PÄRNU</span><b style="font-size:15px">Kulmumeistri baaskoolitus</b></span><span style="height:24px;padding:0 10px;border-radius:99px;background:#eaf0eb;color:#2f5d46;font:600 11px Manrope;display:flex;align-items:center">Kinnitatud</span></div>
+          <div style="display:flex;gap:8px"><span style="height:44px;padding:0 16px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">Ava registreering</span><span style="height:44px;padding:0 16px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">Ava protokoll</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;border-top:1px solid #e6e1e3">
+          <sc-for list="{{ sFolds }}" as="f" hint-placeholder-count="5"><div style="min-height:50px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;font-size:14px"><b style="font-weight:600">{{ f.t }}</b><span style="color:#716a6d;font-size:13px">{{ f.s }} ▸</span></div></sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="width:390px;height:844px;background:#fff;border-radius:28px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column">
+      <div style="padding:16px;border-bottom:1px solid #e6e1e3;display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font:300 24px/1.1 Jost">Merilin Kuusk</span><span style="width:44px;height:44px;border-radius:50%;border:1px solid #d5d0d3;display:grid;place-items:center">✕</span></div><u style="font:600 13px Manrope;min-height:44px;display:flex;align-items:center">+372 5000 0161</u></div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+        <b style="font:400 19px Jost">Koolitused</b>
+        <div style="border:1px solid #e6e1e3;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px"><span style="font:600 10px Manrope;letter-spacing:.12em;color:#716a6d">E-ÕPE · AVATUD KUNI 17.03.2027</span><b>Kulmumeistri e-koolitus</b><span style="font-size:13px;color:#3a3437">3/3 · test läbitud · praktiline ootab</span><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><span style="height:44px;border-radius:99px;background:#222;color:#fff;display:grid;place-items:center;font:600 12px Manrope">Hinda</span><span style="height:44px;border-radius:99px;border:1px solid #b9b1b5;display:grid;place-items:center;font:600 12px Manrope">Pikenda ▾</span></div></div>
+        <div style="border:1px solid #e6e1e3;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px"><span style="font:600 10px Manrope;letter-spacing:.12em;color:#716a6d">KONTAKTÕPE · 20.10 PÄRNU · KINNITATUD</span><b>Kulmumeistri baaskoolitus</b><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><span style="height:44px;border-radius:99px;border:1px solid #b9b1b5;display:grid;place-items:center;font:600 12px Manrope">Registreering</span><span style="height:44px;border-radius:99px;border:1px solid #b9b1b5;display:grid;place-items:center;font:600 12px Manrope">Protokoll</span></div></div>
+        <div style="display:flex;flex-direction:column;border-top:1px solid #e6e1e3"><sc-for list="{{ sFolds }}" as="f" hint-placeholder-count="5"><div style="min-height:48px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;font-size:14px"><b style="font-weight:600">{{ f.t }}</b><span style="color:#716a6d;font-size:13px">{{ f.s }} ▸</span></div></sc-for></div>
+      </div>
+    </div>
+    <div style="background:#222;color:#fff;border-radius:14px;padding:0 6px 0 16px;min-height:52px;display:flex;align-items:center;justify-content:space-between;gap:14px;font-size:13px">Ligipääs pikendatud kuni 17.06.2027.<span style="height:44px;padding:0 14px;border-radius:99px;background:#3a3338;display:flex;align-items:center;font-weight:600">Võta tagasi</span></div>
+  </div>
+</section>
+
+<!-- ================= A6 MAKSED JA ARVED ================= -->
+<section id="a6" data-screen-label="A6 Maksed ja arved" style="display:grid;grid-template-columns:420px 1440px 390px;gap:48px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">A6 · MAKSED JA ARVED · tabs</div>
+    <h2 style="margin:0;font:300 36px/1.1 Jost">Every row leads somewhere</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;color:#3a3437">
+      <b style="color:#222">What changed and why</b>
+      <span>• One menu entry with two tabs, „Maksed“ and „Arved“, each with its own URL.</span>
+      <span>• <b>Maksed:</b> the rows are no longer dead ends (appendix 05–06). A row opens the registration drawer or the e-course student. The Montonio id becomes a link, „Montonios ↗“. „Tühistatud pangas“ moves out of „Ebaõnnestunud“ into „Ootel kontrollil“ (parked). Search covers name, e-mail and Montonio id.</span>
+      <span>• <b>Arved:</b> „Arveta maksed“ becomes a folded strip at the top with one informed button, „Koosta 6 arvet“, and a ConfirmPanel (B11). The per-row „Koosta arve“ stays inside the strip.</span>
+      <span>• „Kuu“ applies as soon as it changes, and the CSV button names the month („Laadi alla (CSV) · oktoober 2026“), so it can't download another month (appendix).</span>
+      <span>• Row actions: „Saada õpilasele“ and „Laadi alla (PDF)“ are visible; the rest are under „Veel ▾“. A „Tagastatud“ invoice no longer offers „Saada õpilasele“ (parked).</span>
+    </div>
+    <div style="display:flex;flex-direction:column;font-size:13px;border-top:1px solid #cfc6ca">
+      <b style="padding:10px 0;font-size:12px;letter-spacing:.1em;color:#716a6d">CLICKS · BEFORE → AFTER</b>
+      <sc-for list="{{ c6 }}" as="c" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:10px;padding:8px 0;border-top:1px solid #d9d2d5"><span>{{ c.t }}</span><b style="text-align:right">{{ c.v }}</b></div></sc-for>
+    </div>
+  </div>
+  <div style="width:1440px;height:980px;display:grid;grid-template-columns:235px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#f6f4f5;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+    <dc-import name="AdminSidebar" style="height:100%;min-height:0;overflow:hidden" active="mak" hint-size="235px,980px"></dc-import>
+    <main style="padding:30px 45px;display:flex;flex-direction:column;gap:18px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;padding-bottom:18px;font:500 12px Manrope"><span>MS LAB · Halduskeskkond</span><span>Maria</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end"><div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;color:#3a3437">— Montonio ja raamatupidamine</span><h3 style="margin:0;font:300 42px/1.08 Jost">Maksed ja arved</h3></div><span style="height:49px;padding:0 20px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 13px Manrope">Laadi alla (CSV) · oktoober 2026</span></div>
+      <div style="display:flex;gap:8px"><span style="height:44px;padding:0 18px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;font:600 13px Manrope">Maksed</span><span style="height:44px;padding:0 18px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 13px Manrope">Arved</span></div>
+      <div style="background:#fff;border-radius:22px;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid #9e8993"><span style="display:flex;flex-direction:column"><b>Arveta maksed: 6</b><span style="font-size:13px;color:#716a6d">Tasutud, aga arve puudub · 1 325,00 € · Merilin Kuusk, Kati Kask, Mari Tamm ja 3 teist</span></span><div style="display:flex;gap:10px"><span style="height:44px;padding:0 14px;display:flex;align-items:center;font:600 12px Manrope">Näita ▸</span><span style="height:49px;padding:0 22px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 13px Manrope">Koosta 6 arvet</span></div></div>
+      <div style="display:flex;gap:12px;align-items:center"><div style="flex:1;min-height:48px;background:#fff;border:1px solid #d9d2d5;border-radius:99px;padding:0 18px;display:flex;align-items:center;gap:10px;color:#716a6d">⌕ Otsi nime, e-posti või arve numbri järgi</div><div style="min-width:220px;min-height:48px;background:#fff;border:1px solid #d9d2d5;border-radius:10px;padding:0 15px;display:flex;align-items:center;justify-content:space-between">Oktoober 2026<span style="font-size:11px">▾</span></div></div>
+      <div style="display:flex;gap:8px"><span style="height:44px;padding:0 8px 0 16px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;gap:8px;font:600 13px Manrope">Kõik<span style="min-width:24px;height:24px;border-radius:99px;background:#e6dce2;color:#222;font-size:11px;display:grid;place-items:center">3</span></span><span style="height:44px;padding:0 8px 0 16px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;gap:8px;font:600 13px Manrope">Tasumata<span style="min-width:24px;height:24px;border-radius:99px;background:#ebe8e9;font-size:11px;display:grid;place-items:center">1</span></span><span style="height:44px;padding:0 8px 0 16px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;gap:8px;font:600 13px Manrope">Tasutud<span style="min-width:24px;height:24px;border-radius:99px;background:#ebe8e9;font-size:11px;display:grid;place-items:center">2</span></span><span style="height:44px;padding:0 8px 0 16px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;gap:8px;font:600 13px Manrope">Tühistatud<span style="min-width:24px;height:24px;border-radius:99px;background:#ebe8e9;font-size:11px;display:grid;place-items:center">0</span></span></div>
+      <div style="background:#fff;border-radius:22px;padding:8px 24px">
+        <sc-for list="{{ invoices }}" as="i" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:160px minmax(0,1fr) 110px 380px;gap:16px;align-items:center;min-height:72px;border-bottom:1px solid #e6e1e3;font-size:13px">
+            <span style="display:flex;flex-direction:column;gap:4px"><b style="font-size:14px">{{ i.no }}</b><span style="align-self:flex-start;height:22px;padding:0 8px;border-radius:99px;background:{{ i.sbg }};color:{{ i.sfg }};font:600 10px Manrope;display:flex;align-items:center">{{ i.st }}</span></span>
+            <span style="display:flex;flex-direction:column"><span><b style="font-weight:600">{{ i.who }}</b> · {{ i.course }}</span><span style="color:#716a6d;font-size:12px">{{ i.meta }}</span></span>
+            <b style="text-align:right;font-size:14px">{{ i.sum }}</b>
+            <span style="display:flex;gap:6px;justify-content:flex-end"><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">{{ i.a1 }}</span><span style="height:44px;padding:0 14px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">Laadi alla (PDF)</span><span style="height:44px;padding:0 10px;display:flex;align-items:center;font:600 12px Manrope">Veel ▾</span></span>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <div style="width:390px;height:844px;background:#f6f4f5;border-radius:28px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column">
+    <div style="height:64px;background:#242124;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 16px;flex:none"><span style="color:#ccc0c8;font:500 14px Manrope">Maksed ja arved</span><span style="width:44px;height:44px;border-radius:50%;border:1px solid #51434c;color:#fff;display:grid;place-items:center">≡</span></div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:6px"><span style="height:44px;padding:0 16px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 12px Manrope">Maksed</span><span style="height:44px;padding:0 16px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;font:600 12px Manrope">Arved</span></div>
+      <div style="min-height:48px;background:#fff;border:1px solid #d9d2d5;border-radius:99px;padding:0 16px;display:flex;align-items:center;color:#716a6d;font-size:14px">⌕ Otsi nime või Montonio id järgi</div>
+      <sc-for list="{{ payments }}" as="p" hint-placeholder-count="5"><div style="background:#fff;border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;border-left:3px solid {{ p.bl }}"><div style="display:flex;justify-content:space-between"><b>{{ p.who }}</b><b>{{ p.sum }}</b></div><span style="font-size:12px;color:#716a6d">{{ p.meta }}</span><div style="display:flex;justify-content:space-between;align-items:center"><span style="height:22px;padding:0 8px;border-radius:99px;background:{{ p.sbg }};color:{{ p.sfg }};font:600 10px Manrope;display:flex;align-items:center">{{ p.st }}</span><span style="font:600 12px Manrope">Ava registreering →</span></div></div></sc-for>
+    </div>
+  </div>
+</section>
+
+<!-- ================= A7 PÄRINGUD ================= -->
+<section id="a7" data-screen-label="A7 Päringud" style="display:grid;grid-template-columns:420px 1440px 390px;gap:48px;align-items:start">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">A7 · PÄRINGUD · /admin/paringud</div>
+    <h2 style="margin:0;font:300 36px/1.1 Jost">Compact cards, done ones folded away</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;color:#3a3437">
+      <b style="color:#222">What changed and why</b>
+      <span>• ListToolbar search across every tab. The tab pills keep their counts. „Kontakt“ and „E-õppe huvi“ were one view on the overview and are now one tab, with an „E-õppe huvi“ tag on the card (appendix 01).</span>
+      <span>• Cards go from a 9-line label/value table to a header (name, kind, date), the message, and one line of facts. Two cards fit side by side on desktop, so about three times as many requests fit on screen.</span>
+      <span>• „Märgi tehtuks“ is instant and shows UndoBar. Done requests fold into „Tehtud (n) ▸“ at the bottom instead of sitting in the list.</span>
+      <span>• A waitlist card links to its session, „Ava toimumine →“ (Kalender drawer). A „Muutmine“ card links to the registration.</span>
+      <span>• „Vaata päringutes“ from other screens now opens the card itself (<span style="font-family:'JetBrains Mono';font-size:12px">#p-{id}</span>, highlighted), not just the tab (appendix 07–10).</span>
+    </div>
+    <div style="display:flex;flex-direction:column;font-size:13px;border-top:1px solid #cfc6ca">
+      <b style="padding:10px 0;font-size:12px;letter-spacing:.1em;color:#716a6d">CLICKS · BEFORE → AFTER</b>
+      <sc-for list="{{ c7 }}" as="c" hint-placeholder-count="3"><div style="display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:10px;padding:8px 0;border-top:1px solid #d9d2d5"><span>{{ c.t }}</span><b style="text-align:right">{{ c.v }}</b></div></sc-for>
+    </div>
+  </div>
+  <div style="width:1440px;height:980px;display:grid;grid-template-columns:235px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#f6f4f5;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+    <dc-import name="AdminSidebar" style="height:100%;min-height:0;overflow:hidden" active="par" hint-size="235px,980px"></dc-import>
+    <main style="padding:30px 45px;display:flex;flex-direction:column;gap:18px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6e1e3;padding-bottom:18px;font:500 12px Manrope"><span>MS LAB · Halduskeskkond</span><span>Maria</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;color:#3a3437">— Postkast</span><h3 style="margin:0;font:300 42px/1.08 Jost">Päringud</h3></div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1 1 380px;min-height:48px;background:#fff;border:1px solid #d9d2d5;border-radius:99px;padding:0 18px;display:flex;align-items:center;color:#716a6d">⌕ Otsi nime, e-posti või telefoni järgi</div><sc-for list="{{ reqTabs }}" as="t" hint-placeholder-count="5"><span style="height:44px;padding:0 8px 0 16px;border-radius:99px;display:flex;align-items:center;gap:8px;font:600 13px Manrope;background:{{ t.bg }};color:{{ t.fg }};border:1px solid {{ t.bd }}">{{ t.t }}<span style="min-width:24px;height:24px;border-radius:99px;background:{{ t.cb }};color:#222;font-size:11px;display:grid;place-items:center">{{ t.n }}</span></span></sc-for></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <sc-for list="{{ requests }}" as="r" hint-placeholder-count="2">
+          <div style="background:#fff;border-radius:22px;padding:20px 22px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><span style="display:flex;flex-direction:column"><b style="font:400 20px Jost">{{ r.n }}</b><span style="font-size:12px;color:#716a6d">{{ r.when }}</span></span><span style="height:22px;padding:0 8px;border-radius:99px;background:{{ r.tbg }};color:{{ r.tfg }};font:600 10px Manrope;display:flex;align-items:center;white-space:nowrap">{{ r.tag }}</span></div>
+            <span style="font-size:14px;color:#222">{{ r.msg }}</span>
+            <span style="font-size:12px;color:#716a6d">{{ r.facts }}</span>
+            <div style="display:flex;gap:8px;padding-top:2px"><span style="height:44px;padding:0 16px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 12px Manrope">Märgi tehtuks</span><span style="height:44px;padding:0 16px;border-radius:99px;border:1px solid #b9b1b5;display:flex;align-items:center;font:600 12px Manrope">Vasta e-kirjaga ↗</span></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="min-height:52px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e6e1e3;font-size:14px"><b style="font-weight:600">Tehtud (1)</b><span style="color:#716a6d">▸</span></div>
+    </main>
+  </div>
+  <div style="width:390px;height:844px;background:#f6f4f5;border-radius:28px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;position:relative">
+    <div style="height:64px;background:#242124;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 16px;flex:none"><span style="color:#ccc0c8;font:500 14px Manrope">Päringud</span><span style="width:44px;height:44px;border-radius:50%;border:1px solid #51434c;color:#fff;display:grid;place-items:center">≡</span></div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:6px;overflow:hidden"><span style="flex:none;height:44px;padding:0 14px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 12px Manrope">Kontakt 2</span><span style="flex:none;height:44px;padding:0 14px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;font:600 12px Manrope">Individuaal 2</span><span style="flex:none;height:44px;padding:0 14px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;font:600 12px Manrope">Praktika 1</span></div>
+      <sc-for list="{{ requests }}" as="r" hint-placeholder-count="2"><div style="background:#fff;border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:8px"><div style="display:flex;justify-content:space-between"><b style="font:400 18px Jost">{{ r.n }}</b><span style="font-size:11px;color:#716a6d">{{ r.short }}</span></div><span style="font-size:14px">{{ r.msg }}</span><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><span style="height:44px;border-radius:99px;background:#222;color:#fff;display:grid;place-items:center;font:600 12px Manrope">Märgi tehtuks</span><span style="height:44px;border-radius:99px;border:1px solid #b9b1b5;display:grid;place-items:center;font:600 12px Manrope">Vasta ↗</span></div></div></sc-for>
+    </div>
+    <div style="position:absolute;left:12px;right:12px;bottom:16px;background:#222;color:#fff;border-radius:14px;padding:0 6px 0 16px;min-height:52px;display:flex;align-items:center;justify-content:space-between;font-size:13px">Märgitud tehtuks.<span style="height:44px;padding:0 14px;border-radius:99px;background:#3a3338;display:flex;align-items:center;font-weight:600">Võta tagasi</span></div>
+  </div>
+</section>
+
+<!-- ================= LISTS ================= -->
+<section id="a8" data-screen-label="Part 2 lists" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:start;max-width:2320px">
+  <div style="background:#fff;border-radius:22px;padding:32px;display:flex;flex-direction:column;gap:12px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">TEXT CHANGES · OLD → NEW (PART 2)</div>
+    <div style="display:flex;flex-direction:column;font-size:13px"><sc-for list="{{ text2 }}" as="t" hint-placeholder-count="10"><div style="display:grid;grid-template-columns:minmax(0,1fr) 20px minmax(0,1fr);gap:6px;padding:8px 0;border-top:1px solid #e6e1e3"><span style="color:#716a6d">{{ t.o }}</span><span>→</span><b style="font-weight:600">{{ t.n }}</b></div></sc-for></div>
+  </div>
+  <div style="background:#fff;border-radius:22px;padding:32px;display:flex;flex-direction:column;gap:12px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#8a3b3b">NEW BEHAVIOUR CHANGES · FOR YOUR DECISION</div>
+    <div style="display:flex;flex-direction:column;font-size:13px"><sc-for list="{{ beh2 }}" as="b" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:40px minmax(0,1fr);gap:6px;padding:8px 0;border-top:1px solid #e6e1e3"><span style="font:400 12px 'JetBrains Mono';color:#716a6d">{{ b.id }}</span><span style="color:#3a3437"><b style="color:#222">{{ b.t }}</b> {{ b.d }}</span></div></sc-for></div>
+    <p style="margin:4px 0 0;font-size:12px;color:#716a6d">B1–B10 are accepted. B2 now means the draft layer (Q1); a „Avalda muudatused“ bar appears on the B screens in part 3.</p>
+  </div>
+  <div style="background:#fff;border-radius:22px;padding:32px;display:flex;flex-direction:column;gap:12px">
+    <div style="font:600 12px Manrope;letter-spacing:.16em;color:#716a6d">PARKED ITEMS RESOLVED IN PART 2</div>
+    <div style="display:flex;flex-direction:column;font-size:13px"><sc-for list="{{ parked2 }}" as="p" hint-placeholder-count="8"><div style="padding:8px 0;border-top:1px solid #e6e1e3;color:#3a3437">{{ p }}</div></sc-for></div>
+    <p style="margin:4px 0 0;font-size:12px;color:#716a6d">Next, part 3: Koolitused list, course editor and lesson drawer, Kalender, Seaded, Uudiskiri, then the C screens, the three final lists and the Claude Code hand-off per screen.</p>
+  </div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const C=(t,v)=>({t,v});
+const ST={ootab:['Ootab ettemaksu','#e9e1e5','#6b4f5c'],ok:['Kinnitatud','#eaf0eb','#2f5d46'],bad:['Tühistatud','#f3e6e6','#8a3b3b']};
+const REG=[
+ ['19.10.2026','Grete Ots (näidis)','+372 5000 0008','Lash Lift BOTOX baaskoolitus','12.12 · Tallinn','0 / 290 €','ootab'],
+ ['18.10.2026','Helen Kukk (näidis)','+372 5000 0010','Kulmude LAMI','19.12 · Tartu','220 / 220 €','ok'],
+ ['17.10.2026','Triin Lepp (näidis)','+372 5000 0007','Lash Lift BOTOX baaskoolitus','12.12 · Tallinn','0 / 290 €','ootab',true],
+ ['15.10.2026','Мария Кузнецова (näidis)','+372 5000 0009','Kulmude LAMI','19.12 · Tartu','50 / 220 €','ootab'],
+ ['14.10.2026','Ольга Смирнова (näidis)','+372 5000 0006','Lash Lift BOTOX baaskoolitus','12.12 · Tallinn','290 / 290 €','ok'],
+ ['11.10.2026','Liis Saar (näidis)','+372 5000 0004','Kulmumeistri baaskoolitus','05.12 · Pärnu','350 / 350 €','ok'],
+ ['08.10.2026','Анна Иванова (näidis)','+372 5000 0003','Kulmumeistri baaskoolitus','05.12 · Pärnu','175 / 350 €','ok'],
+ ['06.10.2026','Kristiina Pärn (näidis)','+372 5000 0011','Kulmude LAMI','19.12 · Tartu','0 / 220 €','bad'],
+ ['05.10.2026','Kerli Mägi (näidis)','+372 5000 0005','Lash Lift BOTOX baaskoolitus','12.12 · Tallinn','145 / 290 €','ok']
+].map(r=>({date:r[0],name:r[1],phone:r[2],course:r[3],session:r[4],paid:r[5],status:ST[r[6]][0],sbg:ST[r[6]][1],sfg:ST[r[6]][2],hl:r[7]?'#faf6f8':'transparent'}));
+const chip=(t,n,on)=>({t,n,bg:on?'#222':'#fff',fg:on?'#fff':'#222',bd:on?'#222':'#cfc6ca',cb:on?'#e6dce2':'#ebe8e9'});
+class Component extends DCLogic {
+  renderVals(){
+    return {
+      c1:[C('Today\'s protocols','1 → 1'),C('Who owes prepayment','1 → 1'),C('Open requests (incl. Muutmine)','1 → 1'),C('Invoices (Arved)','2 → 1'),C('A session\'s details from the upcoming list','2 → 1'),C('Subscriber CSV','1 → 2 (moved to Uudiskiri)')],
+      queue:[{n:'3',t:'Ootab ettemaksu',s:'Vanim 15.10 · Мария Кузнецова'},{n:'2',t:'Ootab hindamist',s:'1 praktiline töö · 1 testi vastus'},{n:'7',t:'Päringut tegemata',s:'2 kontakt · 2 individuaal · 1 praktika · 2 ootenimekiri'},{n:'6',t:'Arveta makset',s:'Koosta arved ühe nupuga'},{n:'1',t:'Arvustus ootab avaldamist',s:'Kristel M. · Lash Lift BOTOX'},{n:'1',t:'Makse ootel kontrollil',s:'Анна Иванова · 170 € · kontrolli Montonios'}].map((q,i)=>({...q,bt:i?'1px solid #e6e1e3':'none'})),
+      upcoming:[['05.12','Kulmumeistri baaskoolitus','Pärnu','0 / 4','#8a3b3b'],['12.12','Lash Lift BOTOX baaskoolitus','Tallinn','2 / 4','#222'],['19.12','Kulmude LAMI','Tartu','5 / 6','#222'],['26.12','Kulmumeistri baaskoolitus','Pärnu','4 / 4','#222'],['30.12','Lash Lift BOTOX baaskoolitus','Viljandi','4 / 4','#222']].map(u=>({d:u[0],c:u[1],city:u[2],left:u[3],col:u[4]})),
+      c2:[C('Record a bank prepayment + receipt','5–7 → 3'),C('Record a prepayment, no receipt','2 + typing → 3, no typing'),C('Change status / add a note','3 + typing → 2 + typing'),C('Cancel a registration','2 → 3 (confirm added)'),C('Find one person','paging → typing'),C('Mark an invoice paid','3 → 3'),C('Open the protocol','2 → 2')],
+      regChips:[chip('Kõik',17,true),chip('Ootab ettemaksu',3),chip('Kinnitatud',13),chip('Tühistatud',1)],
+      typeChips:[['Kõik vormid',1],['E-õpe'],['Kontaktõpe']].map(([t,on])=>({t,bg:on?'#ebe8e9':'#fff',fg:'#222',bd:on?'#222':'#cfc6ca'})),
+      regRows:REG, regRowsPhone:REG.slice(0,5),
+      folds:[{t:'Leping',s:'Sellele registreeringule pole lepingut'},{t:'Tagasiside',s:'pole antud'},{t:'Registreerimise andmed',s:'11 rida'},{t:'Tühista registreerimine',s:'ConfirmPanel'}],
+      c3:[C('Open today\'s protocols from the menu','2 → 1'),C('Find a past session\'s protocols','3 → 2'),C('Send one student','1 → 1'),C('Send everyone at day\'s end','2 → 2'),C('Recover lost words after a conflict','copy by hand → 1')],
+      protRows:[{d:'Täna',w:'teisipäev, 20.10',c:'Kulmumeistri baaskoolitus',place:'10:00 · Pärnu, MS LAB stuudio',s:'3 õpilast · 1 saadetud · 1 mustand',col:'#6b4f5c',b:'Ava',bbg:'#222',bfg:'#fff'},{d:'29.09',w:'teisipäev',c:'Lash Lift BOTOX baaskoolitus',place:'10:00 · Pärnu, MS LAB stuudio',s:'✓ Kõik 3 saadetud',col:'#2f5d46',b:'Ava',bbg:'#fff',bfg:'#222'}],
+      c4:[C('Approve 5 points and send','8 → 2'),C('Approve 4, fix 1 and send','7 → 3 + typing'),C('Send a test review','1 → 1 (now informed)'),C('Open the certificate register','2 → 1 (tab)')],
+      points:[['Kulmude kaardistus','assets/stock/eye1.jpg','ok'],['Värvimine','assets/stock/brow1.jpg','ok'],['Lõpptulemus','assets/stock/eye2.jpg','fix']].map(([t,img,v])=>({t,img:`url(${img}) center/cover`,ok:v==='ok',fix:v==='fix',okBg:v==='ok'?'#2f5d46':'transparent',okFg:v==='ok'?'#fff':'#222',fxBg:v==='fix'?'#8a3b3b':'transparent',fxFg:v==='fix'?'#fff':'#222'})),
+      c5:[C('Extend an e-course access','4–5 → 2'),C('Find a student','2 + typing → typing'),C('Assess her practical work','2 → 2'),C('End an access','2 → 3 (Veel ▾)'),C('Add a student','2 → 3 (button, then form)')],
+      students:[['Jana Sild (näidis)','ux-pass-jana.sild@example.test','1'],['Anneli Rebane (näidis)','ux-pass-anneli.rebane@example.test','1'],['Светлана Петрова (näidis)','ux-pass-svetlana.petrova@example.test','1'],['Merilin Kuusk (näidis)','ux-pass-merilin.kuusk@example.test','2'],['Алина Козлова (näidis)','ux-pass-alina.kozlova@example.test','1'],['Laura Kivi (näidis)','ux-pass-laura.kivi@example.test','1'],['Kristel Mänd (näidis)','ux-pass-kristel.mand@example.test','1']].map(s=>({n:s[0],e:s[1],k:s[2]})),
+      sFolds:[{t:'Ava ligipääs e-koolitusele',s:'vali koolitus'},{t:'Maksed',s:'1 · 190 €'},{t:'Lepingud',s:'0'},{t:'Päringud',s:'0'},{t:'Tagasiside',s:'0'}],
+      c6:[C('Invoice 6 unbilled payments','6 → 2'),C('Monthly CSV for the accountant','3 + reload → 2'),C('From a payment to its registration','none → 1'),C('Check a payment in Montonio','copy id → 1')],
+      invoices:[{no:'MSL2026-003',st:'Tasutud',sbg:'#eaf0eb',sfg:'#2f5d46',who:'Мария Кузнецова',course:'Kulmude LAMI',meta:'Osamakse · koostatud 20.10 · tasutud 15.10 · sularaha',sum:'50,00 €',a1:'Saada õpilasele'},{no:'MSL2026-002',st:'Tasutud',sbg:'#eaf0eb',sfg:'#2f5d46',who:'Helen Kukk',course:'Kulmude LAMI',meta:'Kogu summa · tasutud 19.10 · pangaülekanne',sum:'220,00 €',a1:'Saada õpilasele'},{no:'MSL2026-001',st:'Tasumata',sbg:'#e9e1e5',sfg:'#6b4f5c',who:'Triin Lepp',course:'Lash Lift BOTOX',meta:'Ettemaks 50% · maksta kuni 27.10',sum:'145,00 €',a1:'Märgi tasutuks'}],
+      payments:[['Grete Ots','290 €','19.10 · Lash Lift BOTOX · pangalink','Ootel kontrollil','#e9e1e5','#6b4f5c','#9e8993'],['Анна Иванова','170 €','18.10 · Kulmumeistri baaskoolitus · kaart','Ootel kontrollil','#e9e1e5','#6b4f5c','#9e8993'],['Triin Lepp','145 €','17.10 · Lash Lift BOTOX','Pooleli','#ebe8e9','#5e5559','transparent'],['Ольга Смирнова','290 €','14.10 · Lash Lift BOTOX · Apple Pay','Makstud','#eaf0eb','#2f5d46','transparent'],['Kerli Mägi','145 €','05.10 · Lash Lift BOTOX · LHV','Makstud','#eaf0eb','#2f5d46','transparent']].map(p=>({who:p[0],sum:p[1],meta:p[2],st:p[3],sbg:p[4],sfg:p[5],bl:p[6]})),
+      c7:[C('Mark a request done','1 → 1 (+ undo)'),C('Find one person\'s request','tab + scroll → typing'),C('From a waitlist entry to its session','none → 1')],
+      reqTabs:[chip('Kontakt',2,true),chip('Individuaal',2),chip('Praktika',1),chip('Ootenimekiri',2),chip('Muutmine',0)],
+      requests:[{n:'Юлия Соколова (näidis)',when:'19.10.2026 07:24 · RU · julia.sokolova.naidis@example.test',short:'19.10 · RU',tag:'Kontakt',tbg:'#ebe8e9',tfg:'#222',msg:'Здравствуйте! Есть ли курсы на русском языке в Таллинне? (näidis)',facts:'Vastus vene keeles'},{n:'reet.lill.naidis@example.test',when:'12.10.2026 06:31 · ET',short:'12.10 · ET',tag:'E-õppe huvi',tbg:'#222',tfg:'#fff',msg:'Huvi: Kulmumeistri e-koolitus',facts:'Ostu ei lõpetanud · ostukorvist'}],
+      text2:[
+        {o:'Overview tiles + „Ootab hindamist: {n}“ + „Päringud“ cards',n:'„Sinu järjekord“ (one list)'},
+        {o:'„Vaata registreerimisi →“, „Kiirlingid“',n:'removed'},
+        {o:'„Protokollid“ (Täna card)',n:'„Ava protokollid →“'},
+        {o:'—',n:'„Järjekord on tühi.“ / „Kõik on tehtud. …“'},
+        {o:'„Laekunud summa (€)“ + „Salvesta summa“',n:'„Raha“ card + „Lisa laekumine“ / „Lisa {summa} · koht kinnitub“'},
+        {o:'Money box „Hind / 50% hinnast / Valitud makse / Laekunud“',n:'„{laekunud} / {hind} laekunud“ + „Koht kinnitub {pool} juures“'},
+        {o:'„Salvesta staatus“',n:'removed (autosave); heading „Staatus ja märkus“'},
+        {o:'Registreerimised column „Makse“',n:'„Laekunud“ („0 / 290 €“)'},
+        {o:'„Lukusta ja saada kõik“ / „Lukustan ja saadan protokollid“',n:'„Saada kõigile ({n})“ / „Kas saadan {n} protokolli?“'},
+        {o:'Per-student „Saada“',n:'„Saada protokoll {eesnimi}le“'},
+        {o:'„Kalendrisse“, „Registreeringu juurde“ (protocol back link)',n:'„← Protokollid“ / „← {kust tuli}“'},
+        {o:'—',n:'„Taasta minu tekst“ (conflict notice)'},
+        {o:'„Väljastatud tunnistused“',n:'tab „Tunnistused“; tab „Ootab hindamist“'},
+        {o:'—',n:'„Kinnita kõik“'},
+        {o:'„Saada hinnang“ → panel → „Saada“',n:'„Saada hinnang · {k} kinnitatud, {p} paranda“'},
+        {o:'Test review „Saada“',n:'„Saada · {õ} õige, {v} vale“'},
+        {o:'—',n:'„Pikenda“ / „+1 kuu“ / „+3 kuud“ / „+6 kuud“ / „Kuupäev…“ / „Ligipääs pikendatud kuni {date}.“'},
+        {o:'„Lõpetatud {date}“ (two meanings)',n:'„Läbitud {date}“ / „Ligipääs lõpetatud {date}“'},
+        {o:'„(mustand) (avatud kuni …)“',n:'„{koolitus} · mustand · avatud kuni {date}“'},
+        {o:'„Otsi“ button (Õpilased)',n:'removed (search as you type)'},
+        {o:'„Arveta maksed“ card + per-row „Koosta arve“',n:'„Arveta maksed: {n}“ + „Koosta {n} arvet“'},
+        {o:'„Kuu“ + „Näita“ + „Laadi alla (CSV)“',n:'„Kuu“ + „Laadi alla (CSV) · {kuu aasta}“'},
+        {o:'Montonio id (plain text)',n:'„Montonios ↗“'},
+        {o:'—',n:'„Ava registreering →“ on payment rows; „Ava toimumine →“ on waitlist cards'},
+        {o:'Päringud done items in the list',n:'„Tehtud ({n})“ fold'},
+        {o:'„Vasta e-kirjaga“',n:'„Vasta e-kirjaga ↗“'}
+      ],
+      beh2:[
+        {id:'B11',t:'Batch invoices.',d:'„Koosta {n} arvet“ creates the unbilled invoices in one server action, each numbered in turn. Today it is one action per row.'},
+        {id:'B12',t:'Extend access.',d:'A new action sets a new end date on an existing access row, with undo. Today it needs a new grant.'},
+        {id:'B13',t:'Protocol conflict restore.',d:'The local copy is written back into the boxes on „Taasta minu tekst“ and saved as a new version.'},
+        {id:'B14',t:'„Tühistatud pangas“ under „Ootel kontrollil“.',d:'A filter and badge mapping change; the label stays the same.'},
+        {id:'B15',t:'Test-review marks saved to the server.',d:'Today they are kept in localStorage until „Saada“.'},
+        {id:'B16',t:'Single-session shortcut.',d:'The Protokollid menu row goes straight to the session screen on a day with exactly one session.'}
+      ],
+      parked2:['Overview link to „Arved“','Reopen-test badge refresh','R19: typed „Laekunud summa“ overcharge (one money path)','Õpilased list cards at 1360 px','„(mustand) (avatud kuni …)“ double brackets','„Tagastatud“ invoice still sendable','„Tühistatud pangas“ under „Ebaõnnestunud“','Protocol status line staying after re-check (SaveStatus)','„Laada alla“ vs „Laadi alla“','Waiting reviews without a badge']
+    };
+  }
+}
+</script>
+</body>
+</html>

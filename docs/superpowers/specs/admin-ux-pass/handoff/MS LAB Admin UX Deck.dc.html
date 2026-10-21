@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#111}a{color:inherit}a:hover{color:#5e5559}</style>
+</helmet>
+<x-import component-from-global-scope="deck-stage" from="./deck-stage.js" width="1920" height="1080" hint-size="100%,100%">
+
+<section data-label="Title" data-screen-label="01" data-speaker-notes="What this is: a usability pass on the admin, not a redesign. Same app, same rules, fewer clicks, nothing lost." style="background:#222;color:#fff;display:grid;grid-template-columns:1fr 760px;font-family:Manrope,sans-serif">
+  <div style="padding:120px 110px;display:flex;flex-direction:column;justify-content:space-between">
+    <div style="width:220px;height:86px;overflow:hidden"><img src="assets/logo.png" alt="MS LAB" style="width:330px;height:330px;margin:-122px 0 0 -56px;display:block;filter:invert(1)"></div>
+    <div style="display:flex;flex-direction:column;gap:28px">
+      <span style="font:400 24px 'JetBrains Mono',monospace;letter-spacing:.08em;color:#c0b7bb">HALDUSE UX-PASS · OKTOOBER 2026</span>
+      <h1 style="margin:0;font:300 104px/1.02 Jost,sans-serif">The admin, with fewer clicks and nothing lost</h1>
+      <span style="font-size:32px;color:#d5d0d3;max-width:900px">What changes for Maria, screen by screen, and what Dim builds next.</span>
+    </div>
+  </div>
+  <div style="background:url(assets/stock/brow1.jpg) center/cover"></div>
+</section>
+
+<section data-label="Today" data-screen-label="02" data-speaker-notes="The five problems from the walkthrough. Each one maps to a pattern on the next slides." style="background:#f6f4f5;color:#222;padding:110px;display:flex;flex-direction:column;gap:56px;font-family:Manrope,sans-serif">
+  <div style="display:flex;flex-direction:column;gap:16px"><span style="font:600 24px Manrope;letter-spacing:.16em;color:#716a6d">TÄNA</span><h2 style="margin:0;font:300 72px/1.05 Jost">What gets in Maria's way today</h2></div>
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:28px;flex:1">
+    <div style="background:#fff;border-radius:28px;padding:40px;display:flex;flex-direction:column;gap:20px"><span style="font:300 88px/1 Jost">5</span><span style="font-size:28px;line-height:1.35">different ways to save, side by side</span></div>
+    <div style="background:#fff;border-radius:28px;padding:40px;display:flex;flex-direction:column;gap:20px"><span style="font:300 88px/1 Jost">4</span><span style="font-size:28px;line-height:1.35">pages with no menu entry</span></div>
+    <div style="background:#fff;border-radius:28px;padding:40px;display:flex;flex-direction:column;gap:20px"><span style="font:300 88px/1 Jost">✕</span><span style="font-size:28px;line-height:1.35">closing a drawer can lose typed text</span></div>
+    <div style="background:#fff;border-radius:28px;padding:40px;display:flex;flex-direction:column;gap:20px"><span style="font:300 88px/1 Jost">€</span><span style="font-size:28px;line-height:1.35">money is typed over by hand, two ways</span></div>
+    <div style="background:#fff;border-radius:28px;padding:40px;display:flex;flex-direction:column;gap:20px"><span style="font:300 88px/1 Jost">12</span><span style="font-size:28px;line-height:1.35">ET/RU taps to translate one course</span></div>
+  </div>
+</section>
+
+<section data-label="Rule" data-screen-label="03" data-speaker-notes="The single rule behind everything: the admin saves by itself; a button is only for things that leave the admin or can't be undone." style="background:#222;color:#fff;padding:110px;display:flex;flex-direction:column;justify-content:center;gap:48px;font-family:Manrope,sans-serif">
+  <span style="font:600 24px Manrope;letter-spacing:.16em;color:#c0b7bb">ÜKS REEGEL</span>
+  <h2 style="margin:0;font:300 110px/1.04 Jost;max-width:1500px">Everything saves itself. Buttons are for what leaves the admin.</h2>
+  <div style="display:flex;gap:20px;flex-wrap:wrap">
+    <span style="height:72px;padding:0 32px;border-radius:99px;background:#eaf0eb;color:#2f5d46;display:flex;align-items:center;font:600 28px Manrope">✓ Salvestatud 12:04</span>
+    <span style="height:72px;padding:0 32px;border-radius:99px;background:#fff;color:#222;display:flex;align-items:center;font:600 28px Manrope">Saada protokoll Eliisele</span>
+    <span style="height:72px;padding:0 32px;border-radius:99px;background:#3a3338;color:#fff;display:flex;align-items:center;font:600 28px Manrope">Pilt eemaldatud. Võta tagasi</span>
+  </div>
+</section>
+
+<section data-label="Menu" data-screen-label="04" data-speaker-notes="Five groups by how often she goes there. Protokollid and Testimine get rows; Arved and Tunnistused become tabs. Badges count only what needs action." style="background:#f6f4f5;color:#222;display:grid;grid-template-columns:420px 1fr;font-family:Manrope,sans-serif">
+  <div style="background:#242124;color:#ccc0c8;padding:70px 34px;display:flex;flex-direction:column;gap:6px;font-size:26px">
+    <span style="padding:12px 16px;border-radius:12px;background:#51434c;color:#fff">Ülevaade</span>
+    <span style="font:600 18px Manrope;letter-spacing:.16em;color:#a99ba4;padding:22px 16px 6px">IGAPÄEVANE TÖÖ</span>
+    <span style="padding:8px 16px;display:flex;justify-content:space-between">Registreerimised<b style="color:#242124;background:#e6dce2;border-radius:99px;padding:0 12px;font-size:20px">3</b></span>
+    <span style="padding:8px 16px;display:flex;justify-content:space-between">Protokollid<b style="color:#242124;background:#e6dce2;border-radius:99px;padding:0 12px;font-size:20px">Täna</b></span>
+    <span style="padding:8px 16px">Hindamine · Päringud · Õpilased</span>
+    <span style="padding:8px 16px">Tagasiside · Maksed ja arved</span>
+    <span style="font:600 18px Manrope;letter-spacing:.16em;color:#a99ba4;padding:22px 16px 6px">KOOLITUSED</span>
+    <span style="padding:8px 16px">Koolitused · Kalender · Praktika</span>
+    <span style="font:600 18px Manrope;letter-spacing:.16em;color:#a99ba4;padding:22px 16px 6px">KODULEHT JA UUDISKIRI ▸</span>
+    <span style="font:600 18px Manrope;letter-spacing:.16em;color:#a99ba4;padding:22px 16px 6px">HALDUS</span>
+    <span style="padding:8px 16px">Seaded · Testimine</span>
+  </div>
+  <div style="padding:110px;display:flex;flex-direction:column;gap:44px">
+    <div style="display:flex;flex-direction:column;gap:16px"><span style="font:600 24px Manrope;letter-spacing:.16em;color:#716a6d">MENÜÜ</span><h2 style="margin:0;font:300 72px/1.05 Jost">Five groups, daily work first</h2></div>
+    <div style="display:flex;flex-direction:column;gap:26px;font-size:32px;line-height:1.4;max-width:1100px">
+      <span>„Protokollid“ and „Testimine“ get their own rows.</span>
+      <span>„Arved“ becomes a tab under „Maksed ja arved“; „Tunnistused“ a tab on „Hindamine“.</span>
+      <span>A badge counts only what Maria has to act on, and opens the list already filtered.</span>
+      <span>Below 900 px, the phone menu opens with today's course on top.</span>
+    </div>
+  </div>
+</section>
+
+<section data-label="Publishing" data-screen-label="05" data-speaker-notes="Q1 answer: published content saves as a draft. The public page only changes when she presses Avalda muudatused." style="background:#f6f4f5;color:#222;padding:110px;display:flex;flex-direction:column;gap:56px;font-family:Manrope,sans-serif">
+  <div style="display:flex;flex-direction:column;gap:16px"><span style="font:600 24px Manrope;letter-spacing:.16em;color:#716a6d">SALVESTAMINE JA AVALDAMINE</span><h2 style="margin:0;font:300 72px/1.05 Jost">Drafts save themselves. The site changes only on „Avalda“.</h2></div>
+  <div style="background:#fff;border-radius:28px;padding:40px 48px;display:flex;justify-content:space-between;align-items:center;border-left:6px solid #9e8993">
+    <span style="font-size:32px"><b>Avaldamata muudatused: 3</b><span style="color:#716a6d"> · Lühikirjeldus, Hind, Moodul 03</span></span>
+    <div style="display:flex;gap:16px;align-items:center"><span style="font:600 26px Manrope;text-decoration:underline">Eelvaade ↗</span><span style="height:76px;padding:0 34px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 26px Manrope">Avalda muudatused</span></div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:28px">
+    <div style="display:flex;flex-direction:column;gap:12px"><b style="font:400 34px Jost">One status line</b><span style="font-size:26px;line-height:1.4;color:#3a3437">Replaces every „Salvesta“ button. It says when something couldn't be saved, and why.</span></div>
+    <div style="display:flex;flex-direction:column;gap:12px"><b style="font:400 34px Jost">Nothing lost</b><span style="font-size:26px;line-height:1.4;color:#3a3437">Closing a drawer waits for the save. Offline text stays on the device.</span></div>
+    <div style="display:flex;flex-direction:column;gap:12px"><b style="font:400 34px Jost">One language switch</b><span style="font-size:26px;line-height:1.4;color:#3a3437">ET | RU per page, not per field. A Russian pass over a course: 12 taps → 1.</span></div>
+  </div>
+</section>
+
+<section data-label="Money" data-screen-label="06" data-speaker-notes="Q2: money stays an explicit action. One button records the payment, checks the seat and makes the receipt." style="background:#222;color:#fff;display:grid;grid-template-columns:1fr 1fr;font-family:Manrope,sans-serif">
+  <div style="padding:110px;display:flex;flex-direction:column;justify-content:center;gap:36px">
+    <span style="font:600 24px Manrope;letter-spacing:.16em;color:#c0b7bb">RAHA</span>
+    <h2 style="margin:0;font:300 80px/1.04 Jost">One button records a prepayment</h2>
+    <span style="font-size:32px;line-height:1.4;color:#d5d0d3">„Lisa laekumine“ adds the amount, confirms the place if a seat is free, and makes the receipt. No more typing over „Laekunud summa“.</span>
+    <span style="font:300 120px/1 Jost">5–7 → 3 <span style="font-size:32px;font-family:Manrope;color:#c0b7bb">taps</span></span>
+  </div>
+  <div style="padding:110px 110px 110px 0;display:flex;align-items:center">
+    <div style="width:100%;background:#fff;color:#222;border-radius:32px;padding:44px;display:flex;flex-direction:column;gap:22px">
+      <span style="font:300 64px/1 Jost">0 € <span style="font-size:30px;color:#716a6d;font-family:Manrope">/ 290 € laekunud</span></span>
+      <div style="position:relative;height:14px;border-radius:7px;background:#e6e1e3"><div style="position:absolute;left:50%;top:-8px;bottom:-8px;width:3px;background:#222"></div></div>
+      <span style="font-size:26px;color:#716a6d">Koht kinnitub 145 € juures · vabu kohti 2 / 4</span>
+      <div style="display:flex;gap:12px"><span style="height:64px;padding:0 24px;border-radius:99px;border:2px solid #222;background:#ebe8e9;display:flex;align-items:center;font:600 24px Manrope">145 € · ettemaks</span><span style="height:64px;padding:0 24px;border-radius:99px;border:1px solid #d5d0d3;display:flex;align-items:center;font-size:24px">290 €</span></div>
+      <span style="height:80px;border-radius:99px;background:#222;color:#fff;display:grid;place-items:center;font:600 28px Manrope">Lisa 145 € · koht kinnitub</span>
+    </div>
+  </div>
+</section>
+
+<section data-label="Course day" data-screen-label="07" data-speaker-notes="Course day on the phone: Protokollid from the menu in one tap, and assessing practical work goes from 8 taps to 2." style="background:#f6f4f5;color:#222;display:grid;grid-template-columns:780px 1fr;font-family:Manrope,sans-serif">
+  <div style="background:url(assets/stock/eye1.jpg) center/cover"></div>
+  <div style="padding:110px;display:flex;flex-direction:column;gap:44px">
+    <div style="display:flex;flex-direction:column;gap:16px"><span style="font:600 24px Manrope;letter-spacing:.16em;color:#716a6d">KOOLITUSPÄEV</span><h2 style="margin:0;font:300 72px/1.05 Jost">Protocols and assessment, on the phone</h2></div>
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:28px 32px;align-items:baseline">
+      <span style="font:300 72px/1 Jost">1</span><span style="font-size:30px;line-height:1.4">tap from the menu to today's protocols. A new list shows the last 14 days.</span>
+      <span style="font:300 72px/1 Jost">8 → 2</span><span style="font-size:30px;line-height:1.4">to approve a practical work: „Kinnita kõik“, then „Saada hinnang · 5 kinnitatud“.</span>
+      <span style="font:300 72px/1 Jost">260</span><span style="font-size:30px;line-height:1.4">px photos instead of 88, full width on a phone.</span>
+      <span style="font:300 72px/1 Jost">2</span><span style="font-size:30px;line-height:1.4">taps to extend an e-course with „Pikenda“ (was 4–5).</span>
+    </div>
+  </div>
+</section>
+
+<section data-label="Lists" data-screen-label="08" data-speaker-notes="One toolbar on every list of people or money. The overview becomes a single queue of things to do." style="background:#f6f4f5;color:#222;padding:110px;display:flex;flex-direction:column;gap:52px;font-family:Manrope,sans-serif">
+  <div style="display:flex;flex-direction:column;gap:16px"><span style="font:600 24px Manrope;letter-spacing:.16em;color:#716a6d">NIMEKIRJAD JA ÜLEVAADE</span><h2 style="margin:0;font:300 72px/1.05 Jost">Find anyone by typing. See what's next at a glance.</h2></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:36px;flex:1">
+    <div style="background:#fff;border-radius:28px;padding:44px;display:flex;flex-direction:column;gap:22px">
+      <div style="min-height:76px;border:1px solid #d9d2d5;border-radius:99px;padding:0 30px;display:flex;align-items:center;font-size:28px;color:#716a6d">⌕ Otsi nime, e-posti või telefoni järgi</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap"><span style="height:64px;padding:0 24px;border-radius:99px;background:#222;color:#fff;display:flex;align-items:center;font:600 24px Manrope">Kõik 17</span><span style="height:64px;padding:0 24px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;font:600 24px Manrope">Ootab ettemaksu 3</span><span style="height:64px;padding:0 24px;border-radius:99px;border:1px solid #cfc6ca;display:flex;align-items:center;font:600 24px Manrope">Kinnitatud 13</span></div>
+      <span style="font-size:26px;line-height:1.4;color:#3a3437">Search, filters with counts, and a whole row you can click, on all seven lists of people and money. Filters survive opening a drawer.</span>
+    </div>
+    <div style="background:#fff;border-radius:28px;padding:44px;display:flex;flex-direction:column;gap:6px">
+      <b style="font:300 40px Jost;margin-bottom:10px">Sinu järjekord</b>
+      <div style="display:grid;grid-template-columns:90px 1fr;align-items:center;min-height:84px;border-top:1px solid #e6e1e3"><span style="font:300 48px Jost">3</span><span style="font-size:28px">Ootab ettemaksu</span></div>
+      <div style="display:grid;grid-template-columns:90px 1fr;align-items:center;min-height:84px;border-top:1px solid #e6e1e3"><span style="font:300 48px Jost">2</span><span style="font-size:28px">Ootab hindamist</span></div>
+      <div style="display:grid;grid-template-columns:90px 1fr;align-items:center;min-height:84px;border-top:1px solid #e6e1e3"><span style="font:300 48px Jost">7</span><span style="font-size:28px">Päringut tegemata</span></div>
+      <div style="display:grid;grid-template-columns:90px 1fr;align-items:center;min-height:84px;border-top:1px solid #e6e1e3"><span style="font:300 48px Jost">6</span><span style="font-size:28px">Arveta makset → „Koosta 6 arvet“</span></div>
+    </div>
+  </div>
+</section>
+
+<section data-label="Decisions" data-screen-label="09" data-speaker-notes="Everything Maria decided in the forms. All 22 behaviour changes accepted; m5 and m7 resolved with the recommended behaviour." style="background:#222;color:#fff;padding:110px;display:flex;flex-direction:column;gap:52px;font-family:Manrope,sans-serif">
+  <div style="display:flex;flex-direction:column;gap:16px"><span style="font:600 24px Manrope;letter-spacing:.16em;color:#c0b7bb">OTSUSTATUD</span><h2 style="margin:0;font:300 72px/1.05 Jost">What's decided</h2></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px 80px;font-size:28px;line-height:1.4">
+    <span><b>Publishing:</b> drafts, and the site changes on „Avalda muudatused“.</span>
+    <span><b>Money:</b> recorded with „Lisa laekumine“, never typed over.</span>
+    <span><b>Tablet:</b> below 900 px uses the phone layout. Maria only.</span>
+    <span><b>Languages:</b> one ET | RU switch per page.</span>
+    <span><b>Invoices:</b> numbers restart each January by themselves.</span>
+    <span><b>Montonio:</b> one open order per registration; doubles go to „Ootel kontrollil“.</span>
+  </div>
+  <div style="display:flex;align-items:baseline;gap:28px;border-top:1px solid #51434c;padding-top:40px"><span style="font:300 120px/1 Jost">22 / 22</span><span style="font-size:32px;color:#d5d0d3">behaviour changes accepted</span></div>
+</section>
+
+<section data-label="Next" data-screen-label="10" data-speaker-notes="Build order for Dim and Claude Code. The hand-off package has the spec per screen." style="background:#f6f4f5;color:#222;padding:110px;display:flex;flex-direction:column;gap:56px;font-family:Manrope,sans-serif">
+  <div style="display:flex;flex-direction:column;gap:16px"><span style="font:600 24px Manrope;letter-spacing:.16em;color:#716a6d">EDASI</span><h2 style="margin:0;font:300 72px/1.05 Jost">Build order</h2></div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:28px;flex:1">
+    <div style="background:#fff;border-radius:28px;padding:44px;display:flex;flex-direction:column;gap:18px"><span style="font:400 26px 'JetBrains Mono';color:#716a6d">01</span><b style="font:400 40px/1.15 Jost">Shared parts</b><span style="font-size:26px;line-height:1.4;color:#3a3437">Menu, autosave and status line, drafts, confirmations, undo, language switch, list toolbar</span></div>
+    <div style="background:#fff;border-radius:28px;padding:44px;display:flex;flex-direction:column;gap:18px"><span style="font:400 26px 'JetBrains Mono';color:#716a6d">02</span><b style="font:400 40px/1.15 Jost">Daily work</b><span style="font-size:26px;line-height:1.4;color:#3a3437">Ülevaade, Registreerimised, Protokollid, Hindamine, Õpilased, Maksed, Päringud</span></div>
+    <div style="background:#fff;border-radius:28px;padding:44px;display:flex;flex-direction:column;gap:18px"><span style="font:400 26px 'JetBrains Mono';color:#716a6d">03</span><b style="font:400 40px/1.15 Jost">Courses and setup</b><span style="font-size:26px;line-height:1.4;color:#3a3437">Koolitused, course editor, Kalender, Seaded, Uudiskiri</span></div>
+    <div style="background:#fff;border-radius:28px;padding:44px;display:flex;flex-direction:column;gap:18px"><span style="font:400 26px 'JetBrains Mono';color:#716a6d">04</span><b style="font:400 40px/1.15 Jost">Site content</b><span style="font-size:26px;line-height:1.4;color:#3a3437">Avaleht, Koolitaja, Uudised, Hüpikaken, Praktika, Tagasiside, Testimine, login</span></div>
+  </div>
+  <span style="font-size:26px;color:#716a6d">Every step updates the test page, so Maria can check each change before the next one starts.</span>
+</section>
+
+</x-import>
+</x-dc>
+</body>
+</html>
