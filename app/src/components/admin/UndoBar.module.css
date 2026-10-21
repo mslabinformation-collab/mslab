@@ -1,0 +1,60 @@
+/* UndoBar (admin UX pass, README §1.7): bottom left, bg #222, radius 14, min-height 52; the button #3a3338, 44px. Full width on a phone.
+   The region is fixed to the screen and takes no room (and no clicks) of its own; only the bar takes them. */
+
+.region {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  width: min(480px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 4px 4px 4px 18px;
+  border-radius: 14px;
+  background: #222;
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(34, 34, 34, 0.25);
+  pointer-events: auto;
+}
+
+.text {
+  flex: 1 1 auto;
+  margin: 0;
+  font: 500 14px/1.4 var(--font-body);
+}
+
+.button {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: #3a3338;
+  color: #fff;
+  font: 600 13px/1.2 var(--font-body);
+  cursor: pointer;
+}
+
+.button:hover {
+  background: #51434c;
+}
+
+.button[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+@media (max-width: 640px) {
+  .region {
+    right: 16px;
+    width: auto;
+  }
+}

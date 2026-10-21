@@ -5,9 +5,12 @@ import { useEffect } from "react";
 /** How long to look for the page's own content before marking anyway (a page with nothing React-made in it would never be found). */
 const GIVE_UP_MS = 10_000;
 
-/** The page's first element in <main>: not the shell's top line, not a script, style or link that streaming leaves between, and not the loading rows. */
+/**
+ * The page's first element in <main>: not the shell's top line, not the undo bar's status region (the layout's, hydrated with the shell, so
+ * it would count as the page before the page's Suspense boundary has hydrated), not a script, style or link that streaming leaves between, and not the loading rows.
+ */
 function pageRoot(): Element | null {
-  return document.querySelector("#main > :not([data-admin-top]):not(script):not(style):not(link):not(template):not([data-panel-loading])");
+  return document.querySelector("#main > :not([data-admin-top]):not([data-undo-region]):not(script):not(style):not(link):not(template):not([data-panel-loading])");
 }
 
 /** React puts its fiber on a DOM node when it hydrates (or renders) it, so a node without one is still the server's HTML. */

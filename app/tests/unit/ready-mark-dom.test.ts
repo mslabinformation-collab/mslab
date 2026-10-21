@@ -84,6 +84,23 @@ describe("ReadyMark", () => {
     expect(marked()).toBe(true);
   });
 
+  test("the undo bar's status region (the layout's, hydrated with the shell, in <main> after the page) does not count as the page either", async () => {
+    // UndoProvider renders its region next to the page from the first paint: while the page's Suspense boundary is still the loading rows,
+    // the region is the only React-made element in <main>, and it must not be taken for the page
+    const loading = takeOver(el("div", { "data-panel-loading": "" }));
+    const region = takeOver(el("div", { "data-undo-region": "", role: "status" }));
+    const m = main(loading, region);
+    takeOver(m.querySelector("[data-admin-top]")!);
+    await mount();
+    await tick(500);
+    expect(marked()).toBe(false);
+    // the page arrives (before the region in the document) and is taken over
+    const page = takeOver(el("section"));
+    loading.replaceWith(page);
+    await tick(40);
+    expect(marked()).toBe(true);
+  });
+
   test("gives up after 10 s, so a page with nothing React-made in it cannot keep a test waiting for ever", async () => {
     main(el("div"));
     await mount();
