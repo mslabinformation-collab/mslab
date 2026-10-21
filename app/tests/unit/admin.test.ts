@@ -123,17 +123,18 @@ describe("admin date formats (Estonian time)", () => {
 });
 
 describe("admin menu (prototype B sidebar, A1)", () => {
-  test("the sections in Maria's order, each with its Estonian label and its own address", () => {
+  test("the sections in the menu's order, each with its Estonian label and its own address", () => {
     expect(SECTIONS.map((s) => adminEt.nav[s.key])).toEqual([
       "Ülevaade",
+      "Registreerimised",
+      "Protokollid",
+      "Hindamine",
+      "Päringud",
+      "Õpilased",
+      "Tagasiside",
+      "Maksed ja arved",
       "Koolitused",
       "Kalender",
-      "Registreerimised",
-      "Hindamine",
-      "Maksed",
-      "Tagasiside",
-      "Õpilased",
-      "Päringud",
       "Praktika",
       "Avaleht",
       "Koolitaja",
@@ -141,13 +142,20 @@ describe("admin menu (prototype B sidebar, A1)", () => {
       "Hüpikaken",
       "Uudiskiri",
       "Seaded",
+      "Testimine",
     ]);
     expect(new Set(SECTIONS.map((s) => s.href)).size).toBe(SECTIONS.length);
     for (const s of SECTIONS) expect(s.href).toMatch(/^\/admin(\/[a-z]+)?$/);
-    expect(adminEt.shell.viewSite).toBe("Vaata lehte");
+    // the menu has one „Vaata kodulehte“, in the top line (and in the phone menu's footer): the sidebar footer's „Vaata lehte“ is gone
+    expect(adminEt.shell.preview).toBe("Vaata kodulehte");
+    expect(adminEt.shell).not.toHaveProperty("viewSite");
+    expect(adminEt.shell).not.toHaveProperty("signedInAs");
+    expect(adminEt.shell.signedIn).toBe("Sisse logitud");
     expect(adminEt.shell.logout).toBe("Logi välja");
     // Hindamine (e-course completion, spec §5.2): its own address, its badge's words for a screen reader
     expect(SECTIONS.find((s) => s.key === "assessment")).toEqual({ key: "assessment", href: "/admin/hindamine", icon: "check" });
+    expect(SECTIONS.find((s) => s.key === "protocols")).toEqual({ key: "protocols", href: "/admin/protokollid", icon: "clipboard" });
+    expect(SECTIONS.find((s) => s.key === "testing")).toEqual({ key: "testing", href: "/admin/testimine", icon: "check" });
     expect(adminEt.shell.badgeAssessment).toBe("{n} ootab hindamist");
   });
   test("the status labels are Maria's words; the old 'e-learning purchases will come with the payments' note is gone (they show on Maksed and in the student's drawer)", () => {
@@ -162,7 +170,7 @@ describe("admin menu (prototype B sidebar, A1)", () => {
 describe("Maksed (phase 2b, spec 8): Maria's words", () => {
   const t = adminEt.payments;
   test("the menu entry, the heading, the lead (Montonio halduses), the filter and the statuses", () => {
-    expect(adminEt.nav.payments).toBe("Maksed");
+    expect(adminEt.nav.payments).toBe("Maksed ja arved");
     expect([t.eyebrow, t.title]).toEqual(["Montonio", "Maksed"]);
     expect(t.lead).toBe("Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures nagu varem.");
     expect(t.filter).toEqual({ all: "Kõik", paid: "Makstud", pending: "Pooleli", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil" });

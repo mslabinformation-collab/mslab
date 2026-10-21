@@ -94,12 +94,15 @@ export const adminEt = {
     home: "Halduse ülevaade",
     openMenu: "Ava menüü",
     closeMenu: "Sulge menüü",
-    viewSite: "Vaata lehte",
     newWindow: "avaneb uues aknas",
-    // the top line's link through the coming-soon gate (api/admin/preview: the preview cookie, then the home page)
+    // the top line's link through the coming-soon gate (api/admin/preview: the preview cookie, then the home page); the phone menu's footer has it too
     preview: "Vaata kodulehte",
     logout: "Logi välja",
-    signedInAs: "Sisse logitud: {email}",
+    // the sidebar's footer (README §1.1): above the e-mail; there is no tooltip on a touch screen
+    signedIn: "Sisse logitud",
+    // the phone menu's card on a day with a session (README §1.1): the time, then the course; it opens the session's protocols
+    today: "TÄNA {time}",
+    todayLine: "Protokollid · {course}",
     badgeRegistrations: "{n} ootab ettemaksu",
     badgeRequests: "{n} tegemata",
     // Hindamine's badge (e-course completion, spec §5.2): practical work, open answers and students out of tries, together
@@ -112,7 +115,7 @@ export const adminEt = {
     calendar: "Kalender",
     registrations: "Registreerimised",
     assessment: "Hindamine",
-    payments: "Maksed",
+    payments: "Maksed ja arved",
     feedback: "Tagasiside",
     clients: "Õpilased",
     requests: "Päringud",
@@ -123,9 +126,16 @@ export const adminEt = {
     campaign: "Hüpikaken",
     newsletter: "Uudiskiri",
     settings: "Seaded",
-    // admin UX pass (README §1.1): their rows come with the grouped menu
+    // admin UX pass (README §1.1): the rows of Protokollid and Testimine
     protocols: "Protokollid",
     testing: "Testimine",
+    // the menu's group headings, in sentence case: the sidebar shows them in capitals (CSS)
+    groups: {
+      daily: "Igapäevane töö",
+      courses: "Koolitused",
+      site: "Koduleht ja uudiskiri",
+      admin: "Haldus",
+    },
   },
 
   // Long lists (registrations, requests, subscribers) come 50 rows a page: ?leht=<n>.

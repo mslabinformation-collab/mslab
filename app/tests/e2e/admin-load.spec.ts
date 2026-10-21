@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { APIRequestContext } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { removeAdminRows } from "./fixtures";
 import { E2E_REVIEW_KEY } from "./prod-build";
@@ -140,4 +140,101 @@ test("the sidebar stays on screen and marks the entry of the address after a cli
   await expect(entry("registrations")).not.toHaveAttribute("aria-current", "page");
   await expect(page.locator("aside[data-kept]")).toHaveCount(1);
   await expect(page.locator("html[data-admin-ready]")).toBeAttached();
+});
+
+// Admin UX pass, Task 3: the grouped sidebar from 900 px, the phone bar below it (README §1.1). A tablet between 641 and 899 px wide used to
+// get a narrow 190 px sidebar; it now gets the phone bar, and nothing may run off the side.
+const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+
+test("768 px wide: the phone bar shows, its menu opens with every group, and nothing overflows sideways; 900 px is the sidebar", async ({ page, context, visitorIp, isMobile }) => {
+  test.skip(isMobile, "the viewport is set here: desktop project only");
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto("/admin/maksed");
+  await adminReady(page);
+
+  await expect(page.locator("aside")).toBeHidden();
+  const bar = page.locator("header").first();
+  await expect(bar).toBeVisible();
+  expect((await bar.boundingBox())!.height).toBe(64);
+  await expect(bar.locator("[data-admin-bar-title]")).toHaveText("Maksed ja arved");
+  const button = page.getByRole("button", { name: "Ava menüü" });
+  const box = (await button.boundingBox())!;
+  expect([Math.round(box.width), Math.round(box.height)]).toEqual([44, 44]);
+  expect(await noSideScroll(page)).toBe(true);
+
+  await button.click();
+  const drawer = page.locator("[data-admin-drawer]");
+  await expect(drawer).toBeVisible();
+  await expect(drawer.locator("[data-nav-group]")).toHaveText(["Igapäevane töö", "Koolitused", "Koduleht ja uudiskiri", "Haldus"]);
+  await expect(drawer.locator("button[data-nav-fold]")).toHaveCount(0); // the phone menu has no fold
+  await expect(drawer.locator('a[data-nav="home"]')).toBeVisible(); // … its last group is open
+  await expect(drawer.getByRole("link", { name: /Vaata kodulehte/ })).toBeVisible();
+  expect(await noSideScroll(page)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+
+  // 899 px is still the phone bar; 900 px is the sidebar, and an open menu closes when the window grows into it
+  await page.setViewportSize({ width: 899, height: 1024 });
+  await expect(bar).toBeVisible();
+  await expect(page.locator("aside")).toBeHidden();
+  await button.click();
+  await expect(drawer).toBeVisible();
+  await page.setViewportSize({ width: 900, height: 1024 });
+  await expect(drawer).toBeHidden();
+  await expect(bar).toBeHidden();
+  await expect(page.locator("aside")).toBeVisible();
+  expect((await page.locator("aside").boundingBox())!.width).toBe(235);
+  expect(await noSideScroll(page)).toBe(true);
+});
+
+test("1440 px wide: the sidebar with its groups; the folding group opens on a tap, keeps the choice, and a page inside it holds it open", async ({ page, context, visitorIp, isMobile }) => {
+  test.skip(isMobile, "the viewport is set here: desktop project only");
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/admin/maksed");
+  await adminReady(page);
+
+  const aside = page.locator("aside");
+  await expect(aside).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ava menüü" })).toBeHidden();
+  await expect(aside.locator("[data-nav-group]")).toHaveText(["Igapäevane töö", "Koolitused", "Koduleht ja uudiskiri", "Haldus"]);
+  // the heading's capitals are CSS, not text
+  await expect(aside.locator('p[data-nav-group="daily"]')).toHaveCSS("text-transform", "uppercase");
+
+  const fold = aside.locator("button[data-nav-fold]");
+  const home = aside.locator('a[data-nav="home"]');
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  await expect(home).toBeHidden();
+  expect((await fold.boundingBox())!.height).toBe(44);
+
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  await expect(home).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("mslab-nav-fold"))).toBe("open");
+
+  // the choice is kept for the next visit …
+  await page.reload();
+  await adminReady(page);
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  await page.reload();
+  await adminReady(page);
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+
+  // … but a page inside the group holds it open, with its own entry marked
+  await page.goto("/admin/avaleht");
+  await adminReady(page);
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  await expect(aside.locator('a[data-nav="home"]')).toHaveAttribute("aria-current", "page");
+  await fold.click({ force: true }); // (it says aria-disabled while the page holds it open, which Playwright's click waits out)
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+
+  // the footer is the aside's own: it holds the e-mail and the way out, and the aside scrolls by itself
+  const foot = aside.locator("[data-nav-foot]");
+  await expect(foot).toContainText("Sisse logitud");
+  await expect(foot.getByRole("button", { name: "Logi välja" })).toBeVisible();
+  expect(await aside.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
+  expect(await noSideScroll(page)).toBe(true);
 });

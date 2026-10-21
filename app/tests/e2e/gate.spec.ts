@@ -323,15 +323,9 @@ test.describe("an admin", () => {
       await expect(site.locator("header")).toBeVisible();
       await site.close();
 
-      // the sidebar's "Vaata lehte ↗" goes the same way
-      await context.clearCookies({ name: PREVIEW_COOKIE });
-      const sidebar = page.locator("aside").getByRole("link", { name: /Vaata lehte/ });
-      await expect(sidebar).toHaveAttribute("href", "/api/admin/preview");
-      const [again] = await Promise.all([context.waitForEvent("page"), sidebar.click()]);
-      await again.waitForLoadState();
-      expect(new URL(again.url()).pathname).toBe("/");
-      await expect(again.locator("[data-coming-soon]")).toHaveCount(0);
-      await again.close();
+      // the sidebar has no „Vaata lehte“ of its own any more: the top line's link is the only one on a desktop screen
+      await expect(page.locator("aside").getByRole("link", { name: /Vaata/ })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: /Vaata kodulehte/ })).toHaveCount(1);
 
       // logout clears the pass with the session
       await page.locator("aside").getByRole("button", { name: "Logi välja" }).click();

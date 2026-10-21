@@ -27,7 +27,9 @@ import {
 // fixtures.ts, an unpublished fixture course with its own session) and deletes again. The guard tests are GET-only and
 // also run against a deployment.
 
-const MENU = ["Ülevaade", "Koolitused", "Kalender", "Registreerimised", "Hindamine", "Maksed", "Tagasiside", "Õpilased", "Päringud", "Praktika", "Avaleht", "Koolitaja", "Uudised", "Hüpikaken", "Uudiskiri", "Seaded"];
+// the grouped menu (admin UX pass, README §1.1), in the order it is drawn
+const MENU = ["Ülevaade", "Registreerimised", "Protokollid", "Hindamine", "Päringud", "Õpilased", "Tagasiside", "Maksed ja arved", "Koolitused", "Kalender", "Praktika", "Avaleht", "Koolitaja", "Uudised", "Hüpikaken", "Uudiskiri", "Seaded", "Testimine"];
+const GROUPS = ["Igapäevane töö", "Koolitused", "Koduleht ja uudiskiri", "Haldus"];
 
 const created = { tokens: new Set<string>(), sessions: new Set<string>() };
 let fx: AdminFixtures | null = null;
@@ -51,7 +53,10 @@ const signIn = (page: Page, context: BrowserContext, ip: string) => signInAsAdmi
 
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
-/** The admin menu: the sidebar on a wide screen, the drawer (opened here) on a phone. */
+/**
+ * The admin menu: the sidebar on a wide screen (its folding group „Koduleht ja uudiskiri“ opened here, when it is closed), the menu panel (opened
+ * here) on a phone, where every group is open.
+ */
 async function menu(page: Page, isMobile: boolean): Promise<Locator> {
   if (isMobile) {
     await page.getByRole("button", { name: "Ava menüü" }).click();
@@ -59,7 +64,11 @@ async function menu(page: Page, isMobile: boolean): Promise<Locator> {
     await expect(drawer).toBeVisible();
     return drawer.getByRole("navigation", { name: "Halduse menüü" });
   }
-  return page.locator("aside").getByRole("navigation", { name: "Halduse menüü" });
+  const nav = page.locator("aside").getByRole("navigation", { name: "Halduse menüü" });
+  const fold = nav.locator("button[data-nav-fold]");
+  if ((await fold.getAttribute("aria-expanded")) === "false") await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  return nav;
 }
 
 test.describe("guard (GET only, also against a deployment)", () => {
@@ -101,18 +110,34 @@ test.describe("signed in", () => {
     expect(await noOverflow(page)).toBe(true);
 
     const nav = await menu(page, isMobile);
-    const links = nav.getByRole("list").first().getByRole("link");
+    const links = nav.getByRole("link");
     await expect(links).toHaveCount(MENU.length);
     for (const [i, label] of MENU.entries()) await expect(links.nth(i)).toContainText(label);
+    await expect(nav.locator("[data-nav-group]")).toHaveText(GROUPS);
     await expect(nav.locator('[data-nav="overview"]')).toHaveAttribute("aria-current", "page");
     await expect(nav.locator('[data-badge="registrations"]')).toBeVisible();
     await expect(nav.locator('[data-badge="requests"]')).toBeVisible();
-    const site = nav.getByRole("link", { name: /Vaata lehte/ });
-    // through api/admin/preview: the coming-soon gate's preview cookie, then the home page (src/lib/site-gate.ts)
-    await expect(site).toHaveAttribute("href", "/api/admin/preview");
-    await expect(site).toHaveAttribute("target", "_blank");
-    await expect(nav.getByRole("button", { name: "Logi välja" })).toBeVisible();
-    for (const target of await nav.locator("a, button").all()) expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    // the footer: who is signed in, then the way out (a phone's menu adds „Vaata kodulehte ↗“)
+    const side = page.locator(isMobile ? "[data-admin-drawer]" : "aside");
+    await expect(side.locator("[data-nav-foot]")).toContainText("Sisse logitud");
+    await expect(side.getByRole("button", { name: "Logi välja" })).toBeVisible();
+    if (isMobile) {
+      const site = side.getByRole("link", { name: /Vaata kodulehte/ });
+      // through api/admin/preview: the coming-soon gate's preview cookie, then the home page (src/lib/site-gate.ts)
+      await expect(site).toHaveAttribute("href", "/api/admin/preview");
+      await expect(site).toHaveAttribute("target", "_blank");
+      await expect(site).toHaveAttribute("rel", "noopener");
+    } else {
+      // the sidebar has no „Vaata lehte“ any more: the top line's „Vaata kodulehte ↗“ is the only one
+      await expect(side.getByRole("link", { name: /Vaata/ })).toHaveCount(0);
+      const site = page.locator("[data-admin-preview]");
+      await expect(site).toHaveCount(1);
+      await expect(site).toHaveAttribute("href", "/api/admin/preview");
+      await expect(site).toHaveAttribute("target", "_blank");
+      await expect(site).toHaveAttribute("rel", "noopener");
+      await expect(page.locator("[data-admin-top] [title]")).toHaveCount(0); // the avatar has no tooltip (a touch screen has none)
+    }
+    for (const target of await side.locator("nav a, nav button, [data-nav-foot] a, [data-nav-foot] button").all()) expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   });
 
   test("every content section opens its editor from the menu; none says 'Tulekul' any more", async ({ page, context, visitorIp, isMobile }) => {
@@ -269,10 +294,10 @@ test.describe("signed in", () => {
     const f = await fixtures(info.project.name);
     const p = await insertAdminPayments(f);
     await signIn(page, context, visitorIp);
-    await (await menu(page, isMobile)).getByRole("link", { name: "Maksed", exact: true }).click();
+    await (await menu(page, isMobile)).getByRole("link", { name: "Maksed ja arved", exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/maksed$/);
     if (isMobile) await expect(page.locator("[data-admin-drawer]")).toBeHidden(); // the link closed the drawer
-    await expect(page).toHaveTitle(/Maksed — Haldus/);
+    await expect(page).toHaveTitle(/Maksed ja arved — Haldus/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Maksed");
     await expect(page.locator("aside [data-nav='payments']")).toHaveAttribute("aria-current", "page"); // (a phone has it in the menu drawer)
     await expect(page.getByText("Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses;")).toBeVisible();
@@ -617,7 +642,7 @@ test.describe("signed in", () => {
     }
   });
 
-  test("phone: the sidebar is a top bar with a menu drawer (Esc closes it)", async ({ page, context, visitorIp, isMobile }) => {
+  test("phone: the sidebar is a top bar with a menu panel (Esc closes it)", async ({ page, context, visitorIp, isMobile }) => {
     await signIn(page, context, visitorIp);
     const button = page.getByRole("button", { name: "Ava menüü" });
     if (!isMobile) {
@@ -645,6 +670,8 @@ test.describe("signed in", () => {
     await drawer.getByRole("link", { name: /^Päringud/ }).click();
     await expect(page).toHaveURL(/\/admin\/paringud$/);
     await expect(drawer).toBeHidden();
+    // the bar names the page it is on (the overview shows the logo instead)
+    await expect(page.locator("header [data-admin-bar-title]")).toHaveText("Päringud");
     expect(await noOverflow(page)).toBe(true);
   });
 });

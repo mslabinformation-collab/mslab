@@ -2,8 +2,7 @@ import { adminEt } from "@/i18n/dict/admin";
 import { parseRowId } from "@/lib/row-id";
 import type { AdminIconName } from "./AdminIcon";
 
-// The admin menu (prototype B sidebar, Maria's A1), in this order. Every section has its page (Tasks 12 and 13; Õpilased: phase 2a;
-// Tagasiside: phase protocols, after Maksed).
+// The admin menu (prototype B sidebar, Maria's A1; grouped by the admin UX pass, README §1.1). Every section has its page.
 export type Section =
   | "overview"
   | "courses"
@@ -22,21 +21,23 @@ export type Section =
   | "campaign"
   | "newsletter"
   | "settings"
-  // admin UX pass (README §1.1): Protokollid and Testimine get their menu rows with the grouped menu (Task 3); until then no row marks them
+  // admin UX pass (README §1.1): the protocol index (A3) and the test page (C7) have their menu rows
   | "protocols"
   | "testing";
 
+/** Every section, in the menu's order (GROUPS below cuts it into groups). */
 export const SECTIONS: readonly { key: Section; href: string; icon: AdminIconName }[] = [
   { key: "overview", href: "/admin", icon: "grid" },
+  { key: "registrations", href: "/admin/registreerimised", icon: "clipboard" },
+  { key: "protocols", href: "/admin/protokollid", icon: "clipboard" },
+  // e-course completion (spec §5.2): what waits for Maria's assessment, after Protokollid
+  { key: "assessment", href: "/admin/hindamine", icon: "check" },
+  { key: "requests", href: "/admin/paringud", icon: "inbox" },
+  { key: "clients", href: "/admin/opilased", icon: "users" },
+  { key: "feedback", href: "/admin/tagasiside", icon: "chat" },
+  { key: "payments", href: "/admin/maksed", icon: "card" },
   { key: "courses", href: "/admin/koolitused", icon: "book" },
   { key: "calendar", href: "/admin/kalender", icon: "calendar" },
-  { key: "registrations", href: "/admin/registreerimised", icon: "clipboard" },
-  // e-course completion (spec §5.2): what waits for Maria's assessment, after Registreerimised
-  { key: "assessment", href: "/admin/hindamine", icon: "check" },
-  { key: "payments", href: "/admin/maksed", icon: "card" },
-  { key: "feedback", href: "/admin/tagasiside", icon: "chat" },
-  { key: "clients", href: "/admin/opilased", icon: "users" },
-  { key: "requests", href: "/admin/paringud", icon: "inbox" },
   { key: "practice", href: "/admin/praktika", icon: "flower" },
   { key: "home", href: "/admin/avaleht", icon: "home" },
   { key: "trainer", href: "/admin/koolitaja", icon: "user" },
@@ -44,6 +45,21 @@ export const SECTIONS: readonly { key: Section; href: string; icon: AdminIconNam
   { key: "campaign", href: "/admin/kampaania", icon: "tag" },
   { key: "newsletter", href: "/admin/uudiskiri", icon: "mail" },
   { key: "settings", href: "/admin/seaded", icon: "settings" },
+  { key: "testing", href: "/admin/testimine", icon: "check" },
+];
+
+export type GroupId = "daily" | "courses" | "site" | "admin";
+
+/**
+ * The menu's groups (README §1.1). The first has no heading. `fold` is the one that folds: its header is a button, it is open whenever
+ * the page is inside it, and otherwise it follows the stored choice (Sidebar.tsx). The phone menu shows every group open.
+ */
+export const GROUPS: readonly { id: GroupId | null; fold?: true; items: readonly Section[] }[] = [
+  { id: null, items: ["overview"] },
+  { id: "daily", items: ["registrations", "protocols", "assessment", "requests", "clients", "feedback", "payments"] },
+  { id: "courses", items: ["courses", "calendar", "practice"] },
+  { id: "site", fold: true, items: ["home", "trainer", "news", "campaign", "newsletter"] },
+  { id: "admin", items: ["settings", "testing"] },
 ];
 
 export const sectionHref = (key: Section) => SECTIONS.find((s) => s.key === key)!.href;

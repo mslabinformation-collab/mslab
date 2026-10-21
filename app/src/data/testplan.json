@@ -16,7 +16,7 @@
     {
       "id": "haldus",
       "name": "Haldus: sisu",
-      "note": "Iga muudatus peab ilmuma avalikul lehel. Alusta esimestest kontrollidest: need valmistavad testiks ette ühe sinu päris e-koolituse, mida kasutavad järgmised alad. Kui muudad proovi jaoks päris teksti, pane see pärast tagasi."
+      "note": "Iga muudatus peab ilmuma avalikul lehel. Alusta esimestest kontrollidest: need valmistavad testiks ette ühe sinu päris e-koolituse, mida kasutavad järgmised alad. Kui muudad proovi jaoks päris teksti, pane see pärast tagasi. Arvutis on menüürühm „KODULEHT JA UUDISKIRI“ algul kinni: vajuta selle päist, et näha selle lehti."
     },
     {
       "id": "registreerimine",
@@ -1534,7 +1534,7 @@
       "href": "/admin/maksed",
       "steps": [
         "Ava brauseri arendaja tööriistad (F12) ja vali Network all „Slow 3G“.",
-        "Ava „Registreerimised“ ja vajuta siis menüüs „Maksed“.",
+        "Ava „Registreerimised“ ja vajuta siis menüüs „Maksed ja arved“.",
         "Võta võrgu piirang ära ja vajuta menüüs „Praktika“.",
         "Kui mõni leht ei lae, vajuta nuppu „Proovi uuesti“."
       ],
@@ -1546,6 +1546,94 @@
         "Kui leht ei lae, näed „Seda lehte ei saanud praegu laadida.“ ja nuppu „Proovi uuesti“, menüü jääb alles."
       ],
       "why": "Aeglase võrgu või vea korral peab menüü ekraanile jääma.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-menuu-grupid",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Menüü rühmad ja jalus",
+      "href": "/admin",
+      "steps": [
+        "Ava halduse ülevaade arvutis, kus aken on lai.",
+        "Vaata vasakut menüüd ülevalt alla.",
+        "Vajuta menüüs päist „KODULEHT JA UUDISKIRI“.",
+        "Ava „Avaleht“ ja siis „Kalender“.",
+        "Vajuta päist uuesti ja värskenda lehte.",
+        "Ava uuesti „Avaleht“.",
+        "Liiguta hiir üleval paremal oleva ringi peale."
+      ],
+      "expect": [
+        "Menüüs on rühmad „IGAPÄEVANE TÖÖ“, „KOOLITUSED“, „KODULEHT JA UUDISKIRI“ ja „HALDUS“; „Ülevaade“ on üleval ilma rühmata.",
+        "„IGAPÄEVANE TÖÖ“ all on Registreerimised, Protokollid, Hindamine, Päringud, Õpilased, Tagasiside ja Maksed ja arved.",
+        "„KOOLITUSED“ all on Koolitused, Kalender ja Praktika; „HALDUS“ all on Seaded ja Testimine.",
+        "„KODULEHT JA UUDISKIRI“ on algul kinni ja avaneb vajutusega: Avaleht, Koolitaja, Uudised, Hüpikaken, Uudiskiri.",
+        "Rühm jääb lahti ka lehel „Kalender“; pärast uut vajutust ja värskendamist on see kinni.",
+        "Lehel „Avaleht“ on rühm alati lahti ja „Avaleht“ on esile tõstetud.",
+        "Menüü all on „Sisse logitud“, sinu e-post ja „Logi välja“; „Vaata lehte“ seal enam ei ole.",
+        "„Vaata kodulehte“ on ainult üleval paremal ja ringi peal ei ilmu kohtspikrit."
+      ],
+      "why": "Menüü peab olema rühmitatud nii, nagu disain seda näitab.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-menuu-telefon",
+      "area": "haldus",
+      "who": "dim",
+      "device": "telefon",
+      "title": "Menüü telefonis",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava „Registreerimised“ telefonis.",
+        "Vaata ülariba ja vajuta paremal ümmargust nuppu ≡.",
+        "Vaata avanenud menüüd, keri see alla ja vajuta nuppu ✕.",
+        "Ava menüü uuesti ja vajuta mõnele reale, näiteks „Päringud“.",
+        "Ava menüü ja vajuta brauseri tagasi-nuppu.",
+        "Kui kalendris on täna koolitus, ava menüü ja vaata selle ülaosa."
+      ],
+      "expect": [
+        "Ülariba on tume; vasakul on lehe nimi, ülevaates logo.",
+        "Nupul ≡ on number: menüü märkide summa; kui märke pole, numbrit ei ole.",
+        "Menüü avaneb ülariba alla ja nupp ≡ muutub ✕-ks.",
+        "Menüüs on samad rühmad, kõik lahti, ilma kokkupandava rühmata.",
+        "Menüü all on „Sisse logitud“, e-post, „Vaata kodulehte“ ja „Logi välja“.",
+        "Reale vajutades menüü sulgub ja ülariba nimi vahetub lehe nimeks.",
+        "Brauseri tagasi-nupp sulgeb avatud menüü ja toob eelmise lehe.",
+        "Koolituspäeval on menüü ülaosas kaart „TÄNA“ kellaaja ja koolitusega; vajutus viib protokollidesse."
+      ],
+      "why": "Telefonis on menüü ainus tee teistele lehtedele.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-menuu-tahvel",
+      "area": "haldus",
+      "who": "dim",
+      "device": "tahvel",
+      "title": "Menüü tahvlis",
+      "href": "/admin",
+      "steps": [
+        "Ava halduse ülevaade tahvlis püstiasendis.",
+        "Vajuta ülariba nuppu ≡ ja vaata menüüd.",
+        "Sulge menüü ja keri lehte vasakule-paremale.",
+        "Pööra tahvel külili ja vaata menüüd."
+      ],
+      "expect": [
+        "Püstiasendis on üleval tume ülariba nupuga ≡, mitte kitsas külgmenüü.",
+        "Menüü avaneb nagu telefonis ja kõik rühmad on lahti.",
+        "Leht ei lähe küljele laiali: vasakule-paremale kerida ei saa.",
+        "Külili on vasakul külgmenüü rühmadega ja ülariba kadunud."
+      ],
+      "why": "Alla 900 piksli laiusel ekraanil peab olema sama ülariba kui telefonis.",
       "risk": "low",
       "writes": false,
       "mark": "new",
@@ -1652,7 +1740,7 @@
       "expect": [
         "„Registreeru“ avab Montonio makselehe koolituse hinna suuruse summaga.",
         "Pärast makset on lehel „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“.",
-        "Halduses „Maksed“ on Proov 0 makse staatusega „Makstud“.",
+        "Halduses „Maksed ja arved“ on Proov 0 makse staatusega „Makstud“.",
         "Märkuses on testpanga sammud, mida Maria saab järgida.",
         "Pärast tühistamist näed „Registreerimine on tühistatud.“."
       ],
@@ -1747,7 +1835,7 @@
       "title": "Maksed halduses",
       "href": "/admin/maksed",
       "steps": [
-        "Ava „Maksed“.",
+        "Ava „Maksed ja arved“.",
         "Vajuta filtril „Makstud“.",
         "Vaata Proov 1 rida."
       ],
@@ -1758,7 +1846,9 @@
       ],
       "why": "Maksete loend näitab iga Montonio makset.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arveta-makse-paneelis",
@@ -1768,7 +1858,7 @@
       "title": "Arveta makse registreeringu juures",
       "href": "/admin/arved",
       "steps": [
-        "Ava „Maksed“, vajuta „Arved“ ja vaata plokki „Arveta maksed“; kui see on tühi, vajuta „Jäta vahele“.",
+        "Ava „Maksed ja arved“, vajuta „Arved“ ja vaata plokki „Arveta maksed“; kui tühi, vajuta „Jäta vahele“.",
         "Kirjuta selle kontrolli märkusesse ühe kontaktkoolituse makse maksja nimi.",
         "Ava „Registreerimised“, vajuta selle maksja nimele ja keri plokini „Arved“.",
         "Vajuta plokis „Koosta arve“, vaata pakutud summasid ja vajuta „Katkesta“.",
@@ -1794,7 +1884,7 @@
       "title": "Arveta maksed",
       "href": "/admin/arved",
       "steps": [
-        "Ava „Maksed“ ja vajuta nuppu „Arved“.",
+        "Ava „Maksed ja arved“ ja vajuta nuppu „Arved“.",
         "Vaata lehe ülaosas plokki „Arveta maksed“; kui seda pole, vajuta „Jäta vahele“.",
         "Vajuta ühe makse real „Koosta arve“."
       ],
@@ -1820,7 +1910,7 @@
       "title": "Arvete loend",
       "href": "/admin/arved",
       "steps": [
-        "Ava „Maksed“ ja vajuta nuppu „Arved“.",
+        "Ava „Maksed ja arved“ ja vajuta nuppu „Arved“.",
         "Vajuta filtril „Tasumata“ ja siis „Kõik“.",
         "Vali „Kuu“ välja see kuu ja vajuta „Näita“.",
         "Vajuta „Kõik kuud“."
@@ -1874,7 +1964,7 @@
         "Kui Proov 0 maksel pole arvet, koosta see „Arved“ lehe plokis „Arveta maksed“.",
         "Tee Montonio testkeskkonna Partner Systemis Proov 0 maksele tagasimakse.",
         "Kui tagasimakse nuppu pole, kirjuta see märkusesse ja vajuta „Jäta vahele“.",
-        "Halduses ava „Maksed“ ja vaata Proov 0 makset.",
+        "Halduses ava „Maksed ja arved“ ja vaata Proov 0 makset.",
         "Ava „Arved“, vaata Proov 0 arvet ja laadi alla selle kuu CSV.",
         "Laadi alla Proov 0 arve PDF."
       ],

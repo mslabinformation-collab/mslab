@@ -1,20 +1,27 @@
-/* Prototype B .admin-sidebar: dark column, inverted logo, small label, the menu as rounded rows. */
+/* Prototype B .admin-sidebar, as the admin UX pass draws it (AdminSidebar.dc.html): 235px, #242124, padding 22/14/16, the menu in groups,
+   the footer pinned to the bottom. Below 900px the sidebar is the phone top bar (64px) with the menu as a panel under it. */
 
 .sidebar {
   position: sticky;
   top: 0;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  overflow: auto;
-  padding: 28px 22px;
+  /* the aside scrolls on its own when the menu is taller than the screen */
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 22px 14px 16px;
   background: #242124;
-  color: #fff;
+  color: #ccc0c8;
 }
 
 .logo {
   display: block;
-  width: 160px;
-  margin: 0 8px 10px;
+  flex: none;
+  width: 132px;
+  margin: 0 0 4px 8px;
 }
 
 .logo img {
@@ -26,28 +33,88 @@
 }
 
 .label {
-  margin: 20px 12px 22px;
+  margin: 0 0 8px 10px;
   color: #a99ba4;
   font: 400 11px/1.4 var(--font-body);
-  letter-spacing: 0.02em;
 }
 
 .navWrap {
   display: grid;
-  gap: 18px;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+
+/* A group: its heading, then its rows. The first group (the overview) has no heading. */
+.group {
+  display: grid;
+  gap: 2px;
+}
+
+.group + .group {
+  padding-top: 8px;
 }
 
 .nav {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.foot {
-  padding-top: 16px;
-  border-top: 1px solid #3a3338;
+/* (display: grid above would show a hidden list) */
+.nav[hidden] {
+  display: none;
+}
+
+/* The group heading: 600 10px, letter-spacing .16em, 22px tall. Stored in sentence case, shown in capitals. */
+.groupLabel,
+.groupButton {
+  color: #a99ba4;
+  font: 600 10px/1.2 var(--font-body);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.groupLabel {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  margin: 0;
+  padding: 0 10px;
+}
+
+/* The folding group's header: the whole 44px row is the button. */
+.groupButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.groupButton:hover {
+  background: #3a3338;
+  color: #ccc0c8;
+}
+
+.groupButton:focus-visible {
+  outline: 2px solid #e6dce2;
+  outline-offset: -2px;
+}
+
+.chevron {
+  flex: none;
+  font-size: 12px;
+  letter-spacing: 0;
 }
 
 .link {
@@ -56,7 +123,7 @@
   gap: 12px;
   width: 100%;
   min-height: 44px;
-  padding: 10px 13px;
+  padding: 4px 10px;
   border: 0;
   border-radius: 9px;
   background: transparent;
@@ -114,80 +181,102 @@
   white-space: nowrap;
 }
 
-/* ---------- phone: top bar + drawer ---------- */
+/* The footer: who is signed in, then the way out. Pinned to the bottom while the menu is short. */
+.foot {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: auto;
+  padding: 12px 10px 0;
+  border-top: 1px solid #3a3338;
+}
+
+.footLabel {
+  color: #a99ba4;
+  font-size: 11px;
+}
+
+.footEmail {
+  color: #ccc0c8;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.footLink {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ccc0c8;
+  font: 500 13px/1.3 var(--font-body);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.footLink:hover {
+  color: #fff;
+}
+
+.footLink:focus-visible {
+  outline: 2px solid #e6dce2;
+  outline-offset: 2px;
+}
+
+/* ---------- phone: top bar + menu panel ---------- */
 
 .bar {
   display: none;
 }
 
-.drawer {
-  position: fixed;
-  inset: 0 auto 0 0;
-  width: min(320px, 88vw);
-  max-width: none;
-  height: 100dvh;
-  max-height: none;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: #242124;
-  color: #fff;
-  overflow: auto;
+.barTitle {
+  min-width: 0;
+  overflow: hidden;
+  color: #ccc0c8;
+  font: 500 14px/1.3 var(--font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.drawer[open] {
-  animation: slide-in 0.25s var(--ease);
+.barLogo {
+  display: block;
+  flex: none;
+  width: 112px;
 }
 
-.drawer::backdrop {
-  background: rgba(20, 18, 20, 0.5);
+.barLogo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: invert(1);
+  mix-blend-mode: screen;
 }
 
-@keyframes slide-in {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: none;
-  }
-}
-
-.drawerBody {
-  padding: 16px 16px 32px;
-}
-
-.drawerHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.drawerHead .logo {
-  width: 120px;
-  margin: 0 8px;
-}
-
-.closeButton,
+/* ≡ (✕ while the menu is open): 44px round, a 1px #51434c ring, the badge sum on its corner. */
 .menuButton {
   position: relative;
   display: inline-grid;
+  flex: none;
   place-items: center;
   width: 44px;
   height: 44px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 0;
+  border: 1px solid #51434c;
   border-radius: 50%;
   background: transparent;
   color: #fff;
   cursor: pointer;
 }
 
-.closeButton:hover,
 .menuButton:hover {
   background: #3a3338;
 }
 
-.closeButton:focus-visible,
 .menuButton:focus-visible {
   outline: 2px solid #e6dce2;
   outline-offset: 2px;
@@ -205,32 +294,116 @@
   border-radius: 99px;
   background: #e6dce2;
   color: #242124;
-  font: 600 10px/1 var(--font-body);
+  font: 700 10px/1 var(--font-body);
 }
 
-/* B 641–900px: a narrower sidebar. */
-@media (max-width: 900px) {
-  .sidebar {
-    padding: 24px 14px;
-  }
+/* The menu is a modal dialog the size of the screen: the bar again on top (so the ✕ is in the same place as the ≡), the panel under it,
+   and the rest of the screen is the backdrop (a tap on it closes the menu). */
+.drawer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  overflow: hidden;
+}
 
-  .logo {
-    width: 140px;
-    margin: 0 0 16px;
-  }
+.drawer[open] {
+  display: flex;
+  flex-direction: column;
+}
 
-  .label {
-    margin: 12px 8px 18px;
-  }
+.drawer::backdrop {
+  background: rgba(34, 34, 34, 0.35);
+}
 
-  .link {
-    gap: 10px;
-    padding: 10px;
-    font-size: 12px;
+.drawerBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 64px;
+  padding: 0 12px 0 16px;
+  background: #242124;
+}
+
+.drawerPanel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  width: min(320px, 88vw);
+  min-height: 0;
+  padding: 14px 12px 20px;
+  overflow-y: auto;
+  background: #242124;
+  color: #ccc0c8;
+}
+
+.drawer[open] .drawerPanel {
+  animation: slide-in 0.25s var(--ease);
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: none;
   }
 }
 
-@media (max-width: 640px) {
+.drawerPanel .link {
+  font-size: 14px;
+}
+
+.drawerPanel .foot {
+  margin-top: 10px;
+}
+
+.drawerPanel .footLink {
+  font-size: 14px;
+}
+
+/* On a day with a session: „TÄNA 10:00“ and the course, a way into its protocols. */
+.today {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 44px;
+  margin-bottom: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #3a3338;
+  color: #fff;
+  text-decoration: none;
+}
+
+.today:focus-visible {
+  outline: 2px solid #e6dce2;
+  outline-offset: 2px;
+}
+
+.todayLabel {
+  color: #a99ba4;
+  font: 600 10px/1.4 var(--font-body);
+  letter-spacing: 0.16em;
+}
+
+.todayLine {
+  font: 500 14px/1.3 var(--font-body);
+}
+
+/* Below 900px (WIDE in Sidebar.tsx): the sidebar gives way to the top bar. */
+@media (max-width: 899.98px) {
   .sidebar {
     display: none;
   }
@@ -243,26 +416,9 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    min-height: 64px;
-    padding: 10px 16px;
+    height: 64px;
+    padding: 0 12px 0 16px;
     background: #242124;
     color: #fff;
-  }
-
-  .barLogo {
-    display: block;
-    width: 112px;
-  }
-
-  .barLogo img {
-    display: block;
-    width: 100%;
-    height: auto;
-    filter: invert(1);
-    mix-blend-mode: screen;
-  }
-
-  .link {
-    font-size: 14px;
   }
 }

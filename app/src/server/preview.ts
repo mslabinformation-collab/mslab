@@ -5,7 +5,7 @@ import { serverEnv } from "./env";
 import { logFailure, logNote } from "./log";
 
 // The admins' preview cookie of the coming-soon gate (lib/preview-cookie.ts, lib/site-gate.ts) on an answer: set at sign-in
-// (api/auth/verify) and by "Vaata kodulehte" / "Vaata lehte" (api/admin/preview), cleared at logout (api/auth/logout).
+// (api/auth/verify) and by "Vaata kodulehte" (api/admin/preview; the top line, and on a phone the menu's footer), cleared at logout (api/auth/logout).
 
 /** "No usable PREVIEW_SECRET" is noted once per instance, not at every sign-in. */
 let notedNoKey = false;

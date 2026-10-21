@@ -108,10 +108,11 @@
   }
 }
 
-@media (max-width: 900px) {
+/* Below 900px the sidebar is the phone top bar (Sidebar.module.css; WIDE in Sidebar.tsx): one column. */
+@media (max-width: 899.98px) {
   .layout {
-    grid-template-columns: 190px minmax(0, 1fr);
-    background: linear-gradient(to right, #242124 190px, var(--canvas) 190px);
+    grid-template-columns: minmax(0, 1fr);
+    background: var(--canvas);
   }
 
   .main {
@@ -124,11 +125,6 @@
 }
 
 @media (max-width: 640px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-    background: var(--canvas);
-  }
-
   .main {
     padding: 20px 16px 80px;
   }

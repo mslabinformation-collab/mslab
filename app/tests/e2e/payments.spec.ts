@@ -1,6 +1,6 @@
 import type { Page, Request, TestInfo } from "@playwright/test";
 import { clientEmail, holdTerms, insertAccountFixtures, signInAsClient, storedAccess, storedClient } from "./account";
-import { signInAsAdmin, type CreatedRows } from "./admin-login";
+import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { insertStoredPayment, onLocalDb, removeAdminRows, removeClientRows, storedPayments, storedPayToken, storedRegistrations } from "./fixtures";
 import { ECOURSE_BUY_LOCK_CLASS } from "../../src/server/payments/start";
 import { E2E_MONTONIO } from "./montonio-values";
@@ -223,6 +223,8 @@ test("the admin's Maksed: the filter, 'Kontrolli Montonios' on a held payment; t
   const held = await insertStoredPayment({ ...own, kind: "balance", status: "held" });
   await signInAsAdmin(page, context, visitorIp, created);
   await page.goto("/admin/maksed");
+  // (the menu streams in after the shell: until the page has hydrated there can be two asides, the fallback and the real one)
+  await adminReady(page);
   await expect(page.locator("aside [data-nav='payments']")).toHaveAttribute("aria-current", "page"); // (a phone has it in the menu drawer)
   await expect(page.locator("nav[data-payment-filter] a")).toHaveText(["Kõik", "Makstud", "Pooleli", "Ebaõnnestunud", "Tagastatud", "Ootel kontrollil"]);
   const row = (reference: string) => page.locator(`tr[data-payment="${reference}"]`);
