@@ -5,7 +5,6 @@ import { Drawer } from "@/components/admin/Drawer";
 import { LessonDrawer } from "@/components/admin/LessonDrawer";
 import { LessonsEditor } from "@/components/admin/LessonsEditor";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { courseUsage, getCourseForEdit, listAllCourses, typeLocked } from "@/db/queries/admin";
@@ -39,7 +38,7 @@ export async function generateMetadata({ params }: Pick<Props, "params">): Promi
  * "Programm" (a contact course), and with ?oppetund=<lesson id> that lesson in the drawer.
  */
 export default async function CourseEditPage({ params, searchParams }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const [{ id: raw }, sp] = await Promise.all([params, searchParams]);
   const id = parseId(raw);
   const db = getDb();
@@ -53,19 +52,17 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
 
   if (id === null || (id !== "new" && !course)) {
     return (
-      <Shell email={email} active="courses">
-        <div className={ui.page}>
-          <div className={ui.heading}>
-            <h1 className={ui.h1}>{adminEt.nav.courses}</h1>
-          </div>
-          <section className={ui.card}>
-            <p className={ui.empty}>{t.notFound}</p>
-            <Link className={ui.link} href="/admin/koolitused">
-              {t.back}
-            </Link>
-          </section>
+      <div className={ui.page}>
+        <div className={ui.heading}>
+          <h1 className={ui.h1}>{adminEt.nav.courses}</h1>
         </div>
-      </Shell>
+        <section className={ui.card}>
+          <p className={ui.empty}>{t.notFound}</p>
+          <Link className={ui.link} href="/admin/koolitused">
+            {t.back}
+          </Link>
+        </section>
+      </div>
     );
   }
 
@@ -80,7 +77,7 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
     .map((c) => ({ id: c.id, title: pick(c.title, "et"), type: c.type, published: c.published }));
 
   return (
-    <Shell email={email} active="courses">
+    <>
       <CourseEditor
         initial={course ? draftFromCourse(course) : newCourseDraft()}
         others={others}
@@ -104,6 +101,6 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
           <LessonDrawer key={lesson.id} courseId={course.id} lesson={lesson} bunnyReady={bunnyConfig() !== null} />
         </Drawer>
       )}
-    </Shell>
+    </>
   );
 }

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PostEditor } from "@/components/admin/PostEditor";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { tallinnFormParts } from "@/domain/calendar";
@@ -29,34 +28,28 @@ export async function generateMetadata({ params }: Pick<Props, "params">): Promi
 
 /** The post editor: /admin/uudised/uus (new) and /admin/uudised/<id> (Task 13B). */
 export default async function PostEditPage({ params, searchParams }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const [{ id: raw }, sp] = await Promise.all([params, searchParams]);
   const id = parseId(raw);
   const loaded = typeof id === "number" ? await loadPost(getDb(), id) : null;
 
   if (id === null || (id !== "new" && !loaded)) {
     return (
-      <Shell email={email} active="news">
-        <div className={ui.page}>
-          <div className={ui.heading}>
-            <h1 className={ui.h1}>{adminEt.nav.news}</h1>
-          </div>
-          <section className={ui.card}>
-            <p className={ui.empty}>{adminEt.post.notFound}</p>
-            <Link className={ui.link} href="/admin/uudised">
-              {adminEt.post.back}
-            </Link>
-          </section>
+      <div className={ui.page}>
+        <div className={ui.heading}>
+          <h1 className={ui.h1}>{adminEt.nav.news}</h1>
         </div>
-      </Shell>
+        <section className={ui.card}>
+          <p className={ui.empty}>{adminEt.post.notFound}</p>
+          <Link className={ui.link} href="/admin/uudised">
+            {adminEt.post.back}
+          </Link>
+        </section>
+      </div>
     );
   }
 
   // a new post is dated today (Estonian calendar day)
   const initial = loaded ?? { values: { post: newPostDraft(tallinnFormParts(new Date()).date) }, versions: { post: "" } };
-  return (
-    <Shell email={email} active="news">
-      <PostEditor key={id} initial={initial} created={sp.loodud === "1"} />
-    </Shell>
-  );
+  return <PostEditor key={id} initial={initial} created={sp.loodud === "1"} />;
 }

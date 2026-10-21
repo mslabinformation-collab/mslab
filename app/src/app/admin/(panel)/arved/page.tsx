@@ -6,7 +6,6 @@ import { InvoiceRow } from "@/components/admin/InvoiceRow";
 import { invoiceView } from "@/components/admin/invoice-view";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import blockStyles from "@/components/admin/InvoiceBlock.module.css";
 import { getDb } from "@/db/client";
@@ -56,7 +55,7 @@ function href(view: View): string {
  * Not in the menu: it is reached from Maksed, which the shell marks.
  */
 export default async function InvoicesPage({ searchParams }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const view = parse(await searchParams);
   const db = getDb();
   const now = new Date();
@@ -76,100 +75,98 @@ export default async function InvoicesPage({ searchParams }: Props) {
   const ready = sellerReady(seller);
 
   return (
-    <Shell email={email} active="payments">
-      <div className={ui.page} data-invoices-page="">
-        <p className={styles.back}>
-          <Link className={ui.link} href="/admin/maksed">
-            <span aria-hidden="true">←</span> {t.eyebrow}
-          </Link>
-        </p>
-        <div className={ui.heading}>
-          <div>
-            <p className={ui.eyebrow}>{t.eyebrow}</p>
-            <h1 className={ui.h1}>{t.title}</h1>
-            <p className={ui.lead}>{t.lead}</p>
-          </div>
-          <div className={styles.csv}>
-            <a className={`${ui.btn} ${ui.secondary}`} href={`/api/admin/arved?kuu=${csvMonth}`} data-invoices-csv="">
-              {t.csv}
-            </a>
-            <p className={ui.hint}>{fill(t.csvNote, { month: `${csvMonth.slice(5)}.${csvMonth.slice(0, 4)}` })}</p>
-          </div>
+    <div className={ui.page} data-invoices-page="">
+      <p className={styles.back}>
+        <Link className={ui.link} href="/admin/maksed">
+          <span aria-hidden="true">←</span> {t.eyebrow}
+        </Link>
+      </p>
+      <div className={ui.heading}>
+        <div>
+          <p className={ui.eyebrow}>{t.eyebrow}</p>
+          <h1 className={ui.h1}>{t.title}</h1>
+          <p className={ui.lead}>{t.lead}</p>
         </div>
-
-        {uninvoiced.length > 0 && (
-          <section className={`${ui.card} ${styles.uninvoiced}`} aria-labelledby="uninvoiced-title" data-uninvoiced="">
-            <h2 id="uninvoiced-title" className={ui.h2}>
-              {u.title}
-            </h2>
-            <p className={ui.muted}>{u.lead}</p>
-            {!ready && (
-              <p className={ui.notice} data-uninvoiced-need-seller="">
-                <Link className={ui.link} href="/admin/seaded#arve">
-                  {u.needSeller}
-                </Link>
-              </p>
-            )}
-            <ul className={styles.payments}>
-              {uninvoiced.map(({ payment: p, courseTitle, pays }) => (
-                <li key={p.id} className={styles.payment} data-uninvoiced-payment={p.id}>
-                  <div>
-                    <p className={styles.paymentWho}>
-                      {p.name} · {euro(p.amountCents)}
-                    </p>
-                    <p className={styles.paymentMeta}>
-                      {[courseTitle ? pick(courseTitle, "et") : null, fill(u.paidOn, { date: formatDate(p.paidAt ?? p.createdAt, "et") })].filter(Boolean).join(" · ")}
-                    </p>
-                    <p className={styles.pays} data-uninvoiced-pays="">
-                      {pays ? fill(u.pays, { number: pays }) : u.makes}
-                    </p>
-                  </div>
-                  {ready && <InvoiceCatchUp paymentId={p.id} />}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        <nav className={ui.filters} aria-label={t.filterLabel} data-invoice-filter="">
-          {filters.map((f) => (
-            <Link key={f.label} className={ui.pill} href={href({ ...view, staatus: f.key, leht: 1 })} aria-current={view.staatus === f.key ? "true" : undefined}>
-              {f.label}
-            </Link>
-          ))}
-        </nav>
-        <form className={styles.month} method="get" action="/admin/arved" data-invoice-month-form="">
-          <div className={ui.field}>
-            <label htmlFor="invoice-month">{t.month}</label>
-            <input id="invoice-month" className={ui.input} type="month" name="kuu" defaultValue={view.kuu ?? ""} placeholder="2026-10" />
-          </div>
-          {view.staatus && <input type="hidden" name="staatus" value={view.staatus} />}
-          <button type="submit" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}>
-            {t.monthShow}
-          </button>
-          {view.kuu && (
-            <Link className={`${ui.pill} ${ui.pillSmall}`} href={href({ ...view, kuu: null, leht: 1 })}>
-              {t.monthAll}
-            </Link>
-          )}
-        </form>
-
-        <section className={ui.card} aria-label={t.list}>
-          <p className={`${ui.muted} ${ui.small} ${styles.count}`} data-invoices-count="">
-            {fill(t.count, { n: list.total })}
-          </p>
-          {list.rows.length === 0 ? (
-            <p className={ui.empty}>{filtered ? t.emptyFiltered : t.empty}</p>
-          ) : (
-            <ul className={blockStyles.list} data-invoice-list="">
-              {list.rows.map((inv) => (
-                <InvoiceRow key={inv.id} invoice={invoiceView(inv)} today={today} showWho />
-              ))}
-            </ul>
-          )}
-          <Pager info={list} href={(n) => href({ ...view, leht: n })} />
-        </section>
+        <div className={styles.csv}>
+          <a className={`${ui.btn} ${ui.secondary}`} href={`/api/admin/arved?kuu=${csvMonth}`} data-invoices-csv="">
+            {t.csv}
+          </a>
+          <p className={ui.hint}>{fill(t.csvNote, { month: `${csvMonth.slice(5)}.${csvMonth.slice(0, 4)}` })}</p>
+        </div>
       </div>
-    </Shell>
+
+      {uninvoiced.length > 0 && (
+        <section className={`${ui.card} ${styles.uninvoiced}`} aria-labelledby="uninvoiced-title" data-uninvoiced="">
+          <h2 id="uninvoiced-title" className={ui.h2}>
+            {u.title}
+          </h2>
+          <p className={ui.muted}>{u.lead}</p>
+          {!ready && (
+            <p className={ui.notice} data-uninvoiced-need-seller="">
+              <Link className={ui.link} href="/admin/seaded#arve">
+                {u.needSeller}
+              </Link>
+            </p>
+          )}
+          <ul className={styles.payments}>
+            {uninvoiced.map(({ payment: p, courseTitle, pays }) => (
+              <li key={p.id} className={styles.payment} data-uninvoiced-payment={p.id}>
+                <div>
+                  <p className={styles.paymentWho}>
+                    {p.name} · {euro(p.amountCents)}
+                  </p>
+                  <p className={styles.paymentMeta}>
+                    {[courseTitle ? pick(courseTitle, "et") : null, fill(u.paidOn, { date: formatDate(p.paidAt ?? p.createdAt, "et") })].filter(Boolean).join(" · ")}
+                  </p>
+                  <p className={styles.pays} data-uninvoiced-pays="">
+                    {pays ? fill(u.pays, { number: pays }) : u.makes}
+                  </p>
+                </div>
+                {ready && <InvoiceCatchUp paymentId={p.id} />}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <nav className={ui.filters} aria-label={t.filterLabel} data-invoice-filter="">
+        {filters.map((f) => (
+          <Link key={f.label} className={ui.pill} href={href({ ...view, staatus: f.key, leht: 1 })} aria-current={view.staatus === f.key ? "true" : undefined}>
+            {f.label}
+          </Link>
+        ))}
+      </nav>
+      <form className={styles.month} method="get" action="/admin/arved" data-invoice-month-form="">
+        <div className={ui.field}>
+          <label htmlFor="invoice-month">{t.month}</label>
+          <input id="invoice-month" className={ui.input} type="month" name="kuu" defaultValue={view.kuu ?? ""} placeholder="2026-10" />
+        </div>
+        {view.staatus && <input type="hidden" name="staatus" value={view.staatus} />}
+        <button type="submit" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}>
+          {t.monthShow}
+        </button>
+        {view.kuu && (
+          <Link className={`${ui.pill} ${ui.pillSmall}`} href={href({ ...view, kuu: null, leht: 1 })}>
+            {t.monthAll}
+          </Link>
+        )}
+      </form>
+
+      <section className={ui.card} aria-label={t.list}>
+        <p className={`${ui.muted} ${ui.small} ${styles.count}`} data-invoices-count="">
+          {fill(t.count, { n: list.total })}
+        </p>
+        {list.rows.length === 0 ? (
+          <p className={ui.empty}>{filtered ? t.emptyFiltered : t.empty}</p>
+        ) : (
+          <ul className={blockStyles.list} data-invoice-list="">
+            {list.rows.map((inv) => (
+              <InvoiceRow key={inv.id} invoice={invoiceView(inv)} today={today} showWho />
+            ))}
+          </ul>
+        )}
+        <Pager info={list} href={(n) => href({ ...view, leht: n })} />
+      </section>
+    </div>
   );
 }

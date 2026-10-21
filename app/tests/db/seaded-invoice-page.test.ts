@@ -10,15 +10,11 @@ import { contactCourse, registrationOn } from "./payments-fixtures";
 // Seaded with its „Arve andmed“ card (invoices Task 5, spec D2, D7), rendered from a real (PGlite) database to HTML: the card is a form of its own
 // after the settings' and the certificate's, it shows the stored setting (or the defaults), the next number as the next issue will take it with the
 // last number issued beside it, and the bank details of „Ettemaksu juhised“ read-only; the anchors „#arve“ (the drawer's link) and „#ettemaks“ (the
-// card's link) are on the page. The shell and the server actions are stand-ins.
+// card's link) are on the page. The server actions are stand-ins.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
-});
 vi.mock("@/server/actions/admin-site", () => ({ saveSettings: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({ saveInvoiceSettingsAction: vi.fn() }));
@@ -50,7 +46,6 @@ const valueOf = (html: string, field: string) => {
 
 test("without a setting: the defaults (MSL, VAT off at 24, a week), nothing issued; the card is a form of its own after the certificate's; the bank is missing", async () => {
   const html = await page();
-  expect(html).toContain('data-shell-active="settings"');
   const certificate = html.indexOf("data-certificate-settings");
   const card = html.indexOf("data-invoice-settings");
   expect(card).toBeGreaterThan(certificate);

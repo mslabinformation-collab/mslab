@@ -5,7 +5,6 @@ import { AccountShell } from "@/components/account/AccountShell";
 import { CoursesTab } from "@/components/account/CoursesTab";
 import { coursesTexts, shellTexts } from "@/components/account/texts";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { adminEt } from "@/i18n/dict/admin";
@@ -33,7 +32,7 @@ type Props = { params: Promise<{ id: string }> };
  * A student who does not exist: 404.
  */
 export default async function ViewAsPage({ params }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const id = parseRowId((await params).id);
   if (id === null) notFound();
   const db = getDb();
@@ -48,23 +47,21 @@ export default async function ViewAsPage({ params }: Props) {
   const t = adminEt.viewAs;
 
   return (
-    <Shell email={email} active="clients">
-      <div className={ui.page}>
-        <Link className={ui.link} href={`/admin/opilased?id=${id}`} aria-label={t.backLabel} data-view-as-back="">
-          <span aria-hidden="true">←</span> {t.back}
-        </Link>
-        <div className={view.preview} lang={locale} data-view-as={id}>
-          <AccountShell
-            tab="courses"
-            locale={locale}
-            t={shellTexts(d)}
-            readOnly
-            banner={<span lang="et">{fill(t.banner, { nimi: label })}</span>}
-          >
-            <CoursesTab locale={locale} t={coursesTexts(d)} data={data} readOnly now={now.toISOString()} />
-          </AccountShell>
-        </div>
+    <div className={ui.page}>
+      <Link className={ui.link} href={`/admin/opilased?id=${id}`} aria-label={t.backLabel} data-view-as-back="">
+        <span aria-hidden="true">←</span> {t.back}
+      </Link>
+      <div className={view.preview} lang={locale} data-view-as={id}>
+        <AccountShell
+          tab="courses"
+          locale={locale}
+          t={shellTexts(d)}
+          readOnly
+          banner={<span lang="et">{fill(t.banner, { nimi: label })}</span>}
+        >
+          <CoursesTab locale={locale} t={coursesTexts(d)} data={data} readOnly now={now.toISOString()} />
+        </AccountShell>
       </div>
-    </Shell>
+    </div>
   );
 }

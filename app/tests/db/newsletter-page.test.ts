@@ -12,7 +12,7 @@ import { makeTestDb } from "./helpers";
 // the subscribers' view (the list, its count line, the two CSV buttons, and nothing of Resend: no sync, no counts, no marks on the rows), the
 // „Kampaaniad“ view (the list with the progress of the campaign going out, the editor of the chosen one with its sends, one going out with its
 // progress, its failed and unknown counts and the refused mark, a sent one read-only), and the student's drawer (its newsletter line, no mark). The
-// shell, the drawer's forms and the server actions are stand-ins (they need a browser or a request).
+// drawer's forms and the server actions are stand-ins (they need a browser or a request).
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
@@ -22,10 +22,6 @@ vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test"
 vi.mock("@/components/admin/data", async () => {
   const { adminCounts } = await import("@/db/queries/admin");
   return { getAdminCounts: async () => adminCounts(state.db as Db) };
-});
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
 });
 vi.mock("@/server/actions/admin-newsletter", () => ({
   saveCampaignAction: vi.fn(),

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { adminEt } from "@/i18n/dict/admin";
 import { requireAdmin } from "@/server/auth";
@@ -10,21 +9,19 @@ import { requireAdmin } from "@/server/auth";
  * of a missing student), with the way back.
  */
 export default async function ViewCourseNotFound() {
-  const email = await requireAdmin();
+  await requireAdmin();
   const t = adminEt.viewAs;
   return (
-    <Shell email={email} active="clients">
-      <div className={ui.page}>
-        <div className={ui.heading}>
-          <h1 className={ui.h1}>{adminEt.nav.clients}</h1>
-        </div>
-        <section className={ui.card}>
-          <p className={ui.empty}>{t.courseNotFound}</p>
-          <Link className={ui.link} href="/admin/opilased">
-            {t.toList}
-          </Link>
-        </section>
+    <div className={ui.page}>
+      <div className={ui.heading}>
+        <h1 className={ui.h1}>{adminEt.nav.clients}</h1>
       </div>
-    </Shell>
+      <section className={ui.card}>
+        <p className={ui.empty}>{t.courseNotFound}</p>
+        <Link className={ui.link} href="/admin/opilased">
+          {t.toList}
+        </Link>
+      </section>
+    </div>
   );
 }

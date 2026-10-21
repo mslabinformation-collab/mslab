@@ -6,7 +6,6 @@ import { getAdminCounts } from "@/components/admin/data";
 import type { TestTarget } from "@/components/admin/NewsletterCampaignEditor";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { pageSubscribers } from "@/db/queries/admin";
@@ -49,7 +48,7 @@ const CAMPAIGNS_HREF = "/admin/uudiskiri?vaade=kampaaniad";
 export default async function NewsletterPage({ searchParams }: Props) {
   const email = await requireAdmin();
   const search = await searchParams;
-  return search.vaade === "kampaaniad" ? campaignsPage(email, one(search.kampaania)) : subscribersPage(email, search);
+  return search.vaade === "kampaaniad" ? campaignsPage(email, one(search.kampaania)) : subscribersPage(search);
 }
 
 /** The page's heading and its two views. */
@@ -88,57 +87,55 @@ function Top({ view }: { view: "subscribers" | "campaigns" }) {
 }
 
 /** The subscribers' view. (A function of the page, not a component: it reads.) */
-async function subscribersPage(email: string, search: Search) {
+async function subscribersPage(search: Search) {
   const db = getDb();
   const [list, counts] = await Promise.all([pageSubscribers(db, parsePage(search.leht)), getAdminCounts()]);
   const rows = list.rows;
   const t = adminEt.newsletter;
 
   return (
-    <Shell email={email} active="newsletter">
-      <div className={ui.page}>
-        <Top view="subscribers" />
+    <div className={ui.page}>
+      <Top view="subscribers" />
 
-        <section className={`${ui.card} ${styles.card}`} aria-label={t.title}>
-          <p className={`${ui.muted} ${ui.small}`}>{fill(t.count, { n: counts.subscribers, confirmed: counts.confirmedSubscribers })}</p>
-          {rows.length === 0 ? (
-            <p className={ui.empty}>{t.empty}</p>
-          ) : (
-            <table className={`${ui.table} ${styles.table}`}>
-              <thead>
-                <tr>
-                  <th scope="col">{t.col.email}</th>
-                  <th scope="col">{t.col.locale}</th>
-                  <th scope="col">{t.col.consent}</th>
-                  <th scope="col">{t.col.confirmed}</th>
+      <section className={`${ui.card} ${styles.card}`} aria-label={t.title}>
+        <p className={`${ui.muted} ${ui.small}`}>{fill(t.count, { n: counts.subscribers, confirmed: counts.confirmedSubscribers })}</p>
+        {rows.length === 0 ? (
+          <p className={ui.empty}>{t.empty}</p>
+        ) : (
+          <table className={`${ui.table} ${styles.table}`}>
+            <thead>
+              <tr>
+                <th scope="col">{t.col.email}</th>
+                <th scope="col">{t.col.locale}</th>
+                <th scope="col">{t.col.consent}</th>
+                <th scope="col">{t.col.confirmed}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} data-subscriber={r.id}>
+                  <td data-label={t.col.email} className={styles.email}>
+                    {r.email}
+                  </td>
+                  <td data-label={t.col.locale}>{r.locale === "ru" ? adminEt.common.locale.ru : adminEt.common.locale.et}</td>
+                  <td data-label={t.col.consent} className={ui.nowrap}>
+                    {stamp(r.consentAt)}
+                  </td>
+                  <td data-label={t.col.confirmed}>
+                    {r.confirmedAt ? (
+                      <span className={`${ui.tag} ${ui.ok}`}>{stamp(r.confirmedAt)}</span>
+                    ) : (
+                      <span className={`${ui.tag} ${ui.warn}`}>{t.pending}</span>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} data-subscriber={r.id}>
-                    <td data-label={t.col.email} className={styles.email}>
-                      {r.email}
-                    </td>
-                    <td data-label={t.col.locale}>{r.locale === "ru" ? adminEt.common.locale.ru : adminEt.common.locale.et}</td>
-                    <td data-label={t.col.consent} className={ui.nowrap}>
-                      {stamp(r.consentAt)}
-                    </td>
-                    <td data-label={t.col.confirmed}>
-                      {r.confirmedAt ? (
-                        <span className={`${ui.tag} ${ui.ok}`}>{stamp(r.confirmedAt)}</span>
-                      ) : (
-                        <span className={`${ui.tag} ${ui.warn}`}>{t.pending}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <Pager info={list} href={(n) => `/admin/uudiskiri${n > 1 ? `?leht=${n}` : ""}`} />
-        </section>
-      </div>
-    </Shell>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <Pager info={list} href={(n) => `/admin/uudiskiri${n > 1 ? `?leht=${n}` : ""}`} />
+      </section>
+    </div>
   );
 }
 
@@ -169,19 +166,17 @@ async function campaignsPage(email: string, kampaania: string) {
   const refused = chosen?.status === "sending" ? await sendRefused(serverKv(), chosen.id) : false;
 
   return (
-    <Shell email={email} active="newsletter">
-      <div className={ui.page}>
-        <Top view="campaigns" />
-        <CampaignsPanel
-          campaigns={rows.map((r) => campaignListRow(r, progress.get(r.id) ?? null))}
-          selected={selected}
-          editing={chosen ? campaignEditorView(chosen, { progress: progress.get(chosen.id) ?? null, refused }) : null}
-          notFound={kampaania !== "" && kampaania !== "uus" && chosen === null}
-          links={links}
-          testTargets={testTargetsOf(serverEnv().MARIA_EMAIL, email)}
-          gated={gateOn(gateEnv().SITE_GATE)}
-        />
-      </div>
-    </Shell>
+    <div className={ui.page}>
+      <Top view="campaigns" />
+      <CampaignsPanel
+        campaigns={rows.map((r) => campaignListRow(r, progress.get(r.id) ?? null))}
+        selected={selected}
+        editing={chosen ? campaignEditorView(chosen, { progress: progress.get(chosen.id) ?? null, refused }) : null}
+        notFound={kampaania !== "" && kampaania !== "uus" && chosen === null}
+        links={links}
+        testTargets={testTargetsOf(serverEnv().MARIA_EMAIL, email)}
+        gated={gateOn(gateEnv().SITE_GATE)}
+      />
+    </div>
   );
 }

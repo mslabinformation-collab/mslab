@@ -9,17 +9,13 @@ import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtur
 
 // The admin's Maksed page, the online payments in a registration's drawer and the Õpilased drawer, rendered from a real (PGlite) database
 // to HTML: Maria's words (Eest, Makseviis, Estonian statuses, "Pangalink · Swedbank" and never Montonio's code), "Kontrolli Montonios" on
-// the rows she must look at, and the old "E-õppe ostud lisanduvad koos maksetega." note gone. The shell, the drawer's dialog and the server
+// the rows she must look at, and the old "E-õppe ostud lisanduvad koos maksetega." note gone. The drawer's dialog and the server
 // actions are stand-ins (they need a browser or a request); everything else is the real page.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
 vi.mock("@/components/admin/data", () => ({ getAdminCounts: async () => ({}) }));
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
-});
 vi.mock("@/components/admin/Drawer", async () => {
   const { createElement } = await import("react");
   return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useUnsavedInDrawer: () => {} };
@@ -88,7 +84,6 @@ beforeAll(async () => {
 
 test("Maksed: Maria's heading, lead and column heads; newest first; the menu entry is the active one", async () => {
   const html = await render(PaymentsPage);
-  expect(html).toContain('data-shell-active="payments"');
   expect(html).toContain("<h1");
   expect(html).toContain(">Maksed</h1>");
   expect(html).toContain("Tagastused tehakse Montonio halduses");

@@ -8,7 +8,7 @@ import { makeTestDb } from "./helpers";
 
 // Hindamine (e-course completion, spec §5.2, §5.4) and the overview's "Ootab hindamist" card (R4), rendered from a real (PGlite) database to
 // HTML: the three groups with their rows and their ways on, "Kõik on hinnatud." when nothing waits, the test review of one attempt (its own copy
-// of the questions: Review Focus 3), every attempt of a student, and "not found". The shell and the server actions are stand-ins (they need a
+// of the questions: Review Focus 3), every attempt of a student, and "not found". The server actions are stand-ins (they need a
 // browser or a request); the menu counts are the real ones.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
@@ -17,10 +17,6 @@ vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test"
 vi.mock("@/components/admin/data", async () => {
   const { adminCounts } = await import("@/db/queries/admin");
   return { getAdminCounts: async () => adminCounts(state.db as Db) };
-});
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
 });
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 
@@ -49,7 +45,6 @@ beforeEach(async () => {
 
 test("nothing waits: Hindamine says 'Kõik on hinnatud.', and the overview has no 'Ootab hindamist' card", async () => {
   const page = await html(AssessmentPage());
-  expect(page).toContain('data-shell-active="assessment"');
   expect(page).toContain("Kõik on hinnatud.");
   expect(page).not.toContain("data-queue=");
   expect(await html(Overview())).not.toContain("data-overview-assessment");
@@ -86,7 +81,6 @@ test("Review Focus 3: the review of an attempt made before Maria changed the tes
   const a = await attempt(db, eve, course.id, 1, "review", at(7));
   await db.update(courseTests).set({ questions: [{ id: "uus00001", kind: "open", text: "Uus küsimus pärast katset" }] }).where(eq(courseTests.courseId, course.id));
   const page = await review({ id: String(a.id) });
-  expect(page).toContain('data-shell-active="assessment"');
   expect(page).toContain("Mitu korda pesta pintslit?");
   expect(page).not.toContain("Uus küsimus pärast katset");
   expect(page).toContain("Valikküsimused: 50 % (vaja 80 %)");

@@ -8,7 +8,6 @@ import { Drawer } from "@/components/admin/Drawer";
 import { Pager } from "@/components/admin/Pager";
 import listTable from "@/components/admin/list-table.module.css";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { parsePage, parseSearch } from "@/domain/paging";
@@ -59,7 +58,7 @@ function href(view: View, id?: number): string {
  * opened and ended and her own account page can be looked at, read-only.
  */
 export default async function ClientsPage({ searchParams }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const view = parse(await searchParams);
   const db = getDb();
   const now = new Date();
@@ -81,7 +80,7 @@ export default async function ClientsPage({ searchParams }: Props) {
   ];
 
   return (
-    <Shell email={email} active="clients">
+    <>
       <div className={ui.page}>
         <div className={`${ui.heading} ${styles.heading}`}>
           <div>
@@ -185,6 +184,6 @@ export default async function ClientsPage({ searchParams }: Props) {
           {open ? <ClientDetailView key={open.client.id} detail={open} ecourses={ecourses} now={now} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}
         </Drawer>
       )}
-    </Shell>
+    </>
   );
 }

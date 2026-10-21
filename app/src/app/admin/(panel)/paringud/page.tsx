@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getAdminCounts } from "@/components/admin/data";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import { Pager } from "@/components/admin/Pager";
 import { RequestToggle } from "@/components/admin/RequestToggle";
 import ui from "@/components/admin/ui.module.css";
@@ -86,7 +85,7 @@ function value(r: RequestRow, key: string, lookup: Lookup): React.ReactNode {
 
 /** Requests (A3): tabs Kontakt / Individuaal / Praktika / Ootenimekiri, open ones first, "Märgi tehtuks" toggles. */
 export default async function RequestsPage({ searchParams }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const sp = await searchParams;
   const tab: Tab = TABS.find((x) => x === sp.liik) ?? "kontakt";
   const db = getDb();
@@ -103,109 +102,107 @@ export default async function RequestsPage({ searchParams }: Props) {
   const t = adminEt.requests;
 
   return (
-    <Shell email={email} active="requests">
-      <div className={ui.page}>
-        <div className={ui.heading}>
-          <div>
-            <p className={ui.eyebrow}>{t.eyebrow}</p>
-            <h1 className={ui.h1}>{t.title}</h1>
-            <p className={ui.lead}>{t.lead}</p>
-          </div>
+    <div className={ui.page}>
+      <div className={ui.heading}>
+        <div>
+          <p className={ui.eyebrow}>{t.eyebrow}</p>
+          <h1 className={ui.h1}>{t.title}</h1>
+          <p className={ui.lead}>{t.lead}</p>
         </div>
+      </div>
 
-        <nav className={ui.filters} aria-label={t.tabsLabel} data-request-tabs="">
-          {TABS.map((x) => {
-            const n = counts.openRequests[KIND[x]];
-            return (
-              <Link key={x} className={ui.pill} href={`/admin/paringud?liik=${x}`} aria-current={x === tab ? "page" : undefined} data-tab={x}>
-                {t.tabs[x]}
-                {n > 0 && (
-                  <span className={ui.pillCount}>
-                    <span aria-hidden="true">{n}</span>
-                    <span className={ui.sr}>, {fill(t.tabCount, { n })}</span>
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
+      <nav className={ui.filters} aria-label={t.tabsLabel} data-request-tabs="">
+        {TABS.map((x) => {
+          const n = counts.openRequests[KIND[x]];
+          return (
+            <Link key={x} className={ui.pill} href={`/admin/paringud?liik=${x}`} aria-current={x === tab ? "page" : undefined} data-tab={x}>
+              {t.tabs[x]}
+              {n > 0 && (
+                <span className={ui.pillCount}>
+                  <span aria-hidden="true">{n}</span>
+                  <span className={ui.sr}>, {fill(t.tabCount, { n })}</span>
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </nav>
 
-        <h2 className={ui.sr}>{t.tabs[tab]}</h2>
-        {rows.length === 0 ? (
-          <section className={ui.card}>
-            <p className={ui.empty}>{t.empty}</p>
-          </section>
-        ) : (
-          <ul className={styles.list}>
-            {rows.map((r) => {
-              if (r.kind === "change_request") {
-                const id = changedRegistration(r);
-                return (
-                  <li key={r.id}>
-                    <ChangeRequest r={r} registrationId={id} registration={id ? (registrationsById.get(id) ?? null) : null} />
-                  </li>
-                );
-              }
-              const interest = isInterest(r);
-              const fields = FIELDS[interest ? "interest" : r.kind];
-              const shown = new Set(fields.map(([k]) => k));
-              const extra = Object.keys(r.payload).filter((k) => !shown.has(k) && !HIDDEN.has(k));
-              const who = typeof r.payload.name === "string" && r.payload.name ? r.payload.name : String(r.payload.email ?? "");
-              const address = typeof r.payload.email === "string" ? r.payload.email : null;
+      <h2 className={ui.sr}>{t.tabs[tab]}</h2>
+      {rows.length === 0 ? (
+        <section className={ui.card}>
+          <p className={ui.empty}>{t.empty}</p>
+        </section>
+      ) : (
+        <ul className={styles.list}>
+          {rows.map((r) => {
+            if (r.kind === "change_request") {
+              const id = changedRegistration(r);
               return (
                 <li key={r.id}>
-                  <article className={`${ui.card} ${styles.request}`} data-request={r.id} data-handled={r.handled ? "1" : "0"} aria-labelledby={`req-${r.id}`}>
-                    <header className={styles.head}>
-                      <div className={styles.title}>
-                        <h3 id={`req-${r.id}`} className={ui.h3}>
-                          {who}
-                        </h3>
-                        <p className={`${ui.muted} ${ui.small}`}>{fill(t.received, { date: `${formatDate(r.createdAt, "et")} ${formatTime(r.createdAt, "et")}` })}</p>
-                      </div>
-                      <div className={styles.tags}>
-                        {interest && <span className={`${ui.tag} ${ui.dark}`}>{t.interest}</span>}
-                        <span className={`${ui.tag} ${r.handled ? ui.ok : ui.warn}`} data-request-state="">
-                          {r.handled ? t.handled : t.open}
-                        </span>
-                      </div>
-                    </header>
-                    <dl className={styles.dl}>
-                      {fields
-                        .filter(([k]) => r.payload[k] !== undefined && r.payload[k] !== "")
-                        .map(([k, label]) => (
-                          <div key={k}>
-                            <dt>{t.fields[label]}</dt>
-                            <dd>{value(r, k, lookup)}</dd>
-                          </div>
-                        ))}
-                      {extra.map((k) => (
-                        <div key={k}>
-                          <dt>{k}</dt>
-                          <dd>{String(r.payload[k])}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                    <div className={styles.actions}>
-                      <RequestToggle
-                        id={r.id}
-                        handled={r.handled}
-                        t={{ markDone: t.markDone, markOpen: t.markOpen, saving: adminEt.common.saving, error: adminEt.common.saveError }}
-                      />
-                      {address && (
-                        <a className={ui.link} href={`mailto:${address}`}>
-                          {t.reply}
-                        </a>
-                      )}
-                    </div>
-                  </article>
+                  <ChangeRequest r={r} registrationId={id} registration={id ? (registrationsById.get(id) ?? null) : null} />
                 </li>
               );
-            })}
-          </ul>
-        )}
-        <Pager info={list} href={(n) => `/admin/paringud?liik=${tab}${n > 1 ? `&leht=${n}` : ""}`} />
-      </div>
-    </Shell>
+            }
+            const interest = isInterest(r);
+            const fields = FIELDS[interest ? "interest" : r.kind];
+            const shown = new Set(fields.map(([k]) => k));
+            const extra = Object.keys(r.payload).filter((k) => !shown.has(k) && !HIDDEN.has(k));
+            const who = typeof r.payload.name === "string" && r.payload.name ? r.payload.name : String(r.payload.email ?? "");
+            const address = typeof r.payload.email === "string" ? r.payload.email : null;
+            return (
+              <li key={r.id}>
+                <article className={`${ui.card} ${styles.request}`} data-request={r.id} data-handled={r.handled ? "1" : "0"} aria-labelledby={`req-${r.id}`}>
+                  <header className={styles.head}>
+                    <div className={styles.title}>
+                      <h3 id={`req-${r.id}`} className={ui.h3}>
+                        {who}
+                      </h3>
+                      <p className={`${ui.muted} ${ui.small}`}>{fill(t.received, { date: `${formatDate(r.createdAt, "et")} ${formatTime(r.createdAt, "et")}` })}</p>
+                    </div>
+                    <div className={styles.tags}>
+                      {interest && <span className={`${ui.tag} ${ui.dark}`}>{t.interest}</span>}
+                      <span className={`${ui.tag} ${r.handled ? ui.ok : ui.warn}`} data-request-state="">
+                        {r.handled ? t.handled : t.open}
+                      </span>
+                    </div>
+                  </header>
+                  <dl className={styles.dl}>
+                    {fields
+                      .filter(([k]) => r.payload[k] !== undefined && r.payload[k] !== "")
+                      .map(([k, label]) => (
+                        <div key={k}>
+                          <dt>{t.fields[label]}</dt>
+                          <dd>{value(r, k, lookup)}</dd>
+                        </div>
+                      ))}
+                    {extra.map((k) => (
+                      <div key={k}>
+                        <dt>{k}</dt>
+                        <dd>{String(r.payload[k])}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div className={styles.actions}>
+                    <RequestToggle
+                      id={r.id}
+                      handled={r.handled}
+                      t={{ markDone: t.markDone, markOpen: t.markOpen, saving: adminEt.common.saving, error: adminEt.common.saveError }}
+                    />
+                    {address && (
+                      <a className={ui.link} href={`mailto:${address}`}>
+                        {t.reply}
+                      </a>
+                    )}
+                  </div>
+                </article>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <Pager info={list} href={(n) => `/admin/paringud?liik=${tab}${n > 1 ? `&leht=${n}` : ""}`} />
+    </div>
   );
 }
 

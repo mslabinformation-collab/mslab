@@ -79,6 +79,10 @@ export const adminEt = {
     /** an admin without a greeting name in ADMIN_NAMES */
     helloNoName: "Tere.",
     logout: "Logi välja",
+    // error.tsx of the (panel) group (README §1.10): a page that could not be loaded; the menu stays
+    errorTitle: "Seda lehte ei saanud praegu laadida.",
+    errorBody: "Sinu salvestatud andmed on alles. Proovi mõne hetke pärast uuesti.",
+    errorRetry: "Proovi uuesti",
   },
 
   // Prototype B admin shell: dark left sidebar, top line, main column. Below 900px a top bar with a menu drawer.
@@ -119,6 +123,9 @@ export const adminEt = {
     campaign: "Hüpikaken",
     newsletter: "Uudiskiri",
     settings: "Seaded",
+    // admin UX pass (README §1.1): their rows come with the grouped menu
+    protocols: "Protokollid",
+    testing: "Testimine",
   },
 
   // Long lists (registrations, requests, subscribers) come 50 rows a page: ?leht=<n>.

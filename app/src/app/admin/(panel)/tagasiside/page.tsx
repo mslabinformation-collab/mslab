@@ -8,7 +8,6 @@ import { Pager } from "@/components/admin/Pager";
 import { courseLabel, reviewRowView } from "@/components/admin/review-view";
 import { ReviewsPanel } from "@/components/admin/ReviewsPanel";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { feedbackById, feedbackStats, pageFeedback, type CourseFeedbackStats, type FeedbackRow } from "@/db/queries/protocols";
@@ -82,9 +81,9 @@ const CHOICE_KEYS = Object.keys(FEEDBACK_CHOICES) as ChoiceKey[];
  * reviews waiting for Maria on both views, and the count opens the ones waiting.
  */
 export default async function FeedbackPage({ searchParams }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const view = parse(await searchParams);
-  return view.reviews ? reviewsPage(email, view.olek) : answersPage(email, view);
+  return view.reviews ? reviewsPage(view.olek) : answersPage(view);
 }
 
 /** The page's heading, the count of the reviews waiting for Maria (nothing when none wait) and the two views. */
@@ -117,36 +116,34 @@ function Top({ pending, active }: { pending: number; active: "answers" | "review
 }
 
 /** "Arvustused": the reviews (by status, waiting first, then published, then hidden; the newest written first within each), narrowed by the status filter, and "Lisa arvustus". (A function of the page, not a component: it reads.) */
-async function reviewsPage(email: string, olek: StatusWord | null) {
+async function reviewsPage(olek: StatusWord | null) {
   const db = getDb();
   const t = adminEt.reviews;
   const [rows, courses, pending] = await Promise.all([adminReviews(db, olek === null ? {} : { status: STATUS_WORD[olek] }), reviewCourses(db), pendingReviewCount(db), getAdminCounts()]);
   const filters: { key: StatusWord | null; label: string }[] = [{ key: null, label: t.all }, ...STATUS_WORDS.map((word) => ({ key: word, label: t.status[STATUS_WORD[word]] }))];
 
   return (
-    <Shell email={email} active="feedback">
-      <div className={ui.page}>
-        <Top pending={pending} active="reviews" />
-        <nav className={ui.filters} aria-label={t.filterLabel} data-review-filter="">
-          {filters.map((f) => (
-            <Link key={f.key ?? "all"} className={ui.pill} href={reviewsHref(f.key)} aria-current={olek === f.key ? "true" : undefined} data-review-filter-status={f.key ?? "all"}>
-              {f.label}
-            </Link>
-          ))}
-        </nav>
-        <ReviewsPanel
-          rows={rows.map(reviewRowView)}
-          courses={courses.map((c) => ({ id: c.id, label: courseLabel(pick(c.title, "et"), c.published) }))}
-          today={tallinnToday(new Date())}
-          filtered={olek !== null}
-        />
-      </div>
-    </Shell>
+    <div className={ui.page}>
+      <Top pending={pending} active="reviews" />
+      <nav className={ui.filters} aria-label={t.filterLabel} data-review-filter="">
+        {filters.map((f) => (
+          <Link key={f.key ?? "all"} className={ui.pill} href={reviewsHref(f.key)} aria-current={olek === f.key ? "true" : undefined} data-review-filter-status={f.key ?? "all"}>
+            {f.label}
+          </Link>
+        ))}
+      </nav>
+      <ReviewsPanel
+        rows={rows.map(reviewRowView)}
+        courses={courses.map((c) => ({ id: c.id, label: courseLabel(pick(c.title, "et"), c.published) }))}
+        today={tallinnToday(new Date())}
+        filtered={olek !== null}
+      />
+    </div>
   );
 }
 
 /** "Vastused": the answers (see FeedbackPage). */
-async function answersPage(email: string, view: Parsed) {
+async function answersPage(view: Parsed) {
   const db = getDb();
   // the shell's counts are read here too (memoised), so the page does not wait for the list before asking for them
   const [list, stats, open, pending] = await Promise.all([pageFeedback(db, view.koolitus, view.leht), feedbackStats(db), view.id ? feedbackById(db, view.id) : null, pendingReviewCount(db), getAdminCounts()]);
@@ -155,7 +152,7 @@ async function answersPage(email: string, view: Parsed) {
   const filters: { key: number | null; label: string }[] = [{ key: null, label: t.all }, ...stats.map((s) => ({ key: s.course.id, label: pick(s.course.title, "et") }))];
 
   return (
-    <Shell email={email} active="feedback">
+    <>
       <div className={ui.page}>
         <Top pending={pending} active="answers" />
 
@@ -221,7 +218,7 @@ async function answersPage(email: string, view: Parsed) {
           {open ? <FeedbackDetail f={open} /> : <p className={ui.empty}>{t.drawer.notFound}</p>}
         </Drawer>
       )}
-    </Shell>
+    </>
   );
 }
 

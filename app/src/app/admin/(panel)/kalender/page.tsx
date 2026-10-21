@@ -3,7 +3,6 @@ import Link from "next/link";
 import { Drawer } from "@/components/admin/Drawer";
 import { adminTitle } from "@/components/admin/sections";
 import { SessionForm, type SessionValues } from "@/components/admin/SessionForm";
-import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { listAdminSessions, listContactCourses, type AdminSessionRow } from "@/db/queries/admin";
@@ -45,7 +44,7 @@ function stateTag(s: AdminSessionRow): { text: string; cls: string } {
  * ?id=<n>); a saved new session closes it and is highlighted (?lisatud=<n>).
  */
 export default async function CalendarAdminPage({ searchParams }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const sp = await searchParams;
   const past = one(sp.aeg) === "moodunud";
   const rawId = one(sp.id);
@@ -108,7 +107,7 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
   }
 
   return (
-    <Shell email={email} active="calendar">
+    <>
       <div className={ui.page}>
         <div className={ui.heading}>
           <div>
@@ -226,6 +225,6 @@ export default async function CalendarAdminPage({ searchParams }: Props) {
         </section>
       </div>
       {drawer}
-    </Shell>
+    </>
   );
 }

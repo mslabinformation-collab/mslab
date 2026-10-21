@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { PracticeEditor } from "@/components/admin/PracticeEditor";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import { getDb } from "@/db/client";
 import { adminEt } from "@/i18n/dict/admin";
 import { loadPractice } from "@/server/admin-site";
@@ -12,11 +11,7 @@ export const metadata: Metadata = { title: adminTitle(adminEt.nav.practice) };
 
 /** Praktika: the MINI and MAXI packages (Task 13B, A8, R3). */
 export default async function PracticeEditPage() {
-  const email = await requireAdmin();
+  await requireAdmin();
   const { codes, ...initial } = await loadPractice(getDb());
-  return (
-    <Shell email={email} active="practice">
-      <PracticeEditor initial={initial} codes={codes} />
-    </Shell>
-  );
+  return <PracticeEditor initial={initial} codes={codes} />;
 }

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getAdminCounts } from "@/components/admin/data";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import { TestReview } from "@/components/admin/TestReview";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
@@ -29,7 +28,7 @@ const stamp = (d: Date) => `${formatDate(d, "et")} ${formatTime(d, "et")}`;
  * first, each with its result (the drawer's "Testi katsed"). Nothing found (or an access an admin ended): one sentence and the way back.
  */
 export default async function TestReviewPage({ searchParams }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const sp = await searchParams;
   const attemptId = parseRowId(one(sp.id));
   const accessId = attemptId === null ? parseRowId(one(sp.ligipaas)) : null;
@@ -38,22 +37,20 @@ export default async function TestReviewPage({ searchParams }: Props) {
   const t = adminEt.assessment.review;
 
   return (
-    <Shell email={email} active="assessment">
-      <div className={ui.page} data-test-review-page="">
-        <p className={styles.back}>
-          <Link className={ui.link} href="/admin/hindamine">
-            <span aria-hidden="true">←</span> {t.back}
-          </Link>
-        </p>
-        {attempt ? (
-          <OneAttempt a={attempt} />
-        ) : list && accessId !== null ? (
-          <AttemptList accessId={accessId} name={list.name} course={list.course} attempts={list.attempts} />
-        ) : (
-          <p className={ui.empty}>{accessId === null ? t.notFound : t.notFoundAccess}</p>
-        )}
-      </div>
-    </Shell>
+    <div className={ui.page} data-test-review-page="">
+      <p className={styles.back}>
+        <Link className={ui.link} href="/admin/hindamine">
+          <span aria-hidden="true">←</span> {t.back}
+        </Link>
+      </p>
+      {attempt ? (
+        <OneAttempt a={attempt} />
+      ) : list && accessId !== null ? (
+        <AttemptList accessId={accessId} name={list.name} course={list.course} attempts={list.attempts} />
+      ) : (
+        <p className={ui.empty}>{accessId === null ? t.notFound : t.notFoundAccess}</p>
+      )}
+    </div>
   );
 }
 

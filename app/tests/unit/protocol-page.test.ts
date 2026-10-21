@@ -11,10 +11,6 @@ import { MAIL_GAP_MS } from "@/server/protocols";
 
 vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
-});
 vi.mock("@/server/actions/admin-protocols", () => ({ sendProtocolAction: vi.fn(), sendProtocolsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn() }));
 // the screen's data and the assessment's client part are stand-ins: what the page asks for, and what it hands over, is what is checked
@@ -79,11 +75,10 @@ const reset = (screen: ScreenData | null) => {
   seen.views.length = 0;
 };
 
-test("?ligipaas=<id>: the header names the course and the student (the round is the screen's own line, which follows its reads), the way back is Hindamine, the menu marks Hindamine, and the screen is the access's", async () => {
+test("?ligipaas=<id>: the header names the course and the student (the round is the screen's own line, which follows its reads), the way back is Hindamine, and the screen is the access's", async () => {
   reset(accessScreen());
   const html = await render({ ligipaas: "4" });
   expect(seen.targets).toEqual([{ accessId: 4 }]);
-  expect(html).toContain('data-shell-active="assessment"');
   expect(html).toMatch(/data-protocol-course="">Kulmude e-kursus · Kati Kask</);
   expect(html).not.toContain("data-assess-round"); // AssessmentScreen's (tests/unit/assessment-screen-dom.test.ts)
   expect(html).toContain('href="/admin/hindamine"');
@@ -108,6 +103,5 @@ test("?sessioon= and ?registreering= come before ?ligipaas= (the course day's ad
   const html = await render({ ligipaas: "4" });
   expect(html).toContain("Sellist e-kursuse ligipääsu ei leitud, või see on tühistatud.");
   expect(html).toContain('href="/admin/hindamine"');
-  expect(html).toContain('data-shell-active="assessment"');
   expect(seen.views).toEqual([]);
 });

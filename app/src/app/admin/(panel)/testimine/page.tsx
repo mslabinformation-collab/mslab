@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import { TestPlan } from "@/components/admin/TestPlan";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
@@ -30,15 +29,13 @@ export default async function TestimiPage() {
   }
 
   return (
-    <Shell email={email} active="overview">
-      <div className={ui.page}>
-        <div className={ui.heading}>
-          <div>
-            <h1 className={ui.h1}>{adminEt.testplan.title}</h1>
-          </div>
+    <div className={ui.page}>
+      <div className={ui.heading}>
+        <div>
+          <h1 className={ui.h1}>{adminEt.testplan.title}</h1>
         </div>
-        <TestPlan plan={testPlan} initial={initial} you={testplanYou(email, names)} buildAt={testplanBuildAt()} />
       </div>
-    </Shell>
+      <TestPlan plan={testPlan} initial={initial} you={testplanYou(email, names)} buildAt={testplanBuildAt()} />
+    </div>
   );
 }

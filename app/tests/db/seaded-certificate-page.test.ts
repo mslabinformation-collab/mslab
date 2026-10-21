@@ -9,7 +9,7 @@ import { makeTestDb } from "./helpers";
 
 // Seaded with its "Tunnistus" card (phase 3d, spec §6, §4), rendered from a real (PGlite) database to HTML: the card is a form of its own
 // after the settings' form (never a form inside a form), it shows the stored setting (or the defaults) and the number last issued in the next
-// number's year. The trainer's name is the signature (owner, 15.10): the card has no picture and no file field. The shell and the server
+// number's year. The trainer's name is the signature (owner, 15.10): the card has no picture and no file field. The server
 // actions are stand-ins (they need a browser or a request). The page reads the clock (`new Date()`): its tests count their years from it, so
 // none depends on the year the suite runs in; the cases of one moment or another go to certificateCard with that moment given. The clock is
 // never faked here: a PGlite that lives through a jump of Date.now() makes its Postgres timers overflow Node's setTimeout (a warning each).
@@ -17,10 +17,6 @@ import { makeTestDb } from "./helpers";
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
-});
 vi.mock("@/server/actions/admin-site", () => ({ saveSettings: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({ saveInvoiceSettingsAction: vi.fn() }));
@@ -78,7 +74,6 @@ async function seed(setting: { nextYear: number; nextSeq: number } | null, issue
 
 test("without a setting: the defaults (Maria Sosnina signs), this year's number 1, nothing issued yet; the card is a form of its own after the settings' form, with no picture or file field", async () => {
   const html = await page();
-  expect(html).toContain('data-shell-active="settings"');
   const card = html.indexOf("data-certificate-settings");
   expect(card).toBeGreaterThan(-1);
   expect(html.indexOf("</form>")).toBeLessThan(card); // the settings' form ends before the card begins

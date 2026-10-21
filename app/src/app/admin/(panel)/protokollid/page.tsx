@@ -3,8 +3,7 @@ import Link from "next/link";
 import { AssessmentScreen } from "@/components/admin/AssessmentScreen";
 import { ProtocolScreen, type ScreenView } from "@/components/admin/ProtocolScreen";
 import styles from "@/components/admin/ProtocolScreen.module.css";
-import { adminTitle, type Section } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
+import { adminTitle } from "@/components/admin/sections";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { protocolScreen, screenStudents, type ScreenData } from "@/db/queries/protocols";
@@ -44,7 +43,7 @@ function viewOf(screen: ScreenData, source: ScreenView["source"]): ScreenView {
  * by its first save, or by the student's first photo).
  */
 export default async function ProtocolsPage({ searchParams }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const sp = await searchParams;
   const sessionId = parseRowId(one(sp.sessioon) ?? "");
   const registrationId = sessionId === null ? parseRowId(one(sp.registreering) ?? "") : null;
@@ -60,26 +59,23 @@ export default async function ProtocolsPage({ searchParams }: Props) {
         : accessId !== null
           ? await protocolScreen(db, { accessId })
           : null;
-  const active: Section = accessId !== null ? "assessment" : registrationId !== null ? "registrations" : "calendar";
 
   if (!screen) {
     return (
-      <Shell email={email} active={active}>
-        <div className={ui.page}>
-          <div className={ui.heading}>
-            <div>
-              <p className={ui.eyebrow}>{accessId !== null ? adminEt.nav.assessment : t.eyebrow}</p>
-              <h1 className={ui.h1}>{t.title}</h1>
-            </div>
+      <div className={ui.page}>
+        <div className={ui.heading}>
+          <div>
+            <p className={ui.eyebrow}>{accessId !== null ? adminEt.nav.assessment : t.eyebrow}</p>
+            <h1 className={ui.h1}>{t.title}</h1>
           </div>
-          <section className={ui.card}>
-            <p className={ui.empty}>{accessId !== null ? a.notFound : t.notFound}</p>
-            <Link className={ui.link} href={accessId !== null ? "/admin/hindamine" : "/admin/kalender"}>
-              {accessId !== null ? a.back : t.toCalendar}
-            </Link>
-          </section>
         </div>
-      </Shell>
+        <section className={ui.card}>
+          <p className={ui.empty}>{accessId !== null ? a.notFound : t.notFound}</p>
+          <Link className={ui.link} href={accessId !== null ? "/admin/hindamine" : "/admin/kalender"}>
+            {accessId !== null ? a.back : t.toCalendar}
+          </Link>
+        </section>
+      </div>
     );
   }
 
@@ -88,27 +84,25 @@ export default async function ProtocolsPage({ searchParams }: Props) {
     const work = screen.assessment;
     const now = new Date();
     return (
-      <Shell email={email} active={active}>
-        <div className={ui.page}>
-          <div className={ui.heading}>
-            <div className={styles.head}>
-              <p className={ui.eyebrow}>{adminEt.nav.assessment}</p>
-              <h1 className={ui.h1} data-protocol-course="">
-                {`${pick(screen.course.title, "et")} · ${student.name}`}
-              </h1>
-            </div>
-            <Link className={ui.link} href="/admin/hindamine">
-              {a.back}
-            </Link>
+      <div className={ui.page}>
+        <div className={ui.heading}>
+          <div className={styles.head}>
+            <p className={ui.eyebrow}>{adminEt.nav.assessment}</p>
+            <h1 className={ui.h1} data-protocol-course="">
+              {`${pick(screen.course.title, "et")} · ${student.name}`}
+            </h1>
           </div>
-          {work.expiresAt <= now && (
-            <p className={ui.notice} data-access-expired="">
-              {fill(a.expired, { date: formatDate(work.expiresAt, "et") })}
-            </p>
-          )}
-          <AssessmentScreen view={viewOf(screen, { ligipaas: accessId })} />
+          <Link className={ui.link} href="/admin/hindamine">
+            {a.back}
+          </Link>
         </div>
-      </Shell>
+        {work.expiresAt <= now && (
+          <p className={ui.notice} data-access-expired="">
+            {fill(a.expired, { date: formatDate(work.expiresAt, "et") })}
+          </p>
+        )}
+        <AssessmentScreen view={viewOf(screen, { ligipaas: accessId })} />
+      </div>
     );
   }
 
@@ -118,36 +112,34 @@ export default async function ProtocolsPage({ searchParams }: Props) {
   const place = s ? [s.city, s.venue].filter(Boolean).join(", ") : "";
 
   return (
-    <Shell email={email} active={active}>
-      <div className={ui.page}>
-        <div className={ui.heading}>
-          <div className={styles.head}>
-            <p className={ui.eyebrow}>{t.eyebrow}</p>
-            <h1 className={ui.h1} data-protocol-course="">
-              {pick(screen.course.title, "et")}
-            </h1>
-            <p className={ui.lead} data-protocol-when="">
-              {place ? `${when} · ${place}` : when}
-            </p>
-            {s?.cancelled && <span className={`${ui.tag} ${ui.bad}`}>{t.sessionCancelled}</span>}
-          </div>
-          <Link className={ui.link} href={back.href}>
-            {back.label}
-          </Link>
-        </div>
-        {screen.hidden > 0 && (
-          <p className={`${ui.muted} ${ui.small}`} data-hidden-cancelled="">
-            {fill(t.hidden, { n: screen.hidden })}
+    <div className={ui.page}>
+      <div className={ui.heading}>
+        <div className={styles.head}>
+          <p className={ui.eyebrow}>{t.eyebrow}</p>
+          <h1 className={ui.h1} data-protocol-course="">
+            {pick(screen.course.title, "et")}
+          </h1>
+          <p className={ui.lead} data-protocol-when="">
+            {place ? `${when} · ${place}` : when}
           </p>
-        )}
-        {screen.students.length === 0 ? (
-          <section className={ui.card}>
-            <p className={ui.empty}>{screen.kind === "registration" ? t.cancelledOne : t.empty}</p>
-          </section>
-        ) : (
-          <ProtocolScreen view={viewOf(screen, sessionId !== null ? { sessioon: sessionId } : { registreering: registrationId! })} />
-        )}
+          {s?.cancelled && <span className={`${ui.tag} ${ui.bad}`}>{t.sessionCancelled}</span>}
+        </div>
+        <Link className={ui.link} href={back.href}>
+          {back.label}
+        </Link>
       </div>
-    </Shell>
+      {screen.hidden > 0 && (
+        <p className={`${ui.muted} ${ui.small}`} data-hidden-cancelled="">
+          {fill(t.hidden, { n: screen.hidden })}
+        </p>
+      )}
+      {screen.students.length === 0 ? (
+        <section className={ui.card}>
+          <p className={ui.empty}>{screen.kind === "registration" ? t.cancelledOne : t.empty}</p>
+        </section>
+      ) : (
+        <ProtocolScreen view={viewOf(screen, sessionId !== null ? { sessioon: sessionId } : { registreering: registrationId! })} />
+      )}
+    </div>
   );
 }

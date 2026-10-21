@@ -9,17 +9,13 @@ import { contactStudent, graduate, RECOMMEND, studentOf, submit } from "./review
 // Maria's „Tagasiside“ with the reviews and the student's drawer, rendered from a real (PGlite) database to HTML (student reviews, Task 4; spec D2, §4):
 // the heading's count of the reviews waiting and the two views, „Arvustused“ with its status filter and each row's proof (the registration's status and
 // the protocol line, or „Lõpetatud {date}“), the e-course answers on the list and in the answer's drawer with the day her access was completed in
-// place of a course day, and the student's drawer: whether she allowed publishing and what became of it. The shell, the drawer's dialog and the
+// place of a course day, and the student's drawer: whether she allowed publishing and what became of it. The drawer's dialog and the
 // server actions are stand-ins (they need a browser or a request), as on feedback-admin-pages.test.ts.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
 vi.mock("@/components/admin/data", () => ({ getAdminCounts: async () => ({}) }));
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
-});
 vi.mock("@/components/admin/Drawer", async () => {
   const { createElement } = await import("react");
   return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useUnsavedInDrawer: () => {} };
@@ -104,7 +100,6 @@ describe("the heading and the two views", () => {
     expect(reviewsView).toContain("data-reviews-panel");
     expect(reviewsView).not.toContain("data-feedback-row");
     expect(reviewsView).toContain("data-review-add");
-    expect(reviewsView).toContain('data-shell-active="feedback"');
   });
 });
 

@@ -11,7 +11,6 @@ import { Pager } from "@/components/admin/Pager";
 import { PaymentLines } from "@/components/admin/PaymentLines";
 import { RegistrationForms } from "@/components/admin/RegistrationForms";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import listTable from "@/components/admin/list-table.module.css";
 import { StatusPill } from "@/components/admin/StatusPill";
 import ui from "@/components/admin/ui.module.css";
@@ -88,7 +87,7 @@ function sessionText(r: RegistrationRow, withTime = false): string {
  * with the payment that has arrived (status recomputed: confirmed from 50%), status + note, and "Tühista".
  */
 export default async function RegistrationsPage({ searchParams }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const view = parse(await searchParams);
   const db = getDb();
   const filter: RegistrationFilter = { type: view.vorm ? FORMS[view.vorm] : undefined, status: view.staatus ?? undefined };
@@ -123,7 +122,7 @@ export default async function RegistrationsPage({ searchParams }: Props) {
   ];
 
   return (
-    <Shell email={email} active="registrations">
+    <>
       <div className={ui.page}>
         <div className={ui.heading}>
           <div>
@@ -246,7 +245,7 @@ export default async function RegistrationsPage({ searchParams }: Props) {
           )}
         </Drawer>
       )}
-    </Shell>
+    </>
   );
 }
 

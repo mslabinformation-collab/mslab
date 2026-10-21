@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { APIRequestContext } from "@playwright/test";
-import { signInAsAdmin, type CreatedRows } from "./admin-login";
+import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { removeAdminRows } from "./fixtures";
 import { E2E_REVIEW_KEY } from "./prod-build";
 import { PROD_BUILD } from "./target";
@@ -11,10 +11,8 @@ import { test, expect } from "./test";
 // db/client.ts; the signed-in admin looked up once per request, server/auth.ts). On 02.10.2026 the live Cloudflare
 // Worker answered about a quarter of the admin pages with a 500; the check on Vercel (03.10.2026) repeated this by hand.
 //
-// Local production build only (E2E_PROD_BUILD): it signs in by writing to the local database.
-
-test.skip(!PROD_BUILD, "the production build under load: the local production build only (E2E_PROD_BUILD=1)");
-test.skip(({ isMobile }) => isMobile, "the same answers for every browser: desktop project only");
+// The load test is for the local production build only (E2E_PROD_BUILD): it signs in by writing to the local database. The sidebar
+// test after it (admin UX pass, Task 2) runs under `next dev` and the production build alike.
 
 const ADMIN_PAGES = [
   "/admin",
@@ -75,7 +73,9 @@ async function confirmLink(request: APIRequestContext): Promise<Answer> {
 
 const failures = (answers: Answer[], ok: (a: Answer) => boolean) => answers.filter((a) => !ok(a) || a.note).map((a) => `${a.path}: ${a.status} ${a.note}`.trim());
 
-test("signed-in admin pages one after another and side by side, with public answers between them: every answer is right", async ({ page, context, request }) => {
+test("signed-in admin pages one after another and side by side, with public answers between them: every answer is right", async ({ page, context, request, isMobile }) => {
+  test.skip(!PROD_BUILD, "the production build under load: the local production build only (E2E_PROD_BUILD=1)");
+  test.skip(isMobile, "the same answers for every browser: desktop project only");
   test.setTimeout(240_000);
   await signInAsAdmin(page, context, "", created);
   const session = (await context.cookies()).find((c) => c.name === "__Host-mslab_admin")!.value;
@@ -97,4 +97,33 @@ test("signed-in admin pages one after another and side by side, with public answ
   expect(admin).toHaveLength(80);
   expect(failures(admin, (a) => a.status === 200), "admin pages").toEqual([]);
   expect(failures(pub, (a) => (a.path === "/api/newsletter/confirm" ? a.status === 303 : a.status === 200)), "public answers").toEqual([]);
+});
+
+// Admin UX pass, Task 2: the Shell lives in the (panel) layout, so it is not rendered again when the visitor moves between pages. The
+// sidebar reads its active entry from the address (sections.ts activeSection): it must follow a click on another entry and Back without a
+// reload, and the ready mark must still be on.
+test("the sidebar stays on screen and marks the entry of the address after a click and after Back", async ({ page, context, visitorIp, isMobile }) => {
+  test.skip(isMobile, "the sidebar is the phone bar's drawer on a phone: desktop project only");
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.goto("/admin/maksed");
+  await adminReady(page);
+
+  const entry = (key: string) => page.locator(`aside a[data-nav="${key}"]`);
+  await expect(entry("payments")).toHaveAttribute("aria-current", "page");
+  await expect(entry("registrations")).not.toHaveAttribute("aria-current", "page");
+  // the sidebar element itself must survive the navigations (a full reload would drop the mark)
+  await page.locator("aside").first().evaluate((el) => el.setAttribute("data-kept", "1"));
+
+  await entry("registrations").click();
+  await expect(page).toHaveURL(/admin.registreerimised$/);
+  await expect(entry("registrations")).toHaveAttribute("aria-current", "page");
+  await expect(entry("payments")).not.toHaveAttribute("aria-current", "page");
+  await expect(page.locator("html[data-admin-ready]")).toBeAttached();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/admin.maksed$/);
+  await expect(entry("payments")).toHaveAttribute("aria-current", "page");
+  await expect(entry("registrations")).not.toHaveAttribute("aria-current", "page");
+  await expect(page.locator("aside[data-kept]")).toHaveCount(1);
+  await expect(page.locator("html[data-admin-ready]")).toBeAttached();
 });

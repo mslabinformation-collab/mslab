@@ -3,7 +3,6 @@ import Link from "next/link";
 import { AdminIcon, type AdminIconName } from "@/components/admin/AdminIcon";
 import { getAdminCounts } from "@/components/admin/data";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import { TestplanCard } from "@/components/admin/TestplanCard";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
@@ -79,179 +78,177 @@ export default async function Overview() {
   const waitingTotal = waitingGroups.reduce((sum, g) => sum + g.n, 0);
 
   return (
-    <Shell email={email} active="overview">
-      <div className={ui.page}>
-        <div className={ui.heading}>
-          <div>
-            <p className={ui.eyebrow}>{formatLongDate(now, "et")}</p>
-            <h1 className={ui.h1}>{name ? fill(adminEt.panel.hello, { name }) : adminEt.panel.helloNoName}</h1>
-            <p className={ui.lead}>{t.lead}</p>
-          </div>
-          <Link className={ui.btn} href="/admin/registreerimised">
-            {t.primary}
-            <AdminIcon name="arrow" />
-          </Link>
+    <div className={ui.page}>
+      <div className={ui.heading}>
+        <div>
+          <p className={ui.eyebrow}>{formatLongDate(now, "et")}</p>
+          <h1 className={ui.h1}>{name ? fill(adminEt.panel.hello, { name }) : adminEt.panel.helloNoName}</h1>
+          <p className={ui.lead}>{t.lead}</p>
         </div>
+        <Link className={ui.btn} href="/admin/registreerimised">
+          {t.primary}
+          <AdminIcon name="arrow" />
+        </Link>
+      </div>
 
-        <ul className={`${ui.stats} ${styles.stats}`}>
-          {stats.map((s) => (
-            <li key={s.key}>
-              <Link className={ui.stat} href={s.href} data-stat={s.key}>
-                <strong className={ui.statNumber}>{s.n}</strong>
-                <span className={ui.statLabel}>{s.label}</span>
-                <span className={ui.statMore} aria-hidden="true">
-                  {t.more} ↗
+      <ul className={`${ui.stats} ${styles.stats}`}>
+        {stats.map((s) => (
+          <li key={s.key}>
+            <Link className={ui.stat} href={s.href} data-stat={s.key}>
+              <strong className={ui.statNumber}>{s.n}</strong>
+              <span className={ui.statLabel}>{s.label}</span>
+              <span className={ui.statMore} aria-hidden="true">
+                {t.more} ↗
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      {/* "Ootab hindamist" (e-course completion, spec §5.2, R4): the three groups of Hindamine with their counts; hidden when nothing waits */}
+      {waitingTotal > 0 && (
+        <section className={`${ui.card} ${styles.assessment}`} aria-labelledby="assessment-title" data-overview-assessment="">
+          <div className={`${ui.cardHead} ${styles.assessmentHead}`}>
+            <h2 id="assessment-title" className={ui.h2}>
+              {fill(t.assessment.title, { n: waitingTotal })}
+            </h2>
+            <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/admin/hindamine">
+              {t.assessment.open}
+            </Link>
+          </div>
+          <ul className={ui.rows}>
+            {waitingGroups.map((g) => (
+              <li key={g.key}>
+                <Link className={ui.row} href={g.href} data-overview-assessment-group={g.key}>
+                  <AdminIcon name="check" />
+                  <span className={ui.rowLabel}>{g.label}</span>
+                  <span className={`${ui.tag} ${g.n > 0 ? ui.warn : ""}`}>{g.n}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* "Testimine: N avatud, M viga" (phase 4, piece 1, spec D1, §5): the signed-in admin's open and failed checks; hidden when there are none */}
+      {testing && <TestplanCard open={testing.open} bad={testing.bad} />}
+
+      {/* "Täna" (phase protocols, spec §4): today's sessions, each with one tap to its protocols; hidden on a day with none */}
+      {today.length > 0 && (
+        <section className={`${ui.card} ${styles.today}`} aria-labelledby="today-title" data-today="">
+          <h2 id="today-title" className={ui.h2}>
+            {t.today.title}
+          </h2>
+          <ul className={ui.rows}>
+            {today.map((s) => (
+              <li key={s.id} className={styles.todayRow} data-today-session={s.id}>
+                <span className={styles.todayWhat}>
+                  <strong>{pick(s.title, "et")}</strong>
+                  <span className={ui.muted}>
+                    {formatTime(s.startsAt, "et")} · {[s.city, s.venue].filter(Boolean).join(", ")} · {fill(t.today.students, { n: s.students })}
+                  </span>
                 </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+                <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?sessioon=${s.id}`}>
+                  {adminEt.protocols.open}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-        {/* "Ootab hindamist" (e-course completion, spec §5.2, R4): the three groups of Hindamine with their counts; hidden when nothing waits */}
-        {waitingTotal > 0 && (
-          <section className={`${ui.card} ${styles.assessment}`} aria-labelledby="assessment-title" data-overview-assessment="">
-            <div className={`${ui.cardHead} ${styles.assessmentHead}`}>
-              <h2 id="assessment-title" className={ui.h2}>
-                {fill(t.assessment.title, { n: waitingTotal })}
-              </h2>
-              <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/admin/hindamine">
-                {t.assessment.open}
-              </Link>
+      <div className={ui.columns}>
+        <section className={ui.card} aria-labelledby="upcoming-title">
+          <div className={ui.cardHead}>
+            <h2 id="upcoming-title" className={ui.h2}>
+              {t.upcoming.title}
+            </h2>
+            <Link className={ui.link} href="/admin/kalender">
+              {t.upcoming.calendar}
+            </Link>
+          </div>
+          {scheduled.length === 0 ? (
+            <p className={ui.empty}>{t.upcoming.empty}</p>
+          ) : (
+            <div className={ui.tableWrap}>
+              <table className={`${ui.table} ${styles.upcoming}`}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t.upcoming.course}</th>
+                    <th scope="col">{t.upcoming.date}</th>
+                    <th scope="col">{t.upcoming.city}</th>
+                    <th scope="col">{t.upcoming.seats}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scheduled.slice(0, UPCOMING_ROWS).map((s) => (
+                    <tr key={s.id}>
+                      <td>
+                        <strong>{pick(s.course.title, "et")}</strong>
+                      </td>
+                      <td className={ui.nowrap}>{formatDate(s.startsAt, "et")}</td>
+                      <td>{s.city}</td>
+                      <td>
+                        {seatsLeft(s.capacity, s.taken)} / {s.capacity}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <ul className={ui.rows}>
-              {waitingGroups.map((g) => (
-                <li key={g.key}>
-                  <Link className={ui.row} href={g.href} data-overview-assessment-group={g.key}>
-                    <AdminIcon name="check" />
-                    <span className={ui.rowLabel}>{g.label}</span>
-                    <span className={`${ui.tag} ${g.n > 0 ? ui.warn : ""}`}>{g.n}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+          )}
+        </section>
 
-        {/* "Testimine: N avatud, M viga" (phase 4, piece 1, spec D1, §5): the signed-in admin's open and failed checks; hidden when there are none */}
-        {testing && <TestplanCard open={testing.open} bad={testing.bad} />}
-
-        {/* "Täna" (phase protocols, spec §4): today's sessions, each with one tap to its protocols; hidden on a day with none */}
-        {today.length > 0 && (
-          <section className={`${ui.card} ${styles.today}`} aria-labelledby="today-title" data-today="">
-            <h2 id="today-title" className={ui.h2}>
-              {t.today.title}
+        <div className={ui.stack}>
+          <section className={ui.card} aria-labelledby="inbox-title">
+            <h2 id="inbox-title" className={ui.h2}>
+              {t.inbox.title}
             </h2>
             <ul className={ui.rows}>
-              {today.map((s) => (
-                <li key={s.id} className={styles.todayRow} data-today-session={s.id}>
-                  <span className={styles.todayWhat}>
-                    <strong>{pick(s.title, "et")}</strong>
-                    <span className={ui.muted}>
-                      {formatTime(s.startsAt, "et")} · {[s.city, s.venue].filter(Boolean).join(", ")} · {fill(t.today.students, { n: s.students })}
-                    </span>
-                  </span>
-                  <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?sessioon=${s.id}`}>
-                    {adminEt.protocols.open}
+              {inbox.map((row) => (
+                <li key={row.key}>
+                  <Link className={ui.row} href={row.href} data-inbox={row.key}>
+                    <AdminIcon name={row.icon} />
+                    <span className={ui.rowLabel}>{row.label}</span>
+                    <span className={`${ui.tag} ${row.n > 0 ? ui.warn : ""}`}>{row.n > 0 ? fill(t.inbox.open, { n: row.n }) : t.inbox.done}</span>
                   </Link>
                 </li>
               ))}
             </ul>
           </section>
-        )}
 
-        <div className={ui.columns}>
-          <section className={ui.card} aria-labelledby="upcoming-title">
-            <div className={ui.cardHead}>
-              <h2 id="upcoming-title" className={ui.h2}>
-                {t.upcoming.title}
-              </h2>
-              <Link className={ui.link} href="/admin/kalender">
-                {t.upcoming.calendar}
-              </Link>
-            </div>
-            {scheduled.length === 0 ? (
-              <p className={ui.empty}>{t.upcoming.empty}</p>
-            ) : (
-              <div className={ui.tableWrap}>
-                <table className={`${ui.table} ${styles.upcoming}`}>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t.upcoming.course}</th>
-                      <th scope="col">{t.upcoming.date}</th>
-                      <th scope="col">{t.upcoming.city}</th>
-                      <th scope="col">{t.upcoming.seats}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scheduled.slice(0, UPCOMING_ROWS).map((s) => (
-                      <tr key={s.id}>
-                        <td>
-                          <strong>{pick(s.course.title, "et")}</strong>
-                        </td>
-                        <td className={ui.nowrap}>{formatDate(s.startsAt, "et")}</td>
-                        <td>{s.city}</td>
-                        <td>
-                          {seatsLeft(s.capacity, s.taken)} / {s.capacity}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <section className={ui.card} aria-labelledby="links-title">
+            <h2 id="links-title" className={ui.h2}>
+              {t.links.title}
+            </h2>
+            <ul className={ui.rows}>
+              <li>
+                <Link className={ui.row} href="/admin/uudiskiri">
+                  <AdminIcon name="mail" />
+                  <span className={ui.rowLabel}>{t.links.newsletter}</span>
+                </Link>
+              </li>
+              <li>
+                <a className={ui.row} href="/api/admin/subscribers.csv?kinnitatud=1" download>
+                  <AdminIcon name="arrow" />
+                  <span className={ui.rowLabel}>{t.links.csv}</span>
+                </a>
+              </li>
+              <li>
+                {/* The home page through the coming-soon gate, like the sidebar's and the top line's links: api/admin/preview
+                    gives this admin the preview cookie, then opens "/" (a plain <a>: it is an API route, not a page). */}
+                <a className={ui.row} href="/api/admin/preview" target="_blank" rel="noopener">
+                  <AdminIcon name="up" />
+                  <span className={ui.rowLabel}>
+                    {t.links.site} <span aria-hidden="true">↗</span>
+                    <span className={ui.sr}> ({adminEt.shell.newWindow})</span>
+                  </span>
+                </a>
+              </li>
+            </ul>
           </section>
-
-          <div className={ui.stack}>
-            <section className={ui.card} aria-labelledby="inbox-title">
-              <h2 id="inbox-title" className={ui.h2}>
-                {t.inbox.title}
-              </h2>
-              <ul className={ui.rows}>
-                {inbox.map((row) => (
-                  <li key={row.key}>
-                    <Link className={ui.row} href={row.href} data-inbox={row.key}>
-                      <AdminIcon name={row.icon} />
-                      <span className={ui.rowLabel}>{row.label}</span>
-                      <span className={`${ui.tag} ${row.n > 0 ? ui.warn : ""}`}>{row.n > 0 ? fill(t.inbox.open, { n: row.n }) : t.inbox.done}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section className={ui.card} aria-labelledby="links-title">
-              <h2 id="links-title" className={ui.h2}>
-                {t.links.title}
-              </h2>
-              <ul className={ui.rows}>
-                <li>
-                  <Link className={ui.row} href="/admin/uudiskiri">
-                    <AdminIcon name="mail" />
-                    <span className={ui.rowLabel}>{t.links.newsletter}</span>
-                  </Link>
-                </li>
-                <li>
-                  <a className={ui.row} href="/api/admin/subscribers.csv?kinnitatud=1" download>
-                    <AdminIcon name="arrow" />
-                    <span className={ui.rowLabel}>{t.links.csv}</span>
-                  </a>
-                </li>
-                <li>
-                  {/* The home page through the coming-soon gate, like the sidebar's and the top line's links: api/admin/preview
-                      gives this admin the preview cookie, then opens "/" (a plain <a>: it is an API route, not a page). */}
-                  <a className={ui.row} href="/api/admin/preview" target="_blank" rel="noopener">
-                    <AdminIcon name="up" />
-                    <span className={ui.rowLabel}>
-                      {t.links.site} <span aria-hidden="true">↗</span>
-                      <span className={ui.sr}> ({adminEt.shell.newWindow})</span>
-                    </span>
-                  </a>
-                </li>
-              </ul>
-            </section>
-          </div>
         </div>
       </div>
-    </Shell>
+    </div>
   );
 }

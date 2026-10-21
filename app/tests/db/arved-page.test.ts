@@ -12,17 +12,13 @@ import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtur
 
 // Maria's invoice screens rendered from a real (PGlite) database to HTML (invoices Task 5, spec §5): the „Arved“ page (the list newest first,
 // 50 a page, by month and state, „Arveta maksed“ on top with the invoice each row will pay, the month's CSV link), the registration drawer's
-// „Arved“ block (the invoices and the amounts „Koosta arve“ offers), and the link from Maksed. The shell, the drawer's dialog and the server
+// „Arved“ block (the invoices and the amounts „Koosta arve“ offers), and the link from Maksed. The drawer's dialog and the server
 // actions are stand-ins (they need a browser or a request); everything else is the real page.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
 vi.mock("@/components/admin/data", () => ({ getAdminCounts: async () => ({}) }));
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
-});
 vi.mock("@/components/admin/Drawer", async () => {
   const { createElement } = await import("react");
   return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useUnsavedInDrawer: () => {} };
@@ -84,9 +80,8 @@ describe("the „Arved“ page", () => {
     await cancelInvoice(db, kati.invoice.id, OCTOBER);
   });
 
-  test("every invoice, newest first, with its buyer, its course and a link to its registration; the shell marks Maksed (it is not in the menu); a way back to Maksed", async () => {
+  test("every invoice, newest first, with its buyer, its course and a link to its registration; a way back to Maksed", async () => {
     const html = await render(InvoicesPage);
-    expect(html).toContain('data-shell-active="payments"');
     expect(numbers(html)).toEqual(["MSL2026-003", "MSL2026-002", "MSL2026-001"]);
     expect(html).toContain("<h1");
     expect(html).toContain(">Arved</h1>");

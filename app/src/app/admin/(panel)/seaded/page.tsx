@@ -4,7 +4,6 @@ import { ContractTexts } from "@/components/admin/ContractTexts";
 import { InvoiceSettings } from "@/components/admin/InvoiceSettings";
 import { adminTitle } from "@/components/admin/sections";
 import { SettingsEditor } from "@/components/admin/SettingsEditor";
-import { Shell } from "@/components/admin/Shell";
 import { getDb } from "@/db/client";
 import { readSetting } from "@/db/queries/public";
 import { PREPAYMENT_KEY } from "@/domain/account-cards";
@@ -29,7 +28,7 @@ export const metadata: Metadata = { title: adminTitle(adminEt.nav.settings) };
  * form („E-koolituse leping (tingimused)“).
  */
 export default async function SettingsEditPage() {
-  const email = await requireAdmin();
+  await requireAdmin();
   const db = getDb();
   // the card shows the number the next issue will really get (in January, until the year's first issue, the stored one is still last year's)
   const now = new Date();
@@ -47,7 +46,7 @@ export default async function SettingsEditPage() {
     .map((a) => a.trim())
     .filter(Boolean);
   return (
-    <Shell email={email} active="settings">
+    <>
       <SettingsEditor initial={initial} admins={admins} />
       <CertificateSettings
         initial={{
@@ -62,6 +61,6 @@ export default async function SettingsEditPage() {
       />
       <InvoiceSettings initial={invoice} bank={{ receiver: bank.receiver, iban: bank.iban, bank: bank.bank }} />
       <ContractTexts initial={contract} />
-    </Shell>
+    </>
   );
 }

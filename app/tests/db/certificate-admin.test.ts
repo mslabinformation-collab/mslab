@@ -9,18 +9,14 @@ import { makeTestDb } from "./helpers";
 // Maria's side of an issued certificate (phase 3d, spec §6, §9; Review Focus 5), rendered from a real (PGlite) database to HTML: the
 // Õpilased drawer's line (before she confirms; its number and day, the name printed, Maria's download and "Paranda nimi"; a re-issue's day;
 // an access an admin ended keeps the line and the download, marked, without "Paranda nimi"), the register /admin/tunnistused (newest first,
-// 50 a page, the name to her drawer, each with its download, a re-issue and a revoked access marked) and Hindamine's way to it. The shell and
-// the server actions are stand-ins (they need a browser or a request). The certificates are written straight to the database (their issue is
+// 50 a page, the name to her drawer, each with its download, a re-issue and a revoked access marked) and Hindamine's way to it. The
+// server actions are stand-ins (they need a browser or a request). The certificates are written straight to the database (their issue is
 // Task 3's: tests/db/certificates.test.ts).
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test", adminName: () => "Maria" }));
 vi.mock("@/components/admin/data", () => ({ getAdminCounts: async () => ({}) }));
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
-});
 vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn() }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn(), reissueCertificateAction: vi.fn() }));
@@ -140,7 +136,6 @@ test("the register: number, name (to her drawer), course and issue day, newest f
   const second = await certificate(eve, 2, "Eve Tamm", { reissuedAt: at(9) });
   await db.update(courseAccess).set({ revokedAt: NOW }).where(eq(courseAccess.id, eve.access.id));
   const html = await register();
-  expect(html).toContain('data-shell-active="assessment"');
   expect(html).toContain("data-certificate-register");
   expect(rowIds(html)).toEqual([second.id, first.id]);
   expect(html).toContain("Tunnistusi: 2");

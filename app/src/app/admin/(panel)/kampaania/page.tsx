@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { CampaignEditor } from "@/components/admin/CampaignEditor";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import { getDb } from "@/db/client";
 import { adminEt } from "@/i18n/dict/admin";
 import { loadCampaign } from "@/server/admin-site";
@@ -13,12 +12,8 @@ export const metadata: Metadata = { title: adminTitle(adminEt.nav.campaign) };
 
 /** Hüpikaken: what the home page shows (Kampaania, Uudiskiri or Väljas) and both popups' editors with their live previews (Task 13B, M2–M5; phase 2c). */
 export default async function CampaignEditPage() {
-  const email = await requireAdmin();
+  await requireAdmin();
   const db = getDb();
   const [initial, links] = await Promise.all([loadCampaign(db), linkSuggestions(db)]);
-  return (
-    <Shell email={email} active="campaign">
-      <CampaignEditor initial={initial} links={links} />
-    </Shell>
-  );
+  return <CampaignEditor initial={initial} links={links} />;
 }

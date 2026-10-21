@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/site/Logo";
 import { lockPageScroll } from "@/lib/modal";
 import { AdminIcon, type AdminIconName } from "./AdminIcon";
-import type { Section } from "./sections";
+import { activeSection, type Section } from "./sections";
 import styles from "./Sidebar.module.css";
 
 export type NavItem = { key: Section; href: string; icon: AdminIconName; label: string; badge?: { n: number; label: string } };
@@ -24,7 +25,7 @@ export type SidebarTexts = {
 /** Below this width the sidebar is a top bar with a menu button (the drawer); B turned it into a scrolling strip. */
 const WIDE = "(min-width: 641px)";
 
-function NavContent({ items, active, t }: { items: NavItem[]; active: Section; t: SidebarTexts }) {
+function NavContent({ items, active, t }: { items: NavItem[]; active: Section | null; t: SidebarTexts }) {
   return (
     <nav aria-label={t.nav} className={styles.navWrap}>
       <ul className={styles.nav}>
@@ -74,12 +75,15 @@ function NavContent({ items, active, t }: { items: NavItem[]; active: Section; t
   );
 }
 
+type SidebarProps = { items: NavItem[]; t: SidebarTexts; total: number };
+
 /**
  * Prototype B's dark admin sidebar (logo, "Koolituskeskuse haldus", the menu with count badges, then "Vaata lehte ↗"
  * and "Logi välja"). Up to 640px wide it becomes a top bar with the logo and a menu button that opens the same menu
- * as a drawer (modal dialog: Esc, the close button, the backdrop or a link closes it).
+ * as a drawer (modal dialog: Esc, the close button, the backdrop or a link closes it). `active` is the entry to mark, or
+ * null for none.
  */
-export function Sidebar({ items, active, t, total }: { items: NavItem[]; active: Section; t: SidebarTexts; total: number }) {
+function SidebarFrame({ items, active, t, total }: SidebarProps & { active: Section | null }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
 
@@ -154,4 +158,21 @@ export function Sidebar({ items, active, t, total }: { items: NavItem[]; active:
       </dialog>
     </>
   );
+}
+
+/**
+ * The sidebar of the (panel) layout. Shell lives in that layout, which does not render again when the visitor moves between pages,
+ * so the active entry is read from the address here, in the browser (admin UX pass, README §1.1; activeSection).
+ */
+export function Sidebar(props: SidebarProps) {
+  const active = activeSection(usePathname(), useSearchParams());
+  return <SidebarFrame {...props} active={active} />;
+}
+
+/**
+ * The same sidebar with no entry marked: Shell's <Suspense> fallback. useSearchParams needs a boundary above it (Next.js), and the menu
+ * must not flash empty while the address is read.
+ */
+export function SidebarWithoutActive(props: SidebarProps) {
+  return <SidebarFrame {...props} active={null} />;
 }

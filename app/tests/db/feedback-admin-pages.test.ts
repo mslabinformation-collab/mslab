@@ -8,16 +8,12 @@ import { protocolCourse, student } from "./protocols-fixtures";
 
 // Maria's Tagasiside page and the answers in the registration's and the student's drawers, rendered from a real (PGlite) database to HTML:
 // the questions and options in her own wording whatever language the student answered in, the average with a decimal comma, the counts per
-// option. The shell, the drawer's dialog and the server actions are stand-ins (they need a browser or a request), as on Maksed's test.
+// option. The drawer's dialog and the server actions are stand-ins (they need a browser or a request), as on Maksed's test.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
 vi.mock("@/components/admin/data", () => ({ getAdminCounts: async () => ({}) }));
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
-});
 vi.mock("@/components/admin/Drawer", async () => {
   const { createElement } = await import("react");
   return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useUnsavedInDrawer: () => {} };
@@ -75,7 +71,6 @@ beforeAll(async () => {
 
 test("the list: newest first with each score; every course with its answers and average (a decimal comma); a name opens the answers", async () => {
   const html = await render(FeedbackPage);
-  expect(html).toContain('data-shell-active="feedback"');
   expect(rowIds(html)).toEqual([c.id, b.id, a.id]);
   expect(html).toContain("Vastuseid: 3");
   expect(part(html, "data-feedback-row", a.id)).toContain(`href="/admin/tagasiside?id=${a.id}"`);

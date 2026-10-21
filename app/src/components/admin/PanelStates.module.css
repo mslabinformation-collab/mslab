@@ -1,0 +1,74 @@
+/* The two states every panel page shares (README §1.10): app/admin/(panel)/loading.tsx and error.tsx. Both sit inside the layout's
+   Shell, so the menu and the top line stay on screen; each is one white card in the page column. Tokens only (prototype B greys). */
+
+.loading,
+.error {
+  display: flex;
+  flex-direction: column;
+  padding: 22px;
+  border-radius: 16px;
+  background: var(--paper);
+}
+
+/* Loading: static grey rows, no shimmer, no pulse. Hidden for 300 ms so a fast page never flashes, then there at once (an opacity step, no
+   fade). With reduced motion it is shown at once, as there is nothing to wait for. */
+.loading {
+  gap: 14px;
+  opacity: 0;
+  animation: appear 1ms linear 300ms both;
+}
+
+@keyframes appear {
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading {
+    opacity: 1;
+    animation: none;
+  }
+}
+
+.row {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--first);
+}
+
+.row:nth-child(1) {
+  width: 40%;
+}
+
+.row:nth-child(2) {
+  width: 90%;
+}
+
+.row:nth-child(3) {
+  width: 75%;
+}
+
+.row:nth-child(4) {
+  width: 85%;
+}
+
+/* Error: the card has a 2 px left edge in the error colour; the retry button is ui.btn. */
+.error {
+  align-items: flex-start;
+  gap: 10px;
+  border-left: 2px solid var(--bad);
+  font: 400 13px/1.6 var(--font-body);
+  color: var(--ink-soft);
+}
+
+.errorTitle {
+  margin: 0;
+  font: 600 14px/1.4 var(--font-body);
+  color: var(--ink);
+}
+
+.errorBody {
+  margin: 0;
+}

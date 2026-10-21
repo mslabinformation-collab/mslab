@@ -5,7 +5,6 @@ import { AccountShell } from "@/components/account/AccountShell";
 import { EcourseView } from "@/components/account/EcourseView";
 import { ecourseTexts, shellTexts } from "@/components/account/texts";
 import { adminTitle } from "@/components/admin/sections";
-import { Shell } from "@/components/admin/Shell";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { adminEt } from "@/i18n/dict/admin";
@@ -32,7 +31,7 @@ type Props = { params: Promise<{ id: string; slug: string }> };
  * A student who does not exist, a course she has no active access to (none, ended, ran out), or a bad address: 404, as for her.
  */
 export default async function ViewCoursePage({ params }: Props) {
-  const email = await requireAdmin();
+  await requireAdmin();
   const { id: rawId, slug } = await params;
   const id = parseRowId(rawId);
   if (id === null || !isSlug(slug)) notFound();
@@ -43,23 +42,21 @@ export default async function ViewCoursePage({ params }: Props) {
   const t = adminEt.viewAs;
 
   return (
-    <Shell email={email} active="clients">
-      <div className={ui.page}>
-        <Link className={ui.link} href={`/admin/opilased?id=${id}`} aria-label={t.backLabel} data-view-as-back="">
-          <span aria-hidden="true">←</span> {t.back}
-        </Link>
-        <div className={view.preview} lang={info.locale} data-view-as={id}>
-          <AccountShell
-            tab="courses"
-            locale={info.locale}
-            t={shellTexts(d)}
-            readOnly
-            banner={<span lang="et">{fill(t.banner, { nimi: info.label })}</span>}
-          >
-            <EcourseView data={data} locale={info.locale} t={ecourseTexts(d)} readOnly />
-          </AccountShell>
-        </div>
+    <div className={ui.page}>
+      <Link className={ui.link} href={`/admin/opilased?id=${id}`} aria-label={t.backLabel} data-view-as-back="">
+        <span aria-hidden="true">←</span> {t.back}
+      </Link>
+      <div className={view.preview} lang={info.locale} data-view-as={id}>
+        <AccountShell
+          tab="courses"
+          locale={info.locale}
+          t={shellTexts(d)}
+          readOnly
+          banner={<span lang="et">{fill(t.banner, { nimi: info.label })}</span>}
+        >
+          <EcourseView data={data} locale={info.locale} t={ecourseTexts(d)} readOnly />
+        </AccountShell>
       </div>
-    </Shell>
+    </div>
   );
 }

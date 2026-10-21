@@ -8,16 +8,12 @@ import { makeTestDb } from "./helpers";
 // Seaded with its „Lepingud“ card (contracts Task 5, spec D2, §4), rendered from a real (PGlite) database to HTML: the card is the last, a form of its own
 // (and the sample's second form) after the settings', the certificate's and the invoice's; it shows Maria's own contact text as stored (empty before her first
 // save, never the public „Õppetingimused“ text that stands in for it); the e-course's contract keeps its card in the settings' form, retitled
-// „E-koolituse leping (tingimused)“, with the stored page title in its own field; the anchor „#lepingud“ is on the page. The shell and the server actions are
+// „E-koolituse leping (tingimused)“, with the stored page title in its own field; the anchor „#lepingud“ is on the page. The server actions are
 // stand-ins.
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/db/client", () => ({ getDb: () => state.db }));
 vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test" }));
-vi.mock("@/components/admin/Shell", async () => {
-  const { createElement } = await import("react");
-  return { Shell: ({ active, children }: { active: string; children: React.ReactNode }) => createElement("div", { "data-shell-active": active }, children) };
-});
 vi.mock("@/server/actions/admin-site", () => ({ saveSettings: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({ saveInvoiceSettingsAction: vi.fn() }));
@@ -49,7 +45,6 @@ const fieldValue = (html: string, name: string): string | null => {
 
 test("before Maria writes anything: the card is the last on the page, a form of its own after the invoice's, its fields empty; the anchor and the sample are there", async () => {
   const html = await page();
-  expect(html).toContain('data-shell-active="settings"');
   const invoice = html.indexOf("data-invoice-settings");
   const card = html.indexOf("data-contract-texts");
   expect(invoice).toBeGreaterThan(-1);
