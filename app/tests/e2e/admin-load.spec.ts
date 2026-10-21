@@ -245,3 +245,15 @@ test("1440 px wide: the sidebar with its groups; the folding group opens on a ta
   expect(await aside.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
   expect(await noSideScroll(page)).toBe(true);
 });
+
+// Admin UX pass: the scroll-lock layout shift is fixed with `scrollbar-gutter: stable` for the admin only (<html data-admin>, set by the admin's
+// root layout). The public site keeps its layout: a gutter there would take the width of a classic scrollbar off every full-width band.
+test("the scrollbar gutter is stable on the admin's pages (menu and drawer scroll lock) and left alone on the public site", async ({ page }) => {
+  const gutter = () => page.evaluate(() => getComputedStyle(document.documentElement).scrollbarGutter);
+  await page.goto("/admin/login");
+  await expect(page.locator("html[data-admin]")).toBeAttached();
+  expect(await gutter()).toBe("stable");
+  await page.goto("/");
+  await expect(page.locator("html[data-admin]")).toHaveCount(0);
+  expect(await gutter()).toBe("auto");
+});

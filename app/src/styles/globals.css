@@ -4,8 +4,10 @@
   box-sizing: border-box;
 }
 
-/* A page that locks its scroll (the admin menu, a drawer: overflow hidden on the root) keeps the scrollbar's room, so nothing shifts. */
-html {
+/* The admin only (the root layout of the admin area sets data-admin on <html>): a page that locks its scroll (the menu, a drawer:
+   overflow hidden on the root) keeps the scrollbar's room, so nothing shifts. The public site keeps its layout: the selector matches none of its
+   pages (tests/unit/admin-scrollbar-gutter.test.ts). */
+html[data-admin] {
   scrollbar-gutter: stable;
 }
 

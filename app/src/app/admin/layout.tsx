@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default function AdminRootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="et" className={fontVariables}>
+    <html lang="et" className={fontVariables} data-admin="">
       <body>{children}</body>
     </html>
   );
