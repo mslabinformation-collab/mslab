@@ -1,0 +1,54 @@
+/* ConfirmPanel (admin UX pass, README §1.6). The panel is ui.notice: bg #f0ebed, a 2px left border #9e8993 (var(--rose)) and the radius 0 14 14 0 below.
+   It stands where its trigger button stood. `div.panel` (and `.actions …`) outrank ui.notice and ui.btn whichever stylesheet loads last. */
+
+div.panel {
+  margin: 0 0 16px;
+  padding: 16px 20px;
+  border-radius: 0 14px 14px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* the focus is put here when the panel opens; the ring is for the keyboard, not the mouse */
+div.panel:focus {
+  outline: none;
+}
+
+div.panel:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.question {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* the consequences, one plain line each */
+.lines {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0 0 0 18px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* the danger "yes": outline #c9a3a3 on #f5ebeb, text #8a3b3b (the send "yes" is the plain ink pill, ui.btn) */
+.actions .dangerYes {
+  border-color: #c9a3a3;
+  background: #f5ebeb;
+  color: var(--bad);
+}
+
+.actions .dangerYes:hover {
+  border-color: var(--bad);
+  background: #f5ebeb;
+}

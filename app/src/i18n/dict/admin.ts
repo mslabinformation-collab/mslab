@@ -160,6 +160,11 @@ export const adminEt = {
     saving: "Salvestan…",
     saveError: "Salvestamine ei õnnestunud. Proovi uuesti.",
     locale: { et: "ET", ru: "RU" },
+    // the glossary's words (admin UX pass, README §1.11): „Katkesta“ steps back out of a form or a question („Tühista“ cancels a business record
+    // and never means "never mind"), „Sulge“ closes a drawer, „Võta tagasi“ undoes the last action
+    cancel: "Katkesta",
+    close: "Sulge",
+    undo: "Võta tagasi",
   },
 
   overview: {
