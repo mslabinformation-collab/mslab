@@ -10,7 +10,7 @@ export const maxDuration = 30;
 const json = (body: unknown, status: number) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
 /** The card's fields the sample reads (server/invoice-sample.ts SampleValues), by their query names. */
-const FIELDS = ["company", "registryCode", "address", "vatNumber", "vatOn", "vatRate", "prefix", "nextYear", "nextSeq", "termDays", "footer"] as const;
+const FIELDS = ["company", "registryCode", "address", "vatNumber", "vatOn", "vatRate", "prefix", "nextSeq", "termDays", "footer"] as const;
 /** No field is longer than this (the card's longest takes 300): a longer value is cut, so the address stays small whatever is sent. */
 const MAX = 400;
 

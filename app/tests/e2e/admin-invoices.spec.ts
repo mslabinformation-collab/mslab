@@ -272,6 +272,7 @@ test("„Arve andmed“ in Seaded: refused without a KMKR number, saved, a new p
   const cardBox = page.locator("[data-invoice-settings]");
   await expect(cardBox.getByRole("heading", { level: 2 })).toHaveText("Arve andmed");
   await expect(cardBox.locator('[data-invoice-field="prefix"]')).toHaveValue("MSL");
+  await expect(cardBox.locator('[data-invoice-field="nextYear"]')).toHaveCount(0); // (B21: the year is never typed)
   await expect(cardBox).toContainText("Uus eesliide alustab oma numbrit 001-st.");
   // the bank details of Ettemaksu juhised, read-only
   await expect(cardBox.locator("[data-invoice-bank]")).toContainText("EE38 2200 2210 2014 5685");

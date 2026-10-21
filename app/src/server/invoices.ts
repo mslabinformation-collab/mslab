@@ -748,13 +748,12 @@ async function lastIssued(db: Db, prefix: string, year: number): Promise<string 
 
 /**
  * Seaded's „Arve andmed" card: the stored setting with „Järgmine number" as the next issue will take it (invoiceSeq for this Tallinn year
- * and the prefix's highest: never at or below it), and the last number issued in the prefix-year the card shows. A setting for a LATER year
- * (Maria's preset in December) is shown as she saved it (as certificates.ts certificateCard).
+ * and the prefix's highest: never at or below it), and the last number issued in the prefix-year the card shows. The year is never typed
+ * (admin UX pass B21): it is always this Tallinn year, so a next-year preset stored before B21 is ignored (the next save overwrites it).
  */
 export async function invoiceCard(db: Db, now: Date): Promise<InvoiceSettings & { last: string | null }> {
   const stored = await getInvoiceSettings(db, now);
   const year = tallinnYear(now);
-  if (stored.nextYear > year) return { ...stored, last: await lastIssued(db, stored.prefix, stored.nextYear) };
   const { seq } = invoiceSeq(stored, year, await highestSeq(db, stored.prefix, year));
   return { ...stored, nextYear: year, nextSeq: seq, last: await lastIssued(db, stored.prefix, year) };
 }
@@ -772,8 +771,9 @@ function wholeNumber(value: unknown): number | null {
  *   the VAT number and the footer are optional, but VAT on requires the VAT number ("required" on `vatNumber`).
  * - The prefix is letters A–Z a–z and digits, 1–10 ("required", "tooLong", "invalid"), stored in capitals: „msl" is MSL's series, so no
  *   number reads twice as MSL2026-001 and msl2026-001.
- * - The VAT rate a whole 1–50 and the term a whole 0–90 days ("invalid"); "Järgmine number" a year that is this Tallinn year or the next
- *   and a number 1–2 147 483 647 (the seq column's largest) ("invalid").
+ * - The VAT rate a whole 1–50 and the term a whole 0–90 days ("invalid"); "Järgmine number" a number 1–2 147 483 647 (the seq column's
+ *   largest) ("invalid") of THIS Tallinn year: the year is not typed (admin UX pass B21, spec D7), so a `nextYear` sent is ignored and
+ *   `tallinnYear(now)` is stored (no next-year preset for a December invoice to erase; the new year starts at 1 by itself, invoiceSeq).
  * Then under the number series' lock (the setting read under it):
  * - Ruling R3: a prefix different from the stored one resets the next number to 1 (the setting holds one counter; the max rule of every
  *   issue then continues each prefix's own series: a new prefix from 001, an old one from its highest + 1). The very first save has no stored
@@ -808,13 +808,11 @@ export async function saveInvoiceSettings(db: Db, raw: unknown, now: Date): Prom
   if (vatRate === null || vatRate < 1 || vatRate > INVOICE_LIMITS.vatRate) fields.vatRate = "invalid";
   const termDays = wholeNumber(input.termDays);
   if (termDays === null || termDays < 0 || termDays > INVOICE_LIMITS.termDays) fields.termDays = "invalid";
-  const year = tallinnYear(now);
-  const nextYear = wholeNumber(input.nextYear);
-  if (nextYear !== year && nextYear !== year + 1) fields.nextYear = "invalid";
+  const nextYear = tallinnYear(now);
   const nextSeq = wholeNumber(input.nextSeq);
   if (nextSeq === null || nextSeq < 1 || nextSeq > INT4_MAX) fields.nextSeq = "invalid";
   // the null checks again, written out: the transaction's closure below sees the numbers as numbers
-  if (vatRate === null || termDays === null || nextYear === null || nextSeq === null || Object.keys(fields).length > 0) return { ok: false, fields };
+  if (vatRate === null || termDays === null || nextSeq === null || Object.keys(fields).length > 0) return { ok: false, fields };
   return db.transaction(async (tx): Promise<SaveInvoiceSettingsResult> => {
     await lockNumbers(tx);
     const storedValue = await readSetting(tx, INVOICE_KEY);

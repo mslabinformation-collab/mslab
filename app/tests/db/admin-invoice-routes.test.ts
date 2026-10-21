@@ -217,7 +217,7 @@ describe("GET /api/admin/naidisarve: the sample from the card's values", () => {
   test("an inline PDF, private, never kept, nosniff, that reads the card's values from the query — saved or not", async () => {
     await signIn();
     const query = new URLSearchParams({
-      company: "Uus Ettevõte OÜ", registryCode: "99887766", address: "Tartu mnt 5, Tartu", vatNumber: "EE100200300", vatOn: "1", vatRate: "22", prefix: "abc", nextYear: String(YEAR), nextSeq: "7", termDays: "14", footer: "Aitäh, et valisid meid!",
+      company: "Uus Ettevõte OÜ", registryCode: "99887766", address: "Tartu mnt 5, Tartu", vatNumber: "EE100200300", vatOn: "1", vatRate: "22", prefix: "abc", nextSeq: "7", termDays: "14", footer: "Aitäh, et valisid meid!",
     });
     const res = await sample(`?${query}`);
     expect(res.status).toBe(200);
@@ -234,6 +234,13 @@ describe("GET /api/admin/naidisarve: the sample from the card's values", () => {
     expect(text).not.toContain("MS LAB OÜ");
     // the bank details are the ones Ettemaksu juhised holds
     for (const part of ["MS LAB Koolituskeskus OÜ", "EE382200221020145685", "Swedbank"]) expect(text, part).toContain(part);
+  });
+
+  test("B21: the card has no year; a nextYear in the query is ignored, the number is this Tallinn year's with the card's next number", async () => {
+    await signIn();
+    const text = await textOf(await bytesOf(await sample("?company=A&registryCode=1&address=B&prefix=abc&nextYear=2031&nextSeq=7")));
+    expect(text).toContain(`ABC${YEAR}-007`);
+    expect(text).not.toContain("ABC2031");
   });
 
   test("VAT off on the card: the VAT-off sentence and no VAT lines", async () => {

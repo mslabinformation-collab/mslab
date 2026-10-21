@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { groupIban } from "@/domain/account-cards";
-import { INVOICE_LIMITS } from "@/domain/invoice";
+import { tallinnDateText } from "@/domain/certificate";
+import { formatInvoiceNumber, INVOICE_LIMITS } from "@/domain/invoice";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { saveInvoiceSettingsAction } from "@/server/actions/admin-invoices";
@@ -32,7 +33,7 @@ export type InvoiceSettingsInitial = {
 /** The bank details of Ettemaksu juhised, shown read-only (D2: the account lives in one place). */
 export type InvoiceBank = { receiver: string; iban: string; bank: string };
 
-/** The fields as typed: the numbers too (the server parses them). */
+/** The fields as typed: the numbers too (the server parses them). The year is not among them (B21: it is this Tallinn year). */
 type Draft = {
   company: string;
   registryCode: string;
@@ -41,7 +42,6 @@ type Draft = {
   vatOn: boolean;
   vatRate: string;
   prefix: string;
-  nextYear: string;
   nextSeq: string;
   termDays: string;
   footer: string;
@@ -57,7 +57,6 @@ const draftOf = (s: Stored): Draft => ({
   vatOn: s.vatOn,
   vatRate: String(s.vatRate),
   prefix: s.prefix,
-  nextYear: String(s.nextYear),
   nextSeq: String(s.nextSeq),
   termDays: String(s.termDays),
   footer: s.footer,
@@ -80,19 +79,20 @@ function sampleHref(d: Draft): string {
 
 /**
  * Seaded → „Arve andmed“ (invoices Task 5, spec D2, D7, D8): the seller every new invoice copies — the company, its registry code and address,
- * the VAT number and whether VAT is on (with its rate), the number's prefix and „Järgmine number“ (year and number, with the number last issued
- * beside it), the payment term in days and an optional footer line — and, read-only, the bank details of „Ettemaksu juhised“ with a link to
- * that card. „Näidisarve (PDF)“ opens a sample drawn from the values on the screen without saving anything. A form of its own after the
- * settings' form (a form cannot sit inside another), with its own „Salvesta arve andmed“; a refused field is marked in words and the first
- * one takes the focus. The card keeps its own state; the page is not reloaded. This file runs on old iPads: no regular expression with a
- * lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
+ * the VAT number and whether VAT is on (with its rate), the number's prefix and „Järgmine number“ (this year's counter, with the number last
+ * issued beside it; the year is never typed, admin UX pass B21, and from 1 December a line says what the new year's first number will be), the
+ * payment term in days and an optional footer line — and, read-only, the bank details of „Ettemaksu juhised“ with a link to that card.
+ * „Näidisarve (PDF)“ opens a sample drawn from the values on the screen without saving anything. A form of its own after the settings' form
+ * (a form cannot sit inside another), with its own „Salvesta arve andmed“; a refused field is marked in words and the first one takes the
+ * focus. The card keeps its own state; the page is not reloaded. `now` is the clock of the December line (a test sets it). This file runs on
+ * old iPads: no regular expression with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
  */
-export function InvoiceSettings({ initial, bank }: { initial: InvoiceSettingsInitial; bank: InvoiceBank }) {
+export function InvoiceSettings({ initial, bank, now = new Date() }: { initial: InvoiceSettingsInitial; bank: InvoiceBank; now?: Date }) {
   const t = adminEt.invoices.settings;
   const uid = useId();
   const form = useRef<HTMLFormElement>(null);
   const [draft, setDraft] = useState<Draft>(() => draftOf(initial));
-  // the last issued number belongs to the year it was read for (the loaded one, then the saved one), not to what is typed in the year field
+  // the last issued number belongs to the year it was read for (the loaded one, then the saved one)
   const [last, setLast] = useState({ number: initial.last, year: initial.nextYear });
   const [fields, setFields] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Line>(IDLE);
@@ -113,7 +113,7 @@ export function InvoiceSettings({ initial, bank }: { initial: InvoiceSettingsIni
     if (code === "tooLong") return e.tooLong;
     if (code === "taken") return e.taken;
     if (code === "invalid") {
-      const own: Partial<Record<Field, string>> = { prefix: e.prefix, vatRate: e.vatRate, termDays: e.termDays, nextSeq: e.nextSeq, nextYear: e.year };
+      const own: Partial<Record<Field, string>> = { prefix: e.prefix, vatRate: e.vatRate, termDays: e.termDays, nextSeq: e.nextSeq };
       return own[name] ?? e.other;
     }
     return e.other;
@@ -167,6 +167,10 @@ export function InvoiceSettings({ initial, bank }: { initial: InvoiceSettingsIni
     });
   };
 
+  // B21: in December (the Tallinn date, not UTC) the next year's first number, as the prefix will be stored (in capitals)
+  const [, month, thisYear] = tallinnDateText(now).split(".");
+  const january = month === "12" ? formatInvoiceNumber((draft.prefix.trim() || initial.prefix).toUpperCase(), Number(thisYear) + 1, 1) : null;
+
   const bankReady = bank.receiver.trim() !== "" && bank.iban.trim() !== "";
   const rows: [string, string][] = [
     [adminEt.settings.receiver, bank.receiver],
@@ -216,14 +220,9 @@ export function InvoiceSettings({ initial, bank }: { initial: InvoiceSettingsIni
             <input id={id("termDays")} className={ui.input} type="text" inputMode="numeric" autoComplete="off" maxLength={2} value={draft.termDays} onChange={change("termDays")} {...aria("termDays", t.termDaysHint)} data-invoice-field="termDays" />,
             t.termDaysHint,
           )}
-          <fieldset className={ed.fieldset} aria-describedby={`${uid}-next-hint ${uid}-last`}>
+          <fieldset className={ed.fieldset} aria-describedby={`${uid}-next-hint ${uid}-last${january ? ` ${uid}-january` : ""}`}>
             <legend className={ui.legend}>{t.nextNumber}</legend>
             <div className={styles.number}>
-              {box(
-                "nextYear",
-                t.nextYear,
-                <input id={id("nextYear")} className={ui.input} type="text" inputMode="numeric" autoComplete="off" maxLength={4} value={draft.nextYear} onChange={change("nextYear")} {...aria("nextYear")} data-invoice-field="nextYear" />,
-              )}
               {box(
                 "nextSeq",
                 t.nextSeq,
@@ -236,6 +235,11 @@ export function InvoiceSettings({ initial, bank }: { initial: InvoiceSettingsIni
             <p id={`${uid}-last`} className={ui.hint} data-invoice-last="">
               {last.number ? fill(t.last, { number: last.number }) : fill(t.lastNone, { year: last.year })}
             </p>
+            {january && (
+              <p id={`${uid}-january`} className={ui.hint} data-invoice-january="">
+                {fill(t.fromJanuary, { number: january })}
+              </p>
+            )}
           </fieldset>
           {text("footer", t.footer, INVOICE_LIMITS.footer, t.footerHint, ed.wide)}
         </div>

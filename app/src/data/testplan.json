@@ -1422,6 +1422,7 @@
       "steps": [
         "Ava „Seaded“ ja keri kaardini „Arve andmed“.",
         "Kirjuta selle kontrolli märkusesse praegune „Arve numbri eesliide“ ja „Järgmine number“.",
+        "Vaata, et „Järgmine number“ all on ainult number ja välja „Aasta“ pole.",
         "Täida „Ettevõtte nimi“, „Registrikood“ ja „Aadress“.",
         "Märgi „Arvel on käibemaks“, jäta „KMKR number“ tühjaks ja vajuta „Salvesta arve andmed“.",
         "Võta märge ära ja vajuta „Salvesta arve andmed“ uuesti."
@@ -1431,13 +1432,14 @@
         "Teisel salvestamisel näed „Arve andmed on salvestatud.“.",
         "„Arve numbri eesliide“ all on vihje „Uus eesliide alustab oma numbrit 001-st.“.",
         "„Pangaandmed“ näitab saajat, IBANi ja panka, nagu „Ettemaksu juhised“.",
-        "Kaardil on rida „Viimati väljastatud: …“ või teade, et tänavu pole arveid väljastatud."
+        "Kaardil on rida „Viimati väljastatud: …“ või teade, et tänavu pole arveid väljastatud.",
+        "Alates 1. detsembrist on „Järgmine number“ all rida „1. jaanuarist: …“ uue aasta esimese numbriga, näiteks MSL2027-001."
       ],
       "why": "Ilma nende andmeteta ei koosta sait ühtegi arvet.",
       "risk": "high",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-seaded-naidisarve",

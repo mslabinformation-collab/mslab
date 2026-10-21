@@ -1,5 +1,5 @@
-/* Seaded → „Arve andmed“ (invoices Task 5, spec D2): a card of its own after the settings' form and the certificate's card; the next number's two
-   short fields side by side, the bank details read-only. Every control is the admin's 44 px one; colours from tokens.css only. */
+/* Seaded → „Arve andmed“ (invoices Task 5, spec D2): a card of its own after the settings' form and the certificate's card; the next number's short
+   field (the year is not typed, B21), the bank details read-only. Every control is the admin's 44 px one; colours from tokens.css only. */
 
 .card {
   margin-top: 25px;
@@ -8,7 +8,7 @@
 
 .number {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 140px));
+  grid-template-columns: minmax(0, 140px);
   gap: 12px;
 }
 

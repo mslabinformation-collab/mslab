@@ -123,9 +123,9 @@ describe("Seaded → Arve andmed: getInvoiceSettings, saveInvoiceSettings, invoi
   });
 
   test("the round trip: texts on one line and trimmed, numbers from the form's text, VAT on with its number; what the save stores the read keeps", async () => {
-    const raw = { company: "  MS LAB   OÜ ", registryCode: " 16346048", address: "Rüütli 1,\n80010 Pärnu", vatNumber: "EE102345678", vatOn: true, vatRate: "22", prefix: " ABC1 ", nextYear: "2027", nextSeq: "5", termDays: "0", footer: " Täname! " };
+    const raw = { company: "  MS LAB   OÜ ", registryCode: " 16346048", address: "Rüütli 1,\n80010 Pärnu", vatNumber: "EE102345678", vatOn: true, vatRate: "22", prefix: " ABC1 ", nextSeq: "5", termDays: "0", footer: " Täname! " };
     const result = await saveInvoiceSettings(db, raw, NOW);
-    const settings = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "EE102345678", vatOn: true, vatRate: 22, prefix: "ABC1", nextYear: 2027, nextSeq: 5, termDays: 0, footer: "Täname!" };
+    const settings = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "EE102345678", vatOn: true, vatRate: 22, prefix: "ABC1", nextYear: 2026, nextSeq: 5, termDays: 0, footer: "Täname!" };
     expect(result).toEqual({ ok: true, settings });
     expect(await stored()).toEqual(settings);
     expect(await getInvoiceSettings(db, NOW)).toEqual(settings);
@@ -160,13 +160,12 @@ describe("Seaded → Arve andmed: getInvoiceSettings, saveInvoiceSettings, invoi
     });
     for (const vatRate of [0, 51, 24.5, "abc", "", null]) expect(await refused({ vatRate }), String(vatRate)).toEqual({ vatRate: "invalid" });
     for (const termDays of [-1, 91, 1.5, "x"]) expect(await refused({ termDays }), String(termDays)).toEqual({ termDays: "invalid" });
-    for (const nextYear of [2025, 2028, "x", null]) expect(await refused({ nextYear }), String(nextYear)).toEqual({ nextYear: "invalid" });
     for (const nextSeq of [0, -1, 2_147_483_648, "12345678901", 1.5, null]) expect(await refused({ nextSeq }), String(nextSeq)).toEqual({ nextSeq: "invalid" });
     expect(await saveInvoiceSettings(db, "nonsense", NOW)).toMatchObject({ ok: false });
     expect(await stored()).toBeNull();
   });
 
-  test("'taken': a next number at or below one already issued in that prefix and year is refused under the lock; above it, or another year, passes", async () => {
+  test("'taken': a next number at or below one already issued in that prefix and year is refused under the lock; above it passes", async () => {
     const c = await contactCourse(db);
     await ready();
     await request(await registrationOn(db, c, { email: "a@example.com" }));
@@ -174,10 +173,9 @@ describe("Seaded → Arve andmed: getInvoiceSettings, saveInvoiceSettings, invoi
     expect(await saveInvoiceSettings(db, { ...VALID, nextSeq: 2 }, NOW)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
     expect(await stored()).toMatchObject({ nextSeq: 3 });
     expect(await saveInvoiceSettings(db, { ...VALID, nextSeq: 10 }, NOW)).toMatchObject({ ok: true, settings: { nextSeq: 10 } });
-    expect(await saveInvoiceSettings(db, { ...VALID, nextYear: 2027, nextSeq: 1 }, NOW)).toMatchObject({ ok: true, settings: { nextYear: 2027, nextSeq: 1 } });
   });
 
-  test("invoiceCard: the next number as the next issue takes it (never at or below the series' highest), and the last one issued; a later year's preset as saved", async () => {
+  test("invoiceCard: the next number as the next issue takes it (never at or below the series' highest), and the last one issued", async () => {
     const c = await contactCourse(db);
     expect(await invoiceCard(db, NOW)).toMatchObject({ prefix: "MSL", nextYear: 2026, nextSeq: 1, last: null });
     await ready();
@@ -186,8 +184,33 @@ describe("Seaded → Arve andmed: getInvoiceSettings, saveInvoiceSettings, invoi
     // the stored number pushed back below the series' highest: the card shows what an issue would take
     await setSetting(db, "invoice", { ...VALID, nextSeq: 1 });
     expect(await invoiceCard(db, NOW)).toEqual({ ...VALID, nextSeq: 3, last: "MSL2026-002" });
+  });
+
+  test("B21: the year is never typed — a sent nextYear is ignored and this Tallinn year is stored", async () => {
+    const now = new Date("2026-11-30T12:00:00Z");
+    const r = await saveInvoiceSettings(db, { ...VALID, nextYear: "2027", nextSeq: "5" }, now);
+    expect(r.ok).toBe(true);
+    expect(await stored()).toMatchObject({ nextYear: 2026, nextSeq: 5 });
+    // the year edge is Tallinn's: at 23:30 UTC on 31.12 it is already 1.1.2027 there
+    expect(await saveInvoiceSettings(db, { ...VALID, nextYear: "2026", nextSeq: "1" }, new Date("2026-12-31T22:30:00Z"))).toMatchObject({ ok: true, settings: { nextYear: 2027, nextSeq: 1 } });
+    // no year at all is no refusal either (the field is gone from the card)
+    const withoutYear: Record<string, unknown> = { ...VALID };
+    delete withoutYear.nextYear;
+    expect(await saveInvoiceSettings(db, { ...withoutYear, nextSeq: "9" }, now)).toMatchObject({ ok: true, settings: { nextYear: 2026, nextSeq: 9 } });
+  });
+
+  test("B21: 'taken' is checked against this Tallinn year's series, whatever year was sent", async () => {
+    const c = await contactCourse(db);
+    await ready();
+    await request(await registrationOn(db, c, { email: "a@example.com" }));
+    expect(await saveInvoiceSettings(db, { ...VALID, nextYear: 2027, nextSeq: 1 }, NOW)).toEqual({ ok: false, fields: { nextSeq: "taken" } });
+    expect(await saveInvoiceSettings(db, { ...VALID, nextYear: 2027, nextSeq: 2 }, NOW)).toMatchObject({ ok: true, settings: { nextYear: 2026, nextSeq: 2 } });
+  });
+
+  test("B21: the card always shows this year's counter, even over an old next-year preset", async () => {
     await setSetting(db, "invoice", { ...VALID, nextYear: 2027, nextSeq: 40 });
-    expect(await invoiceCard(db, NOW)).toMatchObject({ nextYear: 2027, nextSeq: 40, last: null });
+    const card = await invoiceCard(db, new Date("2026-11-10T12:00:00Z"));
+    expect(card).toMatchObject({ nextYear: 2026, nextSeq: 1, last: null });
   });
 
   test("R3, Review Focus 5: a prefix change starts the new prefix at 001, and back to the old one continues its own series; no number twice", async () => {

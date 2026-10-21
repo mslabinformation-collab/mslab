@@ -42,8 +42,8 @@ const settle = () =>
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   });
 /** The card as the page renders it (a new key: a new card, as a new page load gives). */
-const show = async (initial: InvoiceSettingsInitial = INITIAL, bank: InvoiceBank = BANK) => {
-  await act(async () => root.render(createElement(InvoiceSettings, { key: JSON.stringify([initial, bank]), initial, bank })));
+const show = async (initial: InvoiceSettingsInitial = INITIAL, bank: InvoiceBank = BANK, opts: { now?: Date } = {}) => {
+  await act(async () => root.render(createElement(InvoiceSettings, { key: JSON.stringify([initial, bank, opts.now ?? null]), initial, bank, now: opts.now })));
   await settle();
 };
 const input = (field: string) => $<HTMLInputElement>(`[data-invoice-field="${field}"]`)!;
@@ -76,14 +76,40 @@ describe("InvoiceSettings", () => {
     await show();
     expect($("h2")!.textContent).toBe("Arve andmed");
     expect($("section")!.id).toBe("arve");
-    expect(["company", "registryCode", "address", "vatNumber", "vatRate", "prefix", "nextYear", "nextSeq", "termDays", "footer"].map((f) => input(f).value)).toEqual([
-      "MS LAB OÜ", "16346048", "Rüütli 1, 80010 Pärnu", "", "24", "MSL", "2026", "15", "7", "",
+    expect(["company", "registryCode", "address", "vatNumber", "vatRate", "prefix", "nextSeq", "termDays", "footer"].map((f) => input(f).value)).toEqual([
+      "MS LAB OÜ", "16346048", "Rüütli 1, 80010 Pärnu", "", "24", "MSL", "15", "7", "",
     ]);
     expect(input("vatOn").checked).toBe(false);
     expect($("[data-invoice-save]")!.textContent).toBe("Salvesta arve andmed");
     expect($("[data-invoice-last]")!.textContent).toBe("Viimati väljastatud: MSL2026-014");
     await show({ ...INITIAL, last: null });
     expect($("[data-invoice-last]")!.textContent).toBe("2026. aastal pole veel arveid väljastatud.");
+  });
+
+  test("B21: no „Aasta“ field; from 1 December (Tallinn) the line „1. jaanuarist: MSL2027-001“ shows", async () => {
+    await show({ ...INITIAL, prefix: "MSL", nextYear: 2026 }, BANK, { now: new Date("2026-11-30T23:30:00Z") }); // 1.12 01:30 in Tallinn
+    expect(document.querySelector('[data-invoice-field="nextYear"]')).toBeNull();
+    expect(document.querySelector("[data-invoice-january]")?.textContent).toBe("1. jaanuarist: MSL2027-001");
+    // the legend and the number stay; the line follows the prefix as it is typed (the server stores it in capitals)
+    expect($("legend")!.textContent).toBe("Järgmine number");
+    expect(input("nextSeq").value).toBe("15");
+    await type(input("prefix"), "abc");
+    expect($("[data-invoice-january]")!.textContent).toBe("1. jaanuarist: ABC2027-001");
+    await type(input("prefix"), "");
+    expect($("[data-invoice-january]")!.textContent).toBe("1. jaanuarist: MSL2027-001");
+  });
+
+  test("B21: before December there is no January line", async () => {
+    await show({ ...INITIAL, prefix: "MSL", nextYear: 2026 }, BANK, { now: new Date("2026-11-30T21:30:00Z") }); // 23:30 in Tallinn, still 30.11
+    expect(document.querySelector("[data-invoice-january]")).toBeNull();
+    expect(document.querySelector('[data-invoice-field="nextYear"]')).toBeNull();
+  });
+
+  test("B21: the January line counts to the end of December and is the Tallinn year's next, also on 31.12 and in the new year's first minutes", async () => {
+    await show(INITIAL, BANK, { now: new Date("2026-12-31T21:30:00Z") }); // 31.12 23:30 in Tallinn
+    expect($("[data-invoice-january]")!.textContent).toBe("1. jaanuarist: MSL2027-001");
+    await show({ ...INITIAL, nextYear: 2027 }, BANK, { now: new Date("2026-12-31T22:30:00Z") }); // 1.1.2027 00:30 in Tallinn: January itself
+    expect($("[data-invoice-january]")).toBeNull();
   });
 
   test("ruling R3: the prefix says a new one starts its own numbering at 001, as a hint the field is described by", async () => {
@@ -123,7 +149,7 @@ describe("InvoiceSettings", () => {
     await submit();
     expect(action).toHaveBeenCalledTimes(1);
     expect(action.mock.calls[0][0]).toEqual({
-      company: "  Uus OÜ ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "EE100200300", vatOn: true, vatRate: "22", prefix: "abc", nextYear: "2026", nextSeq: "40", termDays: "7", footer: "",
+      company: "  Uus OÜ ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "EE100200300", vatOn: true, vatRate: "22", prefix: "abc", nextSeq: "40", termDays: "7", footer: "",
     });
     expect([input("company").value, input("prefix").value, input("nextSeq").value]).toEqual(["Uus OÜ", "ABC", "1"]);
     expect($("[data-invoice-status]")!.textContent).toBe("Arve andmed on salvestatud.");
@@ -146,10 +172,10 @@ describe("InvoiceSettings", () => {
 
     action.mockResolvedValue({
       ok: false,
-      fields: { company: "required", registryCode: "tooLong", vatNumber: "required", prefix: "invalid", vatRate: "invalid", termDays: "invalid", nextSeq: "invalid", nextYear: "invalid", footer: "somethingNew" },
+      fields: { company: "required", registryCode: "tooLong", vatNumber: "required", prefix: "invalid", vatRate: "invalid", termDays: "invalid", nextSeq: "invalid", footer: "somethingNew" },
     });
     await submit();
-    expect(["company", "registryCode", "vatNumber", "prefix", "vatRate", "termDays", "nextSeq", "nextYear", "footer", "address"].map(errorOf)).toEqual([
+    expect(["company", "registryCode", "vatNumber", "prefix", "vatRate", "termDays", "nextSeq", "footer", "address"].map(errorOf)).toEqual([
       "Täida see väli.",
       "Tekst on liiga pikk.",
       "Käibemaksuga arve vajab KMKR numbrit.",
@@ -157,7 +183,6 @@ describe("InvoiceSettings", () => {
       "Käibemaksumäär peab olema 1–50.",
       "Päevi peab olema 0–90.",
       "Kontrolli numbrit (1–2 147 483 647).",
-      "Aasta peab olema käesolev või järgmine.",
       "Kontrolli seda välja.",
       null,
     ]);
@@ -176,7 +201,7 @@ describe("InvoiceSettings", () => {
     const query = (href: string) => Object.fromEntries(new URL(href, "https://mslab.example").searchParams);
     expect(new URL(link.getAttribute("href")!, "https://mslab.example").pathname).toBe("/api/admin/naidisarve");
     expect(query(link.getAttribute("href")!)).toEqual({
-      company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", vatOn: "0", vatRate: "24", prefix: "MSL", nextYear: "2026", nextSeq: "15", termDays: "7", footer: "",
+      company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", vatOn: "0", vatRate: "24", prefix: "MSL", nextSeq: "15", termDays: "7", footer: "",
     });
     await type(input("company"), "Muu OÜ & Pojad");
     await type(input("footer"), "Täname!");

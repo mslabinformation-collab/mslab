@@ -265,7 +265,7 @@ describe("catchUpInvoiceAction: „Arveta maksed“ → „Koosta arve“", () =
 });
 
 describe("saveInvoiceSettingsAction: Seaded → „Arve andmed“", () => {
-  const RAW = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1", vatNumber: "", vatOn: false, vatRate: "24", prefix: "MSL", nextYear: "2026", nextSeq: "1", termDays: "7", footer: "" };
+  const RAW = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1", vatNumber: "", vatOn: false, vatRate: "24", prefix: "MSL", nextSeq: "1", termDays: "7", footer: "" };
   const CARD = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "", last: null };
 
   test("the card's fields go on as typed; saved: the card as the next issue will take it, the page refreshes", async () => {

@@ -67,9 +67,10 @@ test("a stored setting and the bank details: the values in the fields, the bank 
   const html = await page();
   expect(html).toMatch(/<section id="ettemaks"[^>]*data-prepayment-editor/);
   const card = html.slice(html.indexOf("data-invoice-settings"));
-  expect(["company", "registryCode", "address", "vatNumber", "vatRate", "prefix", "nextYear", "nextSeq", "termDays", "footer"].map((f) => valueOf(html, f))).toEqual([
-    "MS LAB OÜ", "16346048", "Rüütli 1, 80010 Pärnu", "EE100200300", "22", "ABC", "2026", "1", "14", "Täname!",
+  expect(["company", "registryCode", "address", "vatNumber", "vatRate", "prefix", "nextSeq", "termDays", "footer"].map((f) => valueOf(html, f))).toEqual([
+    "MS LAB OÜ", "16346048", "Rüütli 1, 80010 Pärnu", "EE100200300", "22", "ABC", "1", "14", "Täname!",
   ]);
+  expect(valueOf(html, "nextYear")).toBeNull(); // (B21: the year is never typed)
   expect(card).toMatch(/data-invoice-field="vatOn"[^>]*checked|checked=""[^>]*data-invoice-field="vatOn"/);
   const bank = card.slice(card.indexOf("data-invoice-bank"));
   for (const part of ["MS LAB Koolituskeskus OÜ", "EE38 2200 2210 2014 5685", "Swedbank", 'href="/admin/seaded#ettemaks"']) expect(bank, part).toContain(part);

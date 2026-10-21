@@ -438,9 +438,10 @@ export const adminEt = {
       prefix: "Arve numbri eesliide",
       prefixHint: "Uus eesliide alustab oma numbrit 001-st.",
       nextNumber: "Järgmine number",
-      nextYear: "Aasta",
       nextSeq: "Number",
       nextHint: "Arve number on eesliide, aasta ja number, näiteks MSL2026-001. Uue aasta esimene arve saab numbri 1.",
+      // admin UX pass B21: from 1 December the next year's first number; {number}: e.g. MSL2027-001
+      fromJanuary: "1. jaanuarist: {number}",
       last: "Viimati väljastatud: {number}",
       // {year}: the year the card is about
       lastNone: "{year}. aastal pole veel arveid väljastatud.",
@@ -469,7 +470,6 @@ export const adminEt = {
         vatRate: "Käibemaksumäär peab olema 1–50.",
         termDays: "Päevi peab olema 0–90.",
         nextSeq: "Kontrolli numbrit (1–2 147 483 647).",
-        year: "Aasta peab olema käesolev või järgmine.",
         taken: "See number on juba väljastatud. Vali suurem number kui viimati väljastatud.",
         other: "Kontrolli seda välja.",
       },
