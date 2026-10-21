@@ -1599,11 +1599,11 @@
         "Kui kalendris on täna koolitus, ava menüü ja vaata selle ülaosa."
       ],
       "expect": [
-        "Ülariba on tume; vasakul on lehe nimi, ülevaates logo.",
+        "Ülariba on tume; vasakul on lehe nimi, ülevaates logo; selle all ei ole rida „MS LAB · Halduskeskkond“.",
         "Nupul ≡ on number: menüü märkide summa; kui märke pole, numbrit ei ole.",
         "Menüü avaneb ülariba alla ja nupp ≡ muutub ✕-ks.",
         "Menüüs on samad rühmad, kõik lahti, ilma kokkupandava rühmata.",
-        "Menüü all on „Sisse logitud“, e-post, „Vaata kodulehte“ ja „Logi välja“.",
+        "Menüü all on „Sisse logitud“, e-post, „Vaata kodulehte“ ja „Logi välja“; muud „Vaata kodulehte“ ekraanil pole.",
         "Reale vajutades menüü sulgub ja ülariba nimi vahetub lehe nimeks.",
         "Brauseri tagasi-nupp sulgeb avatud menüü ja toob eelmise lehe.",
         "Koolituspäeval on menüü ülaosas kaart „TÄNA“ kellaaja ja koolitusega; vajutus viib protokollidesse."
@@ -1630,8 +1630,9 @@
       "expect": [
         "Püstiasendis on üleval tume ülariba nupuga ≡, mitte kitsas külgmenüü.",
         "Menüü avaneb nagu telefonis ja kõik rühmad on lahti.",
+        "Lehe alguses ei ole rida „MS LAB · Halduskeskkond“; „Vaata kodulehte“ on ainult menüü all.",
         "Leht ei lähe küljele laiali: vasakule-paremale kerida ei saa.",
-        "Külili on vasakul külgmenüü rühmadega ja ülariba kadunud."
+        "Külili on vasakul külgmenüü rühmadega, ülariba kadunud ja rida „MS LAB · Halduskeskkond“ tagasi."
       ],
       "why": "Alla 900 piksli laiusel ekraanil peab olema sama ülariba kui telefonis.",
       "risk": "low",

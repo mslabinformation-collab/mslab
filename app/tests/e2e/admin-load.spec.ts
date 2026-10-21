@@ -154,6 +154,9 @@ test("768 px wide: the phone bar shows, its menu opens with every group, and not
   await adminReady(page);
 
   await expect(page.locator("aside")).toBeHidden();
+  // no top line below 900 px: the page starts under the bar, and „Vaata kodulehte ↗“ is in the menu only
+  await expect(page.locator("[data-admin-top]")).toBeHidden();
+  await expect(page.locator("[data-admin-preview]")).toBeHidden();
   const bar = page.locator("header").first();
   await expect(bar).toBeVisible();
   expect((await bar.boundingBox())!.height).toBe(64);
@@ -170,6 +173,7 @@ test("768 px wide: the phone bar shows, its menu opens with every group, and not
   await expect(drawer.locator("button[data-nav-fold]")).toHaveCount(0); // the phone menu has no fold
   await expect(drawer.locator('a[data-nav="home"]')).toBeVisible(); // … its last group is open
   await expect(drawer.getByRole("link", { name: /Vaata kodulehte/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Vaata kodulehte/ })).toHaveCount(1); // once on the screen
   expect(await noSideScroll(page)).toBe(true);
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
@@ -184,6 +188,8 @@ test("768 px wide: the phone bar shows, its menu opens with every group, and not
   await expect(drawer).toBeHidden();
   await expect(bar).toBeHidden();
   await expect(page.locator("aside")).toBeVisible();
+  await expect(page.locator("[data-admin-top]")).toBeVisible(); // the top line is back, with its „Vaata kodulehte ↗“
+  await expect(page.getByRole("link", { name: /Vaata kodulehte/ })).toHaveCount(1);
   expect((await page.locator("aside").boundingBox())!.width).toBe(235);
   expect(await noSideScroll(page)).toBe(true);
 });

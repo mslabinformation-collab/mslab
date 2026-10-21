@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Sidebar, SidebarWithoutActive, type NavItem, type TodayCard } from "@/components/admin/Sidebar";
+import { Sidebar, type NavItem, type TodayCard } from "@/components/admin/Sidebar";
 import { GROUPS, SECTIONS } from "@/components/admin/sections";
 import { adminEt } from "@/i18n/dict/admin";
 
@@ -243,12 +244,22 @@ describe("the phone bar and its menu", () => {
     expect(container.querySelector("header img")).not.toBeNull();
   });
 
-  it("the fallback with no entry marked shows the logo and the same menu", async () => {
-    await act(async () => root.render(createElement(SidebarWithoutActive, { items: items(), t: sidebarTexts, total: 0, email: EMAIL, today: null })));
-    expect(container.querySelector("header [data-admin-bar-title]")).toBeNull();
-    expect(container.querySelector("header img")).not.toBeNull();
-    expect(aside().querySelector("a[aria-current]")).toBeNull();
-    expect(labelsIn(aside())).toHaveLength(4);
+  it("the first HTML (rendered with no browser) holds the menu once, with the entry marked, the fold and the bar's title right: no fallback copy follows", () => {
+    mockPath = "/admin/avaleht";
+    mockSearch = "";
+    const html = document.createElement("div");
+    html.innerHTML = renderToString(element());
+    expect(html.querySelectorAll("aside")).toHaveLength(1);
+    expect(html.querySelectorAll("dialog")).toHaveLength(1);
+    expect(current(html.querySelector("aside")!)).toBe("home");
+    expect(html.querySelector("button[data-nav-fold]")!.getAttribute("aria-expanded")).toBe("true");
+    expect(html.querySelector<HTMLElement>('[data-nav-items="site"]')!.hidden).toBe(false);
+    expect(text(html.querySelector("header [data-admin-bar-title]"))).toBe("Avaleht");
+    expect(html.querySelector("header img")).toBeNull();
+    mockPath = "/admin/maksed";
+    html.innerHTML = renderToString(element());
+    expect(html.querySelector("button[data-nav-fold]")!.getAttribute("aria-expanded")).toBe("false");
+    expect(text(html.querySelector("header [data-admin-bar-title]"))).toBe("Maksed ja arved");
   });
 
   it("the ≡ button carries the sum of the badges, is a 44 px menu button, and turns into ✕ while the menu is open", async () => {

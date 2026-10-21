@@ -108,7 +108,8 @@
   }
 }
 
-/* Below 900px the sidebar is the phone top bar (Sidebar.module.css; WIDE in Sidebar.tsx): one column. */
+/* Below 900px the sidebar is the phone top bar (Sidebar.module.css; WIDE in Sidebar.tsx): one column, and no top line. The design draws none on a
+   phone: the page starts right under the bar, and „Vaata kodulehte ↗“ and who is signed in are in the menu (README §1.1). */
 @media (max-width: 899.98px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
@@ -120,23 +121,12 @@
   }
 
   .top {
-    margin-bottom: 30px;
+    display: none;
   }
 }
 
 @media (max-width: 640px) {
   .main {
     padding: 20px 16px 80px;
-  }
-
-  .top {
-    margin-bottom: 26px;
-    padding-bottom: 16px;
-    font-size: 11px;
-  }
-
-  .avatar {
-    width: 32px;
-    height: 32px;
   }
 }

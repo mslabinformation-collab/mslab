@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { BrowserContext, Page } from "@playwright/test";
 import { PREVIEW_COOKIE, signPreview } from "../../src/lib/preview-cookie";
-import { ADMIN } from "./admin-login";
+import { ADMIN, adminReady } from "./admin-login";
 import { onLocalDb, removeAdminRows, sha256Hex, storedSubscriber, testEmail } from "./fixtures";
 import { GATE_PREVIEW_SECRET, GATE_URL, gateRun } from "./gate";
 import { expect, submitsForms, test } from "./test";
@@ -288,7 +288,9 @@ test.describe("an admin", () => {
   });
 
   test("sign-in sets the preview cookie; 'Vaata kodulehte' gives it again; logout clears it", async ({ page, context }, info) => {
-    test.skip(info.project.name !== "w1440", "signs in once, on the desktop project");
+    test.skip(!["w1440", "w390"].includes(info.project.name), "signs in once on the desktop project and once on the phone project (w834 has the phone's bar and menu too)");
+    // below 900 px the admin has the phone bar and no top line: „Vaata kodulehte“ and „Logi välja“ are in the menu (README §1.1)
+    const phone = (page.viewportSize()?.width ?? 0) < 900;
     const raw = randomBytes(32).toString("base64url");
     const created = { tokens: new Set([raw]), sessions: new Set<string>() };
     try {
@@ -311,9 +313,11 @@ test.describe("an admin", () => {
       await context.clearCookies({ name: PREVIEW_COOKIE });
       await page.goto("/");
       await expectComingSoon(page);
-      // … until "Vaata kodulehte" in the admin's top line (a new window: the route sets the cookie and opens the home page)
+      // … until "Vaata kodulehte" (a new window: the route sets the cookie and opens the home page): the top line's link, and on a phone the menu's
       await page.goto("/admin");
-      const link = page.getByRole("link", { name: /Vaata kodulehte/ });
+      await adminReady(page);
+      if (phone) await page.getByRole("button", { name: "Ava menüü" }).click();
+      const link = phone ? page.locator("[data-admin-menu-site]") : page.getByRole("link", { name: /Vaata kodulehte/ });
       await expect(link).toHaveAttribute("href", "/api/admin/preview");
       expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       const [site] = await Promise.all([context.waitForEvent("page"), link.click()]);
@@ -323,12 +327,18 @@ test.describe("an admin", () => {
       await expect(site.locator("header")).toBeVisible();
       await site.close();
 
-      // the sidebar has no „Vaata lehte“ of its own any more: the top line's link is the only one on a desktop screen
-      await expect(page.locator("aside").getByRole("link", { name: /Vaata/ })).toHaveCount(0);
-      await expect(page.getByRole("link", { name: /Vaata kodulehte/ })).toHaveCount(1);
+      // the link is on the screen once: the top line's (a phone has none, and its menu is closed again after the click)
+      if (phone) {
+        await expect(page.locator("[data-admin-top]")).toBeHidden();
+        await expect(page.getByRole("link", { name: /Vaata kodulehte/ })).toHaveCount(0);
+      } else {
+        await expect(page.locator("aside").getByRole("link", { name: /Vaata/ })).toHaveCount(0);
+        await expect(page.getByRole("link", { name: /Vaata kodulehte/ })).toHaveCount(1);
+      }
 
       // logout clears the pass with the session
-      await page.locator("aside").getByRole("button", { name: "Logi välja" }).click();
+      if (phone) await page.getByRole("button", { name: "Ava menüü" }).click();
+      await page.locator(phone ? "[data-admin-drawer]" : "aside").getByRole("button", { name: "Logi välja" }).click();
       await expect(page).toHaveURL(/\/admin\/login$/);
       expect((await context.cookies()).find((c) => c.name === PREVIEW_COOKIE)).toBeUndefined();
       await page.goto("/");

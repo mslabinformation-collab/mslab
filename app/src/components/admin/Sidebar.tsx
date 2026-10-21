@@ -83,7 +83,7 @@ function useFoldChoice(): [FoldChoice | null, (choice: FoldChoice) => void] {
   return [unsaved ?? stored, (choice) => setUnsaved(writeFold(choice) ? null : choice)];
 }
 
-function NavContent({ items, active, t, fold }: { items: NavItem[]; active: Section | null; t: SidebarTexts; fold: boolean }) {
+function NavContent({ items, active, t, fold }: { items: NavItem[]; active: Section; t: SidebarTexts; fold: boolean }) {
   const ids = useId();
   const [choice, choose] = useFoldChoice();
   const byKey = new Map(items.map((item) => [item.key, item]));
@@ -95,7 +95,7 @@ function NavContent({ items, active, t, fold }: { items: NavItem[]; active: Sect
         const label = group.id ? t.groups[group.id] : null;
         const folds = fold && group.fold === true;
         // open whenever the page is inside it; otherwise as chosen (closed until the visitor opens it)
-        const inside = active !== null && rows.some((item) => item.key === active);
+        const inside = rows.some((item) => item.key === active);
         const open = !folds || inside || choice === "open";
         const labelId = `${ids}-${group.id}-label`;
         const listId = `${ids}-${group.id}-items`;
@@ -175,7 +175,7 @@ function NavFoot({ email, t, withSite }: { email: string; t: SidebarTexts; withS
   );
 }
 
-/** The phone bar's left side: the name of the current page, or the logo on the overview (and while the address is not known yet). */
+/** The phone bar's left side: the name of the current page, or the logo on the overview. */
 function BarTitle({ title, t }: { title: string | null; t: SidebarTexts }) {
   return title ? (
     <span className={styles.barTitle} data-admin-bar-title="">
@@ -191,13 +191,22 @@ type SidebarProps = { items: NavItem[]; t: SidebarTexts; total: number; email: s
 /**
  * Prototype B's dark admin sidebar (logo, "Koolituskeskuse haldus", the grouped menu with count badges, then who is signed in and
  * "Logi välja"). Below 900px it becomes a 64px top bar (the page's name, the ≡ button with the badge sum) and the same menu opens as a
- * panel under it, every group open (modal dialog: Esc, ✕, the backdrop, a link or a change of address closes it). `active` is the entry
- * to mark, or null for none. `route` is the address the menu was last shown for.
+ * panel under it, every group open (modal dialog: Esc, ✕, the backdrop, a link or a change of address closes it).
+ *
+ * The sidebar of the (panel) layout. Shell lives in that layout, which does not render again when the visitor moves between pages, so the
+ * active entry is read from the address here, in the browser (admin UX pass, README §1.1; activeSection). The layout is force-dynamic, so
+ * useSearchParams is answered while the page is rendered on the server and needs no <Suspense> boundary: the menu is in the first HTML with its
+ * entry marked, its fold and its phone bar title right, and no second copy of it follows.
  */
-function SidebarFrame({ items, active, t, total, email, today, route }: SidebarProps & { active: Section | null; route: string }) {
+export function Sidebar({ items, t, total, email, today }: SidebarProps) {
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const active = activeSection(pathname, search);
+  // the address the menu was last shown for
+  const route = `${pathname}?${search.toString()}`;
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
-  const title = active && active !== "overview" ? (items.find((item) => item.key === active)?.label ?? null) : null;
+  const title = active !== "overview" ? (items.find((item) => item.key === active)?.label ?? null) : null;
 
   // Close the menu when the window grows into the sidebar layout.
   useEffect(() => {
@@ -287,22 +296,4 @@ function SidebarFrame({ items, active, t, total, email, today, route }: SidebarP
       </dialog>
     </>
   );
-}
-
-/**
- * The sidebar of the (panel) layout. Shell lives in that layout, which does not render again when the visitor moves between pages,
- * so the active entry is read from the address here, in the browser (admin UX pass, README §1.1; activeSection).
- */
-export function Sidebar(props: SidebarProps) {
-  const pathname = usePathname();
-  const search = useSearchParams();
-  return <SidebarFrame {...props} active={activeSection(pathname, search)} route={`${pathname}?${search.toString()}`} />;
-}
-
-/**
- * The same sidebar with no entry marked: Shell's <Suspense> fallback. useSearchParams needs a boundary above it (Next.js), and the menu
- * must not flash empty while the address is read.
- */
-export function SidebarWithoutActive(props: SidebarProps) {
-  return <SidebarFrame {...props} active={null} route="" />;
 }

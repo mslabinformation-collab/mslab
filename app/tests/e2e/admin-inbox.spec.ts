@@ -101,7 +101,7 @@ test.describe("signed in", () => {
     await expect(page.locator('[data-stat="awaiting"]')).toHaveAttribute("href", "/admin/registreerimised?staatus=ootab");
     for (const key of ["contact", "interest", "individual", "practice", "waitlist"]) await expect(page.locator(`[data-inbox="${key}"]`)).toContainText("tegemata");
     await expect(page.getByRole("link", { name: "Lae alla kinnitatud tellijad (CSV)" })).toHaveAttribute("href", "/api/admin/subscribers.csv?kinnitatud=1");
-    // "Kiirlingid → Vaata lehte ↗" goes through api/admin/preview like the sidebar's and the top line's: with the coming-soon
+    // "Kiirlingid → Vaata lehte ↗" goes through api/admin/preview like the top line's: with the coming-soon
     // gate on, a plain "/" would show the coming-soon page to an admin who has no preview cookie yet
     const quickSite = page.locator('section[aria-labelledby="links-title"]').getByRole("link", { name: /Vaata lehte/ });
     await expect(quickSite).toHaveAttribute("href", "/api/admin/preview");
@@ -127,6 +127,8 @@ test.describe("signed in", () => {
       await expect(site).toHaveAttribute("href", "/api/admin/preview");
       await expect(site).toHaveAttribute("target", "_blank");
       await expect(site).toHaveAttribute("rel", "noopener");
+      // a phone has no top line: the link is on the screen once, in the menu
+      await expect(page.locator("[data-admin-preview]")).toBeHidden();
     } else {
       // the sidebar has no „Vaata lehte“ any more: the top line's „Vaata kodulehte ↗“ is the only one
       await expect(side.getByRole("link", { name: /Vaata/ })).toHaveCount(0);

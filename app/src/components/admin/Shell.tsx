@@ -1,11 +1,10 @@
-import { Suspense } from "react";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { adminName } from "@/server/auth";
 import { getAdminCounts } from "./data";
 import { ReadyMark } from "./ReadyMark";
 import { SECTIONS, type Section } from "./sections";
-import { Sidebar, SidebarWithoutActive, type NavItem, type SidebarTexts } from "./Sidebar";
+import { Sidebar, type NavItem, type SidebarTexts } from "./Sidebar";
 import styles from "./Shell.module.css";
 
 /**
@@ -56,10 +55,7 @@ export async function Shell({ email, children }: { email: string; children: Reac
       <a href="#main" className={styles.skip}>
         {t.skip}
       </a>
-      {/* useSearchParams (the active entry) needs a boundary; the fallback is the same menu with no entry marked, so the sidebar never flashes empty. */}
-      <Suspense fallback={<SidebarWithoutActive {...sidebar} />}>
-        <Sidebar {...sidebar} />
-      </Suspense>
+      <Sidebar {...sidebar} />
       <main id="main" className={styles.main} tabIndex={-1}>
         {/* data-admin-top: ReadyMark tells the shell's own line from the page's content */}
         <div className={styles.top} data-admin-top="">

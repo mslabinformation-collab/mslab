@@ -1,7 +1,8 @@
 /* The course day's protocols (phase protocols, spec §4): the students in a column on the left on a wide screen and a row of chips across the
-   top on a narrow one (a container query on the screen's own width, 720 px: the 1194 px tablet and wider get the column; the 834 px tablet
-   upright, its menu beside the screen, and a phone the chips), the selected student's protocol with boxes that grow with their text, and the
-   save status. Tokens only; every target 44 px. */
+   top on a narrow one (a container query on the screen's own width, 720 px, and a media query on the viewport, 900 px: the 1194 px tablet and
+   wider get the column; below 900 px the admin has the phone top bar and the screen is nearly the whole viewport wide, so a tablet upright
+   (810, 820, 834 px) keeps the chips like a phone: the sticky column would sit under the bar. Design Q3), the selected student's protocol with
+   boxes that grow with their text, and the save status. Tokens only; every target 44 px. */
 
 .head {
   display: grid;
@@ -26,15 +27,17 @@
 }
 
 @container (min-width: 720px) {
-  .withList {
-    grid-template-columns: 230px minmax(0, 1fr);
-  }
+  @media (min-width: 900px) {
+    .withList {
+      grid-template-columns: 230px minmax(0, 1fr);
+    }
 
-  .withList .students {
-    position: sticky;
-    top: 16px;
-    flex-direction: column;
-    flex-wrap: nowrap;
+    .withList .students {
+      position: sticky;
+      top: 16px;
+      flex-direction: column;
+      flex-wrap: nowrap;
+    }
   }
 }
 

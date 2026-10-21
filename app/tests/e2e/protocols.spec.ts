@@ -282,6 +282,34 @@ test("'Ei soovi': a course that was yesterday offers the form by its date; the c
   await student.close();
 });
 
+test("the day's screen below 900 px keeps the chips (the phone top bar is above it, a sticky column would sit under it); from 1194 px the students stand in a column", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "sets its own widths: the desktop project only");
+  const fx = await fixtures("tablet", runName(info), ["Mari Maasikas", "Anu Aas"]);
+  await signInAsAdmin(page, context, visitorIp, created);
+  const students = page.locator("[data-students]");
+  // an upright tablet (810, 820, 834 and 899 px) is a phone to the admin (the bar, no sidebar); 1194 px and 1440 px have the sidebar and the column
+  for (const [width, height, column] of [[390, 844, false], [810, 1080, false], [834, 1112, false], [899, 1112, false], [1194, 834, true], [1440, 900, true]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto(`/admin/protokollid?sessioon=${fx.session.id}`);
+    await adminReady(page);
+    await expect(page.locator("[data-students] [data-student]")).toHaveCount(2);
+    const where = `${width} px`;
+    const css = await students.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { direction: style.flexDirection, position: style.position };
+    });
+    expect(css, where).toEqual(column ? { direction: "column", position: "sticky" } : { direction: "row", position: "static" });
+    const [first, second] = await Promise.all([page.locator("[data-student]").nth(0).boundingBox(), page.locator("[data-student]").nth(1).boundingBox()]);
+    if (column) {
+      expect(second!.y, where).toBeGreaterThan(first!.y + first!.height - 1); // one under the other
+    } else {
+      if (width >= 810) expect(Math.abs(second!.y - first!.y), where).toBeLessThan(2); // side by side, in the page's flow (not under the 64 px bar)
+      await expect(page.locator("aside")).toBeHidden();
+    }
+    expect(await noOverflow(page), where).toBe(true);
+  }
+});
+
 test("the screens at 390, 834, 1194 and 1440 px: no sideways scroll, every target 44 px (§10 e2e 7)", async ({ page, context, visitorIp, browser, isMobile }, info) => {
   test.skip(isMobile, "sets its own widths: the desktop project only");
   // Mari's is sent (read-only, "Muuda"), Anu's is a draft (so the confirmation lists her), Eva's is empty (skipped); Anu has answered the form
