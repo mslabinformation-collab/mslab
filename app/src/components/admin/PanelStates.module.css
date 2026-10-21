@@ -10,12 +10,14 @@
   background: var(--paper);
 }
 
-/* Loading: static grey rows, no shimmer, no pulse. Hidden for 300 ms so a fast page never flashes, then there at once (an opacity step, no
-   fade). With reduced motion it is shown at once, as there is nothing to wait for. */
+/* Loading: static grey rows, no shimmer, no pulse. Hidden for 400 ms so a fast page never flashes, then there at once (an opacity step, no
+   fade). README §1.10 says "after 300 ms"; 400 is 100 more because React 19.2 holds a Suspense fallback's replacement until 300 ms after the
+   fallback was committed (a throttle against flashes), so with 300 the rows would show for a frame or two just before the page on fast
+   pages (measured on the production build: 3 of 10 clicks). */
 .loading {
   gap: 14px;
   opacity: 0;
-  animation: appear 1ms linear 300ms both;
+  animation: appear 1ms steps(1, end) 400ms both;
 }
 
 @keyframes appear {
@@ -24,10 +26,11 @@
   }
 }
 
+/* Reduced motion keeps the same delay: showing the rows at once would flash them on every fast page. The step is not motion, but
+   globals.css switches every animation off with !important, so this one says it again with a rule of its own that is more specific. */
 @media (prefers-reduced-motion: reduce) {
   .loading {
-    opacity: 1;
-    animation: none;
+    animation: appear 1ms steps(1, end) 400ms both !important;
   }
 }
 

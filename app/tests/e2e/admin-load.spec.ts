@@ -44,11 +44,25 @@ test.afterAll(async () => {
 
 type Answer = { path: string; status: number; note: string };
 
+/**
+ * What React writes into the HTML of a Suspense boundary whose content threw after the shell was sent: the error's digest on the boundary
+ * (`data-dgst`) and the call that makes the browser render the boundary again (`$RX(`; the function's own definition reads `$RX=`).
+ */
+const SERVER_ERROR_MARKERS = ["data-dgst", "$RX("];
+
 async function adminGet(request: APIRequestContext, cookie: string, path: string): Promise<Answer> {
   const res = await request.get(path, { headers: { cookie }, maxRedirects: 0, failOnStatusCode: false });
   const html = await res.text();
-  // the admin shell, rendered for the signed-in admin (a failed session lookup is a 500, a lost session a redirect)
-  return { path, status: res.status(), note: res.status() === 200 && !html.includes('href="#main"') ? "no admin shell" : "" };
+  const notes: string[] = [];
+  if (res.status() === 200) {
+    // the admin shell, rendered for the signed-in admin (a failed session lookup is a 500, a lost session a redirect)
+    if (!html.includes('href="#main"')) notes.push("no admin shell");
+    // (panel)/loading.tsx streams the page after the shell, so a page whose read throws still answers 200 with the shell: the page's own
+    // content (every page here has a heading) and the absence of React's server-error markers say the page itself was rendered
+    if (!html.includes("<h1")) notes.push("no page content");
+  }
+  for (const marker of SERVER_ERROR_MARKERS) if (html.includes(marker)) notes.push(`server error marker ${marker}`);
+  return { path, status: res.status(), note: notes.join("; ") };
 }
 
 async function publicPage(request: APIRequestContext, path: string): Promise<Answer> {

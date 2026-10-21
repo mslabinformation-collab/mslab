@@ -1526,6 +1526,32 @@
       "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
+      "id": "haldus-laadimine-viga",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Laadimine ja vea leht",
+      "href": "/admin/maksed",
+      "steps": [
+        "Ava brauseri arendaja tööriistad (F12) ja vali Network all „Slow 3G“.",
+        "Ava „Registreerimised“ ja vajuta siis menüüs „Maksed“.",
+        "Võta võrgu piirang ära ja vajuta menüüs „Praktika“.",
+        "Kui mõni leht ei lae, vajuta nuppu „Proovi uuesti“."
+      ],
+      "expect": [
+        "Menüü ja ülariba jäävad kogu aeg ekraanile.",
+        "Aeglasel võrgul ilmuvad veidi hiljem hallid read, ilma tekstita.",
+        "Seejärel ilmub leht ise ja hallid read kaovad.",
+        "Kiirel võrgul ei vilgu hallid read, leht avaneb kohe.",
+        "Kui leht ei lae, näed „Seda lehte ei saanud praegu laadida.“ ja nuppu „Proovi uuesti“, menüü jääb alles."
+      ],
+      "why": "Aeglase võrgu või vea korral peab menüü ekraanile jääma.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-vorm-vead",
       "area": "registreerimine",
       "who": "maria",

@@ -56,6 +56,12 @@ const sessions = (id: number) =>
   onLocalDb((sql) => sql<{ idHash: string; endedAt: Date | null; expiresAt: Date }[]>`select id_hash as "idHash", ended_at as "endedAt", expires_at as "expiresAt" from client_sessions where client_id = ${id} order by id_hash`, { marksPages: false });
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 const drawer = (page: Page) => page.locator("dialog[data-drawer]");
+/**
+ * A page of the panel that is not there. (panel)/loading.tsx puts every page inside a Suspense boundary, so the page's notFound() is
+ * streamed after the shell: the answer is 200, not 404, and Next marks it noindex (the admin root layout has the tag already). So the
+ * checks are the not-found text the admin sees and the noindex tag, never the status.
+ */
+const noindex = (page: Page) => expect(page.locator('meta[name="robots"][content*="noindex"]').first()).toBeAttached();
 const card = (page: Page, key: string) => page.locator(`[data-card="${key}"]`);
 
 /** Opens a student's drawer from the list by searching her address. */
@@ -384,9 +390,9 @@ test("Vaata tema vaadet: her cards, every action disabled and doing nothing; her
     await expect(page).toHaveURL(new RegExp(`/admin/opilased\\?id=${f.clientId}$`));
     await expect(drawer(page)).toBeVisible();
 
-    // a student who does not exist: 404 with the way back
-    const res = await page.goto("/admin/opilased/2147483646/vaade");
-    expect(res?.status()).toBe(404);
+    // a student who does not exist: the not-found card with the way back
+    await page.goto("/admin/opilased/2147483646/vaade");
+    await noindex(page);
     await expect(page.getByText("Seda õpilast ei leitud.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Õpilaste juurde" })).toHaveAttribute("href", "/admin/opilased");
   } finally {
@@ -492,9 +498,10 @@ test("her lessons in the drawer: 1/3 tehtud, Ava järgmine õppetund (the studen
       await expect(student.page.locator("[data-ecourse]")).toBeVisible(); // she is still signed in, on her own page of the course
       expect((await sessions(course.clientId)).map((s) => s.endedAt)).toEqual([null]);
       expect(await lastRow(course.lessons.last)).toHaveLength(1); // looking changed no progress
-      // a bad address, a course she does not have or a student who is not there: 404 (as her own page answers)
+      // a bad address, a course she does not have or a student who is not there: the not-found card (her own page answers 404)
       for (const bad of [`/admin/opilased/${course.clientId}/vaade/${course.slug}-x`, `/admin/opilased/${course.clientId}/vaade/BAD_slug`, `/admin/opilased/2147483646/vaade/${course.slug}`, `/admin/opilased/0${course.clientId}/vaade/${course.slug}`]) {
-        expect((await page.goto(bad))?.status(), bad).toBe(404);
+        await page.goto(bad);
+        await noindex(page);
         // the wording does not blame the student: she is there, this view is not (the way back goes to the list)
         await expect(page.getByText("Seda vaadet ei leitud.")).toBeVisible();
         await expect(page.getByText("Seda õpilast ei leitud.")).toHaveCount(0);
@@ -517,7 +524,8 @@ test("her lessons in the drawer: 1/3 tehtud, Ava järgmine õppetund (the studen
       await expect(row.locator("[data-access-progress]")).toHaveText("1/3 tehtud");
       await expect(row.locator("[data-view-course]")).toHaveCount(0);
       await expect(row.getByRole("button", { name: "Ava järgmine õppetund" })).toHaveCount(0);
-      expect((await page.goto(viewPath))?.status()).toBe(404); // no active access: as for her
+      await page.goto(viewPath); // no active access: the not-found card, as for her
+      await noindex(page);
       await expect(page.getByText("Seda vaadet ei leitud.")).toBeVisible();
       expect(await noOverflow(page)).toBe(true);
     } finally {
