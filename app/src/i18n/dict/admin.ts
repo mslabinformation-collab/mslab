@@ -205,6 +205,21 @@ export const adminEt = {
     },
   },
 
+  // PublishBar (admin UX pass, README §1.8; strings.md W9): the bar of a published thing with unpublished changes. {n} is how many parts changed.
+  // The desktop words are README's; the phone's bar (below 900px) is the phone mock's „Avaldamata {n} · Eelvaade“ + „Avalda“, its two parts kept
+  // apart because „Eelvaade“ is the link. „Mustand“ stays out of the draft layer's words (behaviours.md B2).
+  publish: {
+    count: "Avaldamata muudatused: {n}",
+    preview: "Eelvaade ↗",
+    discard: "Loobu muudatustest",
+    publish: "Avalda muudatused",
+    confirm: "Kas loobun {n} muudatusest? Avalikul lehel jääb praegune versioon.",
+    confirmYes: "Jah, loobu",
+    phoneCount: "Avaldamata {n}",
+    phonePreview: "Eelvaade",
+    phonePublish: "Avalda",
+  },
+
   overview: {
     lead: "Sinu koolituskeskuse järgmised sammud.",
     primary: "Vaata registreerimisi",

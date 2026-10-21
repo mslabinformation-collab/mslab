@@ -833,6 +833,29 @@ export const settings = pgTable("settings", { key: text("key").primaryKey(), val
 export const authTokens = pgTable("auth_tokens", { hash: text("hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), usedAt: timestamp("used_at", { withTimezone: true }) });
 export const adminSessions = pgTable("admin_sessions", { idHash: text("id_hash").primaryKey(), email: text("email").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull() });
 
+/**
+ * The draft layer (admin UX pass, README §1.8, behaviours.md B2; migration 0017; server/drafts.ts): an unpublished change of a published thing, one
+ * row per entity, row and part. The live rows stay as they are until „Avalda muudatused“ copies the parts live; the public pages read the drafts only
+ * in draft mode (spec C3). A table of its own, not a `draft_json` column, because a home page part spans several tables and a draft on `courses`
+ * would travel with the public course row.
+ * - `entity`: the kind of thing ("course", "home" …, its publisher's name); `entityId`: its row (for a thing there is only one of, such as the home page, a fixed id such as 0);
+ * - `part`: the editor's part (a card of fields); `value`: the whole part as the draft has it (JSON, never null);
+ * - `baseVersion`: the live part's version the draft was made from (lib/version.ts contentVersion or the thing's own): a publish copies the part only
+ *   while live still has that version, else it is blocked;
+ * - `version`: the draft's own counter, 1 at its creation and +1 at each save (the autosave's compare-and-set).
+ */
+export const contentDrafts = pgTable("content_drafts", {
+  id: serial("id").primaryKey(),
+  entity: text("entity").notNull(),
+  entityId: integer("entity_id").notNull(),
+  part: text("part").notNull(),
+  value: jsonb("value").$type<unknown>().notNull(),
+  baseVersion: text("base_version").notNull(),
+  version: integer("version").notNull().default(1),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by").notNull(),
+}, (t) => [uniqueIndex("content_drafts_entity_entity_id_part").on(t.entity, t.entityId, t.part)]);
+
 // Relations (used by db.query.*.findMany({ with }))
 export const coursesRelations = relations(courses, ({ many }) => ({
   images: many(courseImages),
@@ -885,3 +908,4 @@ export type Contract = typeof contracts.$inferSelect;
 export type Review = typeof reviews.$inferSelect;
 export type NewsletterCampaign = typeof newsletterCampaigns.$inferSelect;
 export type NewsletterDelivery = typeof newsletterDeliveries.$inferSelect;
+export type ContentDraft = typeof contentDrafts.$inferSelect;

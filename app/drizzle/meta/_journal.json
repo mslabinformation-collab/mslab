@@ -120,6 +120,13 @@
       "when": 1792485145619,
       "tag": "0016_newsletter_simple",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792604688555,
+      "tag": "0017_content_drafts",
+      "breakpoints": true
     }
   ]
 }

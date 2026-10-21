@@ -5,7 +5,8 @@ import { serverEnv } from "./env";
 import { logFailure, logNote } from "./log";
 
 // The admins' preview cookie of the coming-soon gate (lib/preview-cookie.ts, lib/site-gate.ts) on an answer: set at sign-in
-// (api/auth/verify) and by "Vaata kodulehte" (api/admin/preview; the top line, and on a phone the menu's footer), cleared at logout (api/auth/logout).
+// (api/auth/verify), by "Vaata kodulehte" (api/admin/preview; the top line, and on a phone the menu's footer) and by the draft preview's „Eelvaade ↗“
+// (api/admin/eelvaade, previewPath below), cleared at logout (api/auth/logout).
 
 /** "No usable PREVIEW_SECRET" is noted once per instance, not at every sign-in. */
 let notedNoKey = false;
@@ -29,6 +30,29 @@ export async function setPreviewCookie(res: NextResponse): Promise<void> {
     res.cookies.set(PREVIEW_COOKIE, await signPreview(key), { ...previewCookieOptions, maxAge: PREVIEW_TTL_S });
   } catch (e) {
     logFailure("[gate] the preview cookie was not set", e);
+  }
+}
+
+/** The longest `tee` the draft preview follows (a page's path with its query); a longer one goes to the home page. */
+const PREVIEW_PATH_MAX = 2048;
+
+/**
+ * Where the draft preview (api/admin/eelvaade) sends the admin: `tee` when it is a path of this site — one `/` first, then not a second `/` or a
+ * `\`, no `\` or control character anywhere (a browser reads `\` as `/` and drops tabs and line breaks, which could make `//other.site`), and still
+ * on `origin` once parsed — else "/". Absolute URLs are refused even when they name this site: the link is built from a path. The answer is the
+ * parsed path with its query and fragment, so it is always a same-origin redirect.
+ */
+export function previewPath(tee: string | null, origin: string): string {
+  if (!tee || tee.length > PREVIEW_PATH_MAX || tee[0] !== "/" || tee[1] === "/" || tee.includes("\\")) return "/";
+  for (let i = 0; i < tee.length; i++) {
+    const code = tee.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return "/";
+  }
+  try {
+    const url = new URL(tee, origin);
+    return url.origin === origin ? url.pathname + url.search + url.hash : "/";
+  } catch {
+    return "/";
   }
 }
 

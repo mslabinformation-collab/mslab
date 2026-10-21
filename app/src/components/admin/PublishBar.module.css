@@ -1,0 +1,153 @@
+/* PublishBar (admin UX pass, README §1.8; strings.md W9). The metrics are the prototype's draft bar (handoff "MS LAB Admin UX Pass - Part 3.dc.html",
+   the course editor and the site editors; Part 4 the same): a white card, radius 18, padding 14px 20px, a 3px left border #9e8993 (var(--rose)); the
+   count 14px bold, the field labels #716a6d (var(--muted)); the buttons 8px apart, 44px tall, 600 12px: „Eelvaade ↗“ an underlined link (padding
+   0 14px, the line #a49b9f), „Loobu muudatustest“ the outline pill (border #b9b1b5, ui.secondary; padding 0 16px), „Avalda muudatused“ the ink pill
+   (padding 0 18px). The phone's bar (Part 4's mock): fixed to the bottom, white, a 1px top line #e6e1e3 (var(--line)), padding 12px 16px 18px, 13px
+   words, „Avalda“ 46px tall, 600 13px, padding 0 18px. */
+
+.wrap {
+  margin: 0 0 22px;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 14px 20px;
+  border-left: 3px solid var(--rose);
+  border-radius: 18px;
+  background: var(--paper);
+}
+
+.summary {
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.summary b {
+  font-weight: 700;
+}
+
+.fields {
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--ink);
+  font: 600 12px/1.2 var(--font-body);
+  text-decoration: underline;
+  text-decoration-color: #a49b9f;
+  text-underline-offset: 3px;
+}
+
+.preview:hover {
+  text-decoration-color: var(--ink);
+}
+
+.actions .discard {
+  padding: 0 16px;
+}
+
+.actions .go {
+  padding: 0 18px;
+}
+
+/* the question takes a line of its own under the bar's words and buttons (its trigger is gone meanwhile) */
+.confirm {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.confirm [data-confirm-panel] {
+  margin: 0;
+}
+
+/* after a publish: the labels of the fields it could not copy, under the bar */
+.blocked {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 0 0 0 22px;
+  color: var(--bad);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.phone {
+  display: none;
+}
+
+.phoneLink {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Below 900px (the admin's phone width, Shell.module.css / Sidebar.tsx WIDE): the phone's bar at the bottom of the screen. Shell's main keeps 80–100px
+   free at its foot, so the bar never covers the page's last line. The UndoBar (z-index 60) stands above it. */
+@media (max-width: 899.98px) {
+  /* only the blocked list stays in the page's flow */
+  .wrap {
+    margin: 0;
+  }
+
+  .blocked {
+    margin: 0 0 16px;
+  }
+
+  .bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    padding: 12px 16px 18px;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--line);
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .summary {
+    font-size: 13px;
+  }
+
+  /* `.bar …` and `.actions …` outrank ui.btn's and this file's own display, whichever stylesheet loads last */
+  .bar .wide,
+  .bar .fields,
+  .actions .discard {
+    display: none;
+  }
+
+  .bar .phone {
+    display: inline;
+  }
+
+  /* the phone's link: a 44px tap target in a 13px line (the padding takes no room of the line's own) */
+  .phoneLink {
+    display: inline-block;
+    min-height: 44px;
+    margin: -12px 0;
+    padding: 12px 0;
+  }
+
+  .actions .go {
+    min-height: 46px;
+    font-size: 13px;
+  }
+}

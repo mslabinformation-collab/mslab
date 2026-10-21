@@ -59,7 +59,9 @@ Today the site offers two ways to pay, both through the Montonio checkout: „10
   - The receipt invoice is the normal paid invoice for the full price, with „Tasutud: järelmaks (Inbank)" (Draft).
 - **D7. Refunds and cancellations** work as for any Montonio payment today, through Maria's existing actions. Montonio and Inbank handle the student's side. The site adds nothing.
 
-## 3. Data (migration 0017, additive)
+## 3. Data (the next free migration number when built, additive)
+
+0017 is taken by the admin UX pass (`0017_content_drafts`, its spec §7), so this migration takes the next free number when it is built.
 
 - **The payment choice** `payment_choice` gains the value `financing`. It is an enum, so add it with `ALTER TYPE … ADD VALUE`.
 - **The settings key** `financing` holds `{ enabled: boolean }` and defaults to off.
