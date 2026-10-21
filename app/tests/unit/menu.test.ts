@@ -64,6 +64,18 @@ describe("menuOf", () => {
     expect(menuOf(none).hrefs).toEqual({});
   });
 
+  it("B16: „Protokollid“ opens the one session when exactly one is on today; with none, or two or more, it opens the index", () => {
+    const one = { id: 7, startsAt: new Date("2026-12-01T08:00:00Z"), course: "Kulmumeistri baaskoolitus" };
+    const two = { id: 9, startsAt: new Date("2026-12-01T13:00:00Z"), course: "Teine" };
+    expect(menuOf(counts({ todaySessions: [one] })).hrefs).toEqual({ protocols: "/admin/protokollid?sessioon=7" });
+    expect(menuOf(counts({ todaySessions: [one, two] })).hrefs).toEqual({});
+    expect(menuOf(none).hrefs).toEqual({});
+    // next to the filtered rows, and the sidebar keeps it (a „Täna“ badge is there whenever the address is)
+    const menu = menuOf(counts({ awaitingPrepayment: 2, todaySessions: [two] }));
+    expect(menu.hrefs).toEqual({ registrations: "/admin/registreerimised?staatus=ootab", protocols: "/admin/protokollid?sessioon=9" });
+    expect(readMenuState({ ok: true, ...JSON.parse(JSON.stringify(menu)) })?.hrefs.protocols).toBe("/admin/protokollid?sessioon=9");
+  });
+
   it("the card of today is the first session, with its time in Tallinn and its course", () => {
     const menu = menuOf(
       counts({

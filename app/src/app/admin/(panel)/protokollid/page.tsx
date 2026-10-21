@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AssessmentScreen } from "@/components/admin/AssessmentScreen";
+import { ProtocolIndex } from "@/components/admin/ProtocolIndex";
 import { ProtocolScreen, type ScreenView } from "@/components/admin/ProtocolScreen";
 import styles from "@/components/admin/ProtocolScreen.module.css";
 import { adminTitle } from "@/components/admin/sections";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
-import { protocolScreen, screenStudents, type ScreenData } from "@/db/queries/protocols";
+import { protocolIndex, protocolScreen, screenStudents, type ScreenData } from "@/db/queries/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill, formatDate, formatTime, formatWeekday } from "@/i18n/format";
@@ -33,7 +34,10 @@ function viewOf(screen: ScreenData, source: ScreenView["source"]): ScreenView {
 }
 
 /**
- * Protokollid (phase protocols, spec §4): the course day's screen. ?sessioon=<id>: every listed registration of one session (from Kalender
+ * Protokollid (phase protocols, spec §4): the course day's screen. With none of the three parameters below in the address it is the index (admin UX
+ * pass B8; the menu's „Protokollid“ row goes straight to the one session when exactly one is on today, B16): today and the 14 days before it, newest
+ * first, and the open individual registrations, each with its „Ava“. A parameter that is there but is not a number, or names nothing, is still the
+ * "not found" below, not the index. ?sessioon=<id>: every listed registration of one session (from Kalender
  * and the overview's "Täna"); ?registreering=<id>: one registration (from Registreerimised: an individual course, or one group student). The
  * header names the course, the day and the place, with the way back; the screen is ProtocolScreen (its autosave runs in the browser).
  * ?ligipaas=<id> (phase e-course completion, spec §5.3): one e-course access — Maria's assessment of the student's practical work (from
@@ -51,6 +55,21 @@ export default async function ProtocolsPage({ searchParams }: Props) {
   const t = adminEt.protocols;
   const a = adminEt.assessment.screen;
   const db = getDb();
+  if (sp.sessioon === undefined && sp.registreering === undefined && sp.ligipaas === undefined) {
+    const now = new Date();
+    return (
+      <div className={ui.page}>
+        <div className={ui.heading}>
+          <div className={styles.head}>
+            <p className={ui.eyebrow}>{t.eyebrow}</p>
+            <h1 className={ui.h1}>{t.title}</h1>
+            <p className={ui.lead}>{t.index.note}</p>
+          </div>
+        </div>
+        <ProtocolIndex data={await protocolIndex(db, now)} now={now} />
+      </div>
+    );
+  }
   const screen =
     sessionId !== null
       ? await protocolScreen(db, { sessionId })

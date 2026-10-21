@@ -1,0 +1,144 @@
+/* The Protokollid index (admin UX pass, B8; Part 2 prototype A3): one white card, a row per course day — the date over its weekday | the course over
+   "time · place" | the counts | „Ava“ — and the open individual registrations under a small capitalised heading. Phone first: the date and „Ava“
+   share the first line, the course and the counts stack under them; the drawn four columns come with the card's own width (a container query, as
+   the protocol screen does: the sidebar takes a different share of the viewport at every width). Tokens only; every target 44 px. */
+
+.card {
+  container-type: inline-size;
+  min-width: 0;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: #fff;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "when open"
+    "what what"
+    "counts counts";
+  align-items: center;
+  gap: 4px 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+
+/* the card's first row has nothing above it */
+.card > .rows:first-child > .row:first-child {
+  border-top: 0;
+}
+
+.when,
+.what,
+.agreed {
+  display: grid;
+  min-width: 0;
+}
+
+.when {
+  grid-area: when;
+}
+
+.what {
+  grid-area: what;
+  overflow-wrap: anywhere;
+}
+
+.day {
+  font: 400 22px/1.2 var(--font-display);
+}
+
+.strong {
+  font-weight: 600;
+}
+
+.sub {
+  color: #716a6d;
+  font-size: 13px;
+}
+
+.when .sub {
+  font-size: 12px;
+}
+
+.counts {
+  grid-area: counts;
+  color: var(--warn);
+  font: 600 13px/1.4 var(--font-body);
+}
+
+/* all sent */
+.done {
+  color: var(--ok);
+}
+
+.open {
+  grid-area: open;
+  justify-self: end;
+}
+
+.individual {
+  padding-bottom: 6px;
+}
+
+.sectionLabel {
+  margin: 0;
+  padding: 16px 0 10px;
+  color: #716a6d;
+  font: 600 11px/1.4 var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.agreed {
+  grid-area: when;
+  color: #716a6d;
+  font-size: 13px;
+}
+
+.individualRow .counts {
+  color: #716a6d;
+  font-weight: 400;
+}
+
+.empty {
+  display: grid;
+  justify-items: center;
+  padding-bottom: 16px;
+}
+
+@container (min-width: 760px) {
+  .card .row {
+    grid-template-columns: 140px minmax(0, 1fr) minmax(0, 260px) 110px;
+    grid-template-areas: "when what counts open";
+    gap: 18px;
+    min-height: 84px;
+    padding: 0;
+  }
+
+  .card .individualRow {
+    min-height: 72px;
+  }
+}
+
+/* the drawn widths, 150 | 1fr | 300 | 150, when the card is as wide as the desktop prototype's */
+@container (min-width: 1000px) {
+  .card .row {
+    grid-template-columns: 150px minmax(0, 1fr) 300px 150px;
+  }
+}
+
+/* the card's side padding follows the viewport (the container is the card itself) */
+@media (min-width: 900px) {
+  .card {
+    padding: 8px 28px;
+  }
+}

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, isNotNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../client";
 import {
   clients, courseAccess, courseFeedback, courses, courseSessions, practicalPhotos, protocols, registrations,
@@ -12,7 +12,7 @@ import {
   type AssessmentView, type FeedbackAnswers, type FeedbackSummary, type ProtocolStatus, type ScreenStudentView,
 } from "@/domain/protocols";
 import type { RegStatus } from "@/domain/registration";
-import type { I18n } from "@/i18n/field";
+import { pick, type I18n } from "@/i18n/field";
 import { paged, type Paged } from "./paged";
 
 // The protocols' reads (phase protocols, spec §8): the course day's screen (Task 2), today's sessions (Task 5), the student's page (Task 7) and
@@ -236,6 +236,83 @@ export async function todaySessions(db: Db, now: Date): Promise<TodaySession[]> 
     .orderBy(asc(courseSessions.startsAt), asc(courseSessions.id));
   const today = tallinnFormParts(now).date;
   return rows.filter((r) => tallinnFormParts(r.startsAt).date === today);
+}
+
+// ---------- the Protokollid index (admin UX pass, B8) ----------
+
+/** One session of the index: its course and place, its listed students (the screen's, not cancelled), and how many protocols are sent / drafts. */
+export type ProtocolIndexSession = { id: number; startsAt: Date; course: string; place: string; students: number; sent: number; drafts: number };
+
+/** An open individual registration of the index: whose, which course, and whether she has a draft already (else none yet). */
+export type ProtocolIndexIndividual = { registrationId: number; name: string; course: string; draft: boolean };
+
+export type ProtocolIndex = { sessions: ProtocolIndexSession[]; individual: ProtocolIndexIndividual[] };
+
+/** How many days before today the index reaches (README A3: „Täna ja viimased 14 päeva“). */
+export const PROTOCOL_INDEX_DAYS = 14;
+
+/** The Estonian date text "2026-10-21" `days` calendar days earlier: plain calendar arithmetic, so the two days the clocks change cannot move it. */
+function daysBefore(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d - days)).toISOString().slice(0, 10);
+}
+
+/**
+ * The index of Protokollid (B8): the scheduled sessions of contact courses from the 14th Tallinn day before today to the end of today (a session
+ * later today too), newest first, each with its numbers; and, below them, the open individual registrations (not cancelled, her protocol not sent),
+ * newest first. A session's students are the screen's (protocolScreen: every registration but the cancelled); a protocol is "sent" once it has
+ * a `sent_at` (one edited since is still sent: the screen offers it again) and a "draft" while a row exists without one. A window of 16 days back
+ * and two ahead is read and each session's Tallinn date compared, as todaySessions does: the same on the two days the clocks change.
+ */
+export async function protocolIndex(db: Db, now: Date): Promise<ProtocolIndex> {
+  const DAY = 86_400_000;
+  const listed = sql`r.course_session_id = ${courseSessions.id} and r.status <> 'cancelled'`;
+  const rows = await db
+    .select({
+      id: courseSessions.id,
+      startsAt: courseSessions.startsAt,
+      city: courseSessions.city,
+      venue: courseSessions.venue,
+      title: courses.title,
+      students: sql<number>`(select count(*) from registrations r where ${listed})`.mapWith(Number),
+      sent: sql<number>`(select count(*) from registrations r join protocols p on p.registration_id = r.id where ${listed} and p.sent_at is not null)`.mapWith(Number),
+      drafts: sql<number>`(select count(*) from registrations r join protocols p on p.registration_id = r.id where ${listed} and p.sent_at is null)`.mapWith(Number),
+    })
+    .from(courseSessions)
+    .innerJoin(courses, eq(courseSessions.courseId, courses.id))
+    .where(
+      and(
+        eq(courseSessions.status, "scheduled"),
+        eq(courses.type, "contact"),
+        gte(courseSessions.startsAt, new Date(now.getTime() - (PROTOCOL_INDEX_DAYS + 2) * DAY)),
+        lt(courseSessions.startsAt, new Date(now.getTime() + 2 * DAY)),
+      ),
+    )
+    .orderBy(desc(courseSessions.startsAt), desc(courseSessions.id));
+  const today = tallinnFormParts(now).date;
+  const from = daysBefore(today, PROTOCOL_INDEX_DAYS);
+  const sessions = rows
+    .filter((r) => {
+      const day = tallinnFormParts(r.startsAt).date;
+      return day >= from && day <= today;
+    })
+    .map((r) => ({
+      id: r.id,
+      startsAt: r.startsAt,
+      course: pick(r.title, "et"),
+      place: [r.city, r.venue].filter(Boolean).join(", "),
+      students: r.students,
+      sent: r.sent,
+      drafts: r.drafts,
+    }));
+  const open = await db
+    .select({ registrationId: registrations.id, name: registrations.name, title: courses.title, protocolId: protocols.id })
+    .from(registrations)
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .leftJoin(protocols, eq(protocols.registrationId, registrations.id))
+    .where(and(eq(registrations.kind, "individual"), ne(registrations.status, "cancelled"), eq(courses.type, "contact"), isNull(protocols.sentAt)))
+    .orderBy(desc(registrations.createdAt), desc(registrations.id));
+  return { sessions, individual: open.map((r) => ({ registrationId: r.registrationId, name: r.name, course: pick(r.title, "et"), draft: r.protocolId !== null })) };
 }
 
 // ---------- the student's protocol (Task 7) ----------

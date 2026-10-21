@@ -97,7 +97,12 @@ describe("GET /api/admin/margid", () => {
         payments: { n: 2, label: "2 vajab kontrolli" },
         testing: { n: 2, label: "2 viga" },
       },
-      hrefs: { registrations: "/admin/registreerimised?staatus=ootab", feedback: "/admin/tagasiside?vaade=arvustused&olek=ootel" },
+      // (B16: the one session on today, so „Protokollid“ goes straight to it)
+      hrefs: {
+        registrations: "/admin/registreerimised?staatus=ootab",
+        protocols: expect.stringMatching(/^\/admin\/protokollid\?sessioon=\d+$/),
+        feedback: "/admin/tagasiside?vaade=arvustused&olek=ootel",
+      },
       total: 7,
       today: { href: expect.stringMatching(/^\/admin\/protokollid\?sessioon=\d+$/), time: "10:00", course: "Kulmumeistri baaskoolitus" },
     });

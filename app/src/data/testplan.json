@@ -4249,6 +4249,60 @@
       "writes": false
     },
     {
+      "id": "kontakt-protokollid-nimekiri",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Protokollide nimekiri",
+      "href": "/admin/protokollid",
+      "steps": [
+        "Ava telefonis see leht kontrolli lingist.",
+        "Vaata pealkirja all olevat märkust ja nimekirja.",
+        "Vajuta ühe koolituspäeva real nuppu „Ava“.",
+        "Mine brauseri tagasi-nupuga nimekirja tagasi ja keri lõppu."
+      ],
+      "expect": [
+        "Pealkirja „Protokollid“ all on „Täna ja viimased 14 päeva. Vanemad leiad Kalendrist.“.",
+        "Iga koolituspäeva rida näitab kuupäeva, koolitust, kellaaega, kohta ja õpilaste arvu.",
+        "Tänane päev on esimene ja kuupäeva asemel on „Täna“; vanemad päevad tulevad selle alla.",
+        "Üle 14 päeva vanuseid ja tulevasi koolituspäevi nimekirjas ei ole.",
+        "Rea paremal on „… õpilast · … saadetud · … mustand“ või roheline „✓ Kõik … saadetud“.",
+        "Nupp „Ava“ viib selle päeva protokollide lehele; tänase päeva nupp on tume.",
+        "Allpool on pealkiri „INDIVIDUAALKOOLITUSED“ ja selle all individuaalkoolituse registreeringud, mille protokolli pole saadetud.",
+        "Kui viimase 14 päeva jooksul koolituspäevi polnud, on lehel „Viimase 14 päeva jooksul koolituspäevi polnud.“ ja link „← Kalender“."
+      ],
+      "why": "Maria leiab hiljutise koolituspäeva protokollid kahe vajutusega.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-protokollid-tana-otse",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Menüü „Protokollid“ koolituspäeval",
+      "href": "/admin",
+      "steps": [
+        "Tee see kontroll koolituspäeval; päeval ilma koolituseta vajuta „Jäta vahele“.",
+        "Ava halduse „Ülevaade“ ja vaata menüüs rida „Protokollid“.",
+        "Vajuta seda rida ja vaata, mis leht avanes.",
+        "Vajuta brauseri tagasi-nuppu."
+      ],
+      "expect": [
+        "Rea „Protokollid“ juures on sõna „Täna“.",
+        "Päeval, kus on täpselt üks koolitus, avab rida otse selle koolituse protokollid.",
+        "Päeval, kus on kaks või rohkem koolitust, avab rida protokollide nimekirja, kus iga koolitus on oma real.",
+        "Tagasi-nupp viib tagasi ülevaatesse."
+      ],
+      "why": "Koolituspäeval jõuab Maria menüüst protokollideni ühe vajutusega.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "kirjad-sisselogimiskood",
       "area": "kirjad",
       "who": "koos",

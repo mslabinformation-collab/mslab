@@ -1,8 +1,9 @@
 import type { Page } from "@playwright/test";
-import { mintLoginToken } from "./account";
+import { clientEmail, mintLoginToken } from "./account";
 import { adminReady, signInAsAdmin } from "./admin-login";
 import {
-  chip, E2E_HEADINGS, editor, emptyNotes, general, insertDraftProtocol, insertFeedbackAnswer, insertReview, insertSentProtocol, keptKeys, note, protocolRows, runName, saved, SAVE_ROUTE, saveStatus,
+  chip, E2E_HEADINGS, editor, emptyNotes, general, insertDraftProtocol, insertFeedbackAnswer, insertIndividualRegistration, insertReview, insertSentProtocol, keptKeys, note,
+  protocolRows, runName, saved, SAVE_ROUTE, saveStatus,
   storedFeedback, storedProtocol, studentContext, studentPage,
 } from "./protocols";
 import { smallTargets } from "./targets";
@@ -326,6 +327,8 @@ test("the screens at 390, 834, 1194 and 1440 px: no sideways scroll, every targe
   const student = await studentPage(browser, mari.email, visitorIp);
   const screens = [
     { page, url: `/admin/protokollid?sessioon=${fx.session.id}`, scope: "[data-protocol-screen]", admin: true },
+    // … the index in front of it (today's session is there)
+    { page, url: "/admin/protokollid", scope: "[data-protocol-index]", admin: true },
     // … with "Lukusta ja saada kõik" asking (who gets one, who is skipped, who has hers already)
     { page, url: `/admin/protokollid?sessioon=${fx.session.id}`, scope: "[data-protocol-screen]", admin: true, open: "[data-send-all-open]", shown: "[data-send-confirm]" },
     { page, url: "/admin/tagasiside", scope: "main", admin: true },
@@ -357,3 +360,85 @@ test("the screens at 390, 834, 1194 and 1440 px: no sideways scroll, every targe
   await student.close();
 });
 
+
+/** The menu's „Protokollid“ row: the sidebar's on a wide screen, the menu panel's (opened here) on a phone. */
+async function protocolsRow(page: Page, isMobile: boolean) {
+  if (isMobile) {
+    await page.getByRole("button", { name: "Ava menüü" }).click();
+    await expect(page.locator("[data-admin-drawer]")).toBeVisible();
+    return page.locator('[data-admin-drawer] a[data-nav="protocols"]');
+  }
+  return page.locator('aside a[data-nav="protocols"]');
+}
+
+test("Protokollid: the menu's row; the index of today and the 14 days before it with each day's counts; „Ava“ to the screen; the open individual registrations (B8, B16)", async ({ page, context, visitorIp, isMobile }, info) => {
+  const project = runName(info);
+  const day = await fixtures("index", project, ["Mari Maasikas", "Anu Aas", "Kati Kask"]); // 10:00 today
+  const past = await fixtures("index-past", project, ["Eve Esi"], { day: -3 });
+  const old = await fixtures("index-old", project, ["Siiri Sepp"], { day: -15 }); // 15 days ago: Kalender has it, the index does not
+  const [mari, anu] = day.students;
+  await insertSentProtocol(mari.id, ["Ühtlane joon.", "", ""], "Tubli töö!");
+  await insertDraftProtocol(anu.id, ["Kulmud analüüsitud.", "", ""], "");
+  await insertSentProtocol(past.students[0].id, ["Hea töö.", "", ""], "Tubli!");
+  const piret = await insertIndividualRegistration(day.course.id, "Piret Kalda", clientEmail("proto-index-ind", project));
+  await signInAsAdmin(page, context, visitorIp, created); // lands on the overview
+  await adminReady(page);
+
+  // The menu's row opens the index — or, on a day with exactly one session, that session (B16: tests/unit/menu.test.ts has both). The shared test
+  // database can hold other tests' sessions of today, so which of the two it is is read from the row's own address; each is checked for what it is.
+  const row = await protocolsRow(page, isMobile);
+  await expect(row).toHaveAttribute("href", /^\/admin\/protokollid(\?sessioon=\d+)?$/);
+  const straight = ((await row.getAttribute("href")) ?? "").includes("?");
+  await row.click();
+  await expect(page).toHaveURL(straight ? /\/admin\/protokollid\?sessioon=\d+$/ : /\/admin\/protokollid$/);
+  await adminReady(page);
+  await expect(page.locator(straight ? "[data-protocol-screen]" : "[data-protocol-index]")).toBeVisible();
+  if (straight) {
+    await page.goto("/admin/protokollid");
+    await adminReady(page);
+  }
+
+  const index = page.locator("[data-protocol-index]");
+  await expect(page.locator("h1")).toHaveText("Protokollid");
+  await expect(page.getByText("Täna ja viimased 14 päeva. Vanemad leiad Kalendrist.")).toBeVisible();
+  // today: „Täna“, the course, the time and place, the counts, and an ink „Ava“
+  const today = index.locator(`[data-index-session="${day.session.id}"]`);
+  await expect(today).toContainText("Täna");
+  await expect(today).toContainText("E2E protokollikoolitus");
+  await expect(today).toContainText("10:00 · Pärnu, MS LAB stuudio");
+  await expect(today.locator("[data-index-counts]")).toHaveText("3 õpilast · 1 saadetud · 1 mustand");
+  await expect(today.locator("[data-index-counts]")).toHaveCSS("color", "rgb(107, 79, 92)"); // #6b4f5c while incomplete
+  await expect(today.locator("[data-index-open]")).toHaveText("Ava");
+  await expect(today.locator("[data-index-open]")).toHaveCSS("background-color", "rgb(34, 34, 34)");
+  // three days ago: its date, everything sent in green, an outline „Ava“; today stands above it
+  const earlier = index.locator(`[data-index-session="${past.session.id}"]`);
+  await expect(earlier).not.toContainText("Täna");
+  await expect(earlier).toContainText(/\d\d\.\d\d/);
+  await expect(earlier.locator("[data-index-counts]")).toHaveText("✓ Kõik 1 saadetud");
+  await expect(earlier.locator("[data-index-counts]")).toHaveCSS("color", "rgb(47, 93, 70)"); // #2f5d46
+  await expect(earlier.locator("[data-index-open]")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  const [above, below] = await Promise.all([today.boundingBox(), earlier.boundingBox()]);
+  expect(above!.y).toBeLessThan(below!.y);
+  await expect(index.locator(`[data-index-session="${old.session.id}"]`)).toHaveCount(0);
+  // the individual registrations, under a heading shown in capitals
+  const section = index.locator("[data-index-individual]");
+  await expect(section.locator("h2")).toHaveText("Individuaalkoolitused");
+  await expect(section.locator("h2")).toHaveCSS("text-transform", "uppercase");
+  const individual = section.locator(`[data-index-registration="${piret.id}"]`);
+  await expect(individual).toContainText("Aeg kokkuleppel");
+  await expect(individual).toContainText("Piret Kalda");
+  await expect(individual).toContainText("E2E protokollikoolitus");
+  await expect(individual.locator("[data-index-state]")).toHaveText("Alustamata");
+
+  // „Ava“ of the earlier day: its screen; Back: the index; „Ava“ of the individual registration: hers
+  await earlier.locator("[data-index-open]").click();
+  await expect(page).toHaveURL(new RegExp(`/admin/protokollid\\?sessioon=${past.session.id}$`));
+  await expect(page.locator("[data-protocol-course]")).toHaveText("E2E protokollikoolitus");
+  await expect(editor(page, past.students[0].id)).toBeVisible(); // (one student: no chips, her protocol is open)
+  await page.goBack();
+  await expect(page.locator("[data-protocol-index]")).toBeVisible();
+  await page.locator(`[data-index-registration="${piret.id}"] [data-index-open]`).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/protokollid\\?registreering=${piret.id}$`));
+  await expect(page.locator("[data-protocol-screen]")).toBeVisible();
+  await expect(page.locator("[data-protocol-course]")).toHaveText("E2E protokollikoolitus");
+});

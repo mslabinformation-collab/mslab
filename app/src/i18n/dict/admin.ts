@@ -611,6 +611,21 @@ export const adminEt = {
     notFound: "Seda toimumist või registreeringut ei leitud, või pole see kontaktkoolitus.",
     toCalendar: "Kalendrisse",
     toRegistration: "Registreeringu juurde",
+    // the index (no address parameter; admin UX pass B8): today and the 14 days before it, then the open individual registrations
+    index: {
+      note: "Täna ja viimased 14 päeva. Vanemad leiad Kalendrist.",
+      empty: "Viimase 14 päeva jooksul koolituspäevi polnud.",
+      toCalendar: "← Kalender",
+      today: "Täna",
+      // {n} the listed students, {a} the sent protocols, {b} the drafts; when all are sent: allSent
+      counts: "{n} õpilast · {a} saadetud · {b} mustand",
+      allSent: "✓ Kõik {n} saadetud",
+      open: "Ava",
+      // the section's heading, in sentence case: shown in capitals (CSS)
+      individual: "Individuaalkoolitused",
+      // an individual registration with no protocol yet (one with a draft says `mark.draft`; its time is `registrations.agreed`)
+      notStarted: "Alustamata",
+    },
     individual: "Individuaalkoolitus",
     sessionCancelled: "Toimumine on tühistatud",
     hidden: "Tühistatud registreeringuid peidetud: {n}",

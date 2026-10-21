@@ -52,6 +52,20 @@ export async function insertProtocolFixtures(label: string, project: string, nam
 }
 
 /**
+ * An individual registration (no session: „Aeg kokkuleppel“) on the fixtures' course, confirmed, for the Protokollid index's section; its row goes
+ * with the course (fixtures.ts removeClientRows: the course's slug is the first student's).
+ */
+export async function insertIndividualRegistration(courseId: number, name: string, email: string): Promise<{ id: number }> {
+  return localDb(async (sql) => {
+    const [r] = await sql<{ id: number }[]>`
+      insert into registrations (course_id, course_session_id, kind, name, email, phone, payment_choice, status, paid_cents)
+      values (${courseId}, null, 'individual', ${name}, ${email}, '+372 5555 0101', 'full', 'confirmed', 45000)
+      returning id`;
+    return r;
+  });
+}
+
+/**
  * What the protocol specs that sign in as Maria share (protocols.spec.ts, protocols-autosave.spec.ts); call it once at the top of the spec file.
  * Registers the hooks of the file: every test runs only against the local server (submitsForms), has 3 minutes (the first view of each page under
  * `next dev` compiles it; the retries wait seconds), and after each test the rows of every student `fixtures()` made and Maria's login rows
