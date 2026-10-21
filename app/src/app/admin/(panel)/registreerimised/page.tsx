@@ -10,6 +10,7 @@ import { Pager } from "@/components/admin/Pager";
 import { PaymentLines } from "@/components/admin/PaymentLines";
 import { RegistrationForms } from "@/components/admin/RegistrationForms";
 import { adminTitle } from "@/components/admin/sections";
+import { ListRows } from "@/components/admin/ListRows";
 import listTable from "@/components/admin/list-table.module.css";
 import { StatusPill } from "@/components/admin/StatusPill";
 import ui from "@/components/admin/ui.module.css";
@@ -152,69 +153,71 @@ export default async function RegistrationsPage({ searchParams }: Props) {
           ))}
         </nav>
 
-        <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
+        <section className={`${ui.card} ${listTable.card} ${listTable.stackAt980}`} aria-label={t.title}>
           <p className={`${ui.muted} ${ui.small} ${styles.count}`}>{fill(t.count, { n: list.total })}</p>
           {rows.length === 0 ? (
             <p className={ui.empty}>{filtered ? t.emptyFiltered : t.empty}</p>
           ) : (
-            <table className={`${ui.table} ${listTable.table}`}>
-              <thead>
-                <tr>
-                  <th scope="col">{t.col.date}</th>
-                  <th scope="col">{t.col.name}</th>
-                  <th scope="col">{t.col.kind}</th>
-                  <th scope="col">{t.col.course}</th>
-                  <th scope="col">{t.col.session}</th>
-                  <th scope="col">{t.col.payment}</th>
-                  <th scope="col">{t.col.modelHelp}</th>
-                  <th scope="col">{t.col.account}</th>
-                  <th scope="col">{t.col.status}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} data-registration={r.id}>
-                    <td data-label={t.col.date} className={ui.nowrap}>
-                      <span>
-                        {formatDate(r.createdAt, "et")}
-                        <span className={`${ui.muted} ${styles.sub}`}>{formatTime(r.createdAt, "et")}</span>
-                      </span>
-                    </td>
-                    <td data-label={t.col.name}>
-                      <div className={listTable.who}>
-                        <Link id={`reg-${r.id}`} className={listTable.name} href={href(view, r.id)} scroll={false} aria-label={fill(t.open, { name: r.name })}>
-                          {r.name}
-                        </Link>
-                        <a className={`${ui.contactLink} ${styles.contact}`} href={`mailto:${r.email}`}>
-                          {r.email}
-                        </a>
-                        {r.phone && (
-                          <a className={`${ui.contactLink} ${styles.contact}`} href={tel(r.phone)}>
-                            {r.phone}
-                          </a>
-                        )}
-                      </div>
-                    </td>
-                    <td data-label={t.col.kind}>
-                      <span className={styles.kind}>
-                        <span className={`${ui.tag} ${r.course.type === "e_learning" ? ui.dark : ""}`}>{r.course.type === "e_learning" ? t.type.e : t.type.k}</span>
-                        {r.course.type === "contact" && <span className={styles.participation}>{r.kind === "group" ? t.group : t.individual}</span>}
-                      </span>
-                    </td>
-                    <td data-label={t.col.course}>{pick(r.course.title, "et")}</td>
-                    <td data-label={t.col.session}>{sessionText(r)}</td>
-                    <td data-label={t.col.payment} className={ui.nowrap}>
-                      {t.payment[r.paymentChoice]}
-                    </td>
-                    <td data-label={t.col.modelHelp}>{r.wantsModelHelp ? adminEt.common.yes : adminEt.common.none}</td>
-                    <td data-label={t.col.account}>{r.wantsAccount ? adminEt.common.yes : adminEt.common.none}</td>
-                    <td data-label={t.col.status}>
-                      <StatusPill status={r.status} />
-                    </td>
+            <ListRows>
+              <table className={`${ui.table} ${listTable.table}`}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t.col.date}</th>
+                    <th scope="col">{t.col.name}</th>
+                    <th scope="col">{t.col.kind}</th>
+                    <th scope="col">{t.col.course}</th>
+                    <th scope="col">{t.col.session}</th>
+                    <th scope="col">{t.col.payment}</th>
+                    <th scope="col">{t.col.modelHelp}</th>
+                    <th scope="col">{t.col.account}</th>
+                    <th scope="col">{t.col.status}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.id} data-registration={r.id}>
+                      <td data-label={t.col.date} className={ui.nowrap}>
+                        <span>
+                          {formatDate(r.createdAt, "et")}
+                          <span className={`${ui.muted} ${styles.sub}`}>{formatTime(r.createdAt, "et")}</span>
+                        </span>
+                      </td>
+                      <td data-label={t.col.name}>
+                        <div className={listTable.who}>
+                          <Link id={`reg-${r.id}`} className={listTable.name} href={href(view, r.id)} scroll={false} aria-label={fill(t.open, { name: r.name })}>
+                            {r.name}
+                          </Link>
+                          <a className={`${ui.contactLink} ${styles.contact}`} href={`mailto:${r.email}`}>
+                            {r.email}
+                          </a>
+                          {r.phone && (
+                            <a className={`${ui.contactLink} ${styles.contact}`} href={tel(r.phone)}>
+                              {r.phone}
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td data-label={t.col.kind}>
+                        <span className={styles.kind}>
+                          <span className={`${ui.tag} ${r.course.type === "e_learning" ? ui.dark : ""}`}>{r.course.type === "e_learning" ? t.type.e : t.type.k}</span>
+                          {r.course.type === "contact" && <span className={styles.participation}>{r.kind === "group" ? t.group : t.individual}</span>}
+                        </span>
+                      </td>
+                      <td data-label={t.col.course}>{pick(r.course.title, "et")}</td>
+                      <td data-label={t.col.session}>{sessionText(r)}</td>
+                      <td data-label={t.col.payment} className={ui.nowrap}>
+                        {t.payment[r.paymentChoice]}
+                      </td>
+                      <td data-label={t.col.modelHelp}>{r.wantsModelHelp ? adminEt.common.yes : adminEt.common.none}</td>
+                      <td data-label={t.col.account}>{r.wantsAccount ? adminEt.common.yes : adminEt.common.none}</td>
+                      <td data-label={t.col.status}>
+                        <StatusPill status={r.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ListRows>
           )}
           <Pager info={list} href={(n) => href({ ...view, leht: n })} />
         </section>

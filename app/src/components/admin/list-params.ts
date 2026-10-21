@@ -48,3 +48,14 @@ export function listHref(pathname: string, sp: URLSearchParams, change: Record<s
   }
   return join(pathname, query, "");
 }
+
+/** An address as a string: `pathname` and the query of `sp`, with no `?` when there is none. What `useSearchParams` and `listHref` agree on. */
+export function addressOf(pathname: string, sp: URLSearchParams): string {
+  return join(pathname, sp, "");
+}
+
+/** The two halves of an address made by addressOf or listHref. */
+export function splitAddress(address: string): { pathname: string; params: URLSearchParams } {
+  const { path, query } = parts(address);
+  return { pathname: path, params: query };
+}

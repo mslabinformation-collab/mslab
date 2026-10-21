@@ -1750,12 +1750,39 @@
       "expect": [
         "Rea mis tahes kohale vajutus avab selle rea paneeli või lehe.",
         "E-posti aadressile vajutus avab kirjaprogrammi, mitte paneeli.",
-        "Hiirega rea kohal muutub rea taust natuke heledaks.",
+        "Hiirega rea kohal muutub rea taust kergelt roosakaks.",
         "Arvutis on loend tabel; kitsas aknas on iga rida väike kaart.",
         "Leht ei lähe küljele laiali."
       ],
       "why": "Kogu rida on nüüd link, aga e-posti ja telefoni lingid peavad ikka töötama.",
       "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-loend-tahvel",
+      "area": "haldus",
+      "who": "dim",
+      "device": "tahvel",
+      "title": "Loendid tahvlis: kõik veerud on näha",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava tahvlis „Registreerimised“, kõigepealt püstiasendis, siis külili.",
+        "Vaata rea paremat serva: seal peab olema veerg „Staatus“.",
+        "Ava „Maksed“ ja vaata veerge „Staatus“ ja „Montonio id“.",
+        "Tee sama lehtedel „Õpilased“, „Tagasiside“ ja „Tunnistused“.",
+        "Puuduta rea tühja kohta, mitte nime."
+      ],
+      "expect": [
+        "Iga veerg on täielikult näha ja midagi pole paremalt ära lõigatud.",
+        "Lehte ei saa küljele kerida ega tabelit eraldi kerida.",
+        "Kitsas kohas on iga rida väike kaart, laias kohas tabel.",
+        "Rea tühja kohta puudutus avab selle rea paneeli.",
+        "E-posti aadressi puudutus avab kirjaprogrammi, mitte paneeli."
+      ],
+      "why": "Tabel ei tohi tahvlis jääda kaardi servast välja, sest kerimisriba pole.",
+      "risk": "med",
       "writes": false,
       "mark": "new",
       "markedAt": "deploy"

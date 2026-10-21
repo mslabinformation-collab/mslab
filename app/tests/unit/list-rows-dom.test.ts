@@ -1,0 +1,192 @@
+// @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act, createElement, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ListRows } from "@/components/admin/ListRows";
+import listTable from "@/components/admin/list-table.module.css";
+
+// ListRows (admin UX pass, README §1.10, Task 13 fix round): the whole row of an admin list is the link. The name Link stays the keyboard's
+// and the screen reader's target; a plain click on the row anywhere else, away from the row's own controls, is forwarded to it, so Next's Link
+// navigates as always. Nothing is stretched or clipped, and text in a row can still be selected.
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+let container: HTMLDivElement;
+let root: Root;
+
+/** The table as the pages render it: a name link, an e-mail link, a button and a field in one row; a plain name (a payer with no account) in another. */
+const table = (): ReactNode =>
+  createElement(
+    "table",
+    { className: listTable.table },
+    createElement("thead", null, createElement("tr", null, createElement("th", { id: "head" }, "Nimi"))),
+    createElement(
+      "tbody",
+      null,
+      createElement(
+        "tr",
+        { id: "r1" },
+        createElement("td", { id: "date" }, createElement("span", { id: "deep" }, "21.10")),
+        createElement(
+          "td",
+          { id: "who" },
+          createElement("a", { id: "name", className: listTable.name, href: "/admin/opilased?id=1" }, createElement("b", { id: "inname" }, "Kati Kask")),
+          createElement("a", { id: "mail", href: "mailto:kati@example.test" }, createElement("i", { id: "inmail" }, "kati@example.test")),
+        ),
+        createElement(
+          "td",
+          { id: "tools" },
+          createElement("button", { id: "btn", type: "button" }, createElement("i", { id: "inbtn" }, "Saada")),
+          createElement("label", { id: "lbl" }, "Märgi", createElement("input", { id: "field", type: "checkbox" })),
+          createElement("span", { id: "role", role: "button", tabIndex: 0 }, "Roll"),
+          createElement("span", { id: "edit", contentEditable: "true" }, "Muuda"),
+        ),
+      ),
+      createElement("tr", { id: "r2" }, createElement("td", { id: "plain" }, createElement("span", { className: listTable.name }, "Ilma kontota"))),
+    ),
+  );
+
+let opened: HTMLElement[];
+const draw = (children: ReactNode = table()) => act(async () => root.render(createElement(ListRows, null, children)));
+const $ = (id: string) => document.getElementById(id)!;
+/** A click as a mouse makes it (primary button, no keys), unless `init` says otherwise. */
+const click = (el: Element, init: MouseEventInit = {}) =>
+  act(async () => void el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, ...init })));
+
+beforeEach(async () => {
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  opened = [];
+  await draw();
+  // the name Link's own click: counted, and kept from following the address
+  $("name").addEventListener("click", (e) => {
+    e.preventDefault();
+    opened.push(e.target as HTMLElement);
+  });
+});
+afterEach(async () => {
+  window.getSelection()?.removeAllRanges();
+  await act(async () => root.unmount());
+  container.remove();
+  vi.restoreAllMocks();
+});
+
+describe("ListRows", () => {
+  it("a click on a cell of the row, or on what is in it, follows the row's name link", async () => {
+    await click($("date"));
+    expect(opened).toHaveLength(1);
+    await click($("deep"));
+    await click($("who")); // the name's own cell, beside the link
+    await click($("tools"));
+    await click($("r1")); // the row itself (its padding)
+    expect(opened).toHaveLength(5);
+  });
+
+  it("the name link's own click is one click, not two (the forwarded click bubbles back and is let go)", async () => {
+    await click($("name"));
+    expect(opened).toEqual([$("name")]);
+    await click($("inname")); // the text inside the link
+    expect(opened).toEqual([$("name"), $("inname")]);
+  });
+
+  it("the row's own controls get their click: an e-mail link, a button, a label and its field, a role=button, a contenteditable", async () => {
+    for (const id of ["mail", "inmail", "btn", "inbtn", "lbl", "field", "role", "edit"]) await click($(id));
+    expect(opened).toHaveLength(0);
+  });
+
+  it("Ctrl, Cmd, Shift and Alt clicks and a click of another button are the browser's own", async () => {
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }, { button: 2 }]) await click($("date"), init);
+    expect(opened).toHaveLength(0);
+  });
+
+  it("a click that was already handled (defaultPrevented) is left alone", async () => {
+    $("date").addEventListener("click", (e) => e.preventDefault());
+    await click($("date"));
+    expect(opened).toHaveLength(0);
+  });
+
+  it("not while text is selected: dragging over a cell to copy it ends in a click on that cell", async () => {
+    const range = document.createRange();
+    range.selectNodeContents($("deep"));
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    expect(window.getSelection()!.isCollapsed).toBe(false);
+    await click($("deep"));
+    expect(opened).toHaveLength(0);
+    window.getSelection()!.removeAllRanges();
+    await click($("deep"));
+    expect(opened).toHaveLength(1);
+  });
+
+  it("a row with no name link (a payer with no account), the header and what is outside the table do nothing", async () => {
+    await click($("plain"));
+    await click($("r2"));
+    await click($("head"));
+    await click(container);
+    expect(opened).toHaveLength(0);
+  });
+
+  it("the table stays as it is: the wrapper is a plain block with no class and no style", () => {
+    const box = container.firstElementChild as HTMLElement;
+    expect(box.tagName).toBe("DIV");
+    expect(box.getAttribute("class")).toBeNull();
+    expect(box.getAttribute("style")).toBeNull();
+    expect(box.firstElementChild!.tagName).toBe("TABLE");
+  });
+});
+
+describe("list tables (the stylesheet)", () => {
+  const css = readFileSync(join(process.cwd(), "src/components/admin/list-table.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  /** The body of the `@container (…)` block that starts with `head`: from its brace to the matching one. */
+  const block = (head: string) => {
+    const at = css.indexOf(head);
+    expect(at, head).toBeGreaterThan(-1);
+    const open = css.indexOf("{", at);
+    let depth = 0;
+    for (let i = open; i < css.length; i++) {
+      if (css[i] === "{") depth++;
+      if (css[i] === "}" && --depth === 0) return css.slice(open + 1, i);
+    }
+    throw new Error(head);
+  };
+  const squash = (s: string) => s.replace(/\s+/g, " ").trim();
+
+  it("a row becomes a block of label/value lines below a 760 px card; only the cards marked stackAt980 keep the old 980", () => {
+    expect(css.match(/@container[^{]*\{/g)).toEqual(["@container (max-width: 760px) {", "@container (max-width: 980px) {"]);
+    // the 980 block is the 760 block's rules, each selector under .stackAt980 (so a change to one must be made to the other)
+    const wide = squash(block("@container (max-width: 760px)")).replace(/(^|[,}{] ?)(\.table|\.who)/g, "$1.stackAt980 $2");
+    expect(squash(block("@container (max-width: 980px)"))).toBe(wide);
+  });
+
+  it("nothing is stretched, positioned or clipped to make the row a link: the row is the link by ListRows", () => {
+    expect(css).not.toMatch(/::after/);
+    expect(css).not.toMatch(/z-index/);
+    expect(css).not.toMatch(/position:\s*(relative|static)/);
+    const card = /\n\.card \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(squash(card)).toBe("container-type: inline-size;");
+  });
+
+  it("a row with a name link shows a pointer, and the highlight under a mouse only", () => {
+    expect(css).toMatch(/\.table tbody tr:has\(a\.name\) \{\s*cursor: pointer;/);
+    expect(css).toMatch(/@media \(hover: hover\) \{\s*\.table tbody tr:has\(a\.name\):hover \{\s*background: var\(--row-highlight\);/);
+  });
+
+  it("every page's own container queries agree: Registreerimised and Maksed stack at 980 with the card, the rest at 760", () => {
+    const page = (f: string) => readFileSync(join(process.cwd(), "src/app/admin/(panel)", f), "utf8");
+    expect(page("registreerimised/registrations.module.css")).toMatch(/@container \(max-width: 980px\)/);
+    expect(page("maksed/payments.module.css")).toMatch(/@container \(max-width: 980px\)/);
+    expect(page("tagasiside/feedback.module.css")).toMatch(/@container \(max-width: 760px\)/);
+    expect(page("tagasiside/feedback.module.css")).not.toMatch(/980px/);
+    expect(page("registreerimised/page.tsx")).toMatch(/listTable\.card\} \$\{listTable\.stackAt980\}/);
+    expect(page("maksed/page.tsx")).toMatch(/listTable\.card\} \$\{listTable\.stackAt980\}/);
+    for (const f of ["opilased", "tagasiside", "tunnistused"]) expect(page(`${f}/page.tsx`)).not.toMatch(/stackAt980/);
+    // every list's table is inside ListRows
+    for (const f of ["registreerimised", "opilased", "maksed", "tagasiside", "tunnistused"]) expect(page(`${f}/page.tsx`), f).toMatch(/<ListRows>\s*<table className=\{`\$\{ui\.table\} \$\{listTable\.table\}`\}>/);
+  });
+});

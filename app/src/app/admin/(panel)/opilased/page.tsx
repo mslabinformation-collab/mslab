@@ -5,6 +5,7 @@ import { ClientDetailView } from "@/components/admin/ClientDrawer";
 import { AddStudentForm } from "@/components/admin/ClientForms";
 import { Drawer } from "@/components/admin/Drawer";
 import { Pager } from "@/components/admin/Pager";
+import { ListRows } from "@/components/admin/ListRows";
 import listTable from "@/components/admin/list-table.module.css";
 import { adminTitle } from "@/components/admin/sections";
 import ui from "@/components/admin/ui.module.css";
@@ -137,35 +138,37 @@ export default async function ClientsPage({ searchParams }: Props) {
           {list.rows.length === 0 ? (
             <p className={ui.empty}>{filtered ? t.emptyFiltered : t.empty}</p>
           ) : (
-            <table className={`${ui.table} ${listTable.table}`}>
-              <thead>
-                <tr>
-                  <th scope="col">{t.col.name}</th>
-                  <th scope="col">{t.col.created}</th>
-                  <th scope="col">{t.col.courses}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.rows.map((c) => (
-                  <tr key={c.id} data-client={c.id}>
-                    <td data-label={t.col.name}>
-                      <div className={listTable.who}>
-                        <Link id={`client-${c.id}`} className={listTable.name} href={href(view, c.id)} scroll={false} aria-label={fill(t.open, { name: c.name || c.email })}>
-                          {c.name || c.email}
-                        </Link>
-                        {c.name && <span className={styles.email}>{c.email}</span>}
-                      </div>
-                    </td>
-                    <td data-label={t.col.created} className={ui.nowrap}>
-                      {formatDate(c.createdAt, "et")}
-                    </td>
-                    <td data-label={t.col.courses} data-client-courses="">
-                      {c.courses}
-                    </td>
+            <ListRows>
+              <table className={`${ui.table} ${listTable.table}`}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t.col.name}</th>
+                    <th scope="col">{t.col.created}</th>
+                    <th scope="col">{t.col.courses}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {list.rows.map((c) => (
+                    <tr key={c.id} data-client={c.id}>
+                      <td data-label={t.col.name}>
+                        <div className={listTable.who}>
+                          <Link id={`client-${c.id}`} className={listTable.name} href={href(view, c.id)} scroll={false} aria-label={fill(t.open, { name: c.name || c.email })}>
+                            {c.name || c.email}
+                          </Link>
+                          {c.name && <span className={styles.email}>{c.email}</span>}
+                        </div>
+                      </td>
+                      <td data-label={t.col.created} className={ui.nowrap}>
+                        {formatDate(c.createdAt, "et")}
+                      </td>
+                      <td data-label={t.col.courses} data-client-courses="">
+                        {c.courses}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ListRows>
           )}
           <Pager info={list} href={(n) => href({ ...view, leht: n })} />
         </section>

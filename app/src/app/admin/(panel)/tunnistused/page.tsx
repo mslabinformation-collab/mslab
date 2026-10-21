@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ListRows } from "@/components/admin/ListRows";
 import listTable from "@/components/admin/list-table.module.css";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
@@ -52,48 +53,52 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
         {list.rows.length === 0 ? (
           <p className={ui.empty}>{t.empty}</p>
         ) : (
-          <table className={`${ui.table} ${listTable.table}`}>
-            <thead>
-              <tr>
-                <th scope="col">{t.col.number}</th>
-                <th scope="col">{t.col.name}</th>
-                <th scope="col">{t.col.course}</th>
-                <th scope="col">{t.col.issued}</th>
-                <th scope="col">{t.col.file}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.rows.map((r) => (
-                <tr key={r.id} data-register-row={r.id}>
-                  <td data-label={t.col.number} className={ui.nowrap}>
-                    <strong>{r.number}</strong>
-                  </td>
-                  <td data-label={t.col.name}>
-                    <Link className={listTable.name} href={`/admin/opilased?id=${r.clientId}`} aria-label={fill(t.openStudent, { name: r.name })}>
-                      {r.name}
-                    </Link>
-                  </td>
-                  <td data-label={t.col.course}>{r.course}</td>
-                  <td data-label={t.col.issued}>
-                    <span className={styles.issued}>
-                      <span className={ui.nowrap}>{formatDate(r.issuedAt, "et")}</span>
-                      {r.reissuedAt && <span className={styles.note}>{fill(d.reissued, { date: formatDate(r.reissuedAt, "et") })}</span>}
-                      {r.revoked && (
-                        <span className={`${ui.tag} ${ui.bad}`} data-register-revoked="">
-                          {d.revoked}
-                        </span>
-                      )}
-                    </span>
-                  </td>
-                  <td data-label={t.col.file}>
-                    <a className={ui.link} href={`/api/admin/tunnistus/${r.id}`} aria-label={fill(d.downloadLabel, { number: r.number })} data-register-download="">
-                      {d.download}
-                    </a>
-                  </td>
+          <ListRows>
+
+            <table className={`${ui.table} ${listTable.table}`}>
+              <thead>
+                <tr>
+                  <th scope="col">{t.col.number}</th>
+                  <th scope="col">{t.col.name}</th>
+                  <th scope="col">{t.col.course}</th>
+                  <th scope="col">{t.col.issued}</th>
+                  <th scope="col">{t.col.file}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {list.rows.map((r) => (
+                  <tr key={r.id} data-register-row={r.id}>
+                    <td data-label={t.col.number} className={ui.nowrap}>
+                      <strong>{r.number}</strong>
+                    </td>
+                    <td data-label={t.col.name}>
+                      <Link className={listTable.name} href={`/admin/opilased?id=${r.clientId}`} aria-label={fill(t.openStudent, { name: r.name })}>
+                        {r.name}
+                      </Link>
+                    </td>
+                    <td data-label={t.col.course}>{r.course}</td>
+                    <td data-label={t.col.issued}>
+                      <span className={styles.issued}>
+                        <span className={ui.nowrap}>{formatDate(r.issuedAt, "et")}</span>
+                        {r.reissuedAt && <span className={styles.note}>{fill(d.reissued, { date: formatDate(r.reissuedAt, "et") })}</span>}
+                        {r.revoked && (
+                          <span className={`${ui.tag} ${ui.bad}`} data-register-revoked="">
+                            {d.revoked}
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                    <td data-label={t.col.file}>
+                      <a className={ui.link} href={`/api/admin/tunnistus/${r.id}`} aria-label={fill(d.downloadLabel, { number: r.number })} data-register-download="">
+                        {d.download}
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+          </ListRows>
         )}
         <Pager info={list} href={(n) => `/admin/tunnistused${n > 1 ? `?leht=${n}` : ""}`} />
       </section>

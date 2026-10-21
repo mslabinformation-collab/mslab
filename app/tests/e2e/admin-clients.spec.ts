@@ -324,9 +324,13 @@ test("the whole row is the link: at 1360 px Õpilased stays a table and a click 
   const own = page.viewportSize()!;
 
   // a click at the middle of a cell, away from the name (the name's own link would be too easy): the cell's text is not the link, the row is
+  // (ListRows.tsx listens once the page is hydrated: the click is repeated until the drawer's address answers it)
   const clickCell = async (cell: Locator) => {
-    const box = (await cell.boundingBox())!;
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(async () => {
+      const box = (await cell.boundingBox())!;
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(page).toHaveURL(/[?&]id=\d+/, { timeout: 1500 });
+    }).toPass({ timeout: 15_000 });
   };
   const open = async () => {
     await expect(page).toHaveURL(/[?&]id=\d+/);
@@ -347,6 +351,13 @@ test("the whole row is the link: at 1360 px Õpilased stays a table and a click 
   const link = row.getByRole("link", { name: `Ava ${name}` });
   const [cell, linkBox] = [row.locator("[data-client-courses]"), (await link.boundingBox())!];
   expect((await cell.boundingBox())!.x, "the courses cell sits beside the name, not under it").toBeGreaterThan(linkBox.x + linkBox.width);
+  // the row looks like a link: a pointer, and (for a mouse) the row highlight under it
+  await expect(row).toHaveCSS("cursor", "pointer");
+  if (await page.evaluate(() => matchMedia("(hover: hover)").matches)) {
+    const box = (await row.boundingBox())!;
+    await page.mouse.move(box.x + 24, box.y + box.height / 2);
+    await expect(row).toHaveCSS("background-color", "rgb(250, 246, 248)");
+  }
   await clickCell(row.locator("[data-client-courses]"));
   await open();
   await clickCell(row.locator("td").nth(1)); // the date

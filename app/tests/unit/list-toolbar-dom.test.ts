@@ -176,25 +176,6 @@ describe("ListToolbar: search", () => {
     expect(router.replace).toHaveBeenLastCalledWith("/admin/opilased?otsi=kas", { scroll: false });
   });
 
-  it("two replaces on their way (a slow page): the older one arriving first does not take the newer text back", async () => {
-    await show("/admin/opilased");
-    await act(async () => void field().focus());
-    await type("ka");
-    await wait(300);
-    await type("kas");
-    await wait(300);
-    expect(router.replace.mock.calls.map((c) => c[0])).toEqual(["/admin/opilased?otsi=ka", "/admin/opilased?otsi=kas"]);
-    await go("/admin/opilased?otsi=ka");
-    expect(field().value).toBe("kas");
-    expect(document.activeElement).toBe(field());
-    await go("/admin/opilased?otsi=kas");
-    expect(field().value).toBe("kas");
-    // both have arrived: an address that is neither is somebody else's (Back)
-    await go("/admin/opilased?otsi=ka");
-    expect(field().value).toBe("ka");
-    expect(router.replace).toHaveBeenCalledTimes(2);
-  });
-
   it("an address that changes from outside (Back, „Tühjenda otsing ja filtrid“) is shown in the field and cancels what was waiting", async () => {
     await show("/admin/opilased?otsi=kas");
     await type("kas ma");
@@ -315,6 +296,108 @@ describe("ListToolbar: pills and the count line", () => {
   });
 });
 
+describe("ListToolbar: one address for every replace", () => {
+  // Next keeps one navigation at a time: a replace started while another is on its way discards the first, so the second must carry
+  // everything the first did. Every replace is built from the address the list is heading for, not the one on the screen.
+  const scope: NonNullable<Props["scope"]> = {
+    label: "Koolitus ja toimumine",
+    name: "toimumine",
+    value: "",
+    options: [
+      { value: "", label: "Kõik koolitused ja toimumised" },
+      { value: "7", label: "Pärnu 05.12" },
+    ],
+  };
+  const choose = (value: string) =>
+    act(async () => {
+      select().value = value;
+      select().dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  const link = (name: string) => Array.from(container.querySelectorAll<HTMLAnchorElement>("a")).find((a) => a.textContent?.startsWith(name))!;
+  const pills: NonNullable<Props["pills"]> = [
+    { href: "/admin/registreerimised", label: "Kõik", count: 4, current: true },
+    { href: "/admin/registreerimised?staatus=ootab", label: "Ootab", count: 2, current: false },
+  ];
+  const calls = () => router.replace.mock.calls.map((c) => c[0]);
+
+  it("a search on its way, then a scope: the scope replace carries the search, and the address that arrives has both", async () => {
+    await show("/admin/registreerimised?leht=2", { scope });
+    await type("kas");
+    await wait(300);
+    await choose("7"); // the search has not arrived yet
+    expect(calls()).toEqual(["/admin/registreerimised?otsi=kas", "/admin/registreerimised?otsi=kas&toimumine=7"]);
+    // Next dropped the first replace: the address goes straight to the second
+    props = { ...props, scope: { ...scope, value: "7" } };
+    await go("/admin/registreerimised?otsi=kas&toimumine=7");
+    expect(field().value).toBe("kas");
+    expect(select().value).toBe("7");
+    await wait(300);
+    expect(router.replace).toHaveBeenCalledTimes(2);
+  });
+
+  it("a scope on its way, then a search: the search replace carries the scope", async () => {
+    await show("/admin/registreerimised", { scope });
+    await choose("7");
+    await type("kas");
+    await wait(300);
+    expect(calls()).toEqual(["/admin/registreerimised?toimumine=7", "/admin/registreerimised?toimumine=7&otsi=kas"]);
+    props = { ...props, scope: { ...scope, value: "7" } };
+    await go("/admin/registreerimised?toimumine=7&otsi=kas");
+    expect(select().value).toBe("7");
+    expect(field().value).toBe("kas");
+  });
+
+  it("text still waiting for its 300 ms goes with the scope change at once, and the timer is not left behind", async () => {
+    await show("/admin/registreerimised?staatus=ootab", { scope });
+    await type("kas");
+    await wait(100);
+    await choose("7");
+    expect(calls()).toEqual(["/admin/registreerimised?staatus=ootab&otsi=kas&toimumine=7"]);
+    await wait(500);
+    expect(router.replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("once a replace has arrived the next one is built from the address as it is now", async () => {
+    await show("/admin/registreerimised", { scope });
+    await type("kas");
+    await wait(300);
+    await go("/admin/registreerimised?otsi=kas");
+    await choose("7");
+    expect(calls()[1]).toBe("/admin/registreerimised?otsi=kas&toimumine=7");
+    await go("/admin/registreerimised?otsi=kas&toimumine=7");
+    await type("kask");
+    await wait(300);
+    expect(calls()[2]).toBe("/admin/registreerimised?otsi=kask&toimumine=7");
+  });
+
+  it("a pill clicked while a search is still waiting: the search is dropped (sent after the click it would take the pill's navigation away), and the field follows the address", async () => {
+    container.addEventListener("click", (e) => e.preventDefault()); // happy-dom must not try to follow the link
+    await show("/admin/registreerimised", { pills });
+    await type("kas");
+    await wait(100);
+    await click(link("Ootab"));
+    await wait(500);
+    expect(router.replace).not.toHaveBeenCalled();
+    await go("/admin/registreerimised?staatus=ootab"); // the pill's address: no search
+    expect(field().value).toBe("");
+    expect(clear()).toBeNull();
+  });
+
+  it("a pill clicked while a search is on its way: the pill's address wins, and the field and the list agree on it", async () => {
+    container.addEventListener("click", (e) => e.preventDefault());
+    await show("/admin/registreerimised", { pills });
+    await type("kas");
+    await wait(300);
+    expect(calls()).toEqual(["/admin/registreerimised?otsi=kas"]);
+    await click(link("Ootab")); // Next drops the search's replace and goes to the pill
+    await go("/admin/registreerimised?staatus=ootab");
+    expect(field().value).toBe("");
+    await type("mari");
+    await wait(300);
+    expect(calls()[1]).toBe("/admin/registreerimised?staatus=ootab&otsi=mari"); // built from where the list is, not from the dropped search
+  });
+});
+
 describe("ListEmpty", () => {
   const empty = (p: Parameters<typeof ListEmpty>[0]) => act(async () => root.render(createElement(ListEmpty, p)));
 
@@ -372,19 +455,5 @@ describe("withListParams", () => {
   it("encodes values and keeps repeated params", () => {
     expect(withListParams("/admin/maksed", sp("otsi=%2B372+5000"))).toBe("/admin/maksed?otsi=%2B372+5000");
     expect(withListParams("/admin/maksed", sp("a=1&a=2"))).toBe("/admin/maksed?a=1&a=2");
-  });
-});
-
-describe("list tables (the stylesheet)", () => {
-  const css = readFileSync(join(process.cwd(), "src/components/admin/list-table.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-
-  it("a row becomes a block of label/value lines below a 760 px card, no longer below 980", () => {
-    expect(css).toMatch(/@container \(max-width: 760px\)/);
-    expect(css).not.toMatch(/980px/);
-  });
-
-  it("the name link is stretched over its row with ::after, and the controls in a row stay above it", () => {
-    expect(css).toMatch(/a\.name::after \{[^}]*content: "";[^}]*position: absolute;/);
-    expect(css).toMatch(/\.table a:not\(\.name\),[^{]*\{[^}]*position: relative;[^}]*z-index: 2;/);
   });
 });

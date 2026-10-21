@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { parseSearch, SEARCH_MAX } from "@/domain/paging";
 import { adminEt } from "@/i18n/dict/admin";
-import { listHref } from "./list-params";
+import { addressOf, listHref, splitAddress } from "./list-params";
 import ui from "./ui.module.css";
 import styles from "./ListToolbar.module.css";
 
@@ -21,10 +21,14 @@ export type ListScope = { label: string; name: string; options: { value: string;
  *
  * - Search: typing waits {@link SEARCH_DEBOUNCE_MS} ms after the last keystroke, then `router.replace`s `?otsi=` (taken away when the text is
  *   empty) with `leht` dropped: a new search starts at page 1. Enter sends it at once, and so does the ✕, which also puts the focus back in the
- *   field. The field is never remounted by a replace, so it keeps its focus and its text; what the address says later is shown only when it did
- *   not come from this field (Back, „Tühjenda otsing ja filtrid“): a replace that was sent and has not arrived yet, or arrives after the person
- *   has typed on, never takes the text back.
- * - The scope select applies on change, by the same rules (its empty option takes the parameter away).
+ *   field. The field is never remounted by a replace, so it keeps its focus and its text.
+ * - The scope select applies on change, by the same rules (its empty option takes the parameter away); text still waiting for its 300 ms goes
+ *   with it.
+ * - One address for every replace: Next keeps one navigation at a time and drops a pending one when a newer starts, so each replace is built
+ *   from the address the list is heading for (the last replace sent), not from the one on the screen; a search and a scope chosen within the
+ *   time a page takes to load both arrive. An address that did not come from the toolbar (Back, a row, „Tühjenda otsing ja filtrid“) is the
+ *   list now: the field shows its search and what was waiting is dropped. A pill is such a navigation, and a click on one drops a search that
+ *   is still waiting (sent after it, the search would take the pill's navigation away); a search already sent loses to the pill the same way.
  * - `pills` are plain links, built by the page (they carry the search and the other filters themselves); the current one has aria-current.
  * - `placeholder` is the page's own („Otsi nime, e-posti või telefoni järgi“, …) and is the field's accessible name.
  */
@@ -46,19 +50,17 @@ export function ListToolbar({
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  const committed = addressOf(pathname, params);
   const urlQuery = parseSearch(params.get("otsi") ?? undefined);
 
   const [text, setText] = useState(urlQuery);
   const input = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // the search the address has, or is on its way to have; and the replaces sent and not yet seen in the address, oldest first
-  const last = useRef(urlQuery);
+  // The address the list is heading for: the one on the screen, or the last replace sent. Every replace is built from it, never from the
+  // screen's address: Next keeps one navigation at a time, so a replace started while another is on its way drops the first, and a replace built
+  // from the screen's address would lose what the first one carried (the search, or the scope). `sent` are the replaces not seen on the screen yet.
+  const intended = useRef(committed);
   const sent = useRef<string[]>([]);
-  // the address the delayed send reads when it runs, not the one it was started from
-  const at = useRef({ pathname, params });
-  useEffect(() => {
-    at.current = { pathname, params };
-  });
 
   const cancel = () => {
     if (timer.current !== null) clearTimeout(timer.current);
@@ -66,33 +68,38 @@ export function ListToolbar({
   };
   useEffect(() => cancel, []);
 
-  const send = (value: string) => {
+  /** Replaces the address with `change` applied to where the list is heading (leht goes); nothing when that is where it is heading already. */
+  const go = (change: Record<string, string | null>) => {
     cancel();
-    const query = parseSearch(value);
-    if (query === last.current) return;
-    last.current = query;
-    sent.current.push(query);
-    router.replace(listHref(at.current.pathname, at.current.params, { otsi: query }), { scroll: false });
+    const from = splitAddress(intended.current);
+    const href = listHref(from.pathname, from.params, change);
+    if (href === listHref(from.pathname, from.params, {})) return;
+    intended.current = href;
+    sent.current.push(href);
+    router.replace(href, { scroll: false });
   };
+  const search = (value: string) => go({ otsi: parseSearch(value) });
 
-  // The address changed. If it is one of our own replaces arriving, the field already says what it should; else (Back, a link) show it.
+  // The address on the screen changed. One of our own replaces arriving (or a later one, when Next dropped the earlier): the field already says
+  // what it should. Anything else (Back, a pill, a row) is somebody else's: the list is what the address says now, so the field shows that, and
+  // what was waiting or on its way is dropped.
   useEffect(() => {
-    const own = sent.current.indexOf(urlQuery);
+    const own = sent.current.indexOf(committed);
     if (own !== -1) {
       sent.current.splice(0, own + 1);
       return;
     }
-    if (urlQuery === last.current) return;
+    if (committed === intended.current) return;
     cancel();
     sent.current = [];
-    last.current = urlQuery;
+    intended.current = committed;
     setText(urlQuery);
-  }, [urlQuery]);
+  }, [committed, urlQuery]);
 
   const onType = (value: string) => {
     setText(value);
     cancel();
-    timer.current = setTimeout(() => send(value), SEARCH_DEBOUNCE_MS);
+    timer.current = setTimeout(() => search(value), SEARCH_DEBOUNCE_MS);
   };
 
   const Pills = pillsLabel ? "nav" : "div";
@@ -104,7 +111,7 @@ export function ListToolbar({
           role="search"
           onSubmit={(e) => {
             e.preventDefault();
-            send(text);
+            search(text);
           }}
         >
           <span className={styles.glass} aria-hidden="true">
@@ -132,7 +139,7 @@ export function ListToolbar({
               data-search-clear=""
               onClick={() => {
                 setText("");
-                send("");
+                search("");
                 input.current?.focus();
               }}
             >
@@ -140,13 +147,15 @@ export function ListToolbar({
             </button>
           )}
         </form>
-        {scope && <ScopeSelect scope={scope} onChoose={(value) => router.replace(listHref(pathname, params, { [scope.name]: value }), { scroll: false })} />}
+        {/* a search still waiting for its 300 ms goes with the choice */}
+        {scope && <ScopeSelect scope={scope} onChoose={(value) => go({ otsi: parseSearch(text), [scope.name]: value })} />}
       </div>
 
       {pills && pills.length > 0 && (
         <Pills className={styles.pills} aria-label={pillsLabel} data-list-pills="">
           {pills.map((p) => (
-            <Link key={p.href} className={ui.pill} href={p.href} aria-current={p.current ? "true" : undefined}>
+            // a search still waiting is dropped at the click: sent after it, it would take the pill's navigation away
+            <Link key={p.href} className={ui.pill} href={p.href} aria-current={p.current ? "true" : undefined} onClick={cancel}>
               {p.label}
               {p.count !== undefined && <span className={ui.pillCount}>{p.count}</span>}
             </Link>

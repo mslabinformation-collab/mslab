@@ -80,8 +80,8 @@
   margin: 0;
 }
 
-/* the course's day next to its title once the row is a block (the shared list's narrow card) */
-@container (max-width: 980px) {
+/* the course's day next to its title once the row is a block (the shared list's narrow card, below 760 px) */
+@container (max-width: 760px) {
   .sub {
     display: inline;
     margin-left: 6px;

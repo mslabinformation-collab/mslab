@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Drawer } from "@/components/admin/Drawer";
 import { FeedbackAnswers, formatScore } from "@/components/admin/FeedbackAnswers";
+import { ListRows } from "@/components/admin/ListRows";
 import listTable from "@/components/admin/list-table.module.css";
 import { Pager } from "@/components/admin/Pager";
 import { courseLabel, reviewRowView } from "@/components/admin/review-view";
@@ -172,40 +173,42 @@ async function answersPage(view: Parsed) {
           {list.rows.length === 0 ? (
             <p className={ui.empty}>{view.koolitus ? t.emptyFiltered : t.empty}</p>
           ) : (
-            <table className={`${ui.table} ${listTable.table}`}>
-              <thead>
-                <tr>
-                  <th scope="col">{t.col.date}</th>
-                  <th scope="col">{t.col.student}</th>
-                  <th scope="col">{t.col.course}</th>
-                  <th scope="col">{t.col.score}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.rows.map((f) => (
-                  <tr key={f.id} data-feedback-row={f.id}>
-                    <td data-label={t.col.date} className={ui.nowrap}>
-                      {formatDate(f.submittedAt, "et")}
-                    </td>
-                    <td data-label={t.col.student}>
-                      <div className={listTable.who}>
-                        <Link id={`feedback-${f.id}`} className={listTable.name} href={href(view, f.id)} scroll={false}>
-                          {f.name}
-                        </Link>
-                      </div>
-                    </td>
-                    <td data-label={t.col.course}>
-                      {pick(f.course.title, "et")}
-                      {f.startsAt && <span className={`${ui.muted} ${styles.sub}`}>{formatDate(f.startsAt, "et")}</span>}
-                      {f.completedAt && <span className={`${ui.muted} ${styles.sub}`}>{fill(t.completed, { date: formatDate(f.completedAt, "et") })}</span>}
-                    </td>
-                    <td data-label={t.col.score} className={ui.nowrap}>
-                      {f.answers.score === undefined ? adminEt.common.none : `${f.answers.score}/10`}
-                    </td>
+            <ListRows>
+              <table className={`${ui.table} ${listTable.table}`}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t.col.date}</th>
+                    <th scope="col">{t.col.student}</th>
+                    <th scope="col">{t.col.course}</th>
+                    <th scope="col">{t.col.score}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {list.rows.map((f) => (
+                    <tr key={f.id} data-feedback-row={f.id}>
+                      <td data-label={t.col.date} className={ui.nowrap}>
+                        {formatDate(f.submittedAt, "et")}
+                      </td>
+                      <td data-label={t.col.student}>
+                        <div className={listTable.who}>
+                          <Link id={`feedback-${f.id}`} className={listTable.name} href={href(view, f.id)} scroll={false}>
+                            {f.name}
+                          </Link>
+                        </div>
+                      </td>
+                      <td data-label={t.col.course}>
+                        {pick(f.course.title, "et")}
+                        {f.startsAt && <span className={`${ui.muted} ${styles.sub}`}>{formatDate(f.startsAt, "et")}</span>}
+                        {f.completedAt && <span className={`${ui.muted} ${styles.sub}`}>{fill(t.completed, { date: formatDate(f.completedAt, "et") })}</span>}
+                      </td>
+                      <td data-label={t.col.score} className={ui.nowrap}>
+                        {f.answers.score === undefined ? adminEt.common.none : `${f.answers.score}/10`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ListRows>
           )}
           <Pager info={list} href={(n) => href({ ...view, leht: n })} />
         </section>

@@ -32,7 +32,8 @@
   text-decoration: underline;
 }
 
-/* the time next to the date once the row is a block (the shared list's narrow card) */
+/* the time next to the date once the row is a block. This list's card stacks below 980 px, not the shared 760: `stackAt980` on its card
+   (list-table.module.css), until the A2 screen drops columns; then this goes back to 760 with it. */
 @container (max-width: 980px) {
   .sub {
     display: inline;

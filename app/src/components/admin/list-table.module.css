@@ -3,24 +3,12 @@
    (each cell's data-label) instead of a table that scrolls sideways. Colours from tokens.css only (--row-highlight is the admin's #faf6f8).
 
    The whole row is the link (admin UX pass, README §1.10). The row's name stays a real Link, the one target of the keyboard and the screen
-   reader (a 44 px target, below); its ::after is stretched over the row, so a click anywhere on the row follows it. Other controls in a row
-   (the e-mail and phone links, a download, a button) sit above it: `position: relative; z-index: 2`, the ::after being z-index 1. (The ::after
-   needs its 1: the cells after the name's are positioned too, as contexts, and paint above a z-index:auto child of an earlier cell.)
-
-   What the ::after is stretched over is its positioning context, and in the table that is not the row: `position: relative` on a <tr> has
-   not always been a containing block for its descendants (WebKit long did not make it one; current Safari and Chrome do, and what iOS 15 and
-   16 do is not known here). Where it is not, a stretched link goes to the next positioned ancestor, so every row's link would cover the whole
-   card and the last row would win. So in the table every cell is the context (`td { position: relative }`), which every engine honours: the
-   link is as tall as its cell, which is as tall as its row (a table stretches its cells), and reaches 2000 px to either side to cover the
-   cells before and after it; the card cuts that off at its own edge (`overflow: clip`, `hidden` where clip is unknown). If a cell failed to
-   be the context, the link would be the cell, never the card. In the narrow card the rows are blocks, and a block is positioned everywhere,
-   so there the <tr> is the context and the cells are not. */
+   reader (a 44 px target, below). A click anywhere else on the row, away from the row's own controls, is forwarded to it by ListRows.tsx (a
+   small delegated click handler round the table), so nothing is stretched or clipped: the table keeps its own width, text in a row can still be
+   selected and copied, and it works the same on an old iPad. Here the row only looks clickable: a pointer, and the highlight under the mouse. */
 
 .card {
   container-type: inline-size;
-  overflow: hidden;
-  overflow: clip;
-  isolation: isolate;
 }
 
 .table th:first-child,
@@ -28,17 +16,15 @@
   padding-left: 0;
 }
 
-.table td {
-  position: relative;
+/* a row with a name link is a link as a whole (:has is for the mouse's sake only; where it is unknown the click still works) */
+.table tbody tr:has(a.name) {
+  cursor: pointer;
 }
 
-/* Other controls in a row stay above the row's link (an a, a button, a field; not the name, which is the row's link itself). */
-.table a:not(.name),
-.table button,
-.table input,
-.table select {
-  position: relative;
-  z-index: 2;
+@media (hover: hover) {
+  .table tbody tr:has(a.name):hover {
+    background: var(--row-highlight);
+  }
 }
 
 .who {
@@ -67,26 +53,6 @@
   text-decoration-color: var(--ink);
 }
 
-/* The row's link: its ::after covers the row (a.name: a name that is no link, a plain span, covers nothing). */
-a.name::after {
-  content: "";
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  bottom: 0;
-  left: -2000px;
-  right: -2000px;
-  cursor: pointer;
-}
-
-/* The row lights up under the pointer; multiplied, so the text under the highlight stays as it is. */
-@media (hover: hover) {
-  a.name:hover::after {
-    background: var(--row-highlight);
-    mix-blend-mode: multiply;
-  }
-}
-
 @container (max-width: 760px) {
   .table thead {
     position: absolute;
@@ -105,7 +71,6 @@ a.name::after {
   }
 
   .table tr {
-    position: relative;
     padding: 14px 0;
     border-bottom: 1px solid var(--line);
   }
@@ -116,7 +81,6 @@ a.name::after {
 
   .table td,
   .table td:first-child {
-    position: static;
     display: grid;
     grid-template-columns: minmax(96px, 30%) minmax(0, 1fr);
     justify-items: start;
@@ -133,6 +97,58 @@ a.name::after {
   }
 
   .who {
+    min-width: 0;
+  }
+}
+
+/* Registreerimised (9 columns, a table from 964 px) and Maksed (8 columns, from 878 px) are too wide for a 761-979 px card, and they have no
+   scrollbar to fall back on, so these two lists keep the old switch at 980 px (`stackAt980` on their card) until their screens (A2 and A6, which
+   drop columns) are built; then this block, the modifier and the two `.sub` blocks in their page stylesheets go. The rules are the 760 px
+   block's, word for word, under `.stackAt980`. */
+@container (max-width: 980px) {
+  .stackAt980 .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .stackAt980 .table,
+  .stackAt980 .table tbody,
+  .stackAt980 .table tr,
+  .stackAt980 .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .stackAt980 .table tr {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .stackAt980 .table tr:last-child {
+    border-bottom: 0;
+  }
+
+  .stackAt980 .table td,
+  .stackAt980 .table td:first-child {
+    display: grid;
+    grid-template-columns: minmax(96px, 30%) minmax(0, 1fr);
+    justify-items: start;
+    gap: 12px;
+    padding: 5px 0;
+    border: 0;
+    white-space: normal;
+  }
+
+  .stackAt980 .table td::before {
+    content: attr(data-label);
+    color: var(--muted-2);
+    font-size: 12px;
+  }
+
+  .stackAt980 .who {
     min-width: 0;
   }
 }

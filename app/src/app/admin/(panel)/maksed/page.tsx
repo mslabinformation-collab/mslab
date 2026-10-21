@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ListRows } from "@/components/admin/ListRows";
 import listTable from "@/components/admin/list-table.module.css";
 import { Pager } from "@/components/admin/Pager";
 import { PAYMENT_TONE, paymentMethodText, paymentStatusLabel } from "@/components/admin/PaymentLines";
@@ -88,78 +89,82 @@ export default async function PaymentsPage({ searchParams }: Props) {
         ))}
       </nav>
 
-      <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
+      <section className={`${ui.card} ${listTable.card} ${listTable.stackAt980}`} aria-label={t.title}>
         <p className={`${ui.muted} ${ui.small} ${styles.count}`}>{fill(t.count, { n: list.total })}</p>
         {list.rows.length === 0 ? (
           <p className={ui.empty}>{view.staatus ? t.emptyFiltered : t.empty}</p>
         ) : (
-          <table className={`${ui.table} ${listTable.table}`}>
-            <thead>
-              <tr>
-                <th scope="col">{t.col.date}</th>
-                <th scope="col">{t.col.payer}</th>
-                <th scope="col">{t.col.what}</th>
-                <th scope="col">{t.col.kind}</th>
-                <th scope="col">{t.col.amount}</th>
-                <th scope="col">{t.col.method}</th>
-                <th scope="col">{t.col.status}</th>
-                <th scope="col">{t.col.provider}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.rows.map((p) => {
-                const check = needsCheck(p);
-                // the day it was paid, else the day it was started: the list's own order (db/queries/payments.ts pagePayments)
-                const day = p.paidAt ?? p.createdAt;
-                return (
-                  <tr key={p.id} className={check ? styles.check : undefined} data-payment={p.reference} data-payment-status={p.status}>
-                    <td data-label={t.col.date} className={ui.nowrap}>
-                      <span>
-                        {formatDate(day, "et")}
-                        <span className={`${ui.muted} ${styles.sub}`}>{formatTime(day, "et")}</span>
-                      </span>
-                    </td>
-                    <td data-label={t.col.payer}>
-                      <div className={listTable.who}>
-                        {p.clientId ? (
-                          <Link className={listTable.name} href={`/admin/opilased?id=${p.clientId}`}>
-                            {p.name}
-                          </Link>
-                        ) : (
-                          <span className={`${listTable.name} ${styles.plain}`}>{p.name}</span>
-                        )}
-                        <a className={`${ui.contactLink} ${styles.contact}`} href={`mailto:${p.email}`}>
-                          {p.email}
-                        </a>
-                      </div>
-                    </td>
-                    <td data-label={t.col.what}>
-                      {p.courseTitle ? pick(p.courseTitle, "et") : t.courseGone}
-                      {p.startsAt && <span className={`${ui.muted} ${styles.sub}`}>{formatDate(p.startsAt, "et")}</span>}
-                    </td>
-                    <td data-label={t.col.kind}>{t.kind[p.kind]}</td>
-                    <td data-label={t.col.amount} className={ui.nowrap}>
-                      {formatEUR(p.amountCents, "et")}
-                    </td>
-                    <td data-label={t.col.method}>{paymentMethodText(p) ?? adminEt.common.none}</td>
-                    <td data-label={t.col.status}>
-                      <span className={styles.status}>
-                        <span className={`${ui.tag} ${PAYMENT_TONE[p.status]}`}>{paymentStatusLabel(p)}</span>
-                        {check && (
-                          <span className={`${ui.tag} ${ui.bad}`} data-payment-check="">
-                            {t.check}
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    <td data-label={t.col.provider} className={styles.provider}>
-                      {p.providerUuid ?? adminEt.common.none}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <ListRows>
+
+            <table className={`${ui.table} ${listTable.table}`}>
+              <thead>
+                <tr>
+                  <th scope="col">{t.col.date}</th>
+                  <th scope="col">{t.col.payer}</th>
+                  <th scope="col">{t.col.what}</th>
+                  <th scope="col">{t.col.kind}</th>
+                  <th scope="col">{t.col.amount}</th>
+                  <th scope="col">{t.col.method}</th>
+                  <th scope="col">{t.col.status}</th>
+                  <th scope="col">{t.col.provider}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.rows.map((p) => {
+                  const check = needsCheck(p);
+                  // the day it was paid, else the day it was started: the list's own order (db/queries/payments.ts pagePayments)
+                  const day = p.paidAt ?? p.createdAt;
+                  return (
+                    <tr key={p.id} className={check ? styles.check : undefined} data-payment={p.reference} data-payment-status={p.status}>
+                      <td data-label={t.col.date} className={ui.nowrap}>
+                        <span>
+                          {formatDate(day, "et")}
+                          <span className={`${ui.muted} ${styles.sub}`}>{formatTime(day, "et")}</span>
+                        </span>
+                      </td>
+                      <td data-label={t.col.payer}>
+                        <div className={listTable.who}>
+                          {p.clientId ? (
+                            <Link className={listTable.name} href={`/admin/opilased?id=${p.clientId}`}>
+                              {p.name}
+                            </Link>
+                          ) : (
+                            <span className={`${listTable.name} ${styles.plain}`}>{p.name}</span>
+                          )}
+                          <a className={`${ui.contactLink} ${styles.contact}`} href={`mailto:${p.email}`}>
+                            {p.email}
+                          </a>
+                        </div>
+                      </td>
+                      <td data-label={t.col.what}>
+                        {p.courseTitle ? pick(p.courseTitle, "et") : t.courseGone}
+                        {p.startsAt && <span className={`${ui.muted} ${styles.sub}`}>{formatDate(p.startsAt, "et")}</span>}
+                      </td>
+                      <td data-label={t.col.kind}>{t.kind[p.kind]}</td>
+                      <td data-label={t.col.amount} className={ui.nowrap}>
+                        {formatEUR(p.amountCents, "et")}
+                      </td>
+                      <td data-label={t.col.method}>{paymentMethodText(p) ?? adminEt.common.none}</td>
+                      <td data-label={t.col.status}>
+                        <span className={styles.status}>
+                          <span className={`${ui.tag} ${PAYMENT_TONE[p.status]}`}>{paymentStatusLabel(p)}</span>
+                          {check && (
+                            <span className={`${ui.tag} ${ui.bad}`} data-payment-check="">
+                              {t.check}
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                      <td data-label={t.col.provider} className={styles.provider}>
+                        {p.providerUuid ?? adminEt.common.none}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+          </ListRows>
         )}
         <Pager info={list} href={(n) => href({ ...view, leht: n })} />
       </section>
