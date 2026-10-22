@@ -1,5 +1,5 @@
 /**
- * MS LAB review comments. Loaded by the hub, every prototype page and (until launch) the main site's public pages and the admin's pages.
+ * MS LAB review comments. Loaded by the hub, every prototype page and (until launch) the main site's public pages and the signed-in admin's pages.
  * Floating button → panel (mood, mark a place on the page, text) → POST /api/feedback.
  * Opening a page with ?fb=<id> outlines the place a comment was left on.
  * Self-contained; never allowed to break the host page.
@@ -9,8 +9,8 @@
   if (window.__mslabFeedback) return;
   window.__mslabFeedback = true;
 
-  // Prototype /p/<dir>/ → its letter; the hub /guide → "hub"; a page whose <html> says data-fb-dir="admin" (the admin's root layout, the login
-  // page included) → "admin"; any other page is the main site → "site".
+  // Prototype /p/<dir>/ → its letter; the hub /guide → "hub"; a page whose <html> says data-fb-dir="admin" (the admin's root layout; the script is
+  // loaded only on the signed-in pages of the admin, by the (panel) layout) → "admin"; any other page is the main site → "site".
   var DIR = (location.pathname.match(/^\/p\/([a-z0-9]+)\//) || [])[1] || (/^\/guide(\/|$)/.test(location.pathname) ? "hub" : document.documentElement.getAttribute("data-fb-dir") === "admin" ? "admin" : "site");
   var ROSE = "#9E8993";
   var CSS = [
@@ -246,6 +246,9 @@
         if (el) {
           var r = docRect(el);
           picked = { label: labelFor(el) || undefined, snippet: squish(el.textContent).slice(0, 200) || undefined, sel: selectorFor(el), y: Math.round(r.y), h: Math.round(r.h) };
+          // The admin's pages show students' names, e-mail addresses and phone numbers: only where the place is (the selector and the position)
+          // goes with the comment, never the element's own words (they stay on the page; the server drops them as well).
+          if (DIR === "admin") picked = { sel: picked.sel, y: picked.y, h: picked.h };
           markEl(el);
         }
         openPanel();

@@ -84,16 +84,16 @@ test.describe("comment API", () => {
 });
 
 test.describe("comment widget on the main site", () => {
-  test("is on the public pages and (Dim 22.10) on the admin's login page, as the admin's", async ({ page }) => {
+  test("is on the public pages, and not on the admin's login page (signed out: no preview cookie, a comment could not be sent)", async ({ page }) => {
     await page.goto("/koolitused");
     await expect(page.locator('script[src="/feedback.js?v=6"]')).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Jäta kommentaar" })).toBeVisible();
     await expect(page.locator("html")).not.toHaveAttribute("data-fb-dir", /.*/); // (the site's comments stay "site")
     await page.goto("/admin/login");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(page.locator('script[src="/feedback.js?v=6"]')).toHaveCount(1);
-    await expect(page.locator("html")).toHaveAttribute("data-fb-dir", "admin");
-    await expect(page.getByRole("button", { name: "Jäta kommentaar" })).toBeVisible();
+    await expect(page.locator('script[src*="feedback.js"]')).toHaveCount(0);
+    await expect(page.locator("#mslab-fb")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Jäta kommentaar" })).toHaveCount(0);
   });
 
   test("a comment marked on /koolitused is listed as a main-site comment, opens at its place and can be marked done", async ({ page }, info) => {
@@ -260,7 +260,8 @@ test.describe("the comment button keeps clear of the site's messages", () => {
   });
 });
 
-// Dim 22.10: the comment bubble is on every admin page too (signed-in screens and the login page), while the review tools are on.
+// Dim 22.10: the comment bubble is on every signed-in admin page too (not on the login page: nobody signed out can send a comment through the
+// gate), while the review tools are on.
 test.describe("comment widget in the admin", () => {
   const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
   const bubble = (page: Page) => page.getByRole("button", { name: "Jäta kommentaar" });
@@ -276,6 +277,7 @@ test.describe("comment widget in the admin", () => {
     await signInAsAdmin(page, context, visitorIp, created);
     await adminReady(page);
     await expect(page.locator('script[src="/feedback.js?v=6"]')).toHaveCount(1);
+    await expect(page.locator("html")).toHaveAttribute("data-fb-dir", "admin");
     await expect(bubble(page)).toBeVisible();
     // (a phone shows the bubble without its word)
     if (!info.project.name.startsWith("mobile")) await expect(bubble(page)).toContainText("Kommentaar");
@@ -293,6 +295,14 @@ test.describe("comment widget in the admin", () => {
       await bubble(page).click();
       const panel = page.getByRole("dialog", { name: "Jäta kommentaar" });
       await panel.getByLabel("Sinu nimi").fill("E2E Dim");
+      // mark the page's heading: the place is kept (selector, position), the heading's words are not (an admin page can show a student's name)
+      const heading = page.getByRole("heading", { level: 1 });
+      await expect(heading).toBeVisible();
+      await panel.getByRole("button", { name: /Märgi koht lehel/ }).click();
+      const box = (await heading.boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(panel.getByText("Koht: valitud element")).toBeVisible();
       await panel.getByLabel("Kommentaar").fill(text);
       const sent = page.waitForResponse((r) => r.url().endsWith("/api/feedback") && r.request().method() === "POST");
       await panel.getByRole("button", { name: "Saada" }).click();
@@ -305,6 +315,9 @@ test.describe("comment widget in the admin", () => {
 
       const item = await commentById(page, body.id);
       expect(item).toMatchObject({ dir: "admin", route: "/admin/koolitused", name: "E2E Dim", text, done: false });
+      expect(item!.el.sel, "the place's selector").toEqual(expect.any(String));
+      expect(item!.el).not.toHaveProperty("label");
+      expect(item!.el).not.toHaveProperty("snippet");
       expect(item!.link).toBe(new URL(`/admin/koolitused?fb=${body.id}`, page.url()).href);
 
       // „Näita kohta“: the admin page itself, the comment shown on it (the session is the admin's)

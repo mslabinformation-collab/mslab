@@ -12,7 +12,7 @@ import { fill } from "@/i18n/format";
 import { adminFirstName } from "./auth";
 
 // The test page's server side (phase 4, piece 1, spec D4, D6, D10, §5): the answers are ONE `settings` row (key testplan_answers, no migration),
-// merged under the row's lock; a failure ("Viga") earns its Telegram texts. The rules themselves (the merge, the pings, the counts) are the
+// merged under the row's lock; a failure ("Viga") and the first note on any answer earn their Telegram texts. The rules themselves (the merge, the pings, the counts) are the
 // pure domain/testplan.ts. The admin session is checked by the callers (app/api/admin/testplan withAdmin, the admin pages).
 // Logs carry counts and ids only: never a note, an e-mail address or a name.
 

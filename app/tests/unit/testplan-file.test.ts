@@ -878,5 +878,10 @@ describe("the review tools' checks (22.10)", () => {
     for (const word of ["Kommentaar", "Saada", "Haldus", "Näita kohta", "Salvesta", "Telegram", "/guide/tagasiside/", "Proov 1"]) expect(text, word).toContain(word);
     // the words the bubble itself shows (public/feedback.js)
     expect(text).toContain("Aitäh! Kommentaar on saadetud ✓");
+    // fix round 1: the wording, and the claim about covered buttons is about the page the check opens; the login page has no bubble (signed out)
+    expect(text).toContain("kirjuta kommentaariks: Proov 1.");
+    expect(text).not.toContain("kirjuta kommentaari:");
+    expect(text).toContain("ei kata sellel lehel ühtegi nuppu");
+    expect(text).not.toContain("sisselogimise lehel");
   });
 });

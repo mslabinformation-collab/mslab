@@ -115,7 +115,12 @@ export function parseComment(b: Record<string, unknown>, id: string, at: Date): 
     width: num(b.width),
     mood: has(MOODS, b.mood) ? b.mood : undefined,
     text,
-    el: { label: str(el.label, 80), snippet: str(el.snippet, 200), sel: str(el.sel, 600), y: num(el.y), h: num(el.h) },
+    // An admin page shows students' names, e-mail addresses and phone numbers: its comment keeps where the place is (selector, position) and never
+    // the words of the element (label, snippet), whatever the body says (public/feedback.js does not send them either).
+    el:
+      dir === "admin"
+        ? { sel: str(el.sel, 600), y: num(el.y), h: num(el.h) }
+        : { label: str(el.label, 80), snippet: str(el.snippet, 200), sel: str(el.sel, 600), y: num(el.y), h: num(el.h) },
     done: false,
   };
 }

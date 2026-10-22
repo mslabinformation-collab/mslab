@@ -382,6 +382,13 @@ test.describe("an admin", () => {
       await context.clearCookies({ name: PREVIEW_COOKIE });
       const refused = await page.request.post("/api/feedback", { data: { text: `${E2E_COMMENT} gate ilma loata` } });
       expect(refused.status()).toBe(404);
+
+      // and the signed-out login page has no bubble to send one with
+      await context.clearCookies();
+      await page.goto("/admin/login");
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await expect(page.locator("script[src*='feedback.js']")).toHaveCount(0);
+      await expect(page.locator("#mslab-fb")).toHaveCount(0);
     } finally {
       if (ids.length) await deleteLocalComments(ids);
       await removeAdminRows(created);

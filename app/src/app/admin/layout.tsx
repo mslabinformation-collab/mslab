@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { adminEt } from "@/i18n/dict/admin";
-import { FEEDBACK_SCRIPT, REVIEW_TOOLS } from "@/lib/review-tools";
+import { REVIEW_TOOLS } from "@/lib/review-tools";
 import { fontVariables } from "../fonts";
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
@@ -15,16 +14,15 @@ export const metadata: Metadata = {
 // and are never cached.
 export const dynamic = "force-dynamic";
 
-// Review tools until launch (Dim 22.10): the comment bubble (public/feedback.js → /api/feedback) on every admin page, the login page included, under
-// the same switch as the site's (NEXT_PUBLIC_REVIEW_TOOLS, switched off at the mslab.ee launch). data-fb-dir tells the script these are the admin's
-// comments (dir "admin"; the site's stay "site"). The admin's bottom-fixed bars carry data-fab-avoid, so the bubble lifts above them.
+// Review tools until launch (Dim 22.10): the comment bubble (public/feedback.js → /api/feedback) is on every signed-in admin page, under the same
+// switch as the site's (NEXT_PUBLIC_REVIEW_TOOLS, switched off at the mslab.ee launch). It is loaded by the (panel) layout, not here: /admin/login
+// and the other signed-out pages have none, because while the gate is on a signed-out visitor has no preview cookie and a comment could not be sent.
+// data-fb-dir (here, on the html element) tells the script, when it runs, that the page's comments are the admin's (dir "admin"; the site's stay "site").
+// The admin's bottom-fixed bars carry data-fab-avoid, so the bubble lifts above them.
 export default function AdminRootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="et" className={fontVariables} data-admin="" data-fb-dir={REVIEW_TOOLS ? "admin" : undefined}>
-      <body>
-        {children}
-        {REVIEW_TOOLS && <Script src={FEEDBACK_SCRIPT} strategy="afterInteractive" />}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

@@ -134,6 +134,27 @@ describe("POST /api/feedback", () => {
     }
   });
 
+  // fix round 1: the admin's pages show students' names, e-mail addresses and phone numbers; a comment keeps where the place is, never its words
+  test("an admin comment keeps the place's selector and position and drops its label and snippet, whatever the body says; a site comment keeps them", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const f = stubFetch(() => Response.json({ ok: true }));
+    const k = kv();
+    const el = { label: "Maria Tamm", snippet: "Maria Tamm maria.tamm@example.test +372 5555 0000", sel: "main > section:nth-of-type(2)", y: 640, h: 88 };
+    const admin = await post(env(k, { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHAT_ID: "42" }), { dir: "admin", route: "/admin/opilased", text: "Rida", el });
+    await post(env(k), { dir: "site", route: "/koolitused", text: "Pealkiri", el });
+    const adminRec = records(k).find((r) => r.dir === "admin")!;
+    const siteRec = records(k).find((r) => r.dir === "site")!;
+    expect(adminRec.el).toEqual({ sel: "main > section:nth-of-type(2)", y: 640, h: 88 });
+    expect(JSON.stringify(adminRec)).not.toMatch(/Maria Tamm|maria\.tamm|5555/);
+    expect(siteRec.el).toEqual(el);
+    // nothing of it in the Telegram text either, and the place endpoint (open to whoever has the id) never had the snippet
+    expect(f.calls).toHaveLength(1);
+    const msg = (f.calls[0].body as { text: string }).text;
+    expect(msg).not.toMatch(/Maria Tamm|maria\.tamm|5555|Koht:/);
+    expect(msg).toContain(`Näita kohta: ${ORIGIN}/admin/opilased?fb=${admin.body.id}`);
+    expect(JSON.stringify((await commentPlace(k, admin.body.id as string)).body)).not.toMatch(/Maria Tamm|maria\.tamm|5555/);
+  });
+
   test("unknown direction, device and mood fall back as before; long fields are cut", async () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     const k = kv();

@@ -308,7 +308,7 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
         <NavFoot email={email} t={t} withSite={false} />
       </aside>
 
-      <header className={styles.bar} data-fab-avoid="">
+      <header className={styles.bar}>
         <BarTitle title={title} t={t} />
         <button
           type="button"

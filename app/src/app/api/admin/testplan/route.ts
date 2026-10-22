@@ -57,8 +57,8 @@ async function sendPings(env: Env, pings: Ping[], doc: AnswersDoc, names: string
  * ignored: the server stamps `at`, and `by` is the session's e-mail address, never the body's). Signed-in admins only; a cross-site PUT is
  * 403 (withAdmin). 200 `{ ok: true, answers }`: all the plan's answers as GET gives them, merged. 400 `{ ok: false, error: "invalid" }`
  * for a body that is not a save; 413 `{ ok: false, error: "tooLarge" }` over 128 KB; 503 `{ ok: false, error: "unavailable" }` when the
- * database fails (the device keeps the answers and tries again). The Telegram messages of a new Viga and of its first note go out after the
- * answer (server/testplan.ts saveAnswers). Never cached.
+ * database fails (the device keeps the answers and tries again). The Telegram messages of a new Viga and of the first note on any answer (a Viga's, an OK's or a Jäta vahele's: "· {status}"
+ * ends it) go out after the answer (server/testplan.ts saveAnswers). Never cached.
  */
 export const PUT = withAdmin(async (request, _ctx, { email }) => {
   let body: unknown;

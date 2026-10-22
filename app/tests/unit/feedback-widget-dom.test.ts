@@ -10,7 +10,7 @@ import { DIRS } from "@/server/feedback";
 
 const SCRIPT = readFileSync(join(process.cwd(), "public", "feedback.js"), "utf8");
 
-type Payload = { dir: string; route?: string; title?: string; text: string };
+type Payload = { dir: string; route?: string; title?: string; text: string; el?: { label?: string; snippet?: string; sel?: string; y?: number; h?: number } };
 
 let sent: Payload[];
 
@@ -60,11 +60,6 @@ describe("the comment bubble's direction (dir)", () => {
     expect(await comment("Nupp võiks olla suurem")).toMatchObject({ dir: "admin", route: "/admin/koolitused", text: "Nupp võiks olla suurem" });
   });
 
-  test("the admin's login page too (same root layout)", async () => {
-    openPage("/admin/login", { "data-admin": "", "data-fb-dir": "admin" });
-    expect(await comment("Sisselogimise leht")).toMatchObject({ dir: "admin", route: "/admin/login" });
-  });
-
   test("a main-site page still sends dir site and its path (nothing marks it)", async () => {
     openPage("/koolitused");
     expect(await comment("Pealkiri")).toMatchObject({ dir: "site", route: "/koolitused" });
@@ -84,6 +79,57 @@ describe("the comment bubble's direction (dir)", () => {
     openPage("/admin", { "data-fb-dir": "admin" });
     expect(document.querySelector("#mslab-fb .fb-fab")!.textContent).toBe("Kommentaar");
     expect(document.querySelector("#mslab-fb .fb-fab")!.getAttribute("aria-label")).toBe("Jäta kommentaar");
+  });
+});
+
+describe("a marked place (fix round 1: no personal text from the admin's pages)", () => {
+  /** Marks `target` as the comment's place (the pick mode: press „Märgi koht lehel“, then press the element), then writes `text` and sends. */
+  async function commentOn(target: Element, text: string): Promise<Payload> {
+    // (happy-dom has no hit test: the element under the pointer is the one the test names)
+    document.elementsFromPoint = () => [target];
+    document.querySelector<HTMLButtonElement>("#mslab-fb .fb-fab")!.click();
+    document.querySelector<HTMLButtonElement>("#mslab-fb .fb-pick")!.click();
+    document.querySelector<HTMLElement>("#mslab-fb .fb-ov")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+    expect(document.querySelector("#mslab-fb .fb-pk")).not.toBeNull(); // (the place is marked: "Koht: …")
+    const area = document.querySelector<HTMLTextAreaElement>("#mslab-fb textarea")!;
+    area.value = text;
+    document.querySelector<HTMLButtonElement>("#mslab-fb .fb-send")!.click();
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    return sent[0];
+  }
+  const student = () => {
+    const row = document.createElement("section");
+    row.id = "row";
+    const heading = document.createElement("h2");
+    heading.textContent = "Maria Tamm";
+    const contact = document.createElement("p");
+    contact.textContent = "maria.tamm@example.test · +372 5555 0000";
+    row.append(heading, contact);
+    document.body.append(row);
+    return row;
+  };
+  afterEach(() => document.getElementById("row")?.remove());
+
+  test("an admin page's place keeps the selector and the position, and sends no text of the element: no label, no snippet", async () => {
+    const row = student();
+    openPage("/admin/opilased", { "data-admin": "", "data-fb-dir": "admin" });
+    const payload = await commentOn(row, "Rida võiks olla kitsam");
+    expect(payload).toMatchObject({ dir: "admin", route: "/admin/opilased" });
+    expect(payload.el).toBeDefined();
+    expect(payload.el!.sel).toBe("#row");
+    expect(typeof payload.el!.y).toBe("number");
+    expect(typeof payload.el!.h).toBe("number");
+    expect(payload.el).not.toHaveProperty("label");
+    expect(payload.el).not.toHaveProperty("snippet");
+    expect(JSON.stringify(payload)).not.toMatch(/Maria Tamm|maria\.tamm|5555/);
+  });
+
+  test("a main-site page's place still carries its heading as the label and the first words as the snippet", async () => {
+    const row = student();
+    openPage("/koolitused");
+    const payload = await commentOn(row, "Pealkiri");
+    expect(payload).toMatchObject({ dir: "site", el: { sel: "#row", label: "Maria Tamm" } });
+    expect(payload.el!.snippet).toContain("Maria Tamm");
   });
 });
 
