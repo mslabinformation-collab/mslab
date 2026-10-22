@@ -491,7 +491,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "avalik-uudiskiri-kampaania-proov",
@@ -1086,7 +1086,7 @@
       "risk": "low",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-keel-lehel",
@@ -1117,7 +1117,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-koolitus-margis",
@@ -1474,7 +1474,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-seaded-naidisarve",
@@ -1532,7 +1532,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-seaded-naidisleping",
@@ -1560,7 +1560,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-laadimine-viga",
@@ -1586,7 +1586,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-menuu-grupid",
@@ -1618,7 +1618,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-menuu-telefon",
@@ -1649,7 +1649,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-menuu-tahvel",
@@ -1675,7 +1675,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-menuu-margid",
@@ -1706,7 +1706,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-lahkumine-salvestamata",
@@ -1734,7 +1734,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-loend-terve-rida",
@@ -1760,7 +1760,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "haldus-loend-tahvel",
@@ -1787,7 +1787,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "registreerimine-vorm-vead",
@@ -1998,7 +1998,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "registreerimine-arveta-makse-paneelis",
@@ -3392,7 +3392,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "ekursus-test-oige",
@@ -4397,7 +4397,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "kontakt-protokollid-tana-otse",
@@ -4422,7 +4422,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
       "id": "kirjad-sisselogimiskood",

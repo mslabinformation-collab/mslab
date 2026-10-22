@@ -442,7 +442,7 @@ describe("the newsletter checks follow the simple flow, in the order a campaign 
     // check, same meaning, other words: `reworded`, which reopens no answer.
     const writing = item("avalik-uudiskiri-kampaania");
     expect(writing.mark).toBe("reworded");
-    expect(writing.markedAt).toBe("deploy");
+    expect(markedSince(writing.markedAt)).toBe(true);
     expect(text("avalik-uudiskiri-kampaania")).toContain("„Sisu keel“");
     expect(appliesAt(writing as unknown as TestItem, plan as unknown as TestPlan, "2026-10-21T00:00:00.000Z")).toBeNull();
   });
@@ -637,7 +637,8 @@ describe("the page's language switch (admin UX pass, Task 12)", () => {
 
   test("„Sisu keel lehe päises“ is a new check in Haldus, quoting the switch's words as the page shows them", () => {
     const check = find("haldus-keel-lehel");
-    expect(check).toMatchObject({ area: "haldus", who: "maria", writes: false, mark: "new", markedAt: "deploy", href: "/admin/avaleht" });
+    expect(check).toMatchObject({ area: "haldus", who: "maria", writes: false, mark: "new", href: "/admin/avaleht" });
+    expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
     for (const word of [t.contentLang, t.lang.et, t.lang.ru, t.next, t.copyFromEt, t.missing, t.etTag]) expect(whole("haldus-keel-lehel"), word).toContain(`„${word}“`);
     expect(whole("haldus-keel-lehel")).toContain(`„${t.ruMissing.replace("{n} ", "… ")}“`);
   });
@@ -675,7 +676,7 @@ describe("the page's language switch (admin UX pass, Task 12)", () => {
     for (const id of ["haldus-ru-tekst", "haldus-seaded-lepingud", "haldus-seaded-naidisleping", "avalik-uudiskiri-kampaania"]) {
       const check = find(id);
       expect(check.mark, id).toBe("reworded");
-      expect(check.markedAt, id).toBe("deploy");
+      expect(markedSince(check.markedAt), id).toBe(true);
       expect(find(id).steps.join("\n"), id).toContain(`„${t.contentLang}“`);
       expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-21T00:00:00.000Z"), id).toBeNull();
     }
