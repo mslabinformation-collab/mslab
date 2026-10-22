@@ -45,8 +45,13 @@ const signIn = (page: Page, context: BrowserContext, ip: string) => signInAsAdmi
 
 const status = (page: Page) => page.locator("[data-save-status]");
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+/**
+ * The page's „Salvesta“. Seaded has a second one since the Järelmaks (Inbank) card (instalments, `data-financing-save`, which saves its own toggle and comes
+ * after the page's form), so the page's own is the first.
+ */
+const saveButton = (page: Page) => page.getByRole("button", { name: "Salvesta", exact: true }).first();
 async function save(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Salvesta", exact: true }).click();
+  await saveButton(page).click();
   await expect(status(page)).toHaveText("Salvestatud.");
 }
 const one = async <T>(query: (sql: Parameters<Parameters<typeof onLocalDb>[0]>[0]) => Promise<T[]>): Promise<T> => (await onLocalDb(query))[0];
@@ -601,7 +606,7 @@ test.describe("settings", () => {
     await adminReady(page);
     const instagram = page.getByRole("textbox", { name: "Instagram", exact: true });
     await instagram.fill("javascript:alert(1)");
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
+    await saveButton(page).click();
     await expect(status(page)).toHaveText("Kontrolli märgitud välju.");
     await expect(instagram).toHaveAttribute("aria-invalid", "true");
     await expect(page.getByText("Sisesta täielik aadress, mis algab https://.")).toBeVisible();
@@ -735,7 +740,7 @@ test.describe("settings", () => {
       await route.continue();
     };
     await page.route("**/admin/seaded", slow);
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
+    await saveButton(page).click();
     await expect(status(page)).toHaveText("Salvestan…");
     await body.focus();
     await page.keyboard.press("Control+End");
