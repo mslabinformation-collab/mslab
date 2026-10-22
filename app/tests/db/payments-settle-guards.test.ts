@@ -420,6 +420,67 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
     expect(m.mails().map((x) => x.subject)).toEqual(["Topeltmakse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 350 €"]);
   });
 
+  // The daily check found a loan PAID but could not settle it: Maria was told „Makse vajab kontrolli“ (pay:stuck:<payment>) and recorded the
+  // whole price by hand, as that mail says. When the app records the loan after all, that sum is hers, not a bank payment's: counted, with the
+  // follow-up that tells her to remove her own sum, never held as „Topeltmakse“ (which would have her refund the only real payment).
+  describe("a loan Maria was told to record by hand", () => {
+    const handRecorded = async () => {
+      const m = stubMontonio();
+      const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing", status: "confirmed", paidCents: 35000 });
+      const loan = await pendingPayment(db, r, { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
+      return { m, r, loan, ...settleDeps(db, m.montonio, NOW) };
+    };
+
+    test("the stuck record says she was told, and she recorded the price by hand: the loan is recorded (not held), the follow-up goes out, no „Topeltmakse“", async () => {
+      const { m, r, loan, deps, flush, kv } = await handRecorded();
+      kv.store.set(`pay:stuck:${loan.id}`, "1");
+      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ kind: "done", payment: { status: "paid", paidAt: NOW, method: "hirePurchase", bank: "Inbank" } });
+      await flush();
+      // both sums are there (hers and the loan's): the follow-up and the „Ülemakse“ are what tell her to take hers away
+      expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 70000]);
+      expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Uus makse", "Ülemakse", "Makse on nüüd kirja pandud"]);
+      expect(m.mails().filter((x) => x.subject.startsWith("Topeltmakse"))).toEqual([]);
+      expect(m.mails()[2].text).toContain("eemalda oma käsitsi lisatud summa");
+      expect([...kv.store.keys()].filter((k) => k.startsWith("pay:double:") || k.startsWith("pay:stuck:"))).toEqual([]);
+    });
+
+    test("a record given back (\"0\": the alert reached no one) says nobody was told: the late hold stands", async () => {
+      const { m, r, loan, deps, flush, kv } = await handRecorded();
+      kv.store.set(`pay:stuck:${loan.id}`, "0");
+      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ payment: { status: "held", paidAt: null } });
+      await flush();
+      expect((await registration(r.id)).paidCents).toBe(35000);
+      expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Topeltmakse"]);
+    });
+
+    test("the KV cannot be read: it reads as „not told“ (logged without an address), the late hold stands as before", async () => {
+      const { m, r, loan, deps, flush, kv } = await handRecorded();
+      kv.store.set(`pay:stuck:${loan.id}`, "1");
+      const get = kv.get.bind(kv);
+      vi.spyOn(kv, "get").mockImplementation(async (key: string) => {
+        if (key.startsWith("pay:stuck:")) throw new Error("kv down for kati@example.test");
+        return get(key);
+      });
+      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ payment: { status: "held", paidAt: null } });
+      await flush();
+      expect((await registration(r.id)).paidCents).toBe(35000);
+      expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Topeltmakse"]);
+      const logged = vi.mocked(console.error).mock.calls.map((c) => c.map(String).join(" "));
+      expect(logged.filter((l) => l.includes("could not be read"))).toEqual([`[payments] payment ${loan.id}: the record of an earlier alert could not be read: Error`]);
+      expect(logged.join("\n")).not.toMatch(/kati|@/);
+    });
+
+    test("no look at the KV for a payment that is no registration's loan", async () => {
+      const m = stubMontonio();
+      const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing" });
+      const bank = await pendingPayment(db, r, { amountCents: 35000, method: "paymentInitiation" }, ago(10 * MIN));
+      const { deps, kv } = settleDeps(db, m.montonio, NOW);
+      const get = vi.spyOn(kv, "get");
+      await settleToken(deps, m.montonio.verifyOrderToken(orderToken(bank)));
+      expect(get.mock.calls.filter(([key]) => String(key).startsWith("pay:stuck:"))).toEqual([]);
+    });
+  });
+
   test("not paid in full yet (a part recorded by hand, or nothing): the loan is counted as today — an „Ülemakse“ when it goes over", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
@@ -487,6 +548,20 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
       ]);
       expect(m.mails()[1].text).toContain(NOTE_ECOURSE);
       expect(m.mails()[1].text).toContain("Teine tasumine: 190 €");
+    });
+
+    test("a stuck record changes nothing for an e-course (its check reads payment rows, there is no sum to record by hand): the late loan is held", async () => {
+      const m = stubMontonio();
+      const course = await ecourse();
+      const loan = await purchase(course.id, "hirePurchase", ago(30 * MIN));
+      const bank = await purchase(course.id, "paymentInitiation", ago(20 * MIN));
+      const atBank = settleDeps(db, m.montonio, ago(15 * MIN));
+      await settleToken(atBank.deps, m.montonio.verifyOrderToken(orderToken(bank)));
+      const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
+      kv.store.set(`pay:stuck:${loan.id}`, "1");
+      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ payment: { status: "held", paidAt: null } });
+      await flush();
+      expect(m.mails().filter((x) => x.subject.startsWith("Topeltmakse"))).toHaveLength(1);
     });
 
     test("a loan of a purchase paid before it started — a renewal, past the cart's 30 minutes — is counted as today: paid, the access renewed", async () => {

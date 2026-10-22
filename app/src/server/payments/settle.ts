@@ -54,7 +54,10 @@ import { lockEcoursePurchase } from "./start";
 //   gets "Topeltmakse" (alert "double", once: only the winner of the held update) and refunds it in Montonio, which cancels the loan. The same
 //   the other way round for an e-course (D5: "the second … goes under „Ootel kontrollil“ as „Topeltmakse“"): a bank payment turning PAID while
 //   her järelmaks of the same course was paid since the bank payment started is held, not granted again, not invoiced, and told the same way.
-//   A registration's bank payment keeps today's rules (its sum over the price is "Ülemakse": alertIfOverpaid). An e-course's paid transaction
+//   A registration's bank payment keeps today's rules (its sum over the price is "Ülemakse": alertIfOverpaid). A registration's loan that
+//   Maria was told "Makse vajab kontrolli" about (the KV record pay:stuck:<payment>, read before the transaction) is no late loan: its mail told
+//   her to record it by hand, so the price in Laekunud summa may be her own entry. It is recorded, and the follow-up tells her to remove her
+//   sum (a store that fails to answer reads as "not told": the late hold). An e-course's paid transaction
 //   takes its purchase's advisory lock first (start.ts lockEcoursePurchase, the start's own), so the look for the other paid purchase and a
 //   purchase being settled at the same moment run one after the other.
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
@@ -274,6 +277,10 @@ async function paidAlready(tx: Tx, p: Payment): Promise<boolean> {
 async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
   // an amount that could not be read (null) is no amount: it never equals the row's, and never reads as zero
   if (facts.amountCents !== row.amountCents || facts.currency !== "EUR") return held(deps, row, facts);
+  // a registration's loan that Maria was told to record by hand (the daily check's „Makse vajab kontrolli“, alertUnsettled): the price in
+  // Laekunud summa may be her own entry, not a bank payment's, so it is no late loan: it is recorded, and followUpUnsettled tells her to remove
+  // her sum. Read before the transaction (no KV call inside it); a store that fails reads as „not told“ (the late hold, as before)
+  const told = row.kind !== "ecourse" && row.registrationId !== null && isHirePurchase(row.method) && (await wasToldItIsStuck(deps, row));
   const won = await deps.db.transaction(async (tx): Promise<Won | { late: Payment } | null> => {
     // the lock order of every payment path, course_sessions → registrations → payments (db/queries/seats.ts): the locks come first, whatever the
     // conditional UPDATE then finds. An e-course's payment has no registration: its purchase's lock instead (the start's, start.ts), then its row.
@@ -282,7 +289,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     } else if (row.registrationId !== null) await lockForPayment(tx, row.registrationId);
     // a second payment on the järelmaks' account (instalments §4, D5): what it pays for is paid in full already, read under those locks. Held,
     // never counted (a recorded hirePurchase is never replaced by a settlement, detailsOf)
-    if (await paidAlready(tx, row)) {
+    if (!told && (await paidAlready(tx, row))) {
       const [late] = await tx.update(payments).set({ status: "held", updatedAt: deps.now, ...detailsOf(facts) }).where(unsettled(row.id)).returning();
       return late ? { late } : null;
     }
@@ -632,6 +639,19 @@ async function stillPending(deps: SettleDeps, row: Payment): Promise<boolean> {
 }
 
 /**
+ * Whether the record pay:stuck:<payment> says Maria was told "Makse vajab kontrolli" about `p` (a record given back, "0", is an alert that
+ * reached no one: not told). A store that fails to answer reads as not told (logged, the payment's id only).
+ */
+async function wasToldItIsStuck(deps: SettleDeps, p: Payment): Promise<boolean> {
+  try {
+    return Number(await deps.env.KV.get(stuckAlertKey(p.id))) > 0;
+  } catch (e) {
+    logFailure(`[payments] payment ${p.id}: the record of an earlier alert could not be read`, e);
+    return false;
+  }
+}
+
+/**
  * The follow-up of "Makse vajab kontrolli" (alertUnsettled), after the response: the payment `p` was just recorded, and the record
  * pay:stuck:<payment> says Maria was told it could not be (a record given back, "0", is an alert that reached no one or was not sent: nothing to follow up).
  * She may have recorded it by hand meanwhile, so she gets "Makse on nüüd kirja pandud" once, and the record is removed. A store that fails
@@ -639,14 +659,7 @@ async function stillPending(deps: SettleDeps, row: Payment): Promise<boolean> {
  */
 async function followUpUnsettled(deps: SettleDeps, p: Payment): Promise<void> {
   const record = stuckAlertKey(p.id);
-  let told: boolean;
-  try {
-    told = Number(await deps.env.KV.get(record)) > 0;
-  } catch (e) {
-    logFailure(`[payments] payment ${p.id}: the record of an earlier alert could not be read`, e);
-    return;
-  }
-  if (!told) return;
+  if (!(await wasToldItIsStuck(deps, p))) return;
   logNote(`[payments] payment ${p.id}: recorded after Maria was told it could not be, she is told now`);
   try {
     const ctx = await contextOf(deps, p.id);
