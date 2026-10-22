@@ -1,13 +1,16 @@
+import { eq } from "drizzle-orm";
 import { expect, test } from "vitest";
 import { protocolIndex } from "@/db/queries/protocols";
 import { courses, courseSessions, protocols } from "@/db/schema";
 import type { Db } from "@/db/client";
+import { protocolStatus } from "@/domain/protocols";
 import { protocolCourse, student } from "./protocols-fixtures";
 import { makeTestDb } from "./helpers";
 
 // The Protokollid index (admin UX pass, B8): the contact courses' sessions of today and the 14 days before it, in Tallinn's dates, newest first, with
 // how many students are listed, how many protocols are sent and how many are drafts; below them the individual registrations still without a sent
-// protocol.
+// protocol. "Sent" is the protocol screen's „Saadetud“ (protocolStatus "sent": sent and not edited since); a protocol edited after sending is a draft
+// here, as it is „Muudetud“ there, until it is sent again (Dim 22.10).
 
 const draftOf = (registrationId: number) => ({ registrationId, stages: [], version: 1 });
 const sentOf = (registrationId: number) => ({ registrationId, stages: [], version: 1, sent: { stages: [], generalNote: "" }, sentAt: new Date("2026-10-12T12:00:00Z"), sentVersion: 1 });
@@ -73,13 +76,40 @@ test("counts the listed students, the sent protocols and the drafts of each sess
   ]);
 });
 
-test("a protocol sent and edited since is still sent; one draft is one draft", async () => {
+test("a protocol sent and edited since is a draft until it is sent again (Dim 22.10): the screen's „Muudetud“ is not „Saadetud“", async () => {
   const db = await makeTestDb();
   const { course, session } = await protocolCourse(db);
   const mari = await student(db, course, session, "Mari Maasikas");
-  await db.insert(protocols).values({ ...sentOf(mari.id), version: 2 });
+  const anu = await student(db, course, session, "Anu Aas");
+  const eve = await student(db, course, session, "Eve Esi");
+  await db.insert(protocols).values({ ...sentOf(mari.id), version: 2 }); // sent at version 1, edited since: „Muudetud“
+  await db.insert(protocols).values(sentOf(anu.id)); // sent, not edited
+  await db.insert(protocols).values({ ...sentOf(eve.id), sentVersion: null }); // (a sent_at without its version: protocolStatus says draft)
   const { sessions } = await protocolIndex(db, new Date("2026-10-12T09:00:00Z"));
-  expect(sessions[0]).toMatchObject({ students: 1, sent: 1, drafts: 0 });
+  expect(sessions[0]).toMatchObject({ students: 3, sent: 1, drafts: 2 });
+  // sent again (the freeze sets sent_version to the version): sent
+  await db.update(protocols).set({ sentVersion: 2 }).where(eq(protocols.registrationId, mari.id));
+  expect((await protocolIndex(db, new Date("2026-10-12T09:00:00Z"))).sessions[0]).toMatchObject({ students: 3, sent: 2, drafts: 1 });
+});
+
+test("the counts follow protocolStatus for every kind of row, so the index and the screen's mark cannot disagree", async () => {
+  const db = await makeTestDb();
+  const { course, session } = await protocolCourse(db);
+  const rows = [
+    { name: "Aino Aru", over: {} }, // draft
+    { name: "Bruno Bass", over: { sent: { stages: [], generalNote: "" }, sentAt: new Date("2026-10-12T12:00:00Z"), sentVersion: 1 } }, // sent
+    { name: "Carla Cello", over: { version: 3, sent: { stages: [], generalNote: "" }, sentAt: new Date("2026-10-12T12:00:00Z"), sentVersion: 1 } }, // changed
+    { name: "Dina Duur", over: { version: 3, sent: { stages: [], generalNote: "" }, sentAt: new Date("2026-10-12T12:00:00Z"), sentVersion: 3 } }, // sent again
+  ];
+  let sent = 0;
+  for (const r of rows) {
+    const reg = await student(db, course, session, r.name);
+    const [row] = await db.insert(protocols).values({ registrationId: reg.id, stages: [], version: 1, ...r.over }).returning();
+    if (protocolStatus(row) === "sent") sent += 1;
+  }
+  const { sessions } = await protocolIndex(db, new Date("2026-10-12T09:00:00Z"));
+  expect(sessions[0]).toMatchObject({ students: 4, sent, drafts: 4 - sent });
+  expect(sent).toBe(2);
 });
 
 test("lists open individual registrations, newest first: not cancelled, protocol not sent", async () => {
@@ -101,6 +131,18 @@ test("lists open individual registrations, newest first: not cancelled, protocol
     { registrationId: draft.id, name: "Liis Lepik", course: "Kulmude lamineerimine", draft: true },
     { registrationId: old.id, name: "Piret Kalda", course: "Kulmude lamineerimine", draft: false },
   ]);
+});
+
+test("an individual registration whose protocol was sent and then edited is listed again, with the draft flag, until it is sent again", async () => {
+  const db = await makeTestDb();
+  const { course } = await protocolCourse(db);
+  const edited = await student(db, course, null, "Liis Lepik");
+  const sent = await student(db, course, null, "Reet Rebane");
+  await db.insert(protocols).values([{ ...sentOf(edited.id), version: 2 }, sentOf(sent.id)]);
+  const now = new Date("2026-12-01T09:00:00Z");
+  expect((await protocolIndex(db, now)).individual).toEqual([{ registrationId: edited.id, name: "Liis Lepik", course: "Kulmude lamineerimine", draft: true }]);
+  await db.update(protocols).set({ sentVersion: 2 }).where(eq(protocols.registrationId, edited.id)); // sent again: gone
+  expect((await protocolIndex(db, now)).individual).toEqual([]);
 });
 
 test("nothing in the last 14 days and no open individual registration: both lists are empty", async () => {

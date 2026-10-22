@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, isNotNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../client";
 import {
   clients, courseAccess, courseFeedback, courses, courseSessions, practicalPhotos, protocols, registrations,
@@ -258,11 +258,20 @@ function daysBefore(date: string, days: number): string {
 }
 
 /**
+ * "This protocol row is sent" in SQL, for the row aliased (or named) `p`: the same rule as `protocolStatus(row) === "sent"` (domain/protocols.ts),
+ * which is what the protocol screen's mark (Mustand / Saadetud / Muudetud) is made from. It was sent (`sent_at` and `sent_version` are there) and
+ * has not been edited since (`version` has not passed `sent_version`). A protocol edited after sending is "changed" there ("Muudetud", offering
+ * „Saada uuesti“), so here it is not sent: the index counts it with the drafts, and the two screens cannot disagree (Dim 22.10).
+ */
+const sentSql = (p: string) => sql.raw(`(${p}.sent_at is not null and ${p}.sent_version is not null and ${p}.version <= ${p}.sent_version)`);
+
+/**
  * The index of Protokollid (B8): the scheduled sessions of contact courses from the 14th Tallinn day before today to the end of today (a session
  * later today too), newest first, each with its numbers; and, below them, the open individual registrations (not cancelled, her protocol not sent),
- * newest first. A session's students are the screen's (protocolScreen: every registration but the cancelled); a protocol is "sent" once it has
- * a `sent_at` (one edited since is still sent: the screen offers it again) and a "draft" while a row exists without one. A window of 16 days back
- * and two ahead is read and each session's Tallinn date compared, as todaySessions does: the same on the two days the clocks change.
+ * newest first. A session's students are the screen's (protocolScreen: every registration but the cancelled); a protocol is "sent" while it is
+ * `protocolStatus` "sent" (sentSql: sent and not edited since), and a "draft" while a row exists that is not (never sent, or edited after sending:
+ * the screen shows it as „Muudetud“ until „Saada uuesti“). A window of 16 days back and two ahead is read and each session's Tallinn date
+ * compared, as todaySessions does: the same on the two days the clocks change.
  */
 export async function protocolIndex(db: Db, now: Date): Promise<ProtocolIndex> {
   const DAY = 86_400_000;
@@ -275,8 +284,8 @@ export async function protocolIndex(db: Db, now: Date): Promise<ProtocolIndex> {
       venue: courseSessions.venue,
       title: courses.title,
       students: sql<number>`(select count(*) from registrations r where ${listed})`.mapWith(Number),
-      sent: sql<number>`(select count(*) from registrations r join protocols p on p.registration_id = r.id where ${listed} and p.sent_at is not null)`.mapWith(Number),
-      drafts: sql<number>`(select count(*) from registrations r join protocols p on p.registration_id = r.id where ${listed} and p.sent_at is null)`.mapWith(Number),
+      sent: sql<number>`(select count(*) from registrations r join protocols p on p.registration_id = r.id where ${listed} and ${sentSql("p")})`.mapWith(Number),
+      drafts: sql<number>`(select count(*) from registrations r join protocols p on p.registration_id = r.id where ${listed} and not ${sentSql("p")})`.mapWith(Number),
     })
     .from(courseSessions)
     .innerJoin(courses, eq(courseSessions.courseId, courses.id))
@@ -310,7 +319,7 @@ export async function protocolIndex(db: Db, now: Date): Promise<ProtocolIndex> {
     .from(registrations)
     .innerJoin(courses, eq(registrations.courseId, courses.id))
     .leftJoin(protocols, eq(protocols.registrationId, registrations.id))
-    .where(and(eq(registrations.kind, "individual"), ne(registrations.status, "cancelled"), eq(courses.type, "contact"), isNull(protocols.sentAt)))
+    .where(and(eq(registrations.kind, "individual"), ne(registrations.status, "cancelled"), eq(courses.type, "contact"), sql`not ${sentSql("protocols")}`))
     .orderBy(desc(registrations.createdAt), desc(registrations.id));
   return { sessions, individual: open.map((r) => ({ registrationId: r.registrationId, name: r.name, course: pick(r.title, "et"), draft: r.protocolId !== null })) };
 }

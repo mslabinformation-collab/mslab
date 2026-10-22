@@ -1688,7 +1688,7 @@
         "Ava halduse ülevaade arvutis ja vaata menüü märke.",
         "Vajuta märgiga rida „Registreerimised“ ja siis märgiga rida „Tagasiside“.",
         "Märgi lehel „Päringud“ üks päring tehtuks ja ava menüüst „Ülevaade“.",
-        "Märgi lehel „Testimine“ üks kontroll tulemusega „Viga“ ja ava menüüst „Ülevaade“.",
+        "Märgi lehel „Testimine“ üks juba „OK“ kontroll tulemusega „Viga“ ja ava menüüst „Ülevaade“.",
         "Märgi sama kontroll uuesti tulemusega „OK“ ja ava menüüst „Ülevaade“.",
         "Koolituspäeval vaata menüü rida „Protokollid“."
       ],
@@ -4379,21 +4379,22 @@
         "Ava telefonis see leht kontrolli lingist.",
         "Vaata pealkirja all olevat märkust ja nimekirja.",
         "Vajuta ühe koolituspäeva real nuppu „Ava“.",
-        "Mine brauseri tagasi-nupuga nimekirja tagasi ja keri lõppu."
+        "Mine brauseri tagasi-nupuga nimekirja tagasi ja keri lõppu.",
+        "Ava päev, kus Proov 1 protokoll on saadetud, vajuta „Muuda“, lisa märkus ja ava see leht uuesti kontrolli lingist."
       ],
       "expect": [
         "Pealkirja „Protokollid“ all on „Täna ja viimased 14 päeva. Vanemad leiad Kalendrist.“.",
         "Iga koolituspäeva rida näitab kuupäeva, koolitust, kellaaega, kohta ja õpilaste arvu.",
-        "Tänane päev on esimene ja kuupäeva asemel on „Täna“; vanemad päevad tulevad selle alla.",
-        "Üle 14 päeva vanuseid ja tulevasi koolituspäevi nimekirjas ei ole.",
+        "Tänane päev on esimene ja kuupäeva asemel on „Täna“; vanemad on all, üle 14 päeva vanuseid ja tulevasi ei ole.",
         "Rea paremal on „… õpilast · … saadetud · … mustand“ või roheline „✓ Kõik … saadetud“.",
+        "Pärast muutmist on päeva real „saadetud“ ühe võrra vähem ja „mustand“ ühe võrra rohkem, kuni vajutad „Saada uuesti“.",
         "Nupp „Ava“ viib selle päeva protokollide lehele; tänase päeva nupp on tume.",
         "Allpool on pealkiri „INDIVIDUAALKOOLITUSED“ ja selle all individuaalkoolituse registreeringud, mille protokolli pole saadetud.",
         "Kui viimase 14 päeva jooksul koolituspäevi polnud, on lehel „Viimase 14 päeva jooksul koolituspäevi polnud.“ ja link „← Kalender“."
       ],
       "why": "Maria leiab hiljutise koolituspäeva protokollid kahe vajutusega.",
       "risk": "med",
-      "writes": false,
+      "writes": true,
       "mark": "new",
       "markedAt": "deploy"
     },

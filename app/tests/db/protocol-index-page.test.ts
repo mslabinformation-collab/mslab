@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
@@ -87,6 +88,31 @@ test("rows: „Täna“ with its weekday and the ink „Ava“, the earlier day 
   expect(part(html, "data-index-registration", liis.id)).toContain(`href="/admin/protokollid?registreering=${liis.id}"`);
   expect(section.indexOf(`data-index-registration="${liis.id}"`)).toBeLessThan(section.indexOf(`data-index-registration="${piret.id}"`));
   expect(html).not.toContain("Viimase 14 päeva jooksul");
+});
+
+test("a protocol sent and then edited is not „all sent“ (Dim 22.10): the row counts it as a draft, the individual one is listed as a draft, until it is sent again", async () => {
+  db = await makeTestDb();
+  state.db = db;
+  const { course, session } = await protocolCourse(db); // 12.10
+  const mari = await student(db, course, session, "Mari Maasikas"); // her only protocol: sent at version 1, edited since (the screen: „Muudetud“)
+  const liis = await student(db, course, null, "Liis Lepik");
+  const sentBody = { sent: { stages: [], generalNote: "" }, sentAt: new Date("2026-10-12T12:00:00Z") };
+  await db.insert(protocols).values([
+    { registrationId: mari.id, stages: [], version: 2, ...sentBody, sentVersion: 1 },
+    { registrationId: liis.id, stages: [], version: 3, ...sentBody, sentVersion: 2 },
+  ]);
+  const html = await render();
+  expect(text(part(html, "data-index-session", session.id))).toContain("1 õpilast · 0 saadetud · 1 mustand");
+  expect(part(html, "data-index-session", session.id)).toContain('data-index-counts="open"');
+  expect(html).not.toContain("Kõik");
+  expect(text(part(html, "data-index-registration", liis.id))).toBe("Aeg kokkuleppel Liis Lepik Kulmude lamineerimine Mustand Ava");
+  // sent again (sent_version catches up with version): the row is all sent, the individual one is gone
+  await db.update(protocols).set({ sentVersion: 2 }).where(eq(protocols.registrationId, mari.id));
+  await db.update(protocols).set({ sentVersion: 3 }).where(eq(protocols.registrationId, liis.id));
+  const again = await render();
+  expect(text(part(again, "data-index-session", session.id))).toContain("✓ Kõik 1 saadetud");
+  expect(part(again, "data-index-session", session.id)).toContain('data-index-counts="done"');
+  expect(again).not.toContain("data-index-individual");
 });
 
 test("a session without students says 0, not „all sent“; an empty session list still shows the individual section", async () => {
