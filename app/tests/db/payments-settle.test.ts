@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { payments, registrations } from "@/db/schema";
+import { attachOrder, insertPayment } from "@/db/queries/payments";
+import { courseAccess, courses, payments, registrations } from "@/db/schema";
 import { checkPendingPayments } from "@/server/payments/check";
 import { settlePayment, settleToken } from "@/server/payments/settle";
-import { contactCourse, orderToken, pendingPayment, registrationOn, settleDeps, stubMontonio } from "./payments-fixtures";
+import { contactCourse, orderToken, pendingPayment, registrationOn, settleDeps, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
 // settlePayment, the one door (phase 2b, spec 6.2, 7.3, 7.4): the winner of pending → paid does the once-only work, the amount must match, paid
@@ -387,6 +388,94 @@ describe("Järelmaks (Inbank): a loan settles as any paid order, by its own 60-m
     expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["awaiting_prepayment", 0]);
     expect(m.mails()).toEqual([]);
     expect(changes).toEqual([]);
+  });
+});
+
+describe("the start's method is authoritative: Montonio's reported method only fills an empty one", () => {
+  // The late-loan and bank-after-loan rules read a payment row's stored method (settle.ts paidAlready, db/queries/payments.ts hirePurchaseRow). A
+  // settlement used to overwrite it with Montonio's `paymentMethodType`: if Montonio spelled a loan another way, the rules silently stopped firing.
+  const LOAN = { paymentMethod: "hirePurchase", paymentProviderName: "Inbank" };
+  const ODD = { paymentMethod: "SOMETHING_ELSE", paymentProviderName: "Inbank" };
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+
+  test("a hirePurchase row settled with Montonio reporting another method keeps hirePurchase, and the late-loan rule still holds it (registration)", async () => {
+    const m = stubMontonio();
+    // paid in full by bank already; the loan was started before that and is approved late
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing", status: "confirmed", paidCents: 35000 });
+    const loan = await pendingPayment(db, r, { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    const token = m.montonio.verifyOrderToken(orderToken(loan, ODD));
+    expect(token.method).toBe("SOMETHING_ELSE"); // (the stand-in really reports another method)
+    expect(await settleToken(deps, token)).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, method: "hirePurchase", bank: "Inbank" } });
+    await flush();
+    // stored so, not only returned so
+    expect(await payment(loan.id)).toMatchObject({ status: "held", method: "hirePurchase", bank: "Inbank" });
+    expect((await registration(r.id)).paidCents).toBe(35000); // never counted twice
+    expect(subjects(m).map(([, subject]) => subject.split(":")[0])).toEqual(["Topeltmakse"]);
+  });
+
+  test("the other settlements keep the start's method too: a paid loan, a loan held for its amount, and a bank row Montonio calls a loan", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const paid = await pendingPayment(db, await registrationOn(db, c, { email: "a@example.test", paymentChoice: "financing" }), { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
+    const wrongAmount = await pendingPayment(db, await registrationOn(db, c, { email: "b@example.test", paymentChoice: "financing" }), { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
+    const bank = await pendingPayment(db, await registrationOn(db, c, { email: "c@example.test" }), { method: "paymentInitiation" }, ago(20 * MIN));
+    const { deps } = settleDeps(db, m.montonio, NOW);
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(paid, ODD)));
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(wrongAmount, { ...ODD, grandTotal: 1 })));
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(bank, LOAN)));
+    expect(await payment(paid.id)).toMatchObject({ status: "paid", method: "hirePurchase", bank: "Inbank" });
+    expect(await payment(wrongAmount.id)).toMatchObject({ status: "held", method: "hirePurchase" });
+    expect(await payment(bank.id)).toMatchObject({ status: "paid", method: "paymentInitiation", bank: "Inbank" });
+  });
+
+  test("the bank-after-loan rule of an e-course still finds a loan settled under another spelling: the bank purchase paid after it is held, the access is not prolonged", async () => {
+    const m = stubMontonio();
+    const [course] = await db
+      .insert(courses)
+      .values({ slug: "kulmumeistri-e-koolitus", type: "e_learning", level: "basic", title: { et: "Kulmumeistri e-koolitus", ru: "Онлайн-курс бровиста" }, summary: { et: "" }, body: { et: "" }, published: true, price: 19000, accessMonths: 6 })
+      .returning();
+    const purchase = async (method: string, at: Date) => {
+      const row = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email: "mari@example.test", name: "Mari Maasikas", locale: "et", amountCents: 19000, method }, at, TEST_MONTONIO.referencePrefix);
+      await attachOrder(db, row.id, `uuid-${row.id}`, at);
+      return { ...row, providerUuid: `uuid-${row.id}` };
+    };
+    const loan = await purchase("hirePurchase", ago(30 * MIN));
+    const bank = await purchase("paymentInitiation", ago(20 * MIN));
+    const atLoan = settleDeps(db, m.montonio, ago(15 * MIN));
+    expect(await settleToken(atLoan.deps, m.montonio.verifyOrderToken(orderToken(loan, ODD)))).toMatchObject({ payment: { status: "paid", method: "hirePurchase" } });
+    await atLoan.flush();
+    const opened = await db.select().from(courseAccess);
+    expect(opened).toHaveLength(1);
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(bank)))).toMatchObject({ payment: { status: "held", paidAt: null, method: "paymentInitiation" } });
+    await flush();
+    expect(await db.select().from(courseAccess)).toEqual(opened);
+    expect(subjects(m).map(([, subject]) => subject.split(":")[0])).toEqual(["Uus makse", "Topeltmakse"]);
+  });
+
+  test("an old row with no method recorded (before the methods were stored) still takes Montonio's: a bank spelling, and a loan", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const bank = await pendingPayment(db, await registrationOn(db, c, { email: "a@example.test" })); // no method
+    const loan = await pendingPayment(db, await registrationOn(db, c, { email: "b@example.test", paymentChoice: "financing" }), { amountCents: 35000 }); // no method
+    expect([(await payment(bank.id)).method, (await payment(loan.id)).method]).toEqual(["", ""]);
+    const { deps } = settleDeps(db, m.montonio, NOW);
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(bank)));
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)));
+    expect(await payment(bank.id)).toMatchObject({ status: "paid", method: "paymentInitiation", bank: "Swedbank" });
+    expect(await payment(loan.id)).toMatchObject({ status: "paid", method: "hirePurchase", bank: "Inbank" });
+  });
+
+  test("a daily check's answer without a method leaves the stored one alone, and an empty one stays empty", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const loan = await pendingPayment(db, await registrationOn(db, c, { email: "a@example.test", paymentChoice: "financing" }), { amountCents: 35000, method: "hirePurchase" });
+    const old = await pendingPayment(db, await registrationOn(db, c, { email: "b@example.test" }));
+    const { deps } = settleDeps(db, m.montonio, NOW);
+    const facts = (p: typeof loan, amountCents: number) => ({ uuid: p.providerUuid!, status: "paid" as const, rawStatus: "PAID", amountCents, currency: "EUR", method: "", bank: "" });
+    expect((await settlePayment(deps, loan, facts(loan, 35000))).method).toBe("hirePurchase");
+    expect((await settlePayment(deps, old, facts(old, 17500))).method).toBe("");
   });
 });
 
