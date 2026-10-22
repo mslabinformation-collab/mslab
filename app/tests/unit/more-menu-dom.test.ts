@@ -241,6 +241,124 @@ describe("MoreMenu: the items", () => {
   });
 });
 
+describe("MoreMenu: Space on a link item", () => {
+  // An <a> activates on Enter by itself; Space would scroll the page or the drawer. The menu pattern wants both, so Space on a link is taken here:
+  // the keydown is default-prevented and the link is clicked. A button item needs nothing (the browser clicks it on Space).
+  const press = async (el: Element, k: string) => {
+    const e = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true });
+    await act(async () => void el.dispatchEvent(e));
+    return e;
+  };
+
+  it("Space on a link item prevents the scroll and clicks the link: its onSelect runs, the menu closes, the focus is on the button", async () => {
+    const onSelect = vi.fn();
+    await draw({ items: [{ label: "Vaata tema vaadet", href: "/admin/vaata?id=5", onSelect }, { label: "Testi katsed" }] });
+    await click(button());
+    const clicked = vi.fn((e: Event) => e.preventDefault()); // happy-dom must not try to follow the link
+    container.addEventListener("click", clicked);
+    const link = items()[0];
+    expect(link.tagName).toBe("A");
+    const e = await press(link, " ");
+    expect(e.defaultPrevented).toBe(true);
+    expect(clicked).toHaveBeenCalledTimes(1);
+    expect(clicked.mock.calls[0][0].target).toBe(link);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(menu()).toBeNull();
+    expect(document.activeElement).toBe(button());
+    container.removeEventListener("click", clicked);
+  });
+
+  it("Space on a link to another site (a plain <a>) does the same", async () => {
+    await draw({ items: [{ label: "Vasta e-kirjaga", href: "mailto:kati@example.test" }] });
+    await click(button());
+    const clicked = vi.fn((e: Event) => e.preventDefault());
+    container.addEventListener("click", clicked);
+    const e = await press(items()[0], " ");
+    expect(e.defaultPrevented).toBe(true);
+    expect(clicked).toHaveBeenCalledTimes(1);
+    expect(menu()).toBeNull();
+    container.removeEventListener("click", clicked);
+  });
+
+  it("Space on a button item is left to the browser (it clicks on its own): not prevented, nothing clicked by the menu", async () => {
+    const onSelect = vi.fn();
+    await draw({ items: [{ label: "A", onSelect }, { label: "B" }] });
+    await click(button());
+    const clicked = vi.fn();
+    container.addEventListener("click", clicked);
+    const e = await press(items()[0], " ");
+    expect(e.defaultPrevented).toBe(false);
+    expect(clicked).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(menu()).not.toBeNull();
+    container.removeEventListener("click", clicked);
+  });
+
+  it("Enter on a link item is the browser's too: the menu does not click it a second time", async () => {
+    await draw({ items: [{ label: "Vaata tema vaadet", href: "/admin/vaata?id=5" }] });
+    await click(button());
+    const clicked = vi.fn((e: Event) => e.preventDefault());
+    container.addEventListener("click", clicked);
+    const e = await press(items()[0], "Enter");
+    expect(e.defaultPrevented).toBe(false);
+    expect(clicked).not.toHaveBeenCalled();
+    container.removeEventListener("click", clicked);
+  });
+});
+
+describe("MoreMenu: the trigger's name and its look", () => {
+  it("buttonLabel is the trigger's aria-label (a row names its menu: „Veel: Kati Kask“); the drawn text stays „Veel ▾“", async () => {
+    await draw({ buttonLabel: "Veel: Kati Kask" });
+    expect(button().getAttribute("aria-label")).toBe("Veel: Kati Kask");
+    expect(text(button())).toBe("Veel ▾");
+    await click(button());
+    expect(menu()!.getAttribute("aria-labelledby")).toBe(button().id); // the list is named by it too
+  });
+
+  it("without buttonLabel there is no aria-label: the drawn text is the name", async () => {
+    await draw();
+    expect(button().hasAttribute("aria-label")).toBe(false);
+    await draw({ label: "Pikenda" });
+    expect(button().hasAttribute("aria-label")).toBe(false);
+  });
+
+  it("variant: text to begin with (data-variant=text); pill is the outlined pill of „Pikenda ▾“", async () => {
+    await draw();
+    expect(button().getAttribute("data-variant")).toBe("text");
+    await draw({ label: "Pikenda", variant: "pill" });
+    expect(button().getAttribute("data-variant")).toBe("pill");
+    expect(text(button())).toBe("Pikenda ▾");
+    await draw({ variant: "text" });
+    expect(button().getAttribute("data-variant")).toBe("text");
+  });
+
+  it("the variant changes the trigger only: the list and its keys are the same", async () => {
+    await draw({ label: "Pikenda", variant: "pill", items: [{ label: "+1 kuu" }, { label: "+3 kuud" }] });
+    await click(button());
+    expect(menu()!.getAttribute("role")).toBe("menu");
+    expect(items().map((i) => text(i))).toEqual(["+1 kuu", "+3 kuud"]);
+    expect(menu()!.hasAttribute("data-variant")).toBe(false);
+    await key(items()[0], "Escape");
+    expect(document.activeElement).toBe(button());
+  });
+
+  it("the pill is the prototype's: a 44 px outlined pill, 1px ink border on first-light, 0 16px, still 600 12px (the stylesheet)", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/MoreMenu.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rule = (selector: string) => {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+    };
+    const pill = rule('.button[data-variant="pill"]');
+    expect(pill).toMatch(/border:\s*1px solid var\(--ink\);/);
+    expect(pill).toMatch(/background:\s*var\(--first\);/);
+    expect(pill).toMatch(/padding:\s*0 16px;/);
+    expect(pill).not.toMatch(/min-height/); // the 44 px of .button stays
+    expect(rule(".button")).toMatch(/min-height:\s*44px;/);
+    expect(rule(".button")).toMatch(/border-radius:\s*99px;/);
+    expect(rule(".button")).toMatch(/font:\s*600 12px/);
+  });
+});
+
 describe("MoreMenu: it stays inside the viewport", () => {
   const rect = (x: number, y: number, w: number, h: number): DOMRect => ({ x, y, left: x, top: y, width: w, height: h, right: x + w, bottom: y + h, toJSON: () => ({}) }) as DOMRect;
   const VIEW = { width: 400, height: 700 };

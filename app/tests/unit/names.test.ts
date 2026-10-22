@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { allative, firstName } from "@/domain/names";
 
@@ -6,8 +8,8 @@ import { allative, firstName } from "@/domain/names";
 // ending („ле“, „иле“), a Latin one the Latin ending.
 
 /** The Cyrillic ending „ле“ and „иле“, as code points (no look-alike Latin letters in the expectations). */
-const CYR_LE = "ле";
-const CYR_ILE = "иле";
+const CYR_LE = String.fromCharCode(0x43b, 0x435);
+const CYR_ILE = String.fromCharCode(0x438, 0x43b, 0x435);
 
 describe("firstName", () => {
   it("is the first word of the full name, trimmed", () => {
@@ -61,10 +63,12 @@ describe("allative (S5)", () => {
   });
 
   it("knows every Cyrillic vowel: а е ё и о у ы э ю я", () => {
-    for (const vowel of ["а", "е", "ё", "и", "о", "у", "ы", "э", "ю", "я"]) {
+    for (const code of [0x430, 0x435, 0x451, 0x438, 0x43e, 0x443, 0x44b, 0x44d, 0x44e, 0x44f]) {
+      const vowel = String.fromCharCode(code);
       expect(allative(`Ан${vowel}`)).toBe(`Ан${vowel}${CYR_LE}`);
     }
-    for (const consonant of ["б", "в", "г", "д", "к", "л", "м", "н", "й", "ь", "ъ"]) {
+    for (const code of [0x431, 0x432, 0x433, 0x434, 0x43a, 0x43b, 0x43c, 0x43d, 0x439, 0x44c, 0x44a]) {
+      const consonant = String.fromCharCode(code);
       expect(allative(`Ан${consonant}`)).toBe(`Ан${consonant}${CYR_ILE}`);
     }
   });
@@ -91,5 +95,15 @@ describe("allative (S5)", () => {
   it("is used on a first name: firstName then allative", () => {
     expect(allative(firstName("  Kati  Kask "))).toBe("Katile");
     expect(allative(firstName("Олег Иванов"))).toBe("Олегиле");
+  });
+});
+
+describe("names.ts itself", () => {
+  it("types no Cyrillic letter in its code: the vowels and the endings are built from code points (comments may)", () => {
+    const source = readFileSync(join(process.cwd(), "src/domain/names.ts"), "utf8");
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    const cyrillic = new RegExp("[" + String.fromCharCode(0x400) + "-" + String.fromCharCode(0x4ff) + "]");
+    expect(code).not.toMatch(cyrillic);
+    expect(code).toContain("String.fromCharCode(0x430");
   });
 });

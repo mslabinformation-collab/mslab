@@ -30,6 +30,14 @@
   outline-offset: 2px;
 }
 
+/* variant="pill": „Pikenda ▾“ as the prototype draws it (README A5; Part 2 prototype): the same 44 px, 600 12px button as an outlined pill, a 1px ink
+   border (#222) on first-light (#ebe8e9) and 16 px at the sides. It stays 44 px: min-height is not set here. */
+.button[data-variant="pill"] {
+  padding: 0 16px;
+  border: 1px solid var(--ink);
+  background: var(--first);
+}
+
 /* the list: as wide as its longest item, never wider than the screen leaves room for */
 .menu {
   position: absolute;

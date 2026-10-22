@@ -35,19 +35,32 @@ export function menuPlacement(button: Box, menu: { width: number; height: number
 
 /**
  * A button that opens a short list of the rarer actions of a row or a card (the A screens, Task 1; the prototype's „Veel ▾“, and „Pikenda ▾“ when
- * the page names it): `role="menu"` with a `menuitem` for each item.
+ * the page names it, drawn as an outlined pill with `variant="pill"`): `role="menu"` with a `menuitem` for each item. `buttonLabel` is the
+ * trigger's aria-label for a page that shows many of them („Veel: {nimi}“); without it the drawn text names the button.
  *
  * - Opens on a click (and so on Enter and Space, which a button turns into one) and on ArrowDown / ArrowUp, with the focus on the first (last)
  *   item. Enter is taken on the key itself, so it opens with no click after it.
  * - Inside the list the arrows move between the items (round the ends), Home and End go to the ends. Esc closes it and the focus is back on the
  *   button; so does choosing an item (its `onSelect` runs first). Tab closes it too and leaves the focus on the button for the Tab to move on from.
- *   A press outside closes it and takes the focus nowhere (the press decides where it goes).
+ *   A press outside closes it and takes the focus nowhere (the press decides where it goes). A link item is chosen by Enter and by Space.
  * - It keeps inside the viewport (menuPlacement): flips above the button when it does not fit below, aligns to the button's right edge when it
  *   does not fit to the right (`data-flip="up"`, `data-align="right"`, MoreMenu.module.css).
  * - Items are buttons (or links, with an `href`); a `tone: "danger"` item has data-tone="danger". The page that wants a question first (a
  *   ConfirmPanel) renders it in place of the menu's button from `onSelect`, and puts the focus back on its trigger afterwards.
  */
-export function MoreMenu({ label, items }: { label?: string; items: MoreMenuItem[] }) {
+export function MoreMenu({
+  label,
+  buttonLabel,
+  variant = "text",
+  items,
+}: {
+  label?: string;
+  /** The trigger's accessible name when the drawn text is not enough: a page with a „Veel ▾“ on every row names each from words it shows already („Veel: Kati Kask“). Start it with the drawn text. */
+  buttonLabel?: string;
+  /** "text" (the default): the plain text button of „Veel ▾“. "pill": the 44 px outlined pill of „Pikenda ▾“ (README A5, Part 2 prototype). */
+  variant?: "text" | "pill";
+  items: MoreMenuItem[];
+}) {
   const id = useId();
   const buttonId = `${id}-button`;
   const menuId = `${id}-menu`;
@@ -145,6 +158,12 @@ export function MoreMenu({ label, items }: { label?: string; items: MoreMenuItem
       e.stopPropagation();
       close(true);
     } else if (e.key === "Tab") close(true);
+    else if (e.key === " " && e.target instanceof HTMLAnchorElement) {
+      // a link activates on Enter by itself, and Space would scroll the page (or the drawer): the menu pattern wants both. A button item needs
+      // nothing: the browser clicks it on Space.
+      e.preventDefault();
+      e.target.click();
+    }
   };
 
   return (
@@ -154,6 +173,8 @@ export function MoreMenu({ label, items }: { label?: string; items: MoreMenuItem
         id={buttonId}
         type="button"
         className={styles.button}
+        data-variant={variant}
+        aria-label={buttonLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
