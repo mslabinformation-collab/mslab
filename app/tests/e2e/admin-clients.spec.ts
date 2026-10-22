@@ -2,7 +2,7 @@ import type { Browser, Locator, Page } from "@playwright/test";
 import { addMonths, defaultExpiryDate, tallinnToday } from "../../src/domain/client-access";
 import { formatDate, formatTime } from "../../src/i18n/format";
 import { clientEmail, insertAccountFixtures, setPrepayment, signInAsClient, takeTerms, TEST_PREPAYMENT, type AccountCardKind } from "./account";
-import { ADMIN, adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
+import { ADMIN, adminReady, seadedSave, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { accountCourseSlug, holdLocalLock, insertStoredPayment, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows, snapshotRows } from "./fixtures";
 import { insertLessonCourse, markDone, removeLessonFile } from "./lessons";
 import { LOCAL_URL, TARGET } from "./target";
@@ -54,11 +54,6 @@ async function studentBrowser(browser: Browser, email: string, ip: string): Prom
 const clientId = async (email: string): Promise<number> => (await onLocalDb((sql) => sql<{ id: number }[]>`select id from clients where email = ${email}`, { marksPages: false }))[0].id;
 const sessions = (id: number) =>
   onLocalDb((sql) => sql<{ idHash: string; endedAt: Date | null; expiresAt: Date }[]>`select id_hash as "idHash", ended_at as "endedAt", expires_at as "expiresAt" from client_sessions where client_id = ${id} order by id_hash`, { marksPages: false });
-/**
- * Seaded's page-wide „Salvesta“. Seaded has a second one since the Järelmaks (Inbank) card (instalments, `data-financing-save`, which saves its own toggle),
- * so the button is asked for without that one.
- */
-const seadedSave = (page: Page) => page.getByRole("button", { name: "Salvesta", exact: true }).and(page.locator(":not([data-financing-save])"));
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 const drawer = (page: Page) => page.locator("dialog[data-drawer]");
 /**

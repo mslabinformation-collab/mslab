@@ -3,7 +3,7 @@ import { formatDate } from "../../src/i18n/format";
 import {
   clientEmail, currentTermsVersion, E2E_TERMS, insertEcourseAccess, removeTermsPage, SEED_ECOURSE_SLUG, setTerms, signInAsClient, storedAcceptances, takeTerms,
 } from "./account";
-import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
+import { adminReady, seadedSave, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { LOCAL_FIXTURES, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
 import { PROD_BUILD } from "./target";
 import { submitsForms, test, expect } from "./test";
@@ -50,11 +50,6 @@ async function signedIn(page: Page, label: string, project: string, opts: { own?
   return { email, ...course };
 }
 
-/**
- * Seaded's page-wide „Salvesta“. Seaded has a second one since the Järelmaks (Inbank) card (instalments, `data-financing-save`, which saves its own toggle),
- * so the button is asked for without that one.
- */
-const seadedSave = (page: Page) => page.getByRole("button", { name: "Salvesta", exact: true }).and(page.locator(":not([data-financing-save])"));
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 const gate = (page: Page) => page.locator("[data-terms-gate]");
 const box = (page: Page) => gate(page).getByRole("checkbox", { name: "Olen tutvunud ja nõustun tingimustega" });

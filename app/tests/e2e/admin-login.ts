@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { LOCAL_ADMINS } from "../local-secrets";
 import { onLocalDb, sha256Hex } from "./fixtures";
 import { PROD_BUILD } from "./target";
@@ -120,3 +120,13 @@ export async function editLang(page: Page, lang: "et" | "ru"): Promise<void> {
   await segment.click();
   await expect(segment).toHaveAttribute("aria-pressed", "true");
 }
+
+/**
+ * The page-wide „Salvesta“ of an admin editor page: the button of its own save bar (SaveBar.tsx, `data-save-bar`), whichever editor the page is. Never
+ * asked for by name alone: Seaded has more than one „Salvesta“ (the Järelmaks (Inbank) card has its own, `data-financing-save`, and so have the other
+ * cards' forms), and a bare `getByRole("button", { name: "Salvesta" })` is a strict-mode violation there or, with `.first()`, depends on the order of the cards.
+ */
+export const saveBarButton = (page: Page): Locator => page.locator("[data-save-bar]").getByRole("button", { name: "Salvesta", exact: true });
+
+/** Seaded's page-wide „Salvesta“: the one inside the page's own settings form (SettingsEditor.tsx, `data-settings-editor`), not any card's. */
+export const seadedSave = (page: Page): Locator => page.locator("form[data-settings-editor]").getByRole("button", { name: "Salvesta", exact: true });
