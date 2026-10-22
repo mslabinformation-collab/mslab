@@ -4,6 +4,7 @@
 - S3-e „Muu summa“ above what is left: **refuse** (field error, nothing added).
 - „Pikenda“ +1 kuu / +3 kuud / +6 kuud counts from **the later of the current end and today**; „Pikenda“ is hidden on an access an admin ended (the „Ava ligipääs e-koolitusele“ fold re-opens it).
 - Section 2 (pattern-derived lines) and section 4 (builder defaults) stand as written.
+- Maksed „Montonios ↗“: Montonio has no page for one order, so the link opens the Partner System and copies the order id; the confirm line is **„Montonio id kopeeritud.“** (Dim 22.10).
 
 The builder uses these texts verbatim. Section 5 lists texts for later pieces: they are still to be asked.
 
