@@ -533,3 +533,186 @@ describe("one lock order: course_sessions → registrations → payments", () =>
     expect((await ldb.select().from(registrations))[0].seatHoldUntil).toBeNull();
   });
 });
+
+describe("a start with its method: the bank, or Järelmaks (Inbank) (instalments, D5, §4)", () => {
+  type Method = "paymentInitiation" | "hirePurchase";
+  const start = (montonio: Montonio, target: Parameters<typeof startRegistrationPayment>[1], method?: Method, now = NOW) =>
+    startRegistrationPayment({ db, now, siteUrl: SITE, notifyBase: SITE, montonio }, target, method ? { method } : undefined);
+  const financingOn = (enabled = true) => db.insert(settings).values({ key: "financing", value: { enabled } }).onConflictDoUpdate({ target: settings.key, set: { value: { enabled } } });
+  const ordered = () => db.select().from(payments).orderBy(payments.id);
+  const claimsOf = (m: ReturnType<typeof stubMontonio>, reference: string) => m.state.orders.filter((o) => o.merchantReference === reference);
+  const methodOf = (o: Record<string, unknown>) => (o.payment as { method: string }).method;
+
+  test("a financing registration starts a hirePurchase order for the full price, 60-min hold, billing details", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    // the registration is stored already holding its seat for the järelmaks' 60 minutes (so one queued behind it counts it)
+    let atStart: Date | null | undefined;
+    const { d } = deps(m.montonio, { db: onStart(db, async () => void (atStart = (await reg()).seatHoldUntil)) });
+    const result = await handleRegistration(d, form(c.session.id, { payment: "financing", name: "Kati Maria Tamm", phone: "+372 5555-0101" }));
+    expect(atStart).toEqual(new Date(NOW.getTime() + 60 * MIN));
+    const [p, ...none] = await rows();
+    expect(none).toEqual([]);
+    expect(result).toEqual({ ok: true, paymentUrl: `https://sandbox-stargate.montonio.com/${p.providerUuid}` });
+    const r = await reg();
+    expect([r.paymentChoice, r.status, r.seatHoldUntil]).toEqual(["financing", "awaiting_prepayment", new Date(NOW.getTime() + 60 * MIN)]);
+    // the whole price (D3), recorded with its method
+    expect(p).toMatchObject({ kind: "prepayment", status: "pending", amountCents: 35000, method: "hirePurchase", registrationId: r.id });
+    expect(m.state.orders).toHaveLength(1);
+    expect(m.state.orders[0]).toMatchObject({ merchantReference: p.reference, grandTotal: 350, expiresIn: 60, payment: { method: "hirePurchase", amount: 350, currency: "EUR" } });
+    expect(m.state.orders[0].billingAddress).toEqual({ firstName: "Kati Maria", lastName: "Tamm", email: "kati@example.com", phoneNumber: "55550101", phoneCountry: "372" });
+  });
+
+  test("a financing registration may still be paid in full by bank (the default): the bank's order and its 30-minute hold, no billing details", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { paymentChoice: "financing" });
+    expect(await start(m.montonio, { payToken: r.payToken })).toMatchObject({ kind: "started" });
+    const [p] = await rows();
+    expect(p).toMatchObject({ amountCents: 35000, method: "paymentInitiation" });
+    expect(methodOf(m.state.orders[0])).toBe("paymentInitiation");
+    expect(m.state.orders[0]).not.toHaveProperty("billingAddress");
+    expect(m.state.orders[0]).not.toHaveProperty("expiresIn");
+    expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 30 * MIN));
+  });
+
+  test("hirePurchase is refused with kind 'financing' when off, out of range, partly paid, or the choice was 100%/50%", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c, { paymentChoice: "financing" });
+    const refused = async (why: string) => {
+      expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase"), why).toEqual({ kind: "financing" });
+      expect(await rows(), why).toEqual([]);
+      expect(m.state.orders, why).toEqual([]);
+    };
+    // Seaded's toggle: never set, then off
+    await refused("no setting");
+    await financingOn(false);
+    await refused("switched off");
+    await financingOn();
+    // the price out of 100–5000 € (Maria edited the course after the booking)
+    for (const price of [9999, 500001]) {
+      await db.update(courses).set({ priceGroup: price }).where(eq(courses.id, c.course.id));
+      await refused(`price ${price}`);
+    }
+    // partly paid (Maria recorded a transfer): only the bank, for what is left
+    await db.update(courses).set({ priceGroup: 35000 }).where(eq(courses.id, c.course.id));
+    await db.update(registrations).set({ paidCents: 5000 }).where(eq(registrations.id, r.id));
+    await refused("partly paid");
+    expect(await start(m.montonio, { registrationId: r.id })).toMatchObject({ kind: "started" });
+    expect((await rows()).map((p) => [p.amountCents, p.method])).toEqual([[30000, "paymentInitiation"]]);
+    // booked with 100% or 50%: never järelmaks later (the choice is made at booking)
+    for (const paymentChoice of ["full", "half"] as const) {
+      const other = await registrationOn(db, c, { email: `${paymentChoice}@example.com`, paymentChoice });
+      expect(await start(m.montonio, { registrationId: other.id }, "hirePurchase"), paymentChoice).toEqual({ kind: "financing" });
+    }
+    // the edges of the range are in it
+    for (const price of [10000, 500000]) {
+      await db.update(courses).set({ priceGroup: price }).where(eq(courses.id, c.course.id));
+      const edge = await registrationOn(db, c, { email: `edge-${price}@example.com`, paymentChoice: "financing" });
+      expect(await start(m.montonio, { registrationId: edge.id }, "hirePurchase"), `price ${price}`).toMatchObject({ kind: "started" });
+    }
+    expect(m.state.orders.filter((o) => methodOf(o) === "hirePurchase").map((o) => o.grandTotal)).toEqual([100, 5000]);
+  });
+
+  test("the toggle is read inside the start: switched off between the booking and the start, the registration stands awaiting payment, its hold ends, the form is told", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const { d } = deps(m.montonio, { db: onStart(db, async () => void (await financingOn(false))) });
+    expect(await handleRegistration(d, form(c.session.id, { payment: "financing" }))).toEqual({ ok: true, financing: "refused" });
+    const r = await reg();
+    expect([r.paymentChoice, r.status, r.seatHoldUntil]).toEqual(["financing", "awaiting_prepayment", null]);
+    expect(await rows()).toEqual([]);
+    expect(m.state.orders).toEqual([]);
+  });
+
+  test("a bank press while a hirePurchase attempt is open starts a new attempt (new row and reference), never re-sends the loan's", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { paymentChoice: "financing" });
+    expect(await start(m.montonio, { payToken: r.payToken }, "hirePurchase")).toMatchObject({ kind: "started" });
+    const [loan] = await ordered();
+    // Inbank declined (the order stays PENDING at Montonio), she pays by bank 5 minutes on: a new attempt, the loan's row untouched
+    const bankAt = new Date(NOW.getTime() + 5 * MIN);
+    expect(await start(m.montonio, { payToken: r.payToken }, undefined, bankAt)).toMatchObject({ kind: "started" });
+    const [loanAfter, bank, ...none] = await ordered();
+    expect(none).toEqual([]);
+    expect(loanAfter).toEqual(loan);
+    expect([bank.reference, bank.method, bank.amountCents, bank.status]).toEqual([`MSLAB-M${loan.id + 1}`, "paymentInitiation", 35000, "pending"]);
+    expect(claimsOf(m, loan.reference)).toHaveLength(1);
+    expect(claimsOf(m, bank.reference).map(methodOf)).toEqual(["paymentInitiation"]);
+    // the loan's longer hold is kept: the bank's 30 minutes would end it before the loan's 60
+    expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 60 * MIN));
+    // each method re-sends its own attempt: the loan's reference with the loan's order, the bank's with the bank's
+    expect(await start(m.montonio, { payToken: r.payToken }, "hirePurchase", new Date(NOW.getTime() + 10 * MIN))).toMatchObject({ kind: "started" });
+    expect(await start(m.montonio, { payToken: r.payToken }, "paymentInitiation", new Date(NOW.getTime() + 12 * MIN))).toMatchObject({ kind: "started" });
+    expect((await ordered()).map((p) => p.id)).toEqual([loan.id, bank.id]);
+    expect(claimsOf(m, loan.reference).map(methodOf)).toEqual(["hirePurchase", "hirePurchase"]);
+    expect(claimsOf(m, bank.reference).map(methodOf)).toEqual(["paymentInitiation", "paymentInitiation"]);
+    // the bank's press at 12 minutes would hold until 42, the loan's at 10 holds until 70: the longer one stays
+    expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 70 * MIN));
+  });
+
+  test("the reverse: a järelmaks press while a bank attempt is open is a new attempt too, the bank's row untouched", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { paymentChoice: "financing" });
+    expect(await start(m.montonio, { registrationId: r.id })).toMatchObject({ kind: "started" });
+    const [bank] = await ordered();
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase", new Date(NOW.getTime() + 5 * MIN))).toMatchObject({ kind: "started" });
+    const [bankAfter, loan, ...none] = await ordered();
+    expect(none).toEqual([]);
+    expect(bankAfter).toEqual(bank);
+    expect([loan.method, loan.reference]).toEqual(["hirePurchase", `MSLAB-M${bank.id + 1}`]);
+    expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 65 * MIN));
+  });
+
+  test("a re-send of the same method within its window reuses the row; the window is 60 min for hirePurchase, 30 for a bank attempt", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { paymentChoice: "financing" });
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase")).toMatchObject({ kind: "started" });
+    const [loan] = await ordered();
+    // 45 minutes on (past the bank's 30, inside the loan's 60): the same row and reference, its window and the hold from now
+    const resent = new Date(NOW.getTime() + 45 * MIN);
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase", resent)).toMatchObject({ kind: "started" });
+    const [again, ...none] = await ordered();
+    expect(none).toEqual([]);
+    expect([again.id, again.reference, again.updatedAt]).toEqual([loan.id, loan.reference, resent]);
+    expect((await reg()).seatHoldUntil).toEqual(new Date(resent.getTime() + 60 * MIN));
+    // the re-send is the loan's order again: its method, expiresIn and the billing details
+    const loanOrder = expect.objectContaining({ expiresIn: 60, payment: expect.objectContaining({ method: "hirePurchase" }), billingAddress: expect.objectContaining({ lastName: "Tamm" }) });
+    expect(claimsOf(m, loan.reference)).toEqual([loanOrder, loanOrder]);
+    // 61 minutes after the re-send its window is over: a new attempt
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase", new Date(resent.getTime() + 61 * MIN))).toMatchObject({ kind: "started" });
+    expect((await ordered()).map((p) => p.reference)).toEqual([loan.reference, `MSLAB-M${loan.id + 1}`]);
+    // a bank attempt's window stays 30 minutes: 29 minutes on the same row, 31 after that a new one
+    const bankAt = new Date(NOW.getTime() + 3 * 60 * MIN);
+    await db.update(payments).set({ status: "failed" }).where(eq(payments.status, "pending"));
+    expect(await start(m.montonio, { registrationId: r.id }, "paymentInitiation", bankAt)).toMatchObject({ kind: "started" });
+    expect(await start(m.montonio, { registrationId: r.id }, "paymentInitiation", new Date(bankAt.getTime() + 29 * MIN))).toMatchObject({ kind: "started" });
+    expect(await ordered()).toHaveLength(3);
+    expect(await start(m.montonio, { registrationId: r.id }, "paymentInitiation", new Date(bankAt.getTime() + 60 * MIN))).toMatchObject({ kind: "started" });
+    expect((await ordered()).map((p) => p.method)).toEqual(["hirePurchase", "hirePurchase", "paymentInitiation", "paymentInitiation"]);
+  });
+
+  test("a pending row from before the methods (method '') is a bank attempt: a bank press re-sends it, a järelmaks press does not", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { paymentChoice: "financing" });
+    expect(await start(m.montonio, { registrationId: r.id })).toMatchObject({ kind: "started" });
+    await db.update(payments).set({ method: "" });
+    const [old] = await ordered();
+    expect(await start(m.montonio, { registrationId: r.id }, undefined, new Date(NOW.getTime() + 5 * MIN))).toMatchObject({ kind: "started" });
+    expect((await ordered()).map((p) => p.id)).toEqual([old.id]);
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase", new Date(NOW.getTime() + 6 * MIN))).toMatchObject({ kind: "started" });
+    expect((await ordered()).map((p) => [p.id === old.id, p.method])).toEqual([[true, ""], [false, "hirePurchase"]]);
+  });
+});

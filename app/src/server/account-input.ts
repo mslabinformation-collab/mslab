@@ -45,7 +45,11 @@ const deletion = z.object({ confirm: z.literal(true) });
 const progress = z.object({ watchedSec: z.number().min(0).max(LIMITS.watchedSec) });
 /** Kept exactly as typed (no trim): the length and the e-mail rules are the server's, with the account's address (domain/password.ts). */
 const password = z.object({ password: z.string().min(1).max(LIMITS.passwordInput).refine(storable) });
-const payStart = z.object({ registrationId: rowId });
+/**
+ * „Maksa“ of a card: the registration, and the way to pay (instalments, §4): the bank link, "paymentInitiation", when the body names none, or
+ * Järelmaks (Inbank), "hirePurchase", which the payment start allows or refuses (server/payments/start.ts, kind "financing").
+ */
+const payStart = z.object({ registrationId: rowId, method: z.enum(["paymentInitiation", "hirePurchase"]).default("paymentInitiation") });
 /** The form a feedback request names (student reviews): a contact course's registration (`id`) or an e-course's slug (`kursus`); exactly one of them (feedbackTarget). */
 const feedbackTargetFields = { id: rowId.optional(), kursus: slug.optional() };
 /**

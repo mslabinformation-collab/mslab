@@ -1,6 +1,7 @@
-import { and, asc, count, desc, eq, gt, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, isNotNull, isNull, lte, not, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { ContractSnapshot } from "@/domain/contract";
+import { isHirePurchase } from "@/domain/financing";
 import { PAGE_SIZE } from "@/domain/paging";
 import { orderReference } from "@/domain/payments";
 import type { I18n } from "@/i18n/field";
@@ -29,7 +30,19 @@ export type NewPayment = {
   invoiceId?: number | null;
   /** An e-course purchase: the contract the cart showed, filled (contracts, §4); none: null or left out. */
   contractSnapshot?: ContractSnapshot | null;
+  /**
+   * The Montonio method the attempt is started with (instalments, D5): "paymentInitiation" (the bank link) or "hirePurchase" (Järelmaks
+   * (Inbank)). Its re-send window, its seat hold and the daily check's age follow it (server/payments/start.ts, checkAfterMs); when it is
+   * paid, settle.ts keeps it unless Montonio reports one. Left out: none ('', as every row before the methods), which reads as the bank.
+   */
+  method?: string;
 };
+
+/**
+ * A payment row whose method is the järelmaks (instalments, D5), by domain/financing.ts isHirePurchase's rule (case and spaces aside): every
+ * other row, one with no method recorded too, is a bank attempt.
+ */
+export const hirePurchaseRow = sql`lower(btrim(${payments.method})) = 'hirepurchase'`;
 
 /**
  * A new pending payment row with its reference <prefix><id> (spec 5.1: written right after the insert, in the same transaction; a
@@ -144,9 +157,24 @@ export async function paymentContext(q: Q, paymentId: number): Promise<PaymentCo
   };
 }
 
-/** The daily check asks about a pending payment once Montonio's 30-minute window is surely over, and gives up on it after 14 days (spec 6.6). */
+/**
+ * The daily check asks about a pending payment once its order's window is surely over — the attempt's window (domain/financing.ts
+ * attemptWindowMs) and 15 minutes: 45 minutes for a bank attempt (Montonio's 30), 75 for a järelmaks (its 60, instalments D5) — and gives up
+ * on it after 14 days (spec 6.6). An order never created is failed after the same age.
+ */
 export const CHECK_AFTER_MS = 45 * 60_000;
+export const FINANCING_CHECK_AFTER_MS = 75 * 60_000;
 export const GIVE_UP_MS = 14 * 86_400_000;
+
+/** The daily check's age for a payment of this method (CHECK_AFTER_MS, or FINANCING_CHECK_AFTER_MS for `hirePurchase`). */
+export const checkAfterMs = (method: string): number => (isHirePurchase(method) ? FINANCING_CHECK_AFTER_MS : CHECK_AFTER_MS);
+
+/** A payment row old enough for the daily check at `now` (checkAfterMs by its method, in the one query: hirePurchaseRow). */
+const oldEnoughToCheck = (now: Date) =>
+  or(
+    and(hirePurchaseRow, lte(payments.createdAt, new Date(now.getTime() - FINANCING_CHECK_AFTER_MS))),
+    and(not(hirePurchaseRow), lte(payments.createdAt, new Date(now.getTime() - CHECK_AFTER_MS))),
+  );
 
 /**
  * The daily check stops one of its loops (the stale rows, the asking) after this many connection errors in a row (isConnectionError: a dead
@@ -175,28 +203,25 @@ export function isConnectionError(e: unknown): boolean {
   return code !== null && (CONNECTION_CODES.has(code) || /^08[0-9A-Z]{3}$/.test(code));
 }
 
-/** The pending payments the daily check asks Montonio about: with an order, older than 45 minutes and younger than 14 days; oldest first. */
+/**
+ * The pending payments the daily check asks Montonio about: with an order, older than 45 minutes (75 for a järelmaks: checkAfterMs) and
+ * younger than 14 days; oldest first.
+ */
 export async function pendingToCheck(db: Db, now: Date, limit: number): Promise<Payment[]> {
   return db
     .select()
     .from(payments)
-    .where(
-      and(
-        eq(payments.status, "pending"),
-        isNotNull(payments.providerUuid),
-        lte(payments.createdAt, new Date(now.getTime() - CHECK_AFTER_MS)),
-        gt(payments.createdAt, new Date(now.getTime() - GIVE_UP_MS)),
-      ),
-    )
+    .where(and(eq(payments.status, "pending"), isNotNull(payments.providerUuid), oldEnoughToCheck(now), gt(payments.createdAt, new Date(now.getTime() - GIVE_UP_MS))))
     .orderBy(asc(payments.createdAt), asc(payments.id))
     .limit(limit);
 }
 
 /**
- * What the daily check does to the pending payments that will not be paid any more: 14 days old, or 45 minutes old without an order (its
- * creation broke off: there is nothing to ask about). Each becomes failed through failPayment, one transaction a row, oldest first, at most
- * `limit` a run (the rest wait for the next): a prepayment's failure ends its seat hold, and failPayment takes the registration's lock
- * before it writes the payment row, as every payment path does (the order course_sessions → registrations → payments, db/queries/seats.ts).
+ * What the daily check does to the pending payments that will not be paid any more: 14 days old, or 45 minutes old (75 for a järelmaks:
+ * checkAfterMs) without an order (its creation broke off: there is nothing to ask about). Each becomes failed through failPayment, one
+ * transaction a row, oldest first, at most `limit` a run (the rest wait for the next): a prepayment's failure ends its seat hold, and
+ * failPayment takes the registration's lock before it writes the payment row, as every payment path does (the order course_sessions →
+ * registrations → payments, db/queries/seats.ts).
  * One bulk UPDATE would write the payment rows with no registration lock at all. That also frees a hold that such a row was keeping for a
  * later, failed attempt of the same registration (releaseHold counts every pending row). No lock is held after the call.
  * A row whose failing throws is its own failure: `onError(id, error)` is told, it is counted in `errors`, and the next row goes on (a stale
@@ -217,7 +242,7 @@ export async function expireStalePending(
     .where(
       and(
         eq(payments.status, "pending"),
-        or(lte(payments.createdAt, new Date(now.getTime() - GIVE_UP_MS)), and(isNull(payments.providerUuid), lte(payments.createdAt, new Date(now.getTime() - CHECK_AFTER_MS)))),
+        or(lte(payments.createdAt, new Date(now.getTime() - GIVE_UP_MS)), and(isNull(payments.providerUuid), oldEnoughToCheck(now))),
       ),
     )
     .orderBy(asc(payments.createdAt), asc(payments.id))

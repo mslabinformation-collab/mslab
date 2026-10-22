@@ -1114,12 +1114,13 @@ async function changeRequest(request: Request, deps: AccountDeps): Promise<Respo
 }
 
 /**
- * POST /maksa `{ registrationId }` (phase 2b, spec 6.3): starts the online payment of one of the client's own registrations — the prepayment
- * still due, or the rest after it, or, while it has an unpaid invoice, exactly that invoice's amount (invoices, D5) — with the /maksa page's
- * checks (server/payments/start.ts). 200 `{ ok: true, paymentUrl }` (the card sends
- * the browser there); 404 `{ error: "registration" }` (not hers, or none); 409 `{ error: "nothing" }` (nothing to pay now) or `"full"` (no
- * free seat, D2); 429 `{ error: "rate" }` (5 starts from this IP in 10 minutes, shared with the /maksa page, or 5 of this registration in an
- * hour); 503 `{ error: "unavailable" }` without online payments or when Montonio says no. A throw is the router's 500.
+ * POST /maksa `{ registrationId, method? }` (phase 2b, spec 6.3): starts the online payment of one of the client's own registrations — the
+ * prepayment still due, or the rest after it, or, while it has an unpaid invoice, exactly that invoice's amount (invoices, D5) — with the
+ * /maksa page's checks (server/payments/start.ts). `method` (instalments, §4): the bank link by default, or "hirePurchase", Järelmaks (Inbank).
+ * 200 `{ ok: true, paymentUrl }` (the card sends the browser there); 404 `{ error: "registration" }` (not hers, or none); 409 `{ error:
+ * "nothing" }` (nothing to pay now), `"full"` (no free seat, D2) or `"financing"` (a järelmaks not allowed now: the bank is still open);
+ * 429 `{ error: "rate" }` (5 starts from this IP in 10 minutes, shared with the /maksa page, or 5 of this registration in an hour); 503
+ * `{ error: "unavailable" }` without online payments or when Montonio says no. A throw is the router's 500.
  */
 async function payRegistration(request: Request, deps: AccountDeps): Promise<Response> {
   const session = await requireClient(request, deps);
@@ -1130,7 +1131,11 @@ async function payRegistration(request: Request, deps: AccountDeps): Promise<Res
     logNote("[account] payment starts rate limited");
     return clientResponse(session, { ok: false, error: "rate" }, 429);
   }
-  const result = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio ?? null }, { registrationId: input.data.registrationId, clientId: session.clientId });
+  const result = await startRegistrationPayment(
+    { db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio ?? null },
+    { registrationId: input.data.registrationId, clientId: session.clientId },
+    { method: input.data.method },
+  );
   switch (result.kind) {
     case "started":
       return clientResponse(session, { ok: true, paymentUrl: result.paymentUrl });
@@ -1138,6 +1143,7 @@ async function payRegistration(request: Request, deps: AccountDeps): Promise<Res
       return clientResponse(session, { ok: false, error: "registration" }, 404);
     case "nothing":
     case "full":
+    case "financing":
       return clientResponse(session, { ok: false, error: result.kind }, 409);
     case "rate":
       return clientResponse(session, { ok: false, error: "rate" }, 429);

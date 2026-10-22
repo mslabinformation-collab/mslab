@@ -125,14 +125,22 @@ export async function registrationOn(db: Db, c: { course: Course; session: Cours
   return row;
 }
 
-/** A pending payment of `r` (its prepayment of 175 € by default) whose order exists at Montonio with `providerUuid` (a fixed uuid by default). */
+/**
+ * A pending payment of `r` (its prepayment of 175 € by default) whose order exists at Montonio with `providerUuid` (a fixed uuid by default).
+ * `method`: the Montonio method it was started with ("paymentInitiation", "hirePurchase"); left out, none (a row from before the methods).
+ */
 export async function pendingPayment(
   db: Db,
   r: Registration,
-  over: { kind?: "prepayment" | "balance"; amountCents?: number; providerUuid?: string | null } = {},
+  over: { kind?: "prepayment" | "balance"; amountCents?: number; providerUuid?: string | null; method?: string } = {},
   now: Date = new Date("2026-10-09T09:55:00Z"),
 ): Promise<Payment> {
-  const row = await insertPayment(db, { kind: over.kind ?? "prepayment", registrationId: r.id, courseId: r.courseId, clientId: r.clientId, email: r.email, name: r.name, locale: r.locale === "ru" ? "ru" : "et", amountCents: over.amountCents ?? 17500 }, now, TEST_MONTONIO.referencePrefix);
+  const row = await insertPayment(
+    db,
+    { kind: over.kind ?? "prepayment", registrationId: r.id, courseId: r.courseId, clientId: r.clientId, email: r.email, name: r.name, locale: r.locale === "ru" ? "ru" : "et", amountCents: over.amountCents ?? 17500, ...(over.method === undefined ? {} : { method: over.method }) },
+    now,
+    TEST_MONTONIO.referencePrefix,
+  );
   const uuid = over.providerUuid === undefined ? `uuid-${row.id}` : over.providerUuid;
   if (uuid === null) return row;
   await attachOrder(db, row.id, uuid, now);

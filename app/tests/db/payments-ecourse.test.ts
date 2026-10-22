@@ -1,7 +1,7 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clientLoginTokens, clients, clientSessions, courseAccess, courses, payments, registrations, subscribers } from "@/db/schema";
+import { clientLoginTokens, clients, clientSessions, courseAccess, courses, payments, registrations, settings, subscribers } from "@/db/schema";
 import { formatDate } from "@/i18n/format";
 import type { PublicChange } from "@/server/cache-targets";
 import * as adminClients from "@/server/admin-clients";
@@ -649,5 +649,74 @@ describe("paid", () => {
     expect(await db.select().from(clients)).toEqual([]);
     expect(m.mails()[0].subject).toBe("Uus makse: Kati Tamm, Kulmumeistri e-koolitus (e-koolitus), 190 €"); // the course is still there, with its title
     expect(m.mails()[0].text).toContain("E-koolitust ei avatud. Ava ligipääs käsitsi (Õpilased) või tagasta raha Montonios.");
+  });
+});
+
+describe("the purchase with Järelmaks (Inbank) (instalments, D2, D5, D8)", () => {
+  const financingOn = (enabled = true) => db.insert(settings).values({ key: "financing", value: { enabled } }).onConflictDoUpdate({ target: settings.key, set: { value: { enabled } } });
+  const methodOf = (o: Record<string, unknown>) => (o.payment as { method: string }).method;
+  const buy = (over: { method?: "paymentInitiation" | "hirePurchase"; amountCents?: number; now?: Date } = {}, m = stubMontonio()) =>
+    startEcoursePayment(
+      { db, now: over.now ?? NOW, siteUrl: SITE, notifyBase: SITE, montonio: m.montonio },
+      { courseId: ecourseId, amountCents: over.amountCents ?? 19000, email: "Kati@Example.com", name: "Kati Tamm", locale: "et", newsletter: false, ...(over.method ? { method: over.method } : {}) },
+    );
+
+  test("an e-course hirePurchase start: name and e-mail only in billingAddress; refused outside 100–5000 €", async () => {
+    const m = stubMontonio();
+    await financingOn();
+    const result = await handleEcoursePurchase(formDeps(m.montonio), form({ method: "hirePurchase", name: "Kati  Tamm" }));
+    const [p, ...none] = await db.select().from(payments);
+    expect(none).toEqual([]);
+    expect(result).toEqual({ ok: true, paymentUrl: `https://sandbox-stargate.montonio.com/${p.providerUuid}` });
+    expect(p).toMatchObject({ kind: "ecourse", status: "pending", amountCents: 19000, method: "hirePurchase" });
+    expect(m.state.orders).toHaveLength(1);
+    expect(m.state.orders[0]).toMatchObject({ merchantReference: p.reference, grandTotal: 190, expiresIn: 60, payment: { method: "hirePurchase" } });
+    // the cart asks for no phone: her name and e-mail, nothing else
+    expect(m.state.orders[0].billingAddress).toEqual({ firstName: "Kati", lastName: "Tamm", email: "kati@example.com" });
+    // the price out of 100–5000 €: refused, no row and no order — the cart says so at the choice
+    for (const price of [9999, 500001]) {
+      await db.update(courses).set({ price }).where(eq(courses.id, ecourseId));
+      expect(await handleEcoursePurchase(formDeps(m.montonio, { kv: fakeKv() }), form({ method: "hirePurchase", email: `p${price}@example.com` })), String(price)).toEqual({ ok: false, errors: { method: "financing" } });
+      expect(await buy({ method: "hirePurchase", amountCents: price }, m), String(price)).toEqual({ kind: "financing" });
+    }
+    expect(await db.select().from(payments)).toHaveLength(1);
+    expect(m.state.orders).toHaveLength(1);
+    // the edges are in the range
+    expect(await buy({ method: "hirePurchase", amountCents: 10000 }, m)).toMatchObject({ kind: "started" });
+    expect(await buy({ method: "hirePurchase", amountCents: 500000 }, m)).toMatchObject({ kind: "started" });
+  });
+
+  test("Seaded's toggle off (or never set): hirePurchase is refused; the bank purchase is as before (the default), with no billing details", async () => {
+    const m = stubMontonio();
+    expect(await buy({ method: "hirePurchase" }, m)).toEqual({ kind: "financing" });
+    await financingOn(false);
+    expect(await buy({ method: "hirePurchase" }, m)).toEqual({ kind: "financing" });
+    expect(await db.select().from(payments)).toEqual([]);
+    expect(await handleEcoursePurchase(formDeps(m.montonio), form())).toMatchObject({ ok: true });
+    const [p] = await db.select().from(payments);
+    expect(p.method).toBe("paymentInitiation");
+    expect(methodOf(m.state.orders[0])).toBe("paymentInitiation");
+    expect(m.state.orders[0]).not.toHaveProperty("billingAddress");
+    expect(m.state.orders[0]).not.toHaveProperty("expiresIn");
+  });
+
+  test("a bank press while her järelmaks order is open is a new purchase (new row and reference); each method re-sends its own, in its own window", async () => {
+    const m = stubMontonio();
+    await financingOn();
+    const ordered = () => db.select().from(payments).orderBy(payments.id);
+    expect(await buy({ method: "hirePurchase" }, m)).toMatchObject({ kind: "started" });
+    expect(await buy({ now: new Date(NOW.getTime() + 5 * MIN) }, m)).toMatchObject({ kind: "started" });
+    const [loan, bank, ...none] = await ordered();
+    expect(none).toEqual([]);
+    expect([loan.method, bank.method]).toEqual(["hirePurchase", "paymentInitiation"]);
+    expect(bank.reference).not.toBe(loan.reference);
+    // 45 minutes on: the loan's 60-minute window is open (re-sent), the bank's 30 is over (a new one)
+    const later = new Date(NOW.getTime() + 45 * MIN);
+    expect(await buy({ method: "hirePurchase", now: later }, m)).toMatchObject({ kind: "started" });
+    expect(await buy({ now: later }, m)).toMatchObject({ kind: "started" });
+    const after = await ordered();
+    expect(after.map((p) => [p.id, p.method])).toEqual([[loan.id, "hirePurchase"], [bank.id, "paymentInitiation"], [bank.id + 1, "paymentInitiation"]]);
+    expect(after[0].updatedAt).toEqual(later);
+    expect(m.state.orders.filter((o) => o.merchantReference === loan.reference).map(methodOf)).toEqual(["hirePurchase", "hirePurchase"]);
   });
 });

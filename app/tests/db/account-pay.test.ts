@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clients, clientSessions, payments, registrations } from "@/db/schema";
+import { clients, clientSessions, payments, registrations, settings } from "@/db/schema";
 import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
 import { newToken, sha256 } from "@/server/token";
@@ -88,6 +88,24 @@ test("the rest of a confirmed one; not hers 404; paid in full or full 409; no pa
   expect(await answer(await call(deps(null), cookie, { registrationId: waiting.id }))).toEqual([503, { ok: false, error: "unavailable" }]);
   expect(await answer(await call(deps(m.montonio), cookie, { registrationId: "7" }))).toEqual([400, { ok: false, error: "registrationId" }]);
   expect((await call(deps(m.montonio), cookie, { registrationId: waiting.id }, { origin: "https://elsewhere.example" })).status).toBe(403);
+});
+
+test("the body's `method` (instalments, §4): hirePurchase starts the järelmaks when allowed, else 409 financing; none is the bank; another value 400", async () => {
+  const m = stubMontonio();
+  const { client, cookie } = await signedIn();
+  const c = await contactCourse(db);
+  const r = await registrationOn(db, c, { clientId: client.id, paymentChoice: "financing" });
+  expect(await answer(await call(deps(m.montonio), cookie, { registrationId: r.id, method: "hirePurchase" }))).toEqual([409, { ok: false, error: "financing" }]);
+  expect(await answer(await call(deps(m.montonio), cookie, { registrationId: r.id, method: "instalment" }))).toEqual([400, { ok: false, error: "method" }]);
+  expect(await db.select().from(payments)).toEqual([]);
+  await db.insert(settings).values({ key: "financing", value: { enabled: true } });
+  expect((await call(deps(m.montonio), cookie, { registrationId: r.id, method: "hirePurchase" })).status).toBe(200);
+  const other = await registrationOn(db, c, { email: "teine@example.com", clientId: client.id, paymentChoice: "financing" });
+  expect((await call(deps(m.montonio), cookie, { registrationId: other.id })).status).toBe(200);
+  expect((await db.select().from(payments).orderBy(payments.id)).map((p) => [p.registrationId, p.method])).toEqual([
+    [r.id, "hirePurchase"],
+    [other.id, "paymentInitiation"],
+  ]);
 });
 
 test("5 starts per IP in 10 minutes (shared with the /maksa page): then 429 rate", async () => {

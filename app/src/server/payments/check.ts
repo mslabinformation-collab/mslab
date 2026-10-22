@@ -34,9 +34,9 @@ export const NO_PAYMENT_SWEEP: PaymentSweep = { checked: 0, settled: 0, unanswer
 const logError = (paymentId: number, e: unknown): void => logFailure(`[payments] a payment could not be settled (payment ${paymentId})`, e);
 
 /**
- * Runs the check (spec 6.6): pending rows of 14 days and orders never created (no uuid after CHECK_AFTER_MS) fail, through failPayment
- * (db/queries/payments.ts expireStalePending: at most CHECK_BATCH, oldest first); then each pending payment older than CHECK_AFTER_MS and
- * younger than 14 days, oldest first, at most CHECK_BATCH, is asked about and settled — no new one after `until` (epoch ms, by `clock`; a
+ * Runs the check (spec 6.6): pending rows of 14 days and orders never created (no uuid after checkAfterMs: 45 minutes, 75 for a järelmaks)
+ * fail, through failPayment (db/queries/payments.ts expireStalePending: at most CHECK_BATCH, oldest first); then each pending payment older
+ * than checkAfterMs and younger than 14 days, oldest first, at most CHECK_BATCH, is asked about and settled — no new one after `until` (epoch ms, by `clock`; a
  * request begun is finished: it has 15 s at most). Last, when holds ended in the last day, or a failed row released one, the seats are
  * revalidated (the calendar's "Täis" of a hold that ended), whatever happened to the rows. A payment whose settlement throws (a transient
  * error, settle.ts openCourse, or any other) stays pending and is counted in `errors`; the next payment goes on, and MAX_CONSECUTIVE_ERRORS

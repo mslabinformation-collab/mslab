@@ -95,6 +95,32 @@ test("14 days old: failed without asking; an order never created (no Montonio uu
   expect(m.state.gets).toEqual([]);
 });
 
+test("the late check waits 75 min for a hirePurchase attempt and 45 for a bank one", async () => {
+  // a järelmaks order can be paid for 60 minutes (its expiresIn), a bank order for Montonio's 30: each is asked about 15 minutes after its own
+  const m = stubMontonio();
+  const c = await contactCourse(db);
+  const on = (n: number) => registrationOn(db, c, { email: `n${n}@example.com` });
+  const bank50 = await pendingPayment(db, await on(1), { method: "paymentInitiation" }, ago(50 * MIN));
+  const old50 = await pendingPayment(db, await on(2), {}, ago(50 * MIN)); // a row from before the methods: the bank's age
+  const loan50 = await pendingPayment(db, await on(3), { method: "hirePurchase" }, ago(50 * MIN));
+  const loan74 = await pendingPayment(db, await on(4), { method: "hirePurchase" }, ago(74 * MIN));
+  const loan76 = await pendingPayment(db, await on(5), { method: "hirePurchase" }, ago(76 * MIN));
+  const { deps } = settleDeps(db, m.montonio, NOW);
+  expect(await paymentQueries.pendingToCheck(db, NOW, 10)).toEqual([expect.objectContaining({ id: loan76.id }), expect.objectContaining({ id: bank50.id }), expect.objectContaining({ id: old50.id })]);
+  expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ checked: 3, unanswered: 3, expired: 0 });
+  expect(m.state.gets.sort()).toEqual([bank50.providerUuid, old50.providerUuid, loan76.providerUuid].sort());
+  expect([await status(loan50.id), await status(loan74.id)]).toEqual(["pending", "pending"]);
+  // an order never created: failed after the same ages
+  const orphanBank = await pendingPayment(db, await on(6), { method: "paymentInitiation", providerUuid: null }, ago(46 * MIN));
+  const orphanLoan46 = await pendingPayment(db, await on(7), { method: "hirePurchase", providerUuid: null }, ago(46 * MIN));
+  const orphanLoan76 = await pendingPayment(db, await on(8), { method: "hirePurchase", providerUuid: null }, ago(76 * MIN));
+  expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ expired: 2 });
+  expect([await status(orphanBank.id), await status(orphanLoan46.id), await status(orphanLoan76.id)]).toEqual(["failed", "pending", "failed"]);
+  expect(paymentQueries.CHECK_AFTER_MS).toBe(45 * MIN);
+  expect(paymentQueries.FINANCING_CHECK_AFTER_MS).toBe(75 * MIN);
+  expect([paymentQueries.checkAfterMs("paymentInitiation"), paymentQueries.checkAfterMs(""), paymentQueries.checkAfterMs("hirePurchase")]).toEqual([45 * MIN, 45 * MIN, 75 * MIN]);
+});
+
 test(`at most ${CHECK_BATCH} a run, oldest first; out of time: no new one is asked about`, async () => {
   const m = stubMontonio();
   const r = await registrationOn(db, await contactCourse(db));

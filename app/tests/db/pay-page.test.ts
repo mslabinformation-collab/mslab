@@ -228,6 +228,29 @@ describe("POST: the button", () => {
     expect(await text(res)).toContain("Selle registreeringu eest pole praegu midagi tasuda.");
     expect(await db.select().from(payments)).toEqual([]);
   });
+
+  test("the button's `method` (instalments, §4): hirePurchase starts the järelmaks when it is allowed, anything else or none is the bank; refused: 409, the page, nothing started", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c, { paymentChoice: "financing" });
+    const posted = (token: string, body: string) => new Request(`${SITE}/maksa/${token}`, { method: "POST", headers: { origin: SITE, "content-type": "application/x-www-form-urlencoded" }, body });
+    // Seaded's toggle off: refused, the page again (the bank's button stays)
+    const refused = await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio));
+    expect(refused.status).toBe(409);
+    expect(await text(refused)).toContain(`<form method="post" action="/maksa/${r.payToken}">`);
+    expect(await db.select().from(payments)).toEqual([]);
+    await db.insert(settings).values({ key: "financing", value: { enabled: true } });
+    expect((await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio))).status).toBe(303);
+    const other = await registrationOn(db, c, { email: "teine@example.com", paymentChoice: "financing" });
+    expect((await handlePayPage(posted(other.payToken, "method=bank"), other.payToken, deps(m.montonio))).status).toBe(303);
+    const third = await registrationOn(db, c, { email: "kolmas@example.com", paymentChoice: "financing" });
+    expect((await handlePayPage(post(third.payToken), third.payToken, deps(m.montonio))).status).toBe(303);
+    expect((await db.select().from(payments).orderBy(payments.id)).map((p) => [p.registrationId, p.method, p.amountCents])).toEqual([
+      [r.id, "hirePurchase", 35000],
+      [other.id, "paymentInitiation", 35000],
+      [third.id, "paymentInitiation", 35000],
+    ]);
+  });
 });
 
 test("loadPayView: what the page shows, read with the token only", async () => {

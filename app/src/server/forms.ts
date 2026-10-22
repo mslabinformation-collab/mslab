@@ -47,14 +47,21 @@ const contactCourseFields = {
   locale,
 };
 
-/** A registration as stored (brief interface): a group registration names a session; payment is 100% or 50%. */
+/**
+ * The payment choices of a group registration: „100% kohe“, „50% registreerimisel + 50% koolituspäeval“ and „Järelmaks (Inbank)“ (instalments,
+ * D2). The form offers financing only while it is offered (domain/financing.ts financingOffered); a form that sends it otherwise is still read,
+ * and the payment start refuses a järelmaks that is not allowed (server/payments/start.ts, kind "financing").
+ */
+const paymentChoice = z.enum(["full", "half", "financing"]);
+
+/** A registration as stored (brief interface): a group registration names a session; payment is 100%, 50% or järelmaks. */
 export const registrationSchema = z
   .object({
     courseId: id,
     courseSessionId: id.optional(),
     kind: z.enum(["group", "individual"]),
     ...contactCourseFields,
-    paymentChoice: z.enum(["full", "half"]),
+    paymentChoice,
     preferredPeriod: z.string().trim().max(MAX.period).default(""),
     message: z.string().trim().max(MAX.message).default(""),
   })
@@ -66,7 +73,7 @@ export const groupRegistrationFormSchema = z.object({
   course: slug,
   courseSessionId: id,
   ...contactCourseFields,
-  paymentChoice: z.enum(["full", "half"]),
+  paymentChoice,
   /** "Soovin MS LABi uudiseid ja pakkumisi" (phase 2c): ticked, the newsletter's own sign-up follows the registration. */
   wantsNewsletter: flag,
   /** The optional "Sõnum" (phase 2c): the welcome code is written there. */
@@ -89,8 +96,21 @@ export const contactSchema = z.object({ name: line(MAX.name), email, message: te
 /** E-learning cart before payment exists (P9): "let me know" e-mail. Stored as a contact request. */
 export const purchaseInterestSchema = z.object({ course: slug, email, locale, wantsNewsletter: flag });
 
-/** The e-course cart's purchase (phase 2b, spec 6.4, D3): name, e-mail, the terms box (required) and the newsletter box (unticked). */
-export const ecoursePurchaseSchema = z.object({ course: slug, name: line(MAX.name), email, terms, wantsNewsletter: flag, locale, contractVersion });
+/**
+ * The e-course cart's purchase (phase 2b, spec 6.4, D3): name, e-mail, the terms box (required) and the newsletter box (unticked); and the way to
+ * pay (instalments, §4): the bank link, "paymentInitiation", when the cart sends none (it shows the choice only while järelmaks is offered), or
+ * "hirePurchase", Järelmaks (Inbank), which the payment start allows or refuses. Any other value is no cart of ours.
+ */
+export const ecoursePurchaseSchema = z.object({
+  course: slug,
+  name: line(MAX.name),
+  email,
+  terms,
+  wantsNewsletter: flag,
+  locale,
+  contractVersion,
+  method: z.enum(["paymentInitiation", "hirePurchase"]).default("paymentInitiation"),
+});
 
 export const practiceSchema = z.object({
   package: z.string().trim().regex(/^[A-Za-z0-9_-]{1,20}$/),
@@ -181,10 +201,15 @@ export const parsePurchaseInterest = (fd: FormData) =>
 
 /**
  * The e-course purchase (phase 2b). Fields: course (slug), name, email, terms, newsletter ("Soovin MS LABi uudiseid ja pakkumisi"),
- * contractVersion (the e-course contract's version the cart showed, contracts R6), locale.
+ * contractVersion (the e-course contract's version the cart showed, contracts R6), method (the way to pay, instalments §4: a value the cart
+ * cannot send is form "invalid"), locale.
  */
 export const parseEcoursePurchase = (fd: FormData) =>
-  parseForm(ecoursePurchaseSchema, fd, { ...same("course", "name", "email", "terms", "locale", "contractVersion"), wantsNewsletter: "newsletter" }, { ...slugPlacement, ...versionPlacement });
+  parseForm(ecoursePurchaseSchema, fd, { ...same("course", "name", "email", "terms", "locale", "contractVersion", "method"), wantsNewsletter: "newsletter" }, {
+    ...slugPlacement,
+    ...versionPlacement,
+    method: ["form", "invalid"],
+  });
 
 /** Practice request. Fields: package, name, email, phone, course (optional), times, locale. */
 export const parsePractice = (fd: FormData) => parseForm(practiceSchema, fd, same("package", "name", "email", "phone", "course", "times", "locale"));

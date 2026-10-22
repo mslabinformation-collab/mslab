@@ -22,7 +22,9 @@ export function paymentStatusLabel(p: { status: PaymentStatus; paidAt: Date | nu
 
 /**
  * How a payment was made, in Maria's Estonian ("Pangalink · Swedbank", "Kaart": domain/payments.ts paymentMethodLabel), or null while
- * nothing is known (a payment still pending has no method yet). Montonio's own code is never shown.
+ * nothing is known (a row with no method recorded: a payment started before the start recorded its method, instalments D5, and not paid
+ * since; a pending one started since shows the method it was started with, „Pangalink“ or „Järelmaks (Inbank)“). Montonio's own code is
+ * never shown.
  */
 export function paymentMethodText(p: { method: string; bank: string }): string | null {
   return p.method.trim() || p.bank.trim() ? paymentMethodLabel(p.method, p.bank) : null;

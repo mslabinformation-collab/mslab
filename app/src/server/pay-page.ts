@@ -14,7 +14,7 @@ import { esc } from "./account-mail";
 import { crossSiteFormPost } from "./auth";
 import { unpaidInvoiceOf } from "./invoices";
 import { logFailure, logNote } from "./log";
-import type { Montonio } from "./payments/montonio";
+import type { Montonio, OrderMethod } from "./payments/montonio";
 import { PAY_STARTS_PER_IP, startRegistrationPayment, type StartResult } from "./payments/start";
 import { RATE_WINDOW_SEC, rateKey, rateLimit, type TextKv } from "./ratelimit";
 import { isTokenShape } from "./token";
@@ -181,9 +181,24 @@ async function withinPayLimit(deps: PayPageDeps): Promise<boolean> {
 }
 
 /**
+ * The way to pay a POST names (instalments, §4): its form field `method`, "hirePurchase" for Järelmaks (Inbank); anything else, a body that
+ * cannot be read or none at all (the page's one button sends none) is the bank link. Only a form's urlencoded body is read.
+ */
+async function postedMethod(request: Request): Promise<OrderMethod> {
+  if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("application/x-www-form-urlencoded")) return "paymentInitiation";
+  try {
+    return new URLSearchParams(await request.text()).get("method") === "hirePurchase" ? "hirePurchase" : "paymentInitiation";
+  } catch {
+    return "paymentInitiation";
+  }
+}
+
+/**
  * GET /maksa/<token>: the page, nothing else. POST (its button): a cross-site POST is 403; else what is due is checked again and the payment
- * starts (server/payments/start.ts): 303 to Montonio's page. Nothing due by now: the page (its sentence). The session full: 409 with its line;
- * 5 starts from this IP in 10 minutes or 5 of this registration in an hour: 429; Montonio down or no payments: 503 "Midagi läks valesti".
+ * starts (server/payments/start.ts) with the button's method (postedMethod: the bank unless it says järelmaks): 303 to Montonio's page.
+ * Nothing due by now: the page (its sentence). The session full: 409 with its line; a järelmaks not allowed now: 409, the page again (the
+ * bank's button stays); 5 starts from this IP in 10 minutes or 5 of this registration in an hour: 429; Montonio down or no payments: 503
+ * "Midagi läks valesti".
  * The hold: what a start refreshes it refreshes together with a pending payment (one transaction), and a failed new order ends it again
  * (db/queries/payments.ts failPayment), so a refusal or a throw here has no hold of its own to release. (A failed re-send keeps its row
  * pending and its hold: that order may be paid already, start.ts order.)
@@ -205,7 +220,8 @@ export async function handlePayPage(request: Request, token: string, deps: PayPa
   }
   let result: StartResult;
   try {
-    result = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.notifyBase, montonio: deps.montonio }, { payToken: token });
+    const method = await postedMethod(request);
+    result = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.notifyBase, montonio: deps.montonio }, { payToken: token }, { method });
   } catch (e) {
     logFailure("[payments] pay page: the payment did not start", e);
     result = { kind: "failed" };
@@ -217,6 +233,9 @@ export async function handlePayPage(request: Request, token: string, deps: PayPa
       return html(payPage(view, { online, notice: "full" }), 409);
     case "rate":
       return html(payPage(view, { online, notice: "rate" }), 429);
+    case "financing":
+      // (the page's own line for it comes with its järelmaks button: instalments, Task 7)
+      return html(payPage(view, { online }), 409);
     case "nothing":
     case "notFound": {
       // what is due changed between the page and the start (paid meanwhile, called off): the page as it is now

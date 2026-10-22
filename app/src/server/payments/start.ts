@@ -1,24 +1,30 @@
-import { and, count, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, not, or, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
-import { attachOrder, failPayment, insertPayment } from "@/db/queries/payments";
+import { attachOrder, failPayment, hirePurchaseRow, insertPayment } from "@/db/queries/payments";
+import { readSetting } from "@/db/queries/public";
 import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
 import type { ContractSnapshot } from "@/domain/contract";
 import { normalizeEmail } from "@/domain/email";
+import { attemptWindowMs, billingAddressOf, FINANCING_KEY, financingAllowed, isHirePurchase, readFinancingSettings, type BillingAddress } from "@/domain/financing";
 import { payableDue } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
-import { holdUntil, SEAT_HOLD_MS } from "@/domain/sessions";
+import { holdUntil } from "@/domain/sessions";
 import { unpaidInvoiceOf } from "../invoices";
 import { logNote } from "../log";
-import { MontonioError, type Montonio } from "./montonio";
+import { MontonioError, type Montonio, type OrderMethod } from "./montonio";
 
 // Every way an online payment starts (phase 2b, spec 6.1, 6.3, 6.4): a pending payment row (a new MSLAB-M<id> for each new attempt, the
 // prefix this environment's: montonio.ts), then Montonio's order outside any transaction (a 15 s call must not hold a row lock), then the page
 // to send the payer to. When Montonio says no or cannot be reached, a new attempt's row is failed and a prepayment's hold ends
 // (db/queries/payments.ts failPayment): nothing breaks, the registration stands; a re-send's row stays pending (see order). A start while the
-// same attempt is still open (the same registration, kind and invoice, or the same e-course and address, the same amount, its order inside
-// Montonio's 30-minute window) re-sends that attempt instead of making a second order (the double-payment rule): POST /orders with the same
-// merchantReference overwrites the unpaid order at Montonio (spec 4), so the payer never has two orders open to pay.
+// same attempt is still open (the same registration, kind and invoice, or the same e-course and address, the same amount and method, its
+// order inside its window: Montonio's 30 minutes for the bank, 60 for a järelmaks) re-sends that attempt instead of making a second order (the
+// double-payment rule): POST /orders with the same merchantReference overwrites the unpaid order at Montonio (spec 4), so the payer never has
+// two orders open to pay. Every start has its method (instalments, D5, §4): the bank link by default, or Järelmaks (Inbank), Montonio's
+// `hirePurchase`, only while it is allowed (financingAllowed: Seaded's toggle, read in the start's transaction, the price, nothing paid, the
+// whole price due; for a registration, its choice „Järelmaks (Inbank)“). The row records it (`method`); a press of the other method while an
+// attempt is open starts a new attempt and never re-sends or overwrites the open one, so a bank payment never replaces a loan application.
 // The locks are the one order of every payment path (db/queries/seats.ts): the session, then the registration (lockForPayment, taken first),
 // then the payment row. Nothing is held across Montonio's call: the transaction commits first, and only then are the order made and the row
 // given its uuid (attachOrder) or failed (failPayment, which takes the registration's lock in its own transaction). An e-course purchase has
@@ -41,7 +47,9 @@ export type StartDeps = {
 /**
  * started: send the payer to `paymentUrl`. off: no online payments. failed: Montonio said no or did not answer. nothing: nothing to pay now
  * (paid enough, cancelled, past, no price). full: an unconfirmed registration's session has no free seat (D2). rate: STARTS_PER_HOUR starts
- * of this registration in the last hour. notFound: no such registration (or not this client's).
+ * of this registration in the last hour. notFound: no such registration (or not this client's). financing: a järelmaks start that is not
+ * allowed now (instalments, §4: Seaded's toggle is off, the price is out of 100–5000 €, something is paid or a part is due, or the
+ * registration was booked with another choice): nothing started, she is told to pick another way („Järelmaks on võimalik 100–5000 € …“).
  */
 export type StartResult =
   | { kind: "started"; paymentUrl: string }
@@ -50,7 +58,24 @@ export type StartResult =
   | { kind: "nothing" }
   | { kind: "full" }
   | { kind: "rate" }
-  | { kind: "notFound" };
+  | { kind: "notFound" }
+  | { kind: "financing" };
+
+/** How a start pays: Montonio's method, the bank link ("paymentInitiation") by default, or Järelmaks (Inbank) ("hirePurchase"). */
+export type StartOptions = { method?: OrderMethod };
+
+/**
+ * May a järelmaks start now (instalments, §4 "Which amount may go to Inbank")? Seaded's toggle as stored right now — read in the start's own
+ * transaction, so a toggle switched off a moment ago refuses new loans (an open order finishes as it is) — and financingAllowed's rules on
+ * the price, what is paid and what is due. Payments are on: the start has Montonio.
+ */
+async function financingStarts(q: Q, o: { priceCents: number | null; paidCents: number; dueCents: number }): Promise<boolean> {
+  const { enabled } = readFinancingSettings(await readSetting(q, FINANCING_KEY));
+  return financingAllowed({ enabled, paymentsOn: true, ...o });
+}
+
+/** The method a stored row is sent with: the järelmaks for a `hirePurchase` row, else the bank (a row from before the methods too). */
+const methodOfRow = (p: Payment): OrderMethod => (isHirePurchase(p.method) ? "hirePurchase" : "paymentInitiation");
 
 /**
  * New payment attempts of one registration per hour (spec 10): each one is an order at Montonio and, for a prepayment, a seat hold. A re-send
@@ -72,14 +97,16 @@ export function paymentUrls(returnBase: string, notifyBase: string): { returnUrl
 
 /**
  * The open attempt of what is being paid now (the double-payment rule): the newest `pending` row of the same registration, kind and invoice
- * (the unpaid invoice it was started for, or none: invoices, D5) — or the same e-course and address — with this amount, whose order is still
- * inside Montonio's 30-minute window (SEAT_HOLD_MS; `updated_at` is the row's insert or its last re-send: nothing else touches a pending row).
- * null: there is none, and the start is a new attempt.
+ * (the unpaid invoice it was started for, or none: invoices, D5) — or the same e-course and address — with this amount and this method (a
+ * `hirePurchase` row for a järelmaks, any other for the bank: hirePurchaseRow), whose order is still inside its window (attemptWindowMs:
+ * Montonio's 30 minutes for the bank, the järelmaks' 60; `updated_at` is the row's insert or its last re-send: nothing else touches a pending
+ * row). null: there is none, and the start is a new attempt — also while an attempt of the other method is open (instalments, §4).
  */
 async function liveAttempt(
   q: Q,
   of: { registrationId: number; kind: "prepayment" | "balance"; invoiceId: number | null } | { courseId: number; email: string },
   amountCents: number,
+  method: OrderMethod,
   now: Date,
 ): Promise<Payment | null> {
   const which =
@@ -90,10 +117,11 @@ async function liveAttempt(
           of.invoiceId === null ? isNull(payments.invoiceId) : eq(payments.invoiceId, of.invoiceId),
         )
       : and(eq(payments.kind, "ecourse"), isNull(payments.registrationId), eq(payments.courseId, of.courseId), eq(payments.email, of.email));
+  const sameMethod = method === "hirePurchase" ? hirePurchaseRow : not(hirePurchaseRow);
   const [row] = await q
     .select()
     .from(payments)
-    .where(and(which, eq(payments.status, "pending"), eq(payments.amountCents, amountCents), gt(payments.updatedAt, new Date(now.getTime() - SEAT_HOLD_MS))))
+    .where(and(which, sameMethod, eq(payments.status, "pending"), eq(payments.amountCents, amountCents), gt(payments.updatedAt, new Date(now.getTime() - attemptWindowMs(method)))))
     .orderBy(desc(payments.id))
     .limit(1);
   return row ?? null;
@@ -111,11 +139,21 @@ async function liveAttempt(
  * it after all. The row stays pending with the hold its start refreshed, so the next press re-sends the same reference again — a failed row
  * would make the next press a new attempt with a new reference, a second order she could pay as well. Its webhook, the return or the daily
  * check settles it; failing it is left to them (ABANDONED) and to the daily check's 14 days.
+ * The order is the row's method (methodOfRow): a järelmaks row's carries `billing` (her details for Inbank's form, D8), its first sending and
+ * every re-send alike; a bank row's never does.
  */
-async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment, again = false): Promise<StartResult> {
+async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment, again: boolean, billing: BillingAddress | null): Promise<StartResult> {
+  const method = methodOfRow(payment);
   let created: { uuid: string; paymentUrl: string };
   try {
-    created = await deps.montonio.createOrder({ reference: payment.reference, amountCents: payment.amountCents, locale: payment.locale, ...paymentUrls(deps.siteUrl, deps.notifyBase) });
+    created = await deps.montonio.createOrder({
+      reference: payment.reference,
+      amountCents: payment.amountCents,
+      locale: payment.locale,
+      ...paymentUrls(deps.siteUrl, deps.notifyBase),
+      method,
+      ...(method === "hirePurchase" && billing ? { billing } : {}),
+    });
   } catch (e) {
     logNote(`[payments] payment ${payment.id}: no order${again ? " for the re-send, the payment stays pending" : ""} (${e instanceof MontonioError ? `${e.code}${e.detail ? `: ${e.detail}` : ""}` : "error"})`);
     // after the start's commit: failPayment locks the registration in a transaction of its own
@@ -145,18 +183,27 @@ async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment,
  * registration is found by an unlocked read, then locked and read again, and its latest unpaid invoice read under them). The payment row
  * records the invoice it pays (`invoice_id`): settle.ts then pays that invoice instead of making one. An unconfirmed registration's payment
  * (amountDue's prepayment, or an invoice's prepayment or rest) needs a free seat — the others' seats counted, confirmed or held, hers not —
- * and holds it for 30 minutes from now (D2); a confirmed registration's needs none and holds nothing. The open attempt of the same amount
- * and invoice, when there is one, is sent again instead of a new one (liveAttempt; not counted in STARTS_PER_HOUR). `target`: the
- * registration (with `clientId`: only when it is that client's) or its "Maksa" token.
+ * and holds it for the attempt's window from now (D2: 30 minutes for the bank, 60 for a järelmaks: attemptWindowMs), never ending a longer
+ * hold sooner (her open järelmaks attempt's, when she presses the bank meanwhile); a confirmed registration's needs none and holds nothing.
+ * The open attempt of the same amount, invoice and method, when there is one, is sent again instead of a new one (liveAttempt; not counted
+ * in STARTS_PER_HOUR). `target`: the registration (with `clientId`: only when it is that client's) or its "Maksa" token.
+ * `opts.method`: the bank link by default; "hirePurchase" (Järelmaks (Inbank), instalments §4) only for a registration booked with that
+ * choice and while financingStarts allows it, else `financing` — the bank stays open to every registration, a järelmaks one included (she
+ * pays the whole price by bank). A järelmaks order carries her name, e-mail and (an Estonian) phone for Inbank's form (billingAddressOf, D8).
  */
-export async function startRegistrationPayment(deps: StartDeps, target: { registrationId: number; clientId?: number } | { payToken: string }): Promise<StartResult> {
+export async function startRegistrationPayment(
+  deps: StartDeps,
+  target: { registrationId: number; clientId?: number } | { payToken: string },
+  opts: StartOptions = {},
+): Promise<StartResult> {
   const montonio = deps.montonio;
   if (!montonio) return { kind: "off" };
+  const method: OrderMethod = opts.method ?? "paymentInitiation";
   const which =
     "payToken" in target
       ? eq(registrations.payToken, target.payToken)
       : and(eq(registrations.id, target.registrationId), target.clientId === undefined ? undefined : eq(registrations.clientId, target.clientId));
-  const ready = await deps.db.transaction(async (tx): Promise<StartResult | { kind: "ready"; payment: Payment; again: boolean }> => {
+  const ready = await deps.db.transaction(async (tx): Promise<StartResult | { kind: "ready"; payment: Payment; again: boolean; billing: BillingAddress | null }> => {
     // (the registration is found by an unlocked read, which locks nothing: the session's lock must come before the registration's)
     const [found] = await tx.select({ id: registrations.id }).from(registrations).where(which).limit(1);
     if (!found) return { kind: "notFound" };
@@ -170,18 +217,22 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
       .where(and(eq(registrations.id, found.id), which));
     if (!row) return { kind: "notFound" };
     const { registration: r, course, session } = row;
+    const priceCents = registrationPrice(course, r.kind);
     // (unpaidInvoiceOf is a plain read: every change of the registration's invoices takes lockForPayment first, so it cannot change before
     // this commits)
     const due = payableDue(
-      { status: r.status, paymentChoice: r.paymentChoice, priceCents: registrationPrice(course, r.kind), paidCents: r.paidCents, startsAt: session?.startsAt ?? null, sessionCancelled: session?.status === "cancelled" },
+      { status: r.status, paymentChoice: r.paymentChoice, priceCents, paidCents: r.paidCents, startsAt: session?.startsAt ?? null, sessionCancelled: session?.status === "cancelled" },
       await unpaidInvoiceOf(tx, r.id),
       deps.now,
     );
     if (due.kind === "none") return { kind: "nothing" };
+    // a järelmaks only for a registration booked with that choice, and only while it is allowed now: the toggle, the price, nothing paid and
+    // the whole price due (an invoice of a part, or a part recorded by hand, is paid by bank)
+    if (method === "hirePurchase" && (r.paymentChoice !== "financing" || !(await financingStarts(tx, { priceCents, paidCents: r.paidCents, dueCents: due.cents })))) return { kind: "financing" };
     // the invoice this payment pays, when payableDue charged one
     const invoiceId = "invoiceId" in due ? due.invoiceId : null;
-    // the open attempt of this amount (and invoice) is sent again, not doubled; it is no new attempt, so it is not counted here
-    const live = await liveAttempt(tx, { registrationId: r.id, kind: due.kind, invoiceId }, due.cents, deps.now);
+    // the open attempt of this amount (and invoice) and method is sent again, not doubled; it is no new attempt, so it is not counted here
+    const live = await liveAttempt(tx, { registrationId: r.id, kind: due.kind, invoiceId }, due.cents, method, deps.now);
     if (!live) {
       const [{ n }] = await tx
         .select({ n: count() })
@@ -193,23 +244,29 @@ export async function startRegistrationPayment(deps: StartDeps, target: { regist
     // place: it needs a free seat and holds it; a confirmed one holds its place already
     if (r.status === "awaiting_prepayment") {
       if (session && !(await hasFreeSeat(tx, session, deps.now, r.id))) return { kind: "full" };
-      await tx.update(registrations).set({ seatHoldUntil: holdUntil(deps.now) }).where(eq(registrations.id, r.id));
+      // for this attempt's window from now; a hold that ends later is kept (her järelmaks attempt's 60 minutes, still open when she presses
+      // the bank: the bank's 30 must not end it before the loan's own window)
+      const until = holdUntil(deps.now, attemptWindowMs(method));
+      const seatHoldUntil = r.seatHoldUntil !== null && r.seatHoldUntil.getTime() > until.getTime() ? r.seatHoldUntil : until;
+      await tx.update(registrations).set({ seatHoldUntil }).where(eq(registrations.id, r.id));
     }
+    // her details for Inbank's form (D8): a järelmaks order's only
+    const billing = method === "hirePurchase" ? billingAddressOf({ name: r.name, email: r.email, phone: r.phone }) : null;
     if (live) {
       // its window starts again now (and a start at the same moment, waiting for this row lock, finds it open)
       await tx.update(payments).set({ updatedAt: deps.now }).where(and(eq(payments.id, live.id), eq(payments.status, "pending")));
-      return { kind: "ready", payment: { ...live, updatedAt: deps.now }, again: true };
+      return { kind: "ready", payment: { ...live, updatedAt: deps.now }, again: true, billing };
     }
     const payment = await insertPayment(
       tx,
-      { kind: due.kind, registrationId: r.id, courseId: course.id, clientId: r.clientId, email: r.email, name: r.name, locale: r.locale === "ru" ? "ru" : "et", amountCents: due.cents, invoiceId },
+      { kind: due.kind, registrationId: r.id, courseId: course.id, clientId: r.clientId, email: r.email, name: r.name, locale: r.locale === "ru" ? "ru" : "et", amountCents: due.cents, invoiceId, method },
       deps.now,
       montonio.referencePrefix,
     );
-    return { kind: "ready", payment, again: false };
+    return { kind: "ready", payment, again: false, billing };
   });
   if (ready.kind !== "ready") return ready;
-  return order({ ...deps, montonio }, ready.payment, ready.again);
+  return order({ ...deps, montonio }, ready.payment, ready.again, ready.billing);
 }
 
 /**
@@ -270,18 +327,24 @@ async function paidRecently(q: Q, courseId: number, email: string, now: Date): P
  * no row and no call to Montonio. It tells her only that, never an amount or a name.
  * `contract` (contracts, §4) is the contract the cart showed, filled (submit.ts handleEcoursePurchase): the row keeps it (`contract_snapshot`), a
  * re-send keeps this press's, and settle freezes it when the payment is paid. None (a caller without a cart): the terms gate asks her later.
+ * `method` (instalments, §4): the bank link by default; "hirePurchase" (Järelmaks (Inbank)) only while financingStarts allows it for this
+ * price, else `financing` (no row, no order), after the alreadyPaid check. Its re-send window is the järelmaks' 60 minutes, a press of the
+ * other method is another purchase (liveAttempt), and its order carries her name and e-mail for Inbank's form (the cart asks for no phone, D8).
  */
 export async function startEcoursePayment(
   deps: StartDeps,
-  input: { courseId: number; amountCents: number; email: string; name: string; locale: "et" | "ru"; newsletter: boolean; contract?: ContractSnapshot | null },
+  input: { courseId: number; amountCents: number; email: string; name: string; locale: "et" | "ru"; newsletter: boolean; contract?: ContractSnapshot | null; method?: OrderMethod },
 ): Promise<EcourseStartResult> {
   const montonio = deps.montonio;
   if (!montonio) return { kind: "off" };
+  const method: OrderMethod = input.method ?? "paymentInitiation";
   const email = normalizeEmail(input.email);
-  const ready = await deps.db.transaction(async (tx): Promise<{ payment: Payment; again: boolean } | { alreadyPaid: true }> => {
+  const ready = await deps.db.transaction(async (tx): Promise<{ payment: Payment; again: boolean } | { alreadyPaid: true } | { financing: true }> => {
     await lockEcoursePurchase(tx, input.courseId, email);
     if (await paidRecently(tx, input.courseId, email, deps.now)) return { alreadyPaid: true };
-    const live = await liveAttempt(tx, { courseId: input.courseId, email }, input.amountCents, deps.now);
+    // a järelmaks only while it is allowed for this price (nothing of it is paid: a purchase is paid whole or not at all)
+    if (method === "hirePurchase" && !(await financingStarts(tx, { priceCents: input.amountCents, paidCents: 0, dueCents: input.amountCents }))) return { financing: true };
+    const live = await liveAttempt(tx, { courseId: input.courseId, email }, input.amountCents, method, deps.now);
     if (live) {
       // its window starts again now, and what she typed this time replaces what she typed before (the contract this press showed too)
       const fresh = { name: input.name, locale: input.locale, newsletter: input.newsletter, contractSnapshot: input.contract ?? null, updatedAt: deps.now };
@@ -290,12 +353,15 @@ export async function startEcoursePayment(
     }
     const payment = await insertPayment(
       tx,
-      { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email, name: input.name, locale: input.locale, amountCents: input.amountCents, newsletter: input.newsletter, contractSnapshot: input.contract ?? null },
+      { kind: "ecourse", registrationId: null, courseId: input.courseId, clientId: null, email, name: input.name, locale: input.locale, amountCents: input.amountCents, newsletter: input.newsletter, contractSnapshot: input.contract ?? null, method },
       deps.now,
       montonio.referencePrefix,
     );
     return { payment, again: false };
   });
   if ("alreadyPaid" in ready) return { kind: "alreadyPaid" };
-  return order({ ...deps, montonio }, ready.payment, ready.again);
+  if ("financing" in ready) return { kind: "financing" };
+  // her details for Inbank's form (D8), as she typed them this time: a järelmaks order's only
+  const billing = method === "hirePurchase" ? billingAddressOf({ name: input.name, email }) : null;
+  return order({ ...deps, montonio }, ready.payment, ready.again, billing);
 }

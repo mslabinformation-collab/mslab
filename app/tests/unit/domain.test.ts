@@ -72,6 +72,10 @@ describe("the seat hold (phase 2b, D2)", () => {
     expect(SEAT_HOLD_MS).toBe(30 * 60_000);
     expect(holdUntil(NOW)).toEqual(new Date("2026-10-09T10:30:00Z"));
   });
+  test("a hold of another length (a järelmaks attempt: 60 minutes, domain/financing.ts attemptWindowMs) ends that long after now", () => {
+    expect(holdUntil(NOW, 60 * 60_000)).toEqual(new Date("2026-10-09T11:00:00Z"));
+    expect(holdUntil(NOW, SEAT_HOLD_MS)).toEqual(holdUntil(NOW));
+  });
   test("confirmed takes a seat; awaiting only while its hold has not ended; cancelled never", () => {
     const later = new Date(NOW.getTime() + 1);
     expect(holdsSeat({ status: "confirmed", seatHoldUntil: null }, NOW)).toBe(true);

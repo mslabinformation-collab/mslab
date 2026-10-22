@@ -75,7 +75,16 @@ export function billingAddressOf(o: { name: string; email: string; phone?: strin
  */
 export const FINANCING_ATTEMPT_MS = 60 * 60_000;
 
+/**
+ * Is this Montonio method code the järelmaks (`hirePurchase`)? Case and spaces aside, as Montonio's codes are read everywhere (domain/payments.ts
+ * METHOD_LABELS). Any other code, or none recorded (a payment row from before the methods were stored), is not: it is a bank attempt. The
+ * database reads a row's method by the same rule (db/queries/payments.ts hirePurchaseRow).
+ */
+export function isHirePurchase(method: string): boolean {
+  return method.trim().toLowerCase() === "hirepurchase";
+}
+
 /** The window of an attempt by its Montonio method: 60 minutes for `hirePurchase`, the bank's 30 (SEAT_HOLD_MS) for any other, or none recorded. */
 export function attemptWindowMs(method: string): number {
-  return method.trim().toLowerCase() === "hirepurchase" ? FINANCING_ATTEMPT_MS : SEAT_HOLD_MS;
+  return isHirePurchase(method) ? FINANCING_ATTEMPT_MS : SEAT_HOLD_MS;
 }

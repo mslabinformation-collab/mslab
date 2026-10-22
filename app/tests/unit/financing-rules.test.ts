@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FINANCING_ATTEMPT_MS, FINANCING_KEY, FINANCING_MAX_CENTS, FINANCING_MIN_CENTS, attemptWindowMs, billingAddressOf, estonianPhone, financingAllowed,
-  financingOffered, readFinancingSettings,
+  financingOffered, isHirePurchase, readFinancingSettings,
 } from "@/domain/financing";
 import { prepaymentDue } from "@/domain/registration";
 
@@ -114,6 +114,10 @@ describe("how long an attempt holds a seat", () => {
     expect(attemptWindowMs("hirePurchase")).toBe(3_600_000);
     expect(attemptWindowMs("paymentInitiation")).toBe(1_800_000);
     expect(attemptWindowMs("")).toBe(1_800_000);
+  });
+  it("hirePurchase is told apart by its code, case and spaces aside (isHirePurchase, as attemptWindowMs reads a row's method)", () => {
+    for (const m of ["hirePurchase", "hirepurchase", " HIREPURCHASE "]) expect([isHirePurchase(m), attemptWindowMs(m)], m).toEqual([true, 3_600_000]);
+    for (const m of ["", "paymentInitiation", "bnpl", "hire purchase"]) expect([isHirePurchase(m), attemptWindowMs(m)], m).toEqual([false, 1_800_000]);
   });
 });
 

@@ -62,8 +62,10 @@ describe("group registration form", () => {
       terms: "required",
     });
   });
-  test("instalment is not a payment choice yet (P14: shown disabled; a forged form is refused)", () => {
-    expect(errors(parseGroupRegistration(form({ ...base, session: "3", payment: "instalment" })))).toEqual({ payment: "required" });
+  test("financing is accepted when offered (instalments, D2: the start checks whether it is allowed); anything else is refused", () => {
+    expect(parseGroupRegistration(form({ ...base, session: "3", payment: "financing" }))).toMatchObject({ ok: true, data: { paymentChoice: "financing" } });
+    expect(registrationSchema.safeParse({ courseId: 1, courseSessionId: 3, kind: "group", name: "A B", email: "a@example.ee", phone: "+372 5555", paymentChoice: "financing", terms: "on" }).success).toBe(true);
+    for (const payment of ["instalment", "hirePurchase", "Financing", ""]) expect(errors(parseGroupRegistration(form({ ...base, session: "3", payment }))), payment).toEqual({ payment: "required" });
   });
   test("phone is required", () => {
     expect(errors(parseGroupRegistration(form({ ...base, session: "3", phone: "" })))).toEqual({ phone: "required" });
@@ -216,7 +218,7 @@ describe("the e-course purchase (phase 2b, D3)", () => {
   test("name, e-mail, the terms box (required) and the newsletter box; the course is a slug", () => {
     expect(parseEcoursePurchase(fd({ course: "kulmumeistri-e-koolitus", name: "  Kati   Tamm ", email: " Kati@Example.com ", terms: "on", newsletter: "on", locale: "ru" }))).toEqual({
       ok: true,
-      data: { course: "kulmumeistri-e-koolitus", name: "Kati Tamm", email: "kati@example.com", terms: "on", wantsNewsletter: true, locale: "ru" },
+      data: { course: "kulmumeistri-e-koolitus", name: "Kati Tamm", email: "kati@example.com", terms: "on", wantsNewsletter: true, locale: "ru", method: "paymentInitiation" },
     });
     const missing = parseEcoursePurchase(fd({ course: "Not a slug", name: "", email: "x" }));
     expect(missing).toEqual({ ok: false, errors: { form: "invalid", name: "required", email: "invalid", terms: "required" } });
@@ -229,5 +231,13 @@ describe("the e-course purchase (phase 2b, D3)", () => {
     for (const newsletter of ["", "off", "true", "ON", "1"]) expect(parseEcoursePurchase(fd({ ...ok, newsletter })), newsletter).toMatchObject({ ok: true, data: { wantsNewsletter: false } });
     expect(parseEcoursePurchase(fd({ ...ok, name: "x".repeat(121) }))).toEqual({ ok: false, errors: { name: "required" } });
     expect(parseEcoursePurchase(fd({ ...ok, name: "x".repeat(120) })).ok).toBe(true);
+  });
+
+  test("the way to pay (instalments, §4): the bank link by default, Järelmaks (Inbank) as hirePurchase; another value is no form of ours", () => {
+    const ok = { course: "k", name: "K", email: "k@example.com", terms: "on" };
+    expect(parseEcoursePurchase(fd(ok))).toMatchObject({ ok: true, data: { method: "paymentInitiation" } });
+    expect(parseEcoursePurchase(fd({ ...ok, method: "paymentInitiation" }))).toMatchObject({ ok: true, data: { method: "paymentInitiation" } });
+    expect(parseEcoursePurchase(fd({ ...ok, method: "hirePurchase" }))).toMatchObject({ ok: true, data: { method: "hirePurchase" } });
+    for (const method of ["", "bnpl", "HirePurchase", "financing"]) expect(parseEcoursePurchase(fd({ ...ok, method })), method).toEqual({ ok: false, errors: { form: "invalid" } });
   });
 });

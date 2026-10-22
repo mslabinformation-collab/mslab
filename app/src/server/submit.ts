@@ -9,6 +9,7 @@ import { PREPAYMENT_KEY, parsePrepayment } from "@/domain/account-cards";
 import { contractCourseName, filledContract } from "@/domain/contract";
 import { isSampleAddress, normalizeEmail } from "@/domain/email";
 import { registrationPrice } from "@/domain/registration";
+import { attemptWindowMs } from "@/domain/financing";
 import { holdUntil, seatState } from "@/domain/sessions";
 import { pick } from "@/i18n/field";
 import {
@@ -53,8 +54,13 @@ import { upcomingFrom } from "@/domain/calendar";
 // → storage → notifications after the response. Storage is the contract; a failed e-mail or Telegram ping is logged
 // and never fails the request.
 
-/** `paymentUrl` (phase 2b): a group registration's prepayment, or an e-course purchase, has started; the form sends the browser there. */
-export type ActionResult = { ok: true; paymentUrl?: string } | { ok: false; errors: Record<string, string> };
+/**
+ * `paymentUrl` (phase 2b): a group registration's prepayment, or an e-course purchase, has started; the form sends the browser there.
+ * `financing: "refused"` (instalments, §4): a registration booked with „Järelmaks (Inbank)“ is stored, but its järelmaks was not allowed when it
+ * started (the toggle switched off, the price out of 100–5000 €): nothing started, and the form says so („Järelmaks on võimalik …“); she can pay
+ * by bank through „Maksa“.
+ */
+export type ActionResult = { ok: true; paymentUrl?: string; financing?: "refused" } | { ok: false; errors: Record<string, string> };
 
 export type Deps = {
   db: Db;
@@ -384,16 +390,21 @@ const CONTRACT_CHANGED: ActionResult = { ok: false, errors: { terms: "changed" }
  * and a contract that cannot be stored fails the submit (form "server", nothing stored). The confirmation mail carries its PDF. A form whose
  * page showed another contract text than the current one (its `contractVersion`, ruling R6; none from a page cached before it) stores nothing
  * and is answered terms "changed": the form shows the new text and asks for the box again.
+ * „Järelmaks (Inbank)“ (payment "financing", instalments D2–D5) is stored as that choice and starts Montonio's hirePurchase for the whole price,
+ * its seat held for 60 minutes; refused by the start, the registration stands and the answer is `{ ok: true, financing: "refused" }`.
  */
 export function handleRegistration(deps: Deps, formData: FormData): Promise<ActionResult> {
   return submission(deps, "register", formData, parseGroupRegistration, async ({ course: slug, courseSessionId, terms: _terms, wantsNewsletter, contractVersion, ...data }) => {
     void _terms;
     const course = await contactCourse(deps.db, slug);
     if (!course || course.priceGroup == null) return { result: fail({ form: "invalid" }) };
+    // the way the payment starts (instalments, §4): „Järelmaks (Inbank)“ is Montonio's hirePurchase, the other choices the bank link
+    const method = data.paymentChoice === "financing" ? "hirePurchase" : "paymentInitiation";
     // One transaction under the session's lock (the first lock of the order course_sessions → registrations → payments, db/queries/seats.ts):
     // the full check and the insert see the same seats as a payment that starts or settles meanwhile, which takes the same lock. With online
-    // payments the registration is stored already holding its seat (30 minutes): whoever is queued on the lock behind it then counts that seat,
-    // and "full" is told to the one who really finds none, instead of a second registration being stored for a seat that is held.
+    // payments the registration is stored already holding its seat (its attempt's window: 30 minutes, 60 for a järelmaks): whoever is queued on
+    // the lock behind it then counts that seat, and "full" is told to the one who really finds none, instead of a second registration being
+    // stored for a seat that is held.
     const stored = await deps.db
       .transaction(async (tx) => {
         await lockSession(tx, courseSessionId);
@@ -402,7 +413,7 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
         // "upcoming" as the calendar and the course page, so they offer exactly the dates that can be booked).
         if (!session || session.courseId !== course.id || session.status !== "scheduled" || session.startsAt < upcomingFrom(deps.now)) return { status: "refused" as const, result: fail({ session: "unavailable" }) };
         if (seatState(session, session.taken) === "full") return { status: "refused" as const, result: fail({ session: "full" }) };
-        const seatHoldUntil = deps.montonio ? holdUntil(deps.now) : null;
+        const seatHoldUntil = deps.montonio ? holdUntil(deps.now, attemptWindowMs(method)) : null;
         const registration = await createRegistration(tx, { ...data, courseId: course.id, courseSessionId: session.id, kind: "group", preferredPeriod: "", seatHoldUntil });
         // the contract, from the text her page showed (R6: ContractChanged otherwise, which rolls the registration back)
         const contract = await registrationContract(tx, registration, contractVersion, deps.now);
@@ -421,14 +432,17 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
     // Phase 2b (spec 6.1): the prepayment starts at once — the seat is held already (stored with the registration), then a payment row and
     // Montonio's order. Without payments, or when it does not start, the registration stands and the answer is today's ("Maksa" is offered
     // later, in the mail and Minu koolitused). A failure here never fails the stored registration: it is logged and the answer is today's.
-    // The hold is kept only by a live attempt: when the start leaves none (it said full / nothing / rate / notFound, or it threw), it ends
-    // here; a failed order has ended it already (failPayment).
+    // The hold is kept only by a live attempt: when the start leaves none (it said full / nothing / rate / notFound / financing, or it threw),
+    // it ends here; a failed order has ended it already (failPayment). A järelmaks refused at the start (financing: switched off or out of range
+    // since her page was loaded) keeps the registration, awaiting payment, and the answer says so.
     let paymentUrl: string | undefined;
+    let financingRefused = false;
     if (deps.montonio) {
       let attempt = false;
       try {
-        const started = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio }, { registrationId: registration.id });
+        const started = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio }, { registrationId: registration.id }, { method });
         if (started.kind === "started") paymentUrl = started.paymentUrl;
+        financingRefused = started.kind === "financing";
         attempt = started.kind === "started" || started.kind === "failed";
       } catch (e) {
         logFailure("[forms] register: the payment did not start", e);
@@ -474,7 +488,8 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
         if (pdf) await markContractSent(deps.db, contract.id, deps.now);
       },
     };
-    return { result: paymentUrl ? { ok: true, paymentUrl } : OK, notify: { ...summary, replyTo: data.email }, confirm, subscribe: wantsNewsletter ? { email: data.email, locale: data.locale } : undefined };
+    const result: ActionResult = paymentUrl ? { ok: true, paymentUrl } : financingRefused ? { ok: true, financing: "refused" } : OK;
+    return { result, notify: { ...summary, replyTo: data.email }, confirm, subscribe: wantsNewsletter ? { email: data.email, locale: data.locale } : undefined };
   });
 }
 
@@ -545,7 +560,9 @@ export function handlePurchaseInterest(deps: Deps, formData: FormData): Promise<
  * The price is the course's own, read here: the browser sends none. Nothing else before the payment: no account, no access, no newsletter, no
  * mail (server/payments/settle.ts does that when it is paid). Without payments, or when Montonio says no: form "unavailable", and the cart
  * shows its purchase-interest form instead. An address that paid this course in the last 30 minutes starts nothing: form "alreadyPaid" (the
- * cart says "Makse on juba tehtud — vaata oma e-posti."; Back from the bank would otherwise charge a second time).
+ * cart says "Makse on juba tehtud — vaata oma e-posti."; Back from the bank would otherwise charge a second time). The cart's `method`
+ * (instalments, §4): the bank link by default, or Järelmaks (Inbank); a järelmaks not allowed for this price now (the toggle off, out of
+ * 100–5000 €) starts nothing: method "financing" (the cart shows the range at its choice).
  * The box is the e-course contract (contracts, D1, §4): the payment keeps the contract the cart showed (`contract_snapshot`), the e-course text
  * in her language filled with the name and the address she typed, the course and its price (domain/contract.ts filledContract, the cart's own
  * fill), with its version and language and the time of this press (its acceptance, R7); settle freezes that very copy when the payment is paid,
@@ -554,7 +571,7 @@ export function handlePurchaseInterest(deps: Deps, formData: FormData): Promise<
  * Without payments nothing is read for the contract at all: form "unavailable", as before.
  */
 export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<ActionResult> {
-  return submission(deps, "ecourse", formData, parseEcoursePurchase, async ({ course: slug, name, email, locale, wantsNewsletter, terms: _terms, contractVersion }) => {
+  return submission(deps, "ecourse", formData, parseEcoursePurchase, async ({ course: slug, name, email, locale, wantsNewsletter, terms: _terms, contractVersion, method }) => {
     void _terms;
     const [course] = await deps.db
       .select()
@@ -579,9 +596,12 @@ export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<A
         locale,
         newsletter: wantsNewsletter,
         contract: { version: template.version, locale: template.locale, ...shown, acceptedAt: deps.now.toISOString() },
+        method,
       },
     );
     if (started.kind === "alreadyPaid") return { result: fail({ form: "alreadyPaid" }) };
+    // a järelmaks not allowed for this price now (instalments, §4): the cart says so at its choice, and the bank stays
+    if (started.kind === "financing") return { result: fail({ method: "financing" }) };
     return { result: started.kind === "started" ? { ok: true, paymentUrl: started.paymentUrl } : fail({ form: "unavailable" }) };
   });
 }
