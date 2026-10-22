@@ -82,6 +82,19 @@
   background: var(--ink);
 }
 
+/* `plain` (the Raha panel's amount and method pills, Task 5): no dot, the chosen pill's words bold */
+.plain .pill > span {
+  padding: 0 14px;
+}
+
+.plain .pill > span::before {
+  content: none;
+}
+
+.plain .pill > input:checked + span {
+  font-weight: 600;
+}
+
 .pill > input:focus-visible + span {
   outline: 2px solid var(--rose);
   outline-offset: 2px;

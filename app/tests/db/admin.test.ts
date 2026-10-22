@@ -53,31 +53,38 @@ const register = async (over: Partial<typeof registrations.$inferInsert> = {}) =
 // tests/db/registration-money.test.ts)
 
 describe("saveStatus / cancel", () => {
-  test("Maria sets any status by hand with a note; the note is trimmed and limited", async () => {
-    const r = await register();
-    const save = (fields: Record<string, string>) => saveStatus(db, form({ id: String(r.id), expected: "awaiting_prepayment", ...fields }));
-    expect(await save({ status: "confirmed", note: "  sularahas  " })).toEqual({ ok: true });
-    expect(await getRegistration(db, r.id)).toMatchObject({ status: "confirmed", note: "sularahas" });
-    expect(await save({ status: "maybe", note: "", expected: "confirmed" })).toEqual({ ok: false, error: "invalid" });
-    expect(await save({ status: "cancelled", note: "x".repeat(NOTE_MAX + 1), expected: "confirmed" })).toEqual({ ok: false, error: "note" });
-    expect(await save({ status: "cancelled", note: "x".repeat(NOTE_MAX), expected: "confirmed" })).toEqual({ ok: true });
-    expect(await saveStatus(db, form({ id: "9999", status: "cancelled", expected: "confirmed" }))).toEqual({ ok: false, error: "notFound" });
-    expect((await getRegistration(db, r.id))?.status).toBe("cancelled");
+  // (admin UX pass, piece 2, Task 5: the status pills „Ootab ettemaksu“ / „Kinnitatud“ save the status alone, at once; the note is its own autosaved
+  // part, tests/db/registration-note-route.test.ts; cancelling is „Tühista registreerimine“'s alone, and a cancelled registration is not put back)
+  test("Maria sets „Ootab ettemaksu“ or „Kinnitatud“ by hand; the note is not touched; any other status is invalid", async () => {
+    const r = await register({ note: "helistas" });
+    const save = (fields: Record<string, string>) => saveStatus(db, form({ id: String(r.id), ...fields }));
+    expect(await save({ status: "confirmed", expected: "awaiting_prepayment", note: "ignoreeritakse" })).toEqual({ ok: true });
+    expect(await getRegistration(db, r.id)).toMatchObject({ status: "confirmed", note: "helistas" });
+    expect(await save({ status: "awaiting_prepayment", expected: "confirmed" })).toEqual({ ok: true });
+    expect((await getRegistration(db, r.id))?.status).toBe("awaiting_prepayment");
+    expect(await save({ status: "maybe", expected: "awaiting_prepayment" })).toEqual({ ok: false, error: "invalid" });
+    // cancelling goes through „Tühista registreerimine“ (cancel), never through the pills
+    expect(await save({ status: "cancelled", expected: "awaiting_prepayment" })).toEqual({ ok: false, error: "invalid" });
+    expect((await getRegistration(db, r.id))?.status).toBe("awaiting_prepayment");
+    expect(await saveStatus(db, form({ id: "9999", status: "confirmed", expected: "awaiting_prepayment" }))).toEqual({ ok: false, error: "notFound" });
+    expect(await saveStatus(db, form({ id: "x", status: "confirmed", expected: "awaiting_prepayment" }))).toEqual({ ok: false, error: "invalid" });
+    expect(NOTE_MAX).toBe(2000);
   });
 
-  test("a status form that saw an old status is refused (stale) and changes nothing; without `expected` it is invalid", async () => {
+  test("a pill press that saw an old status is refused (stale) and changes nothing; without `expected` it is invalid; a cancelled one is not put back", async () => {
     const r = await register({ note: "algne" });
     // another tab cancels it meanwhile
     expect(await cancel(db, form({ id: String(r.id) }))).toEqual({ ok: true });
-    expect(await saveStatus(db, form({ id: String(r.id), status: "confirmed", note: "uus", expected: "awaiting_prepayment" }))).toEqual({ ok: false, error: "stale" });
+    expect(await saveStatus(db, form({ id: String(r.id), status: "confirmed", expected: "awaiting_prepayment" }))).toEqual({ ok: false, error: "stale" });
     expect(await getRegistration(db, r.id)).toMatchObject({ status: "cancelled", note: "algne" });
-    expect(await saveStatus(db, form({ id: String(r.id), status: "confirmed", note: "uus" }))).toEqual({ ok: false, error: "invalid" });
-    // with the status it shows now, the change goes through
-    expect(await saveStatus(db, form({ id: String(r.id), status: "confirmed", note: "uus", expected: "cancelled" }))).toEqual({ ok: true });
-    // a payment confirms it meanwhile („Lisa laekumine“ in another tab): a form that still shows "awaiting" is refused
+    expect(await saveStatus(db, form({ id: String(r.id), status: "confirmed" }))).toEqual({ ok: false, error: "invalid" });
+    // a cancelled registration cannot be put back from the drawer (spec §10): a press that says it saw „Tühistatud“ is invalid
+    expect(await saveStatus(db, form({ id: String(r.id), status: "confirmed", expected: "cancelled" }))).toEqual({ ok: false, error: "invalid" });
+    expect((await getRegistration(db, r.id))?.status).toBe("cancelled");
+    // a payment confirms it meanwhile („Lisa laekumine“ in another tab): a press that still saw "awaiting" is refused
     const p = await register();
     expect(await addManualPayment(db, { registrationId: p.id, cents: 17500, paidOn: "2026-10-21", method: "bank", receipt: false, expectedPaidCents: 0 }, NOW)).toMatchObject({ ok: true, status: "confirmed" });
-    expect(await saveStatus(db, form({ id: String(p.id), status: "awaiting_prepayment", note: "", expected: "awaiting_prepayment" }))).toEqual({
+    expect(await saveStatus(db, form({ id: String(p.id), status: "awaiting_prepayment", expected: "awaiting_prepayment" }))).toEqual({
       ok: false,
       error: "stale",
     });

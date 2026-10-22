@@ -1,6 +1,6 @@
 import type { BrowserContext, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
-import { signInAsAdmin } from "./admin-login";
+import { adminReady, signInAsAdmin } from "./admin-login";
 import {
   insertAdminFixtures,
   insertStoredPayment,
@@ -12,7 +12,8 @@ import {
 } from "./fixtures";
 import { holdInvoiceSettings, INVOICE_COMPANY, INVOICE_NUMBER, noOverflow, offered, openDrawer, rowOf, today } from "./invoices";
 
-// Invoices, Maria's side (invoices Task 5, spec §5): the registration drawer's „Arved“ — „Koosta arve“ as a request to pay and as a receipt,
+// Invoices, Maria's side (invoices Task 5, spec §5): the registration drawer's „Arved“ — „Koosta arve“ as a request to pay, a receipt made with the
+// money by the Raha card's „Lisa laekumine“ (admin UX pass B4, Task 5: „Koosta arve“ offers a receipt only for money recorded without one),
 // „Märgi tasutuks“ (which confirms the registration at 50 %), „Võta tasumine tagasi“ for a request and for a receipt, „Tühista arve“, „Saada
 // õpilasele“ — the „Arved“ page with its „Arveta maksed“ and the month's CSV, and Seaded → „Arve andmed“ with the sample. The signed-in tests
 // run against the local dev server only: they sign in as Dim through the devLink and look at rows each test inserts for itself and deletes again
@@ -63,7 +64,7 @@ test.describe("guard (GET only)", () => {
   });
 });
 
-test("a request to pay: made in two taps, marked paid (the registration confirms at 50 %), taken back, a receipt for the rest, undone, a request cancelled", async ({ page, context, visitorIp }, info) => {
+test("a request to pay: made in two taps, marked paid (the registration confirms at 50 %), taken back; money and its receipt in one „Lisa laekumine“, undone (the sum comes off); a request cancelled", async ({ page, context, visitorIp }, info) => {
   giveBack = await holdInvoiceSettings(info);
   const f = await fixtures(info.project.name);
   await signIn(page, context, visitorIp);
@@ -131,27 +132,43 @@ test("a request to pay: made in two taps, marked paid (the registration confirms
   await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
   expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 0, status: "awaiting_prepayment" });
 
-  // a receipt for the rest („Juba tasutud“, cash): born paid, „Laekunud summa“ untouched
+  // with nothing recorded „Koosta arve“ offers no receipt (B4: a receipt documents money recorded with „Lisa laekumine“)
   await block.locator("[data-invoice-create]").click();
-  await block.locator('[data-invoice-mode="receipt"]').check();
-  await expect(block.locator("[data-paid-date]")).toBeVisible();
-  await expect(block.locator("[data-paid-method]")).toHaveCount(3);
-  await block.locator('[data-paid-method="cash"]').check();
-  await block.locator("[data-invoice-create-confirm]").click();
-  await expect(block.locator("[data-invoice-create-status]")).toContainText("on koostatud.");
+  await expect(block.locator('[data-invoice-mode="receipt"]')).toBeDisabled();
+  await block.getByRole("button", { name: "Katkesta" }).click();
+  // the money and its receipt in one press: „Lisa laekumine“ with „Koosta kviitung“ ticked, 175 € in cash
+  await adminReady(page);
+  const card = drawer.locator("[data-money-card]");
+  await card.locator("[data-add-payment]").click();
+  const adding = card.locator("[data-add-payment-panel]");
+  await expect(adding.getByRole("radio", { name: "175 € · ettemaks" })).toBeChecked();
+  await expect(adding.locator("[data-receipt]")).toBeChecked();
+  await adding.locator('[data-paid-method="cash"]').check();
+  await adding.locator("[data-add-payment-submit]").click();
+  await expect(card.locator("[data-add-payment-result]")).toHaveText(/^175 € lisatud · kviitung E2E\d{4}-\d{3,} · koht kinnitatud\.$/);
   await expect(rowOf(block, "paid")).toHaveCount(1);
   const receipt = block.locator(`[data-invoice-id="${(await rowOf(block, "paid").getAttribute("data-invoice-id"))!}"]`);
+  const receiptNumber = (await receipt.locator("strong").first().textContent())!.trim();
+  expect(receiptNumber).toMatch(INVOICE_NUMBER);
+  await expect(card.locator("[data-add-payment-result]")).toContainText(`kviitung ${receiptNumber} ·`);
+  await expect(receipt.locator("[data-invoice-state]")).toHaveText("Tasutud");
+  await expect(receipt.locator("[data-invoice-amount]")).toContainText("175,00");
   await expect(receipt.locator("[data-invoice-facts]")).toContainText("Sularaha");
   await expect(receipt.locator("[data-invoice-mark-paid], [data-invoice-cancel]")).toHaveCount(0);
-  expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 0 });
-  // „Võta tasumine tagasi“ of a receipt: the words say it is cancelled, and it is — the number stays
+  await expect(drawer.locator("[data-paid]")).toHaveText("175 €");
+  await expect(drawer.locator("[data-reg-status]")).toHaveText("Kinnitatud");
+  expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
+  // „Võta tasumine tagasi“ of the receipt: it asks first, then it is cancelled — the number stays — and its money comes off „Laekunud summa“
+  // (the question's words are Task 6's S3-f ConfirmPanel: today's panel words a receipt by `paidAdds`, the ledger's carry to Task 6)
   await receipt.locator("[data-invoice-undo]").click();
-  await expect(receipt.locator("[data-invoice-undo-text]")).toHaveText("Kviitung tühistatakse (number jääb alles).");
+  await expect(receipt.locator("[data-invoice-undo-text]")).toBeVisible();
   await receipt.locator("[data-invoice-undo-confirm]").click();
   await expect(receipt.locator("[data-invoice-status-line]")).toHaveText("Kviitung on tühistatud.");
   await expect(receipt.locator("[data-invoice-state]")).toHaveText("Tühistatud");
   await expect(rowOf(block, "cancelled")).toHaveCount(1);
-  expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 0 });
+  await expect(drawer.locator("[data-paid]")).toHaveText("0 €");
+  await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
+  expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 0, status: "awaiting_prepayment" });
 
   // „Tühista arve“ of the unpaid request: it asks first
   const request = unpaid;
@@ -322,8 +339,16 @@ test("without a seller „Koosta arve“ is a link to Seaded → Arve andmed", a
   giveBack = await holdInvoiceSettings(info, null);
   const f = await fixtures(info.project.name);
   await signIn(page, context, visitorIp);
-  const { block } = await openDrawer(page, f);
+  const { drawer, block } = await openDrawer(page, f);
   await expect(block.locator("[data-invoice-create]")).toHaveCount(0);
+  // „Lisa laekumine“ says the same in place of its receipt box (S3-c), with the same link
+  await adminReady(page);
+  const card = drawer.locator("[data-money-card]");
+  await card.locator("[data-add-payment]").click();
+  await expect(card.locator("[data-receipt]")).toHaveCount(0);
+  await expect(card.locator("[data-receipt-need-seller]")).toHaveText("Kviitungit ei saa koostada: täida Seaded → Arve andmed.");
+  await expect(card.locator("[data-receipt-need-seller] a")).toHaveAttribute("href", "/admin/seaded#arve");
+  await card.getByRole("button", { name: "Katkesta" }).click();
   const link = block.getByRole("link", { name: "Täida Seaded → Arve andmed" });
   await expect(link).toHaveAttribute("href", "/admin/seaded#arve");
   await link.click();

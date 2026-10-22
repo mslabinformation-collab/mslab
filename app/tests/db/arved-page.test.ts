@@ -243,7 +243,7 @@ describe("the registration drawer's „Arved“", () => {
     return { html, block: html.slice(from, html.indexOf("</section>", from)) };
   };
 
-  test("the registration's invoices with their numbers, states and actions, between the money and the forms", async () => {
+  test("the registration's invoices with their numbers, states and actions, after the money and „Staatus ja märkus“ (README A2 drawer order)", async () => {
     await ready();
     const a = await request("kati@example.com", "Kati Tamm", OCTOBER);
     const { html, block } = await drawer(a.registration.id);
@@ -253,7 +253,8 @@ describe("the registration drawer's „Arved“", () => {
     expect(block).toContain(">Märgi tasutuks<");
     expect(block).toContain(`href="/api/admin/arve/${a.invoice.id}"`);
     expect(html.indexOf("data-registration-invoices")).toBeGreaterThan(html.indexOf("data-paid=")); // after the money block
-    expect(html.indexOf("data-registration-invoices")).toBeLessThan(html.indexOf("data-status-form")); // before the forms
+    expect(html.indexOf("data-status-form")).toBeGreaterThan(-1);
+    expect(html.indexOf("data-registration-invoices")).toBeGreaterThan(html.indexOf("data-status-form")); // after „Staatus ja märkus“ (item 3 before 4)
   });
 
   test("with the 50% invoiced the rest is what is left to offer; „Koosta arve“ is there while an amount is open", async () => {

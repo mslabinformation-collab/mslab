@@ -288,6 +288,11 @@ describe("addManualPaymentAction: the drawer's „Lisa laekumine“ (Task 5's pa
     expect(loose).toMatchObject({ receipt: false });
     expect([loose.registrationId, loose.cents, loose.expectedPaidCents].every(Number.isNaN)).toBe(true);
     expect(manualPaymentForm(new FormData())).toMatchObject({ paidOn: "", method: "", receipt: false });
+    // any object with the form's get() is read as one (as the other actions read theirs: a FormData from another realm, a test's stand-in); a
+    // call with no form at all is every field missing, never a throw (Task 3 review: duck-typed, not `instanceof FormData`)
+    const fields: Record<string, string> = { registrationId: "7", cents: "14500", paidOn: TODAY, method: "card", receipt: "1", expectedPaidCents: "0" };
+    expect(manualPaymentForm({ get: (name: string) => fields[name] ?? null })).toEqual({ registrationId: 7, cents: 14500, paidOn: TODAY, method: "card", receipt: true, expectedPaidCents: 0 });
+    for (const none of [null, undefined, "x", 5, {}]) expect(manualPaymentForm(none)).toMatchObject({ paidOn: "", method: "", receipt: false });
   });
 
   test("a press that confirms the seat: the answer, the public seats revalidated, the page refreshed", async () => {

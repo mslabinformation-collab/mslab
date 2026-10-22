@@ -54,7 +54,11 @@ export const addManualPaymentAction = adminAction(async (_admin, _prev: ManualPa
   }
 });
 
-/** Registration drawer, status + note: fields id, status, note, expected (the status the form showed). */
+/**
+ * Registration drawer, the status pills „Ootab ettemaksu“ / „Kinnitatud“ (saved at once, piece 2 Task 5): fields id, status, expected (the status
+ * the pills showed; a different stored one is `stale`, and the page is refreshed to show it). The note is autosaved by its own route
+ * (/api/admin/registreering/<id>/markus). For useActionState (previous state first).
+ */
 export const saveRegistrationStatus = adminAction(async (_admin, _prev: AdminResult | null, formData: FormData) =>
   run("status", { kind: "seats" }, (db) => saveStatus(db, formData)),
 );

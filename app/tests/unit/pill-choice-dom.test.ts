@@ -123,6 +123,15 @@ describe("PillChoice", () => {
     expect(radios().map((r) => r.disabled)).toEqual([false, false]);
   });
 
+  it("`plain` draws the pills without the dot (the Raha panel's amount and method pills, Task 5); each option's `data` hooks go on its radio", async () => {
+    await draw({ plain: true, options: OPTIONS.map((o) => ({ ...o, data: { "data-amount": o.value } })) });
+    expect(container.querySelector("[data-pill-choice]")!.className).toMatch(/plain/);
+    expect(radios().map((r) => r.getAttribute("data-amount"))).toEqual(["ootab", "kinnitatud"]);
+    await draw();
+    expect(container.querySelector("[data-pill-choice]")!.className).not.toMatch(/plain/);
+    expect(radios().map((r) => r.getAttribute("data-amount"))).toEqual([null, null]);
+  });
+
   it("the legend is for the screen reader: the page has its own heading above the pills", async () => {
     await draw();
     expect(container.querySelector("legend")!.className).toMatch(/legend/);
@@ -149,6 +158,11 @@ describe("PillChoice: the stylesheet", () => {
 
   it("the keyboard ring is the admin's: 2px rose, offset 2 (on the pill the radio is in)", () => {
     expect(css).toMatch(/input:focus-visible\s*\+\s*span\s*\{[^}]*outline:\s*2px solid var\(--rose\);[^}]*outline-offset:\s*2px;/);
+  });
+
+  it("a plain pill has no dot, and the chosen one is bold (the Part 2 prototype's amount and method pills)", () => {
+    expect(css).toMatch(/\.plain\s+\.pill\s*>\s*span::before\s*\{[^}]*content:\s*none;/);
+    expect(css).toMatch(/\.plain\s+\.pill\s*>\s*input:checked\s*\+\s*span\s*\{[^}]*font-weight:\s*600;/);
   });
 
   it("does not rely on :has (old iPads)", () => {

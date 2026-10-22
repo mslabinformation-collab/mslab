@@ -9,14 +9,14 @@ import { invoiceView } from "@/components/admin/invoice-view";
 import { ListEmpty } from "@/components/admin/ListStates";
 import { ListToolbar, type ListPill, type ListScope } from "@/components/admin/ListToolbar";
 import { Pager } from "@/components/admin/Pager";
-import { PaymentLines } from "@/components/admin/PaymentLines";
-import { RegistrationForms } from "@/components/admin/RegistrationForms";
+import { MoneyCard } from "@/components/admin/MoneyCard";
+import { NoteSaveStatus, RegistrationCancel, RegistrationNote, StatusAndNote } from "@/components/admin/RegistrationForms";
 import { adminTitle } from "@/components/admin/sections";
 import { ListRows } from "@/components/admin/ListRows";
 import listTable from "@/components/admin/list-table.module.css";
 import { StatusPill } from "@/components/admin/StatusPill";
 import ui from "@/components/admin/ui.module.css";
-import { getDb } from "@/db/client";
+import { getDb, type Db } from "@/db/client";
 import {
   getRegistration,
   listRegistrationScopes,
@@ -27,17 +27,19 @@ import {
 } from "@/db/queries/admin";
 import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
 import { feedbackOf, type FeedbackRow } from "@/db/queries/protocols";
+import { seatsTaken } from "@/db/queries/seats";
 import { tallinnFormParts } from "@/domain/calendar";
 import { coveringInvoices, openAmounts, sellerReady, uninvoicedOf } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { parsePage, parseSearch } from "@/domain/paging";
-import { prepaymentDue, registrationPrice, type RegStatus } from "@/domain/registration";
+import { registrationPrice, type RegStatus } from "@/domain/registration";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill, formatDate, formatDayMonth, formatTime } from "@/i18n/format";
 import { requireAdmin } from "@/server/auth";
 import { contractsOfRegistration } from "@/server/contracts";
 import { getInvoiceSettings, invoicesOfRegistration, type AdminInvoice } from "@/server/invoices";
+import { noteVersion } from "@/server/registration-note";
 import styles from "./registrations.module.css";
 
 export const dynamic = "force-dynamic";
@@ -131,8 +133,8 @@ const INDENT = String.fromCharCode(160, 160);
 
 /**
  * Registrations (A2): the toolbar (search across name, e-mail and phone, the course / session scope, the status and form pills with their
- * counts), the table of five columns (below 760 px of the card: a card per registration), and a drawer per registration with the payment that has
- * arrived (status recomputed: confirmed from 50%), status + note, and "Tühista".
+ * counts), the table of five columns (below 760 px of the card: a card per registration), and a drawer per registration (RegistrationDetail: Raha with
+ * „Lisa laekumine“, the status pills and the autosaved note, the invoices, the contract, the feedback, the details, and „Tühista registreerimine“).
  */
 export default async function RegistrationsPage({ searchParams }: Props) {
   await requireAdmin();
@@ -164,6 +166,8 @@ export default async function RegistrationsPage({ searchParams }: Props) {
     // the drawer's „Leping“ (contracts Task 5): the registration's contracts, the current one first
     openId ? contractsOfRegistration(db, openId) : [],
   ]);
+  // the drawer's Raha card counts its session's seats now; its note is drawn with the version a save must come from (Task 5)
+  const [openSeats, openNoteVersion] = open ? await Promise.all([seatsOf(db, open, now), noteVersion(open.note)]) : [null, ""];
   const rows = list.rows;
   const t = adminEt.registrations;
   const filtered = view.vorm !== null || view.staatus !== null || view.otsi !== "" || view.koolitus !== null || view.toimumine !== null;
@@ -280,7 +284,10 @@ export default async function RegistrationsPage({ searchParams }: Props) {
         >
           {open ? (
             <RegistrationDetail
+              key={open.id}
               r={open}
+              session={openSeats}
+              noteVersion={openNoteVersion}
               payments={online}
               feedback={answers[0] ?? null}
               invoices={invoiceList}
@@ -297,8 +304,35 @@ export default async function RegistrationsPage({ searchParams }: Props) {
   );
 }
 
+/** The drawer header's line (README A2 drawer 1): „{course} · {date time} · {city, venue} · {Grupp|Individuaal}“; without a session P-4's. */
+function headerLine(r: RegistrationRow): string {
+  const t = adminEt.registrations;
+  const course = pick(r.course.title, "et");
+  if (r.course.type === "e_learning") return [course, t.type.e].join(" · ");
+  if (r.kind === "individual") return [course, t.agreed, t.individual].join(" · ");
+  const s = r.courseSession;
+  const when = s ? `${formatDate(s.startsAt, "et")} ${formatTime(s.startsAt, "et")}` : "";
+  const where = s ? [s.city, s.venue].filter(Boolean).join(", ") : "";
+  return [course, when, where, t.group].filter(Boolean).join(" · ");
+}
+
+/** The seats of a group registration's session now (anyone's: the public count), for the Raha card; null without a session. */
+async function seatsOf(db: Db, r: RegistrationRow, now: Date): Promise<{ taken: number; capacity: number } | null> {
+  const s = r.courseSession;
+  if (!s || r.course.type !== "contact" || r.kind !== "group") return null;
+  return { taken: (await seatsTaken(db, [s.id], now)).get(s.id) ?? 0, capacity: s.capacity };
+}
+
+/**
+ * A registration's drawer, in README A2's order (piece 2, Task 5 builds 1–3): the header (the status pill, the note's SaveStatus left of the
+ * Drawer's ✕, the name, the course and the session, the phone and the e-mail, „Ava protokoll“ for a contact course); Raha (MoneyCard, with „Lisa
+ * laekumine“); „Staatus ja märkus“; then the invoices, the contract, the feedback answers, the details, and „Tühista registreerimine“. The note's
+ * engine is around the whole drawer (RegistrationNote): its status chip is in the header, its field in „Staatus ja märkus“.
+ */
 function RegistrationDetail({
   r,
+  session,
+  noteVersion: version,
   payments,
   feedback,
   invoices,
@@ -307,6 +341,8 @@ function RegistrationDetail({
   today,
 }: {
   r: RegistrationRow;
+  session: { taken: number; capacity: number } | null;
+  noteVersion: string;
   payments: PaymentRow[];
   feedback: FeedbackRow | null;
   invoices: AdminInvoice[];
@@ -324,7 +360,6 @@ function RegistrationDetail({
   });
   const yesNo = (v: boolean) => (v ? adminEt.common.yes : adminEt.common.no);
   const total = registrationPrice(r.course, r.kind);
-  const half = total == null ? null : prepaymentDue(total, "half");
   const details: [string, React.ReactNode][] = [
     [t.email, <a key="e" className={ui.contactLink} href={`mailto:${r.email}`}>{r.email}</a>],
     [t.phone, r.phone ? <a key="p" className={ui.contactLink} href={tel(r.phone)}>{r.phone}</a> : adminEt.common.none],
@@ -342,116 +377,93 @@ function RegistrationDetail({
   if (r.message) details.push([t.message, r.message]);
 
   return (
-    <div className={styles.detail} data-registration-detail={r.id}>
-      <div className={styles.detailHead}>
-        <StatusPill status={r.status} />
-        <h2 className={ui.h2}>{r.name}</h2>
-        <p className={ui.muted}>{pick(r.course.title, "et")}</p>
-        {/* the protocol of a contact course's registration (phase protocols, spec §4): one tap to its screen */}
-        {r.course.type === "contact" && r.status !== "cancelled" && (
-          <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?registreering=${r.id}`} data-registration-protocol="">
-            {adminEt.protocols.openOne}
-          </Link>
-        )}
-      </div>
-
-      <section className={styles.money} aria-label={t.priceTitle}>
-        {total == null ? (
-          <p className={ui.notice}>{t.noPrice}</p>
-        ) : (
-          <dl className={styles.moneyList}>
-            <div>
-              <dt>{t.price}</dt>
-              <dd>{formatEUR(total, "et")}</dd>
-            </div>
-            <div>
-              <dt>{t.half}</dt>
-              <dd>{formatEUR(half!, "et")}</dd>
-            </div>
-            <div>
-              <dt>{t.due}</dt>
-              <dd>{formatEUR(prepaymentDue(total, r.paymentChoice), "et")}</dd>
-            </div>
-            <div>
-              <dt>{t.paid}</dt>
-              <dd data-paid="">{formatEUR(r.paidCents, "et")}</dd>
-            </div>
-          </dl>
-        )}
-        {/* the online payments under "Laekunud" (phase 2b, spec 8); money from outside the site is added with „Lisa laekumine“ (B4, the Raha card: Task 5) */}
-        {payments.length > 0 && (
-          <div className={styles.online} data-registration-payments="">
-            <h3 className={ui.h3}>{adminEt.payments.online}</h3>
-            <PaymentLines rows={payments} />
+    <RegistrationNote id={r.id} note={r.note} version={version}>
+      <div className={styles.detail} data-registration-detail={r.id}>
+        <header className={styles.detailHead}>
+          <div className={styles.headTop}>
+            <StatusPill status={r.status} />
+            <NoteSaveStatus />
           </div>
-        )}
-      </section>
+          <h2 className={styles.name}>{r.name}</h2>
+          <p className={styles.headLine} data-registration-line="">
+            {headerLine(r)}
+          </p>
+          <div className={styles.contacts}>
+            {r.phone && (
+              <a className={`${ui.contactLink} ${styles.headContact}`} href={tel(r.phone)}>
+                {r.phone}
+              </a>
+            )}
+            <a className={`${ui.contactLink} ${styles.headContact}`} href={`mailto:${r.email}`}>
+              {r.email}
+            </a>
+          </div>
+          {/* the protocol of a contact course's registration (phase protocols, spec §4): one tap to its screen */}
+          {r.course.type === "contact" && r.status !== "cancelled" && (
+            <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?registreering=${r.id}`} data-registration-protocol="">
+              {adminEt.protocols.openOne}
+            </Link>
+          )}
+        </header>
 
-      {/* the registration's invoices, its paid payments without one, and „Koosta arve“ (invoices Task 5, spec §5): the amounts still open are those
-          no unpaid or paid invoice, nor such a payment, covers; money typed into „Laekunud summa“ by hand is offered as a receipt only (m4) */}
-      <InvoiceBlock
-        registrationId={r.id}
-        invoices={invoices.map(invoiceView)}
-        uninvoiced={uninvoicedViews}
-        open={
-          total == null
-            ? { request: [], receipt: [] }
-            : openAmounts({ priceCents: total, paymentChoice: r.paymentChoice, paidCents: r.paidCents }, coveringInvoices(r, invoices, uninvoiced))
-        }
-        sellerReady={seller}
-        canCreate={total != null}
-        today={today}
-      />
-
-      {/* the registration's contract (contracts Task 5, spec §4): a group registration on a contact course has one (the form's tick), an individual
-          one and an e-learning one do not (D1) */}
-      {r.course.type === "contact" && r.kind === "group" && (
-        <ContractBlock
-          registrationId={r.id}
-          contracts={contracts}
-          requestedAt={r.contractRequestedAt ? r.contractRequestedAt.toISOString() : null}
-          linked={r.clientId !== null}
-          cancelled={r.status === "cancelled"}
+        <MoneyCard
+          registration={{ id: r.id, paidCents: r.paidCents, priceCents: total, status: r.status, cancelled: r.status === "cancelled", choice: r.paymentChoice }}
+          session={session}
+          sellerReady={seller}
+          payments={payments}
+          today={today}
         />
-      )}
 
-      {/* her answers to the course feedback form (phase protocols, spec §7): none, or the one */}
-      {feedback && (
-        <section className={styles.feedback} aria-label={adminEt.feedback.section} data-registration-feedback="">
-          <h3 className={ui.h3}>{adminEt.feedback.section}</h3>
-          <FeedbackAnswers answers={feedback.answers} locale={feedback.locale} submittedAt={feedback.submittedAt} />
-        </section>
-      )}
+        <StatusAndNote id={r.id} status={r.status} />
 
-      <RegistrationForms
-        id={r.id}
-        status={r.status}
-        note={r.note}
-        t={{
-          statusLabel: t.statusLabel,
-          noteLabel: t.noteLabel,
-          noteHint: t.noteHint,
-          noteTooLong: t.noteTooLong,
-          statusSave: t.statusSave,
-          statusSaved: t.statusSaved,
-          stale: t.stale,
-          cancel: t.cancel,
-          cancelled: t.cancelled,
-          saving: adminEt.common.saving,
-          error: adminEt.common.saveError,
-          status: adminEt.registrations.status,
-        }}
-      />
+        {/* the registration's invoices, its paid payments without one, and „Koosta arve“ (invoices Task 5, spec §5): the amounts still open are those
+            no unpaid or paid invoice, nor such a payment, covers; money recorded with „Lisa laekumine“ and no receipt is offered as a receipt only */}
+        <InvoiceBlock
+          registrationId={r.id}
+          invoices={invoices.map(invoiceView)}
+          uninvoiced={uninvoicedViews}
+          open={
+            total == null
+              ? { request: [], receipt: [] }
+              : openAmounts({ priceCents: total, paymentChoice: r.paymentChoice, paidCents: r.paidCents }, coveringInvoices(r, invoices, uninvoiced))
+          }
+          sellerReady={seller}
+          canCreate={total != null}
+          today={today}
+        />
 
-      <h3 className={`${ui.h3} ${styles.detailsTitle}`}>{t.details}</h3>
-      <dl className={styles.dl}>
-        {details.map(([k, v]) => (
-          <div key={k}>
-            <dt>{k}</dt>
-            <dd>{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
+        {/* the registration's contract (contracts Task 5, spec §4): a group registration on a contact course has one (the form's tick), an individual
+            one and an e-learning one do not (D1) */}
+        {r.course.type === "contact" && r.kind === "group" && (
+          <ContractBlock
+            registrationId={r.id}
+            contracts={contracts}
+            requestedAt={r.contractRequestedAt ? r.contractRequestedAt.toISOString() : null}
+            linked={r.clientId !== null}
+            cancelled={r.status === "cancelled"}
+          />
+        )}
+
+        {/* her answers to the course feedback form (phase protocols, spec §7): none, or the one */}
+        {feedback && (
+          <section className={styles.feedback} aria-label={adminEt.feedback.section} data-registration-feedback="">
+            <h3 className={ui.h3}>{adminEt.feedback.section}</h3>
+            <FeedbackAnswers answers={feedback.answers} locale={feedback.locale} submittedAt={feedback.submittedAt} />
+          </section>
+        )}
+
+        <h3 className={`${ui.h3} ${styles.detailsTitle}`}>{t.details}</h3>
+        <dl className={styles.dl}>
+          {details.map(([k, v]) => (
+            <div key={k}>
+              <dt>{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <RegistrationCancel id={r.id} status={r.status} />
+      </div>
+    </RegistrationNote>
   );
 }

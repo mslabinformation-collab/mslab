@@ -319,20 +319,65 @@ export const adminEt = {
       account: "Soovib kontot",
       period: "Soovitud periood",
       message: "Sõnum",
-      priceTitle: "Makse",
-      price: "Hind",
-      half: "50% hinnast",
-      due: "Valitud makse",
-      paid: "Laekunud",
       noPrice: "Koolitusel pole hinda, staatust ei arvutata. Muuda staatust käsitsi.",
       // „Lisa laekumine“ → „Muu summa“ that is no euro amount (piece2-texts S3-e reuses it; the typed „Laekunud summa“ field is gone, B4)
       paidInvalid: "Sisesta summa eurodes, näiteks 175 või 175,50.",
+      // the Raha card (admin UX pass, piece 2, Task 5; README A2 drawer 2, piece2-texts P-2, S3-a…e; the words of README and the Part 2 mock are
+      // verbatim). {paid}, {price}, {pool} and {x} are euros like "145 €" („Koht kinnitub {pool} juures“: {pool} is half the price, from which the
+      // place is confirmed); {free} / {cap} the session's free seats and its capacity; {nr} a receipt's number; {link} the link to Seaded.
+      // „…Alone“: a registration with no session (individual or e-learning, S3-d): no seats to show
+      money: {
+        title: "Raha",
+        // P-2: the payment choice she made on the form
+        chosen: { half: "Valitud: ettemaks 50%", full: "Valitud: kogu summa (100%)", financing: "Valitud: järelmaks (Inbank)" },
+        // „{laekunud} / {hind} laekunud“: the money (large) and the rest of the line
+        of: "/ {price} laekunud",
+        seat: "Koht kinnitub {pool} juures · vabu kohti {free} / {cap}",
+        seatAlone: "Registreering kinnitub {pool} juures",
+        add: "Lisa laekumine",
+        // the panel: the amount pills (P-2), the day, the way, the receipt (S3-c in its place without a seller), the submit and its refusals
+        amount: "Summa",
+        half: "{x} · ettemaks",
+        full: "{x} · kogu summa",
+        rest: "{x} · ülejäänud summa",
+        other: "Muu summa",
+        date: "Tasumise kuupäev",
+        method: "Makseviis",
+        methods: { bank: "Pangaülekanne", cash: "Sularaha", card: "Kaart" },
+        receipt: "Koosta kviitung (arve „Juba tasutud“)",
+        needSeller: "Kviitungit ei saa koostada: täida {link}.",
+        needSellerLink: "Seaded → Arve andmed",
+        submit: "Lisa {x}",
+        submitSeat: "Lisa {x} · koht kinnitub",
+        submitAlone: "Lisa {x} · registreering kinnitub",
+        // S3-e: {x} is what is left, without the euro sign
+        overRemainder: "Summa on suurem kui tasumata osa ({x} €).",
+        // the results (README, S3-a, S3-b, S3-d): „Receipt“ with the receipt's number; „confirmed“ the press confirmed the place, „under“ it is
+        // still under 50 %, „plain“ it was confirmed before (or the course has no price), „full“ 50 % reached in a full session
+        done: {
+          confirmed: "{x} lisatud · koht kinnitatud.",
+          confirmedReceipt: "{x} lisatud · kviitung {nr} · koht kinnitatud.",
+          confirmedAlone: "{x} lisatud · registreering kinnitatud.",
+          confirmedAloneReceipt: "{x} lisatud · kviitung {nr} · registreering kinnitatud.",
+          under: "{x} lisatud. Koht kinnitub {pool} juures.",
+          underReceipt: "{x} lisatud · kviitung {nr}. Koht kinnitub {pool} juures.",
+          underAlone: "{x} lisatud. Registreering kinnitub {pool} juures.",
+          underAloneReceipt: "{x} lisatud · kviitung {nr}. Registreering kinnitub {pool} juures.",
+          plain: "{x} lisatud.",
+          plainReceipt: "{x} lisatud · kviitung {nr}.",
+          full: "{x} lisatud. Koolitus on vahepeal täis, nii et koht jäi kinnitamata.",
+          fullReceipt: "{x} lisatud · kviitung {nr}. Koolitus on vahepeal täis, nii et koht jäi kinnitamata.",
+        },
+      },
+      // „Staatus ja märkus“ (README A2 drawer 3): the status pills (saved at once) and the autosaved note; `noteThing` is SaveStatus's „gone“ word
+      // (P-10: „Seda registreerimist enam ei ole. …“); `restore` the conflict's „Taasta minu tekst“ (README §1.3)
+      statusTitle: "Staatus ja märkus",
       statusLabel: "Staatus",
       noteLabel: "Märkus",
-      noteHint: "Märkust näeb ainult haldus.",
+      noteHint: "Näeb ainult haldus.",
       noteTooLong: "Märkus on liiga pikk (kuni 2000 märki).",
-      statusSave: "Salvesta staatus",
-      statusSaved: "Staatus salvestatud.",
+      noteThing: "registreerimist",
+      restore: "Taasta minu tekst",
       stale: "Staatus muutus vahepeal (näed nüüd kehtivat). Vaata üle ja salvesta uuesti.",
       cancel: "Tühista registreerimine",
       cancelled: "Registreerimine on tühistatud.",

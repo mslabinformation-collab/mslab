@@ -137,12 +137,19 @@ test("the whole path: „Arve andmed“, a request to pay, the student's account
         }
       };
       await fit(page, block, "the registration's „Arved“");
-      // „Koosta arve“ open, as a receipt (the date and the ways of paying show), and „Märgi tasutuks“ open: the fields people touch
+      // „Koosta arve“ open, „Lisa laekumine“ open (the day, the ways of paying and the receipt box show; a receipt is made with the money there,
+      // B4, so „Koosta arve“ offers none while nothing is recorded) and „Märgi tasutuks“ open: the fields people touch
       await block.locator("[data-invoice-create]").click();
-      await block.locator('[data-invoice-mode="receipt"]').check();
-      await expect(block.locator("[data-paid-date]")).toBeVisible();
+      await expect(block.locator('[data-invoice-mode="receipt"]')).toBeDisabled();
       await fit(page, block, "„Koosta arve“ in the registration's „Arved“");
       await block.getByRole("button", { name: "Katkesta" }).click();
+      const money = drawer.locator("[data-money-card]"); // (not `card`: that is the student's course card here)
+      await money.locator("[data-add-payment]").click();
+      await expect(money.locator("[data-paid-date]")).toBeVisible();
+      await expect(money.locator("[data-receipt]")).toBeChecked();
+      await fit(page, money, "„Lisa laekumine“ in the registration's Raha card");
+      await money.getByRole("button", { name: "Katkesta" }).click();
+      await expect(money.locator("[data-add-payment-panel]")).toHaveCount(0);
       await row.locator("[data-invoice-mark-paid]").click();
       await expect(row.locator('[data-invoice-panel="paid"]')).toBeVisible();
       await fit(page, block, "„Märgi tasutuks“ in the registration's „Arved“");

@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { Db } from "@/db/client";
 import type { Subscriber } from "@/db/schema";
 import { getRegistration, setRegistrationStatus, setRequestHandled } from "@/db/queries/admin";
-import { NOTE_MAX } from "@/domain/registration";
 import { adminEt } from "@/i18n/dict/admin";
 import { formatStamp } from "@/i18n/format";
 import { toCsv } from "./csv";
@@ -10,19 +9,21 @@ import { toCsv } from "./csv";
 // The admin inbox's form handling (registrations, requests) and the subscriber export. Callers have already checked
 // the admin session (server/actions/admin.ts wraps each in adminAction, the CSV route is wrapped in withAdmin); these
 // take a Db and run without Next.js (tests/db/admin.test.ts). Money on a registration is „Lisa laekumine“'s alone
-// (server/registration-money.ts, admin UX pass B4): the typed „Laekunud summa“ form is gone.
+// (server/registration-money.ts, admin UX pass B4): the typed „Laekunud summa“ form is gone. The note is autosaved by its own route
+// (server/registration-note.ts, piece 2 Task 5).
 
 /**
- * What an admin form gets back. `error`: invalid (bad id / status), notFound, note (too long), stale (the status changed
- * since the form was loaded: nothing saved, the page shows the current one).
+ * What an admin form gets back. `error`: invalid (bad id / status), notFound, stale (the status changed since the pills were drawn: nothing
+ * saved, the page shows the current one), server (a throw, server/actions/admin.ts).
  */
-export type AdminResult = { ok: true } | { ok: false; error: "invalid" | "notFound" | "note" | "stale" | "server" };
+export type AdminResult = { ok: true } | { ok: false; error: "invalid" | "notFound" | "stale" | "server" };
 
 const OK: AdminResult = { ok: true };
 const fail = (error: Exclude<AdminResult, { ok: true }>["error"]): AdminResult => ({ ok: false, error });
 
 const id = z.coerce.number().int().positive().max(2_147_483_647);
-const status = z.enum(["awaiting_prepayment", "confirmed", "cancelled"]);
+/** The status pills' two choices (admin UX pass, README A2 drawer 3): cancelling is „Tühista registreerimine“'s alone (`cancel`). */
+const pillStatus = z.enum(["awaiting_prepayment", "confirmed"]);
 
 const field = (formData: FormData, name: string) => {
   const v = formData.get(name);
@@ -30,18 +31,18 @@ const field = (formData: FormData, name: string) => {
 };
 
 /**
- * Fields: id, status (awaiting_prepayment | confirmed | cancelled), note (at most NOTE_MAX characters), expected (the
- * status the form was showing). Maria's manual change; refused as `stale` when the stored status is no longer
- * `expected` (e.g. cancelled or confirmed by a payment in another tab), so it never overwrites a change she did not see.
+ * The drawer's status pills „Ootab ettemaksu“ / „Kinnitatud“ (admin UX pass, piece 2, Task 5: a manual override, saved at once): fields id, status
+ * (awaiting_prepayment | confirmed) and expected (the status the pills showed, one of the same two). The status alone: the note is its own
+ * autosaved part (server/registration-note.ts). Refused as `stale` when the stored status is no longer `expected` (cancelled, or confirmed by a
+ * payment in another tab), so it never overwrites a change she did not see. A cancelled registration is not put back from the drawer (spec §10):
+ * `cancelled`, as the status or as what the pills showed, is `invalid`.
  */
 export async function saveStatus(db: Db, formData: FormData): Promise<AdminResult> {
   const reg = id.safeParse(field(formData, "id"));
-  const next = status.safeParse(field(formData, "status"));
-  const expected = status.safeParse(field(formData, "expected"));
+  const next = pillStatus.safeParse(field(formData, "status"));
+  const expected = pillStatus.safeParse(field(formData, "expected"));
   if (!reg.success || !next.success || !expected.success) return fail("invalid");
-  const note = (field(formData, "note") ?? "").trim();
-  if (note.length > NOTE_MAX) return fail("note");
-  if (await setRegistrationStatus(db, reg.data, next.data, note, { expected: expected.data })) return OK;
+  if (await setRegistrationStatus(db, reg.data, next.data, undefined, { expected: expected.data })) return OK;
   return (await getRegistration(db, reg.data)) ? fail("stale") : fail("notFound");
 }
 

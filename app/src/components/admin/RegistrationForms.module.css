@@ -1,6 +1,20 @@
-.forms {
+/* The registration drawer's own forms (admin UX pass, piece 2, Task 5): „Staatus ja märkus“ (the Part 2 prototype: the heading, the status pills
+   — PillChoice — and „Märkus“) and „Tühista registreerimine“ at the bottom. `.form`, `.inline` and `.actions` are shared: the Õpilased drawer's
+   forms, the lesson drawer and editor, the certificate's re-issue and „Ava test uuesti“ use them too. */
+
+.part {
   display: grid;
-  gap: 18px;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pills {
+  display: grid;
+  gap: 6px;
+}
+
+.pills > p:empty {
+  display: none;
 }
 
 .form {
@@ -10,59 +24,18 @@
   border-top: 1px solid var(--line);
 }
 
+.form > button {
+  justify-self: start;
+}
+
 .inline {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.fieldset {
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.choice {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 8px 14px;
-  border: 1px solid #d9d2d5;
-  border-radius: 99px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.choice:has(input:checked) {
-  border-color: var(--rose);
-  background: #eee7eb;
-}
-
-.choice input {
-  width: 17px;
-  height: 17px;
-  margin: 0;
-  accent-color: var(--ink);
-}
-
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-}
-
-.fieldset legend {
-  padding: 0;
-}
-
-.form > button {
-  justify-self: start;
 }

@@ -328,3 +328,68 @@ describe("the list's address is carried to the drawer and the pager", () => {
     expect(second.querySelector('nav[data-pager] a[rel="prev"]')!.getAttribute("href")).toBe(`/admin/registreerimised?otsi=massi&toimumine=${sessions.s2}`);
   });
 });
+
+describe("the drawer (Task 5: README A2 drawer 1–3)", () => {
+  const drawerOf = async (id: number) => (await open(`id=${id}`)).querySelector(`[data-registration-detail="${id}"]`)!;
+  const said = (el: { textContent: string | null } | null | undefined) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+
+  test("the header: the status pill and the note's SaveStatus on one line, the name, „{course} · {date time} · {city, venue} · Grupp“, the phone and the e-mail", async () => {
+    const d = await drawerOf(ids.kati);
+    const head = d.querySelector("header")!;
+    expect(said(head.querySelector("[data-reg-status]"))).toBe("Ootab ettemaksu");
+    expect(head.querySelector("[data-save-status]")).not.toBeNull();
+    expect(said(head.querySelector("h2"))).toBe("Kati Kask");
+    expect(said(head.querySelector("[data-registration-line]"))).toBe("Kulmude LAMI · 12.12.2030 10:00 · Tartu · Grupp");
+    expect([...head.querySelectorAll("a[href^='tel:'], a[href^='mailto:']")].map((a) => a.getAttribute("href"))).toEqual(["tel:+37251234567", "mailto:kati@example.test"]);
+    expect(head.querySelector("[data-registration-protocol]")!.getAttribute("href")).toBe(`/admin/protokollid?registreering=${ids.kati}`);
+  });
+
+  test("without a session the header says P-4's line; an e-learning one has no „Ava protokoll“", async () => {
+    expect(said((await drawerOf(ids.ines)).querySelector("[data-registration-line]"))).toBe("Kulmude LAMI · Aeg kokkuleppel · Individuaal");
+    const e = await drawerOf(ids.eda);
+    expect(said(e.querySelector("[data-registration-line]"))).toBe("Kulmumeistri e-koolitus · E-õpe");
+    expect(e.querySelector("[data-registration-protocol]")).toBeNull();
+  });
+
+  test("Raha: the money against the price and the session's free seats counted now (Mari's confirmed place takes one of 4)", async () => {
+    const card = (await drawerOf(ids.kati)).querySelector("[data-money-card]")!;
+    expect(said(card.querySelector("[data-paid]"))).toBe("0 €");
+    expect(said(card.querySelector("[data-money-total]"))).toBe("/ 220 € laekunud");
+    expect(said(card.querySelector("[data-money-choice]"))).toBe("Valitud: ettemaks 50%");
+    expect(said(card.querySelector("[data-money-seat]"))).toBe("Koht kinnitub 110 € juures · vabu kohti 3 / 4");
+    expect(said(card.querySelector("[data-add-payment]"))).toBe("Lisa laekumine");
+    // no session: S3-d's line (an individual one is measured against the individual price)
+    expect(said((await drawerOf(ids.ines)).querySelector("[data-money-seat]"))).toBe("Registreering kinnitub 150 € juures");
+    expect(said((await drawerOf(ids.eda)).querySelector("[data-money-seat]"))).toBe("Registreering kinnitub 95 € juures");
+    // no price: the notice, no bar
+    const none = (await drawerOf(ids.hind)).querySelector("[data-money-card]")!;
+    expect(none.querySelector("[data-money-bar]")).toBeNull();
+    expect(said(none)).toContain("Koolitusel pole hinda, staatust ei arvutata. Muuda staatust käsitsi.");
+    // a cancelled registration: no „Lisa laekumine“
+    expect((await drawerOf(ids.tiina)).querySelector("[data-add-payment]")).toBeNull();
+  });
+
+  test("„Staatus ja märkus“ after Raha and before „Arved“: two status pills, the note with „Näeb ainult haldus.“; a cancelled one's pills are off", async () => {
+    const d = await drawerOf(ids.kati);
+    const html = d.innerHTML;
+    expect(html.indexOf("data-money-card")).toBeLessThan(html.indexOf("data-status-form"));
+    expect(html.indexOf("data-status-form")).toBeLessThan(html.indexOf("data-registration-invoices"));
+    const part = d.querySelector("[data-status-form]")!;
+    expect(said(part.querySelector("h3"))).toBe("Staatus ja märkus");
+    const pills = [...part.querySelectorAll("[data-status-choice] input[type=radio]")];
+    expect(pills.map((r) => [said(r.closest("label")), r.hasAttribute("checked"), r.hasAttribute("disabled")])).toEqual([
+      ["Ootab ettemaksu", true, false],
+      ["Kinnitatud", false, false],
+    ]);
+    const note = part.querySelector("textarea[name='note']")!;
+    expect(note.getAttribute("maxlength")).toBe("2000");
+    expect(said(part.querySelector(`label[for="${note.id}"]`))).toBe("Märkus");
+    expect(said(part)).toContain("Näeb ainult haldus.");
+    expect(said(part)).not.toContain("Salvesta staatus");
+    const cancelled = [...(await drawerOf(ids.tiina)).querySelectorAll("[data-status-choice] input[type=radio]")];
+    expect(cancelled.map((r) => [r.hasAttribute("checked"), r.hasAttribute("disabled")])).toEqual([
+      [false, true],
+      [false, true],
+    ]);
+  });
+});

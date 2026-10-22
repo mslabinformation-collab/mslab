@@ -130,7 +130,13 @@ const text = (v: FormDataEntryValue | null): string => (typeof v === "string" ? 
  * own `invalid` — and so is a call with no form at all (a crafted request to the action: every field missing, the B4 review's m3).
  */
 export function manualPaymentForm(formData: unknown): ManualPaymentInput {
-  const get = (name: string): FormDataEntryValue | null => (formData instanceof FormData ? formData.get(name) : null);
+  // (a form is anything with the form's get(), as the other actions read theirs: duck-typed, not `instanceof FormData`, which a FormData of
+  // another realm fails; only text values are read, which is all this form holds)
+  const form = typeof (formData as { get?: unknown } | null | undefined)?.get === "function" ? (formData as { get(name: string): unknown }) : null;
+  const get = (name: string): string | null => {
+    const v = form?.get(name);
+    return typeof v === "string" ? v : null;
+  };
   const receipt = get("receipt");
   return {
     registrationId: digits(get("registrationId")),

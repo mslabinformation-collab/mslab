@@ -1785,8 +1785,10 @@
       "href": "/admin/registreerimised",
       "steps": [
         "Ava „Registreerimised“ ja vajuta mõnele reale: paremal avaneb paneel.",
-        "Sulge paneel nupuga ✕, siis uuesti avatuna klahviga Esc, siis klõpsuga paneelist vasakule.",
-        "Tee sama lehtedel „Õpilased“ ja „Kalender“.",
+        "Sulge paneel ✕, Esc ja kõrvale klõpsuga; tee sama „Õpilased“ ja „Kalender“ lehtedel.",
+        "Ava registreeringu paneel, vali arendaja tööriistades (F12) Network all „Offline“ ja kirjuta „Märkus“ väljale Proov.",
+        "Vajuta ✕, siis brauseri nuppu Tagasi, siis menüüs „Ülevaade“; iga küsimuse järel vajuta „Jää siia“.",
+        "Vali Network all „No throttling“, oota päises „Salvestatud“ ja sulge paneel ✕-ga.",
         "Ava „Koolitused“, oma e-koolitus ja mõne õppetunni paneel.",
         "Kirjuta „Lühike tekst“ väljale midagi ja vajuta ✕.",
         "Vasta küsimusele „Ei“, siis vajuta uuesti ✕ ja vasta „Jah, sulge“."
@@ -1794,15 +1796,18 @@
       "expect": [
         "Iga paneel sulgub kohe ✕, Esc ja kõrvale klõpsuga, ilma küsimuseta.",
         "Pärast sulgemist on fookus real, millelt paneeli avasid.",
+        "Ühenduseta küsivad ✕, Tagasi ja menüü kõik paneeli ülaosas: „Muudatust „Märkus“ ei saanud veel salvestada.“.",
+        "„Jää siia“ jätab paneeli lahti, teksti alles ja kursori väljale „Märkus“.",
+        "Ühenduse tagasi tulles näitab paneeli päis „Salvestatud“ ja ✕ sulgeb paneeli kohe.",
         "Õppetunni paneel küsib „Salvestamata muudatused lähevad kaotsi. Sulgen?“ ja jääb lahti.",
         "Pärast „Ei“ on kirjutatud tekst alles ja kursor on väljal „Lühike tekst“.",
         "Pärast „Jah, sulge“ paneel sulgub."
       ],
       "why": "Paneeli sulgemine käib nüüd läbi kontrolli, mis hoiab salvestamata teksti alles.",
       "risk": "med",
-      "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-loend-terve-rida",
@@ -2305,6 +2310,34 @@
       "markedAt": "2026-10-18T01:56:41.789Z"
     },
     {
+      "id": "haldus-lisa-laekumine-alla-poole",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Laekumine alla poole hinna",
+      "href": "/admin/registreerimised",
+      "steps": [
+        "Ava „Registreerimised“ ja vajuta nimele Proov 2.",
+        "Vajuta kaardil „Raha“ nuppu „Lisa laekumine“ ja vali „Muu summa“.",
+        "Kirjuta väljale koolituse hinnast suurem summa ja vajuta „Lisa …“.",
+        "Kirjuta siis summa, mis jääb alla poole hinna, näiteks 100.",
+        "Jäta makseviisiks „Pangaülekanne“ ja „Koosta kviitung“ märgituks, siis vajuta „Lisa …“."
+      ],
+      "expect": [
+        "Paneelis on summad „… · ettemaks“, „… · kogu summa“ ja „Muu summa“; ettemaks on valitud.",
+        "Hinnast suurema summa juures näed „Summa on suurem kui tasumata osa (… €).“ ja midagi ei lisata.",
+        "Alla poole hinna summa nupul pole lõppu „· koht kinnitub“.",
+        "Pärast lisamist näed „100 € lisatud · kviitung …. Koht kinnitub … juures.“.",
+        "Staatus jääb „Ootab ettemaksu“ ja „Raha“ näitab 100 € laekununa.",
+        "Plokis „Arved“ on 100 € kviitung märkega „Tasutud“."
+      ],
+      "why": "Osa rahast saab lisada nii, et koht kinnitub alles poole hinna juures.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-pangaulekanne",
       "area": "registreerimine",
       "who": "maria",
@@ -2313,21 +2346,23 @@
       "href": "/admin/registreerimised",
       "steps": [
         "Ava „Registreerimised“ ja vajuta nimele Proov 2.",
-        "Kirjuta „Laekunud summa (€)“ väljale koolituse hind.",
-        "Vajuta „Salvesta summa“.",
+        "Vajuta kaardil „Raha“ nuppu „Lisa laekumine“ ja vali „… · ülejäänud summa“.",
+        "Jäta kuupäevaks täna, makseviisiks „Pangaülekanne“ ja „Koosta kviitung (arve „Juba tasutud“)“ märgituks.",
+        "Vajuta „Lisa … · koht kinnitub“.",
         "Ava kiri „Registreering on vastu võetud — …“ ja vaata pangaandmeid."
       ],
       "expect": [
-        "Enne salvestamist on staatus „Ootab ettemaksu“.",
-        "Pärast salvestamist näed „Summa salvestatud.“.",
-        "Staatus muutub „Kinnitatud“.",
+        "Enne lisamist on staatus „Ootab ettemaksu“.",
+        "Pärast lisamist näed „… lisatud · kviitung … · koht kinnitatud.“.",
+        "Staatus muutub „Kinnitatud“ ja „Raha“ näitab kogu hinda laekununa.",
+        "Plokis „Arved“ on uus kviitung märkega „Tasutud“ ja makseviisiga „Pangaülekanne“.",
         "Kirjas on „Saaja“, „IBAN“, „Pank“, „Summa“ ja „Selgitus“, nagu Seadetes."
       ],
-      "why": "Pangaülekanne on maksmise teine tee ja Maria märgib selle ise.",
+      "why": "Pangaülekanne on maksmise teine tee: Maria lisab raha ja kviitungi ühe vajutusega.",
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-maksmiseks",
@@ -2488,24 +2523,26 @@
       "area": "registreerimine",
       "who": "maria",
       "device": "tahvel",
-      "title": "Arve juba tasutud rahale",
+      "title": "Kviitung koos laekumisega",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava Proov 6 paneelis „Koosta arve“ ja vali „Jääk 50%“.",
-        "Vali „Juba tasutud“, jäta kuupäevaks täna ja vali „Sularaha“.",
-        "Vajuta „Koosta arve“."
+        "Ava Proov 6 paneel, vajuta plokis „Arved“ „Koosta arve“ ja siis „Katkesta“.",
+        "Vajuta kaardil „Raha“ nuppu „Lisa laekumine“ ja vali „… · ülejäänud summa“.",
+        "Jäta kuupäevaks täna, vali „Sularaha“ ja jäta „Koosta kviitung“ märgituks.",
+        "Vajuta „Lisa …“."
       ],
       "expect": [
-        "„Juba tasutud“ juures näed kuupäeva ning makseviise „Pangaülekanne“, „Sularaha“ ja „Kaardimakse kohapeal“.",
-        "Uus arve on märkega „Tasutud“, tänase kuupäeva ja makseviisiga „Sularaha“.",
-        "„Laekunud“ ei muutu.",
-        "Arve real pole nuppe „Märgi tasutuks“ ega „Tühista arve“."
+        "„Koosta arve“ juures pole „Juba tasutud“ valitav: kogu laekunud raha on juba arvega kaetud.",
+        "Paneelis on kuupäev ning makseviisid „Pangaülekanne“, „Sularaha“ ja „Kaart“.",
+        "Näed teadet „… lisatud · kviitung ….“ ja „Raha“ näitab kogu hinda laekununa.",
+        "Plokis „Arved“ on uus kviitung märkega „Tasutud“, tänase kuupäeva ja makseviisiga „Sularaha“.",
+        "Kviitungi real pole nuppe „Märgi tasutuks“ ega „Tühista arve“."
       ],
-      "why": "Koolituspäeval makstud jäägile saab arve ilma raha topelt arvestamata.",
+      "why": "Koolituspäeval makstud jääk saab kviitungi samal vajutusel, millega Maria raha lisab.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-kviitung-tagasi",
@@ -2515,21 +2552,21 @@
       "title": "Kviitungi tasumise tagasivõtmine",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava Proov 6 paneelis „Sularaha“ arve rida ja vajuta „Võta tasumine tagasi“.",
+        "Ava Proov 6 paneelis „Sularaha“ kviitungi rida ja vajuta „Võta tasumine tagasi“.",
         "Loe kinnitus läbi ja vajuta „Jah, võta tasumine tagasi“."
       ],
       "expect": [
-        "Kinnituses on „Kviitung tühistatakse (number jääb alles).“.",
-        "Näed teadet „Kviitung on tühistatud.“ ja arve on „Tühistatud“.",
-        "Arve number jääb loendisse.",
-        "„Laekunud“ ei muutu.",
+        "Näed teadet „Kviitung on tühistatud.“ ja kviitung on „Tühistatud“.",
+        "Kviitungi number jääb loendisse.",
+        "„Raha“ laekunud summa väheneb kviitungi summa võrra: jälle on laekunud pool hinnast.",
+        "Staatus jääb „Kinnitatud“, sest pool hinnast on endiselt laekunud.",
         "„Koosta arve“ pakub jälle summat „Jääk 50%“."
       ],
-      "why": "Kviitung ei küsinud raha, nii et seda ei saa tasumata arveks muuta.",
+      "why": "Kviitung kinnitab laekunud raha, nii et selle tühistamine võtab ka raha maha.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-tuhista",
@@ -2588,25 +2625,26 @@
       "area": "registreerimine",
       "who": "maria",
       "device": "tahvel",
-      "title": "Käsitsi sisestatud raha arve",
+      "title": "Kviitungita lisatud raha arve",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava Proov 6 paneel ja kirjuta „Laekunud summa (€)“ väljale koolituse täishind, nagu jääk oleks kohapeal makstud.",
-        "Vajuta „Salvesta summa“.",
+        "Ava Proov 6 paneel ja vajuta kaardil „Raha“ nuppu „Lisa laekumine“.",
+        "Vali „… · ülejäänud summa“, võta „Koosta kviitung“ märge ära ja vajuta „Lisa …“.",
         "Vajuta plokis „Arved“ nuppu „Koosta arve“.",
         "Vali „Juba tasutud“, jäta kuupäevaks täna, vali „Sularaha“ ja vajuta „Koosta arve“."
       ],
       "expect": [
-        "„Maksmiseks“ ei ole valitav: käsitsi sisestatud raha eest uut maksenõuet ei tehta.",
+        "Pärast lisamist näed „… lisatud.“ ja „Raha“ näitab kogu hinda laekununa.",
+        "„Maksmiseks“ ei ole valitav: kviitungita lisatud raha eest uut maksenõuet ei tehta.",
         "„Juba tasutud“ pakub ainult summat „Jääk 50%“, mis on veel arveta.",
-        "Uus arve on „Tasutud“ ja „Laekunud“ ei muutu.",
+        "Uus arve on „Tasutud“ ja „Raha“ laekunud summa ei muutu.",
         "Pärast seda ütleb plokk „Kõik summad on juba arvega kaetud.“."
       ],
-      "why": "Käsitsi sisestatud raha saab arve, aga õpilaselt seda uuesti ei küsita.",
+      "why": "Kviitungita lisatud raha saab arve ka hiljem, aga õpilaselt seda uuesti ei küsita.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-leping-plokk",

@@ -201,7 +201,7 @@ test("Maksed: no payments yet, and a filter with none, each say so", async () =>
   }
 });
 
-test("Registreerimised: the registration's drawer lists its online payments under 'Laekunud' (date, amount, kind, method, status); the typed amount form is gone (B4)", async () => {
+test("Registreerimised: the registration's drawer lists its online payments in the Raha card (date, amount, kind, method, status); the typed amount form is gone (B4)", async () => {
   const html = await render(RegistrationsPage, { id: String(ids.registration) });
   const block = /<div[^>]*data-registration-payments[^>]*>([\s\S]*?)<\/ul>/.exec(html)![1];
   expect(block).toContain("Veebimaksed");
@@ -221,7 +221,11 @@ test("Registreerimised: the registration's drawer lists its online payments unde
   // B4: money is added with „Lisa laekumine“, never typed as a total
   expect(html).not.toContain("Laekunud summa (€)");
   expect(html).not.toContain("data-payment-form");
-  expect(html.indexOf("data-registration-payments")).toBeGreaterThan(html.indexOf("Laekunud</dt>"));
+  // in the Raha card, after the money (Task 5: „{laekunud} / {hind} laekunud“), before „Lisa laekumine“
+  const card = html.slice(html.indexOf("data-money-card"));
+  expect(html.indexOf("data-money-card")).toBeGreaterThan(-1);
+  expect(card.indexOf("data-registration-payments")).toBeGreaterThan(card.indexOf("data-paid="));
+  expect(card.indexOf("data-registration-payments")).toBeLessThan(card.indexOf("data-add-payment"));
 });
 
 test("Registreerimised: ?staatus= with a name of the object's prototype ('constructor', '__proto__' …) is the unfiltered list, not a 500", async () => {

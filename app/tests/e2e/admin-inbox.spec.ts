@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
 import { adminReady, editLang, signInAsAdmin } from "./admin-login";
+import { expectFits, today } from "./invoices";
 import { PROD_ENV } from "./prod-build";
 import { DEV_ENV } from "./server";
 import { PROD_BUILD } from "./target";
@@ -55,6 +56,15 @@ async function fixtures(project: string, opts: { extraSubscribers?: number } = {
 const signIn = (page: Page, context: BrowserContext, ip: string) => signInAsAdmin(page, context, ip, created);
 
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+
+/**
+ * „Koosta kviitung“ unticked when the „Lisa laekumine“ panel offers it (this database's Seaded → Arve andmed may have a seller): these tests record
+ * money only, and make no invoice (the receipt's path is admin-invoices.spec.ts, which holds the invoice settings).
+ */
+async function noReceipt(panel: Locator): Promise<void> {
+  const box = panel.locator("[data-receipt]");
+  if ((await box.count()) > 0) await box.uncheck();
+}
 
 /**
  * The admin menu: the sidebar on a wide screen (its folding group „Koduleht ja uudiskiri“ opened here, when it is closed), the menu panel (opened
@@ -187,41 +197,67 @@ test.describe("signed in", () => {
     await expect(row.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
     expect(await noOverflow(page)).toBe(true);
 
-    // the drawer: details, price 350 €, half 175 €
+    // the drawer (README A2 drawer 1–2): the header, then Raha at 0 of 350 €, the place confirmed from 175 €
     await row.getByRole("link", { name: `Ava ${f.registration.name}` }).click();
     await expect(page).toHaveURL(new RegExp(`vorm=k&id=${f.registration.id}$`));
     const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
     await expect(drawer).toBeVisible();
+    await adminReady(page);
     // a contact course's registration: one tap to its protocol (phase protocols)
     await expect(drawer.locator("[data-registration-protocol]")).toHaveText("Ava protokoll");
     await expect(drawer.locator("[data-registration-protocol]")).toHaveAttribute("href", `/admin/protokollid?registreering=${f.registration.id}`);
-    await expect(drawer).toContainText("350 €");
-    await expect(drawer).toContainText("175 €");
+    await expect(drawer.locator("[data-registration-line]")).toHaveText(/ · \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} · Pärnu, E2E saal · Grupp$/);
     await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
+    const card = drawer.locator("[data-money-card]");
+    await expect(card.locator("[data-paid]")).toHaveText("0 €");
+    await expect(card.locator("[data-money-total]")).toHaveText("/ 350 € laekunud");
+    await expect(card.locator("[data-money-choice]")).toHaveText("Valitud: ettemaks 50%");
+    await expect(card.locator("[data-money-seat]")).toHaveText("Koht kinnitub 175 € juures · vabu kohti 4 / 4");
 
-    const amount = drawer.getByLabel("Laekunud summa (€)");
-    const save = drawer.getByRole("button", { name: "Salvesta summa" });
-    await expect(amount).toHaveValue(""); // nothing paid yet: an empty field, not "0"
-    // not an amount: an error on the field, nothing stored
-    await amount.fill("palju");
-    await save.click();
-    await expect(drawer.getByText("Sisesta summa eurodes, näiteks 175 või 175,50.")).toBeVisible();
-    await expect(amount).toHaveAttribute("aria-invalid", "true");
+    // „Lisa laekumine“ (B4): the panel opens in place of the button, the 50 % preselected
+    const add = card.locator("[data-add-payment]");
+    const panel = card.locator("[data-add-payment-panel]");
+    const submit = panel.locator("[data-add-payment-submit]");
+    const other = panel.locator("[data-other-amount]");
+    await add.click();
+    await expect(panel.getByRole("radio", { name: "175 € · ettemaks" })).toBeChecked();
+    await expect(panel.getByRole("radio", { name: "350 € · kogu summa" })).not.toBeChecked();
+    await expect(submit).toHaveText("Lisa 175 € · koht kinnitub");
+    await expect(panel.locator("[data-paid-date]")).toHaveValue(today());
+    await expect(panel.getByRole("radio", { name: "Pangaülekanne" })).toBeChecked();
+    // „Muu summa“ that is no amount, then more than is left: the field says so, nothing stored
+    await panel.getByRole("radio", { name: "Muu summa" }).check();
+    await other.fill("palju");
+    await submit.click();
+    await expect(panel.locator("[data-other-amount-error]")).toHaveText("Sisesta summa eurodes, näiteks 175 või 175,50.");
+    await expect(other).toHaveAttribute("aria-invalid", "true");
+    await other.fill("400");
+    await submit.click();
+    await expect(panel.locator("[data-other-amount-error]")).toHaveText("Summa on suurem kui tasumata osa (350 €).");
     expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 0, status: "awaiting_prepayment" });
-    // below 50%: stays awaiting
-    await amount.fill("174,99");
-    await save.click();
-    await expect(drawer.getByText("Summa salvestatud.")).toBeVisible();
-    await expect(drawer.locator("[data-paid]")).toHaveText("174,99 €");
+    // below 50 %: added, stays awaiting (S3-b; no receipt here: the receipt's path is admin-invoices.spec.ts)
+    await other.fill("174,99");
+    await expect(submit).toHaveText("Lisa 174,99 €");
+    await noReceipt(panel);
+    await submit.click();
+    await expect(card.locator("[data-add-payment-result]")).toHaveText("174,99 € lisatud. Koht kinnitub 175 € juures.");
+    await expect(panel).toHaveCount(0);
+    await expect(add).toBeFocused();
+    await expect(card.locator("[data-paid]")).toHaveText("174,99 €");
     await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
     expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 17499, status: "awaiting_prepayment" });
-    // 50%: confirmed
-    await amount.fill("175");
-    await save.click();
+    // 50 %: the missing cent is preselected, the submit says the place confirms, and it does
+    await add.click();
+    await expect(panel.getByRole("radio", { name: "0,01 € · ettemaks" })).toBeChecked();
+    await expect(panel.getByRole("radio", { name: "175,01 € · ülejäänud summa" })).not.toBeChecked();
+    await expect(submit).toHaveText("Lisa 0,01 € · koht kinnitub");
+    await noReceipt(panel);
+    await submit.click();
+    await expect(card.locator("[data-add-payment-result]")).toHaveText("0,01 € lisatud · koht kinnitatud.");
     await expect(drawer.locator("[data-reg-status]")).toHaveText("Kinnitatud");
-    await expect(drawer.locator("[data-paid]")).toHaveText("175 €");
+    await expect(card.locator("[data-paid]")).toHaveText("175 €");
     expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
-    // the status choice follows the new status (a later note save must not undo the confirmation)
+    // the status pills follow the new status
     await expect(drawer.getByRole("radio", { name: "Kinnitatud" })).toBeChecked();
 
     // Esc closes the drawer; the list shows the new status and the focus is back on the row's link
@@ -408,52 +444,169 @@ test.describe("signed in", () => {
     await inside("[data-reg-status]", "the status pill");
   });
 
-  test("registrations: status and note by hand, then 'Tühista'", async ({ page, context, visitorIp }, info) => {
+  test("registrations: the status pills save at once, the note autosaves (its SaveStatus in the header), then 'Tühista'", async ({ page, context, visitorIp }, info) => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
     await page.goto(`/admin/registreerimised?id=${f.registration.id}`);
     const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
     await expect(drawer).toBeVisible();
-    await drawer.getByRole("radio", { name: "Kinnitatud" }).check();
-    await drawer.getByLabel("Märkus").fill("Maksis kohapeal sularahas");
-    await drawer.getByRole("button", { name: "Salvesta staatus" }).click();
-    await expect(drawer.getByText("Staatus salvestatud.")).toBeVisible();
+    await adminReady(page);
+    const part = drawer.locator("[data-status-form]");
+    await expect(part.getByRole("heading", { level: 3 })).toHaveText("Staatus ja märkus");
+    await expect(part.getByRole("button", { name: "Salvesta staatus" })).toHaveCount(0);
+    await expect(part.getByText("Näeb ainult haldus.")).toBeVisible();
+    // a pill is a manual override, saved at once: the header's pill follows
+    await part.getByRole("radio", { name: "Kinnitatud" }).check();
     await expect(drawer.locator("[data-reg-status]")).toHaveText("Kinnitatud");
+    await expect.poll(async () => (await storedAdminRegistration(f.registration.id)).status).toBe("confirmed");
+    // the note saves itself; the header's chip says when
+    const chip = drawer.locator("header [data-save-status]");
+    await drawer.getByRole("textbox", { name: "Märkus" }).fill("Maksis kohapeal sularahas");
+    await expect(chip.locator("[data-save-text]")).toHaveText(/^✓ Salvestatud \d\d:\d\d$/, { timeout: 20_000 });
     expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ status: "confirmed", note: "Maksis kohapeal sularahas", paidCents: 0 });
+    // and the next status press does not touch it
+    await expect(part.locator("[data-status-choice]")).not.toHaveAttribute("aria-busy", "true");
+    await part.getByRole("radio", { name: "Ootab ettemaksu" }).check();
+    await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
+    await expect.poll(async () => (await storedAdminRegistration(f.registration.id)).status).toBe("awaiting_prepayment");
+    expect((await storedAdminRegistration(f.registration.id)).note).toBe("Maksis kohapeal sularahas");
 
     await drawer.getByRole("button", { name: "Tühista registreerimine" }).click();
     await expect(drawer.locator("[data-reg-status]")).toHaveText("Tühistatud");
     await expect(drawer.locator("[data-cancelled]")).toBeFocused();
     expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ status: "cancelled", note: "Maksis kohapeal sularahas" });
-    // a payment does not revive a cancelled registration
-    await drawer.getByLabel("Laekunud summa (€)").fill("350");
-    await drawer.getByRole("button", { name: "Salvesta summa" }).click();
-    await expect(drawer.locator("[data-paid]")).toHaveText("350 €");
-    await expect(drawer.locator("[data-reg-status]")).toHaveText("Tühistatud");
+    // a cancelled registration takes no money from the drawer and is not put back by the pills (spec §10)
+    await expect(drawer.locator("[data-add-payment]")).toHaveCount(0);
+    for (const name of ["Ootab ettemaksu", "Kinnitatud"]) {
+      await expect(part.getByRole("radio", { name })).toBeDisabled();
+      await expect(part.getByRole("radio", { name })).not.toBeChecked();
+    }
 
     await drawer.getByRole("button", { name: "Sulge" }).click();
     await expect(drawer).toBeHidden();
     await expect(page.locator(`[data-registration="${f.registration.id}"] [data-reg-status]`)).toHaveText("Tühistatud");
   });
 
-  test("registrations: a status form that saw an old status does not overwrite the change made meanwhile", async ({ page, context, visitorIp }, info) => {
+  test("registrations: a status press built on an old status does not overwrite the change made meanwhile", async ({ page, context, visitorIp }, info) => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
     await page.goto(`/admin/registreerimised?vorm=k&id=${f.registration.id}`);
     const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
     await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
-    await setStoredStatus(f.registration.id, "cancelled"); // e.g. Maria cancelled it in another tab
-    await drawer.getByRole("radio", { name: "Kinnitatud" }).check();
-    await drawer.getByRole("button", { name: "Salvesta staatus" }).click();
-    await expect(drawer.getByText("Staatus muutus vahepeal (näed nüüd kehtivat). Vaata üle ja salvesta uuesti.")).toBeVisible();
+    await adminReady(page);
+    const stale = "Staatus muutus vahepeal (näed nüüd kehtivat). Vaata üle ja salvesta uuesti.";
+    // Maria cancelled it in another tab: the press is refused, the drawer now shows the stored status, and the cancelled one stays cancelled
+    await setStoredStatus(f.registration.id, "cancelled");
+    await drawer.getByRole("radio", { name: "Kinnitatud" }).click();
+    await expect(drawer.locator("[data-status-line]")).toHaveText(stale);
     await expect(drawer.locator("[data-reg-status]")).toHaveText("Tühistatud");
-    await expect(drawer.getByRole("radio", { name: "Tühistatud" })).toBeChecked();
+    await expect(drawer.getByRole("radio", { name: "Kinnitatud" })).not.toBeChecked();
+    await expect(drawer.getByRole("radio", { name: "Kinnitatud" })).toBeDisabled();
     expect((await storedAdminRegistration(f.registration.id)).status).toBe("cancelled");
-    // now that it shows the stored status, a change goes through
-    await drawer.getByRole("radio", { name: "Kinnitatud" }).check();
-    await drawer.getByRole("button", { name: "Salvesta staatus" }).click();
-    await expect(drawer.getByText("Staatus salvestatud.")).toBeVisible();
-    expect((await storedAdminRegistration(f.registration.id)).status).toBe("confirmed");
+    // a payment confirmed it meanwhile: a press that still saw „Ootab ettemaksu“ is refused too; once it shows „Kinnitatud“, a change goes through
+    await setStoredStatus(f.registration.id, "awaiting_prepayment");
+    await page.reload();
+    await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
+    await adminReady(page);
+    await setStoredStatus(f.registration.id, "confirmed");
+    await drawer.getByRole("radio", { name: "Kinnitatud" }).click();
+    await expect(drawer.locator("[data-status-line]")).toHaveText(stale);
+    await expect(drawer.locator("[data-reg-status]")).toHaveText("Kinnitatud");
+    await expect(drawer.getByRole("radio", { name: "Kinnitatud" })).toBeChecked();
+    await expect(drawer.locator("[data-status-choice]")).not.toHaveAttribute("aria-busy", "true"); // (the refused press and its refresh are done)
+    await drawer.getByRole("radio", { name: "Ootab ettemaksu" }).check();
+    await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
+    await expect(drawer.locator("[data-status-line]")).toHaveText("");
+    await expect.poll(async () => (await storedAdminRegistration(f.registration.id)).status).toBe("awaiting_prepayment");
+  });
+
+  test("registrations drawer at 375 × 812: the first screen holds the header, Raha's „Lisa laekumine“ and the status pills; the open panel never scrolls sideways", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(!isMobile, "the phone project only");
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/admin/registreerimised?id=${f.registration.id}`);
+    const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
+    await expect(drawer).toBeVisible();
+    await adminReady(page);
+    // the phone drawer's first screen (README A2): the header, Raha with only its button, and the status, without scrolling
+    for (const [what, el] of [
+      ["the name", drawer.locator("header h2")],
+      ["„Lisa laekumine“", drawer.locator("[data-add-payment]")],
+      ["the status pills", drawer.locator("[data-status-choice]")],
+    ] as const) {
+      const box = (await el.boundingBox())!;
+      expect(box.y + box.height, what).toBeLessThanOrEqual(812);
+    }
+    await expect(drawer.locator("[data-add-payment-panel]")).toHaveCount(0);
+    // the button is the card's width on a phone
+    const card = drawer.locator("[data-money-card]");
+    const [button, cardBox] = [(await drawer.locator("[data-add-payment]").boundingBox())!, (await card.boundingBox())!];
+    expect(button.width).toBeGreaterThan(cardBox.width - 40);
+    // the panel open, with „Muu summa“ and its field: nothing scrolls sideways, every control a 44 px target
+    await drawer.locator("[data-add-payment]").click();
+    const panel = card.locator("[data-add-payment-panel]");
+    await panel.getByRole("radio", { name: "Muu summa" }).check();
+    await expect(panel.locator("[data-other-amount]")).toBeVisible();
+    await expectFits(page, card, "the Raha card with „Lisa laekumine“ open");
+    expect(await drawer.evaluate((d) => d.scrollWidth <= d.clientWidth + 1), "the drawer scrolls sideways").toBe(true);
+    // a refusal's words and a long „Muu summa“ error wrap inside it too
+    await panel.locator("[data-other-amount]").fill("99999");
+    await panel.locator("[data-add-payment-submit]").click();
+    await expect(panel.locator("[data-other-amount-error]")).toHaveText("Summa on suurem kui tasumata osa (350 €).");
+    expect(await drawer.evaluate((d) => d.scrollWidth <= d.clientWidth + 1)).toBe(true);
+    expect(await noOverflow(page)).toBe(true);
+  });
+
+  test("registrations: a note typed offline holds the drawer — ✕, Back, a menu click and a link each ask first (the leave guard, ledger L136)", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(isMobile, "the desktop project: the menu is beside the drawer there");
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    await page.goto("/admin/registreerimised?vorm=k");
+    await adminReady(page);
+    // opened from the list, so Back would close it
+    await page.locator(`[data-registration="${f.registration.id}"]`).getByRole("link", { name: `Ava ${f.registration.name}` }).click();
+    await expect(page).toHaveURL(new RegExp(`id=${f.registration.id}$`));
+    const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
+    await expect(drawer).toBeVisible();
+    const note = drawer.getByRole("textbox", { name: "Märkus" });
+    const chip = drawer.locator("header [data-save-status]");
+    const notice = drawer.locator('[data-leave-notice="drawer"]');
+    /** The guard asked instead of leaving: its notice names „Märkus“ and the reason; „Jää siia“ puts her back in the note, with her text. */
+    const asks = async (what: string) => {
+      await expect(notice, what).toBeVisible();
+      await expect(notice.locator("[data-leave-title]")).toHaveText("Muudatust „Märkus“ ei saanud veel salvestada.");
+      await expect(notice.locator("[data-leave-reason]")).toHaveText("Ühendus puudub. Proovin uuesti, kuni jääd siia.");
+      await expect(drawer, what).toBeVisible();
+      await expect(page, what).toHaveURL(new RegExp(`/admin/registreerimised[?]vorm=k&id=${f.registration.id}$`));
+      await notice.getByRole("button", { name: "Jää siia" }).click();
+      await expect(notice).toHaveCount(0);
+      await expect(note, what).toBeFocused();
+      await expect(note).toHaveValue("Helistab reedel");
+    };
+    await context.setOffline(true);
+    try {
+      await note.fill("Helistab reedel");
+      await expect(chip).toHaveAttribute("data-save-kind", "retry", { timeout: 20_000 });
+      await drawer.getByRole("button", { name: "Sulge", exact: true }).click();
+      await asks("the drawer's ✕");
+      await page.evaluate(() => history.back());
+      await asks("Back");
+      // the menu beside the drawer: the drawer's backdrop takes the click
+      const menuLink = (await page.locator('aside [data-nav="overview"]').boundingBox())!;
+      await page.mouse.click(menuLink.x + menuLink.width / 2, menuLink.y + menuLink.height / 2);
+      await asks("a click on the menu");
+      await drawer.locator("[data-registration-protocol]").click();
+      await asks("a link to another page");
+    } finally {
+      await context.setOffline(false);
+    }
+    // back online: the note goes, and ✕ closes at once
+    await expect(chip.locator("[data-save-text]")).toHaveText(/^✓ Salvestatud \d\d:\d\d$/, { timeout: 40_000 });
+    expect((await storedAdminRegistration(f.registration.id)).note).toBe("Helistab reedel");
+    await drawer.getByRole("button", { name: "Sulge", exact: true }).click();
+    await expect(drawer).toBeHidden();
+    await expect(page).toHaveURL(/\/admin\/registreerimised\?vorm=k$/);
   });
 
   test("payments: Maksed after Registreerimised — newest first, Maria's words, 'Kontrolli Montonios', the filter", async ({ page, context, visitorIp, isMobile }, info) => {
@@ -535,7 +688,7 @@ test.describe("signed in", () => {
     await expect(row(p.paid)).toBeVisible();
   });
 
-  test("payments: the registration's drawer lists its online payments under 'Laekunud'; Maria's amount form stays", async ({ page, context, visitorIp }, info) => {
+  test("payments: the registration's drawer lists its online payments in the Raha card; „Lisa laekumine“ adds money beside them", async ({ page, context, visitorIp }, info) => {
     const f = await fixtures(info.project.name);
     const p = await insertAdminPayments(f);
     await signIn(page, context, visitorIp);
@@ -543,7 +696,8 @@ test.describe("signed in", () => {
     const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
     await expect(drawer).toBeVisible();
     const online = drawer.locator("[data-registration-payments]");
-    await expect(online.getByRole("heading", { level: 3 })).toHaveText("Veebimaksed");
+    await expect(drawer.locator("[data-money-card] [data-registration-payments]")).toHaveCount(1); // (in the Raha card, Task 5)
+    await expect(online.getByRole("heading", { level: 4 })).toHaveText("Veebimaksed");
     // its own four, newest first; the e-course purchase of another address is not among them
     const shown = await online.locator("[data-payment]").evaluateAll((lines) => lines.map((l) => l.getAttribute("data-payment")));
     expect(shown).toEqual([p.pending, p.voided, p.held, p.paid]);
@@ -560,11 +714,17 @@ test.describe("signed in", () => {
     for (const ref of [p.held, p.voided]) await expect(line(ref).locator("[data-payment-check]")).toHaveText("Kontrolli Montonios");
     for (const ref of [p.paid, p.pending]) await expect(line(ref).locator("[data-payment-check]")).toHaveCount(0);
     await expect(online).not.toContainText(/paymentInitiation|cardPayments/);
-    // Maria's own "amount received" form is still there and still works
-    await drawer.getByLabel("Laekunud summa (€)").fill("175");
-    await drawer.getByRole("button", { name: "Salvesta summa" }).click();
-    await expect(drawer.getByText("Summa salvestatud.")).toBeVisible();
+    // money from outside the site is added with „Lisa laekumine“ beside them (B4: the typed „Laekunud summa“ is gone)
+    await adminReady(page);
+    const card = drawer.locator("[data-money-card]");
+    await card.locator("[data-add-payment]").click();
+    const panel = card.locator("[data-add-payment-panel]");
+    await expect(panel.getByRole("radio", { name: "175 € · ettemaks" })).toBeChecked();
+    await noReceipt(panel);
+    await panel.locator("[data-add-payment-submit]").click();
+    await expect(card.locator("[data-add-payment-result]")).toHaveText("175 € lisatud · koht kinnitatud.");
     await expect(drawer.locator("[data-paid]")).toHaveText("175 €");
+    await expect(online.locator("[data-payment]")).toHaveCount(4);
     expect(await smallTargets(online)).toEqual([]); // (Maria's own status radios are the registration forms' business, unchanged)
     expect(await noOverflow(page)).toBe(true);
   });

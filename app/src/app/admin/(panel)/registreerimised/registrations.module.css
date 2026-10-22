@@ -120,28 +120,65 @@
 }
 
 /* ---------- drawer ---------- */
+/* README A2 drawer, the Part 2 prototype's frames: the header (the status pill and the note's SaveStatus on the ✕'s line — the Drawer's ✕ sits at its
+   top right corner, so the line keeps 56 px free for it —, the name in Jost 30, the course line, the phone and the e-mail as 44 px targets), then Raha
+   (MoneyCard), „Staatus ja märkus“ and the rest. */
 
 .detail {
   display: grid;
   gap: 22px;
+  min-width: 0;
 }
 
 .detailHead {
   display: grid;
   justify-items: start;
   gap: 8px;
+  min-width: 0;
+}
+
+/* the ✕'s line: the Drawer's body has 32 px above it and the ✕ (44 px) sits 20 px from the top, so this 44 px line is pulled up 12 px to share it */
+.headTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 10px;
+  justify-self: stretch;
+  min-height: 44px;
+  margin-top: -12px;
   padding-right: 56px;
+}
+
+.name {
+  margin: 0;
+  font: 300 30px/1.1 var(--font-display);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.headLine {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.contacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+  min-width: 0;
+}
+
+.headContact {
+  font: 600 13px/1.3 var(--font-body);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .detailsTitle {
   margin-top: 8px;
-}
-
-/* the online payments under "Laekunud" (phase 2b) */
-.online {
-  display: grid;
-  gap: 8px;
-  margin-top: 16px;
 }
 
 /* the feedback form's answers (phase protocols) */
@@ -152,15 +189,13 @@
   border-top: 1px solid var(--line);
 }
 
-.dl,
-.moneyList {
+.dl {
   display: grid;
   gap: 0;
   margin: 0;
 }
 
-.dl > div,
-.moneyList > div {
+.dl > div {
   display: grid;
   grid-template-columns: minmax(120px, 40%) minmax(0, 1fr);
   gap: 12px;
@@ -168,14 +203,12 @@
   border-bottom: 1px solid var(--line);
 }
 
-.dl dt,
-.moneyList dt {
+.dl dt {
   color: var(--muted-2);
   font-size: 13px;
 }
 
-.dl dd,
-.moneyList dd {
+.dl dd {
   margin: 0;
   overflow-wrap: anywhere;
   white-space: pre-line;
@@ -185,17 +218,13 @@
   color: inherit;
 }
 
-.money {
-  padding: 18px 20px;
-  border-radius: 16px;
-  background: var(--canvas);
-}
+/* a phone (the Drawer's body: 24 px above, the ✕ 14 px from the top): the name in Jost 26, as the phone frame draws it */
+@media (max-width: 640px) {
+  .headTop {
+    margin-top: -10px;
+  }
 
-.moneyList > div:last-child {
-  border-bottom: 0;
-}
-
-.moneyList dd {
-  font: 400 17px/1.4 var(--font-display);
-  text-align: right;
+  .name {
+    font-size: 26px;
+  }
 }
