@@ -327,11 +327,12 @@ async function contactCourse(db: Db, slug: string): Promise<Course | null> {
 
 /**
  * Ends the seat hold a registration was stored with (phase 2b) when the payment start left no attempt to keep it: the start said "full",
- * "nothing", "rate" or "notFound", or it threw. One conditional UPDATE of the registration (db/queries/payments.ts releaseHold: only while
- * it is unpaid and no payment of it is still pending), run behind the registration's lock in a transaction of its own (releaseHoldLocked): a
- * start of the same registration from the /maksa page or the dashboard may run at once, and must not have its new hold cleared. It holds no
- * other lock, so it is within the lock order. A failed order needs none: failPayment ends the hold with the row. Never throws: the
- * registration is stored, and the hold ends by itself after its 30 minutes. (The /maksa page and POST /api/konto/maksa store no hold before
+ * "nothing", "rate", "notFound" or "financing", or it threw. One conditional UPDATE of the registration (db/queries/payments.ts releaseHold:
+ * only while it is unpaid, and down to what a payment of it still pending holds, else ended), run behind the registration's lock in a
+ * transaction of its own (releaseHoldLocked): a start of the same registration from the /maksa page or the dashboard may run at once, and must
+ * not have its new hold cleared. It holds no other lock, so it is within the lock order. A failed order needs none: failPayment ends the hold
+ * with the row. Never throws: the registration is stored, and the hold ends by itself after its window (30 minutes; 60 for a järelmaks,
+ * domain/financing.ts attemptWindowMs). (The /maksa page and POST /api/konto/maksa store no hold before
  * their start: what a start refreshes it refreshes together with a pending payment, so they have nothing to release.)
  */
 async function releaseStoredHold(deps: Deps, registrationId: number): Promise<void> {

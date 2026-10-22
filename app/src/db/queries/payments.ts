@@ -1,9 +1,10 @@
-import { and, asc, count, desc, eq, gt, isNotNull, isNull, lte, not, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, isNotNull, isNull, lte, not, or, sql, type SQL } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { ContractSnapshot } from "@/domain/contract";
-import { isHirePurchase } from "@/domain/financing";
+import { FINANCING_ATTEMPT_MS, isHirePurchase } from "@/domain/financing";
 import { PAGE_SIZE } from "@/domain/paging";
 import { orderReference } from "@/domain/payments";
+import { SEAT_HOLD_MS } from "@/domain/sessions";
 import type { I18n } from "@/i18n/field";
 import type { Db, Q } from "../client";
 import { dbErrorCode } from "../safe-error";
@@ -38,11 +39,14 @@ export type NewPayment = {
   method?: string;
 };
 
+/** A method (a column, or an aliased one) that is the järelmaks, by domain/financing.ts isHirePurchase's rule (case and spaces aside). */
+const isHirePurchaseSql = (method: SQL) => sql`lower(btrim(${method})) = 'hirepurchase'`;
+
 /**
  * A payment row whose method is the järelmaks (instalments, D5), by domain/financing.ts isHirePurchase's rule (case and spaces aside): every
  * other row, one with no method recorded too, is a bank attempt.
  */
-export const hirePurchaseRow = sql`lower(btrim(${payments.method})) = 'hirepurchase'`;
+export const hirePurchaseRow = isHirePurchaseSql(sql`${payments.method}`);
 
 /**
  * A new pending payment row with its reference <prefix><id> (spec 5.1: written right after the insert, in the same transaction; a
@@ -79,29 +83,42 @@ export async function attachOrder(db: Db, id: number, providerUuid: string, now:
 }
 
 /**
- * Ends the seat hold of an unpaid registration when no other payment of it is still pending (phase 2b): its prepayment failed, so the seat
- * is free again at once instead of after its 30 minutes. True when a live hold was ended.
+ * The end of a pending attempt's window, for the payment row aliased `p`: its last sending (`updated_at`: the insert or the last re-send,
+ * nothing else touches a pending row) and its method's window (domain/financing.ts attemptWindowMs: 60 minutes for a järelmaks, the bank's 30).
+ */
+const attemptEnds = sql`p.updated_at + (case when ${isHirePurchaseSql(sql.raw("p.method"))} then ${FINANCING_ATTEMPT_MS}::integer else ${SEAT_HOLD_MS}::integer end) * interval '1 millisecond'`;
+
+/**
+ * The seat hold of an unpaid registration after one of its payments failed (phase 2b; instalments, Task 4): it is what the registration's
+ * other open attempts still hold — the latest end of their windows (attemptEnds) among its other pending payments, a start whose order is
+ * being made included — or none at all when no attempt is open any more, so the seat is free again at once instead of after the failed
+ * attempt's window. So a järelmaks whose first sending failed (an order that never was) leaves no 60 minutes behind it: an open bank attempt
+ * keeps its own 30. The hold only ever ends or gets shorter here, and only a live one is touched (a confirmed registration's, or one kept for
+ * want of a seat, has none). One conditional UPDATE. True when a live hold was ended.
  */
 export async function releaseHold(q: Q, registrationId: number, exceptPaymentId: number, now: Date): Promise<boolean> {
+  const at = sql`${now.toISOString()}::timestamptz`;
+  // the latest window still open, or null (no other attempt is pending, or every one's window is over)
+  const open = sql`(select max(${attemptEnds}) from payments p where p.registration_id = ${registrationId} and p.status = 'pending' and p.id <> ${exceptPaymentId} having max(${attemptEnds}) > ${at})`;
   // (The cast: on the Db union, returning(fields) has no common overload.)
   const rows = await (q as unknown as PostgresJsDatabase<typeof schema>)
     .update(registrations)
-    .set({ seatHoldUntil: null })
+    .set({ seatHoldUntil: sql`${open}` })
     .where(
       and(
         eq(registrations.id, registrationId),
         eq(registrations.status, "awaiting_prepayment"),
-        sql`${registrations.seatHoldUntil} > ${now.toISOString()}::timestamptz`,
-        sql`not exists (select 1 from payments p where p.registration_id = ${registrationId} and p.status = 'pending' and p.id <> ${exceptPaymentId})`,
+        sql`${registrations.seatHoldUntil} > ${at}`,
+        sql`(${open} is null or ${open} < ${registrations.seatHoldUntil})`,
       ),
     )
-    .returning({ id: registrations.id });
-  return rows.length > 0;
+    .returning({ seatHoldUntil: registrations.seatHoldUntil });
+  return rows.some((r) => r.seatHoldUntil === null);
 }
 
 /**
  * releaseHold for a caller that holds no lock (server/submit.ts, after a start that left no attempt): a small transaction of its own that takes
- * the registration's lock first, then runs the conditional UPDATE. Without the lock the UPDATE's "no other payment is pending" test reads the
+ * the registration's lock first, then runs the conditional UPDATE. Without the lock the UPDATE's look at the other pending payments reads the
  * database as it was when the statement began, while the row it changes is read as it is after a concurrent start has committed (a /maksa
  * page and the dashboard, or two tabs, can start one registration at once): the start's new hold would be cleared though its payment is
  * pending. Behind the lock the statement begins after that start has committed, and sees its payment. The registration's lock alone is a
@@ -116,10 +133,11 @@ export async function releaseHoldLocked(db: Db, registrationId: number, now: Dat
 
 /**
  * A pending payment that will not be paid (its order was refused, or Montonio said ABANDONED/FAILED): `failed`, and the hold its start took
- * ends (releaseHold: an unconfirmed registration's, whatever the payment paid — a prepayment, or an invoice's rest: server/payments/start.ts),
- * in one transaction. Null when it was not pending (paid is a floor: settle.ts). The lock order of every payment path
- * (db/queries/seats.ts): the registration is locked before the payment row is written, as a re-send of the same payment locks it. Freeing a
- * seat cannot overbook, so the session is not locked (a subset of the locks, in the same order, is safe).
+ * ends, or is cut back to what the registration's other open attempts hold (releaseHold: an unconfirmed registration's, whatever the payment
+ * paid — a prepayment, or an invoice's rest: server/payments/start.ts), in one transaction. Null when it was not pending (paid is a floor:
+ * settle.ts). The lock order of every payment path (db/queries/seats.ts): the registration is locked before the payment row is written, as a
+ * re-send of the same payment locks it. Freeing a seat cannot overbook, so the session is not locked (a subset of the locks, in the same
+ * order, is safe).
  */
 export async function failPayment(db: Db, id: number, now: Date): Promise<{ payment: Payment; released: boolean } | null> {
   return db.transaction(async (tx) => {
@@ -223,7 +241,7 @@ export async function pendingToCheck(db: Db, now: Date, limit: number): Promise<
  * failPayment takes the registration's lock before it writes the payment row, as every payment path does (the order course_sessions →
  * registrations → payments, db/queries/seats.ts).
  * One bulk UPDATE would write the payment rows with no registration lock at all. That also frees a hold that such a row was keeping for a
- * later, failed attempt of the same registration (releaseHold counts every pending row). No lock is held after the call.
+ * later, failed attempt of the same registration (releaseHold reads the window of every other pending row). No lock is held after the call.
  * A row whose failing throws is its own failure: `onError(id, error)` is told, it is counted in `errors`, and the next row goes on (a stale
  * row stays in this set until it can be failed, so one that always throws must not stop the rows behind it). MAX_CONSECUTIVE_ERRORS
  * connection errors in a row (isConnectionError) stop that loop: a dead database would only throw on the rest.

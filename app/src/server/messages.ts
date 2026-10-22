@@ -269,6 +269,11 @@ export type PaymentAlert = {
   providerUuid: string | null;
   /** double: the uuid of the second order that was paid (the payment's own is `providerUuid`). */
   otherUuid?: string | null;
+  /**
+   * double: a late järelmaks (instalments §4) — this payment is a loan Inbank approved while its registration, or her e-course, was paid in full
+   * already. It is the second payment itself (its own order, `providerUuid`, no other one), and it was held, not counted.
+   */
+  late?: boolean;
   /** Montonio's status (upper case); only told apart as PARTIALLY_REFUNDED and the rest, and never shown. */
   rawStatus: string;
   paidCents: number | null;
@@ -367,13 +372,20 @@ function montonioSaid(cents: number | null, currency: string | null): string {
 
 /**
  * "Kontrolli Montonios: {nimi}, {mis}, {summa}": nothing was changed by itself; Maria decides. A second paid order of one payment is
- * "Topeltmakse: …" (the money of the second is not counted anywhere: she refunds one of the two in Montonio).
+ * "Topeltmakse: …" (the money of the second is not counted anywhere: she refunds one of the two in Montonio). So is a late järelmaks (`late`,
+ * instalments §4, Draft): the loan is held, and she refunds it in Montonio, which cancels the loan.
  */
 export function paymentAlertSummary(a: PaymentAlert, adminUrl: string): Summary {
   const subject = `${a.alert === "double" ? "Topeltmakse" : "Kontrolli Montonios"}: ${a.name}, ${paidFor(a.kind, a.course, a.startsAt)}, ${formatEUR(a.amountCents, "et")}`;
   const refund = a.rawStatus.toUpperCase() === "PARTIALLY_REFUNDED" ? "osaliselt tagastatud" : "tagastatud";
   const said = montonioSaid(a.paidCents, a.currency);
-  const double = "Sama makse eest laekus teine tasumine (teine Montonio tellimus). Tagasta üks neist Montonio halduses.";
+  // a late järelmaks is the second payment itself (Draft, instalments §4): held, and refunded in Montonio, which cancels the loan
+  const refundLoan = `makse on lehel Maksed "Ootel kontrollil". Tagasta see Montonio halduses: täielik tagastus tühistab järelmaksu.`;
+  const double = a.late
+    ? a.kind === "ecourse"
+      ? `Järelmaks (Inbank) kinnitati, kui e-koolitus oli juba tasutud. Seda ei loetud ja ligipääsu ei pikendatud: ${refundLoan}`
+      : `Järelmaks (Inbank) kinnitati, kui koolitus oli juba täies ulatuses tasutud. Seda ei loetud: ${refundLoan}`
+    : "Sama makse eest laekus teine tasumine (teine Montonio tellimus). Tagasta üks neist Montonio halduses.";
   // a registration has a place and a confirmation to decide about; an e-course only its access
   const notes =
     a.kind === "ecourse"
@@ -402,7 +414,8 @@ export function paymentAlertSummary(a: PaymentAlert, adminUrl: string): Summary 
         ["E-post", a.email],
         ["Viide", a.reference],
         ["Montonio", a.providerUuid ?? undefined],
-        ["Montonio", a.alert === "double" ? (a.otherUuid ?? undefined) : undefined],
+        // the second order, when it is another order of this payment (a late järelmaks is its own order, named above)
+        ["Montonio", a.alert === "double" && !a.late ? (a.otherUuid ?? undefined) : undefined],
       ],
       adminUrl,
       notes[a.alert],

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { payments, registrations } from "@/db/schema";
+import { checkPendingPayments } from "@/server/payments/check";
 import { settlePayment, settleToken } from "@/server/payments/settle";
 import { contactCourse, orderToken, pendingPayment, registrationOn, settleDeps, stubMontonio } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
@@ -315,6 +316,77 @@ describe("a token in doubt is asked about (spec 7.4)", () => {
     expect(await settleToken(deps, old)).toMatchObject({ kind: "done", payment: { status: "pending" } });
     m.state.snapshots.set(p.providerUuid!, snapshot(p.providerUuid!, p.reference, "PAID", "1.00"));
     expect(await settleToken(deps, old)).toMatchObject({ payment: { status: "held" } }); // Montonio's own amount is checked too
+  });
+});
+
+describe("Järelmaks (Inbank): a loan settles as any paid order, by its own 60-minute hold (instalments D5, §4)", () => {
+  /** What Montonio's token says of a signed loan: its method, and Inbank as the provider (tests/e2e/fake-montonio.ts as Montonio). */
+  const LOAN = { paymentMethod: "hirePurchase", paymentProviderName: "Inbank" };
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+
+  test("a hirePurchase PAID after its 60-min hold ended on a full session: recorded, „Täis“ notice (today's rule)", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db, { capacity: 1 });
+    await registrationOn(db, c, { email: "teine@example.test", status: "confirmed", paidCents: 35000 });
+    // her loan started 61 minutes ago and held her seat for its 60: the hold has ended, and the last seat went to someone else
+    const r = await registrationOn(db, c, { email: "kati@example.test", paymentChoice: "financing", seatHoldUntil: ago(MIN) });
+    const loan = await pendingPayment(db, r, { amountCents: 35000, method: "hirePurchase" }, ago(61 * MIN));
+    const { deps, changes, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ kind: "done", payment: { status: "paid", paidAt: NOW, method: "hirePurchase", bank: "Inbank" } });
+    await flush();
+    const after = await registration(r.id);
+    expect([after.status, after.paidCents, after.seatHoldUntil]).toEqual(["awaiting_prepayment", 35000, null]);
+    expect(subjects(m)).toEqual([["maria@example.test", "Makse laekus, aga koolitus on täis: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 350 €"]]);
+    expect(m.mails()[0].text).toContain("Koolitus on täis: koht jäi kinnitamata, makse on registreeringule kirja pandud.");
+    // Maria's word for it: the method alone, never „Järelmaks (Inbank) · Inbank“
+    expect(m.mails()[0].text).toContain("Makseviis: Järelmaks (Inbank)\n");
+    expect(m.mails()[0].text).not.toContain("· Inbank");
+    expect(changes).toEqual([{ kind: "seats", course: "kulmumeistri-baaskoolitus" }]);
+  });
+
+  test("a loan signed inside its 60 minutes, past the bank's 30, on an otherwise full session: the hold is hers, the place confirmed", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db, { capacity: 1 });
+    // started 50 minutes ago: a bank attempt's hold would have ended at 30, the loan's runs to 60
+    const r = await registrationOn(db, c, { email: "kati@example.test", paymentChoice: "financing", seatHoldUntil: new Date(ago(50 * MIN).getTime() + 60 * MIN) });
+    const loan = await pendingPayment(db, r, { amountCents: 35000, method: "hirePurchase" }, ago(50 * MIN));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)));
+    await flush();
+    const after = await registration(r.id);
+    expect([after.status, after.paidCents, after.seatHoldUntil]).toEqual(["confirmed", 35000, null]);
+    expect(subjects(m)).toEqual([["maria@example.test", "Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 350 €"]]);
+    expect(m.mails()[0].text).toContain("Registreering on kinnitatud ja täielikult tasutud.");
+  });
+
+  test("a declined application (still PENDING) changes nothing; the daily check leaves it pending until Montonio abandons it", async () => {
+    const m = stubMontonio();
+    const hold = new Date(NOW.getTime() + 60 * MIN);
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing", seatHoldUntil: hold });
+    const loan = await pendingPayment(db, r, { amountCents: 35000, method: "hirePurchase" }, NOW);
+    // Inbank said no: Montonio sends her back with the order still PENDING (no FAILED to react to, Montonio 22.10)
+    const { deps, changes, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, { ...LOAN, paymentStatus: "PENDING" })))).toMatchObject({ kind: "done", payment: { status: "pending", paidAt: null } });
+    await flush();
+    expect([(await registration(r.id)).status, (await registration(r.id)).seatHoldUntil]).toEqual(["awaiting_prepayment", hold]);
+    // the daily check asks about it (past its 75 minutes) for days: Montonio keeps a declined järelmaks PENDING for 7 of them
+    const pending = { uuid: loan.providerUuid, paymentStatus: "PENDING", merchantReference: loan.reference, grandTotal: "350.00", currency: "EUR", paymentMethodType: "hirePurchase" };
+    m.state.snapshots.set(loan.providerUuid!, pending);
+    for (const days of [1, 6]) {
+      const check = settleDeps(db, m.montonio, new Date(NOW.getTime() + days * 86_400_000));
+      expect(await checkPendingPayments(check.deps, Number.MAX_SAFE_INTEGER), `day ${days}`).toMatchObject({ checked: 1, settled: 0, expired: 0 });
+      await check.flush();
+      expect((await payment(loan.id)).status, `day ${days}`).toBe("pending");
+    }
+    // after 7 days Montonio says ABANDONED: the attempt fails, as any abandoned order
+    m.state.snapshots.set(loan.providerUuid!, { ...pending, paymentStatus: "ABANDONED" });
+    const check = settleDeps(db, m.montonio, new Date(NOW.getTime() + 7 * 86_400_000 + MIN));
+    expect(await checkPendingPayments(check.deps, Number.MAX_SAFE_INTEGER)).toMatchObject({ checked: 1, settled: 1 });
+    await check.flush();
+    expect(await payment(loan.id)).toMatchObject({ status: "failed", paidAt: null });
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["awaiting_prepayment", 0]);
+    expect(m.mails()).toEqual([]);
+    expect(changes).toEqual([]);
   });
 });
 

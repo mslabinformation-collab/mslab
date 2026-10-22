@@ -46,9 +46,12 @@ export async function hasFreeSeat(q: Q, session: { id: number; capacity: number 
 // registration, an online payment), the admin's calendar shows her the count, and both take a subset of the order above (the registration
 // alone), so they can wait for a payment path or make it wait, but never deadlock with it.
 //
-// An e-course purchase (phase 2b) has no session and no registration, and its paid transaction takes another order: its payment row, then the
-// address lock (client-auth.ts lockAddress, through addClient), then the rows linked to the address (registrations, requests, subscribers,
-// the client, course_access). That cannot close a cycle with the order above, because the two sets of paths share no lock they wait for:
+// An e-course purchase (phase 2b) has no session and no registration, and its paid transaction takes another order: its purchase's advisory
+// lock (server/payments/start.ts lockEcoursePurchase, the start's own: instalments Task 4, so that a late järelmaks's look for a paid purchase
+// cannot miss one being settled), its payment row, then the address lock (client-auth.ts lockAddress, through addClient), then the rows linked
+// to the address (registrations, requests, subscribers, the client, course_access). The purchase's lock is the first of both paths that take it
+// (the start, which then holds that row only, and the settlement), and no other path takes it. That cannot close a cycle with the order above,
+// because the two sets of paths share no lock they wait for:
 // - the payment rows are disjoint. The registration paths above lock a payment row of kind prepayment or balance (registration_id set);
 //   an e-course payment row (kind ecourse, registration_id null) is written only by the e-course's own start (its advisory lock, server/
 //   payments/start.ts lockEcoursePurchase, and that row) and its settlement;

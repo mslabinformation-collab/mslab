@@ -279,7 +279,8 @@ export const ECOURSE_BUY_LOCK_CLASS = 2_011_001;
 
 /**
  * Serialises the presses of one purchase (one course and address) until the caller's transaction ends: the look for the open attempt and the
- * insert of a new one are then one step for every press at the same moment. Re-entrant within a transaction.
+ * insert of a new one are then one step for every press at the same moment. Re-entrant within a transaction. The settlement of a PAID
+ * purchase takes it too, first (settle.ts paid: a late järelmaks looks for a paid purchase of the same course and address under it).
  */
 export async function lockEcoursePurchase(tx: Tx, courseId: number, email: string): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(${ECOURSE_BUY_LOCK_CLASS}::int, hashtext(${`${courseId}:${email}`}))`);

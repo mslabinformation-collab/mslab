@@ -8,6 +8,7 @@ import { courses, courseSessions, invoices, payments, registrations, type Course
 import { hasPrepayment, parsePrepayment, paymentReference, PREPAYMENT_KEY } from "@/domain/account-cards";
 import { tallinnFormParts, tallinnInstant } from "@/domain/calendar";
 import { tallinnDateText, tallinnYear } from "@/domain/certificate";
+import { isHirePurchase } from "@/domain/financing";
 import {
   coveringInvoices, formatInvoiceNumber, INVOICE_KEY, INVOICE_LIMITS, invoiceCsv, invoiceKindOfPayment, invoiceSeq, openAmounts, partOf, readInvoiceSettings,
   sellerReady, type InvoiceBuyer, type InvoiceKind, type InvoiceSettings, type InvoiceStatus, type ManualPaidMethod, type PaidMethod,
@@ -392,6 +393,12 @@ export async function updateInvoiceBuyer(db: Db, id: number, raw: unknown): Prom
 // ---------- a paid payment's invoice ----------
 
 /**
+ * How an online payment paid its invoice (D6): Järelmaks (Inbank), „financing“, for a payment made with Montonio's `hirePurchase` (the method
+ * the start recorded, or the one Montonio reported when it was paid: settle.ts detailsOf); „montonio“ for every other.
+ */
+const paidMethodOfPayment = (p: Payment): PaidMethod => (isHirePurchase(p.method) ? "financing" : "montonio");
+
+/**
  * The invoice `paymentId` is invoiced by (ruling R13: "invoiced" is exactly this, invoices.payment_id): the one born paid of it, or the unpaid
  * one it was started for and paid (markLinkedInvoicePaid writes its payment id); null for none.
  */
@@ -412,11 +419,12 @@ async function linkedKind(tx: Tx, p: Payment): Promise<InvoiceKind | null> {
 }
 
 /**
- * The born-paid invoice of a paid payment (D5, §6.3), issued at `now`: Montonio, paid on the payment's time (now when it has none), the
- * payment's id; the kind of the invoice it was started for (`kindOfLinked`: linkedKind) or, without one, invoiceKindOfPayment's (a
- * whole-sum registration's prepayment is the whole sum), in the words of the part its amount is of the registration's price (partOf: an amount
- * that is no half, whole or rest, after a sum typed by hand, is an „Osamakse“, m10); the course's Estonian title, the registration's session
- * (none for an e-course), the payer's name and e-mail as the buyer; the payment's client, else the registration's.
+ * The born-paid invoice of a paid payment (D5, §6.3), issued at `now`: Montonio (Järelmaks (Inbank) for a loan: paidMethodOfPayment), paid on
+ * the payment's time (now when it has none), the payment's id; the kind of the invoice it was started for (`kindOfLinked`: linkedKind) or,
+ * without one, invoiceKindOfPayment's (a whole-sum registration's prepayment is the whole sum), in the words of the part its amount is of the
+ * registration's price (partOf: an amount that is no half, whole or rest, after a sum typed by hand, is an „Osamakse“, m10); the course's
+ * Estonian title, the registration's session (none for an e-course), the payer's name and e-mail as the buyer; the payment's client, else the
+ * registration's.
  */
 async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: InvoiceKind | null): Promise<Invoice | "sellerMissing"> {
   const [reg] =
@@ -449,17 +457,17 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: Invo
     reference: "",
     dueAt: null,
     paidAt: p.paidAt ?? now,
-    paidMethod: "montonio",
+    paidMethod: paidMethodOfPayment(p),
   }));
 }
 
 /**
  * settle.ts's paid() (Task 4), inside its transaction after its own locks: the unpaid invoice `payment.invoice_id` names (D5, the payment was
- * started to pay it) becomes paid — Montonio, on the payment's time, `paidAdds` false (the payment itself adds its amount through
- * addRegistrationPayment) — and is the payment's (its `payment_id`, ruling R13: the payment is invoiced by it, as by a born-paid one). Under
- * the invoice's lock (the order's step 2). null when the payment names none, or its invoice is no longer unpaid (Maria cancelled or marked it
- * meanwhile), is another registration's or is of another sum: then it pays no invoice of hers. invoiceForPaidPayment and catchUpInvoice call
- * it; settle calls invoiceForPaidPayment alone, never this one as well.
+ * started to pay it) becomes paid — Montonio (Järelmaks (Inbank) for a loan: paidMethodOfPayment), on the payment's time, `paidAdds` false
+ * (the payment itself adds its amount through addRegistrationPayment) — and is the payment's (its `payment_id`, ruling R13: the payment is
+ * invoiced by it, as by a born-paid one). Under the invoice's lock (the order's step 2). null when the payment names none, or its invoice is
+ * no longer unpaid (Maria cancelled or marked it meanwhile), is another registration's or is of another sum: then it pays no invoice of hers.
+ * invoiceForPaidPayment and catchUpInvoice call it; settle calls invoiceForPaidPayment alone, never this one as well.
  */
 export async function markLinkedInvoicePaid(tx: Tx, payment: Payment, now: Date): Promise<Invoice | null> {
   if (payment.invoiceId === null) return null;
@@ -467,7 +475,7 @@ export async function markLinkedInvoicePaid(tx: Tx, payment: Payment, now: Date)
   if (!inv || inv.status !== "unpaid" || inv.registrationId !== payment.registrationId || inv.amountCents !== payment.amountCents) return null;
   const [row] = await tx
     .update(invoices)
-    .set({ status: "paid", paidAt: payment.paidAt ?? now, paidMethod: "montonio", paidAdds: false, paymentId: payment.id })
+    .set({ status: "paid", paidAt: payment.paidAt ?? now, paidMethod: paidMethodOfPayment(payment), paidAdds: false, paymentId: payment.id })
     .where(eq(invoices.id, inv.id))
     .returning();
   console.info(`[invoices] invoice ${row.id}: paid online by payment ${payment.id}`);
@@ -513,7 +521,8 @@ export async function invoiceForPaidPayment(tx: Tx, payment: Payment, now: Date)
  * „Koosta arve" of a row of „Arveta maksed" (§6.3, ruling R13): the invoice of a paid payment that has none — paid while the seller was not
  * filled in, or while its invoice step failed (settle's savepoint). A payment started for an invoice that is still unpaid pays THAT invoice
  * (Montonio, on the payment's time, `paidAdds` false: the payment added its amount when it was paid; markLinkedInvoicePaid); otherwise one is
- * issued now, born paid on the payment's time, Montonio (of the linked invoice's kind when it had one: R7), not mailed. Under lockForPayment
+ * issued now, born paid on the payment's time, Montonio (of the linked invoice's kind when it had one: R7), not mailed — Järelmaks (Inbank)
+ * instead of Montonio for a loan's (paidMethodOfPayment). Under lockForPayment
  * (a registration's payment), then the payment row FOR UPDATE, then the invoice row or the number series: settle's order. Two at once give
  * one invoice: the second finds it (`already`). `notPaid` for one that is not paid (pending, failed, held, refunded without an invoice);
  * `sellerMissing` when one must be issued and the card is still empty. Logs `[invoices] payment N: issued <number>` or `… paid <number>`

@@ -5,6 +5,7 @@
 import type { Invoice, PaymentStatus } from "@/db/schema";
 import { isSlug } from "@/lib/slug";
 import { startOfDayTallinn, upcomingFrom } from "./calendar";
+import { isHirePurchase } from "./financing";
 import type { InvoiceKind } from "./invoice";
 import { prepaymentDue, type PaymentChoice, type RegStatus } from "./registration";
 
@@ -58,11 +59,12 @@ const METHOD_LABELS: ReadonlyMap<string, string> = new Map([
 /**
  * How a payment was made, for Maria: her notice (server/messages.ts) and the admin's "Maksed" list use this one word. `method` is
  * Montonio's code ("paymentInitiation", "cardPayments", "applePay", "googlePay", "blik", "hirePurchase"), `bank` the bank's name when there is one:
- * "Pangalink · Swedbank". An empty or unknown code is "Muu"; the code itself is never shown.
+ * "Pangalink · Swedbank". An empty or unknown code is "Muu"; the code itself is never shown. A järelmaks takes no provider after it: Montonio
+ * names Inbank as its provider, which „Järelmaks (Inbank)“ says already.
  */
 export function paymentMethodLabel(method: string, bank: string | null): string {
   const label = METHOD_LABELS.get(method.trim().toLowerCase()) ?? "Muu";
-  return [label, (bank ?? "").trim()].filter(Boolean).join(" · ");
+  return isHirePurchase(method) ? label : [label, (bank ?? "").trim()].filter(Boolean).join(" · ");
 }
 
 /** What amountDue reads of a registration: its status and payment choice, its price and what is paid, and its session. */

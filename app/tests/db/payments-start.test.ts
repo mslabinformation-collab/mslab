@@ -509,7 +509,8 @@ describe("one lock order: course_sessions → registrations → payments", () =>
     const { d } = deps(m.montonio, { db: onStart(ldb, async () => void (await ldb.update(registrations).set({ paidCents: 17500 }))) });
     queries.length = 0;
     expect(await handleRegistration(d, form(c.session.id))).toEqual({ ok: true });
-    const release = queries.findIndex((q) => /^update "registrations" [\s\S]*not exists/.test(q));
+    // (releaseHold: the hold set to what the other pending payments still hold, or ended)
+    const release = queries.findIndex((q) => /^update "registrations" set "seat_hold_until" = \(select max\([\s\S]* from payments p where p\.registration_id = /.test(q));
     expect(release, lines(queries)).toBeGreaterThan(-1);
     const lock = queries.slice(0, release).map((q, i) => (REGISTRATION_LOCK.test(q) ? i : -1)).filter((i) => i >= 0).pop() ?? -1;
     expect(lock, lines(queries)).toBeGreaterThan(-1);
@@ -700,6 +701,47 @@ describe("a start with its method: the bank, or Järelmaks (Inbank) (instalments
     expect(await ordered()).toHaveLength(3);
     expect(await start(m.montonio, { registrationId: r.id }, "paymentInitiation", new Date(bankAt.getTime() + 60 * MIN))).toMatchObject({ kind: "started" });
     expect((await ordered()).map((p) => p.method)).toEqual(["hirePurchase", "hirePurchase", "paymentInitiation", "paymentInitiation"]);
+  });
+
+  test("a loan whose first send fails while a bank attempt is open: the hold falls back to the bank attempt's own window, never the loan's 60 minutes of an order that never was", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { email: "kati@example.test", paymentChoice: "financing" });
+    expect(await start(m.montonio, { registrationId: r.id })).toMatchObject({ kind: "started" });
+    expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 30 * MIN));
+    // the loan's press 5 minutes on would hold until 65; Montonio refuses its order: the bank's attempt (sent at 0) holds until 30
+    m.state.down = true;
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase", new Date(NOW.getTime() + 5 * MIN))).toEqual({ kind: "failed" });
+    expect((await ordered()).map((p) => [p.method, p.status])).toEqual([["paymentInitiation", "pending"], ["hirePurchase", "failed"]]);
+    expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 30 * MIN));
+  });
+
+  test("…and when the open bank attempt's window is over by then, the hold ends with the failed loan; with no other attempt pending it ends too", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { email: "kati@example.test", paymentChoice: "financing" });
+    expect(await start(m.montonio, { registrationId: r.id })).toMatchObject({ kind: "started" });
+    // 40 minutes on (the bank's window ended at 30, its row still pending until the daily check), the loan's order is refused
+    m.state.down = true;
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase", new Date(NOW.getTime() + 40 * MIN))).toEqual({ kind: "failed" });
+    expect((await reg()).seatHoldUntil).toBeNull();
+    // a loan alone, refused: no hold is left
+    const alone = await registrationOn(db, c, { email: "yksi@example.test", paymentChoice: "financing" });
+    expect(await start(m.montonio, { registrationId: alone.id }, "hirePurchase")).toEqual({ kind: "failed" });
+    expect((await db.select().from(registrations).where(eq(registrations.id, alone.id)))[0].seatHoldUntil).toBeNull();
+  });
+
+  test("an open loan's attempt keeps its 60 minutes when a later bank attempt fails: the hold is the longest open window", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { email: "kati@example.test", paymentChoice: "financing" });
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase")).toMatchObject({ kind: "started" });
+    m.state.down = true;
+    expect(await start(m.montonio, { registrationId: r.id }, undefined, new Date(NOW.getTime() + 5 * MIN))).toEqual({ kind: "failed" });
+    expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 60 * MIN));
   });
 
   test("a pending row from before the methods (method '') is a bank attempt: a bank press re-sends it, a järelmaks press does not", async () => {

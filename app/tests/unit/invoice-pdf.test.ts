@@ -195,6 +195,12 @@ describe("renderInvoice: a paid invoice, VAT off", () => {
     }
   });
 
+  test("Järelmaks (Inbank), whose words have brackets of their own, follows a middle dot: never brackets in brackets (instalments D6)", async () => {
+    const { runs } = await render({ ...PAID, paidMethod: "financing", paidAt: new Date("2026-12-31T22:30:00Z") });
+    expect(textOf(runs)).toContain("Tasutud 01.01.2027 · Järelmaks (Inbank)");
+    expect(textOf(runs)).not.toContain("(Järelmaks (Inbank))");
+  });
+
   test("the blocks stand in order from the top: the number, the buyer (Ostja), the line, the total, the payment, the footer", async () => {
     const { runs } = await render({ ...PAID, footer: "Küsimuste korral kirjuta Mariale." });
     const ys = ["ARVE MSL2026-001", "Ostja", "Kulmude kujundamise koolitus", "Kokku", "Tasutud 16.10.2026 (Montonio)", VAT_OFF_NOTE].map((t) => find(runs, t).y);

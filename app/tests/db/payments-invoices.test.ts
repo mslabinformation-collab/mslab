@@ -4,6 +4,7 @@ import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
 import { attachOrder, insertPayment } from "@/db/queries/payments";
 import { clients, clientSessions, courses, invoices, payments, registrations, type Invoice, type Payment, type Registration } from "@/db/schema";
+import type { PaidMethod } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { invoiceDue, invoicePaymentKind, payableDue, type DueInput } from "@/domain/payments";
 import { ecourseOpenMail, registrationPaidMail, type EcourseOpenInput, type RegistrationPaidInput } from "@/server/account-mail";
@@ -11,7 +12,7 @@ import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
 import { renderInvoice } from "@/server/invoice-pdf";
 import {
-  cancelInvoice, catchUpInvoice, createInvoice, invoicesOfClient, invoicesOfRegistration, listInvoices, markInvoicePaid, undoInvoicePaid, uninvoicedPayments, unpaidInvoiceOf,
+  cancelInvoice, catchUpInvoice, createInvoice, invoicePdf, invoicesOfClient, invoicesOfRegistration, listInvoices, markInvoicePaid, undoInvoicePaid, uninvoicedPayments, unpaidInvoiceOf,
 } from "@/server/invoices";
 import { loadPayView, payPage } from "@/server/pay-page";
 import { settleToken } from "@/server/payments/settle";
@@ -104,15 +105,15 @@ async function pdfText(attachment: { content: string }): Promise<string> {
 
 /**
  * Every euro of `r` invoiced once (spec §1's anti-goals, rulings R7 and R13): the paid invoices add up to Laekunud summa, each paid payment is
- * named by exactly one invoice (invoices.payment_id: its own born-paid one, or the unpaid one it was started for, paid by Montonio), and no
- * invoice is left unpaid.
+ * named by exactly one invoice (invoices.payment_id: its own born-paid one, or the unpaid one it was started for, paid by Montonio — `method`:
+ * „financing“ for a järelmaks, instalments D6), and no invoice is left unpaid.
  */
-async function expectEachEuroInvoicedOnce(r: Registration) {
+async function expectEachEuroInvoicedOnce(r: Registration, method: PaidMethod = "montonio") {
   const all = await allInvoices();
   expect(all.filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amountCents, 0)).toBe((await registration(r.id)).paidCents);
   for (const p of (await db.select().from(payments)).filter((x) => x.status === "paid")) {
     const its = all.filter((i) => i.paymentId === p.id);
-    expect(its.map((i) => [i.status, i.paidMethod]), `payment ${p.id}`).toEqual([["paid", "montonio"]]);
+    expect(its.map((i) => [i.status, i.paidMethod]), `payment ${p.id}`).toEqual([["paid", method]]);
   }
   expect(all.filter((i) => i.status === "unpaid")).toEqual([]);
   expect(await uninvoicedPayments(db)).toEqual([]);
@@ -258,6 +259,85 @@ describe("a paid payment's invoice (D5: born paid), and the paid mail that carri
     expect(await allInvoices()).toHaveLength(1);
     expect(sent(m).map((x) => x.to)).toEqual(["maria@example.test"]);
     expect(renderInvoice).not.toHaveBeenCalled();
+  });
+});
+
+describe("Järelmaks (Inbank): the paid invoice says so (instalments D6)", () => {
+  /** Montonio's PAID for a signed loan (the method hirePurchase, Inbank the provider) at `at`, and the work after the response done. */
+  async function payLoan(m: ReturnType<typeof stubMontonio>, p: Payment, at = LATER) {
+    const s = settleDeps(db, m.montonio, at);
+    const result = await settleToken(s.deps, m.montonio.verifyOrderToken(orderToken(p, { paymentMethod: "hirePurchase", paymentProviderName: "Inbank" })));
+    await s.flush();
+    return result;
+  }
+  const financingOn = () => setSetting(db, "financing", { enabled: true });
+  const startLoan = (m: ReturnType<typeof stubMontonio>, r: Registration) =>
+    startRegistrationPayment({ db, now: NOW, siteUrl: SITE, notifyBase: SITE, montonio: m.montonio }, { registrationId: r.id }, { method: "hirePurchase" });
+
+  test("a hirePurchase PAID on an unpaid financing registration confirms it like a bank payment (full price, invoice „Järelmaks (Inbank)“)", async () => {
+    const m = stubMontonio();
+    await ready();
+    await financingOn();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing" });
+    expect(await startLoan(m, r)).toMatchObject({ kind: "started" });
+    const p = await newest();
+    expect(p).toMatchObject({ kind: "prepayment", amountCents: 35000, method: "hirePurchase", invoiceId: null });
+    expect(await payLoan(m, p)).toMatchObject({ kind: "done", payment: { status: "paid", paidAt: LATER, method: "hirePurchase", bank: "Inbank" } });
+    const after = await registration(r.id);
+    expect([after.status, after.paidCents, after.seatHoldUntil]).toEqual(["confirmed", 35000, null]);
+    const [inv, ...none] = await allInvoices();
+    expect(none).toEqual([]);
+    expect(inv).toMatchObject({ number: "MSL2026-001", kind: "full", status: "paid", paidMethod: "financing", paidAt: LATER, paidAdds: false, paymentId: p.id, amountCents: 35000 });
+    // the receipt: „Tasutud <day> · Järelmaks (Inbank)“, never brackets in brackets
+    const drawn = (await readPdf(await invoicePdf(inv))).runs.map((x) => x.text).join("\n");
+    expect(drawn).toContain("Tasutud 16.10.2026 · Järelmaks (Inbank)");
+    expect(drawn).not.toContain("(Järelmaks (Inbank))");
+    // Maria's notice: confirmed, paid in full, the method in her words
+    const [marias] = sent(m);
+    expect(marias.subject).toBe("Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 350 €");
+    expect(marias.text).toContain("Registreering on kinnitatud ja täielikult tasutud.");
+    expect(marias.text).toContain("Makseviis: Järelmaks (Inbank)\n");
+    await expectEachEuroInvoicedOnce(r, "financing");
+  });
+
+  test("a loan started for her unpaid invoice of the whole price pays THAT invoice, by „Järelmaks (Inbank)“; no second invoice", async () => {
+    const m = stubMontonio();
+    await ready();
+    await financingOn();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing" });
+    const asked = await request(r, "full");
+    expect(await startLoan(m, r)).toMatchObject({ kind: "started" });
+    const p = await newest();
+    expect(p).toMatchObject({ amountCents: 35000, method: "hirePurchase", invoiceId: asked.id });
+    await payLoan(m, p);
+    expect(await allInvoices()).toEqual([expect.objectContaining({ id: asked.id, status: "paid", paidMethod: "financing", paidAt: LATER, paidAdds: false, paymentId: p.id })]);
+    await expectEachEuroInvoicedOnce(r, "financing");
+  });
+
+  test("an e-course bought with Järelmaks (Inbank): its born-paid invoice says „Järelmaks (Inbank)“; a bank purchase's still says Montonio", async () => {
+    const m = stubMontonio();
+    await ready();
+    const [course] = await db
+      .insert(courses)
+      .values({ slug: "kulmumeistri-e-koolitus", type: "e_learning", level: "basic", title: { et: "Kulmumeistri e-koolitus" }, summary: { et: "" }, body: { et: "" }, published: true, price: 19000, accessMonths: 6 })
+      .returning();
+    const buy = async (email: string, method: string) => {
+      const row = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email, name: "Mari Maasikas", locale: "et", amountCents: 19000, method }, NOW, TEST_MONTONIO.referencePrefix);
+      await attachOrder(db, row.id, `uuid-${row.id}`, NOW);
+      return { ...row, providerUuid: `uuid-${row.id}` };
+    };
+    const loan = await buy("mari@example.test", "hirePurchase");
+    const bank = await buy("teine@example.test", "paymentInitiation");
+    expect(await payLoan(m, loan)).toMatchObject({ payment: { status: "paid" } });
+    expect(await pay(m, bank)).toMatchObject({ payment: { status: "paid" } });
+    expect((await allInvoices()).map((i) => [i.paymentId, i.kind, i.paidMethod])).toEqual([
+      [loan.id, "ecourse", "financing"],
+      [bank.id, "ecourse", "montonio"],
+    ]);
+    const drawn = async (inv: Invoice) => (await readPdf(await invoicePdf(inv))).runs.map((x) => x.text).join("\n");
+    const [loanInvoice, bankInvoice] = await allInvoices();
+    expect(await drawn(loanInvoice)).toContain("Tasutud 16.10.2026 · Järelmaks (Inbank)");
+    expect(await drawn(bankInvoice)).toContain("Tasutud 16.10.2026 (Montonio)");
   });
 });
 

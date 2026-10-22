@@ -1,12 +1,13 @@
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { Db, Tx } from "@/db/client";
 import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admin";
 import { failPayment, isConnectionError, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
 import { dbErrorCode } from "@/db/safe-error";
-import { payments, type Contract, type Invoice, type Payment } from "@/db/schema";
+import { courses, payments, registrations, type Contract, type Invoice, type Payment } from "@/db/schema";
 import { contractStudent } from "@/domain/contract";
-import { isSampleAddress } from "@/domain/email";
+import { isSampleAddress, normalizeEmail } from "@/domain/email";
+import { isHirePurchase } from "@/domain/financing";
 import { invoiceFileName } from "@/domain/invoice";
 import { referenceId } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
@@ -23,6 +24,7 @@ import { forgetKey, releaseSlot, reserveSlot } from "../ratelimit";
 import { subscribeLater } from "../submit";
 import { grantPurchase, type Grant } from "./grant";
 import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken } from "./montonio";
+import { lockEcoursePurchase } from "./start";
 
 // The one door of every paid path (phase 2b, spec 6.2, 7.3, 7.4; Rempire's settle/apply/token-guard, ported). The webhook and the return
 // (routes.ts) bring an order token, the daily check (check.ts) and a refund notice (settleRefund) Montonio's own answer; all of them end in
@@ -45,6 +47,13 @@ import type { Montonio, MontonioStatus, OrderSnapshot, OrderToken, RefundToken }
 //   An e-course's winner also freezes the purchase's contract beside the grant (contracts, §4; contractStep, in a savepoint as the invoice
 //   step): the copy the cart showed, kept on the row since the start. A contract that cannot be made never undoes the payment or the grant: the
 //   terms gate asks her later. The paid mail carries its PDF after the invoice's, with „Leping on lisatud.“.
+//   A late järelmaks (instalments §4): a `hirePurchase` payment (the method its start recorded) turning PAID while what it pays for is paid in
+//   full already — its registration's Laekunud summa at its price, or the same e-course paid by the same address since the loan started (the
+//   bank payment she made while Inbank's answer was pending: a declined application stays PENDING for 7 days, and Inbank may approve it after
+//   all) — is held instead, in the same transaction and under the same locks: never added, never opening the course again, no invoice. Maria
+//   gets "Topeltmakse" (alert "double", once: only the winner of the held update) and refunds it in Montonio, which cancels the loan. A bank
+//   payment keeps today's rules. An e-course's paid transaction takes its purchase's advisory lock first (start.ts lockEcoursePurchase, the
+//   start's own), so a loan's look for a paid purchase and a purchase being settled at the same moment run one after the other.
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
 // - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
 //   nothing; a VOIDED (the bank took a paid payment back) is stored as failed with its paid_at and alerts Maria, who decides.
@@ -204,17 +213,71 @@ async function seatsChanged(deps: SettleDeps, course: string): Promise<void> {
   }
 }
 
+/** The conditional UPDATE's condition of a paid or held settlement: the row is still unsettled (pending or failed, never paid before). */
+const unsettled = (id: number) => and(eq(payments.id, id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt));
+
+/**
+ * Is what the loan `p` pays for paid in full already (instalments §4, "A late järelmaks after a paid bank payment")? Read in paid()'s
+ * transaction, under its locks (a registration's: lockForPayment; an e-course's: its purchase's lock, which a settlement of the same course and
+ * address holds too).
+ * - A registration's: its Laekunud summa (paid_cents) is at or over its price (domain/registration.ts registrationPrice; none: never).
+ * - An e-course's: another purchase of the same course by the same address (lower-cased, as start.ts paidRecently reads it) is `paid`, paid
+ *   at or after this loan started (its row's created_at): the bank payment she made while Inbank's answer was pending. The payments are the
+ *   source of truth here, not course_access: an access is renewed by a deliberate purchase (one paid before the loan started — after the cart's
+ *   30 minutes, start.ts ECOURSE_REPAY_WINDOW_MS — is such a renewal, and counts as today), may be an admin's grant that nobody paid, and is
+ *   missing when the bank purchase's grant failed ("E-koolitust ei avatud"), whose money is there all the same. A held, failed or refunded
+ *   purchase is no payment in full.
+ */
+async function paidInFull(tx: Tx, p: Payment): Promise<boolean> {
+  if (p.kind === "ecourse") {
+    if (p.courseId === null) return false;
+    const [other] = await tx
+      .select({ id: payments.id })
+      .from(payments)
+      .where(
+        and(
+          eq(payments.kind, "ecourse"),
+          eq(payments.courseId, p.courseId),
+          sql`lower(${payments.email}) = ${normalizeEmail(p.email)}`,
+          ne(payments.id, p.id),
+          eq(payments.status, "paid"),
+          gte(payments.paidAt, p.createdAt),
+        ),
+      )
+      .limit(1);
+    return other !== undefined;
+  }
+  if (p.registrationId === null) return false;
+  const [r] = await tx
+    .select({ paidCents: registrations.paidCents, kind: registrations.kind, type: courses.type, price: courses.price, priceGroup: courses.priceGroup, priceIndividual: courses.priceIndividual })
+    .from(registrations)
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .where(eq(registrations.id, p.registrationId))
+    .limit(1);
+  if (!r) return false;
+  const price = registrationPrice(r, r.kind);
+  return price !== null && r.paidCents >= price;
+}
+
 async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
   // an amount that could not be read (null) is no amount: it never equals the row's, and never reads as zero
   if (facts.amountCents !== row.amountCents || facts.currency !== "EUR") return held(deps, row, facts);
-  const won = await deps.db.transaction(async (tx): Promise<Won | null> => {
+  const won = await deps.db.transaction(async (tx): Promise<Won | { late: Payment } | null> => {
     // the lock order of every payment path, course_sessions → registrations → payments (db/queries/seats.ts): the locks come first, whatever the
-    // conditional UPDATE then finds. (An e-course's payment has no registration.)
-    if (row.kind !== "ecourse" && row.registrationId !== null) await lockForPayment(tx, row.registrationId);
+    // conditional UPDATE then finds. An e-course's payment has no registration: its purchase's lock instead (the start's, start.ts), then its row.
+    if (row.kind === "ecourse") {
+      if (row.courseId !== null) await lockEcoursePurchase(tx, row.courseId, normalizeEmail(row.email));
+    } else if (row.registrationId !== null) await lockForPayment(tx, row.registrationId);
+    // a late järelmaks (instalments §4): what it pays for is paid in full already, read under those locks. Held, never counted (the method is
+    // the start's: a pending row's never changes)
+    if (isHirePurchase(row.method) && (await paidInFull(tx, row))) {
+      const [late] = await tx.update(payments).set({ status: "held", updatedAt: deps.now, ...detailsOf(facts) }).where(unsettled(row.id)).returning();
+      return late ? { late } : null;
+    }
     const [payment] = await tx
       .update(payments)
       .set({ status: "paid", paidAt: deps.now, updatedAt: deps.now, ...detailsOf(facts) })
-      .where(and(eq(payments.id, row.id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt)))
+      .where(unsettled(row.id))
       .returning();
     if (!payment) return null;
     const registration = payment.kind !== "ecourse" && payment.registrationId !== null ? await addRegistrationPayment(tx, payment.registrationId, payment.amountCents, deps.now) : null;
@@ -231,6 +294,11 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     return { payment: paidRow, registration, grant, contract, invoice };
   });
   if (!won) return lost(deps, row, facts);
+  if ("late" in won) {
+    logNote(`[payments] payment ${won.late.id}: a järelmaks paid after the whole price was, held`);
+    alert(deps, won.late, "double", facts, { late: true });
+    return won.late;
+  }
   console.info(`[payments] payment ${won.payment.id}: paid`);
   // queued before anything that could fail after the commit: the payment is paid for good, and this is the only time its mails are sent
   deps.later(async () => {
@@ -278,8 +346,9 @@ function alertIfOverpaid(deps: SettleDeps, p: Payment, r: RegistrationPaid): voi
  * connection error, the database restarting or full: isTransient): that is no verdict on the course, so it is thrown on, the whole paid transaction rolls back and the payment
  * stays pending until Montonio's retry, the return or the daily check settles it again. The log has the class and the code only.
  *
- * The locks of this path (the e-course has no session and no registration): its payment row (the conditional UPDATE above), then the address
- * lock (addClient: client-auth.ts lockAddress), then the rows linked to the address: registrations, requests, subscribers, the client and her
+ * The locks of this path (the e-course has no session and no registration): its purchase's advisory lock (start.ts lockEcoursePurchase, first,
+ * as the start takes it: no path holding any other lock waits for it), its payment row (the conditional UPDATE above), then the address lock
+ * (addClient: client-auth.ts lockAddress), then the rows linked to the address: registrations, requests, subscribers, the client and her
  * course_access. That is not the order of db/queries/seats.ts, and cannot make a cycle with it: (1) the payment rows are disjoint. A
  * registration's payment paths (start, settle, failPayment, the daily check) lock the session, the registration and a payment row of kind
  * prepayment or balance, never an e-course payment row, and an e-course payment row is written only by the e-course's own start (which holds
@@ -390,7 +459,7 @@ async function held(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
   const [payment] = await deps.db
     .update(payments)
     .set({ status: "held", updatedAt: deps.now, ...detailsOf(facts) })
-    .where(and(eq(payments.id, row.id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt)))
+    .where(unsettled(row.id))
     .returning();
   if (!payment) return lost(deps, row, facts);
   alert(deps, payment, "held", facts);
@@ -474,9 +543,11 @@ async function releaseAlertRecord(deps: SettleDeps, key: string, ttlSeconds: num
 
 /**
  * Maria's "Kontrolli Montonios", after the response. "Topeltmakse" goes out once per second order (its uuid is recorded: see the top of the
- * file); `facts` is what that order paid, and the alert says so.
+ * file); `facts` is what that order paid, and the alert says so. `late`: the "Topeltmakse" of a late järelmaks (paid()), which is the second
+ * payment itself: its own order is the one that paid twice over, so no other order is named.
  */
-function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded" | "double", facts: Facts): void {
+function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded" | "double", facts: Facts, opts: { late?: boolean } = {}): void {
+  const late = kind === "double" && opts.late === true;
   logNote(`[payments] payment ${p.id}: ${kind}, Maria is alerted`);
   deps.later(async () => {
     const record = kind === "double" ? doubleAlertKey(p.id, facts.uuid) : null;
@@ -488,7 +559,7 @@ function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded
     try {
       const ctx = await contextOf(deps, p.id);
       const s = paymentAlertSummary(
-        { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" ? facts.uuid : null, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
+        { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" && !late ? facts.uuid : null, late, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
         adminUrl(deps.siteUrl),
       );
       const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl, count: deps.db });

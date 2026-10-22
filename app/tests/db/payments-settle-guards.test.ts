@@ -5,9 +5,10 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import * as schema from "@/db/schema";
+import { setSetting } from "@/db/queries/admin";
 import { attachOrder, insertPayment } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
-import { payments, registrations, type Payment } from "@/db/schema";
+import { courseAccess, courses, invoices, payments, registrations, type Payment } from "@/db/schema";
 import { settlePayment, settleToken, type Facts } from "@/server/payments/settle";
 import { contactCourse, orderToken, pendingPayment, registrationOn, settleDeps, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
 import { capRows, countedMails, makeTestDb } from "./helpers";
@@ -360,6 +361,166 @@ describe("a second paid order for one payment: the money is not lost, Maria is t
   });
 });
 
+describe("a late järelmaks after a paid bank payment (instalments §4, Review Focus 1): held as „Topeltmakse“, never counted twice", () => {
+  // A declined application stays PENDING at Montonio for 7 days: she pays by bank meanwhile (a new attempt, start.ts), and Inbank may still
+  // approve the old one. The loan that turns PAID then is a second payment of something paid in full: held („Ootel kontrollil“), never added
+  // to Laekunud summa, never opening the course again, no invoice; Maria is told „Topeltmakse“ and refunds it in Montonio (which cancels the loan).
+  const LOAN = { paymentMethod: "hirePurchase", paymentProviderName: "Inbank" };
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+  /** Seaded's seller, so that a paid payment gets its invoice (and a held one visibly none). */
+  const sellerReady = () => setSetting(db, "invoice", { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "" });
+  const NOTE_REGISTRATION = "Järelmaks (Inbank) kinnitati, kui koolitus oli juba täies ulatuses tasutud. Seda ei loetud: makse on lehel Maksed \"Ootel kontrollil\". Tagasta see Montonio halduses: täielik tagastus tühistab järelmaksu.";
+  const NOTE_ECOURSE = "Järelmaks (Inbank) kinnitati, kui e-koolitus oli juba tasutud. Seda ei loetud ja ligipääsu ei pikendatud: makse on lehel Maksed \"Ootel kontrollil\". Tagasta see Montonio halduses: täielik tagastus tühistab järelmaksu.";
+
+  test("a hirePurchase PAID after a bank payment already paid the registration in full is held, alerted as Topeltmakse, not counted", async () => {
+    const m = stubMontonio();
+    await sellerReady();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing", seatHoldUntil: new Date(NOW.getTime() + 40 * MIN) });
+    const loan = await pendingPayment(db, r, { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
+    const bank = await pendingPayment(db, r, { amountCents: 35000, method: "paymentInitiation" }, ago(10 * MIN));
+    const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(bank)))).toMatchObject({ payment: { status: "paid" } });
+    // Inbank approves the old application after all
+    const late = m.montonio.verifyOrderToken(orderToken(loan, LOAN));
+    expect(await settleToken(deps, late)).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, method: "hirePurchase", bank: "Inbank", providerUuid: loan.providerUuid } });
+    // told again — the webhook's retry, the return, the daily check: still held, nothing counted, no second alert
+    expect(await settleToken(deps, late)).toMatchObject({ payment: { status: "held" } });
+    expect(await settlePayment(deps, loan, facts(loan, { method: "hirePurchase", amountCents: 35000 }))).toMatchObject({ status: "held" });
+    await flush();
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 35000]);
+    expect([(await payment(bank.id)).status, (await payment(loan.id)).status]).toEqual(["paid", "held"]);
+    // the bank payment has its invoice; the held loan none
+    expect((await db.select().from(invoices)).map((i) => [i.paymentId, i.status, i.paidMethod])).toEqual([[bank.id, "paid", "montonio"]]);
+    expect(m.mails().map((x) => [x.to, x.subject])).toEqual([
+      ["maria@example.test", "Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 350 €"],
+      ["maria@example.test", "Topeltmakse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 350 €"],
+    ]);
+    const alert = m.mails()[1].text;
+    expect(alert).toContain(NOTE_REGISTRATION);
+    expect(alert).not.toContain("Sama makse eest laekus teine tasumine");
+    expect(alert).toContain("Teine tasumine: 350 €");
+    expect(alert).toContain(`Viide: ${loan.reference}`);
+    // its own order, named once (it is the second payment itself, not a second order of it)
+    expect(alert.split("\n").filter((l) => l.startsWith("Montonio: "))).toEqual([`Montonio: ${loan.providerUuid}`]);
+    expect(m.pings().at(-1)).toContain("Topeltmakse: Kati Tamm");
+    expect([...kv.store.keys()].filter((k) => k.startsWith("pay:double:"))).toEqual([`pay:double:${loan.id}:${loan.providerUuid}`]);
+    // never an „Ülemakse“: nothing went over the price
+    expect(m.mails().filter((x) => x.subject.startsWith("Ülemakse"))).toEqual([]);
+  });
+
+  test("Maria recorded the whole price by hand (a transfer) before the loan was approved: the same, held as „Topeltmakse“", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing", status: "confirmed", paidCents: 35000 });
+    const loan = await pendingPayment(db, r, { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ payment: { status: "held" } });
+    await flush();
+    expect((await registration(r.id)).paidCents).toBe(35000);
+    expect(m.mails().map((x) => x.subject)).toEqual(["Topeltmakse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 350 €"]);
+  });
+
+  test("not paid in full yet (a part recorded by hand, or nothing): the loan is counted as today — an „Ülemakse“ when it goes over", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const part = await registrationOn(db, c, { email: "osa@example.test", paymentChoice: "financing", paidCents: 34999 });
+    const loan = await pendingPayment(db, part, { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ payment: { status: "paid" } });
+    await flush();
+    expect([(await registration(part.id)).status, (await registration(part.id)).paidCents]).toEqual(["confirmed", 69999]);
+    expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Uus makse", "Ülemakse"]);
+  });
+
+  test("a bank payment that turns PAID after the loan was counted keeps today's rule: recorded, „Ülemakse“ (only a loan is held)", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing" });
+    const loan = await pendingPayment(db, r, { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
+    const bank = await pendingPayment(db, r, { amountCents: 35000, method: "paymentInitiation" }, ago(10 * MIN));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)));
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(bank)))).toMatchObject({ payment: { status: "paid" } });
+    await flush();
+    expect((await registration(r.id)).paidCents).toBe(70000);
+    expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Uus makse", "Uus makse", "Ülemakse"]);
+  });
+
+  describe("an e-course", () => {
+    async function ecourse() {
+      const [c] = await db
+        .insert(courses)
+        .values({ slug: "kulmumeistri-e-koolitus", type: "e_learning", level: "basic", title: { et: "Kulmumeistri e-koolitus", ru: "Онлайн-курс бровиста" }, summary: { et: "" }, body: { et: "" }, published: true, price: 19000, accessMonths: 6 })
+        .returning();
+      return c;
+    }
+    /** A pending purchase of `courseId` started at `at` with `method`, its order at Montonio. */
+    async function purchase(courseId: number, method: string, at: Date, email = "mari@example.test"): Promise<Payment> {
+      const row = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId, clientId: null, email, name: "Mari Maasikas", locale: "et", amountCents: 19000, method }, at, TEST_MONTONIO.referencePrefix);
+      await attachOrder(db, row.id, `uuid-${row.id}`, at);
+      return { ...row, providerUuid: `uuid-${row.id}` };
+    }
+    const access = () => db.select().from(courseAccess).orderBy(courseAccess.id);
+
+    test("the same for an e-course: a late loan after a paid bank purchase is held and alerted, the access is not granted twice", async () => {
+      const m = stubMontonio();
+      await sellerReady();
+      const course = await ecourse();
+      const loan = await purchase(course.id, "hirePurchase", ago(30 * MIN));
+      const bank = await purchase(course.id, "paymentInitiation", ago(20 * MIN));
+      const atBank = settleDeps(db, m.montonio, ago(15 * MIN));
+      await settleToken(atBank.deps, m.montonio.verifyOrderToken(orderToken(bank)));
+      await atBank.flush();
+      const opened = await access();
+      expect(opened).toEqual([expect.objectContaining({ courseId: course.id, grantedBy: "payment", grantedAt: ago(15 * MIN) })]);
+      // Inbank approves the old application a quarter of an hour later
+      const { deps, flush } = settleDeps(db, m.montonio, NOW);
+      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, clientId: null } });
+      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ payment: { status: "held" } });
+      await flush();
+      // her access is the bank purchase's, as it was: not granted or prolonged again
+      expect(await access()).toEqual(opened);
+      expect([(await payment(bank.id)).status, (await payment(loan.id)).status]).toEqual(["paid", "held"]);
+      expect((await db.select().from(invoices)).map((i) => i.paymentId)).toEqual([bank.id]);
+      expect(m.mails().map((x) => [x.to, x.subject])).toEqual([
+        ["maria@example.test", "Uus makse: Mari Maasikas, Kulmumeistri e-koolitus (e-koolitus), 190 €"],
+        ["maria@example.test", "Topeltmakse: Mari Maasikas, Kulmumeistri e-koolitus (e-koolitus), 190 €"],
+      ]);
+      expect(m.mails()[1].text).toContain(NOTE_ECOURSE);
+      expect(m.mails()[1].text).toContain("Teine tasumine: 190 €");
+    });
+
+    test("a loan of a purchase paid before it started — a renewal, past the cart's 30 minutes — is counted as today: paid, the access renewed", async () => {
+      const m = stubMontonio();
+      const course = await ecourse();
+      const first = await purchase(course.id, "paymentInitiation", ago(3 * 86_400_000));
+      const atFirst = settleDeps(db, m.montonio, ago(3 * 86_400_000));
+      await settleToken(atFirst.deps, m.montonio.verifyOrderToken(orderToken(first)));
+      const loan = await purchase(course.id, "hirePurchase", ago(20 * MIN));
+      const { deps, flush } = settleDeps(db, m.montonio, NOW);
+      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ payment: { status: "paid", paidAt: NOW } });
+      await flush();
+      expect(await access()).toEqual([expect.objectContaining({ grantedBy: "payment", grantedAt: NOW })]);
+      expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Uus makse"]);
+    });
+
+    test("a paid purchase of another course, or by another address, holds nothing: the loan is paid and opens its course", async () => {
+      const m = stubMontonio();
+      const course = await ecourse();
+      const [other] = await db
+        .insert(courses)
+        .values({ slug: "ripsmed-e-koolitus", type: "e_learning", level: "basic", title: { et: "Ripsmete e-koolitus" }, summary: { et: "" }, body: { et: "" }, published: true, price: 19000, accessMonths: 6 })
+        .returning();
+      const loan = await purchase(course.id, "hirePurchase", ago(30 * MIN));
+      const elsewhere = await purchase(other.id, "paymentInitiation", ago(20 * MIN));
+      const someoneElse = await purchase(course.id, "paymentInitiation", ago(20 * MIN), "teine@example.test");
+      const atBank = settleDeps(db, m.montonio, ago(15 * MIN));
+      for (const p of [elsewhere, someoneElse]) await settleToken(atBank.deps, m.montonio.verifyOrderToken(orderToken(p)));
+      const { deps } = settleDeps(db, m.montonio, NOW);
+      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ payment: { status: "paid" } });
+      expect((await access()).filter((a) => a.courseId === course.id)).toHaveLength(2);
+    });
+  });
+});
+
 describe("a registration's payment: one transaction, under the row's lock", () => {
   test("the payment and the registration are written together: when the registration cannot be, the payment stays pending and nothing is sent", async () => {
     const m = stubMontonio();
@@ -511,6 +672,49 @@ describe("one lock order for every payment path: course_sessions → registratio
     expect(at(queries, PAYMENT_UPDATE)).toBeGreaterThanOrEqual(0);
     expect(at(queries, SESSION_LOCK)).toBe(-1);
     expect(at(queries, REGISTRATION_LOCK)).toBe(-1);
+  });
+
+  test("a loan: whether the registration is paid in full is read under the session's and the registration's locks, before the payment row is written", async () => {
+    const { db: logged, queries } = await loggedDb();
+    const m = stubMontonio();
+    const r = await registrationOn(logged, await contactCourse(logged), { email: "kati@example.test", paymentChoice: "financing", status: "confirmed", paidCents: 35000 });
+    const loan = await pendingPayment(logged, r, { amountCents: 35000, method: "hirePurchase" });
+    const { deps } = settleDeps(logged, m.montonio, NOW);
+    queries.length = 0;
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, { paymentMethod: "hirePurchase" })))).toMatchObject({ payment: { status: "held" } });
+    const [session, registrationLock, paidRead, payment] = [at(queries, SESSION_LOCK), at(queries, REGISTRATION_LOCK), at(queries, /^select [\s\S]*"paid_cents"[\s\S]* from "registrations" inner join "courses"/), at(queries, PAYMENT_UPDATE)];
+    expect([session, registrationLock, paidRead, payment].every((i) => i >= 0), JSON.stringify(queries.map((q) => q.slice(0, 80)))).toBe(true);
+    expect(session).toBeLessThan(registrationLock);
+    expect(registrationLock).toBeLessThan(paidRead);
+    expect(paidRead).toBeLessThan(payment);
+  });
+
+  test("an e-course's settlement (a bank one too) takes its purchase's lock first — start.ts lockEcoursePurchase — so a loan's look for a paid purchase cannot miss one settled at the same moment", async () => {
+    const { db: logged, queries } = await loggedDb();
+    const m = stubMontonio();
+    const [course] = await logged
+      .insert(schema.courses)
+      .values({ slug: "kulmumeistri-e-koolitus", type: "e_learning", level: "basic", title: { et: "Kulmumeistri e-koolitus" }, summary: { et: "" }, body: { et: "" }, published: true, price: 19000, accessMonths: 6 })
+      .returning();
+    const buy = async (method: string) => {
+      const row = await insertPayment(logged, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email: "mari@example.test", name: "Mari Maasikas", locale: "et", amountCents: 19000, method }, NOW, TEST_MONTONIO.referencePrefix);
+      await attachOrder(logged, row.id, `uuid-${row.id}`, NOW);
+      return { ...row, providerUuid: `uuid-${row.id}` };
+    };
+    const { deps } = settleDeps(logged, m.montonio, NOW);
+    const PURCHASE_LOCK = /^select pg_advisory_xact_lock\(\$1::int, hashtext\(\$2\)\)$/;
+    const PAID_LOOK = /^select [\s\S]* from "payments" where [\s\S]*"paid_at" >= /;
+    for (const method of ["paymentInitiation", "hirePurchase"]) {
+      const p = await buy(method);
+      queries.length = 0;
+      await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { paymentMethod: method })));
+      const [lock, look, write] = [at(queries, PURCHASE_LOCK), at(queries, PAID_LOOK), at(queries, PAYMENT_UPDATE)];
+      expect(lock, method).toBeGreaterThanOrEqual(0);
+      expect(lock, method).toBeLessThan(write);
+      // only a loan looks for a paid purchase, and only under the lock
+      if (method === "hirePurchase") expect([lock < look, look < write], method).toEqual([true, true]);
+      else expect(look, method).toBe(-1);
+    }
   });
 
   test("lockForPayment: a registration with a session locks both, one without a session (or none at all) locks what there is and never fails", async () => {

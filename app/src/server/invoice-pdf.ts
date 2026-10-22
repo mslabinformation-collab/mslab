@@ -2,7 +2,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb } from "pdf-lib";
 import type { Invoice } from "@/db/schema";
 import { tallinnDateText } from "@/domain/certificate";
-import { euro, paidMethodText, partText, vatSplit } from "@/domain/invoice";
+import { euro, paidMethodText, partText, vatSplit, type PaidMethod } from "@/domain/invoice";
 import { drawLogo } from "./pdf-logo";
 import { clean, wrap } from "./pdf-text";
 
@@ -56,6 +56,12 @@ const TOTALS = { label: 330 } as const;
 const PAY = { value: EDGE.left + 82, valueWidth: EDGE.right - EDGE.left - 82 } as const;
 /** The least scale a page is composed at, and the step it comes down by. */
 const SCALE = { min: 0.5, step: 0.05 } as const;
+
+/**
+ * How a paid invoice was paid, after „Tasutud <day>“: in brackets, „(Montonio)“; Järelmaks (Inbank), whose words have brackets of their own,
+ * after a middle dot instead — „Tasutud 22.10.2026 · Järelmaks (Inbank)“, never brackets in brackets (instalments D6).
+ */
+const paidMethodWords = (method: PaidMethod): string => (method === "financing" ? `· ${paidMethodText(method)}` : `(${paidMethodText(method)})`);
 
 type Op = { text: string; x: number; y: number; size: number } | { x1: number; x2: number; y: number; thickness: number };
 /** One field of a column: its text, its size and the most lines its box takes. */
@@ -205,7 +211,7 @@ function compose(c: InvoiceContent, measure: (text: string, size: number) => num
     y -= 24 * k;
     const paid = c.status === "paid";
     const said = paid
-      ? ["Tasutud", c.paidAt ? tallinnDateText(c.paidAt) : "", c.paidMethod ? `(${paidMethodText(c.paidMethod)})` : ""].filter(Boolean).join(" ")
+      ? ["Tasutud", c.paidAt ? tallinnDateText(c.paidAt) : "", c.paidMethod ? paidMethodWords(c.paidMethod) : ""].filter(Boolean).join(" ")
       : "Tühistatud";
     y = lines(wrapped(said, SIZE.line * k, EDGE.right - EDGE.left, 2), EDGE.left, y, SIZE.line * k);
   }

@@ -50,6 +50,13 @@ describe("paymentMethodLabel: Maria's word for the way a payment was made", () =
     expect(paymentMethodLabel(" HIREPURCHASE ", "")).toBe("Järelmaks (Inbank)");
   });
 
+  test("a järelmaks takes no provider after it: Montonio names Inbank as the provider, which the label says already (never „Järelmaks (Inbank) · Inbank“)", () => {
+    expect(paymentMethodLabel("hirePurchase", "Inbank")).toBe("Järelmaks (Inbank)");
+    expect(paymentMethodLabel(" hirepurchase ", "  Inbank  ")).toBe("Järelmaks (Inbank)");
+    // the bank link keeps its bank
+    expect(paymentMethodLabel("paymentInitiation", "Inbank")).toBe("Pangalink · Inbank");
+  });
+
   test("the code is read without regard to case or surrounding spaces (a GET /orders answer is not always written as a token)", () => {
     expect(paymentMethodLabel(" PAYMENTINITIATION ", "")).toBe("Pangalink");
     expect(paymentMethodLabel("CardPayments", "")).toBe("Kaart");
