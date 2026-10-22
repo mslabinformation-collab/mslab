@@ -86,7 +86,7 @@
   export function financingAllowed(o: { enabled: boolean; paymentsOn: boolean; priceCents: number | null; paidCents: number; dueCents: number }): boolean;
       // offered && paidCents === 0 && dueCents === priceCents
   export function billingAddressOf(o: { name: string; email: string; phone?: string | null }):
-      { firstName: string; lastName: string; email: string; phoneNumber?: string; phoneCountry?: "EE" };
+      { firstName: string; lastName: string; email: string; phoneNumber?: string; phoneCountry?: "372" };
   export function estonianPhone(raw: string): string | null;                          // national digits, or null
   export const FINANCING_ATTEMPT_MS = 60 * 60_000;
   export function attemptWindowMs(method: string): number;                            // "hirePurchase" → 60 min, else 30 min
@@ -122,7 +122,7 @@ it.each([
 ])("estonianPhone(%s) = %s", (raw, want) => expect(estonianPhone(raw)).toBe(want));
 it("billingAddress sends the phone only when Estonian", () => {
   expect(billingAddressOf({ name: "Mari Maasikas", email: "m@example.test", phone: "+372 5123 4567" })).toEqual(
-    { firstName: "Mari", lastName: "Maasikas", email: "m@example.test", phoneNumber: "51234567", phoneCountry: "EE" });
+    { firstName: "Mari", lastName: "Maasikas", email: "m@example.test", phoneNumber: "51234567", phoneCountry: "372" });
   expect(billingAddressOf({ name: "Mari Maasikas", email: "m@example.test", phone: "+371 2123 4567" })).toEqual(
     { firstName: "Mari", lastName: "Maasikas", email: "m@example.test" });
 });
