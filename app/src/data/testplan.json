@@ -5,7 +5,7 @@
     {
       "id": "enne",
       "name": "Enne alustamist",
-      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest, Proov 6 saab Maria arved, Proov 7 tasub Maria arve ise, Proov 8 on venekeelne õpilane, kes saab arve kirjaga, ja Proov 0 on Dimi esimene makse. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
+      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest, Proov 6 saab Maria arved, Proov 7 tasub Maria arve ise, Proov 8 on venekeelne õpilane, kes saab arve kirjaga, ja Proov 0 on Dimi esimene makse. Proov 9 kuni Proov 14 on järelmaksu kontrollide õpilased: iga kontroll ütleb, millist ta kasutab. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
       "checks": false
     },
     {
@@ -21,7 +21,7 @@
     {
       "id": "registreerimine",
       "name": "Registreerimine ja maksmine",
-      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate. Arvete kontrollid kasutavad Proov 6 registreeringut, mille teed kontrolli „Arve pangaülekandeks“ esimestes sammudes. Enne arvete kontrolle täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“)."
+      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate. Arvete kontrollid kasutavad Proov 6 registreeringut, mille teed kontrolli „Arve pangaülekandeks“ esimestes sammudes. Enne arvete kontrolle täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“). Järelmaksu kontrollid vajavad Seadetes sisselülitatud „Järelmaks (Inbank)“: seda teeb kontroll „Seaded: järelmaks“ (ala „Haldus: sisu“). Inbanki testis kasutab Dim isikukoodi 10101010005, SMS-koodi 0000 ja Eesti telefoninumbrit. Hinnaga 100–500 € taotlus kinnitatakse, 501–700 € läheb käsitsi ülevaatusele ja 901–1000 € lükatakse tagasi."
     },
     {
       "id": "konto",
@@ -31,7 +31,7 @@
     {
       "id": "ekursus",
       "name": "E-kursus",
-      "note": "Loob andmeid. Kasutab e-koolitust, mille valmistasid ette alas „Haldus: sisu“, ja õpilast Proov 1. Enne e-koolituse ostu täida halduses kontroll „Seaded: arve andmed“ (ala „Haldus: sisu“); ilma selleta tehakse ostu arve hiljem plokist „Arveta maksed“. E-koolituse ost ei vaja kontrolli „Seaded: ettemaksu juhised“."
+      "note": "Loob andmeid. Kasutab e-koolitust, mille valmistasid ette alas „Haldus: sisu“, ja õpilast Proov 1. Enne e-koolituse ostu täida halduses kontroll „Seaded: arve andmed“ (ala „Haldus: sisu“); ilma selleta tehakse ostu arve hiljem plokist „Arveta maksed“. E-koolituse ost ei vaja kontrolli „Seaded: ettemaksu juhised“. Ostu järelmaksuga kontroll vajab Seadetes sisselülitatud „Järelmaks (Inbank)“ ja kasutab õpilast Proov 11."
     },
     {
       "id": "kontakt",
@@ -46,7 +46,7 @@
     {
       "id": "koristamine",
       "name": "Koristamine",
-      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Nii kustutab ta ka proovi-lepingud: needki jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
+      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Pane Seaded → „Järelmaks (Inbank)“ välja, kuni Montonio on Maria ettevõttele päriselt aktiveeritud, ja pane järelmaksu proovi jaoks muudetud koolituste hinnad tagasi. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Nii kustutab ta ka proovi-lepingud: needki jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
     }
   ],
   "items": [
@@ -209,14 +209,50 @@
       "expect": [
         "Üleval on „Moodulid“, „Õppevideod“, „Ligipääs“ ja „Õppekeel“.",
         "„Tasumine“ all on „Maksa kohe — 100% pangalingiga“.",
-        "„Vormista järelmaks — tulekul“ on hall ja seda ei saa valida.",
+        "Hallist valikut „Vormista järelmaks — tulekul“ enam ei ole.",
+        "Kui Seaded → Järelmaks on sees, on hinna all rida „Võimalik tasuda ka järelmaksuga (Inbank).“.",
         "„Koolitus sisaldab“ loetleb videod, materjalid, testi, hindamise ja tunnistuse.",
         "Moodulite loendis on iga moodul märkega „Lukustatud“.",
         "„Osta kohe“ avab ostukorvi selle koolituse ja hinnaga."
       ],
       "why": "E-koolitust ostetakse otse sellelt lehelt.",
       "risk": "high",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "avalik-kursus-jarelmaks-rida",
+      "area": "avalik",
+      "who": "maria",
+      "device": "any",
+      "title": "Järelmaksu rida koolituse lehel",
+      "href": "/koolitused",
+      "steps": [
+        "Märgi halduses Seaded → „Järelmaks (Inbank)“ sisse ja salvesta; kontroll „Seaded: järelmaks“ vaatab seda lähemalt.",
+        "Ava kontaktkoolituse leht, mille grupihind on 100–5000 €, vali „Grupikoolitus“ ja vaata rida hindade all ning valikuid „Tasumine“ all.",
+        "Vali „Individuaalkoolitus“ ja vaata sama kohta.",
+        "Ava e-koolituse leht, mille hind on 100–5000 €, ja vaata rida hinna all.",
+        "Ava mõlemad lehed vene keeles (lehe päises RU).",
+        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja, salvesta ja ava mõlemad lehed uuesti.",
+        "Lülita seade Seadetes uuesti sisse ja salvesta.",
+        "Ava koolitus, mille hind on alla 100 € või üle 5000 € (kui sellist pole, jäta samm vahele)."
+      ],
+      "expect": [
+        "Kontaktkoolituse lehel on hindade all rida „Võimalik tasuda ka järelmaksuga (Inbank).“.",
+        "„Tasumine“ all on kolm valikut: „100% kohe“, „50% registreerimisel + 50% koolituspäeval“ ja „Järelmaks (Inbank)“.",
+        "„Individuaalkoolitus“ valikul rida ja kolmandat valikut ei ole.",
+        "E-koolituse lehel on hinna all sama rida ja „Tasumine“ all ainult „Maksa kohe — 100% pangalingiga“.",
+        "Hallist valikut „Vormista järelmaks — tulekul“ ega märget „See võimalus lisandub hiljem.“ enam ei ole.",
+        "Vene lehtedel on rida „Можно оплатить и в рассрочку (Inbank).“ ja kontaktkoolituse vormis valik „Рассрочка (Inbank)“.",
+        "Väljalülitatult pole ühelgi lehel rida ega kolmandat valikut ja muutus ilmub kohe, ootamata.",
+        "Hinnaga alla 100 € või üle 5000 € koolituse lehel rida ja valikut pole."
+      ],
+      "why": "Rida ütleb õpilasele, et järelmaks on olemas, ja ilmub ainult siis, kui see on tõesti võimalik.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-galerii",
@@ -1563,6 +1599,38 @@
       "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
+      "id": "haldus-seaded-jarelmaks",
+      "area": "haldus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Seaded: järelmaks",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava „Seaded“ ja keri kaardini „Järelmaks (Inbank)“.",
+        "Kirjuta märkusesse, kas ruut „Paku järelmaksu (Inbank)“ on märgitud.",
+        "Muuda ruudu seisu ja lae leht uuesti, vajutamata „Salvesta“.",
+        "Muuda ruudu seisu uuesti, vali arendaja tööriistades (F12) Network all „Slow 3G“ ja vajuta kaardi „Salvesta“.",
+        "Võta võrgu piirang ära ja lae leht uuesti.",
+        "Vali Network all „Offline“, muuda ruudu seisu uuesti ja vajuta kaardi „Salvesta“.",
+        "Võta „Offline“ ära ja lae leht uuesti.",
+        "Märgi ruut, vajuta kaardi „Salvesta“ ja jäta see märgituks: järgmised järelmaksu kontrollid vajavad seda."
+      ],
+      "expect": [
+        "Kaardil on pealkiri „Järelmaks (Inbank)“ ja ruut „Paku järelmaksu (Inbank)“, enne esimest salvestamist märkimata.",
+        "Kaardil on selgitus „Lülita sisse, kui Montonio on järelmaksu sinu poele avanud. Hind peab olema 100–5000 €.“.",
+        "Ainult muutmine ei salvesta midagi: pärast lehe uuesti laadimist on ruut endine.",
+        "Aeglasel võrgul ütleb nupp salvestamise ajal „Salvestan…“ ja pärast näed „Järelmaksu seade on salvestatud.“.",
+        "Pärast salvestamist ja lehe uuesti laadimist on ruut täpselt nii, nagu salvestasid.",
+        "Võrguta salvestades näed „Salvestamine ei õnnestunud. Proovi uuesti.“ ja pärast lehe uuesti laadimist on ruut endine.",
+        "Pärast viimast salvestamist on ruut märgitud."
+      ],
+      "why": "Ilma selle ruuduta ei näe õpilane kuskil järelmaksu.",
+      "risk": "high",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "haldus-laadimine-viga",
       "area": "haldus",
       "who": "dim",
@@ -1889,8 +1957,9 @@
       ],
       "expect": [
         "„Registreeru“ avab Montonio makselehe koolituse hinna suuruse summaga.",
+        "„Tasumine“ all on „100% kohe“, „50% registreerimisel + 50% koolituspäeval“ ja, kui järelmaks on sees, „Järelmaks (Inbank)“.",
         "Pärast makset on lehel „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“.",
-        "Halduses „Maksed ja arved“ on Proov 0 makse staatusega „Makstud“.",
+        "Halduses „Maksed ja arved“ on Proov 0 makse staatusega „Makstud“ ja makseviisiga „Pangalink …“.",
         "Märkuses on testpanga sammud, mida Maria saab järgida.",
         "Pärast tühistamist näed „Registreerimine on tühistatud.“."
       ],
@@ -1898,7 +1967,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-grupp",
@@ -2699,6 +2768,195 @@
       "markedAt": "2026-10-16T22:27:00.452Z"
     },
     {
+      "id": "registreerimine-jarelmaks-kinnitatud",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Järelmaks Inbanki testis: kinnitatud taotlus",
+      "href": "/koolitused",
+      "steps": [
+        "Veendu, et Seaded → „Järelmaks (Inbank)“ on sees. Vali kontaktkoolitus, mille grupihind on 100–500 €.",
+        "Kui ükski koolitus pole selles hinnas, muuda proovi jaoks ühe hind ja pane see pärast tagasi.",
+        "Vali tulevane kuupäev, kirjuta „Nimi“: Proov 9 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov9.",
+        "Kirjuta „Telefon“: oma Eesti number, vali „Järelmaks (Inbank)“, märgi lepingu ruut ja vajuta „Registreeru“.",
+        "Inbanki lehel kirjuta isikukood 10101010005 ja SMS-kood 0000 ning kinnita taotlus; kirjuta märkusesse iga samm.",
+        "Kirjuta märkusesse ka, kas nimi, e-post ja telefon olid Inbanki vormis juba täidetud.",
+        "Ava halduses „Registreerimised“ ja Proov 9; laadi alla plokkide „Arved“ ja „Leping“ PDF-id.",
+        "Vajuta „Tühista registreerimine“."
+      ],
+      "expect": [
+        "Vormis on kolmas valik „Järelmaks (Inbank)“ ja „Registreeru“ avab Inbanki taotluse koolituse täishinnaga.",
+        "Pärast kinnitamist on lehel „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“.",
+        "Postkasti tuleb kiri „Koht on kinnitatud — …“.",
+        "Maria postkasti tuleb teade „Uus makse: Proov 9, …“ makseviisiga „Järelmaks (Inbank)“.",
+        "Paneelis on Proov 9 staatus „Kinnitatud“, makseviis „Järelmaks (Inbank)“ ja „Laekunud“ on kogu hind.",
+        "Plokis „Arved“ on arve kogu hinna eest ja rida „Tasutud … · Järelmaks (Inbank)“, arve PDF-il samuti.",
+        "Lepingu PDF-il on real „Makse“ lause „Koolituse hind tasutakse täies ulatuses: järelmaksuga (Inbank) või pangamaksega.“.",
+        "Märkuses on Inbanki sammud, mida Maria saab järgida."
+      ],
+      "why": "Selgub, kas Montonio ja Inbank vastavad nii, nagu sait eeldab.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-jarelmaks-keeldus",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Järelmaks Inbanki testis: tagasilükatud taotlus",
+      "href": "/koolitused",
+      "steps": [
+        "Vali kontaktkoolitus, mille grupihind on 901–1000 €; vajadusel muuda proovi jaoks ühe hind ja pane see pärast tagasi.",
+        "Kirjuta „Nimi“: Proov 10, „E-post“: oma aadress, kuhu lisad enne @-märki +proov10, ja „Telefon“: oma Eesti number.",
+        "Vali „Järelmaks (Inbank)“, märgi lepingu ruut, vajuta „Registreeru“ ja kirjuta Inbanki lehel isikukood 10101010005 ning SMS-kood 0000.",
+        "Kui Inbank taotluse tagasi lükkab, mine tagasi MS LABi lehele, nagu Montonio pakub; kirjuta märkusesse, mida nägid.",
+        "Vajuta „Proovi uuesti“, katkesta Inbanki leht ja mine jälle tagasi.",
+        "Vajuta „Maksa pangalingiga“ ja tee makse testpangas lõpuni, nagu kontrolli „Montonio testpank: esimene makse“ märkus ütleb.",
+        "Vaata halduses lehel „Maksed ja arved“ Proov 10 ridu ning registreeringu paneeli.",
+        "Tühista halduses Proov 10 registreering."
+      ],
+      "expect": [
+        "Pärast Inbanki keeldumist on lehel „Järelmaksu taotlus on pooleli või jäi lõpetamata. Kui Inbank selle kinnitab, saadame sulle kinnituse.“.",
+        "Lehel on nupud „Maksa pangalingiga“ ja „Proovi uuesti“, teksti „Kui pank selle kinnitab …“ pole.",
+        "„Proovi uuesti“ viib uuesti Inbanki lehele.",
+        "Enne pangamakset on halduses Proov 10 staatus „Ootab ettemaksu“ ja „Laekunud“ on null.",
+        "„Maksa pangalingiga“ avab Montonio makselehe koolituse täishinnaga.",
+        "Pärast makset on lehel „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“ ja Proov 10 staatus on „Kinnitatud“.",
+        "„Maksed ja arved“ näitab Proov 10 kaks rida: „Järelmaks (Inbank)“ staatusega „Pooleli“ ja „Pangalink …“ staatusega „Makstud“.",
+        "„Laekunud“ on täpselt koolituse hind."
+      ],
+      "why": "Keeldutud taotlus ei tohi õpilast ummikusse jätta: ta maksab pangalingiga ja koht kinnitub.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-jarelmaks-nupud",
+      "area": "registreerimine",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Maksa järelmaksuga või pangalingiga",
+      "href": "/koolitused",
+      "steps": [
+        "Registreeri kontaktkoolitusele hinnaga 100–5000 €: „Nimi“ Proov 12, „E-post“ oma aadress, kuhu lisad enne @-märki +proov12, ja oma Eesti telefon.",
+        "Vali „Järelmaks (Inbank)“, märgi lepingu ruut, vajuta „Registreeru“ ja katkesta Inbanki leht, nagu Dimi märkus ütleb.",
+        "Ava kiri „Registreering on vastu võetud — …“, vajuta kirjas „Maksa …“ ja jäta see leht lahti.",
+        "Logi teises aknas sisse kui Proov 12, ava „Minu koolitused“ ja vaata registreeringu kaarti.",
+        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja ja salvesta.",
+        "Vajuta lahtisel „Koolituse eest tasumine“ lehel „Maksa järelmaksuga (Inbank)“.",
+        "Ava kirja link uuesti.",
+        "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse, ava kirja link veel kord ja tühista halduses Proov 12 registreering."
+      ],
+      "expect": [
+        "Lehel „Koolituse eest tasumine“ on summa ja kaks nuppu: „Maksa järelmaksuga (Inbank)“ ja „Maksa pangalingiga“.",
+        "Telefonis mahuvad nupud ekraanile, on kerged vajutada ja leht ei kerigi küljele.",
+        "Kaardil „Minu koolitused“ on samad kaks nuppu.",
+        "Pärast väljalülitamist ütleb vajutus „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“.",
+        "Pärast seda on lehel üks nupp „Maksa …“ ja Inbanki nuppu enam pole.",
+        "Kirja lingi uuesti avamisel on üks nupp „Maksa …“ ja lauset pole.",
+        "Pärast uuesti sisselülitamist on lehel jälle kaks nuppu."
+      ],
+      "why": "Õpilane valib ise, kuidas maksta, ja väljalülitatud järelmaks ei jäta teda ummikusse.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-jarelmaks-vahepeal-valja",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Järelmaks lülitatakse vahepeal välja",
+      "href": "/koolitused",
+      "steps": [
+        "Ava kaks lehte, kontaktkoolituse (grupihind 100–5000 €) ja e-koolituse ostukorv, ning veendu, et järelmaks on Seadetes sees.",
+        "Täida registreerimisvorm: Proov 13, +proov13, oma Eesti telefon, „Järelmaks (Inbank)“ ja lepingu ruut; ära vajuta „Registreeru“.",
+        "Täida ostukorv: Proov 13, sama +proov13 aadress, „Järelmaks (Inbank)“ ja lepingu ruut; ära vajuta „Maksa …“.",
+        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja ja salvesta.",
+        "Vajuta ostukorvis „Maksa …“.",
+        "Vajuta ostukorvis uuesti „Maksa …“ ja katkesta makse testpangas.",
+        "Vajuta registreerimisvormis „Registreeru“ ja vaata halduses Proov 13 registreeringut.",
+        "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse ja salvesta."
+      ],
+      "expect": [
+        "Ostukorvis on valikute juures „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“ ja valitud on „Pangalink“.",
+        "Esimene vajutus ei ava Montonio lehte ega alga makset.",
+        "Teine vajutus avab testpanga koolituse hinnaga.",
+        "Registreerimisel näed lauset „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“ ja teadet „Registreerimine on vastu võetud. …“.",
+        "Montonio lehte ei avane ja leht jääb samaks.",
+        "Halduses on Proov 13 registreering „Ootab ettemaksu“, valik „Järelmaks (Inbank)“ ja makseid selle juures pole."
+      ],
+      "why": "Maria võib järelmaksu välja lülitada, kui õpilane on lehe juba avanud.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "registreerimine-jarelmaks-hiline",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Hiline järelmaks pärast pangamaksu",
+      "href": "/koolitused",
+      "steps": [
+        "Vali kontaktkoolitus, mille grupihind on 501–700 €; vajadusel muuda proovi jaoks ühe hind ja pane see pärast tagasi.",
+        "Registreeri: Proov 14, +proov14, oma Eesti telefon, „Järelmaks (Inbank)“; Inbanki lehel isikukood 10101010005 ja SMS-kood 0000.",
+        "Kui Inbank küsib sissetuleku tõendit, jäta taotlus pooleli ja mine tagasi MS LABi lehele.",
+        "Vajuta „Maksa pangalingiga“ ja tee makse testpangas lõpuni.",
+        "Kinnita Montonio sandboxis Inbanki taotlus nüüd; kui see ei õnnestu, kirjuta märkusesse miks ja vajuta „Jäta vahele“.",
+        "Oota mõni minut ja ava halduses „Maksed ja arved“ filter „Ootel kontrollil“.",
+        "Vaata Proov 14 registreeringut ja Maria postkasti.",
+        "Tühista halduses Proov 14 registreering."
+      ],
+      "expect": [
+        "Pangamakse järel on Proov 14 staatus „Kinnitatud“ ja „Laekunud“ on kogu hind.",
+        "Hilinenud järelmaks on filtri „Ootel kontrollil“ all makseviisiga „Järelmaks (Inbank)“.",
+        "Maria postkasti tuleb teade „Topeltmakse: Proov 14, …“.",
+        "Teates on lause „Järelmaks (Inbank) laekus, kui koolitus oli juba täies ulatuses tasutud.“.",
+        "Teates on ka „Tagasta see Montonio halduses: täielik tagastus tühistab järelmaksu.“.",
+        "„Laekunud“ jääb kogu hinnaks: hilinenud järelmaks ei lisandu ja uut arvet ei tekkinud.",
+        "Õpilasele teist kinnituskirja ei tule."
+      ],
+      "why": "Õpilane ei tohi sama koolituse eest maksta kaks korda ja Maria peab sellest teada saama.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-maksed-jarelmaks",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Maksed: makseviis „Järelmaks (Inbank)“",
+      "href": "/admin/maksed",
+      "steps": [
+        "Tee see pärast järelmaksu registreerimise kontrolle.",
+        "Ava „Maksed ja arved“ ja vajuta filtril „Makstud“.",
+        "Vaata Proov 9 rida ja Proov 10 pangalingiga makstud rida veerus „Makseviis“.",
+        "Vajuta filtril „Pooleli“ ja vaata Proov 10 järelmaksu rida.",
+        "Vajuta filtril „Ebaõnnestunud“ ja vaata rida, mille makse katkestati testpangas.",
+        "Ava Proov 9 registreeringu paneel ja vaata plokki „Veebimaksed“."
+      ],
+      "expect": [
+        "Proov 9 makse makseviis on „Järelmaks (Inbank)“, ilma lisatud panga või pakkujata.",
+        "Pangalingiga tasutud Proov 10 makse real on makseviis „Pangalink …“.",
+        "Pooleli järelmaksu real on makseviis „Järelmaks (Inbank)“, mitte tühi.",
+        "Katkestatud pangamakse real on makseviis „Pangalink“.",
+        "Paneeli plokis „Veebimaksed“ on sama makse samuti märgitud „Järelmaks (Inbank)“."
+      ],
+      "why": "Maria näeb, kas raha tuli pangast või järelmaksuna, ja pooleli ridade viis ei jää tühjaks.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "konto-kood",
       "area": "konto",
       "who": "maria",
@@ -3215,12 +3473,13 @@
       "steps": [
         "Ava testiks valmistatud e-koolitus ja vajuta „Osta kohe“.",
         "Kirjuta „Nimi“: Proov 1 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov1.",
-        "Märgi lepingu ruut ja vajuta „Maksa …“.",
+        "Jäta valituks „Pangalink“ (kui valik on olemas), märgi lepingu ruut ja vajuta „Maksa …“.",
         "Tee makse testpangas, nagu Dimi märkus ütleb.",
         "Vajuta tagasi lehel „Ava e-koolitus“.",
         "Ava 30 minuti jooksul kiri „E-koolitus on avatud — …“ ja vajuta kirjas „Logi sisse“."
       ],
       "expect": [
+        "Kui Järelmaks on Seadetes sees, on ostukorvis valikud „Pangalink“ (vaikimisi valitud) ja „Järelmaks (Inbank)“.",
         "Tagasi lehel on „Makse õnnestus.“ ja „Saatsime sulle e-postiga sisselogimislingi.“.",
         "Postkasti tuleb kiri „E-koolitus on avatud — …“ koos koodiga ja kuupäevaga.",
         "Kirjas on read „Arve on lisatud.“ ja „Leping on lisatud.“ ning kaks PDF-faili.",
@@ -3232,7 +3491,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ost-uuesti",
@@ -3255,6 +3514,39 @@
       "writes": false,
       "mark": "reworded",
       "markedAt": "2026-10-18T01:56:41.789Z"
+    },
+    {
+      "id": "ekursus-jarelmaks",
+      "area": "ekursus",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "E-koolituse ost järelmaksuga",
+      "href": "/koolitused",
+      "steps": [
+        "Ava testiks valmistatud e-koolitus (hind 100–500 €; vajadusel muuda seda proovi jaoks ja pane pärast tagasi) ja vajuta „Osta kohe“.",
+        "Vaata vormis „Tasumine“ all olevaid valikuid.",
+        "Kirjuta „Nimi“: Proov 11 ja „E-post“: oma aadress, kuhu lisad enne @-märki +proov11.",
+        "Vali „Järelmaks (Inbank)“, märgi lepingu ruut ja vajuta „Maksa …“.",
+        "Inbanki lehel kirjuta isikukood 10101010005 ja SMS-kood 0000 ning kinnita taotlus.",
+        "Vajuta tagasi lehel „Ava e-koolitus“ ja ava postkastis kiri „E-koolitus on avatud — …“ koos arvega.",
+        "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja, salvesta ja ava sama ostukorv uuesti.",
+        "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse ja salvesta."
+      ],
+      "expect": [
+        "Ostukorvis on „Tasumine“ all kaks valikut: „Pangalink“ (valitud) ja „Järelmaks (Inbank)“.",
+        "„Maksa …“ avab Inbanki taotluse koolituse täishinnaga.",
+        "Pärast kinnitamist on lehel „Makse õnnestus.“ ja nupp „Ava e-koolitus“.",
+        "Kirja arve PDF-il on rida „Tasutud … · Järelmaks (Inbank)“.",
+        "Halduses „Õpilased“ → Proov 11 all on see e-koolitus märkega „veebimakse“.",
+        "Maria postkasti tuleb teade „Uus makse: Proov 11, … (e-koolitus), …“ makseviisiga „Järelmaks (Inbank)“.",
+        "Halduses „Maksed ja arved“ on Proov 11 makse makseviisiga „Järelmaks (Inbank)“.",
+        "Väljalülitatud seadega pole ostukorvis „Tasumine“ valikuid."
+      ],
+      "why": "E-koolituse ostja saab ligipääsu ilma Maria abita, ka järelmaksuga.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-tingimused",

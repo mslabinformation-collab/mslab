@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vitest";
 import plan from "@/data/testplan.json";
 import { CAMPAIGN_DAILY_ROOM, CAMPAIGN_ROOM_KEY } from "@/domain/newsletter-campaign";
+import { paidMethodText } from "@/domain/invoice";
+import { paymentMethodLabel } from "@/domain/payments";
 import { appliesAt, checkPlan, type TestItem, type TestPlan } from "@/domain/testplan";
 import { adminEt } from "@/i18n/dict/admin";
 import { et } from "@/i18n/dict/et";
 import { ru } from "@/i18n/dict/ru";
+import { paymentAlertSummary } from "@/server/messages";
 
 // The test page's plan file (phase 4, piece 1, spec §3, §8): src/data/testplan.json passes checkPlan, and checkPlan names each way a plan can
 // go wrong (house style: line caps, full stops, ids, enums, marks). A mistake in the file fails this test before the page ever sees it.
@@ -682,5 +685,147 @@ describe("the page's language switch (admin UX pass, Task 12)", () => {
     }
     // no check sends her to a switch on a field any more
     expect(plan.items.flatMap((i) => i.steps).filter((s) => /välja „[^“]+“ juures „RU“/.test(s))).toEqual([]);
+  });
+});
+
+describe("the instalments checks (instalments, Task 8)", () => {
+  const order = plan.items.map((i) => i.id);
+  const at = (id: string): number => {
+    const n = order.indexOf(id);
+    expect(n, id).toBeGreaterThanOrEqual(0);
+    return n;
+  };
+  const item = (id: string) => plan.items[at(id)];
+  const text = (id: string) => [item(id).title, ...item(id).steps, ...item(id).expect].join("\n");
+  const area = (id: string) => plan.areas.find((a) => a.id === id)!;
+
+  // the new checks and where they sit. `haldus-maksed-jarelmaks` keeps the id the brief gave it and sits in „Registreerimine ja maksmine“, after the
+  // registrations (Proov 9 and Proov 10) whose payments it reads.
+  const NEW: Record<string, { area: string; who: string; writes: boolean }> = {
+    "haldus-seaded-jarelmaks": { area: "haldus", who: "dim", writes: false },
+    "avalik-kursus-jarelmaks-rida": { area: "avalik", who: "maria", writes: false },
+    "registreerimine-jarelmaks-kinnitatud": { area: "registreerimine", who: "dim", writes: true },
+    "registreerimine-jarelmaks-keeldus": { area: "registreerimine", who: "dim", writes: true },
+    "registreerimine-jarelmaks-nupud": { area: "registreerimine", who: "maria", writes: true },
+    "registreerimine-jarelmaks-vahepeal-valja": { area: "registreerimine", who: "dim", writes: true },
+    "registreerimine-jarelmaks-hiline": { area: "registreerimine", who: "dim", writes: true },
+    "haldus-maksed-jarelmaks": { area: "registreerimine", who: "dim", writes: false },
+    "ekursus-jarelmaks": { area: "ekursus", who: "dim", writes: true },
+  };
+
+  test("each is a new check marked since the deploy, in its area, run by whom the sandbox or the toggle needs", () => {
+    for (const [id, want] of Object.entries(NEW)) {
+      expect(item(id), id).toMatchObject({ ...want, mark: "new" });
+      expect(markedSince(item(id).markedAt), id).toBe(true); // "deploy" on the branch, the push instant once stamped
+      // a new check never reopens an answer
+      expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z"), id).toBeNull();
+    }
+  });
+
+  test("Seaded's toggle comes before every check that needs it on; the course-page check, which comes first, switches it on itself", () => {
+    const needs = Object.keys(NEW).filter((id) => !["haldus-seaded-jarelmaks", "avalik-kursus-jarelmaks-rida"].includes(id));
+    for (const id of needs) expect(at("haldus-seaded-jarelmaks"), id).toBeLessThan(at(id));
+    expect(at("avalik-kursus-jarelmaks-rida")).toBeLessThan(at("haldus-seaded-jarelmaks"));
+    expect(item("avalik-kursus-jarelmaks-rida").steps[0]).toMatch(/Seaded → „Järelmaks \(Inbank\)“ sisse ja salvesta/);
+    // the Maksed check reads the payments of Proov 9 and Proov 10 and only those: they are made before it
+    expect(at("registreerimine-jarelmaks-kinnitatud")).toBeLessThan(at("haldus-maksed-jarelmaks"));
+    expect(at("registreerimine-jarelmaks-keeldus")).toBeLessThan(at("haldus-maksed-jarelmaks"));
+    expect(text("haldus-maksed-jarelmaks")).not.toMatch(/Proov 1[1-4]/);
+  });
+
+  test("the sandbox checks give Montonio's test person, the SMS code, an Estonian phone and the amounts Inbank decides by", () => {
+    for (const id of ["registreerimine-jarelmaks-kinnitatud", "registreerimine-jarelmaks-keeldus", "registreerimine-jarelmaks-hiline", "ekursus-jarelmaks"]) {
+      expect(text(id), id).toContain("10101010005");
+      expect(text(id), id).toContain("SMS-kood 0000");
+    }
+    for (const id of ["registreerimine-jarelmaks-kinnitatud", "registreerimine-jarelmaks-keeldus", "registreerimine-jarelmaks-hiline"]) expect(text(id), id).toContain("Eesti");
+    expect(text("registreerimine-jarelmaks-kinnitatud")).toContain("100–500 €");
+    expect(text("registreerimine-jarelmaks-keeldus")).toContain("901–1000 €");
+    expect(text("registreerimine-jarelmaks-hiline")).toContain("501–700 €");
+    // the area says all three, once
+    for (const amount of ["100–500 €", "501–700 €", "901–1000 €"]) expect(String(area("registreerimine").note), amount).toContain(amount);
+    // each Proov is one check's: 9 approved, 10 declined, 11 the cart, 12 the two buttons, 13 switched off meanwhile, 14 the late loan
+    const proov = { "registreerimine-jarelmaks-kinnitatud": 9, "registreerimine-jarelmaks-keeldus": 10, "ekursus-jarelmaks": 11, "registreerimine-jarelmaks-nupud": 12, "registreerimine-jarelmaks-vahepeal-valja": 13, "registreerimine-jarelmaks-hiline": 14 };
+    for (const [id, n] of Object.entries(proov)) {
+      expect(text(id), id).toMatch(new RegExp(`Proov ${n}(?!\\d)`));
+      expect(text(id), id).toContain(`+proov${n}`);
+      for (const other of Object.values(proov).filter((m) => m !== n)) expect(text(id), `${id} vs Proov ${other}`).not.toMatch(new RegExp(`Proov ${other}(?!\\d)`));
+    }
+    expect(String(area("enne").note)).toContain("Proov 9 kuni Proov 14");
+  });
+
+  test("the words the checks quote are the site's own", () => {
+    const s = adminEt.financing.settings;
+    for (const word of [s.title, s.enabled, s.lead, s.save, s.saving, s.saved, s.error]) expect(text("haldus-seaded-jarelmaks"), word).toContain(`„${word}“`);
+    expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.course.financingLine}“`);
+    expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${ru.course.financingLine.replace(/ /g, " ")}“`);
+    expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${ru.forms.payFinancing}“`);
+    expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.forms.payFull}“`);
+    expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.forms.payHalf}“`);
+    expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.course.payNow}“`);
+    for (const id of ["registreerimine-jarelmaks-kinnitatud", "registreerimine-jarelmaks-nupud", "ekursus-jarelmaks"]) expect(text(id), id).toContain(`„${et.forms.payFinancing}“`);
+    for (const id of ["registreerimine-jarelmaks-nupud", "registreerimine-jarelmaks-vahepeal-valja"]) expect(text(id), id).toContain(`„${et.forms.payFinancingRange}“`);
+    expect(text("registreerimine-jarelmaks-kinnitatud")).toContain(`„${et.forms.payFinancingContract}“`);
+    expect(text("registreerimine-jarelmaks-keeldus")).toContain(`„${et.payment.result.pendingFinancing}“`);
+    for (const id of ["registreerimine-jarelmaks-keeldus", "registreerimine-jarelmaks-nupud"]) expect(text(id), id).toContain(`„${et.payment.payBank}“`);
+    expect(text("registreerimine-jarelmaks-nupud")).toContain(`„${et.payment.payFinancing}“`);
+    expect(text("registreerimine-jarelmaks-keeldus")).toContain(`„${et.payment.result.retry}“`);
+    expect(text("ekursus-jarelmaks")).toContain(`„${et.cart.payBank}“`);
+    // the invoice's and the payments list's words
+    expect(paidMethodText("financing")).toBe("Järelmaks (Inbank)");
+    expect(text("registreerimine-jarelmaks-kinnitatud")).toContain(`„Tasutud … · ${paidMethodText("financing")}“`);
+    expect(text("ekursus-jarelmaks")).toContain(`„Tasutud … · ${paidMethodText("financing")}“`);
+    expect(paymentMethodLabel("hirePurchase", null)).toBe("Järelmaks (Inbank)");
+    expect(paymentMethodLabel("paymentInitiation", "")).toBe("Pangalink");
+    for (const word of [adminEt.payments.filter.paid, adminEt.payments.filter.pending, adminEt.payments.filter.failed, adminEt.payments.filter.held, adminEt.payments.col.method, adminEt.payments.online])
+      expect(text("haldus-maksed-jarelmaks") + text("registreerimine-jarelmaks-hiline"), word).toContain(`„${word}“`);
+  });
+
+  test("Maria's late-loan note, as the check quotes it, is the note the site sends", () => {
+    const alert = paymentAlertSummary(
+      {
+        alert: "double", late: "loan", kind: "prepayment", name: "Proov 14", email: "proov14@example.test", amountCents: 60000, course: "Kulmumeistri baaskoolitus", startsAt: new Date("2026-11-14T08:00:00Z"),
+        reference: "MSLAB-M7", providerUuid: "uuid-7", rawStatus: "PAID", paidCents: 60000, currency: "EUR",
+      },
+      "https://mslab.example/admin",
+    );
+    expect(alert.subject).toMatch(/^Topeltmakse: Proov 14, /);
+    expect(text("registreerimine-jarelmaks-hiline")).toContain("„Topeltmakse: Proov 14, …“");
+    for (const sentence of ["Järelmaks (Inbank) laekus, kui koolitus oli juba täies ulatuses tasutud.", "Tagasta see Montonio halduses: täielik tagastus tühistab järelmaksu."]) {
+      expect(alert.text, sentence).toContain(sentence);
+      expect(text("registreerimine-jarelmaks-hiline"), sentence).toContain(`„${sentence}“`);
+    }
+  });
+
+  test("the e-course page check is reworded: the grey placeholder is gone, the quiet line replaces it", () => {
+    const check = item("avalik-ekursus-leht");
+    expect(check.mark).toBe("reworded");
+    expect(markedSince(check.markedAt)).toBe(true);
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).toBeNull(); // no answer reopens
+    const expectText = check.expect.join("\n");
+    expect(expectText).toContain("Hallist valikut „Vormista järelmaks — tulekul“ enam ei ole.");
+    expect(expectText).toContain(`„${et.course.financingLine}“`);
+    expect(expectText).not.toContain("on hall");
+    // no check still sends anyone to a placeholder: a line that names one says it is gone
+    for (const line of plan.items.flatMap((c) => c.expect)) if (/Vormista järelmaks — tulekul|See võimalus lisandub hiljem|Järelmaks — tulekul/.test(line)) expect(line).toContain("enam ei ole");
+    for (const line of plan.items.flatMap((c) => c.steps)) expect(line).not.toMatch(/järelmaks — tulekul|Järelmaks — tulekul|See võimalus lisandub hiljem/);
+  });
+
+  test("the payment checks whose choices changed are redo: the first bank payment and the e-course purchase", () => {
+    for (const id of ["registreerimine-montonio-esmane", "ekursus-ost"]) {
+      const check = item(id);
+      expect(check.mark, id).toBe("redo");
+      expect(markedSince(check.markedAt), id).toBe(true);
+      expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z"), id).not.toBeNull();
+      expect(text(id), id).toContain(`„${et.forms.payFinancing}“`);
+    }
+    expect(item("registreerimine-montonio-esmane").expect.join("\n")).toContain(`„${et.forms.payFull}“`);
+    expect(item("ekursus-ost").steps.join("\n")).toContain(`„${et.cart.payBank}“`);
+  });
+
+  test("the notes say how to leave the toggle: on for the checks, off again before the site opens, until Montonio is live", () => {
+    expect(String(area("koristamine").note)).toContain("Pane Seaded → „Järelmaks (Inbank)“ välja, kuni Montonio on Maria ettevõttele päriselt aktiveeritud");
+    expect(String(area("ekursus").note)).toContain("Proov 11");
+    expect(item("haldus-seaded-jarelmaks").steps.join("\n")).toContain("jäta see märgituks");
   });
 });
