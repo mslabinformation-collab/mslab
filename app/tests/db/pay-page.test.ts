@@ -508,7 +508,7 @@ describe("Järelmaks (Inbank) on the pay page", () => {
   test("Russian for a Russian registration", async () => {
     await on();
     const r = await loan({ locale: "ru" });
-    expect(buttons(await page(r.payToken))).toEqual([["hirePurchase", "Оплатить в рассрочку (Inbank)"], ["paymentInitiation", "Оплатить через банк"]]);
+    expect(buttons(await page(r.payToken))).toEqual([["hirePurchase", "Оплатить в рассрочку (Inbank)"], ["paymentInitiation", "Оплатить через интернет-банк"]]);
   });
 
   test("each button starts its method: järelmaks is a hirePurchase row of the whole price with the 60-minute hold, the bank a paymentInitiation row with 30", async () => {

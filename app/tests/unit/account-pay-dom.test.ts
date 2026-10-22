@@ -311,7 +311,7 @@ describe("Järelmaks (Inbank) on the card", () => {
   test("Russian", async () => {
     const ru = coursesTexts(getDict("ru"));
     await act(async () => root.render(createElement(CoursesTab, { locale: "ru", t: ru, data: dashboard([loan(7)], { financing: true }), readOnly: false, now: NOW })));
-    expect(actions()).toEqual([["pay-financing", "Оплатить в рассрочку (Inbank)"], ["pay-online", "Оплатить через банк"]]);
+    expect(actions()).toEqual([["pay-financing", "Оплатить в рассрочку (Inbank)"], ["pay-online", "Оплатить через интернет-банк"]]);
   });
 
   test("Russian, a loan the server refuses: the switched-off sentence, or the range", async () => {
