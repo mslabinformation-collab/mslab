@@ -80,7 +80,7 @@ Today the site offers two ways to pay, both through the Montonio checkout: „10
   - The receipt invoice is the normal paid invoice for the full price, with „Tasutud: järelmaks (Inbank)" (Draft).
 - **D7. Refunds and cancellations** work as for any Montonio payment today, through Maria's existing actions. Montonio and Inbank handle the student's side: a partial refund lowers the loan and a full refund cancels it, with no fee (Montonio, 22.10). The site adds nothing.
 - **D8. The order carries the student's details** (my call, from Montonio's recommendation). For a järelmaks order the site sends `billingAddress` with her first and last name and e-mail, so Inbank's form is filled in for her.
-  - Her phone is sent as `phoneNumber` + `phoneCountry: "EE"` only when it is an Estonian number (+372, or eight digits starting 5 or other Estonian mobile prefixes as the form stores them). Inbank needs a number of the shop's country, so a foreign number is left out and she types one in Inbank's form.
+  - Her phone is sent as `phoneNumber` + `phoneCountry: "372"` (Montonio's orders guide gives the calling code, e.g. "372") only when it is an Estonian number (+372, or eight digits starting 5 or other Estonian mobile prefixes as the form stores them). Inbank needs a number of the shop's country, so a foreign number is left out and she types one in Inbank's form.
   - Nothing else is sent. Personal ID codes are never collected (Inbank asks for them).
   - Bank orders stay as they are.
 
@@ -113,7 +113,7 @@ Today the site offers two ways to pay, both through the Montonio checkout: „10
   - The disabled radios are replaced by the real choice when it is offered, and removed when it is not.
 - **The name and phone in `billingAddress`** (D8, my call).
   - `firstName` is everything before the last word of her name, and `lastName` is the last word. A one-word name goes in both.
-  - The phone counts as Estonian when, after spaces, dashes and brackets are removed, it starts with +372 or 372 followed by 7–8 digits, or is 7–8 digits starting with 5 (mobile) or 3–8 (landline). It is sent without the country code, with `phoneCountry: "EE"`.
+  - The phone counts as Estonian when, after spaces, dashes and brackets are removed, it starts with +372 or 372 followed by 7–8 digits, or is 7–8 digits starting with 5 (mobile) or 3–8 (landline). It is sent without the country code, with `phoneCountry: "372"`.
 
 ## 5. The test plan (standing rule)
 

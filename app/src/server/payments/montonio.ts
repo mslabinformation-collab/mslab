@@ -271,7 +271,7 @@ export type Montonio = {
 
 /**
  * The `billingAddress` as sent: the five keys of D8 and nothing else, whatever object was passed. `phoneCountry` only goes with a
- * `phoneNumber`. (Montonio's orders guide: every key a string, none required; `phoneCountry` is described as "e.g 372".)
+ * `phoneNumber`. (Montonio's orders guide: every key a string, none required; `phoneCountry` is the calling code, "e.g 372".)
  */
 const billingClaim = (b: BillingAddress): BillingAddress => ({
   firstName: b.firstName,

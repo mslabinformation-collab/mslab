@@ -295,7 +295,7 @@ describe("createOrder", () => {
       locale: "ru",
       // Montonio's orders guide (docs.montonio.com, checked 22.10.2026): expiresIn is in minutes, beside grandTotal; hirePurchase has no methodOptions
       expiresIn: 60,
-      billingAddress: { firstName: "Mari-Liis", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "EE" },
+      billingAddress: { firstName: "Mari-Liis", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "372" },
       payment: { method: "hirePurchase", amount: 175.5, currency: "EUR" },
       iat: expect.any(Number),
       exp: expect.any(Number),
@@ -330,8 +330,8 @@ describe("createOrder", () => {
     for (const s of students) await client.createOrder({ ...ORDER, method: "hirePurchase", billing: billingAddressOf(s) });
     const sent = f.calls.map((c) => verifyHs256((c.body as { data: string }).data, CONFIG.secretKey).claims.billingAddress);
     expect(sent).toEqual([
-      { firstName: "Madonna", lastName: "Madonna", email: "madonna@example.test", phoneNumber: "55512345", phoneCountry: "EE" },
-      { firstName: "Mari Liis", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "EE" },
+      { firstName: "Madonna", lastName: "Madonna", email: "madonna@example.test", phoneNumber: "55512345", phoneCountry: "372" },
+      { firstName: "Mari Liis", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "372" },
       { firstName: "Anna", lastName: "Ivanova", email: "anna@example.test" },
       { firstName: "Jukka", lastName: "Virtanen", email: "jukka@example.test" },
       { firstName: "Kati", lastName: "Kask", email: "kati@example.test" },

@@ -12,7 +12,7 @@ import { E2E_MONTONIO } from "./montonio-values";
 //   preferredProvider and no paymentReference (else 400); a bank order also needs methodOptions.paymentDescription, a hirePurchase order has
 //   no methodOptions of Montonio's. The top-level `expiresIn`, when present, is minutes, a number from 5 to 44640; `billingAddress`, when
 //   present, is an object with a string firstName, lastName and e-mail (docs.montonio.com/api/stargate/guides/orders, checked 22.10.2026),
-//   and a phoneCountry only beside a phoneNumber. The decoded method, billingAddress and expiresIn are kept on the order for the tests
+//   and a phoneCountry (the calling code, 1 to 4 digits, "372" in the guide) only beside a phoneNumber. The decoded method, billingAddress and expiresIn are kept on the order for the tests
 //   (GET /_fake/orders/<reference>). A reference reused for an unpaid order replaces it; for a paid one it is a 400, as at Montonio. Answers
 //   { uuid, paymentStatus: "PENDING", merchantReference, paymentUrl } (the paymentUrl on this server's own address).
 // - GET /orders/<uuid> with "Authorization: Bearer <jwt>" ({ accessKey }): the order as Montonio's reference prints it, grandTotal a string,
@@ -185,7 +185,8 @@ function billingProblem(b: unknown): string | null {
   const a = b as Record<string, unknown>;
   for (const key of ["firstName", "lastName", "email"]) if (typeof a[key] !== "string" || !(a[key] as string).trim()) return `billingAddress.${key}`;
   for (const key of BILLING_KEYS) if (a[key] !== undefined && typeof a[key] !== "string") return `billingAddress.${key}`;
-  if (a.phoneCountry !== undefined && !a.phoneNumber) return "billingAddress.phoneCountry";
+  // phoneCountry is the calling code ("e.g 372" in the guide): 1 to 4 digits, and only beside a phone number
+  if (a.phoneCountry !== undefined && (!/^\d{1,4}$/.test(a.phoneCountry as string) || !a.phoneNumber)) return "billingAddress.phoneCountry";
   return null;
 }
 

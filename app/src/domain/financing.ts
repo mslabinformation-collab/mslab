@@ -36,8 +36,11 @@ export function financingAllowed(o: { enabled: boolean; paymentsOn: boolean; pri
   return financingOffered(o) && o.paidCents === 0 && o.dueCents === o.priceCents;
 }
 
-/** What Montonio's `billingAddress` holds for a financing order (D8): her name and e-mail, and her phone only when it is Estonian. */
-export type BillingAddress = { firstName: string; lastName: string; email: string; phoneNumber?: string; phoneCountry?: "EE" };
+/**
+ * What Montonio's `billingAddress` holds for a financing order (D8): her name and e-mail, and her phone only when it is Estonian. `phoneCountry` is
+ * the calling code "372", as Montonio's orders guide gives it ("The customer's phone country. (e.g 372)"), with the national digits in `phoneNumber`.
+ */
+export type BillingAddress = { firstName: string; lastName: string; email: string; phoneNumber?: string; phoneCountry?: "372" };
 
 /**
  * An Estonian phone number in national digits, or null (D8, §4). Spaces, dashes, dots and brackets are taken out first. It is Estonian when it is
@@ -54,7 +57,7 @@ export function estonianPhone(raw: string): string | null {
 /**
  * The `billingAddress` of a financing order (D8, §4). `lastName` is the last word of her name and `firstName` everything before it; a one-word
  * name goes in both, as Montonio asks for both. A name with nothing in it (the forms never store one) falls back to the e-mail's local part, so
- * the address is still valid. Her phone goes as `phoneNumber` (national digits) with `phoneCountry: "EE"` only when estonianPhone accepts it.
+ * the address is still valid. Her phone goes as `phoneNumber` (national digits) with `phoneCountry: "372"` only when estonianPhone accepts it.
  * Nothing else is sent: personal ID codes are never collected.
  */
 export function billingAddressOf(o: { name: string; email: string; phone?: string | null }): BillingAddress {
@@ -63,7 +66,7 @@ export function billingAddressOf(o: { name: string; email: string; phone?: strin
   const lastName = words[words.length - 1];
   const firstName = words.length > 1 ? words.slice(0, -1).join(" ") : lastName;
   const phone = o.phone ? estonianPhone(o.phone) : null;
-  return { firstName, lastName, email: o.email, ...(phone ? { phoneNumber: phone, phoneCountry: "EE" as const } : {}) };
+  return { firstName, lastName, email: o.email, ...(phone ? { phoneNumber: phone, phoneCountry: "372" as const } : {}) };
 }
 
 /**

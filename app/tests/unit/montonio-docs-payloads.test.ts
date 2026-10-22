@@ -101,6 +101,8 @@ describe("Montonio's documented payloads", () => {
     // the billingAddress keys of the guide: firstName, lastName, email, phoneNumber, phoneCountry, addressLine1, addressLine2, locality, region, postalCode, country
     const documented = ["firstName", "lastName", "email", "phoneNumber", "phoneCountry", "addressLine1", "addressLine2", "locality", "region", "postalCode", "country"];
     expect(Object.keys(billingAddress).every((k) => documented.includes(k) && typeof billingAddress[k] === "string")).toBe(true);
+    // "phoneCountry: The customer's phone country. (e.g 372)": the calling code, with the national number in phoneNumber
+    expect(billingAddress).toMatchObject({ phoneNumber: "55512345", phoneCountry: "372" });
     // the payment's: method (hirePurchase is in the guide's method table), amount and currency required; methodOptions has none for hirePurchase
     expect(Object.keys(payment).sort()).toEqual(["amount", "currency", "method"]);
     expect(payment.method).toBe("hirePurchase");

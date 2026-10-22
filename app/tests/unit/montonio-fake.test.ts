@@ -155,7 +155,7 @@ test("a hirePurchase order: the fake reports the method, keeps its billingAddres
   expect(await client.fetchOrder(loan.uuid)).toEqual({ uuid: loan.uuid, reference: "MSLAB-M41", status: "pending", rawStatus: "PENDING", amountCents: 25000, currency: "EUR", method: "hirePurchase" });
   expect((await client.fetchOrder(bank.uuid))?.method).toBe("paymentInitiation");
   const seen = (await (await fetch(`${base}/_fake/orders/MSLAB-M41`)).json()) as Record<string, unknown>;
-  expect(seen).toMatchObject({ reference: "MSLAB-M41", method: "hirePurchase", expiresIn: 60, billingAddress: { firstName: "Mari", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "EE" } });
+  expect(seen).toMatchObject({ reference: "MSLAB-M41", method: "hirePurchase", expiresIn: 60, billingAddress: { firstName: "Mari", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "372" } });
   const seenBank = (await (await fetch(`${base}/_fake/orders/MSLAB-M42`)).json()) as Record<string, unknown>;
   expect(seenBank).toMatchObject({ method: "paymentInitiation" });
   expect(seenBank).not.toHaveProperty("billingAddress");
@@ -217,8 +217,10 @@ test("expiresIn is minutes, 5 to 44640 (Montonio's orders guide); billingAddress
     "expiresIn 5": loanClaims({ expiresIn: 5 }),
     "expiresIn 44640": loanClaims({ expiresIn: 44_640 }),
     "billing without a phone": loanClaims({ billingAddress: billing }),
-    "billing with a phone and its country": loanClaims({ billingAddress: { ...billing, phoneNumber: "55512345", phoneCountry: "EE" } }),
+    "billing with a phone and its country": loanClaims({ billingAddress: { ...billing, phoneNumber: "55512345", phoneCountry: "372" } }),
     "billing with a phone and no country": loanClaims({ billingAddress: { ...billing, phoneNumber: "55512345" } }),
+    "a one-digit calling code": loanClaims({ billingAddress: { ...billing, phoneNumber: "2025550123", phoneCountry: "1" } }),
+    "a four-digit calling code": loanClaims({ billingAddress: { ...billing, phoneNumber: "2025550123", phoneCountry: "1242" } }),
     "a bank order may carry them too": loanClaims({ expiresIn: 30, billingAddress: billing, payment: { method: "paymentInitiation", amount: 250, currency: "EUR", methodOptions: { paymentDescription: "MS LAB MSLAB-M40" } } }),
   };
   for (const [what, claims] of Object.entries(ok)) expect((await postOrder(base, claims)).status, what).toBe(200);
@@ -234,7 +236,13 @@ test("expiresIn is minutes, 5 to 44640 (Montonio's orders guide); billingAddress
     "billing without a last name": loanClaims({ billingAddress: { firstName: "Mari", email: "mari@example.test" } }),
     "billing without an e-mail": loanClaims({ billingAddress: { firstName: "Mari", lastName: "Tamm" } }),
     "an empty first name": loanClaims({ billingAddress: { ...billing, firstName: "" } }),
-    "a phone country without a phone number": loanClaims({ billingAddress: { ...billing, phoneCountry: "EE" } }),
+    "a phone country without a phone number": loanClaims({ billingAddress: { ...billing, phoneCountry: "372" } }),
+    // Montonio's guide: phoneCountry "e.g 372", the calling code; an ISO country, a plus sign, spaces or more than four digits are no code
+    "an ISO country as the phone country": loanClaims({ billingAddress: { ...billing, phoneNumber: "55512345", phoneCountry: "EE" } }),
+    "a calling code with a plus": loanClaims({ billingAddress: { ...billing, phoneNumber: "55512345", phoneCountry: "+372" } }),
+    "a calling code with a space": loanClaims({ billingAddress: { ...billing, phoneNumber: "55512345", phoneCountry: "37 2" } }),
+    "a calling code of five digits": loanClaims({ billingAddress: { ...billing, phoneNumber: "55512345", phoneCountry: "37200" } }),
+    "an empty calling code": loanClaims({ billingAddress: { ...billing, phoneNumber: "55512345", phoneCountry: "" } }),
     "a phone number that is a number": loanClaims({ billingAddress: { ...billing, phoneNumber: 55512345 } }),
   };
   for (const [what, claims] of Object.entries(bad)) expect((await postOrder(base, claims)).status, what).toBe(400);
@@ -254,9 +262,9 @@ test("a student whose name or phone doesn't fit Inbank: the fake still takes the
     await client.createOrder({ reference, amountCents: 25000, locale: "et", returnUrl: "https://mslab.example/r", notificationUrl: "https://mslab.example/n", method: "hirePurchase", billing: billingAddressOf(s) });
   }
   const stored = async (reference: string) => ((await (await fetch(`${base}/_fake/orders/${reference}`)).json()) as { billingAddress: unknown }).billingAddress;
-  expect(await stored("MSLAB-M50")).toEqual({ firstName: "Madonna", lastName: "Madonna", email: "madonna@example.test", phoneNumber: "55512345", phoneCountry: "EE" });
+  expect(await stored("MSLAB-M50")).toEqual({ firstName: "Madonna", lastName: "Madonna", email: "madonna@example.test", phoneNumber: "55512345", phoneCountry: "372" });
   expect(await stored("MSLAB-M51")).toEqual({ firstName: "Anna", lastName: "Ivanova", email: "anna@example.test" });
-  expect(await stored("MSLAB-M52")).toEqual({ firstName: "Mari Liis", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "EE" });
+  expect(await stored("MSLAB-M52")).toEqual({ firstName: "Mari Liis", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "372" });
   expect(await stored("MSLAB-M53")).toEqual({ firstName: "nameless", lastName: "nameless", email: "nameless@example.test" });
 });
 

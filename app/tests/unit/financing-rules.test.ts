@@ -95,7 +95,7 @@ describe("billingAddress (spec D8, §4)", () => {
 
   it("sends the phone only when Estonian", () => {
     expect(billingAddressOf({ name: "Mari Maasikas", email: "m@example.test", phone: "+372 5123 4567" })).toEqual(
-      { firstName: "Mari", lastName: "Maasikas", email: "m@example.test", phoneNumber: "51234567", phoneCountry: "EE" });
+      { firstName: "Mari", lastName: "Maasikas", email: "m@example.test", phoneNumber: "51234567", phoneCountry: "372" });
     expect(billingAddressOf({ name: "Mari Maasikas", email: "m@example.test", phone: "+371 2123 4567" })).toEqual(
       { firstName: "Mari", lastName: "Maasikas", email: "m@example.test" });
     expect(billingAddressOf({ name: "Mari Maasikas", email: "m@example.test", phone: null })).toEqual(
