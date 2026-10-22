@@ -292,7 +292,7 @@ test("switched off: no line, no third choice, no choice in the cart — the page
   }
 });
 
-test("switched off after the page was loaded: the registration stands, awaiting payment, and she is told what Järelmaks needs; nothing was started", async ({ page }, info) => {
+test("switched off after the page was loaded: the registration stands, awaiting payment, and she is told järelmaks is not available now; nothing was started", async ({ page }, info) => {
   const email = await fresh("refused", info);
   const release = await takeFinancing(info, true);
   try {
@@ -301,7 +301,7 @@ test("switched off after the page was loaded: the registration stands, awaiting 
     await setFinancing(false); // Maria switches it off while the page is open (the page is a few minutes old, as a cached one is)
     await register(page, email, /Järelmaks \(Inbank\)/);
     const done = page.locator("[data-register-sent]");
-    await expect(done.locator("[data-financing-refused]")).toHaveText("Järelmaks on võimalik 100–5000 € hinnaga koolitusele.");
+    await expect(done.locator("[data-financing-refused]")).toHaveText(OFF);
     await expect(done).toContainText("Registreerimine on vastu võetud.");
     await expect(page.locator("[data-register-form]")).toHaveCount(0);
     expect(await storedRegistrations(email)).toEqual([expect.objectContaining({ status: "awaiting_prepayment", paidCents: 0, paymentChoice: "financing" })]);
@@ -312,7 +312,7 @@ test("switched off after the page was loaded: the registration stands, awaiting 
   }
 });
 
-test("switched off after the cart was loaded: the range is said at the choice, the bank link is chosen, and pressing again pays by bank", async ({ page }, info) => {
+test("switched off after the cart was loaded: that it is not available now is said at the choice, the bank link is chosen, and pressing again pays by bank", async ({ page }, info) => {
   const email = await fresh("cartrefused", info);
   const release = await takeFinancing(info, true);
   const releaseTerms = await holdTerms();
@@ -325,7 +325,7 @@ test("switched off after the cart was loaded: the range is said at the choice, t
     await form.getByLabel(/tingimustega/).check();
     await setFinancing(false);
     await form.getByRole("button", { name: "Maksa 190 €" }).click();
-    await expect(form.locator("[data-financing-range]")).toHaveText("Järelmaks on võimalik 100–5000 € hinnaga koolitusele.");
+    await expect(form.locator("[data-financing-range]")).toHaveText(OFF);
     await expect(form.getByRole("radio", { name: "Pangalink" })).toBeChecked();
     expect(await storedPayments(email)).toEqual([]);
     await form.getByRole("button", { name: "Maksa 190 €" }).click();
@@ -343,7 +343,8 @@ test("switched off after the cart was loaded: the range is said at the choice, t
 // An unpaid registration booked with Järelmaks (Inbank) has two buttons while a loan may go to Inbank: „Maksa järelmaksuga (Inbank)“ and „Maksa pangalingiga“.
 // The registration is a sample client's on the test's own unpublished course (account.ts insertAccountFixtures: 350 €), so no public seat moves.
 
-const RANGE = "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.";
+/** What a student is told when järelmaks was switched off meanwhile and the price is within the range (the range sentence is for a price outside 100–5000 €). */
+const OFF = "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.";
 
 /** A sample client's unpaid registration (350 €) booked with Järelmaks (Inbank); its "Maksa" token. */
 async function unpaidLoanRegistration(email: string): Promise<{ id: number; token: string }> {
@@ -388,7 +389,7 @@ test("/maksa/<token> of a järelmaks registration: two buttons — at 390, 834 a
   }
 });
 
-test("/maksa/<token> with the toggle off: the one „Maksa 350 €“; a loan pressed after Maria switched it off says the range, keeps the bank's button, and starts nothing", async ({ page }, info) => {
+test("/maksa/<token> with the toggle off: the one „Maksa 350 €“; a loan pressed after Maria switched it off says it is not available now, keeps the bank's button, and starts nothing", async ({ page }, info) => {
   const email = await fresh("paygone", info);
   const release = await takeFinancing(info, true);
   try {
@@ -397,7 +398,7 @@ test("/maksa/<token> with the toggle off: the one „Maksa 350 €“; a loan pr
     await expect(page.getByRole("button")).toHaveText(["Maksa järelmaksuga (Inbank)", "Maksa pangalingiga"]);
     await setFinancing(false); // Maria switches it off while the page is open
     await page.getByRole("button", { name: "Maksa järelmaksuga (Inbank)" }).click();
-    await expect(page.locator("[data-pay-notice='financing']")).toHaveText(RANGE);
+    await expect(page.locator("[data-pay-notice='financingOff']")).toHaveText(OFF);
     await expect(page.getByRole("button")).toHaveText(["Maksa 350 €"]);
     expect(await payments(email)).toEqual([]);
     // opened afresh it is the one button, with no sentence
@@ -412,7 +413,7 @@ test("/maksa/<token> with the toggle off: the one „Maksa 350 €“; a loan pr
   }
 });
 
-test("the account's card of a järelmaks registration: two buttons (a whole-width row on a phone); the loan goes to Inbank; switched off meanwhile, it says the range and the card has the one bank button", async ({ page }, info) => {
+test("the account's card of a järelmaks registration: two buttons (a whole-width row on a phone); the loan goes to Inbank; switched off meanwhile, it says it is not available now and the card has the one bank button", async ({ page }, info) => {
   const email = await fresh("card", info);
   const release = await takeFinancing(info, true);
   try {
@@ -427,10 +428,10 @@ test("the account's card of a järelmaks registration: two buttons (a whole-widt
       expect(await noOverflow(page), String(width)).toBe(true);
       for (const button of await ways.all()) expect((await button.boundingBox())!.height, `${width} px`).toBeGreaterThanOrEqual(44);
     }
-    // Maria switches the loan off while the card is open: the press is refused, the range is said and the card is loaded again
+    // Maria switches the loan off while the card is open: the press is refused, that it is not available now is said and the card is loaded again
     await setFinancing(false);
     await card.getByRole("button", { name: "Maksa järelmaksuga (Inbank)" }).click();
-    await expect(card.locator("[data-card-pay-error]")).toHaveText(RANGE);
+    await expect(card.locator("[data-card-pay-error]")).toHaveText(OFF);
     await expect(ways).toHaveText(["Maksa 350 €"]);
     expect(await payments(email)).toEqual([]);
     // and on again: the loan goes to Inbank

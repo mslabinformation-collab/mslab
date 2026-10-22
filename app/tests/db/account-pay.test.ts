@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clients, clientSessions, payments, registrations, settings } from "@/db/schema";
+import { clients, clientSessions, courses, payments, registrations, settings } from "@/db/schema";
 import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
 import { settleToken } from "@/server/payments/settle";
@@ -96,7 +96,7 @@ test("the body's `method` (instalments, §4): hirePurchase starts the järelmaks
   const { client, cookie } = await signedIn();
   const c = await contactCourse(db);
   const r = await registrationOn(db, c, { clientId: client.id, paymentChoice: "financing" });
-  expect(await answer(await call(deps(m.montonio), cookie, { registrationId: r.id, method: "hirePurchase" }))).toEqual([409, { ok: false, error: "financing" }]);
+  expect(await answer(await call(deps(m.montonio), cookie, { registrationId: r.id, method: "hirePurchase" }))).toEqual([409, { ok: false, error: "financingOff" }]);
   expect(await answer(await call(deps(m.montonio), cookie, { registrationId: r.id, method: "instalment" }))).toEqual([400, { ok: false, error: "method" }]);
   expect(await db.select().from(payments)).toEqual([]);
   await db.insert(settings).values({ key: "financing", value: { enabled: true } });
@@ -173,11 +173,16 @@ test("both buttons of the card: `method` hirePurchase starts the loan (60-minute
   expect([after.status, after.paidCents]).toEqual(["confirmed", 35000]);
 });
 
-test("a loan the start refuses (the toggle went off since the page was loaded): 409 financing, nothing started, and the bank's press still works", async () => {
+test("a loan the start refuses: the toggle went off since the page was loaded (the price within the range) is 409 financingOff, the price out of range is 409 financing — nothing started, and the bank's press still works", async () => {
   const m = stubMontonio();
   const { client, cookie } = await signedIn();
-  const r = await registrationOn(db, await contactCourse(db), { clientId: client.id, paymentChoice: "financing" });
+  const c = await contactCourse(db);
+  const r = await registrationOn(db, c, { clientId: client.id, paymentChoice: "financing" });
+  expect(await answer(await call(deps(m.montonio), cookie, { registrationId: r.id, method: "hirePurchase" }))).toEqual([409, { ok: false, error: "financingOff" }]);
+  // out of 100–5000 € with the toggle off as well: the range (the price is the permanent fact)
+  await db.update(courses).set({ priceGroup: 600_000 }).where(eq(courses.id, c.course.id));
   expect(await answer(await call(deps(m.montonio), cookie, { registrationId: r.id, method: "hirePurchase" }))).toEqual([409, { ok: false, error: "financing" }]);
+  await db.update(courses).set({ priceGroup: 35_000 }).where(eq(courses.id, c.course.id));
   expect(await db.select().from(payments)).toEqual([]);
   expect((await call(deps(m.montonio), cookie, { registrationId: r.id, method: "paymentInitiation" })).status).toBe(200);
 });

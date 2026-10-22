@@ -2854,7 +2854,7 @@
         "Lehel „Koolituse eest tasumine“ on summa ja kaks nuppu: „Maksa järelmaksuga (Inbank)“ ja „Maksa pangalingiga“.",
         "Telefonis mahuvad nupud ekraanile, on kerged vajutada ja leht ei kerigi küljele.",
         "Kaardil „Minu koolitused“ on samad kaks nuppu.",
-        "Pärast väljalülitamist ütleb vajutus „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“.",
+        "Pärast väljalülitamist ütleb vajutus „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“.",
         "Pärast seda on lehel üks nupp „Maksa …“ ja Inbanki nuppu enam pole.",
         "Kirja lingi uuesti avamisel on üks nupp „Maksa …“ ja lauset pole.",
         "Pärast uuesti sisselülitamist on lehel jälle kaks nuppu."
@@ -2862,8 +2862,8 @@
       "why": "Õpilane valib ise, kuidas maksta, ja väljalülitatud järelmaks ei jäta teda ummikusse.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-jarelmaks-vahepeal-valja",
@@ -2883,18 +2883,18 @@
         "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse ja salvesta."
       ],
       "expect": [
-        "Ostukorvis on valikute juures „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“ ja valitud on „Pangalink“.",
+        "Ostukorvis on valikute juures „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“ ja valitud on „Pangalink“.",
         "Esimene vajutus ei ava Montonio lehte ega alga makset.",
         "Teine vajutus avab testpanga koolituse hinnaga.",
-        "Registreerimisel näed lauset „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“ ja teadet „Registreerimine on vastu võetud. …“.",
+        "Registreerimisel näed lauset „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“ ja teadet „Registreerimine on vastu võetud. …“.",
         "Montonio lehte ei avane ja leht jääb samaks.",
         "Halduses on Proov 13 registreering „Ootab ettemaksu“, valik „Järelmaks (Inbank)“ ja makseid selle juures pole."
       ],
       "why": "Maria võib järelmaksu välja lülitada, kui õpilane on lehe juba avanud.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-jarelmaks-hiline",

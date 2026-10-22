@@ -155,7 +155,7 @@ function InvoiceLines({ invoices, locale, t, readOnly }: { invoices: CardInvoice
  * - a sent protocol (phase protocols) → "Vaata protokolli" → /konto/protokoll#id={registration}: the main button of a card that has none, else a text link under it.
  * A card booked with „Järelmaks (Inbank)“ has two main buttons instead of the one „Maksa“ while the loan is allowed for it (`financing`, `twoWays`; instalments
  * §4): „Maksa järelmaksuga (Inbank)“ (the filled one) and „Maksa pangalingiga“ (the outline), each posting its `method`; the transfer's text button stays under them.
- * "Maksa" posts /api/konto/maksa and the page goes on to Montonio; a refusal says why under the button (a loan the server refuses says the range, 409 "financing"). A refusal that says the card is
+ * "Maksa" posts /api/konto/maksa and the page goes on to Montonio; a refusal says why under the button (a loan the server refuses says the range, 409 "financing", or that it is switched off, 409 "financingOff"). A refusal that says the card is
  * out of date (a 401, a 404, or "nothing to pay") also loads the cards again quietly (`onStale`), so the card shows what is true now: the
  * line is left for "nothing" (its sentence is true after the reload too) and for a reload that got no answer, and not for a 401 or a 404.
  * If the browser comes back to this page from its back-forward cache (the payer pressed Back), the button is ready again.
@@ -216,9 +216,21 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
     const url = answer.data.paymentUrl;
     if (isDone(answer) && isPageUrl(url)) return navigate(url);
     const nothing = answer.data.error === "nothing";
-    // a loan the start would not take (Seaded's toggle went off, or the price left 100–5000 €, since the cards were loaded): the range sentence; the bank is open
-    const refusedLoan = answer.data.error === "financing";
-    const error = answer.data.error === "full" ? t.online.full : nothing ? t.online.nothing : refusedLoan ? t.online.financing : answer.status === 429 ? t.online.rate : t.online.failed;
+    // a loan the start would not take since the cards were loaded: Seaded's toggle went off (the price within 100–5000 €: "financingOff", its own
+    // sentence), or the price left 100–5000 € ("financing", the range sentence); the bank is open
+    const refusedLoan = answer.data.error === "financing" || answer.data.error === "financingOff";
+    const error =
+      answer.data.error === "full"
+        ? t.online.full
+        : nothing
+          ? t.online.nothing
+          : answer.data.error === "financingOff"
+            ? t.online.financingOff
+            : refusedLoan
+              ? t.online.financing
+              : answer.status === 429
+                ? t.online.rate
+                : t.online.failed;
     // signed out or replaced (401), gone or not hers (404), nothing due or no loan any more (409): the card is out of date; load the cards again, quietly
     const outOfDate = answer.status === 401 || answer.status === 404 || nothing || refusedLoan;
     const reloaded = outOfDate && onStale ? await onStale(card) : false;

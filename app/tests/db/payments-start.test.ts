@@ -579,35 +579,41 @@ describe("a start with its method: the bank, or Järelmaks (Inbank) (instalments
     expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 30 * MIN));
   });
 
-  test("hirePurchase is refused with kind 'financing' when off, out of range, partly paid, or the choice was 100%/50%", async () => {
+  test("hirePurchase is refused with kind 'financing' when off, out of range, partly paid, or the choice was 100%/50% — and says which sentence applies: 'off' for a price within the range, else 'range'", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
     const r = await registrationOn(db, c, { paymentChoice: "financing" });
-    const refused = async (why: string) => {
-      expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase"), why).toEqual({ kind: "financing" });
+    const refused = async (why: string, reason: "off" | "range") => {
+      expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase"), why).toEqual({ kind: "financing", reason });
       expect(await rows(), why).toEqual([]);
       expect(m.state.orders, why).toEqual([]);
     };
-    // Seaded's toggle: never set, then off
-    await refused("no setting");
+    // Seaded's toggle: never set, then off — the price (350 €) is within the range, so it is the switched-off sentence
+    await refused("no setting", "off");
     await financingOn(false);
-    await refused("switched off");
+    await refused("switched off", "off");
+    // the price out of 100–5000 € and the toggle off: the price is the permanent fact, so the range sentence
+    for (const price of [9999, 500001]) {
+      await db.update(courses).set({ priceGroup: price }).where(eq(courses.id, c.course.id));
+      await refused(`price ${price}, switched off`, "range");
+    }
+    await db.update(courses).set({ priceGroup: 35000 }).where(eq(courses.id, c.course.id));
     await financingOn();
     // the price out of 100–5000 € (Maria edited the course after the booking)
     for (const price of [9999, 500001]) {
       await db.update(courses).set({ priceGroup: price }).where(eq(courses.id, c.course.id));
-      await refused(`price ${price}`);
+      await refused(`price ${price}`, "range");
     }
-    // partly paid (Maria recorded a transfer): only the bank, for what is left
+    // partly paid (Maria recorded a transfer): only the bank, for what is left (the sentence it always had)
     await db.update(courses).set({ priceGroup: 35000 }).where(eq(courses.id, c.course.id));
     await db.update(registrations).set({ paidCents: 5000 }).where(eq(registrations.id, r.id));
-    await refused("partly paid");
+    await refused("partly paid", "range");
     expect(await start(m.montonio, { registrationId: r.id })).toMatchObject({ kind: "started" });
     expect((await rows()).map((p) => [p.amountCents, p.method])).toEqual([[30000, "paymentInitiation"]]);
     // booked with 100% or 50%: never järelmaks later (the choice is made at booking)
     for (const paymentChoice of ["full", "half"] as const) {
       const other = await registrationOn(db, c, { email: `${paymentChoice}@example.com`, paymentChoice });
-      expect(await start(m.montonio, { registrationId: other.id }, "hirePurchase"), paymentChoice).toEqual({ kind: "financing" });
+      expect(await start(m.montonio, { registrationId: other.id }, "hirePurchase"), paymentChoice).toEqual({ kind: "financing", reason: "range" });
     }
     // the edges of the range are in it
     for (const price of [10000, 500000]) {
@@ -618,16 +624,35 @@ describe("a start with its method: the bank, or Järelmaks (Inbank) (instalments
     expect(m.state.orders.filter((o) => methodOf(o) === "hirePurchase").map((o) => o.grandTotal)).toEqual([100, 5000]);
   });
 
-  test("the toggle is read inside the start: switched off between the booking and the start, the registration stands awaiting payment, its hold ends, the form is told", async () => {
+  test("the toggle is read inside the start: switched off between the booking and the start, the registration stands awaiting payment, its hold ends, the form is told it is switched off", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
     await financingOn();
     const { d } = deps(m.montonio, { db: onStart(db, async () => void (await financingOn(false))) });
-    expect(await handleRegistration(d, form(c.session.id, { payment: "financing" }))).toEqual({ ok: true, financing: "refused" });
+    expect(await handleRegistration(d, form(c.session.id, { payment: "financing" }))).toEqual({ ok: true, financing: "off" });
     const r = await reg();
     expect([r.paymentChoice, r.status, r.seatHoldUntil]).toEqual(["financing", "awaiting_prepayment", null]);
     expect(await rows()).toEqual([]);
     expect(m.state.orders).toEqual([]);
+  });
+
+  test("the price is read inside the start: out of 100–5000 € between the booking and the start (the toggle still on) the form is told the range; with the toggle off as well, the range too", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const outOfRange = (extra?: () => Promise<unknown>) => async () => {
+      await db.update(courses).set({ priceGroup: 600_000 }).where(eq(courses.id, c.course.id));
+      await extra?.();
+    };
+    const first = deps(m.montonio, { db: onStart(db, outOfRange()) });
+    expect(await handleRegistration(first.d, form(c.session.id, { payment: "financing" }))).toEqual({ ok: true, financing: "refused" });
+    expect(await rows()).toEqual([]);
+    expect(m.state.orders).toEqual([]);
+    // the price out of range and the toggle off in the same moment: the price is the permanent fact
+    await db.update(courses).set({ priceGroup: 35000 }).where(eq(courses.id, c.course.id));
+    const second = deps(m.montonio, { db: onStart(db, outOfRange(() => financingOn(false))) });
+    expect(await handleRegistration(second.d, form(c.session.id, { payment: "financing", email: "teine@example.com" }))).toEqual({ ok: true, financing: "refused" });
+    expect(await rows()).toEqual([]);
   });
 
   test("a bank press while a hirePurchase attempt is open starts a new attempt (new row and reference), never re-sends the loan's", async () => {

@@ -290,6 +290,7 @@ export const ru: Dict = {
     payFinancing: "Рассрочка (Inbank)",
     payFinancingContract: "Стоимость обучения оплачивается полностью: в рассрочку (Inbank) или банковским платежом.",
     payFinancingRange: "Рассрочка возможна для обучения стоимостью 100–5000 €.",
+    payFinancingOff: "Рассрочка сейчас недоступна. Можно оплатить через интернет-банк.",
     preferredPeriod: "Желаемый период или дата",
     preferredPeriodPlaceholder: "Например, вторая половина декабря или 12.12",
     optional: "необязательно",

@@ -713,13 +713,35 @@ describe("the instalments checks (instalments, Task 8)", () => {
     "ekursus-jarelmaks": { area: "ekursus", who: "dim", writes: true },
   };
 
+  // the two that say what a student sees when the toggle is switched off meanwhile: reworded in the follow-up (financing texts, 22.10) after the first
+  // deploy, from the range sentence to the switched-off one. What they expect changed, so they are redo since that deploy.
+  const REDONE = ["registreerimine-jarelmaks-nupud", "registreerimine-jarelmaks-vahepeal-valja"];
+
   test("each is a new check marked since the deploy, in its area, run by whom the sandbox or the toggle needs", () => {
     for (const [id, want] of Object.entries(NEW)) {
+      if (REDONE.includes(id)) continue;
       expect(item(id), id).toMatchObject({ ...want, mark: "new" });
       expect(markedSince(item(id).markedAt), id).toBe(true); // "deploy" on the branch, the push instant once stamped
       // a new check never reopens an answer
       expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z"), id).toBeNull();
     }
+  });
+
+  test("the checks that switch the toggle off meanwhile are redo since the follow-up's deploy, in their area, run by whom they were", () => {
+    for (const id of REDONE) {
+      expect(item(id), id).toMatchObject({ ...NEW[id], mark: "redo", markedAt: "deploy" });
+      // an answer given before the follow-up's deploy no longer stands: it was given for the old sentence
+      expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z"), id).toBe("2026-10-25T00:00:00.000Z");
+    }
+  });
+
+  test("a student whose järelmaks was switched off meanwhile is told it is not available now: the checks say that sentence, never the range", () => {
+    for (const id of REDONE) {
+      expect(text(id), id).toContain(`„${et.forms.payFinancingOff}“`);
+      expect(text(id), id).not.toContain(et.forms.payFinancingRange);
+    }
+    // (the range sentence is for a price outside 100–5000 €, which no check edits a price to see)
+    expect(plan.items.flatMap((c) => [...c.steps, ...c.expect]).filter((l) => l.includes(et.forms.payFinancingRange))).toEqual([]);
   });
 
   test("Seaded's toggle comes before every check that needs it on; the course-page check, which comes first, switches it on itself", () => {
@@ -783,7 +805,7 @@ describe("the instalments checks (instalments, Task 8)", () => {
     expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.forms.payHalf}“`);
     expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.course.payNow}“`);
     for (const id of ["registreerimine-jarelmaks-kinnitatud", "registreerimine-jarelmaks-nupud", "ekursus-jarelmaks"]) expect(text(id), id).toContain(`„${et.forms.payFinancing}“`);
-    for (const id of ["registreerimine-jarelmaks-nupud", "registreerimine-jarelmaks-vahepeal-valja"]) expect(text(id), id).toContain(`„${et.forms.payFinancingRange}“`);
+    for (const id of ["registreerimine-jarelmaks-nupud", "registreerimine-jarelmaks-vahepeal-valja"]) expect(text(id), id).toContain(`„${et.forms.payFinancingOff}“`);
     expect(text("registreerimine-jarelmaks-kinnitatud")).toContain(`„${et.forms.payFinancingContract}“`);
     expect(text("registreerimine-jarelmaks-keeldus")).toContain(`„${et.payment.result.pendingFinancing}“`);
     for (const id of ["registreerimine-jarelmaks-keeldus", "registreerimine-jarelmaks-nupud"]) expect(text(id), id).toContain(`„${et.payment.payBank}“`);

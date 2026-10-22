@@ -677,7 +677,7 @@ describe("the purchase with Järelmaks (Inbank) (instalments, D2, D5, D8)", () =
     for (const price of [9999, 500001]) {
       await db.update(courses).set({ price }).where(eq(courses.id, ecourseId));
       expect(await handleEcoursePurchase(formDeps(m.montonio, { kv: fakeKv() }), form({ method: "hirePurchase", email: `p${price}@example.com` })), String(price)).toEqual({ ok: false, errors: { method: "financing" } });
-      expect(await buy({ method: "hirePurchase", amountCents: price }, m), String(price)).toEqual({ kind: "financing" });
+      expect(await buy({ method: "hirePurchase", amountCents: price }, m), String(price)).toEqual({ kind: "financing", reason: "range" });
     }
     expect(await db.select().from(payments)).toHaveLength(1);
     expect(m.state.orders).toHaveLength(1);
@@ -688,9 +688,16 @@ describe("the purchase with Järelmaks (Inbank) (instalments, D2, D5, D8)", () =
 
   test("Seaded's toggle off (or never set): hirePurchase is refused; the bank purchase is as before (the default), with no billing details", async () => {
     const m = stubMontonio();
-    expect(await buy({ method: "hirePurchase" }, m)).toEqual({ kind: "financing" });
+    // (the price, 190 €, is within the range: the switched-off sentence, not the range)
+    expect(await buy({ method: "hirePurchase" }, m)).toEqual({ kind: "financing", reason: "off" });
     await financingOn(false);
-    expect(await buy({ method: "hirePurchase" }, m)).toEqual({ kind: "financing" });
+    expect(await buy({ method: "hirePurchase" }, m)).toEqual({ kind: "financing", reason: "off" });
+    expect(await handleEcoursePurchase(formDeps(m.montonio, { kv: fakeKv() }), form({ method: "hirePurchase", email: "off@example.com" }))).toEqual({ ok: false, errors: { method: "financingOff" } });
+    // the price out of range as well: the range, the permanent fact
+    await db.update(courses).set({ price: 600_000 }).where(eq(courses.id, ecourseId));
+    expect(await buy({ method: "hirePurchase", amountCents: 600_000 }, m)).toEqual({ kind: "financing", reason: "range" });
+    expect(await handleEcoursePurchase(formDeps(m.montonio, { kv: fakeKv() }), form({ method: "hirePurchase", email: "both@example.com" }))).toEqual({ ok: false, errors: { method: "financing" } });
+    await db.update(courses).set({ price: 19_000 }).where(eq(courses.id, ecourseId));
     expect(await db.select().from(payments)).toEqual([]);
     expect(await handleEcoursePurchase(formDeps(m.montonio), form())).toMatchObject({ ok: true });
     const [p] = await db.select().from(payments);

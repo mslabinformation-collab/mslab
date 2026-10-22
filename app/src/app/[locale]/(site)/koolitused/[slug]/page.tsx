@@ -274,6 +274,7 @@ export default async function CoursePage({ params }: Props) {
                   payHalf: d.forms.payHalf,
                   payFinancing: d.forms.payFinancing,
                   financingRange: d.forms.payFinancingRange,
+                  financingOff: d.forms.payFinancingOff,
                   financingLine: c.financingLine,
                   modelHelp: d.forms.modelHelp,
                   createAccount: d.forms.createAccount,
