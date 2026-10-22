@@ -87,7 +87,7 @@ async function request(r: Registration, kind: "prepayment" | "full" | "balance",
   return made.invoice;
 }
 
-/** A receipt (Juba tasutud) of `kind` on `r`, paid on 10.10. */
+/** A receipt (Juba tasutud) of `kind` on `r`, paid on 10.10: for money `r` holds in Laekunud summa (admin UX pass B4). */
 async function receipt(r: Registration, kind: "prepayment" | "full" | "balance", now = NOW): Promise<Invoice> {
   const made = await createInvoice(db, r.id, { kind, mode: "receipt", paidAt: new Date("2026-10-10T08:00:00Z"), method: "bank" }, now);
   if (!made.ok) throw new Error(`receipt: ${made.error}`);
@@ -118,7 +118,8 @@ describe("loadDashboard: her invoices on the card they belong to", () => {
     await ready();
     const c = await contactCourse(db);
     const kati = await student("kati@example.test", "Kati Kask");
-    const r = await registrationOn(db, c, { clientId: kati.id, email: "kati@example.test" });
+    // (a receipt documents recorded money only, admin UX pass B4: the prepayment is in Laekunud summa)
+    const r = await registrationOn(db, c, { clientId: kati.id, email: "kati@example.test", paidCents: 17500, status: "confirmed" });
     const first = await receipt(r, "prepayment", new Date("2026-10-11T09:00:00Z"));
     const rest = await request(r, "balance", new Date("2026-10-12T09:00:00Z"));
     const card = contactCard(await cards(kati.id), r.id);
@@ -149,7 +150,7 @@ describe("loadDashboard: her invoices on the card they belong to", () => {
   test("a card with no invoice has no `invoices` and no `openInvoice` (the cards stay as they were); a paid one alone leaves `openInvoice` out", async () => {
     await ready();
     const kati = await student("kati@example.test", "Kati Kask");
-    const a = await registrationOn(db, await contactCourse(db), { clientId: kati.id });
+    const a = await registrationOn(db, await contactCourse(db), { clientId: kati.id, paidCents: 35000, status: "confirmed" });
     const before = contactCard(await cards(kati.id), a.id);
     expect("invoices" in before || "openInvoice" in before).toBe(false);
     await receipt(a, "full");
@@ -358,7 +359,7 @@ describe("GET /api/konto/arve/:id", () => {
 
   test("a paid invoice and an e-course's (hers by the payment's client) download too", async () => {
     const w = await world();
-    const paid = await receipt(await registrationOn(db, w.c, { clientId: w.kati.id }), "full");
+    const paid = await receipt(await registrationOn(db, w.c, { clientId: w.kati.id, paidCents: 35000, status: "confirmed" }), "full");
     const bought = await boughtEcourse(w.kati.id);
     for (const [inv, status] of [[paid, "paid"], [bought.invoice, "paid"]] as const) {
       const res = await call(w.kati.cookie, "GET", `/arve/${inv.id}`);

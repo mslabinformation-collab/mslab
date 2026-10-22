@@ -212,10 +212,12 @@ export type Covering = { kind: InvoiceKind; status: InvoiceStatus; amountCents: 
  *   so a paid one makes the 50 % that confirms the place, ruling R11) of the half choice while there is no prepayment or whole-sum invoice and
  *   nothing typed uncovered; the whole sum while nothing is covered or typed; the rest (price − covered − uncovered) once something is but not
  *   all. A prepayment and a whole sum exclude each other.
- * - **Juba tasutud**: with money typed uncovered, a receipt for exactly that money (it does not touch Laekunud summa, which holds it): the first
- *   money in (no paid prepayment or whole sum yet) is the whole sum when it is all of the price, else the half choice's prepayment or the whole
- *   choice's whole sum; later money is the rest. Its words are partOf's: „Osamakse“ when it is no half, whole or rest. Without such money, the
- *   same amounts as a request (money received and not typed: the rest paid at the venue).
+ * - **Juba tasutud**: with money recorded uncovered (in Laekunud summa, no paid invoice for it), a receipt for exactly that money (it does not
+ *   touch Laekunud summa, which holds it): the first money in (no paid prepayment or whole sum yet) is the whole sum when it is all of the price,
+ *   else the half choice's prepayment or the whole choice's whole sum; later money is the rest (receiptKind). Its words are partOf's: „Osamakse“
+ *   when it is no half, whole or rest. Without such money, nothing (admin UX pass B4, the coordinator's ruling of 22.10): a receipt only
+ *   documents money already recorded — money comes in through „Lisa laekumine“, with its own receipt, or online — so undoing any receipt can take
+ *   its amount off Laekunud summa (server/invoices.ts undoInvoicePaid). Before B4 a receipt was also offered for money received and not typed.
  * An amount of nothing is never offered. Järelmaks (Inbank, `financing`) is the whole price, like „full“: only the half choice has a prepayment.
  */
 export function openAmounts(r: { priceCents: number; paymentChoice: PaymentChoice; paidCents: number }, invoiced: readonly Covering[]): OpenAmounts {
@@ -233,7 +235,7 @@ export function openAmounts(r: { priceCents: number; paymentChoice: PaymentChoic
     ...(accounted === 0 ? amount("full", price) : []),
     ...(accounted > 0 && accounted < price ? amount("balance", price - accounted) : []),
   ];
-  if (uncovered === 0) return { request, receipt: request };
+  if (uncovered === 0) return { request, receipt: [] };
   return { request, receipt: amount(receiptKind({ priceCents: price, paymentChoice: r.paymentChoice }, live, uncovered), uncovered) };
 }
 

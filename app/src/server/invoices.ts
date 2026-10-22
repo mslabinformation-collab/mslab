@@ -192,7 +192,9 @@ async function lockInvoice(tx: Tx, id: number): Promise<Invoice | null> {
  * final review's I1 — and a request never for money typed by hand into Laekunud summa, which a receipt is for instead: m4), as a request to pay
  * („Maksmiseks": unpaid, due in Seaded's term, the bank details and the
  * registration's payment reference, `{referencePrefix}{registrationId}` as the account shows it) or a receipt („Juba tasutud": born paid on
- * `paidAt` by `method`, bank, cash or card; it does not touch Laekunud summa, which already holds the money). `invalid` before anything is
+ * `paidAt` by `method`, bank, cash or card; it does not touch Laekunud summa, which already holds the money — admin UX pass B4: a receipt
+ * documents recorded money only, exactly the part of Laekunud summa no paid invoice covers; with none such every receipt is `notOpen`, so
+ * its undo, which takes its amount off, is always for money that was recorded). `invalid` before anything is
  * read for a kind or mode it does not know, or a receipt without a date (or one after today in Tallinn) or a way. Then ONE transaction:
  * lockForPayment, the registration (`notFound`), its invoices and its paid payments that no invoice names (an amount not open: `notOpen`, under
  * the registration's lock alone, which every payment's settlement takes first), then the
@@ -368,8 +370,10 @@ export async function markInvoicePaid(db: Db, id: number, input: { paidAt: Date;
  * - a receipt („Juba tasutud", born paid: no due date) — „Lisa laekumine“'s (`paidAdds`) and one „Koosta arve“ made for money already in
  *   alike: the admin UX pass (spec §9, B4) undoes a wrong entry through its receipt, replacing ruling R10. It is cancelled at `now` and keeps
  *   its number (never made unpaid: a „Märgi tasutuks" on it would add the money again, and the student's „Maksa" would charge it), and the same
- *   transaction takes its amount off Laekunud summa (never below 0) and recomputes the status (takeBackRegistrationPayment: the place stays
- *   while the rest still makes 50 %, else it is „Ootab ettemaksu“ again). A receipt whose registration was deleted is only cancelled;
+ *   transaction takes its amount off Laekunud summa and recomputes the status (takeBackRegistrationPayment: the place stays while the rest
+ *   still makes 50 %, else it is „Ootab ettemaksu“ again). The take-back is capped at the paid sum there is (never below 0): a receipt made
+ *   before B4 for money never recorded (createInvoice no longer offers one) cannot take off more than is in. A receipt whose registration
+ *   was deleted is only cancelled;
  * - a request she marked paid, whose mark added the amount (`paidAdds`): unpaid again, its date and way cleared, its due date and reference
  *   as issued; the same transaction takes the amount back off Laekunud summa and recomputes the status as above;
  * - a mark that added nothing because its registration was deleted: cancelled, as a receipt.

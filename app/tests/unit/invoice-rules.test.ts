@@ -102,41 +102,41 @@ describe("openAmounts: what is still to invoice on a registration (D5, the final
   const prepayment = { kind: "prepayment", cents: 17500, part: "Ettemaks 50%" } as const;
   const wholeSum = { kind: "full", cents: 35000, part: "Kogu summa (100%)" } as const;
   const balance = { kind: "balance", cents: 17500, part: "Jääk 50%" } as const;
-  /** Nothing typed by hand beyond the paid invoices: „Maksmiseks“ and „Juba tasutud“ are offered the same amounts. */
-  const both = (amounts: readonly unknown[]) => ({ request: amounts, receipt: amounts });
+  /** Nothing recorded beyond what the paid invoices cover: „Maksmiseks“ is offered these amounts, „Juba tasutud“ nothing (admin UX pass B4: a receipt only documents recorded money). */
+  const requestsOnly = (amounts: readonly unknown[]) => ({ request: amounts, receipt: [] });
 
   test("half, nothing invoiced: the prepayment or the whole sum", () => {
-    expect(openAmounts(half, [])).toEqual(both([prepayment, wholeSum]));
+    expect(openAmounts(half, [])).toEqual(requestsOnly([prepayment, wholeSum]));
   });
   test("half, a paid or an unpaid prepayment: the rest", () => {
-    expect(openAmounts({ ...half, paidCents: 17500 }, [inv("prepayment", "paid", 17500)])).toEqual(both([balance]));
-    expect(openAmounts(half, [inv("prepayment", "unpaid", 17500)])).toEqual(both([balance]));
+    expect(openAmounts({ ...half, paidCents: 17500 }, [inv("prepayment", "paid", 17500)])).toEqual(requestsOnly([balance]));
+    expect(openAmounts(half, [inv("prepayment", "unpaid", 17500)])).toEqual(requestsOnly([balance]));
   });
   test("half, a cancelled prepayment only: as nothing invoiced", () => {
-    expect(openAmounts(half, [inv("prepayment", "cancelled", 17500)])).toEqual(both([prepayment, wholeSum]));
+    expect(openAmounts(half, [inv("prepayment", "cancelled", 17500)])).toEqual(requestsOnly([prepayment, wholeSum]));
   });
   test("half, a cancelled prepayment and a live one: the live one counts", () => {
-    expect(openAmounts(half, [inv("prepayment", "cancelled", 17500), inv("prepayment", "unpaid", 17500)])).toEqual(both([balance]));
+    expect(openAmounts(half, [inv("prepayment", "cancelled", 17500), inv("prepayment", "unpaid", 17500)])).toEqual(requestsOnly([balance]));
   });
   test("half, the prepayment and the rest both invoiced, or the whole sum: nothing", () => {
-    expect(openAmounts({ ...half, paidCents: 17500 }, [inv("prepayment", "paid", 17500), inv("balance", "unpaid", 17500)])).toEqual(both([]));
-    expect(openAmounts({ ...half, paidCents: 35000 }, [inv("full", "paid", 35000)])).toEqual(both([]));
+    expect(openAmounts({ ...half, paidCents: 17500 }, [inv("prepayment", "paid", 17500), inv("balance", "unpaid", 17500)])).toEqual(requestsOnly([]));
+    expect(openAmounts({ ...half, paidCents: 35000 }, [inv("full", "paid", 35000)])).toEqual(requestsOnly([]));
   });
   test("half, the rest cancelled: offered again", () => {
-    expect(openAmounts({ ...half, paidCents: 17500 }, [inv("prepayment", "paid", 17500), inv("balance", "cancelled", 17500)])).toEqual(both([balance]));
+    expect(openAmounts({ ...half, paidCents: 17500 }, [inv("prepayment", "paid", 17500), inv("balance", "cancelled", 17500)])).toEqual(requestsOnly([balance]));
   });
   test("full: the whole sum, then nothing", () => {
-    expect(openAmounts(full, [])).toEqual(both([wholeSum]));
-    expect(openAmounts(full, [inv("full", "unpaid", 35000)])).toEqual(both([]));
-    expect(openAmounts({ ...full, paidCents: 35000 }, [inv("full", "paid", 35000)])).toEqual(both([]));
-    expect(openAmounts(full, [inv("full", "cancelled", 35000)])).toEqual(both([wholeSum]));
+    expect(openAmounts(full, [])).toEqual(requestsOnly([wholeSum]));
+    expect(openAmounts(full, [inv("full", "unpaid", 35000)])).toEqual(requestsOnly([]));
+    expect(openAmounts({ ...full, paidCents: 35000 }, [inv("full", "paid", 35000)])).toEqual(requestsOnly([]));
+    expect(openAmounts(full, [inv("full", "cancelled", 35000)])).toEqual(requestsOnly([wholeSum]));
   });
   test("financing (Järelmaks (Inbank)) is the whole sum like „full“, never a prepayment: the whole sum, then nothing; a receipt for money in is the whole sum", () => {
     const financing = { priceCents: 35000, paymentChoice: "financing", paidCents: 0 } as const;
-    expect(openAmounts(financing, [])).toEqual(both([wholeSum]));
-    expect(openAmounts(financing, [inv("full", "unpaid", 35000)])).toEqual(both([]));
-    expect(openAmounts({ ...financing, paidCents: 35000 }, [inv("full", "paid", 35000)])).toEqual(both([]));
-    expect(openAmounts(financing, [inv("full", "cancelled", 35000)])).toEqual(both([wholeSum]));
+    expect(openAmounts(financing, [])).toEqual(requestsOnly([wholeSum]));
+    expect(openAmounts(financing, [inv("full", "unpaid", 35000)])).toEqual(requestsOnly([]));
+    expect(openAmounts({ ...financing, paidCents: 35000 }, [inv("full", "paid", 35000)])).toEqual(requestsOnly([]));
+    expect(openAmounts(financing, [inv("full", "cancelled", 35000)])).toEqual(requestsOnly([wholeSum]));
     // 100 € typed by hand on it: a receipt for that money, a first one that is not all of the price: the whole choice's whole sum, in the words „Osamakse“
     expect(openAmounts({ ...financing, paidCents: 10000 }, []).receipt).toEqual([{ kind: "full", cents: 10000, part: "Osamakse" }]);
   });
@@ -147,7 +147,7 @@ describe("openAmounts: what is still to invoice on a registration (D5, the final
       { kind: "full", cents: 35001, part: "Kogu summa (100%)" },
     ]);
     expect(openAmounts(odd, []).request[0].cents).toBe(prepaymentDue(35001, "half"));
-    expect(openAmounts({ ...odd, paidCents: 17501 }, [inv("prepayment", "paid", 17501)])).toEqual(both([{ kind: "balance", cents: 17500, part: "Jääk 50%" }]));
+    expect(openAmounts({ ...odd, paidCents: 17501 }, [inv("prepayment", "paid", 17501)])).toEqual(requestsOnly([{ kind: "balance", cents: 17500, part: "Jääk 50%" }]));
     // a paid prepayment is 50 % by the registration's own rule
     expect(registrationStatusAfterPayment({ status: "awaiting_prepayment", paidCents: openAmounts(odd, []).request[0].cents }, 35001)).toBe("confirmed");
   });
@@ -156,13 +156,13 @@ describe("openAmounts: what is still to invoice on a registration (D5, the final
       { kind: "prepayment", cents: 1, part: "Ettemaks 50%" },
       { kind: "full", cents: 1, part: "Kogu summa (100%)" },
     ]);
-    expect(openAmounts({ priceCents: 1, paymentChoice: "half", paidCents: 0 }, [inv("prepayment", "unpaid", 1)])).toEqual(both([]));
-    expect(openAmounts({ priceCents: 0, paymentChoice: "half", paidCents: 0 }, [])).toEqual(both([]));
+    expect(openAmounts({ priceCents: 1, paymentChoice: "half", paidCents: 0 }, [inv("prepayment", "unpaid", 1)])).toEqual(requestsOnly([]));
+    expect(openAmounts({ priceCents: 0, paymentChoice: "half", paidCents: 0 }, [])).toEqual(requestsOnly([]));
   });
 
   // I1: a paid online payment with no invoice yet counts as paid (coveringInvoices puts it in): „Koosta arve“ never offers its money again
-  test("I1: a paid online prepayment without an invoice (coveringInvoices: a paid prepayment) leaves only the rest, as a request and as a receipt", () => {
-    expect(openAmounts({ ...half, paidCents: 17500 }, coveringInvoices(half, [], [{ id: 5, kind: "prepayment", amountCents: 17500, invoiceId: null }]))).toEqual(both([balance]));
+  test("I1: a paid online prepayment without an invoice (coveringInvoices: a paid prepayment) leaves only the rest to request, and no receipt (its money is covered)", () => {
+    expect(openAmounts({ ...half, paidCents: 17500 }, coveringInvoices(half, [], [{ id: 5, kind: "prepayment", amountCents: 17500, invoiceId: null }]))).toEqual(requestsOnly([balance]));
   });
 
   // m4/m10: money typed by hand into „Laekunud summa“ that no paid invoice covers
@@ -176,7 +176,7 @@ describe("openAmounts: what is still to invoice on a registration (D5, the final
       [], [balance]],
     ["half, the prepayment invoiced and paid, 50 € more typed: the request is the 125 € left; the receipt the 50 €", half, 22500, [inv("prepayment", "paid", 17500)],
       [{ kind: "balance", cents: 12500, part: "Osamakse" }], [{ kind: "balance", cents: 5000, part: "Osamakse" }]],
-    ["R10: a receipt undone (cancelled) while its money stays typed: the right receipt again, the prepayment", half, 17500, [inv("prepayment", "cancelled", 17500)],
+    ["a receipt cancelled while its money stays recorded: the right receipt again, the prepayment", half, 17500, [inv("prepayment", "cancelled", 17500)],
       [balance], [prepayment]],
     ["an unpaid request and the same money typed by hand (not marked): nothing more is requested; the typed money is the prepayment's receipt", half, 17500,
       [inv("prepayment", "unpaid", 17500)], [], [prepayment]],
@@ -185,7 +185,8 @@ describe("openAmounts: what is still to invoice on a registration (D5, the final
     ["m10, full: the rest paid online („Kogu summa“ of 250 €) after 100 € typed: the hand-typed part gets its receipt", full, 35000, [inv("full", "paid", 25000)],
       [], [{ kind: "balance", cents: 10000, part: "Osamakse" }]],
     ["more typed than the price: the receipt is what the price leaves open, never more", half, 50000, [inv("prepayment", "paid", 17500)], [], [balance]],
-    ["paid invoices cover more than is typed (a receipt for cash never typed): as nothing typed", half, 0, [inv("prepayment", "paid", 17500)], [balance], [balance]],
+    ["paid invoices cover more than is recorded (a receipt from before B4 for cash never typed): the rest to request, no receipt", half, 0, [inv("prepayment", "paid", 17500)], [balance], []],
+    ["B4: nothing recorded at all: requests only, „Juba tasutud“ offers nothing", half, 0, [], [prepayment, wholeSum], []],
   ] as const)("m4: %s", (_, r, paidCents, invoiced, request, receipt) => {
     expect(openAmounts({ ...r, paidCents }, invoiced)).toEqual({ request, receipt });
   });

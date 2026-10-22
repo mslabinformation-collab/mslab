@@ -301,6 +301,8 @@ describe("createInvoice: Maria's invoice on a registration (D5)", () => {
   test("the refusals: an unknown registration, an invalid input, no seller (D3), and for a request no bank account (R6) — nothing written, the series unmoved", async () => {
     const c = await contactCourse(db);
     const r = await registrationOn(db, c);
+    // (a receipt documents recorded money only, admin UX pass B4: 175 € recorded with no invoice for it)
+    const typed = await registrationOn(db, c, { email: "typed@example.test", paidCents: 17500, status: "confirmed" });
     expect(await createInvoice(db, 999_999, { kind: "prepayment", mode: "request" }, NOW)).toEqual({ ok: false, error: "notFound" });
     for (const input of [
       { kind: "other", mode: "request" },
@@ -315,7 +317,7 @@ describe("createInvoice: Maria's invoice on a registration (D5)", () => {
     expect(await createInvoice(db, r.id, { kind: "prepayment", mode: "request" }, NOW)).toEqual({ ok: false, error: "sellerMissing" });
     await setSetting(db, "invoice", { ...VALID, address: "" });
     await setSetting(db, "prepayment", BANK);
-    expect(await createInvoice(db, r.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW)).toEqual({ ok: false, error: "sellerMissing" });
+    expect(await createInvoice(db, typed.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW)).toEqual({ ok: false, error: "sellerMissing" });
     // the seller, but no receiver or no IBAN: a request is refused, a receipt is made
     await setSetting(db, "invoice", VALID);
     await setSetting(db, "prepayment", { ...BANK, iban: " " });
@@ -326,7 +328,7 @@ describe("createInvoice: Maria's invoice on a registration (D5)", () => {
     expect(await stored()).toEqual(VALID);
     await db.delete(schema.settings).where(eq(schema.settings.key, "prepayment"));
     expect(await createInvoice(db, r.id, { kind: "prepayment", mode: "request" }, NOW)).toEqual({ ok: false, error: "bankMissing" });
-    const receipt = await createInvoice(db, r.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW);
+    const receipt = await createInvoice(db, typed.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW);
     expect(receipt).toMatchObject({ ok: true, invoice: { status: "paid", seller: { ...SELLER, receiver: "", iban: "", bank: "" } } });
   });
 
@@ -508,7 +510,42 @@ describe("undoInvoicePaid: „Võta tasumine tagasi“ (D6)", () => {
     expect(await registration(r.id)).toMatchObject({ paidCents: 10000 });
   });
 
-  test("spec §9: a receipt's undo never takes Laekunud summa below 0, and a receipt whose registration is gone is only cancelled", async () => {
+  test("B4 ruling: „Juba tasutud“ documents recorded money only — 175 € paid online (invoiced or still waiting for its invoice) leaves nothing uncovered, so every receipt is refused (`notOpen`); nothing recorded at all, neither", async () => {
+    const c = await contactCourse(db);
+    await ready();
+    const receiptOf = (r: Registration, kind: "prepayment" | "full" | "balance") => createInvoice(db, r.id, { kind, mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW);
+    const invoiced = await registrationOn(db, c, { email: "online@example.test" });
+    expect(await settle(await pendingPayment(db, invoiced))).toMatchObject({ paidMethod: "montonio", amountCents: 17500 });
+    const waiting = await registrationOn(db, c, { email: "waiting@example.test" });
+    await setSetting(db, "invoice", {});
+    expect(await settle(await pendingPayment(db, waiting))).toBeNull(); // no seller at the payment: it waits in „Arveta maksed“
+    await ready();
+    const nothing = await registrationOn(db, c, { email: "nothing@example.test" });
+    for (const r of [invoiced, waiting, nothing]) {
+      for (const kind of ["prepayment", "full", "balance"] as const) expect(await receiptOf(r, kind), `${r.email} ${kind}`).toEqual({ ok: false, error: "notOpen" });
+    }
+    expect((await registration(invoiced.id)).paidCents).toBe(17500);
+    expect((await allInvoices()).filter((i) => i.paymentId === null)).toEqual([]);
+    // the rest is still asked for by a request
+    expect(await request(invoiced, "balance")).toMatchObject({ amountCents: 17500, status: "unpaid" });
+  });
+
+  test("B4 ruling: 145 € recorded with „Lisa laekumine“ and no receipt is uncovered — a 145 € „Juba tasutud“ is allowed, and its undo takes the sum back to 0", async () => {
+    const c = await contactCourse(db);
+    await db.update(courses).set({ priceGroup: 29000 }).where(eq(courses.id, c.course.id));
+    const r = await registrationOn(db, c);
+    await ready();
+    expect(await addManualPayment(db, { registrationId: r.id, cents: 14500, paidOn: "2026-10-16", method: "bank", receipt: false, expectedPaidCents: 0 }, NOW)).toMatchObject({ ok: true, status: "confirmed" });
+    const receipt = await createInvoice(db, r.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "bank" }, NOW);
+    expect(receipt).toMatchObject({ ok: true, invoice: { status: "paid", amountCents: 14500, paidAdds: false, dueAt: null, line: { part: "Ettemaks 50%" } } });
+    if (!receipt.ok) throw new Error(receipt.error);
+    // its money is covered now: no second receipt for it
+    expect(await createInvoice(db, r.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "bank" }, NOW)).toEqual({ ok: false, error: "notOpen" });
+    expect((await undoInvoicePaid(db, receipt.invoice.id, NOW)).ok).toBe(true);
+    expect(await registration(r.id)).toMatchObject({ paidCents: 0, status: "awaiting_prepayment" });
+  });
+
+  test("spec §9: a receipt's undo never takes Laekunud summa below 0 (an old receipt for money never recorded: the take-back is capped at the paid sum), and a receipt whose registration is gone is only cancelled", async () => {
     const c = await contactCourse(db);
     const r = await registrationOn(db, c, { paidCents: 17500, status: "confirmed" });
     await ready();
@@ -858,7 +895,7 @@ describe("the final review's wave: what covers a registration (I1, m4), the froz
     await ready({ footer: "Viivis 0,05% päevas." });
     const r = await registrationOn(db, c);
     const req = await request(r);
-    const receipt = await createInvoice(db, (await registrationOn(db, c, { email: "b@example.com" })).id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW);
+    const receipt = await createInvoice(db, (await registrationOn(db, c, { email: "b@example.com", paidCents: 17500, status: "confirmed" })).id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW);
     const online = await settle(await pendingPayment(db, await registrationOn(db, c, { email: "d@example.com" })));
     expect([req.footer, receipt.ok && receipt.invoice.footer, online?.footer]).toEqual(["Viivis 0,05% päevas.", "Viivis 0,05% päevas.", "Viivis 0,05% päevas."]);
     await ready({ footer: "" });
