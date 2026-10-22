@@ -172,9 +172,24 @@ export function parseResultFragment(hash: string): ResultView | null {
 }
 
 /**
- * A payment Maria must look at in Montonio's own dashboard (spec 8): held (paid, but the amount or the currency did not match), or failed
- * after it was paid (the bank voided it). The admin marks it "Kontrolli Montonios".
+ * A payment Maria must look at in Montonio's own dashboard (spec 8): held (paid, but not counted: the amount or the currency did not match, or
+ * it is a second payment, its CheckReason), or failed after it was paid (the bank voided it). The admin marks it "Kontrolli Montonios", or
+ * with its reason's words when it has one ("Topeltmakse — tagasta"). A replaced order (B22) is not one: no money of it has arrived.
  */
 export function needsCheck(p: { status: PaymentStatus; paidAt: Date | null }): boolean {
   return p.status === "held" || (p.status === "failed" && p.paidAt !== null);
 }
+
+/**
+ * Why a held payment waits for Maria (B22; payments.check_reason stores the code): "double" — a second payment of something paid in full (a
+ * replaced order paid after its registration was, a late järelmaks, an e-course paid twice; server/payments/settle.ts), which she refunds in
+ * Montonio. The words are the admin's (adminEt.payments.reason, components/admin/PaymentLines.tsx checkReasonLabel): this module also runs in
+ * the student's browser, which never needs them.
+ */
+export type CheckReason = "double";
+
+/** Every CheckReason there is. */
+export const CHECK_REASONS: readonly CheckReason[] = ["double"];
+
+/** Is `value` a CheckReason this code knows? (A code that a newer version stored, or none, is not: the row is then a plain check.) */
+export const isCheckReason = (value: unknown): value is CheckReason => typeof value === "string" && (CHECK_REASONS as readonly string[]).includes(value);

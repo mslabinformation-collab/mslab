@@ -3,7 +3,9 @@ import { logFailure, logNote } from "../log";
 import type { OrderSnapshot } from "./montonio";
 import { alertUnsettled, factsOf, isTransient, settlePayment, type SettleDeps } from "./settle";
 
-// The daily check of pending payments (phase 2b, spec 6.6), run by the daily cron (app/api/cron/sweep). The webhook is retried for 48 hours
+// The daily check of open payments (phase 2b, spec 6.6) — pending ones, and replaced ones (B22: an older order a newer attempt of the same
+// registration took the place of is still payable at Montonio; db/queries/payments.ts OPEN_ORDER) — run by the daily cron (app/api/cron/sweep).
+// The webhook is retried for 48 hours
 // and the return happens only when the payer comes back, so a payment whose webhook never got through, or whose payer closed the bank's page,
 // is settled here: Montonio is asked (GET /orders/:uuid) and its answer goes through the one door (settle.ts). Counts only in the answer and
 // the log: no reference, no address. No lock or transaction is open while Montonio is asked: every database step is its own short
@@ -34,10 +36,10 @@ export const NO_PAYMENT_SWEEP: PaymentSweep = { checked: 0, settled: 0, unanswer
 const logError = (paymentId: number, e: unknown): void => logFailure(`[payments] a payment could not be settled (payment ${paymentId})`, e);
 
 /**
- * Runs the check (spec 6.6): pending rows of 14 days and orders never created (no uuid after checkAfterMs: 45 minutes, 75 for a järelmaks)
- * fail, through failPayment (db/queries/payments.ts expireStalePending: at most CHECK_BATCH, oldest first); then each pending payment older
- * than checkAfterMs and younger than 14 days, oldest first, at most CHECK_BATCH, is asked about and settled — no new one after `until` (epoch ms, by `clock`; a
- * request begun is finished: it has 15 s at most). Last, when holds ended in the last day, or a failed row released one, the seats are
+ * Runs the check (spec 6.6): open rows (pending or replaced) of 14 days and orders never created (no uuid after checkAfterMs: 45 minutes, 75
+ * for a järelmaks) fail, through failPayment (db/queries/payments.ts expireStalePending: at most CHECK_BATCH, oldest first); then each open
+ * payment older than checkAfterMs and younger than 14 days, oldest first, at most CHECK_BATCH, is asked about and settled — no new one after
+ * `until` (epoch ms, by `clock`; a request begun is finished: it has 15 s at most). Last, when holds ended in the last day, or a failed row released one, the seats are
  * revalidated (the calendar's "Täis" of a hold that ended), whatever happened to the rows. A payment whose settlement throws (a transient
  * error, settle.ts openCourse, or any other) stays pending and is counted in `errors`; the next payment goes on, and MAX_CONSECUTIVE_ERRORS
  * connection errors in a row stop the asking (the rest is counted as left). When Montonio said PAID and the error is neither transient nor a

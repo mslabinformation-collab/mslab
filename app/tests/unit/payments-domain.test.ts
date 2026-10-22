@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { isReferencePrefix, LOCAL_REFERENCE_PREFIX, ORDER_REFERENCE_PREFIX, orderReference, paymentMethodLabel, PREVIEW_REFERENCE_PREFIX, referenceId } from "@/domain/payments";
+import { CHECK_REASONS, isCheckReason, isReferencePrefix, LOCAL_REFERENCE_PREFIX, needsCheck, ORDER_REFERENCE_PREFIX, orderReference, paymentMethodLabel, PREVIEW_REFERENCE_PREFIX, referenceId } from "@/domain/payments";
 
 // The pure rules of online payments (phase 2b): the reference Montonio knows a payment by, and Maria's word for how it was paid (her notice
 // and the admin's "Maksed" use the same helper; the owner's decision of 09.10: no English Montonio codes in her texts).
@@ -60,5 +60,21 @@ describe("paymentMethodLabel: Maria's word for the way a payment was made", () =
   test("the code is read without regard to case or surrounding spaces (a GET /orders answer is not always written as a token)", () => {
     expect(paymentMethodLabel(" PAYMENTINITIATION ", "")).toBe("Pangalink");
     expect(paymentMethodLabel("CardPayments", "")).toBe("Kaart");
+  });
+});
+
+describe("the check reason of a held payment (B22): the code payments.check_reason stores", () => {
+  test("'double' is the one reason: a second payment of something paid in full (a replaced order, a late loan)", () => {
+    expect(CHECK_REASONS).toEqual(["double"]);
+    expect(isCheckReason("double")).toBe(true);
+    // anything else (a code a newer version wrote, or none) is no reason this code knows: the row reads „Kontrolli Montonios“
+    for (const other of ["", "Double", " double", "held", "constructor", "__proto__", null, undefined, 1]) expect(isCheckReason(other), String(other)).toBe(false);
+  });
+
+  test("a replaced order is nothing to check: it is no money (needsCheck: held, or failed after it was paid)", () => {
+    expect(needsCheck({ status: "replaced", paidAt: null })).toBe(false);
+    expect(needsCheck({ status: "held", paidAt: null })).toBe(true);
+    expect(needsCheck({ status: "failed", paidAt: new Date() })).toBe(true);
+    expect(needsCheck({ status: "pending", paidAt: null })).toBe(false);
   });
 });

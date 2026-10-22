@@ -25,8 +25,9 @@ type Search = Record<string, string | string[] | undefined>;
 type Props = { searchParams: Promise<Search> };
 
 // Addresses: ?staatus=makstud|pooleli|ebaonnestunud|tagastatud|kontroll (the filter), ?leht=<n> (50 a page). A new filter starts at page 1.
+// A replaced order („Asendatud“, B22) has no filter of its own: it shows under „Kõik“ only (P-8), so no address leads to it.
 const STATUS_PARAM: Record<string, PaymentStatus> = { makstud: "paid", pooleli: "pending", ebaonnestunud: "failed", tagastatud: "refunded", kontroll: "held" };
-const PARAM_OF: Record<PaymentStatus, string> = { paid: "makstud", pending: "pooleli", failed: "ebaonnestunud", refunded: "tagastatud", held: "kontroll" };
+const PARAM_OF: Record<PaymentStatus, string> = { paid: "makstud", pending: "pooleli", failed: "ebaonnestunud", refunded: "tagastatud", held: "kontroll", replaced: "" };
 
 type View = { staatus: PaymentStatus | null; leht: number };
 

@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { Db, Tx } from "@/db/client";
 import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admin";
-import { failPayment, hirePurchaseRow, isConnectionError, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
+import { failPayment, hirePurchaseRow, isConnectionError, OPEN_ORDER, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
 import { dbErrorCode } from "@/db/safe-error";
 import { courses, payments, registrations, type Contract, type Invoice, type Payment } from "@/db/schema";
@@ -29,8 +29,8 @@ import { lockEcoursePurchase } from "./start";
 // The one door of every paid path (phase 2b, spec 6.2, 7.3, 7.4; Rempire's settle/apply/token-guard, ported). The webhook and the return
 // (routes.ts) bring an order token, the daily check (check.ts) and a refund notice (settleRefund) Montonio's own answer; all of them end in
 // settlePayment:
-// - PAID with the row's exact amount in EUR moves the row pending|failed → paid in ONE conditional UPDATE (paid_at null: a payment voided
-//   after paid never comes back). Only the winner of that update does the once-only work, in the same transaction: the amount is added to
+// - PAID with the row's exact amount in EUR moves the row pending|failed|replaced → paid in ONE conditional UPDATE (paid_at null: a payment
+//   voided after paid never comes back). Only the winner of that update does the once-only work, in the same transaction: the amount is added to
 //   the registration (db/queries/admin.ts addRegistrationPayment: confirmed from 50 %, unless the course is full, D2), or, for an e-course, its
 //   client is found or created and the course opened (grant.ts, in a savepoint: a grant that throws is rolled back alone, the row stays paid
 //   and Maria is told at once that nothing was opened, unless the error is a transient database one, which rolls everything back and leaves
@@ -60,9 +60,17 @@ import { lockEcoursePurchase } from "./start";
 //   sum (a store that fails to answer reads as "not told": the late hold). An e-course's paid transaction
 //   takes its purchase's advisory lock first (start.ts lockEcoursePurchase, the start's own), so the look for the other paid purchase and a
 //   purchase being settled at the same moment run one after the other.
-// - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
-// - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
-//   nothing; a VOIDED (the bank took a paid payment back) is stored as failed with its paid_at and alerts Maria, who decides.
+//   A replaced order (B22, admin UX pass piece 2: „Asendatud“, an older open order of a registration that a newer attempt took the place of,
+//   start.ts) is still payable at Montonio. Turning PAID, it is read under the registration's lock (a start replaces under the same lock): while
+//   the registration is not paid in full it is counted as any payment (and „Ülemakse“ when it goes over, as today); once Laekunud summa is at
+//   the price it is the second payment of something paid in full, held as above with "Topeltmakse" and its second-order sentence (the order
+//   that paid is its own, named once). A replaced bank order Maria was told "Makse vajab kontrolli" about is recorded as a told loan is.
+//   Every such hold, a late järelmaks's and an e-course's too, records why: `check_reason` 'double' („Topeltmakse — tagasta“ in the admin).
+// - PAID with another amount or currency (or none that can be read): held, with no check reason. Nothing is confirmed or opened; Maria is
+//   alerted.
+// - failed: an open row (pending or replaced) fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later
+//   ABANDONED or FAILED changes nothing; a VOIDED (the bank took a paid payment back) is stored as failed with its paid_at and alerts Maria,
+//   who decides.
 // - refunded: stored and alerted; paidCents, the status and access stay (Maria refunds in Montonio's dashboard and adjusts in the admin).
 // - pending: nothing.
 // The row a caller holds may be old (the webhook, the return and the daily check run at the same moment): every change is a conditional UPDATE
@@ -222,15 +230,25 @@ async function seatsChanged(deps: SettleDeps, course: string): Promise<void> {
   }
 }
 
-/** The conditional UPDATE's condition of a paid or held settlement: the row is still unsettled (pending or failed, never paid before). */
-const unsettled = (id: number) => and(eq(payments.id, id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt));
+/**
+ * The conditional UPDATE's condition of a paid or held settlement: the row is still unsettled (pending, replaced — B22: its order is still
+ * payable at Montonio — or failed; never paid before).
+ */
+const unsettled = (id: number) => and(eq(payments.id, id), inArray(payments.status, ["pending", "replaced", "failed"]), isNull(payments.paidAt));
 
 /**
- * Is `p` the second payment of something paid in full already, on the järelmaks' account (instalments §4 and D5)? Read in paid()'s
- * transaction, under its locks (a registration's: lockForPayment; an e-course's: its purchase's lock, which a settlement of the same course and
- * address holds too). `p`'s method is the one its start recorded.
- * - A registration's loan: its Laekunud summa (paid_cents) is at or over its price (domain/registration.ts registrationPrice; none: never). A
- *   registration's bank payment: never (its sum over the price is "Ülemakse", today's backstop).
+ * Why a payment is the second one of something paid in full (paidAlready): a late järelmaks ("loan"), an e-course's bank payment after its
+ * paid järelmaks ("bank"), or a registration's replaced order („Asendatud“, B22) paid after the registration was ("replaced").
+ */
+type Second = "loan" | "bank" | "replaced";
+
+/**
+ * Is `p` the second payment of something paid in full already — on the järelmaks' account (instalments §4 and D5), or as a replaced order
+ * (B22)? Which one, or null. Read in paid()'s transaction, under its locks (a registration's: lockForPayment; an e-course's: its purchase's
+ * lock, which a settlement of the same course and address holds too). `p`'s method is the one its start recorded.
+ * - A registration's loan ("loan"), or a registration's replaced order ("replaced": its status as the database has it under the registration's
+ *   lock, which every start takes before it replaces): its Laekunud summa (paid_cents) is at or over its price (domain/registration.ts
+ *   registrationPrice; none: never). Any other bank payment of a registration: never (its sum over the price is "Ülemakse", today's backstop).
  * - An e-course's loan: another purchase of the same course by the same address (lower-cased, as start.ts paidRecently reads it) is `paid`,
  *   paid at or after this loan started (its row's created_at): the bank payment she made while Inbank's answer was pending.
  * - An e-course's bank payment: a loan (`hirePurchase`) of the same course by the same address is `paid`, paid at or after this bank payment
@@ -240,10 +258,10 @@ const unsettled = (id: number) => and(eq(payments.id, id), inArray(payments.stat
  * access is renewed by such a purchase, may be an admin's grant that nobody paid, and is missing when a purchase's grant failed ("E-koolitust
  * ei avatud"), whose money is there all the same. A held, failed or refunded purchase is no payment in full.
  */
-async function paidAlready(tx: Tx, p: Payment): Promise<boolean> {
+async function paidAlready(tx: Tx, p: Payment): Promise<Second | null> {
   const loan = isHirePurchase(p.method);
   if (p.kind === "ecourse") {
-    if (p.courseId === null) return false;
+    if (p.courseId === null) return null;
     const [other] = await tx
       .select({ id: payments.id })
       .from(payments)
@@ -260,38 +278,43 @@ async function paidAlready(tx: Tx, p: Payment): Promise<boolean> {
         ),
       )
       .limit(1);
-    return other !== undefined;
+    return other === undefined ? null : loan ? "loan" : "bank";
   }
-  if (!loan || p.registrationId === null) return false;
+  if (p.registrationId === null) return null;
+  // a bank payment counts only as a replaced order (B22); a loan whatever its status (a replaced loan is told as a loan)
+  const replaced = !loan && (await tx.select({ status: payments.status }).from(payments).where(eq(payments.id, p.id)).limit(1))[0]?.status === "replaced";
+  if (!loan && !replaced) return null;
   const [r] = await tx
     .select({ paidCents: registrations.paidCents, kind: registrations.kind, type: courses.type, price: courses.price, priceGroup: courses.priceGroup, priceIndividual: courses.priceIndividual })
     .from(registrations)
     .innerJoin(courses, eq(registrations.courseId, courses.id))
     .where(eq(registrations.id, p.registrationId))
     .limit(1);
-  if (!r) return false;
+  if (!r) return null;
   const price = registrationPrice(r, r.kind);
-  return price !== null && r.paidCents >= price;
+  return price !== null && r.paidCents >= price ? (loan ? "loan" : "replaced") : null;
 }
 
 async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payment> {
   // an amount that could not be read (null) is no amount: it never equals the row's, and never reads as zero
   if (facts.amountCents !== row.amountCents || facts.currency !== "EUR") return held(deps, row, facts);
-  // a registration's loan that Maria was told to record by hand (the daily check's „Makse vajab kontrolli“, alertUnsettled): the price in
-  // Laekunud summa may be her own entry, not a bank payment's, so it is no late loan: it is recorded, and followUpUnsettled tells her to remove
-  // her sum. Read before the transaction (no KV call inside it); a store that fails reads as „not told“ (the late hold, as before)
-  const told = row.kind !== "ecourse" && row.registrationId !== null && isHirePurchase(row.method) && (await wasToldItIsStuck(deps, row));
-  const won = await deps.db.transaction(async (tx): Promise<Won | { late: Payment } | null> => {
+  // a registration's loan, or replaced order (B22), that Maria was told to record by hand (the daily check's „Makse vajab kontrolli“,
+  // alertUnsettled): the price in Laekunud summa may be her own entry, not another payment's, so it is no second payment: it is recorded, and
+  // followUpUnsettled tells her to remove her sum. Read before the transaction (no KV call inside it); a store that fails reads as „not told“
+  // (the hold, as before)
+  const told = row.kind !== "ecourse" && row.registrationId !== null && (isHirePurchase(row.method) || row.status === "replaced") && (await wasToldItIsStuck(deps, row));
+  const won = await deps.db.transaction(async (tx): Promise<Won | { late: Payment; second: Second } | null> => {
     // the lock order of every payment path, course_sessions → registrations → payments (db/queries/seats.ts): the locks come first, whatever the
     // conditional UPDATE then finds. An e-course's payment has no registration: its purchase's lock instead (the start's, start.ts), then its row.
     if (row.kind === "ecourse") {
       if (row.courseId !== null) await lockEcoursePurchase(tx, row.courseId, normalizeEmail(row.email));
     } else if (row.registrationId !== null) await lockForPayment(tx, row.registrationId);
-    // a second payment on the järelmaks' account (instalments §4, D5): what it pays for is paid in full already, read under those locks. Held,
-    // never counted (a recorded hirePurchase is never replaced by a settlement, detailsOf)
-    if (!told && (await paidAlready(tx, row))) {
-      const [late] = await tx.update(payments).set({ status: "held", updatedAt: deps.now, ...detailsOf(facts) }).where(unsettled(row.id)).returning();
-      return late ? { late } : null;
+    // a second payment — on the järelmaks' account (instalments §4, D5), or a replaced order (B22): what it pays for is paid in full already,
+    // read under those locks. Held, never counted, with its reason (a recorded hirePurchase is never replaced by a settlement, detailsOf)
+    const second = told ? null : await paidAlready(tx, row);
+    if (second) {
+      const [late] = await tx.update(payments).set({ status: "held", checkReason: "double", updatedAt: deps.now, ...detailsOf(facts) }).where(unsettled(row.id)).returning();
+      return late ? { late, second } : null;
     }
     const [payment] = await tx
       .update(payments)
@@ -314,9 +337,10 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
   });
   if (!won) return lost(deps, row, facts);
   if ("late" in won) {
-    const late = isHirePurchase(row.method) ? "loan" : "bank";
-    logNote(`[payments] payment ${won.late.id}: ${late === "loan" ? "a järelmaks" : "a bank payment"} was paid after the whole price had been, held`);
-    alert(deps, won.late, "double", facts, { late });
+    const what = { loan: "a järelmaks", bank: "a bank payment", replaced: "a replaced order" }[won.second];
+    logNote(`[payments] payment ${won.late.id}: ${what} was paid after the whole price had been, held`);
+    // a replaced order is another order of what was paid: "Topeltmakse" with the second-order sentence (its own order is the one that paid)
+    alert(deps, won.late, "double", facts, won.second === "replaced" ? {} : { late: won.second });
     return won.late;
   }
   console.info(`[payments] payment ${won.payment.id}: paid`);
@@ -565,7 +589,8 @@ async function releaseAlertRecord(deps: SettleDeps, key: string, ttlSeconds: num
  * Maria's "Kontrolli Montonios", after the response. "Topeltmakse" goes out once per second order (its uuid is recorded: see the top of the
  * file); `facts` is what that order paid, and the alert says so. `late`: the "Topeltmakse" of a payment that is itself the second one
  * (paid(): a late järelmaks, "loan", or an e-course's bank payment after a paid järelmaks, "bank"): its own order is the one that paid twice
- * over, so no other order is named. A refund of a row that was never counted (held, `paid_at` null: the late järelmaks Maria refunds after
+ * over, so no other order is named. A replaced order paid after its registration was (B22) has the second-order sentence and no `late`; its
+ * order is its own too, named once. A refund of a row that was never counted (held, `paid_at` null: the late järelmaks Maria refunds after
  * „Topeltmakse“) is told as such, not with the sentence about adjusting what was recorded (messages.ts `neverCounted`).
  */
 function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded" | "double", facts: Facts, opts: { late?: "loan" | "bank" } = {}): void {
@@ -581,7 +606,8 @@ function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded
     try {
       const ctx = await contextOf(deps, p.id);
       const s = paymentAlertSummary(
-        { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" && !late ? facts.uuid : null, late, neverCounted: kind === "refunded" && p.paidAt === null, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
+        // (the second order is named when it is another one: a replaced order held as „Topeltmakse“, B22, paid on its own order, is named once)
+        { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" && !late && facts.uuid !== p.providerUuid ? facts.uuid : null, late, neverCounted: kind === "refunded" && p.paidAt === null, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
         adminUrl(deps.siteUrl),
       );
       const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl, count: deps.db });
@@ -610,9 +636,9 @@ export function alertUnsettled(deps: SettleDeps, row: Payment, snapshot: OrderSn
     try {
       // the webhook or the return may have settled the row since the check's try. The record is taken before the row is read again, so a
       // winner either committed before this read (no alert), or its follow-up (followUpUnsettled) reads the record after it was taken and
-      // follows this alert up. A row no longer pending gets no alert, and the record is given back (the finally below): a record left set
-      // would make a winner whose follow-up runs later tell Maria about an alert she never got
-      if (!(await stillPending(deps, row))) {
+      // follows this alert up. A row no longer open (pending, or replaced: B22) gets no alert, and the record is given back (the finally
+      // below): a record left set would make a winner whose follow-up runs later tell Maria about an alert she never got
+      if (!(await stillOpen(deps, row))) {
         logNote(`[payments] payment ${row.id}: settled before Maria was alerted, no alert`);
         return;
       }
@@ -629,10 +655,13 @@ export function alertUnsettled(deps: SettleDeps, row: Payment, snapshot: OrderSn
   });
 }
 
-/** Whether `row` is still pending as the database has it now. A failure to read it must not lose Maria's alert: it counts as pending (logged). */
-async function stillPending(deps: SettleDeps, row: Payment): Promise<boolean> {
+/**
+ * Whether `row` is still open as the database has it now: pending, or replaced (B22: the daily check asks about a replaced order as about a
+ * pending one, db/queries/payments.ts OPEN_ORDER). A failure to read it must not lose Maria's alert: it counts as open (logged).
+ */
+async function stillOpen(deps: SettleDeps, row: Payment): Promise<boolean> {
   try {
-    return (await current(deps, row)).status === "pending";
+    return OPEN_ORDER.includes((await current(deps, row)).status);
   } catch (e) {
     logFailure(`[payments] payment ${row.id}: it could not be read again before the alert`, e);
     return true;

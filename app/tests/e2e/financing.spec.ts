@@ -138,14 +138,14 @@ test("Inbank says no: the order stays pending, the return says so with „Maksa 
     expect(await payments(email)).toHaveLength(1);
     await page.getByRole("button", { name: "Inbank keeldus" }).click();
     await page.waitForURL(/\/makse#tulemus=pooleli&liik=jarelmaks&maksa=/);
-    // „Maksa pangalingiga“: a new attempt by bank, for the whole price; the pending loan is left as it is
+    // „Maksa pangalingiga“: a new attempt by bank, for the whole price; the open loan becomes „Asendatud“ (B22: one open order per registration)
     await page.getByRole("button", { name: "Maksa pangalingiga" }).click();
     await atBank(page, "350.00 EUR");
     await page.getByRole("button", { name: "Makstud" }).click();
     await page.waitForURL(/\/makse#tulemus=makstud&liik=registreering$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Makse õnnestus. Saatsime sulle kinnituse e-postiga.");
     await expect.poll(() => payments(email)).toEqual([
-      { kind: "prepayment", status: "pending", method: "hirePurchase", amountCents: 35000 },
+      { kind: "prepayment", status: "replaced", method: "hirePurchase", amountCents: 35000 },
       { kind: "prepayment", status: "paid", method: "paymentInitiation", amountCents: 35000 },
     ]);
     expect(await storedRegistrations(email)).toEqual([expect.objectContaining({ status: "confirmed", paidCents: 35000, paymentChoice: "financing" })]);
@@ -378,8 +378,9 @@ test("/maksa/<token> of a järelmaks registration: two buttons — at 390, 834 a
     await atBank(page, "350.00 EUR");
     await page.getByRole("button", { name: "Makstud" }).click();
     await page.waitForURL(/\/makse#tulemus=makstud&liik=registreering$/);
+    // (the loan Inbank declined is „Asendatud“ by the bank's start: B22)
     await expect.poll(() => payments(email)).toEqual([
-      { kind: "prepayment", status: "pending", method: "hirePurchase", amountCents: 35000 },
+      { kind: "prepayment", status: "replaced", method: "hirePurchase", amountCents: 35000 },
       { kind: "prepayment", status: "paid", method: "paymentInitiation", amountCents: 35000 },
     ]);
     expect(await storedRegistrations(email)).toEqual([expect.objectContaining({ status: "confirmed", paidCents: 35000, paymentChoice: "financing" })]);

@@ -134,6 +134,13 @@
       "when": 1792650383005,
       "tag": "0018_financing",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792688645925,
+      "tag": "0019_payments_replaced",
+      "breakpoints": true
     }
   ]
 }

@@ -431,14 +431,14 @@ describe("an unpaid invoice paid online (D5): „Maksa\" charges exactly its amo
     expect(await db.select().from(payments)).toEqual([]);
   });
 
-  test("the open attempt is re-sent only for the same invoice: a start for an invoice is a new attempt beside one without, and one without after the invoice is cancelled", async () => {
+  test("the open attempt is re-sent only for the same invoice: a start for an invoice is a new attempt beside one without (which it marks „Asendatud“, B22), and one without after the invoice is cancelled is a new one again", async () => {
     const m = stubMontonio();
     await ready();
     const r = await registrationOn(db, await contactCourse(db));
     expect(await start(m, r)).toMatchObject({ kind: "started" });
     const plain = await newest();
     const inv = await request(r, "prepayment");
-    // the same kind and amount (17500 prepayment), but for the invoice: a new attempt that records it
+    // the same kind and amount (17500 prepayment), but for the invoice: a new attempt that records it, and the one without is replaced
     expect(await start(m, r, new Date(NOW.getTime() + MIN))).toMatchObject({ kind: "started" });
     const forInvoice = await newest();
     expect(forInvoice.id).not.toBe(plain.id);
@@ -446,11 +446,17 @@ describe("an unpaid invoice paid online (D5): „Maksa\" charges exactly its amo
     // pressed again while it is open: the same attempt, sent again
     expect(await start(m, r, new Date(NOW.getTime() + 2 * MIN))).toMatchObject({ kind: "started" });
     expect((await newest()).id).toBe(forInvoice.id);
-    // the invoice cancelled: the open attempt without an invoice is the one sent again
+    // the invoice cancelled: the attempt without an invoice was replaced, so it is never sent again — a new attempt, which replaces the invoice's
     expect(await cancelInvoice(db, inv.id, NOW)).toEqual({ ok: true });
     expect(await start(m, r, new Date(NOW.getTime() + 3 * MIN))).toMatchObject({ kind: "started" });
-    expect(m.state.orders.map((o) => o.merchantReference)).toEqual([plain.reference, forInvoice.reference, forInvoice.reference, plain.reference]);
-    expect(await db.select().from(payments)).toHaveLength(2);
+    const latest = await newest();
+    expect([latest.invoiceId, latest.amountCents]).toEqual([null, 17500]);
+    expect(m.state.orders.map((o) => o.merchantReference)).toEqual([plain.reference, forInvoice.reference, forInvoice.reference, latest.reference]);
+    expect((await db.select().from(payments).orderBy(payments.id)).map((p) => [p.id, p.status])).toEqual([
+      [plain.id, "replaced"],
+      [forInvoice.id, "replaced"],
+      [latest.id, "pending"],
+    ]);
   });
 
   test("the /maksa page shows the invoice's amount: „Maksa 350 €\" and the transfer of 350 € for a 100% invoice of a 50% registration", async () => {

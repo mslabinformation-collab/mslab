@@ -56,6 +56,16 @@ test("ABANDONED: katkestatud with the registration's 'Maksa' token; PENDING (a c
   expect(where(await handleReturn(back(orderToken(held, { grandTotal: 1 })), deps))).toBe(`/makse#tulemus=pooleli&liik=registreering`);
 });
 
+test("a replaced order („Asendatud“, B22) she comes back from unpaid reads as pooleli, as a pending one does, with the way to pay again", async () => {
+  const m = stubMontonio();
+  const r = await registrationOn(db, await contactCourse(db));
+  const { deps } = settleDeps(db, m.montonio, NOW);
+  const replaced = await pendingPayment(db, r);
+  await db.update(payments).set({ status: "replaced" }).where(eq(payments.id, replaced.id));
+  expect(where(await handleReturn(back(orderToken(replaced, { paymentStatus: "PENDING" })), deps))).toBe(`/makse#tulemus=pooleli&liik=registreering&maksa=${r.payToken}`);
+  expect((await db.select().from(payments).where(eq(payments.id, replaced.id)))[0].status).toBe("replaced");
+});
+
 test("an e-course: makstud with its slug ('Ava e-koolitus'); katkestatud with its slug (the cart's retry)", async () => {
   const m = stubMontonio();
   const [course] = await db

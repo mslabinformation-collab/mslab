@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
+import { setSetting } from "@/db/queries/admin";
 import { attachOrder, insertPayment } from "@/db/queries/payments";
-import { courseAccess, courses, payments, registrations } from "@/db/schema";
+import { courseAccess, courses, invoices, payments, registrations } from "@/db/schema";
 import { paymentMethodLabel } from "@/domain/payments";
 import { checkPendingPayments } from "@/server/payments/check";
 import { settlePayment, settleToken } from "@/server/payments/settle";
@@ -145,8 +146,9 @@ describe("PAID", () => {
     const r = await registrationOn(db, c);
     const p = await pendingPayment(db, r);
     const { deps, flush } = settleDeps(db, m.montonio, NOW);
-    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { grandTotal: 1 })))).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null } });
-    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)))).toMatchObject({ payment: { status: "held" } });
+    // (an amount that does not match has no check reason: „Kontrolli Montonios“, not „Topeltmakse — tagasta“)
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { grandTotal: 1 })))).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, checkReason: null } });
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)))).toMatchObject({ payment: { status: "held", checkReason: null } });
     const other = await pendingPayment(db, await registrationOn(db, c, { email: "teine@example.com" }));
     expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(other, { currency: "USD" })))).toMatchObject({ payment: { status: "held" } });
     await flush();
@@ -166,6 +168,112 @@ describe("PAID", () => {
     await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p)));
     await flush();
     expect(subjects(m).map(([to]) => to)).toEqual(["maria@example.test"]);
+  });
+});
+
+// B22 (admin UX pass, piece 2): a new attempt marks the registration's older open order „Asendatud“ (start.ts), but that order stays payable at
+// Montonio — she may finish an older bank page, and a declined loan stays PENDING for 7 days and may be signed after all. The money is never
+// lost: a replaced order turning PAID is counted as any payment while the registration is not paid in full, and held as „Topeltmakse —
+// tagasta“ (check_reason 'double', the „Topeltmakse“ alert) when it is.
+describe("a replaced order („Asendatud“, B22) paid after all", () => {
+  const sellerReady = () => setSetting(db, "invoice", { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "" });
+  const SECOND_ORDER = "Sama makse eest laekus teine tasumine (teine Montonio tellimus). Tagasta üks neist Montonio halduses.";
+  /** A replaced bank order of `r` (made 20 minutes ago) and the open one that replaced it (10 minutes ago), each of `amountCents`. */
+  async function replacedAndLatest(r: Awaited<ReturnType<typeof registrationOn>>, amountCents: number) {
+    const replaced = await pendingPayment(db, r, { amountCents, method: "paymentInitiation" }, new Date(NOW.getTime() - 20 * MIN));
+    await db.update(payments).set({ status: "replaced" }).where(eq(payments.id, replaced.id));
+    const latest = await pendingPayment(db, r, { amountCents, method: "paymentInitiation" }, new Date(NOW.getTime() - 10 * MIN));
+    return { replaced: { ...replaced, status: "replaced" as const }, latest };
+  }
+
+  test("not paid in full yet: the replaced order is counted as any payment — paid, Laekunud summa grows, the place confirmed, the usual mails", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { seatHoldUntil: new Date(NOW.getTime() + 10 * MIN) });
+    const { replaced } = await replacedAndLatest(r, 17500);
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(replaced)))).toMatchObject({ kind: "done", payment: { status: "paid", paidAt: NOW, checkReason: null } });
+    await flush();
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 17500]);
+    expect(subjects(m)).toEqual([
+      ["kati@example.com", "Koht on kinnitatud — Kulmumeistri baaskoolitus"],
+      ["maria@example.test", "Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €"],
+    ]);
+  });
+
+  test("paid in full already (the latest order was paid): held as „Topeltmakse — tagasta“ — never counted, no invoice, ONE „Topeltmakse“ with the second-order sentence", async () => {
+    const m = stubMontonio();
+    await sellerReady();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "full" });
+    const { replaced, latest } = await replacedAndLatest(r, 35000);
+    const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(latest)))).toMatchObject({ payment: { status: "paid" } });
+    const token = m.montonio.verifyOrderToken(orderToken(replaced));
+    expect(await settleToken(deps, token)).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, checkReason: "double", providerUuid: replaced.providerUuid } });
+    // told again — the webhook's retry, the return, the daily check: still held, nothing counted, no second alert
+    expect(await settleToken(deps, token)).toMatchObject({ payment: { status: "held", checkReason: "double" } });
+    expect(await settlePayment(deps, replaced, { uuid: replaced.providerUuid!, status: "paid", rawStatus: "PAID", amountCents: 35000, currency: "EUR", method: "paymentInitiation", bank: "" })).toMatchObject({ status: "held" });
+    await flush();
+    expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 35000]);
+    expect((await db.select().from(invoices)).map((i) => i.paymentId)).toEqual([latest.id]);
+    expect(subjects(m)).toEqual([
+      ["maria@example.test", "Uus makse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 350 €"],
+      ["maria@example.test", "Topeltmakse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 350 €"],
+    ]);
+    const alert = m.mails()[1].text;
+    expect(alert).toContain(SECOND_ORDER);
+    expect(alert).toContain("Teine tasumine: 350 €");
+    expect(alert).toContain(`Viide: ${replaced.reference}`);
+    // its own order, named once (the order that paid is the replaced row's own)
+    expect(alert.split("\n").filter((l) => l.startsWith("Montonio: "))).toEqual([`Montonio: ${replaced.providerUuid}`]);
+    expect(m.mails().filter((x) => x.subject.startsWith("Ülemakse"))).toEqual([]);
+    expect([...kv.store.keys()].filter((k) => k.startsWith("pay:double:"))).toEqual([`pay:double:${replaced.id}:${replaced.providerUuid}`]);
+    expect(vi.mocked(console.error).mock.calls.map((c) => c.map(String).join(" ")).filter((l) => l.includes("paid after the whole price"))).toEqual([
+      `[payments] payment ${replaced.id}: a replaced order was paid after the whole price had been, held`,
+    ]);
+  });
+
+  test("Maria recorded the whole price by hand (a transfer) before the replaced order was paid: held the same way", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "full", status: "confirmed", paidCents: 35000 });
+    const { replaced } = await replacedAndLatest(r, 35000);
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(replaced)))).toMatchObject({ payment: { status: "held", checkReason: "double" } });
+    await flush();
+    expect((await registration(r.id)).paidCents).toBe(35000);
+    expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Topeltmakse"]);
+  });
+
+  test("only a replaced order is held: the latest order paid after its replaced one paid in full is counted as today, with „Ülemakse“", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "full" });
+    const { replaced, latest } = await replacedAndLatest(r, 35000);
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(replaced)))).toMatchObject({ payment: { status: "paid", checkReason: null } });
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(latest)))).toMatchObject({ payment: { status: "paid", checkReason: null } });
+    await flush();
+    expect((await registration(r.id)).paidCents).toBe(70000);
+    expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Uus makse", "Uus makse", "Ülemakse"]);
+  });
+
+  test("a replaced order Maria was told to record by hand („Makse vajab kontrolli“) is no second payment: counted, with the follow-up, never held", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "full", status: "confirmed", paidCents: 35000 });
+    const { replaced } = await replacedAndLatest(r, 35000);
+    const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
+    kv.store.set(`pay:stuck:${replaced.id}`, "1");
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(replaced)))).toMatchObject({ payment: { status: "paid", checkReason: null } });
+    await flush();
+    expect((await registration(r.id)).paidCents).toBe(70000);
+    expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Uus makse", "Ülemakse", "Makse on nüüd kirja pandud"]);
+  });
+
+  test("ABANDONED on a replaced order: failed, as a pending one", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db));
+    const { replaced, latest } = await replacedAndLatest(r, 17500);
+    const { deps } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(replaced, { paymentStatus: "ABANDONED" })))).toMatchObject({ payment: { status: "failed", paidAt: null } });
+    expect((await payment(latest.id)).status).toBe("pending");
   });
 });
 

@@ -125,9 +125,10 @@ export const returnPending = (): Response => seeOther(returnTarget("et", { outco
 /**
  * GET /api/payments/return?order-token=… — Montonio sends the payer back here, paid or not (also after a cancel at the bank). The token is
  * verified and settled through the one door (settle.ts; the webhook may come before, after or never). Then a 303 to /makse of the payment's
- * language: makstud (paid); pooleli (pending, held, or a token in doubt that Montonio could not confirm); katkestatud (failed or refunded).
- * "Proovi uuesti" is offered (`maksa`, or an e-course's `kursus`) on katkestatud and on a pooleli whose row is still pending — Montonio
- * answers a cancel at the bank with PENDING — never on a held one (the money is at Montonio: a second payment could charge her twice), and
+ * language: makstud (paid); pooleli (pending, replaced — B22: an older order a newer attempt took the place of, still open at Montonio —,
+ * held, or a token in doubt that Montonio could not confirm); katkestatud (failed or refunded).
+ * "Proovi uuesti" is offered (`maksa`, or an e-course's `kursus`) on katkestatud and on a pooleli whose row is still pending or replaced —
+ * Montonio answers a cancel at the bank with PENDING — never on a held one (the money is at Montonio: a second payment could charge her twice), and
  * never on a refunded one (she has paid, and may still open what she bought). The Location is a path only (seeOther). A
  * token that cannot be verified, an unknown reference: katkestatud with nothing more; a database failure: pooleli. Never an error page.
  * 404 without payments. The fragment holds the outcome, the kind, the pay token and the slug: no address, no Montonio uuid, no amount.
@@ -152,10 +153,11 @@ export async function handleReturn(request: Request, deps: PaymentRouteDeps): Pr
     const result = await settleToken({ ...deps, montonio }, token);
     if (result.kind === "unknown") return seeOther(returnTarget("et", { outcome: "katkestatud", ...NOTHING }));
     const p = result.payment;
-    const outcome: PaymentOutcome =
-      result.kind === "unconfirmed" ? "pooleli" : p.status === "paid" ? "makstud" : p.status === "pending" || p.status === "held" ? "pooleli" : "katkestatud";
+    // an unpaid replaced order (B22: a newer attempt took its place, but its order is still open at Montonio) reads as a pending one
+    const open = p.status === "pending" || p.status === "replaced";
+    const outcome: PaymentOutcome = result.kind === "unconfirmed" ? "pooleli" : p.status === "paid" ? "makstud" : open || p.status === "held" ? "pooleli" : "katkestatud";
     // never after a refund: the payer has paid (and may still open what she bought), so a second payment would charge her twice
-    const retry = (outcome === "katkestatud" && p.status !== "refunded") || (result.kind === "done" && p.status === "pending");
+    const retry = (outcome === "katkestatud" && p.status !== "refunded") || (result.kind === "done" && open);
     const ecourse = p.kind === "ecourse";
     // what it was for only decorates the landing: a read that fails after the settlement must not turn a paid payment into "pooleli"
     const ctx = await paymentContext(deps.db, p.id).catch((e: unknown) => {

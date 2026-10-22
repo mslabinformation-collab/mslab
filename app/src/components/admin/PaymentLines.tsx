@@ -1,15 +1,18 @@
 import type { PaymentRow } from "@/db/queries/payments";
 import type { PaymentStatus } from "@/db/schema";
 import { formatEUR } from "@/domain/money";
-import { needsCheck, paymentMethodLabel } from "@/domain/payments";
+import { isCheckReason, needsCheck, paymentMethodLabel, type CheckReason } from "@/domain/payments";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { formatDate, formatTime } from "@/i18n/format";
 import ui from "./ui.module.css";
 import styles from "./PaymentLines.module.css";
 
-/** A payment status's tag colour: paid ok, pending and held to look at, failed bad, refunded plain. */
-export const PAYMENT_TONE: Record<PaymentStatus, string> = { paid: ui.ok, pending: ui.warn, held: ui.warn, failed: ui.bad, refunded: "" };
+/**
+ * A payment status's tag colour: paid ok, pending and held to look at, failed bad, refunded plain, replaced („Asendatud“, B22: an older order
+ * a newer attempt took the place of) muted.
+ */
+export const PAYMENT_TONE: Record<PaymentStatus, string> = { paid: ui.ok, pending: ui.warn, held: ui.warn, failed: ui.bad, refunded: "", replaced: ui.muted };
 
 /**
  * A status in Maria's Estonian, never a code. A payment the bank took back after it was paid (stored as failed, with its paid_at) is
@@ -18,6 +21,17 @@ export const PAYMENT_TONE: Record<PaymentStatus, string> = { paid: ui.ok, pendin
 export function paymentStatusLabel(p: { status: PaymentStatus; paidAt: Date | null }): string {
   const t = adminEt.payments;
   return p.status === "failed" && p.paidAt !== null ? t.statusVoided : t.status[p.status];
+}
+
+/** A held payment's check reason in Maria's Estonian (B22): "double" is „Topeltmakse — tagasta“. */
+export const checkReasonLabel = (reason: CheckReason): string => adminEt.payments.reason[reason];
+
+/**
+ * What a payment Maria must check (domain/payments.ts needsCheck) says: its check reason's words when it has one this code knows
+ * („Topeltmakse — tagasta“, P-8), else "Kontrolli Montonios" (a held amount, a bank reversal, or a reason a newer version wrote).
+ */
+export function checkText(p: { checkReason: string | null }): string {
+  return isCheckReason(p.checkReason) ? checkReasonLabel(p.checkReason) : adminEt.payments.check;
 }
 
 /**
@@ -32,8 +46,8 @@ export function paymentMethodText(p: { method: string; bank: string }): string |
 
 /**
  * Online payments as short lines (phase 2b, spec 8): when, how much, the kind (`withWhat`: and the course), how it was paid, the status, and
- * "Kontrolli Montonios" on a held payment or one voided after it was paid. A registration's drawer (under "Laekunud") and the Õpilased
- * drawer show them.
+ * "Kontrolli Montonios" on a held payment or one voided after it was paid — or, for a held one with a check reason, that reason („Topeltmakse —
+ * tagasta“, B22). A registration's drawer (under "Laekunud") and the Õpilased drawer show them (without replaced orders: listPaymentsOf).
  */
 export function PaymentLines({ rows, withWhat = false }: { rows: PaymentRow[]; withWhat?: boolean }) {
   const t = adminEt.payments;
@@ -55,7 +69,7 @@ export function PaymentLines({ rows, withWhat = false }: { rows: PaymentRow[]; w
             <span className={`${ui.tag} ${PAYMENT_TONE[p.status]}`}>{paymentStatusLabel(p)}</span>
             {needsCheck(p) && (
               <span className={`${ui.tag} ${ui.bad}`} data-payment-check="">
-                {t.check}
+                {checkText(p)}
               </span>
             )}
           </li>

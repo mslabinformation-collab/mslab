@@ -119,7 +119,7 @@ describe("the amount: exact in cents, euros only; anything else holds the row", 
     const r = await registrationOn(db, await contactCourse(db));
     const p = await pendingPayment(db, r);
     const { deps, flush } = settleDeps(db, m.montonio, NOW);
-    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { grandTotal })))).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null } });
+    expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, { grandTotal })))).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, checkReason: null } });
     await flush();
     expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["awaiting_prepayment", 0]);
     expect(m.mails().map((x) => x.subject)).toEqual(["Kontrolli Montonios: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 175 €"]);
@@ -384,7 +384,8 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
     expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(bank)))).toMatchObject({ payment: { status: "paid" } });
     // Inbank approves the old application after all
     const late = m.montonio.verifyOrderToken(orderToken(loan, LOAN));
-    expect(await settleToken(deps, late)).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, method: "hirePurchase", bank: "Inbank", providerUuid: loan.providerUuid } });
+    // held with its reason (B22): Maksed and the drawers say „Topeltmakse — tagasta“ in place of „Kontrolli Montonios“
+    expect(await settleToken(deps, late)).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, method: "hirePurchase", bank: "Inbank", providerUuid: loan.providerUuid, checkReason: "double" } });
     // told again — the webhook's retry, the return, the daily check: still held, nothing counted, no second alert
     expect(await settleToken(deps, late)).toMatchObject({ payment: { status: "held" } });
     expect(await settlePayment(deps, loan, facts(loan, { method: "hirePurchase", amountCents: 35000 }))).toMatchObject({ status: "held" });
@@ -500,7 +501,7 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
       expect(logged.join("\n")).not.toMatch(/kati|@/);
     });
 
-    test("no look at the KV for a payment that is no registration's loan", async () => {
+    test("no look at the KV for a payment that is no registration's loan (nor a replaced order: B22, payments-settle)", async () => {
       const m = stubMontonio();
       const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing" });
       const bank = await pendingPayment(db, r, { amountCents: 35000, method: "paymentInitiation" }, ago(10 * MIN));
@@ -565,7 +566,7 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
       expect(opened).toEqual([expect.objectContaining({ courseId: course.id, grantedBy: "payment", grantedAt: ago(15 * MIN) })]);
       // Inbank approves the old application a quarter of an hour later
       const { deps, flush } = settleDeps(db, m.montonio, NOW);
-      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, clientId: null } });
+      expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, clientId: null, checkReason: "double" } });
       expect(await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)))).toMatchObject({ payment: { status: "held" } });
       await flush();
       // her access is the bank purchase's, as it was: not granted or prolonged again
@@ -641,7 +642,7 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
       expect(opened).toEqual([expect.objectContaining({ courseId: course.id, grantedBy: "payment", grantedAt: ago(15 * MIN) })]);
       const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
       const token = m.montonio.verifyOrderToken(orderToken(bank));
-      expect(await settleToken(deps, token)).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, clientId: null, method: "paymentInitiation", bank: "Swedbank" } });
+      expect(await settleToken(deps, token)).toMatchObject({ kind: "done", payment: { status: "held", paidAt: null, clientId: null, method: "paymentInitiation", bank: "Swedbank", checkReason: "double" } });
       // told again — the webhook's retry, the return, the daily check: still held, no second alert
       expect(await settleToken(deps, token)).toMatchObject({ payment: { status: "held" } });
       expect(await settlePayment(deps, bank, facts(bank, { amountCents: 19000 }))).toMatchObject({ status: "held" });

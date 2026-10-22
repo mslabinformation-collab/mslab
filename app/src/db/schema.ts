@@ -5,6 +5,7 @@ import type { FeedbackAnswers } from "@/domain/protocols";
 import type { InvoiceBuyer, InvoiceKind, InvoiceLine, InvoiceSeller, InvoiceStatus, PaidMethod } from "@/domain/invoice";
 import type { AcceptedVia, ContractFields, ContractKind, ContractSnapshot } from "@/domain/contract";
 import type { ReviewKind, ReviewStatus } from "@/domain/review";
+import type { CheckReason } from "@/domain/payments";
 
 export const courseType = pgEnum("course_type", ["e_learning", "contact"]);
 export const courseLevel = pgEnum("course_level", ["basic", "advanced"]);
@@ -19,8 +20,13 @@ export const sessionStatus = pgEnum("session_status", ["scheduled", "cancelled"]
 export const requestKind = pgEnum("request_kind", ["contact", "individual", "practice", "waitlist", "change_request"]);
 /** An online payment (phase 2b): a registration's prepayment, its rest after the prepayment, or an e-course purchase. */
 export const payKind = pgEnum("payment_kind", ["prepayment", "balance", "ecourse"]);
-/** pending: started; paid; failed (ended unpaid, or voided by the bank after paid); refunded; held: paid, but the amount or currency did not match. */
-export const payStatus = pgEnum("payment_status", ["pending", "paid", "failed", "refunded", "held"]);
+/**
+ * pending: started; paid; failed (ended unpaid, or voided by the bank after paid); refunded; held: paid, but not counted — the amount or
+ * currency did not match, or it is a second payment of something paid in full (its `check_reason`); replaced („Asendatud“, B22, migration
+ * 0019): an older open order of a registration that a newer attempt took the place of — still payable at Montonio, so it settles, is asked
+ * about by the daily check and keeps its seat window as a pending one does (server/payments/start.ts, settle.ts).
+ */
+export const payStatus = pgEnum("payment_status", ["pending", "paid", "failed", "refunded", "held", "replaced"]);
 
 /** A badge's text: Estonian, and Russian when Maria gave one (the RU pages fall back to the Estonian text). */
 export type BadgeLabel = { et: string; ru?: string };
@@ -335,8 +341,9 @@ export const mailQuota = pgTable("mail_quota", { day: text("day").primaryKey(), 
  * One online payment attempt (phase 2b, spec 5.1). `reference` is Montonio's merchantReference, `MSLAB-M<id>` in production (domain/payments.ts
  * orderReference; MSLAB-L<id> on this machine, MSLAB-P<id> on a preview), written in the insert's own transaction (db/queries/payments.ts insertPayment): every attempt is a new order.
  * `email` and `name` are the payer's as entered, kept for the books when the account or the registration is deleted (the links are set
- * null). `held`: Montonio said paid, but the amount or the currency did not match (server/payments/settle.ts). `paidAt` stays set when
- * the bank voids a paid payment (status failed), which the admin shows as "Kontrolli Montonios".
+ * null). `held`: Montonio said paid, but the amount or the currency did not match, or it is a second payment of something paid in full
+ * (`check_reason` 'double'; server/payments/settle.ts). `paidAt` stays set when the bank voids a paid payment (status failed), which the admin
+ * shows as "Kontrolli Montonios". `replaced` (B22): an older open order a newer attempt of the same registration took the place of.
  */
 export const payments = pgTable(
   "payments",
@@ -372,6 +379,13 @@ export const payments = pgTable(
      * payment changes nothing. Null for a payment that showed none (a registration's, and every payment before 0013).
      */
     contractSnapshot: jsonb("contract_snapshot").$type<ContractSnapshot | null>(),
+    /**
+     * Why a held payment waits for Maria (B22, migration 0019): "double" — a second payment of something paid in full (a replaced order paid
+     * after the registration was, or a late järelmaks; settle.ts), which she refunds in Montonio; Maksed and the drawers say „Topeltmakse —
+     * tagasta“ in place of „Kontrolli Montonios“. The code only (domain/payments.ts CheckReason); the words are the admin dict's. Null for
+     * every other row, an amount-mismatch hold too.
+     */
+    checkReason: text("check_reason").$type<CheckReason>(),
   },
   (t) => [
     uniqueIndex("payments_reference").on(t.reference),

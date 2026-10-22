@@ -158,6 +158,24 @@ describe("what is asked, and what the answer does", () => {
     expect([await status(edge.id), await status(justUnder.id), await status(lastDay.id), await status(gone.id)]).toEqual(["pending", "pending", "pending", "failed"]);
   });
 
+  test("a replaced order („Asendatud“, B22) is asked about as a pending one: older than its window, PAID settles it; 14 days old it fails without asking", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const replace = async (p: Payment) => void (await db.update(payments).set({ status: "replaced" }).where(eq(payments.id, p.id)));
+    const r = await registrationOn(db, c, { seatHoldUntil: ago(-10 * MIN) });
+    const paid = await pendingPayment(db, r, {}, ago(2 * 60 * MIN));
+    const young = await pendingPayment(db, await registrationOn(db, c, { email: "teine@example.test" }), {}, ago(10 * MIN));
+    const old = await pendingPayment(db, await registrationOn(db, c, { email: "kolmas@example.test" }), {}, ago(14 * DAY));
+    for (const p of [paid, young, old]) await replace(p);
+    expect((await paymentQueries.pendingToCheck(db, NOW, 10)).map((p) => p.id)).toEqual([paid.id]);
+    m.state.snapshots.set(paid.providerUuid!, snapshot(paid, "PAID"));
+    const { deps } = settleDeps(db, m.montonio, NOW);
+    expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ checked: 1, settled: 1, expired: 1, errors: 0 });
+    expect([await status(paid.id), await status(young.id), await status(old.id)]).toEqual(["paid", "replaced", "failed"]);
+    expect((await db.select().from(registrations).where(eq(registrations.id, r.id)))[0]).toMatchObject({ status: "confirmed", paidCents: 17500 });
+    expect(m.state.gets).toEqual([paid.providerUuid]);
+  });
+
   test("a row that is not pending is never asked about", async () => {
     const m = stubMontonio();
     const r = await registrationOn(db, await contactCourse(db));
@@ -445,6 +463,20 @@ describe("one payment that cannot be settled does not stop the check", () => {
     expect(kv.ttl.get(`pay:stuck:${bad.id}`)).toBe(30 * 86_400);
     expect(await status(bad.id)).toBe("pending");
     expect(logged().join("\n")).not.toMatch(/giftig|Mürk|@|MSLAB-M/);
+  });
+
+  test("a replaced order („Asendatud“, B22) that Montonio says is PAID and that cannot be settled: Maria gets 'Makse vajab kontrolli' too, the row stays replaced", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await poison("registrations");
+    const bad = await pendingPayment(db, await registrationOn(db, c, { email: "giftig@example.com", name: "Mari Mürk" }), {}, ago(3 * 60 * MIN));
+    await db.update(payments).set({ status: "replaced" }).where(eq(payments.id, bad.id));
+    m.state.snapshots.set(bad.providerUuid!, snapshot(bad, "PAID"));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await checkPendingPayments(deps, FOREVER)).toMatchObject({ checked: 1, settled: 0, errors: 1 });
+    await flush();
+    expect(m.mails().filter((x) => x.subject.startsWith(STUCK)).map((x) => x.subject)).toEqual(["Makse vajab kontrolli: Mari Mürk"]);
+    expect(await status(bad.id)).toBe("replaced");
   });
 
   // The database restarting (57P01 admin_shutdown, 57P02 crash_shutdown, 57P03 cannot_connect_now) or full (53300 too_many_connections) is

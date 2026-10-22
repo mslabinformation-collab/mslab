@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gt, isNull, not, or, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
-import { attachOrder, failPayment, hirePurchaseRow, insertPayment } from "@/db/queries/payments";
+import { attachOrder, failPayment, hirePurchaseRow, insertPayment, replaceOlderOrders } from "@/db/queries/payments";
 import { readSetting } from "@/db/queries/public";
 import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
@@ -24,7 +24,14 @@ import { MontonioError, type Montonio, type OrderMethod } from "./montonio";
 // two orders open to pay. Every start has its method (instalments, D5, §4): the bank link by default, or Järelmaks (Inbank), Montonio's
 // `hirePurchase`, only while it is allowed (financingAllowed: Seaded's toggle, read in the start's transaction, the price, nothing paid, the
 // whole price due; for a registration, its choice „Järelmaks (Inbank)“). The row records it (`method`); a press of the other method while an
-// attempt is open starts a new attempt and never re-sends or overwrites the open one, so a bank payment never replaces a loan application.
+// attempt is open starts a new attempt and never re-sends or overwrites the open one's order.
+// One open order per registration (B22, admin UX pass piece 2; it replaces the instalments rule „a bank payment never replaces a loan
+// application“): every new attempt of a registration marks its older `pending` rows `replaced` („Asendatud“), whatever their kind or method —
+// a bank start an open loan application, a loan start an open bank order — in the start's own transaction, right after the insert
+// (db/queries/payments.ts replaceOlderOrders). A re-send of the open attempt is no new row and replaces nothing. „Asendatud“ is ours only: the
+// older order stays payable at Montonio until it ends (a declined loan stays PENDING for 7 days), so a replaced row still settles (settle.ts:
+// counted, or held as „Topeltmakse — tagasta“ when the registration is paid in full by then), is asked about by the daily check, and keeps
+// its seat window. An e-course purchase keeps the rules above (B22 is a registration's).
 // The locks are the one order of every payment path (db/queries/seats.ts): the session, then the registration (lockForPayment, taken first),
 // then the payment row. Nothing is held across Montonio's call: the transaction commits first, and only then are the order made and the row
 // given its uuid (attachOrder) or failed (failPayment, which takes the registration's lock in its own transaction). An e-course purchase has
@@ -100,7 +107,8 @@ export function paymentUrls(returnBase: string, notifyBase: string): { returnUrl
  * (the unpaid invoice it was started for, or none: invoices, D5) — or the same e-course and address — with this amount and this method (a
  * `hirePurchase` row for a järelmaks, any other for the bank: hirePurchaseRow), whose order is still inside its window (attemptWindowMs:
  * Montonio's 30 minutes for the bank, the järelmaks' 60; `updated_at` is the row's insert or its last re-send: nothing else touches a pending
- * row). null: there is none, and the start is a new attempt — also while an attempt of the other method is open (instalments, §4).
+ * row). null: there is none, and the start is a new attempt — also while an attempt of the other method is open (instalments, §4). A
+ * replaced row (B22) is no open attempt: it is never sent again.
  */
 async function liveAttempt(
   q: Q,
@@ -132,8 +140,9 @@ async function liveAttempt(
  * hold ends). `again`: the row is an open attempt sent again (same reference): Montonio overwrites the unpaid order and may answer a new
  * uuid, which the row takes only while it is still unpaid (status pending, paid_at null: a replaced uuid that landed after a PAID would make a
  * repeat of the paid order look like a double payment, settle.ts). When that UPDATE loses, the row was settled meanwhile: Montonio is not
- * called again, and the answer is "nothing to pay" (or "failed" when the row was failed meanwhile: no one is sent to the replaced order). A
- * token of the order the row had before is settle.ts's doubt case.
+ * called again, and the answer is "nothing to pay" (or "failed" when the row was failed meanwhile, or marked „Asendatud“ by a start of another
+ * amount or method (B22): no one is sent to an order that is no longer the open one). A token of the order the row had before is settle.ts's
+ * doubt case.
  * A re-send that gets no order (Montonio refused it, or did not answer in time) is "failed" too, but its row is NOT failed: the order under
  * that reference may be paid already, its webhook late (Montonio refuses to overwrite a paid order), or the timed-out call may have replaced
  * it after all. The row stays pending with the hold its start refreshed, so the next press re-sends the same reference again — a failed row
@@ -168,8 +177,8 @@ async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment,
       .returning();
     if (!kept) {
       const [now] = await deps.db.select({ status: payments.status }).from(payments).where(eq(payments.id, payment.id)).limit(1);
-      console.info(`[payments] payment ${payment.id}: settled while it was sent again`);
-      return now?.status === "failed" ? { kind: "failed" } : { kind: "nothing" };
+      console.info(`[payments] payment ${payment.id}: ${now?.status === "replaced" ? "replaced" : "settled"} while it was sent again`);
+      return now?.status === "failed" || now?.status === "replaced" ? { kind: "failed" } : { kind: "nothing" };
     }
   } else await attachOrder(deps.db, payment.id, created.uuid, deps.now);
   console.info(`[payments] payment ${payment.id}: ${again ? "sent again" : "started"}`);
@@ -186,7 +195,8 @@ async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment,
  * and holds it for the attempt's window from now (D2: 30 minutes for the bank, 60 for a järelmaks: attemptWindowMs), never ending a longer
  * hold sooner (her open järelmaks attempt's, when she presses the bank meanwhile); a confirmed registration's needs none and holds nothing.
  * The open attempt of the same amount, invoice and method, when there is one, is sent again instead of a new one (liveAttempt; not counted
- * in STARTS_PER_HOUR). `target`: the registration (with `clientId`: only when it is that client's) or its "Maksa" token.
+ * in STARTS_PER_HOUR); a new attempt marks the registration's older open ones „Asendatud“ (B22: replaceOlderOrders, in this transaction).
+ * `target`: the registration (with `clientId`: only when it is that client's) or its "Maksa" token.
  * `opts.method`: the bank link by default; "hirePurchase" (Järelmaks (Inbank), instalments §4) only for a registration booked with that
  * choice and while financingStarts allows it, else `financing` — the bank stays open to every registration, a järelmaks one included (she
  * pays the whole price by bank). A järelmaks order carries her name, e-mail and (an Estonian) phone for Inbank's form (billingAddressOf, D8).
@@ -263,6 +273,8 @@ export async function startRegistrationPayment(
       deps.now,
       montonio.referencePrefix,
     );
+    // one open order per registration (B22): the older open ones become „Asendatud“, under the same locks, with the insert
+    await replaceOlderOrders(tx, r.id, payment.id);
     return { kind: "ready", payment, again: false, billing };
   });
   if (ready.kind !== "ready") return ready;

@@ -347,12 +347,15 @@ export const adminEt = {
     lead: "Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures nagu varem.",
     filterLabel: "Staatus",
     filter: { all: "Kõik", paid: "Makstud", pending: "Pooleli", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil" },
-    status: { pending: "Pooleli", paid: "Makstud", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil" },
+    // replaced (B22, README §5): an older open order a newer attempt of the same registration took the place of; shown under „Kõik“ only
+    status: { pending: "Pooleli", paid: "Makstud", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil", replaced: "Asendatud" },
     // a payment the bank took back after it was paid (stored as failed, with its paid_at): the owner's word for a bank reversal
     statusVoided: "Tühistatud pangas",
     kind: { prepayment: "Ettemaks", balance: "Ülejäänud", ecourse: "E-koolitus" },
     // a held payment, or one the bank voided after it was paid
     check: "Kontrolli Montonios",
+    // a held payment's check reason (payments.check_reason, domain/payments.ts CheckReason), said in place of `check` (B22, README §5; P-8)
+    reason: { double: "Topeltmakse — tagasta" },
     count: "Makseid: {n}",
     empty: "Makseid veel pole.",
     emptyFiltered: "Selle valikuga makseid pole.",

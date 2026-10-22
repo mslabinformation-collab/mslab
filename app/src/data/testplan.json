@@ -5,7 +5,7 @@
     {
       "id": "enne",
       "name": "Enne alustamist",
-      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest, Proov 6 saab Maria arved, Proov 7 tasub Maria arve ise, Proov 8 on venekeelne õpilane, kes saab arve kirjaga, ja Proov 0 on Dimi esimene makse. Proov 9 kuni Proov 14 on järelmaksu kontrollide õpilased: iga kontroll ütleb, millist ta kasutab. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
+      "note": "Kui miski siin lehel tundub vana, vajuta „Värskenda“. Enne avamist on kodulehe ees ootelehekülg: logi samas seadmes halduses sisse ja vajuta üleval „Vaata kodulehte“, siis näeb see seade kodulehte ja konto lehti. Kui kirja nupp avab ootelehekülje (näiteks Gmaili äpis), kopeeri link sellesse brauserisse. Nimeta kõik, mida lood, „Proov“ ja numbriga, nagu kontroll ütleb. Õpilase e-post on oma aadress, kuhu lisad enne @-märki +proov1 või kontrollis nimetatud muu numbri: kiri jõuab sinu enda postkasti. Proov 1 on põhiõpilane, Proov 2 maksab pangaülekandega, Proov 3 saadab päringud, Proov 4 kustutab oma konto, Proov 5 saab e-koolituse Maria käest, Proov 6 saab Maria arved, Proov 7 tasub Maria arve ise, Proov 8 on venekeelne õpilane, kes saab arve kirjaga, ja Proov 0 on Dimi esimene makse. Proov 9 kuni Proov 15 on järelmaksu kontrollide õpilased: iga kontroll ütleb, millist ta kasutab. Kasuta just seda aadressi, mida kontroll nimetab: ühele aadressile läheb päevas kuni 3 kinnituskirja. Sisselogimiskoodi saab ühele aadressile küsida 3 korda poole tunni jooksul, halduse linki 3 korda 10 minuti jooksul. Sama vormi saab saata 5 korda 10 minuti jooksul. Makseid teed Montonio testpangas, kus päris raha ei liigu. Kuidas testpank käib, kirjutab Dim kontrolli „Montonio testpank: esimene makse“ märkusesse. Kirjuta iga vea juurde märkus: mida tegid, mida nägid ja mis seadmes.",
       "checks": false
     },
     {
@@ -2824,14 +2824,14 @@
         "Enne pangamakset on halduses Proov 10 staatus „Ootab ettemaksu“ ja „Laekunud“ on null.",
         "„Maksa pangalingiga“ avab Montonio makselehe koolituse täishinnaga.",
         "Pärast makset on lehel „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“ ja Proov 10 staatus on „Kinnitatud“.",
-        "„Maksed ja arved“ näitab Proov 10 kaks rida: „Järelmaks (Inbank)“ staatusega „Pooleli“ ja „Pangalink …“ staatusega „Makstud“.",
+        "„Maksed ja arved“ all „Kõik“ näitab Proov 10 kaks rida: „Järelmaks (Inbank)“ staatusega „Asendatud“ ja „Pangalink …“ staatusega „Makstud“.",
         "„Laekunud“ on täpselt koolituse hind."
       ],
       "why": "Keeldutud taotlus ei tohi õpilast ummikusse jätta: ta maksab pangalingiga ja koht kinnitub.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-jarelmaks-nupud",
@@ -2893,8 +2893,8 @@
       "why": "Maria võib järelmaksu välja lülitada, kui õpilane on lehe juba avanud.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-jarelmaks-hiline",
@@ -2916,6 +2916,7 @@
       "expect": [
         "Pangamakse järel on Proov 14 staatus „Kinnitatud“ ja „Laekunud“ on kogu hind.",
         "Hilinenud järelmaks on filtri „Ootel kontrollil“ all makseviisiga „Järelmaks (Inbank)“.",
+        "Registreeringu paneelis on hilinenud järelmaksu real „Topeltmakse — tagasta“, mitte „Kontrolli Montonios“.",
         "Maria postkasti tuleb teade „Topeltmakse: Proov 14, …“.",
         "Teates on lause „Järelmaks (Inbank) laekus, kui koolitus oli juba täies ulatuses tasutud.“.",
         "Teates on ka „Tagasta see Montonio halduses: täielik tagastus tühistab järelmaksu.“.",
@@ -2925,8 +2926,8 @@
       "why": "Õpilane ei tohi sama koolituse eest maksta kaks korda ja Maria peab sellest teada saama.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-maksed-jarelmaks",
@@ -2939,14 +2940,14 @@
         "Tee see pärast järelmaksu registreerimise kontrolle.",
         "Ava „Maksed ja arved“ ja vajuta filtril „Makstud“.",
         "Vaata Proov 9 rida ja Proov 10 pangalingiga makstud rida veerus „Makseviis“.",
-        "Vajuta filtril „Pooleli“ ja vaata Proov 10 järelmaksu rida.",
+        "Vajuta filtril „Kõik“ ja vaata Proov 10 järelmaksu rida, mis on „Asendatud“.",
         "Vajuta filtritel „Ebaõnnestunud“ ja „Pooleli“ ning vaata rida, mille makse katkestati testpangas (Proov 2 või Proov 13).",
         "Ava Proov 9 registreeringu paneel ja vaata plokki „Veebimaksed“."
       ],
       "expect": [
         "Proov 9 makse makseviis on „Järelmaks (Inbank)“, ilma lisatud panga või pakkujata.",
         "Pangalingiga tasutud Proov 10 makse real on makseviis „Pangalink …“.",
-        "Pooleli järelmaksu real on makseviis „Järelmaks (Inbank)“, mitte tühi.",
+        "Asendatud järelmaksu real on makseviis „Järelmaks (Inbank)“, mitte tühi.",
         "Katkestatud pangamakse real on makseviis „Pangalink“, ükskõik kas pooleli või ebaõnnestunud.",
         "Paneeli plokis „Veebimaksed“ on sama makse samuti märgitud „Järelmaks (Inbank)“.",
         "Makseviisi näitavad ainult pärast uuendust tehtud read; varem tehtud ridade „Makseviis“ on tühi, see pole viga."
@@ -2954,8 +2955,38 @@
       "why": "Maria näeb, kas raha tuli pangast või järelmaksuna, ja pooleli ridade viis ei jää tühjaks.",
       "risk": "med",
       "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-maksed-asendatud",
+      "area": "registreerimine",
+      "who": "dim",
+      "device": "arvuti",
+      "title": "Maksed: vana pooleli makse on „Asendatud“",
+      "href": "/koolitused",
+      "steps": [
+        "Vali kontaktkoolitus, mille grupihind on 100–500 €; vajadusel muuda proovi jaoks ühe hind ja pane see pärast tagasi.",
+        "Registreeri: Proov 15, +proov15, oma Eesti telefon, „Järelmaks (Inbank)“ ja lepingu ruut; vajuta „Registreeru“.",
+        "Inbanki lehel jäta taotlus pooleli ja mine tagasi MS LABi lehele, nagu Montonio pakub.",
+        "Vajuta „Maksa pangalingiga“; Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb.",
+        "Ava halduses „Maksed ja arved“, vajuta filtril „Kõik“ ja vaata Proov 15 ridu.",
+        "Vajuta filtritel „Pooleli“ ja „Ootel kontrollil“ ning otsi Proov 15 järelmaksu rida.",
+        "Ava Proov 15 registreeringu paneel ja vaata selle makseid.",
+        "Tühista halduses Proov 15 registreering."
+      ],
+      "expect": [
+        "„Kõik“ all on Proov 15 järelmaksu rida staatusega „Asendatud“ ja makseviisiga „Järelmaks (Inbank)“.",
+        "Proov 15 pangalingi rida on uuem ja staatusega „Pooleli“ või „Ebaõnnestunud“.",
+        "Filtrite „Pooleli“ ja „Ootel kontrollil“ all Proov 15 järelmaksu rida pole.",
+        "Paneelis on ainult pangalingi makse; asendatud järelmaksu rida seal pole.",
+        "Proov 15 staatus on „Ootab ettemaksu“ ja „Laekunud“ on null."
+      ],
+      "why": "Uus makse asendab vana pooleli tellimuse, et Maria näeks registreeringul ühte avatud makset.",
+      "risk": "med",
+      "writes": true,
       "mark": "new",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "markedAt": "deploy"
     },
     {
       "id": "konto-kood",

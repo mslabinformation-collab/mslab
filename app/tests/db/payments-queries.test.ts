@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, test } from "vitest";
 import type { Db } from "@/db/client";
-import { attachOrder, failPayment, insertPayment, isConnectionError, paymentByReference, paymentContext, releaseHold, releaseHoldLocked } from "@/db/queries/payments";
-import { courses, payments, registrations } from "@/db/schema";
+import { attachOrder, failPayment, insertPayment, isConnectionError, listPaymentsOf, paymentByReference, paymentContext, releaseHold, releaseHoldLocked, replaceOlderOrders } from "@/db/queries/payments";
+import { clients, courses, payments, registrations } from "@/db/schema";
 import { contactCourse, pendingPayment, registrationOn, TEST_MONTONIO } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
@@ -99,6 +99,63 @@ describe("releaseHold", () => {
     await db.update(payments).set({ status: "failed" }).where(eq(payments.id, second.id));
     expect(await releaseHold(db, r.id, first.id, NOW)).toBe(true);
   });
+
+  test("a replaced payment („Asendatud“, B22) keeps it too: its order is still payable at Montonio inside its window", async () => {
+    const r = await registrationOn(db, await contactCourse(db), { seatHoldUntil: hold(10) });
+    const replaced = await pendingPayment(db, r);
+    await db.update(payments).set({ status: "replaced" }).where(eq(payments.id, replaced.id));
+    expect(await releaseHold(db, r.id, 0, NOW)).toBe(false);
+    expect((await registration(r.id)).seatHoldUntil).toEqual(hold(10));
+  });
+});
+
+describe("replaceOlderOrders (B22: one open order per registration)", () => {
+  test("every other pending row of the registration becomes „replaced“ (status only), whatever its kind or method; the count; settled rows and other registrations untouched", async () => {
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c);
+    const other = await registrationOn(db, c, { email: "teine@example.test" });
+    const bank = await pendingPayment(db, r, { method: "paymentInitiation" });
+    const loan = await pendingPayment(db, r, { method: "hirePurchase", amountCents: 35000 });
+    const rest = await pendingPayment(db, r, { kind: "balance" });
+    const failed = await pendingPayment(db, r);
+    const paid = await pendingPayment(db, r);
+    await db.update(payments).set({ status: "failed" }).where(eq(payments.id, failed.id));
+    await db.update(payments).set({ status: "paid", paidAt: NOW }).where(eq(payments.id, paid.id));
+    const keep = await pendingPayment(db, r);
+    const theirs = await pendingPayment(db, other);
+    const before = await db.select().from(payments).orderBy(payments.id);
+    expect(await replaceOlderOrders(db, r.id, keep.id)).toBe(3);
+    const after = await db.select().from(payments).orderBy(payments.id);
+    expect(after.map((p) => [p.id, p.status])).toEqual([
+      [bank.id, "replaced"],
+      [loan.id, "replaced"],
+      [rest.id, "replaced"],
+      [failed.id, "failed"],
+      [paid.id, "paid"],
+      [keep.id, "pending"],
+      [theirs.id, "pending"],
+    ]);
+    // nothing else of a replaced row changes: its order, its method and its last sending (attemptEnds reads it: its seat window stays its own)
+    expect(after.map((p) => ({ ...p, status: null }))).toEqual(before.map((p) => ({ ...p, status: null })));
+    // again: nothing left to replace
+    expect(await replaceOlderOrders(db, r.id, keep.id)).toBe(0);
+  });
+});
+
+describe("listPaymentsOf: the drawers' online payments (replaced orders hidden, B22)", () => {
+  test("a registration's and a student's payments, newest first; a replaced one only with includeReplaced", async () => {
+    const c = await contactCourse(db);
+    const [client] = await db.insert(clients).values({ email: "kati@example.test" }).returning();
+    const r = await registrationOn(db, c, { clientId: client.id });
+    const replaced = await pendingPayment(db, r, {}, new Date(NOW.getTime() - 20 * MIN));
+    const open = await pendingPayment(db, r, {}, new Date(NOW.getTime() - 10 * MIN));
+    await db.update(payments).set({ status: "replaced" }).where(eq(payments.id, replaced.id));
+    const ids = (rows: { id: number }[]) => rows.map((p) => p.id);
+    expect(ids(await listPaymentsOf(db, { registrationId: r.id }))).toEqual([open.id]);
+    expect(ids(await listPaymentsOf(db, { clientId: client.id }))).toEqual([open.id]);
+    expect(ids(await listPaymentsOf(db, { registrationId: r.id, includeReplaced: true }))).toEqual([open.id, replaced.id]);
+    expect(ids(await listPaymentsOf(db, { clientId: client.id, includeReplaced: true }))).toEqual([open.id, replaced.id]);
+  });
 });
 
 describe("releaseHoldLocked (the release of a caller that holds no lock)", () => {
@@ -146,6 +203,14 @@ describe("failPayment", () => {
       expect(await failPayment(db, p.id, NOW), status).toBeNull();
       expect((await paymentByReference(db, p.reference))?.status, status).toBe(status);
     }
+  });
+
+  test("a replaced one („Asendatud“, B22: Montonio's ABANDONED, or the daily check's 14 days) fails as a pending one does, and its hold ends", async () => {
+    const r = await registrationOn(db, await contactCourse(db), { seatHoldUntil: new Date(NOW.getTime() + 10 * MIN) });
+    const p = await pendingPayment(db, r);
+    await db.update(payments).set({ status: "replaced" }).where(eq(payments.id, p.id));
+    expect(await failPayment(db, p.id, NOW)).toMatchObject({ released: true, payment: { id: p.id, status: "failed", updatedAt: NOW } });
+    expect((await registration(r.id)).seatHoldUntil).toBeNull();
   });
 });
 

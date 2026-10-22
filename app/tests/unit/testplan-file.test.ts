@@ -713,12 +713,15 @@ describe("the instalments checks (instalments, Task 8)", () => {
     "ekursus-jarelmaks": { area: "ekursus", who: "dim", writes: true },
   };
 
+  // B22 (admin UX pass, piece 2: one open order per registration) changed what four of them see: they are to be run again (below)
+  const REDONE_BY_B22 = new Set(["registreerimine-jarelmaks-keeldus", "registreerimine-jarelmaks-vahepeal-valja", "registreerimine-jarelmaks-hiline", "haldus-maksed-jarelmaks"]);
+
   test("each is a new check marked since the deploy, in its area, run by whom the sandbox or the toggle needs", () => {
     for (const [id, want] of Object.entries(NEW)) {
-      expect(item(id), id).toMatchObject({ ...want, mark: "new" });
+      expect(item(id), id).toMatchObject({ ...want, mark: REDONE_BY_B22.has(id) ? "redo" : "new" });
       expect(markedSince(item(id).markedAt), id).toBe(true); // "deploy" on the branch, the push instant once stamped
       // a new check never reopens an answer
-      expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z"), id).toBeNull();
+      if (!REDONE_BY_B22.has(id)) expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z"), id).toBeNull();
     }
   });
 
@@ -763,14 +766,23 @@ describe("the instalments checks (instalments, Task 8)", () => {
     expect(text("registreerimine-jarelmaks-hiline")).toContain("501–700 €");
     // the area says all three, once
     for (const amount of ["100–500 €", "501–700 €", "901–1000 €"]) expect(String(area("registreerimine").note), amount).toContain(amount);
-    // each Proov is one check's: 9 approved, 10 declined, 11 the cart, 12 the two buttons, 13 switched off meanwhile, 14 the late loan
-    const proov = { "registreerimine-jarelmaks-kinnitatud": 9, "registreerimine-jarelmaks-keeldus": 10, "ekursus-jarelmaks": 11, "registreerimine-jarelmaks-nupud": 12, "registreerimine-jarelmaks-vahepeal-valja": 13, "registreerimine-jarelmaks-hiline": 14 };
+    // each Proov is one check's: 9 approved, 10 declined, 11 the cart, 12 the two buttons, 13 switched off meanwhile, 14 the late loan, 15 the
+    // replaced loan (B22)
+    const proov = {
+      "registreerimine-jarelmaks-kinnitatud": 9,
+      "registreerimine-jarelmaks-keeldus": 10,
+      "ekursus-jarelmaks": 11,
+      "registreerimine-jarelmaks-nupud": 12,
+      "registreerimine-jarelmaks-vahepeal-valja": 13,
+      "registreerimine-jarelmaks-hiline": 14,
+      "haldus-maksed-asendatud": 15,
+    };
     for (const [id, n] of Object.entries(proov)) {
       expect(text(id), id).toMatch(new RegExp(`Proov ${n}(?!\\d)`));
       expect(text(id), id).toContain(`+proov${n}`);
       for (const other of Object.values(proov).filter((m) => m !== n)) expect(text(id), `${id} vs Proov ${other}`).not.toMatch(new RegExp(`Proov ${other}(?!\\d)`));
     }
-    expect(String(area("enne").note)).toContain("Proov 9 kuni Proov 14");
+    expect(String(area("enne").note)).toContain("Proov 9 kuni Proov 15");
   });
 
   test("the words the checks quote are the site's own", () => {
@@ -846,5 +858,37 @@ describe("the instalments checks (instalments, Task 8)", () => {
     expect(String(area("koristamine").note)).toContain("Pane Seaded → „Järelmaks (Inbank)“ välja, kuni Montonio on Maria ettevõttele päriselt aktiveeritud");
     expect(String(area("ekursus").note)).toContain("Proov 11");
     expect(item("haldus-seaded-jarelmaks").steps.join("\n")).toContain("jäta see märgituks");
+  });
+});
+
+describe("B22: one open order per registration (admin UX pass, piece 2, Task 2)", () => {
+  const order = plan.items.map((i) => i.id);
+  const at = (id: string): number => {
+    const n = order.indexOf(id);
+    expect(n, id).toBeGreaterThanOrEqual(0);
+    return n;
+  };
+  const item = (id: string) => plan.items[at(id)];
+  const text = (id: string) => [item(id).title, ...item(id).steps, ...item(id).expect].join("\n");
+  const replaced = adminEt.payments.status.replaced;
+
+  test("the new check: a declined loan left for the bank is „Asendatud“ under „Kõik“, and the drawer shows only the latest order", () => {
+    expect(item("haldus-maksed-asendatud")).toMatchObject({ area: "registreerimine", who: "dim", writes: true, mark: "new", markedAt: "deploy" });
+    expect(text("haldus-maksed-asendatud")).toContain(`„${replaced}“`);
+    expect(text("haldus-maksed-asendatud")).toContain(`„${et.payment.payBank}“`);
+    // the toggle is on by then, and it reads Maksed the way the Maksed check does
+    expect(at("haldus-seaded-jarelmaks")).toBeLessThan(at("haldus-maksed-asendatud"));
+    expect(at("haldus-maksed-jarelmaks")).toBeLessThan(at("haldus-maksed-asendatud"));
+  });
+
+  test("the checks whose rows B22 changed are to be run again, with the words they now see", () => {
+    for (const id of ["registreerimine-jarelmaks-keeldus", "registreerimine-jarelmaks-vahepeal-valja", "registreerimine-jarelmaks-hiline", "haldus-maksed-jarelmaks"])
+      expect(item(id), id).toMatchObject({ mark: "redo", markedAt: "deploy" });
+    // Proov 10's loan, declined and then paid by bank, is „Asendatud“: no check expects it under „Pooleli“ any more
+    expect(text("registreerimine-jarelmaks-keeldus")).toContain(`„Järelmaks (Inbank)“ staatusega „${replaced}“`);
+    expect(text("haldus-maksed-jarelmaks")).toContain(`Vajuta filtril „Kõik“ ja vaata Proov 10 järelmaksu rida, mis on „${replaced}“.`);
+    expect(text("haldus-maksed-jarelmaks")).not.toContain("Pooleli järelmaksu real");
+    // the late loan is held with its reason
+    expect(text("registreerimine-jarelmaks-hiline")).toContain(`„${adminEt.payments.reason.double}“`);
   });
 });
