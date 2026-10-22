@@ -1,6 +1,6 @@
-import { and, count, desc, eq, gt, isNull, not, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNull, not, or, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
-import { attachOrder, failPayment, hirePurchaseRow, insertPayment, replaceOlderOrders } from "@/db/queries/payments";
+import { attachOrder, failPayment, hirePurchaseRow, insertPayment, OPEN_ORDER, replaceOlderOrders } from "@/db/queries/payments";
 import { readSetting } from "@/db/queries/public";
 import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
@@ -28,10 +28,13 @@ import { MontonioError, type Montonio, type OrderMethod } from "./montonio";
 // One open order per registration (B22, admin UX pass piece 2; it replaces the instalments rule „a bank payment never replaces a loan
 // application“): every new attempt of a registration marks its older `pending` rows `replaced` („Asendatud“), whatever their kind or method —
 // a bank start an open loan application, a loan start an open bank order — in the start's own transaction, right after the insert
-// (db/queries/payments.ts replaceOlderOrders). A re-send of the open attempt is no new row and replaces nothing. „Asendatud“ is ours only: the
-// older order stays payable at Montonio until it ends (a declined loan stays PENDING for 7 days), so a replaced row still settles (settle.ts:
-// counted, or held as „Topeltmakse — tagasta“ when the registration is paid in full by then), is asked about by the daily check, and keeps
-// its seat window. An e-course purchase keeps the rules above (B22 is a registration's).
+// (db/queries/payments.ts replaceOlderOrders). A re-send of the open attempt is no new row and replaces nothing. A replaced attempt pressed
+// again inside its window (the same amount, invoice and method) is the open attempt again: it is restored to `pending`, the row that had
+// taken its place is replaced, and it is re-sent under its own reference — so loan, bank, loan again is one Inbank application, as before B22
+// (fix round 1, Dim's ruling 22.10). „Asendatud“ is ours only: the older order stays payable at Montonio until it ends (a declined loan stays
+// PENDING for 7 days), so a replaced row still settles (settle.ts: counted, or held as „Topeltmakse — tagasta“ when the registration is
+// paid in full by then), is asked about by the daily check, and keeps its seat window. An e-course purchase keeps the rules above (B22 is a
+// registration's).
 // The locks are the one order of every payment path (db/queries/seats.ts): the session, then the registration (lockForPayment, taken first),
 // then the payment row. Nothing is held across Montonio's call: the transaction commits first, and only then are the order made and the row
 // given its uuid (attachOrder) or failed (failPayment, which takes the registration's lock in its own transaction). An e-course purchase has
@@ -103,12 +106,14 @@ export function paymentUrls(returnBase: string, notifyBase: string): { returnUrl
 }
 
 /**
- * The open attempt of what is being paid now (the double-payment rule): the newest `pending` row of the same registration, kind and invoice
- * (the unpaid invoice it was started for, or none: invoices, D5) — or the same e-course and address — with this amount and this method (a
+ * The open attempt of what is being paid now (the double-payment rule): the newest unpaid open row (a registration's: `pending`, or
+ * `replaced`, B22 — its order is still open at Montonio; an e-course's: `pending` only) of the same registration, kind and invoice (the unpaid
+ * invoice it was started for, or none: invoices, D5) — or the same e-course and address — with this amount and this method (a
  * `hirePurchase` row for a järelmaks, any other for the bank: hirePurchaseRow), whose order is still inside its window (attemptWindowMs:
- * Montonio's 30 minutes for the bank, the järelmaks' 60; `updated_at` is the row's insert or its last re-send: nothing else touches a pending
- * row). null: there is none, and the start is a new attempt — also while an attempt of the other method is open (instalments, §4). A
- * replaced row (B22) is no open attempt: it is never sent again.
+ * Montonio's 30 minutes for the bank, the järelmaks' 60; `updated_at` is the row's insert or its last re-send: nothing else touches an open
+ * row's, its replacement neither). null: there is none, and the start is a new attempt — also while an attempt of the other method is open
+ * (instalments, §4). A replaced row found here is the open attempt again (startRegistrationPayment restores it): one Inbank application per
+ * registration, however often she switches between the loan and the bank inside its window.
  */
 async function liveAttempt(
   q: Q,
@@ -123,13 +128,14 @@ async function liveAttempt(
           eq(payments.registrationId, of.registrationId),
           eq(payments.kind, of.kind),
           of.invoiceId === null ? isNull(payments.invoiceId) : eq(payments.invoiceId, of.invoiceId),
+          inArray(payments.status, OPEN_ORDER),
         )
-      : and(eq(payments.kind, "ecourse"), isNull(payments.registrationId), eq(payments.courseId, of.courseId), eq(payments.email, of.email));
+      : and(eq(payments.kind, "ecourse"), isNull(payments.registrationId), eq(payments.courseId, of.courseId), eq(payments.email, of.email), eq(payments.status, "pending"));
   const sameMethod = method === "hirePurchase" ? hirePurchaseRow : not(hirePurchaseRow);
   const [row] = await q
     .select()
     .from(payments)
-    .where(and(which, sameMethod, eq(payments.status, "pending"), eq(payments.amountCents, amountCents), gt(payments.updatedAt, new Date(now.getTime() - attemptWindowMs(method)))))
+    .where(and(which, sameMethod, isNull(payments.paidAt), eq(payments.amountCents, amountCents), gt(payments.updatedAt, new Date(now.getTime() - attemptWindowMs(method)))))
     .orderBy(desc(payments.id))
     .limit(1);
   return row ?? null;
@@ -263,9 +269,15 @@ export async function startRegistrationPayment(
     // her details for Inbank's form (D8): a järelmaks order's only
     const billing = method === "hirePurchase" ? billingAddressOf({ name: r.name, email: r.email, phone: r.phone }) : null;
     if (live) {
-      // its window starts again now (and a start at the same moment, waiting for this row lock, finds it open)
-      await tx.update(payments).set({ updatedAt: deps.now }).where(and(eq(payments.id, live.id), eq(payments.status, "pending")));
-      return { kind: "ready", payment: { ...live, updatedAt: deps.now }, again: true, billing };
+      // its window starts again now (and a start at the same moment, waiting for this row lock, finds it open). A replaced one (B22: the loan
+      // application she left for the bank, pressed again inside its window) is the open order again: `pending`, and the row that had taken its
+      // place is replaced in its turn — under the same locks, so a settlement (which takes them too) sees one or the other
+      await tx
+        .update(payments)
+        .set({ status: "pending", updatedAt: deps.now })
+        .where(and(eq(payments.id, live.id), inArray(payments.status, OPEN_ORDER), isNull(payments.paidAt)));
+      if (live.status === "replaced") await replaceOlderOrders(tx, r.id, live.id);
+      return { kind: "ready", payment: { ...live, status: "pending", updatedAt: deps.now }, again: true, billing };
     }
     const payment = await insertPayment(
       tx,
@@ -273,7 +285,7 @@ export async function startRegistrationPayment(
       deps.now,
       montonio.referencePrefix,
     );
-    // one open order per registration (B22): the older open ones become „Asendatud“, under the same locks, with the insert
+    // one open order per registration (B22): the other open ones become „Asendatud“, under the same locks, with the insert
     await replaceOlderOrders(tx, r.id, payment.id);
     return { kind: "ready", payment, again: false, billing };
   });

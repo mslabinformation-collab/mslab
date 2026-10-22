@@ -85,13 +85,20 @@ export async function paymentByProviderUuid(q: Q, providerUuid: string): Promise
  */
 export const OPEN_ORDER: readonly PaymentStatus[] = ["pending", "replaced"];
 
+/** OPEN_ORDER as a list of SQL values, for raw SQL (releaseHold's look at the other open attempts). */
+const OPEN_ORDER_SQL = sql.join(
+  OPEN_ORDER.map((status) => sql`${status}`),
+  sql`, `,
+);
+
 /**
  * One open order per registration (B22, admin UX pass piece 2): every other `pending` payment of `registrationId` — whatever its kind or
- * method, a loan application too — becomes `replaced` („Asendatud“), the new attempt `keepId` excepted. Only the status changes: the row keeps
+ * method, a loan application too — becomes `replaced` („Asendatud“), the open attempt `keepId` excepted. Only the status changes: the row keeps
  * its order, its reference and its last sending (`updated_at`), so its seat window (attemptEnds) and its daily-check age stay its own. It stays
  * payable at Montonio and settles as any open order (settle.ts: counted, or held as „Topeltmakse — tagasta“ when the registration is paid in
- * full by then). Run by startRegistrationPayment in its transaction, under the registration's lock (lockForPayment), right after the new
- * attempt's row is inserted; a re-send of the open attempt is no new row and replaces nothing. The number of rows replaced.
+ * full by then). Run by startRegistrationPayment in its transaction, under the registration's lock (lockForPayment): right after a new
+ * attempt's row is inserted, and when a replaced attempt pressed again inside its window is restored (start.ts liveAttempt); a re-send of
+ * the open attempt replaces nothing. The number of rows replaced.
  */
 export async function replaceOlderOrders(q: Q, registrationId: number, keepId: number): Promise<number> {
   // (The cast: on the Db union, returning(fields) has no common overload.)
@@ -127,7 +134,7 @@ const attemptEnds = sql`p.updated_at + (case when ${isHirePurchaseSql(sql.raw("p
 export async function releaseHold(q: Q, registrationId: number, exceptPaymentId: number, now: Date): Promise<boolean> {
   const at = sql`${now.toISOString()}::timestamptz`;
   // the latest window still open, or null (no other attempt is pending, or every one's window is over)
-  const open = sql`(select max(${attemptEnds}) from payments p where p.registration_id = ${registrationId} and p.status in ('pending', 'replaced') and p.id <> ${exceptPaymentId} having max(${attemptEnds}) > ${at})`;
+  const open = sql`(select max(${attemptEnds}) from payments p where p.registration_id = ${registrationId} and p.status in (${OPEN_ORDER_SQL}) and p.id <> ${exceptPaymentId} having max(${attemptEnds}) > ${at})`;
   // (The cast: on the Db union, returning(fields) has no common overload.)
   const rows = await (q as unknown as PostgresJsDatabase<typeof schema>)
     .update(registrations)

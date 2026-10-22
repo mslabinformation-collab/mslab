@@ -25,11 +25,12 @@ type Search = Record<string, string | string[] | undefined>;
 type Props = { searchParams: Promise<Search> };
 
 // Addresses: ?staatus=makstud|pooleli|ebaonnestunud|tagastatud|kontroll (the filter), ?leht=<n> (50 a page). A new filter starts at page 1.
-// A replaced order („Asendatud“, B22) has no filter of its own: it shows under „Kõik“ only (P-8), so no address leads to it.
-const STATUS_PARAM: Record<string, PaymentStatus> = { makstud: "paid", pooleli: "pending", ebaonnestunud: "failed", tagastatud: "refunded", kontroll: "held" };
-const PARAM_OF: Record<PaymentStatus, string> = { paid: "makstud", pending: "pooleli", failed: "ebaonnestunud", refunded: "tagastatud", held: "kontroll", replaced: "" };
+// A replaced order („Asendatud“, B22) has no filter of its own: it shows under „Kõik“ only (P-8), so no address names it (FilterStatus).
+type FilterStatus = Exclude<PaymentStatus, "replaced">;
+const STATUS_PARAM: Record<string, FilterStatus> = { makstud: "paid", pooleli: "pending", ebaonnestunud: "failed", tagastatud: "refunded", kontroll: "held" };
+const PARAM_OF: Record<FilterStatus, string> = { paid: "makstud", pending: "pooleli", failed: "ebaonnestunud", refunded: "tagastatud", held: "kontroll" };
 
-type View = { staatus: PaymentStatus | null; leht: number };
+type View = { staatus: FilterStatus | null; leht: number };
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
 
@@ -59,7 +60,7 @@ export default async function PaymentsPage({ searchParams }: Props) {
   const view = parse(await searchParams);
   const list = await pagePayments(getDb(), view.staatus ?? "all", view.leht);
   const t = adminEt.payments;
-  const filters: { key: PaymentStatus | null; label: string }[] = [
+  const filters: { key: FilterStatus | null; label: string }[] = [
     { key: null, label: t.filter.all },
     { key: "paid", label: t.filter.paid },
     { key: "pending", label: t.filter.pending },

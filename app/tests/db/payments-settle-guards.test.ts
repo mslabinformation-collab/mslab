@@ -501,14 +501,25 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
       expect(logged.join("\n")).not.toMatch(/kati|@/);
     });
 
-    test("no look at the KV for a payment that is no registration's loan (nor a replaced order: B22, payments-settle)", async () => {
+    // The record is read before the transaction for every registration's payment (one KV get): whether the payment is a second one — a loan,
+    // or an order a start replaced a moment ago (B22) — is only known under the registration's lock, so the caller's copy cannot decide it.
+    test("the KV is read for a registration's payment, a bank one too, before its settlement; never for an e-course purchase", async () => {
       const m = stubMontonio();
       const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing" });
       const bank = await pendingPayment(db, r, { amountCents: 35000, method: "paymentInitiation" }, ago(10 * MIN));
+      const [course] = await db
+        .insert(courses)
+        .values({ slug: "kulmumeistri-e-koolitus", type: "e_learning", level: "basic", title: { et: "Kulmumeistri e-koolitus" }, summary: { et: "" }, body: { et: "" }, published: true, price: 19000, accessMonths: 6 })
+        .returning();
+      const purchase = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email: "mari@example.test", name: "Mari Maasikas", locale: "et", amountCents: 19000, method: "paymentInitiation" }, ago(10 * MIN), TEST_MONTONIO.referencePrefix);
+      await attachOrder(db, purchase.id, `uuid-${purchase.id}`, ago(10 * MIN));
       const { deps, kv } = settleDeps(db, m.montonio, NOW);
       const get = vi.spyOn(kv, "get");
+      const stuckReads = () => get.mock.calls.map(([key]) => String(key)).filter((key) => key.startsWith("pay:stuck:"));
+      await settleToken(deps, m.montonio.verifyOrderToken(orderToken({ ...purchase, providerUuid: `uuid-${purchase.id}` })));
+      expect(stuckReads()).toEqual([]);
       await settleToken(deps, m.montonio.verifyOrderToken(orderToken(bank)));
-      expect(get.mock.calls.filter(([key]) => String(key).startsWith("pay:stuck:"))).toEqual([]);
+      expect(stuckReads()).toEqual([`pay:stuck:${bank.id}`]);
     });
   });
 

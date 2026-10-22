@@ -431,7 +431,7 @@ describe("an unpaid invoice paid online (D5): „Maksa\" charges exactly its amo
     expect(await db.select().from(payments)).toEqual([]);
   });
 
-  test("the open attempt is re-sent only for the same invoice: a start for an invoice is a new attempt beside one without (which it marks „Asendatud“, B22), and one without after the invoice is cancelled is a new one again", async () => {
+  test("the open attempt is re-sent only for the same invoice: a start for an invoice is a new attempt beside one without (which it marks „Asendatud“, B22), and one without after the invoice is cancelled re-sends that one again", async () => {
     const m = stubMontonio();
     await ready();
     const r = await registrationOn(db, await contactCourse(db));
@@ -446,16 +446,14 @@ describe("an unpaid invoice paid online (D5): „Maksa\" charges exactly its amo
     // pressed again while it is open: the same attempt, sent again
     expect(await start(m, r, new Date(NOW.getTime() + 2 * MIN))).toMatchObject({ kind: "started" });
     expect((await newest()).id).toBe(forInvoice.id);
-    // the invoice cancelled: the attempt without an invoice was replaced, so it is never sent again — a new attempt, which replaces the invoice's
+    // the invoice cancelled: the attempt without an invoice, replaced but still inside its window, is the open one again — sent again, and
+    // the invoice's is replaced in its turn (one open order per registration)
     expect(await cancelInvoice(db, inv.id, NOW)).toEqual({ ok: true });
     expect(await start(m, r, new Date(NOW.getTime() + 3 * MIN))).toMatchObject({ kind: "started" });
-    const latest = await newest();
-    expect([latest.invoiceId, latest.amountCents]).toEqual([null, 17500]);
-    expect(m.state.orders.map((o) => o.merchantReference)).toEqual([plain.reference, forInvoice.reference, forInvoice.reference, latest.reference]);
+    expect(m.state.orders.map((o) => o.merchantReference)).toEqual([plain.reference, forInvoice.reference, forInvoice.reference, plain.reference]);
     expect((await db.select().from(payments).orderBy(payments.id)).map((p) => [p.id, p.status])).toEqual([
-      [plain.id, "replaced"],
+      [plain.id, "pending"],
       [forInvoice.id, "replaced"],
-      [latest.id, "pending"],
     ]);
   });
 

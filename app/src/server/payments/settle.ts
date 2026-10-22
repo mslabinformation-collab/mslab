@@ -300,9 +300,10 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
   if (facts.amountCents !== row.amountCents || facts.currency !== "EUR") return held(deps, row, facts);
   // a registration's loan, or replaced order (B22), that Maria was told to record by hand (the daily check's „Makse vajab kontrolli“,
   // alertUnsettled): the price in Laekunud summa may be her own entry, not another payment's, so it is no second payment: it is recorded, and
-  // followUpUnsettled tells her to remove her sum. Read before the transaction (no KV call inside it); a store that fails reads as „not told“
-  // (the hold, as before)
-  const told = row.kind !== "ecourse" && row.registrationId !== null && (isHirePurchase(row.method) || row.status === "replaced") && (await wasToldItIsStuck(deps, row));
+  // followUpUnsettled tells her to remove her sum. Whether it is a loan or a replaced order is decided under the lock (paidAlready: a start may
+  // replace the row after the caller read it), so the record is read for every registration's payment, before the transaction (no KV call
+  // inside it); a store that fails reads as „not told“ (the hold, as before)
+  const told = row.kind !== "ecourse" && row.registrationId !== null && (await wasToldItIsStuck(deps, row));
   const won = await deps.db.transaction(async (tx): Promise<Won | { late: Payment; second: Second } | null> => {
     // the lock order of every payment path, course_sessions → registrations → payments (db/queries/seats.ts): the locks come first, whatever the
     // conditional UPDATE then finds. An e-course's payment has no registration: its purchase's lock instead (the start's, start.ts), then its row.
@@ -311,8 +312,9 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     } else if (row.registrationId !== null) await lockForPayment(tx, row.registrationId);
     // a second payment — on the järelmaks' account (instalments §4, D5), or a replaced order (B22): what it pays for is paid in full already,
     // read under those locks. Held, never counted, with its reason (a recorded hirePurchase is never replaced by a settlement, detailsOf)
-    const second = told ? null : await paidAlready(tx, row);
-    if (second) {
+    // (a registration's second payment is only ever a loan or a replaced order: `told` is decided on the row as the database has it)
+    const second = await paidAlready(tx, row);
+    if (second && !told) {
       const [late] = await tx.update(payments).set({ status: "held", checkReason: "double", updatedAt: deps.now, ...detailsOf(facts) }).where(unsettled(row.id)).returning();
       return late ? { late, second } : null;
     }

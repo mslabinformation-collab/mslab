@@ -267,6 +267,21 @@ describe("a replaced order („Asendatud“, B22) paid after all", () => {
     expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Uus makse", "Ülemakse", "Makse on nüüd kirja pandud"]);
   });
 
+  test("…decided on the row as the database has it, not the caller's copy: a bank order replaced after the caller read it (still „pending“ in hand) is counted with the follow-up too", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "full", status: "confirmed", paidCents: 35000 });
+    const inHand = await pendingPayment(db, r, { amountCents: 35000, method: "paymentInitiation" }, new Date(NOW.getTime() - 20 * MIN));
+    // a start replaces it between the caller's read (the daily check's, the webhook's) and the settlement's lock
+    await db.update(payments).set({ status: "replaced" }).where(eq(payments.id, inHand.id));
+    const { deps, flush, kv } = settleDeps(db, m.montonio, NOW);
+    kv.store.set(`pay:stuck:${inHand.id}`, "1");
+    expect(inHand.status).toBe("pending");
+    expect(await settlePayment(deps, inHand, { uuid: inHand.providerUuid!, status: "paid", rawStatus: "PAID", amountCents: 35000, currency: "EUR", method: "paymentInitiation", bank: "" })).toMatchObject({ status: "paid", checkReason: null });
+    await flush();
+    expect((await registration(r.id)).paidCents).toBe(70000);
+    expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Uus makse", "Ülemakse", "Makse on nüüd kirja pandud"]);
+  });
+
   test("ABANDONED on a replaced order: failed, as a pending one", async () => {
     const m = stubMontonio();
     const r = await registrationOn(db, await contactCourse(db));

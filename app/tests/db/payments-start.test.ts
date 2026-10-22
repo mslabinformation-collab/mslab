@@ -673,20 +673,64 @@ describe("a start with its method: the bank, or Järelmaks (Inbank) (instalments
     expect(claimsOf(m, bank.reference).map(methodOf)).toEqual(["paymentInitiation"]);
     // the loan's longer hold is kept: the bank's 30 minutes would end it before the loan's 60 (the replaced application may still be signed)
     expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 60 * MIN));
-    // the loan pressed again is a new application (a replaced row is never sent again) and replaces the bank's row; the bank pressed again
-    // likewise: each press of the other method is a new order, and one is open at a time
+    // each method pressed again inside its window re-sends its own attempt (one Inbank application per registration): the replaced loan is
+    // the open order again and the bank's row is replaced; then the bank's, and the loan's is replaced. Never a third row
     expect(await start(m.montonio, { payToken: r.payToken }, "hirePurchase", new Date(NOW.getTime() + 10 * MIN))).toMatchObject({ kind: "started" });
+    expect((await ordered()).map((p) => [p.id, p.status])).toEqual([
+      [loan.id, "pending"],
+      [bank.id, "replaced"],
+    ]);
     expect(await start(m.montonio, { payToken: r.payToken }, "paymentInitiation", new Date(NOW.getTime() + 12 * MIN))).toMatchObject({ kind: "started" });
-    expect((await ordered()).map((p) => [p.method, p.status])).toEqual([
+    expect((await ordered()).map((p) => [p.id, p.status])).toEqual([
+      [loan.id, "replaced"],
+      [bank.id, "pending"],
+    ]);
+    expect(claimsOf(m, loan.reference).map(methodOf)).toEqual(["hirePurchase", "hirePurchase"]);
+    expect(claimsOf(m, bank.reference).map(methodOf)).toEqual(["paymentInitiation", "paymentInitiation"]);
+    // the bank's press at 12 minutes would hold until 42, the loan's at 10 holds until 70: the longer one stays
+    expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 70 * MIN));
+  });
+
+  test("loan, bank, loan again inside the loan's 60 minutes: the same application, back to „Pooleli“ and re-sent with its reference; the bank's row replaced; no third row", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { email: "kati@example.test", paymentChoice: "financing" });
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase")).toMatchObject({ kind: "started" });
+    expect(await start(m.montonio, { registrationId: r.id }, undefined, new Date(NOW.getTime() + 5 * MIN))).toMatchObject({ kind: "started" });
+    const [loan, bank] = await ordered();
+    expect([loan.status, bank.status]).toEqual(["replaced", "pending"]);
+    // 55 minutes after the loan's sending: still inside its window
+    const again = new Date(NOW.getTime() + 55 * MIN);
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase", again)).toEqual({ kind: "started", paymentUrl: expect.any(String) });
+    const [loanAfter, bankAfter, ...none] = await ordered();
+    expect(none).toEqual([]);
+    expect([loanAfter.id, loanAfter.reference, loanAfter.status, loanAfter.updatedAt]).toEqual([loan.id, loan.reference, "pending", again]);
+    expect(loanAfter.providerUuid).not.toBe(loan.providerUuid); // Montonio's answer to the re-send: the row follows its newest order
+    expect([bankAfter.id, bankAfter.status]).toEqual([bank.id, "replaced"]);
+    // the loan's order again (its method, its billing details), under the same merchantReference
+    expect(claimsOf(m, loan.reference).map(methodOf)).toEqual(["hirePurchase", "hirePurchase"]);
+    expect(m.state.orders).toHaveLength(3);
+    // its window starts again now, as any re-send's
+    expect((await reg()).seatHoldUntil).toEqual(new Date(again.getTime() + 60 * MIN));
+  });
+
+  test("…after the loan's window has ended, the loan pressed again is a new application (a new row), which replaces the bank's", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { email: "kati@example.test", paymentChoice: "financing" });
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase")).toMatchObject({ kind: "started" });
+    expect(await start(m.montonio, { registrationId: r.id }, undefined, new Date(NOW.getTime() + 5 * MIN))).toMatchObject({ kind: "started" });
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase", new Date(NOW.getTime() + 61 * MIN))).toMatchObject({ kind: "started" });
+    const rows = await ordered();
+    expect(rows.map((p) => [p.method, p.status])).toEqual([
       ["hirePurchase", "replaced"],
       ["paymentInitiation", "replaced"],
-      ["hirePurchase", "replaced"],
-      ["paymentInitiation", "pending"],
+      ["hirePurchase", "pending"],
     ]);
-    expect(claimsOf(m, loan.reference).map(methodOf)).toEqual(["hirePurchase"]);
-    expect(claimsOf(m, bank.reference).map(methodOf)).toEqual(["paymentInitiation"]);
-    // the bank's press at 12 minutes would hold until 42, the second loan's at 10 holds until 70: the longer one stays
-    expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 70 * MIN));
+    expect(claimsOf(m, rows[0].reference)).toHaveLength(1);
+    expect(rows[2].reference).toBe(`MSLAB-M${rows[0].id + 2}`);
   });
 
   test("the reverse: a järelmaks press while a bank attempt is open is a new attempt too, and the bank's row is „Asendatud“", async () => {
@@ -857,6 +901,40 @@ describe("one open order per registration (B22): a new attempt marks the older o
       [open.id, "pending"],
     ]);
     expect(new Set(m.state.orders.map((o) => o.merchantReference))).toEqual(new Set([open.reference]));
+  });
+
+  test("a replaced order of the same amount, inside its window, is the open order again when its way is pressed: restored, re-sent, and the one in its place replaced", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db));
+    expect(await start(m.montonio, { registrationId: r.id })).toMatchObject({ kind: "started" });
+    // Maria records 50 € (another amount: a new attempt), then takes the entry back (the prepayment's amount again)
+    await db.update(registrations).set({ paidCents: 5000 }).where(eq(registrations.id, r.id));
+    expect(await start(m.montonio, { registrationId: r.id }, new Date(NOW.getTime() + 5 * MIN))).toMatchObject({ kind: "started" });
+    await db.update(registrations).set({ paidCents: 0 }).where(eq(registrations.id, r.id));
+    expect(await start(m.montonio, { registrationId: r.id }, new Date(NOW.getTime() + 10 * MIN))).toMatchObject({ kind: "started" });
+    const [first, second, ...none] = await ordered();
+    expect(none).toEqual([]);
+    expect([first.amountCents, first.status, second.amountCents, second.status]).toEqual([17500, "pending", 12500, "replaced"]);
+    expect(m.state.orders.map((o) => o.merchantReference)).toEqual([first.reference, second.reference, first.reference]);
+  });
+
+  test("a replaced order that was settled since — paid (counted), or held as „Topeltmakse — tagasta“ — is never revived: the press is a new attempt", async () => {
+    const c = await contactCourse(db);
+    const m = stubMontonio();
+    for (const settled of [{ status: "paid" as const, paidAt: NOW }, { status: "held" as const, paidAt: null }, { status: "replaced" as const, paidAt: NOW }]) {
+      m.state.orders.length = 0;
+      const r = await registrationOn(db, c, { email: `${settled.status}-${settled.paidAt ? "paid" : "open"}@example.test` });
+      const old = await pendingPayment(db, r, { method: "paymentInitiation" }, new Date(NOW.getTime() - 5 * MIN));
+      // (the row as the settlement left it; Laekunud summa is left as it was, so the same prepayment is due again)
+      await db.update(payments).set(settled).where(eq(payments.id, old.id));
+      expect(await start(m.montonio, { registrationId: r.id }), JSON.stringify(settled)).toMatchObject({ kind: "started" });
+      const mine = (await ordered()).filter((p) => p.registrationId === r.id);
+      expect(mine.map((p) => [p.id === old.id, p.status]), JSON.stringify(settled)).toEqual([
+        [true, settled.status],
+        [false, "pending"],
+      ]);
+      expect(m.state.orders.map((o) => o.merchantReference), JSON.stringify(settled)).toEqual([mine[1].reference]);
+    }
   });
 
   test("an e-course purchase keeps today's rules: a new attempt of the same course and address replaces nothing (B22 is a registration's)", async () => {
