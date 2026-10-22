@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { attachOrder, insertPayment } from "@/db/queries/payments";
 import { courseAccess, courses, payments, registrations } from "@/db/schema";
+import { paymentMethodLabel } from "@/domain/payments";
 import { checkPendingPayments } from "@/server/payments/check";
 import { settlePayment, settleToken } from "@/server/payments/settle";
 import { contactCourse, orderToken, pendingPayment, registrationOn, settleDeps, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
@@ -391,9 +392,11 @@ describe("Järelmaks (Inbank): a loan settles as any paid order, by its own 60-m
   });
 });
 
-describe("the start's method is authoritative: Montonio's reported method only fills an empty one", () => {
+describe("a recorded hirePurchase is never replaced; every other row takes the method Montonio reports", () => {
   // The late-loan and bank-after-loan rules read a payment row's stored method (settle.ts paidAlready, db/queries/payments.ts hirePurchaseRow). A
   // settlement used to overwrite it with Montonio's `paymentMethodType`: if Montonio spelled a loan another way, the rules silently stopped firing.
+  // Only a loan is protected: a bank-started order that Montonio reports as card / Apple Pay / Google Pay is stored and shown as that (the Maksed list,
+  // the drawers, Maria's „Makseviis“), as before the branch.
   const LOAN = { paymentMethod: "hirePurchase", paymentProviderName: "Inbank" };
   const ODD = { paymentMethod: "SOMETHING_ELSE", paymentProviderName: "Inbank" };
   const ago = (ms: number) => new Date(NOW.getTime() - ms);
@@ -414,19 +417,47 @@ describe("the start's method is authoritative: Montonio's reported method only f
     expect(subjects(m).map(([, subject]) => subject.split(":")[0])).toEqual(["Topeltmakse"]);
   });
 
-  test("the other settlements keep the start's method too: a paid loan, a loan held for its amount, and a bank row Montonio calls a loan", async () => {
+  test("the other settlements of a loan keep hirePurchase too: a paid loan and a loan held for its amount", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
     const paid = await pendingPayment(db, await registrationOn(db, c, { email: "a@example.test", paymentChoice: "financing" }), { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
     const wrongAmount = await pendingPayment(db, await registrationOn(db, c, { email: "b@example.test", paymentChoice: "financing" }), { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
-    const bank = await pendingPayment(db, await registrationOn(db, c, { email: "c@example.test" }), { method: "paymentInitiation" }, ago(20 * MIN));
+    const spaced = await pendingPayment(db, await registrationOn(db, c, { email: "c@example.test", paymentChoice: "financing" }), { amountCents: 35000, method: " HirePurchase " }, ago(20 * MIN));
     const { deps } = settleDeps(db, m.montonio, NOW);
     await settleToken(deps, m.montonio.verifyOrderToken(orderToken(paid, ODD)));
     await settleToken(deps, m.montonio.verifyOrderToken(orderToken(wrongAmount, { ...ODD, grandTotal: 1 })));
-    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(bank, LOAN)));
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(spaced, ODD))); // (a loan by the rule of hirePurchaseRow: case and spaces aside)
     expect(await payment(paid.id)).toMatchObject({ status: "paid", method: "hirePurchase", bank: "Inbank" });
     expect(await payment(wrongAmount.id)).toMatchObject({ status: "held", method: "hirePurchase" });
-    expect(await payment(bank.id)).toMatchObject({ status: "paid", method: "paymentInitiation", bank: "Inbank" });
+    expect(await payment(spaced.id)).toMatchObject({ status: "paid", method: " HirePurchase " });
+  });
+
+  test("a bank-started row that Montonio reports as card, Apple Pay or Google Pay is stored and labelled as that (Pangalink only for a bank link), paid or held", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const row = async (email: string) => pendingPayment(db, await registrationOn(db, c, { email }), { method: "paymentInitiation" }, ago(20 * MIN));
+    const card = await row("a@example.test");
+    const apple = await row("b@example.test");
+    const google = await row("c@example.test");
+    const bankLink = await row("d@example.test");
+    const heldCard = await row("e@example.test");
+    const { deps } = settleDeps(db, m.montonio, NOW);
+    for (const [p, over] of [
+      [card, { paymentMethod: "cardPayments", paymentProviderName: "" }],
+      [apple, { paymentMethod: "applePay", paymentProviderName: "" }],
+      [google, { paymentMethod: "googlePay", paymentProviderName: "" }],
+      [bankLink, {}],
+      [heldCard, { paymentMethod: "cardPayments", paymentProviderName: "", grandTotal: 1 }],
+    ] as const) await settleToken(deps, m.montonio.verifyOrderToken(orderToken(p, over)));
+    const labelled = async (p: typeof card) => {
+      const stored = await payment(p.id);
+      return [stored.status, stored.method, paymentMethodLabel(stored.method, stored.bank)];
+    };
+    expect(await labelled(card)).toEqual(["paid", "cardPayments", "Kaart"]);
+    expect(await labelled(apple)).toEqual(["paid", "applePay", "Apple Pay"]);
+    expect(await labelled(google)).toEqual(["paid", "googlePay", "Google Pay"]);
+    expect(await labelled(bankLink)).toEqual(["paid", "paymentInitiation", "Pangalink · Swedbank"]);
+    expect(await labelled(heldCard)).toEqual(["held", "cardPayments", "Kaart"]);
   });
 
   test("the bank-after-loan rule of an e-course still finds a loan settled under another spelling: the bank purchase paid after it is held, the access is not prolonged", async () => {
@@ -454,7 +485,7 @@ describe("the start's method is authoritative: Montonio's reported method only f
     expect(subjects(m).map(([, subject]) => subject.split(":")[0])).toEqual(["Uus makse", "Topeltmakse"]);
   });
 
-  test("an old row with no method recorded (before the methods were stored) still takes Montonio's: a bank spelling, and a loan", async () => {
+  test("an old row with an empty stored method (before the methods were stored) takes Montonio's: a bank spelling, and a loan", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
     const bank = await pendingPayment(db, await registrationOn(db, c, { email: "a@example.test" })); // no method
@@ -467,14 +498,16 @@ describe("the start's method is authoritative: Montonio's reported method only f
     expect(await payment(loan.id)).toMatchObject({ status: "paid", method: "hirePurchase", bank: "Inbank" });
   });
 
-  test("a daily check's answer without a method leaves the stored one alone, and an empty one stays empty", async () => {
+  test("a daily check's answer without a method leaves the stored one alone (a loan's, a bank link's), and an empty one stays empty", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
     const loan = await pendingPayment(db, await registrationOn(db, c, { email: "a@example.test", paymentChoice: "financing" }), { amountCents: 35000, method: "hirePurchase" });
+    const bank = await pendingPayment(db, await registrationOn(db, c, { email: "c@example.test" }), { method: "paymentInitiation" });
     const old = await pendingPayment(db, await registrationOn(db, c, { email: "b@example.test" }));
     const { deps } = settleDeps(db, m.montonio, NOW);
     const facts = (p: typeof loan, amountCents: number) => ({ uuid: p.providerUuid!, status: "paid" as const, rawStatus: "PAID", amountCents, currency: "EUR", method: "", bank: "" });
     expect((await settlePayment(deps, loan, facts(loan, 35000))).method).toBe("hirePurchase");
+    expect((await settlePayment(deps, bank, facts(bank, 17500))).method).toBe("paymentInitiation");
     expect((await settlePayment(deps, old, facts(old, 17500))).method).toBe("");
   });
 });

@@ -199,13 +199,14 @@ async function lost(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
 /**
  * What a settlement writes besides the status: the uuid of the order that was paid (it differs from the row's only when a retry had replaced
  * that order: settleToken), the bank when `facts` has it (a daily check's answer has no bank: the row keeps the one a token gave), and the way
- * of paying only when the row has none. The method its start recorded is authoritative (instalments §4): the late-loan and bank-after-loan
- * rules read it (paidAlready, db/queries/payments.ts hirePurchaseRow), so Montonio's own spelling of a method, which may differ from the code the
- * start sent, never replaces it. Only a row from before the methods were stored (empty) takes Montonio's.
+ * of paying. A recorded hirePurchase is never replaced (instalments §4): the late-loan and bank-after-loan rules read it (paidAlready,
+ * db/queries/payments.ts hirePurchaseRow), so Montonio's own spelling of a method, which may differ from the code the start sent, must not
+ * hide a loan from them. Every other row takes the method Montonio reports when it reports one (a bank-started order paid by card, Apple Pay or
+ * Google Pay is stored and shown as that: the Maksed list, the drawers and Maria's „Makseviis“), and keeps its own when it reports none.
  */
 const detailsOf = (facts: Facts) => ({
   providerUuid: sql`coalesce(nullif(${facts.uuid}, ''), ${payments.providerUuid})`,
-  method: sql`coalesce(nullif(${payments.method}, ''), ${facts.method})`,
+  method: sql`case when ${hirePurchaseRow} then ${payments.method} else coalesce(nullif(${facts.method}, ''), ${payments.method}) end`,
   bank: sql`coalesce(nullif(${facts.bank}, ''), ${payments.bank})`,
 });
 
@@ -280,7 +281,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
       if (row.courseId !== null) await lockEcoursePurchase(tx, row.courseId, normalizeEmail(row.email));
     } else if (row.registrationId !== null) await lockForPayment(tx, row.registrationId);
     // a second payment on the järelmaks' account (instalments §4, D5): what it pays for is paid in full already, read under those locks. Held,
-    // never counted (the method is the start's: a settlement never replaces a recorded one, detailsOf)
+    // never counted (a recorded hirePurchase is never replaced by a settlement, detailsOf)
     if (await paidAlready(tx, row)) {
       const [late] = await tx.update(payments).set({ status: "held", updatedAt: deps.now, ...detailsOf(facts) }).where(unsettled(row.id)).returning();
       return late ? { late } : null;

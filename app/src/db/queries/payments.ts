@@ -34,7 +34,8 @@ export type NewPayment = {
   /**
    * The Montonio method the attempt is started with (instalments, D5): "paymentInitiation" (the bank link) or "hirePurchase" (Järelmaks
    * (Inbank)). Its re-send window, its seat hold and the daily check's age follow it (server/payments/start.ts, checkAfterMs); when it is
-   * paid, settle.ts keeps it unless Montonio reports one. Left out: none ('', as every row before the methods), which reads as the bank.
+   * paid, settle.ts never replaces a recorded hirePurchase, while any other row takes the method Montonio reports (card, Apple Pay, …). Left
+   * out: none ('', as every row before the methods), which reads as the bank.
    */
   method?: string;
 };
