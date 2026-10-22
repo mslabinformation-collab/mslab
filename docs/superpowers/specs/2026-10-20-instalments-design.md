@@ -16,7 +16,7 @@ Phase 4, piece 6 of 6. Dim (20.10.2026): "Maria will not be responsible for Inst
 - **Customer data:** nothing is asked by the shop. The student identifies herself and gives her income in Inbank's flow. Montonio passes the amount and the merchant. If sent, the name, e-mail and phone fill in Inbank's form; Montonio recommends `billingAddress` with name, e-mail, `phoneNumber` and `phoneCountry`.
 - **Money:**
   - After PAID, Inbank pays Montonio and Montonio pays the full amount to the merchant as a separate financing payout. The payout's description carries the order numbers.
-  - It takes up to 8 working days. Support (support@montonio.com) can speed it up, usually to the same evening.
+  - It takes up to 8 working days. Montonio support can speed it up, usually to the same evening.
   - Järelmaks is free for the merchant; the interest (11.9%) and the fee are the student's. „Maksa hiljem“ costs 2.9% on Starter.
 - **Refunds** through the Partner System or the API change the loan automatically: a partial refund lowers it, a full refund cancels it, and there is no cancellation fee.
 - **Live:** nothing is real until Maria's company is verified. Järelmaks is then switched on automatically for a new company.
