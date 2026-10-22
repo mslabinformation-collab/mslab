@@ -18,6 +18,7 @@ vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test"
 vi.mock("@/server/actions/admin-site", () => ({ saveSettings: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({ saveInvoiceSettingsAction: vi.fn() }));
+vi.mock("@/server/actions/admin-financing", () => ({ saveFinancingSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-contracts", () => ({ saveContractTextsAction: vi.fn(), requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
 
 import SettingsEditPage from "@/app/admin/(panel)/seaded/page";
@@ -49,7 +50,7 @@ test("without a setting: the defaults (MSL, VAT off at 24, a week), nothing issu
   const certificate = html.indexOf("data-certificate-settings");
   const card = html.indexOf("data-invoice-settings");
   expect(card).toBeGreaterThan(certificate);
-  expect(html.match(/<form/g)).toHaveLength(5); // (the settings', the certificate's, this card's and the contracts' two after it: the save and the sample, contracts Task 5)
+  expect(html.match(/<form/g)).toHaveLength(6); // (the settings', the certificate's, this card's, then Järelmaks (Inbank)'s: instalments Task 5, and the contracts' two after it: the save and the sample, contracts Task 5)
   expect(html.slice(html.lastIndexOf("<section", card))).toMatch(/^<section id="arve"/);
   expect(["company", "registryCode", "address", "vatNumber", "vatRate", "prefix", "nextSeq", "termDays", "footer"].map((f) => valueOf(html, f))).toEqual(["", "", "", "", "24", "MSL", "1", "7", ""]);
   expect(html.slice(card)).toContain("pole veel arveid väljastatud");

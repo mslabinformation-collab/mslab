@@ -70,6 +70,18 @@ describe("the revalidation map", () => {
     expect(paths({ kind: "settings", parts: ["course_terms"] })).not.toContain(`${SITE}/koolitused/[slug] (page)`);
   });
 
+  test("settings: the Järelmaks (Inbank) toggle (financing, Seaded → Järelmaks) shows on the course pages (the line, the form's choice) and in the carts (the choice): saving it revalidates both (instalments Task 5)", () => {
+    expect(paths({ kind: "settings", parts: ["financing"] })).toEqual([`${SITE}/koolitused/[slug] (page)`, `${SITE}/ostukorv (layout)`]);
+    // pages shared with another part are listed once, and each other part keeps its own pages
+    expect(paths({ kind: "settings", parts: ["financing", "terms"] })).toEqual([`${SITE}/tingimused (page)`, `${SITE}/koolitused/[slug] (page)`, `${SITE}/ostukorv (layout)`]);
+    expect(paths({ kind: "settings", parts: ["financing", "contract_contact", "course_terms"] })).toEqual([`${SITE}/koolitused/[slug] (page)`, `${SITE}/ostukorv (layout)`]);
+    expect(paths({ kind: "settings", parts: ["financing", "privacy"] })).toEqual([`${SITE}/privaatsus (page)`, `${SITE}/koolitused/[slug] (page)`, `${SITE}/ostukorv (layout)`]);
+    // the footer's parts revalidate every page already
+    expect(paths({ kind: "settings", parts: ["financing", "contact"] })).toEqual([`${SITE} (layout)`]);
+    // not the catalogue, the home page or the calendar: none of them shows the choice
+    expect(paths({ kind: "settings", parts: ["financing"] })).not.toContain(`${SITE}/koolitused (layout)`);
+  });
+
   test("settings: the prepayment instructions are account-only (the unpaid cards' JSON), so saving them revalidates no public page", () => {
     expect(revalidationTargets({ kind: "settings", parts: ["prepayment"] })).toEqual([]);
     expect(paths({ kind: "settings", parts: ["prepayment", "course_terms"] })).toEqual([`${SITE}/ostukorv (layout)`]);
@@ -93,6 +105,7 @@ describe("the revalidation map", () => {
       { kind: "settings", parts: ["privacy", "terms"] },
       { kind: "settings", parts: ["course_terms"] },
       { kind: "settings", parts: ["contract_contact"] },
+      { kind: "settings", parts: ["financing"] },
     ];
     const routes = all.flatMap(revalidationTargets).filter((t) => t.path.startsWith("/["));
     for (const t of routes) {
@@ -163,6 +176,7 @@ describe("revalidatePublic", () => {
       { kind: "settings", parts: ["contact"] },
       { kind: "settings", parts: ["privacy", "terms"] },
       { kind: "settings", parts: ["contract_contact"] },
+      { kind: "settings", parts: ["financing"] },
     ];
     for (const change of changes) {
       const store = await inAction(() => revalidatePublic(change));

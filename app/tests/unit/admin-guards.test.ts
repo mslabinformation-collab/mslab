@@ -111,6 +111,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/api/admin/arved/route.ts",
         "app/api/admin/naidisarve/route.ts",
         "server/actions/admin-invoices.ts",
+        // instalments, Task 5: Seaded's „Järelmaks (Inbank)“ toggle
+        "server/actions/admin-financing.ts",
       ]),
     );
     const broken = all.flatMap((f) => violations(f.path, f.source).map((v) => `${f.path}: ${v}`));
@@ -180,6 +182,12 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(reviewExports).toEqual(["decideReviewAction", "setFeaturedAction", "saveManualReviewAction", "deleteManualReviewAction"]);
     expect(violations(reviewActions.path, reviewActions.source)).toEqual([]);
     expect([...strip(reviewActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(reviewExports);
+    // instalments, Task 5: Seaded's „Järelmaks (Inbank)“ toggle
+    const financingActions = files().find((f) => f.path === "server/actions/admin-financing.ts")!;
+    const financingExports = [...strip(financingActions.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
+    expect(financingExports).toEqual(["saveFinancingSettingsAction"]);
+    expect(violations(financingActions.path, financingActions.source)).toEqual([]);
+    expect([...strip(financingActions.source).matchAll(/export\s+(?:const|let|var|async\s+function|function|class|default)\s*(\w*)/g)].map((m) => m[1])).toEqual(financingExports);
     // It reads and scans every admin source file: about 2 s alone, but well past the 20 s default while the full run keeps every core
     // busy (seen at 38 s); the limit is for the machine's load, not for this test's work.
   }, 120_000);

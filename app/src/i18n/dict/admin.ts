@@ -1211,6 +1211,20 @@ export const adminEt = {
     },
   },
 
+  // Järelmaks (Inbank) (instalments, spec D4): Seaded → „Järelmaks (Inbank)“ (components/admin/FinancingSettings.tsx), Maria's toggle, off by default.
+  // Every text is a Draft (Dim sees them on the test page).
+  financing: {
+    settings: {
+      title: "Järelmaks (Inbank)",
+      enabled: "Paku järelmaksu (Inbank)",
+      lead: "Lülita sisse, kui Montonio on järelmaksu sinu poele avanud. Hind peab olema 100–5000 €.",
+      save: "Salvesta",
+      saving: "Salvestan…",
+      saved: "Järelmaksu seade on salvestatud.",
+      error: "Salvestamine ei õnnestunud. Proovi uuesti.",
+    },
+  },
+
   // /admin/opilased/<id>/vaade: the student's own "Minu koolitused", read-only
   viewAs: {
     title: "Õpilase vaade",

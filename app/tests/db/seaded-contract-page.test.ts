@@ -17,6 +17,7 @@ vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test"
 vi.mock("@/server/actions/admin-site", () => ({ saveSettings: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({ saveInvoiceSettingsAction: vi.fn() }));
+vi.mock("@/server/actions/admin-financing", () => ({ saveFinancingSettingsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-contracts", () => ({ saveContractTextsAction: vi.fn(), requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
 
 import SettingsEditPage from "@/app/admin/(panel)/seaded/page";
