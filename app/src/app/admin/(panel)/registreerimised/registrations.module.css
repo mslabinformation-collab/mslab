@@ -1,22 +1,28 @@
 /* Registreerimised: the list's own pieces (the table itself is the shared admin list, components/admin/list-table.module.css)
-   and the drawer. */
+   and the drawer. The list has five columns (Kuupäev | Nimi ja kontakt | Koolitus ja toimumine | Laekunud | Staatus, README A2). Below 760 px of
+   its card (the shared switch) each row is a card, as the phone prototype draws it: the name and the status pill, the course, then
+   „{session} · laekunud {x}“ (no label rows). Colours from tokens.css only. */
 
 .count {
   margin-bottom: 6px;
 }
 
-.sub {
+/* the registration whose drawer is open: the admin's one extra colour, the same as the row under the pointer */
+.selected {
+  background: var(--row-highlight);
+}
+
+.paid {
+  font-weight: 600;
+}
+
+.course,
+.session {
   display: block;
-  font-size: 12px;
 }
 
-.kind {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
-}
-
-.participation {
+.session {
+  color: var(--muted-2);
   font-size: 12px;
 }
 
@@ -32,12 +38,77 @@
   text-decoration: underline;
 }
 
-/* the time next to the date once the row is a block. This list's card stacks below 980 px, not the shared 760: `stackAt980` on its card
-   (list-table.module.css), until the A2 screen drops columns; then this goes back to 760 with it. */
-@container (max-width: 980px) {
-  .sub {
-    display: inline;
-    margin-left: 6px;
+/* The card. The selectors say `table.list` so that they outweigh the shared label-row rules of the same container query (list-table.module.css
+   `.table td`, `.table td:first-child`), whichever stylesheet comes first. The row is a wrapping flex line, its items put in the card's order
+   (`order`: the cells come in the table's column order, the status last): the name takes what the status pill leaves (its basis is wide enough
+   that the course, a line of its own, never fits beside it), and the session and the „· laekunud x“ that follows it share the last line. The
+   course cell gives its two spans to the row (`display: contents`) so that the session can sit beside the money. */
+@container (max-width: 760px) {
+  table.list tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 0;
+  }
+
+  table.list td,
+  table.list td:first-child {
+    display: block;
+    width: auto;
+    min-width: 0;
+    padding: 0;
+  }
+
+  /* the labels of the shared label rows are not on this card */
+  table.list td::before {
+    content: none;
+  }
+
+  /* the date and the phone are in the drawer; the card is for finding the person and the money */
+  table.list td.date:first-child,
+  table.list a.contact {
+    display: none;
+  }
+
+  table.list td.whoCell {
+    order: 1;
+    flex: 1 1 8em;
+    font-size: 15px;
+  }
+
+  table.list td.statusCell {
+    order: 2;
+    flex: none;
+    margin-left: 8px;
+  }
+
+  table.list td.courseCell {
+    display: contents;
+  }
+
+  table.list .course {
+    order: 3;
+    flex: 0 0 100%;
+    color: var(--ink-soft);
+    font-size: 13px;
+  }
+
+  table.list .session {
+    order: 4;
+    flex: none;
+  }
+
+  /* „… · laekunud 0 / 290 €“ after the session: the word comes from the dictionary (data-paid-word), the bullet is only punctuation */
+  table.list td.paid {
+    order: 5;
+    flex: none;
+    color: var(--muted-2);
+    font-size: 12px;
+    font-weight: 400;
+  }
+
+  table.list td.paid::before {
+    content: "\0000a0·\0000a0" attr(data-paid-word) "\0000a0";
   }
 }
 

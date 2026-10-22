@@ -514,6 +514,23 @@ describe("ListEmpty", () => {
     expect(link.getAttribute("href")).toBe("/admin/registreerimised");
   });
 
+  it("a search with no hit says so with the words typed: „{q}“ järgi {asju} ei leitud. (piece 2 texts P-9), and offers the same button", async () => {
+    await empty({ things: "registreerimisi", filtered: true, search: "Kati 5", clearHref: "/admin/registreerimised" });
+    expect($("[data-list-empty]")!.textContent).toBe("„Kati 5“ järgi registreerimisi ei leitud.Tühjenda otsing ja filtrid");
+    expect($<HTMLAnchorElement>("a")!.getAttribute("href")).toBe("/admin/registreerimised");
+    // the text is data, not markup
+    await empty({ things: "makseid", filtered: true, search: "<b>x</b>" });
+    expect(container.textContent).toBe("„<b>x</b>“ järgi makseid ei leitud.");
+    expect($("b")).toBeNull();
+  });
+
+  it("no search typed (only a filter) keeps „Selle valikuga …“; nothing filtered ignores the search", async () => {
+    await empty({ things: "registreerimisi", filtered: true, search: "", clearHref: "/admin/registreerimised" });
+    expect($("[data-list-empty]")!.textContent).toBe("Selle valikuga registreerimisi pole.Tühjenda otsing ja filtrid");
+    await empty({ things: "registreerimisi", filtered: false, search: "Kati" });
+    expect(container.textContent).toBe("Registreerimisi veel pole.");
+  });
+
   it("filtered without a clearHref has the text only", async () => {
     await empty({ things: "makseid", filtered: true });
     expect(container.textContent).toBe("Selle valikuga makseid pole.");
@@ -524,6 +541,7 @@ describe("ListEmpty", () => {
     expect(adminEt.lists).toEqual({
       empty: "{Asju} veel pole.",
       emptyFiltered: "Selle valikuga {asju} pole.",
+      emptySearch: "„{q}“ järgi {asju} ei leitud.",
       clearAll: "Tühjenda otsing ja filtrid",
       clearSearch: "Tühjenda otsing",
       count: "{Asju}: {n}",

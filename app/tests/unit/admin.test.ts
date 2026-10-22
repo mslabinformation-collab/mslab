@@ -160,7 +160,7 @@ describe("admin menu (prototype B sidebar, A1)", () => {
   });
   test("the status labels are Maria's words; the old 'e-learning purchases will come with the payments' note is gone (they show on Maksed and in the student's drawer)", () => {
     expect(adminEt.registrations.status).toEqual({ awaiting_prepayment: "Ootab ettemaksu", confirmed: "Kinnitatud", cancelled: "Tühistatud" });
-    expect(adminEt.registrations.type).toEqual({ all: "Kõik", e: "E-õpe", k: "Kontaktõpe" });
+    expect(adminEt.registrations.type).toEqual({ all: "Kõik vormid", e: "E-õpe", k: "Kontaktõpe" });
     expect(adminEt.registrations).not.toHaveProperty("eNote");
     expect(JSON.stringify(adminEt)).not.toContain("lisanduvad koos maksetega");
     expect(adminEt.requests.tabs).toEqual({ kontakt: "Kontakt", individuaal: "Individuaal", praktika: "Praktika", ootenimekiri: "Ootenimekiri", muutmine: "Muutmine" });

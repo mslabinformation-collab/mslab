@@ -122,10 +122,10 @@
   }
 }
 
-/* Registreerimised (9 columns, a table from 964 px) and Maksed (8 columns, from 878 px) are too wide for a 761-979 px card, and they have no
-   scrollbar to fall back on, so these two lists keep the old switch at 980 px (`stackAt980` on their card) until their screens (A2 and A6, which
-   drop columns) are built; then this block, the modifier and the two `.sub` blocks in their page stylesheets go. The rules are the 760 px
-   block's, word for word, under `.stackAt980`. */
+/* Maksed (8 columns, a table from 878 px) is too wide for a 761-979 px card, and it has no scrollbar to fall back on, so that list keeps the old
+   switch at 980 px (`stackAt980` on its card) until its screen (A6, which drops columns) is built; then this block, the modifier and the `.sub`
+   block in its page stylesheet go. (Registreerimised had it too until A2: five columns, the 760 px switch.) The rules are the 760 px block's,
+   word for word, under `.stackAt980`. */
 @container (max-width: 980px) {
   .stackAt980 .table thead {
     position: absolute;

@@ -8,11 +8,12 @@ import { expect, submitsForms, test } from "./test";
 
 // The admin's lists that use the shared list table (list-table.module.css): Registreerimised, Õpilased, Maksed, Tagasiside and Tunnistused. The
 // table is a table from a 761 px card (the shared switch is 760), and a table too wide for its card is cut or spills with no scrollbar to find it
-// in (admin UX pass, Task 13 fix round: Registreerimised has 9 columns, Maksed 8). So at the widths of an iPad with the top bar (880), an iPad
+// in (admin UX pass, Task 13 fix round: Registreerimised had 9 columns, Maksed 8). So at the widths of an iPad with the top bar (880), an iPad
 // and a small laptop with the sidebar (1180, 1280) and a laptop (1360), every cell of a seeded row, in every list, lies inside the content box
-// of its card, and the table's own scroll width is no wider than that. Registreerimised and Maksed stack below 980 (`stackAt980`) until their
-// screens drop columns. One student's rows are all of it: her registration (and its feedback and payment) and her e-course certificate, removed
-// with her address after the test.
+// of its card, and the table's own scroll width is no wider than that. Maksed stacks below 980 (`stackAt980`) until its screen (A6) drops
+// columns. Registreerimised has five columns since A2 (piece 2, Task 4) and the shared 760 switch: it is measured in table mode at 1180, 1280,
+// 1366 and 1440 as well (the ledger's L163); its phone card is in admin-inbox.spec.ts. One student's rows are all of it: her registration (and its feedback and
+// payment) and her e-course certificate, removed with her address after the test.
 
 const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
 const made = new Set<string>();
@@ -28,6 +29,8 @@ test.afterEach(async () => {
 });
 
 const WIDTHS = [880, 1180, 1280, 1360];
+/** A laptop's widths, where Registreerimised must be a table (the card is wider than 760 px at each of them). */
+const TABLE_WIDTHS = [1180, 1280, 1366, 1440];
 
 /** Where a row's cells lie against the content box of its list's card, and what the table is. */
 async function fit(page: Page, row: string) {
@@ -41,6 +44,8 @@ async function fit(page: Page, row: string) {
     const cells = Array.from(tr.querySelectorAll("td")).map((td) => td.getBoundingClientRect());
     return {
       display: getComputedStyle(table).display,
+      rowCells: cells.length,
+      sameTop: cells.every((c) => Math.abs(c.top - cells[0].top) < 1),
       inner: right - left,
       tableScroll: table.scrollWidth,
       cellsLeft: Math.min(...cells.map((c) => c.left)) - left,
@@ -77,16 +82,17 @@ test("every list that uses the shared table keeps all its columns inside its car
   const certificate = await insertCertificate(access.id, "Liis Loend");
   await signInAsAdmin(page, context, visitorIp, created);
 
+  // (`tableAt`: the widths at which the list must be a table, not the stack of rows)
   const lists = [
-    { url: "/admin/registreerimised", row: `tr[data-registration="${registrationId}"]` },
-    { url: `/admin/opilased?otsi=${encodeURIComponent(email)}`, row: `tr[data-client="${fx.clientId}"]` },
-    { url: "/admin/maksed", row: `tr[data-payment="${payment.reference}"]` },
-    { url: "/admin/tagasiside", row: `tr[data-feedback-row]:has-text("${name}")` },
-    { url: "/admin/tunnistused", row: `tr[data-register-row="${certificate.id}"]` },
+    { url: `/admin/registreerimised?otsi=${encodeURIComponent(email)}`, row: `tr[data-registration="${registrationId}"]`, widths: [...WIDTHS, 1366, 1440], tableAt: TABLE_WIDTHS },
+    { url: `/admin/opilased?otsi=${encodeURIComponent(email)}`, row: `tr[data-client="${fx.clientId}"]`, widths: WIDTHS, tableAt: [] as number[] },
+    { url: "/admin/maksed", row: `tr[data-payment="${payment.reference}"]`, widths: WIDTHS, tableAt: [] as number[] },
+    { url: "/admin/tagasiside", row: `tr[data-feedback-row]:has-text("${name}")`, widths: WIDTHS, tableAt: [] as number[] },
+    { url: "/admin/tunnistused", row: `tr[data-register-row="${certificate.id}"]`, widths: WIDTHS, tableAt: [] as number[] },
   ];
-  for (const width of WIDTHS) {
-    await page.setViewportSize({ width, height: 900 });
-    for (const list of lists) {
+  for (const list of lists) {
+    for (const width of list.widths) {
+      await page.setViewportSize({ width, height: 900 });
       await page.goto(list.url);
       await adminReady(page);
       await expect(page.locator(list.row), `${list.url} at ${width} px: the seeded row`).toBeVisible();
@@ -95,6 +101,12 @@ test("every list that uses the shared table keeps all its columns inside its car
       expect(f.tableScroll, `${where}: the table's scroll width`).toBeLessThanOrEqual(f.inner + 1);
       expect(f.cellsRight, `${where}: the last cell's right edge against the card's`).toBeGreaterThanOrEqual(-1);
       expect(f.cellsLeft, `${where}: the first cell's left edge against the card's`).toBeGreaterThanOrEqual(-1);
+      if (list.tableAt.includes(width)) {
+        expect(f.display, `${where}: a table, not the stack of rows`).toBe("table");
+        // the five columns side by side: the cells of the row share one line each (no cell is stacked under another)
+        expect(f.rowCells, `${where}: five cells in a row`).toBe(5);
+        expect(f.sameTop, `${where}: the cells start on one line`).toBe(true);
+      }
     }
   }
 });

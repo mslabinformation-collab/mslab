@@ -189,16 +189,21 @@ describe("list tables (the stylesheet)", () => {
     expect(block("@media (hover: hover)")).not.toMatch(/:active/);
   });
 
-  it("every page's own container queries agree: Registreerimised and Maksed stack at 980 with the card, the rest at 760", () => {
+  it("every page's own container queries agree: Maksed stacks at 980 with the card until its screen (A6), the rest, Registreerimised too (A2), at 760", () => {
     const page = (f: string) => readFileSync(join(process.cwd(), "src/app/admin/(panel)", f), "utf8");
-    expect(page("registreerimised/registrations.module.css")).toMatch(/@container \(max-width: 980px\)/);
+    // Registreerimised has five columns and its own phone card (A2): the shared 760 switch, nothing at 980
+    expect(page("registreerimised/registrations.module.css")).toMatch(/@container \(max-width: 760px\)/);
+    expect(page("registreerimised/registrations.module.css")).not.toMatch(/980px/);
+    expect(page("registreerimised/page.tsx")).not.toMatch(/stackAt980/);
     expect(page("maksed/payments.module.css")).toMatch(/@container \(max-width: 980px\)/);
     expect(page("tagasiside/feedback.module.css")).toMatch(/@container \(max-width: 760px\)/);
     expect(page("tagasiside/feedback.module.css")).not.toMatch(/980px/);
-    expect(page("registreerimised/page.tsx")).toMatch(/listTable\.card\} \$\{listTable\.stackAt980\}/);
     expect(page("maksed/page.tsx")).toMatch(/listTable\.card\} \$\{listTable\.stackAt980\}/);
-    for (const f of ["opilased", "tagasiside", "tunnistused"]) expect(page(`${f}/page.tsx`)).not.toMatch(/stackAt980/);
-    // every list's table is inside ListRows
-    for (const f of ["registreerimised", "opilased", "maksed", "tagasiside", "tunnistused"]) expect(page(`${f}/page.tsx`), f).toMatch(/<ListRows>\s*<table className=\{`\$\{ui\.table\} \$\{listTable\.table\}`\}>/);
+    for (const f of ["registreerimised", "opilased", "tagasiside", "tunnistused"]) expect(page(`${f}/page.tsx`)).not.toMatch(/stackAt980/);
+    // every list's table is inside ListRows (Registreerimised adds its own class for the phone card)
+    for (const f of ["registreerimised", "opilased", "maksed", "tagasiside", "tunnistused"])
+      expect(page(`${f}/page.tsx`), f).toMatch(/<ListRows>\s*<table className=\{`\$\{ui\.table\} \$\{listTable\.table\}(?: \$\{styles\.list\})?`\}>/);
+    // the card's rules outweigh the shared label rows' (`.table td`, `.table td:first-child`) by naming the table
+    expect(page("registreerimised/registrations.module.css")).toMatch(/table\.list td:first-child \{/);
   });
 });

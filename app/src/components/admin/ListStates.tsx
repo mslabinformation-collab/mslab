@@ -13,10 +13,13 @@ const capitalise = (word: string) => word.charAt(0).toUpperCase() + word.slice(1
  * - Nothing exists: „{Asju} veel pole.“ and nothing else (say so, offer nothing).
  * - `filtered` (a search or a filter is on): „Selle valikuga {asju} pole.“ and, with a `clearHref` (the list without ?otsi= and its filters),
  *   the button „Tühjenda otsing ja filtrid“.
+ * - `filtered` with a `search` (the text typed, as the page read it): „„{q}“ järgi {asju} ei leitud.“ in place of the first sentence (the
+ *   prototype's search-with-no-hit frame, piece 2 texts P-9), and the same button.
  */
-export function ListEmpty({ things, filtered, clearHref }: { things: string; filtered: boolean; clearHref?: string }) {
+export function ListEmpty({ things, filtered, search, clearHref }: { things: string; filtered: boolean; search?: string; clearHref?: string }) {
   const t = adminEt.lists;
-  const text = fill(filtered ? t.emptyFiltered : t.empty, { Asju: capitalise(things), asju: things });
+  const vars = { Asju: capitalise(things), asju: things, q: search ?? "" };
+  const text = fill(!filtered ? t.empty : search ? t.emptySearch : t.emptyFiltered, vars);
   return (
     <div className={styles.empty} data-list-empty="">
       <p className={styles.emptyText}>{text}</p>

@@ -1,9 +1,11 @@
-import { and, asc, count, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, lt, ne, or, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "../client";
 import { campaign, courseAccess, courseImages, courseModules, courseSessions, courses, courseTests, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, payments, registrations, requests, reviews, settings, subscribers } from "../schema";
 import type { Campaign, Course, CourseImage, CourseSession, CourseTest, FaqItem, GalleryItem, HeroSlide, Page, PopupKind, Post, PracticePackage, Registration, Request as RequestRow, Subscriber, TestQuestion } from "../schema";
-import { PAGE_SIZE } from "@/domain/paging";
+import { startOfDayTallinn } from "@/domain/calendar";
+import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
+import { phoneQuery } from "@/domain/search";
 import { pick, type I18n } from "@/i18n/field";
 import { ownFaultCount } from "@/server/testplan";
 import { assessmentCount } from "./assessment";
@@ -28,8 +30,20 @@ export type PageInput = Insert<typeof pages>;
 export type CampaignInput = Omit<Insert<typeof campaign>, "id" | "kind">;
 export type ImageInput = { key: string; alt?: I18n | null };
 export type RegistrationRow = Registration & { course: Course; courseSession: CourseSession | null };
-/** `ids`: only these registrations; `clientId`: only the ones linked to that client (the admin's Õpilased drawer). */
-export type RegistrationFilter = { type?: "e_learning" | "contact"; status?: RegStatus; ids?: number[]; clientId?: number };
+/**
+ * `ids`: only these registrations; `clientId`: only the ones linked to that client (the admin's Õpilased drawer).
+ * `search` (A2, B7): a part of the name or the e-mail address, any case and taken literally, or a part of the phone number's digits (from 3 digits:
+ * domain/search.ts). `courseId` / `sessionId`: one course, or one session (the list's scope select).
+ */
+export type RegistrationFilter = {
+  type?: "e_learning" | "contact";
+  status?: RegStatus;
+  ids?: number[];
+  clientId?: number;
+  search?: string;
+  courseId?: number;
+  sessionId?: number;
+};
 
 function required<T>(row: T | undefined, what: string, id: number): T {
   if (row === undefined) throw new Error(`${what} ${id} not found`);
@@ -310,12 +324,31 @@ export async function setRegistrationStatus(
   return row ?? null;
 }
 
+/**
+ * The search of the registrations list (B7): the name or the e-mail address holds the text (ILIKE, `%` `_` `\` escaped: containsPattern), or the
+ * phone's digits hold the text's digits (domain/search.ts: from 3 digits, so „+372 5123 4567“ finds a number stored as „51234567“ or „5123-4567“).
+ */
+function registrationSearch(search: string | undefined) {
+  const q = parseSearch(search);
+  if (!q) return undefined;
+  const text = containsPattern(q);
+  const phone = phoneQuery(q);
+  return or(
+    ilike(registrations.name, text),
+    ilike(registrations.email, text),
+    phone ? sql`regexp_replace(${registrations.phone}, '[^0-9]', '', 'g') like ${phone}` : undefined,
+  );
+}
+
 const registrationWhere = (filter: RegistrationFilter) =>
   and(
     filter.type ? eq(courses.type, filter.type) : undefined,
     filter.status ? eq(registrations.status, filter.status) : undefined,
     filter.ids ? (filter.ids.length ? inArray(registrations.id, filter.ids) : sql`false`) : undefined,
     filter.clientId !== undefined ? eq(registrations.clientId, filter.clientId) : undefined,
+    filter.courseId !== undefined ? eq(registrations.courseId, filter.courseId) : undefined,
+    filter.sessionId !== undefined ? eq(registrations.courseSessionId, filter.sessionId) : undefined,
+    registrationSearch(filter.search),
   );
 
 /** Registrations with their course and session, newest first. `type` filters by the course type. */
@@ -334,6 +367,47 @@ export async function listRegistrations(db: Db, filter: RegistrationFilter = {},
 export async function countRegistrations(db: Db, filter: RegistrationFilter = {}): Promise<number> {
   const [{ n }] = await db.select({ n: count() }).from(registrations).innerJoin(courses, eq(registrations.courseId, courses.id)).where(registrationWhere(filter));
   return Number(n);
+}
+
+/** The two pill rows of the registrations list with their counts (A2): the keys are the words of the address (?staatus=, ?vorm=). */
+export type RegistrationCounts = {
+  status: Record<"all" | "ootab" | "kinnitatud" | "tuhistatud", number>;
+  type: Record<"all" | "e" | "k", number>;
+};
+
+const STATUS_KEY = { awaiting_prepayment: "ootab", confirmed: "kinnitatud", cancelled: "tuhistatud" } as const satisfies Record<RegStatus, string>;
+const TYPE_KEY = { e_learning: "e", contact: "k" } as const;
+
+/**
+ * The counts on the pills of the registrations list (admin UX pass B9): each row counts under every other filter (the search, the scope, the
+ * other row), and ignores its own, so a pill's count is the number of rows the list shows once that pill is chosen. `filter.status` and
+ * `filter.type` are the pills chosen now: the status row reads the list as if no status were chosen, the form row as if no form were.
+ */
+export async function registrationCounts(db: Db, filter: RegistrationFilter = {}): Promise<RegistrationCounts> {
+  const [byStatus, byType] = await Promise.all([
+    db
+      .select({ key: registrations.status, n: count() })
+      .from(registrations)
+      .innerJoin(courses, eq(registrations.courseId, courses.id))
+      .where(registrationWhere({ ...filter, status: undefined }))
+      .groupBy(registrations.status),
+    db
+      .select({ key: courses.type, n: count() })
+      .from(registrations)
+      .innerJoin(courses, eq(registrations.courseId, courses.id))
+      .where(registrationWhere({ ...filter, type: undefined }))
+      .groupBy(courses.type),
+  ]);
+  const counts: RegistrationCounts = { status: { all: 0, ootab: 0, kinnitatud: 0, tuhistatud: 0 }, type: { all: 0, e: 0, k: 0 } };
+  for (const row of byStatus) {
+    counts.status[STATUS_KEY[row.key]] = Number(row.n);
+    counts.status.all += Number(row.n);
+  }
+  for (const row of byType) {
+    counts.type[TYPE_KEY[row.key]] = Number(row.n);
+    counts.type.all += Number(row.n);
+  }
+  return counts;
 }
 
 /** One page of registrations (newest first), PAGE_SIZE rows. */
@@ -509,6 +583,34 @@ export async function adminCounts(db: Db, email: string, now: Date): Promise<Adm
 /** Course names for the request inbox (requests store the course slug). Drafts included. */
 export async function listCourseNames(db: Db): Promise<Pick<Course, "id" | "slug" | "title" | "type">[]> {
   return db.select({ id: courses.id, slug: courses.slug, title: courses.title, type: courses.type }).from(courses);
+}
+
+/** A course and its sessions, one entry of the registrations list's scope select (A2). */
+export type RegistrationScope = { course: { id: number; title: I18n }; sessions: { id: number; startsAt: Date; city: string }[] };
+
+/**
+ * What the registrations list's scope select offers: every course in the admin's order, drafts and e-courses too, each with all its sessions
+ * (cancelled ones too: they can hold registrations). The sessions from the Tallinn day of `now` on come first, nearest first, then the past
+ * ones, newest first: what Maria looks for is mostly ahead of her, and the old ones pile up behind.
+ */
+export async function listRegistrationScopes(db: Db, now: Date): Promise<RegistrationScope[]> {
+  const [list, sessions] = await Promise.all([
+    db.select({ id: courses.id, title: courses.title }).from(courses).orderBy(asc(courses.sort), asc(courses.id)),
+    db.select({ id: courseSessions.id, courseId: courseSessions.courseId, startsAt: courseSessions.startsAt, city: courseSessions.city }).from(courseSessions),
+  ]);
+  const from = startOfDayTallinn(now).getTime();
+  const order = (a: Date, b: Date) => {
+    const [x, y] = [a.getTime(), b.getTime()];
+    if (x >= from !== y >= from) return x >= from ? -1 : 1;
+    return x >= from ? x - y : y - x;
+  };
+  return list.map((course) => ({
+    course,
+    sessions: sessions
+      .filter((s) => s.courseId === course.id)
+      .sort((a, b) => order(a.startsAt, b.startsAt) || a.id - b.id)
+      .map(({ id, startsAt, city }) => ({ id, startsAt, city })),
+  }));
 }
 
 /** Sessions by id (the waitlist requests store the session id). */

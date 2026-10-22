@@ -270,29 +270,32 @@ export const adminEt = {
     title: "Registreerimised",
     lead: "Koht on kinnitatud, kui laekunud on vähemalt 50% koolituse hinnast.",
     typeLabel: "Õppevorm",
-    type: { all: "Kõik", e: "E-õpe", k: "Kontaktõpe" },
+    // the form pills (A2: „Kõik vormid“ / „E-õpe“ / „Kontaktõpe“) and the status pills („Kõik“ first), each with its count
+    type: { all: "Kõik vormid", e: "E-õpe", k: "Kontaktõpe" },
     statusLabel: "Staatus",
-    statusAll: "Kõik staatused",
+    statusAll: "Kõik",
     status: { awaiting_prepayment: "Ootab ettemaksu", confirmed: "Kinnitatud", cancelled: "Tühistatud" },
-    empty: "Registreerimisi veel pole.",
-    emptyFiltered: "Selle valikuga registreerimisi pole.",
+    // the toolbar (README A2, B7): the search across name, e-mail and phone, and the scope select's „all“ option
+    searchPlaceholder: "Otsi nime, e-posti või telefoni järgi",
+    scopeAll: "Kõik koolitused ja toimumised",
+    // what the list is of, in a sentence (ListEmpty: „Registreerimisi veel pole.“, „Selle valikuga registreerimisi pole.“, P-9)
+    things: "registreerimisi",
     count: "Registreerimisi: {n}",
+    // the five columns (A2); „Liik“, „Modelli abi“ and „Konto“ are in the drawer's details
     col: {
       date: "Kuupäev",
       name: "Nimi ja kontakt",
-      kind: "Liik",
-      course: "Koolitus",
-      session: "Toimumine",
-      payment: "Makse",
-      modelHelp: "Modelli abi",
-      account: "Konto",
+      course: "Koolitus ja toimumine",
+      paid: "Laekunud",
       status: "Staatus",
     },
+    // „Laekunud“ column: „{paid} / {price} €“; the phone card says the same after the session: „{session} · laekunud {paid} / {price} €“
+    paidOf: "{paid} / {price}",
+    paidWord: "laekunud",
     individual: "Individuaal",
     group: "Grupp",
     // An individual contact course has no session: Maria agrees the time with the student.
     agreed: "Aeg kokkuleppel",
-    payment: { full: "100%", half: "50% ettemaks", financing: "Järelmaks (Inbank)" },
     open: "Ava {name}",
     drawer: {
       label: "Registreerimine: {name}",
@@ -1270,6 +1273,8 @@ export const adminEt = {
   lists: {
     empty: "{Asju} veel pole.",
     emptyFiltered: "Selle valikuga {asju} pole.",
+    // a search with no hit (the typed text in the quotes; piece 2 texts P-9, drawn for registreerimisi in the prototype)
+    emptySearch: "„{q}“ järgi {asju} ei leitud.",
     clearAll: "Tühjenda otsing ja filtrid",
     // the ✕ in the search field
     clearSearch: "Tühjenda otsing",

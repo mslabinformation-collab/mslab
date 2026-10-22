@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
-import { editLang, signInAsAdmin } from "./admin-login";
+import { adminReady, editLang, signInAsAdmin } from "./admin-login";
 import { PROD_ENV } from "./prod-build";
 import { DEV_ENV } from "./server";
 import { PROD_BUILD } from "./target";
@@ -171,20 +171,18 @@ test.describe("signed in", () => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/registreerimised");
-    const typeFilter = page.locator("[data-type-filter]");
-    await expect(typeFilter.getByRole("link")).toHaveText(["Kõik", "E-õpe", "Kontaktõpe"]);
-    await expect(typeFilter.getByRole("link", { name: "Kõik" })).toHaveAttribute("aria-current", "true");
+    // the form pills, each with its count (A2; the whole list's columns and search are in the next test)
+    const typeFilter = page.getByRole("navigation", { name: "Õppevorm", exact: true });
+    await expect(typeFilter.getByRole("link")).toHaveText([/^Kõik vormid\s*\d+$/, /^E-õpe\s*\d+$/, /^Kontaktõpe\s*\d+$/]);
+    await expect(typeFilter.getByRole("link", { name: /^Kõik vormid/ })).toHaveAttribute("aria-current", "true");
 
-    await typeFilter.getByRole("link", { name: "Kontaktõpe" }).click();
+    await typeFilter.getByRole("link", { name: /^Kontaktõpe/ }).click();
     await expect(page).toHaveURL(/\?vorm=k$/);
     const row = page.locator(`[data-registration="${f.registration.id}"]`);
     await expect(row).toContainText(f.registration.name);
-    await expect(row).toContainText(f.registration.email);
     await expect(row).toContainText(f.course.title);
     await expect(row).toContainText("Pärnu");
-    await expect(row).toContainText("50% ettemaks");
-    await expect(row.locator('[data-label="Liik"]')).toContainText("Kontaktõpe");
-    await expect(row.locator('[data-label="Liik"]')).toContainText("Grupp");
+    await expect(row).toContainText("0 / 350 €");
     await expect(row.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
     expect(await noOverflow(page)).toBe(true);
 
@@ -233,7 +231,7 @@ test.describe("signed in", () => {
     await expect(row.getByRole("link", { name: `Ava ${f.registration.name}` })).toBeFocused();
 
     // E-õpe: not listed there; the old note "E-õppe ostud lisanduvad koos maksetega." is gone (the purchases are on Maksed and in the student's drawer)
-    await typeFilter.getByRole("link", { name: "E-õpe" }).click();
+    await typeFilter.getByRole("link", { name: /^E-õpe/ }).click();
     await expect(page).toHaveURL(/\?vorm=e$/);
     await expect(page.locator("[data-e-note]")).toHaveCount(0);
     await expect(page.getByText("lisanduvad koos maksetega")).toHaveCount(0);
@@ -244,6 +242,135 @@ test.describe("signed in", () => {
     await expect(page.locator(`[data-registration="${f.registration.id}"]`)).toBeVisible();
     await page.goto("/admin/registreerimised?vorm=k&staatus=ootab");
     await expect(page.locator(`[data-registration="${f.registration.id}"]`)).toHaveCount(0);
+  });
+
+  test("registrations list (B7): search by name, e-mail and phone, the session scope and the pills with counts; the drawer returns to the same list", async ({ page, context, visitorIp }, info) => {
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    // (the fixture's name and e-mail hold its tag; its phone is „+372 5555 0101“; its course has one session)
+    const tag = f.course.slug.replace(/^e2e-admin-/, "");
+    await page.goto("/admin/registreerimised");
+    await adminReady(page);
+    const field = page.getByRole("searchbox", { name: "Otsi nime, e-posti või telefoni järgi" });
+    const row = page.locator(`[data-registration="${f.registration.id}"]`);
+    const rows = page.locator("tbody tr");
+    const status = page.getByRole("navigation", { name: "Staatus", exact: true });
+    const forms = page.getByRole("navigation", { name: "Õppevorm", exact: true });
+    /** Types into the search field and waits until the address holds the text (one line, the spaces squeezed) and the list on the screen is the one for it (its pills carry it). */
+    const search = async (text: string) => {
+      await field.fill(text);
+      const q = text.replace(/\s+/g, " ").trim();
+      await expect.poll(() => new URL(page.url()).searchParams.get("otsi")).toBe(q);
+      await expect.poll(async () => new URL((await status.getByRole("link").first().getAttribute("href"))!, "http://localhost").searchParams.get("otsi")).toBe(q);
+    };
+
+    // the name (a part of it, in capitals), the e-mail address, and a phone typed with other spaces: the search finds it as she types
+    await search(tag.toUpperCase());
+    await expect(row).toBeVisible();
+    await expect(rows).toHaveCount(1);
+    await search(f.registration.email);
+    await expect(rows).toHaveCount(1);
+    await expect(row).toBeVisible();
+    await search("5555  0101"); // (the address holds one space: what the page read)
+    await expect(row).toBeVisible();
+    await search("+372 5555-0101");
+    await expect(row).toBeVisible();
+
+    // the columns and what a row says
+    await search(tag);
+    await expect(rows).toHaveCount(1);
+    await expect(page.locator("thead th")).toHaveText(["Kuupäev", "Nimi ja kontakt", "Koolitus ja toimumine", "Laekunud", "Staatus"]);
+    await expect(row).toContainText(f.registration.name);
+    await expect(row).toContainText(f.course.title);
+    await expect(row).toContainText(/\d{2}\.\d{2} · Pärnu/);
+    await expect(row).toContainText("0 / 350 €");
+    await expect(row.locator("a[href^='mailto:']")).toHaveCount(0);
+    await expect(row.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
+
+    // the pills count under the search: this one registration is awaiting its prepayment
+    await expect(status.getByRole("link")).toHaveText([/^Kõik\s*1$/, /^Ootab ettemaksu\s*1$/, /^Kinnitatud\s*0$/, /^Tühistatud\s*0$/]);
+    await expect(forms.getByRole("link")).toHaveText([/^Kõik vormid\s*1$/, /^E-õpe\s*0$/, /^Kontaktõpe\s*1$/]);
+    await status.getByRole("link", { name: /^Kinnitatud/ }).click();
+    await expect(page).toHaveURL(new RegExp(`otsi=${tag}.*staatus=kinnitatud|staatus=kinnitatud.*otsi=${tag}`));
+    await expect(page.locator("[data-list-empty] p")).toHaveText(`„${tag}“ järgi registreerimisi ei leitud.`);
+    await page.getByRole("link", { name: "Tühjenda otsing ja filtrid" }).click();
+    await expect(page).toHaveURL(/\/admin\/registreerimised$/);
+    await expect(field).toHaveValue("");
+
+    // the scope: the course, then its sessions indented under it; choosing a session keeps the search and starts at page 1
+    await search(tag);
+    await expect(rows).toHaveCount(1);
+    const scope = page.getByRole("combobox", { name: "Koolitus ja toimumine" });
+    await expect(scope.locator("option").first()).toHaveText("Kõik koolitused ja toimumised");
+    await expect(scope.locator(`option[value="k${f.course.id}"]`)).toHaveText(f.course.title);
+    await expect(scope.locator(`option[value="s${f.session.id}"]`)).toHaveText(/^\s*\d{2}\.\d{2}\.\d{4} Pärnu$/);
+    await scope.selectOption(`s${f.session.id}`);
+    await expect(page).toHaveURL(new RegExp(`toimumine=${f.session.id}`));
+    await expect(page).toHaveURL(new RegExp(`otsi=${tag}`));
+    await expect(rows).toHaveCount(1);
+    await scope.selectOption(`k${f.course.id}`);
+    await expect(page).toHaveURL(new RegExp(`koolitus=${f.course.id}`));
+    await expect(page).not.toHaveURL(/toimumine=/);
+    await expect(row).toBeVisible();
+    // a scope with nothing in it
+    const other = await scope.locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter((v) => v.startsWith("k")));
+    const elsewhere = other.find((v) => v !== `k${f.course.id}`)!;
+    await scope.selectOption(elsewhere);
+    await expect(page.locator("[data-list-empty]")).toBeVisible();
+    await scope.selectOption(`s${f.session.id}`);
+    await expect(row).toBeVisible();
+
+    // the drawer opens over the same list and closes back to it (search and scope kept)
+    await row.getByRole("link", { name: `Ava ${f.registration.name}` }).click();
+    const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
+    await expect(drawer).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`otsi=${tag}.*toimumine=${f.session.id}.*id=${f.registration.id}$`));
+    await page.keyboard.press("Escape");
+    await expect(drawer).toBeHidden();
+    await expect(page).toHaveURL(new RegExp(`otsi=${tag}.*toimumine=${f.session.id}$`));
+    await expect(row).toBeVisible();
+    expect(await noOverflow(page)).toBe(true);
+  });
+
+  test("registrations list on a phone: a card of the name and the status, the course, then „session · laekunud x“ (no label rows)", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(!isMobile, "the phone project only");
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    const tag = f.course.slug.replace(/^e2e-admin-/, "");
+    await page.goto(`/admin/registreerimised?otsi=${tag}`);
+    await adminReady(page);
+    const row = page.locator(`[data-registration="${f.registration.id}"]`);
+    await expect(row).toBeVisible();
+    const box = async (selector: string) => (await row.locator(selector).first().boundingBox())!;
+    const name = await box(`a[aria-label="Ava ${f.registration.name}"]`);
+    const pill = await box("[data-reg-status]");
+    const course = await box("td:nth-child(3) span:first-child");
+    const session = await box("td:nth-child(3) span:last-child");
+    const paid = await box("td:nth-child(4)");
+    // line 1: the name and the status pill side by side; line 2: the course; line 3: the session and the money, one after the other
+    expect(Math.abs(name.y + name.height / 2 - (pill.y + pill.height / 2)), "the name and the pill share a line").toBeLessThan(24);
+    expect(pill.x).toBeGreaterThan(name.x);
+    expect(course.y, "the course is under the name").toBeGreaterThan(name.y + name.height - 14);
+    expect(session.y, "the session is under the course").toBeGreaterThan(course.y);
+    expect(Math.abs(paid.y + paid.height / 2 - (session.y + session.height / 2)), "the money is on the session's line").toBeLessThan(6);
+    expect(paid.x, "the money follows the session").toBeGreaterThan(session.x + session.width - 2);
+    // no label rows, no date, no phone
+    await expect(row.locator("td").first()).toBeHidden();
+    await expect(row.locator("a[href^='tel:']")).toBeHidden();
+    const before = await row.locator("td:nth-child(4)").evaluate((td) => getComputedStyle(td, "::before").content);
+    // (the money follows the session with „· laekunud“: the bullet is CSS, the word the dictionary's, from the cell's data-paid-word)
+    expect(before.replace(/[^\p{L}·]/gu, "")).toBe("·laekunud");
+    await expect(row.locator("td:nth-child(2)")).not.toContainText("Nimi ja kontakt");
+    expect(await noOverflow(page)).toBe(true);
+    // a tap on the card opens the drawer
+    await expect(async () => {
+      const b = (await row.locator("td:nth-child(3) span:first-child").boundingBox())!;
+      await page.mouse.click(b.x + 20, b.y + b.height / 2);
+      await expect(page).toHaveURL(new RegExp(`id=${f.registration.id}$`), { timeout: 1500 });
+    }).toPass({ timeout: 15_000 });
+    // (the list behind the drawer never makes the page scroll sideways: contracts.spec.ts checks the drawer at 390 with it open)
+    await expect(page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` })).toBeVisible();
+    expect(await noOverflow(page)).toBe(true);
   });
 
   test("registrations: status and note by hand, then 'Tühista'", async ({ page, context, visitorIp }, info) => {
@@ -462,7 +589,7 @@ test.describe("signed in", () => {
     await expect(waitlist).toContainText(/\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}, Pärnu/);
   });
 
-  test("e-mail and phone links are 44 px touch targets: registrations list and drawer, requests (item 12)", async ({ page, context, visitorIp }, info) => {
+  test("e-mail and phone links are 44 px touch targets: the registrations list's phone, the drawer, requests (item 12)", async ({ page, context, visitorIp, isMobile }, info) => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
     const targets = async (scope: Locator, min: number) => {
@@ -485,17 +612,23 @@ test.describe("signed in", () => {
     };
     await page.goto("/admin/registreerimised?vorm=k");
     const row = page.locator(`[data-registration="${f.registration.id}"]`);
-    await targets(row, 2); // e-mail and phone
-    await disjoint(row.locator('[data-label="Nimi"]'));
+    // the list row has the name and the phone (A2: the e-mail is in the drawer, and the search finds it); a phone card has neither the phone nor the date
+    const phone = row.locator("a[href^='tel:']");
+    if (isMobile) await expect(phone).toBeHidden();
+    else {
+      await targets(row, 1);
+      await disjoint(row.locator('[data-label="Nimi ja kontakt"]'));
+    }
     // The whole row is one link (ListRows.tsx, Task 13): a click on the row away from the name and its controls opens the row's drawer (the click is
-    // repeated until the page is hydrated enough to answer it), a click on the e-mail is the e-mail's own and opens no drawer.
+    // repeated until the page is hydrated enough to answer it), a click on the phone is the phone's own and opens no drawer.
     const nameLink = row.getByRole("link", { name: `Ava ${f.registration.name}` });
-    const mail = row.locator("a[href^='mailto:']").first();
-    await mail.evaluate((a) => a.addEventListener("click", (e) => e.preventDefault())); // no mail program is to open
-    await mail.click();
-    await expect(page).not.toHaveURL(/[?&]id=/);
+    if (!isMobile) {
+      await phone.evaluate((a) => a.addEventListener("click", (e) => e.preventDefault())); // no phone program is to open
+      await phone.click();
+      await expect(page).not.toHaveURL(/[?&]id=/);
+    }
     await expect(async () => {
-      const box = (await row.locator('[data-label="Koolitus"]').boundingBox())!;
+      const box = (await row.locator('[data-label="Koolitus ja toimumine"] span').first().boundingBox())!;
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await expect(page).toHaveURL(new RegExp(`[?&]id=${f.registration.id}$`), { timeout: 1500 });
     }).toPass({ timeout: 15_000 });
