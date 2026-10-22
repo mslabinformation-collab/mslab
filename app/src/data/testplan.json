@@ -1882,7 +1882,7 @@
       "risk": "low",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T17:47:15.802Z"
     },
     {
       "id": "registreerimine-vorm-vead",
@@ -5541,7 +5541,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T17:47:15.802Z"
     },
     {
       "id": "koristamine-aadressid",
