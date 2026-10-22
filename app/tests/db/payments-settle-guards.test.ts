@@ -367,6 +367,7 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
   // to Laekunud summa, never opening the course again, no invoice; Maria is told „Topeltmakse“ and refunds it in Montonio (which cancels the loan).
   const LOAN = { paymentMethod: "hirePurchase", paymentProviderName: "Inbank" };
   const ago = (ms: number) => new Date(NOW.getTime() - ms);
+  const errors = () => vi.mocked(console.error).mock.calls.map((c) => c.map(String).join(" "));
   /** Seaded's seller, so that a paid payment gets its invoice (and a held one visibly none). */
   const sellerReady = () => setSetting(db, "invoice", { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "" });
   const NOTE_REGISTRATION = "Järelmaks (Inbank) laekus, kui koolitus oli juba täies ulatuses tasutud. Seda ei pandud kirja: makse on lehel Maksed \"Ootel kontrollil\". Tagasta see Montonio halduses: täielik tagastus tühistab järelmaksu.";
@@ -407,6 +408,8 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
     expect([...kv.store.keys()].filter((k) => k.startsWith("pay:double:"))).toEqual([`pay:double:${loan.id}:${loan.providerUuid}`]);
     // never an „Ülemakse“: nothing went over the price
     expect(m.mails().filter((x) => x.subject.startsWith("Ülemakse"))).toEqual([]);
+    // the log line docs/deploy.md section 21 item 5 quotes: once (only the winner of the held update logs it), with the id only
+    expect(errors().filter((l) => l.includes("paid after the whole price"))).toEqual([`[payments] payment ${loan.id}: a järelmaks was paid after the whole price had been, held`]);
   });
 
   test("Maria refunds the held loan in Montonio, as the „Topeltmakse“ mail says: her refund notice says it was never recorded, nothing to change; a counted payment's refund keeps its sentence", async () => {
@@ -655,6 +658,7 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
       expect(alert).toContain(`Viide: ${bank.reference}`);
       expect(alert.split("\n").filter((l) => l.startsWith("Montonio: "))).toEqual([`Montonio: ${bank.providerUuid}`]);
       expect([...kv.store.keys()].filter((k) => k.startsWith("pay:double:"))).toEqual([`pay:double:${bank.id}:${bank.providerUuid}`]);
+      expect(errors().filter((l) => l.includes("paid after the whole price"))).toEqual([`[payments] payment ${bank.id}: a bank payment was paid after the whole price had been, held`]);
     });
 
     test("a bank purchase started after the loan was paid — a renewal, past the cart's 30 minutes — is counted as today: paid, the access renewed", async () => {

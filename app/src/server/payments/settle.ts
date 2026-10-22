@@ -315,7 +315,7 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
   if (!won) return lost(deps, row, facts);
   if ("late" in won) {
     const late = isHirePurchase(row.method) ? "loan" : "bank";
-    logNote(`[payments] payment ${won.late.id}: ${late === "loan" ? "a järelmaks" : "a bank payment"} paid after the whole price was, held`);
+    logNote(`[payments] payment ${won.late.id}: ${late === "loan" ? "a järelmaks" : "a bank payment"} was paid after the whole price had been, held`);
     alert(deps, won.late, "double", facts, { late });
     return won.late;
   }
