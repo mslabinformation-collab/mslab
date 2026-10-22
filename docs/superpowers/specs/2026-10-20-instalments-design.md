@@ -94,12 +94,12 @@ Today the site offers two ways to pay, both through the Montonio checkout: „10
 
 ## 4. Edge cases
 
-- **The price moves out of 100–5,000 €** (Maria edits the course) after the student chose järelmaks but before she paid. The press checks the amount again, and if it is out of range she is told to pick another choice: „Järelmaks on võimalik 100–5000 € hinnaga koolitusele." (Draft).
+- **The price moves out of 100–5,000 €** (Maria edits the course) after the student chose järelmaks but before she paid. The press checks the amount again, and if it is out of range she is told to pick another choice: „Järelmaks on võimalik 100–5000 € hinnaga koolitusele." (Draft). **Dim 22.10:** when the price is in range but the choice was switched off since the page loaded, the student sees its own sentence instead: „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“ (RU „Рассрочка сейчас недоступна. Можно оплатить через интернет-банк.“); the range sentence stays for a price outside 100–5000 €.
 - **Maria switches järelmaks off** while a student has an open järelmaks order. That order finishes as it is, paid or not. No new järelmaks orders start.
 - **The account's „Maksa"** for a registration whose choice is järelmaks, unpaid: it offers järelmaks again (while switched on) and a bank payment of the full price.
 - **Which amount may go to Inbank** (my call, from the builder check). Järelmaks is offered only when nothing has been paid and the amount due is the full price, within 100–5,000 €. If Maria has recorded part of it by hand, or an invoice asks for a part, only the bank payment is offered. A registration booked with „100% kohe" or „50%" never gets järelmaks later; the choice is made at booking.
 - **The 50% rest payment** is unaffected. A järelmaks registration has no rest.
-- **Russian.** Every text has its RU counterpart (Draft).
+- **Russian.** Every text has its RU counterpart (Draft). **Dim 22.10:** paying by bank is „Интернет-банк“ in Russian everywhere: the cart choice „Интернет-банк“, the buttons „Оплатить через интернет-банк“ (today „Банковская ссылка“ and „Оплатить через банк“); the course page's „через интернет-банк“ stays.
 - **A late järelmaks after a paid bank payment** (my call, from the code check 22.10). A declined application stays PENDING for 7 days, so she may pay by bank and Inbank may still approve the old one.
   - A järelmaks order that turns PAID while its registration (or her e-course access from the same e-mail) is already paid in full is held, not counted: status `held` („Ootel kontrollil“).
   - Maria gets the „Topeltmakse“ notice and refunds it in Montonio, which cancels the loan.
