@@ -84,7 +84,7 @@
 **Interfaces:**
 - Produces:
   - Status `'replaced'` (label „Asendatud“, muted tone). `CheckReason = "double"`; `checkReasonLabel("double") === "Topeltmakse — tagasta"` (ADM `payments.reason.double`). The column stores the code; the label lives in the dict.
-  - `replaceOlderOrders(tx, registrationId: number, keepId: number, now: Date): Promise<number>` in `db/queries/payments.ts` — `UPDATE payments SET status='replaced', updated_at=now WHERE registration_id=$1 AND status='pending' AND id<>$2`, returns the count.
+  - `replaceOlderOrders(tx, registrationId: number, keepId: number, now: Date): Promise<number>` in `db/queries/payments.ts` — `UPDATE payments SET status='replaced' WHERE registration_id=$1 AND status='pending' AND id<>$2` (updated_at untouched: the seat window reads it), returns the count.
   - `listPaymentsOf(db, {registrationId | clientId, includeReplaced?: boolean})` — replaced rows are left out unless `includeReplaced`.
 
 **Rulings carried (spec silent; record in the ledger):**
