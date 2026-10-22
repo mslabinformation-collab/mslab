@@ -2,6 +2,25 @@
 
 Phase 4, piece 6 of 6. Dim (20.10.2026): "Maria will not be responsible for Installments and managing them if somebody paid or not, those probably need to run through a bank." He also asked whether it can be done through Montonio, or whether Inbank, ESTO and Holm must be added. Dim chose to skip the questions for phase 4, so every decision not attributed to Dim is my call and says so.
 
+**Montonio's answers (Harri Holm, 22.10.2026)** settle the open points. They change D5 and add D8; §3, §5 and §7 follow.
+- **The sandbox** has järelmaks and „maksa hiljem“ switched on in test mode already. Inbank's demo decides by amount:
+  - an Estonian järelmaks is approved at 0–500 €, so 100–500 € within Montonio's limits;
+  - the Latvian table, possibly the same here, declines 901–1000 € and sends 501–700 € to manual review with proof of income.
+  - The SMS code is always 0000, and the demo person is 10101010005. The phone must be an Estonian number for an Estonian shop.
+- **Timing and statuses:**
+  - Inbank answers in about a minute. Montonio's figures for finishing a järelmaks are a median of 4 minutes, a mean of 44 minutes, and 0.49% taking more than a day.
+  - The order is PENDING, then PAID. PAID means the contract is signed.
+  - **On a decline or abandonment the status does not change.** The student is sent back to the shop, and a järelmaks order stays PENDING and becomes ABANDONED only **after 7 days**, even if the payment initiation itself was cancelled.
+  - An `expiresIn` of 60 minutes covers 99% of them; 90 is possible.
+- **The hosted page:** an order made as `paymentInitiation` with no bank chosen shows **only banks**, never järelmaks. `method` decides the page. So our own choice „Järelmaks (Inbank)“ is needed, as D2 designs.
+- **Customer data:** nothing is asked by the shop. The student identifies herself and gives her income in Inbank's flow. Montonio passes the amount and the merchant. If sent, the name, e-mail and phone fill in Inbank's form; Montonio recommends `billingAddress` with name, e-mail, `phoneNumber` and `phoneCountry`.
+- **Money:**
+  - After PAID, Inbank pays Montonio and Montonio pays the full amount to the merchant as a separate financing payout. The payout's description carries the order numbers.
+  - It takes up to 8 working days. Support (support@montonio.com) can speed it up, usually to the same evening.
+  - Järelmaks is free for the merchant; the interest (11.9%) and the fee are the student's. „Maksa hiljem“ costs 2.9% on Starter.
+- **Refunds** through the Partner System or the API change the loan automatically: a partial refund lowers it, a full refund cancels it, and there is no cancellation fee.
+- **Live:** nothing is real until Maria's company is verified. Järelmaks is then switched on automatically for a new company.
+
 ## 1. Why
 
 A course costs hundreds of euros. Some students would book if they could pay over months.
@@ -45,19 +64,25 @@ Today the site offers two ways to pay, both through the Montonio checkout: „10
     - Maria's notice and the student's confirmation go out;
     - the receipt invoice is made;
     - the e-course opens.
-  - **When Inbank declines, or she abandons the application:** the order is not paid, exactly like an abandoned bank payment today. The registration stays and waits for payment, and her confirmation mail and account offer „Maksa" as today.
-    - She can then pay by bank in full.
+  - **When Inbank declines, or she abandons the application** (Montonio, 22.10):
+    - Montonio sends her back to the shop and the order **stays PENDING** for up to 7 days before it turns ABANDONED. There is no immediate "failed" to react to.
+    - So the site treats her return like a bank payment that came back unpaid. The return page shows today's "not paid yet" state with „Maksa“, and from there she can pay by bank in full. The registration waits for payment, and her confirmation mail and account offer „Maksa“ as today.
     - Maria can also mark a bank transfer.
     - Nobody is asked to do anything about the declined järelmaks.
-  - **The order's time limit** for järelmaks is longer than a bank payment's, 60 minutes (my call), so an application in progress is not cut off. The builder checks Montonio's limits.
+  - **The order's time limit** for järelmaks is 60 minutes (my call; Montonio: this covers 99%), so an application in progress is not cut off. Montonio itself keeps a järelmaks order PENDING for 7 days whatever `expiresIn` says, so the site does not count on an early ABANDONED.
   - **The seat hold matches the time limit** (my call, from the builder check). A contact course's unpaid registration holds its seat for 30 minutes today, and a järelmaks attempt holds it for 60 instead. The re-send window and the late-check age follow the same 60 minutes. The start records the attempt's method on the payment row, so these rules can tell a järelmaks attempt from a bank one.
-  - **A loan signed after the seat is gone** gets today's handling for any payment that arrives after the hold: the payment is recorded, Maria gets the „Täis" notice, and she refunds it in Montonio. The 60-minute hold makes this rare.
-  - **The first build step is a sandbox trial** (my call). In Montonio's sandbox, one approved and one declined `hirePurchase` order are watched end to end: the statuses, the return, the webhook, the method name Montonio reports, and whether Inbank needs her phone. The code and its test stand-in (`tests/e2e/fake-montonio.ts`) follow what is observed. Montonio's public docs do not describe financing's status flow.
+  - **A loan signed after the seat is gone** gets today's handling for any payment that arrives after the hold: the payment is recorded, Maria gets the „Täis“ notice, and she refunds it in Montonio, which cancels the loan with no fee. With Montonio's 4-minute median this is rare.
+  - **A declined järelmaks, then a bank payment** (my call). The järelmaks order may still be PENDING when she pays by bank; the bank order is a new order on the same payment row, as a re-pay is today. If Inbank later approves the old application after all and both are paid, today's double-payment rule applies: the second is recorded and goes under „Ootel kontrollil“ as „Topeltmakse“, and Maria refunds it in Montonio. A full refund of the loan cancels it.
+  - **No separate sandbox trial before building** (my call, changed after Montonio's answers). The status flow is now known, so the code and its test stand-in (`tests/e2e/fake-montonio.ts`) follow Montonio's description. Dim's sandbox checks in the test plan (§5) confirm it: an approved and a declined application, the method name Montonio reports, and the return.
 - **D6. What the records say.**
   - The payment row, the registration and the admin's „Maksed" show the payment method „Järelmaks (Inbank)" (Draft), as they show the bank today.
   - The contract's payment text says „Koolituse hind tasutakse täies ulatuses: järelmaksuga (Inbank) või pangamaksega." (Draft, my call, from the builder check). It stays true if a declined järelmaks is paid by bank afterwards, so the frozen contract is never wrong and nothing needs accepting again. `{ettemaks}` is the full price.
   - The receipt invoice is the normal paid invoice for the full price, with „Tasutud: järelmaks (Inbank)" (Draft).
-- **D7. Refunds and cancellations** work as for any Montonio payment today, through Maria's existing actions. Montonio and Inbank handle the student's side. The site adds nothing.
+- **D7. Refunds and cancellations** work as for any Montonio payment today, through Maria's existing actions. Montonio and Inbank handle the student's side: a partial refund lowers the loan and a full refund cancels it, with no fee (Montonio, 22.10). The site adds nothing.
+- **D8. The order carries the student's details** (my call, from Montonio's recommendation). For a järelmaks order the site sends `billingAddress` with her first and last name and e-mail, so Inbank's form is filled in for her.
+  - Her phone is sent as `phoneNumber` + `phoneCountry: "EE"` only when it is an Estonian number (+372, or eight digits starting 5 or other Estonian mobile prefixes as the form stores them). Inbank needs a number of the shop's country, so a foreign number is left out and she types one in Inbank's form.
+  - Nothing else is sent. Personal ID codes are never collected (Inbank asks for them).
+  - Bank orders stay as they are.
 
 ## 3. Data (the next free migration number when built, additive)
 
@@ -86,7 +111,11 @@ Today the site offers two ways to pay, both through the Montonio checkout: „10
   - a declined or abandoned one;
   - the records (Maksed, invoice, contract).
 - The payment checks get `redo` where the choices list changed.
-- The paying checks are Dim's, done in Montonio's sandbox: his sandbox account must have financing switched on.
+- The paying checks are Dim's, done in Montonio's sandbox, where financing is already on (Montonio, 22.10). Each uses Inbank's demo person 10101010005 with SMS code 0000 and an Estonian phone:
+  - an approved application at a price of 100–500 €;
+  - a declined one at 901–1000 €, to be confirmed for Estonia;
+  - a manual review at 501–700 €: it stays PENDING, and the site shows „not paid yet“.
+- Maria's courses cost more than 500 €? Then one sample course priced within 100–500 € is used for the approved check.
 
 ## 6. Out of scope
 
@@ -99,6 +128,7 @@ Today the site offers two ways to pay, both through the Montonio checkout: „10
 
 ## 7. Before it can go live (Maria and Dim)
 
-- Maria's live Montonio contract must include Inbank financing; she asks Montonio. Until then the toggle stays off.
-- Maria confirms the fees with Montonio. Sources differ: financing may cost the merchant nothing, while pay-later costs about 2.4%.
-- Dim's sandbox account has financing on, for the test checks.
+- Maria verifies her company in Montonio (signatory confirmation). Järelmaks is then switched on automatically for the live store (Montonio, 22.10). Until then the toggle stays off and only test payments work.
+- **Fees** (confirmed 22.10): järelmaks is free for the merchant. „Maksa hiljem“, which is not built, would be 2.9% on Starter.
+- **Payouts** (Maria's accounting): a järelmaks arrives as a separate payout from Montonio, up to 8 working days after PAID, with the order numbers in its description. Support can speed one up on request.
+- The sandbox already has financing on, for the test checks.
