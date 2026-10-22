@@ -3,7 +3,7 @@ import { firstName, groupIban, hasPrepayment, paymentReference, type PrepaymentI
 import { contractFileName } from "@/domain/contract";
 import { euro, invoiceFileName } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
-import { prepaymentDue } from "@/domain/registration";
+import { prepaymentDue, type PaymentChoice } from "@/domain/registration";
 import { pick, type I18n } from "@/i18n/field";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { href } from "@/i18n/href";
@@ -352,7 +352,7 @@ export type RegistrationConfirmationInput = {
   registrationId: number;
   course: I18n;
   session: SessionInfo;
-  paymentChoice: "full" | "half";
+  paymentChoice: PaymentChoice;
   /** What the registration is measured against (domain/registration.ts registrationPrice), cents; null when the course has no such price. */
   priceCents: number | null;
   /** The admin's prepayment setting (domain/account-cards.ts parsePrepayment); without a receiver and an IBAN Maria sends an invoice. */

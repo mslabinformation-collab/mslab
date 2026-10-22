@@ -1,9 +1,9 @@
-import { paidMethodText, type PaidMethod } from "@/domain/invoice";
+import { paidMethodText, type ManualPaidMethod } from "@/domain/invoice";
 import ui from "./ui.module.css";
 import styles from "./InvoiceBlock.module.css";
 
-/** The ways Maria records money she received (D6); Montonio's is the site's own. */
-export type ManualMethod = Exclude<PaidMethod, "montonio">;
+/** The ways Maria records money she received (D6); Montonio's and Järelmaks (Inbank) are the site's own. */
+export type ManualMethod = ManualPaidMethod;
 export const MANUAL_METHODS: readonly ManualMethod[] = ["bank", "cash", "card"];
 
 /**

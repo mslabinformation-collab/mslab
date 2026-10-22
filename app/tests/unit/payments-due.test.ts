@@ -20,6 +20,13 @@ describe("amountDue", () => {
     expect(due({ priceCents: 35001 })).toEqual({ kind: "prepayment", cents: 17501 }); // ceil(price / 2)
   });
 
+  test("Järelmaks (Inbank) is due in full, like „100% kohe“ (instalments spec D3): the whole price minus what is paid", () => {
+    expect(due({ paymentChoice: "financing" })).toEqual({ kind: "prepayment", cents: 35000 });
+    expect(due({ paymentChoice: "financing", priceCents: 35001 })).toEqual({ kind: "prepayment", cents: 35001 });
+    expect(due({ paymentChoice: "financing", paidCents: 10000 })).toEqual({ kind: "prepayment", cents: 25000 });
+    expect(due({ paymentChoice: "financing", paidCents: 35000 })).toEqual({ kind: "none" });
+  });
+
   test("confirmed: the rest; fully paid: nothing", () => {
     expect(due({ status: "confirmed", paidCents: 17500 })).toEqual({ kind: "balance", cents: 17500 });
     expect(due({ status: "confirmed", paidCents: 35000 })).toEqual({ kind: "none" });

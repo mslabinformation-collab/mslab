@@ -10,7 +10,7 @@ import { tallinnFormParts, tallinnInstant } from "@/domain/calendar";
 import { tallinnDateText, tallinnYear } from "@/domain/certificate";
 import {
   coveringInvoices, formatInvoiceNumber, INVOICE_KEY, INVOICE_LIMITS, invoiceCsv, invoiceKindOfPayment, invoiceSeq, openAmounts, partOf, readInvoiceSettings,
-  sellerReady, type InvoiceBuyer, type InvoiceKind, type InvoiceSettings, type InvoiceStatus, type PaidMethod,
+  sellerReady, type InvoiceBuyer, type InvoiceKind, type InvoiceSettings, type InvoiceStatus, type ManualPaidMethod, type PaidMethod,
 } from "@/domain/invoice";
 import { PAGE_SIZE } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment } from "@/domain/registration";
@@ -43,8 +43,8 @@ const INT4_MAX = 2_147_483_647;
 /** What a prefix may be typed as (Seaded → Arve andmed): letters A–Z a–z and digits, 1–10 of them; it is stored in capitals. */
 const PREFIX = /^[A-Za-z0-9]{1,10}$/;
 const KINDS: readonly InvoiceKind[] = ["prepayment", "full", "balance", "ecourse"];
-/** The ways Maria marks or records a payment (D6); Montonio's is the site's own. */
-const MANUAL_METHODS: readonly PaidMethod[] = ["bank", "cash", "card"];
+/** The ways Maria marks or records a payment (D6); Montonio's and Järelmaks (Inbank) are the site's own. */
+const MANUAL_METHODS: readonly ManualPaidMethod[] = ["bank", "cash", "card"];
 
 /** Seaded's refusal of one field: "required" empty, "tooLong" over its INVOICE_LIMITS, "invalid" not a value the field takes, "taken" a next number already issued. */
 export type InvoiceFieldError = "required" | "tooLong" | "invalid" | "taken";
@@ -154,7 +154,7 @@ function paidByToday(paidAt: unknown, now: Date): paidAt is Date {
 }
 
 /** One of the ways Maria marks or records money (bank, cash, card), whatever the form sent. */
-const isManualMethod = (method: unknown): method is Exclude<PaidMethod, "montonio"> => typeof method === "string" && (MANUAL_METHODS as readonly string[]).includes(method);
+const isManualMethod = (method: unknown): method is ManualPaidMethod => typeof method === "string" && (MANUAL_METHODS as readonly string[]).includes(method);
 
 /** The line's session (InvoiceLine.session): "14.11.2026 Pärnu", its Tallinn date and city. */
 const sessionText = (s: Pick<CourseSession, "startsAt" | "city">): string => `${tallinnDateText(s.startsAt)} ${s.city.trim()}`.trim();
@@ -284,7 +284,7 @@ async function withInvoiceLocked<T>(db: Db, id: number, change: (tx: Tx, inv: In
  * payment was started for it and its invoice step failed (paidOnlineSql), so its money is counted already; „Arveta maksed" pays it (the
  * screen's Draft words: „See arve on juba veebis tasutud — koosta arve „Arveta maksed" alt."). Logs `[invoices] invoice N: marked paid`.
  */
-export async function markInvoicePaid(db: Db, id: number, input: { paidAt: Date; method: Exclude<PaidMethod, "montonio"> }, now: Date): Promise<MarkPaidResult> {
+export async function markInvoicePaid(db: Db, id: number, input: { paidAt: Date; method: ManualPaidMethod }, now: Date): Promise<MarkPaidResult> {
   if (!paidByToday(input.paidAt, now) || !isManualMethod(input.method)) return { ok: false, error: "invalid" };
   const result = await withInvoiceLocked(db, id, async (tx, inv): Promise<MarkPaidResult> => {
     if (inv.status !== "unpaid") return { ok: false, error: "notUnpaid" };
@@ -316,7 +316,7 @@ export async function markInvoicePaid(db: Db, id: number, input: { paidAt: Date;
 export async function undoInvoicePaid(db: Db, id: number, now: Date): Promise<UndoPaidResult> {
   const result = await withInvoiceLocked(db, id, async (tx, inv): Promise<UndoPaidResult> => {
     if (inv.status !== "paid") return { ok: false, error: "notPaid" };
-    if (inv.paidMethod === "montonio" || inv.paymentId !== null) return { ok: false, error: "notManual" };
+    if (inv.paidMethod === "montonio" || inv.paidMethod === "financing" || inv.paymentId !== null) return { ok: false, error: "notManual" };
     if (!inv.paidAdds) {
       const [cancelled] = await tx
         .update(invoices)

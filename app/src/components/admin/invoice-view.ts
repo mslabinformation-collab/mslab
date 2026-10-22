@@ -56,7 +56,7 @@ export function invoiceView(inv: AdminInvoice): InvoiceView {
     dueAt: iso(inv.dueAt),
     paidAt: iso(inv.paidAt),
     paidMethod: inv.paidMethod,
-    online: inv.paidMethod === "montonio" || inv.paymentId !== null,
+    online: inv.paidMethod === "montonio" || inv.paidMethod === "financing" || inv.paymentId !== null,
     paidOnline: inv.paidOnline,
     refunded: inv.refunded,
     paidAdds: inv.paidAdds,

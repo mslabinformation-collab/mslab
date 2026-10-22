@@ -40,8 +40,14 @@ describe("paymentMethodLabel: Maria's word for the way a payment was made", () =
   });
 
   test("empty or unknown is 'Muu': the raw code is never shown", () => {
-    for (const method of ["", "   ", "hirePurchase", "PAYMENT_INITIATION_V2", "constructor", "__proto__", "toString"]) expect(paymentMethodLabel(method, "")).toBe("Muu");
-    expect(paymentMethodLabel("hirePurchase", "Swedbank")).toBe("Muu · Swedbank");
+    for (const method of ["", "   ", "BNPL", "PAYMENT_INITIATION_V2", "constructor", "__proto__", "toString"]) expect(paymentMethodLabel(method, "")).toBe("Muu");
+    expect(paymentMethodLabel("bnpl", "Swedbank")).toBe("Muu · Swedbank");
+  });
+
+  test("hirePurchase is Järelmaks (Inbank), read like the other codes (spec D6)", () => {
+    expect(paymentMethodLabel("hirePurchase", null)).toBe("Järelmaks (Inbank)");
+    expect(paymentMethodLabel("hirePurchase", "")).toBe("Järelmaks (Inbank)");
+    expect(paymentMethodLabel(" HIREPURCHASE ", "")).toBe("Järelmaks (Inbank)");
   });
 
   test("the code is read without regard to case or surrounding spaces (a GET /orders answer is not always written as a token)", () => {

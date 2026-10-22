@@ -1,0 +1,1 @@
+ALTER TYPE "public"."payment_choice" ADD VALUE 'financing';

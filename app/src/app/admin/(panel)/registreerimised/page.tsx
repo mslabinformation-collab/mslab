@@ -286,7 +286,7 @@ function RegistrationDetail({
     [t.kind, r.course.type === "e_learning" ? adminEt.common.none : r.kind === "group" ? t.group : t.individual],
     [t.created, `${formatDate(r.createdAt, "et")} ${formatTime(r.createdAt, "et")}`],
     [t.locale, r.locale === "ru" ? adminEt.common.locale.ru : adminEt.common.locale.et],
-    [t.payment, r.paymentChoice === "full" ? t.paymentFull : t.paymentHalf],
+    [t.payment, { full: t.paymentFull, half: t.paymentHalf, financing: t.paymentFinancing }[r.paymentChoice]],
     [t.modelHelp, yesNo(r.wantsModelHelp)],
     [t.account, yesNo(r.wantsAccount)],
   ];

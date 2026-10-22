@@ -1,7 +1,7 @@
 import { upcomingFrom } from "@/domain/calendar";
 import type { InvoiceKind, InvoiceStatus } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
-import { prepaymentDue, type RegStatus } from "@/domain/registration";
+import { prepaymentDue, type PaymentChoice, type RegStatus } from "@/domain/registration";
 import { pick, type I18n } from "@/i18n/field";
 import { formatDate, formatTime } from "@/i18n/format";
 import type { Locale } from "@/i18n/locales";
@@ -80,7 +80,7 @@ export type ContactCard = {
   course: CourseRef;
   session: CalendarSession;
   status: RegStatus;
-  paymentChoice: "full" | "half";
+  paymentChoice: PaymentChoice;
   /** What the registration is measured against (domain/registration.ts registrationPrice), cents; null when the course has no such price. */
   priceCents: number | null;
   paidCents: number;

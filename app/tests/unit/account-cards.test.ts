@@ -62,6 +62,8 @@ describe("nextStep: one sentence and at most one button for every state of a car
     expect(nextStep(contact({ paymentChoice: "half", priceCents: 35001 }), NOW, PAY).vars).toEqual({ amount: "175,01 €" });
     expect(nextStep(contact({ paymentChoice: "half", priceCents: 35001, paidCents: 1000 }), NOW, PAY).vars).toEqual({ amount: "165,01 €" });
     expect(nextStep(contact({ paymentChoice: "full", paidCents: 10000 }), NOW, PAY).vars).toEqual({ amount: "250 €" });
+    // Järelmaks (Inbank) is the whole price (instalments spec D3), as „100% kohe“ is
+    expect(nextStep(contact({ paymentChoice: "financing", priceCents: 35001 }), NOW, PAY).vars).toEqual({ amount: "350,01 €" });
   });
 
   test("contact, awaiting, no usable prepayment info: invoice (none, every field empty, or no receiver or no IBAN)", () => {

@@ -1,6 +1,6 @@
 import type { I18n } from "@/i18n/field";
 import { cardTitle, cardWhen, type AccountCard, type UntitledTexts } from "./account-cards";
-import type { RegStatus } from "./registration";
+import type { PaymentChoice, RegStatus } from "./registration";
 
 // A registration as the student's own card names it (account-cards.ts), for the admin: the Õpilased drawer and the change
 // requests in Päringud say "Kulmude lamineerimine — 14.11.2026 · 10:00" exactly as the student's card does. Pure: no
@@ -10,7 +10,7 @@ import type { RegStatus } from "./registration";
 export type RegistrationLike = {
   id: number;
   status: RegStatus;
-  paymentChoice: "full" | "half";
+  paymentChoice: PaymentChoice;
   paidCents: number;
   preferredPeriod: string;
   createdAt: Date;

@@ -290,7 +290,7 @@ export const adminEt = {
     group: "Grupp",
     // An individual contact course has no session: Maria agrees the time with the student.
     agreed: "Aeg kokkuleppel",
-    payment: { full: "100%", half: "50% ettemaks" },
+    payment: { full: "100%", half: "50% ettemaks", financing: "Järelmaks (Inbank)" },
     open: "Ava {name}",
     drawer: {
       label: "Registreerimine: {name}",
@@ -309,6 +309,7 @@ export const adminEt = {
       payment: "Makseviis",
       paymentFull: "Kogu summa (100%)",
       paymentHalf: "Ettemaks 50%",
+      paymentFinancing: "Järelmaks (Inbank)",
       modelHelp: "Vajab abi modelli leidmisel",
       account: "Soovib kontot",
       period: "Soovitud periood",

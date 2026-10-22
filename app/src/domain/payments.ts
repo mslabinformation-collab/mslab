@@ -6,7 +6,7 @@ import type { Invoice, PaymentStatus } from "@/db/schema";
 import { isSlug } from "@/lib/slug";
 import { startOfDayTallinn, upcomingFrom } from "./calendar";
 import type { InvoiceKind } from "./invoice";
-import { prepaymentDue, type RegStatus } from "./registration";
+import { prepaymentDue, type PaymentChoice, type RegStatus } from "./registration";
 
 /**
  * The prefix of production's merchantReferences (spec 4): MSLAB-M<the payment row's id>. Every other place has a prefix of its own
@@ -51,22 +51,24 @@ const METHOD_LABELS: ReadonlyMap<string, string> = new Map([
   ["applepay", "Apple Pay"],
   ["googlepay", "Google Pay"],
   ["blik", "BLIK"],
+  // Inbank's instalments through Montonio (instalments, spec D6): the method of a financing order is `hirePurchase`
+  ["hirepurchase", "Järelmaks (Inbank)"],
 ]);
 
 /**
  * How a payment was made, for Maria: her notice (server/messages.ts) and the admin's "Maksed" list use this one word. `method` is
- * Montonio's code ("paymentInitiation", "cardPayments", "applePay", "googlePay", "blik"), `bank` the bank's name when there is one:
+ * Montonio's code ("paymentInitiation", "cardPayments", "applePay", "googlePay", "blik", "hirePurchase"), `bank` the bank's name when there is one:
  * "Pangalink · Swedbank". An empty or unknown code is "Muu"; the code itself is never shown.
  */
-export function paymentMethodLabel(method: string, bank: string): string {
+export function paymentMethodLabel(method: string, bank: string | null): string {
   const label = METHOD_LABELS.get(method.trim().toLowerCase()) ?? "Muu";
-  return [label, bank.trim()].filter(Boolean).join(" · ");
+  return [label, (bank ?? "").trim()].filter(Boolean).join(" · ");
 }
 
 /** What amountDue reads of a registration: its status and payment choice, its price and what is paid, and its session. */
 export type DueInput = {
   status: RegStatus;
-  paymentChoice: "full" | "half";
+  paymentChoice: PaymentChoice;
   /** The registration's price (domain/registration.ts registrationPrice), cents; null without one. */
   priceCents: number | null;
   paidCents: number;

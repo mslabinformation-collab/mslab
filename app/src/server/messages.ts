@@ -4,6 +4,7 @@
 import type { PaymentKind } from "@/db/schema";
 import { formatEUR } from "@/domain/money";
 import { paymentMethodLabel } from "@/domain/payments";
+import type { PaymentChoice } from "@/domain/registration";
 import { formatDate } from "@/i18n/format";
 import { answerText, FEEDBACK_ORDER, feedbackQuestions, type FeedbackAnswers } from "@/domain/protocols";
 import { et } from "@/i18n/dict/et";
@@ -15,7 +16,7 @@ type Row = readonly [label: string, value: string | undefined, block?: boolean];
 
 const TIME_ZONE = "Europe/Tallinn";
 const LANGUAGE = { et: "eesti", ru: "vene" } as const;
-const PAYMENT = { full: "100% kohe", half: "50% registreerimisel + 50% koolituspäeval" } as const;
+const PAYMENT: Record<PaymentChoice, string> = { full: "100% kohe", half: "50% registreerimisel + 50% koolituspäeval", financing: "Järelmaks (Inbank)" };
 
 const yesNo = (b: boolean) => (b ? "jah" : "ei");
 
@@ -62,7 +63,7 @@ const sessionRows = (s: SessionInfo): Row[] => [
 const sessionShort = (s: SessionInfo) => `${s.course} · ${sessionWhen(s.startsAt)} · ${s.city}`;
 
 export function registrationSummary(
-  s: SessionInfo & Visitor & { paymentChoice: "full" | "half"; wantsModelHelp: boolean; wantsAccount: boolean; message: string },
+  s: SessionInfo & Visitor & { paymentChoice: PaymentChoice; wantsModelHelp: boolean; wantsAccount: boolean; message: string },
   adminUrl: string,
 ): Summary {
   const title = "Uus registreerimine (grupikoolitus)";

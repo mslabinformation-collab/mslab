@@ -7,14 +7,16 @@
 import type { Invoice } from "@/db/schema";
 import { tallinnFormParts, tallinnInstant } from "./calendar";
 import { seqToIssue, tallinnDateText, tallinnYear } from "./certificate";
-import { prepaymentDue } from "./registration";
+import { prepaymentDue, type PaymentChoice } from "./registration";
 
 /** What an invoice is for (D4): a contact course's half, whole sum or rest, or an e-course's price. */
 export type InvoiceKind = "prepayment" | "full" | "balance" | "ecourse";
 /** unpaid → paid (and back, by Maria's own mark); unpaid → cancelled. A cancelled invoice keeps its number. */
 export type InvoiceStatus = "unpaid" | "paid" | "cancelled";
-/** How an invoice was paid (D6): online, or by Maria's mark. */
-export type PaidMethod = "montonio" | "bank" | "cash" | "card";
+/** How an invoice was paid (D6): online ("montonio"; "financing" is Järelmaks (Inbank), instalments spec D6), or by Maria's mark. */
+export type PaidMethod = "montonio" | "bank" | "cash" | "card" | "financing";
+/** The ways Maria marks or records money herself: the online ones, Montonio's and Inbank's, are the site's own. */
+export type ManualPaidMethod = Exclude<PaidMethod, "montonio" | "financing">;
 
 /** The one line of an invoice, frozen at its creation (D4): the course's Estonian title, its session ("14.11.2026 Tallinn"; empty for an e-course) and the part ("Ettemaks 50%"). */
 export type InvoiceLine = { course: string; session: string; part: string };
@@ -172,6 +174,7 @@ export function paidMethodText(method: PaidMethod): string {
     case "bank": return "Pangaülekanne";
     case "cash": return "Sularaha";
     case "card": return "Kaardimakse kohapeal";
+    case "financing": return "Järelmaks (Inbank)";
   }
 }
 
@@ -213,9 +216,9 @@ export type Covering = { kind: InvoiceKind; status: InvoiceStatus; amountCents: 
  *   money in (no paid prepayment or whole sum yet) is the whole sum when it is all of the price, else the half choice's prepayment or the whole
  *   choice's whole sum; later money is the rest. Its words are partOf's: „Osamakse“ when it is no half, whole or rest. Without such money, the
  *   same amounts as a request (money received and not typed: the rest paid at the venue).
- * An amount of nothing is never offered.
+ * An amount of nothing is never offered. Järelmaks (Inbank, `financing`) is the whole price, like „full“: only the half choice has a prepayment.
  */
-export function openAmounts(r: { priceCents: number; paymentChoice: "full" | "half"; paidCents: number }, invoiced: readonly Covering[]): OpenAmounts {
+export function openAmounts(r: { priceCents: number; paymentChoice: PaymentChoice; paidCents: number }, invoiced: readonly Covering[]): OpenAmounts {
   const price = r.priceCents;
   const live = invoiced.filter((i) => i.status !== "cancelled");
   const sum = (list: readonly Covering[]) => list.reduce((total, i) => total + i.amountCents, 0);
@@ -253,7 +256,7 @@ export function uninvoicedOf<P extends { id: number; status: string }>(payments:
  * - otherwise a paid invoice of its own, of the kind of the invoice it was started for (R7) or else of invoiceKindOfPayment's.
  */
 export function coveringInvoices(
-  r: { paymentChoice: "full" | "half" },
+  r: { paymentChoice: PaymentChoice },
   invoices: (Covering & { id: number })[],
   uninvoiced: UninvoicedPayment[],
 ): Covering[] {
@@ -268,11 +271,12 @@ export function coveringInvoices(
 }
 
 /**
- * The kind of the invoice an online payment makes (D5): a prepayment paid by someone who chose to pay the whole sum is the whole sum
- * ("Kogu summa (100%)"), a prepayment of the half choice (or of a registration since deleted) is the prepayment; the rest and an e-course keep their own.
+ * The kind of the invoice an online payment makes (D5): a prepayment paid by someone who chose to pay the whole sum (Järelmaks (Inbank) too: it is
+ * always the whole price, instalments spec D3) is the whole sum ("Kogu summa (100%)"), a prepayment of the half choice (or of a registration since
+ * deleted) is the prepayment; the rest and an e-course keep their own.
  */
-export function invoiceKindOfPayment(p: { kind: "prepayment" | "balance" | "ecourse" }, r: { paymentChoice: "full" | "half" } | null): InvoiceKind {
-  if (p.kind === "prepayment") return r?.paymentChoice === "full" ? "full" : "prepayment";
+export function invoiceKindOfPayment(p: { kind: "prepayment" | "balance" | "ecourse" }, r: { paymentChoice: PaymentChoice } | null): InvoiceKind {
+  if (p.kind === "prepayment") return r !== null && r.paymentChoice !== "half" ? "full" : "prepayment";
   return p.kind;
 }
 

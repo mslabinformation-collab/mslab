@@ -10,7 +10,11 @@ export const courseType = pgEnum("course_type", ["e_learning", "contact"]);
 export const courseLevel = pgEnum("course_level", ["basic", "advanced"]);
 export const regStatus = pgEnum("registration_status", ["awaiting_prepayment", "confirmed", "cancelled"]);
 export const regKind = pgEnum("registration_kind", ["group", "individual"]);
-export const payChoice = pgEnum("payment_choice", ["full", "half"]);
+/**
+ * How a registration pays: the whole price at once ("full"), half now and half on the training day ("half"), or "financing" (Järelmaks (Inbank),
+ * instalments, spec D2/D3): always the whole price, paid to Maria at once by Inbank through Montonio. Financing was added by migration 0018.
+ */
+export const payChoice = pgEnum("payment_choice", ["full", "half", "financing"]);
 export const sessionStatus = pgEnum("session_status", ["scheduled", "cancelled"]);
 export const requestKind = pgEnum("request_kind", ["contact", "individual", "practice", "waitlist", "change_request"]);
 /** An online payment (phase 2b): a registration's prepayment, its rest after the prepayment, or an e-course purchase. */

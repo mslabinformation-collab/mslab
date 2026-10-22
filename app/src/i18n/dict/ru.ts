@@ -286,6 +286,9 @@ export const ru: Dict = {
     paymentLabel: "Оплата",
     payFull: "100% сразу",
     payHalf: "50% при регистрации + 50% в день обучения",
+    // Draft, as the Estonian texts are
+    payFinancing: "Рассрочка (Inbank)",
+    payFinancingContract: "Стоимость обучения оплачивается полностью: в рассрочку (Inbank) или банковским платежом.",
     payInstalment: "Рассрочка — скоро",
     payInstalmentNote: "Эта возможность появится позже.",
     preferredPeriod: "Желаемый период или дата",

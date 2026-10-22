@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
-  CONTRACT_CONTACT_KEY, CONTRACT_CONTACT_VERSION_KEY, PLACEHOLDERS, contractDownloadHeaders, contractFileName, contractLocale, contractValues, fillContract,
-  paymentText, schoolOf, sessionText,
+  CONTRACT_CONTACT_KEY, CONTRACT_CONTACT_VERSION_KEY, PLACEHOLDERS, contractDownloadHeaders, contractFileName, contractLocale, contractParts, contractValues,
+  fillContract, paymentText, schoolOf, sessionText,
   type ContractFields,
 } from "@/domain/contract";
 import { et } from "@/i18n/dict/et";
@@ -139,9 +139,25 @@ describe("paymentText: the payment choice in the language of the contract", () =
     expect(paymentText("half", "ru")).toBe(ru.forms.payHalf);
     expect(paymentText("half", "et")).toBe("50% registreerimisel + 50% koolituspäeval");
   });
+  test("Järelmaks (Inbank) is the contract sentence of the dictionaries (spec D6): true if a declined loan is paid by bank, so the frozen contract is never wrong", () => {
+    expect(paymentText("financing", "et")).toBe(et.forms.payFinancingContract);
+    expect(paymentText("financing", "ru")).toBe(ru.forms.payFinancingContract);
+    expect(paymentText("financing", "et")).toBe("Koolituse hind tasutakse täies ulatuses: järelmaksuga (Inbank) või pangamaksega.");
+    expect(paymentText("financing", "ru")).toBe("Стоимость обучения оплачивается полностью: в рассрочку (Inbank) или банковским платежом.");
+  });
   test("no choice (an e-course) is empty", () => {
     expect(paymentText(null, "et")).toBe("");
     expect(paymentText(null, "ru")).toBe("");
+  });
+});
+
+describe("contractParts: the payment sentence and {ettemaks} by the choice", () => {
+  const input = { name: "Kati Kask", email: "kati@example.test", course: "Kulmude kujundus", session: null, priceCents: 29_000, locale: "et" } as const;
+  test("half: the half; full: the price; Järelmaks (Inbank): the price too, and its own sentence (spec D6)", () => {
+    expect(contractParts({ ...input, choice: "half" })).toMatchObject({ prepayment: "145,00\u00a0€", fields: { payment: et.forms.payHalf } });
+    expect(contractParts({ ...input, choice: "full" })).toMatchObject({ prepayment: "290,00\u00a0€", fields: { payment: et.forms.payFull } });
+    expect(contractParts({ ...input, choice: "financing" })).toMatchObject({ prepayment: "290,00\u00a0€", fields: { payment: et.forms.payFinancingContract } });
+    expect(contractParts({ ...input, choice: "financing", locale: "ru" })).toMatchObject({ prepayment: "290,00\u00a0€", fields: { payment: ru.forms.payFinancingContract } });
   });
 });
 

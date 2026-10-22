@@ -9,7 +9,7 @@ import type { I18n } from "@/i18n/field";
 import { tallinnDateText } from "./certificate";
 import { normalizeEmail } from "./email";
 import { euro } from "./invoice";
-import { prepaymentDue } from "./registration";
+import { prepaymentDue, type PaymentChoice } from "./registration";
 
 /** What a contract is for (D1): a contact course's registration, or an e-course's access. */
 export type ContractKind = "contact" | "ecourse";
@@ -79,7 +79,7 @@ export type ContractInput = {
   course: string;
   session: { startsAt: Date; city: string; venue?: string } | null;
   priceCents: number | null;
-  choice: "full" | "half" | null;
+  choice: PaymentChoice | null;
   locale: "et" | "ru";
 };
 
@@ -149,12 +149,18 @@ export function sessionText(s: { startsAt: Date; city: string; venue?: string } 
 }
 
 /**
- * The payment choice in words, as the registration form words its two choices (forms.payFull and forms.payHalf of the dictionaries; a test
- * keeps them equal), in the language of the contract. None (an e-course) is empty. Not the dictionary itself: a browser file must not pull it in.
+ * The payment choice in words, as the registration form words its choices (forms.payFull, forms.payHalf and, for Järelmaks (Inbank),
+ * forms.payFinancingContract of the dictionaries; a test keeps them equal), in the language of the contract. None (an e-course) is empty.
+ * Not the dictionary itself: a browser file must not pull it in. The sentence of Järelmaks (Inbank) also holds if a declined loan is paid by bank
+ * afterwards (instalments spec D6), so the frozen contract is never wrong.
  */
-export function paymentText(choice: "full" | "half" | null, locale: "et" | "ru"): string {
+export function paymentText(choice: PaymentChoice | null, locale: "et" | "ru"): string {
   if (choice === null) return "";
-  if (locale === "ru") return choice === "full" ? "100% сразу" : "50% при регистрации + 50% в день обучения";
+  if (locale === "ru") {
+    if (choice === "financing") return "Стоимость обучения оплачивается полностью: в рассрочку (Inbank) или банковским платежом.";
+    return choice === "full" ? "100% сразу" : "50% при регистрации + 50% в день обучения";
+  }
+  if (choice === "financing") return "Koolituse hind tasutakse täies ulatuses: järelmaksuga (Inbank) või pangamaksega.";
   return choice === "full" ? "100% kohe" : "50% registreerimisel + 50% koolituspäeval";
 }
 

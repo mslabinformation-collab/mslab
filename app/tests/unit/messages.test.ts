@@ -1,11 +1,24 @@
 import { describe, expect, test } from "vitest";
-import { changeRequestSummary } from "@/server/messages";
+import { changeRequestSummary, registrationSummary } from "@/server/messages";
 
 // Maria's message about a student's wish to cancel or move a registration (written in Estonian, never shown to visitors).
 
 const ADMIN = "https://mslab.example/admin";
 const who = { name: "Kati Tamm", email: "kati@example.test", phone: "+3725551234", locale: "ru" as const };
 const session = { startsAt: new Date("2026-11-14T08:00:00Z"), city: "Pärnu", venue: "Salong" };
+
+describe("registrationSummary: how she pays, in Maria's words", () => {
+  const registration = { ...who, course: "Kulmude lamineerimine", startsAt: session.startsAt, city: session.city, venue: session.venue, wantsModelHelp: false, wantsAccount: false, message: "" };
+  test.each([
+    ["full", "100% kohe"],
+    ["half", "50% registreerimisel + 50% koolituspäeval"],
+    ["financing", "Järelmaks (Inbank)"],
+  ] as const)("%s is %s", (paymentChoice, words) => {
+    const s = registrationSummary({ ...registration, paymentChoice }, ADMIN);
+    expect(s.text).toContain(`Tasumine: ${words}`);
+    expect(s.short).toContain(`Tasumine: ${words}`);
+  });
+});
 
 describe("changeRequestSummary", () => {
   test("a cancellation: the course, date and place, the registration number, who asks, the message, and that nothing was changed", () => {

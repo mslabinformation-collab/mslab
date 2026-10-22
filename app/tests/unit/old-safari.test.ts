@@ -90,6 +90,8 @@ const BROWSER_FILES = [
   "src/components/admin/autosave/engine.ts",
   // admin UX pass, Task 13: the list addresses (withListParams, listHref) the ListToolbar builds its replaces from in the browser (the toolbar is a "use client" file, walked anyway)
   "src/components/admin/list-params.ts",
+  // instalments, Task 1: the rules of Järelmaks (Inbank) (offered, allowed, the phone and the name for Inbank's form), which the registration form and the cart run in the browser (pure, imports nothing)
+  "src/domain/financing.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

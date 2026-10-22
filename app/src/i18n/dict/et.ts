@@ -311,6 +311,10 @@ export const et = {
     paymentLabel: "Tasumine",
     payFull: "100% kohe",
     payHalf: "50% registreerimisel + 50% koolituspäeval",
+    // Järelmaks (Inbank) through Montonio (instalments, spec D2, D6): the choice's name, and the contract's payment sentence (domain/contract.ts
+    // paymentText holds the same words; a test keeps them equal). Draft: Dim sees them on the test page
+    payFinancing: "Järelmaks (Inbank)",
+    payFinancingContract: "Koolituse hind tasutakse täies ulatuses: järelmaksuga (Inbank) või pangamaksega.",
     // P14: shown on contact courses, disabled (as the e-course's instalment) until the instalment partner arrives
     payInstalment: "Järelmaks — tulekul",
     payInstalmentNote: "See võimalus lisandub hiljem.",

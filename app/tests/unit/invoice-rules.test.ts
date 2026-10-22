@@ -131,6 +131,15 @@ describe("openAmounts: what is still to invoice on a registration (D5, the final
     expect(openAmounts({ ...full, paidCents: 35000 }, [inv("full", "paid", 35000)])).toEqual(both([]));
     expect(openAmounts(full, [inv("full", "cancelled", 35000)])).toEqual(both([wholeSum]));
   });
+  test("financing (Järelmaks (Inbank)) is the whole sum like „full“, never a prepayment: the whole sum, then nothing; a receipt for money in is the whole sum", () => {
+    const financing = { priceCents: 35000, paymentChoice: "financing", paidCents: 0 } as const;
+    expect(openAmounts(financing, [])).toEqual(both([wholeSum]));
+    expect(openAmounts(financing, [inv("full", "unpaid", 35000)])).toEqual(both([]));
+    expect(openAmounts({ ...financing, paidCents: 35000 }, [inv("full", "paid", 35000)])).toEqual(both([]));
+    expect(openAmounts(financing, [inv("full", "cancelled", 35000)])).toEqual(both([wholeSum]));
+    // 100 € typed by hand on it: a receipt for that money, a first one that is not all of the price: the whole choice's whole sum, in the words „Osamakse“
+    expect(openAmounts({ ...financing, paidCents: 10000 }, []).receipt).toEqual([{ kind: "full", cents: 10000, part: "Osamakse" }]);
+  });
   test("R11, an odd price: the prepayment is the site's own (prepaymentDue: half rounded up to the cent, so a paid one makes 50 %), the rest is what is left", () => {
     const odd = { priceCents: 35001, paymentChoice: "half", paidCents: 0 } as const;
     expect(openAmounts(odd, []).request).toEqual([
@@ -196,6 +205,7 @@ describe("coveringInvoices: what covers a registration's price, its paid online 
   test("a paid payment with no invoice counts as paid, of the kind its catch-up will give it (invoiceKindOfPayment)", () => {
     expect(coveringInvoices(r, [], [pay(5, "prepayment", 17500)])).toEqual([{ kind: "prepayment", status: "paid", amountCents: 17500 }]);
     expect(coveringInvoices({ paymentChoice: "full" }, [], [pay(5, "prepayment", 35000)])).toEqual([{ kind: "full", status: "paid", amountCents: 35000 }]);
+    expect(coveringInvoices({ paymentChoice: "financing" }, [], [pay(5, "prepayment", 35000)])).toEqual([{ kind: "full", status: "paid", amountCents: 35000 }]);
     expect(coveringInvoices(r, [], [pay(5, "balance", 17500)])).toEqual([{ kind: "balance", status: "paid", amountCents: 17500 }]);
   });
   test("R14: one started for an unpaid invoice of its sum: its catch-up pays THAT invoice, so the invoice counts as paid and the payment not again", () => {
@@ -256,6 +266,8 @@ describe("invoiceKindOfPayment: the kind of the invoice an online payment makes"
   test.each([
     [{ kind: "prepayment" }, { paymentChoice: "half" }, "prepayment"],
     [{ kind: "prepayment" }, { paymentChoice: "full" }, "full"],
+    [{ kind: "prepayment" }, { paymentChoice: "financing" }, "full"], // Järelmaks (Inbank) is the whole sum: never „Ettemaks 50%“
+    [{ kind: "balance" }, { paymentChoice: "financing" }, "balance"],
     [{ kind: "prepayment" }, null, "prepayment"], // the registration is gone: the payment's own kind
     [{ kind: "balance" }, { paymentChoice: "half" }, "balance"],
     [{ kind: "balance" }, { paymentChoice: "full" }, "balance"],
@@ -280,6 +292,7 @@ describe("partText, the state and method texts (D4, D6)", () => {
     expect(paidMethodText("bank")).toBe("Pangaülekanne");
     expect(paidMethodText("cash")).toBe("Sularaha");
     expect(paidMethodText("card")).toBe("Kaardimakse kohapeal");
+    expect(paidMethodText("financing")).toBe("Järelmaks (Inbank)");
   });
 });
 

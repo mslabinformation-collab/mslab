@@ -91,6 +91,12 @@ describe("registration confirmation, Estonian", () => {
     expect(lines(full.text)).toContain("Summa: 390 €");
   });
 
+  test("Järelmaks (Inbank) asks for the whole price too (instalments spec D3)", () => {
+    const financing = registrationConfirmationMail(registration({ paymentChoice: "financing" }));
+    expect(lines(financing.text)).toContain("Koha kinnitamiseks tasu ettemaks 390 €.");
+    expect(lines(financing.text)).toContain("Summa: 390 €");
+  });
+
   test("the same sentence the dashboard card says (domain/account-cards.ts nextStep)", () => {
     const card: ContactCard = {
       kind: "contact", registrationId: 42, course: { slug: "kulmud", title: { et: "Kulmude baaskoolitus" } },
