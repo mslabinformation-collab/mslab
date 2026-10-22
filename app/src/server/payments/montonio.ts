@@ -1,3 +1,4 @@
+import { FINANCING_ATTEMPT_MS, type BillingAddress } from "@/domain/financing";
 import { isReferencePrefix, LOCAL_REFERENCE_PREFIX, ORDER_REFERENCE_PREFIX, PREVIEW_REFERENCE_PREFIX } from "@/domain/payments";
 import { paymentsEnv, type PaymentsEnv } from "../env";
 import { logFailure, logNote } from "../log";
@@ -9,8 +10,15 @@ import { JwtError, signHs256, verifyHs256 } from "./jwt";
 // - POST /orders creates an order: merchantReference (ours, MSLAB-M<id> in production, a new one for every attempt; the prefix is the
 //   environment's, montonioConfig), returnUrl, notificationUrl, grandTotal and payment.amount in euros (a number with at most two decimals;
 //   cents everywhere else in this app), currency EUR, locale et/ru, and payment.method "paymentInitiation" with NO preferredProvider, so
-//   Montonio's own page lists every bank and every method the store has on (D4), and methodOptions.paymentDescription "MS LAB <reference>".
-//   We never send paymentReference: banks check it strictly and a bad one fails the payment. The window is Montonio's default 30 minutes (domain/sessions.ts SEAT_HOLD_MS holds the seat as long);
+//   Montonio's own page lists every bank (D4; Montonio, 22.10.2026: `method` decides the page, so it shows banks only, never järelmaks), and
+//   methodOptions.paymentDescription "MS LAB <reference>". We never send paymentReference: banks check it strictly and a bad one fails the payment.
+//   A bank order sends no expiresIn: the window is Montonio's default 30 minutes (domain/sessions.ts SEAT_HOLD_MS holds the seat as long);
+// - the other order is the järelmaks (Inbank, instalments D2/D5/D8): payment.method "hirePurchase" with the same amount and currency and NO
+//   methodOptions (the guide has none for it), `expiresIn` 60 (minutes, a top-level key beside grandTotal; domain/financing.ts
+//   FINANCING_ATTEMPT_MS, the same 60 minutes as the seat hold), and `billingAddress` { firstName, lastName, email, phoneNumber?,
+//   phoneCountry? } so Inbank's form is filled in (billingAddressOf). Sources: docs.montonio.com/api/stargate/guides/orders (the payment
+//   methods table, `expiresIn`: "default 30, minimum 5, maximum 44640", `billingAddress`; checked 22.10.2026) and .../guides/financing
+//   (Hire Purchase 100–5000 €). The decline of an application is no status: the order stays PENDING for 7 days (Montonio, 22.10.2026);
 // - the webhook (POST notificationUrl { orderToken }) and the return (returnUrl?order-token=…) carry the same signed order token, in any
 //   order; GET /orders/:uuid answers what Montonio itself believes (its grandTotal is a string there);
 // - a refund's status change is a webhook of its own to the same notificationUrl, { refundToken }: a JWT signed the same way, whose claims
@@ -82,6 +90,13 @@ export const currentRuntime = (): Runtime => ({ production: process.env.NODE_ENV
 
 /** `referencePrefix`: what this environment's merchantReferences start with (domain/payments.ts orderReference; referencePrefixOf). */
 export type MontonioConfig = { accessKey: string; secretKey: string; baseUrl: string; live: boolean; mock: boolean; referencePrefix: string };
+
+/**
+ * A järelmaks order's `expiresIn`: how many minutes the order can be paid (Montonio's orders guide: top level, default 30, 5 to 44640).
+ * It is the attempt's 60 minutes, the same as the seat hold (domain/financing.ts FINANCING_ATTEMPT_MS); Montonio keeps a declined or
+ * abandoned loan PENDING for 7 days whatever this says.
+ */
+const FINANCING_EXPIRES_IN_MIN = FINANCING_ATTEMPT_MS / 60_000;
 
 /** The names of this machine: the only places the fake Montonio is ever reached, whatever MONTONIO_FAKE_URL says. */
 const LOCAL_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -204,7 +219,15 @@ export function montonioErrorText(status: number, body: string): string {
   return `HTTP ${status}${message ? ` · ${message.slice(0, 300)}` : ""}`;
 }
 
-export type OrderRequest = { reference: string; amountCents: number; locale: "et" | "ru"; returnUrl: string; notificationUrl: string };
+/** The Montonio payment methods this store orders with: the bank link (the default) and Inbank's järelmaks (instalments, spec D2). */
+export type OrderMethod = "paymentInitiation" | "hirePurchase";
+
+/**
+ * `method` defaults to "paymentInitiation", the bank link. "hirePurchase" is the järelmaks (Inbank): the order then carries `expiresIn` (60
+ * minutes, FINANCING_ATTEMPT_MS) and, when given, the student's `billing` details (billingAddressOf), which fill in Inbank's form. A bank order
+ * ignores `billing` and sends exactly what it always has.
+ */
+export type OrderRequest = { reference: string; amountCents: number; locale: "et" | "ru"; returnUrl: string; notificationUrl: string; method?: OrderMethod; billing?: BillingAddress };
 
 /** An order token's facts (the webhook's `orderToken`, the return's `order-token`). `accessKey` null: the token carries none. */
 export type OrderToken = {
@@ -246,6 +269,17 @@ export type Montonio = {
   verifyRefundToken(token: string): RefundToken;
 };
 
+/**
+ * The `billingAddress` as sent: the five keys of D8 and nothing else, whatever object was passed. `phoneCountry` only goes with a
+ * `phoneNumber`. (Montonio's orders guide: every key a string, none required; `phoneCountry` is described as "e.g 372".)
+ */
+const billingClaim = (b: BillingAddress): BillingAddress => ({
+  firstName: b.firstName,
+  lastName: b.lastName,
+  email: b.email,
+  ...(b.phoneNumber ? { phoneNumber: b.phoneNumber, ...(b.phoneCountry ? { phoneCountry: b.phoneCountry } : {}) } : {}),
+});
+
 const text = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const UUID = /^[A-Za-z0-9-]{1,100}$/;
 
@@ -272,20 +306,28 @@ export function montonioClient(config: MontonioConfig, fetchImpl: typeof fetch =
     async createOrder(order) {
       if (!Number.isInteger(order.amountCents) || order.amountCents <= 0) throw new RangeError("amountCents must be a positive whole number");
       const amount = toEuros(order.amountCents);
-      const data = signHs256(
-        {
-          accessKey: config.accessKey,
-          merchantReference: order.reference,
-          returnUrl: order.returnUrl,
-          notificationUrl: order.notificationUrl,
-          currency: "EUR",
-          grandTotal: amount,
-          locale: order.locale,
-          payment: { method: "paymentInitiation", amount, currency: "EUR", methodOptions: { paymentDescription: `MS LAB ${order.reference}` } },
-        },
-        config.secretKey,
-        { expiresInSeconds: POST_TOKEN_SEC, nowSec: nowSec() },
-      );
+      const common = {
+        accessKey: config.accessKey,
+        merchantReference: order.reference,
+        returnUrl: order.returnUrl,
+        notificationUrl: order.notificationUrl,
+        currency: "EUR",
+        grandTotal: amount,
+        locale: order.locale,
+      };
+      // A bank order is exactly what it always was, byte for byte. A järelmaks order is hirePurchase: the same amount and currency, no
+      // methodOptions (Montonio's guide has none for it; the bank's paymentDescription is the bank's), expiresIn beside grandTotal, and the
+      // student's details when we have them.
+      const claims =
+        order.method === "hirePurchase"
+          ? {
+              ...common,
+              expiresIn: FINANCING_EXPIRES_IN_MIN,
+              ...(order.billing ? { billingAddress: billingClaim(order.billing) } : {}),
+              payment: { method: "hirePurchase", amount, currency: "EUR" },
+            }
+          : { ...common, payment: { method: "paymentInitiation", amount, currency: "EUR", methodOptions: { paymentDescription: `MS LAB ${order.reference}` } } };
+      const data = signHs256(claims, config.secretKey, { expiresInSeconds: POST_TOKEN_SEC, nowSec: nowSec() });
       const res = await call("create", `${config.baseUrl}/orders`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },

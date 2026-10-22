@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { billingAddressOf } from "@/domain/financing";
 import { signHs256 } from "@/server/payments/jwt";
 import { montonioClient, type MontonioConfig } from "@/server/payments/montonio";
 import { refuseOffMachineFetch } from "../fakes";
@@ -105,7 +106,7 @@ test("a reference reused for an unpaid order replaces it, as at Montonio (the do
   expect(await client.fetchOrder(second.uuid)).toMatchObject({ reference: "MSLAB-M13", status: "pending", amountCents: 5000 });
 });
 
-test("it refuses what Montonio refuses (another store's key) and what spec 4 forbids (preferredProvider, paymentReference, another method)", async () => {
+test("it refuses what Montonio refuses (another store's key) and what spec 4 forbids (preferredProvider, paymentReference, a method the store does not use)", async () => {
   const base = await listen(createFakeMontonio());
   const post = (claims: Record<string, unknown>, secret: string = E2E_MONTONIO.secretKey) =>
     fetch(`${base}/orders`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ data: signHs256(claims, secret, { expiresInSeconds: 600 }) }) });
@@ -119,7 +120,144 @@ test("it refuses what Montonio refuses (another store's key) and what spec 4 for
   expect((await post({ ...good, payment: { ...good.payment, methodOptions: { paymentDescription: "x", preferredProvider: "HABAEE2X" } } })).status).toBe(400);
   expect((await post({ ...good, payment: { ...good.payment, methodOptions: { paymentDescription: "x", paymentReference: "123" } } })).status).toBe(400);
   expect((await post({ ...good, payment: { ...good.payment, method: "cardPayments" } })).status).toBe(400);
+  expect((await post({ ...good, payment: { ...good.payment, method: "bnpl" } })).status).toBe(400);
   expect((await post({ ...good, grandTotal: 10.001, payment: { ...good.payment, amount: 10.001 } })).status).toBe(400);
+  // järelmaks (Inbank) is a method the store uses: hirePurchase is accepted, with no methodOptions (Montonio's guide has none for it)
+  expect((await post({ ...good, merchantReference: "MSLAB-M16", payment: { method: "hirePurchase", amount: 10, currency: "EUR" } })).status).toBe(200);
+  // ... and the rules that hold for every method hold for it too
+  expect((await post({ ...good, merchantReference: "MSLAB-M17", payment: { method: "hirePurchase", amount: 9, currency: "EUR" } })).status).toBe(400);
+  expect((await post({ ...good, merchantReference: "MSLAB-M18", payment: { method: "hirePurchase", amount: 10, currency: "EUR", methodOptions: { preferredProvider: "HABAEE2X" } } })).status).toBe(400);
+  expect((await post({ ...good, merchantReference: "MSLAB-M19", paymentReference: "123", payment: { method: "hirePurchase", amount: 10, currency: "EUR" } })).status).toBe(400);
+  // the description is the bank order's; the bank order still needs it
+  expect((await post({ ...good, merchantReference: "MSLAB-M20", payment: { ...good.payment, methodOptions: {} } })).status).toBe(400);
+});
+
+/** A signed order request for the fake, as the app's client would send it (`hirePurchase` unless said otherwise), for the tests below. */
+const loanClaims = (extra: Record<string, unknown> = {}, reference = "MSLAB-M40") => ({
+  accessKey: E2E_MONTONIO.accessKey, merchantReference: reference, returnUrl: "https://mslab.example/r", notificationUrl: "https://mslab.example/n", currency: "EUR", grandTotal: 250, locale: "et",
+  payment: { method: "hirePurchase", amount: 250, currency: "EUR" },
+  ...extra,
+});
+const postOrder = (base: string, claims: Record<string, unknown>) =>
+  fetch(`${base}/orders`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ data: signHs256(claims, E2E_MONTONIO.secretKey, { expiresInSeconds: 600 }) }) });
+const fakeClient = (base: string) => montonioClient({ accessKey: E2E_MONTONIO.accessKey, secretKey: E2E_MONTONIO.secretKey, baseUrl: base, live: false, mock: true, referencePrefix: "MSLAB-L" });
+/** The value of the pay page's button with this label (the page is what the student sees; the label decides what the press does), or null. */
+const buttonValue = (page: string, label: string) => new RegExp(`<button name="status" value="(\\w+)"[^>]*>${label}</button>`).exec(page)?.[1] ?? null;
+
+test("a hirePurchase order: the fake reports the method, keeps its billingAddress and expiresIn for the tests, and its pay page is Inbank's, not the bank's", async () => {
+  const base = await listen(createFakeMontonio());
+  const { url: hook } = await webhookSink();
+  const client = fakeClient(base);
+  const billing = billingAddressOf({ name: "Mari Tamm", email: "mari@example.test", phone: "+372 5551 2345" });
+  const loan = await client.createOrder({ reference: "MSLAB-M41", amountCents: 25000, locale: "et", returnUrl: "https://mslab.example/api/payments/return", notificationUrl: `${hook}/api/payments/notify`, method: "hirePurchase", billing });
+  const bank = await client.createOrder({ reference: "MSLAB-M42", amountCents: 25000, locale: "et", returnUrl: "https://mslab.example/api/payments/return", notificationUrl: `${hook}/api/payments/notify` });
+
+  expect(await client.fetchOrder(loan.uuid)).toEqual({ uuid: loan.uuid, reference: "MSLAB-M41", status: "pending", rawStatus: "PENDING", amountCents: 25000, currency: "EUR", method: "hirePurchase" });
+  expect((await client.fetchOrder(bank.uuid))?.method).toBe("paymentInitiation");
+  const seen = (await (await fetch(`${base}/_fake/orders/MSLAB-M41`)).json()) as Record<string, unknown>;
+  expect(seen).toMatchObject({ reference: "MSLAB-M41", method: "hirePurchase", expiresIn: 60, billingAddress: { firstName: "Mari", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "EE" } });
+  const seenBank = (await (await fetch(`${base}/_fake/orders/MSLAB-M42`)).json()) as Record<string, unknown>;
+  expect(seenBank).toMatchObject({ method: "paymentInitiation" });
+  expect(seenBank).not.toHaveProperty("billingAddress");
+  expect(seenBank).not.toHaveProperty("expiresIn");
+
+  const loanPage = await (await fetch(loan.paymentUrl)).text();
+  expect(loanPage).toContain("Inbank (test)");
+  expect(loanPage).toContain("MSLAB-M41 · 250.00 EUR");
+  expect([buttonValue(loanPage, "Kinnita laen"), buttonValue(loanPage, "Inbank keeldus")]).toEqual(["PAID", "PENDING"]);
+  for (const bankLabel of ["Makstud", "Pooleli", "Katkesta"]) expect(buttonValue(loanPage, bankLabel), bankLabel).toBeNull();
+  const bankPage = await (await fetch(bank.paymentUrl)).text();
+  expect(bankPage).not.toContain("Inbank");
+  expect([buttonValue(bankPage, "Makstud"), buttonValue(bankPage, "Pooleli"), buttonValue(bankPage, "Katkesta")]).toEqual(["PAID", "PENDING", "ABANDONED"]);
+});
+
+test("'Kinnita laen' signs the loan: PAID, the webhook and the return carry the same token, whose method is hirePurchase", async () => {
+  const base = await listen(createFakeMontonio());
+  const { hooks, url: hook } = await webhookSink();
+  const client = fakeClient(base);
+  const order = await client.createOrder({ reference: "MSLAB-M43", amountCents: 25000, locale: "et", returnUrl: "https://mslab.example/api/payments/return", notificationUrl: `${hook}/api/payments/notify`, method: "hirePurchase" });
+  const page = await (await fetch(order.paymentUrl)).text();
+  const pressed = await fetch(order.paymentUrl, { method: "POST", body: new URLSearchParams({ status: buttonValue(page, "Kinnita laen")! }), redirect: "manual" });
+  expect(pressed.status).toBe(303);
+  const fromReturn = client.verifyOrderToken(new URL(pressed.headers.get("location")!).searchParams.get("order-token")!);
+  expect(fromReturn).toMatchObject({ uuid: order.uuid, reference: "MSLAB-M43", status: "paid", rawStatus: "PAID", amountCents: 25000, method: "hirePurchase", expired: false });
+  expect(hooks).toHaveLength(1);
+  expect(client.verifyOrderToken((JSON.parse(hooks[0]) as { orderToken: string }).orderToken)).toEqual(fromReturn);
+  expect(await client.fetchOrder(order.uuid)).toMatchObject({ status: "paid", method: "hirePurchase" });
+  // the token the test hook mints says the same
+  const minted = (await (await fetch(`${base}/_fake/token/${order.uuid}?status=PAID`)).json()) as { orderToken: string };
+  expect(client.verifyOrderToken(minted.orderToken)).toMatchObject({ method: "hirePurchase", status: "paid" });
+});
+
+test("'Inbank keeldus' leaves the order PENDING and sends no webhook, as Montonio does: the browser comes back with a PENDING token, and the loan can still be signed later", async () => {
+  const base = await listen(createFakeMontonio());
+  const { hooks, url: hook } = await webhookSink();
+  const client = fakeClient(base);
+  const order = await client.createOrder({ reference: "MSLAB-M44", amountCents: 25000, locale: "et", returnUrl: "https://mslab.example/api/payments/return", notificationUrl: `${hook}/api/payments/notify`, method: "hirePurchase" });
+  const page = await (await fetch(order.paymentUrl)).text();
+  const declined = await fetch(order.paymentUrl, { method: "POST", body: new URLSearchParams({ status: buttonValue(page, "Inbank keeldus")! }), redirect: "manual" });
+  expect(declined.status).toBe(303);
+  const back = new URL(declined.headers.get("location")!);
+  expect(`${back.origin}${back.pathname}`).toBe("https://mslab.example/api/payments/return");
+  expect(client.verifyOrderToken(back.searchParams.get("order-token")!)).toMatchObject({ uuid: order.uuid, status: "pending", rawStatus: "PENDING", method: "hirePurchase", amountCents: 25000 });
+  expect(hooks).toHaveLength(0);
+  expect(await client.fetchOrder(order.uuid)).toMatchObject({ status: "pending", rawStatus: "PENDING", method: "hirePurchase" });
+  // Montonio keeps it PENDING for days: Inbank approving the old application later is a webhook of its own (the test hook)
+  expect((await fetch(`${base}/_fake/settle/${order.uuid}`, { method: "POST", body: JSON.stringify({ status: "PAID" }) })).status).toBe(200);
+  expect(hooks).toHaveLength(1);
+  expect(client.verifyOrderToken((JSON.parse(hooks[0]) as { orderToken: string }).orderToken)).toMatchObject({ status: "paid", method: "hirePurchase" });
+});
+
+test("expiresIn is minutes, 5 to 44640 (Montonio's orders guide); billingAddress needs a first name, a last name and an e-mail, and a phone country only with a phone number", async () => {
+  const base = await listen(createFakeMontonio());
+  const billing = { firstName: "Mari", lastName: "Tamm", email: "mari@example.test" };
+  const ok: Record<string, Record<string, unknown>> = {
+    "no expiresIn, no billing": loanClaims(),
+    "expiresIn 60": loanClaims({ expiresIn: 60 }),
+    "expiresIn 5": loanClaims({ expiresIn: 5 }),
+    "expiresIn 44640": loanClaims({ expiresIn: 44_640 }),
+    "billing without a phone": loanClaims({ billingAddress: billing }),
+    "billing with a phone and its country": loanClaims({ billingAddress: { ...billing, phoneNumber: "55512345", phoneCountry: "EE" } }),
+    "billing with a phone and no country": loanClaims({ billingAddress: { ...billing, phoneNumber: "55512345" } }),
+    "a bank order may carry them too": loanClaims({ expiresIn: 30, billingAddress: billing, payment: { method: "paymentInitiation", amount: 250, currency: "EUR", methodOptions: { paymentDescription: "MS LAB MSLAB-M40" } } }),
+  };
+  for (const [what, claims] of Object.entries(ok)) expect((await postOrder(base, claims)).status, what).toBe(200);
+  const bad: Record<string, Record<string, unknown>> = {
+    "expiresIn 4": loanClaims({ expiresIn: 4 }),
+    "expiresIn 0": loanClaims({ expiresIn: 0 }),
+    "expiresIn 44641": loanClaims({ expiresIn: 44_641 }),
+    "expiresIn as text": loanClaims({ expiresIn: "60" }),
+    "expiresIn null": loanClaims({ expiresIn: null }),
+    "billing is not an object": loanClaims({ billingAddress: "Mari Tamm" }),
+    "billing is null": loanClaims({ billingAddress: null }),
+    "billing without a first name": loanClaims({ billingAddress: { lastName: "Tamm", email: "mari@example.test" } }),
+    "billing without a last name": loanClaims({ billingAddress: { firstName: "Mari", email: "mari@example.test" } }),
+    "billing without an e-mail": loanClaims({ billingAddress: { firstName: "Mari", lastName: "Tamm" } }),
+    "an empty first name": loanClaims({ billingAddress: { ...billing, firstName: "" } }),
+    "a phone country without a phone number": loanClaims({ billingAddress: { ...billing, phoneCountry: "EE" } }),
+    "a phone number that is a number": loanClaims({ billingAddress: { ...billing, phoneNumber: 55512345 } }),
+  };
+  for (const [what, claims] of Object.entries(bad)) expect((await postOrder(base, claims)).status, what).toBe(400);
+});
+
+test("a student whose name or phone doesn't fit Inbank: the fake still takes the order, and keeps only an Estonian phone", async () => {
+  const base = await listen(createFakeMontonio());
+  const client = fakeClient(base);
+  const students = [
+    { name: "Madonna", email: "madonna@example.test", phone: "5551 2345" },
+    { name: "Anna Ivanova", email: "anna@example.test", phone: "+7 912 345 67 89" },
+    { name: "Mari Liis Tamm", email: "mari@example.test", phone: "(+372) 555-12345" },
+    { name: "", email: "nameless@example.test", phone: "" },
+  ];
+  for (const [i, s] of students.entries()) {
+    const reference = `MSLAB-M5${i}`;
+    await client.createOrder({ reference, amountCents: 25000, locale: "et", returnUrl: "https://mslab.example/r", notificationUrl: "https://mslab.example/n", method: "hirePurchase", billing: billingAddressOf(s) });
+  }
+  const stored = async (reference: string) => ((await (await fetch(`${base}/_fake/orders/${reference}`)).json()) as { billingAddress: unknown }).billingAddress;
+  expect(await stored("MSLAB-M50")).toEqual({ firstName: "Madonna", lastName: "Madonna", email: "madonna@example.test", phoneNumber: "55512345", phoneCountry: "EE" });
+  expect(await stored("MSLAB-M51")).toEqual({ firstName: "Anna", lastName: "Ivanova", email: "anna@example.test" });
+  expect(await stored("MSLAB-M52")).toEqual({ firstName: "Mari Liis", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "EE" });
+  expect(await stored("MSLAB-M53")).toEqual({ firstName: "nameless", lastName: "nameless", email: "nameless@example.test" });
 });
 
 test("and the rest of the order's rules: amounts that agree and are positive, EUR, a locale it knows, a description, and a token that is not old", async () => {

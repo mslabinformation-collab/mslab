@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { signHs256 } from "@/server/payments/jwt";
+import { billingAddressOf } from "@/domain/financing";
+import { signHs256, verifyHs256 } from "@/server/payments/jwt";
 import { LIVE_BASE, montonioClient, type MontonioConfig } from "@/server/payments/montonio";
 import { stubFetch } from "../fakes";
 
@@ -87,6 +88,22 @@ describe("Montonio's documented payloads", () => {
     stubFetch(() => Response.json(ORDER_CREATED));
     const order = { reference: "MY-ORDER-ID-123", amountCents: 9999, locale: "et" as const, returnUrl: "https://mystore.com/payment/return", notificationUrl: "https://mystore.com/payment/notify" };
     expect(await montonioClient(config).createOrder(order)).toEqual({ uuid: ORDER_CREATED.uuid, paymentUrl: ORDER_CREATED.paymentUrl });
+  });
+
+  test("the järelmaks order's request uses only keys the orders guide lists (read 22.10.2026): expiresIn in minutes 5–44640, a billingAddress of string keys, a payment of method, amount and currency", async () => {
+    const f = stubFetch(() => Response.json(ORDER_CREATED));
+    const billing = billingAddressOf({ name: "Mari Tamm", email: "mari@example.test", phone: "5551 2345" });
+    await montonioClient(config).createOrder({ reference: "MY-ORDER-ID-123", amountCents: 25000, locale: "et", returnUrl: "https://mystore.com/payment/return", notificationUrl: "https://mystore.com/payment/notify", method: "hirePurchase", billing });
+    const { claims } = verifyHs256((f.calls[0].body as { data: string }).data, config.secretKey);
+    const { payment, billingAddress, expiresIn } = claims as { payment: Record<string, unknown>; billingAddress: Record<string, unknown>; expiresIn: number };
+    // "expiresIn: The number of minutes that the order can be paid for ... minimum 5 minutes, and maximum 44640 minutes"
+    expect(Number.isInteger(expiresIn) && expiresIn >= 5 && expiresIn <= 44_640).toBe(true);
+    // the billingAddress keys of the guide: firstName, lastName, email, phoneNumber, phoneCountry, addressLine1, addressLine2, locality, region, postalCode, country
+    const documented = ["firstName", "lastName", "email", "phoneNumber", "phoneCountry", "addressLine1", "addressLine2", "locality", "region", "postalCode", "country"];
+    expect(Object.keys(billingAddress).every((k) => documented.includes(k) && typeof billingAddress[k] === "string")).toBe(true);
+    // the payment's: method (hirePurchase is in the guide's method table), amount and currency required; methodOptions has none for hirePurchase
+    expect(Object.keys(payment).sort()).toEqual(["amount", "currency", "method"]);
+    expect(payment.method).toBe("hirePurchase");
   });
 
   test("GET /orders/:uuid: PARTIALLY_REFUNDED is refunded, '100.00' is 10000 cents, the method is its paymentMethodType", async () => {

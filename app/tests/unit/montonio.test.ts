@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { billingAddressOf } from "@/domain/financing";
 import { signHs256, verifyHs256 } from "@/server/payments/jwt";
 import {
   currentRuntime, LIVE_BASE, MontonioError, montonioClient, montonioConfig, montonioErrorText, paymentProvider, paymentsConfigured, REQUEST_TIMEOUT_MS, SANDBOX_BASE, mapMontonioStatus, toCents, toEuros, type MontonioConfig,
@@ -253,6 +254,89 @@ describe("createOrder", () => {
       exp: expect.any(Number),
     });
     expect((claims.exp as number) - (claims.iat as number)).toBe(600);
+  });
+
+  test("a bank order is byte-identical to the one sent before järelmaks existed: the same token, whether or not a method or billing details are passed", async () => {
+    const f = stubFetch(() => Response.json({ uuid: "u", paymentUrl: "https://x.example/1" }));
+    const clock = () => 1_791_500_000_999;
+    const client = montonioClient(CONFIG, undefined, clock);
+    await client.createOrder(ORDER);
+    await client.createOrder({ ...ORDER, method: "paymentInitiation" });
+    await client.createOrder({ ...ORDER, method: "paymentInitiation", billing: billingAddressOf({ name: "Mari Tamm", email: "mari@example.test", phone: "5551 2345" }) });
+    const before = signHs256(
+      {
+        accessKey: "test-access-key",
+        merchantReference: "MSLAB-M7",
+        returnUrl: ORDER.returnUrl,
+        notificationUrl: ORDER.notificationUrl,
+        currency: "EUR",
+        grandTotal: 175.5,
+        locale: "ru",
+        payment: { method: "paymentInitiation", amount: 175.5, currency: "EUR", methodOptions: { paymentDescription: "MS LAB MSLAB-M7" } },
+      },
+      CONFIG.secretKey,
+      { expiresInSeconds: 600, nowSec: 1_791_500_000 },
+    );
+    expect(f.calls.map((c) => (c.body as { data: string }).data)).toEqual([before, before, before]);
+  });
+
+  test("a hirePurchase order (järelmaks, Inbank): payment.method hirePurchase, expiresIn 60 minutes at the top, the student's billingAddress, no methodOptions; the token still lives 10 minutes", async () => {
+    const f = stubFetch(() => Response.json({ uuid: "uuid-2", paymentStatus: "PENDING", merchantReference: "MSLAB-M7", paymentUrl: "https://sandbox-stargate.montonio.com/uuid-2" }));
+    const billing = billingAddressOf({ name: "Mari-Liis Tamm", email: "mari@example.test", phone: "+372 5551 2345" });
+    expect(await montonioClient(CONFIG).createOrder({ ...ORDER, method: "hirePurchase", billing })).toEqual({ uuid: "uuid-2", paymentUrl: "https://sandbox-stargate.montonio.com/uuid-2" });
+    const { claims } = verifyHs256((f.calls[0].body as { data: string }).data, CONFIG.secretKey);
+    expect(claims).toEqual({
+      accessKey: "test-access-key",
+      merchantReference: "MSLAB-M7",
+      returnUrl: ORDER.returnUrl,
+      notificationUrl: ORDER.notificationUrl,
+      currency: "EUR",
+      grandTotal: 175.5,
+      locale: "ru",
+      // Montonio's orders guide (docs.montonio.com, checked 22.10.2026): expiresIn is in minutes, beside grandTotal; hirePurchase has no methodOptions
+      expiresIn: 60,
+      billingAddress: { firstName: "Mari-Liis", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "EE" },
+      payment: { method: "hirePurchase", amount: 175.5, currency: "EUR" },
+      iat: expect.any(Number),
+      exp: expect.any(Number),
+    });
+    // expiresIn is how long the order can be paid; the JWT's own exp is still the 10 minutes of a POST
+    expect((claims.exp as number) - (claims.iat as number)).toBe(600);
+  });
+
+  test("a hirePurchase order without billing details sends none (and still expiresIn 60); a bank order never sends them", async () => {
+    const f = stubFetch(() => Response.json({ uuid: "u", paymentUrl: "https://x.example/1" }));
+    const client = montonioClient(CONFIG);
+    await client.createOrder({ ...ORDER, method: "hirePurchase" });
+    await client.createOrder({ ...ORDER, billing: billingAddressOf({ name: "Mari Tamm", email: "mari@example.test" }) });
+    const [loan, bank] = f.calls.map((c) => verifyHs256((c.body as { data: string }).data, CONFIG.secretKey).claims);
+    expect(loan).toMatchObject({ expiresIn: 60, payment: { method: "hirePurchase" } });
+    expect(loan).not.toHaveProperty("billingAddress");
+    expect(bank).not.toHaveProperty("billingAddress");
+    expect(bank).not.toHaveProperty("expiresIn");
+  });
+
+  test("names and phones that don't fit Inbank still make a valid billingAddress, and only an Estonian phone is sent", async () => {
+    const f = stubFetch(() => Response.json({ uuid: "u", paymentUrl: "https://x.example/1" }));
+    const client = montonioClient(CONFIG);
+    const students = [
+      { name: "Madonna", email: "madonna@example.test", phone: "5551 2345" }, // one word: in both
+      { name: "  Mari   Liis  Tamm ", email: "mari@example.test", phone: "(+372) 555-12345" }, // spaces, brackets, a dash
+      { name: "Anna Ivanova", email: "anna@example.test", phone: "+7 912 345 67 89" }, // a Russian number
+      { name: "Jukka Virtanen", email: "jukka@example.test", phone: "+358 40 1234567" }, // a Finnish one
+      { name: "Kati Kask", email: "kati@example.test", phone: "" }, // none
+      { name: "", email: "nameless@example.test", phone: "12" }, // no name at all, no phone of any shape
+    ];
+    for (const s of students) await client.createOrder({ ...ORDER, method: "hirePurchase", billing: billingAddressOf(s) });
+    const sent = f.calls.map((c) => verifyHs256((c.body as { data: string }).data, CONFIG.secretKey).claims.billingAddress);
+    expect(sent).toEqual([
+      { firstName: "Madonna", lastName: "Madonna", email: "madonna@example.test", phoneNumber: "55512345", phoneCountry: "EE" },
+      { firstName: "Mari Liis", lastName: "Tamm", email: "mari@example.test", phoneNumber: "55512345", phoneCountry: "EE" },
+      { firstName: "Anna", lastName: "Ivanova", email: "anna@example.test" },
+      { firstName: "Jukka", lastName: "Virtanen", email: "jukka@example.test" },
+      { firstName: "Kati", lastName: "Kask", email: "kati@example.test" },
+      { firstName: "nameless", lastName: "nameless", email: "nameless@example.test" },
+    ]);
   });
 
   test("the request is signed at the client's clock, not the machine's", async () => {
