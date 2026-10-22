@@ -219,7 +219,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "avalik-kursus-jarelmaks-rida",
@@ -252,7 +252,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "avalik-galerii",
@@ -1628,7 +1628,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "haldus-laadimine-viga",
@@ -1967,7 +1967,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "registreerimine-grupp",
@@ -2798,7 +2798,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "registreerimine-jarelmaks-keeldus",
@@ -2831,7 +2831,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "registreerimine-jarelmaks-nupud",
@@ -2863,7 +2863,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "registreerimine-jarelmaks-vahepeal-valja",
@@ -2894,7 +2894,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "registreerimine-jarelmaks-hiline",
@@ -2926,7 +2926,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "haldus-maksed-jarelmaks",
@@ -2955,7 +2955,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "konto-kood",
@@ -3492,7 +3492,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "ekursus-ost-uuesti",
@@ -3547,7 +3547,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T14:38:10.188Z"
     },
     {
       "id": "ekursus-tingimused",
