@@ -3,7 +3,7 @@ import { sendTelegram, type Env } from "./notify";
 import { rateKey, rateLimit, type TextKv } from "./ratelimit";
 import { keyMatches } from "./review-key";
 
-// Design-review comments (public/feedback.js on the hub, the prototypes and, until launch, the main site's pages).
+// Design-review comments (public/feedback.js on the hub, the prototypes and, until launch, the main site's pages and the admin's pages: Dim 22.10).
 // A port of the old review site's Worker (mslab-guide, retired 03.10.2026) with the same contract, KV keys and record fields, so the
 // comments stored before the move and the list page /guide/tagasiside/ keep working:
 //
@@ -44,6 +44,7 @@ export const DIRS = {
   moodboard: "Visuaalsed uuringud",
   hub: "Juhend (avaleht)",
   site: "Põhileht",
+  admin: "Haldus",
 } as const;
 const DEVICES = { desk: "arvuti", tab: "tahvel", mob: "telefon" } as const;
 
@@ -56,7 +57,7 @@ export type Comment = {
   at: string;
   name?: string;
   dir: Dir;
-  /** Prototypes: the hash route ("#/koolitused"); main site: the page path ("/koolitused"). */
+  /** Prototypes: the hash route ("#/koolitused"); main site and admin: the page path ("/koolitused", "/admin/koolitused"). */
   route?: string;
   title?: string;
   device?: Device;
@@ -77,16 +78,20 @@ const has = <T extends object>(map: T, key: unknown): key is keyof T => typeof k
 /** A main-site page path: "/" or "/x…", never "//host" (a link under our origin must stay on it), no query or hash. */
 export const isSitePath = (v: unknown): v is string => typeof v === "string" && /^\/(?:[^/\\\s?#][^\\\s?#]*)?$/.test(v);
 
+/** An admin page path: "/admin" or "/admin/…", a same-site path (isSitePath) and nothing else ("/administrator" is not one). */
+export const isAdminPath = (v: unknown): v is string => isSitePath(v) && /^\/admin(?:\/|$)/.test(v);
+
 /** 14 characters of [0-9a-z] (the old review Worker's format). */
 export function newId(): string {
   const b = crypto.getRandomValues(new Uint8Array(9));
   return Array.from(b, (x) => x.toString(36).padStart(2, "0")).join("").slice(0, 14);
 }
 
-/** Where "Näita kohta" lands: the page itself (main site), or the hub viewer at the direction, device and page. */
+/** Where "Näita kohta" lands: the page itself (main site, admin), or the hub viewer at the direction, device and page. */
 export function placeLink(origin: string, rec: Pick<Comment, "id" | "dir" | "device" | "route">): string {
   if (rec.dir === "hub") return `${origin}/guide/?fb=${rec.id}`;
   if (rec.dir === "site") return `${origin}${isSitePath(rec.route) ? rec.route : "/"}?fb=${rec.id}`;
+  if (rec.dir === "admin") return `${origin}${isAdminPath(rec.route) ? rec.route : "/admin"}?fb=${rec.id}`;
   const hp = new URLSearchParams({ vaade: rec.dir, seade: rec.device || "desk" });
   if (rec.route) hp.set("leht", rec.route);
   return `${origin}/guide/?fb=${rec.id}#${hp}`;
@@ -104,7 +109,7 @@ export function parseComment(b: Record<string, unknown>, id: string, at: Date): 
     at: at.toISOString(),
     name: str(b.name, 60),
     dir,
-    route: dir === "site" && !isSitePath(route) ? undefined : route,
+    route: (dir === "site" && !isSitePath(route)) || (dir === "admin" && !isAdminPath(route)) ? undefined : route,
     title: str(b.title, 120),
     device: has(DEVICES, b.device) ? b.device : undefined,
     width: num(b.width),

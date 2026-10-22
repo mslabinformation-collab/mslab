@@ -25,7 +25,7 @@ const nextConfig: NextConfig = {
     staleTimes: { dynamic: 0, static: 30 },
   },
   env: {
-    // Review tools: Maria's comment widget (public/feedback.js) on every public page, posting to /api/feedback.
+    // Review tools: Maria's comment widget (public/feedback.js) on every public page and (Dim 22.10) every admin page, posting to /api/feedback.
     // On ("1") for the review builds; switched off ("0") at the mslab.ee launch. Inlined at build time, not a secret.
     NEXT_PUBLIC_REVIEW_TOOLS: "1",
     // The test page (phase 4, piece 1, spec §6): the instant a "markedAt": "deploy" of src/data/testplan.json reads as when

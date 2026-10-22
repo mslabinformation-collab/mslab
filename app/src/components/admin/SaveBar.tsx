@@ -7,7 +7,7 @@ import styles from "./site-editor.module.css";
 export function SaveBar({ status, pending, reloadHref }: { status: SaveStatus; pending: boolean; reloadHref: string }) {
   const t = adminEt.editor;
   return (
-    <div className={styles.saveBar} data-save-bar="">
+    <div className={styles.saveBar} data-save-bar="" data-fab-avoid="">
       <p role="status" className={status.tone === "error" ? ui.error : status.tone === "success" ? ui.success : ui.hint} data-save-status="">
         {status.text}
         {status.stale && (

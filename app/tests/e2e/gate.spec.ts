@@ -4,6 +4,7 @@ import { PREVIEW_COOKIE, signPreview } from "../../src/lib/preview-cookie";
 import { ADMIN, adminReady } from "./admin-login";
 import { onLocalDb, removeAdminRows, sha256Hex, storedSubscriber, testEmail } from "./fixtures";
 import { GATE_PREVIEW_SECRET, GATE_URL, gateRun } from "./gate";
+import { deleteLocalComments, E2E_COMMENT } from "./local-kv";
 import { expect, submitsForms, test } from "./test";
 
 // The coming-soon gate (hotfix 08.10) on a production build started with SITE_GATE=1: `npx playwright test -c
@@ -344,6 +345,45 @@ test.describe("an admin", () => {
       await page.goto("/");
       await expectComingSoon(page);
     } finally {
+      await removeAdminRows(created);
+    }
+  });
+
+  // Dim 22.10: the comment bubble is on every admin page, and /api/feedback is behind the gate: the admin's fetch carries the preview cookie (set at
+  // sign-in), so the comment is taken; the same call without the cookie is the gate's 404.
+  test("the comment bubble on an admin page posts through the gate with the preview cookie, and not without it", async ({ page, context }, info) => {
+    test.skip(info.project.name !== "w1440", "one desktop run is enough");
+    submitsForms();
+    const raw = randomBytes(32).toString("base64url");
+    const created = { tokens: new Set([raw]), sessions: new Set<string>() };
+    const ids: string[] = [];
+    try {
+      await onLocalDb((sql) => sql`insert into auth_tokens (hash, email, expires_at) values (${sha256Hex(raw)}, ${ADMIN}, ${new Date(Date.now() + 15 * 60_000)})`, { marksPages: false });
+      await page.goto(`/api/auth/verify?t=${raw}`);
+      await expect(page).toHaveURL(/\/admin$/);
+      const cookies = await context.cookies();
+      created.sessions.add(cookies.find((c) => c.name === "__Host-mslab_admin")!.value);
+      expect(cookies.find((c) => c.name === PREVIEW_COOKIE)).toBeDefined();
+      await adminReady(page);
+
+      await page.getByRole("button", { name: "Jäta kommentaar" }).click();
+      const panel = page.getByRole("dialog", { name: "Jäta kommentaar" });
+      await panel.getByLabel("Kommentaar").fill(`${E2E_COMMENT} gate Halduse leht`);
+      const sent = page.waitForResponse((r) => r.url().endsWith("/api/feedback") && r.request().method() === "POST");
+      await panel.getByRole("button", { name: "Saada" }).click();
+      const res = await sent;
+      expect(res.status()).toBe(200);
+      const body = (await res.json()) as { ok: boolean; id?: string; stored?: boolean };
+      if (body.id) ids.push(body.id);
+      expect(body).toMatchObject({ ok: true, stored: true });
+      await expect(page.getByText("Aitäh! Kommentaar on saadetud ✓")).toBeVisible();
+
+      // without the pass (an admin signed in before the gate, a visitor): the 404 JSON
+      await context.clearCookies({ name: PREVIEW_COOKIE });
+      const refused = await page.request.post("/api/feedback", { data: { text: `${E2E_COMMENT} gate ilma loata` } });
+      expect(refused.status()).toBe(404);
+    } finally {
+      if (ids.length) await deleteLocalComments(ids);
       await removeAdminRows(created);
     }
   });

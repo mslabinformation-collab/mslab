@@ -175,6 +175,8 @@ Each is amended in the commit that changes its rule:
 - **protocols:** „Lukusta ja saada kõik" becomes „Saada kõigile ({n})", and „Taasta minu tekst" writes the local copy back (B13). This replaces "newer text is never overwritten".
 - **e-course completion:** „Saada hinnang" is the informed button, with no panel, plus „Kinnita kõik".
 - **test page:** „Testimine" is in the menu (Q5). Its filters are „Olek" (Kõik / Avatud / Viga / Läbitud) and „Kes" (Mina / Kõik). A check is „Läbitud" / „Viga".
+  - **Dim 22.10: the redesign's Viga-only note (C7) is overridden.** The note box opens under every answer as soon as one is chosen (as on Rempire's test page), asking „Mis läks valesti?" under „Viga" and „Märkus" under the others, and the first note on any answer pings Telegram (`2026-10-16-test-page-design.md` D6). Build the redesigned rows with the box open under every answer.
+  - **Dim 22.10: the comment bubble („Kommentaar", `public/feedback.js`) shows on every admin page**, the login page included, while `NEXT_PUBLIC_REVIEW_TOOLS` is on (`next.config.ts`; switched off at the launch with the site's). Its comments say „Haldus" on the list at `/guide/tagasiside/`. The admin's bars fixed at the bottom of the screen (the UndoBar, the PublishBar on a phone, the editors' save bars) carry `data-fab-avoid`, so the bubble lifts above them; a new bottom bar gets the mark too (`tests/unit/admin-fab-avoid.test.ts` lists them).
 - **newsletter-simple:** „Kampaaniad" becomes „Kirjad", and the send's ConfirmPanel changes.
 - **reviews:** undo and focus (C6 screen).
 - **the sign-in:** the new sent text and rate-limit message (C8, S4).

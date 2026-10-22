@@ -1,5 +1,5 @@
 /**
- * MS LAB review comments. Loaded by the hub, every prototype page and (until launch) the main site's public pages.
+ * MS LAB review comments. Loaded by the hub, every prototype page and (until launch) the main site's public pages and the admin's pages.
  * Floating button → panel (mood, mark a place on the page, text) → POST /api/feedback.
  * Opening a page with ?fb=<id> outlines the place a comment was left on.
  * Self-contained; never allowed to break the host page.
@@ -9,8 +9,9 @@
   if (window.__mslabFeedback) return;
   window.__mslabFeedback = true;
 
-  // Prototype /p/<dir>/ → its letter; the hub /guide → "hub"; any other page is the main site → "site".
-  var DIR = (location.pathname.match(/^\/p\/([a-z0-9]+)\//) || [])[1] || (/^\/guide(\/|$)/.test(location.pathname) ? "hub" : "site");
+  // Prototype /p/<dir>/ → its letter; the hub /guide → "hub"; a page whose <html> says data-fb-dir="admin" (the admin's root layout, the login
+  // page included) → "admin"; any other page is the main site → "site".
+  var DIR = (location.pathname.match(/^\/p\/([a-z0-9]+)\//) || [])[1] || (/^\/guide(\/|$)/.test(location.pathname) ? "hub" : document.documentElement.getAttribute("data-fb-dir") === "admin" ? "admin" : "site");
   var ROSE = "#9E8993";
   var CSS = [
     "#mslab-fb,#mslab-fb *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;letter-spacing:normal;text-transform:none}",
@@ -188,8 +189,8 @@
         sending = true; send.disabled = true; send.textContent = "Saadan…"; err.hidden = true;
         store("name", name.value.trim());
         var payload = {
-          // prototypes route by hash (#/koolitused); a main-site page is its path (the comment link opens it with ?fb=)
-          dir: DIR, route: (DIR === "site" ? location.pathname : location.hash) || undefined, title: titleFor(), device: device(), width: window.innerWidth,
+          // prototypes route by hash (#/koolitused); a main-site or admin page is its path (the comment link opens it with ?fb=)
+          dir: DIR, route: (DIR === "site" || DIR === "admin" ? location.pathname : location.hash) || undefined, title: titleFor(), device: device(), width: window.innerWidth,
           name: name.value.trim() || undefined, mood: mood || undefined, text: text, website: hp.value || undefined,
           el: picked || undefined,
         };
