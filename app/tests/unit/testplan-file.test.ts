@@ -729,9 +729,13 @@ describe("the instalments checks (instalments, Task 8)", () => {
 
   test("the checks that switch the toggle off meanwhile are redo since the follow-up's deploy, in their area, run by whom they were", () => {
     for (const id of REDONE) {
-      expect(item(id), id).toMatchObject({ ...NEW[id], mark: "redo", markedAt: "deploy" });
+      expect(item(id), id).toMatchObject({ ...NEW[id], mark: "redo" });
+      // "deploy" until the stamp, then the deploy instant (section 15 item 3)
+      const markedAt = item(id).markedAt;
+      expect(markedSince(markedAt), id).toBe(true);
       // an answer given before the follow-up's deploy no longer stands: it was given for the old sentence
-      expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z"), id).toBe("2026-10-25T00:00:00.000Z");
+      const deployAt = "2026-10-25T00:00:00.000Z";
+      expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, deployAt), id).toBe(markedAt === "deploy" ? deployAt : markedAt);
     }
   });
 

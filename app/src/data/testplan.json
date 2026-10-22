@@ -2863,7 +2863,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T16:23:51.666Z"
     },
     {
       "id": "registreerimine-jarelmaks-vahepeal-valja",
@@ -2894,7 +2894,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-22T16:23:51.666Z"
     },
     {
       "id": "registreerimine-jarelmaks-hiline",
