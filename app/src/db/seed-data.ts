@@ -343,7 +343,7 @@ export const faqSeeds: { q: I18n; a: I18n }[] = [
   },
   {
     q: t("Kas saan maksta osade kaupa?", "Можно ли оплатить частями?"),
-    a: t("Kontaktkoolituse eest saad tasuda kohe 100% või 50% registreerimisel ja ülejäänud 50% koolituspäeval. Koht kinnitatakse pärast vähemalt 50% ettemaksu laekumist. E-koolituse eest tasud kohe pangalingiga; järelmaks lisandub hiljem.", "Очный курс можно оплатить сразу на 100% или 50% при регистрации и остальные 50% в день обучения. Место подтверждается после поступления предоплаты не менее 50%. Онлайн-курс оплачивается сразу через банковскую ссылку; рассрочка появится позже."),
+    a: t("Kontaktkoolituse eest saad tasuda kohe 100% või 50% registreerimisel ja ülejäänud 50% koolituspäeval. Koht kinnitatakse pärast vähemalt 50% ettemaksu laekumist. E-koolituse eest tasud kohe pangalingiga.", "Очный курс можно оплатить сразу на 100% или 50% при регистрации и остальные 50% в день обучения. Место подтверждается после поступления предоплаты не менее 50%. Онлайн-курс оплачивается сразу через банковскую ссылку."),
   },
   {
     q: t("Millal saan tunnistuse?", "Когда я получу сертификат?"),

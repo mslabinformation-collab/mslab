@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
 import { hasPickableSession, initialSession } from "@/domain/catalogue";
 import { filledContract } from "@/domain/contract";
+import type { PaymentChoice } from "@/domain/registration";
 import type { SeatState } from "@/domain/sessions";
 import type { Locale } from "@/i18n/locales";
 import { navigate } from "@/lib/navigate";
@@ -48,8 +49,12 @@ export type ContactRegisterTexts = {
   paymentLabel: string;
   payFull: string;
   payHalf: string;
-  payInstalment: string;
-  payInstalmentNote: string;
+  /** „Järelmaks (Inbank)“: the third choice, while it is offered (instalments D2, D4). */
+  payFinancing: string;
+  /** „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“: said when the server refused a järelmaks after all (§4). */
+  financingRange: string;
+  /** „Võimalik tasuda ka järelmaksuga (Inbank).“: the quiet line next to the prices while the choice is offered (D4). */
+  financingLine: string;
   modelHelp: string;
   createAccount: string;
   newsletterConsent: string;
@@ -85,8 +90,13 @@ type Errors = Partial<Record<Field, string>>;
 /**
  * `rejected`: the date the server turned down (filled up or cancelled meanwhile); its error stays while it is picked.
  * `paymentUrl` (sent, group): the prepayment's page at Montonio, where the browser goes once this state is on the page (see the effect below).
+ * `financingRefused` (sent, group): the registration is stored, but its Järelmaks (Inbank) was not allowed any more (the toggle was switched off, or the
+ * price left 100–5000 €, since the page was loaded); there is no payment page, and the answer says what Järelmaks needs.
  */
-type State = { status: "idle" } | { status: "sent"; kind: Kind; paymentUrl?: string } | { status: "error"; kind: Kind; errors: Errors; rejected?: number };
+type State =
+  | { status: "idle" }
+  | { status: "sent"; kind: Kind; paymentUrl?: string; financingRefused?: boolean }
+  | { status: "error"; kind: Kind; errors: Errors; rejected?: number };
 
 /** Where focus goes after a failed submit: the first of these with an error, in page order. */
 const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "message", "payment", "terms"];
@@ -95,7 +105,10 @@ const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "me
  * Contact course registration (Maria's overview, P10–P16). Only the participation kinds that have a price are offered,
  * each with its own price (P12, P13).
  * - Group: pick one of the upcoming sessions (full and cancelled ones are shown but cannot be picked), then the form with
- *   payment 100% now or 50% + 50% (P14). The form never confirms a place: it is confirmed after at least 50% prepayment
+ *   payment 100% now, 50% + 50% (P14) or, while `financing` says it is offered (the course page: the toggle on, Montonio payments on, the group price
+ *   within 100–5000 €; instalments D4), „Järelmaks (Inbank)“ — a third choice, and the quiet line „Võimalik tasuda ka järelmaksuga (Inbank).“ next to the
+ *   prices; never a disabled placeholder. A järelmaks the server refuses after all (the page is a few minutes old) keeps the registration: the answer
+ *   says so (`financing: "refused"`), the form gives way to the confirmation, and `financingRange` is said first. The form never confirms a place: it is confirmed after at least 50% prepayment
  *   (P15), said under the button. With online payments the browser goes on to the prepayment's page (phase 2b). With no
  *   session to pick, the form is replaced by "new dates soon" and, when the course has an individual price, a way to ask
  *   for the individual course instead.
@@ -116,6 +129,7 @@ const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "me
 export function ContactRegister({
   course,
   locale,
+  financing,
   kinds,
   sessions,
   contract,
@@ -123,6 +137,8 @@ export function ContactRegister({
 }: {
   course: string;
   locale: Locale;
+  /** Is Järelmaks (Inbank) offered for this course's group price (domain/financing.ts financingOffered, read by the course page)? */
+  financing: boolean;
   kinds: { kind: Kind; price: string }[];
   sessions: SessionOption[];
   /** The group registration's contract, unfilled (FormContract). */
@@ -139,7 +155,10 @@ export function ContactRegister({
   const kind: Kind = kindChosen ?? (linked !== null && offered.includes("group") ? "group" : (offered[0] ?? "group"));
   const session = sessionChosen === undefined ? linked : sessionChosen;
   const [values, setValues] = useState({ name: "", email: "", phone: "", period: "", message: "" });
-  const [payment, setPayment] = useState<"full" | "half">("full");
+  const [chosenPayment, setPayment] = useState<PaymentChoice>("full");
+  // (a choice that is no longer offered — the page was refreshed after the toggle went off — is the whole price at once)
+  const payment: PaymentChoice = chosenPayment === "financing" && !financing ? "full" : chosenPayment;
+  const choices: PaymentChoice[] = financing ? ["full", "half", "financing"] : ["full", "half"];
   const [checks, setChecks] = useState({ modelHelp: false, account: false, newsletter: false, terms: false });
   const [switched, setSwitched] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
@@ -156,7 +175,7 @@ export function ContactRegister({
         // phase 2b (spec 6.1): the prepayment's page at Montonio (the bank or the card is chosen there); the answer shows meanwhile. The
         // browser leaves from the effect below, not here: the action's answer carries the revalidated course page (the seats changed), which
         // Next streams after this result, and leaving at once cut it off mid-stream ("The destination stream closed early" in the server's log).
-        return { status: "sent", kind: k, paymentUrl: k === "group" && result.paymentUrl ? result.paymentUrl : undefined };
+        return { status: "sent", kind: k, paymentUrl: k === "group" && result.paymentUrl ? result.paymentUrl : undefined, financingRefused: k === "group" && result.financing === "refused" };
       }
       const errors: Errors = {};
       let rejected: number | undefined;
@@ -216,7 +235,14 @@ export function ContactRegister({
         <span className={styles.tick} aria-hidden="true">
           <Icon name="check" size={18} />
         </span>
-        <p>{state.kind === "group" ? t.registerSuccess : t.individualSent}</p>
+        {state.kind === "group" && state.financingRefused ? (
+          <div className={styles.sentText}>
+            <p data-financing-refused="">{t.financingRange}</p>
+            <p>{t.registerSuccess}</p>
+          </div>
+        ) : (
+          <p>{state.kind === "group" ? t.registerSuccess : t.individualSent}</p>
+        )}
       </div>
     );
   }
@@ -308,6 +334,12 @@ export function ContactRegister({
             </label>
           ))}
         </div>
+        {/* D4: next to the price, only while the choice is offered, and only for the course that has an online payment (not the individual request) */}
+        {financing && kind === "group" && (
+          <p className={styles.financingLine} data-financing-line="">
+            {t.financingLine}
+          </p>
+        )}
       </fieldset>
 
       {kind === "group" ? (
@@ -424,23 +456,14 @@ export function ContactRegister({
             <fieldset className={styles.options}>
               <legend className={styles.legend}>{t.paymentLabel}</legend>
               <div className={styles.pay}>
-                {(["full", "half"] as const).map((p) => (
+                {/* P14, instalments D2/D4: the third choice is Järelmaks (Inbank), there only while it is offered; the server accepts it for the whole price
+                    and refuses it again at the start if it is not allowed by then (§4). */}
+                {choices.map((p) => (
                   <label key={p} className={styles.option}>
                     <input id={p === "full" ? `${id}-payment` : undefined} type="radio" name="payment" value={p} checked={payment === p} onChange={() => setPayment(p)} />
-                    <span className={styles.optionName}>{p === "full" ? t.payFull : t.payHalf}</span>
+                    <span className={styles.optionName}>{p === "full" ? t.payFull : p === "half" ? t.payHalf : t.payFinancing}</span>
                   </label>
                 ))}
-                {/* P14: instalment is shown, disabled like the e-course's, until the partner arrives. A disabled radio is
-                    never sent, and the server accepts only "full" and "half". */}
-                <div className={`${styles.option} ${styles.optionDisabled}`} data-pay-instalment="">
-                  <input id={`${id}-instalment`} type="radio" name="payment" value="instalment" disabled checked={false} readOnly aria-describedby={`${id}-instalment-note`} />
-                  <label htmlFor={`${id}-instalment`} className={styles.optionName}>
-                    {t.payInstalment}
-                  </label>
-                  <small id={`${id}-instalment-note`} className={styles.optionNote}>
-                    {t.payInstalmentNote}
-                  </small>
-                </div>
               </div>
             </fieldset>
           )}

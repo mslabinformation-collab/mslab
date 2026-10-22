@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { EcoursePurchase, type EcoursePurchaseTexts } from "@/components/site/EcoursePurchase";
 
 // The e-course cart's purchase form (phase 2b, spec 6.4, D3): name, e-mail, the box (the e-course contract with „Loe lepingut“: contracts, D1;
@@ -15,10 +15,12 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const mocks = vi.hoisted(() => ({ buyEcourse: vi.fn<(fd: FormData) => Promise<unknown>>(), navigate: vi.fn<(url: string) => void>() }));
+const mocks = vi.hoisted(() => ({ buyEcourse: vi.fn<(fd: FormData) => Promise<unknown>>(), navigate: vi.fn<(url: string) => void>(), address: { search: "" } }));
 vi.mock("@/server/actions/public", () => ({ buyEcourse: mocks.buyEcourse }));
 vi.mock("@/lib/navigate", () => ({ navigate: mocks.navigate }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+// the cart is one cached page per course: its address (?makse=jarelmaks from the result page's „Proovi uuesti“) is read in the browser
+vi.mock("@/lib/url-query", () => ({ useUrlQuery: () => [new URLSearchParams(mocks.address.search), vi.fn()] }));
 
 const t: EcoursePurchaseTexts = {
   name: "Nimi",
@@ -27,6 +29,10 @@ const t: EcoursePurchaseTexts = {
   readContract: "Loe lepingut",
   contractChanged: "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.",
   newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
+  paymentLabel: "Tasumine",
+  payBank: "Pangalink",
+  payFinancing: "Järelmaks (Inbank)",
+  financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.",
   submit: "Maksa 190 €",
   starting: "Avan makse…",
   alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
@@ -36,7 +42,7 @@ const t: EcoursePurchaseTexts = {
   errorGeneric: "Midagi läks valesti. Proovi uuesti.",
 };
 const contract = { version: "2026-10-01T00:00:00.000Z", title: "E-koolituse tingimused", body: "Tere {nimi}, hind {hind}.", locale: "et" as const, course: "Kulmumeistri e-koolitus", priceCents: 19000 };
-const props = { course: "kulmumeistri-e-koolitus", locale: "et" as const, t, contract, fallback: createElement("p", { "data-fallback": "" }, "Makse lisandub peagi") };
+const props = { financing: false, course: "kulmumeistri-e-koolitus", locale: "et" as const, t, contract, fallback: createElement("p", { "data-fallback": "" }, "Makse lisandub peagi") };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -60,6 +66,7 @@ const type = async (selector: string, value: string) => {
 beforeEach(() => {
   mocks.buyEcourse.mockReset();
   mocks.navigate.mockReset();
+  mocks.address.search = "";
   vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
   container = document.createElement("div");
   document.body.append(container);
@@ -246,4 +253,92 @@ test("what she typed before the answer came is kept; a hint with no session (401
     await act(async () => root.unmount());
     root = createRoot(container);
   }
+});
+
+// ---------- Järelmaks (Inbank) in the cart (instalments D4, §4, Task 6) ----------
+// The choice „Pangalink“ (the default) / „Järelmaks (Inbank)“ shows only while the page says it is offered (the cart reads the toggle, the price and the
+// payments setting); the form then sends `method`, the way the start is made (paymentInitiation | hirePurchase). Otherwise the cart is as it was: no field.
+
+describe("Järelmaks (Inbank) in the cart", () => {
+  const offered = { ...props, financing: true };
+  const methods = () => [...container.querySelectorAll<HTMLInputElement>("input[name='method']")];
+  const fillAndSubmit = async () => {
+    await type("input[name='name']", "Kati Tamm");
+    await type("input[name='email']", "kati@example.test");
+    await act(async () => $<HTMLInputElement>("input[name='terms']")!.click());
+    await submit();
+  };
+
+  test("not offered: no choice and no field, as today — the server starts the bank link", async () => {
+    mocks.buyEcourse.mockResolvedValue({ ok: true, paymentUrl: "https://sandbox-stargate.montonio.com/pay-1" });
+    await act(async () => root.render(createElement(EcoursePurchase, props)));
+    expect(methods()).toHaveLength(0);
+    expect(container.textContent).not.toMatch(/Järelmaks|Pangalink/);
+    expect(renderToStaticMarkup(createElement(EcoursePurchase, props))).not.toContain('name="method"');
+    await fillAndSubmit();
+    expect(mocks.buyEcourse.mock.calls[0][0].get("method")).toBeNull();
+  });
+
+  test("offered: „Pangalink“ (the default) and „Järelmaks (Inbank)“, both enabled, in a group labelled „Tasumine“", async () => {
+    await act(async () => root.render(createElement(EcoursePurchase, offered)));
+    expect(methods().map((m) => [m.value, m.checked, m.disabled, m.closest("label")!.textContent])).toEqual([
+      ["paymentInitiation", true, false, "Pangalink"],
+      ["hirePurchase", false, false, "Järelmaks (Inbank)"],
+    ]);
+    expect(methods()[0].closest("fieldset")!.querySelector("legend")!.textContent).toBe("Tasumine");
+    // the server renders the choice for everyone, with the bank link chosen
+    expect(renderToStaticMarkup(createElement(EcoursePurchase, offered))).toMatch(/<input(?=[^>]*name="method")(?=[^>]*value="paymentInitiation")(?=[^>]*checked="")[^>]*>/); // (either order of the attributes)
+  });
+
+  test("the bank link is sent as paymentInitiation; „Järelmaks (Inbank)“ chosen is sent as hirePurchase, and the page goes where the start says", async () => {
+    mocks.buyEcourse.mockResolvedValue({ ok: true, paymentUrl: "https://sandbox-stargate.montonio.com/loan-1" });
+    await act(async () => root.render(createElement(EcoursePurchase, offered)));
+    await fillAndSubmit();
+    expect(mocks.buyEcourse.mock.calls[0][0].get("method")).toBe("paymentInitiation");
+    await act(async () => void window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }))); // (back from the bank)
+    await act(async () => methods()[1].click());
+    expect(methods().map((m) => m.checked)).toEqual([false, true]);
+    await submit();
+    expect(mocks.buyEcourse.mock.calls[1][0].get("method")).toBe("hirePurchase");
+    expect(mocks.navigate).toHaveBeenLastCalledWith("https://sandbox-stargate.montonio.com/loan-1");
+  });
+
+  test("the result page's „Proovi uuesti“ (?makse=jarelmaks) opens the cart with the järelmaks chosen; anything else, or the choice not offered, is the bank link", async () => {
+    mocks.address.search = "kursus=kulmumeistri-e-koolitus&makse=jarelmaks";
+    await act(async () => root.render(createElement(EcoursePurchase, offered)));
+    expect(methods().map((m) => m.checked)).toEqual([false, true]);
+    mocks.buyEcourse.mockResolvedValue({ ok: true, paymentUrl: "https://sandbox-stargate.montonio.com/loan-2" });
+    await fillAndSubmit();
+    expect(mocks.buyEcourse.mock.calls[0][0].get("method")).toBe("hirePurchase");
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    mocks.address.search = "kursus=kulmumeistri-e-koolitus&makse=pangalink";
+    await act(async () => root.render(createElement(EcoursePurchase, offered)));
+    expect(methods().map((m) => m.checked)).toEqual([true, false]);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    mocks.address.search = "makse=jarelmaks";
+    await act(async () => root.render(createElement(EcoursePurchase, props))); // not offered now: no choice, nothing to choose
+    expect(methods()).toHaveLength(0);
+  });
+
+  test("a järelmaks the server refuses (out of 100–5000 € now, or switched off): the range is said at the choice, the bank link is chosen, nothing is navigated to", async () => {
+    mocks.buyEcourse.mockResolvedValueOnce({ ok: false, errors: { method: "financing" } });
+    await act(async () => root.render(createElement(EcoursePurchase, offered)));
+    await act(async () => methods()[1].click());
+    await fillAndSubmit();
+    const note = $("[data-financing-range]")!;
+    expect(note.textContent).toBe("Järelmaks on võimalik 100–5000 € hinnaga koolitusele.");
+    expect(methods()[0].closest("fieldset")!.contains(note)).toBe(true); // at the choice
+    expect(methods().map((m) => m.checked)).toEqual([true, false]); // the next press is by bank
+    expect(methods()[1].getAttribute("aria-describedby")).toBe(note.id);
+    expect(document.activeElement).toBe(methods()[0]);
+    expect($("[role='alert']")).toBeNull(); // not the generic line
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    // and the next press, by bank, starts
+    mocks.buyEcourse.mockResolvedValueOnce({ ok: true, paymentUrl: "https://sandbox-stargate.montonio.com/pay-3" });
+    await submit();
+    expect(mocks.buyEcourse.mock.calls[1][0].get("method")).toBe("paymentInitiation");
+    expect(mocks.navigate).toHaveBeenCalledWith("https://sandbox-stargate.montonio.com/pay-3");
+  });
 });

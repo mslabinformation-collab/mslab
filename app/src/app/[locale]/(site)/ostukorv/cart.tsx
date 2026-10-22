@@ -17,6 +17,7 @@ import { getDict, type Locale } from "@/i18n/locales";
 import { mediaUrl } from "@/lib/media";
 import { contractTemplate } from "@/server/contracts";
 import { paymentsConfigured } from "@/server/payments/montonio";
+import { financingShown, getSiteSettings } from "@/server/site-data";
 import styles from "./cart.module.css";
 
 export function cartMetadata(locale: Locale): Metadata {
@@ -31,7 +32,8 @@ export function cartMetadata(locale: Locale): Metadata {
  * them it says payment opens soon and takes an e-mail to tell the visitor, and when Montonio does not open the payment at the moment of buying
  * the form gives way to that same interest form under "Makse ei avanenud…". Whether payments are on is a setting of the deployment, read while
  * the page renders (the page stays one cached page per course): nothing about the visitor is in it, her name and e-mail are filled in by the
- * browser from /api/konto/me.
+ * browser from /api/konto/me. While Järelmaks (Inbank) is offered for the course's price (Seaded's toggle on, payments on, 100–5000 €; instalments D4) the
+ * purchase has a choice, „Pangalink“ (the default) and „Järelmaks (Inbank)“; saving the toggle revalidates the carts (server/cache-targets.ts).
  * Only e-learning courses can be bought; contact courses are registered on their own page.
  * The middleware serves "?kursus=<slug>" from ./[kursus] (one cached page per course); /ostukorv alone is the empty cart.
  * A course that does not exist or is not published is a 404 (./[kursus]/not-found.tsx says the cart is empty). Next.js
@@ -54,6 +56,8 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
   const contract = await contractTemplate(getDb(), "ecourse", locale);
   const price = formatEUR(course.price, locale);
   const c = d.course;
+  const payments = paymentsConfigured();
+  const financing = payments && financingShown(await getSiteSettings(), course.price);
   // today's purchase-interest form under a line saying why: "Makse lisandub peagi" without payments, "Makse ei avanenud" when Montonio is down
   // at the moment of buying (phase 2b: nothing is lost)
   const interest = (line: string) => (
@@ -116,10 +120,11 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
             <span>{d.cart.total}</span>
             <b>{price}</b>
           </p>
-          {paymentsConfigured() ? (
+          {payments ? (
             <EcoursePurchase
               course={course.slug}
               locale={locale}
+              financing={financing}
               t={{
                 name: d.forms.name,
                 email: d.forms.email,
@@ -127,6 +132,10 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
                 readContract: d.forms.readContract,
                 contractChanged: d.forms.contractChanged,
                 newsletterConsent: d.forms.newsletterConsent,
+                paymentLabel: d.forms.paymentLabel,
+                payBank: d.cart.payBank,
+                payFinancing: d.forms.payFinancing,
+                financingRange: d.forms.payFinancingRange,
                 submit: fill(d.payment.pay, { amount: price }),
                 starting: d.payment.starting,
                 alreadyPaid: d.payment.alreadyPaid,

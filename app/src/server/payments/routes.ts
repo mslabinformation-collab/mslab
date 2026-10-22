@@ -1,4 +1,5 @@
 import { paymentContext } from "@/db/queries/payments";
+import { isHirePurchase } from "@/domain/financing";
 import { resultFragment, type PaymentOutcome, type ResultView } from "@/domain/payments";
 import { logFailure, logNote } from "../log";
 import { JwtError } from "./jwt";
@@ -130,6 +131,9 @@ export const returnPending = (): Response => seeOther(returnTarget("et", { outco
  * never on a refunded one (she has paid, and may still open what she bought). The Location is a path only (seeOther). A
  * token that cannot be verified, an unknown reference: katkestatud with nothing more; a database failure: pooleli. Never an error page.
  * 404 without payments. The fragment holds the outcome, the kind, the pay token and the slug: no address, no Montonio uuid, no amount.
+ * A Järelmaks (Inbank) (a `hirePurchase` row, instalments §4) that is not paid is kind "jarelmaks": Inbank's no and an abandoned application leave the
+ * order PENDING at Montonio for 7 days, so pooleli is its usual answer, and the page words it as an application. A registration is told from an
+ * e-course by the way on (`maksa` or `kursus`). A paid one keeps the registration's or the e-course's kind: it reads like any paid payment.
  */
 export async function handleReturn(request: Request, deps: PaymentRouteDeps): Promise<Response> {
   const montonio = deps.montonio;
@@ -161,7 +165,7 @@ export async function handleReturn(request: Request, deps: PaymentRouteDeps): Pr
     return seeOther(
       returnTarget(p.locale, {
         outcome,
-        kind: ecourse ? "ekoolitus" : "registreering",
+        kind: isHirePurchase(p.method) && outcome !== "makstud" ? "jarelmaks" : ecourse ? "ekoolitus" : "registreering",
         payToken: !ecourse && retry ? (ctx?.payToken ?? null) : null,
         course: ecourse && (outcome === "makstud" || retry) ? (ctx?.course?.slug ?? null) : null,
       }),

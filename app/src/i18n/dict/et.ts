@@ -145,9 +145,8 @@ export const et = {
     priceLabel: "Hind",
     // E-learning purchase (P8, P9)
     payNow: "Maksa kohe — 100% pangalingiga",
-    instalmentSoon: "Vormista järelmaks — tulekul",
-    // Under the disabled instalment option; says "later" without repeating the option name.
-    instalmentNote: "See võimalus lisandub hiljem.",
+    // Järelmaks (Inbank), a quiet line next to the price while the choice is offered (instalments D4; Draft: Dim sees it on the test page)
+    financingLine: "Võimalik tasuda ka järelmaksuga (Inbank).",
     buyNow: "Osta kohe",
     checkoutSoon:
       "Makse lisandub peagi — saad koolituse osta niipea, kui makse on avatud. Jäta oma e-post, anname teada.",
@@ -315,9 +314,8 @@ export const et = {
     // paymentText holds the same words; a test keeps them equal). Draft: Dim sees them on the test page
     payFinancing: "Järelmaks (Inbank)",
     payFinancingContract: "Koolituse hind tasutakse täies ulatuses: järelmaksuga (Inbank) või pangamaksega.",
-    // P14: shown on contact courses, disabled (as the e-course's instalment) until the instalment partner arrives
-    payInstalment: "Järelmaks — tulekul",
-    payInstalmentNote: "See võimalus lisandub hiljem.",
+    // at the choice when a järelmaks is refused (instalments §4; Draft): the price is out of 100–5000 € now, or the choice was switched off since the page was loaded
+    payFinancingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.",
     // Individual request, waitlist, cart interest
     preferredPeriod: "Soovitud periood või kuupäev",
     preferredPeriodPlaceholder: "Nt detsembri teine pool või 12.12",
@@ -422,6 +420,8 @@ export const et = {
     total: "Kokku",
     // the purchase's box is the e-course contract (contracts, D1), with `forms.readContract` opening its text in the cart
     contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.",
+    // the purchase's choice while Järelmaks (Inbank) is offered (instalments §4; Draft): the bank link, beside forms.payFinancing
+    payBank: "Pangalink",
   },
 
   // Online payments (phase 2b, spec 9). {amount} is euros ("175 €"), {title} the course, {date} the last day of an e-course's access. The
@@ -436,6 +436,8 @@ export const et = {
     cartDown: "Makse ei avanenud. Jäta oma e-post, anname teada.",
     // the e-course cart when this address paid the course in the last 30 minutes (Dim's decision of 10.10): in place of the form
     alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
+    // „Maksa pangalingiga“ (instalments §4; Draft): the bank beside Järelmaks (Inbank). The result page of a pending application has it; the pay page and the account's card reuse it
+    payBank: "Maksa pangalingiga",
     // the page behind the mail's "Maksa" link (/maksa/<token>)
     page: {
       heading: "Koolituse eest tasumine",
@@ -450,6 +452,8 @@ export const et = {
       paidEcourse: "Makse õnnestus.",
       paidEcourseText: "Saatsime sulle e-postiga sisselogimislingi.",
       pending: "Makse on pooleli. Kui pank selle kinnitab, saadame sulle kinnituse.",
+      // a Järelmaks (Inbank) whose application is not decided (instalments §4; Draft): Inbank's no, or an abandoned application, leaves the order pending at Montonio for 7 days
+      pendingFinancing: "Järelmaksu taotlus on pooleli või jäi lõpetamata. Kui Inbank selle kinnitab, saadame sulle kinnituse.",
       cancelled: "Makse jäi tegemata.",
       retry: "Proovi uuesti",
       openCourse: "Ava e-koolitus",

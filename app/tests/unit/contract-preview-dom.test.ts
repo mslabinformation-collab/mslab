@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ContactRegister, type ContactRegisterTexts, type SessionOption } from "@/components/site/ContactRegister";
 import type { FormContract } from "@/components/site/ContractPreview";
 import { EcoursePurchase, type EcoursePurchaseTexts } from "@/components/site/EcoursePurchase";
-import { fillContract } from "@/domain/contract";
+import { fillContract, filledContract } from "@/domain/contract";
 
 // The inline contract of the registration form and of the cart (contracts, Task 4; spec D1, Review Focus 3): the box is the contract, and
 // „Loe lepingut“ opens its text in the form, filled live from what the form holds — the chosen session's date and place, the price and the
@@ -47,8 +47,9 @@ const t: ContactRegisterTexts = {
   paymentLabel: "Tasumine",
   payFull: "100% kohe",
   payHalf: "50% registreerimisel + 50% koolituspäeval",
-  payInstalment: "Järelmaks — tulekul",
-  payInstalmentNote: "See võimalus lisandub hiljem.",
+  payFinancing: "Järelmaks (Inbank)",
+  financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.",
+  financingLine: "Võimalik tasuda ka järelmaksuga (Inbank).",
   modelHelp: "Soovin koolituskeskuse abi modellide leidmisel",
   createAccount: "Loo mulle kohe konto MS LAB keskkonda",
   newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
@@ -78,7 +79,7 @@ const session: SessionOption = { id: 7, startsAt: "2026-11-14T08:00:00.000Z", da
 const other: SessionOption = { ...session, id: 8, startsAt: "2026-12-05T08:00:00.000Z", date: "05.12.2026", city: "Tartu", venue: "Kesk 2" };
 const V1 = "2026-10-10T09:00:00.000Z";
 const contactContract: FormContract = { version: V1, title: "Kontaktkoolituse leping — {koolitus}", body: `${TEXT}\n\nTeine lõik, {tundmatu} jääb.`, locale: "et", course: "Kulmude kujundus", priceCents: 35000 };
-const contactProps = { course: "kulmude-kujundus", locale: "et" as const, kinds: [{ kind: "group" as const, price: "350 €" }, { kind: "individual" as const, price: "450 €" }], sessions: [session, other], t, contract: contactContract };
+const contactProps = { financing: false, course: "kulmude-kujundus", locale: "et" as const, kinds: [{ kind: "group" as const, price: "350 €" }, { kind: "individual" as const, price: "450 €" }], sessions: [session, other], t, contract: contactContract };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -156,6 +157,18 @@ describe("the registration form (group): the box is the contract, „Loe lepingu
     expect(shown()[1]).toBe(`Õpilane Kati Kask (kati@example.test) osaleb koolitusel Kulmude kujundus, 05.12.2026, Tartu, Kesk 2. Hind 350,00${NBSP}€, ettemaks 350,00${NBSP}€.`);
   });
 
+  test("Järelmaks (Inbank) is a choice of the form only while it is offered; chosen, {ettemaks} is the whole price, as the server fills the frozen contract (Task 1: financing is due in full)", async () => {
+    await act(async () => root.render(createElement(ContactRegister, { ...contactProps, financing: true })));
+    await click(toggle());
+    await click($("[data-session='7']"));
+    await click($("input[name='payment'][value='half']"));
+    expect(shown()[1]).toContain(`ettemaks 175,00${NBSP}€`);
+    await click($("input[name='payment'][value='financing']"));
+    expect(shown()[1]).toBe(`Õpilane  () osaleb koolitusel Kulmude kujundus, 14.11.2026, Tallinn. Hind 350,00${NBSP}€, ettemaks 350,00${NBSP}€.`);
+    const server = filledContract(contactContract, { name: "", email: "", course: "Kulmude kujundus", session: { startsAt: new Date(session.startsAt), city: "Tallinn", venue: "" }, priceCents: 35000, choice: "financing", locale: "et" });
+    expect(shown()).toEqual([server.title, ...server.body.split("\n\n")]);
+  });
+
   test("the individual request keeps today's box and its link to „Õppetingimused“: no contract (spec D1)", async () => {
     await click($("input[name='kind'][value='individual']"));
     expect($<HTMLInputElement>("input[name='terms']")!.closest("label")!.textContent).toBe("Olen tutvunud tingimustega ja nõustun nendega.");
@@ -173,6 +186,10 @@ describe("the cart: the e-course contract in the same way", () => {
     readContract: "Loe lepingut",
     contractChanged: "Lepingu tekst on vahepeal muutunud — loe see uuesti ja kinnita.",
     newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi",
+    paymentLabel: "Tasumine",
+    payBank: "Pangalink",
+    payFinancing: "Järelmaks (Inbank)",
+    financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.",
     submit: "Maksa 190 €",
     starting: "Avan makse…",
     alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
@@ -184,7 +201,7 @@ describe("the cart: the e-course contract in the same way", () => {
   const contract: FormContract = { version: V1, title: "E-koolituse tingimused", body: "Tere {nimi} ({e-post}). {koolitus} maksab {hind}.[{toimumine}{ettemaks}]", locale: "et", course: "Kulmumeistri e-koolitus", priceCents: 19000 };
 
   test("the box is the contract, „Loe lepingut“ opens it in the cart: the name and the address as typed, the course, the price; no session and no prepayment", async () => {
-    await act(async () => root.render(createElement(EcoursePurchase, { course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract, fallback: null })));
+    await act(async () => root.render(createElement(EcoursePurchase, { financing: false, course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract, fallback: null })));
     expect($<HTMLInputElement>("input[name='terms']")!.closest("label")!.textContent).toBe("Olen tutvunud lepingu tingimustega ja nõustun nendega.");
     expect(container.querySelector("a[href='/tingimused']")).toBeNull();
     expect(panel()!.hidden).toBe(true);
@@ -196,7 +213,7 @@ describe("the cart: the e-course contract in the same way", () => {
   });
 
   test("a contract with no text at all offers nothing to open (the box stays)", async () => {
-    await act(async () => root.render(createElement(EcoursePurchase, { course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract: { ...contract, title: "", body: "  " }, fallback: null })));
+    await act(async () => root.render(createElement(EcoursePurchase, { financing: false, course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract: { ...contract, title: "", body: "  " }, fallback: null })));
     expect($("input[name='terms']")).not.toBeNull();
     expect(toggle()).toBeNull();
   });
@@ -243,12 +260,13 @@ describe("a text that changed since the page was loaded (ruling R6): the form sa
   test("the cart: it sends the version it shows; 'changed' shows the message at the box, unticks it and loads the cart again, and goes nowhere", async () => {
     const et: EcoursePurchaseTexts = {
       name: "Nimi", email: "E-post", contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.", readContract: "Loe lepingut", contractChanged: MESSAGE,
-      newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi", submit: "Maksa 190 €", starting: "Avan makse…", alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
+      newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi", paymentLabel: "Tasumine", payBank: "Pangalink", payFinancing: "Järelmaks (Inbank)",
+      financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.", submit: "Maksa 190 €", starting: "Avan makse…", alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
       errorRequired: "See väli on kohustuslik.", errorEmail: "Sisesta korrektne e-posti aadress.", errorTooMany: "Liiga palju katseid.", errorGeneric: "Midagi läks valesti.",
     };
     const contract: FormContract = { version: V1, title: "E-koolituse tingimused", body: "Tere {nimi}.", locale: "et", course: "Kulmumeistri e-koolitus", priceCents: 19000 };
     mocks.buyEcourse.mockResolvedValue({ ok: false, errors: { terms: "changed" } });
-    await act(async () => root.render(createElement(EcoursePurchase, { course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract, fallback: null })));
+    await act(async () => root.render(createElement(EcoursePurchase, { financing: false, course: "kulmumeistri-e-koolitus", locale: "et", t: et, contract, fallback: null })));
     await type("input[name='name']", "Kati Kask");
     await type("input[name='email']", "kati@example.test");
     await click(box());

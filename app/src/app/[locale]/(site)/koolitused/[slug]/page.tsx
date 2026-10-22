@@ -38,7 +38,7 @@ import { upcomingFrom } from "@/domain/calendar";
 import { contractTemplate } from "@/server/contracts";
 import { courseReviews } from "@/server/reviews";
 import { shareMetadata } from "@/server/share-meta";
-import { getSiteSettings } from "@/server/site-data";
+import { financingShown, getSiteSettings } from "@/server/site-data";
 
 type Props = { params: Promise<{ locale: string; slug: string }> };
 
@@ -80,7 +80,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
  * Course page (Task 8, P1–P16) on prototype B's detail layout: gallery left, facts and the type's own purchase or
  * registration right. A course is either e-learning (buy now) or contact (register for a date or ask for an individual
  * course); the page never offers another format (K1, K2). Description, outcomes, contents, the students' reviews (when the
- * course has published ones), trainer and recommendations follow below, recommendations last (P5).
+ * course has published ones), trainer and recommendations follow below, recommendations last (P5). Järelmaks (Inbank) shows while it is offered for
+ * the price (instalments D4: Seaded's toggle on, Montonio payments on, 100–5000 €): a quiet line next to the price, and for a contact course the third
+ * payment choice of the registration form; saving the toggle revalidates the course pages (server/cache-targets.ts).
  */
 export default async function CoursePage({ params }: Props) {
   const { locale, slug } = await params;
@@ -136,6 +138,8 @@ export default async function CoursePage({ params }: Props) {
         ...fact(c.citiesLabel, cities.join(", ")),
         ...trainerFact,
       ];
+  // Järelmaks (Inbank): offered for the e-course's price, or a contact course's group price (the online payment is the group registration's)
+  const financing = financingShown(settings, registrationPrice(course, "group"));
   const discountText = pick(course.nextDiscount, locale);
   const discount = discountText ? { label: c.discountLabel, value: discountText } : undefined;
 
@@ -232,13 +236,15 @@ export default async function CoursePage({ params }: Props) {
                 <ELearningBuy
                   price={formatEUR(course.price, locale)}
                   href={to(`/ostukorv?kursus=${encodeURIComponent(course.slug)}`)}
-                  t={{ priceLabel: c.priceLabel, paymentLabel: d.forms.paymentLabel, payNow: c.payNow, instalmentSoon: c.instalmentSoon, instalmentNote: c.instalmentNote, buyNow: c.buyNow }}
+                  financing={financing}
+                  t={{ priceLabel: c.priceLabel, paymentLabel: d.forms.paymentLabel, payNow: c.payNow, financingLine: c.financingLine, buyNow: c.buyNow }}
                 />
               )
             ) : (
               <ContactRegister
                 course={course.slug}
                 locale={locale}
+                financing={financing}
                 kinds={kinds}
                 sessions={sessions}
                 contract={{
@@ -266,8 +272,9 @@ export default async function CoursePage({ params }: Props) {
                   paymentLabel: d.forms.paymentLabel,
                   payFull: d.forms.payFull,
                   payHalf: d.forms.payHalf,
-                  payInstalment: d.forms.payInstalment,
-                  payInstalmentNote: d.forms.payInstalmentNote,
+                  payFinancing: d.forms.payFinancing,
+                  financingRange: d.forms.payFinancingRange,
+                  financingLine: c.financingLine,
                   modelHelp: d.forms.modelHelp,
                   createAccount: d.forms.createAccount,
                   newsletterConsent: d.forms.newsletterConsent,

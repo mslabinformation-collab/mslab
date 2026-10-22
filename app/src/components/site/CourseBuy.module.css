@@ -105,15 +105,16 @@
   font: 400 12px/1.4 var(--font-body);
 }
 
-.optionDisabled {
-  border-style: dashed;
-  background: var(--canvas);
+/* Järelmaks (Inbank), the quiet line next to the price while the choice is offered (instalments D4): under the kinds' prices of the registration form, under
+   the price row of the e-course. */
+.financingLine {
+  margin: 10px 0 0;
   color: var(--muted-2);
-  cursor: not-allowed;
+  font: 400 13px/1.5 var(--font-body);
 }
 
-.optionDisabled:hover {
-  border-color: var(--line);
+.priceRow + .financingLine {
+  margin: -8px 0 18px;
 }
 
 /* ---- Contact: sessions ---- */
@@ -388,6 +389,11 @@
 .sent p {
   margin: 0;
   font: 500 16px/1.5 var(--font-body);
+}
+
+/* the confirmation of a registration whose järelmaks was refused: the range, then the usual sentence */
+.sentText p + p {
+  margin-top: 8px;
 }
 
 .sent:focus {

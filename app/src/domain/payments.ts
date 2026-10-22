@@ -137,8 +137,12 @@ export type PaymentOutcome = "makstud" | "pooleli" | "katkestatud";
  * What /makse shows: the outcome, what was paid for, and the way on — the registration's "Maksa" token for "Proovi uuesti", or the e-course's
  * slug ("Ava e-koolitus" after a purchase, the cart for a retry). null where there is none. Nothing else is ever in it: no address, no
  * Montonio uuid, no amount (the fragment is only the payer's browser's, but it stays in its history).
+ * `kind` "jarelmaks" (instalments §4): the payment was a Järelmaks (Inbank) application (Montonio's `hirePurchase`) that is not paid. The page
+ * words it as an application (a declined or abandoned one stays pending at Montonio for 7 days), and tells a registration from an e-course by the
+ * way on it was given: `payToken` or `course`. A paid one reads like any paid payment (its kind is the registration's or the e-course's), so
+ * "jarelmaks" is only ever on a result that is pooleli or katkestatud.
  */
-export type ResultView = { outcome: PaymentOutcome; kind: "registreering" | "ekoolitus" | null; payToken: string | null; course: string | null };
+export type ResultView = { outcome: PaymentOutcome; kind: "registreering" | "ekoolitus" | "jarelmaks" | null; payToken: string | null; course: string | null };
 
 /** /makse's fragment: tulemus, liik, and maksa or kursus when they are given. */
 export function resultFragment(v: ResultView): string {
@@ -161,7 +165,7 @@ export function parseResultFragment(hash: string): ResultView | null {
   const course = q.get("kursus");
   return {
     outcome: outcome as PaymentOutcome,
-    kind: kind === "registreering" || kind === "ekoolitus" ? kind : null,
+    kind: kind === "registreering" || kind === "ekoolitus" || kind === "jarelmaks" ? kind : null,
     payToken: token && /^[A-Za-z0-9_-]{20,100}$/.test(token) ? token : null,
     course: course && isSlug(course) ? course : null,
   };

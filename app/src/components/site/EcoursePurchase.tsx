@@ -6,12 +6,13 @@ import { filledContract } from "@/domain/contract";
 import type { Locale } from "@/i18n/locales";
 import { hintIn } from "@/lib/account-cookies";
 import { navigate } from "@/lib/navigate";
+import { useUrlQuery } from "@/lib/url-query";
 import { buyEcourse } from "@/server/actions/public";
 import { ContractPreview, type FormContract } from "./ContractPreview";
 import { Icon } from "./Icon";
 import ui from "./ui.module.css";
 import styles from "./PurchaseInterest.module.css";
-import checks from "./CourseBuy.module.css";
+import buy from "./CourseBuy.module.css";
 
 export type EcoursePurchaseTexts = {
   name: string;
@@ -23,6 +24,13 @@ export type EcoursePurchaseTexts = {
   /** The box's error when the contract's text changed since the cart was loaded (ruling R6): the new text is shown, the box cleared. */
   contractChanged: string;
   newsletterConsent: string;
+  /** The legend of the choice while Järelmaks (Inbank) is offered: „Tasumine“. */
+  paymentLabel: string;
+  /** „Pangalink“ and „Järelmaks (Inbank)“: the two choices (instalments §4). */
+  payBank: string;
+  payFinancing: string;
+  /** „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“: said at the choice when the server refused a järelmaks after all. */
+  financingRange: string;
   /** "Maksa 190 €" */
   submit: string;
   /** The button while the payment page is being opened: "Avan makse…" */
@@ -35,12 +43,15 @@ export type EcoursePurchaseTexts = {
   errorGeneric: string;
 };
 
-type Field = "name" | "email" | "terms" | "form";
+type Field = "name" | "email" | "method" | "terms" | "form";
 type Errors = Partial<Record<Field, string>>;
 type State = { status: "idle" } | { status: "unavailable" } | { status: "alreadyPaid" } | { status: "error"; errors: Errors };
 
 /** Where the focus goes after a failed submit: the first of these with an error, in page order. */
-const ORDER: Field[] = ["name", "email", "terms"];
+const ORDER: Field[] = ["name", "email", "method", "terms"];
+
+/** How the start is made (server/payments/montonio.ts OrderMethod): the bank link, or Järelmaks (Inbank). */
+type Method = "paymentInitiation" | "hirePurchase";
 
 /** Only a web page is a place to send the browser to. */
 const isPageUrl = (url: unknown): url is string => typeof url === "string" && /^https?:\/\//i.test(url);
@@ -59,16 +70,25 @@ const isPageUrl = (url: unknown): url is string => typeof url === "string" && /^
  * the browser leaves for Montonio; if Back brings the page from the back-forward cache, the button is ready again, and pressing it after the
  * payment was made (form "alreadyPaid": this address paid the course in the last 30 minutes, Dim's decision of 10.10) shows "Makse on juba tehtud"
  * in the form's place instead of charging again. It says that and nothing else; a reload brings the form back once the 30 minutes are over.
+ * Järelmaks (Inbank), while the cart's page says it is offered (`financing`: the toggle on, Montonio payments on, the price within 100–5000 €; instalments
+ * D4, §4): a choice, „Pangalink“ (the default) and „Järelmaks (Inbank)“, between the e-mail and the box; the form sends it as `method` (paymentInitiation |
+ * hirePurchase), the way the start is made. The result page's „Proovi uuesti“ for a pending application opens the cart with ?makse=jarelmaks, which chooses
+ * the järelmaks (the cart is one cached page per course, so the address is read in the browser). A järelmaks the server refuses after all (the page is
+ * a few minutes old: the toggle was switched off, or the price moved) starts nothing: the range is said at the choice, the bank link is chosen and the
+ * next press starts it. Without `financing` there is no choice and no field, and the server starts the bank link, as it always did.
  */
 export function EcoursePurchase({
   course,
   locale,
+  financing,
   t,
   contract,
   fallback,
 }: {
   course: string;
   locale: Locale;
+  /** Is Järelmaks (Inbank) offered for this course's price (domain/financing.ts financingOffered, read by the cart's page)? */
+  financing: boolean;
   t: EcoursePurchaseTexts;
   /** The e-course contract, unfilled (FormContract). */
   contract: FormContract;
@@ -78,6 +98,10 @@ export function EcoursePurchase({
   const [values, setValues] = useState({ name: "", email: "" });
   const [agreed, setAgreed] = useState(false);
   const [newsletter, setNewsletter] = useState(false);
+  // undefined: not chosen on this page yet, the address (?makse=jarelmaks) applies
+  const [methodChosen, setMethod] = useState<Method>();
+  const [query] = useUrlQuery();
+  const method: Method = financing ? (methodChosen ?? (query.get("makse") === "jarelmaks" ? "hirePurchase" : "paymentInitiation")) : "paymentInitiation";
   const [away, setAway] = useState(false);
   const paidRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -121,7 +145,11 @@ export function EcoursePurchase({
       let changed = false;
       for (const [f, code] of Object.entries(result.errors)) {
         if (f === "form") errors.form = code === "rate" ? t.errorTooMany : t.errorGeneric;
-        else if (f === "email") errors.email = t.errorEmail;
+        else if (f === "method" && code === "financing") {
+          // a järelmaks that is not allowed any more: the range at the choice, and the bank link chosen for the next press
+          errors.method = t.financingRange;
+          setMethod("paymentInitiation");
+        } else if (f === "email") errors.email = t.errorEmail;
         else if (f === "terms" && code === "changed") {
           errors.terms = t.contractChanged;
           changed = true;
@@ -201,15 +229,41 @@ export function EcoursePurchase({
       </label>
       <input id={`${id}-email`} className={styles.input} name="email" type="email" required autoComplete="email" maxLength={200} value={values.email} onChange={(e) => setValues((v) => ({ ...v, email: e.target.value }))} {...described("email")} />
       {err("email")}
+      {financing && (
+        <fieldset className={buy.options}>
+          <legend className={buy.legend}>{t.paymentLabel}</legend>
+          <div className={buy.pay}>
+            {(["paymentInitiation", "hirePurchase"] as const).map((m) => (
+              <label key={m} className={buy.option}>
+                <input
+                  id={m === "paymentInitiation" ? `${id}-method` : undefined}
+                  type="radio"
+                  name="method"
+                  value={m}
+                  checked={method === m}
+                  onChange={() => setMethod(m)}
+                  aria-describedby={errors.method ? `${id}-method-error` : undefined}
+                />
+                <span className={buy.optionName}>{m === "paymentInitiation" ? t.payBank : t.payFinancing}</span>
+              </label>
+            ))}
+          </div>
+          {errors.method && (
+            <p id={`${id}-method-error`} className={styles.error} data-financing-range="">
+              {errors.method}
+            </p>
+          )}
+        </fieldset>
+      )}
       <div>
-        <label className={checks.check}>
+        <label className={buy.check}>
           <input id={`${id}-terms`} type="checkbox" name="terms" required checked={agreed} onChange={(e) => setAgreed(e.target.checked)} {...described("terms")} />
           <span>{t.contractTerms}</span>
         </label>
         <ContractPreview label={t.readContract} text={contractText} />
         {err("terms")}
       </div>
-      <label className={checks.check}>
+      <label className={buy.check}>
         <input type="checkbox" name="newsletter" checked={newsletter} onChange={(e) => setNewsletter(e.target.checked)} />
         <span>{t.newsletterConsent}</span>
       </label>

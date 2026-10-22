@@ -17,6 +17,16 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const TOKEN = "AbC_d-0123456789012345678901234567890123";
 
 describe("the fragment", () => {
+  test("a Järelmaks (Inbank) is liik=jarelmaks, written and read back with its way on", () => {
+    const registration = { outcome: "pooleli" as const, kind: "jarelmaks" as const, payToken: TOKEN, course: null };
+    expect(resultFragment(registration)).toBe(`tulemus=pooleli&liik=jarelmaks&maksa=${TOKEN}`);
+    expect(parseResultFragment(`#${resultFragment(registration)}`)).toEqual(registration);
+    const ecourse = { outcome: "katkestatud" as const, kind: "jarelmaks" as const, payToken: null, course: "kulmumeistri-e-koolitus" };
+    expect(resultFragment(ecourse)).toBe("tulemus=katkestatud&liik=jarelmaks&kursus=kulmumeistri-e-koolitus");
+    expect(parseResultFragment(`#${resultFragment(ecourse)}`)).toEqual(ecourse);
+    expect(parseResultFragment("#tulemus=pooleli&liik=jarelmaks")).toEqual({ outcome: "pooleli", kind: "jarelmaks", payToken: null, course: null });
+  });
+
   test("written and read back; what cannot be ours is dropped", () => {
     const view = { outcome: "katkestatud" as const, kind: "registreering" as const, payToken: TOKEN, course: null };
     expect(resultFragment(view)).toBe(`tulemus=katkestatud&liik=registreering&maksa=${TOKEN}`);
@@ -47,7 +57,7 @@ describe("the fragment", () => {
 
 describe("the page", () => {
   const d = getDict("et");
-  const t: PaymentResultTexts = { ...d.payment.result, account: d.account.shell.courses };
+  const t: PaymentResultTexts = { ...d.payment.result, payBank: d.payment.payBank, account: d.account.shell.courses };
   let container: HTMLDivElement;
   let root: Root;
   beforeEach(() => {
@@ -122,6 +132,81 @@ describe("the page", () => {
     for (const [, hrefValue] of links()) expect(hrefValue).toMatch(/^\/(maksa\/[A-Za-z0-9_-]+|konto)$/);
   });
 
+  describe("a Järelmaks (Inbank) that is not decided (instalments §4)", () => {
+    const forms = () => [...container.querySelectorAll("form")].map((f) => [f.getAttribute("method"), f.getAttribute("action"), f.querySelector("input[name='method']")?.getAttribute("value"), f.querySelector("button")?.textContent]);
+
+    test("a registration's: the application's sentence, then „Maksa pangalingiga“ (the bank) and „Proovi uuesti“ (Inbank again), each a button that posts to the registration's /maksa page; not the bank's sentence", async () => {
+      await show(`#tulemus=pooleli&liik=jarelmaks&maksa=${TOKEN}`);
+      expect(container.querySelector("h1")?.textContent).toBe("Järelmaksu taotlus on pooleli või jäi lõpetamata. Kui Inbank selle kinnitab, saadame sulle kinnituse.");
+      expect(container.textContent).not.toContain("Kui pank");
+      expect(forms()).toEqual([
+        ["post", `/maksa/${TOKEN}`, "paymentInitiation", "Maksa pangalingiga"],
+        ["post", `/maksa/${TOKEN}`, "hirePurchase", "Proovi uuesti"],
+      ]);
+      expect(container.querySelector("[data-payment-retry]")?.textContent).toBe("Proovi uuesti");
+      expect(container.querySelector("[data-payment-result]")?.getAttribute("data-payment-result")).toBe("pooleli");
+      expect(links()).toEqual([["Minu koolitused", "/konto"]]);
+      // both fields are the page's own, the form sends no other
+      for (const f of container.querySelectorAll("form")) expect([...f.querySelectorAll("input")].map((i) => i.getAttribute("name"))).toEqual(["method"]);
+    });
+
+    test("an e-course's: both go to its cart (it needs her name and the terms again) — the bank as the cart opens, Inbank with ?makse=jarelmaks", async () => {
+      await show("#tulemus=pooleli&liik=jarelmaks&kursus=kulmumeistri-e-koolitus");
+      expect(container.querySelector("h1")?.textContent).toBe("Järelmaksu taotlus on pooleli või jäi lõpetamata. Kui Inbank selle kinnitab, saadame sulle kinnituse.");
+      expect(forms()).toEqual([]);
+      expect(links()).toEqual([
+        ["Maksa pangalingiga", "/ostukorv?kursus=kulmumeistri-e-koolitus"],
+        ["Proovi uuesti", "/ostukorv?kursus=kulmumeistri-e-koolitus&makse=jarelmaks"],
+        ["Minu koolitused", "/konto"],
+      ]);
+      expect(container.querySelector("a[data-payment-retry]")?.textContent).toBe("Proovi uuesti");
+    });
+
+    test("without a way on (a held late loan: the money is at Montonio) the sentence stands alone: no button that could charge her twice", async () => {
+      await show("#tulemus=pooleli&liik=jarelmaks");
+      expect(container.querySelector("h1")?.textContent).toBe("Järelmaksu taotlus on pooleli või jäi lõpetamata. Kui Inbank selle kinnitab, saadame sulle kinnituse.");
+      expect(container.querySelector("form")).toBeNull();
+      expect(container.querySelector("[data-payment-retry]")).toBeNull();
+      expect(links()).toEqual([["Minu koolitused", "/konto"]]);
+    });
+
+    test("not paid at all (katkestatud): the usual sentence and the usual „Proovi uuesti“ link; a bank order's pooleli keeps the bank's sentence", async () => {
+      await show(`#tulemus=katkestatud&liik=jarelmaks&maksa=${TOKEN}`);
+      expect(container.querySelector("h1")?.textContent).toBe("Makse jäi tegemata.");
+      expect(links()).toEqual([["Proovi uuesti", `/maksa/${TOKEN}`], ["Minu koolitused", "/konto"]]);
+      await show("#tulemus=katkestatud&liik=jarelmaks&kursus=kulmumeistri-e-koolitus");
+      expect(links()).toEqual([["Proovi uuesti", "/ostukorv?kursus=kulmumeistri-e-koolitus"], ["Minu koolitused", "/konto"]]);
+      await show(`#tulemus=pooleli&liik=registreering&maksa=${TOKEN}`);
+      expect(container.querySelector("h1")?.textContent).toBe("Makse on pooleli. Kui pank selle kinnitab, saadame sulle kinnituse.");
+      expect(forms()).toEqual([]);
+    });
+
+    test("Russian: the Draft sentence, the buttons under /ru", async () => {
+      const ru = getDict("ru");
+      const ruTexts = { ...ru.payment.result, payBank: ru.payment.payBank, account: ru.account.shell.courses };
+      await show(`#tulemus=pooleli&liik=jarelmaks&maksa=${TOKEN}`, "ru", ruTexts);
+      expect(container.querySelector("h1")?.textContent).toBe("Заявка на рассрочку в\u00a0процессе или не завершена. Если Inbank её одобрит, мы пришлём подтверждение.");
+      expect(forms()).toEqual([
+        ["post", `/maksa/${TOKEN}`, "paymentInitiation", "Оплатить через банк"],
+        ["post", `/maksa/${TOKEN}`, "hirePurchase", "Попробовать снова"],
+      ]);
+      await show("#tulemus=pooleli&liik=jarelmaks&kursus=kulmumeistri-e-koolitus", "ru", ruTexts);
+      expect(links()).toEqual([
+        ["Оплатить через банк", "/ru/ostukorv?kursus=kulmumeistri-e-koolitus"],
+        ["Попробовать снова", "/ru/ostukorv?kursus=kulmumeistri-e-koolitus&makse=jarelmaks"],
+        ["Мои курсы", "/ru/konto"],
+      ]);
+    });
+
+    test("the address is only read: a foreign token or slug makes no form and no link", async () => {
+      await show("#tulemus=pooleli&liik=jarelmaks&maksa=%3Cscript%3Ealert(1)%3C%2Fscript%3E&kursus=..%2F..%2Fadmin");
+      expect(container.innerHTML).not.toContain("<script");
+      expect(container.innerHTML).not.toContain("admin");
+      expect(container.querySelector("form")).toBeNull();
+      expect(links()).toEqual([["Minu koolitused", "/konto"]]);
+    });
+  });
+
   test("the page follows the address: a new fragment on the same page (hashchange) shows its result", async () => {
     await show("#tulemus=katkestatud");
     expect(container.querySelector("h1")?.textContent).toBe("Makse jäi tegemata.");
@@ -137,7 +222,7 @@ describe("the page", () => {
     expect(container.querySelector("h1")?.textContent).toBe("Makse");
     expect(links()).toEqual([["Minu koolitused", "/konto"]]);
     const ru = getDict("ru");
-    const ruTexts = { ...ru.payment.result, account: ru.account.shell.courses };
+    const ruTexts = { ...ru.payment.result, payBank: ru.payment.payBank, account: ru.account.shell.courses };
     await show("#tulemus=makstud&liik=ekoolitus&kursus=kulmumeistri-e-koolitus", "ru", ruTexts);
     expect(container.querySelector("h1")?.textContent).toBe("Оплата прошла.");
     expect(line()).toBe("Мы отправили вам ссылку для входа на e-mail.");

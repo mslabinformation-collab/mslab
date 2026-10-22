@@ -14,7 +14,9 @@ import { E2E_MONTONIO } from "./montonio-values";
 test("e-learning course page", async ({ page }) => {
   await page.goto("/koolitused/kulmumeistri-e-koolitus");
   await expect(page.getByText(/Maksa kohe/)).toBeVisible();
-  await expect(page.getByText(/järelmaks/i)).toBeVisible();
+  // the old placeholder „Vormista järelmaks — tulekul“ is gone; the quiet line „Võimalik tasuda ka järelmaksuga (Inbank).“ shows only while Maria has
+  // switched Järelmaks (Inbank) on (financing.spec.ts takes the toggle's turn for that)
+  await expect(page.locator("[data-buy]").getByText(/tulekul/)).toHaveCount(0);
   await expect(page.getByText(/Grupikoolitus|Hübriid/)).toHaveCount(0);
   await expect(page.getByText(/praktilise töö hindamine/i)).toBeVisible();
   await expect(page.getByText("Sulle võiksid huvi pakkuda")).toBeVisible();
@@ -72,12 +74,15 @@ const noErrors = (page: Page) => {
 };
 
 test.describe("e-learning page", () => {
-  test("purchase block: price, pay now default, instalment shown but disabled, Osta kohe → cart (P8, P9)", async ({ page }) => {
+  test("purchase block: price, pay now default, no instalment placeholder, Osta kohe → cart (P8, P9)", async ({ page }) => {
     await page.goto("/koolitused/kulmumeistri-e-koolitus");
     const buy = page.locator("[data-buy]");
     await expect(buy).toContainText("190 €");
     await expect(page.getByRole("radio", { name: /Maksa kohe/ })).toBeChecked();
-    await expect(page.getByRole("radio", { name: /järelmaks/ })).toBeDisabled();
+    // no disabled „Vormista järelmaks — tulekul“ any more, whatever the toggle says (the choice of Järelmaks (Inbank) is in the cart: financing.spec.ts)
+    await expect(buy.getByRole("radio")).toHaveCount(1);
+    await expect(buy.locator("input:disabled")).toHaveCount(0);
+    await expect(buy).not.toContainText("tulekul");
     await expect(page.getByRole("link", { name: "Osta kohe" })).toHaveAttribute("href", "/ostukorv?kursus=kulmumeistri-e-koolitus");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Kulmumeistri e-koolitus");
   });
@@ -241,12 +246,10 @@ test.describe("contact page", () => {
     const form = page.locator("[data-register-form]");
     await expect(form.getByRole("radio", { name: "100% kohe" })).toBeChecked();
     await expect(form.getByRole("radio", { name: /50% registreerimisel \+ 50% koolituspäeval/ })).toBeVisible();
-    // P14: the third way, instalment, is shown but disabled (as on the e-course) with its "later" note
-    const instalment = form.getByRole("radio", { name: "Järelmaks — tulekul" });
-    await expect(instalment).toBeDisabled();
-    await expect(instalment).toHaveAccessibleDescription("See võimalus lisandub hiljem.");
-    await form.locator("[data-pay-instalment]").click();
-    await expect(instalment).not.toBeChecked();
+    // P14: no disabled placeholder for the instalment any more; Järelmaks (Inbank) is a third, enabled choice only while it is switched on (financing.spec.ts)
+    await expect(form.locator("[data-pay-instalment]")).toHaveCount(0);
+    await expect(form.locator("input[name='payment']:disabled")).toHaveCount(0);
+    await expect(form).not.toContainText("tulekul");
     await expect(form.getByRole("radio", { name: "100% kohe" })).toBeChecked();
     await expect(form.getByLabel("Loo mulle kohe konto MS LAB keskkonda")).toBeVisible();
     await expect(form.getByLabel("Soovin MS LABi uudiseid ja pakkumisi")).not.toBeChecked(); // phase 2c: unticked

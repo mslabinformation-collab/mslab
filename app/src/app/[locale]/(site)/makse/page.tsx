@@ -21,5 +21,5 @@ export default async function PaymentResultPage({ params }: Props) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const d = getDict(locale);
-  return <PaymentResult locale={locale} t={{ ...d.payment.result, account: d.account.shell.courses }} />;
+  return <PaymentResult locale={locale} t={{ ...d.payment.result, payBank: d.payment.payBank, account: d.account.shell.courses }} />;
 }

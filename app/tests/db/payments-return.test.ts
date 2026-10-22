@@ -216,3 +216,78 @@ test("the log has no order token, no 'Maksa' token and no address", async () => 
   const lines = log.flatMap((spy) => spy.mock.calls.map((c) => c.map(String).join(" "))).join("\n");
   for (const secret of [good, good.split(".")[1], r.payToken, r.email, "not-a-token"]) expect(lines).not.toContain(secret);
 });
+
+// ---------- Järelmaks (Inbank), instalments §4 ----------
+// A hirePurchase row that is not paid comes back as liik=jarelmaks: the page words it as an application, and tells a registration from an e-course by the way
+// on it was given (maksa or kursus). Montonio keeps a declined or abandoned application PENDING for 7 days, so "pooleli" is its usual answer. A paid one reads
+// like any paid payment (its kind stays the registration's or the e-course's: the e-course's login sentence needs it).
+
+const loan = { method: "hirePurchase" } as const;
+const loanToken = (p: Parameters<typeof orderToken>[0], status: string) => orderToken(p, { paymentStatus: status, paymentMethod: "hirePurchase", paymentProviderName: "Inbank" });
+
+test("a registration's loan: PENDING (Inbank's no, or an abandoned application) is pooleli with liik=jarelmaks and the way to try again; ABANDONED katkestatud likewise; PAID the usual makstud", async () => {
+  const m = stubMontonio();
+  const c = await contactCourse(db);
+  const r = await registrationOn(db, c, { paymentChoice: "financing" });
+  const { deps } = settleDeps(db, m.montonio, NOW);
+  const declined = await pendingPayment(db, r, { amountCents: 35000, ...loan });
+  expect(target(await handleReturn(back(loanToken(declined, "PENDING")), deps))).toEqual([303, `/makse#tulemus=pooleli&liik=jarelmaks&maksa=${r.payToken}`, "no-store", "no-referrer"]);
+  const abandoned = await pendingPayment(db, r, { amountCents: 35000, ...loan });
+  expect(where(await handleReturn(back(loanToken(abandoned, "ABANDONED")), deps))).toBe(`/makse#tulemus=katkestatud&liik=jarelmaks&maksa=${r.payToken}`);
+  const signed = await pendingPayment(db, r, { amountCents: 35000, ...loan });
+  expect(where(await handleReturn(back(loanToken(signed, "PAID")), deps))).toBe(`/makse#tulemus=makstud&liik=registreering`);
+  // Russian: under /ru
+  const ru = await pendingPayment(db, await registrationOn(db, c, { email: "teine@example.com", locale: "ru", paymentChoice: "financing" }), { amountCents: 35000, ...loan });
+  expect(where(await handleReturn(back(loanToken(ru, "PENDING")), deps))).toMatch(/^\/ru\/makse#tulemus=pooleli&liik=jarelmaks&maksa=/);
+});
+
+test("an e-course's loan: pooleli and katkestatud carry liik=jarelmaks with the slug (its cart); paid keeps liik=ekoolitus and the slug (the login sentence and „Ava e-koolitus“)", async () => {
+  const m = stubMontonio();
+  const [course] = await db
+    .insert(courses)
+    .values({ slug: "kulmumeistri-e-koolitus", type: "e_learning", level: "basic", title: { et: "Kulmumeistri e-koolitus" }, summary: { et: "" }, body: { et: "" }, published: true, price: 19000 })
+    .returning();
+  const { deps } = settleDeps(db, m.montonio, NOW);
+  const buy = async (email: string) => {
+    const p = await insertPayment(db, { kind: "ecourse", registrationId: null, courseId: course.id, clientId: null, email, name: "Kati Tamm", locale: "et", amountCents: 19000, method: "hirePurchase" }, NOW, TEST_MONTONIO.referencePrefix);
+    await attachOrder(db, p.id, `uuid-${p.id}`, NOW);
+    return { ...p, providerUuid: `uuid-${p.id}` };
+  };
+  expect(where(await handleReturn(back(loanToken(await buy("pooleli@example.test"), "PENDING")), deps))).toBe(`/makse#tulemus=pooleli&liik=jarelmaks&kursus=kulmumeistri-e-koolitus`);
+  expect(where(await handleReturn(back(loanToken(await buy("katkestatud@example.test"), "ABANDONED")), deps))).toBe(`/makse#tulemus=katkestatud&liik=jarelmaks&kursus=kulmumeistri-e-koolitus`);
+  expect(where(await handleReturn(back(loanToken(await buy("kati@example.test"), "PAID")), deps))).toBe(`/makse#tulemus=makstud&liik=ekoolitus&kursus=kulmumeistri-e-koolitus`);
+});
+
+test("a held loan (paid late, after a bank payment: the money is at Montonio) is pooleli as a loan with no way on; a refunded one is katkestatud with no way on", async () => {
+  const m = stubMontonio();
+  const c = await contactCourse(db);
+  const { deps } = settleDeps(db, m.montonio, NOW);
+  const held = await pendingPayment(db, await registrationOn(db, c, { paymentChoice: "financing" }), { amountCents: 35000, ...loan });
+  expect(where(await handleReturn(back(orderToken(held, { grandTotal: 1, paymentMethod: "hirePurchase" })), deps))).toBe(`/makse#tulemus=pooleli&liik=jarelmaks`);
+  const refunded = await pendingPayment(db, await registrationOn(db, c, { email: "kolmas@example.com", paymentChoice: "financing" }), { amountCents: 35000, ...loan });
+  await handleReturn(back(loanToken(refunded, "PAID")), deps);
+  expect(where(await handleReturn(back(loanToken(refunded, "REFUNDED")), deps))).toBe(`/makse#tulemus=katkestatud&liik=jarelmaks`);
+});
+
+test("only the loan is liik=jarelmaks: a bank row of a financing registration, and a row from before the methods were stored, keep the bank's kinds", async () => {
+  const m = stubMontonio();
+  const c = await contactCourse(db);
+  const r = await registrationOn(db, c, { paymentChoice: "financing" });
+  const { deps } = settleDeps(db, m.montonio, NOW);
+  const bank = await pendingPayment(db, r, { amountCents: 35000, method: "paymentInitiation" });
+  expect(where(await handleReturn(back(orderToken(bank, { paymentStatus: "PENDING" })), deps))).toBe(`/makse#tulemus=pooleli&liik=registreering&maksa=${r.payToken}`);
+  const old = await pendingPayment(db, r, { amountCents: 35000 }); // (method '': a row from before)
+  expect(where(await handleReturn(back(orderToken(old, { paymentStatus: "PENDING" })), deps))).toBe(`/makse#tulemus=pooleli&liik=registreering&maksa=${r.payToken}`);
+});
+
+test("the fragment of a loan still holds only the outcome, the kind, the pay token and the slug", async () => {
+  const m = stubMontonio();
+  const c = await contactCourse(db);
+  const r = await registrationOn(db, c, { paymentChoice: "financing" });
+  const { deps } = settleDeps(db, m.montonio, NOW);
+  const p = await pendingPayment(db, r, { amountCents: 35000, ...loan });
+  const url = new URL(where(await handleReturn(back(loanToken(p, "PENDING")), deps))!, SITE);
+  expect([...new URLSearchParams(url.hash.slice(1)).keys()]).toEqual(["tulemus", "liik", "maksa"]);
+  expect(url.hash).not.toMatch(/example\.com|uuid|35000|350/);
+  expect(returnTarget("ru", { outcome: "pooleli", kind: "jarelmaks", payToken: null, course: "kulmumeistri-e-koolitus" })).toBe("/ru/makse#tulemus=pooleli&liik=jarelmaks&kursus=kulmumeistri-e-koolitus");
+});

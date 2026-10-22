@@ -139,8 +139,8 @@ export const ru: Dict = {
     discountLabel: "Скидка",
     priceLabel: "Цена",
     payNow: "Оплатить сразу — 100% через интернет-банк",
-    instalmentSoon: "Оформить рассрочку — скоро",
-    instalmentNote: "Эта возможность появится позже.",
+    // Draft, as the Estonian texts are
+    financingLine: "Можно оплатить и в\u00a0рассрочку (Inbank).",
     buyNow: "Купить сразу",
     checkoutSoon:
       "Оплата скоро появится — вы сможете купить курс, как только она откроется. Оставьте свой e-mail, и мы сообщим.",
@@ -289,8 +289,7 @@ export const ru: Dict = {
     // Draft, as the Estonian texts are
     payFinancing: "Рассрочка (Inbank)",
     payFinancingContract: "Стоимость обучения оплачивается полностью: в рассрочку (Inbank) или банковским платежом.",
-    payInstalment: "Рассрочка — скоро",
-    payInstalmentNote: "Эта возможность появится позже.",
+    payFinancingRange: "Рассрочка возможна для обучения стоимостью 100–5000 €.",
     preferredPeriod: "Желаемый период или дата",
     preferredPeriodPlaceholder: "Например, вторая половина декабря или 12.12",
     optional: "необязательно",
@@ -378,6 +377,7 @@ export const ru: Dict = {
     total: "Итого",
     // the purchase's box is the e-course contract (contracts Task 4): Draft for Dim's wording sheet
     contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их.",
+    payBank: "Банковская ссылка",
   },
 
   // Online payments (phase 2b, spec 9); drafts for the native-speaker check (docs/launch-checklist.md §10).
@@ -388,6 +388,7 @@ export const ru: Dict = {
     starting: "Открываем оплату…",
     cartDown: "Оплата не открылась. Оставьте свой e-mail, и мы сообщим.",
     alreadyPaid: "Оплата уже прошла — проверьте свою почту.",
+    payBank: "Оплатить через банк",
     page: {
       heading: "Оплата обучения",
       nothing: "По этой регистрации сейчас ничего оплачивать не нужно.",
@@ -400,6 +401,7 @@ export const ru: Dict = {
       paidEcourseText: "Мы отправили вам ссылку для входа на e-mail.",
       pending: "Платёж в обработке. Когда банк его подтвердит, мы пришлём подтверждение.",
       cancelled: "Оплата не прошла.",
+      pendingFinancing: "Заявка на рассрочку в\u00a0процессе или не завершена. Если Inbank её одобрит, мы пришлём подтверждение.",
       retry: "Попробовать снова",
       openCourse: "Открыть онлайн-курс",
     },
