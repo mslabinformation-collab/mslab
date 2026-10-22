@@ -14,6 +14,7 @@ import { upcomingFrom } from "@/domain/calendar";
 import type { CourseSteps } from "@/domain/completion";
 import { contractValues, fillContract, type ContractValues } from "@/domain/contract";
 import { DEFAULT_TERMS_VERSION, TERMS_PAGE_KEY, TERMS_VERSION_KEY } from "@/domain/course-terms";
+import { FINANCING_KEY, readFinancingSettings } from "@/domain/financing";
 import { nextSessionByCourse } from "@/domain/home";
 import type { CourseProgress } from "@/domain/lessons";
 import { feedbackOpenFor } from "@/domain/protocols";
@@ -68,6 +69,12 @@ export type Dashboard = {
    * dashboard), never by loadDashboard: the admin's read-only view shows the cards without it.
    */
   payOnline?: boolean;
+  /**
+   * Maria has switched Järelmaks (Inbank) on in Seaded (settings.financing, domain/financing.ts); absent while it is off. With `payOnline`, a card booked with
+   * that choice offers „Maksa järelmaksuga (Inbank)“ beside „Maksa pangalingiga“ while the loan is allowed for it (financingAllowed, instalments §4). The
+   * start asks the toggle again when she presses, so a card a little old can only be refused there.
+   */
+  financing?: boolean;
   /** The feedback forms open for her and not answered or dismissed (phase protocols, spec §7), the latest first; absent when there is none. */
   feedback?: FeedbackPrompt[];
 };
@@ -164,14 +171,14 @@ export async function courseTermsVersion(db: Q): Promise<string> {
 // ---------- the dashboard ----------
 
 /**
- * Nine small queries, run together: registrations (with session and course), requests, e-course access, favourites, the client, the prepayment
- * setting, her invoices (invoices.ts invoicesOfClient: one query, grouped here onto the registration's or the e-course's card, none per
- * card), her current contracts (contracts.ts currentContractsOfClient: one query, ruling R14's owner, grouped the same way) and her reviews
+ * Ten small queries, run together: registrations (with session and course), requests, e-course access, favourites, the client, the prepayment
+ * setting, the Järelmaks (Inbank) toggle (`Dashboard.financing`, for the cards' two buttons), her invoices (invoices.ts invoicesOfClient: one query,
+ * grouped here onto the registration's or the e-course's card, none per card), her current contracts (contracts.ts currentContractsOfClient: one query, ruling R14's owner, grouped the same way) and her reviews
  * (reviews.ts reviewsOfClient: one query, grouped onto the registration's or the e-course's card as its `review`); then, for each
  * open e-course, its lessons (two queries each) and her last lesson activity (one query), for the cards' progress and the "Pooleli" card (`resume`).
  */
 export async function loadDashboard(db: Db, clientId: number, now: Date): Promise<Dashboard | null> {
-  const [regRows, requestRows, accessRows, favourites, [client], prepayment, invoiceRows, contractRows, reviewRows] = await Promise.all([
+  const [regRows, requestRows, accessRows, favourites, [client], prepayment, invoiceRows, contractRows, reviewRows, financing] = await Promise.all([
     db
       .select({
         id: registrations.id,
@@ -264,6 +271,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
     invoicesOfClient(db, clientId),
     currentContractsOfClient(db, clientId),
     reviewsOfClient(db, clientId),
+    readSetting(db, FINANCING_KEY),
   ]);
   if (!client) return null;
 
@@ -403,6 +411,7 @@ export async function loadDashboard(db: Db, clientId: number, now: Date): Promis
     favourites,
     prepayment: parsePrepayment(prepayment),
     resume: resumeSlug(sorted, lastAt, now),
+    ...(readFinancingSettings(financing).enabled ? { financing: true as const } : {}),
     ...(feedback.length ? { feedback } : {}),
   };
 }

@@ -50,6 +50,11 @@ async function signedIn(page: Page, label: string, project: string, opts: { own?
   return { email, ...course };
 }
 
+/**
+ * Seaded's page-wide „Salvesta“. Seaded has a second one since the Järelmaks (Inbank) card (instalments, `data-financing-save`, which saves its own toggle),
+ * so the button is asked for without that one.
+ */
+const seadedSave = (page: Page) => page.getByRole("button", { name: "Salvesta", exact: true }).and(page.locator(":not([data-financing-save])"));
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 const gate = (page: Page) => page.locator("[data-terms-gate]");
 const box = (page: Page) => gate(page).getByRole("checkbox", { name: "Olen tutvunud ja nõustun tingimustega" });
@@ -282,7 +287,7 @@ test("accept, then the admin saves new terms in Seaded: the next open shows the 
     const body = editor.getByRole("textbox", { name: "Tekst (eesti keeles)", exact: true });
     await expect(body).toHaveValue(E2E_TERMS.et);
     await body.fill("E2E uued tingimused.\n\nTeine lõik muutus.");
-    await page.getByRole("button", { name: "Salvesta", exact: true }).click();
+    await seadedSave(page).click();
     await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
   } finally {
     await removeAdminRows(created);

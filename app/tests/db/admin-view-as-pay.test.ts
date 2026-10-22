@@ -1,7 +1,7 @@
 import { isValidElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clients } from "@/db/schema";
+import { clients, settings } from "@/db/schema";
 import { contactCourse, registrationOn, TEST_MONTONIO } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
@@ -77,6 +77,18 @@ describe("the admin's view of a student's cards", () => {
     const view = await viewOf((await student()).id);
     expect("payOnline" in view.data).toBe(false);
     expect(view.readOnly).toBe(true);
+  });
+
+  test("Järelmaks (Inbank)'s toggle reaches Maria's copy too, as the cards' two buttons need it (Dashboard.financing); the buttons stay inert", async () => {
+    vi.stubEnv("MONTONIO_ACCESS_KEY", TEST_MONTONIO.accessKey);
+    vi.stubEnv("MONTONIO_SECRET_KEY", TEST_MONTONIO.secretKey);
+    vi.stubEnv("MONTONIO_ENV", "sandbox");
+    const [client] = await db.insert(clients).values({ email: "kati@example.test", name: "Kati Tamm" }).returning();
+    await registrationOn(db, await contactCourse(db), { clientId: client.id, email: client.email, paymentChoice: "financing" });
+    expect("financing" in (await viewOf(client.id)).data).toBe(false);
+    await db.insert(settings).values({ key: "financing", value: { enabled: true } });
+    const view = await viewOf(client.id);
+    expect([view.data.financing, view.data.payOnline, view.readOnly]).toEqual([true, true, true]);
   });
 
   test("the flag is the student's own: payOnline when paymentProvider() is there (the account API's deps.montonio), whatever the settings say on their own", async () => {

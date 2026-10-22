@@ -4,9 +4,10 @@ import type { Db } from "@/db/client";
 import { clients, clientSessions, payments, registrations, settings } from "@/db/schema";
 import { handleAccountApi, type AccountDeps } from "@/server/account-api";
 import { CLIENT_SESSION_TTL_MS } from "@/server/client-auth";
+import { settleToken } from "@/server/payments/settle";
 import { newToken, sha256 } from "@/server/token";
 import { fakeKv } from "../fakes";
-import { contactCourse, registrationOn, SITE, stubMontonio } from "./payments-fixtures";
+import { contactCourse, orderToken, registrationOn, settleDeps, SITE, stubMontonio } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
 // POST /api/konto/maksa (phase 2b, spec 6.3): the card's "Maksa {summa}" / "Maksa ülejäänud {summa}" for one of the client's own registrations,
@@ -129,4 +130,54 @@ test("the dashboard says payOnline when payments are on, and nothing when they a
     (await (await handleAccountApi(new Request(`${SITE}/api/konto`, { headers: { cookie } }), deps(montonio)))!.json()) as Record<string, unknown>;
   expect((await dash(m.montonio)).payOnline).toBe(true);
   expect("payOnline" in (await dash(null))).toBe(false);
+});
+
+test("the dashboard says `financing` when Maria switched Järelmaks (Inbank) on (Seaded), and says nothing when it is off or unset (Task 7: the card's two buttons)", async () => {
+  const { cookie } = await signedIn();
+  const dash = async () => (await (await handleAccountApi(new Request(`${SITE}/api/konto`, { headers: { cookie } }), deps(stubMontonio().montonio)))!.json()) as Record<string, unknown>;
+  expect("financing" in (await dash())).toBe(false);
+  await db.insert(settings).values({ key: "financing", value: { enabled: false } });
+  expect("financing" in (await dash())).toBe(false);
+  await db.update(settings).set({ value: { enabled: true } }).where(eq(settings.key, "financing"));
+  expect((await dash()).financing).toBe(true);
+  await db.update(settings).set({ value: { enabled: "true" } }).where(eq(settings.key, "financing"));
+  expect("financing" in (await dash())).toBe(false);
+});
+
+test("the card of a järelmaks registration carries what the two buttons are decided on: its choice, the whole price, nothing paid", async () => {
+  const { client, cookie } = await signedIn();
+  const r = await registrationOn(db, await contactCourse(db), { clientId: client.id, paymentChoice: "financing" });
+  const res = await handleAccountApi(new Request(`${SITE}/api/konto`, { headers: { cookie } }), deps(stubMontonio().montonio));
+  const cards = ((await res!.json()) as { cards: Record<string, unknown>[] }).cards;
+  expect(cards.find((c) => c.registrationId === r.id)).toMatchObject({ kind: "contact", paymentChoice: "financing", priceCents: 35000, paidCents: 0, status: "awaiting_prepayment" });
+});
+
+test("both buttons of the card: `method` hirePurchase starts the loan (60-minute hold), paymentInitiation the bank (30); the bank payment then confirms the place in full", async () => {
+  const m = stubMontonio();
+  await db.insert(settings).values({ key: "financing", value: { enabled: true } });
+  const { client, cookie } = await signedIn();
+  const c = await contactCourse(db);
+  const loan = await registrationOn(db, c, { clientId: client.id, paymentChoice: "financing" });
+  const bank = await registrationOn(db, c, { clientId: client.id, paymentChoice: "financing", email: "teine@example.com" });
+  expect((await call(deps(m.montonio), cookie, { registrationId: loan.id, method: "hirePurchase" })).status).toBe(200);
+  expect((await call(deps(m.montonio), cookie, { registrationId: bank.id, method: "paymentInitiation" })).status).toBe(200);
+  const rows = await db.select().from(payments).orderBy(payments.id);
+  expect(rows.map((p) => [p.registrationId, p.method, p.amountCents])).toEqual([[loan.id, "hirePurchase", 35000], [bank.id, "paymentInitiation", 35000]]);
+  const hold = async (id: number) => (await db.select().from(registrations).where(eq(registrations.id, id)))[0].seatHoldUntil;
+  expect([await hold(loan.id), await hold(bank.id)]).toEqual([new Date(NOW.getTime() + 60 * 60_000), new Date(NOW.getTime() + 30 * 60_000)]);
+  // she pays by bank: the whole price, and the place is confirmed
+  const { deps: settle, flush } = settleDeps(db, m.montonio, NOW);
+  expect(await settleToken(settle, m.montonio.verifyOrderToken(orderToken(rows[1])))).toMatchObject({ kind: "done", payment: { status: "paid", amountCents: 35000 } });
+  await flush();
+  const [after] = await db.select().from(registrations).where(eq(registrations.id, bank.id));
+  expect([after.status, after.paidCents]).toEqual(["confirmed", 35000]);
+});
+
+test("a loan the start refuses (the toggle went off since the page was loaded): 409 financing, nothing started, and the bank's press still works", async () => {
+  const m = stubMontonio();
+  const { client, cookie } = await signedIn();
+  const r = await registrationOn(db, await contactCourse(db), { clientId: client.id, paymentChoice: "financing" });
+  expect(await answer(await call(deps(m.montonio), cookie, { registrationId: r.id, method: "hirePurchase" }))).toEqual([409, { ok: false, error: "financing" }]);
+  expect(await db.select().from(payments)).toEqual([]);
+  expect((await call(deps(m.montonio), cookie, { registrationId: r.id, method: "paymentInitiation" })).status).toBe(200);
 });

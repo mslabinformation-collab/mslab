@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { payments, registrations } from "@/db/schema";
+import { payments, registrations, settings } from "@/db/schema";
 import { contactCourse, registrationOn, stubMontonio, TEST_MONTONIO } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
@@ -115,4 +115,36 @@ test("a setting that cannot be read (no DATABASE_URL in production) is an empty 
   const res = await get(token);
   expect([res.status, await res.text(), res.headers.get("cache-control")]).toEqual([500, "", "no-store"]);
   expect(log.mock.calls.flat().join("\n")).not.toContain(token);
+});
+
+test("Järelmaks (Inbank) through the route: an allowed registration's page has the two buttons; the järelmaks form's POST (urlencoded, as a browser sends it) starts a hirePurchase order, the bank's a bank one", async () => {
+  const m = stubMontonio();
+  await db.insert(settings).values({ key: "financing", value: { enabled: true } });
+  const c = await contactCourse(db);
+  const a = await registrationOn(db, c, { paymentChoice: "financing" });
+  const b = await registrationOn(db, c, { paymentChoice: "financing", email: "teine@example.com" });
+  const html = await (await get(a.payToken)).text();
+  expect(html).toContain("Maksa järelmaksuga (Inbank)");
+  expect(html).toContain("Maksa pangalingiga");
+  const form = (token: string, method: string) =>
+    route.POST(new Request(`${ORIGIN}/maksa/${token}`, { method: "POST", headers: { origin: ORIGIN, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ method }).toString() }), ctx(token));
+  expect((await form(a.payToken, "hirePurchase")).status).toBe(303);
+  expect((await form(b.payToken, "paymentInitiation")).status).toBe(303);
+  expect(m.state.orders.map((o) => [(o.payment as { method: string }).method, o.grandTotal])).toEqual([["hirePurchase", 350], ["paymentInitiation", 350]]);
+  expect((await db.select().from(payments).orderBy(payments.id)).map((p) => p.method)).toEqual(["hirePurchase", "paymentInitiation"]);
+});
+
+test("a järelmaks press with the toggle off: 409 with the range sentence and the bank's button, through the route", async () => {
+  stubMontonio();
+  const r = await registrationOn(db, await contactCourse(db), { paymentChoice: "financing" });
+  const res = await route.POST(
+    new Request(`${ORIGIN}/maksa/${r.payToken}`, { method: "POST", headers: { origin: ORIGIN, "content-type": "application/x-www-form-urlencoded" }, body: "method=hirePurchase" }),
+    ctx(r.payToken),
+  );
+  const html = await res.text();
+  expect(res.status).toBe(409);
+  expect(html).toContain("Järelmaks on võimalik 100–5000 € hinnaga koolitusele.");
+  expect(html).toContain("Maksa 350 €");
+  expect(html).not.toContain("hirePurchase");
+  expect(await db.select().from(payments)).toEqual([]);
 });

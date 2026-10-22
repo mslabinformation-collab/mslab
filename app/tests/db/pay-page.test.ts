@@ -1,11 +1,14 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { courseSessions, payments, registrations, settings } from "@/db/schema";
+import { setSetting } from "@/db/queries/admin";
+import { courses, courseSessions, invoices, payments, registrations, settings } from "@/db/schema";
+import { createInvoice } from "@/server/invoices";
 import { handlePayPage, loadPayView, payPage, type PayPageDeps } from "@/server/pay-page";
+import { settleToken } from "@/server/payments/settle";
 import { STARTS_PER_HOUR } from "@/server/payments/start";
 import { fakeKv } from "../fakes";
-import { contactCourse, loggedDb, pendingPayment, registrationOn, SITE, stubMontonio } from "./payments-fixtures";
+import { contactCourse, loggedDb, orderToken, pendingPayment, registrationOn, settleDeps, SITE, stubMontonio } from "./payments-fixtures";
 import { makeTestDb } from "./helpers";
 
 // /maksa/<pay_token> (phase 2b, spec 6.3): the mail's "Maksa" link. GET shows the course, the date, what is due, the button and the bank
@@ -76,7 +79,7 @@ describe("GET: the page, and nothing else", () => {
 
   test("payPage escapes what it shows", () => {
     const html = payPage(
-      { token: "tok", locale: "et", registrationId: 1, course: { et: '<b>"Kulmud"</b>' }, session: null, due: { kind: "prepayment", cents: 100 }, full: false, transfer: null },
+      { token: "tok", locale: "et", registrationId: 1, course: { et: '<b>"Kulmud"</b>' }, session: null, due: { kind: "prepayment", cents: 100 }, full: false, financing: false, transfer: null },
       { online: true },
     );
     expect(html).toContain("&lt;b&gt;&quot;Kulmud&quot;&lt;/b&gt;");
@@ -390,6 +393,7 @@ describe("what the page may and may not do (phase 2b, the review's list)", () =>
         session: { startsAt: new Date("2026-11-14T08:00:00Z"), city: evil, venue: "'<>&" },
         due: { kind: "balance", cents: 17500 },
         full: false,
+        financing: false,
         transfer: { receiver: evil, iban: `EE38"><script>`, bank: evil, referencePrefix: evil },
       },
       { online: true },
@@ -397,5 +401,191 @@ describe("what the page may and may not do (phase 2b, the review's list)", () =>
     expect(html).not.toMatch(/<img|<script|onerror="/);
     expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
     expect(html).toContain("&#39;&lt;&gt;&amp;");
+  });
+});
+
+// ---------- Järelmaks (Inbank) on the page (instalments §4 „Maksa“ for a järelmaks registration, Task 7) ----------
+// An unpaid registration booked with „Järelmaks (Inbank)“ has two buttons while a järelmaks may go to Inbank (Seaded's toggle on, payments on, the
+// price 100–5000 €, nothing paid, the whole price due): „Maksa järelmaksuga (Inbank)“ and „Maksa pangalingiga“, each its own form posting `method`.
+// In every other case there is the one „Maksa {summa}“ of before. A järelmaks press the start refuses (the toggle went off, the price moved) is a
+// 409 with the range sentence and the bank's button.
+
+describe("Järelmaks (Inbank) on the pay page", () => {
+  const RANGE = "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.";
+  const on = () => db.insert(settings).values({ key: "financing", value: { enabled: true } });
+  const loan = async (over: Partial<typeof registrations.$inferInsert> = {}, c?: Awaited<ReturnType<typeof contactCourse>>) =>
+    registrationOn(db, c ?? (await contactCourse(db)), { paymentChoice: "financing", ...over });
+  const priced = (cents: number) => db.update(courses).set({ priceGroup: cents });
+  const posted = (token: string, body: string) =>
+    new Request(`${SITE}/maksa/${token}`, { method: "POST", headers: { origin: SITE, "content-type": "application/x-www-form-urlencoded" }, body });
+  /** The page's forms, in order: [the `method` it posts (null: none, today's one button), the button's words]. */
+  const buttons = (html: string) =>
+    [...html.matchAll(/<form method="post" action="\/maksa\/[^"]+">(.*?)<\/form>/g)].map((m) => [/name="method" value="([^"]+)"/.exec(m[1])?.[1] ?? null, /<button[^>]*>([^<]*)<\/button>/.exec(m[1])?.[1] ?? null]);
+  const page = async (token: string, over: Partial<PayPageDeps> = {}) => text(await handlePayPage(get(token), token, deps(stubMontonio().montonio, over)));
+  const TWO = [["hirePurchase", "Maksa järelmaksuga (Inbank)"], ["paymentInitiation", "Maksa pangalingiga"]];
+  const ONE = (amount: string) => [[null, `Maksa ${amount}`]];
+
+  test("allowed: two forms, järelmaks first and the bank's second, each posting its `method`; the amount is the whole price; the transfer stays under „või tasu pangaülekandega“", async () => {
+    await db.insert(settings).values({ key: "prepayment", value: PAY });
+    await on();
+    const r = await loan();
+    const html = await page(r.payToken);
+    expect(buttons(html)).toEqual(TWO);
+    expect(html).toContain("Summa: 350 €");
+    expect(html).not.toContain("Maksa 350 €");
+    expect(html).toContain('<input type="hidden" name="method" value="hirePurchase">');
+    expect(html).toContain('<input type="hidden" name="method" value="paymentInitiation">');
+    expect(html).toContain("või tasu pangaülekandega");
+    expect(html).toContain("EE38 2200 2210 2014 5685");
+    expect(html).not.toMatch(/<script|<link|https?:\/\/(?!www\.w3\.org)/);
+    // a GET changes nothing
+    expect(await db.select().from(payments)).toEqual([]);
+    expect((await db.select().from(registrations).where(eq(registrations.id, r.id)))[0].seatHoldUntil).toBeNull();
+    expect((await loadPayView(db, r.payToken, NOW))?.financing).toBe(true);
+  });
+
+  test("the range is 100–5000 € inclusive: 99,99 and 5000,01 are the one button, 100 and 5000 the two", async () => {
+    await on();
+    const r = await loan();
+    for (const [cents, amount, two] of [[9_999, "99,99 €", false], [10_000, "100 €", true], [500_000, "5 000 €", true], [500_001, "5 000,01 €", false]] as const) {
+      await priced(cents);
+      expect(buttons(await page(r.payToken)), String(cents)).toEqual(two ? TWO : ONE(amount));
+      expect((await loadPayView(db, r.payToken, NOW))?.financing, String(cents)).toBe(two);
+    }
+  });
+
+  test("the one „Maksa“ as today: the toggle off, unset or of a wrong shape, a registration booked with 100% or 50%, payments off", async () => {
+    const c = await contactCourse(db);
+    const r = await loan({}, c);
+    expect(buttons(await page(r.payToken))).toEqual(ONE("350 €")); // (no row: off by default)
+    await setSetting(db, "financing", { enabled: false });
+    expect(buttons(await page(r.payToken))).toEqual(ONE("350 €"));
+    await setSetting(db, "financing", { enabled: "yes" });
+    expect(buttons(await page(r.payToken))).toEqual(ONE("350 €"));
+    await setSetting(db, "financing", { enabled: true });
+    expect(buttons(await page(r.payToken))).toEqual(TWO);
+    // (the choice is made at booking: a 100% or a 50% registration never gets järelmaks later)
+    const full = await loan({ email: "taiesti@example.test", paymentChoice: "full" }, c);
+    const half = await loan({ email: "pool@example.test", paymentChoice: "half" }, c);
+    expect(buttons(await page(full.payToken))).toEqual(ONE("350 €"));
+    expect(buttons(await page(half.payToken))).toEqual(ONE("175 €"));
+    expect((await loadPayView(db, full.payToken, NOW))?.financing).toBe(false);
+    expect((await loadPayView(db, half.payToken, NOW))?.financing).toBe(false);
+    // without payments there is no button at all, and no hidden input either
+    expect(await page(r.payToken, { montonio: null })).not.toContain("<form");
+  });
+
+  test("a session with no free seat: the line and no button of either kind", async () => {
+    await on();
+    const c = await contactCourse(db, { capacity: 1 });
+    await registrationOn(db, c, { email: "teine@example.test", status: "confirmed", paidCents: 35000 });
+    const r = await loan({}, c);
+    const html = await page(r.payToken);
+    expect(html).toContain("See koolitus on täis. Võta ühendust Mariaga.");
+    expect(html).not.toContain("<form");
+  });
+
+  test("something already paid, or an invoice for a part: only the bank, for what is due", async () => {
+    await on();
+    await setSetting(db, "invoice", { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "" });
+    await setSetting(db, "prepayment", PAY);
+    const c = await contactCourse(db);
+    // a part recorded by hand: 50 € paid, 300 € due
+    const part = await loan({ email: "osa@example.test", paidCents: 5_000 }, c);
+    expect(buttons(await page(part.payToken))).toEqual(ONE("300 €"));
+    expect((await loadPayView(db, part.payToken, NOW))?.financing).toBe(false);
+    // an invoice for the whole price keeps both; one that asks for a part is the bank's alone
+    const asked = await loan({ email: "arve@example.test" }, c);
+    const made = await createInvoice(db, asked.id, { kind: "full", mode: "request" }, NOW);
+    if (!made.ok) throw new Error(made.error);
+    expect(buttons(await page(asked.payToken))).toEqual(TWO);
+    await db.update(invoices).set({ amountCents: 10_000 }).where(eq(invoices.id, made.invoice.id));
+    expect(buttons(await page(asked.payToken))).toEqual(ONE("100 €"));
+    expect((await loadPayView(db, asked.payToken, NOW))?.financing).toBe(false);
+  });
+
+  test("Russian for a Russian registration", async () => {
+    await on();
+    const r = await loan({ locale: "ru" });
+    expect(buttons(await page(r.payToken))).toEqual([["hirePurchase", "Оплатить в рассрочку (Inbank)"], ["paymentInitiation", "Оплатить через банк"]]);
+  });
+
+  test("each button starts its method: järelmaks is a hirePurchase row of the whole price with the 60-minute hold, the bank a paymentInitiation row with 30", async () => {
+    await on();
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    const a = await loan({ email: "a@example.test" }, c);
+    const b = await loan({ email: "b@example.test" }, c);
+    const resA = await handlePayPage(posted(a.payToken, "method=hirePurchase"), a.payToken, deps(m.montonio));
+    const resB = await handlePayPage(posted(b.payToken, "method=paymentInitiation"), b.payToken, deps(m.montonio));
+    expect([resA.status, resB.status]).toEqual([303, 303]);
+    expect((await db.select().from(payments).orderBy(payments.id)).map((p) => [p.registrationId, p.kind, p.method, p.amountCents, p.status])).toEqual([
+      [a.id, "prepayment", "hirePurchase", 35000, "pending"],
+      [b.id, "prepayment", "paymentInitiation", 35000, "pending"],
+    ]);
+    expect(m.state.orders.map((o) => (o.payment as { method: string }).method)).toEqual(["hirePurchase", "paymentInitiation"]);
+    const hold = async (id: number) => (await db.select().from(registrations).where(eq(registrations.id, id)))[0].seatHoldUntil;
+    expect([await hold(a.id), await hold(b.id)]).toEqual([new Date(NOW.getTime() + 60 * 60_000), new Date(NOW.getTime() + 30 * 60_000)]);
+  });
+
+  test("a bank payment of a järelmaks registration confirms the place in full", async () => {
+    await on();
+    const m = stubMontonio();
+    const r = await loan();
+    expect((await handlePayPage(posted(r.payToken, "method=paymentInitiation"), r.payToken, deps(m.montonio))).status).toBe(303);
+    const [p] = await db.select().from(payments);
+    const { deps: settle, flush } = settleDeps(db, m.montonio, NOW);
+    expect(await settleToken(settle, m.montonio.verifyOrderToken(orderToken(p)))).toMatchObject({ kind: "done", payment: { status: "paid", amountCents: 35000 } });
+    await flush();
+    const [after] = await db.select().from(registrations).where(eq(registrations.id, r.id));
+    expect([after.status, after.paidCents]).toEqual(["confirmed", 35000]);
+    // and the page is a quiet „nothing to pay“ now
+    const done = await page(r.payToken);
+    expect(done).toContain("Selle registreeringu eest pole praegu midagi tasuda.");
+    expect(done).not.toContain("<form");
+  });
+
+  test("a järelmaks press the start refuses (the toggle is off, or the price left 100–5000 €): 409, the range sentence and the bank's one button — nothing started", async () => {
+    const m = stubMontonio();
+    const r = await loan();
+    // the toggle off (a „Proovi uuesti“ of a loan after Maria switched it off)
+    const off = await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio));
+    const html = await text(off);
+    expect(off.status).toBe(409);
+    expect(html).toContain(`<p class="notice" role="alert" data-pay-notice="financing">${RANGE}</p>`);
+    expect(buttons(html)).toEqual(ONE("350 €"));
+    expect(html).not.toContain("hirePurchase");
+    // the toggle on, the price out of range after the page was opened
+    await on();
+    await priced(600_000);
+    const range = await text(await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio)));
+    expect(range).toContain(RANGE);
+    expect(buttons(range)).toEqual(ONE("6 000 €"));
+    expect(await db.select().from(payments)).toEqual([]);
+    expect(m.state.orders).toEqual([]);
+    // the bank's button on that page works
+    await priced(35_000);
+    expect((await handlePayPage(posted(r.payToken, "method=paymentInitiation"), r.payToken, deps(m.montonio))).status).toBe(303);
+  });
+
+  test("the sentence is said only after a refusal: a plain GET and a rate limit do not carry it", async () => {
+    await on();
+    const r = await loan();
+    expect(await page(r.payToken)).not.toContain(RANGE);
+    const m = stubMontonio();
+    const limited = await text(await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio, { kv: fakeKv({ "rl:pay:203.0.113.9": "5" }) })));
+    expect(limited).toContain("Liiga palju katseid. Proovi mõne minuti pärast.");
+    expect(limited).not.toContain(RANGE);
+  });
+
+  test("payPage: two forms only with `financing` and online payments; the notice of a refusal", () => {
+    const view = { token: "tok", locale: "et" as const, registrationId: 1, course: { et: "Kulmud" }, session: null, due: { kind: "prepayment" as const, cents: 35000 }, full: false, financing: true, transfer: null };
+    expect(buttons(payPage(view, { online: true }))).toEqual(TWO);
+    expect(buttons(payPage({ ...view, financing: false }, { online: true }))).toEqual(ONE("350 €"));
+    expect(payPage(view, { online: false })).not.toContain("<form");
+    expect(payPage({ ...view, full: true }, { online: true })).not.toContain("<form");
+    const refused = payPage({ ...view, financing: false }, { online: true, notice: "financing" });
+    expect(refused).toContain(`data-pay-notice="financing">${RANGE}</p>`);
+    expect(refused).toContain("Maksa 350 €");
   });
 });

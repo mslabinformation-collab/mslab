@@ -228,6 +228,7 @@ function CoursesView({ data, locale, t, readOnly, at, reload }: { data: Dashboar
                   t={t}
                   pay={data.prepayment}
                   payOnline={data.payOnline === true}
+                  financing={data.financing === true}
                   readOnly={readOnly}
                   sent={isSent(sent, card)}
                   focusSent={card.kind === "contact" && justSent === card.registrationId}

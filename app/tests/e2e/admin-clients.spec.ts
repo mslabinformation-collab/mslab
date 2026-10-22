@@ -54,6 +54,11 @@ async function studentBrowser(browser: Browser, email: string, ip: string): Prom
 const clientId = async (email: string): Promise<number> => (await onLocalDb((sql) => sql<{ id: number }[]>`select id from clients where email = ${email}`, { marksPages: false }))[0].id;
 const sessions = (id: number) =>
   onLocalDb((sql) => sql<{ idHash: string; endedAt: Date | null; expiresAt: Date }[]>`select id_hash as "idHash", ended_at as "endedAt", expires_at as "expiresAt" from client_sessions where client_id = ${id} order by id_hash`, { marksPages: false });
+/**
+ * Seaded's page-wide „Salvesta“. Seaded has a second one since the Järelmaks (Inbank) card (instalments, `data-financing-save`, which saves its own toggle),
+ * so the button is asked for without that one.
+ */
+const seadedSave = (page: Page) => page.getByRole("button", { name: "Salvesta", exact: true }).and(page.locator(":not([data-financing-save])"));
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 const drawer = (page: Page) => page.locator("dialog[data-drawer]");
 /**
@@ -667,14 +672,14 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
       const iban = box.getByRole("textbox", { name: "IBAN", exact: true });
       await box.getByRole("textbox", { name: "Saaja", exact: true }).fill("MS LAB OÜ");
       await iban.fill("EE38 12");
-      await page.getByRole("button", { name: "Salvesta", exact: true }).click();
+      await seadedSave(page).click();
       await expect(page.locator("[data-save-status]")).toHaveText("Kontrolli märgitud välju.");
       await expect(iban).toHaveAttribute("aria-invalid", "true");
       await expect(box.getByText("Kontrolli IBANi: kaks tähte, kaks numbrit ja konto number, nt EE38 2200 2210 2014 5685.")).toBeVisible();
       await iban.fill("ee38 2200 2210 2014 5685");
       await box.getByRole("textbox", { name: "Pank", exact: true }).fill("Swedbank");
       await box.getByRole("textbox", { name: "Selgituse algus", exact: true }).fill("MSLAB-");
-      await page.getByRole("button", { name: "Salvesta", exact: true }).click();
+      await seadedSave(page).click();
       await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
       await expect(iban).toHaveValue("EE382200221020145685");
 
@@ -693,7 +698,7 @@ test("Ettemaksu juhised in Seaded: saved (the IBAN without spaces), her unpaid c
 
       // all four emptied: no instructions, so no "Vaata juhiseid"; "Maksa 175 €" is all that is left to press
       for (const name of ["Saaja", "IBAN", "Pank", "Selgituse algus"]) await box.getByRole("textbox", { name, exact: true }).fill("");
-      await page.getByRole("button", { name: "Salvesta", exact: true }).click();
+      await seadedSave(page).click();
       await expect(page.locator("[data-save-status]")).toHaveText("Salvestatud.");
       await student.page.reload();
       await expect(unpaid.locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 175 €.");

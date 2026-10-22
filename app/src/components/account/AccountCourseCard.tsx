@@ -8,6 +8,7 @@ import {
   cardInvoices, cardKey, cardTag, cardTitle, cardWhen, hasPrepayment, isPastCard, nextStep, type AccountCard, type CardInvoice, type ContactCard, type EcourseCard, type IndividualCard,
   type PrepaymentInfo as PaySettings,
 } from "@/domain/account-cards";
+import { financingAllowed } from "@/domain/financing";
 import { euro } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { payableDue, type PayableDue } from "@/domain/payments";
@@ -42,6 +43,12 @@ export type CardProps = {
   /** Online payments are on (phase 2b, Dashboard.payOnline): the pay steps get "Maksa {summa}" / "Maksa ülejäänud {summa}". */
   payOnline?: boolean;
   /**
+   * Maria has switched Järelmaks (Inbank) on (Dashboard.financing). With `payOnline`, an unpaid card booked with that choice has two buttons, „Maksa
+   * järelmaksuga (Inbank)“ and „Maksa pangalingiga“, while the loan is allowed for it (domain/financing.ts financingAllowed: the price 100–5000 €, nothing
+   * paid, the whole price due); any other card keeps its one „Maksa“.
+   */
+  financing?: boolean;
+  /**
    * The server refused a pay start because this card is out of date (a 401, a 404 or "nothing to pay"): the cards are loaded again behind
    * the page (CoursesView's quiet reload). Answers whether the server answered the new load; absent (the admin's view): nothing to load.
    */
@@ -62,6 +69,9 @@ export type CardProps = {
 
 /** A ref that focuses its element once, when it appears (stable, so a later render does not focus it again). */
 const focusOnMount = (el: HTMLElement | null) => el?.focus();
+
+/** How a „Maksa“ pays (POST /api/konto/maksa `method`): the bank link, or Järelmaks (Inbank). */
+type PayMethod = "paymentInitiation" | "hirePurchase";
 
 /** The page Montonio answers with is a web address of its own; anything else is no page to send the browser to. */
 const isPageUrl = (url: unknown): url is string => typeof url === "string" && /^https?:\/\//i.test(url);
@@ -143,7 +153,9 @@ function InvoiceLines({ invoices, locale, t, readOnly }: { invoices: CardInvoice
  *   payments a confirmed card with a rest has "Maksa ülejäänud {summa}" as its main button and the change request as the text button;
  * - openCourse → "Ava koolitus" → /konto/kursus/{slug}.
  * - a sent protocol (phase protocols) → "Vaata protokolli" → /konto/protokoll#id={registration}: the main button of a card that has none, else a text link under it.
- * "Maksa" posts /api/konto/maksa and the page goes on to Montonio; a refusal says why under the button. A refusal that says the card is
+ * A card booked with „Järelmaks (Inbank)“ has two main buttons instead of the one „Maksa“ while the loan is allowed for it (`financing`, `twoWays`; instalments
+ * §4): „Maksa järelmaksuga (Inbank)“ (the filled one) and „Maksa pangalingiga“ (the outline), each posting its `method`; the transfer's text button stays under them.
+ * "Maksa" posts /api/konto/maksa and the page goes on to Montonio; a refusal says why under the button (a loan the server refuses says the range, 409 "financing"). A refusal that says the card is
  * out of date (a 401, a 404, or "nothing to pay") also loads the cards again quietly (`onStale`), so the card shows what is true now: the
  * line is left for "nothing" (its sentence is true after the reload too) and for a reload that got no answer, and not for a 401 or a 404.
  * If the browser comes back to this page from its back-forward cache (the payer pressed Back), the button is ready again.
@@ -160,10 +172,11 @@ function InvoiceLines({ invoices, locale, t, readOnly }: { invoices: CardInvoice
  * while the card has a review.
  * `readOnly`: the buttons are there but aria-disabled, and do nothing.
  */
-export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, onStale, onContract, onReviewGone, certificateName = "" }: CardProps) {
+export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, focusSent, onChangeRequest, payOnline = false, financing = false, onStale, onContract, onReviewGone, certificateName = "" }: CardProps) {
   const step = nextStep(card, now, pay, locale, payOnline);
   const [open, setOpen] = useState(false);
-  const [paying, setPaying] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  // `method`: the button that was pressed (its words become "Avan makse…"); null for the one button of before
+  const [paying, setPaying] = useState<{ busy: boolean; error: string | null; method: PayMethod | null }>({ busy: false, error: null, method: null });
   // the certificate made on this card (an ended access's name form)
   const [made, setMade] = useState<CertificateView | null>(null);
   const titleId = useId();
@@ -178,41 +191,72 @@ export function AccountCourseCard({ card, now, locale, t, pay, readOnly, sent, f
   const invoices = cardInvoices(card);
   // the main button is "Maksa …" when the step is a payment and an amount can be paid online now
   const online = due.kind !== "none" && (action.kind === "pay" || step.key === "confirmedRest") ? due : null;
+  // Järelmaks (Inbank) too (instalments §4): a card booked with that choice, while a loan may go to Inbank for what „Maksa“ would charge — the server's own
+  // rule (financingAllowed, which the pay page and the start ask as well). Then there are two buttons; otherwise the one „Maksa“ of before.
+  const twoWays =
+    online !== null &&
+    card.kind === "contact" &&
+    card.paymentChoice === "financing" &&
+    financingAllowed({ enabled: financing, paymentsOn: payOnline, priceCents: card.priceCents, paidCents: card.paidCents, dueCents: online.cents });
 
   // "Avan makse…" stays while the browser leaves for Montonio; Back brings the page back from the cache in that state, so it is reset then
   useEffect(() => {
     const restored = (e: PageTransitionEvent) => {
-      if (e.persisted) setPaying({ busy: false, error: null });
+      if (e.persisted) setPaying({ busy: false, error: null, method: null });
     };
     window.addEventListener("pageshow", restored);
     return () => window.removeEventListener("pageshow", restored);
   }, []);
 
-  async function payNow(card: ContactCard) {
+  /** `method`: which of the two buttons was pressed; none (the one button): the body of before, and the server pays by bank. */
+  async function payNow(card: ContactCard, method: PayMethod | null = null) {
     if (readOnly || paying.busy) return;
-    setPaying({ busy: true, error: null });
-    const answer = await sendJson("/api/konto/maksa", { registrationId: card.registrationId });
+    setPaying({ busy: true, error: null, method });
+    const answer = await sendJson("/api/konto/maksa", method === null ? { registrationId: card.registrationId } : { registrationId: card.registrationId, method });
     const url = answer.data.paymentUrl;
     if (isDone(answer) && isPageUrl(url)) return navigate(url);
     const nothing = answer.data.error === "nothing";
-    const error = answer.data.error === "full" ? t.online.full : nothing ? t.online.nothing : answer.status === 429 ? t.online.rate : t.online.failed;
-    // signed out or replaced (401), gone or not hers (404), nothing due (409): the card is out of date; load the cards again, quietly
-    const outOfDate = answer.status === 401 || answer.status === 404 || nothing;
+    // a loan the start would not take (Seaded's toggle went off, or the price left 100–5000 €, since the cards were loaded): the range sentence; the bank is open
+    const refusedLoan = answer.data.error === "financing";
+    const error = answer.data.error === "full" ? t.online.full : nothing ? t.online.nothing : refusedLoan ? t.online.financing : answer.status === 429 ? t.online.rate : t.online.failed;
+    // signed out or replaced (401), gone or not hers (404), nothing due or no loan any more (409): the card is out of date; load the cards again, quietly
+    const outOfDate = answer.status === 401 || answer.status === 404 || nothing || refusedLoan;
     const reloaded = outOfDate && onStale ? await onStale(card) : false;
-    setPaying({ busy: false, error: reloaded && !nothing ? null : error });
+    // (the line of "nothing" and of a refused loan is true after the reload too, and says why the card changed)
+    setPaying({ busy: false, error: reloaded && !nothing && !refusedLoan ? null : error, method: null });
   }
+
+  /** One of the two buttons: `main` is the filled one (Järelmaks), the other the outline. While the browser leaves, the pressed one says so and both are inert. */
+  const wayButton = (c: ContactCard, method: PayMethod, text: string, main: boolean) => (
+    <button
+      type="button"
+      className={`${main ? ui.btn : ui.btnOutline} ${styles.action}`}
+      aria-disabled={readOnly || paying.busy || undefined}
+      onClick={() => void payNow(c, method)}
+      data-card-action={method === "hirePurchase" ? "pay-financing" : "pay-online"}
+    >
+      {paying.busy && paying.method === method ? t.online.starting : text}
+    </button>
+  );
 
   const payButton =
     online && card.kind === "contact" ? (
-      <button
-        type="button"
-        className={`${ui.btn} ${styles.action}`}
-        aria-disabled={readOnly || paying.busy || undefined}
-        onClick={() => void payNow(card)}
-        data-card-action="pay-online"
-      >
-        {paying.busy ? t.online.starting : fill(online.kind === "balance" ? t.online.payRest : t.online.pay, { amount: formatEUR(online.cents, locale) })}
-      </button>
+      twoWays ? (
+        <div className={styles.pair} data-card-pay-ways="">
+          {wayButton(card, "hirePurchase", t.online.payFinancing, true)}
+          {wayButton(card, "paymentInitiation", t.online.payBank, false)}
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={`${ui.btn} ${styles.action}`}
+          aria-disabled={readOnly || paying.busy || undefined}
+          onClick={() => void payNow(card)}
+          data-card-action="pay-online"
+        >
+          {paying.busy ? t.online.starting : fill(online.kind === "balance" ? t.online.payRest : t.online.pay, { amount: formatEUR(online.cents, locale) })}
+        </button>
+      )
     ) : null;
 
   /** "Vaata juhiseid" / "Peida juhised": the main button without online payments, the text button with them. */

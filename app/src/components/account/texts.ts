@@ -54,16 +54,25 @@ export type EcourseTexts = Dict["account"]["ecourse"] & {
 /** One lesson's page: the account.lesson strings, "Jätka" and the lock sentence (account.ecourse), AccountLoader's. */
 export type LessonTexts = Dict["account"]["lesson"] & { resume: string; lockedHint: string; loader: LoaderTexts };
 
-/** The cards' pay button (phase 2b): "Maksa {amount}", "Maksa ülejäänud {amount}", the transfer line, the button while it opens, and why a start was refused. */
-export type PayTexts = { pay: string; payRest: string; transfer: string; starting: string; full: string; nothing: string; rate: string; failed: string };
+/**
+ * The cards' pay button (phase 2b): "Maksa {amount}", "Maksa ülejäänud {amount}", the transfer line, the button while it opens, and why a start was refused.
+ * Instalments §4: the two buttons of a järelmaks registration, "Maksa järelmaksuga (Inbank)" (`payFinancing`) and "Maksa pangalingiga" (`payBank`), and the
+ * sentence of a loan the server refused (`financing`: the range, forms.payFinancingRange).
+ */
+export type PayTexts = {
+  pay: string; payRest: string; payFinancing: string; payBank: string; transfer: string; starting: string; full: string; nothing: string; financing: string; rate: string; failed: string;
+};
 
 export const payTexts = (d: Dict): PayTexts => ({
   pay: d.payment.pay,
   payRest: d.payment.payRest,
+  payFinancing: d.payment.payFinancing,
+  payBank: d.payment.payBank,
   transfer: d.payment.transfer,
   starting: d.payment.starting,
   full: d.payment.page.full,
   nothing: d.payment.page.nothing,
+  financing: d.forms.payFinancingRange,
   rate: d.forms.errorTooMany,
   failed: d.forms.errorGeneric,
 });

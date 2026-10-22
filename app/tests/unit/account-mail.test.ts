@@ -502,6 +502,15 @@ describe("registration confirmation with online payments (phase 2b)", () => {
   test("without payments (no payLink) the mail is today's", () => {
     expect(registrationConfirmationMail(registration({ payLink: null }))).toEqual(registrationConfirmationMail(registration()));
   });
+
+  test("a Järelmaks (Inbank) registration (instalments §4): the whole price, and the one 'Maksa' link to the pay page — where both buttons are, not a second link in the mail", () => {
+    const mail = registrationConfirmationMail(registration({ paymentChoice: "financing", payLink: LINK }));
+    expect(mail.text).toContain(["Koha kinnitamiseks tasu ettemaks 390 €.", "", `Maksa 390 €: ${LINK}`, "", "või tasu pangaülekandega"].join("\n"));
+    expect(buttons(mail.html!)).toBe(1);
+    expect(mail.text.split(LINK)).toHaveLength(2);
+    expect(mail.text).not.toContain("järelmaks");
+    expect(mail.text).not.toContain("Inbank");
+  });
 });
 
 describe("ecourseOpenMail: 'E-koolitus on avatud' (phase 2b, spec 6.2.4)", () => {

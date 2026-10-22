@@ -125,6 +125,13 @@
   margin-top: 20px;
 }
 
+/* the two buttons of a järelmaks registration (instalments §4): side by side while they fit, each the whole width on a phone (.action below) */
+.pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 /* the second way next to "Maksa" (phase 2b): the transfer's instructions, or the change request — a text button in the site's link style,
    44 px tall, never a second filled button */
 .secondRow {

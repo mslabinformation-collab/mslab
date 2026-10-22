@@ -438,6 +438,8 @@ export const et = {
     alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
     // „Maksa pangalingiga“ (instalments §4; Draft): the bank beside Järelmaks (Inbank). The result page of a pending application has it; the pay page and the account's card reuse it
     payBank: "Maksa pangalingiga",
+    // „Maksa järelmaksuga (Inbank)“ (instalments §4; Draft): the first of the two buttons of an unpaid järelmaks registration while a loan may be offered (the account's card, the pay page)
+    payFinancing: "Maksa järelmaksuga (Inbank)",
     // the page behind the mail's "Maksa" link (/maksa/<token>)
     page: {
       heading: "Koolituse eest tasumine",

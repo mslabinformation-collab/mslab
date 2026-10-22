@@ -4,6 +4,7 @@ import { readSetting } from "@/db/queries/public";
 import { hasFreeSeat } from "@/db/queries/seats";
 import { courses, courseSessions, registrations } from "@/db/schema";
 import { groupIban, hasPrepayment, parsePrepayment, paymentReference, PREPAYMENT_KEY, type PrepaymentInfo } from "@/domain/account-cards";
+import { FINANCING_KEY, financingAllowed, readFinancingSettings } from "@/domain/financing";
 import { formatEUR } from "@/domain/money";
 import { payableDue, type Due } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
@@ -28,6 +29,9 @@ import { isTokenShape } from "./token";
  * What the page shows: the registration's course and session, what is due now, and the bank transfer when Maria's instructions can be followed.
  * `full`: an unconfirmed registration's session has no free seat for her (the start's own check, hers left out): the page says so, with no button
  * and no transfer, as the POST does.
+ * `financing` (instalments §4): a Järelmaks (Inbank) may go to Inbank for this registration now, so the page has two buttons, „Maksa järelmaksuga (Inbank)“
+ * and „Maksa pangalingiga“, instead of the one „Maksa“: it was booked with that choice, Seaded's toggle is on, the price is 100–5000 €, nothing is paid and
+ * the whole price is due (domain/financing.ts financingAllowed, the start's own rule; "payments are on" is the page's `online`).
  */
 export type PayView = {
   token: string;
@@ -37,6 +41,7 @@ export type PayView = {
   session: { startsAt: Date; city: string; venue: string } | null;
   due: Due;
   full: boolean;
+  financing: boolean;
   transfer: PrepaymentInfo | null;
 };
 
@@ -56,11 +61,15 @@ export async function loadPayView(db: Db, token: string, now: Date): Promise<Pay
   if (!row) return null;
   const { registration: r, course, session } = row;
   const pay = parsePrepayment(await readSetting(db, PREPAYMENT_KEY));
+  const priceCents = registrationPrice(course, r.kind);
   const due = payableDue(
-    { status: r.status, paymentChoice: r.paymentChoice, priceCents: registrationPrice(course, r.kind), paidCents: r.paidCents, startsAt: session?.startsAt ?? null, sessionCancelled: session?.status === "cancelled" },
+    { status: r.status, paymentChoice: r.paymentChoice, priceCents, paidCents: r.paidCents, startsAt: session?.startsAt ?? null, sessionCancelled: session?.status === "cancelled" },
     await unpaidInvoiceOf(db, r.id),
     now,
   );
+  // the start refuses a loan for any other choice, and by the same rule as here when the toggle, the price, what is paid or what is due says no
+  const { enabled } = readFinancingSettings(await readSetting(db, FINANCING_KEY));
+  const financing = due.kind !== "none" && r.paymentChoice === "financing" && financingAllowed({ enabled, paymentsOn: true, priceCents, paidCents: r.paidCents, dueCents: due.cents });
   // only an unconfirmed registration's payment can be refused for a seat (start.ts): a confirmed one holds its place already
   const full = due.kind !== "none" && r.status === "awaiting_prepayment" && session !== null && !(await hasFreeSeat(db, session, now, r.id));
   return {
@@ -71,12 +80,16 @@ export async function loadPayView(db: Db, token: string, now: Date): Promise<Pay
     session: session ? { startsAt: session.startsAt, city: session.city, venue: session.venue } : null,
     due,
     full,
+    financing,
     transfer: hasPrepayment(pay) ? pay : null,
   };
 }
 
-/** The line a POST leaves on the page: the session is full, too many starts, or the payment did not start. */
-export type PayNotice = "full" | "failed" | "rate";
+/**
+ * The line a POST leaves on the page: the session is full, too many starts, the payment did not start, or the Järelmaks (Inbank) press was refused
+ * (`financing`: the toggle is off or the price is outside 100–5000 € now; the page then has the bank's button, and says what a loan needs).
+ */
+export type PayNotice = "full" | "failed" | "rate" | "financing";
 
 const CSS = [
   ":root{--ink:#222222;--paper:#ffffff;--canvas:#f6f4f5;--line:#e6e1e3}",
@@ -92,6 +105,7 @@ const CSS = [
   ".notice{padding:12px 14px;border:1px solid var(--line);border-radius:12px}",
   "form{margin:0 0 8px}",
   "button{display:block;width:100%;min-height:48px;padding:0 32px;border:0;border-radius:99px;background:var(--ink);color:var(--paper);font:600 16px/1 Jost,system-ui,sans-serif;cursor:pointer}",
+  "button.alt{border:1px solid var(--ink);background:transparent;color:var(--ink)}",
   "button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}",
   ".or{margin:24px 0 8px;font:600 14px/1.4 Jost,system-ui,sans-serif}",
   "dl{display:grid;gap:10px;margin:0;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--canvas)}",
@@ -121,7 +135,8 @@ export function payPage(view: PayView | null, opts: { online: boolean; notice?: 
   }
   // a full session is said whichever way the page was reached (GET, or a POST that was refused for another reason): nothing can be paid
   const kind: PayNotice | undefined = view?.full ? "full" : opts.notice;
-  const notice = kind === "full" ? t.page.full : kind === "rate" ? d.forms.errorTooMany : kind === "failed" ? d.forms.errorGeneric : null;
+  const notice =
+    kind === "full" ? t.page.full : kind === "rate" ? d.forms.errorTooMany : kind === "failed" ? d.forms.errorGeneric : kind === "financing" ? d.forms.payFinancingRange : null;
   if (notice) parts.push(`<p class="notice" role="alert" data-pay-notice="${kind}">${esc(notice)}</p>`);
   const due = view && view.due.kind !== "none" ? view.due : null;
   if (!view || !due) {
@@ -130,7 +145,14 @@ export function payPage(view: PayView | null, opts: { online: boolean; notice?: 
     const amount = formatEUR(due.cents, locale);
     parts.push(`<p class="amount">${esc(labels.amount)}: ${esc(amount)}</p>`);
     const button = opts.online && kind !== "full";
-    if (button) parts.push(`<form method="post" action="/maksa/${esc(view.token)}"><button type="submit">${esc(fill(due.kind === "balance" ? t.payRest : t.pay, { amount }))}</button></form>`);
+    const action = `/maksa/${esc(view.token)}`;
+    if (button && view.financing) {
+      // two plain forms (a browser's urlencoded POST, which postedMethod reads): Järelmaks (Inbank) first, the bank's link second
+      parts.push(
+        `<form method="post" action="${action}"><input type="hidden" name="method" value="hirePurchase"><button type="submit">${esc(t.payFinancing)}</button></form>`,
+        `<form method="post" action="${action}"><input type="hidden" name="method" value="paymentInitiation"><button class="alt" type="submit">${esc(t.payBank)}</button></form>`,
+      );
+    } else if (button) parts.push(`<form method="post" action="${action}"><button type="submit">${esc(fill(due.kind === "balance" ? t.payRest : t.pay, { amount }))}</button></form>`);
     // (a full session: no button and no bank rows either; a transfer would pay for a place that is gone)
     if (view.transfer && kind !== "full") {
       const pay = view.transfer;
@@ -196,8 +218,8 @@ async function postedMethod(request: Request): Promise<OrderMethod> {
 /**
  * GET /maksa/<token>: the page, nothing else. POST (its button): a cross-site POST is 403; else what is due is checked again and the payment
  * starts (server/payments/start.ts) with the button's method (postedMethod: the bank unless it says järelmaks): 303 to Montonio's page.
- * Nothing due by now: the page (its sentence). The session full: 409 with its line; a järelmaks not allowed now: 409, the page again (the
- * bank's button stays); 5 starts from this IP in 10 minutes or 5 of this registration in an hour: 429; Montonio down or no payments: 503
+ * Nothing due by now: the page (its sentence). The session full: 409 with its line; a järelmaks not allowed now: 409 with the range sentence
+ * (forms.payFinancingRange) and the page read again — the bank's one button (a loan's only while it is allowed); 5 starts from this IP in 10 minutes or 5 of this registration in an hour: 429; Montonio down or no payments: 503
  * "Midagi läks valesti".
  * The hold: what a start refreshes it refreshes together with a pending payment (one transaction), and a failed new order ends it again
  * (db/queries/payments.ts failPayment), so a refusal or a throw here has no hold of its own to release. (A failed re-send keeps its row
@@ -234,8 +256,14 @@ export async function handlePayPage(request: Request, token: string, deps: PayPa
     case "rate":
       return html(payPage(view, { online, notice: "rate" }), 429);
     case "financing":
-      // (the page's own line for it comes with its järelmaks button: instalments, Task 7)
-      return html(payPage(view, { online }), 409);
+      // the loan was not allowed (the toggle is off, or the price is outside 100–5000 € now): the range sentence, and the page as it is now — read
+      // again, so the bank's one button is there and the loan's is not
+      try {
+        return html(payPage((await loadPayView(deps.db, token, deps.now)) ?? view, { online, notice: "financing" }), 409);
+      } catch (e) {
+        logFailure("[payments] the pay page could not be read", e);
+        return html(payPage(null, { online, notice: "failed" }), 503);
+      }
     case "nothing":
     case "notFound": {
       // what is due changed between the page and the start (paid meanwhile, called off): the page as it is now

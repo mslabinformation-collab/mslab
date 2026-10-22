@@ -1,6 +1,6 @@
 import type { Page, TestInfo } from "@playwright/test";
-import { clientEmail, holdTerms, storedAccess } from "./account";
-import { onLocalDb, removeClientRows, storedPayments, storedRegistrations } from "./fixtures";
+import { clientEmail, holdTerms, insertAccountFixtures, signInAsClient, storedAccess } from "./account";
+import { onLocalDb, removeClientRows, storedPayments, storedPayToken, storedRegistrations } from "./fixtures";
 import { setFinancing, takeFinancing } from "./financing";
 import { E2E_MONTONIO } from "./montonio-values";
 import { revalidateLocalPages } from "./prod-build";
@@ -335,6 +335,111 @@ test("switched off after the cart was loaded: the range is said at the choice, t
     expect(await payments(email)).toEqual([{ kind: "ecourse", status: "failed", method: "paymentInitiation", amountCents: 19000 }]);
   } finally {
     await releaseTerms();
+    await release();
+  }
+});
+
+// ---------- „Maksa“ for a järelmaks registration (instalments §4, Task 7): the pay page and the account's card ----------
+// An unpaid registration booked with Järelmaks (Inbank) has two buttons while a loan may go to Inbank: „Maksa järelmaksuga (Inbank)“ and „Maksa pangalingiga“.
+// The registration is a sample client's on the test's own unpublished course (account.ts insertAccountFixtures: 350 €), so no public seat moves.
+
+const RANGE = "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.";
+
+/** A sample client's unpaid registration (350 €) booked with Järelmaks (Inbank); its "Maksa" token. */
+async function unpaidLoanRegistration(email: string): Promise<{ id: number; token: string }> {
+  const f = await insertAccountFixtures(email, { cards: ["awaiting"] });
+  const id = f.registrations.awaiting!;
+  await onLocalDb((sql) => sql`update registrations set payment_choice = 'financing' where id = ${id}`, { marksPages: false });
+  return { id, token: await storedPayToken(id) };
+}
+
+test("/maksa/<token> of a järelmaks registration: two buttons — at 390, 834 and 1440, 44 px, no overflow — and each goes where it says: Inbank's page, or the bank, which confirms the place in full", async ({ page }, info) => {
+  const email = await fresh("paypage", info);
+  const release = await takeFinancing(info, true);
+  try {
+    const { token } = await unpaidLoanRegistration(email);
+    for (const width of [390, 834, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/maksa/${token}`);
+      await expect(page.getByText("Summa: 350 €")).toBeVisible();
+      await expect(page.getByRole("button")).toHaveText(["Maksa järelmaksuga (Inbank)", "Maksa pangalingiga"]);
+      expect(await noOverflow(page), String(width)).toBe(true);
+      for (const button of await page.getByRole("button").all()) expect((await button.boundingBox())!.height, `${width} px`).toBeGreaterThanOrEqual(44);
+    }
+    expect(await payments(email)).toEqual([]);
+    await page.getByRole("button", { name: "Maksa järelmaksuga (Inbank)" }).click();
+    await atInbank(page, "350.00 EUR");
+    expect(await payments(email)).toEqual([{ kind: "prepayment", status: "pending", method: "hirePurchase", amountCents: 35000 }]);
+    // Inbank says no; the pay page again, and the bank's button pays the whole price
+    await page.getByRole("button", { name: "Inbank keeldus" }).click();
+    await page.waitForURL(/\/makse#tulemus=pooleli&liik=jarelmaks&maksa=/);
+    await page.goto(`/maksa/${token}`);
+    await page.getByRole("button", { name: "Maksa pangalingiga" }).click();
+    await atBank(page, "350.00 EUR");
+    await page.getByRole("button", { name: "Makstud" }).click();
+    await page.waitForURL(/\/makse#tulemus=makstud&liik=registreering$/);
+    await expect.poll(() => payments(email)).toEqual([
+      { kind: "prepayment", status: "pending", method: "hirePurchase", amountCents: 35000 },
+      { kind: "prepayment", status: "paid", method: "paymentInitiation", amountCents: 35000 },
+    ]);
+    expect(await storedRegistrations(email)).toEqual([expect.objectContaining({ status: "confirmed", paidCents: 35000, paymentChoice: "financing" })]);
+  } finally {
+    await release();
+  }
+});
+
+test("/maksa/<token> with the toggle off: the one „Maksa 350 €“; a loan pressed after Maria switched it off says the range, keeps the bank's button, and starts nothing", async ({ page }, info) => {
+  const email = await fresh("paygone", info);
+  const release = await takeFinancing(info, true);
+  try {
+    const { token } = await unpaidLoanRegistration(email);
+    await page.goto(`/maksa/${token}`);
+    await expect(page.getByRole("button")).toHaveText(["Maksa järelmaksuga (Inbank)", "Maksa pangalingiga"]);
+    await setFinancing(false); // Maria switches it off while the page is open
+    await page.getByRole("button", { name: "Maksa järelmaksuga (Inbank)" }).click();
+    await expect(page.locator("[data-pay-notice='financing']")).toHaveText(RANGE);
+    await expect(page.getByRole("button")).toHaveText(["Maksa 350 €"]);
+    expect(await payments(email)).toEqual([]);
+    // opened afresh it is the one button, with no sentence
+    await page.goto(`/maksa/${token}`);
+    await expect(page.getByRole("button")).toHaveText(["Maksa 350 €"]);
+    await expect(page.locator("[data-pay-notice]")).toHaveCount(0);
+    await page.getByRole("button", { name: "Maksa 350 €" }).click();
+    await atBank(page, "350.00 EUR");
+    expect(await payments(email)).toEqual([{ kind: "prepayment", status: "pending", method: "paymentInitiation", amountCents: 35000 }]);
+  } finally {
+    await release();
+  }
+});
+
+test("the account's card of a järelmaks registration: two buttons (a whole-width row on a phone); the loan goes to Inbank; switched off meanwhile, it says the range and the card has the one bank button", async ({ page }, info) => {
+  const email = await fresh("card", info);
+  const release = await takeFinancing(info, true);
+  try {
+    const { id } = await unpaidLoanRegistration(email);
+    await signInAsClient(page, email);
+    const card = page.locator(`[data-card='registration-${id}']`);
+    const ways = card.locator("[data-card-action]");
+    await expect(ways).toHaveText(["Maksa järelmaksuga (Inbank)", "Maksa pangalingiga"]);
+    await expect(card.locator("[data-next-step]")).toHaveText("Koha kinnitamiseks tasu ettemaks 350 €.");
+    for (const width of [390, 834, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await noOverflow(page), String(width)).toBe(true);
+      for (const button of await ways.all()) expect((await button.boundingBox())!.height, `${width} px`).toBeGreaterThanOrEqual(44);
+    }
+    // Maria switches the loan off while the card is open: the press is refused, the range is said and the card is loaded again
+    await setFinancing(false);
+    await card.getByRole("button", { name: "Maksa järelmaksuga (Inbank)" }).click();
+    await expect(card.locator("[data-card-pay-error]")).toHaveText(RANGE);
+    await expect(ways).toHaveText(["Maksa 350 €"]);
+    expect(await payments(email)).toEqual([]);
+    // and on again: the loan goes to Inbank
+    await setFinancing(true);
+    await page.reload();
+    await card.getByRole("button", { name: "Maksa järelmaksuga (Inbank)" }).click();
+    await atInbank(page, "350.00 EUR");
+    expect(await payments(email)).toEqual([{ kind: "prepayment", status: "pending", method: "hirePurchase", amountCents: 35000 }]);
+  } finally {
     await release();
   }
 });

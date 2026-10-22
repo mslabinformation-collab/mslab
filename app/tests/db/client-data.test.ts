@@ -275,6 +275,18 @@ describe("loadDashboard", () => {
     expect((await loadDashboard(db, kati.id, NOW))!.prepayment).toEqual({ receiver: "MS LAB OÜ", iban: "EE00 0000 0000 0000 0000", bank: "Pank", referencePrefix: "MS" });
   });
 
+  test("Järelmaks (Inbank)'s toggle (instalments §4): `financing: true` only while Seaded says { enabled: true }; absent when unset, off, or of a wrong shape", async () => {
+    const kati = await client();
+    const flag = async () => "financing" in (await loadDashboard(db, kati.id, NOW))!;
+    expect(await flag()).toBe(false);
+    await setting("financing", { enabled: false });
+    expect(await flag()).toBe(false);
+    await setting("financing", { enabled: "true" });
+    expect(await flag()).toBe(false);
+    await setting("financing", { enabled: true });
+    expect((await loadDashboard(db, kati.id, NOW))!.financing).toBe(true);
+  });
+
   test("parsePrepayment tolerates anything stored there", () => {
     expect(parsePrepayment(null)).toBeNull();
     expect(parsePrepayment("EE00")).toBeNull();
