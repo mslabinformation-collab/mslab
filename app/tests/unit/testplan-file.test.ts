@@ -848,3 +848,35 @@ describe("the instalments checks (instalments, Task 8)", () => {
     expect(item("haldus-seaded-jarelmaks").steps.join("\n")).toContain("jäta see märgituks");
   });
 });
+
+// Dim 22.10: every answer on the test page has a note box and its first note pings Telegram; the comment bubble is on every admin page.
+describe("the review tools' checks (22.10)", () => {
+  const find = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect].join("\n");
+
+  test("the test page's Telegram check is redo, and says the first note of an OK pings too, with the answer at the end", () => {
+    const check = find("kirjad-testimine-telegram");
+    expect(check.mark).toBe("redo");
+    expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).not.toBeNull();
+    const expectText = check.expect.join("\n");
+    expect(expectText).toContain("„Testimine — Märkus: … · Viga“");
+    expect(expectText).toContain("„Testimine — Märkus: … · OK“");
+    expect(expectText).toContain("Teine proov");
+  });
+
+  test("a new check walks the comment bubble: on a Seaded page, sent, in Telegram, on the list as „Haldus“, clear of „Salvesta“", () => {
+    const check = find("haldus-kommentaar-nupp");
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "any", writes: true, mark: "new" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).toBeNull(); // a new check reopens nothing
+    const text = whole("haldus-kommentaar-nupp");
+    for (const word of ["Kommentaar", "Saada", "Haldus", "Näita kohta", "Salvesta", "Telegram", "/guide/tagasiside/", "Proov 1"]) expect(text, word).toContain(word);
+    // the words the bubble itself shows (public/feedback.js)
+    expect(text).toContain("Aitäh! Kommentaar on saadetud ✓");
+  });
+});

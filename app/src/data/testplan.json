@@ -1858,6 +1858,33 @@
       "markedAt": "2026-10-22T05:51:47.206Z"
     },
     {
+      "id": "haldus-kommentaar-nupp",
+      "area": "haldus",
+      "who": "dim",
+      "device": "any",
+      "title": "Kommentaari nupp halduse lehtedel",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava halduses leht „Seaded“ ja vaata paremat alanurka.",
+        "Vajuta tumedat nuppu „Kommentaar“ (telefonis on ainult ring) ja kirjuta kommentaari: Proov 1.",
+        "Vajuta „Saada“ ja ava Telegram.",
+        "Ava kommentaaride leht /guide/tagasiside/ oma võtmega ja leia see kommentaar.",
+        "Keri lehel „Seaded“ lõppu ja vaata nuppu „Salvesta“."
+      ],
+      "expect": [
+        "Nupp „Kommentaar“ on igal halduse lehel, ka sisselogimise lehel.",
+        "Pärast „Saada“ ütleb paneel „Aitäh! Kommentaar on saadetud ✓“.",
+        "Telegramis on uus kommentaar, kus on „Haldus“ ja tekst Proov 1.",
+        "Kommentaaride lehel on see kommentaar sildiga „Haldus“ ja lingiga „Näita kohta“, mis avab sama halduse lehe.",
+        "Nupp „Kommentaar“ ei kata ühtegi nuppu ja „Salvesta“ on täielikult näha."
+      ],
+      "why": "Kommentaar halduse lehe kohta peab jõudma Dimini samamoodi nagu kommentaar kodulehe kohta.",
+      "risk": "low",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-vorm-vead",
       "area": "registreerimine",
       "who": "maria",
@@ -5498,17 +5525,23 @@
         "Ava Telegram.",
         "Kirjuta selle kontrolli märkusesse: Proov.",
         "Oota paar sekundit ja ava Telegram uuesti.",
-        "Vajuta selle kontrolli juures „OK“."
+        "Vajuta selle kontrolli juures „OK“ ja ava Telegram uuesti.",
+        "Kustuta märkus, kirjuta selle asemele: Teine proov.",
+        "Oota paar sekundit ja ava Telegram uuesti."
       ],
       "expect": [
         "Telegramis on „Testimine — Viga: Testimise lehe Telegrami teade (Dim)“ ja „(märkust veel pole)“.",
-        "Pärast märkust tuleb teine teade „Testimine — Märkus: …“ tekstiga Proov.",
+        "Pärast märkust tuleb teine teade „Testimine — Märkus: … · Viga“ tekstiga Proov.",
         "Teate link avab selle kontrolli testimise lehel.",
-        "Pärast „OK“ uusi teateid ei tule."
+        "Pärast „OK“ uut teadet ei tule, kuni märkust ei muuda.",
+        "Pärast uut märkust tuleb teade „Testimine — Märkus: … · OK“ tekstiga Teine proov.",
+        "Sama vastuse järgmised märkuse muudatused teateid ei saada."
       ],
-      "why": "Iga Viga peab Dimini jõudma samal päeval.",
+      "why": "Iga Viga ja iga vastuse esimene märkus peab Dimini jõudma samal päeval.",
       "risk": "med",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "koristamine-aadressid",
