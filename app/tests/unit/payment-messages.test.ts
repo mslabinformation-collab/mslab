@@ -139,6 +139,26 @@ describe("Maria's alerts: 'Kontrolli Montonios'", () => {
     expect(alert({ alert: "double", otherUuid: null }).text.match(/Montonio: /g)).toHaveLength(1); // no second id to name
   });
 
+  test("'Topeltmakse' of a payment that is itself the second one (instalments §4, D5, Draft): its own words, its own order named once", () => {
+    const late = (over: Partial<PaymentAlert>) => alert({ alert: "double", rawStatus: "PAID", paidCents: 35000, currency: "EUR", otherUuid: null, amountCents: 35000, ...over });
+    const loan = late({ late: "loan" });
+    expect(loan.subject).toBe("Topeltmakse: Kati Tamm, Kulmumeistri baaskoolitus, 14.11.2026, 350 €");
+    expect(loan.text).toContain("Järelmaks (Inbank) laekus, kui koolitus oli juba täies ulatuses tasutud. Seda ei pandud kirja: makse on lehel Maksed \"Ootel kontrollil\". Tagasta see Montonio halduses: täielik tagastus tühistab järelmaksu.");
+    expect(loan.text).not.toContain("Sama makse eest");
+    // its own order is the one paid twice over: no second id, even when one is given
+    expect(late({ late: "loan", otherUuid: "uuid-7" }).text.match(/Montonio: /g)).toHaveLength(1);
+    const e = (over: Partial<PaymentAlert>) => late({ kind: "ecourse", course: "Kulmumeistri e-koolitus", startsAt: null, amountCents: 19000, paidCents: 19000, ...over });
+    expect(e({ late: "loan" }).text).toContain("Järelmaks (Inbank) laekus, kui e-koolitus oli juba tasutud. Seda ei pandud kirja ja ligipääsu ei pikendatud: makse on lehel Maksed \"Ootel kontrollil\". Tagasta see Montonio halduses: täielik tagastus tühistab järelmaksu.");
+    expect(e({ late: "bank" }).text).toContain("Pangamakse laekus, kui e-koolitus oli juba järelmaksuga (Inbank) tasutud. Seda ei pandud kirja ja ligipääsu ei pikendatud: makse on lehel Maksed \"Ootel kontrollil\". Tagasta see Montonio halduses.");
+    for (const which of ["loan", "bank"] as const) {
+      const s = e({ late: which });
+      expect(s.subject).toBe("Topeltmakse: Kati Tamm, Kulmumeistri e-koolitus (e-koolitus), 190 €");
+      expect(s.text).toContain("Teine tasumine: 190 €\n");
+      // an e-course's alert carries no registration's words
+      expect(`${s.subject}\n${s.text}`, which).not.toMatch(/registree|kinnita|Kinnitus|koolituspäev|on täis/i);
+    }
+  });
+
   test("'Topeltmakse' names what the second order paid, in the held alert's words; the row's own amount stays in 'Summa'", () => {
     const double = (over: Partial<PaymentAlert>) => alert({ alert: "double", otherUuid: "uuid-8", ...over }).text;
     expect(double({ paidCents: 100, currency: "EUR" })).toContain("Summa: 175 €\n");

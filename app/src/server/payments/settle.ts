@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { Db, Tx } from "@/db/client";
 import { addRegistrationPayment, type RegistrationPaid } from "@/db/queries/admin";
-import { failPayment, isConnectionError, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
+import { failPayment, hirePurchaseRow, isConnectionError, paymentByProviderUuid, paymentByReference, paymentContext, type PaymentContext } from "@/db/queries/payments";
 import { lockForPayment } from "@/db/queries/seats";
 import { dbErrorCode } from "@/db/safe-error";
 import { courses, payments, registrations, type Contract, type Invoice, type Payment } from "@/db/schema";
@@ -51,9 +51,12 @@ import { lockEcoursePurchase } from "./start";
 //   full already — its registration's Laekunud summa at its price, or the same e-course paid by the same address since the loan started (the
 //   bank payment she made while Inbank's answer was pending: a declined application stays PENDING for 7 days, and Inbank may approve it after
 //   all) — is held instead, in the same transaction and under the same locks: never added, never opening the course again, no invoice. Maria
-//   gets "Topeltmakse" (alert "double", once: only the winner of the held update) and refunds it in Montonio, which cancels the loan. A bank
-//   payment keeps today's rules. An e-course's paid transaction takes its purchase's advisory lock first (start.ts lockEcoursePurchase, the
-//   start's own), so a loan's look for a paid purchase and a purchase being settled at the same moment run one after the other.
+//   gets "Topeltmakse" (alert "double", once: only the winner of the held update) and refunds it in Montonio, which cancels the loan. The same
+//   the other way round for an e-course (D5: "the second … goes under „Ootel kontrollil“ as „Topeltmakse“"): a bank payment turning PAID while
+//   her järelmaks of the same course was paid since the bank payment started is held, not granted again, not invoiced, and told the same way.
+//   A registration's bank payment keeps today's rules (its sum over the price is "Ülemakse": alertIfOverpaid). An e-course's paid transaction
+//   takes its purchase's advisory lock first (start.ts lockEcoursePurchase, the start's own), so the look for the other paid purchase and a
+//   purchase being settled at the same moment run one after the other.
 // - PAID with another amount or currency (or none that can be read): held. Nothing is confirmed or opened; Maria is alerted.
 // - failed: a pending row fails, and a prepayment's hold ends (the seat is free again). paid is a floor: a later ABANDONED or FAILED changes
 //   nothing; a VOIDED (the bank took a paid payment back) is stored as failed with its paid_at and alerts Maria, who decides.
@@ -217,18 +220,22 @@ async function seatsChanged(deps: SettleDeps, course: string): Promise<void> {
 const unsettled = (id: number) => and(eq(payments.id, id), inArray(payments.status, ["pending", "failed"]), isNull(payments.paidAt));
 
 /**
- * Is what the loan `p` pays for paid in full already (instalments §4, "A late järelmaks after a paid bank payment")? Read in paid()'s
+ * Is `p` the second payment of something paid in full already, on the järelmaks' account (instalments §4 and D5)? Read in paid()'s
  * transaction, under its locks (a registration's: lockForPayment; an e-course's: its purchase's lock, which a settlement of the same course and
- * address holds too).
- * - A registration's: its Laekunud summa (paid_cents) is at or over its price (domain/registration.ts registrationPrice; none: never).
- * - An e-course's: another purchase of the same course by the same address (lower-cased, as start.ts paidRecently reads it) is `paid`, paid
- *   at or after this loan started (its row's created_at): the bank payment she made while Inbank's answer was pending. The payments are the
- *   source of truth here, not course_access: an access is renewed by a deliberate purchase (one paid before the loan started — after the cart's
- *   30 minutes, start.ts ECOURSE_REPAY_WINDOW_MS — is such a renewal, and counts as today), may be an admin's grant that nobody paid, and is
- *   missing when the bank purchase's grant failed ("E-koolitust ei avatud"), whose money is there all the same. A held, failed or refunded
- *   purchase is no payment in full.
+ * address holds too). `p`'s method is the one its start recorded.
+ * - A registration's loan: its Laekunud summa (paid_cents) is at or over its price (domain/registration.ts registrationPrice; none: never). A
+ *   registration's bank payment: never (its sum over the price is "Ülemakse", today's backstop).
+ * - An e-course's loan: another purchase of the same course by the same address (lower-cased, as start.ts paidRecently reads it) is `paid`,
+ *   paid at or after this loan started (its row's created_at): the bank payment she made while Inbank's answer was pending.
+ * - An e-course's bank payment: a loan (`hirePurchase`) of the same course by the same address is `paid`, paid at or after this bank payment
+ *   started: Inbank approved while she was paying by bank (D5's "if both are paid"). Two bank payments keep today's rule.
+ * The time bound tells a second payment from a deliberate renewal: a purchase paid before this one started (after the cart's 30 minutes,
+ * start.ts ECOURSE_REPAY_WINDOW_MS) renews the access and counts as today. The payments are the source of truth here, not course_access: an
+ * access is renewed by such a purchase, may be an admin's grant that nobody paid, and is missing when a purchase's grant failed ("E-koolitust
+ * ei avatud"), whose money is there all the same. A held, failed or refunded purchase is no payment in full.
  */
-async function paidInFull(tx: Tx, p: Payment): Promise<boolean> {
+async function paidAlready(tx: Tx, p: Payment): Promise<boolean> {
+  const loan = isHirePurchase(p.method);
   if (p.kind === "ecourse") {
     if (p.courseId === null) return false;
     const [other] = await tx
@@ -242,12 +249,14 @@ async function paidInFull(tx: Tx, p: Payment): Promise<boolean> {
           ne(payments.id, p.id),
           eq(payments.status, "paid"),
           gte(payments.paidAt, p.createdAt),
+          // a loan is second to any paid purchase; a bank payment only to a paid loan
+          loan ? undefined : hirePurchaseRow,
         ),
       )
       .limit(1);
     return other !== undefined;
   }
-  if (p.registrationId === null) return false;
+  if (!loan || p.registrationId === null) return false;
   const [r] = await tx
     .select({ paidCents: registrations.paidCents, kind: registrations.kind, type: courses.type, price: courses.price, priceGroup: courses.priceGroup, priceIndividual: courses.priceIndividual })
     .from(registrations)
@@ -268,9 +277,9 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
     if (row.kind === "ecourse") {
       if (row.courseId !== null) await lockEcoursePurchase(tx, row.courseId, normalizeEmail(row.email));
     } else if (row.registrationId !== null) await lockForPayment(tx, row.registrationId);
-    // a late järelmaks (instalments §4): what it pays for is paid in full already, read under those locks. Held, never counted (the method is
-    // the start's: a pending row's never changes)
-    if (isHirePurchase(row.method) && (await paidInFull(tx, row))) {
+    // a second payment on the järelmaks' account (instalments §4, D5): what it pays for is paid in full already, read under those locks. Held,
+    // never counted (the method is the start's: a pending row's never changes)
+    if (await paidAlready(tx, row)) {
       const [late] = await tx.update(payments).set({ status: "held", updatedAt: deps.now, ...detailsOf(facts) }).where(unsettled(row.id)).returning();
       return late ? { late } : null;
     }
@@ -295,8 +304,9 @@ async function paid(deps: SettleDeps, row: Payment, facts: Facts): Promise<Payme
   });
   if (!won) return lost(deps, row, facts);
   if ("late" in won) {
-    logNote(`[payments] payment ${won.late.id}: a järelmaks paid after the whole price was, held`);
-    alert(deps, won.late, "double", facts, { late: true });
+    const late = isHirePurchase(row.method) ? "loan" : "bank";
+    logNote(`[payments] payment ${won.late.id}: ${late === "loan" ? "a järelmaks" : "a bank payment"} paid after the whole price was, held`);
+    alert(deps, won.late, "double", facts, { late });
     return won.late;
   }
   console.info(`[payments] payment ${won.payment.id}: paid`);
@@ -543,11 +553,12 @@ async function releaseAlertRecord(deps: SettleDeps, key: string, ttlSeconds: num
 
 /**
  * Maria's "Kontrolli Montonios", after the response. "Topeltmakse" goes out once per second order (its uuid is recorded: see the top of the
- * file); `facts` is what that order paid, and the alert says so. `late`: the "Topeltmakse" of a late järelmaks (paid()), which is the second
- * payment itself: its own order is the one that paid twice over, so no other order is named.
+ * file); `facts` is what that order paid, and the alert says so. `late`: the "Topeltmakse" of a payment that is itself the second one
+ * (paid(): a late järelmaks, "loan", or an e-course's bank payment after a paid järelmaks, "bank"): its own order is the one that paid twice
+ * over, so no other order is named.
  */
-function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded" | "double", facts: Facts, opts: { late?: boolean } = {}): void {
-  const late = kind === "double" && opts.late === true;
+function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded" | "double", facts: Facts, opts: { late?: "loan" | "bank" } = {}): void {
+  const late = kind === "double" ? opts.late : undefined;
   logNote(`[payments] payment ${p.id}: ${kind}, Maria is alerted`);
   deps.later(async () => {
     const record = kind === "double" ? doubleAlertKey(p.id, facts.uuid) : null;
