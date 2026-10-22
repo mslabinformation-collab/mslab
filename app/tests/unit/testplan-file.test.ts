@@ -727,10 +727,29 @@ describe("the instalments checks (instalments, Task 8)", () => {
     for (const id of needs) expect(at("haldus-seaded-jarelmaks"), id).toBeLessThan(at(id));
     expect(at("avalik-kursus-jarelmaks-rida")).toBeLessThan(at("haldus-seaded-jarelmaks"));
     expect(item("avalik-kursus-jarelmaks-rida").steps[0]).toMatch(/Seaded → „Järelmaks \(Inbank\)“ sisse ja salvesta/);
-    // the Maksed check reads the payments of Proov 9 and Proov 10 and only those: they are made before it
+    // the Maksed check reads the payments of Proov 9 and Proov 10 and the cancelled bank payment of Proov 2 or Proov 13 (the registration's cancelled
+    // payment, or the e-course cart's after Seaded was switched off): all are made before it. Proov 11 is the e-course's, made after it (area ekursus)
     expect(at("registreerimine-jarelmaks-kinnitatud")).toBeLessThan(at("haldus-maksed-jarelmaks"));
     expect(at("registreerimine-jarelmaks-keeldus")).toBeLessThan(at("haldus-maksed-jarelmaks"));
-    expect(text("haldus-maksed-jarelmaks")).not.toMatch(/Proov 1[1-4]/);
+    expect(at("registreerimine-pooleli")).toBeLessThan(at("haldus-maksed-jarelmaks"));
+    expect(at("registreerimine-jarelmaks-vahepeal-valja")).toBeLessThan(at("haldus-maksed-jarelmaks"));
+    expect(text("registreerimine-pooleli")).toContain("Proov 2");
+    expect(text("registreerimine-jarelmaks-vahepeal-valja")).toMatch(/Proov 13(?!\d)[^]*katkesta makse testpangas/);
+    expect(text("haldus-maksed-jarelmaks")).not.toMatch(/Proov 11(?!\d)/);
+    // a cancel at the sandbox bank may leave the order pending, so the failed row is looked for under both filters; older rows have no method
+    expect(text("haldus-maksed-jarelmaks")).toContain("Vajuta filtritel „Ebaõnnestunud“ ja „Pooleli“ ning vaata rida, mille makse katkestati testpangas (Proov 2 või Proov 13).");
+    expect(text("haldus-maksed-jarelmaks")).toContain("ükskõik kas pooleli või ebaõnnestunud");
+    expect(text("haldus-maksed-jarelmaks")).toContain("varem tehtud ridade „Makseviis“ on tühi");
+  });
+
+  test("the toggle card's expectation is not „unticked“: the course-page check, which comes first, has ticked and saved it already", () => {
+    expect(item("haldus-seaded-jarelmaks").expect[0]).toBe("Kaardil on pealkiri „Järelmaks (Inbank)“ ja ruut „Paku järelmaksu (Inbank)“.");
+    expect(text("haldus-seaded-jarelmaks")).not.toContain("enne esimest salvestamist märkimata");
+  });
+
+  test("the registration area's note says Inbank should reject 901–1000 €, not that it does (still to be confirmed for Estonia: deploy.md section 21 item 3)", () => {
+    expect(String(area("registreerimine").note)).toContain("901–1000 € peaks tagasi lükkama.");
+    expect(String(area("registreerimine").note)).not.toContain("lükatakse tagasi");
   });
 
   test("the sandbox checks give Montonio's test person, the SMS code, an Estonian phone and the amounts Inbank decides by", () => {
