@@ -73,10 +73,11 @@ describe("saveAnswers", () => {
     expect(await readAnswers(db)).toEqual(doc()); // reading creates nothing
     expect(await rowOf(db)).toBeNull();
 
+    // (Dim 22.10: the first note on an OK is announced, so the row records it as sent)
     const saved = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok", note: "  hea  " } }), T1);
-    expect(saved).toEqual({ ok: true, doc: doc({ "maria-1": answer("ok", { note: "hea" }) }), pings: [] });
-    expect(await readAnswers(db)).toEqual(doc({ "maria-1": answer("ok", { note: "hea" }) }));
-    expect(await rowOf(db)).toEqual({ v: 1, answers: { "maria-1": { status: "ok", note: "hea", at: T1.toISOString(), by: MARIA } } });
+    expect(saved).toEqual({ ok: true, doc: doc({ "maria-1": answer("ok", { note: "hea", notePinged: true }) }), pings: [{ id: "maria-1", kind: "note" }] });
+    expect(await readAnswers(db)).toEqual(doc({ "maria-1": answer("ok", { note: "hea", notePinged: true }) }));
+    expect(await rowOf(db)).toEqual({ v: 1, answers: { "maria-1": { status: "ok", note: "hea", at: T1.toISOString(), by: MARIA, notePinged: true } } });
   });
 
   test("two saves at once, of different checks, both survive", async () => {
@@ -124,7 +125,8 @@ describe("saveAnswers", () => {
   test("the same check saved twice: the second save, with the later now, wins (status, note, at, by)", async () => {
     await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad", note: "katki" } }), T1);
     await saveAnswers(db, DIM, body({ "maria-1": { status: "ok", note: "korras" } }), T2);
-    expect((await readAnswers(db)).answers["maria-1"]).toEqual({ status: "ok", note: "korras", at: T2.toISOString(), by: DIM });
+    // (the OK's first note was announced: Dim 22.10)
+    expect((await readAnswers(db)).answers["maria-1"]).toEqual({ status: "ok", note: "korras", at: T2.toISOString(), by: DIM, notePinged: true });
   });
 
   test("an id outside the plan is not stored (the rest of the save is), and answers kept for ids outside the plan are left alone", async () => {
@@ -212,11 +214,21 @@ describe("the Telegram sequence of a failure, through saveAnswers", () => {
     expect(again.ok && again.pings).toEqual([]);
   });
 
-  test("OK and Jäta vahele send nothing; a Viga after an OK is a new failure and sends its own", async () => {
-    const ok = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "maria-2": { status: "skip", note: "hiljem" } }), T1);
+  test("OK and Jäta vahele without a note send nothing; a Viga after an OK is a new failure and sends its own", async () => {
+    const ok = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "maria-2": { status: "skip" } }), T1);
     expect(ok.ok && ok.pings).toEqual([]);
     const bad = await saveAnswers(db, MARIA, body({ "maria-1": { status: "bad" } }), T2);
     expect(bad.ok && bad.pings).toEqual([{ id: "maria-1", kind: "bad" }]);
+  });
+
+  test("the first note on an OK or a Jäta vahele is one message, once (Dim 22.10)", async () => {
+    await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok" }, "maria-2": { status: "skip" } }), T1);
+    const noted = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok", note: "korras" }, "maria-2": { status: "skip", note: "hiljem" } }), T2);
+    expect(noted.ok && noted.pings).toEqual([{ id: "maria-1", kind: "note" }, { id: "maria-2", kind: "note" }]);
+    expect(await stored("maria-1")).toEqual({ status: "ok", note: "korras", at: T2.toISOString(), by: MARIA, notePinged: true });
+    const more = await saveAnswers(db, MARIA, body({ "maria-1": { status: "ok", note: "korras, tahvlis ka" }, "maria-2": { status: "skip", note: "hiljem, kui saab" } }), T3);
+    expect(more.ok && more.pings).toEqual([]);
+    expect(await stored("maria-2")).toEqual({ status: "skip", note: "hiljem, kui saab", at: T3.toISOString(), by: MARIA, notePinged: true });
   });
 
   test("a Viga that is taken back (OK) and comes again is a new failure and earns its first message again", async () => {
@@ -250,10 +262,24 @@ describe("pingText", () => {
     );
   });
 
-  test("tg.note: the first note of a failure", () => {
+  test("tg.note: the first note of a failure, with the answer shown", () => {
     expect(pingText({ id: "maria-1", kind: "note" }, PLAN, bad("nupp ei tööta"), NAMES, BASE)).toBe(
-      "Testimine — Märkus: Avaleht telefonis (Maria)\nnupp ei tööta\nhttps://mslab.ee/admin/testimine#maria-1",
+      "Testimine — Märkus: Avaleht telefonis (Maria) · Viga\nnupp ei tööta\nhttps://mslab.ee/admin/testimine#maria-1",
     );
+  });
+
+  test("tg.note: the first note of an OK and of a Jäta vahele, in the same format, the answer in the button's words (Dim 22.10)", () => {
+    const stored = (status: StoredAnswer["status"], note: string) => doc({ "maria-1": answer(status, { note }) });
+    expect(pingText({ id: "maria-1", kind: "note" }, PLAN, stored("ok", "Telefonis korras"), NAMES, BASE)).toBe(
+      "Testimine — Märkus: Avaleht telefonis (Maria) · OK\nTelefonis korras\nhttps://mslab.ee/admin/testimine#maria-1",
+    );
+    expect(pingText({ id: "maria-1", kind: "note" }, PLAN, stored("skip", "Hiljem"), NAMES, BASE)).toBe(
+      "Testimine — Märkus: Avaleht telefonis (Maria) · Jäta vahele\nHiljem\nhttps://mslab.ee/admin/testimine#maria-1",
+    );
+  });
+
+  test("tg.note for an id the doc does not hold has no answer to show (and no dangling separator)", () => {
+    expect(pingText({ id: "ghost", kind: "note" }, PLAN, doc(), NAMES, BASE)).toBe("Testimine — Märkus: ghost (admin)\n(märkust veel pole)\nhttps://mslab.ee/admin/testimine#ghost");
   });
 
   test("the note is cut at its first 300 code points (an emoji is one), and a shorter note is whole", () => {
