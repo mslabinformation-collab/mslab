@@ -100,6 +100,20 @@ Today the site offers two ways to pay, both through the Montonio checkout: „10
 - **Which amount may go to Inbank** (my call, from the builder check). Järelmaks is offered only when nothing has been paid and the amount due is the full price, within 100–5,000 €. If Maria has recorded part of it by hand, or an invoice asks for a part, only the bank payment is offered. A registration booked with „100% kohe" or „50%" never gets järelmaks later; the choice is made at booking.
 - **The 50% rest payment** is unaffected. A järelmaks registration has no rest.
 - **Russian.** Every text has its RU counterpart (Draft).
+- **A late järelmaks after a paid bank payment** (my call, from the code check 22.10). A declined application stays PENDING for 7 days, so she may pay by bank and Inbank may still approve the old one.
+  - A järelmaks order that turns PAID while its registration (or her e-course access from the same e-mail) is already paid in full is held, not counted: status `held` („Ootel kontrollil“).
+  - Maria gets the „Topeltmakse“ notice and refunds it in Montonio, which cancels the loan.
+  - For an e-course this is the only backstop, since a second payment there has none today.
+- **Starting another payment while one is open** (my call). The re-send of an open attempt (the same row and order) only happens for the same method. A bank press while a järelmaks attempt is open, or the other way round, starts a new attempt. So a bank payment never overwrites a pending loan application.
+- **The return page** for a järelmaks order that is still PENDING (Draft). It says „Järelmaksu taotlus on pooleli või jäi lõpetamata. Kui Inbank selle kinnitab, saadame sulle kinnituse.“ and offers „Maksa pangalingiga“ next to „Proovi uuesti“. The bank text („Kui pank selle kinnitab …“) stays for bank orders.
+- **„Maksa“ for a järelmaks registration** (the account, the confirmation mail's link and the pay page, Draft). While järelmaks may be offered (above), there are two buttons: „Maksa järelmaksuga (Inbank)“ and „Maksa pangalingiga“. Otherwise there is one, as today.
+- **The e-course cart** shows a choice only while järelmaks is offered for that price (Draft): „Pangalink“ (default) and „Järelmaks (Inbank)“. Otherwise it is as today.
+- **The old placeholders go.** These were „Järelmaks — tulekul“ on the contact form, „Vormista järelmaks — tulekul“ on the e-course page, and the seed FAQ line „… järelmaks lisandub hiljem.“.
+  - The live FAQ is Maria's content and is not touched.
+  - The disabled radios are replaced by the real choice when it is offered, and removed when it is not.
+- **The name and phone in `billingAddress`** (D8, my call).
+  - `firstName` is everything before the last word of her name, and `lastName` is the last word. A one-word name goes in both.
+  - The phone counts as Estonian when, after spaces, dashes and brackets are removed, it starts with +372 or 372 followed by 7–8 digits, or is 7–8 digits starting with 5 (mobile) or 3–8 (landline). It is sent without the country code, with `phoneCountry: "EE"`.
 
 ## 5. The test plan (standing rule)
 
