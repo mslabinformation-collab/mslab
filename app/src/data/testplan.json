@@ -4380,16 +4380,17 @@
         "Vaata pealkirja all olevat märkust ja nimekirja.",
         "Vajuta ühe koolituspäeva real nuppu „Ava“.",
         "Mine brauseri tagasi-nupuga nimekirja tagasi ja keri lõppu.",
-        "Ava päev, kus Proov 1 protokoll on saadetud, vajuta „Muuda“, lisa märkus ja ava see leht uuesti kontrolli lingist."
+        "Ava roheline päev, kus Proov 1 protokoll on saadetud, vajuta „Muuda“, lisa märkus ja ava see leht uuesti kontrolli lingist.",
+        "Vajuta „Saada uuesti“ ja ava see leht uuesti kontrolli lingist."
       ],
       "expect": [
         "Pealkirja „Protokollid“ all on „Täna ja viimased 14 päeva. Vanemad leiad Kalendrist.“.",
         "Iga koolituspäeva rida näitab kuupäeva, koolitust, kellaaega, kohta ja õpilaste arvu.",
         "Tänane päev on esimene ja kuupäeva asemel on „Täna“; vanemad on all, üle 14 päeva vanuseid ja tulevasi ei ole.",
         "Rea paremal on „… õpilast · … saadetud · … mustand“ või roheline „✓ Kõik … saadetud“.",
-        "Pärast muutmist on päeva real „saadetud“ ühe võrra vähem ja „mustand“ ühe võrra rohkem, kuni vajutad „Saada uuesti“.",
+        "Pärast muutmist roheline „✓ Kõik … saadetud“ kaob ja „mustand“ kasvab ühe võrra; pärast „Saada uuesti“ tuleb roheline tagasi.",
         "Nupp „Ava“ viib selle päeva protokollide lehele; tänase päeva nupp on tume.",
-        "Allpool on pealkiri „INDIVIDUAALKOOLITUSED“ ja selle all individuaalkoolituse registreeringud, mille protokolli pole saadetud.",
+        "Allpool on pealkiri „INDIVIDUAALKOOLITUSED“ ja selle all individuaalkoolituse registreeringud, mille protokoll pole saadetud või on pärast saatmist muudetud.",
         "Kui viimase 14 päeva jooksul koolituspäevi polnud, on lehel „Viimase 14 päeva jooksul koolituspäevi polnud.“ ja link „← Kalender“."
       ],
       "why": "Maria leiab hiljutise koolituspäeva protokollid kahe vajutusega.",
