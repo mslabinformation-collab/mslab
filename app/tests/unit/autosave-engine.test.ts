@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -6,7 +8,9 @@ import {
   AutosaveEngine, DEBOUNCE_MS, draftKey, KEEPALIVE_MAX_BYTES, patchSender, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_CHARS,
   type Fields, type SendPatch,
 } from "@/components/admin/autosave/engine";
+import * as constants from "@/components/admin/autosave/constants";
 import { useAutosave } from "@/components/admin/autosave/useAutosave";
+import * as protocolAutosave from "@/components/admin/protocol-autosave";
 import { stubFetch } from "../fakes";
 
 // The editors' autosave engine (admin UX pass, README §1.3; spec C1): when it saves, the browser's copy until the server confirms it, the retries,
@@ -213,6 +217,37 @@ describe("the browser's copy", () => {
     s.calls[0].answer(ok("v2"));
     await tick();
     expect(e.snapshot().status.kind).toBe("saved");
+  });
+});
+
+describe("the constants (the A screens, Task 1: they moved out of protocol-autosave.ts)", () => {
+  const NAMES = ["DEBOUNCE_MS", "KEEPALIVE_MAX_BYTES", "RETRY_MS", "SAVE_TIMEOUT_MS", "SENT_MAX_CHARS"] as const;
+
+  test("autosave/constants.ts holds them, with the values they always had", () => {
+    expect(constants.DEBOUNCE_MS).toBe(1500);
+    expect(constants.SAVE_TIMEOUT_MS).toBe(10_000);
+    expect(constants.RETRY_MS).toEqual([2000, 5000, 10_000, 20_000, 30_000]);
+    expect(constants.SENT_MAX_CHARS).toBe(200_000);
+    expect(constants.KEEPALIVE_MAX_BYTES).toBe(64_000);
+  });
+
+  test("protocol-autosave.ts and the engine give the same values on (existing imports keep working)", () => {
+    const fromEngine = { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_CHARS };
+    for (const name of NAMES) {
+      expect(protocolAutosave[name], name).toBe(constants[name]);
+      expect(fromEngine[name], name).toBe(constants[name]);
+    }
+  });
+
+  test("the engine imports them from constants.ts, not from protocol-autosave.ts (no chunk of the protocol screen, no cycle in piece 2)", () => {
+    const source = readFileSync(join(process.cwd(), "src/components/admin/autosave/engine.ts"), "utf8");
+    expect(source).toMatch(/from "@\/components\/admin\/autosave\/constants"|from "\.\/constants"/);
+    expect(source).not.toMatch(/from "[^"]*protocol-autosave"/);
+  });
+
+  test("constants.ts imports nothing", () => {
+    const source = readFileSync(join(process.cwd(), "src/components/admin/autosave/constants.ts"), "utf8");
+    expect(source).not.toMatch(/^\s*import\s/m);
   });
 });
 

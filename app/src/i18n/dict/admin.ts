@@ -166,6 +166,8 @@ export const adminEt = {
     cancel: "Katkesta",
     close: "Sulge",
     undo: "Võta tagasi",
+    // the button of a row's menu of rarer actions: „Veel ▾“ (MoreMenu; the ▾ is the component's, not the text's)
+    more: "Veel",
   },
 
   // SaveStatus (admin UX pass, README §1.4; strings.md D1, D2): the one status chip of a screen. {time} is "HH:MM" in Tallinn; {thing} is the partitive

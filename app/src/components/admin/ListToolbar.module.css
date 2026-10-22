@@ -118,6 +118,14 @@
   outline-offset: 0;
 }
 
+/* The pill rows (a status, a form …) flow side by side and wrap, as the prototype draws them: 8 px between pills, a wider gap between the rows. */
+.pillRows {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+
 .pills {
   display: flex;
   flex-wrap: wrap;

@@ -13,36 +13,42 @@ import styles from "./ListToolbar.module.css";
 export const SEARCH_DEBOUNCE_MS = 300;
 
 export type ListPill = { href: string; label: string; count?: number; current: boolean };
-export type ListScope = { label: string; name: string; options: { value: string; label: string }[]; value: string };
+/** One row of filter pills (a status, a form …): `label` is the row's accessible name. */
+export type ListPillRow = { label: string; pills: ListPill[] };
+/**
+ * The scope select. Each option carries the address the page built for it (`href`: the page knows the other filters, and which parameter the
+ * option sets: `?koolitus=` for a whole course, `?toimumine=` for one session), so one select can set either. `value` is the chosen option's value.
+ */
+export type ListScope = { label: string; value: string; options: { value: string; label: string; href: string }[] };
 
 /**
- * The top of an admin list (admin UX pass, README §1.10): a search field, filter pills with their counts, one optional scope select and the
- * count line. All of it lives in the URL, so a drawer's close link and a back link return to the same view (withListParams, list-params.ts).
+ * The top of an admin list (admin UX pass, README §1.10; the A screens, Task 1): a search field, an optional scope select, one or two rows of
+ * filter pills with their counts and the count line. All of it lives in the URL, so a drawer's close link and a back link return to the same view
+ * (withListParams, list-params.ts).
  *
  * - Search: typing waits {@link SEARCH_DEBOUNCE_MS} ms after the last keystroke, then `router.replace`s `?otsi=` (taken away when the text is
  *   empty) with `leht` dropped: a new search starts at page 1. Enter sends it at once, and so does the ✕, which also puts the focus back in the
  *   field. The field is never remounted by a replace, so it keeps its focus and its text.
- * - The scope select applies on change, by the same rules (its empty option takes the parameter away); text still waiting for its 300 ms goes
- *   with it.
+ * - The scope select applies on change by going to the chosen option's own address (`router.replace`, `leht` dropped). The page built that address
+ *   before the visitor typed, so the search typed so far goes onto it, and text still waiting for its 300 ms goes with it.
  * - One address for every replace: Next keeps one navigation at a time and drops a pending one when a newer starts, so each replace is built
  *   from the address the list is heading for (the last replace sent), not from the one on the screen; a search and a scope chosen within the
  *   time a page takes to load both arrive. An address that did not come from the toolbar (Back, a row, „Tühjenda otsing ja filtrid“) is the
  *   list now: the field shows its search and what was waiting is dropped. A pill is such a navigation, and a click on one drops a search that
  *   is still waiting (sent after it, the search would take the pill's navigation away); a search already sent loses to the pill the same way.
- * - `pills` are plain links, built by the page (they carry the search and the other filters themselves); the current one has aria-current.
+ * - `pillRows` are rows of plain links, built by the page (they carry the search and the other filters themselves), each a `nav` under its own
+ *   label (the row's accessible name; the rows sit side by side, wrapping, as the prototype draws the status and the form pills). The current
+ *   pill of a row has aria-current. A row without pills is not drawn.
  * - `placeholder` is the page's own („Otsi nime, e-posti või telefoni järgi“, …) and is the field's accessible name.
  */
 export function ListToolbar({
   placeholder,
-  pills,
-  pillsLabel,
+  pillRows,
   scope,
   countLine,
 }: {
   placeholder: string;
-  pills?: ListPill[];
-  /** The accessible name of the pill row ("Staatus"); without it the row is not a landmark. */
-  pillsLabel?: string;
+  pillRows?: ListPillRow[];
   scope?: ListScope;
   countLine?: string;
 }) {
@@ -68,15 +74,25 @@ export function ListToolbar({
   };
   useEffect(() => cancel, []);
 
-  /** Replaces the address with `change` applied to where the list is heading (leht goes); nothing when that is where it is heading already. */
+  /** Replaces the address with `target` (leht already gone); nothing when that is where the list is heading already. */
+  const replaceWith = (target: string) => {
+    const heading = splitAddress(intended.current);
+    if (target === listHref(heading.pathname, heading.params, {})) return;
+    intended.current = target;
+    sent.current.push(target);
+    router.replace(target, { scroll: false });
+  };
+  /** Replaces the address with `change` applied to where the list is heading (leht goes). */
   const go = (change: Record<string, string | null>) => {
     cancel();
     const from = splitAddress(intended.current);
-    const href = listHref(from.pathname, from.params, change);
-    if (href === listHref(from.pathname, from.params, {})) return;
-    intended.current = href;
-    sent.current.push(href);
-    router.replace(href, { scroll: false });
+    replaceWith(listHref(from.pathname, from.params, change));
+  };
+  /** Goes to the page's own address `href` (a scope option's), with the search typed so far on it (leht goes). */
+  const goTo = (href: string) => {
+    cancel();
+    const to = splitAddress(href);
+    replaceWith(listHref(to.pathname, to.params, { otsi: parseSearch(text) }));
   };
   const search = (value: string) => go({ otsi: parseSearch(value) });
 
@@ -102,7 +118,7 @@ export function ListToolbar({
     timer.current = setTimeout(() => search(value), SEARCH_DEBOUNCE_MS);
   };
 
-  const Pills = pillsLabel ? "nav" : "div";
+  const rows = (pillRows ?? []).filter((row) => row.pills.length > 0);
   return (
     <div className={styles.toolbar} data-list-toolbar="">
       <div className={styles.row}>
@@ -148,19 +164,23 @@ export function ListToolbar({
           )}
         </form>
         {/* a search still waiting for its 300 ms goes with the choice */}
-        {scope && <ScopeSelect scope={scope} onChoose={(value) => go({ otsi: parseSearch(text), [scope.name]: value })} />}
+        {scope && <ScopeSelect scope={scope} onChoose={goTo} />}
       </div>
 
-      {pills && pills.length > 0 && (
-        <Pills className={styles.pills} aria-label={pillsLabel} data-list-pills="">
-          {pills.map((p) => (
-            // a search still waiting is dropped at the click: sent after it, it would take the pill's navigation away
-            <Link key={p.href} className={ui.pill} href={p.href} aria-current={p.current ? "true" : undefined} onClick={cancel}>
-              {p.label}
-              {p.count !== undefined && <span className={ui.pillCount}>{p.count}</span>}
-            </Link>
+      {rows.length > 0 && (
+        <div className={styles.pillRows} data-list-pills="">
+          {rows.map((row, i) => (
+            <nav key={`${i}-${row.label}`} className={styles.pills} aria-label={row.label} data-list-pill-row="">
+              {row.pills.map((p) => (
+                // a search still waiting is dropped at the click: sent after it, it would take the pill's navigation away
+                <Link key={p.href} className={ui.pill} href={p.href} aria-current={p.current ? "true" : undefined} onClick={cancel}>
+                  {p.label}
+                  {p.count !== undefined && <span className={ui.pillCount}>{p.count}</span>}
+                </Link>
+              ))}
+            </nav>
           ))}
-        </Pills>
+        </div>
       )}
 
       {countLine && (
@@ -172,8 +192,11 @@ export function ListToolbar({
   );
 }
 
-/** The scope select. It shows the choice at once, while the address is still on its way, and follows the address when that changes. */
-function ScopeSelect({ scope, onChoose }: { scope: ListScope; onChoose: (value: string) => void }) {
+/**
+ * The scope select. It shows the choice at once, while the address is still on its way, and follows the address when that changes. `onChoose` gets
+ * the chosen option's own address.
+ */
+function ScopeSelect({ scope, onChoose }: { scope: ListScope; onChoose: (href: string) => void }) {
   const [chosen, setChosen] = useState(scope.value);
   const [shown, setShown] = useState(scope.value);
   if (shown !== scope.value) {
@@ -184,12 +207,13 @@ function ScopeSelect({ scope, onChoose }: { scope: ListScope; onChoose: (value: 
   return (
     <select
       className={styles.select}
-      name={scope.name}
       aria-label={scope.label}
       value={chosen}
       onChange={(e) => {
-        setChosen(e.target.value);
-        onChoose(e.target.value);
+        const option = scope.options.find((o) => o.value === e.target.value);
+        if (!option) return;
+        setChosen(option.value);
+        onChoose(option.href);
       }}
     >
       {scope.options.map((o) => (

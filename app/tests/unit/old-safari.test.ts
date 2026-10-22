@@ -86,12 +86,19 @@ const BROWSER_FILES = [
   "src/components/admin/sections.ts",
   // admin UX pass, Task 8: the autosave's status and the save endpoints' answer (types), which SaveStatus and the editors' autosave share
   "src/domain/autosave.ts",
-  // admin UX pass, Task 9: the editors' autosave engine (useAutosave's, no React; it pulls lib/version.ts and protocol-autosave.ts's constants)
+  // admin UX pass, Task 9: the editors' autosave engine (useAutosave's, no React; it pulls lib/version.ts and autosave/constants.ts, the timings protocol-autosave.ts re-exports)
   "src/components/admin/autosave/engine.ts",
   // admin UX pass, Task 13: the list addresses (withListParams, listHref) the ListToolbar builds its replaces from in the browser (the toolbar is a "use client" file, walked anyway)
   "src/components/admin/list-params.ts",
   // instalments, Task 1: the rules of Järelmaks (Inbank) (offered, allowed, the phone and the name for Inbank's form), which the registration form and the cart run in the browser (pure, imports nothing)
   "src/domain/financing.ts",
+  // the A screens, Task 1: the search and name helpers the lists, the drawers and the greeting run in the browser (pure, import nothing), the folded row and the
+  // tab pills (plain markup with no "use client" line: server pages and client components both draw them) and the autosave timings (the engine pulls them)
+  "src/domain/search.ts",
+  "src/domain/names.ts",
+  "src/components/admin/FoldRow.tsx",
+  "src/components/admin/TabPills.tsx",
+  "src/components/admin/autosave/constants.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

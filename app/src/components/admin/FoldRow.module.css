@@ -1,0 +1,77 @@
+/* FoldRow (the A screens, Task 1; the Part 2 prototype's folded rows): a 52 px row, the title in 600 14px on the left, the one-line summary in
+   13px #716a6d and the „▸“ on the right, a 1px #e6e1e3 rule under it. Tap target: the whole row (≥ 44 px). */
+
+.fold {
+  margin: 0;
+}
+
+/* The summary is a block (the browsers' own marker removed) and the flex row is inside it: an old Safari does not make a <summary> a flex box. */
+.summary {
+  display: block;
+  min-height: 52px;
+  border-bottom: 1px solid #e6e1e3;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  font-size: 14px;
+}
+
+.title {
+  flex: none;
+  font-weight: 600;
+}
+
+/* the summary may wrap on a phone; the arrow stays beside its last line */
+.aside {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 8px;
+  min-width: 0;
+  color: #716a6d;
+  font-size: 13px;
+  text-align: right;
+}
+
+.text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.arrow {
+  display: inline-block;
+  flex: none;
+  transition: transform 0.15s;
+}
+
+/* open: the „▸“ points down */
+details[open] > .summary .arrow {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrow {
+    transition: none;
+  }
+}
+
+.body {
+  padding: 14px 0 18px;
+}

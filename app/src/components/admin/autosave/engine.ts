@@ -1,6 +1,6 @@
 import type { AutosaveStatus } from "@/domain/autosave";
 import { stableJson } from "@/lib/version";
-import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_CHARS } from "@/components/admin/protocol-autosave";
+import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_CHARS } from "@/components/admin/autosave/constants";
 
 // The editors' autosave (admin UX pass, README §1.3; spec C1), without React: useAutosave.ts renders what it holds and tells it what is typed. It
 // generalises protocol-autosave.ts (its behaviour and constants, not its protocol shapes; the protocol screen moves onto it in piece 2). One engine

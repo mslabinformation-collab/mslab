@@ -441,17 +441,46 @@ describe("the badges follow a client-side move", () => {
     expect(text(dialog().querySelector('[data-badge="requests"]'))).toBe("4, 4 tegemata");
   });
 
-  it("a search change is a new address too; the same address is not asked again", async () => {
+  it("a change of the page is a new address; the same page is not asked again", async () => {
+    await serve({ badges: BADGES, total: 12 });
+    await moveTo("/admin/registreerimised");
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await moveTo("/admin/registreerimised"); // rendered again for another reason
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await moveTo("/admin/maksed");
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a change of the query alone (the toolbar's search, a pill, a drawer's ?id=) does not ask again: every keystroke would cost nine queries", async () => {
     await serve({ badges: BADGES, total: 12 });
     await moveTo("/admin/registreerimised", "?staatus=ootab");
     await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1); // (arriving at the page is a change of page)
+    for (const search of ["?staatus=ootab&otsi=k", "?staatus=ootab&otsi=ka", "?staatus=ootab&otsi=kas", "?staatus=kinnitatud", "?staatus=kinnitatud&id=17", ""]) {
+      await moveTo("/admin/registreerimised", search);
+      await settle();
+    }
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    await moveTo("/admin/registreerimised", "?staatus=ootab"); // rendered again for another reason
-    await settle();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    await moveTo("/admin/registreerimised", "?staatus=kinnitatud");
+    await moveTo("/admin/registreerimised", "?otsi=kas");
+    await moveTo("/admin/opilased", "?otsi=kas"); // the page changes: asked again, query or not
     await settle();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("the menu still follows the address in the query (the entry marked) while the badges are not asked for again", async () => {
+    const marked = () => aside().querySelector('a[aria-current="page"]')?.getAttribute("data-nav");
+    await serve({ badges: BADGES, total: 12 });
+    await moveTo("/admin/protokollid");
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(marked()).toBe("protocols");
+    await moveTo("/admin/protokollid", "?ligipaas=5"); // the query alone: another entry is marked, nothing is asked
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(marked()).toBe("assessment");
   });
 
   it("a badged row opens its filtered page (Registreerimised, Tagasiside) for as long as it carries a badge", async () => {

@@ -1,5 +1,6 @@
 import { hasText, overLimit, protocolStatus, type NotePlace, type ProtocolStatus, type ScreenStudentView } from "@/domain/protocols";
 import { toStorable } from "@/lib/to-storable"; // (this file runs on old iPads: no lookbehind here nor in what it imports, tests/unit/old-safari.test.ts)
+import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_CHARS } from "@/components/admin/autosave/constants";
 
 // The protocol screen's autosave (phase protocols, spec §4), without React: ProtocolScreen.tsx renders what it holds and tells it what Maria
 // types. Nothing typed is lost:
@@ -107,20 +108,14 @@ export type Entry = {
  */
 export type LocalCopy = { protocolId?: number | null; version: number; titles: string[]; content: Content; sent: Content[]; at?: number; lost?: Conflict };
 
-export const DEBOUNCE_MS = 1500;
+// The timings both autosaves share live in autosave/constants.ts (the editors' engine imports them from there, not from this module); they are
+// given on here unchanged, so every import of them from protocol-autosave keeps working.
+export { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_CHARS };
+
 /** How long a send waits for the server's text to be read again (a screen restored by Back) before it says the text is not confirmed. */
 export const FRESH_WAIT_MS = 10_000;
-/** A save that has not been answered in 10 s is given up (and kept, and tried again). */
-export const SAVE_TIMEOUT_MS = 10_000;
-/** The waits before trying a failed save again; the last one repeats. */
-export const RETRY_MS = [2000, 5000, 10_000, 20_000, 30_000] as const;
-
-/** The most text this browser keeps of the saves sent without an answer, in characters (one protocol at its limits holds 310 000). */
-export const SENT_MAX_CHARS = 200_000;
 /** The most text a notice keeps of the refusals before "Selge", in characters: the oldest go first, never the newest. */
 export const NOTICE_MAX_CHARS = 200_000;
-/** The most a page that is put away sends as keepalive requests, in bytes (the browsers' limit for them all is 64 KiB). */
-export const KEEPALIVE_MAX_BYTES = 64_000;
 
 /** The answers that say a save was not stored: the route's refusals (not a save, the version check, too big) and its sign-in check. */
 const REFUSALS: ReadonlySet<number> = new Set([400, 401, 403, 404, 409, 413]);

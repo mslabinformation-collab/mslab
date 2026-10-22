@@ -1,0 +1,97 @@
+/* PillChoice (the A screens, Task 1; the Part 2 prototype's status pills): 44 px pills, a 12 px dot in front. Unchosen: a #d5d0d3 outline and a hollow
+   #716a6d dot. Chosen: ink outline on first-light and a filled ink dot. The radio is a native one laid over the pill, invisible, so a tap anywhere on
+   the pill hits it and the keyboard works as for any radios. No :has (old iPads): the pill's face is the span next to the radio. */
+
+.set {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* for the screen reader only: the page's own heading is above the pills */
+.legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.pill > input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pill > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--heather);
+  border-radius: 99px;
+  color: var(--ink);
+  font: 400 13px/1.2 var(--font-body);
+}
+
+.pill > span::before {
+  content: "";
+  flex: none;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 1px solid #716a6d;
+  border-radius: 50%;
+}
+
+.pill:hover > input:not(:disabled):not(:checked) + span {
+  border-color: var(--rose);
+}
+
+.pill > input:checked + span {
+  border-color: var(--ink);
+  background: var(--first);
+}
+
+.pill > input:checked + span::before {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+
+.pill > input:focus-visible + span {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.pill > input:disabled,
+.pill > input:disabled + span {
+  cursor: not-allowed;
+}
+
+.pill > input:disabled + span {
+  opacity: 0.45;
+}

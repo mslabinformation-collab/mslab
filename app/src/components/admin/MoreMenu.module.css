@@ -1,0 +1,91 @@
+/* MoreMenu (the A screens, Task 1; the Part 2 prototype's „Veel ▾“ / „Pikenda ▾“): a text button (44 px, 600 12px, no outline) and, under it, a
+   small white list. The list is positioned against the button's wrapper; the component flips it above the button (data-flip="up") and aligns it to the
+   button's right edge (data-align="right") when it would leave the viewport. */
+
+.wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 99px;
+  background: transparent;
+  color: var(--ink);
+  font: 600 12px/1.2 var(--font-body);
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--first);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* the list: as wide as its longest item, never wider than the screen leaves room for */
+.menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 30;
+  box-sizing: border-box;
+  min-width: 200px;
+  max-width: 320px;
+  width: max-content;
+  margin-top: 4px;
+  padding: 6px;
+  border: 1px solid #d9d2d5;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(34, 34, 34, 0.14);
+}
+
+.menu[data-flip="up"] {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
+.menu[data-align="right"] {
+  left: auto;
+  right: 0;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: 400 14px/1.3 var(--font-body);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--first);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.item[data-tone="danger"] {
+  color: var(--bad);
+}

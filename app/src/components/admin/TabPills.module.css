@@ -1,0 +1,9 @@
+/* TabPills (the A screens, Task 1): the pills are ui.pill and ui.pillCount (44 px, #cfc6ca outline, the current one in ink); this is only their row. */
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 18px;
+}

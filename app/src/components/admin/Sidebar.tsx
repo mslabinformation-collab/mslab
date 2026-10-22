@@ -191,16 +191,17 @@ function BarTitle({ title, t }: { title: string | null; t: SidebarTexts }) {
 
 /**
  * The menu's badges while the visitor moves around. The first paint has the shell's (the props); the layout does not render again on a
- * client-side move, so the badges are asked for again (BADGES_URL) when the address changes after the first paint and when the window comes
- * back (focus, or the tab becoming visible). An answer that is not the latest request's is dropped, and so is an answer to a request made for
+ * client-side move, so the badges are asked for again (BADGES_URL) when the page changes after the first paint (the pathname: a change of the
+ * query alone, a keystroke in a list's search, a pill, a drawer's ?id=, does not ask: each ask costs the nine queries of the menu) and when the
+ * window comes back (focus, or the tab becoming visible). An answer that is not the latest request's is dropped, and so is an answer to a request made for
  * props that have since been replaced: a server action's refresh() renders the layout again and its numbers win. A failed or unreadable answer
  * leaves what is shown. Null: show the props.
  */
-function useLiveMenu(items: NavItem[], route: string): MenuState | null {
+function useLiveMenu(items: NavItem[], page: string): MenuState | null {
   const [live, setLive] = useState<{ items: NavItem[]; menu: MenuState } | null>(null);
   const current = useRef(items);
   const request = useRef<{ seq: number; abort: AbortController | null }>({ seq: 0, abort: null });
-  const shownFor = useRef(route);
+  const shownFor = useRef(page);
 
   useEffect(() => {
     current.current = items;
@@ -222,10 +223,10 @@ function useLiveMenu(items: NavItem[], route: string): MenuState | null {
   }, []);
 
   useEffect(() => {
-    if (shownFor.current === route) return; // the first paint: the shell has just read them
-    shownFor.current = route;
+    if (shownFor.current === page) return; // the first paint: the shell has just read them
+    shownFor.current = page;
     refetch();
-  }, [route, refetch]);
+  }, [page, refetch]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -261,9 +262,10 @@ export function Sidebar({ items: served, t, total: servedTotal, email, today: se
   const pathname = usePathname();
   const search = useSearchParams();
   const active = activeSection(pathname, search);
-  // the address the menu was last shown for
+  // the whole address, query included: a move to another one closes the phone menu
   const route = `${pathname}?${search.toString()}`;
-  const live = useLiveMenu(served, route);
+  // the badges follow the page (the pathname), not the query: see useLiveMenu
+  const live = useLiveMenu(served, pathname);
   const items = live ? served.map((item) => ({ ...item, href: live.hrefs[item.key] ?? sectionHref(item.key), badge: live.badges[item.key] })) : served;
   const total = live ? live.total : servedTotal;
   const today = live ? live.today : servedToday;
