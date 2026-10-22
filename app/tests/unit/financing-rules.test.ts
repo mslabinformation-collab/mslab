@@ -74,10 +74,16 @@ describe("why a järelmaks is refused (which sentence she is told)", () => {
   it("'range' when both apply: the price is the permanent fact", () => {
     expect(financingRefusal({ enabled: false, paymentsOn: false, priceCents: 9_999, paidCents: 0, dueCents: 9_999 })).toBe("range");
   });
-  it("a part paid or a part due, with the choice on and the price within the range, keeps the range sentence as before; with the choice off it is 'off'", () => {
-    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 29_000, paidCents: 1_000, dueCents: 28_000 })).toBe("range");
-    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 29_000, paidCents: 0, dueCents: 14_500 })).toBe("range");
-    expect(financingRefusal({ enabled: false, paymentsOn: true, priceCents: 29_000, paidCents: 1_000, dueCents: 28_000 })).toBe("off");
+  it("every refusal of a price within the range is 'off', the toggle on or off: a part paid, only a part due; only a price outside the range is 'range'", () => {
+    for (const enabled of [true, false]) {
+      expect(financingRefusal({ enabled, paymentsOn: true, priceCents: 29_000, paidCents: 1_000, dueCents: 28_000 }), `part paid ${enabled}`).toBe("off");
+      expect(financingRefusal({ enabled, paymentsOn: true, priceCents: 29_000, paidCents: 0, dueCents: 14_500 }), `part due ${enabled}`).toBe("off");
+    }
+    // the edges of the range are in it; the price outside it stays the range whatever else is wrong
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 10_000, paidCents: 1_000, dueCents: 9_000 })).toBe("off");
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 500_000, paidCents: 0, dueCents: 250_000 })).toBe("off");
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 9_999, paidCents: 1_000, dueCents: 8_999 })).toBe("range");
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 500_001, paidCents: 0, dueCents: 250_000 })).toBe("range");
   });
   it("is null exactly when financingAllowed says yes", () => {
     for (const enabled of [true, false]) for (const paymentsOn of [true, false]) for (const priceCents of [null, 9_999, 10_000, 29_000, 500_000, 500_001]) for (const paidCents of [0, 1_000]) {

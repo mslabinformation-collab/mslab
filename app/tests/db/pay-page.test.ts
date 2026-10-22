@@ -577,6 +577,19 @@ describe("Järelmaks (Inbank) on the pay page", () => {
     expect((await handlePayPage(posted(r.payToken, "method=paymentInitiation"), r.payToken, deps(m.montonio))).status).toBe(303);
   });
 
+  test("a järelmaks press for a registration that cannot take one though the choice is on and the price is within the range (a part paid): 409 and the same \"not available now\" sentence, not the range", async () => {
+    await on();
+    const m = stubMontonio();
+    const r = await loan({ paidCents: 5000 });
+    const res = await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio));
+    const html = await text(res);
+    expect(res.status).toBe(409);
+    expect(html).toContain(`<p class="notice" role="alert" data-pay-notice="financingOff">${OFF}</p>`);
+    expect(html).not.toContain(RANGE);
+    expect(await db.select().from(payments)).toEqual([]);
+    expect(m.state.orders).toEqual([]);
+  });
+
   test("the sentence is said only after a refusal: a plain GET and a rate limit do not carry it", async () => {
     await on();
     const r = await loan();

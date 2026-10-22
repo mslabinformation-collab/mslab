@@ -50,8 +50,8 @@ export type StartDeps = {
  * of this registration in the last hour. notFound: no such registration (or not this client's). financing: a järelmaks start that is not
  * allowed now (instalments, §4: Seaded's toggle is off, the price is out of 100–5000 €, something is paid or a part is due, or the
  * registration was booked with another choice): nothing started, she is told to pick another way. `reason` is the sentence she is told
- * (domain/financing.ts financingRefusal): "off" when the price is within the range and the choice is switched off („Järelmaks pole praegu
- * saadaval. Saad maksta pangalingiga.“), else "range" („Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“). It changes the sentence only.
+ * (domain/financing.ts financingRefusal): "range" („Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“) when the price is outside the range,
+ * else "off" („Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“): switched off, a part paid or due, another choice. It changes the sentence only.
  */
 export type StartResult =
   | { kind: "started"; paymentUrl: string }
@@ -233,8 +233,8 @@ export async function startRegistrationPayment(
     // the whole price due (an invoice of a part, or a part recorded by hand, is paid by bank)
     if (method === "hirePurchase") {
       const refusal = await financingRefusedNow(tx, { priceCents, paidCents: r.paidCents, dueCents: due.cents });
-      // (a registration booked with another choice, with the rules otherwise met, has no sentence of its own: the range one, as always)
-      if (r.paymentChoice !== "financing" || refusal !== null) return { kind: "financing", reason: refusal ?? "range" };
+      // (a registration booked with another choice, with the rules otherwise met: the price is necessarily within the range, so "not available now")
+      if (r.paymentChoice !== "financing" || refusal !== null) return { kind: "financing", reason: refusal ?? "off" };
     }
     // the invoice this payment pays, when payableDue charged one
     const invoiceId = "invoiceId" in due ? due.invoiceId : null;

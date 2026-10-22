@@ -87,8 +87,8 @@ export async function loadPayView(db: Db, token: string, now: Date): Promise<Pay
 
 /**
  * The line a POST leaves on the page: the session is full, too many starts, the payment did not start, or the Järelmaks (Inbank) press was refused
- * (the page then has the bank's button, and says why not: `financingOff`, the toggle is off and the price is within 100–5000 €: „Järelmaks pole praegu
- * saadaval. Saad maksta pangalingiga.“; `financing`, the price is outside 100–5000 € now (or any other refusal): what a loan needs, the range).
+ * (the page then has the bank's button, and says why not: `financing`, the price is outside 100–5000 € now: what a loan needs, the range; `financingOff`,
+ * any other refusal, the price within the range: „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“).
  */
 export type PayNotice = "full" | "failed" | "rate" | "financing" | "financingOff";
 
@@ -230,7 +230,7 @@ async function postedMethod(request: Request): Promise<OrderMethod> {
  * GET /maksa/<token>: the page, nothing else. POST (its button): a cross-site POST is 403; else what is due is checked again and the payment
  * starts (server/payments/start.ts) with the button's method (postedMethod: the bank unless it says järelmaks): 303 to Montonio's page.
  * Nothing due by now: the page (its sentence). The session full: 409 with its line; a järelmaks not allowed now: 409 with its sentence — the
- * switched-off one (forms.payFinancingOff) when the toggle is off and the price is within the range, else the range sentence (forms.payFinancingRange)
+ * range one (forms.payFinancingRange) when the price is outside 100–5000 €, else the "not available now" one (forms.payFinancingOff)
  * — and the page read again: the bank's one button (a loan's only while it is allowed); 5 starts from this IP in 10 minutes or 5 of this registration in an hour: 429; Montonio down or no payments: 503
  * "Midagi läks valesti".
  * The hold: what a start refreshes it refreshes together with a pending payment (one transaction), and a failed new order ends it again
@@ -268,7 +268,7 @@ export async function handlePayPage(request: Request, token: string, deps: PayPa
     case "rate":
       return html(payPage(view, { online, notice: "rate" }), 429);
     case "financing":
-      // the loan was not allowed: the switched-off sentence when the toggle is off with the price within the range, else the range sentence; and
+      // the loan was not allowed: the range sentence when the price is outside 100–5000 €, else the "not available now" one; and
       // the page as it is now — read again, so the bank's one button is there and the loan's is not
       try {
         return html(payPage((await loadPayView(deps.db, token, deps.now)) ?? view, { online, notice: result.reason === "off" ? "financingOff" : "financing" }), 409);

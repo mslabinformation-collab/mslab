@@ -57,9 +57,9 @@ import { upcomingFrom } from "@/domain/calendar";
 /**
  * `paymentUrl` (phase 2b): a group registration's prepayment, or an e-course purchase, has started; the form sends the browser there.
  * `financing` (instalments, §4): a registration booked with „Järelmaks (Inbank)“ is stored, but its järelmaks was not allowed when it started:
- * nothing started, and the form says so; she can pay by bank through „Maksa“. "off": the toggle was switched off and the price is within 100–5000 €
- * („Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“); "refused": any other refusal, the price out of the range first („Järelmaks on
- * võimalik 100–5000 € hinnaga koolitusele.“, StartResult's `reason`).
+ * nothing started, and the form says so; she can pay by bank through „Maksa“. "refused": the price is outside 100–5000 € („Järelmaks on võimalik
+ * 100–5000 € hinnaga koolitusele.“); "off": any other refusal, the price within the range („Järelmaks pole praegu saadaval. Saad maksta
+ * pangalingiga.“). StartResult's `reason` decides.
  */
 export type ActionResult = { ok: true; paymentUrl?: string; financing?: "refused" | "off" } | { ok: false; errors: Record<string, string> };
 
@@ -564,8 +564,8 @@ export function handlePurchaseInterest(deps: Deps, formData: FormData): Promise<
  * shows its purchase-interest form instead. An address that paid this course in the last 30 minutes starts nothing: form "alreadyPaid" (the
  * cart says "Makse on juba tehtud — vaata oma e-posti."; Back from the bank would otherwise charge a second time). The cart's `method`
  * (instalments, §4): the bank link by default, or Järelmaks (Inbank); a järelmaks not allowed for this price now (the toggle off, out of
- * 100–5000 €) starts nothing: method "financingOff" when it was switched off and the price is within the range, else "financing" (the cart says
- * which at its choice: „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“ or the range).
+ * 100–5000 €) starts nothing: method "financing" when the price is outside the range, else "financingOff" (the cart says which at its choice: the
+ * range, or „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“).
  * The box is the e-course contract (contracts, D1, §4): the payment keeps the contract the cart showed (`contract_snapshot`), the e-course text
  * in her language filled with the name and the address she typed, the course and its price (domain/contract.ts filledContract, the cart's own
  * fill), with its version and language and the time of this press (its acceptance, R7); settle freezes that very copy when the payment is paid,

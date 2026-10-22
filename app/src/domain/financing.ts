@@ -37,21 +37,22 @@ export function financingAllowed(o: { enabled: boolean; paymentsOn: boolean; pri
 }
 
 /**
- * Which sentence a refused järelmaks is told with: "off" when the price is within 100–5000 € but the choice is not on (Maria's toggle is off, or
- * Montonio payments are): „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“ (forms.payFinancingOff); "range" otherwise: „Järelmaks on
- * võimalik 100–5000 € hinnaga koolitusele.“ (forms.payFinancingRange).
+ * Which sentence a refused järelmaks is told with: "range" only when the price is outside 100–5000 € (or there is none): „Järelmaks on võimalik
+ * 100–5000 € hinnaga koolitusele.“ (forms.payFinancingRange); "off" for every other refusal: „Järelmaks pole praegu saadaval. Saad maksta
+ * pangalingiga.“ (forms.payFinancingOff).
  */
 export type FinancingRefusal = "range" | "off";
 
 /**
  * Why may this payment not go to Inbank now? null while financingAllowed says it may. The price outside 100–5000 € (or none) is "range" whatever
- * the toggle says: the price is the permanent fact, so it wins when both apply. A price within the range with the choice not on is "off". Every
- * other refusal (a part is paid, or only a part is due) keeps the range sentence it always had. Same inputs as financingAllowed.
+ * else is wrong: the price is the permanent fact, so it wins when more than one thing applies. Every refusal of a price within the range is "off"
+ * (Dim, 22.10): the choice is switched off (Maria's toggle, or Montonio payments), a part is paid, only a part is due, or the registration was booked
+ * with another choice. The range sentence would read as "it is possible" right after a refusal. Same inputs as financingAllowed.
  */
 export function financingRefusal(o: { enabled: boolean; paymentsOn: boolean; priceCents: number | null; paidCents: number; dueCents: number }): FinancingRefusal | null {
   if (financingAllowed(o)) return null;
   const inRange = o.priceCents !== null && o.priceCents >= FINANCING_MIN_CENTS && o.priceCents <= FINANCING_MAX_CENTS;
-  return inRange && !(o.enabled && o.paymentsOn) ? "off" : "range";
+  return inRange ? "off" : "range";
 }
 
 /**

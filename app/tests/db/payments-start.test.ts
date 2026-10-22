@@ -579,7 +579,7 @@ describe("a start with its method: the bank, or Järelmaks (Inbank) (instalments
     expect((await reg()).seatHoldUntil).toEqual(new Date(NOW.getTime() + 30 * MIN));
   });
 
-  test("hirePurchase is refused with kind 'financing' when off, out of range, partly paid, or the choice was 100%/50% — and says which sentence applies: 'off' for a price within the range, else 'range'", async () => {
+  test("hirePurchase is refused with kind 'financing' when off, out of range, partly paid, or the choice was 100%/50% — and says which sentence applies: 'range' for a price outside 100–5000 €, else 'off'", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
     const r = await registrationOn(db, c, { paymentChoice: "financing" });
@@ -604,17 +604,24 @@ describe("a start with its method: the bank, or Järelmaks (Inbank) (instalments
       await db.update(courses).set({ priceGroup: price }).where(eq(courses.id, c.course.id));
       await refused(`price ${price}`, "range");
     }
-    // partly paid (Maria recorded a transfer): only the bank, for what is left (the sentence it always had)
+    // partly paid (Maria recorded a transfer): only the bank, for what is left — the price is within the range, so the same "not available now" sentence
     await db.update(courses).set({ priceGroup: 35000 }).where(eq(courses.id, c.course.id));
     await db.update(registrations).set({ paidCents: 5000 }).where(eq(registrations.id, r.id));
-    await refused("partly paid", "range");
+    await refused("partly paid", "off");
     expect(await start(m.montonio, { registrationId: r.id })).toMatchObject({ kind: "started" });
     expect((await rows()).map((p) => [p.amountCents, p.method])).toEqual([[30000, "paymentInitiation"]]);
-    // booked with 100% or 50%: never järelmaks later (the choice is made at booking)
+    // booked with 100% or 50%: never järelmaks later (the choice is made at booking) — the price is within the range: "not available now"
     for (const paymentChoice of ["full", "half"] as const) {
       const other = await registrationOn(db, c, { email: `${paymentChoice}@example.com`, paymentChoice });
-      expect(await start(m.montonio, { registrationId: other.id }, "hirePurchase"), paymentChoice).toEqual({ kind: "financing", reason: "range" });
+      expect(await start(m.montonio, { registrationId: other.id }, "hirePurchase"), paymentChoice).toEqual({ kind: "financing", reason: "off" });
     }
+    // ... and the same for a price outside the range, whatever the choice was: the range
+    await db.update(courses).set({ priceGroup: 600_000 }).where(eq(courses.id, c.course.id));
+    for (const paymentChoice of ["full", "half"] as const) {
+      const other = await registrationOn(db, c, { email: `${paymentChoice}-high@example.com`, paymentChoice });
+      expect(await start(m.montonio, { registrationId: other.id }, "hirePurchase"), `${paymentChoice} high`).toEqual({ kind: "financing", reason: "range" });
+    }
+    await db.update(courses).set({ priceGroup: 35000 }).where(eq(courses.id, c.course.id));
     // the edges of the range are in it
     for (const price of [10000, 500000]) {
       await db.update(courses).set({ priceGroup: price }).where(eq(courses.id, c.course.id));

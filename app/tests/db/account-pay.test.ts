@@ -91,6 +91,19 @@ test("the rest of a confirmed one; not hers 404; paid in full or full 409; no pa
   expect((await call(deps(m.montonio), cookie, { registrationId: waiting.id }, { origin: "https://elsewhere.example" })).status).toBe(403);
 });
 
+test("a loan the start refuses with the choice on and the price within the range (a part paid, or booked with 100%): 409 financingOff, the same sentence as a switched-off choice; out of the range it is financing", async () => {
+  const m = stubMontonio();
+  await db.insert(settings).values({ key: "financing", value: { enabled: true } });
+  const { client, cookie } = await signedIn();
+  const c = await contactCourse(db);
+  const part = await registrationOn(db, c, { clientId: client.id, paymentChoice: "financing", paidCents: 5000 });
+  const full = await registrationOn(db, c, { email: "taisosa@example.com", clientId: client.id, paymentChoice: "full" });
+  for (const r of [part, full]) expect(await answer(await call(deps(m.montonio), cookie, { registrationId: r.id, method: "hirePurchase" })), String(r.id)).toEqual([409, { ok: false, error: "financingOff" }]);
+  await db.update(courses).set({ priceGroup: 600_000 }).where(eq(courses.id, c.course.id));
+  for (const r of [part, full]) expect(await answer(await call(deps(m.montonio), cookie, { registrationId: r.id, method: "hirePurchase" })), String(r.id)).toEqual([409, { ok: false, error: "financing" }]);
+  expect(await db.select().from(payments)).toEqual([]);
+});
+
 test("the body's `method` (instalments, §4): hirePurchase starts the järelmaks when allowed, else 409 financing; none is the bank; another value 400", async () => {
   const m = stubMontonio();
   const { client, cookie } = await signedIn();

@@ -93,8 +93,8 @@ type Errors = Partial<Record<Field, string>>;
  * `rejected`: the date the server turned down (filled up or cancelled meanwhile); its error stays while it is picked.
  * `paymentUrl` (sent, group): the prepayment's page at Montonio, where the browser goes once this state is on the page (see the effect below).
  * `financingRefused` (sent, group): the registration is stored, but its Järelmaks (Inbank) was not allowed any more (the toggle was switched off, or the
- * price left 100–5000 €, since the page was loaded); there is no payment page, and the answer says why: "off" (switched off, the price within the range)
- * that it is not available now and the bank is open, "refused" what Järelmaks needs, the range.
+ * price left 100–5000 €, since the page was loaded); there is no payment page, and the answer says why: "refused" (the price outside the range) what
+ * Järelmaks needs, the range; "off" (any other refusal, the price within the range) that it is not available now and the bank is open.
  */
 type State =
   | { status: "idle" }
