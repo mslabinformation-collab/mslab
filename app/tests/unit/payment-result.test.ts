@@ -170,11 +170,19 @@ describe("the page", () => {
       expect(links()).toEqual([["Minu koolitused", "/konto"]]);
     });
 
-    test("not paid at all (katkestatud): the usual sentence and the usual „Proovi uuesti“ link; a bank order's pooleli keeps the bank's sentence", async () => {
+    test("not paid at all (katkestatud): the usual sentence and one „Proovi uuesti“ link, which opens the cart with Järelmaks (Inbank) chosen for an e-course's loan, as on pooleli; a bank order's pooleli keeps the bank's sentence", async () => {
       await show(`#tulemus=katkestatud&liik=jarelmaks&maksa=${TOKEN}`);
       expect(container.querySelector("h1")?.textContent).toBe("Makse jäi tegemata.");
+      // a registration's: its /maksa page, which shows both buttons
       expect(links()).toEqual([["Proovi uuesti", `/maksa/${TOKEN}`], ["Minu koolitused", "/konto"]]);
+      // an e-course's loan: the cart, with the loan chosen again (a bare cart would open on „Pangalink“ and „Proovi uuesti“ would mean the bank)
       await show("#tulemus=katkestatud&liik=jarelmaks&kursus=kulmumeistri-e-koolitus");
+      expect(links()).toEqual([["Proovi uuesti", "/ostukorv?kursus=kulmumeistri-e-koolitus&makse=jarelmaks"], ["Minu koolitused", "/konto"]]);
+      expect(container.querySelector("a[data-payment-retry]")?.getAttribute("href")).toBe("/ostukorv?kursus=kulmumeistri-e-koolitus&makse=jarelmaks");
+      await show("#tulemus=katkestatud&liik=jarelmaks&kursus=kulmumeistri-e-koolitus", "ru", { ...t, retry: "Попробовать снова", account: "Мои курсы" });
+      expect(links()[0]).toEqual(["Попробовать снова", "/ru/ostukorv?kursus=kulmumeistri-e-koolitus&makse=jarelmaks"]);
+      // an e-course's bank payment that ended: the bare cart, as before
+      await show("#tulemus=katkestatud&liik=ekoolitus&kursus=kulmumeistri-e-koolitus");
       expect(links()).toEqual([["Proovi uuesti", "/ostukorv?kursus=kulmumeistri-e-koolitus"], ["Minu koolitused", "/konto"]]);
       await show(`#tulemus=pooleli&liik=registreering&maksa=${TOKEN}`);
       expect(container.querySelector("h1")?.textContent).toBe("Makse on pooleli. Kui pank selle kinnitab, saadame sulle kinnituse.");

@@ -43,7 +43,8 @@ const subscribe = (onChange: () => void) => {
  * Kui Inbank selle kinnitab, saadame sulle kinnituse.“ — and offers two ways on, whichever way is given: „Maksa pangalingiga“ (the bank, for the whole price)
  * and „Proovi uuesti“ (Inbank again). A registration's are two buttons that post to its /maksa page with the method (the page starts the payment and
  * answers with a 303 to the bank or to Inbank); an e-course's are two links to its cart, which needs her name and the terms again, the second with
- * ?makse=jarelmaks so that the cart opens with Järelmaks (Inbank) chosen. Without a way (a held loan) the sentence stands alone.
+ * ?makse=jarelmaks so that the cart opens with Järelmaks (Inbank) chosen. Without a way (a held loan) the sentence stands alone. A loan that ended
+ * (katkestatud) has the one „Proovi uuesti“: a registration's /maksa page (both buttons there), an e-course's cart with ?makse=jarelmaks.
  */
 export function PaymentResult({ locale, t }: { locale: Locale; t: PaymentResultTexts }) {
   const hash = useSyncExternalStore(subscribe, () => window.location.hash, () => "");
@@ -64,6 +65,9 @@ export function PaymentResult({ locale, t }: { locale: Locale; t: PaymentResultT
   // the way on: the registration's /maksa page, or the e-course's cart; a loan is told from the other by which of the two it was given
   const payPath = !decided && view.payToken && (view.kind === "registreering" || loan) ? `/maksa/${view.payToken}` : null;
   const cartPath = !decided && !payPath && view.course && (view.kind === "ekoolitus" || loan) ? to(`/ostukorv?kursus=${view.course}`) : null;
+  // „Proovi uuesti“ after a loan that ended (katkestatud): a registration's /maksa page shows both buttons; an e-course's cart opens with Järelmaks
+  // (Inbank) chosen again, as „Proovi uuesti“ does on pooleli (a bare cart opens on „Pangalink“ and the same words would mean the bank)
+  const retryPath = payPath ?? (cartPath && loan ? `${cartPath}&makse=jarelmaks` : cartPath);
   const links = ecourse && view.course ? [{ href: to(`/konto/kursus/${view.course}`), label: t.openCourse }] : [account];
   const undecidedLoan = loan && view.outcome === "pooleli";
   return (
@@ -87,8 +91,8 @@ export function PaymentResult({ locale, t }: { locale: Locale; t: PaymentResultT
             </a>
           </>
         )}
-        {!undecidedLoan && (payPath ?? cartPath) && (
-          <a className={ui.btn} href={(payPath ?? cartPath) as string} data-payment-retry="">
+        {!undecidedLoan && retryPath && (
+          <a className={ui.btn} href={retryPath} data-payment-retry="">
             {t.retry}
             <Icon name="arrow" />
           </a>
