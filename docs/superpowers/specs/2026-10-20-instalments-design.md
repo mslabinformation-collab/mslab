@@ -77,7 +77,7 @@ Today the site offers two ways to pay, both through the Montonio checkout: „10
 - **D6. What the records say.**
   - The payment row, the registration and the admin's „Maksed" show the payment method „Järelmaks (Inbank)" (Draft), as they show the bank today.
   - The contract's payment text says „Koolituse hind tasutakse täies ulatuses: järelmaksuga (Inbank) või pangamaksega." (Draft, my call, from the builder check). It stays true if a declined järelmaks is paid by bank afterwards, so the frozen contract is never wrong and nothing needs accepting again. `{ettemaks}` is the full price.
-  - The receipt invoice is the normal paid invoice for the full price, with „Tasutud: järelmaks (Inbank)" (Draft).
+  - The receipt invoice is the normal paid invoice for the full price, with „Tasutud <kuupäev> · Järelmaks (Inbank)“ (Draft; no nested brackets).
 - **D7. Refunds and cancellations** work as for any Montonio payment today, through Maria's existing actions. Montonio and Inbank handle the student's side: a partial refund lowers the loan and a full refund cancels it, with no fee (Montonio, 22.10). The site adds nothing.
 - **D8. The order carries the student's details** (my call, from Montonio's recommendation). For a järelmaks order the site sends `billingAddress` with her first and last name and e-mail, so Inbank's form is filled in for her.
   - Her phone is sent as `phoneNumber` + `phoneCountry: "372"` (Montonio's orders guide gives the calling code, e.g. "372") only when it is an Estonian number (+372, or eight digits starting 5 or other Estonian mobile prefixes as the form stores them). Inbank needs a number of the shop's country, so a foreign number is left out and she types one in Inbank's form.
