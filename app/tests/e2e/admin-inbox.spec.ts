@@ -16,6 +16,7 @@ import {
   removeAdminRows,
   removeCampaignRows,
   requestHandled,
+  onLocalDb,
   setStoredStatus,
   storeRequestHandled,
   storedAdminRegistration,
@@ -171,9 +172,9 @@ test.describe("signed in", () => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/registreerimised");
-    // the form pills, each with its count (A2; the whole list's columns and search are in the next test)
+    // the form pills, light and with no count (A2; the whole list's columns and search are in the next test)
     const typeFilter = page.getByRole("navigation", { name: "Õppevorm", exact: true });
-    await expect(typeFilter.getByRole("link")).toHaveText([/^Kõik vormid\s*\d+$/, /^E-õpe\s*\d+$/, /^Kontaktõpe\s*\d+$/]);
+    await expect(typeFilter.getByRole("link")).toHaveText(["Kõik vormid", "E-õpe", "Kontaktõpe"]); // (the form pills carry no count: README A2)
     await expect(typeFilter.getByRole("link", { name: /^Kõik vormid/ })).toHaveAttribute("aria-current", "true");
 
     await typeFilter.getByRole("link", { name: /^Kontaktõpe/ }).click();
@@ -275,6 +276,8 @@ test.describe("signed in", () => {
     await expect(row).toBeVisible();
     await search("+372 5555-0101");
     await expect(row).toBeVisible();
+    await search("5555 0101"); // (and the same number without the country code finds it: it is stored with „+372“)
+    await expect(row).toBeVisible();
 
     // the columns and what a row says
     await search(tag);
@@ -287,9 +290,14 @@ test.describe("signed in", () => {
     await expect(row.locator("a[href^='mailto:']")).toHaveCount(0);
     await expect(row.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
 
-    // the pills count under the search: this one registration is awaiting its prepayment
+    // the status pills count under the search: this one registration is awaiting its prepayment
     await expect(status.getByRole("link")).toHaveText([/^Kõik\s*1$/, /^Ootab ettemaksu\s*1$/, /^Kinnitatud\s*0$/, /^Tühistatud\s*0$/]);
-    await expect(forms.getByRole("link")).toHaveText([/^Kõik vormid\s*1$/, /^E-õpe\s*0$/, /^Kontaktõpe\s*1$/]);
+    await expect(forms.getByRole("link")).toHaveText(["Kõik vormid", "E-õpe", "Kontaktõpe"]);
+    await expect(forms).toHaveAttribute("data-tone", "light");
+    // the chosen form pill is the light one (first-light fill, ink border), the chosen status pill the ink one
+    const fill = (link: Locator) => link.evaluate((a) => getComputedStyle(a).backgroundColor);
+    expect(await fill(forms.getByRole("link", { name: "Kõik vormid" }))).toBe("rgb(235, 232, 233)");
+    expect(await fill(status.getByRole("link", { name: /^Kõik/ }))).toBe("rgb(34, 34, 34)");
     await status.getByRole("link", { name: /^Kinnitatud/ }).click();
     await expect(page).toHaveURL(new RegExp(`otsi=${tag}.*staatus=kinnitatud|staatus=kinnitatud.*otsi=${tag}`));
     await expect(page.locator("[data-list-empty] p")).toHaveText(`„${tag}“ järgi registreerimisi ei leitud.`);
@@ -371,6 +379,33 @@ test.describe("signed in", () => {
     // (the list behind the drawer never makes the page scroll sideways: contracts.spec.ts checks the drawer at 390 with it open)
     await expect(page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` })).toBeVisible();
     expect(await noOverflow(page)).toBe(true);
+  });
+
+  test("registrations list at 375 px with a very long city: the card wraps it and the page never scrolls sideways", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(!isMobile, "the phone project only");
+    const f = await fixtures(info.project.name);
+    // 45 letters with no place to break, the worst a city can be (a public page shows nothing of this unpublished course's session)
+    const city = "Pneumonoultramicroscopicsilicovolcanoconiosis";
+    await onLocalDb((sql) => sql`update course_sessions set city = ${city} where id = ${f.session.id}`, { marksPages: false });
+    await signIn(page, context, visitorIp);
+    await page.setViewportSize({ width: 375, height: 812 });
+    const tag = f.course.slug.replace(/^e2e-admin-/, "");
+    await page.goto(`/admin/registreerimised?otsi=${tag}`);
+    await adminReady(page);
+    const row = page.locator(`[data-registration="${f.registration.id}"]`);
+    await expect(row).toBeVisible();
+    await expect(row).toContainText(city.slice(0, 10));
+    expect(await noOverflow(page)).toBe(true);
+    // the session line and the money stay inside the row (the line breaks inside the long word, and the money goes under it)
+    const card = (await row.boundingBox())!;
+    const inside = async (selector: string, what: string) => {
+      const b = (await row.locator(selector).first().boundingBox())!;
+      expect(b.x, `${what}: left edge`).toBeGreaterThanOrEqual(card.x - 1);
+      expect(b.x + b.width, `${what}: right edge`).toBeLessThanOrEqual(card.x + card.width + 1);
+    };
+    await inside("td:nth-child(3) span:last-child", "the session");
+    await inside("td:nth-child(4)", "the money");
+    await inside("[data-reg-status]", "the status pill");
   });
 
   test("registrations: status and note by hand, then 'Tühista'", async ({ page, context, visitorIp }, info) => {

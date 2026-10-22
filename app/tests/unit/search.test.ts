@@ -22,10 +22,30 @@ describe("digitsOf", () => {
 
 describe("phoneQuery", () => {
   it("is %<digits>% when the query has at least 3 digits", () => {
-    expect(phoneQuery("+372 5123 4567")).toBe("%37251234567%");
     expect(phoneQuery("5123-4567")).toBe("%51234567%");
     expect(phoneQuery("123")).toBe("%123%");
     expect(phoneQuery("  50 00  ")).toBe("%5000%");
+  });
+
+  it("a number typed with +372 is searched by the digits after the 372, so it also finds a number stored without the country code", () => {
+    expect(phoneQuery("+372 5123 4567")).toBe("%51234567%");
+    expect(phoneQuery("+37251234567")).toBe("%51234567%");
+    expect(phoneQuery("372 5123 4567")).toBe("%51234567%");
+    expect(phoneQuery("(+372) 5123-4567")).toBe("%51234567%");
+    // the same number typed without it is the same search
+    expect(phoneQuery("5123 4567")).toBe(phoneQuery("+372 5123 4567"));
+  });
+
+  it("keeps the 372 when 7 digits or fewer follow it (a number typed so far, or one that merely begins with 372)", () => {
+    expect(phoneQuery("+372")).toBe("%372%");
+    expect(phoneQuery("+372 51")).toBe("%37251%");
+    expect(phoneQuery("+372 5123 45")).toBe("%372512345%");
+    expect(phoneQuery("372 5123 456")).toBe("%3725123456%"); // 7 digits after the 372: not more than 7
+    expect(phoneQuery("37251234")).toBe("%37251234%");
+  });
+
+  it("takes only a leading 372: a 372 inside the digits stays", () => {
+    expect(phoneQuery("5123 3725 4567")).toBe("%512337254567%");
   });
 
   it("is null for fewer than 3 digits, or none", () => {

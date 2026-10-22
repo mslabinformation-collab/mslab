@@ -93,15 +93,22 @@
     font-size: 13px;
   }
 
+  /* the session and the money may shrink and break inside a word, so a long city never pushes the card sideways (at 375 px a 45-letter one
+     takes the line to itself and wraps inside it) */
   table.list .session {
     order: 4;
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   /* „… · laekunud 0 / 290 €“ after the session: the word comes from the dictionary (data-paid-word), the bullet is only punctuation */
   table.list td.paid {
     order: 5;
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
     color: var(--muted-2);
     font-size: 12px;
     font-weight: 400;

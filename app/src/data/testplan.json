@@ -1808,7 +1808,7 @@
       "id": "haldus-loend-terve-rida",
       "area": "haldus",
       "who": "dim",
-      "device": "any",
+      "device": "arvuti",
       "title": "Loendi rida on tervikuna link",
       "href": "/admin/registreerimised",
       "steps": [
@@ -1842,14 +1842,15 @@
       "steps": [
         "Ava „Registreerimised“ ja kirjuta otsingusse osa nimest Proov 1.",
         "Kustuta otsing ja kirjuta Proov 1 e-posti aadress.",
-        "Kustuta otsing ja kirjuta Proov 1 telefoninumber, tühikud teises kohas kui registreerimisel.",
+        "Kustuta otsing ja kirjuta Proov 1 telefoninumber, tühikud teises kohas kui registreerimisel, +372-ga või ilma.",
         "Kirjuta otsingusse „zzz“.",
         "Vajuta nuppu „Tühjenda otsing ja filtrid“.",
-        "Kirjuta otsingusse osa nimest Proov 1 ja vali valikust „Kõik koolitused ja toimumised“ oma proovi kuupäev.",
+        "Kirjuta otsingusse osa nimest Proov 1.",
+        "Ava valik „Kõik koolitused ja toimumised“ ja vali oma proovi kuupäev.",
         "Vajuta Proov 1 nimele ja sulge paneel."
       ],
       "expect": [
-        "Iga otsing jätab loendisse Proov 1 registreeringu ja „Registreerimisi: …“ näitab leitud ridu.",
+        "Nimi, e-post ja telefon jätavad loendisse Proov 1 registreeringu ja „Registreerimisi: …“ näitab leitud ridu.",
         "Loend muutub kirjutamise ajal, nuppu vajutamata, ja aadressis on „otsi=“.",
         "Otsing „zzz“ ütleb, et selle järgi registreerimisi ei leitud, ja pakub nuppu „Tühjenda otsing ja filtrid“.",
         "Valitud kuupäev jätab loendisse ainult selle toimumise registreeringud ja nuppude arvud muutuvad kaasa.",
@@ -2059,13 +2060,13 @@
       "title": "Registreering halduses",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava „Registreerimised“.",
+        "Ava „Registreerimised“; tahvlis hoia seade külili.",
         "Vaata Proov 1 rida ja nuppe loendi kohal.",
         "Vajuta nimele Proov 1.",
         "Vaata avanenud paneelis hinda ja laekunud summat."
       ],
       "expect": [
-        "Loendis on viis veergu: „Kuupäev“, „Nimi ja kontakt“, „Koolitus ja toimumine“, „Laekunud“ ja „Staatus“.",
+        "Arvutis ja külili hoitud tahvlis on loendis viis veergu: „Kuupäev“, „Nimi ja kontakt“, „Koolitus ja toimumine“, „Laekunud“ ja „Staatus“.",
         "Proov 1 real on tema telefon, koolitus, toimumise päev ja linn, „Laekunud“ kujul „pool / hind €“ ja staatus „Kinnitatud“.",
         "Nuppudel „Kõik“, „Ootab ettemaksu“, „Kinnitatud“ ja „Tühistatud“ on arvud, mis näitavad, mitu rida valikust jääb.",
         "Paneeli üleval on Proov 1, koolitus ja nupp „Ava protokoll“.",

@@ -369,43 +369,29 @@ export async function countRegistrations(db: Db, filter: RegistrationFilter = {}
   return Number(n);
 }
 
-/** The two pill rows of the registrations list with their counts (A2): the keys are the words of the address (?staatus=, ?vorm=). */
-export type RegistrationCounts = {
-  status: Record<"all" | "ootab" | "kinnitatud" | "tuhistatud", number>;
-  type: Record<"all" | "e" | "k", number>;
-};
+/**
+ * The status pills of the registrations list with their counts (A2): the keys are the words of the address (?staatus=). The form pills carry no
+ * count (README A2 gives counts on the status pills only).
+ */
+export type RegistrationCounts = { status: Record<"all" | "ootab" | "kinnitatud" | "tuhistatud", number> };
 
 const STATUS_KEY = { awaiting_prepayment: "ootab", confirmed: "kinnitatud", cancelled: "tuhistatud" } as const satisfies Record<RegStatus, string>;
-const TYPE_KEY = { e_learning: "e", contact: "k" } as const;
 
 /**
- * The counts on the pills of the registrations list (admin UX pass B9): each row counts under every other filter (the search, the scope, the
- * other row), and ignores its own, so a pill's count is the number of rows the list shows once that pill is chosen. `filter.status` and
- * `filter.type` are the pills chosen now: the status row reads the list as if no status were chosen, the form row as if no form were.
+ * The counts on the status pills of the registrations list (admin UX pass B9): they count under every other filter (the search, the scope, the
+ * form) and ignore the status chosen now, so a pill's count is the number of rows the list shows once that pill is chosen.
  */
 export async function registrationCounts(db: Db, filter: RegistrationFilter = {}): Promise<RegistrationCounts> {
-  const [byStatus, byType] = await Promise.all([
-    db
-      .select({ key: registrations.status, n: count() })
-      .from(registrations)
-      .innerJoin(courses, eq(registrations.courseId, courses.id))
-      .where(registrationWhere({ ...filter, status: undefined }))
-      .groupBy(registrations.status),
-    db
-      .select({ key: courses.type, n: count() })
-      .from(registrations)
-      .innerJoin(courses, eq(registrations.courseId, courses.id))
-      .where(registrationWhere({ ...filter, type: undefined }))
-      .groupBy(courses.type),
-  ]);
-  const counts: RegistrationCounts = { status: { all: 0, ootab: 0, kinnitatud: 0, tuhistatud: 0 }, type: { all: 0, e: 0, k: 0 } };
+  const byStatus = await db
+    .select({ key: registrations.status, n: count() })
+    .from(registrations)
+    .innerJoin(courses, eq(registrations.courseId, courses.id))
+    .where(registrationWhere({ ...filter, status: undefined }))
+    .groupBy(registrations.status);
+  const counts: RegistrationCounts = { status: { all: 0, ootab: 0, kinnitatud: 0, tuhistatud: 0 } };
   for (const row of byStatus) {
     counts.status[STATUS_KEY[row.key]] = Number(row.n);
     counts.status.all += Number(row.n);
-  }
-  for (const row of byType) {
-    counts.type[TYPE_KEY[row.key]] = Number(row.n);
-    counts.type.all += Number(row.n);
   }
   return counts;
 }

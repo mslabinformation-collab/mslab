@@ -1,8 +1,11 @@
 /* ListToolbar and the list states (admin UX pass, README §1.10; the prototype's "LISTTOOLBAR" and "EMPTY" mock-ups). The pills are ui.pill and
    ui.pillCount; the rest is here. Colours: tokens.css and the admin's own greys of ui.module.css (#d9d2d5 field border, #cfc6ca pill border). */
 
+/* One column that may shrink (`minmax(0, 1fr)`): a grid item's minimum width is its content's, so with the default auto column the scope select's
+   widest option (a long city or course title) would make the whole toolbar wider than a phone. */
 .toolbar {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   margin: 0 0 18px;
 }
@@ -131,6 +134,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+/* A light row (the prototype's form pills, the second filter): the chosen pill keeps the ink border but is the first-light fill with ink text,
+   so the status row, whose chosen pill is the ink fill, reads as the first filter. */
+.pills[data-tone="light"] a[aria-current="true"] {
+  border-color: var(--ink);
+  background: var(--first);
+  color: var(--ink);
 }
 
 /* ListEmpty: the two empty texts of a list, centred in its card. The button is the 44 px outline pill of the prototype. */

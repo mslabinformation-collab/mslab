@@ -48,7 +48,7 @@ beforeAll(async () => {
   await add({ name: "Мария Кузнецова", email: "maria.k@example.test", phone: "+372 50000003", status: "confirmed", createdAt: new Date("2026-10-17T08:00:00Z") });
   // contact course, session B
   await add({ name: "50% Liis", email: "liis@example.test", phone: "", courseSessionId: sessionB.id, status: "cancelled", createdAt: new Date("2026-10-16T08:00:00Z") });
-  await add({ name: "a_b Tamm", email: "tamm@example.test", phone: "+372 5000 0005", courseSessionId: sessionB.id, status: "awaiting_prepayment", createdAt: new Date("2026-10-15T08:00:00Z") });
+  await add({ name: "a_b Tamm", email: "tamm@example.test", phone: "+37250000005", courseSessionId: sessionB.id, status: "awaiting_prepayment", createdAt: new Date("2026-10-15T08:00:00Z") });
   await add({ name: "Back\\slash Saar", email: "saar@example.test", phone: "5000 0006", courseSessionId: sessionB.id, status: "confirmed", createdAt: new Date("2026-10-14T08:00:00Z") });
   // the other contact course
   await add({ name: "Lea Lash", email: "lea@example.test", phone: "+372 5000 0007", courseId: lash.id, courseSessionId: sessionC.id, status: "confirmed", createdAt: new Date("2026-10-13T08:00:00Z") });
@@ -87,6 +87,22 @@ describe("search (?otsi=): name, e-mail and phone", () => {
     // stored „5000-0002“ and „+372 50000003“
     expect(await names({ search: "5000 0002" })).toEqual(["Mari Mets"]);
     expect(await names({ search: "5000 0003" })).toEqual(["Мария Кузнецова"]);
+  });
+
+  test("a number typed with +372 finds the same number stored without the country code, and one stored compact", async () => {
+    // Mari's number is stored „5000-0002“ (no +372): typed with it, the search is by the digits after the 372
+    expect(await names({ search: "+372 5000 0002" })).toEqual(["Mari Mets"]);
+    expect(await names({ search: "+37250000002" })).toEqual(["Mari Mets"]);
+    // a_b Tamm's is stored „+37250000005“: found typed with or without the code, spaced or not
+    expect(await names({ search: "+372 5000 0005" })).toEqual(["a_b Tamm"]);
+    expect(await names({ search: "5000 0005" })).toEqual(["a_b Tamm"]);
+    expect(await names({ search: "50000005" })).toEqual(["a_b Tamm"]);
+    // Kati's „+372 5123 4567“ typed without the code, and with it
+    expect(await names({ search: "5123 4567" })).toEqual(["Kati Kask"]);
+    expect(await names({ search: "+372 5123 4567" })).toEqual(["Kati Kask"]);
+    // a 372 with 7 digits or fewer after it is digits typed so far: it finds the numbers stored with the code
+    expect((await names({ search: "+372 5000" })).length).toBeGreaterThan(5);
+    expect(await names({ search: "+372 6000" })).toEqual([]);
   });
 
   test("a phone is searched from 3 digits; fewer digits are no phone (a name like „Kati 5“ stays a name)", async () => {
@@ -155,33 +171,28 @@ describe("scope: one course (?koolitus=) or one session (?toimumine=)", () => {
   });
 });
 
-describe("pill counts (B9): each row counts under the other filters, so a pill's count is the rows it shows", () => {
+describe("pill counts (B9): the status row counts under the other filters, so a pill's count is the rows it shows", () => {
   const STATUS: Record<"ootab" | "kinnitatud" | "tuhistatud", RegStatus> = { ootab: "awaiting_prepayment", kinnitatud: "confirmed", tuhistatud: "cancelled" };
-  const TYPE = { e: "e_learning", k: "contact" } as const;
 
-  /** Every pill of both rows against the rows the same filter shows with that pill chosen. */
+  /** Every status pill against the rows the same filter shows with that pill chosen (the form pills carry no count: README A2). */
   async function expectPillsToMatchRows(filter: RegistrationFilter) {
     const counts = await registrationCounts(db, filter);
-    const { status, type, ...rest } = filter;
-    // the status row: under the form (and the search and the scope), whatever status is chosen
-    expect(counts.status.all, "status all").toBe(await countRegistrations(db, { ...rest, type }));
-    for (const [key, one] of Object.entries(STATUS)) expect(counts.status[key as keyof typeof STATUS], `status ${key}`).toBe(await countRegistrations(db, { ...rest, type, status: one }));
-    // the form row: under the status (and the search and the scope), whatever form is chosen
-    expect(counts.type.all, "type all").toBe(await countRegistrations(db, { ...rest, status }));
-    for (const [key, one] of Object.entries(TYPE)) expect(counts.type[key as keyof typeof TYPE], `type ${key}`).toBe(await countRegistrations(db, { ...rest, status, type: one }));
+    const { status: _status, ...rest } = filter;
+    void _status;
+    // under the form (and the search and the scope), whatever status is chosen
+    expect(counts.status.all, "status all").toBe(await countRegistrations(db, rest));
+    for (const [key, one] of Object.entries(STATUS)) expect(counts.status[key as keyof typeof STATUS], `status ${key}`).toBe(await countRegistrations(db, { ...rest, status: one }));
     return counts;
   }
 
-  test("no filter: every registration, by status and by form", async () => {
+  test("no filter: every registration, by status", async () => {
     const counts = await expectPillsToMatchRows({});
-    expect(counts.status).toEqual({ all: 11, ootab: 3, kinnitatud: 6, tuhistatud: 2 });
-    expect(counts.type).toEqual({ all: 11, e: 2, k: 9 });
+    expect(counts).toEqual({ status: { all: 11, ootab: 3, kinnitatud: 6, tuhistatud: 2 } });
   });
 
   test("with a search: the counts follow the search", async () => {
     const counts = await expectPillsToMatchRows({ search: "kask" });
     expect(counts.status).toEqual({ all: 2, ootab: 1, kinnitatud: 0, tuhistatud: 1 });
-    expect(counts.type).toEqual({ all: 2, e: 0, k: 2 });
     await expectPillsToMatchRows({ search: "5000" });
     await expectPillsToMatchRows({ search: "ekursus" });
     await expectPillsToMatchRows({ search: "zzz" });
@@ -190,19 +201,17 @@ describe("pill counts (B9): each row counts under the other filters, so a pill's
   test("with a scope: the counts follow the course or the session", async () => {
     const session = await expectPillsToMatchRows({ sessionId: sessionB.id });
     expect(session.status).toEqual({ all: 3, ootab: 1, kinnitatud: 1, tuhistatud: 1 });
-    expect(session.type).toEqual({ all: 3, e: 0, k: 3 });
     const course = await expectPillsToMatchRows({ courseId: online.id });
-    expect(course.type).toEqual({ all: 2, e: 2, k: 0 });
+    expect(course.status).toEqual({ all: 2, ootab: 1, kinnitatud: 1, tuhistatud: 0 });
   });
 
-  test("a status row under the form and the form row under the status", async () => {
+  test("the row ignores the status chosen (its own pills show every status) and keeps the form chosen", async () => {
     const withStatus = await expectPillsToMatchRows({ status: "confirmed" });
-    // the status row ignores the status chosen (its own pills show every status), the form row counts the confirmed ones only
-    expect(withStatus.status.all).toBe(11);
-    expect(withStatus.type).toEqual({ all: 6, e: 1, k: 5 });
+    expect(withStatus.status).toEqual({ all: 11, ootab: 3, kinnitatud: 6, tuhistatud: 2 });
     const withType = await expectPillsToMatchRows({ type: "e_learning" });
     expect(withType.status).toEqual({ all: 2, ootab: 1, kinnitatud: 1, tuhistatud: 0 });
-    expect(withType.type.all).toBe(11);
+    const contact = await expectPillsToMatchRows({ type: "contact" });
+    expect(contact.status).toEqual({ all: 9, ootab: 2, kinnitatud: 5, tuhistatud: 2 });
   });
 
   test("everything together", async () => {

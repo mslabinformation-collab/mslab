@@ -168,7 +168,8 @@ export default async function RegistrationsPage({ searchParams }: Props) {
   const t = adminEt.registrations;
   const filtered = view.vorm !== null || view.staatus !== null || view.otsi !== "" || view.koolitus !== null || view.toimumine !== null;
 
-  // each pill goes to the list with that pill chosen and the rest as it is (the search too), from page 1; its count is what it then shows (B9)
+  // each pill goes to the list with that pill chosen and the rest as it is (the search too), from page 1. The status pills carry the count of what they
+  // then show (B9); the form pills, drawn light, have none (README A2: counts on the status pills only)
   const statusPills: ListPill[] = [
     { key: null, label: t.statusAll, count: counts.status.all },
     { key: "awaiting_prepayment" as const, label: t.status.awaiting_prepayment, count: counts.status.ootab },
@@ -176,10 +177,10 @@ export default async function RegistrationsPage({ searchParams }: Props) {
     { key: "cancelled" as const, label: t.status.cancelled, count: counts.status.tuhistatud },
   ].map((p) => ({ href: href({ ...view, staatus: p.key, leht: 1 }), label: p.label, count: p.count, current: view.staatus === p.key }));
   const typePills: ListPill[] = [
-    { key: null, label: t.type.all, count: counts.type.all },
-    { key: "e" as const, label: t.type.e, count: counts.type.e },
-    { key: "k" as const, label: t.type.k, count: counts.type.k },
-  ].map((p) => ({ href: href({ ...view, vorm: p.key, leht: 1 }), label: p.label, count: p.count, current: view.vorm === p.key }));
+    { key: null, label: t.type.all },
+    { key: "e" as const, label: t.type.e },
+    { key: "k" as const, label: t.type.k },
+  ].map((p) => ({ href: href({ ...view, vorm: p.key, leht: 1 }), label: p.label, current: view.vorm === p.key }));
   const scope: ListScope = {
     label: t.col.course,
     value: view.toimumine !== null ? `s${view.toimumine}` : view.koolitus !== null ? `k${view.koolitus}` : "",
@@ -212,7 +213,7 @@ export default async function RegistrationsPage({ searchParams }: Props) {
           scope={scope}
           pillRows={[
             { label: t.statusLabel, pills: statusPills },
-            { label: t.typeLabel, pills: typePills },
+            { label: t.typeLabel, pills: typePills, tone: "light" },
           ]}
         />
 

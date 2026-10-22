@@ -115,7 +115,7 @@ describe("the toolbar", () => {
     expect(field.getAttribute("value")).toBe("kask");
   });
 
-  test("two rows of pills with their counts: the statuses (Kõik first), then the forms (Kõik vormid first)", async () => {
+  test("two rows of pills: the statuses with their counts (Kõik first), then the forms, light and with no count (Kõik vormid first)", async () => {
     const doc = await open();
     expect(pills(doc, "Staatus")).toEqual([
       { text: "Kõik7", href: "/admin/registreerimised", current: true },
@@ -124,13 +124,18 @@ describe("the toolbar", () => {
       { text: "Tühistatud1", href: "/admin/registreerimised?staatus=tuhistatud", current: false },
     ]);
     expect(pills(doc, "Õppevorm")).toEqual([
-      { text: "Kõik vormid7", href: "/admin/registreerimised", current: true },
-      { text: "E-õpe1", href: "/admin/registreerimised?vorm=e", current: false },
-      { text: "Kontaktõpe6", href: "/admin/registreerimised?vorm=k", current: false },
+      { text: "Kõik vormid", href: "/admin/registreerimised", current: true },
+      { text: "E-õpe", href: "/admin/registreerimised?vorm=e", current: false },
+      { text: "Kontaktõpe", href: "/admin/registreerimised?vorm=k", current: false },
     ]);
+    // the form row is the light one (the prototype draws its chosen pill light); the status row is the ink one
+    const tone = (label: string) => [...doc.querySelectorAll("nav[data-list-pill-row]")].find((n) => n.getAttribute("aria-label") === label)!.getAttribute("data-tone");
+    expect(tone("Õppevorm")).toBe("light");
+    expect(tone("Staatus")).toBeNull();
+    expect(doc.querySelectorAll('nav[aria-label="Õppevorm"] a > span')).toHaveLength(0); // no count bubble on a form pill
   });
 
-  test("each pill keeps the search, the scope and the other row, and starts at page 1; its count is the rows it then shows", async () => {
+  test("each pill keeps the search, the scope and the other row, and starts at page 1; a status pill's count is the rows it then shows", async () => {
     const doc = await open(`otsi=a&toimumine=${sessions.s1}&staatus=ootab&vorm=k&leht=3`);
     const status = pills(doc, "Staatus");
     expect(status.find((p) => p.current)!.text).toMatch(/^Ootab ettemaksu/);
@@ -138,8 +143,8 @@ describe("the toolbar", () => {
     expect(status[0].href).toBe(`/admin/registreerimised?otsi=a&toimumine=${sessions.s1}&vorm=k`);
     const forms = pills(doc, "Õppevorm");
     expect(forms[1].href).toBe(`/admin/registreerimised?otsi=a&toimumine=${sessions.s1}&staatus=ootab&vorm=e`);
-    // each count equals the rows of the page the pill leads to
-    for (const pill of [...status, ...forms]) {
+    // each status count equals the rows of the page the pill leads to
+    for (const pill of status) {
       const target = await open(pill.href.split("?")[1] ?? "");
       expect(pill.text.replace(/^\D+/, ""), pill.href).toBe(String(target.querySelectorAll("tbody tr").length));
     }
@@ -261,7 +266,9 @@ describe("searching and scoping", () => {
     expect(texts(session, "tbody tr td:nth-child(2) a:first-child")).toEqual(["Kati Kask", "Mari Mets"]);
     const course_ = await open(`koolitus=${course.lami}`);
     expect(texts(course_, "tbody tr td:nth-child(2) a:first-child")).toEqual(["Kati Kask", "Mari Mets", "Tiina Tamm", "Ines Individuaal"]);
-    expect(pills(course_, "Õppevorm").map((p) => p.text)).toEqual(["Kõik vormid4", "E-õpe0", "Kontaktõpe4"]);
+    // (the status pills follow the course; the form pills have no count)
+    expect(pills(course_, "Staatus").map((p) => p.text)).toEqual(["Kõik4", "Ootab ettemaksu2", "Kinnitatud1", "Tühistatud1"]);
+    expect(pills(course_, "Õppevorm").map((p) => p.text)).toEqual(["Kõik vormid", "E-õpe", "Kontaktõpe"]);
   });
 });
 

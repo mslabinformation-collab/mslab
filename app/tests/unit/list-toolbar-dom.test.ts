@@ -187,6 +187,13 @@ describe("ListToolbar: search", () => {
     expect(field().value).toBe("mari");
   });
 
+  it("the toolbar is one shrinkable column, so a long option in the scope select (a long city or course title) never widens it past the phone (the stylesheet)", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/ListToolbar.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    // (a grid item's minimum width is its content: with the default auto column the select's widest option set the width of the whole toolbar)
+    expect(/\.toolbar \{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\);/);
+    expect(/\.select \{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/max-width:\s*100%;/);
+  });
+
   it("the search field is a 48 px pill (the stylesheet)", () => {
     const css = readFileSync(join(process.cwd(), "src/components/admin/ListToolbar.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const search = /\.search \{([^}]*)\}/.exec(css)?.[1] ?? "";
@@ -342,6 +349,34 @@ describe("ListToolbar: pill rows and the count line", () => {
   it("a count of 0 is shown (it is a number, not a missing one)", async () => {
     await show("/admin/registreerimised", { pillRows: [{ label: "Staatus", pills: [{ href: "/x", label: "Viga", count: 0, current: false }] }] });
     expect($("a")!.textContent).toBe("Viga0");
+  });
+
+  it("a light row (tone: „light“, the prototype's form pills) says so on its nav, carries no count when the page gives none; the first row does not", async () => {
+    const light: NonNullable<Props["pillRows"]>[number] = {
+      label: "Õppevorm",
+      tone: "light",
+      pills: [
+        { href: "/admin/registreerimised", label: "Kõik vormid", current: false },
+        { href: "/admin/registreerimised?vorm=e", label: "E-õpe", current: false },
+        { href: "/admin/registreerimised?vorm=k", label: "Kontaktõpe", current: true },
+      ],
+    };
+    await show("/admin/registreerimised?staatus=ootab&vorm=k", { pillRows: [status, light] });
+    const navs = Array.from(container.querySelectorAll("nav"));
+    expect(navs.map((n) => n.getAttribute("data-tone"))).toEqual([null, "light"]);
+    expect(rowLinks(navs[1]).map((a) => a.textContent)).toEqual(["Kõik vormid", "E-õpe", "Kontaktõpe"]);
+    expect(navs[1].querySelectorAll("a > span")).toHaveLength(0); // no bubbles
+    expect(rowLinks(navs[1]).map((a) => a.getAttribute("aria-current"))).toEqual([null, null, "true"]);
+  });
+
+  it("the stylesheet draws the chosen pill of a light row as the first-light fill with the ink border, and leaves the first row's ink fill alone", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/ListToolbar.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const light = /\.pills\[data-tone="light"\] a\[aria-current="true"\] \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(light).toMatch(/border-color:\s*var\(--ink\);/);
+    expect(light).toMatch(/background:\s*var\(--first\);/);
+    expect(light).toMatch(/color:\s*var\(--ink\);/);
+    // (the ink fill of a chosen pill is ui .pill's own: nothing here touches a row without the tone)
+    expect(css).not.toMatch(/\.pills a\[aria-current/);
   });
 
   it("there is no row without pills, and no nav without rows", async () => {
