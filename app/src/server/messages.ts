@@ -275,6 +275,11 @@ export type PaymentAlert = {
    * "bank": an e-course's bank payment that came after her järelmaks of the same course was paid.
    */
   late?: "loan" | "bank";
+  /**
+   * refunded: the refunded row was never counted (held, so `paid_at` is null: a late järelmaks or bank payment Maria refunds after
+   * „Topeltmakse“), so the sum, the registration and the access are right as they are and the note must not invite her to change them.
+   */
+  neverCounted?: boolean;
   /** Montonio's status (upper case); only told apart as PARTIALLY_REFUNDED and the rest, and never shown. */
   rawStatus: string;
   paidCents: number | null;
@@ -391,19 +396,21 @@ export function paymentAlertSummary(a: PaymentAlert, adminUrl: string): Summary 
     bank: `Pangamakse laekus, kui e-koolitus oli juba järelmaksuga (Inbank) tasutud. Seda ei pandud kirja ja ligipääsu ei pikendatud: ${held}.`,
   } as const;
   const double = a.late ? lateNotes[a.late] : "Sama makse eest laekus teine tasumine (teine Montonio tellimus). Tagasta üks neist Montonio halduses.";
+  // a refunded row that was never counted (Draft): nothing in the admin changes with it, so no sentence about adjusting the sum or the access
+  const refundedNote = (counted: string) => `Montonio teatab tagastusest (${refund}). ${a.neverCounted ? "Seda makset ei pandud kirja: adminis pole vaja midagi muuta." : counted}`;
   // a registration has a place and a confirmation to decide about; an e-course only its access
   const notes =
     a.kind === "ecourse"
       ? ({
           held: `Montonio ütleb makstud, aga summa või valuuta ei klapi (Montonio: ${said}). Midagi ei avatud: makse on lehel Maksed "Ootel kontrollil".`,
           voided: "Pank tühistas juba laekunud makse. Ligipääs jäi alles: otsusta, kas lõpetada see (Õpilased).",
-          refunded: `Montonio teatab tagastusest (${refund}). Laekunud summa ja ligipääs jäid muutmata: muuda ligipääsu adminis (Õpilased), kui vaja.`,
+          refunded: refundedNote("Laekunud summa ja ligipääs jäid muutmata: muuda ligipääsu adminis (Õpilased), kui vaja."),
           double,
         } as const)
       : ({
           held: `Montonio ütleb makstud, aga summa või valuuta ei klapi (Montonio: ${said}). Midagi ei kinnitatud ega avatud: makse on lehel Maksed "Ootel kontrollil".`,
           voided: "Pank tühistas juba laekunud makse. Kinnitus ja ligipääs jäid alles: otsusta, kas need tühistada (Registreerimised, Õpilased).",
-          refunded: `Montonio teatab tagastusest (${refund}). Laekunud summa, registreering ja ligipääs jäid muutmata: muuda neid adminis, kui vaja.`,
+          refunded: refundedNote("Laekunud summa, registreering ja ligipääs jäid muutmata: muuda neid adminis, kui vaja."),
           double,
         } as const);
   return {

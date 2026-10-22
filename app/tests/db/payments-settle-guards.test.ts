@@ -409,6 +409,33 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
     expect(m.mails().filter((x) => x.subject.startsWith("Ülemakse"))).toEqual([]);
   });
 
+  test("Maria refunds the held loan in Montonio, as the „Topeltmakse“ mail says: her refund notice says it was never recorded, nothing to change; a counted payment's refund keeps its sentence", async () => {
+    const m = stubMontonio();
+    const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing" });
+    const loan = await pendingPayment(db, r, { amountCents: 35000, method: "hirePurchase" }, ago(20 * MIN));
+    const bank = await pendingPayment(db, r, { amountCents: 35000, method: "paymentInitiation" }, ago(10 * MIN));
+    const { deps, flush } = settleDeps(db, m.montonio, NOW);
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(bank)));
+    await settleToken(deps, m.montonio.verifyOrderToken(orderToken(loan, LOAN)));
+    await flush();
+    const refund = (p: Payment) => settlePayment(deps, p, facts(p, { status: "refunded", rawStatus: "REFUNDED" }));
+    // the loan: held, never counted (paid_at null); its refund is the end of the story Maria was told to finish
+    expect(await refund(await payment(loan.id))).toMatchObject({ status: "refunded", paidAt: null });
+    await flush();
+    const mails = () => m.mails().filter((x) => x.subject.startsWith("Kontrolli Montonios"));
+    expect(mails()).toHaveLength(1);
+    expect(mails()[0].text).toContain("Montonio teatab tagastusest (tagastatud). Seda makset ei pandud kirja: adminis pole vaja midagi muuta.");
+    expect(mails()[0].text).not.toContain("jäid muutmata");
+    // the bank payment is counted (paid_at set): its refund keeps the sentence about adjusting what was recorded
+    expect(await refund(await payment(bank.id))).toMatchObject({ status: "refunded" });
+    await flush();
+    expect(mails()).toHaveLength(2);
+    expect(mails()[1].text).toContain("Montonio teatab tagastusest (tagastatud). Laekunud summa, registreering ja ligipääs jäid muutmata: muuda neid adminis, kui vaja.");
+    expect(mails()[1].text).not.toContain("Seda makset ei pandud kirja");
+    // the sum is as it was: only the bank payment's
+    expect((await registration(r.id)).paidCents).toBe(35000);
+  });
+
   test("Maria recorded the whole price by hand (a transfer) before the loan was approved: the same, held as „Topeltmakse“", async () => {
     const m = stubMontonio();
     const r = await registrationOn(db, await contactCourse(db), { email: "kati@example.test", paymentChoice: "financing", status: "confirmed", paidCents: 35000 });

@@ -565,7 +565,8 @@ async function releaseAlertRecord(deps: SettleDeps, key: string, ttlSeconds: num
  * Maria's "Kontrolli Montonios", after the response. "Topeltmakse" goes out once per second order (its uuid is recorded: see the top of the
  * file); `facts` is what that order paid, and the alert says so. `late`: the "Topeltmakse" of a payment that is itself the second one
  * (paid(): a late järelmaks, "loan", or an e-course's bank payment after a paid järelmaks, "bank"): its own order is the one that paid twice
- * over, so no other order is named.
+ * over, so no other order is named. A refund of a row that was never counted (held, `paid_at` null: the late järelmaks Maria refunds after
+ * „Topeltmakse“) is told as such, not with the sentence about adjusting what was recorded (messages.ts `neverCounted`).
  */
 function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded" | "double", facts: Facts, opts: { late?: "loan" | "bank" } = {}): void {
   const late = kind === "double" ? opts.late : undefined;
@@ -580,7 +581,7 @@ function alert(deps: SettleDeps, p: Payment, kind: "held" | "voided" | "refunded
     try {
       const ctx = await contextOf(deps, p.id);
       const s = paymentAlertSummary(
-        { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" && !late ? facts.uuid : null, late, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
+        { alert: kind, kind: p.kind, name: p.name, email: p.email, amountCents: p.amountCents, course: courseName(ctx, p.kind), startsAt: ctx.session?.startsAt ?? null, reference: p.reference, providerUuid: p.providerUuid, otherUuid: kind === "double" && !late ? facts.uuid : null, late, neverCounted: kind === "refunded" && p.paidAt === null, rawStatus: facts.rawStatus, paidCents: facts.amountCents, currency: facts.currency },
         adminUrl(deps.siteUrl),
       );
       const r = await notifyMaria(deps.env, s.subject, s.text, { short: s.short, replyTo: p.email, siteUrl: deps.siteUrl, count: deps.db });

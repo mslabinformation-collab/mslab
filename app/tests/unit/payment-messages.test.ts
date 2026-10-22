@@ -114,6 +114,31 @@ describe("Maria's alerts: 'Kontrolli Montonios'", () => {
     expect(alert({ alert: "refunded", rawStatus: "REFUNDED" }).text).toContain("Montonio teatab tagastusest (tagastatud). Laekunud summa,");
   });
 
+  test("a refund of a row that was never counted (held: a late järelmaks Maria refunds after „Topeltmakse“) says nothing was recorded and nothing is to be changed (Draft)", () => {
+    const NOT_RECORDED = "Seda makset ei pandud kirja: adminis pole vaja midagi muuta.";
+    const COUNTED = "jäid muutmata: muuda";
+    for (const kind of ["prepayment", "ecourse"] as const) {
+      for (const [rawStatus, said] of [["REFUNDED", "tagastatud"], ["PARTIALLY_REFUNDED", "osaliselt tagastatud"]] as const) {
+        const never = alert({ alert: "refunded", kind, rawStatus, neverCounted: true });
+        expect(never.text, `${kind} ${rawStatus}`).toContain(`Montonio teatab tagastusest (${said}). ${NOT_RECORDED}`);
+        // not a word that invites her to lower the sum or the access of a payment that is right
+        expect(never.text, `${kind} ${rawStatus}`).not.toContain(COUNTED);
+        expect(never.text, `${kind} ${rawStatus}`).not.toMatch(/Laekunud summa|muuda/);
+        // a counted row (the flag left out, or false) keeps its sentence, word for word
+        for (const counted of [alert({ alert: "refunded", kind, rawStatus }), alert({ alert: "refunded", kind, rawStatus, neverCounted: false })]) {
+          expect(counted.text, `${kind} ${rawStatus}`).toContain(COUNTED);
+          expect(counted.text, `${kind} ${rawStatus}`).not.toContain(NOT_RECORDED);
+        }
+      }
+    }
+    // only a refund has the note: the flag changes no other alert
+    for (const kind of ["held", "voided", "double"] as const) expect(alert({ alert: kind, neverCounted: true }).text, kind).toEqual(alert({ alert: kind }).text);
+    // an e-course's refunded row carries no registration's word
+    const e = alert({ alert: "refunded", kind: "ecourse", course: "Kulmumeistri e-koolitus", startsAt: null, amountCents: 19000, neverCounted: true });
+    expect(`${e.subject}
+${e.text}`).not.toMatch(/registree|kinnita|Kinnitus|koolituspäev|on täis/i);
+  });
+
   test("an e-course's alerts say what happened to the access, not to a seat", () => {
     const e = (over: Partial<PaymentAlert>) => alert({ kind: "ecourse", course: "Kulmumeistri e-koolitus", startsAt: null, amountCents: 19000, ...over });
     expect(e({}).subject).toBe("Kontrolli Montonios: Kati Tamm, Kulmumeistri e-koolitus (e-koolitus), 190 €");
