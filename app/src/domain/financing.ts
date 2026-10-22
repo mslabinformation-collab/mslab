@@ -70,8 +70,9 @@ export function billingAddressOf(o: { name: string; email: string; phone?: strin
 }
 
 /**
- * How long a Järelmaks (Inbank) attempt holds its seat, and the same for its re-send window and the daily check's age (D5): 60 minutes, so an
- * application in progress is not cut off (Montonio: this covers 99%). Montonio's `expiresIn` for the order is the same, in minutes.
+ * How long a Järelmaks (Inbank) attempt holds its seat, and the same for its re-send window (D5): 60 minutes, so an application in progress is not
+ * cut off (Montonio: this covers 99%). Montonio's `expiresIn` for the order is the same, in minutes. The daily check asks 15 minutes later, at 75
+ * (db/queries/payments.ts FINANCING_CHECK_AFTER_MS).
  */
 export const FINANCING_ATTEMPT_MS = 60 * 60_000;
 
