@@ -180,3 +180,4 @@ No test mandated by the plan asserts nothing, and no logic block is duplicated.
 - Final: parked — haldus-menuu-margid step 4 should pick a check already answered „OK“ (no way to clear an answer) — Ruling: fix together with the deploy stamp commit — cost: a false „OK“ if the tester picks an unanswered check
 - Final: parked — no test-plan line for the iPhone row-tap tint — Ruling: add with piece 2's list screens — cost: unverified on iOS until then
 - Final: parked — Shell.tsx:19 comment says the refetch fills badges "a moment later" (it waits for navigation/focus); deploy.md §20.6 calls the smoke page "the panel's" not-found (it's the student view's)
+- Dim (22.10): lesson drawer has no ET | RU switch — leave as designed (piece 3 rebuilds the drawer); keep the grey loading rows (D7); an edited-after-sending protocol counts as not sent on the Protokollid list
