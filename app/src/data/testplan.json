@@ -21,7 +21,7 @@
     {
       "id": "registreerimine",
       "name": "Registreerimine ja maksmine",
-      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate. Arvete kontrollid kasutavad Proov 6 registreeringut, mille teed kontrolli „Arve pangaülekandeks“ esimestes sammudes. Enne arvete kontrolle täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“). Järelmaksu kontrollid vajavad Seadetes sisselülitatud „Järelmaks (Inbank)“: seda teeb kontroll „Seaded: järelmaks“ (ala „Haldus: sisu“). Inbanki testis kasutab Dim isikukoodi 10101010005, SMS-koodi 0000 ja Eesti telefoninumbrit. Hinnaga 100–500 € taotlus kinnitatakse, 501–700 € läheb käsitsi ülevaatusele ja 901–1000 € peaks tagasi lükkama."
+      "note": "Loob andmeid. Registreeri ühele oma päris tulevasele kontaktkoolituse kuupäevale, kus on vabu kohti, ja kasuta sama kuupäeva kõigis selle ala kontrollides. Iga registreering võtab koha ja saadab Mariale päris teate. Arvete kontrollid kasutavad Proov 6 registreeringut, mille teed kontrolli „Arve pangaülekandeks“ esimestes sammudes. Enne arvete kontrolle täida halduses kontrollid „Seaded: ettemaksu juhised“ ja „Seaded: arve andmed“ (ala „Haldus: sisu“). Järelmaksu kontrollid vajavad Seadetes sisselülitatud „Järelmaks (Inbank)“: seda teeb kontroll „Seaded: järelmaks“ (ala „Haldus: sisu“). Inbanki testis kasutab Dim isikukoodi 10101010005, SMS-koodi 0000 ja Eesti telefoninumbrit. Hinnaga 100–500 € taotlus kinnitatakse, 501–700 € läheb käsitsi ülevaatusele ja 901–1000 € taotluse peaks Inbank tagasi lükkama."
     },
     {
       "id": "konto",

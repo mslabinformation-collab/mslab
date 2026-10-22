@@ -748,7 +748,7 @@ describe("the instalments checks (instalments, Task 8)", () => {
   });
 
   test("the registration area's note says Inbank should reject 901–1000 €, not that it does (still to be confirmed for Estonia: deploy.md section 21 item 3)", () => {
-    expect(String(area("registreerimine").note)).toContain("901–1000 € peaks tagasi lükkama.");
+    expect(String(area("registreerimine").note)).toContain("901–1000 € taotluse peaks Inbank tagasi lükkama.");
     expect(String(area("registreerimine").note)).not.toContain("lükatakse tagasi");
   });
 
