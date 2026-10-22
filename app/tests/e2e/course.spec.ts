@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
 import { clientEmail, holdTerms, insertClient, signInAsClient, storedAccess, storedClient } from "./account";
-import { LOCAL_FIXTURES, removeClientRows, storedHold, storedPayments, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
+import { LOCAL_FIXTURES, LOCK_WAIT_MS, removeClientRows, storedHold, storedPayments, storedRegistrations, storedRequests, storedSubscriber, testEmail } from "./fixtures";
 import { E2E_MONTONIO } from "./montonio-values";
 
 // Course pages (Task 8): Maria's P1–P16. The first two tests are the brief's tests, verbatim except:
@@ -450,8 +450,10 @@ test.describe("cart (/ostukorv)", () => {
   // the cart's contract is the e-course terms (contracts, R6: „Maksa“ is refused when they changed since the cart was loaded): every cart test
   // takes the terms' turn, so that no test of the terms (account-ecourse and the others that take them) saves other ones in between
   let releaseTerms: (() => Promise<void>) | null = null;
-  test.beforeEach(async () => {
-    if (LOCAL_FIXTURES) releaseTerms = await holdTerms();
+  test.beforeEach(async ({}, info) => {
+    if (!LOCAL_FIXTURES) return;
+    info.setTimeout(info.timeout + LOCK_WAIT_MS); // the wait for the shared terms is part of this test's time, not taken from it
+    releaseTerms = await holdTerms();
   });
   test.afterEach(async () => {
     await releaseTerms?.();
