@@ -195,12 +195,12 @@ describe("the page", () => {
       await show(`#tulemus=pooleli&liik=jarelmaks&maksa=${TOKEN}`, "ru", ruTexts);
       expect(container.querySelector("h1")?.textContent).toBe("Заявка на рассрочку в\u00a0процессе или не завершена. Если Inbank её одобрит, мы пришлём подтверждение.");
       expect(forms()).toEqual([
-        ["post", `/maksa/${TOKEN}`, "paymentInitiation", "Оплатить через банк"],
+        ["post", `/maksa/${TOKEN}`, "paymentInitiation", "Оплатить через интернет-банк"],
         ["post", `/maksa/${TOKEN}`, "hirePurchase", "Попробовать снова"],
       ]);
       await show("#tulemus=pooleli&liik=jarelmaks&kursus=kulmumeistri-e-koolitus", "ru", ruTexts);
       expect(links()).toEqual([
-        ["Оплатить через банк", "/ru/ostukorv?kursus=kulmumeistri-e-koolitus"],
+        ["Оплатить через интернет-банк", "/ru/ostukorv?kursus=kulmumeistri-e-koolitus"],
         ["Попробовать снова", "/ru/ostukorv?kursus=kulmumeistri-e-koolitus&makse=jarelmaks"],
         ["Мои курсы", "/ru/konto"],
       ]);

@@ -56,11 +56,12 @@ import { upcomingFrom } from "@/domain/calendar";
 
 /**
  * `paymentUrl` (phase 2b): a group registration's prepayment, or an e-course purchase, has started; the form sends the browser there.
- * `financing: "refused"` (instalments, §4): a registration booked with „Järelmaks (Inbank)“ is stored, but its järelmaks was not allowed when it
- * started (the toggle switched off, the price out of 100–5000 €): nothing started, and the form says so („Järelmaks on võimalik …“); she can pay
- * by bank through „Maksa“.
+ * `financing` (instalments, §4): a registration booked with „Järelmaks (Inbank)“ is stored, but its järelmaks was not allowed when it started:
+ * nothing started, and the form says so; she can pay by bank through „Maksa“. "refused": the price is outside 100–5000 € („Järelmaks on võimalik
+ * 100–5000 € hinnaga koolitusele.“); "off": any other refusal, the price within the range („Järelmaks pole praegu saadaval. Saad maksta
+ * pangalingiga.“). StartResult's `reason` decides.
  */
-export type ActionResult = { ok: true; paymentUrl?: string; financing?: "refused" } | { ok: false; errors: Record<string, string> };
+export type ActionResult = { ok: true; paymentUrl?: string; financing?: "refused" | "off" } | { ok: false; errors: Record<string, string> };
 
 export type Deps = {
   db: Db;
@@ -437,13 +438,13 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
     // it ends here; a failed order has ended it already (failPayment). A järelmaks refused at the start (financing: switched off or out of range
     // since her page was loaded) keeps the registration, awaiting payment, and the answer says so.
     let paymentUrl: string | undefined;
-    let financingRefused = false;
+    let financingRefused: "refused" | "off" | null = null;
     if (deps.montonio) {
       let attempt = false;
       try {
         const started = await startRegistrationPayment({ db: deps.db, now: deps.now, siteUrl: deps.siteUrl, notifyBase: deps.env.SITE_URL, montonio: deps.montonio }, { registrationId: registration.id }, { method });
         if (started.kind === "started") paymentUrl = started.paymentUrl;
-        financingRefused = started.kind === "financing";
+        if (started.kind === "financing") financingRefused = started.reason === "off" ? "off" : "refused";
         attempt = started.kind === "started" || started.kind === "failed";
       } catch (e) {
         logFailure("[forms] register: the payment did not start", e);
@@ -489,7 +490,7 @@ export function handleRegistration(deps: Deps, formData: FormData): Promise<Acti
         if (pdf) await markContractSent(deps.db, contract.id, deps.now);
       },
     };
-    const result: ActionResult = paymentUrl ? { ok: true, paymentUrl } : financingRefused ? { ok: true, financing: "refused" } : OK;
+    const result: ActionResult = paymentUrl ? { ok: true, paymentUrl } : financingRefused ? { ok: true, financing: financingRefused } : OK;
     return { result, notify: { ...summary, replyTo: data.email }, confirm, subscribe: wantsNewsletter ? { email: data.email, locale: data.locale } : undefined };
   });
 }
@@ -563,7 +564,8 @@ export function handlePurchaseInterest(deps: Deps, formData: FormData): Promise<
  * shows its purchase-interest form instead. An address that paid this course in the last 30 minutes starts nothing: form "alreadyPaid" (the
  * cart says "Makse on juba tehtud — vaata oma e-posti."; Back from the bank would otherwise charge a second time). The cart's `method`
  * (instalments, §4): the bank link by default, or Järelmaks (Inbank); a järelmaks not allowed for this price now (the toggle off, out of
- * 100–5000 €) starts nothing: method "financing" (the cart shows the range at its choice).
+ * 100–5000 €) starts nothing: method "financing" when the price is outside the range, else "financingOff" (the cart says which at its choice: the
+ * range, or „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“).
  * The box is the e-course contract (contracts, D1, §4): the payment keeps the contract the cart showed (`contract_snapshot`), the e-course text
  * in her language filled with the name and the address she typed, the course and its price (domain/contract.ts filledContract, the cart's own
  * fill), with its version and language and the time of this press (its acceptance, R7); settle freezes that very copy when the payment is paid,
@@ -602,7 +604,7 @@ export function handleEcoursePurchase(deps: Deps, formData: FormData): Promise<A
     );
     if (started.kind === "alreadyPaid") return { result: fail({ form: "alreadyPaid" }) };
     // a järelmaks not allowed for this price now (instalments, §4): the cart says so at its choice, and the bank stays
-    if (started.kind === "financing") return { result: fail({ method: "financing" }) };
+    if (started.kind === "financing") return { result: fail({ method: started.reason === "off" ? "financingOff" : "financing" }) };
     return { result: started.kind === "started" ? { ok: true, paymentUrl: started.paymentUrl } : fail({ form: "unavailable" }) };
   });
 }

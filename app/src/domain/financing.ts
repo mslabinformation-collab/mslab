@@ -37,6 +37,25 @@ export function financingAllowed(o: { enabled: boolean; paymentsOn: boolean; pri
 }
 
 /**
+ * Which sentence a refused järelmaks is told with: "range" only when the price is outside 100–5000 € (or there is none): „Järelmaks on võimalik
+ * 100–5000 € hinnaga koolitusele.“ (forms.payFinancingRange); "off" for every other refusal: „Järelmaks pole praegu saadaval. Saad maksta
+ * pangalingiga.“ (forms.payFinancingOff).
+ */
+export type FinancingRefusal = "range" | "off";
+
+/**
+ * Why may this payment not go to Inbank now? null while financingAllowed says it may. The price outside 100–5000 € (or none) is "range" whatever
+ * else is wrong: the price is the permanent fact, so it wins when more than one thing applies. Every refusal of a price within the range is "off"
+ * (Dim, 22.10): the choice is switched off (Maria's toggle, or Montonio payments), a part is paid, only a part is due, or the registration was booked
+ * with another choice. The range sentence would read as "it is possible" right after a refusal. Same inputs as financingAllowed.
+ */
+export function financingRefusal(o: { enabled: boolean; paymentsOn: boolean; priceCents: number | null; paidCents: number; dueCents: number }): FinancingRefusal | null {
+  if (financingAllowed(o)) return null;
+  const inRange = o.priceCents !== null && o.priceCents >= FINANCING_MIN_CENTS && o.priceCents <= FINANCING_MAX_CENTS;
+  return inRange ? "off" : "range";
+}
+
+/**
  * What Montonio's `billingAddress` holds for a financing order (D8): her name and e-mail, and her phone only when it is Estonian. `phoneCountry` is
  * the calling code "372", as Montonio's orders guide gives it ("The customer's phone country. (e.g 372)"), with the national digits in `phoneNumber`.
  */

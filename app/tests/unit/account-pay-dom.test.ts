@@ -311,17 +311,45 @@ describe("Järelmaks (Inbank) on the card", () => {
   test("Russian", async () => {
     const ru = coursesTexts(getDict("ru"));
     await act(async () => root.render(createElement(CoursesTab, { locale: "ru", t: ru, data: dashboard([loan(7)], { financing: true }), readOnly: false, now: NOW })));
-    expect(actions()).toEqual([["pay-financing", "Оплатить в рассрочку (Inbank)"], ["pay-online", "Оплатить через банк"]]);
+    expect(actions()).toEqual([["pay-financing", "Оплатить в рассрочку (Inbank)"], ["pay-online", "Оплатить через интернет-банк"]]);
   });
 
-  describe("a loan the server refuses: 409 financing (the toggle went off, or the price moved, since the page was loaded)", () => {
+  test("Russian, a loan the server refuses: the switched-off sentence, or the range", async () => {
+    const ru = coursesTexts(getDict("ru"));
+    for (const [error, sentence] of [["financingOff", "Рассрочка сейчас недоступна. Можно оплатить через интернет-банк."], ["financing", "Рассрочка возможна для обучения стоимостью 100–5000 €."]] as const) {
+      const gets = [json(200, dashboard([loan(7)], { financing: true })), json(500, { ok: false })];
+      fetchMock.mockImplementation(async (input) => (String(input) === "/api/konto" ? (gets.shift() ?? json(500, { ok: false })) : json(409, { ok: false, error })));
+      await act(async () => root.render(createElement(CoursesTab, { locale: "ru", t: ru, now: NOW })));
+      await settle();
+      await click($("[data-card-action='pay-financing']"));
+      expect($("[data-card-pay-error]")?.textContent, error).toBe(sentence);
+      await act(async () => root.unmount());
+      root = createRoot(container);
+    }
+  });
+
+  describe("a loan the server refuses: 409 financingOff (the toggle went off since the page was loaded) or 409 financing (the price moved out of 100–5000 €)", () => {
     const RANGE = "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.";
+    const OFF = "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.";
     const open = async () => {
       await act(async () => root.render(createElement(CoursesTab, { locale: "et", t, now: NOW })));
       await settle();
     };
 
-    test("the range sentence under the buttons, the cards loaded again quietly: the card then has the one bank button, and the sentence stays", async () => {
+    test("switched off: its own sentence under the buttons, the cards loaded again quietly: the card then has the one bank button, and the sentence stays", async () => {
+      const gets = [json(200, dashboard([loan(7)], { financing: true })), json(200, dashboard([loan(7)]))];
+      fetchMock.mockImplementation(async (input) => (String(input) === "/api/konto" ? (gets.shift() ?? json(200, dashboard([loan(7)]))) : json(409, { ok: false, error: "financingOff" })));
+      await open();
+      expect(actions()).toEqual(TWO);
+      await click($("[data-card-action='pay-financing']"));
+      const post = fetchMock.mock.calls.find(([input]) => String(input) === "/api/konto/maksa")!;
+      expect(JSON.parse(String(post[1]?.body))).toEqual({ registrationId: 7, method: "hirePurchase" });
+      expect($("[data-card-pay-error]")?.textContent).toBe(OFF);
+      expect(actions()).toEqual([["pay-online", "Maksa 350 €"]]);
+      expect(mocks.navigate).not.toHaveBeenCalled();
+    });
+
+    test("the price moved out of the range: the range sentence under the buttons, the cards loaded again quietly: the card then has the one bank button, and the sentence stays", async () => {
       const gets = [json(200, dashboard([loan(7)], { financing: true })), json(200, dashboard([loan(7)]))];
       fetchMock.mockImplementation(async (input) => (String(input) === "/api/konto" ? (gets.shift() ?? json(200, dashboard([loan(7)]))) : json(409, { ok: false, error: "financing" })));
       await open();
@@ -335,12 +363,16 @@ describe("Järelmaks (Inbank) on the card", () => {
     });
 
     test("when the reload gets no answer the card keeps both buttons, with the sentence, ready", async () => {
-      const gets = [json(200, dashboard([loan(7)], { financing: true })), json(500, { ok: false })];
-      fetchMock.mockImplementation(async (input) => (String(input) === "/api/konto" ? (gets.shift() ?? json(500, { ok: false })) : json(409, { ok: false, error: "financing" })));
-      await open();
-      await click($("[data-card-action='pay-financing']"));
-      expect($("[data-card-pay-error]")?.textContent).toBe(RANGE);
-      expect(actions()).toEqual(TWO);
+      for (const [error, sentence] of [["financing", RANGE], ["financingOff", OFF]] as const) {
+        const gets = [json(200, dashboard([loan(7)], { financing: true })), json(500, { ok: false })];
+        fetchMock.mockImplementation(async (input) => (String(input) === "/api/konto" ? (gets.shift() ?? json(500, { ok: false })) : json(409, { ok: false, error })));
+        await open();
+        await click($("[data-card-action='pay-financing']"));
+        expect($("[data-card-pay-error]")?.textContent, error).toBe(sentence);
+        expect(actions(), error).toEqual(TWO);
+        await act(async () => root.unmount());
+        root = createRoot(container);
+      }
     });
 
     test("the bank's press on that card still goes to the bank", async () => {

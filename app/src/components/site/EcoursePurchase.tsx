@@ -29,8 +29,10 @@ export type EcoursePurchaseTexts = {
   /** „Pangalink“ and „Järelmaks (Inbank)“: the two choices (instalments §4). */
   payBank: string;
   payFinancing: string;
-  /** „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“: said at the choice when the server refused a järelmaks after all. */
+  /** „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“: said at the choice when the server refused a järelmaks after all because of the price. */
   financingRange: string;
+  /** „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“: said at the choice when the server refused it because it was switched off since the cart was loaded. */
+  financingOff: string;
   /** "Maksa 190 €" */
   submit: string;
   /** The button while the payment page is being opened: "Avan makse…" */
@@ -145,9 +147,9 @@ export function EcoursePurchase({
       let changed = false;
       for (const [f, code] of Object.entries(result.errors)) {
         if (f === "form") errors.form = code === "rate" ? t.errorTooMany : t.errorGeneric;
-        else if (f === "method" && code === "financing") {
-          // a järelmaks that is not allowed any more: the range at the choice, and the bank link chosen for the next press
-          errors.method = t.financingRange;
+        else if (f === "method" && (code === "financing" || code === "financingOff")) {
+          // a järelmaks that is not allowed any more: why at the choice (the range, or that it is switched off), and the bank link chosen for the next press
+          errors.method = code === "financingOff" ? t.financingOff : t.financingRange;
           setMethod("paymentInitiation");
         } else if (f === "email") errors.email = t.errorEmail;
         else if (f === "terms" && code === "changed") {

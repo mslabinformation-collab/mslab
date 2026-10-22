@@ -314,8 +314,10 @@ export const et = {
     // paymentText holds the same words; a test keeps them equal). Draft: Dim sees them on the test page
     payFinancing: "Järelmaks (Inbank)",
     payFinancingContract: "Koolituse hind tasutakse täies ulatuses: järelmaksuga (Inbank) või pangamaksega.",
-    // at the choice when a järelmaks is refused (instalments §4; Draft): the price is out of 100–5000 € now, or the choice was switched off since the page was loaded
+    // at the choice when a järelmaks is refused (instalments §4; Draft): only when the price is out of 100–5000 € now (also when something else is wrong as well: the price is the permanent fact)
     payFinancingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.",
+    // at the choice when a järelmaks is refused and the price is within 100–5000 € (instalments §4): switched off (Seaded, or Montonio payments) since the page was loaded, a part paid or due, another choice; the bank is open
+    payFinancingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.",
     // Individual request, waitlist, cart interest
     preferredPeriod: "Soovitud periood või kuupäev",
     preferredPeriodPlaceholder: "Nt detsembri teine pool või 12.12",

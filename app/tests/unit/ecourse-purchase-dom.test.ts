@@ -33,6 +33,7 @@ const t: EcoursePurchaseTexts = {
   payBank: "Pangalink",
   payFinancing: "Järelmaks (Inbank)",
   financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.",
+  financingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.",
   submit: "Maksa 190 €",
   starting: "Avan makse…",
   alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
@@ -322,7 +323,7 @@ describe("Järelmaks (Inbank) in the cart", () => {
     expect(methods()).toHaveLength(0);
   });
 
-  test("a järelmaks the server refuses (out of 100–5000 € now, or switched off): the range is said at the choice, the bank link is chosen, nothing is navigated to", async () => {
+  test("a järelmaks the server refuses because the price is out of 100–5000 € now: the range is said at the choice, the bank link is chosen, nothing is navigated to", async () => {
     mocks.buyEcourse.mockResolvedValueOnce({ ok: false, errors: { method: "financing" } });
     await act(async () => root.render(createElement(EcoursePurchase, offered)));
     await act(async () => methods()[1].click());
@@ -340,5 +341,25 @@ describe("Järelmaks (Inbank) in the cart", () => {
     await submit();
     expect(mocks.buyEcourse.mock.calls[1][0].get("method")).toBe("paymentInitiation");
     expect(mocks.navigate).toHaveBeenCalledWith("https://sandbox-stargate.montonio.com/pay-3");
+  });
+
+  test("a järelmaks the server refuses because it was switched off (the price within the range): its own sentence at the choice, not the range; the bank link is chosen, nothing is navigated to", async () => {
+    mocks.buyEcourse.mockResolvedValueOnce({ ok: false, errors: { method: "financingOff" } });
+    await act(async () => root.render(createElement(EcoursePurchase, offered)));
+    await act(async () => methods()[1].click());
+    await fillAndSubmit();
+    const note = $("[data-financing-range]")!;
+    expect(note.textContent).toBe("Järelmaks pole praegu saadaval. Saad maksta pangalingiga.");
+    expect(note.textContent).not.toContain("100–5000");
+    expect(methods()[0].closest("fieldset")!.contains(note)).toBe(true); // at the choice
+    expect(methods().map((m) => m.checked)).toEqual([true, false]); // the next press is by bank
+    expect(methods()[1].getAttribute("aria-describedby")).toBe(note.id);
+    expect(document.activeElement).toBe(methods()[0]);
+    expect($("[role='alert']")).toBeNull(); // not the generic line
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    mocks.buyEcourse.mockResolvedValueOnce({ ok: true, paymentUrl: "https://sandbox-stargate.montonio.com/pay-4" });
+    await submit();
+    expect(mocks.buyEcourse.mock.calls[1][0].get("method")).toBe("paymentInitiation");
+    expect(mocks.navigate).toHaveBeenCalledWith("https://sandbox-stargate.montonio.com/pay-4");
   });
 });
