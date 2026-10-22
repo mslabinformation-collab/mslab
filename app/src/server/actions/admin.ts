@@ -39,14 +39,17 @@ const SHOWS_OLD: readonly string[] = ["stale", "overRemainder", "cancelled", "no
  * (`stale` above all). For useActionState (previous state first).
  */
 export const addManualPaymentAction = adminAction(async (_admin, _prev: ManualPaymentAnswer | null, formData: FormData): Promise<ManualPaymentAnswer> => {
-  const input = manualPaymentForm(formData);
+  // (the id for the log: known once the form is read, inside the try — a call that is no form answers `invalid`, never a throw)
+  let registration = "?";
   try {
+    const input = manualPaymentForm(formData);
+    if (!Number.isNaN(input.registrationId)) registration = String(input.registrationId);
     const result = await addManualPayment(getDb(), input, new Date());
     if (result.ok && (result.confirmedNow || result.full)) revalidatePublic({ kind: "seats" });
     if (result.ok || SHOWS_OLD.includes(result.error)) refresh();
     return result;
   } catch (e) {
-    logFailure(`[admin] registration ${Number.isNaN(input.registrationId) ? "?" : input.registrationId}: adding a payment failed`, e);
+    logFailure(`[admin] registration ${registration}: adding a payment failed`, e);
     return { ok: false, error: "server" };
   }
 });

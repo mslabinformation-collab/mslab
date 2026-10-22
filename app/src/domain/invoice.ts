@@ -242,11 +242,13 @@ export function openAmounts(r: { priceCents: number; paymentChoice: PaymentChoic
 /**
  * The kind of a receipt („Juba tasutud“) for `cents` received (openAmounts; admin UX pass B4, „Lisa laekumine“ with „Koosta kviitung“): the
  * first money in — no paid prepayment or whole-sum invoice among `covering` yet (coveringInvoices: a paid online payment without its invoice
- * counts as one) — is the whole sum when it is all of the price, else the half choice's prepayment or the whole choice's (and Järelmaks's) whole
- * sum; later money is the rest. Its words are partOf's.
+ * counts as one), and no money recorded before it that no paid invoice covers (`earlier`, in cents: „Lisa laekumine“'s money added without a
+ * receipt; the B4 review's m2) — is the whole sum when it is all of the price, else the half choice's prepayment or the whole choice's (and
+ * Järelmaks's) whole sum; later money is the rest. Its words are partOf's. openAmounts' receipt covers all such money at once, so it has none
+ * `earlier`.
  */
-export function receiptKind(r: { priceCents: number | null; paymentChoice: PaymentChoice }, covering: readonly Covering[], cents: number): InvoiceKind {
-  const first = !covering.some((i) => i.status === "paid" && (i.kind === "prepayment" || i.kind === "full"));
+export function receiptKind(r: { priceCents: number | null; paymentChoice: PaymentChoice }, covering: readonly Covering[], cents: number, earlier = 0): InvoiceKind {
+  const first = earlier <= 0 && !covering.some((i) => i.status === "paid" && (i.kind === "prepayment" || i.kind === "full"));
   if (!first) return "balance";
   return cents === r.priceCents ? "full" : r.paymentChoice === "half" ? "prepayment" : "full";
 }

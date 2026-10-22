@@ -127,16 +127,17 @@ const text = (v: FormDataEntryValue | null): string => (typeof v === "string" ? 
  * The panel's form as addManualPayment takes it: `registrationId`, `cents` (the amount in cents: a pill's, or „Muu summa“ as the panel read it),
  * `paidOn` ("YYYY-MM-DD"), `method` (bank | cash | card), `receipt` ("1" or "on" when „Koosta kviitung“ is ticked; absent when not) and
  * `expectedPaidCents` (the paid total the panel showed). What is no such value is passed on as it is (NaN for a number), for addManualPayment's
- * own `invalid`.
+ * own `invalid` — and so is a call with no form at all (a crafted request to the action: every field missing, the B4 review's m3).
  */
-export function manualPaymentForm(formData: FormData): ManualPaymentInput {
-  const receipt = formData.get("receipt");
+export function manualPaymentForm(formData: unknown): ManualPaymentInput {
+  const get = (name: string): FormDataEntryValue | null => (formData instanceof FormData ? formData.get(name) : null);
+  const receipt = get("receipt");
   return {
-    registrationId: digits(formData.get("registrationId")),
-    cents: digits(formData.get("cents")),
-    paidOn: text(formData.get("paidOn")),
-    method: text(formData.get("method")) as ManualPaidMethod,
+    registrationId: digits(get("registrationId")),
+    cents: digits(get("cents")),
+    paidOn: text(get("paidOn")),
+    method: text(get("method")) as ManualPaidMethod,
     receipt: receipt === "1" || receipt === "on",
-    expectedPaidCents: digits(formData.get("expectedPaidCents")),
+    expectedPaidCents: digits(get("expectedPaidCents")),
   };
 }

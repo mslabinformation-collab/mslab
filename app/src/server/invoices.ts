@@ -255,11 +255,15 @@ export async function createInvoice(
 }
 
 /**
- * What covers the registration's price for openAmounts and receiptKind (coveringInvoices, the final review's I1): its invoices, and its paid
- * online payments that no invoice names yet. Read inside the caller's transaction, under the registration's lock.
+ * What covers the registration's price for openAmounts and receiptKind (coveringInvoices, the final review's I1): its invoices (but `except`,
+ * the one being undone), and its paid online payments that no invoice names yet. Read inside the caller's transaction, under the registration's
+ * lock.
  */
-async function coveringOf(tx: Tx, r: Registration): Promise<Covering[]> {
-  const invoiced = await tx.select({ id: invoices.id, kind: invoices.kind, status: invoices.status, amountCents: invoices.amountCents }).from(invoices).where(eq(invoices.registrationId, r.id));
+async function coveringOf(tx: Tx, r: Registration, except?: number): Promise<Covering[]> {
+  const invoiced = await tx
+    .select({ id: invoices.id, kind: invoices.kind, status: invoices.status, amountCents: invoices.amountCents })
+    .from(invoices)
+    .where(and(eq(invoices.registrationId, r.id), except === undefined ? undefined : ne(invoices.id, except)));
   const uninvoiced = await tx
     .select({ id: payments.id, kind: payments.kind, invoiceId: payments.invoiceId, amountCents: payments.amountCents })
     .from(payments)
@@ -272,7 +276,8 @@ async function coveringOf(tx: Tx, r: Registration): Promise<Covering[]> {
  * the caller's transaction has just added to Laekunud summa, inside that transaction after its lockForPayment (issueInTx: it opens none of its
  * own). Born paid on `paidAt` by `method` (bank, cash or card), `paidAdds` (the same press added the money, so undoInvoicePaid takes it back),
  * no due date, no reference. Its kind is the one a receipt of that money takes by what covers the registration (receiptKind over coveringOf,
- * as „Koosta arve“ reads it), its words partOf's — and „Osamakse“ on a course with no price, where no half, whole or rest can be named. The
+ * as „Koosta arve“ reads it) and by the money recorded before it that no paid invoice covers (then it is the rest, the review's m2), its words
+ * partOf's — and „Osamakse“ on a course with no price, where no half, whole or rest can be named. The
  * line and the buyer as createInvoice's. "sellerMissing" (D3) when Seaded's seller is empty: the caller rolls its money back.
  */
 export async function issueReceiptInTx(
@@ -283,7 +288,10 @@ export async function issueReceiptInTx(
 ): Promise<Invoice | "sellerMissing"> {
   const { registration: r, course, session } = of;
   const price = registrationPrice(course, r.kind);
-  const kind = receiptKind({ priceCents: price, paymentChoice: r.paymentChoice }, await coveringOf(tx, r), input.cents);
+  const covering = await coveringOf(tx, r);
+  // money recorded before this press that no paid invoice covers (`r` is the row with this press added): this receipt is then later money
+  const earlier = r.paidCents - input.cents - covering.filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amountCents, 0);
+  const kind = receiptKind({ priceCents: price, paymentChoice: r.paymentChoice }, covering, input.cents, earlier);
   return issueInTx<never>(tx, now, () => ({
     kind,
     registrationId: r.id,
@@ -303,11 +311,16 @@ export async function issueReceiptInTx(
 }
 
 /**
- * The registration's paid sum less `cents` (not below 0), its status recomputed by the payments rule (registrationStatusAfterPayment: confirmed
- * from 50 %, back to awaiting below it, cancelled stays cancelled); without a price the status is left as it is. Inside the caller's
- * transaction, under its lockForPayment (the row read FOR UPDATE again).
+ * The undo of invoice `invoiceId`'s payment on its registration: Laekunud summa less `cents` — but never more than the part of it no other paid
+ * invoice of the registration (nor a paid online payment waiting for its invoice) covers, and never below 0. So a receipt made before B4 for
+ * venue money that was never recorded (born paid, nothing added) cannot take an online payment's money off (the B4 review's m4); a receipt made
+ * since, and a marked request, take exactly their amount, which their own press added. The status may then only stay or step down (the
+ * review's I1): the payments rule (registrationStatusAfterPayment: confirmed from 50 %, awaiting below it, cancelled stays) is applied, but a
+ * registration that is not confirmed is never confirmed by taking money back — it may be awaiting with 50 % paid because its session was full
+ * (addRegistrationPayment's `full`) or because Maria set it so, and confirming it here would take a seat no one checked. Without a price the
+ * status is left as it is. Inside the caller's transaction, under its lockForPayment and the invoice's lock (the row read FOR UPDATE again).
  */
-async function takeBackRegistrationPayment(tx: Tx, registrationId: number, cents: number): Promise<void> {
+async function takeBackRegistrationPayment(tx: Tx, registrationId: number, cents: number, invoiceId: number): Promise<void> {
   const [current] = await tx
     .select({ registration: registrations, course: courses })
     .from(registrations)
@@ -316,10 +329,12 @@ async function takeBackRegistrationPayment(tx: Tx, registrationId: number, cents
     .for("update", { of: registrations });
   if (!current) return;
   const { registration: r, course } = current;
-  const paidCents = Math.max(0, r.paidCents - cents);
+  const others = (await coveringOf(tx, r, invoiceId)).filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amountCents, 0);
+  const taken = Math.max(0, Math.min(cents, r.paidCents - others));
+  const paidCents = r.paidCents - taken;
   const total = registrationPrice(course, r.kind);
-  // confirmed from 50 %, back to awaiting below it, cancelled stays cancelled; without a price the status is left as it is
-  const status = total == null ? r.status : registrationStatusAfterPayment({ status: r.status, paidCents }, total);
+  const next = total == null ? r.status : registrationStatusAfterPayment({ status: r.status, paidCents }, total);
+  const status = next === "confirmed" && r.status !== "confirmed" ? r.status : next;
   await tx.update(registrations).set({ paidCents, status }).where(eq(registrations.id, registrationId));
 }
 
@@ -371,9 +386,9 @@ export async function markInvoicePaid(db: Db, id: number, input: { paidAt: Date;
  *   alike: the admin UX pass (spec §9, B4) undoes a wrong entry through its receipt, replacing ruling R10. It is cancelled at `now` and keeps
  *   its number (never made unpaid: a „Märgi tasutuks" on it would add the money again, and the student's „Maksa" would charge it), and the same
  *   transaction takes its amount off Laekunud summa and recomputes the status (takeBackRegistrationPayment: the place stays while the rest
- *   still makes 50 %, else it is „Ootab ettemaksu“ again). The take-back is capped at the paid sum there is (never below 0): a receipt made
- *   before B4 for money never recorded (createInvoice no longer offers one) cannot take off more than is in. A receipt whose registration
- *   was deleted is only cancelled;
+ *   still makes 50 %, else it is „Ootab ettemaksu“ again; never confirmed by it). The take-back is capped at the part of Laekunud summa no
+ *   other paid invoice covers (never below 0): a receipt made before B4 for venue money never recorded (createInvoice no longer offers one)
+ *   cannot take an online payment's money off. A receipt whose registration was deleted is only cancelled;
  * - a request she marked paid, whose mark added the amount (`paidAdds`): unpaid again, its date and way cleared, its due date and reference
  *   as issued; the same transaction takes the amount back off Laekunud summa and recomputes the status as above;
  * - a mark that added nothing because its registration was deleted: cancelled, as a receipt.
@@ -385,7 +400,7 @@ export async function undoInvoicePaid(db: Db, id: number, now: Date): Promise<Un
     if (inv.paidMethod === "montonio" || inv.paidMethod === "financing" || inv.paymentId !== null) return { ok: false, error: "notManual" };
     const receipt = inv.dueAt === null;
     if (receipt || !inv.paidAdds) {
-      if (receipt && inv.registrationId !== null) await takeBackRegistrationPayment(tx, inv.registrationId, inv.amountCents);
+      if (receipt && inv.registrationId !== null) await takeBackRegistrationPayment(tx, inv.registrationId, inv.amountCents, inv.id);
       const [cancelled] = await tx
         .update(invoices)
         .set({ status: "cancelled", cancelledAt: now, paidAt: null, paidMethod: null, paidAdds: false })
@@ -393,7 +408,7 @@ export async function undoInvoicePaid(db: Db, id: number, now: Date): Promise<Un
         .returning();
       return { ok: true, invoice: cancelled };
     }
-    if (inv.registrationId !== null) await takeBackRegistrationPayment(tx, inv.registrationId, inv.amountCents);
+    if (inv.registrationId !== null) await takeBackRegistrationPayment(tx, inv.registrationId, inv.amountCents, inv.id);
     const [row] = await tx.update(invoices).set({ status: "unpaid", paidAt: null, paidMethod: null, paidAdds: false }).where(eq(invoices.id, inv.id)).returning();
     return { ok: true, invoice: row };
   });

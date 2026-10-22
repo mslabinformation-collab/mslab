@@ -208,6 +208,19 @@ describe("addManualPayment: „Koosta kviitung“", () => {
     expect(await createInvoice(db, r.id, { kind: "balance", mode: "request" }, NOW)).toEqual({ ok: false, error: "notOpen" });
   });
 
+  test("review m2: the receipt counts money recorded before it — 145 € without a receipt, then the next 145 € with one, is „Jääk 50%“; the later „Koosta arve“ receipt for the first 145 € is „Ettemaks 50%“", async () => {
+    const c = await course290();
+    await seller();
+    const r = await registrationOn(db, c);
+    expect(await add(r, 14500)).toMatchObject({ ok: true, receiptNumber: null });
+    expect(await add(r, 14500, { receipt: true, expectedPaidCents: 14500 })).toMatchObject({ ok: true, paidCents: 29000, receiptNumber: "MSL2026-001" });
+    expect(await createInvoice(db, r.id, { kind: "prepayment", mode: "receipt", paidAt: NOW, method: "bank" }, NOW)).toMatchObject({ ok: true, invoice: { number: "MSL2026-002" } });
+    expect((await allInvoices()).map((i) => [i.kind, i.amountCents, i.line.part])).toEqual([
+      ["balance", 14500, "Jääk 50%"],
+      ["prepayment", 14500, "Ettemaks 50%"],
+    ]);
+  });
+
   test("spec §10: with a payment request open, the receipt is a new „Juba tasutud“ invoice and the request stays „Tasumata“", async () => {
     const c = await course290();
     await seller();
@@ -307,6 +320,9 @@ describe("addManualPaymentAction: the drawer's „Lisa laekumine“ (Task 5's pa
     expect(await actions.addManualPaymentAction(null, form({ registrationId: String(r.id), cents: "1000", paidOn: "2999-01-01", method: "bank", expectedPaidCents: "5000" }))).toEqual({ ok: false, error: "future" });
     expect(cache.refresh).not.toHaveBeenCalled();
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
+    // review m3: a call with no form (a crafted request) is `invalid`, never a throw
+    for (const notAForm of [null, undefined, {}, "registrationId=1"]) expect(await actions.addManualPaymentAction(null, notAForm as never), String(notAForm)).toEqual({ ok: false, error: "invalid" });
+    expect(cache.refresh).not.toHaveBeenCalled();
     state.db = { transaction: () => Promise.reject(new Error("connection lost")) };
     expect(await actions.addManualPaymentAction(null, form({ registrationId: String(r.id), cents: "1000", paidOn: TODAY, method: "bank", expectedPaidCents: "5000" }))).toEqual({ ok: false, error: "server" });
     expect(await registration(r.id)).toMatchObject({ paidCents: 5000 });

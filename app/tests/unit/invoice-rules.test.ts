@@ -4,7 +4,7 @@ import { seqToIssue } from "@/domain/certificate";
 import {
   INVOICE_DEFAULTS, INVOICE_KEY, INVOICE_LIMITS, euro, formatInvoiceNumber, invoiceCsv, invoiceDownloadHeaders, invoiceFileName, invoiceKindOfPayment,
   invoiceSeq, invoiceStatusText, openAmounts, coveringInvoices, paidDay, paidMethodText, parseMonth, partOf, partText, readInvoiceSettings, sellerReady,
-  uninvoicedOf, vatSplit,
+  receiptKind, uninvoicedOf, vatSplit,
   type InvoiceKind, type InvoiceStatus,
 } from "@/domain/invoice";
 import { prepaymentDue, registrationStatusAfterPayment } from "@/domain/registration";
@@ -189,6 +189,31 @@ describe("openAmounts: what is still to invoice on a registration (D5, the final
     ["B4: nothing recorded at all: requests only, „Juba tasutud“ offers nothing", half, 0, [], [prepayment, wholeSum], []],
   ] as const)("m4: %s", (_, r, paidCents, invoiced, request, receipt) => {
     expect(openAmounts({ ...r, paidCents }, invoiced)).toEqual({ request, receipt });
+  });
+});
+
+describe("receiptKind: the kind of a receipt for money received (m4; admin UX pass B4 and its review's m2)", () => {
+  const half = { priceCents: 29000, paymentChoice: "half" } as const;
+  const paid = (kind: InvoiceKind, amountCents: number) => ({ kind, status: "paid" as const, amountCents });
+
+  test("the first money in: the whole sum when it is all of the price, else the half choice's prepayment or the whole choice's whole sum", () => {
+    expect(receiptKind(half, [], 29000)).toBe("full");
+    expect(receiptKind(half, [], 14500)).toBe("prepayment");
+    expect(receiptKind({ ...half, paymentChoice: "full" }, [], 14500)).toBe("full");
+    expect(receiptKind({ ...half, paymentChoice: "financing" }, [], 14500)).toBe("full");
+    // an unpaid or cancelled invoice is no money in
+    expect(receiptKind(half, [{ kind: "prepayment", status: "unpaid", amountCents: 14500 }, { kind: "full", status: "cancelled", amountCents: 29000 }], 14500)).toBe("prepayment");
+  });
+
+  test("later money is the rest: after a paid prepayment or whole sum, or after money recorded earlier that no paid invoice covers", () => {
+    expect(receiptKind(half, [paid("prepayment", 14500)], 14500)).toBe("balance");
+    expect(receiptKind(half, [paid("full", 29000)], 100)).toBe("balance");
+    // „Lisa laekumine“: 145 € recorded without a receipt, then the next 145 € with one — the rest, „Jääk 50%“, not a second „Ettemaks 50%“
+    expect(receiptKind(half, [], 14500, 14500)).toBe("balance");
+    expect(partOf(receiptKind(half, [], 14500, 14500), 14500, 29000)).toBe("Jääk 50%");
+    // a paid rest alone is no first money: the first money is still the prepayment
+    expect(receiptKind(half, [paid("balance", 14500)], 14500)).toBe("prepayment");
+    expect(receiptKind(half, [], 14500, 0)).toBe("prepayment");
   });
 });
 
