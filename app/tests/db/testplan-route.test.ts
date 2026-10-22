@@ -202,7 +202,14 @@ describe("PUT", () => {
     });
     expect(text).not.toContain("@");
     expect((await stored())?.answers["maria-1"]).toMatchObject({ by: MARIA, note: "hea" });
-    expect(state.later).toEqual([]); // no Viga, no message, nothing scheduled
+    expect(state.later).toHaveLength(1); // the first note on an OK is a message (Dim 22.10); Dim's OK without a note is none
+  });
+
+  test("an OK or a Jäta vahele without a note: stored, no message, nothing scheduled", async () => {
+    await signIn();
+    const res = await put({ answers: { "maria-1": { status: "ok", note: "" }, "maria-2": { status: "skip", note: "  " } } });
+    expect(res.status).toBe(200);
+    expect(state.later).toEqual([]);
   });
 
   test("a Viga: stored, and after the answer Telegram is sent the text with the check's title, the answerer's first name and a link to #<id>", async () => {
@@ -241,7 +248,7 @@ describe("PUT", () => {
     const texts = vi.mocked(sendTelegram).mock.calls.map(([, text]) => text);
     expect(texts).toEqual([
       "Testimine — Viga: Avaleht telefonis (Maria)\n(märkust veel pole)\nhttps://site.example.test/admin/testimine#maria-1",
-      "Testimine — Märkus: Avaleht telefonis (Maria)\nesimene märkus\nhttps://site.example.test/admin/testimine#maria-1",
+      "Testimine — Märkus: Avaleht telefonis (Maria) · Viga\nesimene märkus\nhttps://site.example.test/admin/testimine#maria-1",
     ]);
   });
 
@@ -252,8 +259,28 @@ describe("PUT", () => {
       await runLater();
     }
     expect(vi.mocked(sendTelegram).mock.calls.map(([, text]) => text)).toEqual([
+      "Testimine — Märkus: Avaleht telefonis (Maria) · OK\nTahvlis korras\nhttps://site.example.test/admin/testimine#maria-1", // (the OK's own first note, Dim 22.10)
       "Testimine — Viga: Avaleht telefonis (Maria)\n(märkust veel pole)\nhttps://site.example.test/admin/testimine#maria-1",
-      "Testimine — Märkus: Avaleht telefonis (Maria)\nNupp ei tööta\nhttps://site.example.test/admin/testimine#maria-1",
+      "Testimine — Märkus: Avaleht telefonis (Maria) · Viga\nNupp ei tööta\nhttps://site.example.test/admin/testimine#maria-1",
+    ]);
+  });
+
+  // Dim 22.10: every answer has a note box, and the first note on any answer is a message in the same format, with the answer shown.
+  test("the first note on an OK is one message, once; the note typed on a Jäta vahele too", async () => {
+    await signIn();
+    for (const [id, status, note] of [
+      ["maria-1", "ok", ""],
+      ["maria-1", "ok", "Telefonis korras"],
+      ["maria-1", "ok", "Telefonis korras, tahvlis ka"],
+      ["maria-2", "skip", ""],
+      ["maria-2", "skip", "Hiljem"],
+    ]) {
+      await put({ answers: { [id]: { status, note } } });
+      await runLater();
+    }
+    expect(vi.mocked(sendTelegram).mock.calls.map(([, text]) => text)).toEqual([
+      "Testimine — Märkus: Avaleht telefonis (Maria) · OK\nTelefonis korras\nhttps://site.example.test/admin/testimine#maria-1",
+      "Testimine — Märkus: Kursuse leht (Maria) · Jäta vahele\nHiljem\nhttps://site.example.test/admin/testimine#maria-2",
     ]);
   });
 

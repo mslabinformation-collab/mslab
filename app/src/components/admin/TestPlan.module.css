@@ -353,10 +353,6 @@
   margin-top: 12px;
 }
 
-.noteBox button {
-  cursor: pointer;
-}
-
 .note {
   min-height: 96px;
 }

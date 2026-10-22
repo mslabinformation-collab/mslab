@@ -273,19 +273,71 @@ describe("TestPlan", () => {
     expect(calls.at(-1)!.body!.answers["a1-fail"].note).toHaveLength(1000);
   });
 
-  test("'Märkus' opens and closes the note of an answered check (it is open by itself when the answer is Viga, or has a note)", async () => {
+  // Dim 22.10 (as on Rempire's test page): every answer has its note box open under it at once; the extra tap on „Märkus“ is gone.
+  test("'OK' opens the note box at once, asking 'Märkus', without taking the focus; 'Viga' asks 'Mis läks valesti?'; 'Jäta vahele' opens it too", async () => {
+    await showAll();
+    const plain = check("a1-plain");
+    expect(plain.querySelector("[data-check-note]")).toBeNull(); // (no answer, no box)
+    await click(plain.querySelector('[data-answer="ok"]')!);
+    const note = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
+    expect(note).not.toBeNull();
+    expect(note.placeholder).toBe("Märkus");
+    expect(note.getAttribute("aria-label")).toBe("Märkus");
+    expect(document.activeElement).not.toBe(note); // (a phone's keyboard does not jump up after an OK)
+    expect(note.maxLength).toBe(1000);
+    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ answers: { "a1-plain": { status: "ok", note: "" } } }]);
+
+    await click(plain.querySelector('[data-answer="bad"]')!);
+    expect(plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!.placeholder).toBe("Mis läks valesti?");
+    expect(document.activeElement).toBe(plain.querySelector("[data-check-note]"));
+
+    await click(plain.querySelector('[data-answer="skip"]')!);
+    const skipNote = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
+    expect(skipNote).not.toBeNull();
+    expect(skipNote.placeholder).toBe("Märkus");
+    expect(state("a1-plain")).toBe("done");
+    expect(plain.querySelectorAll("[data-check-note]")).toHaveLength(1); // one box, whatever the answer
+  });
+
+  test("an answered check shows its note box with no tap on 'Märkus' (there is no such button any more), empty or not", async () => {
     await showAll();
     await openAll();
-    const done = check("a0-done");
-    expect(done.querySelector("[data-check-note]")).toBeNull();
-    const toggle = done.querySelector<HTMLButtonElement>("[data-note-toggle]")!;
-    expect(toggle.textContent).toBe("Märkus");
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    await click(toggle);
-    expect(done.querySelector("[data-check-note]")).not.toBeNull();
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    await click(toggle);
-    expect(done.querySelector("[data-check-note]")).toBeNull();
+    const done = check("a0-done"); // an OK with no note
+    const note = done.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
+    expect(note).not.toBeNull();
+    expect(note.value).toBe("");
+    expect(note.placeholder).toBe("Märkus");
+    expect(done.querySelector("[data-note-toggle]")).toBeNull();
+    expect(check("a1-fail").querySelector("[data-note-toggle]")).toBeNull();
+    expect($$("[data-note-toggle]")).toHaveLength(0);
+    expect(check("a1-fail").querySelector<HTMLTextAreaElement>("[data-check-note]")!.placeholder).toBe("Mis läks valesti?");
+    // a check with no answer, and a redo's overtaken answer, have no box (nothing to write a note on yet)
+    expect(check("a1-plain").querySelector("[data-check-note]")).toBeNull();
+    expect(check("a1-redo").querySelector("[data-check-note]")).toBeNull();
+  });
+
+  test("a note typed under an OK is sent when the field loses the focus, with the status it was written on (and under a Jäta vahele too)", async () => {
+    await showAll();
+    const plain = check("a1-plain");
+    await click(plain.querySelector('[data-answer="ok"]')!);
+    const note = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
+    await act(async () => note.focus()); // (she taps into the box: an OK does not move the focus there)
+    await typeInto(note, "Telefonis korras");
+    await act(async () => note.blur());
+    await settle();
+    expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([
+      { answers: { "a1-plain": { status: "ok", note: "" } } },
+      { answers: { "a1-plain": { status: "ok", note: "Telefonis korras" } } },
+    ]);
+    expect(note.value).toBe("Telefonis korras");
+    await click(plain.querySelector('[data-answer="skip"]')!);
+    expect(calls.at(-1)!.body).toEqual({ answers: { "a1-plain": { status: "skip", note: "Telefonis korras" } } });
+    const again = plain.querySelector<HTMLTextAreaElement>("[data-check-note]")!;
+    await act(async () => again.focus());
+    await typeInto(again, "Telefonis korras, hiljem tahvlis");
+    await act(async () => again.blur());
+    await settle();
+    expect(calls.at(-1)!.body).toEqual({ answers: { "a1-plain": { status: "skip", note: "Telefonis korras, hiljem tahvlis" } } });
   });
 
   test("the 'Vead' filter hides the done and the open checks; 'Avatud' keeps the open ones; 'Muudetud' the marked ones; every area with a match is open", async () => {

@@ -12,7 +12,7 @@ import { fill } from "@/i18n/format";
 import { adminFirstName } from "./auth";
 
 // The test page's server side (phase 4, piece 1, spec D4, D6, D10, §5): the answers are ONE `settings` row (key testplan_answers, no migration),
-// merged under the row's lock; a failure ("Viga") earns its Telegram texts. The rules themselves (the merge, the pings, the counts) are the
+// merged under the row's lock; a failure ("Viga") and the first note on any answer earn their Telegram texts. The rules themselves (the merge, the pings, the counts) are the
 // pure domain/testplan.ts. The admin session is checked by the callers (app/api/admin/testplan withAdmin, the admin pages).
 // Logs carry counts and ids only: never a note, an e-mail address or a name.
 
@@ -116,19 +116,23 @@ export async function saveAnswers(
 }
 
 /**
- * The Telegram text of a ping (spec D6): `tg.bad` for a new failure, `tg.note` for its first note. The check's title, the answerer's first name
- * (from ADMIN_NAMES, else "admin"; never the address), the note's first PING_NOTE_MAX characters (or `tg.noNote`, also for a failure whose
- * note is the answer before it's: `oldNote`) and the link to the check, `<base>/admin/testimine#<id>`.
+ * The Telegram text of a ping (spec D6): `tg.bad` for a new failure, `tg.note` for the first note of an answer (Dim 22.10: of any answer, with the
+ * answer shown in the button's words: Viga, OK or Jäta vahele). The check's title, the answerer's first name (from ADMIN_NAMES, else "admin";
+ * never the address), the note's first PING_NOTE_MAX characters (or `tg.noNote`, also for a failure whose note is the answer before it's:
+ * `oldNote`) and the link to the check, `<base>/admin/testimine#<id>`.
  */
 export function pingText(ping: Ping, plan: TestPlan, doc: AnswersDoc, names: string | undefined, base: string): string {
-  const tg = adminEt.testplan.tg;
+  const t = adminEt.testplan;
   const item = plan.items.find((i) => i.id === ping.id);
   const stored = answerOf(doc.answers, ping.id);
   const note = ping.oldNote ? "" : Array.from(stored?.note ?? "").slice(0, PING_NOTE_MAX).join("");
-  return fill(ping.kind === "bad" ? tg.bad : tg.note, {
+  // (an id the doc does not hold has no answer to show: the message goes without the " · {status}" part)
+  const template = ping.kind === "bad" ? t.tg.bad : stored ? t.tg.note : t.tg.note.replace(" · {status}", "");
+  return fill(template, {
     title: item?.title ?? ping.id,
     name: answererName(stored?.by ?? "", names),
-    note: note === "" ? tg.noNote : note,
+    status: stored ? t[stored.status] : "",
+    note: note === "" ? t.tg.noNote : note,
     url: `${base}/admin/testimine#${ping.id}`,
   });
 }

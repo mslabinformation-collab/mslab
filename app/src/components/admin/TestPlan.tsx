@@ -12,10 +12,11 @@ import { createOutbox, type Outbox, type OutboxStatus } from "./testplan-outbox"
 import ui from "./ui.module.css";
 import styles from "./TestPlan.module.css";
 
-// The test page (phase 4, piece 1, spec §4, §7): the plan's checks, each answered OK, Viga or Jäta vahele with a note, the answers of both admins
-// together. The plan comes with the page (the bundle's own file: it is there when the database is not); the answers come with the page and are
-// read again on every load and on "Värskenda". What the tester presses or types is the outbox's (testplan-outbox.ts): it shows over the
-// server's answers until a save has carried it, so a press is never taken back by a read, a slow save or a lost connection.
+// The test page (phase 4, piece 1, spec §4, §7): the plan's checks, each answered OK, Viga or Jäta vahele with a note (its box is open under every
+// answer, Dim 22.10), the answers of both admins together. The plan comes with the page (the bundle's own file: it is there when the database is
+// not); the answers come with the page and are read again on every load and on "Värskenda". What the tester presses or types is the outbox's
+// (testplan-outbox.ts): it shows over the server's answers until a save has carried it, so a press is never taken back by a read, a slow save or
+// a lost connection.
 // This file runs on old iPads and phones: no lookbehind here, no Object.hasOwn (an answer is read off its own keys: domain/testplan.ts answerOf).
 
 const API = "/api/admin/testplan";
@@ -136,7 +137,6 @@ export function TestPlan({ plan, initial, you, buildAt }: TestPlanProps) {
   const focusAfterRef = useRef<string | null>(null);
   const [picked, setPicked] = useState<View | null>(null);
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(() => new Map());
-  const [noteOpen, setNoteOpen] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [typed, setTyped] = useState<ReadonlyMap<string, string>>(() => new Map());
 
   const storedView = useSyncExternalStore(subscribeNothing, readView, () => null);
@@ -244,10 +244,8 @@ export function TestPlan({ plan, initial, you, buildAt }: TestPlanProps) {
   const press = (item: TestItem, status: Status) => {
     const note = typed.get(item.id) ?? states.get(item.id)?.answer?.note ?? "";
     ensureOutbox().answer(item.id, status, note);
-    if (status === "bad") {
-      focusAfterRef.current = item.id;
-      setNoteOpen((m) => withEntry(m, item.id, true));
-    }
+    // (the note box is there under every answer; only a Viga takes the focus into it: an OK or a skip must not raise a phone's keyboard)
+    if (status === "bad") focusAfterRef.current = item.id;
   };
   const type = (item: TestItem, status: Status, value: string) => {
     const text = clip(value);
@@ -342,11 +340,9 @@ export function TestPlan({ plan, initial, you, buildAt }: TestPlanProps) {
                     item={item}
                     st={states.get(item.id)!}
                     unsent={local.has(item.id)}
-                    noteOpen={noteOpen.get(item.id)}
                     typed={typed.get(item.id)}
                     focusAfterRef={focusAfterRef}
                     onPress={(status) => press(item, status)}
-                    onNoteToggle={(now) => setNoteOpen((m) => withEntry(m, item.id, !now))}
                     onType={(status, value) => type(item, status, value)}
                     onLeave={() => leave(item)}
                   />
@@ -366,23 +362,19 @@ type CheckProps = {
   st: CheckState;
   /** The shown answer is one not sent yet (no "last answer" line: it is not the server's). */
   unsent: boolean;
-  noteOpen: boolean | undefined;
   typed: string | undefined;
   /** The check whose note field takes the focus when it appears (set by a "Viga" press). */
   focusAfterRef: MutableRefObject<string | null>;
   onPress(status: Status): void;
-  onNoteToggle(now: boolean): void;
   onType(status: Status, value: string): void;
   onLeave(): void;
 };
 
-/** One check (spec §4): title, chips, "Ava", steps, "Miks", what to see, the three buttons, the note, the last answer and the one a redo has overtaken. */
-function Check({ t, item, st, unsent, noteOpen, typed, focusAfterRef, onPress, onNoteToggle, onType, onLeave }: CheckProps) {
+/** One check (spec §4): title, chips, "Ava", steps, "Miks", what to see, the three buttons, the note box (under every answer), the last answer and the one a redo has overtaken. */
+function Check({ t, item, st, unsent, typed, focusAfterRef, onPress, onType, onLeave }: CheckProps) {
   const uid = useId();
   const answer = st.answer;
   const noteId = `${uid}-note`;
-  // the note: open when asked, else when the answer is a Viga or has words; a check with no answer has nothing to write a note on
-  const noteShown = answer !== null && (noteOpen ?? (answer.status === "bad" || answer.note !== ""));
   const when = answer && !unsent ? `${formatDayMonth(new Date(answer.at), "et")} ${formatTime(new Date(answer.at), "et")}` : "";
 
   return (
@@ -442,29 +434,25 @@ function Check({ t, item, st, unsent, noteOpen, typed, focusAfterRef, onPress, o
       </div>
 
       {answer && (
+        // the note: open under every answer (Dim 22.10); a check with no answer has nothing to write a note on. A Viga asks what went wrong, an OK or a skip just says „Märkus“.
         <div className={styles.noteBox}>
-          <button type="button" className={`${ui.pill} ${ui.pillSmall}`} aria-expanded={noteShown} aria-controls={noteShown ? noteId : undefined} onClick={() => onNoteToggle(noteShown)} data-note-toggle="">
-            {t.note}
-          </button>
-          {noteShown && (
-            <textarea
-              id={noteId}
-              ref={(el) => {
-                if (el && focusAfterRef.current === item.id) {
-                  focusAfterRef.current = null;
-                  el.focus();
-                }
-              }}
-              className={`${ui.textarea} ${styles.note}`}
-              aria-label={t.note}
-              placeholder={t.notePrompt}
-              maxLength={NOTE_MAX}
-              value={typed ?? answer.note}
-              onChange={(e) => onType(answer.status, e.target.value)}
-              onBlur={onLeave}
-              data-check-note=""
-            />
-          )}
+          <textarea
+            id={noteId}
+            ref={(el) => {
+              if (el && focusAfterRef.current === item.id) {
+                focusAfterRef.current = null;
+                el.focus();
+              }
+            }}
+            className={`${ui.textarea} ${styles.note}`}
+            aria-label={t.note}
+            placeholder={answer.status === "bad" ? t.notePrompt : t.note}
+            maxLength={NOTE_MAX}
+            value={typed ?? answer.note}
+            onChange={(e) => onType(answer.status, e.target.value)}
+            onBlur={onLeave}
+            data-check-note=""
+          />
         </div>
       )}
 

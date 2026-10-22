@@ -375,11 +375,81 @@ describe("the pings a save earns: pingsFor and markPinged (spec D6)", () => {
     });
   });
 
-  test("an OK or a skip sends nothing; neither does an id that was not changed", () => {
-    expect(save(doc(), "maria-1", "ok", "hea", "2026-10-17T10:00:00.000Z").pings).toEqual([]);
-    expect(save(doc(), "maria-1", "skip", "hiljem", "2026-10-17T10:00:00.000Z").pings).toEqual([]);
+  test("an OK or a skip with no note sends nothing; neither does an id that was not changed", () => {
+    expect(save(doc(), "maria-1", "ok", "", "2026-10-17T10:00:00.000Z").pings).toEqual([]);
+    expect(save(doc(), "maria-1", "skip", "", "2026-10-17T10:00:00.000Z").pings).toEqual([]);
     const failing = doc({ "maria-1": answer("bad", "2026-10-17T10:00:00.000Z", { note: "x" }) });
     expect(pingsFor(failing, failing, [], PLAN, BUILD)).toEqual([]);
+  });
+
+  // Dim 22.10: every answer has a note box, and the first note on any answer is one message ("note": the answer is shown by pingText).
+  test("the first note on an OK is one message, once; later edits and the same OK pressed again send nothing", () => {
+    const s1 = save(doc(), "maria-1", "ok", "", "2026-10-17T10:00:00.000Z");
+    expect(s1.pings).toEqual([]);
+    const s2 = save(s1.recorded, "maria-1", "ok", "Telefonis korras", "2026-10-17T10:05:00.000Z");
+    expect(s2.pings).toEqual([{ id: "maria-1", kind: "note" }]);
+    expect(s2.recorded.answers["maria-1"].notePinged).toBe(true);
+    expect(s2.recorded.answers["maria-1"].pinged).toBeUndefined(); // (only a failure is "announced")
+    const s3 = save(s2.recorded, "maria-1", "ok", "Telefonis korras, tahvlis ka", "2026-10-17T10:06:00.000Z");
+    expect(s3.pings).toEqual([]);
+    expect(s3.recorded.answers["maria-1"].notePinged).toBe(true); // carried over while it is the same answer
+    expect(save(s3.recorded, "maria-1", "ok", "Telefonis korras, tahvlis ka", "2026-10-17T10:07:00.000Z").pings).toEqual([]);
+    // the same OK pressed again keeps the field as it is: nothing
+    expect(save(s2.recorded, "maria-1", "ok", "Telefonis korras", "2026-10-17T10:08:00.000Z").pings).toEqual([]);
+  });
+
+  test("the first note on a skip is one message too; a note that comes with the press itself counts", () => {
+    const s1 = save(doc(), "maria-1", "skip", "", "2026-10-17T10:00:00.000Z");
+    expect(s1.pings).toEqual([]);
+    const s2 = save(s1.recorded, "maria-1", "skip", "Hiljem", "2026-10-17T10:05:00.000Z");
+    expect(s2.pings).toEqual([{ id: "maria-1", kind: "note" }]);
+    expect(save(s2.recorded, "maria-1", "skip", "Hiljem, kui õpilased on", "2026-10-17T10:06:00.000Z").pings).toEqual([]);
+    // a fresh check answered OK with its note in the same save (the press and the typing reached the server together)
+    const both = save(doc(), "koos-1", "ok", "Korras", "2026-10-17T10:00:00.000Z");
+    expect(both.pings).toEqual([{ id: "koos-1", kind: "note" }]);
+    expect(both.recorded.answers["koos-1"].notePinged).toBe(true);
+  });
+
+  test("an OK pressed on an answer with a note carries that note: it is not this answer's first note; the one typed next is", () => {
+    // Viga "Nupp ei tööta" (announced, note sent), then OK with that note along, then the note rewritten
+    const bad = save(doc(), "maria-1", "bad", "Nupp ei tööta", "2026-10-17T10:00:00.000Z");
+    const ok = save(bad.recorded, "maria-1", "ok", "Nupp ei tööta", "2026-10-17T10:05:00.000Z");
+    expect(ok.pings).toEqual([]);
+    expect(ok.recorded.answers["maria-1"].notePinged).toBeUndefined();
+    const typed = save(ok.recorded, "maria-1", "ok", "Parandatud, nupp töötab", "2026-10-17T10:06:00.000Z");
+    expect(typed.pings).toEqual([{ id: "maria-1", kind: "note" }]);
+    // ...and an OK's note carried to a skip, then to a Viga, is likewise nothing new
+    const okNote = save(doc(), "koos-1", "ok", "Tahvlis korras", "2026-10-17T10:00:00.000Z");
+    expect(okNote.pings).toEqual([{ id: "koos-1", kind: "note" }]);
+    const skip = save(okNote.recorded, "koos-1", "skip", "Tahvlis korras", "2026-10-17T10:05:00.000Z");
+    expect(skip.pings).toEqual([]);
+    expect(skip.recorded.answers["koos-1"].notePinged).toBeUndefined(); // a different answer: its own first note is still to come
+    expect(save(skip.recorded, "koos-1", "skip", "Jätsin vahele, sest ei saanud", "2026-10-17T10:06:00.000Z").pings).toEqual([{ id: "koos-1", kind: "note" }]);
+  });
+
+  test("an OK on a check a redo has reopened is a new answer: the note of the overtaken one is not carried as sent", () => {
+    // dim-1 is a redo marked 20.10; the OK of 17.10 had its note announced, the OK of 21.10 is a new answer
+    const old = save(doc(), "dim-1", "ok", "Vana märkus", "2026-10-17T10:00:00.000Z");
+    expect(old.pings).toEqual([{ id: "dim-1", kind: "note" }]);
+    const again = save(old.recorded, "dim-1", "ok", "", "2026-10-21T10:00:00.000Z");
+    expect(again.pings).toEqual([]);
+    expect(again.recorded.answers["dim-1"].notePinged).toBeUndefined();
+    expect(save(again.recorded, "dim-1", "ok", "Uus märkus", "2026-10-21T10:05:00.000Z").pings).toEqual([{ id: "dim-1", kind: "note" }]);
+    // pressed with the old note along (the page sends the note it shows; an overtaken answer shows none, but the rule holds anyway)
+    expect(save(old.recorded, "dim-1", "ok", "Vana märkus", "2026-10-21T10:00:00.000Z").pings).toEqual([]);
+  });
+
+  test("a note on an id that is not in the plan earns nothing; two answers with notes in one save: a ping for each, in the order saved", () => {
+    const after = doc({ gone: answer("ok", "2026-10-17T10:00:00.000Z", { note: "vana" }) });
+    expect(pingsFor(doc(), after, ["gone"], PLAN, BUILD)).toEqual([]);
+    const now = new Date("2026-10-17T10:00:00.000Z");
+    const merged = mergeAnswers(doc(), { "maria-1": inc("ok", "a"), "koos-1": inc("skip", "b"), "dim-1": inc("ok") }, PLAN, "m@x.test", now, BUILD);
+    expect(pingsFor(doc(), merged.doc, merged.changed, PLAN, BUILD)).toEqual([{ id: "maria-1", kind: "note" }, { id: "koos-1", kind: "note" }]);
+  });
+
+  test("markPinged: the first note on an OK records only notePinged", () => {
+    const stored = doc({ "maria-1": answer("ok", "2026-10-17T10:00:00.000Z", { note: "hea" }) });
+    expect(markPinged(stored, [{ id: "maria-1", kind: "note" }], new Date("2026-10-17T10:00:05.000Z")).answers["maria-1"]).toEqual({ ...stored.answers["maria-1"], notePinged: true });
   });
 
   test("a Viga on an id that is not in the plan earns nothing, whatever the doc holds", () => {

@@ -4,6 +4,7 @@ import { Footer } from "@/components/site/Footer";
 import { Header } from "@/components/site/Header";
 import { SiteReady } from "@/components/site/SiteReady";
 import { shellSettings, type ShellSettings } from "@/components/site/settings";
+import { FEEDBACK_SCRIPT, REVIEW_TOOLS } from "@/lib/review-tools";
 import { logFailure } from "@/server/log";
 import { getSiteSettings } from "@/server/site-data";
 import { isLocale, type Locale } from "@/i18n/locales";
@@ -31,9 +32,9 @@ async function loadShellSettings(locale: Locale): Promise<ShellSettings> {
   }
 }
 
-// Review tools until launch: Maria's comment widget (public/feedback.js → /api/feedback) on every public page, never in
-// /admin (its own root layout). NEXT_PUBLIC_REVIEW_TOOLS is set in next.config.ts and switched off at the mslab.ee launch.
-const REVIEW_TOOLS = process.env.NEXT_PUBLIC_REVIEW_TOOLS === "1";
+// Review tools until launch: Maria's comment widget (public/feedback.js → /api/feedback) on every public page; the admin's own root layout
+// (app/admin) loads it too (Dim 22.10), as dir "admin". NEXT_PUBLIC_REVIEW_TOOLS is set in next.config.ts and switched off at the mslab.ee launch
+// (lib/review-tools.ts).
 
 // Site shell: B header, page content (<main id="main">, pages must not render their own <main>), footer with newsletter.
 export default async function SiteLayout({ children, params }: { children: React.ReactNode; params: Promise<{ locale: string }> }) {
@@ -45,7 +46,7 @@ export default async function SiteLayout({ children, params }: { children: React
       <Header locale={locale} />
       <main id="main">{children}</main>
       <Footer locale={locale} newsletter={settings.newsletter} contact={settings.contact} trainerName={settings.trainerName} />
-      {REVIEW_TOOLS && <Script src="/feedback.js?v=5" strategy="afterInteractive" />}
+      {REVIEW_TOOLS && <Script src={FEEDBACK_SCRIPT} strategy="afterInteractive" />}
       <SiteReady />
     </>
   );

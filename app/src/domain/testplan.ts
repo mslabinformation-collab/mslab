@@ -35,9 +35,10 @@ export type IncomingAnswer = { status: Status; note: string; clientAt?: string }
 /** `answer` is the check's valid answer; `overtaken` is the answer a redo has reopened the check over (shown as "Varasem vastus"). Never both: an open check has no valid answer. */
 export type CheckState = { state: "open" | "done" | "failed"; answer: StoredAnswer | null; overtaken: StoredAnswer | null };
 /**
- * A Telegram message to send: the first for a new failure ("bad"), the second for its first note ("note"). `oldNote`: the new failure's note is
- * the one the answer before it already had (the page sends a check's note as it stands with a press, so a Viga pressed on an OK "Tahvlis korras"
- * carries that note along). It is not this failure's: the first message says there is no note yet, and the note typed next is the second.
+ * A Telegram message to send: the first for a new failure ("bad"), the second for the first note of an answer, a failure's or (Dim 22.10) an OK's
+ * or a Jäta vahele's ("note"). `oldNote`: the new failure's note is the one the answer before it already had (the page sends a check's note as it
+ * stands with a press, so a Viga pressed on an OK "Tahvlis korras" carries that note along). It is not this failure's: the first message says there
+ * is no note yet, and the note typed next is the second.
  */
 export type Ping = { id: string; kind: "bad" | "note"; oldNote?: true };
 
@@ -234,7 +235,8 @@ export function readAnswersDoc(value: unknown): AnswersDoc {
  * note cleaned, `at` the server's `now` and `by` the session's: nothing else of the incoming object is used (not its `by`, not its `at`). An
  * id outside the plan, or a status that is none of ok / bad / skip, is ignored; answers stored for ids outside the plan are kept untouched.
  * `changed` lists the ids written, in the order sent. The stored entry's `pinged` and `notePinged` carry over only while it stays the same
- * failure: it was Viga, it is Viga again, and no redo has overtaken it; otherwise the failure is a new one and earns its own messages (D6).
+ * answer: it had this status, it has it again, and no redo has overtaken it; otherwise the answer is a new one and earns its own messages (D6;
+ * Dim 22.10: an OK and a Jäta vahele have a first note that is announced too, so they carry `notePinged` the way a Viga does).
  * `buildAt` (required) is what a "deploy" mark reads as (appliesAt): pass the running build's instant, TESTPLAN_BUILD_AT. It has no default
  * on purpose. A guess such as `now` would make every stored failure of a check marked "deploy" older than its mark, so each save of the same
  * failure would count as a new one and send the first Telegram message again (a message per pause in typing a note). Pure: `stored` is not edited.
@@ -256,7 +258,7 @@ export function mergeAnswers(
     if (!item || !isObject(raw) || !isStatus(raw.status)) continue;
     const entry: StoredAnswer = { status: raw.status, note: cleanNote(raw.note), at, by };
     const prev = answerOf(stored.answers, id);
-    if (prev && prev.status === "bad" && entry.status === "bad" && checkState(item, prev, plan, buildAt).overtaken === null) {
+    if (prev && prev.status === entry.status && checkState(item, prev, plan, buildAt).overtaken === null) {
       if (prev.pinged !== undefined) entry.pinged = prev.pinged;
       if (prev.notePinged) entry.notePinged = true;
     }
@@ -267,15 +269,15 @@ export function mergeAnswers(
 }
 
 /**
- * The Telegram messages a save earns (spec D6), for the ids it changed whose answer is now Viga, against `before`, the answers as stored before
- * the save:
- * - the first message when no `pinged` is recorded (the failure is new: mergeAnswers dropped the old one's). A new Viga that already has a note
- *   gets the first message only, which carries the note (markPinged marks the note sent too), unless that note is the one the answer before it
- *   had (`oldNote`: a Viga pressed on an OK or a Jäta vahele with a note, or on a failure a redo has overtaken, carries that note along);
- * - the second, once, when the failure has been announced, has no `notePinged`, and this save brings it a note, one that differs from the note
- *   stored before (so an old note carried along is never sent as the failure's, however often it is saved again).
- * Nothing for OK, Jäta vahele, or an id not in the plan; nothing again once both are recorded. `buildAt` is not read: mergeAnswers already
- * decided which failure is the same one, and `after` carries what it decided.
+ * The Telegram messages a save earns (spec D6), for the ids it changed, against `before`, the answers as stored before the save:
+ * - for a Viga, the first message when no `pinged` is recorded (the failure is new: mergeAnswers dropped the old one's). A new Viga that already
+ *   has a note gets the first message only, which carries the note (markPinged marks the note sent too), unless that note is the one the answer
+ *   before it had (`oldNote`: a Viga pressed on an OK or a Jäta vahele with a note, or on a failure a redo has overtaken, carries that note along);
+ * - for every answer (Dim 22.10: each has a note box), the "note" message, once: when the answer has no `notePinged` (and, a Viga, has been
+ *   announced) and this save brings it a note, one that differs from the note stored before (so an old note carried along by a press is never
+ *   sent as this answer's, however often it is saved again). pingText shows the answer in it.
+ * Nothing for an answer with no note, or an id not in the plan; nothing again once both are recorded. `buildAt` is not read: mergeAnswers already
+ * decided which answer is the same one, and `after` carries what it decided.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function pingsFor(before: AnswersDoc, after: AnswersDoc, changed: string[], plan: TestPlan, _buildAt: string): Ping[] {
@@ -283,9 +285,9 @@ export function pingsFor(before: AnswersDoc, after: AnswersDoc, changed: string[
   const pings: Ping[] = [];
   for (const id of changed) {
     const answer = answerOf(after.answers, id);
-    if (!answer || answer.status !== "bad" || !known.has(id)) continue;
+    if (!answer || !known.has(id)) continue;
     const noteBefore = answerOf(before.answers, id)?.note;
-    if (answer.pinged === undefined) pings.push(answer.note !== "" && answer.note === noteBefore ? { id, kind: "bad", oldNote: true } : { id, kind: "bad" });
+    if (answer.status === "bad" && answer.pinged === undefined) pings.push(answer.note !== "" && answer.note === noteBefore ? { id, kind: "bad", oldNote: true } : { id, kind: "bad" });
     else if (!answer.notePinged && answer.note !== "" && answer.note !== noteBefore) pings.push({ id, kind: "note" });
   }
   return pings;
