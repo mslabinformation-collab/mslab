@@ -109,9 +109,9 @@ export const markInvoicePaidAction = adminAction(async (_admin, input: { id: num
 });
 
 /**
- * „Võta tasumine tagasi“ (D6, ruling R10): `{ id }`. Answers the status the invoice has now — `unpaid` (a request set back; its amount comes off
- * „Laekunud summa“) or `cancelled` (a receipt, which asked for no money, is cancelled and keeps its number) — so the screen says which. The
- * paid sum may have moved: the seats are revalidated.
+ * „Võta tasumine tagasi“ (D6; spec §9 of the admin UX pass replaces ruling R10): `{ id }`. Answers the status the invoice has now — `unpaid` (a
+ * request set back) or `cancelled` (a receipt is cancelled and keeps its number) — so the screen says which; either way its amount comes off
+ * its registration's „Laekunud summa“ (server/invoices.ts undoInvoicePaid). The paid sum moved: the seats are revalidated.
  */
 export const undoInvoicePaidAction = adminAction(async (_admin, input: { id: number }) => {
   const parsed = idOnly.safeParse(input);

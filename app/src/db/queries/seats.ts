@@ -39,12 +39,12 @@ export async function hasFreeSeat(q: Q, session: { id: number; capacity: number 
 // late payers, or a late payer and a new registration, cannot both be given the last seat. A path takes the locks it needs, in this order:
 // a subset is safe (freeing a seat, failPayment, needs the registration's lock only: it cannot overbook).
 //
-// Maria's own changes in the admin take no session lock and count no seats: her status change (admin.ts setRegistrationStatus, one
-// conditional UPDATE) and her recorded transfer (recordRegistrationPayment, the registration's row lock only) can confirm a place while a
-// late payer or a new registration takes the last seat at the same moment, and the session then has one more than its capacity. That is
-// accepted: a confirmation by hand is Maria's decision about her own course (D2 checks the seats only for what happens without her: a
-// registration, an online payment), the admin's calendar shows her the count, and both take a subset of the order above (the registration
-// alone), so they can wait for a payment path or make it wait, but never deadlock with it.
+// Maria's status change in the admin (admin.ts setRegistrationStatus, one conditional UPDATE) takes no session lock and counts no seats: it
+// can confirm a place while a late payer or a new registration takes the last seat at the same moment, and the session then has one more
+// than its capacity. That is accepted: a confirmation by hand is Maria's decision about her own course (D2 checks the seats for what money
+// does: a registration, an online payment, her „Märgi tasutuks“ and „Lisa laekumine“ — admin UX pass B4, server/registration-money.ts — which
+// take this whole order), the admin's calendar shows her the count, and it takes a subset of the order above (the registration alone), so it
+// can wait for a payment path or make it wait, but never deadlock with it.
 //
 // An e-course purchase (phase 2b) has no session and no registration, and its paid transaction takes another order: its purchase's advisory
 // lock (server/payments/start.ts lockEcoursePurchase, the start's own: instalments Task 4, so that a late järelmaks's look for a paid purchase

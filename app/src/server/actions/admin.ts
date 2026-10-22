@@ -3,15 +3,16 @@
 import { refresh } from "next/cache";
 import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
-import { cancel, saveHandled, savePayment, saveStatus, type AdminResult } from "../admin";
+import { cancel, saveHandled, saveStatus, type AdminResult } from "../admin";
 import { adminAction } from "../auth";
 import { logFailure } from "../log";
 import { revalidatePublic, type PublicChange } from "../public-cache";
+import { addManualPayment, manualPaymentForm, type ManualPaymentAnswer } from "../registration-money";
 
 // Admin server actions: every export is wrapped in adminAction (signed-in admin or a redirect to /admin/login; the
-// static check in tests/unit/admin-guards.test.ts fails otherwise). The work is in ../admin.ts. After a change the
-// client router is refreshed, so the page, the overview numbers and the menu badges show the new state. A registration's
-// status counts towards the seats shown on the public calendar and course pages: those are revalidated
+// static check in tests/unit/admin-guards.test.ts fails otherwise). The work is in ../admin.ts and ../registration-money.ts.
+// After a change the client router is refreshed, so the page, the overview numbers and the menu badges show the new state.
+// A registration's status counts towards the seats shown on the public calendar and course pages: those are revalidated
 // (server/public-cache.ts).
 
 async function run(what: string, change: PublicChange | null, work: (db: Db) => Promise<AdminResult>): Promise<AdminResult> {
@@ -27,10 +28,28 @@ async function run(what: string, change: PublicChange | null, work: (db: Db) => 
   }
 }
 
-/** Registration drawer, "Laekunud summa (€)": fields id, paid. For useActionState (previous state first). */
-export const saveRegistrationPayment = adminAction(async (_admin, _prev: AdminResult | null, formData: FormData) =>
-  run("payment", { kind: "seats" }, (db) => savePayment(db, formData)),
-);
+/** The refusals of „Lisa laekumine“ that say the stored registration is not what the drawer shows: the page is refreshed to show it. */
+const SHOWS_OLD: readonly string[] = ["stale", "overRemainder", "cancelled", "notFound", "sellerMissing"];
+
+/**
+ * Registration drawer, Raha → „Lisa laekumine“ (admin UX pass B4): fields registrationId, cents, paidOn ("YYYY-MM-DD"), method (bank | cash |
+ * card), receipt ("1" when „Koosta kviitung“ is ticked) and expectedPaidCents (the paid total the panel showed); server/registration-money.ts
+ * addManualPayment does the work in one transaction. A press that confirmed the place, or reached 50 % in a full session (its seat hold ends),
+ * revalidates the public seats; every press that wrote refreshes the page, and so does a refusal that means the drawer shows an old state
+ * (`stale` above all). For useActionState (previous state first).
+ */
+export const addManualPaymentAction = adminAction(async (_admin, _prev: ManualPaymentAnswer | null, formData: FormData): Promise<ManualPaymentAnswer> => {
+  const input = manualPaymentForm(formData);
+  try {
+    const result = await addManualPayment(getDb(), input, new Date());
+    if (result.ok && (result.confirmedNow || result.full)) revalidatePublic({ kind: "seats" });
+    if (result.ok || SHOWS_OLD.includes(result.error)) refresh();
+    return result;
+  } catch (e) {
+    logFailure(`[admin] registration ${Number.isNaN(input.registrationId) ? "?" : input.registrationId}: adding a payment failed`, e);
+    return { ok: false, error: "server" };
+  }
+});
 
 /** Registration drawer, status + note: fields id, status, note, expected (the status the form showed). */
 export const saveRegistrationStatus = adminAction(async (_admin, _prev: AdminResult | null, formData: FormData) =>

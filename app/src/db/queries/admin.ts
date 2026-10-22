@@ -354,37 +354,16 @@ export async function getRegistration(db: Db, id: number): Promise<RegistrationR
 }
 
 /**
- * Maria enters the amount that has arrived (bank transfer): stores `paidCents` and recomputes the status against the
- * price of the registration (group or individual price; e-learning price) — confirmed from 50% (Maria's rule), back
- * to awaiting_prepayment below it, cancelled stays cancelled. Without a price the status is left as it is.
- * Returns null when the id does not exist.
+ * What a payment did to a registration (server/payments/settle.ts, „Märgi tasutuks“, „Lisa laekumine“). `full`: paid, but kept unconfirmed
+ * for want of a seat (D2).
  */
-export async function recordRegistrationPayment(db: Db, id: number, paidCents: number): Promise<Registration | null> {
-  // One transaction with the registration row locked (FOR UPDATE): a cancel or status change saved at the same moment
-  // either happens before (and is seen here) or waits until this is done; it is never overwritten with a stale status.
-  return db.transaction(async (tx) => {
-    const [current] = await tx
-      .select({ registration: registrations, course: courses })
-      .from(registrations)
-      .innerJoin(courses, eq(registrations.courseId, courses.id))
-      .where(eq(registrations.id, id))
-      .for("update", { of: registrations });
-    if (!current) return null;
-    const { registration: r, course } = current;
-    const total = registrationPrice(course, r.kind);
-    const status = total == null ? r.status : registrationStatusAfterPayment({ status: r.status, paidCents }, total);
-    const [row] = await tx.update(registrations).set({ paidCents, status }).where(eq(registrations.id, id)).returning();
-    return row ?? null;
-  });
-}
-
-/** What an online payment did to a registration (server/payments/settle.ts). `full`: paid, but kept unconfirmed for want of a seat (D2). */
 export type RegistrationPaid = { registration: Registration; course: Course; session: CourseSession | null; wasConfirmed: boolean; full: boolean };
 
 /**
- * An online payment of `cents` arrived for a registration (phase 2b, spec 6.2.2): `paidCents` becomes the current value + `cents` — an
- * absolute value written under the row's lock (FOR UPDATE), as recordRegistrationPayment writes Maria's — and the status follows the same
- * rule (confirmed from 50 %), but a payment never takes a confirmed place back: Maria may have confirmed it by hand with less paid. One
+ * A payment of `cents` arrived for a registration — online (phase 2b, spec 6.2.2), by Maria's „Märgi tasutuks“ on an invoice, or by her
+ * „Lisa laekumine“ (admin UX pass B4: the typed absolute „Laekunud summa“ is gone, so every write of the paid sum adds or takes back):
+ * `paidCents` becomes the current value + `cents` — an absolute value written under the row's lock (FOR UPDATE) — and the status follows the
+ * payments rule (confirmed from 50 %), but a payment never takes a confirmed place back: Maria may have confirmed it by hand with less paid. One
  * exception (D2): a registration that is not confirmed yet stays awaiting_prepayment when its session has
  * no free seat for it, counting the others' seats, confirmed or held, but not her own row (her hold may have ended): `full` says so. A
  * confirmed registration, or one kept for want of a seat, has no hold any more. Runs in the caller's transaction; null: the row is gone.

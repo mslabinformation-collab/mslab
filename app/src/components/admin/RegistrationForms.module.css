@@ -16,12 +16,6 @@
   gap: 10px;
 }
 
-.amount {
-  flex: 1 1 160px;
-  width: auto;
-  max-width: 240px;
-}
-
 .fieldset {
   margin: 0;
   padding: 0;

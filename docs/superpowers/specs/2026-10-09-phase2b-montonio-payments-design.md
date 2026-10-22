@@ -27,7 +27,7 @@ the booking confirmed after a prepayment of at least 50%. They placed instalment
 | D3 | What does an e-course buyer fill in? | Name, e-mail, the e-course terms box and the existing newsletter box. |
 | D4 | Where is the bank or card chosen? | On Montonio's own checkout page. No bank logos on our site. |
 | D5 | Can the remaining 50% be paid online? | Yes: "Maksa ülejäänud {summa}" in Minu koolitused until the training day. Paying on the day still works; Maria records that payment by hand. |
-| D6 | Keep the bank transfer (IBAN + reference)? | Yes, as the second option under "Maksa". Maria records those payments by hand, as today. |
+| D6 | Keep the bank transfer (IBAN + reference)? | Yes, as the second option under "Maksa". Maria records those payments by hand, ~~as today~~ — since the admin UX pass (B4, its spec §9; amended 22.10) with „Lisa laekumine" on the registration: it adds the amount under the payment locks with the seat check, as an online payment does, and can make its receipt. The typed „Laekunud summa" total is gone. |
 | D7 | How does Maria see payments? | Mail + Telegram for every payment, and a new admin page "Maksed". Payments also show on the registration row and in the student's drawer. |
 
 ## 3. What exists today (building blocks)
@@ -40,7 +40,8 @@ the booking confirmed after a prepayment of at least 50%. They placed instalment
   - `prepaymentDue` gives the amount: full = price, half = `ceil(price/2)`.
   - `registrationStatusAfterPayment` confirms the registration at `paid*2 >= price`.
 - **`recordRegistrationPayment`** (`db/queries/admin.ts`): one transaction, `FOR UPDATE`, stores an absolute `paidCents` and
-  sets the status. This is the core the webhook reuses.
+  sets the status. This is the core the webhook reuses. (Removed in the admin UX pass, B4, amended 22.10: the webhook's
+  `addRegistrationPayment` adds instead, and Maria's „Lisa laekumine" uses it too.)
 - **Seats:** only `confirmed` registrations take a seat (`submit.ts`, `db/queries/public.ts`, `db/queries/admin.ts`,
   `domain/sessions.ts`). This phase changes that (D2).
 - **E-course:**

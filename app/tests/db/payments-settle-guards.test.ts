@@ -728,7 +728,7 @@ describe("a registration's payment: one transaction, under the row's lock", () =
     expect((await registration(r.id)).paidCents).toBe(17500);
   });
 
-  test("the registration is read FOR UPDATE, as recordRegistrationPayment reads it", async () => {
+  test("the registration is read FOR UPDATE (addRegistrationPayment, under lockForPayment)", async () => {
     const { db: logged, queries } = await loggedDb();
     const m = stubMontonio();
     const p = await pendingPayment(logged, await registrationOn(logged, await contactCourse(logged)));

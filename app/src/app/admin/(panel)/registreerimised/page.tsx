@@ -330,7 +330,7 @@ function RegistrationDetail({
             </div>
           </dl>
         )}
-        {/* the online payments under "Laekunud" (phase 2b, spec 8); Maria's own "amount received" form below stays */}
+        {/* the online payments under "Laekunud" (phase 2b, spec 8); money from outside the site is added with „Lisa laekumine“ (B4, the Raha card: Task 5) */}
         {payments.length > 0 && (
           <div className={styles.online} data-registration-payments="">
             <h3 className={ui.h3}>{adminEt.payments.online}</h3>
@@ -379,13 +379,7 @@ function RegistrationDetail({
         id={r.id}
         status={r.status}
         note={r.note}
-        paidCents={r.paidCents}
         t={{
-          paidLabel: t.paidLabel,
-          paidHint: half == null ? t.noPriceHint : fill(t.paidHint, { half: formatEUR(half, "et") }),
-          paidSave: t.paidSave,
-          paidSaved: t.paidSaved,
-          paidInvalid: t.paidInvalid,
           statusLabel: t.statusLabel,
           noteLabel: t.noteLabel,
           noteHint: t.noteHint,

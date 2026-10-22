@@ -322,11 +322,7 @@ export const adminEt = {
       due: "Valitud makse",
       paid: "Laekunud",
       noPrice: "Koolitusel pole hinda, staatust ei arvutata. Muuda staatust käsitsi.",
-      noPriceHint: "Summa salvestatakse, staatus jääb samaks.",
-      paidLabel: "Laekunud summa (€)",
-      paidHint: "Registreerimine kinnitub, kui laekunud on vähemalt {half}.",
-      paidSave: "Salvesta summa",
-      paidSaved: "Summa salvestatud.",
+      // „Lisa laekumine“ → „Muu summa“ that is no euro amount (piece2-texts S3-e reuses it; the typed „Laekunud summa“ field is gone, B4)
       paidInvalid: "Sisesta summa eurodes, näiteks 175 või 175,50.",
       statusLabel: "Staatus",
       noteLabel: "Märkus",

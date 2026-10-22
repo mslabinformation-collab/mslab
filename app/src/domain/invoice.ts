@@ -234,9 +234,19 @@ export function openAmounts(r: { priceCents: number; paymentChoice: PaymentChoic
     ...(accounted > 0 && accounted < price ? amount("balance", price - accounted) : []),
   ];
   if (uncovered === 0) return { request, receipt: request };
-  const first = !head(paid);
-  const kind: InvoiceKind = first && uncovered === price ? "full" : first ? (r.paymentChoice === "half" ? "prepayment" : "full") : "balance";
-  return { request, receipt: amount(kind, uncovered) };
+  return { request, receipt: amount(receiptKind({ priceCents: price, paymentChoice: r.paymentChoice }, live, uncovered), uncovered) };
+}
+
+/**
+ * The kind of a receipt („Juba tasutud“) for `cents` received (openAmounts; admin UX pass B4, „Lisa laekumine“ with „Koosta kviitung“): the
+ * first money in — no paid prepayment or whole-sum invoice among `covering` yet (coveringInvoices: a paid online payment without its invoice
+ * counts as one) — is the whole sum when it is all of the price, else the half choice's prepayment or the whole choice's (and Järelmaks's) whole
+ * sum; later money is the rest. Its words are partOf's.
+ */
+export function receiptKind(r: { priceCents: number | null; paymentChoice: PaymentChoice }, covering: readonly Covering[], cents: number): InvoiceKind {
+  const first = !covering.some((i) => i.status === "paid" && (i.kind === "prepayment" || i.kind === "full"));
+  if (!first) return "balance";
+  return cents === r.priceCents ? "full" : r.paymentChoice === "half" ? "prepayment" : "full";
 }
 
 /** A paid online payment of a registration that no invoice names yet: it waits in „Arveta maksed“ (I1). */

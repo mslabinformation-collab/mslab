@@ -22,7 +22,7 @@ vi.mock("@/components/admin/Drawer", async () => {
   const { createElement } = await import("react");
   return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useUnsavedInDrawer: () => {} };
 });
-vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), saveRegistrationPayment: vi.fn(), saveRegistrationStatus: vi.fn() }));
+vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), addManualPaymentAction: vi.fn(), saveRegistrationStatus: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({
   createInvoiceAction: vi.fn(), sendInvoiceAction: vi.fn(), markInvoicePaidAction: vi.fn(), undoInvoicePaidAction: vi.fn(), cancelInvoiceAction: vi.fn(),
   updateInvoiceBuyerAction: vi.fn(), catchUpInvoiceAction: vi.fn(), saveInvoiceSettingsAction: vi.fn(),
@@ -246,7 +246,7 @@ describe("the registration drawer's „Arved“", () => {
     expect(block).toContain(">Märgi tasutuks<");
     expect(block).toContain(`href="/api/admin/arve/${a.invoice.id}"`);
     expect(html.indexOf("data-registration-invoices")).toBeGreaterThan(html.indexOf("data-paid=")); // after the money block
-    expect(html.indexOf("data-registration-invoices")).toBeLessThan(html.indexOf("data-payment-form")); // before the forms
+    expect(html.indexOf("data-registration-invoices")).toBeLessThan(html.indexOf("data-status-form")); // before the forms
   });
 
   test("with the 50% invoiced the rest is what is left to offer; „Koosta arve“ is there while an amount is open", async () => {

@@ -4,14 +4,15 @@ import { addRegistrationPayment, paged, setSetting, type Paged } from "@/db/quer
 import { UNINVOICED_PAID } from "@/db/queries/payment-checks";
 import { readSetting } from "@/db/queries/public";
 import { lockForPayment } from "@/db/queries/seats";
-import { courses, courseSessions, invoices, payments, registrations, type CourseSession, type Invoice, type Payment, type Registration } from "@/db/schema";
+import { courses, courseSessions, invoices, payments, registrations, type Course, type CourseSession, type Invoice, type Payment, type Registration } from "@/db/schema";
 import { hasPrepayment, parsePrepayment, paymentReference, PREPAYMENT_KEY } from "@/domain/account-cards";
 import { tallinnFormParts, tallinnInstant } from "@/domain/calendar";
 import { tallinnDateText, tallinnYear } from "@/domain/certificate";
 import { isHirePurchase } from "@/domain/financing";
 import {
-  coveringInvoices, formatInvoiceNumber, INVOICE_KEY, INVOICE_LIMITS, invoiceCsv, invoiceKindOfPayment, invoiceSeq, openAmounts, partOf, readInvoiceSettings,
-  sellerReady, type InvoiceBuyer, type InvoiceKind, type InvoiceSettings, type InvoiceStatus, type ManualPaidMethod, type PaidMethod,
+  coveringInvoices, formatInvoiceNumber, INVOICE_KEY, INVOICE_LIMITS, invoiceCsv, invoiceKindOfPayment, invoiceSeq, ODD_PART, openAmounts, partOf, readInvoiceSettings,
+  receiptKind, sellerReady, type Covering, type InvoiceBuyer, type InvoiceKind, type InvoiceLine, type InvoiceSettings, type InvoiceStatus, type ManualPaidMethod,
+  type PaidMethod,
 } from "@/domain/invoice";
 import { PAGE_SIZE } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment } from "@/domain/registration";
@@ -74,20 +75,25 @@ async function highestSeq(q: Q, prefix: string, year: number): Promise<number> {
 /** Seaded → Arve andmed as stored, or its defaults (domain/invoice.ts readInvoiceSettings); inside a write, after lockNumbers. */
 const readSettings = async (q: Q, now: Date): Promise<InvoiceSettings> => readInvoiceSettings(await readSetting(q, INVOICE_KEY), now);
 
-/** What an issue's caller decides of the invoice; the number, the seller's copy, the VAT rate and the issue time are the issue's. */
+/**
+ * What an issue's caller decides of the invoice — its amount and whether the act that made it paid added that amount to Laekunud summa
+ * (`paidAdds`) among them; the number, the seller's copy, the VAT rate and the issue time are the issue's.
+ */
 type IssueDraft = Pick<
   typeof invoices.$inferInsert,
   "kind" | "registrationId" | "paymentId" | "courseId" | "clientId" | "status" | "amountCents" | "line" | "buyer" | "reference" | "dueAt" | "paidAt" | "paidMethod"
->;
+> & { paidAdds: boolean };
 
 /**
- * Issues one invoice inside `tx`, after the caller's row locks: the number series' lock, Seaded read (no seller: "sellerMissing", nothing
- * written), the bank details from Ettemaksu juhised, then `build` (which may refuse with its own word, R6's "bankMissing"), the number for the
- * Tallinn year of `now` under the setting's prefix (invoiceSeq: never at or below that prefix-year's highest), the row with its frozen seller
- * (Arve andmed and the bank details as they are now), VAT rate (null when VAT is off), footer line (D2, migration 0012: the PDF prints it, never
- * a later setting) and issue time, and the setting moved on.
+ * Issues one invoice inside the caller's transaction `tx`, after its row locks (it opens none of its own): the number series' lock, Seaded read
+ * (no seller: "sellerMissing", nothing written), the bank details from Ettemaksu juhised, then `build` (which may refuse with its own word, R6's
+ * "bankMissing"), the number for the Tallinn year of `now` under the setting's prefix (invoiceSeq: never at or below that prefix-year's
+ * highest), the row as `build` drafts it (its amount and `paidAdds` too) with its frozen seller (Arve andmed and the bank details as they are
+ * now), VAT rate (null when VAT is off), footer line (D2, migration 0012: the PDF prints it, never a later setting) and issue time, and the
+ * setting moved on. createInvoice and a paid payment's invoice (issueForPayment) draft `paidAdds: false`; „Lisa laekumine“'s receipt
+ * (issueReceiptInTx) `true`.
  */
-async function issue<R extends string = never>(
+export async function issueInTx<R extends string = never>(
   tx: Tx,
   now: Date,
   build: (ctx: { settings: InvoiceSettings; bank: PrepaymentDraft; bankReady: boolean }) => IssueDraft | R,
@@ -121,7 +127,6 @@ async function issue<R extends string = never>(
         bank: bank.bank.trim(),
       },
       issuedAt: now,
-      paidAdds: false,
     })
     .returning();
   await setSetting(tx, INVOICE_KEY, { ...settings, ...next });
@@ -162,6 +167,13 @@ const sessionText = (s: Pick<CourseSession, "startsAt" | "city">): string => `${
 
 /** The buyer as the registration or the payment names her (D9): the name and the e-mail; what Maria adds later is empty. */
 const buyerOf = (who: { name: string; email: string }): InvoiceBuyer => ({ name: who.name, email: who.email, address: "", company: "", companyCode: "", companyAddress: "" });
+
+/** A registration's invoice line (D4): the course's Estonian title, its session's date and city (empty for none) and the part, frozen. */
+const lineOf = (course: Pick<Course, "title">, session: Pick<CourseSession, "startsAt" | "city"> | null, part: string): InvoiceLine => ({
+  course: course.title.et,
+  session: session ? sessionText(session) : "",
+  part,
+});
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const validDate = (v: unknown): v is Date => v instanceof Date && !Number.isNaN(v.getTime());
@@ -212,15 +224,10 @@ export async function createInvoice(
     if (!found) return { ok: false, error: "notFound" };
     const { registration: r, course, session } = found;
     const price = registrationPrice(course, r.kind);
-    const invoiced = await tx.select({ id: invoices.id, kind: invoices.kind, status: invoices.status, amountCents: invoices.amountCents }).from(invoices).where(eq(invoices.registrationId, r.id));
-    const uninvoiced = await tx
-      .select({ id: payments.id, kind: payments.kind, invoiceId: payments.invoiceId, amountCents: payments.amountCents })
-      .from(payments)
-      .where(and(eq(payments.registrationId, r.id), UNINVOICED_PAID));
-    const covering = coveringInvoices(r, invoiced, uninvoiced);
+    const covering = await coveringOf(tx, r);
     const open = price === null ? undefined : openAmounts({ priceCents: price, paymentChoice: r.paymentChoice, paidCents: r.paidCents }, covering)[input.mode].find((o) => o.kind === input.kind);
     if (!open) return { ok: false, error: "notOpen" };
-    const made = await issue(tx, now, ({ settings, bank, bankReady }): IssueDraft | "bankMissing" => {
+    const made = await issueInTx(tx, now, ({ settings, bank, bankReady }): IssueDraft | "bankMissing" => {
       if (!receipt && !bankReady) return "bankMissing";
       return {
         kind: open.kind,
@@ -230,12 +237,13 @@ export async function createInvoice(
         clientId: r.clientId,
         status: receipt ? "paid" : "unpaid",
         amountCents: open.cents,
-        line: { course: course.title.et, session: session ? sessionText(session) : "", part: open.part },
+        line: lineOf(course, session, open.part),
         buyer: buyerOf(r),
         reference: receipt ? "" : paymentReference(bank, r.id),
         dueAt: receipt ? null : dueDate(now, settings.termDays),
         paidAt: receipt ? paidAt : null,
         paidMethod: receipt ? method : null,
+        paidAdds: false,
       };
     });
     return typeof made === "string" ? { ok: false, error: made } : { ok: true, invoice: made };
@@ -244,7 +252,59 @@ export async function createInvoice(
   return result;
 }
 
-/** The registration's paid sum less `cents` (not below 0), its status recomputed as Maria's own write recomputes it (recordRegistrationPayment). */
+/**
+ * What covers the registration's price for openAmounts and receiptKind (coveringInvoices, the final review's I1): its invoices, and its paid
+ * online payments that no invoice names yet. Read inside the caller's transaction, under the registration's lock.
+ */
+async function coveringOf(tx: Tx, r: Registration): Promise<Covering[]> {
+  const invoiced = await tx.select({ id: invoices.id, kind: invoices.kind, status: invoices.status, amountCents: invoices.amountCents }).from(invoices).where(eq(invoices.registrationId, r.id));
+  const uninvoiced = await tx
+    .select({ id: payments.id, kind: payments.kind, invoiceId: payments.invoiceId, amountCents: payments.amountCents })
+    .from(payments)
+    .where(and(eq(payments.registrationId, r.id), UNINVOICED_PAID));
+  return coveringInvoices(r, invoiced, uninvoiced);
+}
+
+/**
+ * „Lisa laekumine“'s receipt (admin UX pass B4; server/registration-money.ts addManualPayment): a „Juba tasutud“ invoice for exactly the `cents`
+ * the caller's transaction has just added to Laekunud summa, inside that transaction after its lockForPayment (issueInTx: it opens none of its
+ * own). Born paid on `paidAt` by `method` (bank, cash or card), `paidAdds` (the same press added the money, so undoInvoicePaid takes it back),
+ * no due date, no reference. Its kind is the one a receipt of that money takes by what covers the registration (receiptKind over coveringOf,
+ * as „Koosta arve“ reads it), its words partOf's — and „Osamakse“ on a course with no price, where no half, whole or rest can be named. The
+ * line and the buyer as createInvoice's. "sellerMissing" (D3) when Seaded's seller is empty: the caller rolls its money back.
+ */
+export async function issueReceiptInTx(
+  tx: Tx,
+  of: { registration: Registration; course: Course; session: CourseSession | null },
+  input: { cents: number; paidAt: Date; method: ManualPaidMethod },
+  now: Date,
+): Promise<Invoice | "sellerMissing"> {
+  const { registration: r, course, session } = of;
+  const price = registrationPrice(course, r.kind);
+  const kind = receiptKind({ priceCents: price, paymentChoice: r.paymentChoice }, await coveringOf(tx, r), input.cents);
+  return issueInTx<never>(tx, now, () => ({
+    kind,
+    registrationId: r.id,
+    paymentId: null,
+    courseId: course.id,
+    clientId: r.clientId,
+    status: "paid",
+    amountCents: input.cents,
+    line: lineOf(course, session, price === null ? ODD_PART : partOf(kind, input.cents, price)),
+    buyer: buyerOf(r),
+    reference: "",
+    dueAt: null,
+    paidAt: input.paidAt,
+    paidMethod: input.method,
+    paidAdds: true,
+  }));
+}
+
+/**
+ * The registration's paid sum less `cents` (not below 0), its status recomputed by the payments rule (registrationStatusAfterPayment: confirmed
+ * from 50 %, back to awaiting below it, cancelled stays cancelled); without a price the status is left as it is. Inside the caller's
+ * transaction, under its lockForPayment (the row read FOR UPDATE again).
+ */
 async function takeBackRegistrationPayment(tx: Tx, registrationId: number, cents: number): Promise<void> {
   const [current] = await tx
     .select({ registration: registrations, course: courses })
@@ -305,23 +365,26 @@ export async function markInvoicePaid(db: Db, id: number, input: { paidAt: Date;
 
 /**
  * „Võta tasumine tagasi" (D6) of a paid invoice that Maria marked or recorded (not Montonio's: `notManual`; not paid: `notPaid`):
+ * - a receipt („Juba tasutud", born paid: no due date) — „Lisa laekumine“'s (`paidAdds`) and one „Koosta arve“ made for money already in
+ *   alike: the admin UX pass (spec §9, B4) undoes a wrong entry through its receipt, replacing ruling R10. It is cancelled at `now` and keeps
+ *   its number (never made unpaid: a „Märgi tasutuks" on it would add the money again, and the student's „Maksa" would charge it), and the same
+ *   transaction takes its amount off Laekunud summa (never below 0) and recomputes the status (takeBackRegistrationPayment: the place stays
+ *   while the rest still makes 50 %, else it is „Ootab ettemaksu“ again). A receipt whose registration was deleted is only cancelled;
  * - a request she marked paid, whose mark added the amount (`paidAdds`): unpaid again, its date and way cleared, its due date and reference
- *   as issued; the same transaction takes the amount back off Laekunud summa and recomputes the status as Maria's own write does
- *   (recordRegistrationPayment): the place stays while the rest still makes 50 %, else it is awaiting again;
- * - ruling R10: a receipt („Juba tasutud", born paid: its mark added nothing) never asked for money, so it is not made unpaid (a „Märgi
- *   tasutuks" on it would add the same money again, and the student's „Maksa" would charge it): it is cancelled at `now`, keeps its number,
- *   and Laekunud summa stays; its amount is open again for the right receipt. So is a mark that added nothing because its registration was
- *   deleted.
+ *   as issued; the same transaction takes the amount back off Laekunud summa and recomputes the status as above;
+ * - a mark that added nothing because its registration was deleted: cancelled, as a receipt.
  * Under lockForPayment and the invoice's lock. Logs `[invoices] invoice N: paid mark undone` or `… receipt undone: cancelled`.
  */
 export async function undoInvoicePaid(db: Db, id: number, now: Date): Promise<UndoPaidResult> {
   const result = await withInvoiceLocked(db, id, async (tx, inv): Promise<UndoPaidResult> => {
     if (inv.status !== "paid") return { ok: false, error: "notPaid" };
     if (inv.paidMethod === "montonio" || inv.paidMethod === "financing" || inv.paymentId !== null) return { ok: false, error: "notManual" };
-    if (!inv.paidAdds) {
+    const receipt = inv.dueAt === null;
+    if (receipt || !inv.paidAdds) {
+      if (receipt && inv.registrationId !== null) await takeBackRegistrationPayment(tx, inv.registrationId, inv.amountCents);
       const [cancelled] = await tx
         .update(invoices)
-        .set({ status: "cancelled", cancelledAt: now, paidAt: null, paidMethod: null })
+        .set({ status: "cancelled", cancelledAt: now, paidAt: null, paidMethod: null, paidAdds: false })
         .where(eq(invoices.id, inv.id))
         .returning();
       return { ok: true, invoice: cancelled };
@@ -444,7 +507,7 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: Invo
       : await tx.select({ title: courses.title, type: courses.type, price: courses.price, priceGroup: courses.priceGroup, priceIndividual: courses.priceIndividual }).from(courses).where(eq(courses.id, courseId)).limit(1);
   const kind = kindOfLinked ?? invoiceKindOfPayment(p, r);
   const price = course && r ? registrationPrice(course, r.kind) : null;
-  return issue<never>(tx, now, () => ({
+  return issueInTx<never>(tx, now, () => ({
     kind,
     registrationId: p.registrationId,
     paymentId: p.id,
@@ -458,6 +521,7 @@ async function issueForPayment(tx: Tx, p: Payment, now: Date, kindOfLinked: Invo
     dueAt: null,
     paidAt: p.paidAt ?? now,
     paidMethod: paidMethodOfPayment(p),
+    paidAdds: false,
   }));
 }
 

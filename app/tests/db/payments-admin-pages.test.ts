@@ -19,7 +19,7 @@ vi.mock("@/components/admin/Drawer", async () => {
   const { createElement } = await import("react");
   return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useUnsavedInDrawer: () => {} };
 });
-vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), saveRegistrationPayment: vi.fn(), saveRegistrationStatus: vi.fn() }));
+vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), addManualPaymentAction: vi.fn(), saveRegistrationStatus: vi.fn() }));
 vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn() }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn(), reissueCertificateAction: vi.fn() }));
@@ -194,7 +194,7 @@ test("Maksed: no payments yet, and a filter with none, each say so", async () =>
   }
 });
 
-test("Registreerimised: the registration's drawer lists its online payments under 'Laekunud' (date, amount, kind, method, status); Maria's amount form stays", async () => {
+test("Registreerimised: the registration's drawer lists its online payments under 'Laekunud' (date, amount, kind, method, status); the typed amount form is gone (B4)", async () => {
   const html = await render(RegistrationsPage, { id: String(ids.registration) });
   const block = /<div[^>]*data-registration-payments[^>]*>([\s\S]*?)<\/ul>/.exec(html)![1];
   expect(block).toContain("Veebimaksed");
@@ -211,7 +211,9 @@ test("Registreerimised: the registration's drawer lists its online payments unde
   expect(balance).toContain("Ootel kontrollil");
   expect(balance).toContain("Kontrolli Montonios");
   expect(html).not.toMatch(/paymentInitiation|cardPayments/);
-  expect(html).toContain("Laekunud summa (€)"); // Maria's own form
+  // B4: money is added with „Lisa laekumine“, never typed as a total
+  expect(html).not.toContain("Laekunud summa (€)");
+  expect(html).not.toContain("data-payment-form");
   expect(html.indexOf("data-registration-payments")).toBeGreaterThan(html.indexOf("Laekunud</dt>"));
 });
 
@@ -227,7 +229,7 @@ test("Registreerimised: ?staatus= with a name of the object's prototype ('constr
 test("Registreerimised: no online payments, no block; and the old e-learning note is gone", async () => {
   const bare = await registrationOn(db, contact, { email: "bare@example.com", name: "Ilma Maksetaa" });
   const html = await render(RegistrationsPage, { id: String(bare.id) });
-  expect(html).toContain("Laekunud summa (€)");
+  expect(html).toContain("data-registration-detail");
   expect(html).not.toContain("data-registration-payments");
   const e = await render(RegistrationsPage, { vorm: "e" });
   expect(e).not.toContain("data-e-note");

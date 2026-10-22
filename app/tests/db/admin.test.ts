@@ -11,11 +11,11 @@ import {
   pageRegistrations,
   pageRequests,
   pageSubscribers,
-  recordRegistrationPayment,
   setRequestHandled,
 } from "@/db/queries/admin";
 import { NOTE_MAX } from "@/domain/registration";
-import { cancel, saveHandled, savePayment, saveStatus, subscribersCsv, subscribersCsvName } from "@/server/admin";
+import { cancel, saveHandled, saveStatus, subscribersCsv, subscribersCsvName } from "@/server/admin";
+import { addManualPayment } from "@/server/registration-money";
 
 // Task 12: the admin inbox's queries and form handling on a real (PGlite) database.
 
@@ -49,43 +49,8 @@ const register = async (over: Partial<typeof registrations.$inferInsert> = {}) =
   return r;
 };
 
-describe("recordRegistrationPayment / savePayment", () => {
-  test("stores the amount and confirms from 50% of the group price; below it the registration waits again", async () => {
-    const r = await register();
-    expect(await recordRegistrationPayment(db, r.id, 17499)).toMatchObject({ paidCents: 17499, status: "awaiting_prepayment" });
-    expect(await recordRegistrationPayment(db, r.id, 17500)).toMatchObject({ paidCents: 17500, status: "confirmed" });
-    expect(await recordRegistrationPayment(db, r.id, 10000)).toMatchObject({ paidCents: 10000, status: "awaiting_prepayment" });
-    expect(await recordRegistrationPayment(db, 9999, 100)).toBeNull();
-  });
-
-  test("an individual registration is measured against the individual price, e-learning against its price", async () => {
-    const individual = await register({ kind: "individual", courseSessionId: null });
-    expect((await recordRegistrationPayment(db, individual.id, 17500))?.status).toBe("awaiting_prepayment"); // 175 < 450 / 2
-    expect((await recordRegistrationPayment(db, individual.id, 22500))?.status).toBe("confirmed");
-    const e = await register({ courseId: online.id, courseSessionId: null });
-    expect((await recordRegistrationPayment(db, e.id, 4750))?.status).toBe("confirmed");
-  });
-
-  test("a cancelled registration stays cancelled; without a price the status is left alone", async () => {
-    const r = await register({ status: "cancelled" });
-    expect(await recordRegistrationPayment(db, r.id, 35000)).toMatchObject({ paidCents: 35000, status: "cancelled" });
-    const [free] = await db.insert(courses).values({ ...base, slug: "noprice", type: "contact" }).returning();
-    const p = await register({ courseId: free.id, courseSessionId: null });
-    expect(await recordRegistrationPayment(db, p.id, 5000)).toMatchObject({ paidCents: 5000, status: "awaiting_prepayment" });
-  });
-
-  test("the form: euros as typed; a wrong amount or id changes nothing", async () => {
-    const r = await register();
-    expect(await savePayment(db, form({ id: String(r.id), paid: "175,00" }))).toEqual({ ok: true });
-    expect((await getRegistration(db, r.id))?.status).toBe("confirmed");
-    expect(await savePayment(db, form({ id: String(r.id), paid: "palju" }))).toEqual({ ok: false, error: "amount" });
-    expect(await savePayment(db, form({ id: String(r.id), paid: "-5" }))).toEqual({ ok: false, error: "amount" });
-    expect(await savePayment(db, form({ id: "x", paid: "10" }))).toEqual({ ok: false, error: "invalid" });
-    expect(await savePayment(db, form({ paid: "10" }))).toEqual({ ok: false, error: "invalid" });
-    expect(await savePayment(db, form({ id: "9999", paid: "10" }))).toEqual({ ok: false, error: "notFound" });
-    expect((await getRegistration(db, r.id))?.paidCents).toBe(17500);
-  });
-});
+// (the typed „Laekunud summa“ — recordRegistrationPayment, savePayment — is gone, admin UX pass B4: money is added with „Lisa laekumine“,
+// tests/db/registration-money.test.ts)
 
 describe("saveStatus / cancel", () => {
   test("Maria sets any status by hand with a note; the note is trimmed and limited", async () => {
@@ -109,9 +74,9 @@ describe("saveStatus / cancel", () => {
     expect(await saveStatus(db, form({ id: String(r.id), status: "confirmed", note: "uus" }))).toEqual({ ok: false, error: "invalid" });
     // with the status it shows now, the change goes through
     expect(await saveStatus(db, form({ id: String(r.id), status: "confirmed", note: "uus", expected: "cancelled" }))).toEqual({ ok: true });
-    // a payment confirms it meanwhile: a form that still shows "awaiting" is refused
+    // a payment confirms it meanwhile („Lisa laekumine“ in another tab): a form that still shows "awaiting" is refused
     const p = await register();
-    await recordRegistrationPayment(db, p.id, 17500);
+    expect(await addManualPayment(db, { registrationId: p.id, cents: 17500, paidOn: "2026-10-21", method: "bank", receipt: false, expectedPaidCents: 0 }, NOW)).toMatchObject({ ok: true, status: "confirmed" });
     expect(await saveStatus(db, form({ id: String(p.id), status: "awaiting_prepayment", note: "", expected: "awaiting_prepayment" }))).toEqual({
       ok: false,
       error: "stale",

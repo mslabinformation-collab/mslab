@@ -1,8 +1,7 @@
 import { z } from "zod";
 import type { Db } from "@/db/client";
 import type { Subscriber } from "@/db/schema";
-import { getRegistration, recordRegistrationPayment, setRegistrationStatus, setRequestHandled } from "@/db/queries/admin";
-import { parseEuroCents } from "@/domain/money";
+import { getRegistration, setRegistrationStatus, setRequestHandled } from "@/db/queries/admin";
 import { NOTE_MAX } from "@/domain/registration";
 import { adminEt } from "@/i18n/dict/admin";
 import { formatStamp } from "@/i18n/format";
@@ -10,13 +9,14 @@ import { toCsv } from "./csv";
 
 // The admin inbox's form handling (registrations, requests) and the subscriber export. Callers have already checked
 // the admin session (server/actions/admin.ts wraps each in adminAction, the CSV route is wrapped in withAdmin); these
-// take a Db and run without Next.js (tests/db/admin.test.ts).
+// take a Db and run without Next.js (tests/db/admin.test.ts). Money on a registration is „Lisa laekumine“'s alone
+// (server/registration-money.ts, admin UX pass B4): the typed „Laekunud summa“ form is gone.
 
 /**
- * What an admin form gets back. `error`: invalid (bad id / status), notFound, amount (not a euro amount), note (too
- * long), stale (the status changed since the form was loaded: nothing saved, the page shows the current one).
+ * What an admin form gets back. `error`: invalid (bad id / status), notFound, note (too long), stale (the status changed
+ * since the form was loaded: nothing saved, the page shows the current one).
  */
-export type AdminResult = { ok: true } | { ok: false; error: "invalid" | "notFound" | "amount" | "note" | "stale" | "server" };
+export type AdminResult = { ok: true } | { ok: false; error: "invalid" | "notFound" | "note" | "stale" | "server" };
 
 const OK: AdminResult = { ok: true };
 const fail = (error: Exclude<AdminResult, { ok: true }>["error"]): AdminResult => ({ ok: false, error });
@@ -28,15 +28,6 @@ const field = (formData: FormData, name: string) => {
   const v = formData.get(name);
   return typeof v === "string" ? v : null;
 };
-
-/** Fields: id, paid (euros as typed: "175", "175,50"). Stores the amount and recomputes the status from it. */
-export async function savePayment(db: Db, formData: FormData): Promise<AdminResult> {
-  const reg = id.safeParse(field(formData, "id"));
-  if (!reg.success) return fail("invalid");
-  const cents = parseEuroCents(field(formData, "paid") ?? "");
-  if (cents === null) return fail("amount");
-  return (await recordRegistrationPayment(db, reg.data, cents)) ? OK : fail("notFound");
-}
 
 /**
  * Fields: id, status (awaiting_prepayment | confirmed | cancelled), note (at most NOTE_MAX characters), expected (the

@@ -12,6 +12,7 @@ import * as schema from "@/db/schema";
 import { clients, courses, invoices, payments, registrations, type Invoice, type Payment, type Registration } from "@/db/schema";
 import { tallinnDateText } from "@/domain/certificate";
 import { renderInvoice } from "@/server/invoice-pdf";
+import { addManualPayment } from "@/server/registration-money";
 import {
   cancelInvoice, catchUpInvoice, createInvoice, getInvoiceSettings, invoiceCard, invoiceForAdmin, invoiceForPaidPayment, invoiceForStudent, invoicePdf,
   invoicesCsv, invoicesOfClient, invoicesOfRegistration, listInvoices, markInvoicePaid, markLinkedInvoicePaid, saveInvoiceSettings, uninvoicedPayments,
@@ -465,30 +466,63 @@ describe("undoInvoicePaid: „Võta tasumine tagasi“ (D6)", () => {
     expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
   });
 
-  test("R10: a receipt never asked for money, so its undo cancels it — its number kept, Laekunud summa unchanged, gone from her reads, never marked paid again (no money counted twice)", async () => {
+  test("spec §9 (replaces R10): an old receipt (paid_adds false) is cancelled — its number kept, gone from her reads, never marked paid again — and its amount comes off Laekunud summa, the place with it", async () => {
     const c = await contactCourse(db);
-    const [kati] = await db.insert(clients).values({ email: "kati@example.com", name: "Kati Tamm" }).returning();
-    const r = await registrationOn(db, c, { paidCents: 17500, status: "confirmed", clientId: kati.id });
+    const [kati] = await db.insert(clients).values({ email: "kati@example.test", name: "Kati Tamm" }).returning();
+    const r = await registrationOn(db, c, { email: "kati@example.test", paidCents: 17500, status: "confirmed", clientId: kati.id });
     await ready();
     const receipt = await createInvoice(db, r.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "bank" }, NOW);
     if (!receipt.ok) throw new Error(receipt.error);
+    expect(receipt.invoice.paidAdds).toBe(false);
     expect(await invoicesOfClient(db, kati.id)).toHaveLength(1);
     const later = new Date(NOW.getTime() + 60_000);
     expect(await undoInvoicePaid(db, receipt.invoice.id, later)).toEqual({
       ok: true,
       invoice: expect.objectContaining({ id: receipt.invoice.id, number: "MSL2026-001", status: "cancelled", cancelledAt: later, paidAt: null, paidMethod: null, paidAdds: false }),
     });
-    expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
+    // the design undoes a wrong entry through its receipt: the money goes, and below 50 % the registration waits again
+    expect(await registration(r.id)).toMatchObject({ paidCents: 0, status: "awaiting_prepayment" });
     expect(await invoiceForStudent(db, kati.id, receipt.invoice.id)).toBeNull();
     expect(await invoicesOfClient(db, kati.id)).toEqual([]);
-    // the wrong tap's way back: no „Märgi tasutuks" on it (that would add the same money again), no second undo
+    // no „Märgi tasutuks" on it (that would add the money back as a request's), no second undo (the amount taken once)
     expect(await markInvoicePaid(db, receipt.invoice.id, { paidAt: PAID_AT, method: "bank" }, NOW)).toEqual({ ok: false, error: "notUnpaid" });
     expect(await undoInvoicePaid(db, receipt.invoice.id, NOW)).toEqual({ ok: false, error: "notPaid" });
-    expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
-    // the amount is open again: Maria issues the right receipt under a new number
-    const right = await createInvoice(db, r.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW);
-    expect(right).toMatchObject({ ok: true, invoice: { number: "MSL2026-002", status: "paid", paidMethod: "cash" } });
-    expect(await registration(r.id)).toMatchObject({ paidCents: 17500 });
+    expect(await registration(r.id)).toMatchObject({ paidCents: 0, status: "awaiting_prepayment" });
+    // the money is no longer in: the prepayment may be asked for again
+    expect(await request(r)).toMatchObject({ number: "MSL2026-002", status: "unpaid", amountCents: 17500 });
+  });
+
+  test("spec §9: a receipt „Lisa laekumine“ made (paid_adds) is cancelled and lowers Laekunud summa by exactly its amount; the status follows (back to „Ootab ettemaksu“ below 50 %)", async () => {
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c);
+    await ready();
+    const press = (cents: number, receipt: boolean, expectedPaidCents: number) =>
+      addManualPayment(db, { registrationId: r.id, cents, paidOn: "2026-10-16", method: "bank", receipt, expectedPaidCents }, NOW);
+    expect(await press(10000, false, 0)).toMatchObject({ ok: true, receiptNumber: null });
+    expect(await press(7500, true, 10000)).toMatchObject({ ok: true, paidCents: 17500, status: "confirmed", receiptNumber: "MSL2026-001" });
+    const [receipt] = await allInvoices();
+    expect(receipt).toMatchObject({ status: "paid", amountCents: 7500, paidAdds: true, dueAt: null });
+    expect(await undoInvoicePaid(db, receipt.id, NOW)).toEqual({ ok: true, invoice: expect.objectContaining({ id: receipt.id, number: "MSL2026-001", status: "cancelled", cancelledAt: NOW, paidAdds: false }) });
+    expect(await registration(r.id)).toMatchObject({ paidCents: 10000, status: "awaiting_prepayment" });
+    expect(await undoInvoicePaid(db, receipt.id, NOW)).toEqual({ ok: false, error: "notPaid" });
+    expect(await registration(r.id)).toMatchObject({ paidCents: 10000 });
+  });
+
+  test("spec §9: a receipt's undo never takes Laekunud summa below 0, and a receipt whose registration is gone is only cancelled", async () => {
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c, { paidCents: 17500, status: "confirmed" });
+    await ready();
+    const receipt = await createInvoice(db, r.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "bank" }, NOW);
+    if (!receipt.ok) throw new Error(receipt.error);
+    await db.update(registrations).set({ paidCents: 5000 }).where(eq(registrations.id, r.id));
+    expect((await undoInvoicePaid(db, receipt.invoice.id, NOW)).ok).toBe(true);
+    expect(await registration(r.id)).toMatchObject({ paidCents: 0, status: "awaiting_prepayment" });
+    const other = await registrationOn(db, c, { email: "gone@example.test", paidCents: 17500, status: "confirmed" });
+    const orphan = await createInvoice(db, other.id, { kind: "prepayment", mode: "receipt", paidAt: PAID_AT, method: "cash" }, NOW);
+    if (!orphan.ok) throw new Error(orphan.error);
+    await db.delete(registrations).where(eq(registrations.id, other.id));
+    expect(await undoInvoicePaid(db, orphan.invoice.id, NOW)).toEqual({ ok: true, invoice: expect.objectContaining({ status: "cancelled", registrationId: null }) });
+    expect(await registration(r.id)).toMatchObject({ paidCents: 0 });
   });
 
   test("a Montonio invoice is notManual: the site never changes it", async () => {
@@ -885,7 +919,7 @@ describe("Review Focus 1: the order of the locks (Global Constraints): the regis
     expect(log.some((e) => /pg_advisory/.test(e.query))).toBe(false);
   });
 
-  test("markInvoicePaid, undoInvoicePaid, cancelInvoice: the session and the registration, then the invoice FOR UPDATE, and only then the paid sum and the invoice written; no number lock", async () => {
+  test("markInvoicePaid, undoInvoicePaid (a request and a receipt), cancelInvoice: the session and the registration, then the invoice FOR UPDATE, and only then the paid sum and the invoice written; no number lock", async () => {
     const log = await useLoggedDb();
     const c = await contactCourse(db);
     const r = await registrationOn(db, c);
@@ -906,6 +940,14 @@ describe("Review Focus 1: the order of the locks (Global Constraints): the regis
       else expect(p.paidSumWrite, name).toBe(-1);
       expect(p.numberLock, name).toBe(-1);
     }
+    // a receipt's undo (spec §9) takes its amount back in the same order
+    const made = await addManualPayment(db, { registrationId: r.id, cents: 17500, paidOn: "2026-10-16", method: "cash", receipt: true, expectedPaidCents: 0 }, NOW);
+    const receipt = (await allInvoices()).find((i) => made.ok && i.number === made.receiptNumber)!;
+    log.length = 0;
+    expect((await undoInvoicePaid(db, receipt.id, NOW)).ok).toBe(true);
+    const p = at(log);
+    expect(p.sessionLock).toBeGreaterThanOrEqual(0);
+    expect([p.sessionLock < p.registrationLock, p.registrationLock < p.invoiceLock, p.invoiceLock < p.paidSumWrite, p.paidSumWrite < p.invoiceWrite, p.numberLock]).toEqual([true, true, true, true, -1]);
   });
 
   test("an e-course's catch-up: no registration to lock — the payment FOR UPDATE, the number lock, the setting", async () => {
