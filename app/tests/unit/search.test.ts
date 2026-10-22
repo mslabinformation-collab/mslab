@@ -36,11 +36,20 @@ describe("phoneQuery", () => {
     expect(phoneQuery("5123 4567")).toBe(phoneQuery("+372 5123 4567"));
   });
 
-  it("keeps the 372 when 7 digits or fewer follow it (a number typed so far, or one that merely begins with 372)", () => {
+  it("a 7-digit landline typed with +372 finds the number stored without it (7 digits after the 372 are enough)", () => {
+    expect(phoneQuery("+372 612 3456")).toBe("%6123456%");
+    expect(phoneQuery("+3726123456")).toBe("%6123456%");
+    expect(phoneQuery("372 612-3456")).toBe("%6123456%");
+    expect(phoneQuery("612 3456")).toBe(phoneQuery("+372 612 3456"));
+    // and an 8-digit mobile number, as before
+    expect(phoneQuery("+372 5123 456")).toBe("%5123456%");
+  });
+
+  it("keeps the 372 when 6 digits or fewer follow it (a number typed so far, or one that merely begins with 372)", () => {
     expect(phoneQuery("+372")).toBe("%372%");
     expect(phoneQuery("+372 51")).toBe("%37251%");
-    expect(phoneQuery("+372 5123 45")).toBe("%372512345%");
-    expect(phoneQuery("372 5123 456")).toBe("%3725123456%"); // 7 digits after the 372: not more than 7
+    expect(phoneQuery("+372 5123 45")).toBe("%372512345%"); // 6 digits after the 372
+    expect(phoneQuery("372 612 345")).toBe("%372612345%");
     expect(phoneQuery("37251234")).toBe("%37251234%");
   });
 

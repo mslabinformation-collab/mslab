@@ -18,20 +18,20 @@ export function digitsOf(q: string): string {
 
 /** Estonia's country code, which a number is written with („+372 5123 4567“) or without („5123 4567“). */
 const COUNTRY_CODE = "372";
-/** A national number after the country code has to be longer than this for the code to be taken as one (shorter, it is just digits typed so far). */
+/** An Estonian national number has 7 (a landline) or 8 digits; with fewer after the country code, the 372 is just digits typed so far. */
 const NATIONAL_MIN_DIGITS = 7;
 
 /**
  * The LIKE pattern that finds `q` among the digits of a phone column: `%<digits>%` when `q` holds at least PHONE_MIN_DIGITS digits, else null (a
  * name like "Kati 5" is not a phone). Digits hold nothing LIKE treats as a wildcard, so there is nothing to escape.
  *
- * A number typed with the country code, when more than NATIONAL_MIN_DIGITS digits follow the 372, is searched by the digits after it: „+372 5123
- * 4567“ finds a number stored „5123 4567“ as well as „+37251234567“ (a stored „+372 …“ holds the national digits, so it is found too). Fewer digits
- * after the 372 are kept whole: „372 51“ is a number typed so far, not a country code.
+ * A number typed with the country code, when at least NATIONAL_MIN_DIGITS digits follow the 372, is searched by the digits after it: „+372 5123
+ * 4567“ finds a number stored „5123 4567“ as well as „+37251234567“ (a stored „+372 …“ holds the national digits, so it is found too), and
+ * „+372 612 3456“ a landline stored „612 3456“. Fewer digits after the 372 are kept whole: „372 51“ is a number typed so far, not a country code.
  */
 export function phoneQuery(q: string): string | null {
   const digits = digitsOf(q);
   if (digits.length < PHONE_MIN_DIGITS) return null;
-  const national = digits.startsWith(COUNTRY_CODE) && digits.length - COUNTRY_CODE.length > NATIONAL_MIN_DIGITS ? digits.slice(COUNTRY_CODE.length) : digits;
+  const national = digits.startsWith(COUNTRY_CODE) && digits.length - COUNTRY_CODE.length >= NATIONAL_MIN_DIGITS ? digits.slice(COUNTRY_CODE.length) : digits;
   return `%${national}%`;
 }

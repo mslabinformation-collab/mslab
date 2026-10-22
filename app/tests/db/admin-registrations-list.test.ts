@@ -52,7 +52,7 @@ beforeAll(async () => {
   await add({ name: "Back\\slash Saar", email: "saar@example.test", phone: "5000 0006", courseSessionId: sessionB.id, status: "confirmed", createdAt: new Date("2026-10-14T08:00:00Z") });
   // the other contact course
   await add({ name: "Lea Lash", email: "lea@example.test", phone: "+372 5000 0007", courseId: lash.id, courseSessionId: sessionC.id, status: "confirmed", createdAt: new Date("2026-10-13T08:00:00Z") });
-  await add({ name: "Kristel Kask", email: "kristel@example.test", phone: "+372 5000 0008", courseId: lash.id, courseSessionId: sessionC.id, status: "cancelled", createdAt: new Date("2026-10-12T08:00:00Z") });
+  await add({ name: "Kristel Kask", email: "kristel@example.test", phone: "612 3456", courseId: lash.id, courseSessionId: sessionC.id, status: "cancelled", createdAt: new Date("2026-10-12T08:00:00Z") });
   // e-learning: no session
   await add({ name: "Eda Ekursus", email: "eda@example.test", phone: "+372 5000 0009", courseId: online.id, courseSessionId: null, kind: "individual", status: "confirmed", createdAt: new Date("2026-10-11T08:00:00Z") });
   await add({ name: "Ene Ekursus", email: "ene@example.test", phone: "+372 5000 0010", courseId: online.id, courseSessionId: null, kind: "individual", status: "awaiting_prepayment", createdAt: new Date("2026-10-10T08:00:00Z") });
@@ -101,8 +101,17 @@ describe("search (?otsi=): name, e-mail and phone", () => {
     expect(await names({ search: "5123 4567" })).toEqual(["Kati Kask"]);
     expect(await names({ search: "+372 5123 4567" })).toEqual(["Kati Kask"]);
     // a 372 with 7 digits or fewer after it is digits typed so far: it finds the numbers stored with the code
-    expect((await names({ search: "+372 5000" })).length).toBeGreaterThan(5);
+    expect((await names({ search: "+372 5000" })).length).toBeGreaterThanOrEqual(4);
     expect(await names({ search: "+372 6000" })).toEqual([]);
+  });
+
+  test("a 7-digit landline typed with +372 finds the number stored without it", async () => {
+    // Kristel's number is stored „612 3456“ (no +372, 7 digits)
+    expect(await names({ search: "+372 612 3456" })).toEqual(["Kristel Kask"]);
+    expect(await names({ search: "+3726123456" })).toEqual(["Kristel Kask"]);
+    expect(await names({ search: "612 3456" })).toEqual(["Kristel Kask"]);
+    // 6 digits after the 372 are a number typed so far: whole, so nobody stored without the code is found by it
+    expect(await names({ search: "+372 612 345" })).toEqual([]);
   });
 
   test("a phone is searched from 3 digits; fewer digits are no phone (a name like „Kati 5“ stays a name)", async () => {
