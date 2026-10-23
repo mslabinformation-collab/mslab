@@ -46,7 +46,7 @@
     {
       "id": "koristamine",
       "name": "Koristamine",
-      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Pane Seaded → „Järelmaks (Inbank)“ välja, kuni Montonio on Maria ettevõttele päriselt aktiveeritud, ja pane järelmaksu proovi jaoks muudetud koolituste hinnad tagasi. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Nii kustutab ta ka proovi-lepingud: needki jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
+      "note": "Kui testimine on lõppenud, korista proovi-andmed ära. Tühista halduses iga proovi-registreering nupuga „Tühista registreerimine“ ja kinnita „Jah, tühista“. Lõpeta iga proovi-ligipääs nupuga „Lõpeta ligipääs“. Seejärel logi iga proovikontoga sisse ja vajuta „Minu andmed“ all „Kustuta konto“: nii kaovad ka praktilise töö fotod ja proovitunnistused. Proovitunnistus võttis numbri Maria päris reast. Kui proovikontod on kustutatud, pane Seaded → Tunnistus → „Järgmine number“ tagasi numbrile, mis järgneb Maria viimasele paberil tunnistusele: enne seda leht numbrit tagasi ei luba. Pane Seaded → „Järelmaks (Inbank)“ välja, kuni Montonio on Maria ettevõttele päriselt aktiveeritud, ja pane järelmaksu proovi jaoks muudetud koolituste hinnad tagasi. Kirjuta allpool olevasse kontrolli kõik proovis kasutatud aadressid: Dim kustutab need enne avamist täpse aadressi järgi, mitte mustri järgi. Samade aadresside järgi kustutab ta ka proovi-arved: need jäävad kontode kustutamisel alles. Nii kustutab ta ka proovi-lepingud: needki jäävad kontode kustutamisel alles. Kui proovi-registreeringu aadressi muudeti pärast arve koostamist, kirjuta märkusesse ka registreeringu number: selle arved leiab Dim numbri järgi. Seejärel paneb Maria Seaded → „Arve andmed“ → „Järgmine number“ oma esimese päris arve numbrile: enne seda leht numbrit tagasi ei luba."
     }
   ],
   "items": [
@@ -1990,7 +1990,7 @@
         "Kirjuta selle kontrolli märkusesse, mida Montonio leht pakub: pangad, kaart ja nupud.",
         "Tee makse testpangas lõpuni ja kirjuta märkusesse iga samm.",
         "Kirjuta sama ka docs/deploy.md jaotise 11 punkti 6.",
-        "Halduses ava „Registreerimised“, vali Proov 0 ja vajuta „Tühista registreerimine“."
+        "Halduses ava „Registreerimised“, vali Proov 0, vajuta „Tühista registreerimine“ ja „Jah, tühista“."
       ],
       "expect": [
         "„Registreeru“ avab Montonio makselehe koolituse hinna suuruse summaga.",
@@ -2834,10 +2834,15 @@
       "href": "/admin/registreerimised",
       "steps": [
         "Ava „Registreerimised“ ja vajuta nimele Proov 2.",
-        "Vajuta „Tühista registreerimine“.",
+        "Vajuta „Tühista registreerimine“ ja loe küsimus läbi.",
+        "Vajuta „Katkesta“, siis uuesti „Tühista registreerimine“ ja „Jah, tühista“.",
         "Ava halduses „Kalender“ ja Proov 2 kuupäeva rida."
       ],
       "expect": [
+        "Küsimus on „Kas tühistan registreerimise: Proov 2?“ ja nupud on „Jah, tühista“ ja „Katkesta“.",
+        "Küsimuse all on read „Koht … koolitusel vabaneb kohe avalikus kalendris.“ ja „Õpilasele kirja ei saadeta.“.",
+        "Raha või arvete korral on ka rida „Laekunud … € ja arved jäävad alles.“.",
+        "„Katkesta“ ei tühista midagi ja fookus läheb tagasi nupule „Tühista registreerimine“.",
         "Paneelis näed „Registreerimine on tühistatud.“.",
         "Loendis on Proov 2 staatus „Tühistatud“.",
         "Kalendris on kinnitatuid ühe võrra vähem ja vaba koht on tagasi."
@@ -2846,7 +2851,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-jarelmaks-kinnitatud",
@@ -2863,7 +2868,7 @@
         "Inbanki lehel kirjuta isikukood 10101010005 ja SMS-kood 0000 ning kinnita taotlus; kirjuta märkusesse iga samm.",
         "Kirjuta märkusesse ka, kas nimi, e-post ja telefon olid Inbanki vormis juba täidetud.",
         "Ava halduses „Registreerimised“ ja Proov 9; laadi alla plokkide „Arved“ ja voldirea „Leping“ PDF-id.",
-        "Vajuta „Tühista registreerimine“."
+        "Vajuta „Tühista registreerimine“ ja „Jah, tühista“."
       ],
       "expect": [
         "Vormis on kolmas valik „Järelmaks (Inbank)“ ja „Registreeru“ avab Inbanki taotluse koolituse täishinnaga.",
@@ -2896,7 +2901,7 @@
         "Vajuta „Proovi uuesti“, katkesta Inbanki leht ja mine jälle tagasi.",
         "Vajuta „Maksa pangalingiga“ ja tee makse testpangas lõpuni, nagu kontrolli „Montonio testpank: esimene makse“ märkus ütleb.",
         "Vaata halduses lehel „Maksed ja arved“ Proov 10 ridu ning registreeringu paneeli.",
-        "Tühista halduses Proov 10 registreering."
+        "Tühista halduses Proov 10 registreering ja kinnita „Jah, tühista“."
       ],
       "expect": [
         "Pärast Inbanki keeldumist on lehel „Järelmaksu taotlus on pooleli või jäi lõpetamata. Kui Inbank selle kinnitab, saadame sulle kinnituse.“.",
@@ -2929,7 +2934,7 @@
         "Lülita halduses Seaded → „Järelmaks (Inbank)“ välja ja salvesta.",
         "Vajuta lahtisel „Koolituse eest tasumine“ lehel „Maksa järelmaksuga (Inbank)“.",
         "Ava kirja link uuesti.",
-        "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse, ava kirja link veel kord ja tühista halduses Proov 12 registreering."
+        "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse, ava kirja link veel kord ja tühista halduses Proov 12 registreering („Jah, tühista“)."
       ],
       "expect": [
         "Lehel „Koolituse eest tasumine“ on summa ja kaks nuppu: „Maksa järelmaksuga (Inbank)“ ja „Maksa pangalingiga“.",
@@ -2992,7 +2997,7 @@
         "Kinnita Montonio sandboxis Inbanki taotlus nüüd; kui see ei õnnestu, kirjuta märkusesse miks ja vajuta „Jäta vahele“.",
         "Oota mõni minut ja ava halduses „Maksed ja arved“ filter „Ootel kontrollil“.",
         "Vaata Proov 14 registreeringut ja Maria postkasti.",
-        "Tühista halduses Proov 14 registreering."
+        "Tühista halduses Proov 14 registreering ja kinnita „Jah, tühista“."
       ],
       "expect": [
         "Pangamakse järel on Proov 14 staatus „Kinnitatud“ ja „Raha“ näitab kogu hinda laekununa.",
@@ -3054,7 +3059,7 @@
         "Ava halduses „Maksed ja arved“, vajuta filtril „Kõik“ ja vaata Proov 15 ridu.",
         "Vajuta filtritel „Pooleli“ ja „Ootel kontrollil“ ning otsi Proov 15 järelmaksu rida.",
         "Ava Proov 15 registreeringu paneel ja vaata selle makseid.",
-        "Tühista halduses Proov 15 registreering."
+        "Tühista halduses Proov 15 registreering ja kinnita „Jah, tühista“."
       ],
       "expect": [
         "„Kõik“ all on Proov 15 järelmaksu rida staatusega „Asendatud“ ja makseviisiga „Järelmaks (Inbank)“.",
@@ -3324,7 +3329,7 @@
       "title": "Tühistatud registreeringu arve",
       "href": "/konto",
       "steps": [
-        "Halduses ava Proov 7 registreering ja vajuta „Tühista registreerimine“.",
+        "Halduses ava Proov 7 registreering, vajuta „Tühista registreerimine“ ja „Jah, tühista“.",
         "Logi sisse kui Proov 7 ja ava „Minu koolitused“.",
         "Vaata Proov 7 kaarti ja selle tasumata arve rida."
       ],

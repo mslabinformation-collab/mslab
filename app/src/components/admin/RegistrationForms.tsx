@@ -1,12 +1,15 @@
 "use client";
 
-import { createContext, startTransition, useActionState, useContext, useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { createContext, startTransition, useActionState, useContext, useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
+import { formatEUR } from "@/domain/money";
 import { NOTE_MAX, type RegStatus } from "@/domain/registration";
 import { adminEt } from "@/i18n/dict/admin";
+import { fill } from "@/i18n/format";
 import type { AdminResult } from "@/server/admin";
 import { cancelRegistration, saveRegistrationStatus } from "@/server/actions/admin";
 import { patchSender } from "./autosave/engine";
 import { useAutosave } from "./autosave/useAutosave";
+import { ConfirmPanel } from "./ConfirmPanel";
 import { PillChoice } from "./PillChoice";
 import { SaveStatus } from "./SaveStatus";
 import ui from "./ui.module.css";
@@ -19,7 +22,7 @@ import styles from "./RegistrationForms.module.css";
 //   autosave (useAutosave → POST /api/admin/registreering/<id>/markus, server/registration-note.ts). The note's engine lives in RegistrationNote,
 //   around the whole drawer, so its SaveStatus can sit in the drawer's header (NoteSaveStatus) and its field in the section (README §1.4); it is a
 //   leave-guard source („Märkus“, P-12): ✕, Back and a menu click ask while the note is not saved.
-// - „Tühista registreerimine“ (RegistrationCancel; its ConfirmPanel is Task 6's).
+// - „Tühista registreerimine“ (RegistrationCancel, B10: it asks with a ConfirmPanel first).
 
 type Note = ReturnType<typeof useAutosave>;
 const NoteContext = createContext<Note | null>(null);
@@ -162,36 +165,79 @@ function NoteField() {
 }
 
 /**
- * „Tühista registreerimine“ (README A2 drawer 6: its ConfirmPanel is Task 6's). Submitted through startTransition, so React does not reset the form
- * after an error. Once cancelled the button gives way to „Registreerimine on tühistatud.“, which takes the focus.
+ * „Tühista registreerimine“ (README A2 drawer 6, B10; piece2-texts S3-g): the danger button asks first, with a ConfirmPanel in its place — the question
+ * „Kas tühistan registreerimise: {name}?“ (a surname's case is not guessed), the lines each only when true — the seat that is free in the public
+ * calendar at once (`seat`: the session's „12.12 Tallinn“, null when there is no session or the registration holds no seat now), the money and the
+ * invoices that stay (`paidCents`, `hasInvoices`: „Laekunud {x} € ja arved jäävad alles.“, „Laekunud {x} € jääb alles.“, „Arved jäävad alles.“, none
+ * when there is neither) and always that no mail goes —, „Jah, tühista“ and „Katkesta“. „Katkesta“ and Esc close the question and the focus goes back to
+ * the button; the drawer round it stays open. The action is called through startTransition. Once cancelled the button gives way to „Registreerimine on
+ * tühistatud.“, which takes the focus.
  */
-export function RegistrationCancel({ id, status }: { id: number; status: RegStatus }) {
+export function RegistrationCancel({
+  id,
+  name,
+  status,
+  seat,
+  paidCents,
+  hasInvoices,
+}: {
+  id: number;
+  /** The student's name, as written. */
+  name: string;
+  status: RegStatus;
+  seat: string | null;
+  paidCents: number;
+  /** The registration has invoices of any state (they all stay). */
+  hasInvoices: boolean;
+}) {
   const t = adminEt.registrations.drawer;
+  const c = t.cancelPanel;
   const [state, action, pending] = useActionState<AdminResult | null, FormData>(cancelRegistration, null);
+  const [asking, setAsking] = useState(false);
+  /** A new object each time the question is closed: the focus goes back to the button (a plain flag could not say "again"). */
+  const [back, setBack] = useState<object | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const cancelledNote = useRef<HTMLParagraphElement>(null);
+  // the action went through: the page is refreshed with the cancelled registration, and the line that says so is shown at once
+  const cancelled = status === "cancelled" || state?.ok === true;
 
-  // aria-disabled, not disabled, while saving: a disabled button would drop the keyboard focus.
-  const submit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (back) button.current?.focus();
+  }, [back]);
+  useEffect(() => {
+    if (state?.ok) cancelledNote.current?.focus();
+  }, [state]);
+
+  const close = () => {
+    setAsking(false);
+    setBack({});
+  };
+  const yes = () => {
     if (pending) return;
-    const fd = new FormData(e.currentTarget);
+    const fd = new FormData();
+    fd.set("id", String(id));
     startTransition(() => action(fd));
   };
 
-  const cancelledNote = useRef<HTMLParagraphElement>(null);
-  useEffect(() => {
-    if (state?.ok && status === "cancelled") cancelledNote.current?.focus();
-  }, [state, status]);
+  // S3-g: each line only when true; the amount as the Raha card writes it (no euro sign inside)
+  const money = paidCents > 0 ? formatEUR(paidCents, "et").replace(/ €$/, "") : null;
+  const lines = [
+    ...(seat ? [fill(c.seat, { place: seat })] : []),
+    ...(money !== null ? [fill(hasInvoices ? c.moneyAndInvoices : c.moneyOnly, { x: money })] : hasInvoices ? [c.invoicesOnly] : []),
+    c.noMail,
+  ];
 
   return (
-    <form className={styles.form} onSubmit={submit} data-cancel-form="">
-      <input type="hidden" name="id" value={id} />
-      {status === "cancelled" ? (
+    <div className={styles.form} data-cancel-form="">
+      {cancelled ? (
         <p ref={cancelledNote} tabIndex={-1} className={ui.muted} data-cancelled="">
           {t.cancelled}
         </p>
+      ) : asking ? (
+        <ConfirmPanel question={fill(c.question, { name })} lines={lines} yesLabel={pending ? adminEt.common.saving : c.yes} tone="danger" busy={pending} onYes={yes} onCancel={close} />
       ) : (
-        <button type="submit" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} aria-disabled={pending || undefined}>
-          {pending ? adminEt.common.saving : t.cancel}
+        <button ref={button} type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => setAsking(true)}>
+          {t.cancel}
         </button>
       )}
       {state && !state.ok && (
@@ -199,6 +245,6 @@ export function RegistrationCancel({ id, status }: { id: number; status: RegStat
           {adminEt.common.saveError}
         </p>
       )}
-    </form>
+    </div>
   );
 }

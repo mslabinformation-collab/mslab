@@ -35,6 +35,7 @@ import { coveringInvoices, openAmounts, receiptTakeBack, sellerReady, uninvoiced
 import { formatEUR } from "@/domain/money";
 import { parsePage, parseSearch } from "@/domain/paging";
 import { registrationPrice, type RegStatus } from "@/domain/registration";
+import { holdsSeat } from "@/domain/sessions";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
 import { fill, formatDate, formatDayMonth, formatTime } from "@/i18n/format";
@@ -296,6 +297,7 @@ export default async function RegistrationsPage({ searchParams }: Props) {
               invoices={invoiceList}
               contracts={contractList.map(contractView)}
               sellerReady={invoiceSeller !== null && sellerReady(invoiceSeller)}
+              takesSeat={holdsSeat(open, now)}
               today={tallinnFormParts(now).date}
             />
           ) : (
@@ -342,6 +344,7 @@ function RegistrationDetail({
   invoices,
   contracts,
   sellerReady: seller,
+  takesSeat,
   today,
 }: {
   r: RegistrationRow;
@@ -352,6 +355,8 @@ function RegistrationDetail({
   invoices: AdminInvoice[];
   contracts: ContractView[];
   sellerReady: boolean;
+  /** The registration holds a seat of its session now (confirmed, or awaiting with a live hold: domain/sessions.ts holdsSeat): cancelling frees it at once. */
+  takesSeat: boolean;
   today: string;
 }) {
   const t = adminEt.registrations.drawer;
@@ -485,7 +490,14 @@ function RegistrationDetail({
           </div>
         </div>
 
-        <RegistrationCancel id={r.id} status={r.status} />
+        <RegistrationCancel
+          id={r.id}
+          name={r.name}
+          status={r.status}
+          seat={r.courseSession && takesSeat ? `${formatDayMonth(r.courseSession.startsAt, "et")} ${r.courseSession.city}` : null}
+          paidCents={r.paidCents}
+          hasInvoices={invoices.length > 0}
+        />
       </div>
     </RegistrationNote>
   );

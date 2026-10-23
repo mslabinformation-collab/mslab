@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
 import { adminReady, editLang, signInAsAdmin } from "./admin-login";
-import { expectFits, today } from "./invoices";
+import { formatDayMonth } from "../../src/i18n/format";
+import { expectFits, openRow, today } from "./invoices";
 import { PROD_ENV } from "./prod-build";
 import { DEV_ENV } from "./server";
 import { PROD_BUILD } from "./target";
@@ -472,6 +473,7 @@ test.describe("signed in", () => {
     expect((await storedAdminRegistration(f.registration.id)).note).toBe("Maksis kohapeal sularahas");
 
     await drawer.getByRole("button", { name: "Tühista registreerimine" }).click();
+    await drawer.getByRole("button", { name: "Jah, tühista", exact: true }).click(); // (B10: it asks first)
     await expect(drawer.locator("[data-reg-status]")).toHaveText("Tühistatud");
     await expect(drawer.locator("[data-cancelled]")).toBeFocused();
     expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ status: "cancelled", note: "Maksis kohapeal sularahas" });
@@ -485,6 +487,58 @@ test.describe("signed in", () => {
     await drawer.getByRole("button", { name: "Sulge" }).click();
     await expect(drawer).toBeHidden();
     await expect(page.locator(`[data-registration="${f.registration.id}"] [data-reg-status]`)).toHaveText("Tühistatud");
+  });
+
+  test("registrations: „Tühista registreerimine“ asks first (B10): the question with her name, the lines that are true, „Katkesta“ and Esc leave it, „Jah, tühista“ cancels and frees the seat", async ({ page, context, visitorIp }, info) => {
+    const f = await fixtures(info.project.name);
+    // a confirmed place with 175 € received: the seat line and the money line are both true (no invoice: the money line says so)
+    await onLocalDb((sql) => sql`update registrations set status = 'confirmed', paid_cents = 17500 where id = ${f.registration.id}`, { marksPages: false });
+    const [{ startsAt }] = await onLocalDb((sql) => sql<{ startsAt: Date }[]>`select starts_at as "startsAt" from course_sessions where id = ${f.session.id}`, { marksPages: false });
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/registreerimised?id=${f.registration.id}`);
+    const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
+    await expect(drawer).toBeVisible();
+    await adminReady(page);
+    const button = drawer.getByRole("button", { name: "Tühista registreerimine" });
+    const ask = drawer.locator("[data-confirm-panel]");
+    const seats = async () => (await onLocalDb((sql) => sql<{ n: number }[]>`select count(*)::int as n from registrations where course_session_id = ${f.session.id} and status = 'confirmed'`, { marksPages: false }))[0].n;
+    expect(await seats()).toBe(1);
+
+    // the button asks: the panel takes its place and the focus, and nothing is cancelled yet
+    await button.click();
+    await expect(button).toHaveCount(0);
+    await expect(ask).toBeFocused();
+    await expect(ask.locator("> p")).toHaveText(`Kas tühistan registreerimise: ${f.registration.name}?`);
+    await expect(ask.locator("li")).toHaveText([
+      `Koht ${formatDayMonth(startsAt, "et")} Pärnu koolitusel vabaneb kohe avalikus kalendris.`,
+      "Laekunud 175 € jääb alles.",
+      "Õpilasele kirja ei saadeta.",
+    ]);
+    await expect(ask.getByRole("button")).toHaveText(["Jah, tühista", "Katkesta"]);
+    expect((await storedAdminRegistration(f.registration.id)).status).toBe("confirmed");
+
+    // „Katkesta“ and Esc: the question goes, the focus is back on the button, the drawer stays, the registration is as it was
+    await ask.getByRole("button", { name: "Katkesta" }).click();
+    await expect(ask).toHaveCount(0);
+    await expect(button).toBeFocused();
+    await button.click();
+    await expect(ask).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(ask).toHaveCount(0);
+    await expect(drawer).toBeVisible();
+    await expect(button).toBeFocused();
+    expect((await storedAdminRegistration(f.registration.id)).status).toBe("confirmed");
+    expect(await seats()).toBe(1);
+
+    // „Jah, tühista“: today's line takes the focus, the registration is cancelled with its money kept, and the seat is free
+    await button.click();
+    await ask.getByRole("button", { name: "Jah, tühista" }).click();
+    await expect(drawer.locator("[data-cancelled]")).toHaveText("Registreerimine on tühistatud.");
+    await expect(drawer.locator("[data-cancelled]")).toBeFocused();
+    await expect(drawer.locator("[data-reg-status]")).toHaveText("Tühistatud");
+    expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ status: "cancelled", paidCents: 17500 });
+    expect(await seats()).toBe(0);
+    expect(await noOverflow(page)).toBe(true);
   });
 
   test("registrations: a status press built on an old status does not overwrite the change made meanwhile", async ({ page, context, visitorIp }, info) => {
@@ -832,7 +886,10 @@ test.describe("signed in", () => {
     await expect(page.getByRole("dialog")).toBeHidden();
     await expect(page).not.toHaveURL(/[?&]id=/); // closed: the address has followed
     await nameLink.click();
-    await targets(page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` }), 2);
+    const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
+    // the header's phone and e-mail, and — in „Registreerimise andmed“, a folded row, opened here — the same two again
+    await openRow(drawer, "Registreerimise andmed");
+    await targets(drawer, 4);
     await page.goto("/admin/paringud?liik=individuaal");
     await targets(page.locator(`[data-request="${f.individual.id}"]`), 2);
     expect(await noOverflow(page)).toBe(true);

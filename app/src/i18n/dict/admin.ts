@@ -383,6 +383,18 @@ export const adminEt = {
       stale: "Staatus muutus vahepeal (näed nüüd kehtivat). Vaata üle ja salvesta uuesti.",
       cancel: "Tühista registreerimine",
       cancelled: "Registreerimine on tühistatud.",
+      // „Tühista registreerimine“ asks with a ConfirmPanel (B10; README A2 drawer 6, piece2-texts S3-g). {name} is the student's as written (a surname's
+      // case is not guessed), {place} the session's day and city ("12.12 Tallinn"), {x} the money received, as euros without the sign; each line shows
+      // only when true, `noMail` always
+      cancelPanel: {
+        question: "Kas tühistan registreerimise: {name}?",
+        seat: "Koht {place} koolitusel vabaneb kohe avalikus kalendris.",
+        moneyAndInvoices: "Laekunud {x} € ja arved jäävad alles.",
+        moneyOnly: "Laekunud {x} € jääb alles.",
+        invoicesOnly: "Arved jäävad alles.",
+        noMail: "Õpilasele kirja ei saadeta.",
+        yes: "Jah, tühista",
+      },
     },
   },
 
