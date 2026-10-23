@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, test } from "vitest";
 import type { Db } from "@/db/client";
-import { clients, courses, lessonFiles, lessonProgress, lessons } from "@/db/schema";
+import { courseUsage, typeLocked } from "@/db/queries/admin";
+import { clients, courseModules, courses, lessonFiles, lessonProgress, lessons } from "@/db/schema";
 import {
   addLessonForm, addModuleForm, courseOfLesson, deleteLessonFileForm, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleForm, renameModuleForm,
   saveLessonForm, setLessonHiddenForm, setLessonKindForm,
@@ -140,6 +141,36 @@ describe("lessons", () => {
     const [f] = await db.insert(lessonFiles).values({ lessonId: w.l1, position: 1, name: "a.pdf", r2Key: "lessons/a.pdf", size: 1, contentType: "application/pdf" }).returning();
     expect(await deleteLessonFileForm(db, form({ id: f.id }))).toEqual({ result: { ok: true, id: f.id, deleted: true }, key: "lessons/a.pdf" });
     expect(await deleteLessonFileForm(db, form({ id: f.id }))).toEqual({ result: { ok: false, error: "notFound" }, key: null });
+  });
+
+  test("piece 3a: the admin reads unpublished modules and lessons with the flag and the encode progress, leaves removed files out, and a removed file still goes with its lesson", async () => {
+    const w = await twoModules();
+    const [um] = await db.insert(courseModules).values({ courseId, position: 3, title: { et: "Uus moodul" }, unpublished: true }).returning();
+    await db.insert(lessons).values({ moduleId: um.id, position: 1, title: { et: "Uus" }, unpublished: true, videoStatus: "processing", videoProgress: 42 });
+    await db.update(lessons).set({ unpublished: true }).where(eq(lessons.id, w.l2));
+    const file = (lessonId: number, position: number, name: string, removedAt: Date | null = null) =>
+      db.insert(lessonFiles).values({ lessonId, position, name, r2Key: `lessons/${name}`, size: 1, contentType: "application/pdf", removedAt }).returning();
+    await file(w.l1, 1, "a.pdf");
+    await file(w.l1, 2, "gone.pdf", new Date("2026-10-23T09:00:00Z"));
+    await file(w.l1, 3, "b.pdf");
+    const mods = await listCourseLessons(db, courseId);
+    expect(mods.map((m) => [m.title.et, m.unpublished, m.lessons.map((l) => [l.title.et, l.unpublished, l.videoProgress])])).toEqual([
+      ["A", false, [["Üks", false, null], ["Kaks", true, null]]],
+      ["B", false, [["Kolm", false, null]]],
+      ["Uus moodul", true, [["Uus", true, 42]]],
+    ]);
+    expect(mods[0].lessons[0].files.map((f) => f.name)).toEqual(["a.pdf", "b.pdf"]); // „Eemalda“ was pressed on gone.pdf: not listed (the UndoBar has it)
+    // the type lock counts every lesson, unpublished ones too
+    expect((await courseUsage(db, courseId))?.lessons).toBe(4);
+    expect(typeLocked(await courseUsage(db, courseId))).toBe(true);
+    // an unpublished module has lessons all the same: it cannot be deleted from under them
+    expect(await deleteModuleForm(db, form({ id: um.id }))).toEqual({ ok: false, error: "inUse" });
+    // deleting the lesson takes its removed file with it, and that file's store key is in the cleanup: nothing is left behind in R2
+    expect(await deleteLessonForm(db, form({ id: w.l1 }))).toEqual({
+      result: { ok: true, id: w.l1, deleted: true },
+      cleanup: { videoIds: [], fileKeys: ["lessons/a.pdf", "lessons/gone.pdf", "lessons/b.pdf"] },
+    });
+    expect(await db.select().from(lessonFiles)).toHaveLength(0);
   });
 
   test("“Õppetunni liik”: a new lesson is a video lesson; to Tekst drops its videos (obsolete for Bunny); back to Video has none", async () => {

@@ -40,12 +40,15 @@ export async function listPublishedCourses(db: Db, only?: { slugs: string[] }): 
   });
 }
 
-/** The module titles of a course (course_modules), in their order: the public course page and the e-course page show them. */
+/**
+ * The module titles of a course (course_modules), in their order: the public course page and the e-course page show them, and count them. A
+ * module made on a published course and not published yet (`unpublished`, piece 3a, R-e) is not among them.
+ */
 export async function listModuleTitles(db: Db, courseId: number): Promise<I18n[]> {
   const rows = await db
     .select({ title: courseModules.title })
     .from(courseModules)
-    .where(eq(courseModules.courseId, courseId))
+    .where(and(eq(courseModules.courseId, courseId), eq(courseModules.unpublished, false)))
     .orderBy(asc(courseModules.position), asc(courseModules.id));
   return rows.map((r) => r.title);
 }

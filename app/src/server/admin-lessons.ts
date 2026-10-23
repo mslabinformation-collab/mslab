@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { courseModules, courses, lessonFiles, lessonProgress, lessons, type LessonKind, type VideoStatus } from "@/db/schema";
 import { dropVideo, moveLesson, type ModuleLayout } from "@/domain/lessons";
@@ -32,7 +32,11 @@ export type AdminLesson = {
   /** "Õppetunni liik": a video lesson (the default) or a text lesson (no video field). */
   kind: LessonKind;
   hidden: boolean;
+  /** Made on a published course and not published yet (piece 3a, R-e): students and the public page do not see it until „Avalda muudatused“. */
+  unpublished: boolean;
   videoStatus: VideoStatus;
+  /** Bunny's encode progress in percent while the video is processing (R-g); null when Bunny gave none. */
+  videoProgress: number | null;
   durationSec: number | null;
   /** A new video is on its way while the old one still plays. */
   replacing: boolean;
@@ -40,12 +44,21 @@ export type AdminLesson = {
   inUse: boolean;
   files: AdminLessonFile[];
 };
-export type AdminModule = { id: number; title: I18n; lessons: AdminLesson[] };
+export type AdminModule = {
+  id: number;
+  title: I18n;
+  /** As AdminLesson.unpublished: a module made on a published course and not published yet. */
+  unpublished: boolean;
+  lessons: AdminLesson[];
+};
 
-/** The course's modules, each with its lessons (hidden ones too) and their files, in order: three small queries. */
+/**
+ * The course's modules, each with its lessons (hidden and unpublished ones too, with the flag) and their files (those removed with „Eemalda“ and
+ * waiting for the UndoBar to run out are not listed), in order: three small queries.
+ */
 export async function listCourseLessons(db: Db, courseId: number): Promise<AdminModule[]> {
   const [mods, rows, files] = await Promise.all([
-    db.select({ id: courseModules.id, title: courseModules.title }).from(courseModules).where(eq(courseModules.courseId, courseId)).orderBy(asc(courseModules.position), asc(courseModules.id)),
+    db.select({ id: courseModules.id, title: courseModules.title, unpublished: courseModules.unpublished }).from(courseModules).where(eq(courseModules.courseId, courseId)).orderBy(asc(courseModules.position), asc(courseModules.id)),
     db
       .select({
         id: lessons.id,
@@ -54,7 +67,9 @@ export async function listCourseLessons(db: Db, courseId: number): Promise<Admin
         body: lessons.body,
         kind: lessons.kind,
         hidden: lessons.hidden,
+        unpublished: lessons.unpublished,
         videoStatus: lessons.videoStatus,
+        videoProgress: lessons.videoProgress,
         durationSec: lessons.durationSec,
         replacedVideoId: lessons.replacedVideoId,
         inUse: sql<boolean>`exists (select 1 from ${lessonProgress} where ${lessonProgress.lessonId} = ${lessons.id} and ${HAS_PROGRESS})`,
@@ -68,12 +83,13 @@ export async function listCourseLessons(db: Db, courseId: number): Promise<Admin
       .from(lessonFiles)
       .innerJoin(lessons, eq(lessonFiles.lessonId, lessons.id))
       .innerJoin(courseModules, eq(lessons.moduleId, courseModules.id))
-      .where(eq(courseModules.courseId, courseId))
+      .where(and(eq(courseModules.courseId, courseId), isNull(lessonFiles.removedAt)))
       .orderBy(asc(lessonFiles.position), asc(lessonFiles.id)),
   ]);
   return mods.map((m) => ({
     id: m.id,
     title: m.title,
+    unpublished: m.unpublished,
     lessons: rows
       .filter((r) => r.moduleId === m.id)
       .map(({ replacedVideoId, ...r }) => ({
@@ -273,6 +289,7 @@ export async function deleteLessonForm(db: Db, fd: FormData): Promise<{ result: 
     if (!row) return { result: { ok: false, error: "notFound" }, cleanup: NOTHING };
     const [{ n }] = await tx.select({ n: count() }).from(lessonProgress).where(and(eq(lessonProgress.lessonId, id), HAS_PROGRESS));
     if (Number(n) > 0) return { result: { ok: false, error: "inUse" }, cleanup: NOTHING };
+    // (every file row, the removed ones too — piece 3a, R-f: they still hold an R2 object until they are purged, and the cascade takes the rows)
     const files = await tx.select({ key: lessonFiles.r2Key }).from(lessonFiles).where(eq(lessonFiles.lessonId, id)).orderBy(asc(lessonFiles.position), asc(lessonFiles.id));
     await tx.delete(lessons).where(eq(lessons.id, id));
     const videoIds = [row.videoId, row.replacedVideoId].filter((v): v is string => v !== null);

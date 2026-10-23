@@ -4,8 +4,10 @@ import { bunnyApi, bunnyConfig, type BunnyConfig } from "@/server/bunny";
 import { sweepClientRows } from "@/server/client-auth";
 import { serverEnv } from "@/server/env";
 import { serverKv, sweepExpired } from "@/server/kv";
+import { purgeRemovedLessonFiles } from "@/server/lesson-file-purge";
 import { sweepStuckVideos, type VideoSweep } from "@/server/lesson-videos";
 import { logFailure } from "@/server/log";
+import { mediaStore } from "@/server/media-store";
 import { checkPendingPayments, NO_PAYMENT_SWEEP, type PaymentSweep } from "@/server/payments/check";
 import { paymentProvider } from "@/server/payments/montonio";
 import { revalidatePublic } from "@/server/public-cache";
@@ -60,9 +62,12 @@ async function sweepPayments(db: Db, now: Date, until: number): Promise<PaymentS
  *   (at most 50 a run, through failPayment: the registration's lock first); holds that ended in the last day revalidate the seats. A
  *   payment that cannot be settled is counted and logged and does not stop the others (only three connection errors in a row stop that
  *   loop), and one Montonio says is paid but that cannot be recorded alerts Maria once ("Makse vajab kontrolli");
+ * - the lesson files an admin removed („Eemalda“ only marks them, so the UndoBar can bring them back): those marked 10 s ago or more
+ *   are deleted, the row first and then the R2 object (server/lesson-file-purge.ts; `files` counts rows). The action that follows a
+ *   removal purges them too, so this is the backstop for the last removal of a session. Never fails the sweep: it logs and counts 0.
  * Vercel sends `Authorization: Bearer <CRON_SECRET>` when the project has the CRON_SECRET variable; anything else, and every
  * request while CRON_SECRET is not set, is a 401.
- * 200 `{ ok: true, deleted, logins, sessions, mailDays, uploads, processingReady, processingFailed, videosLeft, paymentsChecked,
+ * 200 `{ ok: true, deleted, logins, sessions, mailDays, uploads, processingReady, processingFailed, videosLeft, files, paymentsChecked,
  * paymentsSettled, paymentsExpired, paymentsLeft, paymentsErrors }` (counts; `deleted` is the kv entries; the payment counts are zeros
  * without online payments; `paymentsErrors`: payments that could not be settled, each one counted and logged by id and error class, none
  * of them a 500); 500 `{ ok: false }` when the database fails. The log line has the counts only, no ids.
@@ -74,11 +79,19 @@ export async function GET(request: Request): Promise<Response> {
     const db = getDb();
     const now = new Date();
     const until = now.getTime() + SWEEP_DEADLINE_MS;
-    const [deleted, accounts, videos, checked] = await Promise.all([sweepExpired(db, now), sweepClientRows(db, now), sweepVideos(db, bunnyConfig(), now, until), sweepPayments(db, now, until)]);
+    const [deleted, accounts, videos, checked, files] = await Promise.all([
+      sweepExpired(db, now),
+      sweepClientRows(db, now),
+      sweepVideos(db, bunnyConfig(), now, until),
+      sweepPayments(db, now, until),
+      purgeRemovedLessonFiles(db, mediaStore(), now),
+    ]);
     console.info(
       `[cron] sweep: ${deleted} expired kv entries, ${accounts.logins} login codes, ${accounts.sessions} sessions, ${accounts.mailDays} mail counters, ${videos.uploads} stuck video uploads deleted, ${videos.processingReady} stuck processing videos found ready, ${videos.processingFailed} marked failed, ${videos.left} video rows left for the next run`,
     );
     if (videos.outOfTime) console.info(`[cron] sweep: no new video row started after ${SWEEP_DEADLINE_MS / 1000} s`);
+    // the lesson files' line only when there was something to purge (tests/db/cron-sweep.test.ts counts the log lines of a sweep that had nothing)
+    if (files > 0) console.info(`[cron] sweep: ${files} removed lesson files purged`);
     // the payments' line only with online payments set up: without them the existing log lines are all there is (tests/db/cron-sweep.test.ts
     // counts them: toHaveBeenCalledTimes(1), the exact list of two), and the answer's payment counts are zeros
     if (checked) {
@@ -96,6 +109,7 @@ export async function GET(request: Request): Promise<Response> {
       processingReady: videos.processingReady,
       processingFailed: videos.processingFailed,
       videosLeft: videos.left,
+      files,
       paymentsChecked: paid.checked,
       paymentsSettled: paid.settled,
       paymentsExpired: paid.expired,

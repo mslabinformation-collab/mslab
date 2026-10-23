@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { pgTable, serial, text, integer, boolean, jsonb, timestamp, pgEnum, uniqueIndex, index, primaryKey, customType, check, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, smallint, boolean, jsonb, timestamp, pgEnum, uniqueIndex, index, primaryKey, customType, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { I18n } from "@/i18n/field";
 import type { FeedbackAnswers } from "@/domain/protocols";
 import type { InvoiceBuyer, InvoiceKind, InvoiceLine, InvoiceSeller, InvoiceStatus, PaidMethod } from "@/domain/invoice";
@@ -529,12 +529,17 @@ export const reviews = pgTable(
 
 // ---------- phase 3a: modules, lessons, files, progress ----------
 
-/** A module of a course (an e-course's module, a contact course's programme item), in `position` order (1…n). */
+/**
+ * A module of a course (an e-course's module, a contact course's programme item), in `position` order (1…n). `unpublished`: made on a
+ * published course and not published yet (admin UX pass piece 3a, R-e): no student and no public page reads it or its lessons until
+ * „Avalda muudatused“ clears the flag; the admin reads it, with the flag.
+ */
 export const courseModules = pgTable("course_modules", {
   id: serial("id").primaryKey(),
   courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
   position: integer("position").notNull(),
   title: jsonb("title").$type<I18n>().notNull(),
+  unpublished: boolean("unpublished").notNull().default(false),
 }, (t) => [index("course_modules_course").on(t.courseId, t.position)]);
 
 /** A lesson video's state: none (no video uploaded yet), uploading (tus to Bunny), processing (Bunny encodes), ready, failed. */
@@ -552,6 +557,9 @@ export type LessonKind = "video" | "text";
  * then deleted. `videoStartedAt`: when the current upload began (the daily sweep gives up uploads older than 24 h).
  * `videoWidth` / `videoHeight`: the picture size in pixels of the video that PLAYS, as Bunny reports it when that video is ready
  * (both set, or both null when unknown: older videos, a size Bunny did not give). A replacement in progress leaves them alone.
+ * `unpublished`: made on a published course and not published yet, like a module's (admin UX pass piece 3a, R-e): not read by students, the
+ * outline or the counts until „Avalda muudatused“. `videoProgress`: Bunny's encode progress in percent (0…100), written while the video is
+ * processing (R-g, S6); null when Bunny gave none, or nothing is processing.
  */
 export const lessons = pgTable("lessons", {
   id: serial("id").primaryKey(),
@@ -561,8 +569,10 @@ export const lessons = pgTable("lessons", {
   body: jsonb("body").$type<I18n>(),
   kind: text("kind").$type<LessonKind>().notNull().default("video"),
   hidden: boolean("hidden").notNull().default(false),
+  unpublished: boolean("unpublished").notNull().default(false),
   videoId: text("video_id"),
   videoStatus: text("video_status").$type<VideoStatus>().notNull().default("none"),
+  videoProgress: smallint("video_progress"),
   durationSec: integer("duration_sec"),
   videoWidth: integer("video_width"),
   videoHeight: integer("video_height"),
@@ -571,7 +581,11 @@ export const lessons = pgTable("lessons", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("lessons_module").on(t.moduleId, t.position), uniqueIndex("lessons_video").on(t.videoId)]);
 
-/** A downloadable file of a lesson: the private R2 object `r2Key` (lessons/<uuid>.<ext>), shown as `name`. */
+/**
+ * A downloadable file of a lesson: the private R2 object `r2Key` (lessons/<uuid>.<ext>), shown as `name`. `removedAt`: „Eemalda“ only sets it
+ * (the UndoBar clears it again); every reader leaves such a file out, and the row and its R2 object are purged once the mark is 10 s old or
+ * more (server/lesson-file-purge.ts; admin UX pass piece 3a, R-f).
+ */
 export const lessonFiles = pgTable("lesson_files", {
   id: serial("id").primaryKey(),
   lessonId: integer("lesson_id").notNull().references(() => lessons.id, { onDelete: "cascade" }),
@@ -580,6 +594,7 @@ export const lessonFiles = pgTable("lesson_files", {
   r2Key: text("r2_key").notNull(),
   size: integer("size").notNull(),
   contentType: text("content_type").notNull(),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
 }, (t) => [index("lesson_files_lesson").on(t.lessonId, t.position)]);
 
 /**

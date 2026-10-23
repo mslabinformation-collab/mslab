@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { clients, clientSessions, courseAccess, courseModules, courses, lessonFiles, lessonProgress, lessons, pages, termsAcceptances } from "@/db/schema";
@@ -410,6 +410,70 @@ test("visibleLesson (the first read of openLesson) finds a lesson only in its ow
   expect((await visibleLesson(db, b.course.id, w.client.id, b.b1.id))?.id).toBe(b.b1.id);
   expect(await visibleLesson(db, w.course.id, w.client.id, w.hidden.id)).toBeNull();
   expect(await visibleLesson(db, w.course.id, w.client.id, 999999)).toBeNull();
+});
+
+// ---- admin UX pass piece 3a (Task 2, R-e, R-f): what a student never reads ----
+
+/** The world plus an unpublished module "Uus moodul" with two lessons (one flagged itself, one not: its module's flag is enough) and an unpublished lesson at the very front of the first module. */
+async function withUnpublished() {
+  const w = await world();
+  const [first] = await db.select({ moduleId: lessons.moduleId }).from(lessons).where(eq(lessons.id, w.l1.id));
+  const [um] = await db.insert(courseModules).values({ courseId: w.course.id, position: 3, title: { et: "Uus moodul" }, unpublished: true }).returning();
+  const [flagged] = await db.insert(lessons).values({ moduleId: um.id, position: 1, title: { et: "Uus üks" }, kind: "text", unpublished: true }).returning();
+  const [unflagged] = await db.insert(lessons).values({ moduleId: um.id, position: 2, title: { et: "Uus kaks" }, kind: "text" }).returning();
+  const [front] = await db.insert(lessons).values({ moduleId: first.moduleId, position: 0, title: { et: "Uus ees" }, kind: "text", unpublished: true }).returning();
+  return { ...w, um, flagged, unflagged, front, ids: [flagged.id, unflagged.id, front.id] };
+}
+
+test("unpublished modules and lessons are not in the student's e-course: not listed, not counted, and they do not hold the order back", async () => {
+  const w = await withUnpublished();
+  const view = await (await call(deps(), w.cookie, "/kursus/veebikursus")).json();
+  expect(view.progress).toEqual({ done: 0, total: 3, next: w.l1.id }); // the unpublished lesson in front of lesson 1 does not make lesson 1 wait
+  expect(view.course.modules.map((m: { title: { et: string }; lessons: { title: { et: string }; state: string }[] }) => [m.title.et, m.lessons.map((l) => [l.title.et, l.state])])).toEqual([
+    ["Video", [["Esimene", "current"], ["Tekst", "locked"]]],
+    ["Lõpp", [["Kolmas", "locked"]]],
+  ]);
+  // the same rows, published: they are all there (the flag is the only thing that kept them out)
+  await db.update(courseModules).set({ unpublished: false }).where(eq(courseModules.id, w.um.id));
+  await db.update(lessons).set({ unpublished: false }).where(inArray(lessons.id, w.ids));
+  const published = await (await call(deps(), w.cookie, "/kursus/veebikursus")).json();
+  expect(published.progress.total).toBe(6);
+  expect(published.course.modules.map((m: { title: { et: string } }) => m.title.et)).toEqual(["Video", "Lõpp", "Uus moodul"]);
+});
+
+test("a student's GET, progress and “tehtud” of an unpublished lesson are 404 (its own flag, or its module's), and write nothing", async () => {
+  const w = await withUnpublished();
+  const d = deps();
+  for (const id of w.ids) {
+    expect((await call(d, w.cookie, lessonPath(id))).status, `GET ${id}`).toBe(404);
+    expect((await call(d, w.cookie, lessonPath(id, "/progress"), { watchedSec: 1 })).status, `progress ${id}`).toBe(404);
+    expect((await call(d, w.cookie, lessonPath(id, "/tehtud"), {})).status, `tehtud ${id}`).toBe(404);
+  }
+  expect(await db.select().from(lessonProgress)).toEqual([]);
+  expect(await visibleLesson(db, w.course.id, w.client.id, w.flagged.id)).toBeNull();
+  expect(await visibleLesson(db, w.course.id, w.client.id, w.unflagged.id)).toBeNull(); // (only its module is unpublished)
+  expect(await visibleLesson(db, w.course.id, w.client.id, w.front.id)).toBeNull();
+  expect((await visibleLesson(db, w.course.id, w.client.id, w.l1.id))?.id).toBe(w.l1.id);
+  // the last published lesson: "Järgmine õppetund" never points into the unpublished module after it
+  await db.insert(lessonProgress).values({ clientId: w.client.id, lessonId: w.l3.id, unlockedBy: "admin@example.test" });
+  expect((await (await call(d, w.cookie, lessonPath(w.l3.id))).json()).next).toBeNull();
+});
+
+test("a removed lesson file (removed_at set) is gone for the student: not in the lesson's files, its download is 404; undone, it is back", async () => {
+  const w = await world();
+  const KEY_2 = "lessons/1a2b3c4d-0000-4000-8000-000000000002.pdf";
+  const d = deps({ files: fakeMediaStore({ [FILE_KEY]: { bytes: PDF, contentType: "application/pdf" }, [KEY_2]: { bytes: PDF, contentType: "application/pdf" } }) });
+  await db.insert(lessonProgress).values({ clientId: w.client.id, lessonId: w.l3.id, unlockedBy: "admin@example.test" });
+  const [second] = await db.insert(lessonFiles).values({ lessonId: w.l3.id, position: 2, name: "Lisa.pdf", r2Key: KEY_2, size: 5, contentType: "application/pdf" }).returning();
+  const filesOf = async () => (await (await call(d, w.cookie, lessonPath(w.l3.id))).json()).files.map((f: { name: string }) => f.name);
+  expect(await filesOf()).toEqual(["Juhend.pdf", "Lisa.pdf"]);
+  await db.update(lessonFiles).set({ removedAt: new Date(NOW.getTime() - 1000) }).where(eq(lessonFiles.id, w.file.id));
+  expect(await filesOf()).toEqual(["Lisa.pdf"]);
+  expect((await call(d, w.cookie, lessonPath(w.l3.id, `/fail/${w.file.id}`))).status).toBe(404);
+  expect((await call(d, w.cookie, lessonPath(w.l3.id, `/fail/${second.id}`))).status).toBe(200); // the other one still downloads
+  await db.update(lessonFiles).set({ removedAt: null }).where(eq(lessonFiles.id, w.file.id)); // „Võta tagasi“
+  expect(await filesOf()).toEqual(["Juhend.pdf", "Lisa.pdf"]);
+  expect((await call(d, w.cookie, lessonPath(w.l3.id, `/fail/${w.file.id}`))).status).toBe(200);
 });
 
 // ---- phase 2c: the progress clock (spec 3, domain/lessons.ts acceptProgress) ----

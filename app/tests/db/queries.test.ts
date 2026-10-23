@@ -339,3 +339,18 @@ test("a course's module titles come from course_modules, in position order (phas
   expect(await listModuleTitles(db, c.id)).toEqual([{ et: "Esimene", ru: "Первый" }, { et: "Teine" }]);
   expect((await getCourseBySlug(db, "moodulid"))?.moduleTitles).toEqual([{ et: "Esimene", ru: "Первый" }, { et: "Teine" }]);
 });
+
+test("a module added to a published course stays off the public page and its count until it is published (piece 3a, R-e)", async () => {
+  const db = await makeTestDb();
+  const [c] = await db.insert(courses).values({ slug: "moodulid", type: "e_learning", level: "basic", title: { et: "M" }, summary: { et: "" }, body: { et: "" }, published: true }).returning();
+  await db.insert(courseModules).values([
+    { courseId: c.id, position: 1, title: { et: "Esimene" } },
+    { courseId: c.id, position: 2, title: { et: "Uus" }, unpublished: true },
+    { courseId: c.id, position: 3, title: { et: "Kolmas" } },
+  ]);
+  expect(await listModuleTitles(db, c.id)).toEqual([{ et: "Esimene" }, { et: "Kolmas" }]);
+  // the course page's list and count (moduleTitles) are the same two
+  expect((await getCourseBySlug(db, "moodulid"))?.moduleTitles).toEqual([{ et: "Esimene" }, { et: "Kolmas" }]);
+  await db.update(courseModules).set({ unpublished: false });
+  expect(await listModuleTitles(db, c.id)).toEqual([{ et: "Esimene" }, { et: "Uus" }, { et: "Kolmas" }]);
+});

@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { lessonFiles, lessons } from "@/db/schema";
 import { storable } from "@/lib/storable";
@@ -104,7 +104,8 @@ export async function addLessonFile(db: Db, store: FileStore, lessonId: number, 
   // The object is stored. When its row cannot be made, it must not stay in the private bucket with nothing pointing at it: it is
   // removed again, and whatever the removal does, the error that comes out is the database's.
   try {
-    const [{ last }] = await db.select({ last: sql<number | null>`max(${lessonFiles.position})` }).from(lessonFiles).where(eq(lessonFiles.lessonId, lessonId));
+    // (a removed file waiting for its UndoBar to run out does not count: its place is free)
+    const [{ last }] = await db.select({ last: sql<number | null>`max(${lessonFiles.position})` }).from(lessonFiles).where(and(eq(lessonFiles.lessonId, lessonId), isNull(lessonFiles.removedAt)));
     const [row] = await db.insert(lessonFiles).values({ lessonId, position: (last ?? 0) + 1, name, r2Key: key, size: file.size, contentType: type }).returning();
     return { id: row.id, name: row.name, size: row.size, contentType: type };
   } catch (e) {

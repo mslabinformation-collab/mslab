@@ -8,6 +8,9 @@ import type { I18n } from "@/i18n/field";
 // One student's view of a course's lessons: the modules in order (empty ones too), the visible lessons in course order with their
 // state (domain/lessons.ts: done, current, locked), and the counts. Read by the e-course page (client-data.ts loadEcourse), the lesson
 // endpoints (lesson-data.ts) and the admin's student drawer (admin-clients.ts). Two queries; no access check here (callers make it).
+// "Visible" leaves out a hidden lesson and, on a published course being edited (admin UX pass piece 3a, R-e), every `unpublished` module and
+// lesson — a lesson of an unpublished module too, whatever its own flag: they are neither listed, nor counted, nor in the order, so the completion
+// counts, "view as student" and the lesson order all see the course as the students have it until „Avalda muudatused“.
 
 export type OutlineLesson = { id: number; moduleId: number; title: I18n; state: LessonState };
 export type OutlineModule = { id: number; title: I18n; lessons: OutlineLesson[] };
@@ -15,7 +18,11 @@ export type CourseOutline = { modules: OutlineModule[]; lessons: OutlineLesson[]
 
 export async function courseOutline(db: Db, courseId: number, clientId: number): Promise<CourseOutline> {
   const [mods, rows] = await Promise.all([
-    db.select({ id: courseModules.id, title: courseModules.title }).from(courseModules).where(eq(courseModules.courseId, courseId)).orderBy(asc(courseModules.position), asc(courseModules.id)),
+    db
+      .select({ id: courseModules.id, title: courseModules.title })
+      .from(courseModules)
+      .where(and(eq(courseModules.courseId, courseId), eq(courseModules.unpublished, false)))
+      .orderBy(asc(courseModules.position), asc(courseModules.id)),
     db
       .select({
         id: lessons.id,
@@ -27,7 +34,7 @@ export async function courseOutline(db: Db, courseId: number, clientId: number):
       .from(lessons)
       .innerJoin(courseModules, eq(lessons.moduleId, courseModules.id))
       .leftJoin(lessonProgress, and(eq(lessonProgress.lessonId, lessons.id), eq(lessonProgress.clientId, clientId)))
-      .where(and(eq(courseModules.courseId, courseId), eq(lessons.hidden, false)))
+      .where(and(eq(courseModules.courseId, courseId), eq(courseModules.unpublished, false), eq(lessons.hidden, false), eq(lessons.unpublished, false)))
       .orderBy(asc(courseModules.position), asc(courseModules.id), asc(lessons.position), asc(lessons.id)),
   ]);
   const ordered: OrderedLesson[] = rows.map((r) => ({ id: r.id, done: Boolean(r.done), unlockedByAdmin: Boolean(r.unlocked) }));

@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { clients, courseModules, lessonFiles, lessonProgress, lessons } from "@/db/schema";
 import { acceptProgress, completion, isWatched, nextLessonAfter, openedClock, playableVideo, resumeAt, validShape, type VideoShape } from "@/domain/lessons";
@@ -51,8 +51,9 @@ export type DoneResult = { kind: "saved"; next: number | null; completed: boolea
 export type LessonFileRef = { kind: "file"; key: string; name: string; contentType: string };
 
 /**
- * A visible lesson of the course, with its module's title and this client's progress; null when it is not one (hidden, unknown, or a
- * lesson of another course). Exported for its own test only: the endpoints reach it through openLesson.
+ * A visible lesson of the course, with its module's title and this client's progress; null when it is not one (hidden, unpublished or in an
+ * unpublished module — piece 3a, R-e —, unknown, or a lesson of another course). Exported for its own test only: the endpoints reach it
+ * through openLesson.
  */
 export async function visibleLesson(db: Db, courseId: number, clientId: number, lessonId: number) {
   const [row] = await db
@@ -75,7 +76,7 @@ export async function visibleLesson(db: Db, courseId: number, clientId: number, 
     .from(lessons)
     .innerJoin(courseModules, eq(lessons.moduleId, courseModules.id))
     .leftJoin(lessonProgress, and(eq(lessonProgress.lessonId, lessons.id), eq(lessonProgress.clientId, clientId)))
-    .where(and(eq(lessons.id, lessonId), eq(courseModules.courseId, courseId), eq(lessons.hidden, false)))
+    .where(and(eq(lessons.id, lessonId), eq(courseModules.courseId, courseId), eq(lessons.hidden, false), eq(lessons.unpublished, false), eq(courseModules.unpublished, false)))
     .limit(1);
   return row ? { ...row, done: Boolean(row.done) } : null;
 }
@@ -161,7 +162,8 @@ export async function loadLesson(db: Db, bunny: BunnyConfig | null, clientId: nu
   if (opened.kind !== "open") return opened;
   const { access, row, outline } = opened;
   const [files, [client]] = await Promise.all([
-    db.select({ id: lessonFiles.id, name: lessonFiles.name, size: lessonFiles.size }).from(lessonFiles).where(eq(lessonFiles.lessonId, lessonId)).orderBy(asc(lessonFiles.position), asc(lessonFiles.id)),
+    // (a file the admin removed — „Eemalda“, the UndoBar may still be open — is not listed: removed_at is null)
+    db.select({ id: lessonFiles.id, name: lessonFiles.name, size: lessonFiles.size }).from(lessonFiles).where(and(eq(lessonFiles.lessonId, lessonId), isNull(lessonFiles.removedAt))).orderBy(asc(lessonFiles.position), asc(lessonFiles.id)),
     db.select({ email: clients.email }).from(clients).where(eq(clients.id, clientId)).limit(1),
   ]);
   if (!client) return { kind: "notFound" };
@@ -231,14 +233,14 @@ export async function markTextLessonDone(db: Db, clientId: number, slug: string,
   return { kind: "saved", next: nextLessonAfter(outline.lessons, lessonId), completed, accessId: access.id };
 }
 
-/** GET a file: the store key, name and type of a file of an open lesson (a file of another lesson is notFound); locked before the lesson opens. */
+/** GET a file: the store key, name and type of a file of an open lesson (a file of another lesson, or a removed one, is notFound); locked before the lesson opens. */
 export async function lessonFileFor(db: Db, clientId: number, slug: string, lessonId: number, fileId: number, now: Date): Promise<LessonFileRef | LessonRefusal> {
   const opened = await openLesson(db, clientId, slug, lessonId, now);
   if (opened.kind !== "open") return opened;
   const [file] = await db
     .select({ key: lessonFiles.r2Key, name: lessonFiles.name, contentType: lessonFiles.contentType })
     .from(lessonFiles)
-    .where(and(eq(lessonFiles.id, fileId), eq(lessonFiles.lessonId, lessonId)))
+    .where(and(eq(lessonFiles.id, fileId), eq(lessonFiles.lessonId, lessonId), isNull(lessonFiles.removedAt)))
     .limit(1);
   return file ? { kind: "file", ...file } : { kind: "notFound" };
 }

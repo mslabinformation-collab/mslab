@@ -141,6 +141,13 @@
       "when": 1792688645925,
       "tag": "0019_payments_replaced",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792788321846,
+      "tag": "0020_course_drafts",
+      "breakpoints": true
     }
   ]
 }

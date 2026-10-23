@@ -71,6 +71,16 @@ test("positions count per lesson", async () => {
   expect(rows.map((r) => [r.lessonId === lessonId, r.position])).toEqual([[true, 1], [true, 2], [false, 1]]);
 });
 
+test("a removed file (removed_at set, waiting for the UndoBar to run out) does not count for the next position (piece 3a, R-f)", async () => {
+  const store = fakeMediaStore();
+  await addLessonFile(db, store, lessonId, pdf(20, "Üks.pdf"));
+  await addLessonFile(db, store, lessonId, pdf(20, "Kaks.pdf"));
+  await db.update(lessonFiles).set({ removedAt: new Date() }).where(eq(lessonFiles.name, "Kaks.pdf"));
+  await addLessonFile(db, store, lessonId, pdf(20, "Kolm.pdf"));
+  const rows = await db.select().from(lessonFiles).orderBy(lessonFiles.position, lessonFiles.id);
+  expect(rows.map((r) => [r.name, r.position, r.removedAt !== null])).toEqual([["Üks.pdf", 1, false], ["Kaks.pdf", 2, true], ["Kolm.pdf", 2, false]]);
+});
+
 // The object is put first, the row follows. A row that cannot be made must not leave the private object behind in storage.
 afterEach(() => vi.restoreAllMocks());
 

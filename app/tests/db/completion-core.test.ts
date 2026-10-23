@@ -182,6 +182,21 @@ describe("the course's test and points, and one access's steps (spec §4.1)", ()
     await db.update(courseAccess).set({ completedAt: NOW });
     expect(await loadSteps(db, await accessRow(w.access.id))).toEqual({ lessons: { done: 2, total: 2, state: "done" }, test: null, practical: null, completedAt: NOW.toISOString() });
   });
+
+  test("unpublished modules and lessons (a published course being edited, piece 3a) are not counted: the totals, the steps and the completion leave them out", async () => {
+    const w = await world();
+    const [m] = await db.select().from(courseModules);
+    const [um] = await db.insert(courseModules).values({ courseId: w.course.id, position: 2, title: { et: "Uus moodul" }, unpublished: true }).returning();
+    await db.insert(lessons).values([
+      { moduleId: m.id, position: 3, title: { et: "Uus ühes" }, kind: "text", unpublished: true },
+      { moduleId: um.id, position: 1, title: { et: "Uus teises" }, kind: "text" }, // (only its module is unpublished)
+    ]);
+    expect(await stepInputs(db, await accessRow(w.access.id))).toMatchObject({ lessonsDone: 0, lessonsTotal: 2 });
+    await done(w.client.id, w.l1.id);
+    await done(w.client.id, w.l2.id);
+    expect(await loadSteps(db, await accessRow(w.access.id))).toMatchObject({ lessons: { done: 2, total: 2, state: "done" } });
+    expect(await completeIfDone(db, w.access.id, NOW)).toBe(true); // the lessons she can see are all done
+  });
 });
 
 describe("completeIfDone (spec §4.4)", () => {

@@ -33,7 +33,8 @@ test("0003 copies the module titles of every course into course_modules, in orde
   await migrateThrough("0003_lessons");
 
   const id = Object.fromEntries((await db.select({ id: courses.id, slug: courses.slug }).from(courses)).map((c) => [c.slug, c.id]));
-  const rows = await db.select().from(courseModules).orderBy(asc(courseModules.courseId), asc(courseModules.position));
+  // (the columns 0003 knows: the schema's table has the ones later migrations add, which this database does not have yet)
+  const rows = await db.select({ courseId: courseModules.courseId, position: courseModules.position, title: courseModules.title }).from(courseModules).orderBy(asc(courseModules.courseId), asc(courseModules.position));
   expect(rows.map((r) => [r.courseId, r.position, r.title])).toEqual([
     [id.veeb, 1, { et: "Üks", ru: "Один" }],
     [id.veeb, 2, { et: "Kaks" }],
