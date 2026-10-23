@@ -78,7 +78,7 @@ Other sources:
     - `outline`: module and lesson order, module titles, lesson titles and short texts, for existing rows of a published course.
   - `published` and `isSample` are instant switches, not drafted.
   - Each part's live version is `contentVersion` of its live value.
-- **R-b. One version string per part for the autosave engine.** It is `"l:<liveHash>"` while no draft exists and `"d:<draftVersion>"` once one does.
+- **R-b. One version string per part for the autosave engine.** It is `"l:<liveHash>"` while no draft exists and `"d:<draftId>.<draftVersion>"` once one does (amended 24.10 after Task 4's review: the draft row id makes a version unique per draft, so a stale tab can never reuse an old counter after a publish, discard or drop).
   - On a published course:
     - a save on `l:` whose hash matches creates the draft, with the live hash as its base;
     - `d:` saves compare-and-set the draft;
