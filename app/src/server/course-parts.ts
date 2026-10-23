@@ -14,6 +14,7 @@ import {
   checkCourseRecommendations, checkCourseStages, checkCourseTest, type PriceFields,
 } from "./admin-content";
 import type { LessonCleanup } from "./admin-lessons";
+import { fieldCodes } from "./autosave-route";
 import { discardDrafts, dropDraftPart, publishDrafts, publishDraftsIn, readDrafts, saveDraftPart, type DraftPart, type Publisher } from "./drafts";
 import { Check, type FieldError } from "./edit-check";
 import { revalidatePublic } from "./public-cache";
@@ -24,11 +25,14 @@ import { revalidatePublic } from "./public-cache";
 //   alone; „Avalda muudatused“ (publishCourse) writes every part whose live value is still the one its draft began from, through the same checks as
 //   the old editor's save (server/admin-content.ts, one check per part); „Loobu muudatustest“ (discardCourse) deletes the drafts.
 // - An UNPUBLISHED course: a part's save is written to the record at once (spec §10: an unpublished e-course with students too; they see it).
-// - The versions the editor's autosave holds (R-b): "l:<hash>" while the part has no draft, the hash being lib/version.ts contentVersion of the part's
-//   live value (R-a); "d:<n>" once it has one, n the draft's counter (the draft layer's numbers, as text for the engine). On a published course a save
-//   on "l:" whose hash is live's creates the draft (its base: that hash), a save on "d:n" is the draft's compare-and-set, anything else is a conflict
-//   with what is stored; on an unpublished course a save must come from live's "l:" (the hash compare). A draft saved back to the live value is
-//   dropped (the part is at its "l:" again), so a draft is always a change.
+// - The versions the editor's autosave holds (R-b, as ruled after the Task 4 review, I-1): "l:<hash>" while the part has no draft, the hash being
+//   lib/version.ts contentVersion of the part's live value (R-a); "d:<id>.<n>" once it has one, id the draft row's own (`content_drafts.id`, a serial
+//   never used again) and n its counter (the draft layer's numbers, as text for the engine). A draft's counter starts at 1, so after a publish, a
+//   discard or a draft dropped back to live the next draft of the part counts 1, 2, … again: the row's id keeps its version apart from every earlier
+//   draft's, and a tab (or a copy this browser kept, engine.ts resume) still on an earlier draft is a conflict, never a write. On a published course a
+//   save on "l:" whose hash is live's creates the draft (its base: that hash), a save on the draft's "d:<id>.<n>" is its compare-and-set, anything
+//   else is a conflict with what is stored; on an unpublished course a save must come from live's "l:" (the hash compare). A draft saved back to the
+//   live value is dropped (the part is at its "l:" again), so a draft is always a change.
 // - One lock order (ledger T11, 40P01): every save, the publish, the discard and the „Avaldatud“ switch take the course row's lock (lockCourse) first,
 //   before they touch the course's drafts; the live values read after it stay as they are until the writes.
 // - The type decides which cards there are: the price part has both types' fields, and only the course's type's are checked and stored. On a published
@@ -118,6 +122,9 @@ async function stateOf(q: Q, course: Course): Promise<CourseState> {
   return { live, drafts, type: effectiveType(live, drafts) };
 }
 
+/** A draft's version as its editor holds it (R-b, I-1): the row's id and its counter, "d:<id>.<n>": never an earlier draft's of the part. */
+const draftVersion = (id: number, n: number): string => `d:${id}.${n}`;
+
 type PartState = { liveValue: Record<string, unknown>; liveHash: string; draft: DraftPart | null; version: string; value: Record<string, unknown> };
 
 async function partStateOf(s: CourseState, part: CoursePart): Promise<PartState> {
@@ -125,7 +132,7 @@ async function partStateOf(s: CourseState, part: CoursePart): Promise<PartState>
   const liveHash = await contentVersion(live);
   const draft = s.drafts.find((d) => d.part === part) ?? null;
   if (!draft) return { liveValue: live, liveHash, draft: null, version: `l:${liveHash}`, value: live };
-  return { liveValue: live, liveHash, draft, version: `d:${draft.version}`, value: draftValueOf(part, draft.value, live as never) as Record<string, unknown> };
+  return { liveValue: live, liveHash, draft, version: draftVersion(draft.id, draft.version), value: draftValueOf(part, draft.value, live as never) as Record<string, unknown> };
 }
 
 /** A part as its card reads it (the autosave route's `read`): the version (R-b) and the value; null when there is no such course (404). */
@@ -179,16 +186,6 @@ const PARTS: { [P in CoursePart]: PartDef<P, unknown> } = {
   badge: def({ check: (_ctx, c, v: PartValues["badge"]) => ({ badge: checkCourseBadge(c, v.badge) }), write: columns }),
 };
 
-/** A schema's issues as field codes (server/autosave-route.ts' rule: the first per field). */
-function issueFields(issues: readonly z.core.$ZodIssue[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const issue of issues) {
-    const names = issue.code === "unrecognized_keys" ? issue.keys : typeof issue.path[0] === "string" ? [issue.path[0]] : [];
-    for (const n of names) out[n] ??= issue.message;
-  }
-  return out;
-}
-
 /**
  * A refusal's fields, named as the part names them. The screen holds back the fields a refusal names among those it sent: when none of them is named
  * (the error is in a field the save made wrong without carrying it, e.g. the slug made from a new title), every field sent is named with it too.
@@ -231,7 +228,8 @@ export async function writeCoursePart(
     const fields: readonly string[] = PART_FIELDS[part];
     const own = Object.fromEntries(Object.entries(patch).filter(([k]) => fields.includes(k)));
     const parsed = SCHEMAS[part].safeParse({ ...current.value, ...own });
-    if (!parsed.success) return { ok: false, error: "invalid", fields: refusedFields(part, issueFields(parsed.error.issues), own) };
+    // (an issue that names no field: none named, so every field sent is, refusedFields)
+    if (!parsed.success) return { ok: false, error: "invalid", fields: refusedFields(part, fieldCodes(parsed.error.issues) ?? {}, own) };
     const value = parsed.data as Record<string, unknown>;
     if (same(value, current.value)) return { ok: true, version: current.version, savedAt };
     const c = new Check();
@@ -245,7 +243,11 @@ export async function writeCoursePart(
         return { ok: true, version: `l:${current.liveHash}`, savedAt };
       }
       const saved = await saveDraftPart(tx, { entity: ENTITY, entityId: courseId, part, value, baseVersion: current.liveHash, version: current.draft?.version ?? null, by: admin.email });
-      if (saved.ok) return { ok: true, version: `d:${saved.version}`, savedAt };
+      if (saved.ok) {
+        // a draft just made: its row's id (read under the same lock)
+        const rowId = current.draft?.id ?? (await readDrafts(tx, ENTITY, courseId)).find((d) => d.part === part)?.id;
+        if (rowId !== undefined) return { ok: true, version: draftVersion(rowId, saved.version), savedAt };
+      }
       // (under the course's lock nothing saves the draft between the read and the write: answered as any conflict)
       const stored = await partStateOf(await stateOf(tx, course), part);
       return { ok: false, error: "conflict", version: stored.version, value: stored.value };
@@ -358,7 +360,10 @@ function makeCoursePublisher(courseId: number, o: { now: Date; priceRule: "publi
           set.delete(failed);
           continue;
         }
-        if (priceRule && (set.has("price") || set.has("basics"))) {
+        // the price is taken away only by the price part, or by a type change (the other type's price fields are emptied): a basics draft that
+        // keeps the type publishes on a course whose price is missing already (review M-1), as the other parts do
+        const typeChange = basics !== undefined && basics.type !== l.course.type;
+        if (priceRule && (set.has("price") || typeChange)) {
           const c = new Check();
           checkCoursePriceRequired(c, set.has("price") ? (checked.get("price") as PriceFields) : l.course, type);
           if (!c.ok) {

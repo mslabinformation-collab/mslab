@@ -58,7 +58,8 @@ describe("saveDraftPart and readDrafts", () => {
     const [created] = await readDrafts(db, "course", 7);
     expect(created).toMatchObject({ part: "summary", value: first, baseVersion: base, version: 1 });
     expect(created.updatedAt).toBeInstanceOf(Date);
-    expect(Object.keys(created).sort()).toEqual(["baseVersion", "part", "updatedAt", "value", "version"]);
+    expect(Object.keys(created).sort()).toEqual(["baseVersion", "id", "part", "updatedAt", "value", "version"]);
+    expect(created.id).toBeGreaterThan(0);
 
     // a second create of the same part (another tab that also saw no draft): a conflict with what is stored, nothing changed
     expect(await saveDraftPart(db, { entity: "course", entityId: 7, part: "summary", value: { summary: { et: "Teine" } }, baseVersion: base, version: null, by: DIM })).toEqual({
@@ -88,13 +89,16 @@ describe("saveDraftPart and readDrafts", () => {
   it("a save to a draft that is gone (published or discarded meanwhile) is a conflict with version 0 and no value: there is no draft to save over", async () => {
     const base = await setLive("course", 7, "summary", { summary: { et: "Vana" } });
     await saveDraftPart(db, { entity: "course", entityId: 7, part: "summary", value: { a: 1 }, baseVersion: base, version: null, by: MARIA });
+    const [ended] = await readDrafts(db, "course", 7);
     expect(await discardDrafts(db, "course", 7)).toBe(1);
     expect(await saveDraftPart(db, { entity: "course", entityId: 7, part: "summary", value: { a: 2 }, baseVersion: base, version: 1, by: MARIA })).toEqual({
       ok: false, error: "conflict", version: 0, value: null,
     });
     expect(await readDrafts(db, "course", 7)).toEqual([]);
-    // a create starts it again, at version 1
+    // a create starts it again, at version 1, as a row of its own (its id is never the ended draft's: the version alone does not tell them apart)
     expect(await saveDraftPart(db, { entity: "course", entityId: 7, part: "summary", value: { a: 2 }, baseVersion: base, version: null, by: MARIA })).toEqual({ ok: true, version: 1 });
+    const [again] = await readDrafts(db, "course", 7);
+    expect([again.version, again.id === ended.id]).toEqual([1, false]);
   });
 
   it("each entity, row and part has its own draft and version; readDrafts lists one row's parts in the order they were first saved, also inside a transaction", async () => {

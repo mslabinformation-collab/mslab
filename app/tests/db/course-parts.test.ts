@@ -1,5 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -14,8 +14,8 @@ import { makeTestDb } from "./helpers";
 
 // A course's parts on the draft layer (admin UX pass piece 3a, Task 4; constraints R-a…R-e; README B2, §1.8): a published course is edited in
 // `content_drafts` part by part and published with one press, an unpublished one saves each part straight to the record (spec §10). The versions are
-// R-b's: "l:<the live part's hash>" while the part has no draft, "d:<the draft's counter>" once it has one. On a real (PGlite) database; the public
-// pages' revalidation is a spy.
+// R-b's (as amended by the Task 4 review, I-1): "l:<the live part's hash>" while the part has no draft, "d:<the draft row's id>.<its counter>" once
+// it has one, so no draft ever has an earlier draft's version. On a real (PGlite) database; the public pages' revalidation is a spy.
 
 const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
 vi.mock("@/server/public-cache", () => pub);
@@ -60,6 +60,15 @@ const write = (id: number, part: string, patch: Record<string, unknown>, version
 const row = async (id: number) => (await db.select().from(courses).where(eq(courses.id, id)))[0];
 const drafts = (id: number) => readDrafts(db, "course", id);
 const revalidated = () => pub.revalidatePublic.mock.calls.map((c) => c[0]);
+/** The part's draft version as its editor holds it: "d:<the draft row's id>.<its counter>"; null without a draft. */
+async function dv(id: number, part: string): Promise<string | null> {
+  const [d] = await db
+    .select({ id: contentDrafts.id, version: contentDrafts.version })
+    .from(contentDrafts)
+    .where(and(eq(contentDrafts.entity, "course"), eq(contentDrafts.entityId, id), eq(contentDrafts.part, part)));
+  return d ? `d:${d.id}.${d.version}` : null;
+}
+const FIRST = /^d:[1-9][0-9]*.1$/;
 
 describe("the parts (R-a) and their versions (R-b)", () => {
   test("the parts of R-a, in screen order; each part's live version is l: and the hash of its live value", async () => {
@@ -90,44 +99,91 @@ describe("the parts (R-a) and their versions (R-b)", () => {
 describe("a published course: the parts save to drafts and go live with „Avalda muudatused“", () => {
   test("a basics save on l:<hash> creates a draft (based on the live hash); the live title is unchanged", async () => {
     const before = await read(online.id, "basics");
-    expect(await write(online.id, "basics", { title: { et: "E-kulm (uus)" } }, before.version)).toEqual({ ok: true, version: "d:1", savedAt: NOW.toISOString() });
+    const saved = await write(online.id, "basics", { title: { et: "E-kulm (uus)" } }, before.version);
+    const first = (await dv(online.id, "basics"))!;
+    expect(first).toMatch(FIRST);
+    expect(saved).toEqual({ ok: true, version: first, savedAt: NOW.toISOString() });
     expect((await row(online.id)).title).toEqual({ et: "E-kulm" });
     expect(await drafts(online.id)).toEqual([expect.objectContaining({ part: "basics", version: 1, baseVersion: before.version.slice(2), value: { ...(before.value as object), title: { et: "E-kulm (uus)" } } })]);
     expect((await db.select({ by: contentDrafts.updatedBy }).from(contentDrafts))[0].by).toBe(MARIA.email);
     // the editor reads the draft from now on
-    expect(await read(online.id, "basics")).toEqual({ version: "d:1", value: { ...(before.value as object), title: { et: "E-kulm (uus)" } } });
+    expect(await read(online.id, "basics")).toEqual({ version: first, value: { ...(before.value as object), title: { et: "E-kulm (uus)" } } });
     // a save that changes nothing makes no draft
     const price = await read(online.id, "price");
     expect(await write(online.id, "price", { price: "95" }, price.version)).toEqual({ ok: true, version: price.version, savedAt: NOW.toISOString() });
     expect((await drafts(online.id)).map((d) => d.part)).toEqual(["basics"]);
   });
 
-  test("a second save on d:1 updates it; typing the live text back drops the draft", async () => {
+  test("a second save on the draft's version updates it (d:<id>.1 → d:<id>.2); typing the live text back drops the draft", async () => {
     const before = await read(online.id, "basics");
     await write(online.id, "basics", { title: { et: "E-kulm (uus)" } }, before.version);
-    expect(await write(online.id, "basics", { summary: { et: "Lühike" } }, "d:1")).toEqual({ ok: true, version: "d:2", savedAt: NOW.toISOString() });
+    const first = (await dv(online.id, "basics"))!;
+    const second = first.replace(/.1$/, ".2");
+    expect(await write(online.id, "basics", { summary: { et: "Lühike" } }, first)).toEqual({ ok: true, version: second, savedAt: NOW.toISOString() });
     expect((await read(online.id, "basics")).value).toMatchObject({ title: { et: "E-kulm (uus)" }, summary: { et: "Lühike" } });
     // back to the live value: no draft is left, the part is at its live version again
-    expect(await write(online.id, "basics", { title: { et: "E-kulm" }, summary: { et: "" } }, "d:2")).toEqual({ ok: true, version: before.version, savedAt: NOW.toISOString() });
+    expect(await write(online.id, "basics", { title: { et: "E-kulm" }, summary: { et: "" } }, second)).toEqual({ ok: true, version: before.version, savedAt: NOW.toISOString() });
     expect(await drafts(online.id)).toEqual([]);
   });
 
   test("a save on a stale l: (or any other version) is a conflict with what is stored; two tabs never save over each other", async () => {
     const live = await read(online.id, "basics");
     expect(await write(online.id, "basics", { title: { et: "X" } }, `l:${"0".repeat(32)}`)).toEqual({ ok: false, error: "conflict", version: live.version, value: live.value });
-    for (const junk of ["", "d:1", "x", live.version.slice(2)]) expect((await write(online.id, "basics", { title: { et: "X" } }, junk)).ok, junk).toBe(false);
+    for (const junk of ["", "d:1", "d:1.1", "x", live.version.slice(2)]) expect((await write(online.id, "basics", { title: { et: "X" } }, junk)).ok, junk).toBe(false);
     // tab B made the draft first: tab A's save on the live version is a conflict with B's draft, and changes nothing
     expect((await write(online.id, "basics", { title: { et: "Teise akna nimi" } }, live.version, DIM)).ok).toBe(true);
     const theirs = await read(online.id, "basics");
-    expect(await write(online.id, "basics", { title: { et: "Minu nimi" } }, live.version)).toEqual({ ok: false, error: "conflict", version: "d:1", value: theirs.value });
-    expect(await write(online.id, "basics", { title: { et: "Minu nimi" } }, "d:2")).toEqual({ ok: false, error: "conflict", version: "d:1", value: theirs.value });
+    expect(theirs.version).toMatch(FIRST);
+    expect(await write(online.id, "basics", { title: { et: "Minu nimi" } }, live.version)).toEqual({ ok: false, error: "conflict", version: theirs.version, value: theirs.value });
+    expect(await write(online.id, "basics", { title: { et: "Minu nimi" } }, theirs.version.replace(/.1$/, ".2"))).toEqual({ ok: false, error: "conflict", version: theirs.version, value: theirs.value });
     expect((await read(online.id, "basics")).value).toMatchObject({ title: { et: "Teise akna nimi" } });
     expect((await row(online.id)).title).toEqual({ et: "E-kulm" });
+  });
+
+  // Review I-1 (Review Focus 1, "never a silent overwrite"): every draft's counter starts at 1, so a draft made after an earlier one ended (published,
+  // discarded, typed back to live) must not take a tab still on the earlier draft's "d:…" as its own. Both tabs on the same draft, then:
+  test.each([
+    ["published", () => publishCourse(db, online.id, NOW)],
+    ["discarded", () => discardCourse(db, online.id)],
+  ] as const)("the draft %s, tab A types on (a new draft): tab B's save on the old draft's version is a conflict, never written", async (_name, end) => {
+    await write(online.id, "basics", { title: { et: "A1" } }, (await read(online.id, "basics")).version, MARIA);
+    const tabB = (await read(online.id, "basics")).version;
+    await end();
+    const a2 = await write(online.id, "basics", { title: { et: "A2" } }, (await read(online.id, "basics")).version, MARIA);
+    expect(a2).toMatchObject({ ok: true, version: expect.stringMatching(FIRST) });
+    expect(a2.ok && a2.version).not.toBe(tabB);
+    const now = await read(online.id, "basics");
+    expect(await write(online.id, "basics", { title: { et: "B, vana aken" } }, tabB, DIM)).toEqual({ ok: false, error: "conflict", version: now.version, value: now.value });
+    expect((await read(online.id, "basics")).value).toMatchObject({ title: { et: "A2" } });
+  });
+
+  test("the draft typed back to live (dropped), tab A types on: tab B's save on the old draft's version is a conflict, never written", async () => {
+    const live = (await read(online.id, "basics")).version;
+    await write(online.id, "basics", { title: { et: "X" } }, live, MARIA);
+    const tabB = (await read(online.id, "basics")).version;
+    expect(await write(online.id, "basics", { title: { et: "E-kulm" } }, tabB, MARIA)).toEqual({ ok: true, version: live, savedAt: NOW.toISOString() });
+    expect(await write(online.id, "basics", { title: { et: "Y" } }, live, MARIA)).toMatchObject({ ok: true, version: expect.stringMatching(FIRST) });
+    const now = await read(online.id, "basics");
+    expect(now.version).not.toBe(tabB);
+    expect(await write(online.id, "basics", { title: { et: "B, vana aken" } }, tabB, DIM)).toEqual({ ok: false, error: "conflict", version: now.version, value: now.value });
+    expect((await read(online.id, "basics")).value).toMatchObject({ title: { et: "Y" } });
+    expect((await row(online.id)).title).toEqual({ et: "E-kulm" });
+  });
+
+  test("review M-1: an old published course without a price still publishes a title; only a type change must bring the price", async () => {
+    await db.update(courses).set({ price: null }).where(eq(courses.id, online.id));
+    await write(online.id, "basics", { title: { et: "Uus nimi" } }, (await read(online.id, "basics")).version);
+    expect(await publishCourse(db, online.id, NOW)).toEqual({ published: ["basics"], blocked: [] });
+    expect((await row(online.id)).title).toEqual({ et: "Uus nimi" });
+    // the price part itself still must not be left empty, nor a type change without the new type's price
+    await write(online.id, "price", { videoCount: "3" }, (await read(online.id, "price")).version);
+    expect(await publishCourse(db, online.id, NOW)).toEqual({ published: [], blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] });
   });
 
   test("publishing writes the title, deletes the draft and revalidates once; the other tab's next save is a conflict with the published text", async () => {
     const live = await read(online.id, "basics");
     await write(online.id, "basics", { title: { et: "E-kulm (uus)" } }, live.version);
+    const tab = (await dv(online.id, "basics"))!;
     expect(await publishCourse(db, online.id, NOW)).toEqual({ published: ["basics"], blocked: [] });
     expect(await row(online.id)).toMatchObject({ title: { et: "E-kulm (uus)" }, published: true });
     expect((await row(online.id)).updatedAt.toISOString()).toBe(NOW.toISOString()); // the old editor's stale guard sees the change
@@ -135,7 +191,7 @@ describe("a published course: the parts save to drafts and go live with „Avald
     expect(revalidated()).toEqual([{ kind: "courses" }]);
     const now = await read(online.id, "basics");
     expect(now.version).toBe(`l:${await contentVersion(now.value)}`);
-    expect(await write(online.id, "basics", { title: { et: "Vana aken" } }, "d:1")).toEqual({ ok: false, error: "conflict", version: now.version, value: now.value });
+    expect(await write(online.id, "basics", { title: { et: "Vana aken" } }, tab)).toEqual({ ok: false, error: "conflict", version: now.version, value: now.value });
     // nothing to publish: no revalidation
     pub.revalidatePublic.mockClear();
     expect(await publishCourse(db, online.id, NOW)).toEqual({ published: [], blocked: [] });
@@ -159,7 +215,7 @@ describe("a published course: the parts save to drafts and go live with „Avald
 
   test("clearing the price in the draft is saved (a draft may wait), but blocks the publish with „missing“ and fields [hind]", async () => {
     const price = await read(online.id, "price");
-    expect(await write(online.id, "price", { price: "" }, price.version)).toMatchObject({ ok: true, version: "d:1" });
+    expect(await write(online.id, "price", { price: "" }, price.version)).toMatchObject({ ok: true, version: expect.stringMatching(FIRST) });
     expect(await publishCourse(db, online.id, NOW)).toEqual({ published: [], blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] });
     expect((await row(online.id)).price).toBe(9500);
     expect((await drafts(online.id)).map((d) => d.part)).toEqual(["price"]);
@@ -168,13 +224,13 @@ describe("a published course: the parts save to drafts and go live with „Avald
 
   test("a type change without the new type's price is blocked as missing; with it, both go live and the other type's fields are emptied", async () => {
     const basics = await read(contact.id, "basics");
-    expect(await write(contact.id, "basics", { type: "e_learning" }, basics.version)).toMatchObject({ ok: true, version: "d:1" });
+    expect(await write(contact.id, "basics", { type: "e_learning" }, basics.version)).toMatchObject({ ok: true, version: expect.stringMatching(FIRST) });
     expect(await publishCourse(db, contact.id, NOW)).toEqual({ published: [], blocked: [{ part: "basics", reason: "missing", fields: ["hind"] }] });
     expect((await row(contact.id)).type).toBe("contact");
     // the price card follows the drafted type: an e-course's fields are checked
     const price = await read(contact.id, "price");
     expect(await write(contact.id, "price", { price: "abc" }, price.version)).toEqual({ ok: false, error: "invalid", fields: { price: "amount" } });
-    expect(await write(contact.id, "price", { price: "150", accessMonths: "12" }, price.version)).toMatchObject({ ok: true, version: "d:1" });
+    expect(await write(contact.id, "price", { price: "150", accessMonths: "12" }, price.version)).toMatchObject({ ok: true, version: expect.stringMatching(FIRST) });
     expect(await publishCourse(db, contact.id, NOW)).toEqual({ published: ["basics", "price"], blocked: [] });
     expect(await row(contact.id)).toMatchObject({ type: "e_learning", price: 15000, accessMonths: 12, priceGroup: null, priceIndividual: null, durationLabel: null, includes: [] });
   });
@@ -194,8 +250,8 @@ describe("a published course: the parts save to drafts and go live with „Avald
     expect(await drafts(online.id)).toEqual([]);
     // an empty slug is made from the title (its own title's slug is its own); a later title whose slug is taken is refused at the title too, the
     // field the save carries (else the screen could not hold anything back)
-    expect(await write(online.id, "basics", { slug: "" }, basics.version)).toMatchObject({ ok: true, version: "d:1" });
-    expect(await write(online.id, "basics", { title: { et: "Kulmude LAMI" } }, "d:1")).toEqual({ ok: false, error: "invalid", fields: { slug: "slugTaken", title: "slugTaken" } });
+    expect(await write(online.id, "basics", { slug: "" }, basics.version)).toMatchObject({ ok: true, version: expect.stringMatching(FIRST) });
+    expect(await write(online.id, "basics", { title: { et: "Kulmude LAMI" } }, (await dv(online.id, "basics"))!)).toEqual({ ok: false, error: "invalid", fields: { slug: "slugTaken", title: "slugTaken" } });
     expect((await read(online.id, "basics")).value).toMatchObject({ slug: "", title: { et: "E-kulm" } });
   });
 
@@ -269,7 +325,7 @@ describe("a published course: the parts save to drafts and go live with „Avald
   test("the answer key: the test part's draft never appears in getCourseBySlug's result", async () => {
     const test0 = await read(online.id, "test");
     const secret = { id: "q2", kind: "choice", text: "Salajane küsimus", options: [{ id: "a", text: "Õige vastus", correct: true }, { id: "b", text: "Vale", correct: false }] };
-    expect(await write(online.id, "test", { questions: [QUESTION, secret] }, test0.version)).toMatchObject({ ok: true, version: "d:1" });
+    expect(await write(online.id, "test", { questions: [QUESTION, secret] }, test0.version)).toMatchObject({ ok: true, version: expect.stringMatching(FIRST) });
     const page = JSON.stringify(await getCourseBySlug(db, "e-kulm"));
     for (const leak of ["Salajane küsimus", "Õige vastus", "Vana küsimus", "\"correct\""]) expect(page).not.toContain(leak);
     expect((await getCourseForEdit(db, online.id))!.test!.questions).toEqual([QUESTION]); // live is the old test until „Avalda muudatused“
@@ -428,16 +484,21 @@ describe("the lock order (ledger T11, 40P01): the course row first, then content
     const log = await useLoggedDb();
     const live = (await read(online.id, "basics")).version;
     const unpublished = (await read(hidden.id, "basics")).version;
-    const runs: [string, () => Promise<unknown>][] = [
-      ["write", () => write(online.id, "basics", { title: { et: "Uus" } }, live)],
-      ["write d:", () => write(online.id, "basics", { title: { et: "Uuem" } }, "d:1")],
-      ["publish", () => publishCourse(db, online.id, NOW)],
-      ["discard", () => discardCourse(db, online.id)],
-      ["switch off", () => switchCoursePublished(db, contact.id, false, NOW)],
+    // each run is made first (its versions read before the log starts), then run
+    const runs: [string, () => Promise<() => Promise<unknown>>][] = [
+      ["write", async () => () => write(online.id, "basics", { title: { et: "Uus" } }, live)],
+      ["write d:", async () => {
+        const draft = (await dv(online.id, "basics"))!;
+        return () => write(online.id, "basics", { title: { et: "Uuem" } }, draft);
+      }],
+      ["publish", async () => () => publishCourse(db, online.id, NOW)],
+      ["discard", async () => () => discardCourse(db, online.id)],
+      ["switch off", async () => () => switchCoursePublished(db, contact.id, false, NOW)],
     ];
-    for (const [name, run] of runs) {
+    for (const [name, make] of runs) {
+      const run = await make();
       log.length = 0;
-      await run();
+      expect(await run(), name).not.toEqual(expect.objectContaining({ ok: false }));
       const lock = courseLock(log);
       expect(lock, name).toBeGreaterThanOrEqual(0);
       expect(draftsTouched(log), name).toBeGreaterThan(lock);

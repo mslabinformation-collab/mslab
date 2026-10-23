@@ -68,12 +68,14 @@ describe("POST /api/admin/koolitus/<id>/osa/<part>", () => {
     await signIn();
     const live = await versionOf("basics"); // a conflict tells the version
     expect(live).toMatch(/^l:[0-9a-f]{32}$/);
-    expect(await answerOf(await save(course.id, "basics", { version: live, patch: { title: { et: "Uus nimi" } } }))).toMatchObject({ status: 200, cache: "no-store", body: { ok: true, version: "d:1", savedAt: expect.any(String) } });
-    expect(await answerOf(await save(course.id, "basics", { version: live, patch: { title: { et: "Teine" } } }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", version: "d:1", value: { title: { et: "Uus nimi" } } } });
-    expect(await answerOf(await save(course.id, "basics", { version: "d:1", patch: { slug: "Vale aadress!" } }))).toMatchObject({ status: 400, body: { ok: false, error: "invalid", fields: { slug: "slugFormat" } } });
+    const first = await answerOf(await save(course.id, "basics", { version: live, patch: { title: { et: "Uus nimi" } } }));
+    expect(first).toMatchObject({ status: 200, cache: "no-store", body: { ok: true, version: expect.stringMatching(/^d:[1-9][0-9]*.1$/), savedAt: expect.any(String) } });
+    const draft = first.body.version as string;
+    expect(await answerOf(await save(course.id, "basics", { version: live, patch: { title: { et: "Teine" } } }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", version: draft, value: { title: { et: "Uus nimi" } } } });
+    expect(await answerOf(await save(course.id, "basics", { version: draft, patch: { slug: "Vale aadress!" } }))).toMatchObject({ status: 400, body: { ok: false, error: "invalid", fields: { slug: "slugFormat" } } });
     // a field of another part, or no field at all: refused by the part's schema
-    expect(await answerOf(await save(course.id, "basics", { version: "d:1", patch: { price: "10" } }))).toMatchObject({ status: 400, body: { ok: false, error: "invalid", fields: { price: expect.any(String) } } });
-    expect((await save(course.id, "basics", { version: "d:1" })).status).toBe(400);
+    expect(await answerOf(await save(course.id, "basics", { version: draft, patch: { price: "10" } }))).toMatchObject({ status: 400, body: { ok: false, error: "invalid", fields: { price: expect.any(String) } } });
+    expect((await save(course.id, "basics", { version: draft })).status).toBe(400);
     for (const [id, part] of [[999_999, "basics"], [course.id, "outline"], [course.id, "nimi"], ["abc", "basics"]] as const) expect((await save(id, part, { version: "d:1", patch: {} })).status, `${id} ${part}`).toBe(404);
     expect((await db.select().from(courses).where(eq(courses.id, course.id)))[0].title).toEqual({ et: "E-kulm" });
   });

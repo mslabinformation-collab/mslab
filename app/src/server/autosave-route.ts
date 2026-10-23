@@ -31,8 +31,11 @@ const json = (body: unknown, status: number): Response => Response.json(body, { 
 
 const saveBody = z.object({ version: z.string(), patch: z.record(z.string(), z.unknown()) });
 
-/** The schema's issues as one code per field (its first), or null when an issue names no field (not a patch of fields). */
-function fieldCodes(issues: readonly z.core.$ZodIssue[]): Record<string, string> | null {
+/**
+ * The schema's issues as one code per field (its first), or null when an issue names no field (not a patch of fields). Also a part's own check of
+ * its whole value (server/course-parts.ts writeCoursePart).
+ */
+export function fieldCodes(issues: readonly z.core.$ZodIssue[]): Record<string, string> | null {
   const out: Record<string, string> = {};
   for (const issue of issues) {
     const names = issue.code === "unrecognized_keys" ? issue.keys : typeof issue.path[0] === "string" ? [issue.path[0]] : [];

@@ -24,8 +24,12 @@ import { logFailure } from "./log";
 //   wait for each other the other way round. An entity whose saves run in a transaction of their own takes the lock there and passes the
 //   transaction in (every function here takes a Db or an open transaction).
 
-/** One part's draft as the editor and the preview read it. */
-export type DraftPart = { part: string; value: unknown; baseVersion: string; version: number; updatedAt: Date };
+/**
+ * One part's draft as the editor and the preview read it. `id`: the draft row's own (a serial, never used again): a draft made after an earlier one of
+ * the same part ended (published, discarded, dropped) starts its `version` at 1 again, so an entity that hands the version to its editor names the
+ * row too (server/course-parts.ts "d:<id>.<version>"), and a tab still on the earlier draft is never taken for the new one's.
+ */
+export type DraftPart = { id: number; part: string; value: unknown; baseVersion: string; version: number; updatedAt: Date };
 
 /** The answer of a draft save: the draft's version after it, or a conflict with what is stored (version 0, value null: there is no draft any more). */
 export type DraftSaveResult = { ok: true; version: number } | { ok: false; error: "conflict"; version: number; value: unknown };
@@ -60,7 +64,7 @@ const ofPart = (entity: string, entityId: number, part: string) => and(ofRow(ent
 /** The drafts of one entity row, in the order their parts were first saved (empty: nothing unpublished). Runs in a caller's transaction too. */
 export async function readDrafts(q: Q, entity: string, entityId: number): Promise<DraftPart[]> {
   return q
-    .select({ part: contentDrafts.part, value: contentDrafts.value, baseVersion: contentDrafts.baseVersion, version: contentDrafts.version, updatedAt: contentDrafts.updatedAt })
+    .select({ id: contentDrafts.id, part: contentDrafts.part, value: contentDrafts.value, baseVersion: contentDrafts.baseVersion, version: contentDrafts.version, updatedAt: contentDrafts.updatedAt })
     .from(contentDrafts)
     .where(ofRow(entity, entityId))
     .orderBy(asc(contentDrafts.id));
