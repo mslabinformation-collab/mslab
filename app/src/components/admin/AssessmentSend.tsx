@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Verdict } from "@/db/schema";
 import type { PracticalStatus } from "@/domain/completion";
 import type { AssessmentView } from "@/domain/protocols";
@@ -14,9 +14,11 @@ import { sameContent, statusOf, unsavedEntry, written, type Content } from "./pr
 import type { VerdictTaps } from "./verdict-taps";
 import ui from "./ui.module.css";
 import screen from "./ProtocolScreen.module.css";
+import styles from "./Assessment.module.css";
 
-// The send of Maria's assessment screen (phase e-course completion, spec §5.3, §8; R2, R3): "Saada hinnang" with one confirmation, or, for an
-// e-course without points, the notes-only protocol's "Saada" as a contact course's (no confirmation). Like ProtocolSend.tsx's StudentSend, the
+// The action bar of Maria's assessment screen (phase e-course completion, spec §5.3, §8; R2, R3; admin UX pass README A4): "{n} punkti · {k}
+// hinnatud", „Kinnita kõik“ and the informed send „Saada hinnang · {k} kinnitatud, {p} paranda“, which has no confirmation (the summary is on the
+// button); or, for an e-course without points, the notes-only protocol's "Saada" as a contact course's. Like ProtocolSend.tsx's StudentSend, the
 // send saves the notes first and sends the version the server confirmed, read-only meanwhile; and before it every verdict tap must be stored
 // (verdict-taps.ts flush), so the student gets exactly what Maria sees. The send names the student's round the screen shows: a new round sent
 // meanwhile (R3 leaves the version) is "stale", read and shown, never approved unseen. This file runs on old iPads: no lookbehind here or in what
@@ -56,14 +58,18 @@ export function assessMessage(result: Outcome, s: S, t: T): string | null {
 }
 
 /**
- * Under the access's protocol. Sent and not opened: "Muuda" (a correction of the same round; after the approval only the notes can change).
- * Otherwise "Saada hinnang" (the screen's one primary button): a tap first checks what the screen shows — the student has sent her work, every
- * point has a verdict, every "Paranda" has a note — and says what is missing; then one confirmation with the counts; its "Saada" saves the
- * notes, stores every tap, and sends (sendAssessmentAction) with the round the screen shows. After an approval the button sends the changed notes
- * again ("Saada uuesti"). R3: coming back to the window reads the server again (engine.recheck), so the student's new round reaches a screen left
- * open; a send or a tap the server finds of an older round reads it too, and the line says she sent a new one. A read that brings another round
- * closes the confirmation (its counts were of the round before). An "already" answer reads the server again, so the screen takes its status; a
+ * Above the access's cards (the notes-only protocol: under it). The bar: "{n} punkti · {k} hinnatud", „Kinnita kõik“ (every point without a verdict
+ * goes to „Kinnitatud“, each as a tap of verdict-taps.ts; off while nothing is submitted, once the verdicts are locked and when no point is
+ * left), and the send in the dock. Sent and not opened, the dock holds "Muuda" (a correction of the same round; after the approval only the notes
+ * can change). Otherwise „Saada hinnang · {k} kinnitatud, {p} paranda“ (the screen's one primary button; „, 0 paranda“ is left out): a press first
+ * checks what the screen shows — the student has sent her work, every point has a verdict, every "Paranda" has a note — and says what is missing;
+ * otherwise it saves the notes, stores every tap, and sends (sendAssessmentAction) with the round the screen shows, with no confirmation in between.
+ * After an approval the button sends the changed notes again ("Saada uuesti"). R3: coming back to the window reads the server again
+ * (engine.recheck), so the student's new round reaches a screen left open (the counts on the button follow it); a send or a tap the server finds of
+ * an older round reads it too, and the line says she sent a new one. An "already" answer reads the server again, so the screen takes its status; a
  * send that got no answer reads it too, and the line "Vastust ei tulnud …" goes when the read shows the send done.
+ * The dock is the send and the lines it leaves: on a wide screen part of the bar, on a phone a bar of its own fixed to the bottom (marked
+ * data-fab-avoid, so the 💬 bubble lifts above it); `onDock` is told its height (0 when it has no box), which the screen keeps as bottom padding.
  */
 export function AssessmentSend({
   state,
@@ -71,6 +77,8 @@ export function AssessmentSend({
   current,
   taps,
   onSent,
+  onApproveAll,
+  onDock,
 }: {
   state: EditorState;
   assessment: AssessmentView;
@@ -79,28 +87,37 @@ export function AssessmentSend({
   taps: VerdictTaps;
   /** A send went through: the status it made (null: only the notes went, or it was sent already) and the verdicts it sent. */
   onSent(status: PracticalStatus | null, verdicts: (Verdict | null)[]): void;
+  /** „Kinnita kõik“ pressed (the bar says when it can be): the screen approves every point without a verdict. */
+  onApproveAll(): void;
+  /** The dock's height now (0: it has no box of its own), at every render and whenever it changes size. */
+  onDock?(height: number): void;
 }) {
   const s = adminEt.assessment.screen;
   const t = adminEt.protocols;
-  const uid = useId();
   const { engine, entry, locked, onUnlock } = state;
   const id = entry.registrationId;
   const notesOnly = entry.titles.length === 0;
-  // the round the confirmation was opened on: it shows only while the screen shows that round, so a read that brings the student's new round
-  // closes it (its counts were of the round before, and the server would refuse its send as stale)
-  const [askedOn, setAskedOn] = useState<number | null>(null);
-  const asking = askedOn !== null && askedOn === assessment.round;
   const [done, setDone] = useState<string | null>(null);
-  const opener = useRef<HTMLButtonElement>(null);
-  const question = useRef<HTMLParagraphElement>(null);
-  const box = useRef<HTMLDivElement>(null);
-  const wasAsking = useRef(false);
+  const dock = useRef<HTMLDivElement>(null);
+  /** Tells the screen how tall the dock is (rounded up: the padding must cover it). */
+  const measure = () => {
+    if (dock.current) onDock?.(Math.ceil(dock.current.getBoundingClientRect().height));
+  };
+  // (after every render: a line coming into the dock makes it taller; and when the window is resized or the dock itself changes size)
+  useLayoutEffect(measure);
   useEffect(() => {
-    if (asking) question.current?.focus();
-    // closed by a new round, the focused button gone with it: the focus returns to "Saada hinnang" (close() moves it itself)
-    else if (wasAsking.current && (document.activeElement === null || document.activeElement === document.body)) opener.current?.focus();
-    wasAsking.current = asking;
-  }, [asking]);
+    const el = dock.current;
+    if (!el) return;
+    const again = () => measure();
+    window.addEventListener("resize", again);
+    const watch = typeof ResizeObserver === "function" ? new ResizeObserver(again) : null;
+    watch?.observe(el);
+    return () => {
+      window.removeEventListener("resize", again);
+      watch?.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `measure` reads the refs and the latest `onDock` of the render that last ran
+  }, [notesOnly]);
   useEffect(() => {
     if (notesOnly) return;
     // R3: the student's new round (its photos, the "Paranda" verdicts cleared) reaches a screen left open with its next read; coming back to the
@@ -125,23 +142,17 @@ export function AssessmentSend({
     return null;
   }
 
-  function ask() {
+  /** The send's press: what is missing is said; otherwise it goes (no confirmation: the button already says what it sends). */
+  function press() {
     if (busy) return;
     setDone(null);
     if (notesOnly) {
-      void send(); // as a contact course's "Saada": no confirmation
+      void send(); // as a contact course's "Saada"
       return;
     }
     const line = why();
     engine.setSendError(id, line);
-    if (!line) setAskedOn(assessment.round);
-  }
-
-  /** Closes the confirmation; its focused button goes with it, so the focus returns to "Saada hinnang" (unless Maria has gone elsewhere). */
-  function close() {
-    const active = document.activeElement;
-    if (!active || active === document.body || box.current?.contains(active)) opener.current?.focus();
-    setAskedOn(null);
+    if (!line) void send();
   }
 
   /**
@@ -258,99 +269,90 @@ export function AssessmentSend({
       engine.setSendError(id, assessMessage(result, s, t));
     } finally {
       engine.setSending(id, false);
-      close();
     }
   }
 
   const waiting = !notesOnly && assessment.status === "open";
-  const label = notesOnly ? (statusOf(entry) === "changed" ? s.sendAgain : s.sendNotes) : assessment.locked ? s.sendAgain : s.send;
-  return (
-    <div className={screen.sendBar} data-send-bar="">
-      {locked ? (
-        <button
-          type="button"
-          className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}
-          onClick={() => {
-            engine.setSendError(id, null);
-            setDone(null);
-            onUnlock(true);
-          }}
-          data-edit=""
-        >
-          {t.edit}
-        </button>
-      ) : notesOnly && statusOf(entry) === "sent" ? (
-        <p className={ui.hint} data-editing="">
-          {t.editing}
+  const points = entry.titles.length;
+  const decided = ok + fix;
+  /** „Kinnita kõik“ has something to do: work to assess, verdicts not locked, the protocol open, a point left without a verdict. */
+  const canApprove = !notesOnly && !waiting && !assessment.locked && !state.frozen && entry.protocolId !== null && decided < points;
+  const label = notesOnly ? (statusOf(entry) === "changed" ? s.sendAgain : s.sendNotes) : assessment.locked ? s.sendAgain : fix === 0 ? fill(s.sendOk, { ok }) : fill(s.send, { ok, fix });
+  const control = locked ? (
+    <button
+      type="button"
+      className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}
+      onClick={() => {
+        engine.setSendError(id, null);
+        setDone(null);
+        onUnlock(true);
+      }}
+      data-edit=""
+    >
+      {t.edit}
+    </button>
+  ) : notesOnly && statusOf(entry) === "sent" ? (
+    <p className={ui.hint} data-editing="">
+      {t.editing}
+    </p>
+  ) : (
+    <button type="button" className={ui.btn} aria-disabled={busy || waiting || undefined} onClick={press} data-assess-send="">
+      {busy ? t.sending : label}
+    </button>
+  );
+  // what the send leaves: its refusal (a live alert), and the result (a live region that is there from the start)
+  const lines = [
+    entry.sendError ? (
+      <p key="error" role="alert" className={notesOnly ? ui.error : `${ui.error} ${styles.message}`} data-assess-error="">
+        {entry.sendError}
+      </p>
+    ) : null,
+    <div key="status" role="status" className={notesOnly ? undefined : styles.message}>
+      {done && (
+        <p className={ui.success} data-assess-sent="">
+          {done}
         </p>
-      ) : (
-        <button
-          ref={opener}
-          type="button"
-          className={ui.btn}
-          aria-disabled={busy || waiting || undefined}
-          aria-expanded={notesOnly ? undefined : asking}
-          onClick={ask}
-          data-assess-send=""
-        >
-          {busy ? t.sending : label}
-        </button>
       )}
+    </div>,
+  ];
+
+  if (notesOnly)
+    return (
+      <div className={screen.sendBar} data-send-bar="">
+        {control}
+        {lines}
+      </div>
+    );
+  return (
+    <div className={styles.bar} data-send-bar="" data-assess-bar="">
+      <p className={styles.progress} data-assess-progress="">
+        {fill(s.progress, { n: points, k: decided })}
+      </p>
+      <button
+        type="button"
+        className={`${ui.btn} ${ui.secondary} ${styles.approveAll}`}
+        aria-disabled={!canApprove || undefined}
+        onClick={() => {
+          if (canApprove) onApproveAll();
+        }}
+        data-approve-all=""
+      >
+        {s.approveAll}
+      </button>
+      <div ref={dock} className={styles.dock} data-assess-dock="" data-fab-avoid="">
+        {control}
+        {lines}
+      </div>
       {waiting && (
-        <p className={ui.hint} data-assess-waiting="">
+        <p className={`${ui.hint} ${styles.aside}`} data-assess-waiting="">
           {s.waiting}
         </p>
       )}
-      {!notesOnly && assessment.locked && (
-        <p className={ui.hint} data-assess-locked="">
+      {assessment.locked && (
+        <p className={`${ui.hint} ${styles.aside}`} data-assess-locked="">
           {s.lockedPassed}
         </p>
       )}
-      {asking && (
-        <div ref={box} className={`${ui.notice} ${screen.confirm}`} role="group" aria-labelledby={`${uid}-ask`} data-assess-confirm-box="">
-          <p id={`${uid}-ask`} ref={question} tabIndex={-1}>
-            <strong>{s.confirmTitle}</strong>
-          </p>
-          {assessment.locked ? <p>{s.confirmNotes}</p> : <p>{fill(s.confirmCounts, { ok, fix })}</p>}
-          {!assessment.locked && fix === 0 && <p>{s.confirmPassed}</p>}
-          <div className={screen.answers}>
-            <button
-              type="button"
-              className={ui.btn}
-              aria-disabled={busy || undefined}
-              onClick={() => {
-                if (!busy) void send();
-              }}
-              data-assess-confirm=""
-            >
-              {busy ? t.sending : s.confirmYes}
-            </button>
-            <button
-              type="button"
-              className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}
-              aria-disabled={busy || undefined}
-              onClick={() => {
-                if (!busy) close();
-              }}
-              data-assess-confirm-no=""
-            >
-              {s.confirmNo}
-            </button>
-          </div>
-        </div>
-      )}
-      {entry.sendError && (
-        <p role="alert" className={ui.error} data-assess-error="">
-          {entry.sendError}
-        </p>
-      )}
-      <div role="status">
-        {done && (
-          <p className={ui.success} data-assess-sent="">
-            {done}
-          </p>
-        )}
-      </div>
     </div>
   );
 }

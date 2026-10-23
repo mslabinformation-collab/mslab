@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { PROTOCOL_LIMITS, type ProtocolStatus, type ScreenStudentView } from "@/domain/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
@@ -77,20 +77,23 @@ const usePhoneChip = (): boolean => useSyncExternalStore(onWidth, narrowNow, wid
  * minutes is shown, while the text is still unread when the tab is shown or the network is back, and after a refused read (signed out) when the tab
  * is shown or focused: protocol-autosave.ts keepReading), and the
  * engine then reconciles each student with it (reconcile). A student the answer no longer lists stays on the screen, saying she is gone. `read` is
- * the reading, replaceable for the tests. For an e-course access (AssessmentScreen.tsx) three optional props: `stageExtra` under each stage's
- * heading (the photos and the verdicts), `sendBar` instead of the protocol's own sends ("Saada hinnang"), and `opened` (a sent protocol shows open
- * without "Muuda": the access's new round waits for Maria).
+ * the reading, replaceable for the tests. For an e-course access (AssessmentScreen.tsx, README A4) four optional layout hooks: `head` instead of the
+ * name and the chip (the student as the page's H1 with a meta line; the chip is handed over), `stage` instead of a stage's box (the point's card;
+ * with it the points are a grid of cards, the action bar comes above them, and "Üldised märkused" is a card), `sendBar` instead of the protocol's own
+ * sends (the action bar with "Saada hinnang"), and `opened` (a sent protocol shows open without "Muuda": the access's new round waits for Maria).
  */
 export function ProtocolScreen({
   view,
   read = getScreen,
-  stageExtra,
+  head,
+  stage,
   sendBar,
   opened = false,
 }: {
   view: ScreenView;
   read?: ReadScreen;
-  stageExtra?: (index: number, state: EditorState) => ReactNode;
+  head?: (chip: ReactNode, nameId: string) => ReactNode;
+  stage?: (index: number, state: EditorState) => ReactNode;
   sendBar?: (entry: Entry, state: EditorState) => ReactNode;
   opened?: boolean;
 }) {
@@ -152,7 +155,8 @@ export function ProtocolScreen({
   const list = students.length > 1;
 
   return (
-    <div className={styles.screen} data-protocol-screen="">
+    // (with cards the screen is no size container: the send bar's dock is fixed to the screen on a phone, which a container would take for its own)
+    <div className={stage ? `${styles.screen} ${styles.screenCards}` : styles.screen} data-protocol-screen="">
       {!view.single && <SendAll engine={engine} names={names} onSent={(id) => unlock(id, false)} />}
       <div className={list ? `${styles.layout} ${styles.withList}` : styles.layout}>
         {list && (
@@ -202,7 +206,8 @@ export function ProtocolScreen({
             unlocked={unlocked.has(entry.registrationId)}
             onUnlock={(on) => unlock(entry.registrationId, on)}
             opened={opened}
-            stageExtra={stageExtra}
+            head={head}
+            stage={stage}
             sendBar={sendBar}
           />
         )}
@@ -211,7 +216,10 @@ export function ProtocolScreen({
   );
 }
 
-/** One student's protocol: her name and the save's status (SaveStatus), a conflict's notice, the practice part's boxes, the general notes, the sends. */
+/**
+ * One student's protocol: her name and the save's status (SaveStatus), a conflict's notice, the practice part's boxes, the general notes, the sends.
+ * With `stage` (an access's practical work) the practice part is a grid of the points' cards and the sends come first, as the action bar.
+ */
 function StudentEditor({
   engine,
   entry,
@@ -222,7 +230,8 @@ function StudentEditor({
   unlocked,
   onUnlock,
   opened,
-  stageExtra,
+  head,
+  stage,
   sendBar,
 }: {
   engine: ProtocolAutosave;
@@ -236,7 +245,8 @@ function StudentEditor({
   unlocked: boolean;
   onUnlock(on: boolean): void;
   opened: boolean;
-  stageExtra?: (index: number, state: EditorState) => ReactNode;
+  head?: (chip: ReactNode, nameId: string) => ReactNode;
+  stage?: (index: number, state: EditorState) => ReactNode;
   sendBar?: (entry: Entry, state: EditorState) => ReactNode;
 }) {
   const t = adminEt.protocols;
@@ -276,19 +286,28 @@ function StudentEditor({
     restoredInto.current = box >= 0 ? `[data-note="${box}"]` : "[data-general]";
   }
 
+  const cards = stage !== undefined;
+  const chip = (
+    <SaveStatus
+      status={protocolSaveStatus(entry.status, entry.conflict, entry.titles)}
+      compact={phone}
+      thing={thing}
+      onShowInvalid={() => section.current?.querySelector<HTMLElement>("[aria-invalid='true']")?.focus()}
+    />
+  );
+
   return (
-    <section ref={section} className={styles.editor} aria-labelledby={`${uid}-name`} data-editor={id}>
-      <div className={styles.editorHead}>
-        <h2 id={`${uid}-name`} className={ui.h2}>
-          {name}
-        </h2>
-        <SaveStatus
-          status={protocolSaveStatus(entry.status, entry.conflict, entry.titles)}
-          compact={phone}
-          thing={thing}
-          onShowInvalid={() => section.current?.querySelector<HTMLElement>("[aria-invalid='true']")?.focus()}
-        />
-      </div>
+    <section ref={section} className={cards ? `${styles.editor} ${styles.editorCards}` : styles.editor} aria-labelledby={`${uid}-name`} data-editor={id}>
+      {head ? (
+        head(chip, `${uid}-name`)
+      ) : (
+        <div className={styles.editorHead}>
+          <h2 id={`${uid}-name`} className={ui.h2}>
+            {name}
+          </h2>
+          {chip}
+        </div>
+      )}
       {entry.conflict && <ConflictNotice conflict={entry.conflict} onRestore={engine.restorable(id) ? restore : null} onDismiss={() => engine.dismissConflict(id)} />}
       {!entry.kept && (
         <p className={ui.error} role="alert" data-not-kept="">
@@ -300,34 +319,44 @@ function StudentEditor({
           {fill(t.locked, { date: `${formatDate(sentAt, "et")} ${formatTime(sentAt, "et")}` })}
         </p>
       )}
-      <div className={styles.part}>
-        <h3 className={ui.h3}>{t.practice}</h3>
-        {entry.titles.length === 0 && <p className={ui.hint}>{t.noStages}</p>}
-        {entry.titles.map((title, i) => (
-          <NoteBox
-            key={i}
-            id={`${uid}-note-${i}`}
-            label={title}
-            value={entry.content.notes[i] ?? ""}
-            readOnly={frozen}
-            note={i}
-            onChange={(v) => engine.editNote(id, i, v)}
-            onBlur={() => void engine.save(id)}
-            extra={stageExtra?.(i, state)}
-          />
-        ))}
-      </div>
-      <div className={styles.part}>
+      {cards && sendBar?.(entry, state)}
+      {cards ? (
+        // the points' cards: a container of their own (3 columns when it is wide enough, 1 on a phone), the screen itself is none
+        <div className={styles.stages}>
+          <div className={styles.stageGrid}>
+            {entry.titles.map((_, i) => (
+              <Fragment key={i}>{stage(i, state)}</Fragment>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className={styles.part}>
+          <h3 className={ui.h3}>{t.practice}</h3>
+          {entry.titles.length === 0 && <p className={ui.hint}>{t.noStages}</p>}
+          {entry.titles.map((title, i) => (
+            <NoteBox
+              key={i}
+              id={`${uid}-note-${i}`}
+              label={title}
+              value={entry.content.notes[i] ?? ""}
+              readOnly={frozen}
+              note={i}
+              onChange={(v) => engine.editNote(id, i, v)}
+              onBlur={() => void engine.save(id)}
+            />
+          ))}
+        </div>
+      )}
+      <div className={cards ? `${styles.part} ${styles.generalCard}` : styles.part}>
         <NoteBox id={`${uid}-general`} label={t.general} heading value={entry.content.generalNote} readOnly={frozen} onChange={(v) => engine.editGeneral(id, v)} onBlur={() => void engine.save(id)} />
       </div>
-      {sendBar ? sendBar(entry, state) : <StudentSend engine={engine} id={id} name={name} primary={primary} unlocked={unlocked} onUnlock={onUnlock} />}
+      {!cards && (sendBar ? sendBar(entry, state) : <StudentSend engine={engine} id={id} name={name} primary={primary} unlocked={unlocked} onUnlock={onUnlock} />)}
     </section>
   );
 }
 
 /**
- * One box with its label (a stage's heading, or "Üldised märkused" as a heading of its own). Over 10 000 characters the box keeps every
- * character and says how many it has, and nothing is sent until it is shorter (the autosave's rule).
+ * One box with its label (a stage's heading, or "Üldised märkused" as a heading of its own): the label and the NoteArea.
  */
 function NoteBox({
   id,
@@ -338,7 +367,6 @@ function NoteBox({
   onBlur,
   note,
   heading = false,
-  extra,
 }: {
   id: string;
   label: string;
@@ -349,22 +377,52 @@ function NoteBox({
   /** The stage's index (data-note); none: the general notes (data-general). */
   note?: number;
   heading?: boolean;
-  /** Under the label (the stage's heading), above the box: an access's photos and verdicts of the stage. */
-  extra?: ReactNode;
 }) {
-  const t = adminEt.protocols;
-  const over = value.length > PROTOCOL_LIMITS.note;
   return (
     <div className={ui.field}>
       <label htmlFor={id} className={heading ? styles.generalLabel : undefined}>
         {label}
       </label>
-      {extra}
+      <NoteArea id={id} value={value} readOnly={readOnly} onChange={onChange} onBlur={onBlur} note={note} />
+    </div>
+  );
+}
+
+/**
+ * A note's text box, growing with its text. Over 10 000 characters the box keeps every character and says how many it has, and nothing is sent
+ * until it is shorter (the autosave's rule). Also a point's comment box on the assessment screen's cards (AssessmentStage.tsx), where `label` names
+ * it (its card has no label for it) and `className` sets its size.
+ */
+export function NoteArea({
+  id,
+  value,
+  readOnly,
+  onChange,
+  onBlur,
+  note,
+  label,
+  className,
+}: {
+  id: string;
+  value: string;
+  readOnly: boolean;
+  onChange(value: string): void;
+  onBlur(): void;
+  /** The stage's index (data-note); none: the general notes (data-general). */
+  note?: number;
+  label?: string;
+  className?: string;
+}) {
+  const t = adminEt.protocols;
+  const over = value.length > PROTOCOL_LIMITS.note;
+  return (
+    <>
       <GrowingText
         id={id}
-        className={`${ui.textarea} ${styles.note}`}
+        className={className ? `${ui.textarea} ${styles.note} ${className}` : `${ui.textarea} ${styles.note}`}
         value={value}
         readOnly={readOnly}
+        aria-label={label}
         aria-invalid={over || undefined}
         aria-describedby={over ? `${id}-long` : undefined}
         onChange={(e) => onChange(e.target.value)}
@@ -377,7 +435,7 @@ function NoteBox({
           {fill(t.tooLong, { n: value.length, max: PROTOCOL_LIMITS.note })}
         </p>
       )}
-    </div>
+    </>
   );
 }
 

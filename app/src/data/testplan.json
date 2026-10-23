@@ -3970,21 +3970,22 @@
       "steps": [
         "Ava „Hindamine“ ja vajuta real „Proov 1 · praktiline töö“ nuppu „Hinda“.",
         "Vajuta fotole, suurenda kahe sõrmega ja sulge.",
-        "Vali esimesel punktil „Kinnitatud“.",
-        "Vali teisel punktil „Paranda“ ja kirjuta selle punkti märkus: Proov 1.",
-        "Vajuta „Saada hinnang“ ja siis „Saada“."
+        "Vajuta „Kinnita kõik“.",
+        "Vali teisel punktil „Paranda“ ja kirjuta avanenud kasti märkus: Proov 1.",
+        "Vajuta „Saada hinnang · 1 kinnitatud, 1 paranda“."
       ],
       "expect": [
         "Üleval on „Praktiline töö, 1. kord“.",
         "Foto avaneb täisekraanil ja seda saab suurendada.",
-        "Kinnituses on „Kinnitatud: 1 · Paranda: 1“.",
-        "Pärast saatmist näed „Hinnang saadetud. Paranda-punktid: 2.“.",
+        "Pärast „Kinnita kõik“ on mõlemad punktid kinnitatud ja nupul on „Saada hinnang · 2 kinnitatud“.",
+        "Teisel punktil avaneb märkuse kast ise, kui valid „Paranda“.",
+        "Pärast saatmist näed „Hinnang saadetud. Paranda-punktid: 2.“, kinnitust ei küsita.",
         "Proov 1 postkasti tuleb kiri „Sinu praktiline töö on hinnatud“."
       ],
       "why": "Maria hindab iga punkti eraldi.",
       "risk": "high",
       "writes": true,
-      "mark": "reworded",
+      "mark": "redo",
       "markedAt": "deploy"
     },
     {
@@ -4007,7 +4008,9 @@
       ],
       "why": "Õpilane parandab ainult seda, mida Maria palus.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-lopeta",
@@ -4018,18 +4021,21 @@
       "href": "/admin/hindamine",
       "steps": [
         "Ava „Hindamine“ ja vajuta Proov 1 real „Hinda“.",
-        "Vali teisel punktil „Kinnitatud“.",
-        "Vajuta „Saada hinnang“ ja siis „Saada“."
+        "Vajuta „Kinnita kõik“.",
+        "Vajuta „Saada hinnang · 2 kinnitatud“."
       ],
       "expect": [
         "Üleval on „Praktiline töö, 2. kord“.",
-        "Kinnituses on „Kõik punktid on kinnitatud: praktiline töö on sooritatud.“.",
+        "„Kinnita kõik“ kinnitab ainult need punktid, millel hinnangut veel polnud.",
+        "Saatmisnupul pole „, 0 paranda“ ja kinnitust ei küsita.",
         "Pärast saatmist näed „Hinnang saadetud. Koolitus on lõpetatud.“.",
         "Proov 1 postkasti tuleb kiri „Palju õnne! Koolitus „…“ on lõpetatud“."
       ],
       "why": "Viimane kinnitus lõpetab koolituse.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-lopetatud",

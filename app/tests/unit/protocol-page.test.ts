@@ -14,7 +14,7 @@ vi.mock("@/server/auth", () => ({ requireAdmin: async () => "maria@example.test"
 vi.mock("@/server/actions/admin-protocols", () => ({ sendProtocolAction: vi.fn(), sendProtocolsAction: vi.fn() }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn() }));
 // the screen's data and the assessment's client part are stand-ins: what the page asks for, and what it hands over, is what is checked
-const seen = vi.hoisted(() => ({ screen: null as unknown, targets: [] as unknown[], views: [] as unknown[] }));
+const seen = vi.hoisted(() => ({ screen: null as unknown, targets: [] as unknown[], views: [] as unknown[], props: [] as { course?: string; expired?: string }[] }));
 vi.mock("@/db/queries/protocols", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/db/queries/protocols")>()),
   protocolScreen: async (_db: unknown, target: unknown) => {
@@ -23,8 +23,9 @@ vi.mock("@/db/queries/protocols", async (importOriginal) => ({
   },
 }));
 vi.mock("@/components/admin/AssessmentScreen", () => ({
-  AssessmentScreen: ({ view }: { view: unknown }) => {
-    seen.views.push(view);
+  AssessmentScreen: (props: { view: unknown; course?: string; expired?: string }) => {
+    seen.views.push(props.view);
+    seen.props.push({ course: props.course, expired: props.expired });
     return null;
   },
 }));
@@ -74,26 +75,26 @@ const reset = (screen: ScreenData | null) => {
   seen.screen = screen;
   seen.targets.length = 0;
   seen.views.length = 0;
+  seen.props.length = 0;
 };
 
-test("?ligipaas=<id>: the header names the course and the student (the round is the screen's own line, which follows its reads), the way back is Hindamine, and the screen is the access's", async () => {
+test("?ligipaas=<id>: the way back is „← Hindamine“ above the screen, which has the header itself (the student is its H1, the course in its meta line; the round follows its reads) and is the access's", async () => {
   reset(accessScreen());
   const html = await render({ ligipaas: "4" });
   expect(seen.targets).toEqual([{ accessId: 4 }]);
-  expect(html).toMatch(/data-protocol-course="">Kulmude e-kursus · Kati Kask</);
-  expect(html).not.toContain("data-assess-round"); // AssessmentScreen's (tests/unit/assessment-screen-dom.test.ts)
-  expect(html).toContain('href="/admin/hindamine"');
-  expect(html).not.toContain("data-access-expired");
+  expect(backLink(html)?.slice(1)).toEqual(["/admin/hindamine", "← Hindamine"]);
+  expect(html).not.toContain("<h1"); // AssessmentScreen's (tests/unit/assessment-screen-dom.test.ts)
+  expect(html).not.toContain("data-assess-round");
+  expect(seen.props).toEqual([{ course: "Kulmude e-kursus", expired: undefined }]);
   expect(seen.views).toEqual([expect.objectContaining({ single: true, owner: "access", source: { ligipaas: 4 } })]);
   const [view] = seen.views as { students: { registrationId: number; assessment?: { submittedAt: string; expiresAt: string } }[] }[];
   expect(view.students.map((s) => [s.registrationId, s.assessment?.submittedAt])).toEqual([[4, "2026-11-10T09:00:00.000Z"]]);
 });
 
-test("an ended access says Maria can still assess", async () => {
+test("an ended access says Maria can still assess (the line is handed to the screen, which shows it under its header)", async () => {
   reset(accessScreen({ expiresAt: new Date("2026-01-01T00:00:00Z") }));
-  const ended = await render({ ligipaas: "4" });
-  expect(ended).toContain("data-access-expired");
-  expect(ended).toContain("Ligipääs lõppes 01.01.2026.");
+  await render({ ligipaas: "4" });
+  expect(seen.props[0].expired).toContain("Ligipääs lõppes 01.01.2026. Hinnata ja saata saad ikka");
 });
 
 test("?sessioon= and ?registreering= come before ?ligipaas= (the course day's addresses keep their screens); an access that is not there: the not-found card, back to Hindamine", async () => {
@@ -103,7 +104,7 @@ test("?sessioon= and ?registreering= come before ?ligipaas= (the course day's ad
   expect(seen.targets).toEqual([{ sessionId: 5 }, { registrationId: 7 }]);
   const html = await render({ ligipaas: "4" });
   expect(html).toContain("Sellist e-kursuse ligipääsu ei leitud, või see on tühistatud.");
-  expect(html).toContain('href="/admin/hindamine"');
+  expect(backLink(html)?.slice(1)).toEqual(["/admin/hindamine", "← Hindamine"]);
   expect(seen.views).toEqual([]);
 });
 

@@ -841,16 +841,20 @@ export const adminEt = {
     },
   },
 
-  // Maria's assessment of an e-course's practical work (phase e-course completion, spec §5.3): /admin/protokollid?ligipaas=<access id>, the
-  // protocol screen with each point's photos and verdicts (AssessmentScreen.tsx and its parts); the Hindamine page's texts follow `screen`.
-  // `screen`: {n} a count or a round, {point} a point's number (1-based), {points} a list of them, {title} a point's title, {date} a day.
+  // Maria's assessment of an e-course's practical work (phase e-course completion, spec §5.3; admin UX pass README A4):
+  // /admin/protokollid?ligipaas=<access id>, the protocol screen with a card for each point (AssessmentScreen.tsx and its parts); the Hindamine
+  // page's texts follow `screen`.
+  // `screen`: {n} a count or a round, {k} the points with a verdict, {ok} / {fix} the points approved / to fix, {point} a point's number
+  // (1-based), {points} a list of them, {title} a point's title, {date} a day.
   assessment: {
     screen: {
-      // the screen's first line, under the page's "{course} · {name}" (AssessmentScreen: it follows the screen's reads)
+      // the header's meta line, after the course (AssessmentScreen: the round follows the screen's reads); with the day the work was sent
+      // („saadetud {date}“ is `assessment.sentAt`)
       round: "Praktiline töö, {n}. kord",
       notSubmitted: "Praktiline töö: õpilane ei ole veel saatnud",
       notesOnly: "Protokoll",
-      back: "Hindamisse",
+      // the way back from the screen and from its not-found card (README A4, glossary „← {Lehe nimi}“)
+      back: "← Hindamine",
       notFound: "Sellist e-kursuse ligipääsu ei leitud, või see on tühistatud.",
       // the protocol chip's „Seda {asja} enam ei ole …“ on an access's screen (piece2-texts P-10)
       goneThing: "ligipääsu",
@@ -876,18 +880,22 @@ export const adminEt = {
       close: "Sulge",
       waiting: "Hinnangu nupud avanevad, kui õpilane on töö hindamiseks saatnud. Märkusi võid kirjutada juba enne.",
       lockedPassed: "Kõik punktid on kinnitatud: hinnangud on lukus. Märkusi saad muuta ja uuesti saata.",
-      send: "Saada hinnang",
-      // the notes-only protocol's send, and a send again (of changed notes, or of a locked assessment's notes): this screen's own words until its
-      // send is rebuilt (README A4); the course day's protocol says „Saada protokoll {eesnimi}le“ since README A3
+      // the action bar (README A4): how many points there are and how many have a verdict, „Kinnita kõik“ (every point without a verdict goes to
+      // „Kinnitatud“, each as a tap), and the informed send, which has no confirmation: the summary is on the button; nothing to fix leaves out
+      // „, 0 paranda“ (strings.md W4); k = 0 stays literal
+      progress: "{n} punkti · {k} hinnatud",
+      approveAll: "Kinnita kõik",
+      send: "Saada hinnang · {ok} kinnitatud, {fix} paranda",
+      sendOk: "Saada hinnang · {ok} kinnitatud",
+      // the notes-only protocol's send, and a send again (of changed notes, or of a locked assessment's notes): this screen's own words (the
+      // course day's protocol says „Saada protokoll {eesnimi}le“ since README A3)
       sendNotes: "Saada",
       sendAgain: "Saada uuesti",
-      // the one confirmation (spec §5.3)
-      confirmTitle: "Saadan hinnangu õpilasele",
-      confirmCounts: "Kinnitatud: {ok} · Paranda: {fix}",
-      confirmPassed: "Kõik punktid on kinnitatud: praktiline töö on sooritatud.",
-      confirmNotes: "Saadan uuendatud märkused. Hinnangud jäävad samaks.",
-      confirmYes: "Saada",
-      confirmNo: "Tagasi",
+      // a point's card: the comment box opens by itself on „Paranda“, „Lisa märkus“ opens it otherwise; the box's name is „Märkus: {title}“
+      // (piece2-texts P-12); on a phone the photo opens full size by a tap (the phone prototype's hint)
+      addNote: "Lisa märkus",
+      pointNote: "Märkus: {title}",
+      openHint: "Puuduta pilti, et avada täissuuruses.",
       // after the send
       sentFix: "Hinnang saadetud. Paranda-punktid: {points}.",
       sentPassed: "Hinnang saadetud. Kõik punktid on kinnitatud.",
@@ -901,7 +909,7 @@ export const adminEt = {
         unsavedVerdicts: "Kõik hinnangud ei ole veel salvestatud. Proovi uuesti, kui ühendus on tagasi.",
         verdictRefused: "Hinnangut ei salvestatud: töö seis muutus vahepeal. Vaata punktid üle.",
         // a tap or "Saada hinnang" named an older round than the server's: the screen reads the new round and shows it, nothing was stored or sent
-        newRound: "Õpilane saatis vahepeal uue vooru. Vaata see üle.",
+        newRound: "Õpilane saatis vahepeal uue korra. Vaata see üle.",
         notFound: "Seda ligipääsu enam ei ole (see on tühistatud).",
       },
     },

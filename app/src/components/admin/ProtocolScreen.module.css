@@ -221,3 +221,48 @@
 .sendBar p {
   margin: 0;
 }
+
+/* An e-course access's practical work (AssessmentScreen.tsx, README A4): no card round the screen (the points are the cards), the action bar above
+   them, the points in a grid, "Üldised märkused" as a card. The screen is no size container then (container-type would make it the containing
+   block of the send bar's dock, which is fixed to the viewport on a phone); the grid has a container of its own. */
+.screenCards {
+  container-type: normal;
+}
+
+.editor.editorCards {
+  gap: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.stages {
+  container-type: inline-size;
+}
+
+.stageGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+
+@container (min-width: 700px) {
+  .stageGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.generalCard {
+  padding: 20px 22px;
+  border-radius: 22px;
+  background: var(--paper);
+}
+
+.generalCard .generalLabel {
+  font: 400 19px/1.3 var(--font-display);
+}
+
+.generalCard .note {
+  min-height: 80px;
+}

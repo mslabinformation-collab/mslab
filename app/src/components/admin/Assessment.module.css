@@ -1,29 +1,109 @@
-/* Maria's assessment of an e-course's practical work (phase e-course completion, spec §5.3): the round and the status above the protocol
-   screen; under each point its photos (the newest round's, the earlier ones folded and smaller), the verdict buttons and the "Salvestamata"
-   mark; and the full-screen photo viewer. Tokens only (tests/unit/colour-tokens.test.ts); every target at least 44 px; no animation, so
-   prefers-reduced-motion has nothing to turn off. */
+/* Maria's assessment of an e-course's practical work (phase e-course completion, spec §5.3; admin UX pass README A4, the Part 2 prototype's
+   practical-work frames): the header (the student, a meta line, the save chip), the action bar, a card for each point (photos, title, the
+   segmented verdict, the comment), and the full-screen photo viewer. Tokens only (tests/unit/colour-tokens.test.ts); every target at least 44 px;
+   no animation, so prefers-reduced-motion has nothing to turn off. */
 
 .screen {
   display: grid;
   gap: 14px;
 }
 
-/* the round ("Praktiline töö, 2. kord") and the status: they follow the screen's reads */
-.statusLine {
+/* the header: the student as the page's H1 with the meta line under it, the SaveStatus chip at the right end of the row */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 20px;
+}
+
+.title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.chip {
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  font: 300 40px/1.08 var(--font-display);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+/* the course, the round ("Praktiline töö, 2. kord", which follows the screen's reads), the day it was sent and the status */
+.meta {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* the "·" between the parts: the line breaks where the parts do, not inside them */
+.meta > [aria-hidden="true"] {
+  margin: 0 6px;
+}
+
+/* the action bar: how many points have a verdict, „Kinnita kõik“, the send; the lines the send leaves go under them */
+.bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
+  gap: 10px 16px;
+  padding: 16px 22px;
+  border-radius: 22px;
+  background: var(--paper);
+}
+
+.progress {
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+/* the send (and the lines it leaves) is the "dock": on a wide screen it is just part of the bar, on a phone it is fixed to the bottom */
+.dock {
+  display: contents;
+}
+
+/* what the send says under the bar's buttons: a refusal, the result */
+.message {
+  flex: 1 1 100%;
+  order: 9;
   margin: 0;
 }
 
-.stage {
-  display: grid;
-  gap: 10px;
-  padding: 2px 0 4px;
+/* the result's live region is there from the start, empty (a screen reader announces what comes into it) and taking no room */
+.message:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
-.thumbs {
+.aside {
+  flex: 1 1 100%;
+  order: 10;
+  margin: 0;
+}
+
+/* a point's card */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px;
+  border-radius: 22px;
+  background: var(--paper);
+}
+
+/* the newest round's photos: the first one large (260 px, a tap opens the viewer), the others small under it */
+.photos {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -32,18 +112,34 @@
   list-style: none;
 }
 
+.heroItem {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.hero,
 .thumb {
   display: block;
-  width: 88px;
-  height: 88px;
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 12px;
   background: var(--canvas);
   cursor: zoom-in;
 }
 
+.hero {
+  width: 100%;
+  height: 260px;
+  border-radius: 14px;
+}
+
+.thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+}
+
+.hero img,
 .thumb img {
   display: block;
   width: 100%;
@@ -51,9 +147,18 @@
   object-fit: cover;
 }
 
+.hero:focus-visible,
 .thumb:focus-visible {
   outline: 2px solid var(--rose);
   outline-offset: 2px;
+}
+
+/* on a phone: how to see the photo large (the phone prototype's line) */
+.openHint {
+  display: none;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .earlier {
@@ -69,21 +174,43 @@
   cursor: pointer;
 }
 
-.earlier .thumb {
-  width: 64px;
-  height: 64px;
-}
-
 .earlierRound {
   display: grid;
   gap: 6px;
 }
 
-.verdicts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+.pointTitle {
+  margin: 0;
+  font: 400 19px/1.3 var(--font-display);
+}
+
+/* the segmented verdict: one pill, two halves; the chosen half is filled (two classes, so the filling wins over the hover whichever comes first) */
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border: 1px solid var(--heather);
+  border-radius: 99px;
+}
+
+.verdict {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 99px;
+  background: transparent;
+  color: var(--ink);
+  font: 600 13px/1.2 var(--font-body);
+  cursor: pointer;
+}
+
+.verdict:not(:disabled):hover {
+  background: var(--canvas);
+}
+
+.verdict:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
 }
 
 .verdict:disabled {
@@ -91,17 +218,14 @@
   cursor: not-allowed;
 }
 
-/* the chosen verdict: filled (two classes, so it wins over ui.secondary whichever stylesheet comes first) */
 .verdict.okOn,
-.verdict.okOn:hover {
-  border-color: var(--ok);
+.verdict.okOn:not(:disabled):hover {
   background: var(--ok);
   color: var(--paper);
 }
 
 .verdict.fixOn,
-.verdict.fixOn:hover {
-  border-color: var(--bad);
+.verdict.fixOn:not(:disabled):hover {
   background: var(--bad);
   color: var(--paper);
 }
@@ -109,6 +233,92 @@
 .unsaved {
   color: var(--bad);
   font: 600 12px/1.3 var(--font-body);
+}
+
+/* the comment: a box (80 px, growing with its text) once it is wanted, "Lisa märkus" before */
+.card .comment {
+  min-height: 80px;
+}
+
+.addNote {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 600 12px/1.3 var(--font-body);
+  text-decoration: underline;
+  text-decoration-color: var(--iced);
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+.addNote:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* a phone: the title block and the chip share the top row; „Kinnita kõik“ is a full-width button under it; the send sticks to the bottom of the
+   screen as a bar of its own (white, a line above it), and the screen keeps a bottom padding as tall as that bar (--dock-h, measured by
+   AssessmentSend.tsx) so the last card and „Üldised märkused“ can be scrolled clear of it */
+@media (max-width: 640px) {
+  .screen {
+    padding-bottom: var(--dock-h, 0px);
+  }
+
+  .head {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+
+  .title {
+    flex: 1 1 0;
+  }
+
+  .chip {
+    flex: 0 1 auto;
+    max-width: 55%;
+  }
+
+  .name {
+    font-size: 26px;
+    line-height: 1.1;
+  }
+
+  .bar {
+    display: grid;
+    gap: 10px;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  .approveAll {
+    width: 100%;
+  }
+
+  .dock {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 15;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    padding: 12px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--line);
+    background: var(--paper);
+  }
+
+  .dock > button {
+    width: 100%;
+  }
+
+  .openHint {
+    display: block;
+  }
 }
 
 /* the viewer: a modal <dialog> over the whole screen. The photo fits it; the browser's own pinch zoom enlarges it (touch-action on its box),

@@ -7,9 +7,9 @@ import { SAVE_TIMEOUT_MS } from "./protocol-autosave";
 // round the screen showed when it was tapped (a resubmission never raises the notes' version, R3, so only the round tells a screen of an older
 // submission): the server answers "stale" for an older round, and Maria never judges photos she has not seen. A tap that gets no answer
 // (offline, a server error, signed out) keeps its look and says "Salvestamata", with the taps behind it; they go again with the next tap and
-// before "Saada hinnang" (AssessmentSend.tsx). A refusal (the work changed meanwhile: approved on another device, nothing submitted, the row made
-// again, or the student's new round) drops the tap: the screen reads the server again (AssessmentScreen.tsx). This file runs on old iPads: no
-// lookbehind (tests/unit/old-safari.test.ts).
+// before "Saada hinnang" (AssessmentSend.tsx). „Kinnita kõik“ (approveAll) is a round of taps too: each point without a verdict, one tap each. A
+// refusal (the work changed meanwhile: approved on another device, nothing submitted, the row made again, or the student's new round) drops the
+// tap: the screen reads the server again (AssessmentScreen.tsx). This file runs on old iPads: no lookbehind (tests/unit/old-safari.test.ts).
 
 /** One tap as POST /api/admin/hinnang takes it (server/assessment.ts verdictBody): the round the screen showed; null clears the point's verdict. */
 export type VerdictBody = { accessId: number; protocolId: number; round: number; stage: number; verdict: Verdict | null };
@@ -110,6 +110,22 @@ export class VerdictTaps {
   tap(protocolId: number, stage: number, verdict: Verdict | null): Promise<TapsResult> {
     this.chosen.set(stage, { verdict, round: this.shownRound });
     this.changed();
+    return this.flush(protocolId);
+  }
+
+  /**
+   * „Kinnita kõik“ (README A4): every point of `points` that shows no verdict goes to "ok", each as a tap of its own (one request each, in order,
+   * named for the round the screen shows); a point that shows a verdict, "Paranda" included, is left as it is. A point whose clearing is still on
+   * its way shows none, so it is approved too. Shown at once, stored with the others waiting (flush).
+   */
+  approveAll(protocolId: number, points: number): Promise<TapsResult> {
+    let any = false;
+    for (let stage = 0; stage < points; stage++) {
+      if (this.shown(stage) !== null) continue;
+      this.chosen.set(stage, { verdict: "ok", round: this.shownRound });
+      any = true;
+    }
+    if (any) this.changed();
     return this.flush(protocolId);
   }
 

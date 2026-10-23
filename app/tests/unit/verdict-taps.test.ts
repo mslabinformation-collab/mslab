@@ -83,3 +83,35 @@ test("a tap names the round the screen showed when it was tapped, a read of the 
   expect(await b).toBe("stale");
   expect([0, 1].map((i) => [taps.shown(i), taps.unsaved(i)])).toEqual([[null, false], ["fix", false]]);
 });
+
+test("approveAll („Kinnita kõik“): only the points without a verdict shown go to 'ok', one request each, in order; a point with a verdict is left alone", async () => {
+  const s = server();
+  const taps = new VerdictTaps(4, ["fix", null, "ok", null], 2, s.post);
+  const all = taps.approveAll(9, 4);
+  await settle();
+  expect(s.calls.map((c) => c.body)).toEqual([{ accessId: 4, protocolId: 9, round: 2, stage: 1, verdict: "ok" }]); // one request at a time
+  expect([0, 1, 2, 3].map((i) => taps.shown(i))).toEqual(["fix", "ok", "ok", "ok"]); // shown at once, before any answer
+  s.calls[0].answer(stored(["fix", "ok", "ok", null]));
+  await settle();
+  expect(s.calls.map((c) => [c.body.stage, c.body.verdict])).toEqual([[1, "ok"], [3, "ok"]]);
+  s.calls[1].answer(stored(["fix", "ok", "ok", "ok"]));
+  expect(await all).toBe("saved");
+  expect([0, 1, 2, 3].map((i) => [taps.shown(i), taps.unsaved(i)])).toEqual([["fix", false], ["ok", false], ["ok", false], ["ok", false]]);
+});
+
+test("approveAll with every point decided sends nothing; a point whose clearing tap is still on its way counts as unset; no answer keeps the taps ('Salvestamata')", async () => {
+  const s = server();
+  const taps = new VerdictTaps(4, ["ok", "fix"], 1, s.post);
+  expect(await taps.approveAll(9, 2)).toBe("saved");
+  expect(s.calls).toHaveLength(0);
+  void taps.tap(9, 1, null); // the "Paranda" cleared, its request on its way
+  expect(taps.shown(1)).toBeNull();
+  const all = taps.approveAll(9, 2);
+  expect(taps.shown(1)).toBe("ok"); // the cleared point is unset, so it is approved (its latest choice replaces the clearing)
+  s.calls[0].answer(null); // the clearing got no answer: it is replaced by the choice behind it
+  await settle();
+  expect(s.calls.map((c) => c.body.verdict)).toEqual([null, "ok"]);
+  s.calls[1].answer(null); // nor does that one
+  expect(await all).toBe("unsaved");
+  expect([taps.shown(1), taps.unsaved(1)]).toEqual(["ok", true]);
+});

@@ -122,11 +122,11 @@ async function sendPractical(page: Page): Promise<void> {
   await confirmStep(page.locator("[data-practical-confirm]"));
 }
 
-/** "Saada hinnang" and its one confirmation (spec §5.3): the screen says it was sent. */
+/** „Saada hinnang · …“ (spec §5.3, amended by the admin UX pass: the summary is on the button, so one press sends and no panel opens): the screen says it was sent. */
 async function sendAssessment(page: Page): Promise<void> {
   await page.locator("[data-assess-send]").click();
-  await confirmStep(page.locator("[data-assess-confirm]"));
   await expect(page.locator("[data-assess-sent]").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("[data-assess-confirm-box], [data-confirm-panel]")).toHaveCount(0);
 }
 
 /** Maria on "Hindamine" (one list, A4), from where the access's row of `kind` opens. */
@@ -249,7 +249,7 @@ test("§9 e2e 2 — Review Focus 1: a 6000×4000 phone photo with GPS goes up un
   expect(await storedProtocolOf(s.accessId)).toMatchObject({ round: 1, sentRound: null });
 });
 
-test("§9 e2e 3: Maria finds the work in 'Hindamine', marks one point 'Paranda' with a note and sends; her page shows each verdict", async ({ page, context, visitorIp, browser }, info) => {
+test("§9 e2e 3: Maria finds the work in 'Hindamine', approves all with „Kinnita kõik“, switches one point to 'Paranda' with a note and sends; her page shows each verdict", async ({ page, context, visitorIp, browser }, info) => {
   const s = await student("t3", info, { points: E2E_POINTS, lessonsDone: true });
   await insertPractical(s.accessId, E2E_POINTS, await canvasJpeg(page, 640, 480), { round: 1, photos: [{ stage: 0, round: 1 }, { stage: 1, round: 1 }] });
   await signInAsAdmin(page, context, visitorIp, created);
@@ -260,11 +260,30 @@ test("§9 e2e 3: Maria finds the work in 'Hindamine', marks one point 'Paranda' 
   await expect(page).toHaveURL(new RegExp(`/admin/protokollid\\?ligipaas=${s.accessId}$`));
   await adminReady(page);
   for (const i of [0, 1]) await expect(assessPoint(page, i).locator("[data-assess-photo]")).toHaveCount(1);
-  await assessPoint(page, 0).locator('[data-verdict="ok"]').click();
+  // the header (the student, the course and the round), the action bar, a card for each point; nothing is assessed, no comment box is open yet
+  await expect(page.locator("h1")).toHaveText("Kati Kask");
+  await expect(page.locator("[data-assess-round]")).toHaveText("Praktiline töö, 1. kord");
+  await expect(page.locator("[data-assess-progress]")).toHaveText("2 punkti · 0 hinnatud");
+  await expect(page.locator("[data-assess-send]")).toHaveText("Saada hinnang · 0 kinnitatud");
+  await expect(page.locator("[data-note]")).toHaveCount(0);
+  await expect(assessPoint(page, 0).locator("[data-add-note]")).toHaveText("Lisa märkus");
+  // „Kinnita kõik“ approves every point without a verdict (each one a tap, stored at once), then only the one to fix is switched
+  await page.locator("[data-approve-all]").click();
+  for (const i of [0, 1]) await expect(assessPoint(page, i).locator('[data-verdict="ok"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("[data-assess-progress]")).toHaveText("2 punkti · 2 hinnatud");
+  await expect(page.locator("[data-assess-send]")).toHaveText("Saada hinnang · 2 kinnitatud"); // nothing to fix: no „, 0 paranda“
+  await expect(page.locator("[data-approve-all]")).toHaveAttribute("aria-disabled", "true");
   await assessPoint(page, 1).locator('[data-verdict="fix"]').click();
   await expect(assessPoint(page, 0).locator('[data-verdict="ok"]')).toHaveAttribute("aria-pressed", "true");
   await expect(assessPoint(page, 1).locator('[data-verdict="fix"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("[data-assess-send]")).toHaveText("Saada hinnang · 1 kinnitatud, 1 paranda");
   await expect(page.locator("[data-verdict-unsaved]")).toHaveCount(0); // each tap stored
+  // „Paranda“ opened its comment box by itself; „Kinnitatud“ offers „Lisa märkus“
+  await expect(note(page, s.accessId, 1)).toBeVisible();
+  await expect(note(page, s.accessId, 0)).toHaveCount(0);
+  // a „Paranda“ without a comment is refused on the screen, nothing is sent
+  await page.locator("[data-assess-send]").click();
+  await expect(page.locator("[data-assess-error]")).toHaveText("Lisa märkus Paranda-punktidele: 2.");
   await note(page, s.accessId, 1).fill("Värvi piir on ebaühtlane: tee uus foto päevavalges.");
   await saved(page, s.accessId);
   await sendAssessment(page);
@@ -315,7 +334,10 @@ test("§9 e2e 4: she redoes only the 'Paranda' point and sends again; Maria appr
   await item.getByRole("link").first().click();
   await adminReady(page);
   await expect(assessPoint(page, 0).locator('[data-verdict="ok"]')).toHaveAttribute("aria-pressed", "true");
-  await assessPoint(page, 1).locator('[data-verdict="ok"]').click();
+  await expect(page.locator("[data-assess-progress]")).toHaveText("2 punkti · 1 hinnatud");
+  await page.locator("[data-approve-all]").click(); // only the point left without a verdict
+  await expect(assessPoint(page, 1).locator('[data-verdict="ok"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("[data-assess-send]")).toHaveText("Saada hinnang · 2 kinnitatud");
   await expect(page.locator("[data-verdict-unsaved]")).toHaveCount(0);
   await sendAssessment(page);
   expect(await storedProtocolOf(s.accessId)).toMatchObject({ round: 2, sentRound: 2, verdicts: ["ok", "ok"] });
@@ -507,7 +529,7 @@ test("§9 e2e 8: the pages at 390, 834, 1194 and 1440 px — no sideways scroll,
     { page, url: "/admin", scope: "[data-overview-queue]", admin: true, shows: ['[data-overview-row="assessment"]'] },
     { page, url: "/admin/hindamine", scope: "[data-assessment-page]", admin: true, shows: queued },
     { page, url: `/admin/hindamine/test?id=${attemptId}`, scope: "[data-test-review-page]", admin: true, shows: ["[data-review-verdict]", "[data-review-send]"] },
-    { page, url: `/admin/protokollid?ligipaas=${d.accessId}`, scope: "[data-protocol-screen]", admin: true, shows: ["[data-assess-photo]", "[data-verdict]", "[data-assess-send]"] },
+    { page, url: `/admin/protokollid?ligipaas=${d.accessId}`, scope: "[data-protocol-screen]", admin: true, shows: ["[data-assess-photo]", "[data-verdict]", "[data-approve-all]", "[data-assess-send]"] },
   ];
   for (const width of [390, 834, 1194, 1440]) {
     for (const v of screens) {
@@ -527,4 +549,55 @@ test("§9 e2e 8: the pages at 390, 834, 1194 and 1440 px — no sideways scroll,
   }
   await herA.close();
   await herB.close();
+});
+
+test("§9 e2e 9 (A4, README: the send bar sticks to the bottom on a phone): at 375×812 the bar is fixed to the bottom and marked for the review bubble, and the last card and „Üldised märkused“ scroll clear of it", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "sets its own width: the desktop project only");
+  const s = await student("t9", info, { points: E2E_POINTS, lessonsDone: true });
+  // two points, three photos on the first: the cards and „Üldised märkused“ are much taller than the 812 px screen
+  await insertPractical(s.accessId, E2E_POINTS, await canvasJpeg(page, 640, 480), { round: 1, photos: [{ stage: 0, round: 1 }, { stage: 0, round: 1 }, { stage: 1, round: 1 }] });
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/admin/protokollid?ligipaas=${s.accessId}`);
+  await adminReady(page);
+  const dock = page.locator("[data-assess-dock]");
+  await expect(dock).toBeVisible();
+  await expect(dock).toHaveAttribute("data-fab-avoid", ""); // the 💬 bubble lifts above it
+  await expect(dock.locator("[data-assess-send]")).toBeVisible();
+  // one column: the cards are as wide as the screen's content, the first photo 260 px high and as wide as its card
+  const card0 = (await assessPoint(page, 0).boundingBox())!;
+  const card1 = (await assessPoint(page, 1).boundingBox())!;
+  expect(Math.abs(card0.x - card1.x), "one column").toBeLessThan(1);
+  expect(card1.y).toBeGreaterThan(card0.y + card0.height - 1);
+  const hero = (await assessPoint(page, 0).locator("[data-assess-hero]").boundingBox())!;
+  expect(Math.round(hero.height)).toBe(260);
+  expect(hero.width).toBeGreaterThan(card0.width - 40);
+  // „Kinnita kõik“ is a full-width button under the header, and the hint for the photo is there
+  const approve = (await page.locator("[data-approve-all]").boundingBox())!;
+  expect(approve.width).toBeGreaterThan(300);
+  expect(approve.height).toBeGreaterThanOrEqual(44);
+  await expect(assessPoint(page, 0).locator("[data-open-hint]")).toHaveText("Puuduta pilti, et avada täissuuruses.");
+  // fixed to the bottom edge of the screen, the width of it, and the screen keeps a padding as tall as it
+  const bar = (await dock.boundingBox())!;
+  const wide = await page.evaluate(() => document.documentElement.getBoundingClientRect().width); // (a desktop browser's scrollbar takes some of the 375)
+  expect([Math.round(bar.x), Math.round(bar.x + bar.width), Math.round(bar.y + bar.height)]).toEqual([0, wide, 812]);
+  expect(await page.locator("[data-assessment-screen]").evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom))).toBeGreaterThanOrEqual(Math.floor(bar.height));
+  // scrolled to the very end: the last card and „Üldised märkused“ are wholly above the bar, and „Üldised märkused“ can be written in
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const barTop = (await dock.boundingBox())!.y;
+  expect(barTop, "the bar stays at the bottom while scrolling").toBeGreaterThan(812 - bar.height - 1);
+  const generalBox = (await general(page, s.accessId).locator("xpath=../..").boundingBox())!; // the box's card
+  const lastCard = (await assessPoint(page, 1).boundingBox())!;
+  expect(generalBox.y + generalBox.height, "„Üldised märkused“ ends above the bar").toBeLessThanOrEqual(barTop + 1);
+  expect(lastCard.y + lastCard.height, "the last card ends above the bar").toBeLessThanOrEqual(barTop + 1);
+  await general(page, s.accessId).fill("Tubli töö.");
+  // a refusal comes into the bar (above the button), which grows with it, and the padding follows
+  await page.locator("[data-assess-send]").click();
+  await expect(dock.locator("[data-assess-error]")).toContainText("Vali hinnang ka punktidele: 1, 2.");
+  const taller = (await dock.boundingBox())!;
+  expect(taller.height).toBeGreaterThan(bar.height);
+  expect(Math.round(taller.y + taller.height)).toBe(812);
+  expect(await page.locator("[data-assessment-screen]").evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom))).toBeGreaterThanOrEqual(Math.floor(taller.height));
+  expect(await noOverflow(page)).toBe(true);
+  expect(await smallTargets(page.locator("[data-protocol-screen]"))).toEqual([]);
 });

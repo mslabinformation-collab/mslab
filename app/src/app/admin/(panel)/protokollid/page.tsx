@@ -13,6 +13,7 @@ import { pick } from "@/i18n/field";
 import { fill, formatDate, formatTime, formatWeekday } from "@/i18n/format";
 import { parseRowId } from "@/lib/row-id";
 import { requireAdmin } from "@/server/auth";
+import assessment from "../hindamine/assessment.module.css";
 
 export const dynamic = "force-dynamic";
 /**
@@ -41,11 +42,12 @@ function viewOf(screen: ScreenData, source: ScreenView["source"]): ScreenView {
  * and the overview's "Täna"); ?registreering=<id>: one registration (from Registreerimised: an individual course, or one group student). The
  * header names the course, the day and the place, with the way back to the index („← Protokollid“, README A3; its not-found card too); the screen
  * is ProtocolScreen (its autosave runs in the browser).
- * ?ligipaas=<id> (phase e-course completion, spec §5.3): one e-course access — Maria's assessment of the student's practical work (from
- * Hindamine, the student's drawer and Maria's notice): the header names the course and the student, the way back is Hindamine, an ended
- * access says Maria can still assess, and the screen is AssessmentScreen (its first line the round, which follows the screen's reads). The
- * first of the three in the address wins. Behind requireAdmin like every admin page; nothing is written by opening it (a protocol is created
- * by its first save, or by the student's first photo).
+ * ?ligipaas=<id> (phase e-course completion, spec §5.3; README A4): one e-course access — Maria's assessment of the student's practical work (from
+ * Hindamine, the student's drawer and Maria's notice): the way back is „← Hindamine“ above the screen, and the screen is AssessmentScreen,
+ * which has the header itself (the student as the H1, a meta line with the course — handed over here — and the round, which follows the
+ * screen's reads); an ended access says Maria can still assess (the line is handed over too). The first of the three in the address wins.
+ * Behind requireAdmin like every admin page; nothing is written by opening it (a protocol is created by its first save, or by the student's
+ * first photo).
  */
 export default async function ProtocolsPage({ searchParams }: Props) {
   await requireAdmin();
@@ -100,28 +102,20 @@ export default async function ProtocolsPage({ searchParams }: Props) {
   }
 
   if (screen.kind === "access" && screen.assessment && accessId !== null) {
-    const student = screen.students[0];
     const work = screen.assessment;
     const now = new Date();
     return (
       <div className={ui.page}>
-        <div className={ui.heading}>
-          <div className={styles.head}>
-            <p className={ui.eyebrow}>{adminEt.nav.assessment}</p>
-            <h1 className={ui.h1} data-protocol-course="">
-              {`${pick(screen.course.title, "et")} · ${student.name}`}
-            </h1>
-          </div>
+        <p className={assessment.back}>
           <Link className={ui.link} href="/admin/hindamine">
             {a.back}
           </Link>
-        </div>
-        {work.expiresAt <= now && (
-          <p className={ui.notice} data-access-expired="">
-            {fill(a.expired, { date: formatDate(work.expiresAt, "et") })}
-          </p>
-        )}
-        <AssessmentScreen view={viewOf(screen, { ligipaas: accessId })} />
+        </p>
+        <AssessmentScreen
+          view={viewOf(screen, { ligipaas: accessId })}
+          course={pick(screen.course.title, "et")}
+          expired={work.expiresAt <= now ? fill(a.expired, { date: formatDate(work.expiresAt, "et") }) : undefined}
+        />
       </div>
     );
   }

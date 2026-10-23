@@ -158,22 +158,23 @@ Below the lessons comes a block of four steps: Õppetunnid → Teadmiste test �
 ### 5.2 "Hindamine": `/admin/hindamine`
 - **In the menu** after "Registreerimised", with a count badge of the items waiting.
 - **Avaleht** gets an "Ootab hindamist: N" card, hidden at 0.
-- **The page** has three groups, oldest first; when all are empty: "Kõik on hinnatud".
-  1. **Praktilised tööd:** name, course, "1. kord" / "2. kord", sent at. Opens the protocol screen (§5.3).
-  2. **Testi vastused:** name, course, try, sent at. Opens the test review (§5.4).
-  3. **Katsed otsas:** name, course, best score. "Ava test uuesti" with a confirmation; it adds the course's number of tries and mails the student.
+- **The page** has three groups, oldest first; when all are empty: "Kõik on hinnatud". *(Admin UX pass A4, spec 2026-10-21 §9: there are no groups. The page is one list, oldest first, under the tabs „Ootab hindamist {n}“ and „Tunnistused“; a row reads "{name} · praktiline töö | testi vastus | katsed otsas" with a meta line, and when the list is empty: „Hindamist ootavaid töid pole.“ The three kinds below are the kinds of row.)*
+  1. **Praktilised tööd:** name, course, "1. kord" / "2. kord", sent at. Opens the protocol screen (§5.3). *(The row's action is „Hinda“.)*
+  2. **Testi vastused:** name, course, try, sent at. Opens the test review (§5.4). *(„Vaata“.)*
+  3. **Katsed otsas:** name, course, best score. "Ava test uuesti" with a confirmation; it adds the course's number of tries and mails the student. *(The confirmation is piece 1's ConfirmPanel in the button's place: „Katkesta“ or „Jah, ava“.)*
 
 ### 5.3 The protocol screen for an e-course access: `/admin/protokollid?ligipaas=<accessId>`
 This is the existing screen in its single mode, with these additions:
-- **Header:** the course, the student's name and "Praktiline töö, 2. kord".
+- **Header:** the course, the student's name and "Praktiline töö, 2. kord". *(Admin UX pass A4: „← Hindamine“ above; the student's name is the H1, the meta line under it holds the course, "Praktiline töö, 2. kord", "saadetud {date}" and the status, and the save status chip is at the right end of the row.)*
 - **Under each point:**
   - the photos of the latest round as thumbnails; a tap opens a full-screen viewer with swipe between photos and pinch zoom;
   - "Varasemad fotod", folded, for earlier rounds;
   - the verdict buttons "Kinnitatud" and "Paranda" (44 px);
   - the note box, as today.
+  - *(Admin UX pass A4: the points are cards in a grid of 3 columns, 1 on a phone. A card holds the photo (the first of the latest round, 260 px high, full width on a phone; a tap opens the viewer; further photos of the round are small under it), the point's title, one segmented verdict „Kinnitatud“ | „Paranda“ (filled green / red; tapping the pressed half clears it), and the comment: a box that opens by itself on „Paranda“ and stays open while it holds words, „Lisa märkus“ otherwise. Above the cards an action bar: "{n} punkti · {k} hinnatud", „Kinnita kõik“ and the send.)*
 - **"Üldised märkused"** as today.
 - **Autosave:** the verdict saves with the same autosave, version check and conflict notice as the notes. The save body carries a verdict per stage.
-- **"Saada hinnang"** (instead of "Saada") is enabled when the student has submitted, every point has a verdict, and every "Paranda" point has a note. One confirmation, then the snapshot and the mail.
+- **"Saada hinnang"** (instead of "Saada") is enabled when the student has submitted, every point has a verdict, and every "Paranda" point has a note. One confirmation, then the snapshot and the mail. *(Admin UX pass, spec 2026-10-21 §9: it is the informed button „Saada hinnang · {k} kinnitatud, {p} paranda“ („, 0 paranda“ is left out when nothing is to fix) and has no confirmation: one press checks, saves the notes, stores every tap and sends. The refusals (a point without a verdict, a „Paranda“ without a note, nothing submitted) are the same, said on the screen. Beside it „Kinnita kõik“ sets every point without a verdict to „Kinnitatud“, each as a tap of its own stored at once, and leaves the points that have one. On a phone the send sticks to the bottom of the screen and the page keeps a bottom padding as tall as the bar. After an approval the send of the changed notes („Saada uuesti“) asks nothing either.)*
 - **Before the student submits,** Maria may write notes (e.g. "Lisa protokoll" early), but the verdict buttons and "Saada hinnang" stay disabled.
 - **The student's resubmission** clears the verdicts of the "Paranda" points in the draft and raises `version`. A screen Maria has open gets the usual conflict notice and reloads with the new photos.
 - **"Lukusta ja saada kõik"** is not shown here.
@@ -280,7 +281,7 @@ An automatic result (a fail, or a pass with no open questions) sends no mail, be
 - **End to end:**
   1. A student finishes the lessons; the test opens; she fails once, retries and passes.
   2. She uploads photos, including a 6000×4000 JPEG fixture with GPS EXIF. The upload stays under 2 MB and the stored file has no EXIF.
-  3. Maria sees the item in "Hindamine", marks one "Paranda" with a note and sends.
+  3. Maria sees the item in "Hindamine", marks one "Paranda" with a note and sends. *(Admin UX pass: she approves all with „Kinnita kõik“, switches the one point to „Paranda“, and one press of the send sends; at 375×812 the send bar stays at the bottom and the last card and „Üldised märkused“ scroll clear of it.)*
   4. The student re-uploads only that point and sends again; Maria approves; "Lõpetatud" shows on the page and on the card.
   5. Open answers: Maria asks for one fix, the student rewrites it, Maria accepts.
   6. Out of tries, Maria reopens the test.
