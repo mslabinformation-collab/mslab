@@ -53,6 +53,19 @@ export function formatMonthYear(d: Date, l: Locale): string {
   return `${get("month")} ${get("year")}`;
 }
 
+/**
+ * "oktoober 2026" / "октябрь 2026": a month of the calendar, "YYYY-MM", by its whole name and the year (Russian without the "г." after the year);
+ * "" for anything that is no such month.
+ */
+export function formatMonthLong(month: string, l: Locale): string {
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
+  if (!m) return "";
+  // (the middle of the month at noon: no zone puts it in another month)
+  const parts = fmt(l, { month: "long", year: "numeric" }).formatToParts(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 15, 12)));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("month")} ${get("year")}`;
+}
+
 /** "laupäev" / "суббота" */
 export function formatWeekday(d: Date, l: Locale): string {
   return fmt(l, { weekday: "long" }).format(d);

@@ -2178,7 +2178,7 @@
       "title": "Arveta makse registreeringu juures",
       "href": "/admin/arved",
       "steps": [
-        "Ava „Maksed ja arved“, vajuta „Arved“ ja vaata plokki „Arveta maksed“; kui tühi, vajuta „Jäta vahele“.",
+        "Ava „Maksed ja arved“, vajuta „Arved“ ja „Näita ▸“ ning vaata riba „Arveta maksed“; kui tühi, vajuta „Jäta vahele“.",
         "Kirjuta selle kontrolli märkusesse ühe kontaktkoolituse makse maksja nimi.",
         "Ava „Registreerimised“, vajuta selle maksja nimele ja keri plokini „Arved“.",
         "Loe plokis üle kõik nupud „Koosta arve“, enne kui vajutad ühtegi.",
@@ -2191,7 +2191,7 @@
         "Pärast makse rea vajutust on plokis selle makse arve märkega „Tasutud“.",
         "Nüüd on plokis üldine „Koosta arve“ ja see pakub ainult seda, mis on veel arveta, näiteks „Jääk 50%“.",
         "Veebis makstud summat „Koosta arve“ uuesti ei paku.",
-        "„Arved“ lehe plokk „Arveta maksed“ seda makset enam ei näita."
+        "„Arved“ lehe riba „Arveta maksed“ seda makset enam ei näita."
       ],
       "why": "Veebis makstud raha ei saa teist arvet ega teist maksenõuet.",
       "risk": "high",
@@ -2208,21 +2208,23 @@
       "href": "/admin/arved",
       "steps": [
         "Ava „Maksed ja arved“ ja vajuta üleval „Arved“.",
-        "Vaata lehe ülaosas plokki „Arveta maksed“; kui seda pole, vajuta „Jäta vahele“.",
-        "Vajuta ühe makse real „Koosta arve“."
+        "Vaata lehe ülaosas riba „Arveta maksed“; kui seda pole, vajuta „Jäta vahele“.",
+        "Vajuta „Näita ▸“ ja siis ühe makse real „Koosta arve“.",
+        "Vajuta riba nuppu „Koosta … arvet“ (ühe makse korral „Koosta 1 arve“), loe küsimust ja vajuta „Katkesta“.",
+        "Vajuta nuppu uuesti ja siis „Jah, koosta … arvet“."
       ],
       "expect": [
-        "Plokis on tasutud veebimaksed, millel arvet pole, näiteks enne arvete tulekut tehtud testmaksed.",
-        "Rida ütleb „Koostab uue arve“ või „Tasub arve …“, kui makse oli tehtud tasumata arve jaoks.",
-        "Pärast vajutust kaob rida plokist ja arvete loendisse tuleb arve.",
-        "Arve on „Tasutud“, makse päevaga ja makseviisiga „Montonio“.",
-        "Õpilasele kirja ei saadeta.",
-        "Kui „Arve andmed“ on tühi, näed lingi „Täida Seaded → Arve andmed“ ja nuppe pole."
+        "Ribal on „Arveta maksed: …“ ja rida „Tasutud, aga arve puudub“ summa ja maksjate nimedega.",
+        "„Näita ▸“ avab makseread ja muutub nupuks „Peida ▾“; rida ütleb „Koostab uue arve“ või „Tasub arve …“.",
+        "Küsimus „Kas koostan … arvet?“ ütleb numbrite vahemiku ja „Õpilastele neid ei saadeta.“; „Katkesta“ ei tee midagi.",
+        "Pärast „Jah“ ütleb riba „Koostatud … arvet“ ja numbrid; read kaovad ribalt ja arved on loendis.",
+        "Iga arve on „Tasutud“, makse päevaga ja makseviisiga „Montonio“; õpilasele kirja ei saadeta.",
+        "Kui „Arve andmed“ on tühi, näed nupu asemel lingi „Täida Seaded → Arve andmed“."
       ],
       "why": "Ükski tasutud makse ei jää arveta.",
       "risk": "high",
       "writes": true,
-      "mark": "reworded",
+      "mark": "redo",
       "markedAt": "deploy"
     },
     {
@@ -2234,21 +2236,23 @@
       "href": "/admin/arved",
       "steps": [
         "Ava „Maksed ja arved“ ja vajuta üleval „Arved“.",
-        "Vajuta filtril „Tasumata“ ja siis „Kõik“.",
-        "Vali „Kuu“ välja see kuu ja vajuta „Näita“.",
-        "Vajuta „Kõik kuud“."
+        "Vaata, millist kuud valik „Kuu“ näitab; vajuta filtril „Tasumata“ ja siis „Kõik“.",
+        "Vali valikust „Kuu“ varasem kuu.",
+        "Vali „Kõik kuud“.",
+        "Kirjuta otsingusse ühe arve number ja siis ostja nimi."
       ],
       "expect": [
-        "Loendis on iga arve number, ostja, koolitus, summa ja olek.",
+        "Ilma valitud kuuta on loendis selle kuu arved; iga arve number, ostja, koolitus, summa ja olek on näha.",
         "Uuemad arved on eespool.",
-        "Filter „Tasumata“ näitab ainult tasumata arveid.",
-        "Kuu valik näitab ainult selle kuu arveid.",
+        "Filtritel „Kõik“, „Tasumata“, „Tasutud“ ja „Tühistatud“ on arv; filter näitab ainult selle olekuga arveid.",
+        "Kuu valik muudab loendit kohe, ilma nuputa „Näita“; „Kõik kuud“ näitab kõiki arveid.",
+        "Otsing leiab arve numbri, ostja nime või e-posti järgi.",
         "Arve real on samad nupud nagu registreeringu paneelis ja link „Ava registreering“."
       ],
       "why": "Maria leiab iga arve ühest kohast.",
       "risk": "med",
       "writes": false,
-      "mark": "reworded",
+      "mark": "redo",
       "markedAt": "deploy"
     },
     {
@@ -2259,12 +2263,13 @@
       "title": "Kuu arved raamatupidajale",
       "href": "/admin/arved",
       "steps": [
-        "Ava „Arved“ ja vali „Kuu“ väljale see kuu.",
-        "Vajuta „Näita“ ja siis „Laadi alla (CSV)“.",
+        "Ava „Arved“ ja vali valikust „Kuu“ see kuu.",
+        "Vajuta üleval paremal nuppu „Laadi alla (CSV)“, mille lõpus on kuu nimi.",
         "Ava fail Excelis."
       ],
       "expect": [
-        "Faili nimi on MS-LAB-arved-AAAA-KK.csv, kus AAAA-KK on valitud kuu.",
+        "Nupu lõpus on valitud kuu ja aasta, näiteks „oktoober 2026“; valik „Kõik kuud“ jätab nupule praeguse kuu.",
+        "Faili nimi on MS-LAB-arved-AAAA-KK.csv, kus AAAA-KK on nupul nimetatud kuu.",
         "Excel näitab eesti tähti õigesti ja veerud on eraldi.",
         "Iga selle kuul koostatud arve on real: number, kuupäev, ostja, kirjeldus, summa ja olek.",
         "Tühistatud arved on failis märkega „Tühistatud“ ja summaga 0,00.",
@@ -2273,8 +2278,8 @@
       "why": "Raamatupidaja saab kuu arved ühe failina.",
       "risk": "high",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-tagastatud",
@@ -2284,7 +2289,7 @@
       "title": "Tagastatud makse arve",
       "href": "/admin/arved",
       "steps": [
-        "Kui Proov 0 maksel pole arvet, koosta see „Arved“ lehe plokis „Arveta maksed“.",
+        "Kui Proov 0 maksel pole arvet, koosta see „Arved“ lehe ribal „Arveta maksed“.",
         "Tee Montonio testkeskkonna Partner Systemis Proov 0 maksele tagasimakse.",
         "Kui tagasimakse nuppu pole, kirjuta see märkusesse ja vajuta „Jäta vahele“.",
         "Halduses ava „Maksed ja arved“ ja vaata Proov 0 makset.",

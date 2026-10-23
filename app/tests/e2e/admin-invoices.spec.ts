@@ -327,37 +327,66 @@ test("„Arved“: the list with its filters, the month's CSV, and „Arveta mak
   await expect(again.block.locator(`[data-uninvoiced-create="${payment.id}"]`)).toBeVisible();
   await expect(again.block.locator("[data-invoice-create]")).toHaveCount(0);
 
-  // Maksed has it as its second tab (A6); the page lists the payment under „Arveta maksed“, and the invoice below
+  // Maksed has it as its second tab (A6); the page lists the payment in the strip „Arveta maksed“, folded until „Näita ▸“, and the invoice below
   await page.goto("/admin/maksed");
   await page.getByRole("navigation", { name: "Maksed ja arved" }).getByRole("link", { name: "Arved" }).click();
   await expect(page).toHaveURL(/\/admin\/arved$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Maksed ja arved");
   await expect(page.getByRole("navigation", { name: "Maksed ja arved" }).getByRole("link", { name: "Arved" })).toHaveAttribute("aria-current", "page");
-  const uninvoiced = page.locator("[data-uninvoiced]");
-  await expect(uninvoiced.getByRole("heading", { level: 2 })).toHaveText("Arveta maksed");
-  const line = uninvoiced.locator(`[data-uninvoiced-payment="${payment.id}"]`);
+  const strip = page.locator("section#arveta");
+  await expect(strip.getByRole("heading", { level: 2 })).toContainText("Arveta maksed: ");
+  const line = strip.locator(`[data-uninvoiced-payment="${payment.id}"]`);
+  await expect(line).toBeHidden();
+  await strip.getByRole("button", { name: "Näita ▸" }).click();
+  await expect(strip.getByRole("button", { name: "Peida ▾" })).toHaveAttribute("aria-expanded", "true");
   await expect(line).toContainText(payer.name);
   await expect(line).toContainText("175,00");
   await expect(line.locator("[data-uninvoiced-pays]")).toHaveText("Koostab uue arve");
   const listed = page.locator(`[data-invoice="${number}"]`);
   await expect(listed).toBeVisible();
   await expect(listed.locator("[data-invoice-who]")).toContainText(payer.name);
+  await expect(listed.locator("[data-invoice-facts]")).toContainText("maksta kuni "); // (the list's meta line, short form)
   expect(await noOverflow(page)).toBe(true);
 
-  // the filters: by state (a link with the state in the address) and by month
-  await page.getByRole("link", { name: "Tasutud", exact: true }).click();
+  // the filters: the pills carry counts, by state (a link with the state in the address)
+  const unpaidPill = page.getByRole("link", { name: /^Tasumata/ });
+  await expect(unpaidPill).toContainText(/\d/);
+  await page.getByRole("link", { name: /^Tasutud/ }).click();
   await expect(page).toHaveURL(/staatus=paid$/);
   await expect(page.locator(`[data-invoice="${number}"]`)).toHaveCount(0);
-  await page.getByRole("link", { name: "Tasumata", exact: true }).click();
+  await unpaidPill.click();
   await expect(page.locator(`[data-invoice="${number}"]`)).toBeVisible();
+
+  // the search finds it by its number (a link with the text in the address), and „Tühjenda otsing“ clears it
+  const search = page.getByRole("searchbox", { name: "Otsi nime, e-posti või arve numbri järgi" });
+  await search.fill(number);
+  await expect(page).toHaveURL(new RegExp(`otsi=${number}`));
+  await expect(page.locator("[data-invoice]")).toHaveCount(1);
+  await expect(page.locator(`[data-invoice="${number}"]`)).toBeVisible();
+  await search.fill(`${number}-ei-ole`);
+  await expect(page.locator("[data-list-empty]")).toContainText(`„${number}-ei-ole“ järgi arveid ei leitud.`);
+  await page.locator("[data-search-clear]").click();
+  await expect(page).not.toHaveURL(/otsi=/);
+
+  // the month is a select that applies on change, with no „Näita“; this month is the list when none is chosen, and the CSV button names it
   const month = today().slice(0, 7);
-  await page.goto(`/admin/arved?kuu=${month}`);
+  const monthName = new Intl.DateTimeFormat("et-EE", { timeZone: "Europe/Tallinn", month: "long", year: "numeric" }).format(new Date());
+  await page.goto("/admin/arved");
+  const select = page.getByRole("combobox", { name: "Kuu" });
+  await expect(select).toHaveValue(month);
+  await expect(page.getByRole("button", { name: "Näita", exact: true })).toHaveCount(0);
+  await expect(page.locator("[data-invoices-csv]")).toHaveText(`Laadi alla (CSV) · ${monthName}`);
+  await select.selectOption("koik");
+  await expect(page).toHaveURL(/kuu=koik/);
   await expect(page.locator(`[data-invoice="${number}"]`)).toBeVisible();
+  await expect(page.locator("[data-invoices-csv]")).toHaveText(`Laadi alla (CSV) · ${monthName}`); // (while „Kõik kuud“ is chosen it names this month)
   await page.goto("/admin/arved?kuu=2001-01");
   await expect(page.locator("[data-invoices-count]")).toHaveText("Arveid: 0");
+  await expect(page.locator("[data-invoices-csv]")).toHaveText("Laadi alla (CSV) · jaanuar 2001");
+  await page.goto(`/admin/arved?kuu=${month}`);
+  await expect(page.locator(`[data-invoice="${number}"]`)).toBeVisible();
 
   // the month's CSV: a BOM, the name, the invoice's row
-  await page.goto(`/admin/arved?kuu=${month}`);
   const csvHref = (await page.locator("[data-invoices-csv]").getAttribute("href"))!;
   expect(csvHref).toBe(`/api/admin/arved?kuu=${month}`);
   const csv = await page.request.get(csvHref);
@@ -368,8 +397,9 @@ test("„Arved“: the list with its filters, the month's CSV, and „Arveta mak
   expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
   expect(bytes.toString("utf8")).toContain(`"${number}"`);
 
-  // „Koosta arve“ on the payment's row: it leaves „Arveta maksed“ and a paid Montonio invoice appears
-  await page.goto("/admin/arved");
+  // „Koosta arve“ on the payment's row: the address #arveta opens the strip's list; the row leaves „Arveta maksed“ and a paid Montonio invoice appears
+  await page.goto("/admin/arved#arveta");
+  await expect(strip.getByRole("button", { name: "Peida ▾" })).toBeVisible();
   await page.locator(`[data-uninvoiced-create="${payment.id}"]`).click();
   await expect(page.locator(`[data-uninvoiced-payment="${payment.id}"]`)).toHaveCount(0);
   const made = page.locator('[data-invoice-status="paid"]', { hasText: payer.name }).first();
@@ -377,6 +407,176 @@ test("„Arved“: the list with its filters, the month's CSV, and „Arveta mak
   await expect(made.locator("[data-more-menu]")).toHaveCount(0); // (an online payment's invoice is never changed by Maria: nothing is under „Veel ▾“, so there is none)
   // the registration's paid sum was not touched by it (the payment itself had added it, here a stored row that did not)
   expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 0 });
+});
+
+/** The invoices the test's seller card made (seller E2E Arvete OÜ), in the order of their numbers, as stored. */
+const madeInvoices = () =>
+  onLocalDb((sql) => sql<{ number: string; paymentId: number | null; status: string; paidMethod: string | null; sentAt: Date | null }[]>`
+    select number, payment_id as "paymentId", status, paid_method as "paidMethod", sent_at as "sentAt" from invoices where seller->>'company' = ${INVOICE_COMPANY} order by seq`, { marksPages: false });
+
+test("B11: „Koosta {n} arvet“ — the panel names the numbers, nothing is made before „Jah“, the result says what was made, nothing is mailed, and the strip is gone", async ({ page, context, visitorIp }, info) => {
+  giveBack = await holdInvoiceSettings(info);
+  const f = await fixtures(info.project.name);
+  const payer = f.registration;
+  const pay = (name: string, minutesAgo: number) =>
+    insertStoredPayment({ email: payer.email, name, kind: "prepayment", status: "paid", amountCents: 17500, registrationId: payer.id, courseId: f.course.id, method: "paymentInitiation", bank: "Swedbank", paid: true, minutesAgo });
+  // three payments paid while there was no invoice for them; the newest is stored first, so the order of the ids is not the order of the days
+  const newest = await pay(`${payer.name} C`, 10);
+  const middle = await pay(`${payer.name} B`, 20);
+  const oldest = await pay(`${payer.name} A`, 30);
+  await signIn(page, context, visitorIp);
+  await page.goto("/admin/arved");
+  const strip = page.locator("section#arveta");
+  const n = Number(/(\d+)$/.exec((await strip.getByRole("heading", { level: 2 }).textContent())!.trim())![1]);
+  expect(n).toBeGreaterThanOrEqual(3); // (other paid payments with no invoice may be in the local database: they are billed by the same press)
+  await expect(strip.locator("[data-uninvoiced-summary]")).toContainText("Tasutud, aga arve puudub · ");
+  const bulk = strip.getByRole("button", { name: `Koosta ${n} arvet`, exact: true }); // (exact: „Jah, koosta {n} arvet“ in the panel is another button)
+  await expect(bulk).toBeVisible();
+
+  // asking: the question, the one line with the numbers, the two buttons; „Katkesta“ makes nothing and the focus is back on the button
+  await bulk.click();
+  const panel = strip.locator("[data-confirm-panel]");
+  await expect(panel.locator("p").first()).toHaveText(`Kas koostan ${n} arvet?`);
+  const lineText = (await panel.locator("li").textContent())!.trim();
+  const numbers = /^Iga arve saab oma numbri \((\S+)–(\S+)\)\. Õpilastele neid ei saadeta\.$/.exec(lineText);
+  expect(numbers, lineText).not.toBeNull();
+  const [, first, last] = numbers!;
+  expect(first).toMatch(INVOICE_NUMBER);
+  expect(last).toMatch(INVOICE_NUMBER);
+  await expect(bulk).toHaveCount(0);
+  await panel.getByRole("button", { name: "Katkesta" }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(bulk).toBeFocused();
+  expect(await madeInvoices()).toEqual([]);
+
+  // „Jah“: three or more invoices, the numbers the panel named, oldest paid first, paid on the payment's day by Montonio, not mailed
+  await bulk.click();
+  await strip.getByRole("button", { name: `Jah, koosta ${n} arvet` }).click();
+  const status = strip.locator("[data-uninvoiced-result]");
+  await expect(status).toHaveText(`Koostatud ${n} arvet: ${first}–${last}.`);
+  await expect(status).toBeFocused();
+  await expect(strip.getByRole("heading")).toHaveCount(0);
+  await expect(strip.getByRole("button")).toHaveCount(0);
+  const made = await madeInvoices();
+  expect(made).toHaveLength(n);
+  expect([made[0].number, made[n - 1].number]).toEqual([first, last]);
+  const seqs = made.map((i) => Number(/-(\d+)$/.exec(i.number)![1]));
+  expect(seqs).toEqual(seqs.map((_, i) => seqs[0] + i)); // (consecutive)
+  const mine = [oldest.id, middle.id, newest.id].map((id) => made.find((i) => i.paymentId === id)!);
+  expect(mine.map((i) => i.number), "oldest paid first").toEqual([...mine.map((i) => i.number)].sort());
+  for (const i of made) expect([i.status, i.paidMethod, i.sentAt]).toEqual(["paid", "montonio", null]);
+  expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 0 }); // (the stored rows never added money, and the invoices do not)
+  // they are in the list below; a reload draws no strip at all
+  await expect(page.locator(`[data-invoice="${first}"]`)).toBeVisible();
+  await page.reload();
+  await expect(page.locator("section#arveta")).toHaveCount(0);
+  await expect(page.locator(`[data-invoice="${last}"]`)).toBeVisible();
+});
+
+test("without a seller the strip offers no button: the link „Täida Seaded → Arve andmed“ stands in its place", async ({ page, context, visitorIp }, info) => {
+  giveBack = await holdInvoiceSettings(info, null);
+  const f = await fixtures(info.project.name);
+  await insertStoredPayment({ email: f.registration.email, name: f.registration.name, kind: "prepayment", status: "paid", amountCents: 17500, registrationId: f.registration.id, courseId: f.course.id, method: "paymentInitiation", bank: "Swedbank", paid: true, minutesAgo: 5 });
+  await signIn(page, context, visitorIp);
+  await page.goto("/admin/arved");
+  const strip = page.locator("section#arveta");
+  await expect(strip.getByRole("heading", { level: 2 })).toContainText("Arveta maksed: ");
+  await expect(strip.getByRole("button", { name: /^Koosta / })).toHaveCount(0);
+  const link = strip.getByRole("link", { name: "Täida Seaded → Arve andmed" });
+  await expect(link).toHaveAttribute("href", "/admin/seaded#arve");
+  await strip.getByRole("button", { name: "Näita ▸" }).click();
+  await expect(strip.locator("[data-uninvoiced-create]")).toHaveCount(0); // (nor on the rows)
+  expect(await madeInvoices()).toEqual([]);
+});
+
+test("the invoice row's columns (the Part 2 prototype): number and state | who and what | sum | actions on one line from a wide card, the actions under the lines from 761 px", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "sets its own widths: the desktop project only");
+  giveBack = await holdInvoiceSettings(info);
+  const f = await fixtures(info.project.name);
+  await signIn(page, context, visitorIp);
+  const { block } = await openDrawer(page, f);
+  await block.locator("[data-invoice-create]").click();
+  await block.locator("[data-invoice-create-confirm]").click();
+  await expect(rowOf(block, "unpaid")).toHaveCount(1);
+  const number = (await rowOf(block, "unpaid").locator("strong").first().textContent())!.trim();
+  const geometry = async (width: number) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/admin/arved");
+    const row = page.locator(`[data-invoice="${number}"]`);
+    await expect(row).toBeVisible();
+    const box = async (selector: string) => (await row.locator(selector).first().boundingBox())!;
+    const [num, tag, who, facts, amount, actions] = [await box("strong"), await box("[data-invoice-state]"), await box("[data-invoice-who]"), await box("[data-invoice-facts]"), await box("[data-invoice-amount]"), await box('[role="group"]')];
+    expect(await noOverflow(page), `${width}: the page scrolls sideways`).toBe(true);
+    return { num, tag, who, facts, amount, actions, row: (await row.boundingBox())! };
+  };
+  // a wide card: one line — the state under the number, the lines of the invoice to the right of them, the sum, the actions at the right
+  const wide = await geometry(1440);
+  expect(wide.tag.y, "the state is under the number").toBeGreaterThan(wide.num.y + wide.num.height - 2);
+  expect(wide.who.x, "who is right of the number").toBeGreaterThan(wide.num.x + wide.num.width);
+  expect(wide.amount.x, "the sum is right of the lines").toBeGreaterThanOrEqual(wide.facts.x + wide.facts.width - 1);
+  expect(wide.actions.x, "the actions are right of the sum").toBeGreaterThanOrEqual(wide.amount.x + wide.amount.width - 1);
+  expect(wide.actions.y, "the actions are on the row's line").toBeLessThan(wide.facts.y + wide.facts.height);
+  // a laptop's narrower card: the actions go under the lines, the sum stays beside them
+  const mid = await geometry(1180);
+  expect(mid.actions.y, "the actions are under the lines").toBeGreaterThanOrEqual(mid.facts.y + mid.facts.height - 1);
+  expect(mid.amount.x, "the sum is right of the lines").toBeGreaterThanOrEqual(mid.facts.x + mid.facts.width - 1);
+  // the tablet with the top bar: the drawer's stacked row, the sum on the number's line
+  const narrow = await geometry(834);
+  expect(narrow.row.width).toBeLessThanOrEqual(834);
+});
+
+test("the Arved page at 375 × 812: the strip folded, opened and asking, the toolbar and the rows stay inside the screen, every control is 44 px", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(!isMobile, "the phone project only");
+  giveBack = await holdInvoiceSettings(info);
+  const f = await fixtures(info.project.name);
+  const payer = f.registration;
+  // an unpaid invoice, and a payer with a name that has no place to break, whose payment has no invoice
+  await signIn(page, context, visitorIp);
+  const { block } = await openDrawer(page, f);
+  await block.locator("[data-invoice-create]").click();
+  await block.locator("[data-invoice-create-confirm]").click();
+  await expect(rowOf(block, "unpaid")).toHaveCount(1);
+  const number = (await rowOf(block, "unpaid").locator("strong").first().textContent())!.trim();
+  await insertStoredPayment({ email: payer.email, name: "Annabellissimaantonovitšvolkonskaja-Kuuskmäe", kind: "balance", status: "paid", amountCents: 17500, registrationId: payer.id, courseId: f.course.id, method: "paymentInitiation", bank: "Swedbank", paid: true, minutesAgo: 5 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/admin/arved");
+  const main = page.locator("main");
+  const outside = () =>
+    main.evaluate((el) => {
+      const limit = document.documentElement.clientWidth;
+      return Array.from(el.querySelectorAll("*"))
+        .filter((e) => {
+          const r = e.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && (r.right > limit + 0.5 || r.left < -0.5);
+        })
+        .map((e) => `${e.tagName.toLowerCase()} ${(e.textContent ?? "").trim().slice(0, 30)}`);
+    });
+  const fits = async (what: string) => {
+    await expectFits(page, main, `the Arved page, ${what}`);
+    expect(await outside(), `${what}: something lies outside the 375 px screen`).toEqual([]);
+  };
+  const strip = page.locator("section#arveta");
+  await expect(strip.getByRole("heading", { level: 2 })).toContainText("Arveta maksed: ");
+  await fits("the strip folded");
+  await strip.getByRole("button", { name: "Näita ▸" }).click();
+  await expect(strip.locator("[data-uninvoiced-payment]").first()).toBeVisible();
+  await fits("the strip opened, a long name in it");
+  await strip.getByRole("button", { name: /^Koosta \d+ arve/ }).click();
+  await expect(strip.locator("[data-confirm-panel]")).toBeVisible();
+  await fits("the strip asking");
+  await strip.getByRole("button", { name: "Katkesta" }).click();
+  // the toolbar: the search, the month, the pills with counts
+  await expect(page.getByRole("combobox", { name: "Kuu" })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Otsi nime, e-posti või arve numbri järgi" })).toBeVisible();
+  await fits("the toolbar and the rows");
+  // the row's „Veel ▾“ opens inside the screen
+  const row = page.locator(`[data-invoice="${number}"]`);
+  await row.locator("[data-more-menu] > button").click();
+  const menu = row.getByRole("menu");
+  await expect(menu).toBeVisible();
+  const at = (await menu.boundingBox())!;
+  expect(at.x).toBeGreaterThanOrEqual(0);
+  expect(at.x + at.width).toBeLessThanOrEqual(375);
 });
 
 test("„Arve andmed“ in Seaded: refused without a KMKR number, saved, a new prefix starts at 001, and the sample shows what is typed — and stores nothing", async ({ page, context, visitorIp }, info) => {

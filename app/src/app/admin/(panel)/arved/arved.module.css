@@ -1,5 +1,6 @@
-/* Arved (invoices Task 5): the month's file for the accountant, „Arveta maksed“ above the list, the month filter. The invoice
-   rows are the registration drawer's (components/admin/InvoiceBlock.module.css). Colours from tokens.css only. */
+/* Arved (invoices Task 5; admin UX pass A6): the header's CSV button, the per-row list inside the strip „Arveta maksed“ (the strip itself is
+   components/admin/UninvoicedStrip.module.css), the count line. The invoice rows are the registration drawer's (components/admin/InvoiceBlock.module.css),
+   laid out in columns on a wide card. Colours from tokens.css only. */
 
 .csv {
   display: grid;
@@ -7,27 +8,11 @@
   gap: 6px;
 }
 
-.csv p {
-  margin: 0;
-  max-width: 260px;
-}
-
-.uninvoiced {
-  margin-bottom: 25px;
-}
-
-.uninvoiced h2 {
-  margin-bottom: 10px;
-}
-
-.uninvoiced > p {
-  max-width: 720px;
-}
-
+/* the per-row list inside the opened strip */
 .payments {
   display: grid;
   gap: 0;
-  margin: 18px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -63,19 +48,6 @@
 
 .pays {
   font-size: 13px;
-}
-
-.month {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 10px 12px;
-  margin: 0 0 18px;
-}
-
-.month input[type="month"] {
-  width: auto;
-  min-width: 180px;
 }
 
 .count {

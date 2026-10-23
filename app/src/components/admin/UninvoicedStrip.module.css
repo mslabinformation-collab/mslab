@@ -1,0 +1,97 @@
+/* The strip „Arveta maksed: {n}“ on the Arved page (admin UX pass A6, B11; the Part 2 prototype's Arved frame): a white card (radius 22, padding 18 × 24)
+   with a 3 px left border in #9e8993 (var(--rose)); the count and the summary on the left, „Näita ▸“ and „Koosta {n} arvet“ on the right; below, the
+   ConfirmPanel, the line that says what was done, and the per-row list when it is open. Colours from tokens.css only; the targets are 44 px. */
+
+.strip {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0 0 25px;
+  padding: 18px 24px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--rose);
+  border-radius: 22px;
+  background: #fff;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+}
+
+.text {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font: 600 15px/1.4 var(--font-body);
+}
+
+.summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+/* „Näita ▸“ / „Peida ▾“: a 44 px text button, no border (the prototype's outline-less control beside the ink pill) */
+.toggle {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 99px;
+  background: none;
+  color: var(--ink);
+  font: 600 12px/1.2 var(--font-body);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--first);
+}
+
+/* the line that says what was done: a live region, so it keeps its place (and no margin) when empty */
+.status {
+  margin: 0;
+}
+
+.status:empty {
+  margin: 0;
+}
+
+.status:focus {
+  outline: none;
+}
+
+.status:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* the ConfirmPanel's own bottom margin is the strip's gap */
+.strip > [data-confirm-panel] {
+  margin: 0;
+}
+
+.strip > [data-uninvoiced-list]:not([hidden]) {
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 640px) {
+  .strip {
+    padding: 16px;
+  }
+}

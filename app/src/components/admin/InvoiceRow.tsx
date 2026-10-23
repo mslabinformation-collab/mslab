@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { euro, INVOICE_LIMITS, invoiceStatusText, paidMethodText, REFUNDED } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { adminEt } from "@/i18n/dict/admin";
-import { fill, formatDate } from "@/i18n/format";
+import { fill, formatDate, formatDayMonth } from "@/i18n/format";
 import { cancelInvoiceAction, markInvoicePaidAction, sendInvoiceAction, undoInvoicePaidAction, updateInvoiceBuyerAction } from "@/server/actions/admin-invoices";
 import { ConfirmPanel } from "./ConfirmPanel";
 import type { InvoiceView } from "./invoice-view";
@@ -164,12 +164,24 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
   const takeBackCents = v.takeBack ? v.takeBack.cents : v.amountCents;
   const bare = (cents: number) => formatEUR(cents, "et").replace(/ €$/, "");
   const when = (iso: string) => formatDate(new Date(iso), "et");
-  const facts = [
+  const short = (iso: string) => formatDayMonth(new Date(iso), "et");
+  // The drawer's meta line: every date in full. The list's (`showWho`) is the Part 2 prototype's: „Osamakse · koostatud 20.10 · tasutud 15.10 · sularaha“,
+  // „Ettemaks 50% · maksta kuni 27.10“ — short dates, and the day it was made only where it tells something: not beside „maksta kuni“ and not
+  // when it was paid the very day it was made. A way Maria typed reads in lower case in the line („sularaha“); Montonio and Inbank are names.
+  const manualWay = (m: NonNullable<InvoiceView["paidMethod"]>) => (m === "montonio" || m === "financing" ? paidMethodText(m) : paidMethodText(m).toLowerCase());
+  const factsList = [
+    v.part,
+    status !== "unpaid" && !(status === "paid" && v.paidAt && when(v.paidAt) === when(v.issuedAt)) ? fill(t.listIssued, { date: short(v.issuedAt) }) : null,
+    status === "unpaid" && v.dueAt ? fill(t.listDue, { date: short(v.dueAt) }) : null,
+    status === "paid" && v.paidAt ? [fill(t.listPaid, { date: short(v.paidAt) }), v.paidMethod ? manualWay(v.paidMethod) : adminEt.common.none].join(" · ") : null,
+  ];
+  const factsDrawer = [
     v.part,
     fill(t.issued, { date: when(v.issuedAt) }),
     status === "unpaid" && v.dueAt ? fill(t.due, { date: when(v.dueAt) }) : null,
     status === "paid" && v.paidAt ? fill(t.paid, { date: when(v.paidAt), method: v.paidMethod ? paidMethodText(v.paidMethod) : adminEt.common.none }) : null,
-  ].filter((x): x is string => x !== null);
+  ];
+  const facts = (showWho ? factsList : factsDrawer).filter((x): x is string => x !== null);
   const sentLine = v.sentAt ? fill(v.sentNote ? t.sentAlso : t.sent, { date: when(v.sentAt), address: v.sentNote }) : null;
 
   const buyerField = (key: keyof BuyerDraft, label: string, limit: number, wide = false) => {
@@ -201,42 +213,48 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
   };
 
   return (
-    <li className={styles.row} data-invoice={v.number} data-invoice-id={v.id} data-invoice-status={status} data-invoice-refunded={v.refunded || undefined}>
+    <li className={`${styles.row} ${showWho ? styles.listRow : ""}`.trim()} data-invoice={v.number} data-invoice-id={v.id} data-invoice-status={status} data-invoice-refunded={v.refunded || undefined}>
+      {/* the number and its state, and the sum: one line in the drawer; on the list (a wide card) the head gives them to the row's columns (InvoiceBlock.module.css) */}
       <div className={styles.head}>
-        <strong className={styles.number}>{v.number}</strong>
-        <span className={`${ui.tag} ${v.refunded ? ui.warn : TAG[status]}`} data-invoice-state="">
-          {v.refunded ? REFUNDED : invoiceStatusText(status)}
-        </span>
+        <div className={styles.ident}>
+          <strong className={styles.number}>{v.number}</strong>
+          <span className={`${ui.tag} ${v.refunded ? ui.warn : TAG[status]}`} data-invoice-state="">
+            {v.refunded ? REFUNDED : invoiceStatusText(status)}
+          </span>
+        </div>
         <strong className={styles.amount} data-invoice-amount="">
           {euro(v.amountCents)}
         </strong>
       </div>
-      {showWho && (
-        <p className={styles.who} data-invoice-who="">
-          <span>
-            {v.buyer.name}
-            {v.course ? ` · ${v.course}` : ""}
-          </span>
-          {v.registrationId !== null && (
-            <Link className={ui.link} href={`/admin/registreerimised?id=${v.registrationId}`}>
-              {t.openRegistration}
-            </Link>
-          )}
+      {/* who it is for and the lines under it: the middle column of the list's row; the drawer's lines sit in the row's own column */}
+      <div className={styles.body}>
+        {showWho && (
+          <p className={styles.who} data-invoice-who="">
+            <span>
+              <strong>{v.buyer.name}</strong>
+              {v.course ? ` · ${v.course}` : ""}
+            </span>
+            {v.registrationId !== null && (
+              <Link className={ui.link} href={`/admin/registreerimised?id=${v.registrationId}`}>
+                {t.openRegistration}
+              </Link>
+            )}
+          </p>
+        )}
+        <p className={styles.meta} data-invoice-facts="">
+          {facts.join(" · ")}
         </p>
-      )}
-      <p className={styles.meta} data-invoice-facts="">
-        {facts.join(" · ")}
-      </p>
-      {v.paidOnline && (
-        <p className={styles.meta} data-invoice-paid-online="">
-          {t.paidOnline}
-        </p>
-      )}
-      {sentLine && (
-        <p className={styles.meta} data-invoice-sent="">
-          {sentLine}
-        </p>
-      )}
+        {v.paidOnline && (
+          <p className={styles.meta} data-invoice-paid-online="">
+            {t.paidOnline}
+          </p>
+        )}
+        {sentLine && (
+          <p className={styles.meta} data-invoice-sent="">
+            {sentLine}
+          </p>
+        )}
+      </div>
 
       <div ref={actionsBox} className={styles.actions} role="group" aria-label={fill(t.actionsLabel, { number: v.number })}>
         {sendable && (

@@ -283,7 +283,7 @@ describe("„Võta tasumine tagasi“ of a receipt asks with a ConfirmPanel (S3-
     expect(linesOf(panel()!)).toEqual(["Kviitung tühistatakse (number jääb alles).", "Laekunud summa väheneb 0,01 €."]);
   });
 
-  test("where the page does not know the registration (the Arved list) the receipt's own amount is shown and the third line is left out", async () => {
+  test("where the page has no registration to read (it was deleted) the receipt's own amount is shown and the third line is left out", async () => {
     await show(view({ ...RECEIPT, takeBack: null }));
     await choose("Võta tasumine tagasi");
     expect(linesOf(panel()!)).toEqual(["Kviitung tühistatakse (number jääb alles).", "Laekunud summa väheneb 175 €."]);
@@ -339,5 +339,62 @@ describe("„Võta tasumine tagasi“ of a receipt asks with a ConfirmPanel (S3-
     await click(yes());
     expect(status()).toBe("Veebis tasutud arvet ei saa tagasi võtta.");
     expect(panel()).not.toBeNull();
+  });
+});
+
+describe("the row on the Arved list (A6, the Part 2 prototype's Arved frame)", () => {
+  let listed = 0;
+  /** Draws the row as the Arved list does: with its buyer and a link to the registration. */
+  const showInList = async (invoice: InvoiceView) => {
+    await act(async () => root.render(createElement("ul", null, createElement(InvoiceRow, { key: `l${++listed}`, invoice, today: TODAY, showWho: true }))));
+    await settle();
+  };
+  const facts = () => text($("[data-invoice-facts]"));
+
+  test("the meta line is the prototype's: the part, then only the dates that tell something, in short form, and the way in lower case", async () => {
+    // Tasumata: „Ettemaks 50% · maksta kuni 27.10“
+    await showInList(UNPAID);
+    expect(facts()).toBe("Ettemaks 50% · maksta kuni 23.10");
+    // a receipt made on 16.10 for money that came in on 12.10: „Osamakse · koostatud 20.10 · tasutud 15.10 · sularaha“
+    await showInList(RECEIPT);
+    expect(facts()).toBe("Ettemaks 50% · koostatud 16.10 · tasutud 12.10 · sularaha");
+    await showInList(view({ ...RECEIPT, paidMethod: "bank" }));
+    expect(facts()).toBe("Ettemaks 50% · koostatud 16.10 · tasutud 12.10 · pangaülekanne");
+    // paid on the day it was made: „Kogu summa · tasutud 19.10 · pangaülekanne“
+    await showInList(view({ ...RECEIPT, paidAt: "2026-10-16T10:00:00.000Z", paidMethod: "card" }));
+    expect(facts()).toBe("Ettemaks 50% · tasutud 16.10 · kaardimakse kohapeal");
+    // the site's own payment: the proper noun keeps its capital
+    await showInList(ONLINE);
+    expect(facts()).toBe("Ettemaks 50% · koostatud 16.10 · tasutud 14.10 · Montonio");
+    // cancelled: the only date it has
+    await showInList(CANCELLED);
+    expect(facts()).toBe("Ettemaks 50% · koostatud 16.10");
+  });
+
+  test("a day is the Tallinn day: a payment at 23:30 and the invoice at 00:30 the next morning are two days", async () => {
+    await showInList(view({ ...RECEIPT, issuedAt: "2026-10-16T21:30:00.000Z", paidAt: "2026-10-16T20:30:00.000Z", paidMethod: "cash" }));
+    expect(facts()).toBe("Ettemaks 50% · koostatud 17.10 · tasutud 16.10 · sularaha");
+  });
+
+  test("the drawer keeps its own words and full dates", async () => {
+    await show(UNPAID);
+    expect(facts()).toBe("Ettemaks 50% · Koostatud 16.10.2026 · Maksta kuni 23.10.2026");
+    await show(RECEIPT);
+    expect(facts()).toBe("Ettemaks 50% · Koostatud 16.10.2026 · Tasutud 12.10.2026 · Sularaha");
+  });
+
+  test("the buyer's name stands out, then the course; the link to the registration is there", async () => {
+    await showInList(UNPAID);
+    const who = $("[data-invoice-who]")!;
+    expect(text($("span", who))).toBe("Kati Tamm · Kulmude baaskoolitus");
+    expect(text($("a", who))).toBe("Ava registreering");
+    expect(text($("strong", who))).toBe("Kati Tamm");
+    expect($("a", who)?.getAttribute("href")).toBe("/admin/registreerimised?id=7");
+  });
+
+  test("the receipt's panel on the list says what the drawer's says once the page gave it the take-back (S3-f)", async () => {
+    await showInList(view({ ...RECEIPT, takeBack: { cents: 17500, backToAwaiting: true } }));
+    await choose("Võta tasumine tagasi");
+    expect(linesOf(panel()!)).toEqual(["Kviitung tühistatakse (number jääb alles).", "Laekunud summa väheneb 175 €.", "Registreering läheb tagasi olekusse „Ootab ettemaksu“."]);
   });
 });

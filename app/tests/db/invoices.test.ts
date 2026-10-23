@@ -11,12 +11,14 @@ import { lockForPayment, seatsTaken } from "@/db/queries/seats";
 import * as schema from "@/db/schema";
 import { clients, courses, invoices, payments, registrations, type Invoice, type Payment, type Registration } from "@/db/schema";
 import { tallinnDateText } from "@/domain/certificate";
+import { receiptTakeBack } from "@/domain/invoice";
+import { registrationPrice } from "@/domain/registration";
 import { renderInvoice } from "@/server/invoice-pdf";
 import { addManualPayment } from "@/server/registration-money";
 import {
   cancelInvoice, catchUpInvoice, createInvoice, getInvoiceSettings, invoiceCard, invoiceForAdmin, invoiceForPaidPayment, invoiceForStudent, invoicePdf,
   invoicesCsv, invoicesOfClient, invoicesOfRegistration, listInvoices, markInvoicePaid, markLinkedInvoicePaid, saveInvoiceSettings, uninvoicedPayments,
-  createInvoicesForUnbilled, undoInvoicePaid, unbilledPreview, updateInvoiceBuyer,
+  createInvoicesForUnbilled, invoiceCounts, invoiceMonths, receiptTakeBacks, undoInvoicePaid, unbilledPreview, updateInvoiceBuyer,
 } from "@/server/invoices";
 import { makeTestDb } from "./helpers";
 import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtures";
@@ -1013,6 +1015,104 @@ describe("the reads: the student's own, Maria's, a registration's, the list, the
     expect(csv).not.toContain(nov.number);
     expect((await invoicesCsv(db, "2026-12")).slice(1).trimEnd().split("\r\n")).toHaveLength(1);
     expect((await invoicesCsv(db, "oktoober")).slice(1).trimEnd().split("\r\n")).toHaveLength(1);
+  });
+
+  describe("A6 Arved (admin UX pass, piece 2, Task 14): the search, the pills' counts, the months, the receipts' take-back", () => {
+    const issue = async (c: Awaited<ReturnType<typeof contactCourse>>, name: string, email: string, at: Date) => request(await registrationOn(db, c, { name, email }), "prepayment", at);
+
+    test("the search finds a number (whole or a part of it), the buyer's name (any case, Cyrillic too) or e-mail; % _ and a backslash are letters; it keeps the month and the state", async () => {
+      const c = await contactCourse(db);
+      await ready();
+      const a = await issue(c, "Мария Кузнецова", "maria.k@example.com", new Date("2026-09-15T09:00:00Z"));
+      const b = await issue(c, "Helen Kukk", "helen_k@example.com", new Date("2026-10-02T09:00:00Z"));
+      const d = await issue(c, "50% Liis \\ Mets", "liis@example.com", new Date("2026-10-03T09:00:00Z"));
+      const ids = async (filter: Parameters<typeof listInvoices>[1]) => (await listInvoices(db, filter, 1)).rows.map((i) => i.id);
+      expect(await ids({ search: "MSL2026-002" })).toEqual([b.id]);
+      expect(await ids({ search: "msl2026-00" })).toEqual([d.id, b.id, a.id]);
+      expect(await ids({ search: "-003" })).toEqual([d.id]);
+      expect(await ids({ search: "кузн" })).toEqual([a.id]);
+      expect(await ids({ search: "КУЗНЕЦОВА" })).toEqual([a.id]);
+      expect(await ids({ search: "HELEN KUKK" })).toEqual([b.id]);
+      expect(await ids({ search: "maria.k@" })).toEqual([a.id]);
+      expect(await ids({ search: "50%" })).toEqual([d.id]);
+      expect(await ids({ search: "%" })).toEqual([d.id]);
+      expect(await ids({ search: "_" })).toEqual([b.id]); // helen_k@example.com: an underscore, not "any one letter"
+      expect(await ids({ search: "\\" })).toEqual([d.id]);
+      expect(await ids({ search: "h%k" })).toEqual([]);
+      expect(await ids({ search: "nobody" })).toEqual([]);
+      expect(await ids({ search: "   " })).toEqual([d.id, b.id, a.id]); // (blank is no search)
+      // under the month and the state
+      expect(await ids({ search: "example.com", month: "2026-10" })).toEqual([d.id, b.id]);
+      await cancelInvoice(db, b.id, NOW);
+      expect(await ids({ search: "example.com", status: "cancelled" })).toEqual([b.id]);
+      expect(await ids({ search: "helen", month: "2026-09" })).toEqual([]);
+      expect(await listInvoices(db, { search: "example.com" }, 1)).toMatchObject({ total: 3 });
+    });
+
+    test("invoiceCounts: each pill's rows under the month and the search, whichever pill is chosen; the months are those of the Tallinn calendar, newest first", async () => {
+      const c = await contactCourse(db);
+      await ready();
+      const sept = await issue(c, "Kati Tamm", "a@example.com", new Date("2026-09-30T20:30:00Z")); // 30.09 23:30 in Tallinn
+      const oct1 = await issue(c, "Mari Kask", "b@example.com", new Date("2026-09-30T21:30:00Z")); // 1.10 00:30
+      const oct31 = await issue(c, "Liis Mets", "c@example.com", new Date("2026-10-31T21:30:00Z")); // 31.10 23:30 (winter time)
+      const nov = await issue(c, "Anu Saar", "d@example.com", new Date("2026-10-31T22:30:00Z")); // 1.11 00:30
+      await cancelInvoice(db, oct31.id, NOW);
+      await markInvoicePaid(db, oct1.id, { paidAt: NOW, method: "bank" }, NOW);
+      void sept;
+      void nov;
+      expect(await invoiceCounts(db, {})).toEqual({ all: 4, unpaid: 2, paid: 1, cancelled: 1 });
+      expect(await invoiceCounts(db, { month: "2026-10" })).toEqual({ all: 2, unpaid: 0, paid: 1, cancelled: 1 });
+      expect(await invoiceCounts(db, { month: "2026-12" })).toEqual({ all: 0, unpaid: 0, paid: 0, cancelled: 0 });
+      expect(await invoiceCounts(db, { search: "mari" })).toEqual({ all: 1, unpaid: 0, paid: 1, cancelled: 0 });
+      expect(await invoiceCounts(db, { month: "2026-10", search: "example.com" })).toEqual({ all: 2, unpaid: 0, paid: 1, cancelled: 1 });
+      expect(await invoiceCounts(db, { month: "2026-13" })).toEqual({ all: 0, unpaid: 0, paid: 0, cancelled: 0 });
+      // a pill's count is the rows it then shows
+      for (const status of ["unpaid", "paid", "cancelled"] as const) {
+        expect((await listInvoices(db, { month: "2026-10", status }, 1)).total).toBe((await invoiceCounts(db, { month: "2026-10" }))[status]);
+      }
+      expect(await invoiceMonths(db)).toEqual(["2026-11", "2026-10", "2026-09"]);
+    });
+
+    test("invoiceMonths: none without an invoice", async () => {
+      expect(await invoiceMonths(db)).toEqual([]);
+    });
+
+    test("receiptTakeBacks: for each receipt of a registration, the sum the server will take back and whether the place goes back to „Ootab ettemaksu“ — the drawer's own rule", async () => {
+      const c = await contactCourse(db);
+      await ready();
+      // an online prepayment of 175 € (its invoice born paid), then 175 € received at the venue with its receipt: confirmed, 350 € in, the whole price
+      const r = await registrationOn(db, c, { name: "Kati Tamm", email: "kati@example.com", paymentChoice: "half" });
+      expect(await settle(await pendingPayment(db, r))).toMatchObject({ number: "MSL2026-001" });
+      const added = await addManualPayment(db, { registrationId: r.id, cents: 17500, paidOn: "2026-10-16", method: "cash", receipt: true, expectedPaidCents: 17500 }, NOW);
+      expect(added).toMatchObject({ ok: true });
+      const rows = (await listInvoices(db, {}, 1)).rows;
+      const receipt = rows.find((i) => i.paidMethod === "cash")!;
+      const online = rows.find((i) => i.paidMethod === "montonio")!;
+      const unpaid = await request(await registrationOn(db, c, { name: "Mari Kask", email: "mari@example.com" }));
+      const map = await receiptTakeBacks(db, [...rows, { ...(await invoiceForAdmin(db, unpaid.id))!, paidOnline: false, refunded: false }]);
+      // the receipt's 175 € comes off 350 €; what is left (175 €) is the half, so the place stays
+      expect(map.get(receipt.id)).toEqual({ cents: 17500, backToAwaiting: false });
+      // an online payment's invoice and an unpaid one are no receipts
+      expect(map.has(online.id)).toBe(false);
+      expect(map.has(unpaid.id)).toBe(false);
+      expect(map.size).toBe(1);
+      // it is exactly what the registration's drawer computes (domain/invoice.ts receiptTakeBack over the same rows)
+      const [reg] = await db.select().from(registrations).where(eq(registrations.id, r.id));
+      expect(map.get(receipt.id)).toEqual(
+        receiptTakeBack(reg, registrationPrice(c.course, reg.kind), receipt, await invoicesOfRegistration(db, r.id), []),
+      );
+    });
+
+    test("receiptTakeBacks: a receipt that is the whole of what a confirmed registration has paid sends it back to „Ootab ettemaksu“; none for no receipts", async () => {
+      const c = await contactCourse(db);
+      await ready();
+      const r = await registrationOn(db, c, { name: "Kati Tamm", email: "kati@example.com" });
+      expect(await addManualPayment(db, { registrationId: r.id, cents: 17500, paidOn: "2026-10-16", method: "bank", receipt: true, expectedPaidCents: 0 }, NOW)).toMatchObject({ ok: true });
+      expect(await registration(r.id)).toMatchObject({ status: "confirmed", paidCents: 17500 });
+      const rows = (await listInvoices(db, {}, 1)).rows;
+      expect(await receiptTakeBacks(db, rows)).toEqual(new Map([[rows[0].id, { cents: 17500, backToAwaiting: true }]]));
+      expect(await receiptTakeBacks(db, [])).toEqual(new Map());
+    });
   });
 });
 

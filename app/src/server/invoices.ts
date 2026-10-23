@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, inArray, lt, max, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, lt, max, ne, or, sql, type SQL } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
 import { addRegistrationPayment, paged, setSetting, type Paged } from "@/db/queries/admin";
 import { UNINVOICED_PAID } from "@/db/queries/payment-checks";
@@ -11,10 +11,10 @@ import { tallinnDateText, tallinnYear } from "@/domain/certificate";
 import { isHirePurchase } from "@/domain/financing";
 import {
   coveringInvoices, formatInvoiceNumber, INVOICE_KEY, INVOICE_LIMITS, invoiceCsv, invoiceKindOfPayment, invoiceSeq, ODD_PART, openAmounts, partOf, readInvoiceSettings,
-  receiptKind, registrationStatusAfterTakeBack, sellerReady, takeBackCents, type Covering, type InvoiceBuyer, type InvoiceKind, type InvoiceLine, type InvoiceSettings, type InvoiceStatus, type ManualPaidMethod,
+  receiptKind, receiptTakeBack, registrationStatusAfterTakeBack, sellerReady, takeBackCents, type Covering, type InvoiceBuyer, type InvoiceKind, type InvoiceLine, type InvoiceSettings, type InvoiceStatus, type ManualPaidMethod, type UninvoicedPayment,
   type PaidMethod,
 } from "@/domain/invoice";
-import { PAGE_SIZE } from "@/domain/paging";
+import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
 import { registrationPrice } from "@/domain/registration";
 import { prepaymentDraft, type PrepaymentDraft } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
@@ -816,17 +816,96 @@ function issuedIn(month: string): SQL {
 }
 
 /**
- * The „Arved" page (§5): every invoice, newest first, 50 a page (a page past the end is the last); by the Tallinn month of the issue and the
- * state (the stored one: a refunded invoice is under „Tasutud“). Each with its R14 and refund flags (AdminInvoice).
+ * What the „Arved" list is asked for: a Tallinn month "YYYY-MM" (none: every month), a state, and the text typed in the search (none: every
+ * invoice). The list and the pills' counts share the month and the search (invoiceCounts), so a pill's count is the rows it then shows.
  */
-export async function listInvoices(db: Db, filter: { month?: string; status?: InvoiceStatus }, page: number): Promise<Paged<AdminInvoice>> {
-  const where = and(filter.month === undefined ? undefined : issuedIn(filter.month), filter.status ? eq(invoices.status, filter.status) : undefined);
+export type InvoiceQuery = { month?: string; status?: InvoiceStatus; search?: string };
+
+/**
+ * The search of „Arved“ (A6, B7): the invoice's number, or the buyer's name or e-mail address, holds the text — ILIKE, any case, with LIKE's
+ * wildcards and escape character escaped (containsPattern), so it is taken literally. The buyer is the invoice's frozen one, which is what the row shows.
+ */
+function invoiceSearch(search: string | undefined): SQL | undefined {
+  const q = parseSearch(search);
+  if (!q) return undefined;
+  const text = containsPattern(q);
+  return or(ilike(invoices.number, text), ilike(sql`${invoices.buyer}->>'name'`, text), ilike(sql`${invoices.buyer}->>'email'`, text));
+}
+
+/**
+ * The „Arved" page (§5): every invoice, newest first, 50 a page (a page past the end is the last); by the Tallinn month of the issue, the
+ * state (the stored one: a refunded invoice is under „Tasutud“) and the search (number, buyer's name or e-mail). Each with its R14 and refund
+ * flags (AdminInvoice).
+ */
+export async function listInvoices(db: Db, filter: InvoiceQuery, page: number): Promise<Paged<AdminInvoice>> {
+  const where = and(filter.month === undefined ? undefined : issuedIn(filter.month), filter.status ? eq(invoices.status, filter.status) : undefined, invoiceSearch(filter.search));
   return paged(
     page,
     PAGE_SIZE,
     async () => (await db.select({ n: count() }).from(invoices).where(where))[0].n,
     async (range) => (await db.select(adminFields).from(invoices).where(where).orderBy(desc(invoices.issuedAt), desc(invoices.id)).limit(range.limit).offset(range.offset)).map(toAdmin),
   );
+}
+
+/**
+ * The counts on the pills of „Arved“ (A6): under the month and the search, as many invoices as each pill then shows (the pill chosen now does
+ * not narrow the others; the same conditions as listInvoices). One query.
+ */
+export async function invoiceCounts(db: Db, query: { month?: string; search?: string }): Promise<Record<"all" | InvoiceStatus, number>> {
+  const where = and(query.month === undefined ? undefined : issuedIn(query.month), invoiceSearch(query.search));
+  const countOf = (status?: InvoiceStatus) => (status ? sql<number>`count(*) filter (where ${invoices.status} = ${status})` : sql<number>`count(*)`).mapWith(Number);
+  const [row] = await db
+    .select({ all: countOf(), unpaid: countOf("unpaid"), paid: countOf("paid"), cancelled: countOf("cancelled") })
+    .from(invoices)
+    .where(where);
+  return row;
+}
+
+/** Every Tallinn month that has an invoice ("2026-10"), newest first: the options of the month select on „Arved“ (A6). */
+export async function invoiceMonths(db: Db): Promise<string[]> {
+  const month = sql<string>`to_char(${invoices.issuedAt} at time zone 'Europe/Tallinn', 'YYYY-MM')`;
+  return (await db.select({ month }).from(invoices).groupBy(month).orderBy(desc(month))).map((r) => r.month);
+}
+
+/**
+ * What „Võta tasumine tagasi“ of a receipt on the „Arved“ list says before it is pressed (S3-f; A6): for each receipt among `rows` — a paid
+ * invoice with no due date that the site did not pay, of a registration — the sum the server will take off its registration's „Laekunud summa“
+ * and whether a confirmed registration then falls under 50 % (domain/invoice.ts receiptTakeBack, the rule the registration's drawer uses). The
+ * drawer reads the registration, its invoices and its paid payments no invoice names; here that is read for all the receipts' registrations at
+ * once. Keyed by the invoice's id; a row that is no receipt, or whose registration is gone (its receipt is only cancelled), has none.
+ */
+export async function receiptTakeBacks(db: Db, rows: AdminInvoice[]): Promise<Map<number, { cents: number; backToAwaiting: boolean }>> {
+  const receipts = rows.filter((i) => i.status === "paid" && i.dueAt === null && i.paidMethod !== "montonio" && i.paidMethod !== "financing" && i.paymentId === null && i.registrationId !== null);
+  const result = new Map<number, { cents: number; backToAwaiting: boolean }>();
+  if (receipts.length === 0) return result;
+  const regIds = [...new Set(receipts.map((i) => i.registrationId!))];
+  const [regs, covering, uninvoiced] = await Promise.all([
+    db.select({ registration: registrations, course: courses }).from(registrations).innerJoin(courses, eq(registrations.courseId, courses.id)).where(inArray(registrations.id, regIds)),
+    db
+      .select({ id: invoices.id, registrationId: invoices.registrationId, kind: invoices.kind, status: invoices.status, amountCents: invoices.amountCents })
+      .from(invoices)
+      .where(inArray(invoices.registrationId, regIds)),
+    db
+      .select({ id: payments.id, registrationId: payments.registrationId, kind: payments.kind, invoiceId: payments.invoiceId, amountCents: payments.amountCents })
+      .from(payments)
+      .where(and(inArray(payments.registrationId, regIds), UNINVOICED_PAID)),
+  ]);
+  for (const receipt of receipts) {
+    const found = regs.find((x) => x.registration.id === receipt.registrationId);
+    if (!found) continue;
+    const { registration: r, course } = found;
+    result.set(
+      receipt.id,
+      receiptTakeBack(
+        r,
+        registrationPrice(course, r.kind),
+        receipt,
+        covering.filter((i) => i.registrationId === r.id),
+        uninvoiced.filter((p): p is typeof p & UninvoicedPayment => p.registrationId === r.id),
+      ),
+    );
+  }
+  return result;
 }
 
 /**

@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { setSetting } from "@/db/queries/admin";
 import { invoices, payments, registrations } from "@/db/schema";
-import { tallinnFormParts } from "@/domain/calendar";
 import { adminEt } from "@/i18n/dict/admin";
+import { addManualPayment } from "@/server/registration-money";
 import { cancelInvoice, catchUpInvoice, createInvoice, markInvoicePaid } from "@/server/invoices";
 import { makeTestDb } from "./helpers";
 import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtures";
@@ -32,8 +32,20 @@ vi.mock("@/components/admin/Drawer", async () => {
 vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), addManualPaymentAction: vi.fn(), saveRegistrationStatus: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({
   createInvoiceAction: vi.fn(), sendInvoiceAction: vi.fn(), markInvoicePaidAction: vi.fn(), undoInvoicePaidAction: vi.fn(), cancelInvoiceAction: vi.fn(),
-  updateInvoiceBuyerAction: vi.fn(), catchUpInvoiceAction: vi.fn(), saveInvoiceSettingsAction: vi.fn(),
+  updateInvoiceBuyerAction: vi.fn(), catchUpInvoiceAction: vi.fn(), createInvoicesForUnbilledAction: vi.fn(), saveInvoiceSettingsAction: vi.fn(),
 }));
+const rows = vi.hoisted(() => ({ seen: [] as { number: string; takeBack: { cents: number; backToAwaiting: boolean } | null }[] }));
+// (the row is the real one; what the page hands it is written down on the way)
+vi.mock("@/components/admin/InvoiceRow", async (original) => {
+  const real = await original<typeof import("@/components/admin/InvoiceRow")>();
+  return {
+    ...real,
+    InvoiceRow: (props: Parameters<typeof real.InvoiceRow>[0]) => {
+      rows.seen.push({ number: props.invoice.number, takeBack: props.invoice.takeBack });
+      return real.InvoiceRow(props);
+    },
+  };
+});
 vi.mock("@/server/actions/admin-contracts", () => ({ saveContractTextsAction: vi.fn(), requestContractAction: vi.fn(), sendContractCopyAction: vi.fn() }));
 
 import InvoicesPage from "@/app/admin/(panel)/arved/page";
@@ -41,11 +53,21 @@ import PaymentsPage from "@/app/admin/(panel)/maksed/page";
 import RegistrationsPage from "@/app/admin/(panel)/registreerimised/page";
 
 const NBSP = " ";
+/** Today, for the page: the list shows this month when none is chosen, so the tests fix the clock (the dates of the rows are October and September 2026). */
+const TODAY = new Date("2026-10-23T09:00:00Z");
 const SELLER = { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu" };
 const CARD = { ...SELLER, vatNumber: "", vatOn: false, vatRate: 24, prefix: "MSL", nextYear: 2026, nextSeq: 1, termDays: 7, footer: "" };
 const BANK = { receiver: "MS LAB Koolituskeskus OÜ", iban: "EE382200221020145685", bank: "Swedbank", referencePrefix: "MSLAB-" };
 const SEPTEMBER = new Date("2026-09-15T09:00:00Z");
 const OCTOBER = new Date("2026-10-16T09:00:00Z");
+
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(TODAY);
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const render = async (page: (p: { searchParams: Promise<Record<string, string>> }) => Promise<React.ReactElement>, search: Record<string, string> = {}) =>
   renderToStaticMarkup(await page({ searchParams: Promise.resolve(search) }));
@@ -86,9 +108,9 @@ describe("the „Arved“ page", () => {
     await cancelInvoice(db, kati.invoice.id, OCTOBER);
   });
 
-  test("every invoice, newest first, with its buyer, its course and a link to its registration; the tabs Maksed | Arved", async () => {
+  test("without a month the list shows this month (the CSV always has a month to name): the invoices of October, newest first, with the buyer, the course and a link to the registration; the tabs Maksed | Arved", async () => {
     const html = await render(InvoicesPage);
-    expect(numbers(html)).toEqual(["MSL2026-003", "MSL2026-002", "MSL2026-001"]);
+    expect(numbers(html)).toEqual(["MSL2026-003", "MSL2026-002"]);
     expect(html).toContain("<h1");
     // the heading both tabs share (A6), and the tabs: Maksed is a link back, Arved is the current one
     expect(html).toContain(">Maksed ja arved</h1>");
@@ -98,53 +120,132 @@ describe("the „Arved“ page", () => {
       ["Maksed", "/admin/maksed", false],
       ["Arved", "/admin/arved", true],
     ]);
-    expect(html).toContain("Arveid: 3");
+    expect(html).toContain("Arveid: 2");
     const liisRow = html.slice(html.indexOf('data-invoice="MSL2026-003"'), html.indexOf('data-invoice="MSL2026-002"'));
     expect(liisRow).toContain("Liis Mets");
     expect(liisRow).toContain("Kulmumeistri baaskoolitus");
     expect(liisRow).toContain(`href="/admin/registreerimised?id=${liis.registration.id}"`);
     expect(liisRow).toContain(`175,00${NBSP}€`);
     expect(liisRow).toContain(">Tasumata<");
+    // the prototype's meta line: the part, and „maksta kuni“ in short form
+    expect(liisRow).toMatch(/data-invoice-facts="">Ettemaks 50% · maksta kuni 23\.10</);
     expect(html).toContain(">Tasutud<");
-    expect(html).toContain(">Tühistatud<");
+    // (September's, cancelled, is another month)
+    expect(html).not.toContain("MSL2026-001");
   });
 
-  test("the state filter: ?staatus=unpaid|paid|cancelled; a value it does not know shows everything; its pills are links with the state in the address", async () => {
-    expect(numbers(await render(InvoicesPage, { staatus: "paid" }))).toEqual(["MSL2026-002"]);
-    expect(numbers(await render(InvoicesPage, { staatus: "unpaid" }))).toEqual(["MSL2026-003"]);
-    expect(numbers(await render(InvoicesPage, { staatus: "cancelled" }))).toEqual(["MSL2026-001"]);
-    expect(numbers(await render(InvoicesPage, { staatus: "makstud" }))).toHaveLength(3);
+  test("„Kõik kuud“ (?kuu=koik) lists every invoice, September's cancelled one too; a month that is no month is no choice: it is this month", async () => {
+    const all = await render(InvoicesPage, { kuu: "koik" });
+    expect(numbers(all)).toEqual(["MSL2026-003", "MSL2026-002", "MSL2026-001"]);
+    expect(all).toContain("Arveid: 3");
+    expect(all).toContain(">Tühistatud<");
+    for (const kuu of ["oktoober", "2026-13", "2026-1", "all", ""]) expect(numbers(await render(InvoicesPage, { kuu })), kuu).toEqual(["MSL2026-003", "MSL2026-002"]);
+  });
+
+  test("the month select is the toolbar's scope: „Kõik kuud“ and each month that has invoices (and this month), newest first, applying on change — no „Näita“", async () => {
+    const html = await render(InvoicesPage);
+    const select = /<select[^>]*aria-label="Kuu"[^>]*>([\s\S]*?)<\/select>/.exec(html);
+    expect(select, "the select named Kuu").not.toBeNull();
+    const options = [...select![1].matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [m[1], m[2]]);
+    expect(options).toEqual([["koik", "Kõik kuud"], ["2026-10", "Oktoober 2026"], ["2026-09", "September 2026"]]);
+    expect(select![0]).toMatch(/<option value="2026-10" selected/);
+    expect(html).not.toContain(">Näita<");
+    expect(html).not.toContain('type="month"');
+    expect(html).not.toContain("data-invoice-month-form");
+    // a month with no invoice that is asked for is there to show what the list is
+    const empty = await render(InvoicesPage, { kuu: "2026-08" });
+    expect(empty).toMatch(/<option value="2026-08" selected[^>]*>August 2026</);
+    expect(await render(InvoicesPage, { kuu: "koik" })).toMatch(/<option value="koik" selected[^>]*>Kõik kuud</);
+  });
+
+  test("the pills carry counts under the month and the search, and links that keep them; a value the pills do not know shows everything", async () => {
+    const pills = (html: string) => {
+      const nav = /<nav[^>]*aria-label="Staatus"[^>]*data-list-pill-row[^>]*>([\s\S]*?)<\/nav>/.exec(html)![1];
+      return [...nav.matchAll(/<a [^>]*href="([^"]*)"[^>]*>([^<]*)<span[^>]*>(\d+)<\/span><\/a>/g)].map((m) => [m[2], Number(m[3]), m[1].replace(/&amp;/g, "&")]);
+    };
+    expect(pills(await render(InvoicesPage))).toEqual([
+      ["Kõik", 2, "/admin/arved"],
+      ["Tasumata", 1, "/admin/arved?staatus=unpaid"],
+      ["Tasutud", 1, "/admin/arved?staatus=paid"],
+      ["Tühistatud", 0, "/admin/arved?staatus=cancelled"],
+    ]);
+    expect(pills(await render(InvoicesPage, { kuu: "koik", staatus: "paid", otsi: "kask" }))).toEqual([
+      ["Kõik", 1, "/admin/arved?otsi=kask&kuu=koik"],
+      ["Tasumata", 0, "/admin/arved?otsi=kask&kuu=koik&staatus=unpaid"],
+      ["Tasutud", 1, "/admin/arved?otsi=kask&kuu=koik&staatus=paid"],
+      ["Tühistatud", 0, "/admin/arved?otsi=kask&kuu=koik&staatus=cancelled"],
+    ]);
     const html = await render(InvoicesPage, { staatus: "paid" });
-    expect(html).toContain('href="/admin/arved?staatus=unpaid"');
-    expect(html).toMatch(/aria-current="true" href="\/admin\/arved\?staatus=paid"/);
+    expect(/<a [^>]*href="\/admin\/arved\?staatus=paid"[^>]*>/.exec(html)![0]).toContain('aria-current="true"');
+    expect(numbers(await render(InvoicesPage, { staatus: "makstud", kuu: "koik" }))).toHaveLength(3);
+    // a pill's count is the rows it then shows
+    expect(numbers(await render(InvoicesPage, { staatus: "paid", kuu: "koik" }))).toEqual(["MSL2026-002"]);
+    expect(numbers(await render(InvoicesPage, { staatus: "unpaid", kuu: "koik" }))).toEqual(["MSL2026-003"]);
+    expect(numbers(await render(InvoicesPage, { staatus: "cancelled", kuu: "koik" }))).toEqual(["MSL2026-001"]);
   });
 
-  test("the month filter: ?kuu=YYYY-MM is the month of the issue in Tallinn; anything else is no filter; combined with the state; the form keeps the state", async () => {
+  test("the month filter: ?kuu=YYYY-MM is the month of the issue in Tallinn; combined with the state and the search", async () => {
     expect(numbers(await render(InvoicesPage, { kuu: "2026-09" }))).toEqual(["MSL2026-001"]);
     expect(numbers(await render(InvoicesPage, { kuu: "2026-10" }))).toEqual(["MSL2026-003", "MSL2026-002"]);
     expect(numbers(await render(InvoicesPage, { kuu: "2026-10", staatus: "paid" }))).toEqual(["MSL2026-002"]);
     expect(numbers(await render(InvoicesPage, { kuu: "2026-08" }))).toEqual([]);
-    expect(numbers(await render(InvoicesPage, { kuu: "oktoober" }))).toHaveLength(3);
-    const html = await render(InvoicesPage, { kuu: "2026-10", staatus: "paid" });
-    expect(html).toContain('name="kuu"');
-    expect(html).toMatch(/<input[^>]*name="kuu"[^>]*value="2026-10"|<input[^>]*value="2026-10"[^>]*name="kuu"/);
-    expect(html).toMatch(/<input[^>]*type="hidden"[^>]*name="staatus"[^>]*value="paid"|<input[^>]*name="staatus"[^>]*type="hidden"[^>]*value="paid"/);
-    expect(html).toContain(">Kõik kuud<");
-    expect(await render(InvoicesPage)).not.toContain(">Kõik kuud<");
     expect(await render(InvoicesPage, { kuu: "2026-08" })).toContain("Selle valikuga arveid pole.");
+    expect(numbers(await render(InvoicesPage, { kuu: "2026-10", otsi: "liis" }))).toEqual(["MSL2026-003"]);
+    expect(numbers(await render(InvoicesPage, { kuu: "2026-09", otsi: "liis" }))).toEqual([]);
   });
 
-  test("„Laadi alla (CSV)“ is the chosen month's file; without a month, this month's", async () => {
-    expect(await render(InvoicesPage, { kuu: "2026-09" })).toContain('href="/api/admin/arved?kuu=2026-09"');
-    expect(await render(InvoicesPage, { kuu: "2026-09" })).toContain("09.2026");
-    const html = await render(InvoicesPage);
-    expect(html).toContain(`href="/api/admin/arved?kuu=${tallinnFormParts(new Date()).date.slice(0, 7)}"`);
-    expect(html).toContain(">Laadi alla (CSV)<");
+  test("the search (B7): the invoice's number, the buyer's name or e-mail; it keeps the month; nothing found says so and offers to clear", async () => {
+    expect(numbers(await render(InvoicesPage, { kuu: "koik", otsi: "MSL2026-001" }))).toEqual(["MSL2026-001"]);
+    expect(numbers(await render(InvoicesPage, { kuu: "koik", otsi: "msl2026-00" }))).toEqual(["MSL2026-003", "MSL2026-002", "MSL2026-001"]);
+    expect(numbers(await render(InvoicesPage, { otsi: "002" }))).toEqual(["MSL2026-002"]);
+    expect(numbers(await render(InvoicesPage, { otsi: "MARI KASK" }))).toEqual(["MSL2026-002"]);
+    expect(numbers(await render(InvoicesPage, { otsi: "liis@example" }))).toEqual(["MSL2026-003"]);
+    expect(numbers(await render(InvoicesPage, { otsi: "%" }))).toEqual([]);
+    const none = await render(InvoicesPage, { otsi: "nobody" });
+    expect(none).toContain("„nobody“ järgi arveid ei leitud.");
+    expect(none).toMatch(/<a[^>]*href="\/admin\/arved"[^>]*>Tühjenda otsing ja filtrid<\/a>/);
+    expect(none).toContain('placeholder="Otsi nime, e-posti või arve numbri järgi"');
+  });
+
+  test("„Laadi alla (CSV) · {kuu aasta}“ is the file of the month on the screen, and says which; while „Kõik kuud“ is chosen it is this month's", async () => {
+    const sept = await render(InvoicesPage, { kuu: "2026-09" });
+    expect(sept).toContain('href="/api/admin/arved?kuu=2026-09"');
+    expect(sept).toContain("Laadi alla (CSV) · september 2026");
+    const now = await render(InvoicesPage);
+    expect(now).toContain('href="/api/admin/arved?kuu=2026-10"');
+    expect(now).toContain("Laadi alla (CSV) · oktoober 2026");
+    const all = await render(InvoicesPage, { kuu: "koik" });
+    expect(all).toContain('href="/api/admin/arved?kuu=2026-10"');
+    expect(all).toContain("Laadi alla (CSV) · oktoober 2026");
+    // (the old hint under the button, which named the month in numbers, is gone with the label naming it)
+    expect(now).not.toContain("Raamatupidajale");
   });
 
   test("Maksed links to it", async () => {
     const html = await render(PaymentsPage);
     expect(html).toMatch(/<a[^>]*href="\/admin\/arved"[^>]*>Arved<\/a>/);
+  });
+});
+
+describe("the „Arved“ page: „Võta tasumine tagasi“ of a receipt says what the drawer's says (S3-f)", () => {
+  test("the list reads the receipt's registration: the sum the server will take back and the line „läheb tagasi“ when the place then falls under 50 %", async () => {
+    await seed();
+    await ready();
+    const r = await registrationOn(db, fixture, { email: "kati@example.com", name: "Kati Tamm" });
+    const added = await addManualPayment(db, { registrationId: r.id, cents: 17500, paidOn: "2026-10-16", method: "cash", receipt: true, expectedPaidCents: 0 }, OCTOBER);
+    expect(added).toMatchObject({ ok: true, receiptNumber: "MSL2026-001" });
+    rows.seen.length = 0;
+    const html = await render(InvoicesPage);
+    expect(numbers(html)).toEqual(["MSL2026-001"]);
+    // (the panel is drawn when it is asked for; the page hands the row what it says: 175 € off, and the place goes back, the receipt being all the registration has paid)
+    expect(rows.seen).toEqual([{ number: "MSL2026-001", takeBack: { cents: 17500, backToAwaiting: true } }]);
+    expect(html).toContain('aria-label="Veel: MSL2026-001"');
+    expect(html).toMatch(/data-invoice-facts="">Ettemaks 50% · tasutud 16\.10 · sularaha</);
+    // an invoice that is no receipt is handed none
+    const other = await request("mari@example.com", "Mari Kask", OCTOBER);
+    rows.seen.length = 0;
+    await render(InvoicesPage);
+    expect(rows.seen.find((x) => x.number === other.invoice.number)).toEqual({ number: other.invoice.number, takeBack: null });
   });
 });
 
@@ -159,16 +260,23 @@ describe("the „Arved“ page: 50 a page", () => {
     await db.insert(invoices).values(
       Array.from({ length: 50 }, (_, i) => ({ ...rest, number: `MSL2026-${String(i + 2).padStart(3, "0")}`, seq: i + 2, registrationId: registration.id, issuedAt: new Date(OCTOBER.getTime() + i * 60_000) })),
     );
-    const first = await render(InvoicesPage);
+    // every month: the 51 invoices
+    const first = await render(InvoicesPage, { kuu: "koik" });
     expect(numbers(first)).toHaveLength(50);
     expect(numbers(first)[0]).toBe("MSL2026-051");
     expect(first).toContain("Arveid: 51");
     expect(first).toContain("data-pager");
-    expect(first).toContain('href="/admin/arved?leht=2"');
-    const second = await render(InvoicesPage, { leht: "2" });
+    expect(first).toContain('href="/admin/arved?kuu=koik&amp;leht=2"');
+    const second = await render(InvoicesPage, { kuu: "koik", leht: "2" });
     expect(numbers(second)).toEqual(["MSL2026-001"]);
-    expect(numbers(await render(InvoicesPage, { leht: "9" }))).toEqual(["MSL2026-001"]);
-    expect(await render(InvoicesPage, { kuu: "2026-10", leht: "2" })).toContain('href="/admin/arved?kuu=2026-10"');
+    expect(numbers(await render(InvoicesPage, { kuu: "koik", leht: "9" }))).toEqual(["MSL2026-001"]);
+    // this month: the 50 of October, one page
+    const october = await render(InvoicesPage);
+    expect(numbers(october)).toHaveLength(50);
+    expect(october).toContain("Arveid: 50");
+    expect(october).not.toContain("data-pager");
+    expect(await render(InvoicesPage, { kuu: "2026-10", leht: "2", otsi: "msl" })).not.toContain('href="/admin/arved?kuu=2026-10&amp;leht=2"');
+    expect(await render(InvoicesPage, { kuu: "koik", leht: "2", otsi: "msl" })).toContain('href="/admin/arved?otsi=msl&amp;kuu=koik"');
   });
 });
 
@@ -180,12 +288,39 @@ describe("„Arveta maksed“", () => {
     await db.update(payments).set({ status: "paid", paidAt: at, ...over }).where(eq(payments.id, p.id));
     return { r, p };
   };
+  /** The strip's own markup, from its section to the end of it. */
+  const strip = (html: string) => {
+    const from = html.indexOf('data-uninvoiced=""');
+    return from === -1 ? "" : html.slice(html.lastIndexOf("<section", from), html.indexOf("</section>", from));
+  };
 
-  test("nothing paid without an invoice: no section, no heading", async () => {
+  test("nothing paid without an invoice: no strip, no heading", async () => {
     await ready();
     const html = await render(InvoicesPage);
     expect(html).not.toContain("data-uninvoiced");
     expect(html).not.toContain("Arveta maksed");
+  });
+
+  test("the strip (README A6): the anchor #arveta, „Arveta maksed: {n}“, the summary (what they are, the total, the payers), „Näita ▸“ and „Koosta {n} arvet“; the list is in it, folded away", async () => {
+    await ready();
+    await paid("mari@example.com", "Mari Kask", OCTOBER);
+    await paid("kati@example.com", "Kati Tamm", SEPTEMBER);
+    const html = await render(InvoicesPage);
+    const s = strip(html);
+    expect(s).toContain('id="arveta"');
+    expect(s).toMatch(/<h2[^>]*>Arveta maksed: 2<\/h2>/);
+    expect(s).toContain(`Tasutud, aga arve puudub · 350,00${NBSP}€ · Kati Tamm, Mari Kask`);
+    expect(s).toMatch(/aria-expanded="false"[^>]*>Näita ▸</);
+    expect(s).toMatch(/data-uninvoiced-bulk=""[^>]*>Koosta 2 arvet</);
+    expect(s).toMatch(/<div[^>]*id="[^"]*"[^>]*hidden=""[^>]*data-uninvoiced-list=""|<div[^>]*hidden=""[^>]*data-uninvoiced-list=""/);
+    // the old always-open block, with its explanation that the invoices are made one by one, is gone
+    expect(html).not.toContain("ükshaaval");
+    expect(html).not.toContain("uninvoiced-title");
+    // one payment: the n = 1 forms (S3-l)
+    await db.update(payments).set({ status: "failed" }).where(eq(payments.name, "Mari Kask"));
+    const one = strip(await render(InvoicesPage));
+    expect(one).toMatch(/<h2[^>]*>Arveta maksed: 1<\/h2>/);
+    expect(one).toMatch(/data-uninvoiced-bulk=""[^>]*>Koosta 1 arve</);
   });
 
   test("a paid payment with no invoice is listed oldest first, with its course, the day it was paid and its own „Koosta arve“", async () => {
@@ -194,7 +329,6 @@ describe("„Arveta maksed“", () => {
     await paid("kati@example.com", "Kati Tamm", SEPTEMBER);
     const html = await render(InvoicesPage);
     expect(html).toContain("data-uninvoiced");
-    expect(html).toContain(">Arveta maksed</h2>");
     const ids = [...html.matchAll(/data-uninvoiced-payment="(\d+)"/g)].map((m) => Number(m[1]));
     expect(ids).toHaveLength(2);
     const [first, second] = ids.map((id) => html.slice(html.indexOf(`data-uninvoiced-payment="${id}"`)));
@@ -222,11 +356,12 @@ describe("„Arveta maksed“", () => {
     expect(rows).toEqual(["Tasub arve MSL2026-001", "Koostab uue arve"]);
   });
 
-  test("without a seller the rows are listed but cannot be made: a link to Seaded → Arve andmed, no buttons", async () => {
+  test("without a seller the rows are listed but cannot be made: the link to Seaded → Arve andmed stands in place of the button, and the rows have none", async () => {
     await paid("mari@example.com", "Mari Kask", OCTOBER);
     const html = await render(InvoicesPage);
     expect(html).toContain("data-uninvoiced-payment");
     expect(html).not.toContain("data-uninvoiced-create");
+    expect(html).not.toContain("data-uninvoiced-bulk");
     expect(html).toMatch(/<a[^>]*href="\/admin\/seaded#arve"[^>]*>Täida Seaded → Arve andmed<\/a>/);
   });
 

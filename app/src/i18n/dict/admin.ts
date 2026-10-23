@@ -479,6 +479,10 @@ export const adminEt = {
       issued: "Koostatud {date}",
       due: "Maksta kuni {date}",
       paid: "Tasutud {date} · {method}",
+      // the list's meta line (the Part 2 prototype's Arved frame: „Osamakse · koostatud 20.10 · tasutud 15.10 · sularaha“, „Ettemaks 50% · maksta kuni 27.10“): {date} dd.mm
+      listIssued: "koostatud {date}",
+      listDue: "maksta kuni {date}",
+      listPaid: "tasutud {date}",
       sent: "Saadetud {date}",
       sentAlso: "Saadetud {date} · ka aadressile {address}",
       buyer: "Saaja: {name}",
@@ -572,20 +576,28 @@ export const adminEt = {
       lead: "Kõik arved, uuemad eespool. Veebimaksete arved tekivad ise; pangaülekannete arved koostad registreeringu juures.",
       filterLabel: "Staatus",
       all: "Kõik",
+      // the month select applies on change (A6: „Näita“ is gone): its name, and the choice of every month (the address `?kuu=koik`)
       month: "Kuu",
-      monthShow: "Näita",
       monthAll: "Kõik kuud",
+      // S3-m (Arved); the nouns of the empty lines, P-9
+      searchPlaceholder: "Otsi nime, e-posti või arve numbri järgi",
+      things: "arveid",
       count: "Arveid: {n}",
-      empty: "Arveid veel pole.",
-      emptyFiltered: "Selle valikuga arveid pole.",
-      csv: "Laadi alla (CSV)",
-      csvNote: "Kuu {month} arved, ka tühistatud. Raamatupidajale.",
+      // README A6: the button names the month it will download; {month}: "oktoober 2026"
+      csv: "Laadi alla (CSV) · {month}",
       list: "Arvete loend",
     },
-    // „Arveta maksed“ on top of the list: paid online, no invoice yet (D3, §6.3, R13)
+    // „Arveta maksed“ at the top of the list: a strip (README A6, the Part 2 prototype's Arved frame; B11): paid online, no invoice yet (D3, §6.3, R13)
     uninvoiced: {
-      title: "Arveta maksed",
-      lead: "Need maksed on tasutud, aga arvet pole: arve andmed olid tühjad või arve koostamine ei õnnestunud. Iga arve saab oma numbri, seepärast koostad need ükshaaval.",
+      // {n} the payments waiting
+      title: "Arveta maksed: {n}",
+      // the strip's summary (the prototype's „Tasutud, aga arve puudub · 1 325,00 € · Merilin Kuusk, Kati Kask, Mari Tamm ja 3 teist“): {sum} their total,
+      // {names} the first payers (all of them up to four, else three and „ja {n} teist“)
+      summary: "Tasutud, aga arve puudub · {sum} · {names}",
+      others: "ja {n} teist",
+      // P-8: the toggle of the per-row list
+      show: "Näita ▸",
+      hide: "Peida ▾",
       needSeller: "Täida Seaded → Arve andmed",
       paidOn: "Makstud {date}",
       pays: "Tasub arve {number}",
@@ -593,6 +605,25 @@ export const adminEt = {
       create: "Koosta arve",
       working: "Koostan…",
       done: "Arve {number} on valmis.",
+      // „Koosta {n} arvet“ (B11) and its ConfirmPanel (README A6; the n = 1 forms and the results are piece2-texts S3-l)
+      bulk: { one: "Koosta 1 arve", many: "Koosta {n} arvet" },
+      // the question and, after its „?“, the consequence as one line (piece2-texts P-13); {first}, {last}: the numbers the first and the last will take
+      panel: {
+        questionOne: "Kas koostan 1 arve?",
+        questionMany: "Kas koostan {n} arvet?",
+        lineOne: "Arve saab numbri {first}. Õpilasele seda ei saadeta.",
+        lineMany: "Iga arve saab oma numbri ({first}–{last}). Õpilastele neid ei saadeta.",
+        yesOne: "Jah, koosta 1 arve",
+        yesMany: "Jah, koosta {n} arvet",
+      },
+      result: {
+        // n ≥ 2 made ({n}, {first}–{last}); one made says `done` above
+        many: "Koostatud {n} arvet: {first}–{last}.",
+        // some had an invoice by now ({n})
+        already: "Juba arvega: {n}.",
+        // {names}: the payers whose invoice was not made
+        failed: "Ei õnnestunud: {names}. Proovi uuesti.",
+      },
       col: { date: "Kuupäev", payer: "Maksja", what: "Eest", amount: "Summa", invoice: "Arve" },
     },
     // Seaded → „Arve andmed“ (components/admin/InvoiceSettings.tsx)

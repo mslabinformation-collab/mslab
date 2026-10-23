@@ -38,9 +38,23 @@
   gap: 8px 12px;
 }
 
+/* the number and its state: the head's left side (on the list's wide row, its own column) */
+.ident {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
 .number {
   font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+/* who it is for and the lines under it: in the drawer they are the row's own lines (the row's gap between them); on the list's wide row, a column */
+.body {
+  display: contents;
 }
 
 .amount {
@@ -54,6 +68,10 @@
   color: var(--muted);
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+.who strong {
+  font-weight: 600;
 }
 
 .who {
@@ -180,6 +198,71 @@
   display: grid;
   gap: 14px;
   min-width: 0;
+}
+
+/* The Arved list's row on a wide card (admin UX pass A6, the Part 2 prototype's Arved frame): number and state | who and what it is | amount |
+   actions, on one line from a card of 920 px (a screen of about 1300 px or more with the sidebar), the actions under the lines from 761 px (the shared
+   list switch, list-table.module.css); narrower, the drawer's stacked row. The container is the list's card (list-table.module.css .card). */
+@container (min-width: 761px) {
+  .listRow {
+    grid-template-columns: 172px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "ident body amount"
+      "ident actions actions";
+    align-items: start;
+    gap: 6px 16px;
+  }
+
+  .listRow .head {
+    display: contents;
+  }
+
+  .listRow .ident {
+    grid-area: ident;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .listRow .body {
+    grid-area: body;
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .listRow .amount {
+    grid-area: amount;
+    margin-left: 0;
+    text-align: right;
+  }
+
+  .listRow .actions {
+    grid-area: actions;
+  }
+
+  /* what opens under the row (a panel, the line that says what happened) takes a line of its own, the whole width; there is no empty line when
+     it is closed (the lines are not in the areas above, so there are no rows for them to leave empty) */
+  .listRow .panelBox > *,
+  .listRow .status {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (min-width: 920px) {
+  .listRow {
+    grid-template-columns: 172px minmax(0, 1fr) 104px auto;
+    grid-template-areas: "ident body amount actions";
+    align-items: center;
+  }
+
+  .listRow .ident {
+    align-self: start;
+  }
+
+  .listRow .actions {
+    justify-content: flex-end;
+  }
 }
 
 @media (max-width: 640px) {

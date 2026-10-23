@@ -4,7 +4,7 @@ import { centsToInput, MAX_PAYMENT_CENTS, parseEuroCents } from "@/domain/money"
 import { MAX_PAGE, pageInfo, PAGE_SIZE, parsePage } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment } from "@/domain/registration";
 import { adminEt } from "@/i18n/dict/admin";
-import { formatDate, formatDayMonth, formatLongDate, formatStamp, formatTime, formatWeekday } from "@/i18n/format";
+import { formatDate, formatDayMonth, formatLongDate, formatMonthLong, formatStamp, formatTime, formatWeekday } from "@/i18n/format";
 import { csvCell, toCsv } from "@/server/csv";
 
 // Task 12: the pure parts of the admin inbox — the amount field, the price a payment is measured against, the CSV
@@ -110,6 +110,13 @@ describe("admin date formats (Estonian time)", () => {
     expect(formatLongDate(d, "et")).toBe("Neljapäev, 1. oktoober");
     expect(formatStamp(d)).toBe("2026-10-01 14:05");
     expect(formatStamp(new Date("2026-12-31T22:30:00Z"))).toBe("2027-01-01 00:30"); // winter time, next day
+  });
+  test("a month by its whole name and the year (the Arved month select and the CSV button)", () => {
+    expect(formatMonthLong("2026-10", "et")).toBe("oktoober 2026");
+    expect(formatMonthLong("2026-03", "et")).toBe("märts 2026");
+    expect(formatMonthLong("2027-01", "et")).toBe("jaanuar 2027");
+    expect(formatMonthLong("2026-12", "ru")).toBe("декабрь 2026");
+    for (const bad of ["", "2026", "2026-13", "2026-00", "oktoober", "2026-1", "2026-10-01"]) expect(formatMonthLong(bad, "et"), bad).toBe("");
   });
   test("the cached formatters keep locales and options apart", () => {
     for (let i = 0; i < 3; i++) {
