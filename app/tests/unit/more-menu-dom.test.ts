@@ -406,8 +406,24 @@ describe("MoreMenu: it stays inside the viewport", () => {
       expect(menuPlacement(rect(320, 640, 70, 44), { width: 220, height: 160 }, VIEW)).toEqual({ up: true, right: true });
     });
 
-    it("stays left-aligned when aligning right would put the left edge outside the viewport", () => {
+    it("stays left-aligned when aligning right would put the left edge outside the viewport and there is more room to the right", () => {
       expect(menuPlacement(rect(50, 100, 40, 44), { width: 380, height: 100 }, VIEW)).toEqual({ up: false, right: false });
+    });
+
+    it("fits neither way: it takes the side with more room — to the left of the button's right edge when that is the roomier", () => {
+      // room to the right of the left edge: 400 - 8 - 250 = 142; to the left of the right edge: 290 - 8 = 282
+      expect(menuPlacement(rect(250, 100, 40, 44), { width: 380, height: 100 }, VIEW)).toEqual({ up: false, right: true });
+    });
+
+    it("fits neither way and the rooms are equal: left-aligned, as when it fits", () => {
+      // 400 - 8 - 180 = 212 and 220 - 8 = 212
+      expect(menuPlacement(rect(180, 100, 40, 44), { width: 380, height: 100 }, VIEW)).toEqual({ up: false, right: false });
+    });
+
+    it("the phone card's two-column grid (pill at 195-343 of 375) lets right alignment fit; the old flex row (pill at 112-206) fits neither way and, with more room to the right, stays left", () => {
+      const phone = { width: 375, height: 812 };
+      expect(menuPlacement(rect(195, 300, 148, 44), { width: 269, height: 230 }, phone)).toEqual({ up: false, right: true });
+      expect(menuPlacement(rect(112, 300, 94, 44), { width: 269, height: 230 }, phone)).toEqual({ up: false, right: false });
     });
   });
 
@@ -447,6 +463,10 @@ describe("MoreMenu: the stylesheet", () => {
   it("the button and every item are 44 px targets", () => {
     expect(rule(".button")).toMatch(/min-height:\s*44px;/);
     expect(rule(".item")).toMatch(/min-height:\s*44px;/);
+  });
+
+  it("the list is as wide as its longest item, never wider than 320 px nor than the screen leaves room for (100vw - 16px)", () => {
+    expect(rule(".menu")).toMatch(/max-width:\s*min\(320px, calc\(100vw - 16px\)\);/);
   });
 
   it("the list sits under the button and flips up / aligns right on the attributes the component sets", () => {

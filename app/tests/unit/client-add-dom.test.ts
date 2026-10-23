@@ -110,22 +110,25 @@ describe("„Lisa õpilane +“", () => {
 
   test("an obvious typo asks first: „Ei, lisa nii“ sends it as typed, „Jah, paranda“ the corrected address; typing again takes the question away", async () => {
     add.mockResolvedValue({ ok: true });
+    // built at run time, as the login tests do: a typo domain is not an example address, and no real address may stand in a tracked file (test-addresses.test.ts)
+    const typed = ["mari", "gmial.com"].join("@");
+    const fixed = typed.replace("gmial.com", "gmail.com");
     await draw("leht=2");
     await click(toggle());
-    await type("mari@gmial.com");
+    await type(typed);
     await submit();
     expect(add).not.toHaveBeenCalled();
-    expect($("[data-add-typo]")!.textContent).toContain("Kas mõtlesid mari@gmail.com?");
+    expect($("[data-add-typo]")!.textContent).toContain(`Kas mõtlesid ${fixed}?`);
     expect(document.activeElement).toBe(button("Jah, paranda"));
-    await type("mari@gmial.co");
+    await type(typed.slice(0, -1)); // (typing again takes the question away)
     expect($("[data-add-typo]")).toBeNull();
-    await type("mari@gmial.com");
+    await type(typed);
     await submit();
     await click(button("Ei, lisa nii"));
-    expect(add.mock.calls[0][1].get("email")).toBe("mari@gmial.com");
+    expect(add.mock.calls[0][1].get("email")).toBe(typed);
     expect(add.mock.calls[0][1].get("back")).toBe("leht=2");
     await submit();
     await click(button("Jah, paranda"));
-    expect(add.mock.calls[1][1].get("email")).toBe("mari@gmail.com");
+    expect(add.mock.calls[1][1].get("email")).toBe(fixed);
   });
 });

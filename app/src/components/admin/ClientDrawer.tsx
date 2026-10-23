@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { addMonths, DEFAULT_ACCESS_MONTHS, extendBase, MAX_ACCESS_YEARS, tallinnToday } from "@/domain/client-access";
+import { addMonths, DEFAULT_ACCESS_MONTHS, extendMinDay, MAX_ACCESS_YEARS, tallinnToday } from "@/domain/client-access";
 import { formatEUR } from "@/domain/money";
 import { registrationHeading } from "@/domain/registration-card";
 import { adminEt } from "@/i18n/dict/admin";
@@ -347,7 +347,7 @@ function AccessCard({ clientId, a, now, extendMax }: { clientId: number; a: Clie
         course={title}
         state={a.state}
         expiresAt={a.expiresAt.toISOString()}
-        extendMin={tallinnToday(extendBase(a.expiresAt, now))}
+        extendMin={extendMinDay(a.expiresAt, now)}
         extendMax={extendMax}
         assessHref={assessHref}
         protocol={{ href: `/admin/protokollid?ligipaas=${a.id}`, label: a.protocolId === null ? adminEt.clients.addProtocol : adminEt.clients.openProtocol }}

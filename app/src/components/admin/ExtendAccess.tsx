@@ -18,8 +18,8 @@ import styles from "./ExtendAccess.module.css";
  * „Kuupäev…“ opens a field instead (S3-i): „Ligipääs kuni“, „Pikenda“, „Katkesta“; a day that is not later than the current end is refused with
  * „Vali kuupäev, mis on hilisem kui praegune lõpp.“. The page is refreshed by the action, so this card then shows the new end.
  *
- * `expiresAt` is the end the card shows (ISO): what every request is made against. `min` and `max` (yyyy-mm-dd) bound the day field: the Estonian day the
- * months are counted from, and the grant form's 10 years. Not drawn for an access an admin ended: the „Ava ligipääs e-koolitusele“ row opens it again.
+ * `expiresAt` is the end the card shows (ISO): what every request is made against. `min` and `max` (yyyy-mm-dd) bound the day field: the first day the server takes
+ * (domain/client-access.ts extendMinDay: the day after the end), and the grant form's 10 years. Not drawn for an access an admin ended: the „Ava ligipääs e-koolitusele“ row opens it again.
  * The focus goes back to the pill when the field is closed.
  */
 export function ExtendAccess({ accessId, course, expiresAt, expired, min, max }: { accessId: number; course: string; expiresAt: string; expired: boolean; min: string; max: string }) {
@@ -110,7 +110,7 @@ export function ExtendAccess({ accessId, course, expiresAt, expired, min, max }:
         ]}
       />
       {refused === "failed" && !asking && (
-        <p role="alert" className={ui.error}>
+        <p role="alert" className={`${ui.error} ${styles.alert}`}>
           {adminEt.common.saveError}
         </p>
       )}

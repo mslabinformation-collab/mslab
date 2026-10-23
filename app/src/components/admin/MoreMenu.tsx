@@ -21,8 +21,9 @@ type Box = { left: number; top: number; right: number; bottom: number };
 
 /**
  * Where the open list goes so that it stays inside the viewport: below the button when it fits there, else above it when there is more room above
- * (`up`); from the button's left edge when it fits to the right, else to the button's right edge (`right`) when that keeps its left edge inside.
- * Pure: the component measures, this decides.
+ * (`up`); from the button's left edge when it fits to the right, else to the button's right edge (`right`) when that keeps its left edge inside. When it
+ * fits neither way (a list wider than the room on either side of the button) it takes the side with more room — the stylesheet caps its width at the
+ * screen's — and, the rooms being equal, stays left-aligned. Pure: the component measures, this decides.
  */
 export function menuPlacement(button: Box, menu: { width: number; height: number }, view: { width: number; height: number }): { up: boolean; right: boolean } {
   const below = view.height - button.bottom - EDGE;
@@ -30,6 +31,7 @@ export function menuPlacement(button: Box, menu: { width: number; height: number
   const up = menu.height > below && above > below;
   const overRight = button.left + menu.width > view.width - EDGE;
   const fitsRight = button.right - menu.width >= EDGE;
+  if (overRight && !fitsRight) return { up, right: button.right - EDGE > view.width - EDGE - button.left };
   return { up, right: overRight && fitsRight };
 }
 
@@ -44,7 +46,8 @@ export function menuPlacement(button: Box, menu: { width: number; height: number
  *   button; so does choosing an item (its `onSelect` runs first). Tab closes it too and leaves the focus on the button for the Tab to move on from.
  *   A press outside closes it and takes the focus nowhere (the press decides where it goes). A link item is chosen by Enter and by Space.
  * - It keeps inside the viewport (menuPlacement): flips above the button when it does not fit below, aligns to the button's right edge when it
- *   does not fit to the right (`data-flip="up"`, `data-align="right"`, MoreMenu.module.css).
+ *   does not fit to the right, and when it fits neither way takes the side with more room (`data-flip="up"`, `data-align="right"`, MoreMenu.module.css;
+ *   the list is never wider than the screen less 16 px).
  * - `title`: a muted line over the items, as the prototype draws „Pikenda ligipääsu (praegu kuni …)“ over the choices. It is not an item (the focus and the
  *   arrows pass it by) and it is what the list is named by.
  * - Items are buttons (or links, with an `href`); a `tone: "danger"` item has data-tone="danger". The page that wants a question first (a

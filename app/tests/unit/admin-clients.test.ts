@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { accessState, addMonths, defaultExpiryDate, endOfDayTallinn, extendBase, extendByMonths, grantExpiry, isExtension, purchaseExpiryDate, tallinnToday } from "@/domain/client-access";
+import { accessState, addMonths, defaultExpiryDate, endOfDayTallinn, extendBase, extendByMonths, extendMinDay, grantExpiry, isExtension, purchaseExpiryDate, tallinnToday } from "@/domain/client-access";
 import { containsPattern, parseSearch } from "@/domain/paging";
 import { compactIban, groupIban } from "@/domain/account-cards";
 import { isIban, normalizeIban, prepaymentDraft } from "@/domain/site-editor";
@@ -111,6 +111,29 @@ describe("isExtension: a new end „Pikenda“ takes", () => {
     expect(isExtension(new Date("2026-10-05T20:59:59.999Z"), ranOut, now)).toBe(true);
     expect(isExtension(new Date("2036-10-04T20:59:59.999Z"), open, now)).toBe(true);
     expect(isExtension(new Date("2036-10-05T20:59:59.999Z"), open, now)).toBe(false);
+  });
+});
+
+describe("extendMinDay: the first day „Kuupäev…“ offers", () => {
+  const now = new Date("2026-10-04T09:00:00Z"); // 12:00 in Tallinn
+  const cases: [string, Date, string][] = [
+    ["an open access ending at the end of a day: the next day", new Date("2027-04-04T20:59:59.999Z"), "2027-04-05"],
+    ["one in winter time (the day ends at 21:59 UTC)", new Date("2027-01-31T21:59:59.999Z"), "2027-02-01"],
+    ["one that ran out: the day after today", new Date("2026-08-01T20:59:59.999Z"), "2026-10-05"],
+    ["one that ends tonight: the day after today", new Date("2026-10-04T20:59:59.999Z"), "2026-10-05"],
+    ["an end in the middle of a day (not made by the grant form): that day, whose end is later", new Date("2027-04-04T10:00:00.000Z"), "2027-04-04"],
+  ];
+  test.each(cases)("%s", (_name, end, day) => {
+    expect(extendMinDay(end, now)).toBe(day);
+  });
+
+  test("it is exactly what the server takes: the end of that day is an extension, the end of the day before is not", () => {
+    for (const [, end, day] of cases) {
+      expect(isExtension(endOfDayTallinn(day)!, end, now), day).toBe(true);
+      // (a summer day is 24 h in Tallinn, and so is the winter one in these cases: the end of the day before is 24 h earlier)
+      const before = new Date(endOfDayTallinn(day)!.getTime() - 24 * 3600 * 1000);
+      expect(isExtension(before, end, now), `${day} - 1`).toBe(false);
+    }
   });
 });
 

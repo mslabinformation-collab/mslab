@@ -85,6 +85,14 @@ export function extendByMonths(expiresAt: Date, now: Date, months: number): Date
 }
 
 /**
+ * The first Estonian day „Kuupäev…“ offers for an access that ends at `expiresAt`: the day whose end is later than {@link extendBase}, so the one day the
+ * server would refuse is never in the picker. For an end made by the grant form (the end of a day) that is the next day; for a run-out one, the day after today.
+ */
+export function extendMinDay(expiresAt: Date, now: Date): string {
+  return tallinnToday(new Date(extendBase(expiresAt, now).getTime() + 1));
+}
+
+/**
  * Whether `until` is a new end „Pikenda“ takes for an access that ends at `expected`: later than {@link extendBase} (so later than today's end, and
  * never a shortening), and not beyond the last moment of the day MAX_ACCESS_YEARS from today (the grant form's limit).
  */

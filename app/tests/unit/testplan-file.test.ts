@@ -241,7 +241,8 @@ describe("the contract checks sit where their preconditions exist", () => {
     expect(gate.steps.findIndex((s) => s.includes("enne kui nime kirjutad"))).toBeLessThan(named);
     expect(gate.steps.map((s) => s === "Vajuta „Alusta koolitust“.").lastIndexOf(true)).toBeGreaterThan(named);
     for (const words of ["lepingu pealkirja", "väli „Nimi“", "„Kirjuta oma nimi.“", "{nimi} kohale", "{koolitus} asemel"]) expect(expectText("ekursus-tingimused-leping"), words).toContain(words);
-    expect(gate.mark).toBe("new");
+    // (new when it was added; reworded since A5 folded the drawer's „Lepingud“ into a row — a reworded check never reopens an answer)
+    expect(gate.mark).toBe("reworded");
     expect(markedSince(gate.markedAt), "its markedAt").toBe(true);
   });
 

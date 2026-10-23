@@ -1,6 +1,6 @@
 /* MoreMenu (the A screens, Task 1; the Part 2 prototype's „Veel ▾“ / „Pikenda ▾“): a text button (44 px, 600 12px, no outline) and, under it, a
    small white list. The list is positioned against the button's wrapper; the component flips it above the button (data-flip="up") and aligns it to the
-   button's right edge (data-align="right") when it would leave the viewport. */
+   button's right edge (data-align="right") when it would leave the viewport (the side with more room when it fits neither way). */
 
 .wrap {
   position: relative;
@@ -38,7 +38,7 @@
   background: var(--first);
 }
 
-/* the list: as wide as its longest item, never wider than the screen leaves room for */
+/* the list: as wide as its longest item, never wider than 320 px nor than the screen less 16 px (a phone card's menu of 269 px on a 360 px screen) */
 .menu {
   position: absolute;
   top: 100%;
@@ -46,7 +46,7 @@
   z-index: 30;
   box-sizing: border-box;
   min-width: 200px;
-  max-width: 320px;
+  max-width: min(320px, calc(100vw - 16px));
   width: max-content;
   margin-top: 4px;
   padding: 6px;

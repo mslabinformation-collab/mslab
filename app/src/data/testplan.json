@@ -4394,8 +4394,8 @@
       "why": "Maria avatud e-koolitusel on lepinguks tingimuste kinnitus.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ava-jargmine",

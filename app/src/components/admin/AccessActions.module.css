@@ -15,6 +15,30 @@
   min-width: 0;
 }
 
+/* The Part 2 phone frame draws „Hinda“ and „Pikenda ▾“ as two equal columns of the card: a pill's list then has the room to open to the left of its
+   right edge, inside the screen (a flex row would put the pill after „Hinda“, in the middle). „Veel ▾“ follows in the next row (beside „Pikenda ▾“ when
+   nothing waits); the „Kuupäev…“ field takes the full width under them (ExtendAccess.module.css). */
+@media (max-width: 640px) {
+  .buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .buttons > a {
+    min-width: 0;
+    padding-inline: 10px;
+  }
+
+  .buttons [data-extend] [data-more-menu] {
+    display: block;
+  }
+
+  .buttons [data-extend] [data-more-menu] > button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 /* a ConfirmPanel keeps its own bottom margin (16px); here it is the last thing in the card's column */
 .panel {
   display: grid;

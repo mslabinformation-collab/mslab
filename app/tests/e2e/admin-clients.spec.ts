@@ -700,24 +700,27 @@ test("„Pikenda ▾“ (B12): +1 kuu applies at once and the bar takes it back;
   await expect(row).toContainText(`Avatud kuni ${formatDate(start, "et")}`);
   expect((await stored()).expiresAt).toEqual(start);
 
-  // „Kuupäev…“: a day before the current end is refused where it was typed; a later one goes through and is taken back too
+  // „Kuupäev…“: the picker starts at the first day the server takes (the day after the current end); a day before the end is refused where it was typed;
+  // that first day goes through and is taken back too
   await pill.click();
   await menu.getByRole("menuitem", { name: "Kuupäev…" }).click();
   const form = row.locator("[data-extend-form]");
   await expect(form.getByLabel("Ligipääs kuni")).toBeFocused();
+  const firstDay = tallinnToday(new Date(start.getTime() + 1)); // (the end is the end of a day: the next one)
+  expect(firstDay > tallinnToday(start)).toBe(true);
+  await expect(form.getByLabel("Ligipääs kuni")).toHaveAttribute("min", firstDay);
   await form.getByLabel("Ligipääs kuni").fill(addMonths(tallinnToday(new Date()), 1)!);
   await form.getByRole("button", { name: "Pikenda", exact: true }).click();
   await expect(form.locator("[role='status']")).toHaveText("Vali kuupäev, mis on hilisem kui praegune lõpp.");
   await expect(form.getByLabel("Ligipääs kuni")).toHaveAttribute("aria-invalid", "true");
   expect((await stored()).expiresAt).toEqual(start);
-  const later = addMonths(tallinnToday(new Date()), 5)!;
-  await form.getByLabel("Ligipääs kuni").fill(later);
+  await form.getByLabel("Ligipääs kuni").fill(firstDay);
   await form.getByRole("button", { name: "Pikenda", exact: true }).click();
-  await expect(bar).toContainText(`Ligipääs pikendatud kuni ${formatDate(endOfDayTallinn(later)!, "et")}.`);
+  await expect(bar).toContainText(`Ligipääs pikendatud kuni ${formatDate(endOfDayTallinn(firstDay)!, "et")}.`);
   await expect(form).toHaveCount(0);
   await expect(pill).toBeFocused();
-  await expect(row).toContainText(`Avatud kuni ${formatDate(endOfDayTallinn(later)!, "et")}`); // (the page's refresh has come)
-  expect((await stored()).expiresAt).toEqual(endOfDayTallinn(later));
+  await expect(row).toContainText(`Avatud kuni ${formatDate(endOfDayTallinn(firstDay)!, "et")}`); // (the page's refresh has come)
+  expect((await stored()).expiresAt).toEqual(endOfDayTallinn(firstDay));
   await bar.getByRole("button", { name: "Võta tagasi" }).click();
   await expect(row).toContainText(`Avatud kuni ${formatDate(start, "et")}`);
   expect((await stored()).expiresAt).toEqual(start);
@@ -798,6 +801,65 @@ test("the phone drawer (375 × 812): a card has no pill — its state is in the 
   await d.locator("[data-grant-form]").scrollIntoViewIfNeeded();
   await inside("the grant form", d.locator("[data-grant-form]"));
   expect(await noOverflow(page)).toBe(true);
+});
+
+test("the phone drawer (375 × 812) with „Hinda“ on the card: „Hinda“ and „Pikenda ▾“ are two equal columns, „Veel ▾“ the next row, both menus open inside the screen and nothing scrolls sideways", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(!isMobile, "the phone project only");
+  const email = await fresh("hinda", info.project.name);
+  const course = await insertLessonCourse(email);
+  keys.add(course.fileKey);
+  // her practical work is sent and waits for Maria: the card has „Hinda“ before „Pikenda ▾“
+  const stages = [{ title: "Ettevalmistus", note: "" }, { title: "Värvimine", note: "" }];
+  await onLocalDb((sql) => sql`update courses set protocol_stages = ${sql.json(stages.map((s) => s.title))} where slug = ${course.slug}`, { marksPages: false });
+  const [access] = await onLocalDb(
+    (sql) => sql<{ id: number }[]>`
+      insert into protocols (access_id, stages, verdicts, round, submitted_at)
+      select id, ${sql.json(stages)}, ${sql.json([null, null])}, 1, now() - interval '2 hours' from course_access where client_id = ${course.clientId}
+      returning access_id as id`,
+    { marksPages: false },
+  );
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.setViewportSize({ width: 375, height: 812 });
+  const d = await openStudent(page, email);
+  await drawer(page).evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished))); // (it slides in: measured in place)
+  const row = d.locator("[data-access]");
+  const hinda = row.locator("[data-access-assess]");
+  await expect(hinda).toBeVisible();
+  await expect(hinda).toHaveAttribute("href", `/admin/protokollid?ligipaas=${access.id}`);
+  const pill = row.getByRole("button", { name: /^Pikenda:/ });
+  const menuInside = async (what: string) => {
+    const box = (await row.getByRole("menu").boundingBox())!;
+    expect([box.x >= 0, box.x + box.width <= 375, box.y >= 0, box.y + box.height <= 812], `${what}: the menu is inside the screen`).toEqual([true, true, true, true]);
+    expect(await noOverflow(page), `${what}: the page does not scroll sideways`).toBe(true);
+    // (nor does the drawer, the dialog that scrolls)
+    expect(await drawer(page).evaluate((el) => el.scrollWidth <= el.clientWidth), `${what}: the drawer does not scroll sideways`).toBe(true);
+  };
+
+  // the phone frame's two columns: „Hinda“ and „Pikenda ▾“ on one line, as wide as each other; „Veel ▾“ under them
+  const [h, p, v] = [(await hinda.boundingBox())!, (await pill.boundingBox())!, (await veel(row).boundingBox())!];
+  expect(Math.abs(h.y - p.y), "Hinda and Pikenda on one line").toBeLessThan(2);
+  expect(p.x, "Pikenda is the second column").toBeGreaterThan(h.x + h.width);
+  expect(Math.abs(h.width - p.width), "two equal columns").toBeLessThan(2);
+  expect(v.y, "Veel is the next row").toBeGreaterThan(h.y + h.height - 1);
+  expect(p.x + p.width, "the pill's right edge is inside the card").toBeLessThanOrEqual(375);
+
+  // „Pikenda ▾“ — the menu that overflowed when the pill sat after „Hinda“ in a flex row (its right edge was at 381)
+  await pill.click();
+  await expect(row.getByRole("menu")).toContainText("Pikenda ligipääsu (praegu kuni");
+  await menuInside("Pikenda ▾");
+  await pill.click();
+  await veel(row).click();
+  await menuInside("Veel ▾");
+  await veel(row).click();
+  // the day field takes the full width under the buttons
+  await pill.click();
+  await row.getByRole("menuitem", { name: "Kuupäev…" }).click();
+  const form = row.locator("[data-extend-form]");
+  const f = (await form.boundingBox())!;
+  const c = (await row.boundingBox())!;
+  expect([f.x >= c.x, f.x + f.width <= c.x + c.width, f.y > v.y], "the day field is under the buttons, inside the card").toEqual([true, true, true]);
+  expect(await noOverflow(page)).toBe(true);
+  expect(await smallTargets(row)).toEqual([]);
 });
 
 test("a change request in Päringud: the course and its date as the heading, the wish in words, a link that opens the registration", async ({ page, context, visitorIp }, info) => {

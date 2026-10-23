@@ -37,7 +37,7 @@ const base: Props = {
   course: "Kulmumeistri e-koolitus",
   state: "active",
   expiresAt: "2027-03-17T21:59:59.999Z",
-  extendMin: "2027-03-17",
+  extendMin: "2027-03-18",
   extendMax: "2036-10-04",
   assessHref: null,
   protocol: { href: "/admin/protokollid?ligipaas=41", label: "Lisa protokoll" },

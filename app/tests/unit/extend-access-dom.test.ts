@@ -38,7 +38,7 @@ const settle = () =>
 const draw = async (over: Partial<Parameters<typeof ExtendAccess>[0]> = {}) => {
   await act(async () =>
     root.render(
-      createElement(UndoProvider, null, createElement(ExtendAccess, { accessId: 41, course: "Kulmumeistri e-koolitus", expiresAt: END, expired: false, min: "2027-03-17", max: "2036-10-04", ...over })),
+      createElement(UndoProvider, null, createElement(ExtendAccess, { accessId: 41, course: "Kulmumeistri e-koolitus", expiresAt: END, expired: false, min: "2027-03-18", max: "2036-10-04", ...over })),
     ),
   );
   await settle();
@@ -159,14 +159,14 @@ describe("„Kuupäev…“", () => {
     await settle();
   };
 
-  test("opens a field „Ligipääs kuni“ (from the end's day to the 10 years) with „Pikenda“ and „Katkesta“; the focus is in the field", async () => {
+  test("opens a field „Ligipääs kuni“ (from the day after the end to the 10 years) with „Pikenda“ and „Katkesta“; the focus is in the field", async () => {
     await draw();
     expect($("[data-extend-form]")).toBeNull();
     await open();
     const form = $("[data-extend-form]")!;
     expect(form).not.toBeNull();
     expect(text(form.querySelector("label"))).toBe("Ligipääs kuni");
-    expect(field().min).toBe("2027-03-17");
+    expect(field().min).toBe("2027-03-18"); // the first day the server takes: the day after the current end
     expect(field().max).toBe("2036-10-04");
     expect([...form.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Pikenda", "Katkesta"]);
     expect(document.activeElement).toBe(field());

@@ -1,15 +1,17 @@
-/* „Pikenda ▾“ of an e-course access (B12): the pill (MoreMenu variant="pill") and, under it, the „Kuupäev…“ field. */
+/* „Pikenda ▾“ of an e-course access (B12): the pill (MoreMenu variant="pill") and the „Kuupäev…“ field. The box gives its parts to the card's row of buttons
+   (AccessActions.module.css: a wrapping row, on a phone two columns): the pill stays among the buttons, the field and a refusal take a line of their own under
+   all of them (`order`, the full width). */
 
 .box {
-  display: grid;
-  justify-items: start;
-  gap: 10px;
-  min-width: 0;
+  display: contents;
 }
 
 /* „Kuupäev…“: the shared grey box of the drawer's small forms (the grant form's), a day field and two buttons */
 .form {
   display: grid;
+  flex: 1 1 100%;
+  grid-column: 1 / -1;
+  order: 1;
   gap: 12px;
   width: 100%;
   padding: 16px;
@@ -24,4 +26,12 @@
 /* the status line is a live region from the start (an empty one is announced when it fills), so it is never display:none: while empty it takes back its grid gap */
 .form p:empty {
   margin-top: -12px;
+}
+
+/* a pick that could not be made, said by the buttons: a line of its own under them, like the field */
+.alert {
+  flex: 1 1 100%;
+  grid-column: 1 / -1;
+  order: 1;
+  margin: 0;
 }
