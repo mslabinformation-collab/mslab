@@ -576,6 +576,18 @@ describe("„Pikenda“ (B12): extendAccess and its undo", () => {
     expect((await stored(row.id)).expiresAt).toEqual(END);
   });
 
+  test("the undo only goes back: an end that is not earlier than the one it replaces is no undo (it would be an extension without the extension's checks)", async () => {
+    const kati = await client("kati@example.test");
+    const row = await access(kati.id);
+    const later = new Date("2036-10-05T20:59:59.999Z"); // beyond the 10 years an extension may reach
+    expect(await undoExtendAccess(db, { accessId: row.id, previous: later, expected: END })).toEqual({ ok: false, error: "date" });
+    expect(await undoExtendAccess(db, { accessId: row.id, previous: END, expected: END })).toEqual({ ok: false, error: "date" });
+    expect(await extendAccessRequest(db, { accessId: row.id, expected: END.toISOString(), restore: later.toISOString() }, NOW)).toEqual({ ok: false, error: "date" });
+    expect((await stored(row.id)).expiresAt).toEqual(END);
+    // (an earlier end, the past included, is what an undo is)
+    expect(await undoExtendAccess(db, { accessId: row.id, previous: new Date("2026-01-01T21:59:59.999Z"), expected: END })).toMatchObject({ ok: true });
+  });
+
   test("two presses on the same screen: the first wins, the second sees the end move and is stale", async () => {
     const kati = await client("kati@example.test");
     const row = await access(kati.id);

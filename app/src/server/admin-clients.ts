@@ -478,9 +478,12 @@ export async function extendAccess(db: Db, input: { accessId: number; until: Dat
 /**
  * „Võta tagasi“ after „Pikenda“: the end goes back to `previous`, but only while it is still `expected` — the end the extension set. If it moved since
  * (extended again, in another tab or by Maria), the undo would overwrite a newer change: `stale`, nothing written. `previous` may be in the past
- * (an access that had run out), so it has no date check of its own; an access ended meanwhile stays as it is (`revoked`).
+ * (an access that had run out), so it has no limit of its own but one: it must be earlier than `expected`, else `date` (it is an undo, not a way round
+ * the extension's checks); an access ended meanwhile stays as it is (`revoked`).
  */
 export async function undoExtendAccess(db: Db, input: { accessId: number; previous: Date; expected: Date }): Promise<ExtendResult> {
+  // an undo goes back: an end that is not earlier would be an extension without the extension's checks (domain/client-access.ts isExtension)
+  if (input.previous.getTime() >= input.expected.getTime()) return { ok: false, error: "date" };
   return moveEnd(db, input.accessId, input.previous, input.expected);
 }
 
