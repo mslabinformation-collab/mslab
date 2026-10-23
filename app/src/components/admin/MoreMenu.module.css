@@ -68,6 +68,14 @@
   right: 0;
 }
 
+/* the page's line over the items („Pikenda ligipääsu (praegu kuni …)“): muted, 12px, not a target */
+.title {
+  padding: 6px 12px 8px;
+  color: var(--muted-2);
+  font: 400 12px/1.4 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
 .item {
   display: flex;
   align-items: center;

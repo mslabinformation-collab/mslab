@@ -1208,6 +1208,23 @@ export const adminEt = {
       date: "Vali tänane või hilisem kuupäev.",
       notFound: "Seda õpilast ei leitud. Laadi leht uuesti.",
     },
+    // „Pikenda ▾“ on an e-course access (README A5, B12; piece 2 texts S3-h, S3-i): +1 kuu / +3 kuud / +6 kuud from the later of the current end and today, or
+    // „Kuupäev…“ (a field, „Ligipääs kuni“ + „Pikenda“ + „Katkesta“). It applies at once; the UndoBar says `done`. The menu's title names the end: „praegu kuni“
+    // while it is open, „lõppes“ once it ran out (S3-h). `buttonLabel` names the trigger by the course, as „Veel: …“ does.
+    extend: {
+      button: "Pikenda",
+      buttonLabel: "Pikenda: {course}",
+      titleOpen: "Pikenda ligipääsu (praegu kuni {date})",
+      titleExpired: "Pikenda ligipääsu (lõppes {date})",
+      plus1: "+1 kuu",
+      plus3: "+3 kuud",
+      plus6: "+6 kuud",
+      pickDate: "Kuupäev…",
+      until: "Ligipääs kuni",
+      submit: "Pikenda",
+      date: "Vali kuupäev, mis on hilisem kui praegune lõpp.",
+      done: "Ligipääs pikendatud kuni {date}.",
+    },
     revoke: {
       button: "Lõpeta ligipääs",
       confirm: "Kas lõpetan ligipääsu koolitusele „{course}“? Õpilane ei saa seda enam avada.",

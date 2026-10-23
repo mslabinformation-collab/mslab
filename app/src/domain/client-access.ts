@@ -68,6 +68,31 @@ export function grantExpiry(date: string, now: Date): Date | null {
   return endOfDayTallinn(date);
 }
 
+/**
+ * The moment „Pikenda“ (Õpilased, B12) counts from: the later of the access's current end and the end of today in Tallinn (piece 2 texts §4). An
+ * open access is extended from its own end; one that ran out (or ends tonight) from the end of today, so a lapsed course is never "extended" into
+ * the past.
+ */
+export function extendBase(expiresAt: Date, now: Date): Date {
+  const todayEnd = endOfDayTallinn(tallinnToday(now))!;
+  return expiresAt.getTime() > todayEnd.getTime() ? expiresAt : todayEnd;
+}
+
+/** „+1 kuu“ / „+3 kuud“ / „+6 kuud“: `months` whole months from the Estonian day of {@link extendBase}, to the end of that day (addMonths' clamping of short months). */
+export function extendByMonths(expiresAt: Date, now: Date, months: number): Date {
+  const from = tallinnToday(extendBase(expiresAt, now));
+  return endOfDayTallinn(addMonths(from, months)!)!;
+}
+
+/**
+ * Whether `until` is a new end „Pikenda“ takes for an access that ends at `expected`: later than {@link extendBase} (so later than today's end, and
+ * never a shortening), and not beyond the last moment of the day MAX_ACCESS_YEARS from today (the grant form's limit).
+ */
+export function isExtension(until: Date, expected: Date, now: Date): boolean {
+  const latest = endOfDayTallinn(addMonths(tallinnToday(now), MAX_ACCESS_YEARS * 12)!)!;
+  return until.getTime() > extendBase(expected, now).getTime() && until.getTime() <= latest.getTime();
+}
+
 export type AccessState = "active" | "expired" | "revoked";
 
 /** Where an access row stands: ended by an admin ("revoked"), run out ("expired"), or open now ("active"). */

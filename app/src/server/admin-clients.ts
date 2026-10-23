@@ -7,7 +7,7 @@ import { clientNameSql } from "@/db/queries/client-name";
 import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
 import { feedbackOf, type FeedbackRow } from "@/db/queries/protocols";
 import { certificates, clients, courseAccess, courses, lessonProgress, practicePackages, protocols, registrations, requests, testAttempts } from "@/db/schema";
-import { accessState, defaultExpiryDate, grantExpiry, type AccessState } from "@/domain/client-access";
+import { accessState, defaultExpiryDate, endOfDayTallinn, extendByMonths, grantExpiry, isExtension, type AccessState } from "@/domain/client-access";
 import { percentOf, type CourseSteps } from "@/domain/completion";
 import { isEmail, normalizeEmail } from "@/domain/email";
 import { containsPattern, PAGE_SIZE } from "@/domain/paging";
@@ -385,6 +385,83 @@ export async function grantAccessForm(db: Db, formData: FormData, by: string, no
   const courseId = idSchema.safeParse(field(formData, "courseId"));
   if (!courseId.success) return fail("course");
   return grantAccess(db, { clientId: clientId.data, courseId: courseId.data, until: (field(formData, "until") ?? "").trim(), by, now });
+}
+
+// ---------- „Pikenda“ (B12) ----------
+
+/** What „Pikenda“ and its „Võta tagasi“ answer: the end replaced and the end now, or why nothing changed. */
+export type ExtendResult = { ok: true; previous: Date; until: Date } | { ok: false; error: "notFound" | "revoked" | "stale" | "date" };
+
+/**
+ * The one write of „Pikenda“ and of its undo: the end moves from `expected` to `to` only if it is `expected` still (a conditional UPDATE, so two
+ * presses on one screen, or a second tab, cannot both win) and the access was not ended by an admin. Nothing else of the row changes: who granted
+ * it and when (`grantAccess` would overwrite both and lift an end), the completion and the extra tries stay. A refused write says why by looking
+ * at the row: gone, ended by an admin, or its end is not the one the screen showed.
+ */
+async function moveEnd(db: Db, accessId: number, to: Date, expected: Date): Promise<ExtendResult> {
+  const [row] = await db
+    .update(courseAccess)
+    .set({ expiresAt: to })
+    .where(and(eq(courseAccess.id, accessId), eq(courseAccess.expiresAt, expected), isNull(courseAccess.revokedAt)))
+    .returning();
+  if (row) return { ok: true, previous: expected, until: to };
+  const [held] = await db.select({ revokedAt: courseAccess.revokedAt }).from(courseAccess).where(eq(courseAccess.id, accessId)).limit(1);
+  return { ok: false, error: !held ? "notFound" : held.revokedAt ? "revoked" : "stale" };
+}
+
+/**
+ * „Pikenda“ (README A5, B12): the access `accessId` is open until the end of `until` instead of `expected` — the end the drawer showed. `until` must
+ * be a real extension (domain/client-access.ts isExtension: after the end of today and after the current end, within the grant form's 10 years),
+ * else `date`. An access an admin ended is `revoked` (the „Ava ligipääs e-koolitusele“ row opens it again), one whose end is no longer `expected`
+ * `stale`. Returns the end it replaced, for the undo.
+ */
+export async function extendAccess(db: Db, input: { accessId: number; until: Date; expected: Date }, now: Date): Promise<ExtendResult> {
+  if (!isExtension(input.until, input.expected, now)) return { ok: false, error: "date" };
+  return moveEnd(db, input.accessId, input.until, input.expected);
+}
+
+/**
+ * „Võta tagasi“ after „Pikenda“: the end goes back to `previous`, but only while it is still `expected` — the end the extension set. If it moved since
+ * (extended again, in another tab or by Maria), the undo would overwrite a newer change: `stale`, nothing written. `previous` may be in the past
+ * (an access that had run out), so it has no date check of its own; an access ended meanwhile stays as it is (`revoked`).
+ */
+export async function undoExtendAccess(db: Db, input: { accessId: number; previous: Date; expected: Date }): Promise<ExtendResult> {
+  return moveEnd(db, input.accessId, input.previous, input.expected);
+}
+
+const accessEnd = z.iso.datetime();
+const extendRequest = z.object({
+  accessId: z.number().int().positive().max(2_147_483_647),
+  /** The end the drawer showed (the base of the months, and what the stored end must still be). */
+  expected: accessEnd,
+  months: z.union([z.literal(1), z.literal(3), z.literal(6)]).optional(),
+  /** „Kuupäev…“: a day, yyyy-mm-dd (Estonian). */
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** The undo: the end to put back. */
+  restore: accessEnd.optional(),
+});
+
+/** What the screen gets back: the ends as ISO strings (a Date is not for a server action's answer), or the refusal (`invalid`: not a request the drawer makes). */
+export type ExtendAnswer = { ok: true; previous: string; until: string } | { ok: false; error: "notFound" | "revoked" | "stale" | "date" | "invalid" };
+
+/**
+ * The request the drawer makes, exactly one of `months` (1, 3 or 6: from the later of the end `expected` and today, domain/client-access.ts
+ * extendByMonths), `date` („Kuupäev…“: to the end of that Estonian day) or `restore` (the undo of the extension that set `expected`). Anything
+ * else is `invalid` and writes nothing.
+ */
+export async function extendAccessRequest(db: Db, raw: unknown, now: Date): Promise<ExtendAnswer> {
+  const parsed = extendRequest.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "invalid" };
+  const { accessId, months, date, restore } = parsed.data;
+  if ([months, date, restore].filter((v) => v !== undefined).length !== 1) return { ok: false, error: "invalid" };
+  const expected = new Date(parsed.data.expected);
+  let result: ExtendResult;
+  if (restore !== undefined) result = await undoExtendAccess(db, { accessId, previous: new Date(restore), expected });
+  else {
+    const until = months !== undefined ? extendByMonths(expected, now, months) : endOfDayTallinn(date!);
+    result = until ? await extendAccess(db, { accessId, until, expected }, now) : { ok: false, error: "date" };
+  }
+  return result.ok ? { ok: true, previous: result.previous.toISOString(), until: result.until.toISOString() } : result;
 }
 
 /** "Lõpeta ligipääs": the access ends now (kept in the drawer as ended). Ending one already ended changes nothing. */

@@ -1,5 +1,5 @@
 import type { Browser, Locator, Page } from "@playwright/test";
-import { addMonths, defaultExpiryDate, tallinnToday } from "../../src/domain/client-access";
+import { addMonths, defaultExpiryDate, endOfDayTallinn, extendByMonths, tallinnToday } from "../../src/domain/client-access";
 import { formatDate, formatTime } from "../../src/i18n/format";
 import { clientEmail, insertAccountFixtures, setPrepayment, signInAsClient, takeTerms, TEST_PREPAYMENT, type AccountCardKind } from "./account";
 import { ADMIN, adminReady, seadedSave, signInAsAdmin, type CreatedRows } from "./admin-login";
@@ -597,6 +597,88 @@ test("her lessons in the drawer: 1/3 tehtud, Ava järgmine õppetund (the studen
   } finally {
     await restoreTerms();
   }
+});
+
+test("„Pikenda ▾“ (B12): +1 kuu applies at once and the bar takes it back; „Kuupäev…“ refuses a day that is not later; who opened it stays; the menu stays inside a 375 px screen", async ({ page, context, visitorIp, isMobile }, info) => {
+  const email = await fresh("extend", info.project.name);
+  const name = `Eha E2E ${info.project.name}`;
+  const f = await insertAccountFixtures(email, { name, cards: ["ecourse"] });
+  // a known end: the end of the day three months from today in Tallinn, as the grant form stores it
+  const start = endOfDayTallinn(addMonths(tallinnToday(new Date()), 3)!)!;
+  await onLocalDb((sql) => sql`update course_access set expires_at = ${start} where client_id = ${f.clientId}`, { marksPages: false });
+  const stored = async () =>
+    (await onLocalDb((sql) => sql<{ expiresAt: Date; grantedBy: string; revokedAt: Date | null }[]>`select expires_at as "expiresAt", granted_by as "grantedBy", revoked_at as "revokedAt" from course_access where client_id = ${f.clientId}`, { marksPages: false }))[0];
+  await signInAsAdmin(page, context, visitorIp, created);
+  if (isMobile) await page.setViewportSize({ width: 375, height: 812 });
+  const d = await openStudent(page, email);
+  const row = d.locator("[data-access]");
+  await expect(row).toContainText(`Avatud kuni ${formatDate(start, "et")}`);
+  const pill = row.getByRole("button", { name: "Pikenda: Kulmumeistri e-koolitus" });
+  await expect(pill).toHaveText(/^Pikenda/);
+  expect((await pill.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+  // the menu names the end it counts from, and lists the four ways
+  await pill.click();
+  const menu = row.getByRole("menu");
+  await expect(menu).toBeVisible();
+  await expect(menu).toContainText(`Pikenda ligipääsu (praegu kuni ${formatDate(start, "et")})`);
+  await expect(menu.getByRole("menuitem")).toHaveText(["+1 kuu", "+3 kuud", "+6 kuud", "Kuupäev…"]);
+  if (isMobile) {
+    const place = (await menu.boundingBox())!;
+    expect([place.x >= 0, place.x + place.width <= 375, place.y >= 0, place.y + place.height <= 812], "the menu is inside the screen").toEqual([true, true, true, true]);
+    expect(await noOverflow(page)).toBe(true);
+  }
+
+  // +1 kuu: done at once; the bar says until when; the card and the database have the new end; who opened it is as it was
+  await menu.getByRole("menuitem", { name: "+1 kuu" }).click();
+  const plusOne = extendByMonths(start, new Date(), 1);
+  const bar = page.locator("[data-undo-bar]");
+  await expect(bar).toContainText(`Ligipääs pikendatud kuni ${formatDate(plusOne, "et")}.`);
+  await expect(row).toContainText(`Avatud kuni ${formatDate(plusOne, "et")}`);
+  await expect(row).toContainText("Avas e2e,"); // (the fixture's own opener: granted_by is not touched)
+  expect(await stored()).toEqual({ expiresAt: plusOne, grantedBy: "e2e", revokedAt: null });
+
+  // „Võta tagasi“: the end it replaced is back
+  await bar.getByRole("button", { name: "Võta tagasi" }).click();
+  await expect(bar).toHaveCount(0);
+  await expect(row).toContainText(`Avatud kuni ${formatDate(start, "et")}`);
+  expect((await stored()).expiresAt).toEqual(start);
+
+  // „Kuupäev…“: a day before the current end is refused where it was typed; a later one goes through and is taken back too
+  await pill.click();
+  await menu.getByRole("menuitem", { name: "Kuupäev…" }).click();
+  const form = row.locator("[data-extend-form]");
+  await expect(form.getByLabel("Ligipääs kuni")).toBeFocused();
+  await form.getByLabel("Ligipääs kuni").fill(addMonths(tallinnToday(new Date()), 1)!);
+  await form.getByRole("button", { name: "Pikenda", exact: true }).click();
+  await expect(form.locator("[role='status']")).toHaveText("Vali kuupäev, mis on hilisem kui praegune lõpp.");
+  await expect(form.getByLabel("Ligipääs kuni")).toHaveAttribute("aria-invalid", "true");
+  expect((await stored()).expiresAt).toEqual(start);
+  const later = addMonths(tallinnToday(new Date()), 5)!;
+  await form.getByLabel("Ligipääs kuni").fill(later);
+  await form.getByRole("button", { name: "Pikenda", exact: true }).click();
+  await expect(bar).toContainText(`Ligipääs pikendatud kuni ${formatDate(endOfDayTallinn(later)!, "et")}.`);
+  await expect(form).toHaveCount(0);
+  await expect(pill).toBeFocused();
+  expect((await stored()).expiresAt).toEqual(endOfDayTallinn(later));
+  await bar.getByRole("button", { name: "Võta tagasi" }).click();
+  await expect(row).toContainText(`Avatud kuni ${formatDate(start, "et")}`);
+  expect((await stored()).expiresAt).toEqual(start);
+
+  // „Katkesta“ closes the field, and the focus is on the pill again
+  await pill.click();
+  await menu.getByRole("menuitem", { name: "Kuupäev…" }).click();
+  await form.getByRole("button", { name: "Katkesta" }).click();
+  await expect(form).toHaveCount(0);
+  await expect(pill).toBeFocused();
+  expect(await smallTargets(d)).toEqual([]);
+
+  // an access an admin ended has no „Pikenda“
+  await row.getByRole("button", { name: "Lõpeta ligipääs" }).click();
+  await row.getByRole("button", { name: "Jah, lõpeta" }).click();
+  await expect(row).toHaveAttribute("data-access-state", "revoked");
+  await expect(pill).toHaveCount(0);
+  expect(await noOverflow(page)).toBe(true);
 });
 
 test("a change request in Päringud: the course and its date as the heading, the wish in words, a link that opens the registration", async ({ page, context, visitorIp }, info) => {

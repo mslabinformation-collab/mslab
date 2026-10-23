@@ -45,16 +45,21 @@ export function menuPlacement(button: Box, menu: { width: number; height: number
  *   A press outside closes it and takes the focus nowhere (the press decides where it goes). A link item is chosen by Enter and by Space.
  * - It keeps inside the viewport (menuPlacement): flips above the button when it does not fit below, aligns to the button's right edge when it
  *   does not fit to the right (`data-flip="up"`, `data-align="right"`, MoreMenu.module.css).
+ * - `title`: a muted line over the items, as the prototype draws „Pikenda ligipääsu (praegu kuni …)“ over the choices. It is not an item (the focus and the
+ *   arrows pass it by) and it is what the list is named by.
  * - Items are buttons (or links, with an `href`); a `tone: "danger"` item has data-tone="danger". The page that wants a question first (a
  *   ConfirmPanel) renders it in place of the menu's button from `onSelect`, and puts the focus back on its trigger afterwards.
  */
 export function MoreMenu({
   label,
+  title,
   buttonLabel,
   variant = "text",
   items,
 }: {
   label?: string;
+  /** A line over the items that says what the menu is about („Pikenda ligipääsu (praegu kuni 17.03.2027)“): not an item, and the menu's name instead of the button's. */
+  title?: string;
   /** The trigger's accessible name when the drawn text is not enough: a page with a „Veel ▾“ on every row names each from words it shows already („Veel: Kati Kask“). Start it with the drawn text. */
   buttonLabel?: string;
   /** "text" (the default): the plain text button of „Veel ▾“. "pill": the 44 px outlined pill of „Pikenda ▾“ (README A5, Part 2 prototype). */
@@ -64,6 +69,7 @@ export function MoreMenu({
   const id = useId();
   const buttonId = `${id}-button`;
   const menuId = `${id}-menu`;
+  const titleId = `${id}-title`;
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState({ up: false, right: false });
   const wrap = useRef<HTMLDivElement>(null);
@@ -190,11 +196,16 @@ export function MoreMenu({
           id={menuId}
           className={styles.menu}
           role="menu"
-          aria-labelledby={buttonId}
+          aria-labelledby={title ? titleId : buttonId}
           data-flip={place.up ? "up" : undefined}
           data-align={place.right ? "right" : undefined}
           onKeyDown={onListKey}
         >
+          {title && (
+            <div id={titleId} role="presentation" className={styles.title}>
+              {title}
+            </div>
+          )}
           {items.map((item, i) =>
             item.href !== undefined ? (
               <ItemLink key={i} item={item} onChoose={() => choose(item)} />

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { accessState, addMonths, defaultExpiryDate, endOfDayTallinn, grantExpiry, purchaseExpiryDate, tallinnToday } from "@/domain/client-access";
+import { accessState, addMonths, defaultExpiryDate, endOfDayTallinn, extendBase, extendByMonths, grantExpiry, isExtension, purchaseExpiryDate, tallinnToday } from "@/domain/client-access";
 import { containsPattern, parseSearch } from "@/domain/paging";
 import { compactIban, groupIban } from "@/domain/account-cards";
 import { isIban, normalizeIban, prepaymentDraft } from "@/domain/site-editor";
@@ -65,6 +65,52 @@ describe("e-course access dates (Estonian calendar days)", () => {
     expect(accessState(row, new Date("2027-04-04T20:59:59.998Z"))).toBe("active");
     expect(accessState(row, new Date("2027-04-04T20:59:59.999Z"))).toBe("expired");
     expect(accessState({ ...row, revokedAt: new Date("2026-10-04T09:00:00Z") }, new Date("2026-10-05T00:00:00Z"))).toBe("revoked");
+  });
+});
+
+describe("„Pikenda“ (B12): the base of +1 / +3 / +6 kuud is the later of the current end and the end of today in Tallinn (piece 2 texts §4)", () => {
+  const now = new Date("2026-10-04T09:00:00Z"); // 12:00 in Tallinn; today ends 2026-10-04T20:59:59.999Z
+  const todayEnd = "2026-10-04T20:59:59.999Z";
+
+  test("an open access is extended from its own end; one that ran out, from the end of today", () => {
+    const open = new Date("2027-04-04T20:59:59.999Z");
+    expect(extendBase(open, now)).toEqual(open);
+    expect(extendBase(new Date("2026-09-01T20:59:59.999Z"), now).toISOString()).toBe(todayEnd);
+    // it ended earlier today: still today's end
+    expect(extendBase(new Date("2026-10-04T05:00:00Z"), now).toISOString()).toBe(todayEnd);
+    // it ends tonight: the same moment either way
+    expect(extendBase(new Date(todayEnd), now).toISOString()).toBe(todayEnd);
+  });
+
+  test("today is the Estonian day: just after midnight in Tallinn the base is already the next day's end", () => {
+    const afterMidnight = new Date("2026-10-04T21:30:00Z"); // 00:30 on the 5th in Tallinn
+    expect(extendBase(new Date("2026-10-04T20:59:59.999Z"), afterMidnight).toISOString()).toBe("2026-10-05T20:59:59.999Z");
+  });
+
+  test("+n kuud counts whole months from the base's Estonian day to the end of that day (a short month gives its last day; winter time follows)", () => {
+    const open = new Date("2027-04-04T20:59:59.999Z"); // summer time: the 4th ends 20:59 UTC
+    expect(extendByMonths(open, now, 1).toISOString()).toBe("2027-05-04T20:59:59.999Z");
+    expect(extendByMonths(open, now, 3).toISOString()).toBe("2027-07-04T20:59:59.999Z");
+    expect(extendByMonths(open, now, 6).toISOString()).toBe("2027-10-04T20:59:59.999Z");
+    expect(extendByMonths(new Date("2027-08-31T20:59:59.999Z"), now, 6).toISOString()).toBe("2028-02-29T21:59:59.999Z"); // winter: 21:59 UTC
+    expect(extendByMonths(new Date("2027-01-31T21:59:59.999Z"), now, 1).toISOString()).toBe("2027-02-28T21:59:59.999Z");
+    // ran out in the summer: from today, not from the old end
+    expect(extendByMonths(new Date("2026-06-01T20:59:59.999Z"), now, 1).toISOString()).toBe("2026-11-04T21:59:59.999Z");
+  });
+});
+
+describe("isExtension: a new end „Pikenda“ takes", () => {
+  const now = new Date("2026-10-04T09:00:00Z");
+  const open = new Date("2027-04-04T20:59:59.999Z");
+  const ranOut = new Date("2026-08-01T20:59:59.999Z");
+  test("later than the end it counts from (the current end, or the end of today for one that ran out), and within 10 years from today", () => {
+    expect(isExtension(new Date("2027-04-04T21:00:00.000Z"), open, now)).toBe(true);
+    expect(isExtension(open, open, now)).toBe(false); // the same moment
+    expect(isExtension(new Date("2026-12-31T21:59:59.999Z"), open, now)).toBe(false); // a shortening
+    expect(isExtension(new Date("2026-10-04T20:59:59.999Z"), ranOut, now)).toBe(false); // the end of today is not later than itself
+    expect(isExtension(new Date("2026-10-05T20:59:59.999Z"), ranOut, now)).toBe(true);
+    expect(isExtension(new Date("2036-10-04T20:59:59.999Z"), open, now)).toBe(true);
+    expect(isExtension(new Date("2036-10-05T20:59:59.999Z"), open, now)).toBe(false);
   });
 });
 

@@ -1,0 +1,27 @@
+/* „Pikenda ▾“ of an e-course access (B12): the pill (MoreMenu variant="pill") and, under it, the „Kuupäev…“ field. */
+
+.box {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* „Kuupäev…“: the shared grey box of the drawer's small forms (the grant form's), a day field and two buttons */
+.form {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--canvas);
+}
+
+.date {
+  max-width: 240px;
+}
+
+/* the status line is a live region from the start (an empty one is announced when it fills), so it is never display:none: while empty it takes back its grid gap */
+.form p:empty {
+  margin-top: -12px;
+}

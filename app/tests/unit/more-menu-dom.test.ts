@@ -104,6 +104,28 @@ describe("MoreMenu: opening", () => {
   });
 });
 
+describe("MoreMenu: a title", () => {
+  it("a page's title (the prototype's „Pikenda ligipääsu (praegu kuni …)“) is the first line of the list, not an item; it names the menu", async () => {
+    await draw({ label: "Pikenda", title: "Pikenda ligipääsu (praegu kuni 17.03.2027)" });
+    await click(button());
+    const title = menu()!.firstElementChild!;
+    expect(text(title)).toBe("Pikenda ligipääsu (praegu kuni 17.03.2027)");
+    expect(title.getAttribute("role")).toBe("presentation");
+    expect(menu()!.getAttribute("aria-labelledby")).toBe(title.id);
+    expect(items()).toHaveLength(2); // the arrows and the focus see the items only
+    expect(document.activeElement).toBe(items()[0]);
+    await key(items()[0], "ArrowUp");
+    expect(document.activeElement).toBe(items()[1]);
+  });
+
+  it("without a title the button names the menu", async () => {
+    await draw();
+    await click(button());
+    expect(menu()!.querySelector("[role=presentation]")).toBeNull();
+    expect(menu()!.getAttribute("aria-labelledby")).toBe(button().id);
+  });
+});
+
 describe("MoreMenu: closing", () => {
   it("Esc closes it and the focus is back on the button", async () => {
     await draw();

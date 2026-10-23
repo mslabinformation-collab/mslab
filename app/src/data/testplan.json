@@ -4305,6 +4305,34 @@
       "writes": true
     },
     {
+      "id": "ekursus-ligipaas-pikenda",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Ligipääsu pikendamine",
+      "href": "/admin/opilased",
+      "steps": [
+        "Ava Proov 5 paneel ja leia e-koolituse kaart.",
+        "Vajuta kaardil „Pikenda ▾“ ja loe menüü pealkirja.",
+        "Vali „+1 kuu“.",
+        "Vajuta alumisel teatel „Võta tagasi“.",
+        "Vajuta uuesti „Pikenda ▾“, vali „Kuupäev…“ ja kirjuta kuupäev, mis on enne kaardi kuupäeva.",
+        "Vajuta „Pikenda“."
+      ],
+      "expect": [
+        "Menüü pealkiri on „Pikenda ligipääsu (praegu kuni …)“ kaardi kuupäevaga.",
+        "Pärast „+1 kuu“ ütleb teade „Ligipääs pikendatud kuni …“ ja kaardil on kuupäev ühe kuu võrra hilisem.",
+        "Rida „Avas …“ ei muutu.",
+        "Pärast „Võta tagasi“ on kaardil jälle esialgne kuupäev.",
+        "Varasem kuupäev annab väljal teate „Vali kuupäev, mis on hilisem kui praegune lõpp.“ ja kuupäev ei muutu."
+      ],
+      "why": "Maria saab ligipääsu pikendada ilma kursust uuesti valimata.",
+      "risk": "med",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "ekursus-tingimused-leping",
       "area": "ekursus",
       "who": "maria",

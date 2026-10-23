@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
-import { addClientForm, grantAccessForm, revokeAccessForm, unlockNextForm, type ClientResult } from "../admin-clients";
+import { addClientForm, extendAccessRequest, grantAccessForm, revokeAccessForm, unlockNextForm, type ClientResult, type ExtendAnswer } from "../admin-clients";
 import { adminAction } from "../auth";
 import { logFailure } from "../log";
 
@@ -46,3 +46,19 @@ export const revokeCourseAccess = adminAction(async (_admin, _prev: ClientResult
 export const unlockNextLesson = adminAction(async ({ email }, _prev: ClientResult | null, formData: FormData) =>
   run("unlock lesson", (db) => unlockNextForm(db, formData, email, new Date())),
 );
+
+/**
+ * Drawer, „Pikenda ▾“ and its „Võta tagasi“ (B12): `{ accessId, expected, months | date | restore }` (server/admin-clients.ts extendAccessRequest). It applies at
+ * once; the answer carries the end it replaced and the new one, for the UndoBar. The open page is refreshed when it went through, and also when the
+ * screen was out of date (`stale`, `revoked`): it then shows the stored end. A throw is `server`, logged by the access.
+ */
+export const extendAccessAction = adminAction(async (_admin, input: unknown): Promise<ExtendAnswer | { ok: false; error: "server" }> => {
+  try {
+    const result = await extendAccessRequest(getDb(), input, new Date());
+    if (result.ok || result.error === "stale" || result.error === "revoked") refresh();
+    return result;
+  } catch (e) {
+    logFailure("[admin] extend access failed", e);
+    return { ok: false, error: "server" };
+  }
+});

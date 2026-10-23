@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DEFAULT_ACCESS_MONTHS, tallinnToday } from "@/domain/client-access";
+import { addMonths, DEFAULT_ACCESS_MONTHS, extendBase, MAX_ACCESS_YEARS, tallinnToday } from "@/domain/client-access";
 import { registrationHeading } from "@/domain/registration-card";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
@@ -7,6 +7,7 @@ import { fill, formatDate, formatTime } from "@/i18n/format";
 import { getDict } from "@/i18n/locales";
 import type { ClientDetail, ClientRequestRow, EcourseOption } from "@/server/admin-clients";
 import { GrantAccessForm, RevokeAccess, UnlockNextLesson } from "./ClientForms";
+import { ExtendAccess } from "./ExtendAccess";
 import { FeedbackAnswers } from "./FeedbackAnswers";
 import { PaymentLines } from "./PaymentLines";
 import { ReissueCertificate } from "./ReissueCertificate";
@@ -53,6 +54,8 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
   // the first e-course she cannot open now: the likeliest one to grant
   const first = ecourses.find((e) => !open.has(e.id)) ?? ecourses[0];
   const untitled = getDict("et").account.dashboard.untitled;
+  // „Pikenda“'s day field ends where the grant form's does: 10 years from today
+  const extendMax = addMonths(tallinnToday(now), MAX_ACCESS_YEARS * 12)!;
   // a course she has open already says until when (granting it again moves the day)
   const courseLabel = (e: EcourseOption) => {
     const title = e.published ? pick(e.title, "et") : `${pick(e.title, "et")} (${g.draft})`;
@@ -157,6 +160,17 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
                     <Link className={ui.link} href={`/admin/opilased/${c.id}/vaade/${a.slug}`} aria-label={fill(t.viewCourseLabel, { course: title })} data-view-course={a.courseId}>
                       {t.viewCourse}
                     </Link>
+                  )}
+                  {/* „Pikenda ▾“ (B12): not for an access an admin ended (the „Ava ligipääs“ form opens it again) */}
+                  {live && (
+                    <ExtendAccess
+                      accessId={a.id}
+                      course={title}
+                      expiresAt={a.expiresAt.toISOString()}
+                      expired={a.state === "expired"}
+                      min={tallinnToday(extendBase(a.expiresAt, now))}
+                      max={extendMax}
+                    />
                   )}
                   {/* her practical work's protocol (Maria may write it before the student sends: "Lisa protokoll") and her test attempts */}
                   {live && (

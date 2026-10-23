@@ -12,12 +12,15 @@ import {
   addClientForm,
   clientDetail,
   clientLabel,
+  extendAccess,
+  extendAccessRequest,
   grantAccess,
   grantAccessForm,
   listClients,
   listEcourses,
   revokeAccess,
   revokeAccessForm,
+  undoExtendAccess,
 } from "@/server/admin-clients";
 import { issueClientLogin, redeemClientCode } from "@/server/client-auth";
 import { loadDashboard } from "@/server/client-data";
@@ -426,6 +429,147 @@ describe("e-course access", () => {
     expect((await db.select().from(courseAccess).where(eq(courseAccess.id, row.id)))[0].revokedAt).toBeNull(); // nothing was ended
     // the plain digits still work
     expect(await revokeAccessForm(db, form({ clientId: String(kati.id), accessId: String(row.id) }), NOW)).toEqual({ ok: true });
+  });
+});
+
+describe("„Pikenda“ (B12): extendAccess and its undo", () => {
+  const END = new Date("2027-04-04T20:59:59.999Z"); // the end `access()` gives
+  const stored = async (id: number) => (await db.select().from(courseAccess).where(eq(courseAccess.id, id)))[0];
+
+  test("moves the end and returns the one it replaced; who granted it, when, the completion and the extra tries stay as they were", async () => {
+    const kati = await client("kati@example.test");
+    const grantedAt = new Date("2026-09-01T10:00:00Z");
+    const row = await access(kati.id, { grantedBy: ADMIN, grantedAt, extraTries: 2, completedAt: new Date("2026-09-20T10:00:00Z") });
+    const until = new Date("2027-07-04T20:59:59.999Z");
+    expect(await extendAccess(db, { accessId: row.id, until, expected: END }, NOW)).toEqual({ ok: true, previous: END, until });
+    expect(await stored(row.id)).toMatchObject({ expiresAt: until, grantedBy: ADMIN, grantedAt, extraTries: 2, completedAt: new Date("2026-09-20T10:00:00Z"), revokedAt: null });
+    // the drawer reads it as open until the new day
+    expect((await clientDetail(db, kati.id, NOW))!.access[0]).toMatchObject({ state: "active", expiresAt: until });
+  });
+
+  test("an access that ran out is open again, from the end of today", async () => {
+    const kati = await client("kati@example.test");
+    const ranOut = new Date("2026-08-01T20:59:59.999Z");
+    const row = await access(kati.id, { expiresAt: ranOut });
+    expect((await clientDetail(db, kati.id, NOW))!.access[0].state).toBe("expired");
+    const r = await extendAccessRequest(db, { accessId: row.id, expected: ranOut.toISOString(), months: 1 }, NOW);
+    expect(r).toEqual({ ok: true, previous: ranOut.toISOString(), until: "2026-11-04T21:59:59.999Z" }); // today (4.10) + 1 month, to the end of that day (winter time)
+    expect((await clientDetail(db, kati.id, NOW))!.access[0].state).toBe("active");
+  });
+
+  test("refused: an access an admin ended (nothing changes), one that changed since the screen was drawn, one that is not there", async () => {
+    const kati = await client("kati@example.test");
+    const ended = await access(kati.id, { revokedAt: NOW });
+    const until = new Date("2027-07-04T20:59:59.999Z");
+    expect(await extendAccess(db, { accessId: ended.id, until, expected: END }, NOW)).toEqual({ ok: false, error: "revoked" });
+    expect((await stored(ended.id)).expiresAt).toEqual(END);
+    expect((await stored(ended.id)).revokedAt).toEqual(NOW);
+
+    const other = await client("other@example.test");
+    const open = await access(other.id, { courseId: draftEcourse.id });
+    // the screen showed another end than the stored one: someone extended (or granted) meanwhile
+    expect(await extendAccess(db, { accessId: open.id, until, expected: new Date("2027-01-01T21:59:59.999Z") }, NOW)).toEqual({ ok: false, error: "stale" });
+    expect((await stored(open.id)).expiresAt).toEqual(END);
+    expect(await extendAccess(db, { accessId: 999_999, until, expected: END }, NOW)).toEqual({ ok: false, error: "notFound" });
+  });
+
+  test("refused: a day that is not after today, not after the current end (it never shortens), or more than 10 years ahead", async () => {
+    const kati = await client("kati@example.test");
+    const row = await access(kati.id);
+    const attempt = (until: string) => extendAccess(db, { accessId: row.id, until: new Date(until), expected: END }, NOW);
+    expect(await attempt("2027-04-04T20:59:59.999Z")).toEqual({ ok: false, error: "date" }); // the same end
+    expect(await attempt("2027-04-04T20:59:59.998Z")).toEqual({ ok: false, error: "date" });
+    expect(await attempt("2026-12-31T21:59:59.999Z")).toEqual({ ok: false, error: "date" }); // later than today, earlier than the end
+    expect(await attempt("2036-10-05T20:59:59.999Z")).toEqual({ ok: false, error: "date" }); // 10 years and a day
+    expect((await stored(row.id)).expiresAt).toEqual(END);
+    expect(await attempt("2036-10-04T20:59:59.999Z")).toMatchObject({ ok: true }); // the 10 years themselves
+    // one that ran out: the end of today is not a later moment than itself
+    const ranOut = await access((await client("late@example.test")).id, { expiresAt: new Date("2026-08-01T20:59:59.999Z") });
+    const tonight = new Date("2026-10-04T20:59:59.999Z");
+    expect(await extendAccess(db, { accessId: ranOut.id, until: tonight, expected: ranOut.expiresAt }, NOW)).toEqual({ ok: false, error: "date" });
+    expect(await extendAccess(db, { accessId: ranOut.id, until: new Date("2026-10-05T20:59:59.999Z"), expected: ranOut.expiresAt }, NOW)).toMatchObject({ ok: true });
+  });
+
+  test("two presses on the same screen: the first wins, the second sees the end move and is stale", async () => {
+    const kati = await client("kati@example.test");
+    const row = await access(kati.id);
+    const [a, b] = await Promise.all([
+      extendAccess(db, { accessId: row.id, until: new Date("2027-05-04T20:59:59.999Z"), expected: END }, NOW),
+      extendAccess(db, { accessId: row.id, until: new Date("2027-07-04T20:59:59.999Z"), expected: END }, NOW),
+    ]);
+    expect([a.ok, b.ok].sort()).toEqual([false, true]);
+    expect([a, b].find((r) => !r.ok)).toEqual({ ok: false, error: "stale" });
+  });
+
+  test("the undo puts the previous end back — and only while the end is still the one it replaced", async () => {
+    const kati = await client("kati@example.test");
+    const row = await access(kati.id, { grantedBy: ADMIN });
+    const first = new Date("2027-05-04T20:59:59.999Z");
+    const second = new Date("2027-08-04T20:59:59.999Z");
+    expect(await extendAccess(db, { accessId: row.id, until: first, expected: END }, NOW)).toMatchObject({ ok: true });
+    expect(await undoExtendAccess(db, { accessId: row.id, previous: END, expected: first })).toEqual({ ok: true, previous: first, until: END });
+    expect(await stored(row.id)).toMatchObject({ expiresAt: END, grantedBy: ADMIN, revokedAt: null });
+
+    // extended, then extended again (another tab, or Maria herself): the first undo would overwrite the newer end, so it is refused
+    expect(await extendAccess(db, { accessId: row.id, until: first, expected: END }, NOW)).toMatchObject({ ok: true });
+    expect(await extendAccess(db, { accessId: row.id, until: second, expected: first }, NOW)).toMatchObject({ ok: true });
+    expect(await undoExtendAccess(db, { accessId: row.id, previous: END, expected: first })).toEqual({ ok: false, error: "stale" });
+    expect((await stored(row.id)).expiresAt).toEqual(second);
+  });
+
+  test("the undo of an extension of a run-out access puts the old, past end back (its own date check allows the past); an access ended meanwhile is left alone", async () => {
+    const kati = await client("kati@example.test");
+    const ranOut = new Date("2026-08-01T20:59:59.999Z");
+    const row = await access(kati.id, { expiresAt: ranOut });
+    const r = await extendAccessRequest(db, { accessId: row.id, expected: ranOut.toISOString(), months: 3 }, NOW);
+    expect(r).toMatchObject({ ok: true });
+    if (!r.ok) throw new Error("not extended");
+    const back = await extendAccessRequest(db, { accessId: row.id, expected: r.until, restore: r.previous }, NOW);
+    expect(back).toEqual({ ok: true, previous: r.until, until: ranOut.toISOString() });
+    expect((await clientDetail(db, kati.id, NOW))!.access[0].state).toBe("expired");
+
+    // extended, then ended by an admin: the undo does not lift or touch an ended access
+    await extendAccess(db, { accessId: row.id, until: new Date("2026-12-04T21:59:59.999Z"), expected: ranOut }, NOW);
+    await revokeAccess(db, { clientId: kati.id, accessId: row.id, now: NOW });
+    expect(await undoExtendAccess(db, { accessId: row.id, previous: ranOut, expected: new Date("2026-12-04T21:59:59.999Z") })).toEqual({ ok: false, error: "revoked" });
+    expect((await stored(row.id)).expiresAt).toEqual(new Date("2026-12-04T21:59:59.999Z"));
+  });
+
+  test("the request from the screen: +1 / +3 / +6 kuud from the end the screen showed, or a chosen day; anything else is invalid and changes nothing", async () => {
+    const kati = await client("kati@example.test");
+    const row = await access(kati.id);
+    const expected = END.toISOString();
+    const months = async (n: number) => extendAccessRequest(db, { accessId: row.id, expected, months: n }, NOW);
+    expect(await months(1)).toMatchObject({ ok: true, until: "2027-05-04T20:59:59.999Z" });
+    expect((await stored(row.id)).expiresAt).toEqual(new Date("2027-05-04T20:59:59.999Z"));
+    // (the screen is still the old one: the same pick again is stale, not a second extension)
+    expect(await months(1)).toEqual({ ok: false, error: "stale" });
+    const fresh = (await stored(row.id)).expiresAt.toISOString();
+    expect(await extendAccessRequest(db, { accessId: row.id, expected: fresh, months: 3 }, NOW)).toMatchObject({ ok: true, until: "2027-08-04T20:59:59.999Z" });
+    expect(await extendAccessRequest(db, { accessId: row.id, expected: "2027-08-04T20:59:59.999Z", months: 6 }, NOW)).toMatchObject({ ok: true, until: "2028-02-04T21:59:59.999Z" });
+    expect(await extendAccessRequest(db, { accessId: row.id, expected: "2028-02-04T21:59:59.999Z", date: "2028-06-30" }, NOW)).toMatchObject({ ok: true, until: "2028-06-30T20:59:59.999Z" });
+    // a chosen day not after the current end
+    expect(await extendAccessRequest(db, { accessId: row.id, expected: "2028-06-30T20:59:59.999Z", date: "2028-06-30" }, NOW)).toEqual({ ok: false, error: "date" });
+    expect(await extendAccessRequest(db, { accessId: row.id, expected: "2028-06-30T20:59:59.999Z", date: "2028-02-30" }, NOW)).toEqual({ ok: false, error: "date" });
+
+    const before = (await stored(row.id)).expiresAt;
+    const current = before.toISOString();
+    for (const bad of [
+      { accessId: row.id, expected: current, months: 2 },
+      { accessId: row.id, expected: current },
+      { accessId: row.id, expected: current, months: 1, date: "2029-01-01" },
+      { accessId: row.id, expected: current, months: 1, restore: current },
+      { accessId: row.id, expected: "tomorrow", months: 1 },
+      { accessId: row.id, expected: "2028-06-30", months: 1 },
+      { accessId: 0, expected: current, months: 1 },
+      { accessId: "1", expected: current, months: 1 },
+      { accessId: row.id, expected: current, date: "30.06.2029" },
+      { accessId: row.id, expected: current, restore: "not a date" },
+      null,
+      "x",
+    ])
+      expect(await extendAccessRequest(db, bad, NOW), JSON.stringify(bad)).toEqual({ ok: false, error: "invalid" });
+    expect((await stored(row.id)).expiresAt).toEqual(before);
   });
 });
 
