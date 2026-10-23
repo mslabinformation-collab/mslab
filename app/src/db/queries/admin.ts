@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, exists, gte, ilike, inArray, lt, ne, or, sql
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Db, Q, Tx } from "../client";
 import type * as schema from "../schema";
-import { campaign, courseAccess, courseImages, courseModules, courseSessions, courses, courseTests, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, payments, registrations, requests, reviews, settings, subscribers } from "../schema";
+import { campaign, contentDrafts, courseAccess, courseImages, courseModules, courseSessions, courses, courseTests, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, payments, registrations, requests, reviews, settings, subscribers } from "../schema";
 import type { Campaign, Course, CourseImage, CourseSession, CourseTest, FaqItem, GalleryItem, HeroSlide, Page, PopupKind, Post, PracticePackage, Registration, Request as RequestRow, Subscriber, TestQuestion } from "../schema";
 import { startOfDayTallinn } from "@/domain/calendar";
 import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
@@ -80,12 +80,22 @@ export async function replaceCourseImages(db: Db, courseId: number, images: Imag
 }
 
 export type AdminCourse = Course & { images: CourseImage[] };
+/** A course of the admin's list: `changes` is true while the draft layer holds an unpublished change of it (the list's „Avaldamata muudatused“). */
+export type CourseListRow = AdminCourse & { changes: boolean };
 
 const imageOrder = [asc(courseImages.sort), asc(courseImages.id)];
 
-/** Every course, drafts included, in the public order (sort, then id), with its images. */
-export async function listAllCourses(db: Db): Promise<AdminCourse[]> {
-  return db.query.courses.findMany({ orderBy: [asc(courses.sort), asc(courses.id)], with: { images: { orderBy: imageOrder } } });
+/**
+ * Every course, drafts included, in the public order (sort, then id), with its images and whether the draft layer (`content_drafts`, entity "course")
+ * holds a draft of it.
+ */
+export async function listAllCourses(db: Db): Promise<CourseListRow[]> {
+  const [rows, drafted] = await Promise.all([
+    db.query.courses.findMany({ orderBy: [asc(courses.sort), asc(courses.id)], with: { images: { orderBy: imageOrder } } }),
+    db.selectDistinct({ id: contentDrafts.entityId }).from(contentDrafts).where(eq(contentDrafts.entity, "course")),
+  ]);
+  const withDraft = new Set(drafted.map((d) => d.id));
+  return rows.map((c) => ({ ...c, changes: withDraft.has(c.id) }));
 }
 
 /** The course editor's course: the course with its images and its "Teadmiste test" row (null without one; e-course completion, R1). */
@@ -190,16 +200,21 @@ export async function saveCourseWithImages(
   });
 }
 
-/** Moves a course one place up (-1) or down (+1) in the public order; renumbers all sorts 1…n. False when it cannot move. */
-export async function moveCourse(db: Db, id: number, dir: -1 | 1): Promise<boolean> {
+/**
+ * Puts a course at place `index` of the public order (0 is the first) and renumbers every sort 1…n; the other courses keep their order. An index past the
+ * end puts it last, a negative one first. One transaction with every course row locked (`FOR UPDATE`), so two moves at once (two tabs, two drops in a
+ * row) each see the order the other left and no course is lost or doubled. The ↑ / ↓ buttons call it with the neighbour's place. "notFound": no such course.
+ * A move changes no course's content, so `updated_at` stays.
+ */
+export async function moveCourseTo(db: Db, id: number, index: number): Promise<"ok" | "notFound"> {
   return db.transaction(async (tx) => {
-    const list = await tx.select({ id: courses.id }).from(courses).orderBy(asc(courses.sort), asc(courses.id)).for("update");
-    const i = list.findIndex((c) => c.id === id);
-    const j = i + dir;
-    if (i < 0 || j < 0 || j >= list.length) return false;
-    [list[i], list[j]] = [list[j], list[i]];
-    for (const [n, c] of list.entries()) await tx.update(courses).set({ sort: n + 1 }).where(eq(courses.id, c.id));
-    return true;
+    const list = await tx.select({ id: courses.id, sort: courses.sort }).from(courses).orderBy(asc(courses.sort), asc(courses.id)).for("update");
+    const from = list.findIndex((c) => c.id === id);
+    if (from < 0) return "notFound";
+    const [moved] = list.splice(from, 1);
+    list.splice(Math.min(Math.max(index, 0), list.length), 0, moved);
+    for (const [n, c] of list.entries()) if (c.sort !== n + 1) await tx.update(courses).set({ sort: n + 1 }).where(eq(courses.id, c.id));
+    return "ok";
   });
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { adminEt } from "@/i18n/dict/admin";
 import styles from "./MoreMenu.module.css";
 
@@ -13,6 +13,11 @@ export type MoreMenuItem = {
   href?: string;
   /** "danger": an action that cannot be taken back lightly („Lõpeta ligipääs“, „Tühista arve“); drawn in the admin's red. */
   tone?: "danger";
+  /**
+   * The item cannot be chosen now (the first row's „Üles“ in a list): it is aria-disabled and dimmed, still a menu item the arrows reach, and choosing it does
+   * nothing (no `onSelect`, no link followed, the menu stays open).
+   */
+  disabled?: boolean;
 };
 
 /** The room a menu keeps from the viewport's edge, in px. */
@@ -48,6 +53,8 @@ export function menuPlacement(button: Box, menu: { width: number; height: number
  * - It keeps inside the viewport (menuPlacement): flips above the button when it does not fit below, aligns to the button's right edge when it
  *   does not fit to the right, and when it fits neither way takes the side with more room (`data-flip="up"`, `data-align="right"`, MoreMenu.module.css;
  *   the list is never wider than the screen less 16 px).
+ * - `variant="icon"` is the round „↕“ of the phone's course list (Part 4 prototype): the label alone, with no ▾, in a 44 px circle; the page names it with
+ *   `buttonLabel` („Liiguta: {nimi}“).
  * - `title`: a muted line over the items, as the prototype draws „Pikenda ligipääsu (praegu kuni …)“ over the choices. It is not an item (the focus and the
  *   arrows pass it by) and it is what the list is named by.
  * - Items are buttons (or links, with an `href`); a `tone: "danger"` item has data-tone="danger". The page that wants a question first (a
@@ -65,8 +72,8 @@ export function MoreMenu({
   title?: string;
   /** The trigger's accessible name when the drawn text is not enough: a page with a „Veel ▾“ on every row names each from words it shows already („Veel: Kati Kask“). Start it with the drawn text. */
   buttonLabel?: string;
-  /** "text" (the default): the plain text button of „Veel ▾“. "pill": the 44 px outlined pill of „Pikenda ▾“ (README A5, Part 2 prototype). */
-  variant?: "text" | "pill";
+  /** "text" (the default): the plain text button of „Veel ▾“. "pill": the 44 px outlined pill of „Pikenda ▾“ (README A5, Part 2 prototype). "icon": the label alone in a 44 px circle („↕“). */
+  variant?: "text" | "pill" | "icon";
   items: MoreMenuItem[];
 }) {
   const id = useId();
@@ -130,6 +137,7 @@ export function MoreMenu({
     if (refocus) button.current?.focus();
   };
   const choose = (item: MoreMenuItem) => {
+    if (item.disabled) return;
     item.onSelect?.();
     close(true);
   };
@@ -190,8 +198,14 @@ export function MoreMenu({
         onClick={() => (open ? close(false) : show("first"))}
         onKeyDown={onButtonKey}
       >
-        {label ?? adminEt.common.more}{" "}
-        <span aria-hidden="true">▾</span>
+        {variant === "icon" ? (
+          <span aria-hidden="true">{label}</span>
+        ) : (
+          <>
+            {label ?? adminEt.common.more}{" "}
+            <span aria-hidden="true">▾</span>
+          </>
+        )}
       </button>
       {open && (
         <div
@@ -213,7 +227,7 @@ export function MoreMenu({
             item.href !== undefined ? (
               <ItemLink key={i} item={item} onChoose={() => choose(item)} />
             ) : (
-              <button key={i} type="button" role="menuitem" tabIndex={-1} className={styles.item} data-tone={item.tone} onClick={() => choose(item)}>
+              <button key={i} type="button" role="menuitem" tabIndex={-1} className={styles.item} data-tone={item.tone} aria-disabled={item.disabled || undefined} onClick={() => choose(item)}>
                 {item.label}
               </button>
             ),
@@ -224,10 +238,20 @@ export function MoreMenu({
   );
 }
 
-/** A link item: the app's own pages go through next/link (no reload), anything else (a mailto:, another site) is a plain link. */
+/** A link item: the app's own pages go through next/link (no reload), anything else (a mailto:, another site) is a plain link. A disabled one goes nowhere. */
 function ItemLink({ item, onChoose }: { item: MoreMenuItem; onChoose: () => void }) {
   const href = item.href ?? "";
-  const common = { role: "menuitem", tabIndex: -1, className: styles.item, "data-tone": item.tone, onClick: onChoose };
+  const common = {
+    role: "menuitem",
+    tabIndex: -1,
+    className: styles.item,
+    "data-tone": item.tone,
+    "aria-disabled": item.disabled || undefined,
+    onClick: (e: MouseEvent<HTMLAnchorElement>) => {
+      if (item.disabled) e.preventDefault();
+      else onChoose();
+    },
+  };
   return href.startsWith("/") ? (
     <Link href={href} {...common}>
       {item.label}

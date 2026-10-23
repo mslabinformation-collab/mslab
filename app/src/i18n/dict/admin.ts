@@ -1536,27 +1536,31 @@ export const adminEt = {
     previewNote: "Nii näeb kaart välja koolituste lehel.",
   },
 
+  // Koolitused, the list (README B1; piece 3 texts P-1, S3-P3-m): the lead is the design's (strings B1-1), the empty states are the shared list frames
+  // (`lists.empty`, `lists.emptyFiltered` with `things`), the arrows' and the handle's names are `drag.*`. `moveMenu` is the phone's „↕“ (Part 4).
   courses: {
     eyebrow: "Kontaktõpe ja e-õpe",
     title: "Koolitused",
-    lead: "Kõik koolitused, ka mustandid. Järjekord on sama mis avalikul lehel: muuda seda nooltega.",
+    lead: "Järjekord on sama mis avalikul lehel. Lohista ⋮⋮ või kasuta nooli.",
     add: "Lisa koolitus",
     typeLabel: "Õppevorm",
     filter: { all: "Kõik", e: "E-õpe", k: "Kontaktõpe" },
     type: { e_learning: "E-õpe", contact: "Kontaktõpe" },
     level: { basic: "Baaskoolitus", advanced: "Täiendkoolitus" },
-    col: { order: "Järjekord", course: "Koolitus", type: "Õppevorm", price: "Hind", badge: "Märgis", status: "Staatus", updated: "Muudetud" },
+    col: { order: "Järjekord", course: "Koolitus", type: "Õppevorm", price: "Hind", badge: "Märgis", status: "Staatus" },
     published: "Avaldatud",
     draft: "Mustand",
+    // a published course with changes in the draft layer (never „Mustand“: that word is for a course that is not published)
+    changes: "Avaldamata muudatused",
     sample: "Näidis",
     sampleTitle: "Prototüübi näidissisu: asenda päris tekstide ja fotodega.",
     noBadge: "—",
     edit: "Muuda: {name}",
-    moveUp: "Liiguta üles: {name}",
-    moveDown: "Liiguta alla: {name}",
+    moveMenu: { button: "Liiguta: {name}", up: "Üles", down: "Alla", first: "Esimeseks", last: "Viimaseks" },
     moveError: "Järjekorra muutmine ei õnnestunud. Proovi uuesti.",
-    empty: "Koolitusi veel pole.",
-    emptyFiltered: "Selle õppevormiga koolitusi pole.",
+    // in a filtered view, where the handles and arrows are not drawn
+    orderHint: "Järjekorda saab muuta vaates „Kõik“.",
+    things: "koolitusi",
     count: "Koolitusi: {n}",
     noPrice: "—",
   },

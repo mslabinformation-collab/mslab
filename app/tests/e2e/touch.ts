@@ -26,5 +26,23 @@ export async function swipe(page: Page, el: Locator, direction: "left" | "right"
   }
 }
 
+/**
+ * A finger put down at `from`, moved to `to` in `steps` moves and lifted (Chrome DevTools touch input, as in swipe above): a drag by hand, which a mouse
+ * drag does not exercise (a pointer of type touch, and the page's own scrolling, which only `touch-action` keeps off a handle).
+ */
+export async function dragWithFinger(page: Page, from: { x: number; y: number }, to: { x: number; y: number }, steps = 12): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] });
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps }] });
+      await page.waitForTimeout(16);
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  } finally {
+    await cdp.detach();
+  }
+}
+
 /** The element's horizontal scroll position. */
 export const scrollLeft = (el: Locator): Promise<number> => el.evaluate((e) => e.scrollLeft);

@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
-import { deleteSessionForm, moveCourseForm, saveCourseForm, saveSessionForm, type EditResult } from "../admin-content";
+import { deleteSessionForm, moveCourseRequest, saveCourseForm, saveSessionForm, type EditResult } from "../admin-content";
 import { adminAction } from "../auth";
 import { logFailure } from "../log";
 import { revalidatePublic, type PublicChange } from "../public-cache";
@@ -36,10 +36,11 @@ export const saveCourse = adminAction(async (_admin, _prev: EditResult | null, f
   return result;
 });
 
-/** Course list ↑ / ↓: fields id, dir ("up" | "down"). */
-export const moveCourseInList = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) =>
-  run("course move", { kind: "courses" }, (db) => moveCourseForm(db, formData)),
-);
+/**
+ * Course list, a drag, ↑ / ↓ or the „↕“ menu (README B1): `{ id, index }`, one `moveCourseTo`. The public pages show the new order at once; the open list
+ * is refreshed with the answer.
+ */
+export const moveCourseToAction = adminAction(async (_admin, input: unknown) => run("course move", { kind: "courses" }, (db) => moveCourseRequest(db, input)));
 
 /** Calendar drawer "Salvesta" / "Lisa toimumine". A new session closes the drawer and is highlighted in the list. */
 export const saveSession = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => {

@@ -144,7 +144,7 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(violations(actions.path, actions.source)).toEqual([]);
     const content = files().find((f) => f.path === "server/actions/admin-content.ts")!;
     const contentExports = [...strip(content.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    expect(contentExports).toEqual(["saveCourse", "moveCourseInList", "saveSession", "deleteSession"]);
+    expect(contentExports).toEqual(["saveCourse", "moveCourseToAction", "saveSession", "deleteSession"]);
     expect(violations(content.path, content.source)).toEqual([]);
     const site = files().find((f) => f.path === "server/actions/admin-site.ts")!;
     const siteExports = [...strip(site.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);

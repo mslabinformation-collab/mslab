@@ -414,6 +414,48 @@ describe("ListToolbar: pill rows and the count line", () => {
   });
 });
 
+describe("ListToolbar: without a placeholder (a list with nothing to search, B1 Koolitused)", () => {
+  const pills = {
+    label: "Õppevorm",
+    pills: [
+      { href: "/admin/koolitused", label: "Kõik", count: 6, current: true },
+      { href: "/admin/koolitused?vorm=e", label: "E-õpe", count: 3, current: false },
+      { href: "/admin/koolitused?vorm=k", label: "Kontaktõpe", count: 3, current: false },
+    ],
+  };
+
+  it("draws no search field: no form, no input, no ✕", async () => {
+    await show("/admin/koolitused", { placeholder: undefined, pillRows: [pills] });
+    expect($("[role=search]")).toBeNull();
+    expect($("input")).toBeNull();
+    expect($("form")).toBeNull();
+    expect(clear()).toBeNull();
+  });
+
+  it("still draws the pills with their counts and the count line, and the current pill has aria-current", async () => {
+    await show("/admin/koolitused", { placeholder: undefined, pillRows: [pills], countLine: "Koolitusi: 6" });
+    const nav = container.querySelector("nav")!;
+    expect(nav.getAttribute("aria-label")).toBe("Õppevorm");
+    expect(Array.from(nav.querySelectorAll("a")).map((a) => a.textContent)).toEqual(["Kõik6", "E-õpe3", "Kontaktõpe3"]);
+    expect(Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("aria-current"))).toEqual(["true", null, null]);
+    expect($("[data-list-count]")!.textContent).toBe("Koolitusi: 6");
+  });
+
+  it("leaves no empty search row behind, and a scope select still gets its own", async () => {
+    await show("/admin/koolitused", { placeholder: undefined, pillRows: [pills] });
+    const toolbar = $("[data-list-toolbar]")!;
+    expect(Array.from(toolbar.children).map((c) => c.getAttribute("data-list-pills") !== null)).toEqual([true]);
+    await show("/admin/koolitused", { placeholder: undefined, pillRows: [pills], scope: { label: "Koolitus", value: "", options: [{ value: "", label: "Kõik", href: "/admin/koolitused" }] } });
+    expect($("select")).not.toBeNull();
+    expect($("input")).toBeNull();
+  });
+
+  it("with a placeholder the field is there as before", async () => {
+    await show("/admin/koolitused", { pillRows: [pills] });
+    expect(field().getAttribute("aria-label")).toBe(PLACEHOLDER);
+  });
+});
+
 describe("ListToolbar: one address for every replace", () => {
   // Next keeps one navigation at a time: a replace started while another is on its way discards the first, so the second must carry
   // everything the first did. Every replace is built from the address the list is heading for, not the one on the screen. The scope's

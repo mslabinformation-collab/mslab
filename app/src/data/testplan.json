@@ -1213,18 +1213,26 @@
       "href": "/admin/koolitused",
       "steps": [
         "Ava „Koolitused“.",
-        "Vajuta teise koolituse real noolt üles.",
+        "Lohista teise koolituse käepidet ⋮⋮ ühe koha võrra alla ja lase lahti.",
+        "Vajuta kolmanda koolituse real noolt üles.",
         "Ava avalik koolituste loend.",
-        "Vii koolitus noolega tagasi oma kohale."
+        "Vali „E-õpe“ ja vaata, kas käepidemed ja nooled on alles.",
+        "Vii koolitused tagasi oma kohale, lohistades või noolega.",
+        "Kui sul on telefon, vali teise koolituse „↕“ menüüst „Üles“ ja siis sama koolituse menüüst „Alla“."
       ],
       "expect": [
-        "Koolitus liigub loendis kohe üles.",
+        "Koolitus liigub loendis kohe uude kohta ja jääb sinna ka pärast lehe uuendamist.",
+        "Lohistamise ajal tõuseb rida üles ja teised read teevad talle ruumi.",
         "Avalikus loendis on sama järjekord.",
-        "Pärast tagasiviimist on järjekord nagu enne."
+        "Valitud vormi vaates pole käepidemeid ega nooli ning näha on „Järjekorda saab muuta vaates „Kõik“.“.",
+        "Pärast tagasiviimist on järjekord nagu enne.",
+        "Telefonis liigub koolitus menüüst kohe üles ja alla ning fookus jääb nupule „↕“."
       ],
       "why": "Järjekord otsustab, mida õpilane näeb esimesena.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-kalender-toimumine",
@@ -1822,12 +1830,14 @@
         "Ava „Registreerimised“ ja vajuta mõnel real koolituse nimele, mitte inimese nimele.",
         "Sulge paneel ja vajuta samal real telefoninumbrile.",
         "Tee sama lehtedel „Õpilased“, „Maksed“, „Tagasiside“ ja „Tunnistused“; seal vajuta e-posti aadressile.",
+        "Ava „Koolitused“ ja vajuta rea tühjale kohale, mitte käepidemele, nooltele ega nimele.",
         "Tee brauseri aken kitsaks nagu telefonil ja vajuta rea mis tahes kohale.",
         "Kui sul on iPhone, ava seal „Registreerimised“ ja puuduta rea tühja kohta."
       ],
       "expect": [
         "Rea mis tahes kohale vajutus avab selle rea paneeli või lehe.",
         "Telefoninumbrile vajutus alustab kõnet ja e-posti aadressile vajutus avab kirjaprogrammi, mitte paneeli.",
+        "Koolituse rea vajutus avab selle muutmise lehe; käepide ja nooled liigutavad rida, aga ei ava seda.",
         "Hiirega rea kohal muutub rea taust kergelt roosakaks.",
         "Arvutis on loend tabel; kitsas aknas on iga rida väike kaart.",
         "Leht ei lähe küljele laiali.",
@@ -1837,7 +1847,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-registreerimised-otsing",

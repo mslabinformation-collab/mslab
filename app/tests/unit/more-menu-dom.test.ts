@@ -381,6 +381,67 @@ describe("MoreMenu: the trigger's name and its look", () => {
   });
 });
 
+describe("MoreMenu: the round „↕“ (variant icon, B1 Koolitused on a phone)", () => {
+  it("draws its label alone (no ▾), as an icon button; the page names it with buttonLabel", async () => {
+    await draw({ label: "↕", variant: "icon", buttonLabel: "Liiguta: Kulmude LAMI", items: [{ label: "Üles" }, { label: "Alla" }] });
+    expect(button().getAttribute("data-variant")).toBe("icon");
+    expect(text(button())).toBe("↕");
+    expect(button().getAttribute("aria-label")).toBe("Liiguta: Kulmude LAMI");
+    expect(button().querySelector("[aria-hidden=true]")!.textContent).toBe("↕");
+    await click(button());
+    expect(items().map((i) => text(i))).toEqual(["Üles", "Alla"]);
+  });
+
+  it("is the prototype's circle: 44 px wide and tall, a 1px #d5d0d3 outline, no padding (the stylesheet)", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/MoreMenu.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rule = /\.button\[data-variant="icon"\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toMatch(/width:\s*44px;/);
+    expect(rule).toMatch(/height:\s*44px;/);
+    expect(rule).toMatch(/border:\s*1px solid var\(--heather\);/);
+    expect(rule).toMatch(/border-radius:\s*50%;/);
+    expect(rule).toMatch(/padding:\s*0;/);
+  });
+});
+
+describe("MoreMenu: an item that cannot be chosen now (disabled)", () => {
+  it("is aria-disabled but stays a button the arrows reach; choosing it does nothing and the menu stays open", async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    await draw({ items: [{ label: "Üles", disabled: true, onSelect: first }, { label: "Alla", onSelect: second }] });
+    await click(button());
+    expect(items().map((i) => i.getAttribute("aria-disabled"))).toEqual(["true", null]);
+    expect(items()[0].hasAttribute("disabled")).toBe(false);
+    await click(items()[0]);
+    expect(first).not.toHaveBeenCalled();
+    expect(menu()).not.toBeNull();
+    // the arrows still pass over it
+    await act(async () => items()[0].focus());
+    await key(items()[0], "ArrowDown");
+    expect(document.activeElement).toBe(items()[1]);
+    await click(items()[1]);
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(menu()).toBeNull();
+  });
+
+  it("a disabled link item does not go anywhere either", async () => {
+    const onSelect = vi.fn();
+    await draw({ items: [{ label: "Ava", href: "/admin/x", disabled: true, onSelect }] });
+    await click(button());
+    const link = items()[0] as HTMLAnchorElement;
+    expect(link.getAttribute("aria-disabled")).toBe("true");
+    const clicked = new MouseEvent("click", { bubbles: true, cancelable: true });
+    await act(async () => void link.dispatchEvent(clicked));
+    expect(clicked.defaultPrevented).toBe(true);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(menu()).not.toBeNull();
+  });
+
+  it("is dimmed in the stylesheet (35 %, as the DragList arrows at the ends of a list)", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/MoreMenu.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(/\.item\[aria-disabled="true"\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/opacity:\s*0\.35;/);
+  });
+});
+
 describe("MoreMenu: it stays inside the viewport", () => {
   const rect = (x: number, y: number, w: number, h: number): DOMRect => ({ x, y, left: x, top: y, width: w, height: h, right: x + w, bottom: y + h, toJSON: () => ({}) }) as DOMRect;
   const VIEW = { width: 400, height: 700 };

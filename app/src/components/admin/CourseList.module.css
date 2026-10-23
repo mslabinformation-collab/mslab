@@ -1,0 +1,292 @@
+/* The Koolitused list (README B1; the Part 3 desktop frame and the Part 4 phone frame). A list of rows (DragList's `ol > li`) whose columns are drawn by a grid
+   on an inner div, one grid per row and one over the headings. Three layouts, switched by the width of the list's card (list-table.module.css .card is the
+   container), as the shared list table switches at 760:
+
+   - a wide card (from 1040 px): the README's eight columns, handle | ↑/↓ | thumbnail | title | Õppevorm | Hind | Märgis | Staatus, as the 1440 frame draws them;
+   - a middle card (761 to 1039 px: an iPad or a laptop with the sidebar): the same cells in two lines, the title and the status on the first, the type, price and
+     badge under the title. The frames draw nothing between 1440 and 390, and the eight columns do not fit a card of 827 px;
+   - the phone card (760 px and under): handle | thumbnail | title over „{Õppevorm} · {Staatus}“ | the round „↕“ menu, as the 390 frame draws it. Price, badge and
+     the „{tase} · /{slug}“ line are not drawn there (the frame has none).
+
+   The row is the shared list's: a divider, the highlight under the mouse and under a finger (list-table.module.css), the title a 44 px target and the one link.
+   Colours: tokens and the admin's own greys (#ebe8e9 / #5e5559 of the neutral status, SaveStatus.module.css). */
+
+/* A row bleeds 8 px into the card's padding, so that its highlight and the lifted row of a drag (DragList) have room round the text. The divider and the
+   vertical padding are the inner grid's (below), so that the dividers run the width of the content, as the heading's line does. */
+.row {
+  margin: 0 -8px;
+  padding: 0 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .row:hover {
+    background: var(--row-highlight);
+  }
+}
+
+.row:active {
+  background: var(--row-highlight);
+}
+
+.row:last-child .grid {
+  border-bottom: 0;
+}
+
+/* the lifted row is the highlight's own */
+.row[data-dragging] .grid {
+  border-bottom-color: transparent;
+}
+
+/* ---------- the grid ---------- */
+
+.head,
+.grid {
+  display: grid;
+  grid-template-columns: 44px 96px 56px minmax(0, 1fr) 120px 150px 120px 180px;
+  column-gap: 14px;
+  align-items: center;
+}
+
+.grid {
+  grid-template-areas: "handle arrows thumb title type price badge status";
+  min-height: 84px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* a filtered view: no handle and no arrows, the columns close up */
+.head.plain,
+.grid.plain {
+  grid-template-columns: 56px minmax(0, 1fr) 120px 150px 120px 180px;
+}
+
+.grid.plain {
+  grid-template-areas: "thumb title type price badge status";
+}
+
+.head {
+  padding: 0 0 8px;
+  margin: 0 0 2px;
+  border-bottom: 1px solid var(--line);
+  color: #716a6d;
+  font: 500 11px/1.4 var(--font-body);
+}
+
+.handleCell {
+  grid-area: handle;
+}
+
+.arrowsCell {
+  grid-area: arrows;
+}
+
+.menuCell {
+  display: none;
+  grid-area: menu;
+}
+
+/* the phone's second line, „{Õppevorm} · {Staatus}“ (only on the phone card: see below) */
+.phoneLine {
+  display: none;
+}
+
+.thumb {
+  grid-area: thumb;
+  display: block;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: var(--first);
+  object-fit: cover;
+}
+
+.titleCell {
+  grid-area: title;
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* The shared name link (list-table.module.css .name: the one real link of the row, a 44 px target by padding and a negative margin), with the margin for a row
+   whose text is centred in a taller one: the padding makes it 44 px, the margin takes it back so that the line under it stays close. */
+.titleCell .name {
+  margin: -12px 0 -12px;
+  font-size: 14px;
+}
+
+.sub {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* the type, price and badge: cells of the grid on a wide card (the wrapper takes no box), a line of their own on the middle card */
+.meta {
+  display: contents;
+}
+
+.type {
+  grid-area: type;
+  justify-self: start;
+}
+
+.price {
+  grid-area: price;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.price span + span {
+  color: #716a6d;
+}
+
+.badgeCell {
+  grid-area: badge;
+  min-width: 0;
+  font-size: 13px;
+}
+
+/* the badge as the course card shows it */
+.badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: 600 12px/1.3 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.statusCell {
+  grid-area: status;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Avaldatud is ui.ok and Avaldamata muudatused ui.warn (#e9e1e5 on #6b4f5c); Mustand is the neutral grey of the save status */
+.draftTag {
+  border: 0;
+  background: #ebe8e9;
+  color: #5e5559;
+}
+
+.sample {
+  border: 0;
+  background: var(--orchid);
+  color: var(--ink);
+}
+
+/* ---------- a middle card: two lines ---------- */
+
+@container (max-width: 1039px) {
+  .head {
+    display: none;
+  }
+
+  .head,
+  .grid {
+    grid-template-columns: 44px 96px 56px minmax(0, 1fr) auto;
+  }
+
+  .head.plain,
+  .grid.plain {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+  }
+
+  .grid {
+    grid-template-areas:
+      "handle arrows thumb title status"
+      "handle arrows thumb meta meta";
+    row-gap: 6px;
+  }
+
+  .grid.plain {
+    grid-template-areas:
+      "thumb title status"
+      "thumb meta meta";
+  }
+
+  .meta {
+    grid-area: meta;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 16px;
+    min-width: 0;
+  }
+
+  .price {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0 12px;
+  }
+
+  .statusCell {
+    justify-content: flex-end;
+  }
+}
+
+/* ---------- the phone card ---------- */
+
+@container (max-width: 760px) {
+  .grid,
+  .grid.plain {
+    --phone-ink: var(--warn);
+
+    grid-template-columns: 32px 52px minmax(0, 1fr) 44px;
+    grid-template-areas:
+      "handle thumb title menu"
+      "handle thumb line menu";
+    column-gap: 8px;
+    row-gap: 0;
+    min-height: 72px;
+    padding: 10px 0;
+  }
+
+  .grid.plain {
+    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-areas:
+      "thumb title"
+      "thumb line";
+  }
+
+  .grid[data-status="published"] {
+    --phone-ink: var(--ok);
+  }
+
+  .arrowsCell,
+  .meta,
+  .statusCell,
+  .sub {
+    display: none;
+  }
+
+  .menuCell {
+    display: block;
+  }
+
+  /* the handle stays a 44 px target, over a 32 px column: it reaches 6 px into the gap on each side */
+  .handleCell {
+    display: flex;
+    justify-content: center;
+  }
+
+  .thumb {
+    width: 52px;
+    height: 52px;
+  }
+
+  /* the second line in the status's colour (11px/600, as the frame has it); the tags it stands for are not drawn here */
+  .phoneLine {
+    display: block;
+    grid-area: line;
+    color: var(--phone-ink);
+    font: 600 11px/1.5 var(--font-body);
+    overflow-wrap: anywhere;
+  }
+}

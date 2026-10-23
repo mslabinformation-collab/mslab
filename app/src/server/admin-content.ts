@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Db } from "@/db/client";
 import { courses, type TestQuestion } from "@/db/schema";
 import { inArray } from "drizzle-orm";
-import { courseUsage, typeLocked, deleteUnusedSession, getCourseForEdit, getSession, isSlugTaken, moveCourse, saveCourseWithImages, upsertSession, type CourseFields } from "@/db/queries/admin";
+import { courseUsage, typeLocked, deleteUnusedSession, getCourseForEdit, getSession, isSlugTaken, moveCourseTo, saveCourseWithImages, upsertSession, type CourseFields } from "@/db/queries/admin";
 import { tallinnInstant } from "@/domain/calendar";
 import { CERT_LIMITS } from "@/domain/certificate";
 import { checkQuestions, checkSettings, PASS_RANGE, readQuestions, TRIES_RANGE, type QuestionProblem } from "@/domain/completion";
@@ -231,13 +231,14 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
   return { ok: true, id: saved.id, created: d.id == null };
 }
 
-/** Course list ↑ / ↓: fields id, dir ("up" | "down"). */
-export async function moveCourseForm(db: Db, formData: FormData): Promise<EditResult> {
-  const course = id.safeParse(field(formData, "id"));
-  const dir = field(formData, "dir");
-  if (!course.success || (dir !== "up" && dir !== "down")) return { ok: false, error: "invalid" };
-  if (await moveCourse(db, course.data, dir === "up" ? -1 : 1)) return { ok: true, id: course.data };
-  return (await getCourseForEdit(db, course.data)) ? { ok: true, id: course.data } : { ok: false, error: "notFound" };
+/** The course list's move: `{ id, index }`, the course and the place (0 is the first) it goes to; ↑ / ↓ send the neighbour's place, a drop its own. */
+const moveRequest = z.object({ id: z.number().int().positive().max(ID_MAX), index: z.number().int().min(0).max(ID_MAX) });
+
+/** Course list, a drag, ↑ / ↓ or the phone's „↕“ menu: one `moveCourseTo`. Nothing the browser sends is trusted (an index past the end is fine, it goes last). */
+export async function moveCourseRequest(db: Db, input: unknown): Promise<EditResult> {
+  const request = moveRequest.safeParse(input);
+  if (!request.success) return { ok: false, error: "invalid" };
+  return (await moveCourseTo(db, request.data.id, request.data.index)) === "ok" ? { ok: true, id: request.data.id } : { ok: false, error: "notFound" };
 }
 
 // ---------- calendar ----------

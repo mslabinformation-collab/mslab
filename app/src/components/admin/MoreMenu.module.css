@@ -38,6 +38,17 @@
   background: var(--first);
 }
 
+/* variant="icon": the round „↕“ of the phone's course list (Part 4 prototype): the label alone in a 44 px circle with a 1px #d5d0d3 outline (--heather). */
+.button[data-variant="icon"] {
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--heather);
+  border-radius: 50%;
+  font-size: 14px;
+}
+
 /* the list: as wide as its longest item, never wider than 320 px nor than the screen less 16 px (a phone card's menu of 269 px on a 360 px screen) */
 .menu {
   position: absolute;
@@ -95,6 +106,16 @@
 
 .item:hover {
   background: var(--first);
+}
+
+/* an item that cannot be chosen now: dimmed as the DragList arrows are at the ends of a list, still reached by the arrows */
+.item[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.item[aria-disabled="true"]:hover {
+  background: transparent;
 }
 
 .item:focus-visible {

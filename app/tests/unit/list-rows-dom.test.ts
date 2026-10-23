@@ -207,3 +207,47 @@ describe("list tables (the stylesheet)", () => {
     expect(page("maksed/payments.module.css")).toMatch(/table\.list td:first-child \{/);
   });
 });
+
+// B1 Koolitused (piece 3a, Task 3): a list of rows (DragList's `ol > li[data-drag-row]`) rather than a table. The same delegated handler serves it: the
+// row is the `li`, its name Link the same `a.name`, and the handle, the arrows and the „↕“ menu are buttons, so they keep their own clicks.
+describe("ListRows: a list of rows (DragList's li) as well as a table", () => {
+  const rows = (): ReactNode =>
+    createElement(
+      "ol",
+      null,
+      createElement(
+        "li",
+        { id: "li1", "data-drag-row": "1" },
+        createElement("button", { id: "handle", type: "button" }, "⋮⋮"),
+        createElement("span", { id: "arrows" }, createElement("button", { id: "up", type: "button" }, "↑")),
+        createElement("span", { id: "thumb" }),
+        createElement("a", { id: "lname", className: listTable.name, href: "/admin/koolitused/1" }, "Kulmude LAMI"),
+        createElement("span", { id: "tag" }, createElement("i", { id: "intag" }, "Kontaktõpe")),
+      ),
+      createElement("li", { id: "li2", "data-drag-row": "2" }, createElement("span", { id: "nolink" }, "Ilma lingita")),
+    );
+
+  it("a click on the row anywhere but its controls follows its name link", async () => {
+    await draw(rows());
+    const seen: Element[] = [];
+    $("lname").addEventListener("click", (e) => {
+      e.preventDefault();
+      seen.push(e.target as Element);
+    });
+    for (const id of ["thumb", "tag", "intag", "li1"]) await click($(id));
+    expect(seen).toHaveLength(4);
+    await click($("lname"));
+    expect(seen).toHaveLength(5); // the link's own click is one click
+  });
+
+  it("the handle and the arrows get their own click; a row with no name link does nothing", async () => {
+    await draw(rows());
+    const seen: Element[] = [];
+    $("lname").addEventListener("click", (e) => {
+      e.preventDefault();
+      seen.push(e.target as Element);
+    });
+    for (const id of ["handle", "up", "nolink", "li2"]) await click($(id));
+    expect(seen).toHaveLength(0);
+  });
+});

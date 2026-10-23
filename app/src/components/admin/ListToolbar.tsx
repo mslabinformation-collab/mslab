@@ -42,7 +42,8 @@ export type ListScope = { label: string; value: string; options: { value: string
  * - `pillRows` are rows of plain links, built by the page (they carry the search and the other filters themselves), each a `nav` under its own
  *   label (the row's accessible name; the rows sit side by side, wrapping, as the prototype draws the status and the form pills). The current
  *   pill of a row has aria-current. A row without pills is not drawn.
- * - `placeholder` is the page's own („Otsi nime, e-posti või telefoni järgi“, …) and is the field's accessible name.
+ * - `placeholder` is the page's own („Otsi nime, e-posti või telefoni järgi“, …) and is the field's accessible name. A list with nothing to search
+ *   (Koolitused: six courses, B1) leaves it out and gets no search field at all: the pills and the count line stand alone.
  */
 export function ListToolbar({
   placeholder,
@@ -50,7 +51,8 @@ export function ListToolbar({
   scope,
   countLine,
 }: {
-  placeholder: string;
+  /** The search field's placeholder and name; without it there is no search field. */
+  placeholder?: string;
   pillRows?: ListPillRow[];
   scope?: ListScope;
   countLine?: string;
@@ -124,51 +126,55 @@ export function ListToolbar({
   const rows = (pillRows ?? []).filter((row) => row.pills.length > 0);
   return (
     <div className={styles.toolbar} data-list-toolbar="">
-      <div className={styles.row}>
-        <form
-          className={styles.search}
-          role="search"
-          onSubmit={(e) => {
-            e.preventDefault();
-            search(text);
-          }}
-        >
-          <span className={styles.glass} aria-hidden="true">
-            ⌕
-          </span>
-          <input
-            ref={input}
-            className={styles.field}
-            type="search"
-            name="otsi"
-            value={text}
-            onChange={(e) => onType(e.target.value)}
-            placeholder={placeholder}
-            aria-label={placeholder}
-            maxLength={SEARCH_MAX}
-            autoComplete="off"
-            spellCheck={false}
-            enterKeyHint="search"
-          />
-          {text !== "" && (
-            <button
-              type="button"
-              className={styles.clear}
-              aria-label={t.clearSearch}
-              data-search-clear=""
-              onClick={() => {
-                setText("");
-                search("");
-                input.current?.focus();
+      {(placeholder !== undefined || scope) && (
+        <div className={styles.row}>
+          {placeholder !== undefined && (
+            <form
+              className={styles.search}
+              role="search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                search(text);
               }}
             >
-              <span aria-hidden="true">✕</span>
-            </button>
+              <span className={styles.glass} aria-hidden="true">
+                ⌕
+              </span>
+              <input
+                ref={input}
+                className={styles.field}
+                type="search"
+                name="otsi"
+                value={text}
+                onChange={(e) => onType(e.target.value)}
+                placeholder={placeholder}
+                aria-label={placeholder}
+                maxLength={SEARCH_MAX}
+                autoComplete="off"
+                spellCheck={false}
+                enterKeyHint="search"
+              />
+              {text !== "" && (
+                <button
+                  type="button"
+                  className={styles.clear}
+                  aria-label={t.clearSearch}
+                  data-search-clear=""
+                  onClick={() => {
+                    setText("");
+                    search("");
+                    input.current?.focus();
+                  }}
+                >
+                  <span aria-hidden="true">✕</span>
+                </button>
+              )}
+            </form>
           )}
-        </form>
-        {/* a search still waiting for its 300 ms goes with the choice */}
-        {scope && <ScopeSelect scope={scope} onChoose={goTo} />}
-      </div>
+          {/* a search still waiting for its 300 ms goes with the choice */}
+          {scope && <ScopeSelect scope={scope} onChoose={goTo} />}
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div className={styles.pillRows} data-list-pills="">

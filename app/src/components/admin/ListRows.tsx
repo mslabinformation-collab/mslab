@@ -6,6 +6,9 @@ import styles from "./list-table.module.css";
 /** What a click on is the control's own, never the row's: a link, a button, a field, a label, or anything marked as one. */
 const CONTROL = "a, button, input, select, textarea, label, summary, [role=button], [role=link], [contenteditable]";
 
+/** A row of a table, or of a DragList (the Koolitused list is a list of rows, `ol > li`, with the columns drawn by a grid: B1). */
+const ROW = "tbody tr, li[data-drag-row]";
+
 /**
  * The table of an admin list, with its rows made links as a whole (admin UX pass, README §1.10; list-table.module.css). The row's name is a real
  * Link (the one target of the keyboard and the screen reader); a plain click on the row anywhere else is forwarded to it with `.click()`, so
@@ -16,7 +19,7 @@ const CONTROL = "a, button, input, select, textarea, label, summary, [role=butto
  * - not while text is selected: dragging over a cell to copy an e-mail address or a Montonio id ends in a click on the cell, and is not a tap on the row;
  * - a row with no name link (a payer with no account) does nothing.
  *
- * Wrap the `<table>` in it, inside the list's card. It is a plain block; its one class (list-table.module.css `.rows`) only switches off the
+ * Wrap the `<table>` (or a DragList, whose rows are `li[data-drag-row]`) in it, inside the list's card. It is a plain block; its one class (list-table.module.css `.rows`) only switches off the
  * grey tap flash that iOS Safari paints over the element holding a click listener, which is the whole table (the row tints itself when pressed).
  */
 export function ListRows({ children }: { children: ReactNode }) {
@@ -29,7 +32,7 @@ export function ListRows({ children }: { children: ReactNode }) {
     const onClick = (e: MouseEvent) => {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       if (!(e.target instanceof Element)) return;
-      const row = e.target.closest("tbody tr");
+      const row = e.target.closest(ROW);
       if (!row || !el.contains(row)) return;
       const control = e.target.closest(CONTROL);
       if (control && row.contains(control)) return;

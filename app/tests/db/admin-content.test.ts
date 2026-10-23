@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { eq, inArray, sql } from "drizzle-orm";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
-import { clients, courseAccess, courseImages, courseModules, courses, courseSessions, courseTests, lessons, posts, registrations, requests, type TestQuestion } from "@/db/schema";
-import { courseUsage, typeLocked, getCourseForEdit, listAdminSessions, listAllCourses, listAllPosts, listContactCourses } from "@/db/queries/admin";
+import { clients, contentDrafts, courseAccess, courseImages, courseModules, courses, courseSessions, courseTests, lessons, posts, registrations, requests, type TestQuestion } from "@/db/schema";
+import { courseUsage, typeLocked, getCourseForEdit, listAdminSessions, listAllCourses, listAllPosts, listContactCourses, moveCourseTo } from "@/db/queries/admin";
 import { listUpcomingSessions } from "@/db/queries/public";
 import { draftFromCourse, newCourseDraft, type CourseDraft } from "@/domain/course-editor";
-import { deleteSessionForm, moveCourseForm, saveCourseForm, saveSessionForm, type EditResult, type FieldError } from "@/server/admin-content";
+import { deleteSessionForm, moveCourseRequest, saveCourseForm, saveSessionForm, type EditResult, type FieldError } from "@/server/admin-content";
 
 // Task 13: the course editor's and the calendar's form handling and queries on a real (PGlite) database.
 
@@ -222,21 +222,91 @@ describe("saveCourseForm: editing", () => {
 });
 
 describe("course list", () => {
-  test("listAllCourses has the drafts too, in the public order; ↑ / ↓ renumbers", async () => {
-    const [draft] = await db.insert(courses).values({ ...base, slug: "mustand", type: "contact", title: { et: "Mustand" }, sort: 3 }).returning();
+  /** Three more courses after the two of beforeEach: the order is then c1 (contact), c2 (online), c3, c4, c5. */
+  async function more() {
+    const rows = await db
+      .insert(courses)
+      .values([
+        { ...base, slug: "c3", type: "contact", title: { et: "C3" }, sort: 3 },
+        { ...base, slug: "c4", type: "e_learning", title: { et: "C4" }, sort: 4 },
+        { ...base, slug: "c5", type: "contact", title: { et: "C5" }, sort: 5, published: false },
+      ])
+      .returning();
+    return rows;
+  }
+  const order = async () => (await listAllCourses(db)).map((c) => [c.slug, c.sort]);
+
+  test("listAllCourses has the drafts too, in the public order", async () => {
+    await db.insert(courses).values({ ...base, slug: "mustand", type: "contact", title: { et: "Mustand" }, sort: 3 });
     expect((await listAllCourses(db)).map((c) => c.slug)).toEqual(["kulmude-lami", "e-kulm", "mustand"]);
-    expect(await moveCourseForm(db, form({ id: String(draft.id), dir: "up" }))).toMatchObject({ ok: true });
-    expect((await listAllCourses(db)).map((c) => [c.slug, c.sort])).toEqual([
-      ["kulmude-lami", 1],
-      ["mustand", 2],
-      ["e-kulm", 3],
-    ]);
-    // the first cannot go up: nothing changes (still ok, the list is as it was)
-    expect(await moveCourseForm(db, form({ id: String(contact.id), dir: "up" }))).toMatchObject({ ok: true });
-    expect((await listAllCourses(db)).map((c) => c.slug)).toEqual(["kulmude-lami", "mustand", "e-kulm"]);
-    expect(await moveCourseForm(db, form({ id: "999999", dir: "down" }))).toEqual({ ok: false, error: "notFound" });
-    expect(await moveCourseForm(db, form({ id: String(contact.id), dir: "left" }))).toEqual({ ok: false, error: "invalid" });
     expect((await listContactCourses(db)).map((c) => c.title.et)).toEqual(["Kulmude LAMI", "Mustand"]);
+  });
+
+  test("moveCourseTo puts a course at the place and the others keep their order; the sorts are 1…n after it", async () => {
+    const [c3] = await more();
+    expect(await moveCourseTo(db, c3.id, 0)).toBe("ok");
+    expect(await order()).toEqual([["c3", 1], ["kulmude-lami", 2], ["e-kulm", 3], ["c4", 4], ["c5", 5]]);
+    // down: the course after it comes up; the rest are as they were
+    expect(await moveCourseTo(db, c3.id, 3)).toBe("ok");
+    expect(await order()).toEqual([["kulmude-lami", 1], ["e-kulm", 2], ["c4", 3], ["c3", 4], ["c5", 5]]);
+    // one step, as the ↑ / ↓ buttons ask for it
+    expect(await moveCourseTo(db, c3.id, 2)).toBe("ok");
+    expect((await order()).map(([slug]) => slug)).toEqual(["kulmude-lami", "e-kulm", "c3", "c4", "c5"]);
+  });
+
+  test("an index past the end puts the course last; a negative one, first", async () => {
+    const [c3] = await more();
+    expect(await moveCourseTo(db, contact.id, 99)).toBe("ok");
+    expect((await order()).map(([slug]) => slug)).toEqual(["e-kulm", "c3", "c4", "c5", "kulmude-lami"]);
+    expect(await moveCourseTo(db, c3.id, -4)).toBe("ok");
+    expect((await order()).map(([slug]) => slug)).toEqual(["c3", "e-kulm", "c4", "c5", "kulmude-lami"]);
+  });
+
+  test("a course dropped where it is changes nothing but still renumbers a list with gaps in its sorts", async () => {
+    const [c3] = await more();
+    await db.update(courses).set({ sort: 40 }).where(eq(courses.id, c3.id));
+    await db.update(courses).set({ sort: 7 }).where(eq(courses.slug, "c4"));
+    expect((await order()).map(([slug]) => slug)).toEqual(["kulmude-lami", "e-kulm", "c5", "c4", "c3"]);
+    expect(await moveCourseTo(db, c3.id, 4)).toBe("ok");
+    expect(await order()).toEqual([["kulmude-lami", 1], ["e-kulm", 2], ["c5", 3], ["c4", 4], ["c3", 5]]);
+  });
+
+  test("a course that is not there is notFound and nothing changes", async () => {
+    await more();
+    expect(await moveCourseTo(db, 999_999, 0)).toBe("notFound");
+    expect((await order()).map(([slug]) => slug)).toEqual(["kulmude-lami", "e-kulm", "c3", "c4", "c5"]);
+  });
+
+  test("two moves at once end in one order with every course once (the rows are locked)", async () => {
+    const [c3, c4] = await more();
+    const answers = await Promise.all([moveCourseTo(db, c3.id, 0), moveCourseTo(db, c4.id, 0)]);
+    expect(answers).toEqual(["ok", "ok"]);
+    const slugs = (await order()).map(([slug]) => slug);
+    expect(slugs).toHaveLength(5);
+    expect(new Set(slugs).size).toBe(5);
+    expect((await order()).map(([, sort]) => sort)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  test("moveCourseRequest: {id, index} moves; anything else is invalid, an unknown course notFound", async () => {
+    const [c3] = await more();
+    expect(await moveCourseRequest(db, { id: c3.id, index: 0 })).toEqual({ ok: true, id: c3.id });
+    expect((await order())[0][0]).toBe("c3");
+    expect(await moveCourseRequest(db, { id: 999_999, index: 0 })).toEqual({ ok: false, error: "notFound" });
+    for (const bad of [null, "x", {}, { id: c3.id }, { id: c3.id, index: "1" }, { id: c3.id, index: 1.5 }, { id: c3.id, index: -1 }, { id: 0, index: 1 }, { id: c3.id, index: 2_147_483_648 }]) {
+      expect(await moveCourseRequest(db, bad), JSON.stringify(bad)).toEqual({ ok: false, error: "invalid" });
+    }
+    expect((await order())[0][0]).toBe("c3");
+  });
+
+  test("a row has changes when the draft layer holds a draft of that course, and only then", async () => {
+    const draft = { entityId: online.id, part: "price", value: { price: "99" }, baseVersion: "l:x", updatedBy: "maria@example.test" };
+    expect((await listAllCourses(db)).map((c) => [c.slug, c.changes])).toEqual([["kulmude-lami", false], ["e-kulm", false]]);
+    // another kind of thing with the same id is not this course's draft
+    await db.insert(contentDrafts).values({ ...draft, entity: "post" });
+    expect((await listAllCourses(db)).map((c) => c.changes)).toEqual([false, false]);
+    await db.insert(contentDrafts).values({ ...draft, entity: "course" });
+    await db.insert(contentDrafts).values({ ...draft, entity: "course", part: "badge" });
+    expect((await listAllCourses(db)).map((c) => [c.slug, c.changes])).toEqual([["kulmude-lami", false], ["e-kulm", true]]);
   });
 
   test("listAllPosts has the drafts too, newest first", async () => {

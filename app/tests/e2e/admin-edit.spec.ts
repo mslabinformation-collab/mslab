@@ -6,7 +6,9 @@ import { adminReady, editLang, signInAsAdmin } from "./admin-login";
 import {
   courseOrder,
   EDIT_CITY_PREFIX,
+  holdLocalLock,
   insertEditSession,
+  LOCK_WAIT_MS,
   NEW_COURSE_SLUG_PREFIX,
   onLocalDb,
   registerOnSession,
@@ -20,6 +22,7 @@ import {
   storedSession,
 } from "./fixtures";
 import { laterSaturday } from "./seed-sessions";
+import { dragWithFinger } from "./touch";
 
 // Task 13A: the course editor, the badge editor, the image upload and the admin calendar, each followed through to the
 // public site. These tests change real seed content (a title, a badge, the gallery, the order, sessions of a seed
@@ -561,30 +564,160 @@ test.describe("course editor", () => {
     await expect(page.locator(`[data-course-row="${slug}"] [data-course-state]`)).toHaveText("Mustand");
   });
 
-  test("course order: ↑ / ↓ in the list is the public order", async ({ page, context, visitorIp, isMobile }, info) => {
-    test.skip(isMobile, "the order is shared by all courses: one project changes it");
-    const c = mine(info);
+  // The order is the whole catalogue's, so the tests that change it take turns (the desktop and the phone project run side by side), and the order is
+  // put back afterwards (undone in reverse: the snapshot first, the lock let go last).
+  const takeOrder = async () => {
+    undo.push(await holdLocalLock("e2e-course-order"));
     undo.push(await snapshotOrder());
-    // the seed courses only: the other project may add a draft at the end meanwhile
-    const seedOrder = async () => (await courseOrder()).filter((s) => !s.startsWith(NEW_COURSE_SLUG_PREFIX));
+  };
+  // the seed courses only: the other project may add a draft at the end meanwhile
+  const seedOrder = async () => (await courseOrder()).filter((s) => !s.startsWith(NEW_COURSE_SLUG_PREFIX));
+  const handleOf = (page: Page, title: string) => page.getByRole("button", { name: `Lohista: ${title}` });
+  const courseRow = (page: Page, slug: string) => page.locator(`[data-course-row="${slug}"]`);
+  const announced = (page: Page) => page.locator("[data-course-list] [role=status]");
+
+  test("course order (B1): the handle, ↑ / ↓ and the keyboard are the public order; a filtered view cannot reorder", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(isMobile, "the phone has its own, below: the „↕“ menu and a finger on the handle");
+    info.setTimeout(info.timeout + LOCK_WAIT_MS);
+    const c = mine(info);
+    await takeOrder();
     await signIn(page, context, visitorIp);
     const order = await seedOrder();
     const at = order.indexOf(c.slug);
     expect(at).toBeGreaterThan(0);
     await page.goto("/admin/koolitused");
     await adminReady(page);
+
+    // the columns of the README: the heading row has "Järjekord", and "Muudetud" is gone; the title has "{tase} · /{slug}", the handle says "lohistatav"
+    const head = page.locator("[data-course-head]");
+    await expect(head).toContainText("Järjekord");
+    await expect(head).not.toContainText("Muudetud");
+    await expect(courseRow(page, c.slug).locator("[data-course-sub]")).toHaveText(new RegExp(`koolitus · /${c.slug}$`));
+    await expect(handleOf(page, c.title)).toHaveAttribute("aria-roledescription", "lohistatav");
+    expect(await noOverflow(page)).toBe(true);
+    // the pills carry their counts, and the two forms add up to the whole
+    const counts = await page.locator("[data-list-pills] a").evaluateAll((links) => links.map((a) => Number((a.textContent ?? "").replace(/\D+/g, ""))));
+    expect(counts).toHaveLength(3);
+    expect(counts[1] + counts[2]).toBe(counts[0]);
+    expect(counts[0]).toBeGreaterThanOrEqual(6);
+
+    // ↑ moves the course one place: stored, read out, the focus stays on the button, and the public catalogue has it
     await page.getByRole("button", { name: `Liiguta üles: ${c.title}` }).click();
     await expect.poll(seedOrder).toEqual([...order.slice(0, at - 1), c.slug, order[at - 1], ...order.slice(at + 1)]);
     await expect(page.getByRole("button", { name: `Liiguta üles: ${c.title}` })).toBeFocused();
     await expect(page.locator("[data-course-row]").nth(at - 1)).toHaveAttribute("data-course-row", c.slug);
+    await expect(announced(page)).toHaveText(`„${c.title}“ on nüüd ${at}. kohal.`);
     await page.goto("/koolitused");
     await expect(page.locator("[data-course-card]").nth(at - 1)).toHaveAttribute("href", `/koolitused/${c.slug}`);
+
+    // the first course cannot go up
     await page.goto("/admin/koolitused");
     await adminReady(page);
     await expect(page.locator("[data-course-row]").first().getByRole("button", { name: /Liiguta üles/ })).toHaveAttribute("aria-disabled", "true");
-    await page.getByRole("button", { name: `Liiguta alla: ${c.title}` }).click();
+
+    // a drag with the mouse puts it back: the handle down over the next row (the row is lifted while it goes; one move is stored)
+    const handle = handleOf(page, c.title);
+    await handle.scrollIntoViewIfNeeded();
+    const from = (await handle.boundingBox())!;
+    const next = (await courseRow(page, order[at - 1]).boundingBox())!; // (the course that is now one place after it)
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2, next.y + next.height / 2 + 4, { steps: 12 });
+    await expect(courseRow(page, c.slug).locator("xpath=ancestor::li")).toHaveAttribute("data-dragging", "");
+    await page.mouse.up();
     await expect.poll(seedOrder).toEqual(order);
-    await expect(page.getByRole("button", { name: `Liiguta alla: ${c.title}` })).toBeFocused();
+    await expect(page.locator("[data-course-row]").nth(at)).toHaveAttribute("data-course-row", c.slug);
+    await expect(handleOf(page, c.title)).toBeFocused();
+    await expect(announced(page)).toHaveText(`„${c.title}“ on nüüd ${at + 1}. kohal.`);
+    // a drag that ends where it began moves nothing
+    const again = (await handle.boundingBox())!;
+    await page.mouse.move(again.x + again.width / 2, again.y + again.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(again.x + again.width / 2, again.y + again.height / 2 + 10, { steps: 4 });
+    await page.mouse.up();
+    expect(await seedOrder()).toEqual(order);
+
+    // ↓ with the keyboard on the handle (it says „lohistatav“, so the arrow keys move it), and ↑ with the button
+    await handle.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(seedOrder).toEqual([...order.slice(0, at), order[at + 1], c.slug, ...order.slice(at + 2)]);
+    await expect(handleOf(page, c.title)).toBeFocused();
+    await page.getByRole("button", { name: `Liiguta üles: ${c.title}` }).click();
+    await expect.poll(seedOrder).toEqual(order);
+
+    // a filtered view cannot reorder: no handles, no arrows, no menus, and the hint says where it can
+    await page.goto("/admin/koolitused?vorm=e");
+    await adminReady(page);
+    await expect(page.locator("[data-course-row]").first()).toBeVisible();
+    await expect(page.locator("[data-drag-tool]")).toHaveCount(0);
+    await expect(page.locator("[data-order-hint]")).toHaveText("Järjekorda saab muuta vaates „Kõik“.");
+    await expect(page.locator("[data-list-pills] a[aria-current=true]")).toContainText("E-õpe");
+    await page.goto("/admin/koolitused");
+    await adminReady(page);
+    await expect(page.locator("[data-order-hint]")).toHaveCount(0);
+    await expect(page.locator("[data-drag-tool=handle]").first()).toBeVisible();
+  });
+
+  test("course order on a phone (B1): the „↕“ menu and a finger on the handle", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(!isMobile, "the desktop project drags with a mouse, above");
+    info.setTimeout(info.timeout + LOCK_WAIT_MS);
+    const c = mine(info);
+    await takeOrder();
+    await signIn(page, context, visitorIp);
+    const order = await seedOrder();
+    const others = order.filter((s) => s !== c.slug);
+    await page.goto("/admin/koolitused");
+    await adminReady(page);
+
+    // the phone card of the frame: the handle, the thumbnail, the title over „{Õppevorm} · {Staatus}“ and the round „↕“; no arrows, no price, no headings
+    const row = courseRow(page, c.slug);
+    await expect(row.locator("[data-course-line]")).toHaveText(/^E-õpe · .+ · Näidis$/);
+    await expect(row.locator("[data-course-state]")).toBeHidden();
+    await expect(row.locator("[data-drag-tool=up]")).toBeHidden();
+    await expect(row.locator("[data-course-price]")).toBeHidden();
+    await expect(page.locator("[data-course-head]")).toBeHidden();
+    const menu = page.getByRole("button", { name: `Liiguta: ${c.title}` });
+    const target = (await menu.boundingBox())!;
+    expect(Math.min(target.width, target.height)).toBeGreaterThanOrEqual(44);
+    const grip = (await handleOf(page, c.title).boundingBox())!;
+    expect(Math.min(grip.width, grip.height)).toBeGreaterThanOrEqual(44);
+    expect(await noOverflow(page)).toBe(true);
+
+    // „Esimeseks“, then „Viimaseks“; the focus is back on the „↕“ each time and the move is read out
+    await menu.tap();
+    await expect(page.getByRole("menuitem")).toHaveText(["Üles", "Alla", "Esimeseks", "Viimaseks"]);
+    await page.getByRole("menuitem", { name: "Esimeseks" }).tap();
+    await expect.poll(seedOrder).toEqual([c.slug, ...others]);
+    await expect(menu).toBeFocused();
+    await expect(announced(page)).toHaveText(`„${c.title}“ on nüüd 1. kohal.`);
+    await menu.tap();
+    await expect(page.getByRole("menuitem", { name: "Üles" })).toHaveAttribute("aria-disabled", "true");
+    await expect(page.getByRole("menuitem", { name: "Esimeseks" })).toHaveAttribute("aria-disabled", "true");
+    await page.getByRole("menuitem", { name: "Viimaseks" }).tap();
+    await expect.poll(seedOrder).toEqual([...others, c.slug]);
+    await expect(menu).toBeFocused();
+    // the stored order is what a reload shows
+    await page.reload();
+    await adminReady(page);
+    await expect(page.locator("[data-course-row]").nth(order.length - 1)).toHaveAttribute("data-course-row", c.slug);
+
+    // a finger on the handle drags it one place up: the page does not scroll with it, one move is stored, no row doubled or lost
+    const handle = handleOf(page, c.title);
+    // (to the middle of the screen: `next dev`'s own round badge sits at the bottom left, over the last row's handle, and a finger would land on it)
+    await handle.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    const from = (await handle.boundingBox())!;
+    const previous = (await courseRow(page, others[others.length - 1]).boundingBox())!;
+    await dragWithFinger(page, { x: from.x + from.width / 2, y: from.y + from.height / 2 }, { x: from.x + from.width / 2, y: previous.y + previous.height / 2 - 4 });
+    await expect.poll(seedOrder).toEqual([...others.slice(0, -1), c.slug, others[others.length - 1]]);
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+    await expect(handleOf(page, c.title)).toBeFocused();
+    await expect(announced(page)).toHaveText(`„${c.title}“ on nüüd ${order.length - 1}. kohal.`);
+    await page.reload();
+    await adminReady(page);
+    const shown = await page.locator("[data-course-row]").evaluateAll((els) => els.map((e) => e.getAttribute("data-course-row") ?? ""));
+    expect(shown.filter((s) => !s.startsWith(NEW_COURSE_SLUG_PREFIX))).toEqual(await seedOrder());
+    expect(new Set(shown).size).toBe(shown.length);
   });
 
   test("'Teadmiste test' (e-course completion): a question without a right answer is marked in its card and nothing is saved; with one it saves with the course", async ({ page, context, visitorIp }, info) => {
