@@ -160,8 +160,11 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
     more.push({ label: t.cancelInvoice, tone: "danger", onSelect: () => open("cancel", "menu") });
   }
   if (status === "paid" && !v.online) more.push({ label: t.undoPaid, tone: "danger", onSelect: () => open("undo", "menu") });
-  /** What S3-f's panel says comes off: the sum the server will take back (capped), else — where the page does not know — the receipt's own amount. */
-  const takeBackCents = v.takeBack ? v.takeBack.cents : v.amountCents;
+  /**
+   * What S3-f's panel says comes off: the sum the server will take back (capped), else — where the page has not worked it out — the receipt's own amount.
+   * A receipt whose registration is gone (`registrationId` null) is only cancelled by the server, so nothing comes off: no sum (0 leaves the line out).
+   */
+  const takeBackCents = v.takeBack ? v.takeBack.cents : v.registrationId === null ? 0 : v.amountCents;
   const bare = (cents: number) => formatEUR(cents, "et").replace(/ €$/, "");
   const when = (iso: string) => formatDate(new Date(iso), "et");
   const short = (iso: string) => formatDayMonth(new Date(iso), "et");

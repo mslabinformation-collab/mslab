@@ -283,7 +283,16 @@ describe("„Võta tasumine tagasi“ of a receipt asks with a ConfirmPanel (S3-
     expect(linesOf(panel()!)).toEqual(["Kviitung tühistatakse (number jääb alles).", "Laekunud summa väheneb 0,01 €."]);
   });
 
-  test("where the page has no registration to read (it was deleted) the receipt's own amount is shown and the third line is left out", async () => {
+  test("M5: a receipt whose registration was deleted is only cancelled by the server — no money comes off anything — so the panel has no sum line and no status line", async () => {
+    await show(view({ ...RECEIPT, registrationId: null, takeBack: null }));
+    await choose("Võta tasumine tagasi");
+    expect(text($("[data-confirm-panel] p"))).toBe("Kas võtan kviitungi MSL2026-003 tasumise tagasi?");
+    expect(linesOf(panel()!)).toEqual(["Kviitung tühistatakse (number jääb alles)."]);
+    expect(text(panel()!)).not.toContain("Laekunud summa väheneb");
+    expect(buttonsOf(panel()!)).toEqual(["Jah, võta tasumine tagasi", "Katkesta"]);
+  });
+
+  test("where the page has not worked out the take-back of a receipt that has its registration, the receipt's own amount is shown and the third line is left out", async () => {
     await show(view({ ...RECEIPT, takeBack: null }));
     await choose("Võta tasumine tagasi");
     expect(linesOf(panel()!)).toEqual(["Kviitung tühistatakse (number jääb alles).", "Laekunud summa väheneb 175 €."]);

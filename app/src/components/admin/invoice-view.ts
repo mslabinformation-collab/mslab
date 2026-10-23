@@ -36,7 +36,7 @@ export type InvoiceView = {
    * What „Võta tasumine tagasi“ of a receipt will do to its registration (domain/invoice.ts receiptTakeBack: the sum the server takes off „Laekunud
    * summa“, capped at what no other paid invoice covers, and whether a confirmed registration then falls under 50 %), for the S3-f panel. The
    * registration's drawer and the Arved list give it (server/invoices.ts receiptTakeBacks reads it for the list); null for an invoice that is no
-   * receipt and for a receipt whose registration is gone, where the panel shows the receipt's own amount and says nothing of the status.
+   * receipt and for a receipt whose registration is gone (`registrationId` null: the server only cancels it, so the panel names no sum and no status).
    */
   takeBack: { cents: number; backToAwaiting: boolean } | null;
   sentAt: string | null;
