@@ -110,10 +110,6 @@
   gap: 6px 16px;
 }
 
-.editorHead p {
-  margin: 0;
-}
-
 .part {
   display: grid;
   gap: 16px;

@@ -4497,6 +4497,7 @@
       "expect": [
         "Enne kirjutamist on registreeringu kaardil nupp „Lisa protokoll“, sest protokolli veel pole.",
         "Lehel on koolituse nimi, kuupäev ja Proov 1 nimi.",
+        "Lehe ülaservas on link „← Protokollid“, mis viib protokollide nimekirja.",
         "„Praktiline osa“ all on koolituse punktid ja nende all „Üldised märkused“.",
         "Kirjutades näed nime kõrval „Salvestamata muudatused“, siis „✓ Salvestatud …“ kellaajaga; püsti tahvlis „✓“ ja kellaaeg.",
         "Pärast uuesti laadimist on tekst alles.",
