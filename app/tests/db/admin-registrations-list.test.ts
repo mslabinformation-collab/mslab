@@ -100,8 +100,9 @@ describe("search (?otsi=): name, e-mail and phone", () => {
     // Kati's „+372 5123 4567“ typed without the code, and with it
     expect(await names({ search: "5123 4567" })).toEqual(["Kati Kask"]);
     expect(await names({ search: "+372 5123 4567" })).toEqual(["Kati Kask"]);
-    // a 372 with 7 digits or fewer after it is digits typed so far: it finds the numbers stored with the code
-    expect((await names({ search: "+372 5000" })).length).toBeGreaterThanOrEqual(4);
+    // a 372 with 7 digits or fewer after it is digits typed so far: it finds the numbers stored with the code (and no other: not Kati's „+372 5123…“, not
+    // the ones stored without it), in the helper's order (code units: capitals, then lower case, then Cyrillic)
+    expect(await names({ search: "+372 5000" })).toEqual(["Eda Ekursus", "Ene Ekursus", "Lea Lash", "a_b Tamm", "Мария Кузнецова"]);
     expect(await names({ search: "+372 6000" })).toEqual([]);
   });
 

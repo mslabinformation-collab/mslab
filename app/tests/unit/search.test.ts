@@ -41,7 +41,7 @@ describe("phoneQuery", () => {
     expect(phoneQuery("+3726123456")).toBe("%6123456%");
     expect(phoneQuery("372 612-3456")).toBe("%6123456%");
     expect(phoneQuery("612 3456")).toBe(phoneQuery("+372 612 3456"));
-    // and an 8-digit mobile number, as before
+    // and the first 7 digits of a mobile number, typed so far, are searched the same way
     expect(phoneQuery("+372 5123 456")).toBe("%5123456%");
   });
 
