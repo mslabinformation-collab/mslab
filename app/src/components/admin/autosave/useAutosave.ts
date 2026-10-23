@@ -84,6 +84,8 @@ export function useAutosave(o: {
       flush: () => engine.flush(),
       restore: () => engine.restore(),
       unconfirmed: () => engine.unconfirmed(),
+      /** The conflict as it is now (`conflict` is the one of the last render): for an async handler that has awaited a flush, which may have met one. */
+      conflictNow: () => engine.snapshot().conflict,
     }),
     [engine],
   );

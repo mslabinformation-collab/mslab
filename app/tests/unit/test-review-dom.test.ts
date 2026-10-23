@@ -305,6 +305,36 @@ describe("TestReview", () => {
     expect(actions.review.mock.calls[0][0].review).toEqual({ qavatud1: { verdict: "ok", comment: "" }, qavatud2: { verdict: "ok", comment: "" } });
   });
 
+  test("I2 (final review): the conflict is found by the send's own flush, inside the debounce: „Saada“ looked clean before it, so after the flush it is held too — the review is not sent, the draft is not deleted, and the conflict's sentence is at the button", async () => {
+    actions.review.mockResolvedValue({ kind: "reviewed", status: "passed", completed: false });
+    await show();
+    await click(verdict("qavatud1", "ok"));
+    await click(verdict("qavatud2", "fix"));
+    expect(chip()).toBe("saved");
+    // her phone saves newer marks: this screen does not know yet (nothing of its own is on its way)
+    const other = { qavatud1: { verdict: "fix", comment: "Teisest seadmest." }, qavatud2: NONE } as Marks;
+    remote.version = 5;
+    remote.marks = other;
+    // a comment typed and „Saada“ pressed at once: the comment is still waiting out its debounce, so the send's flush is the save that meets the 409
+    await type(comment("qavatud2"), "Parandada.");
+    expect(chip()).not.toBe("conflict");
+    const before = saves().length;
+    await send();
+    expect(saves()).toHaveLength(before + 1); // (the flush made the save that was refused)
+    expect(chip()).toBe("conflict");
+    expect(actions.review).not.toHaveBeenCalled();
+    expect($("[data-review-error]")!.textContent).toBe(adminEt.autosave.conflict);
+    expect(document.activeElement).toBe($("[data-review-error]"));
+    expect(remote.marks).toEqual(other); // (the other device's marks are untouched)
+    expect(comment("qavatud2")!.value).toBe("Parandada."); // (and what she typed is kept)
+    // „Taasta minu tekst“ is the explicit overwrite; then the send goes through
+    await click(restore());
+    expect($("[data-review-error]")!.textContent).toBe("");
+    await send();
+    expect(actions.review).toHaveBeenCalledTimes(1);
+    expect(actions.review.mock.calls[0][0].review).toEqual({ qavatud1: { verdict: "ok", comment: "" }, qavatud2: { verdict: "fix", comment: "Parandada." } });
+  });
+
   test("M1: what Postgres cannot store (a control character from a paste; a lone surrogate goes the same way, see the route test) is taken out of a comment as it is typed, so no save is refused for it; an emoji stays", async () => {
     await show();
     await click(verdict("qavatud2", "fix"));

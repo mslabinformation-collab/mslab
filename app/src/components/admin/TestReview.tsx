@@ -202,6 +202,13 @@ function ReviewForm({
     start(async () => {
       // what she typed last is saved first: no save of the marks is on its way when the review is stored (the server then deletes the draft)
       await auto.flush();
+      // that save may be the one that meets the other device's marks (a comment still inside its debounce when „Saada“ was pressed): the check above
+      // could not know, and sending now would mail this screen's marks and delete the draft that holds the other device's. Held the same way
+      const meanwhile = auto.conflictNow();
+      if (meanwhile && meanwhile.value !== null) {
+        setError(adminEt.autosave.conflict);
+        return;
+      }
       const result = await reviewAttemptAction({ attemptId: attempt.id, review, submittedAt: attempt.submittedAt });
       if (result.kind === "reviewed") {
         onSent(result.completed ? t.sent.completed : result.status === "passed" ? t.sent.passed : t.sent.fix);
