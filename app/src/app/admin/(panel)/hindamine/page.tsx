@@ -65,7 +65,7 @@ export default async function AssessmentPage() {
             {t.empty}
           </p>
         ) : (
-          <ul className={styles.items} data-queue="">
+          <ul className={styles.items}>
             {items.map((i) => (
               <li key={rowKey(i)} className={styles.item} data-queue-row={rowKey(i)} data-queue-item={i.accessId} data-queue-kind={i.kind}>
                 <span className={styles.what}>

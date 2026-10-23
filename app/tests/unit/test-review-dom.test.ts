@@ -9,7 +9,7 @@ import { adminEt } from "@/i18n/dict/admin";
 
 // Maria's test review (e-course completion, spec §5.4) and "Ava test uuesti" (§5.2), in a browser-like document (happy-dom) with the server
 // actions answered here: the choice part read-only with every pick against the key; the open answers' verdicts and comments, refused in place
-// when one is missing; the draft kept in this browser until it is sent; a rewrite back for review; the read-only review; the reopen's step.
+// when one is missing; the draft kept in this browser until it is sent; a rewrite back for review; the read-only review; the reopen's ConfirmPanel.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
