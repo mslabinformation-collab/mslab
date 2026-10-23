@@ -25,7 +25,7 @@ vi.mock("@/components/admin/Drawer", async () => {
   return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useUnsavedInDrawer: () => {} };
 });
 vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), addManualPaymentAction: vi.fn(), saveRegistrationStatus: vi.fn() }));
-vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn() }));
+vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn(), extendAccessAction: vi.fn() }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn(), reissueCertificateAction: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({ createInvoiceAction: vi.fn(), sendInvoiceAction: vi.fn(), markInvoicePaidAction: vi.fn(), undoInvoicePaidAction: vi.fn(), cancelInvoiceAction: vi.fn(), updateInvoiceBuyerAction: vi.fn(), catchUpInvoiceAction: vi.fn(), saveInvoiceSettingsAction: vi.fn() }));
@@ -123,7 +123,8 @@ test("the drawers: the registration's answers (none for 'Ei soovi'); the student
   expect(none).not.toContain("data-registration-feedback");
   expect(none).toMatch(/Tagasiside<\/span>[\s\S]*?pole antud/);
   const html = renderToStaticMarkup(ClientDetailView({ detail: (await clientDetail(db, kati))!, ecourses: [], now: at(20) }));
-  const section = html.slice(html.indexOf("data-client-feedback"));
+  // („Tagasiside“ is a folded row of the drawer: its summary — the title and how many — comes before what is inside)
+  const section = html.slice(html.lastIndexOf("<details", html.indexOf("data-client-feedback")));
   for (const text of ["Tagasiside", "Kulmude lamineerimine", "Vastas ootustele", "9/10"]) expect(section, text).toContain(text);
   await db.update(registrations).set({ clientId: null }).where(eq(registrations.id, mari.id));
   expect(renderToStaticMarkup(ClientDetailView({ detail: (await clientDetail(db, kati))!, ecourses: [], now: at(20) }))).toContain("Tagasisidet pole antud.");

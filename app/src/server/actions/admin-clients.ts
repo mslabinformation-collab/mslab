@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
-import { addClientForm, extendAccessRequest, grantAccessForm, revokeAccessForm, unlockNextForm, type ClientResult, type ExtendAnswer } from "../admin-clients";
+import { addClientForm, extendAccessRequest, grantAccessForm, openStudentHref, revokeAccessForm, unlockNextForm, type ClientResult, type ExtendAnswer } from "../admin-clients";
 import { adminAction } from "../auth";
 import { logFailure } from "../log";
 
@@ -25,10 +25,14 @@ async function run(what: string, work: (db: Db) => Promise<ClientResult>): Promi
   }
 }
 
-/** "Lisa õpilane": field email. Opens the student's drawer (a new or an existing one), where "Ava ligipääs" is. */
+/**
+ * "Lisa õpilane": fields email and `back` (the list's own address: its form, search and page). Opens the student's drawer (a new or an existing one), where "Ava
+ * ligipääs" is, over the same list (README A5).
+ */
 export const addStudent = adminAction(async (_admin, _prev: ClientResult | null, formData: FormData) => {
   const result = await run("add student", (db) => addClientForm(db, formData));
-  if (result.ok && result.id) redirect(`/admin/opilased?id=${result.id}`);
+  const back = formData.get("back");
+  if (result.ok && result.id) redirect(openStudentHref(typeof back === "string" ? back : null, result.id));
   return result;
 });
 

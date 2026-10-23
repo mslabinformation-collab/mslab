@@ -1139,18 +1139,20 @@ export const adminEt = {
     title: "Õpilased",
     lead: "Kõik, kellel on konto. Ava õpilane, et näha tema koolitusi ja avada talle e-koolitus.",
     typeLabel: "Õppevorm",
+    // the form pills, each with its count (README A5)
     type: { all: "Kõik", e: "E-õpe", k: "Kontaktõpe" },
-    searchLabel: "Otsi nime või e-posti järgi",
-    search: "Otsi",
-    clearSearch: "Tühjenda otsing",
+    // the toolbar (README A5, B7): the search as she types, over the name, the e-mail and the phone; there is no „Otsi“ button
+    searchPlaceholder: "Otsi nime, e-posti või telefoni järgi",
     count: "Õpilasi: {n}",
-    empty: "Õpilasi veel pole.",
-    emptyFiltered: "Selle valikuga õpilasi pole.",
+    // what the list is of, in a sentence (ListEmpty: „Õpilasi veel pole.“, „Selle valikuga õpilasi pole.“, P-9)
+    things: "õpilasi",
     col: { name: "Nimi ja e-post", created: "Lisatud", courses: "Koolitusi" },
-    // what "Koolitusi" counts (shown above the list)
+    // what "Koolitusi" counts: the column header's title and its description (README A5)
     coursesHint: "Koolitusi: tema registreerimised (tühistatuid arvestamata) ja e-koolitused (lõpetatud ligipääse arvestamata, aegunuid arvestatakse).",
     open: "Ava {name}",
     add: {
+      // the header button that opens the small form (README A5)
+      toggle: "Lisa õpilane +",
       label: "Lisa õpilane e-posti järgi",
       button: "Lisa õpilane",
       hint: "Nt e-koolituse ostja, kes pole veel sisse loginud. Kui õpilane on juba olemas, avaneb tema kaart.",
@@ -1171,19 +1173,20 @@ export const adminEt = {
       phone: "Telefon",
       locale: "Keel",
       viewAs: "Vaata tema vaadet",
-      access: "E-koolitused",
-      // one e-course's row: her lessons done of all, and her page of that course (read-only)
-      progress: "{done}/{total} tehtud",
-      viewCourse: "Vaata tema vaadet",
-      viewCourseLabel: "Vaata tema vaadet: {course}",
-      noAccess: "E-koolitusi pole avatud.",
-      state: { active: "Avatud kuni {date}", expired: "Lõppes {date}", revoked: "Lõpetatud {date}" },
+      // one list: her e-course accesses and her registrations, newest first (README A5); the empty list reads as the lists do („Koolitusi veel pole.“)
+      courses: "Koolitused",
+      coursesThing: "Koolitusi",
+      // a card's pill: „Läbitud“ (completed, also when the access ran out since), „Ligipääs lõppes“ (ran out by date, S3-h), „Ligipääs lõpetatud“ (ended by an admin)
+      state: { active: "Avatud kuni {date}", completed: "Läbitud {date}", expired: "Ligipääs lõppes {date}", revoked: "Ligipääs lõpetatud {date}" },
       grantedBy: "Avas {who}, {date}",
       // an access a paid e-course purchase opened (granted_by "payment", phase 2b)
       byPayment: "veebimakse",
-      registrations: "Registreerimised",
-      noRegistrations: "Registreerimisi pole.",
-      openRegistration: "Ava registreerimine",
+      // the card of a registration: its action (the phone's shorter words are drawn: „Registreering“, „Protokoll“)
+      openRegistration: "Ava registreering",
+      openRegistrationShort: "Registreering",
+      openProtocolShort: "Protokoll",
+      // the trigger of an access card's „Veel ▾“ is named by the course (the drawn text is „Veel“)
+      moreLabel: "Veel: {course}",
       requests: "Päringud",
       noRequests: "Päringuid pole.",
       openRequests: "Vaata päringutes",
@@ -1193,11 +1196,15 @@ export const adminEt = {
       noContracts: "Lepinguid veel pole.",
     },
     grant: {
+      // the folded row at the end of the drawer (README A5, Part 2 prototype): „Ava ligipääs e-koolitusele“ and its one-line summary
+      fold: "Ava ligipääs e-koolitusele",
+      foldSummary: "vali koolitus",
       title: "Ava ligipääs",
       course: "E-koolitus",
+      // the course select's lines: „{course} · mustand · avatud kuni {date}“ (README A5)
       draft: "mustand",
       // a course she can open now (granting it again moves the day)
-      openUntil: "(avatud kuni {date})",
+      openUntil: "avatud kuni {date}",
       until: "Ligipääs kuni",
       untilHint: "Täidetud koolituse ligipääsu kestusega tänasest. Võid muuta.",
       untilHintDefault: "Koolitusel pole kestust määratud — täidetud {n} kuuga. Võid muuta.",
@@ -1225,28 +1232,32 @@ export const adminEt = {
       date: "Vali kuupäev, mis on hilisem kui praegune lõpp.",
       done: "Ligipääs pikendatud kuni {date}.",
     },
+    // „Lõpeta ligipääs“ under „Veel ▾“ asks with a ConfirmPanel (P-13): the question, the consequence, „Jah, lõpeta“ and „Katkesta“
     revoke: {
       button: "Lõpeta ligipääs",
-      confirm: "Kas lõpetan ligipääsu koolitusele „{course}“? Õpilane ei saa seda enam avada.",
+      question: "Kas lõpetan ligipääsu koolitusele „{course}“?",
+      line: "Õpilane ei saa seda enam avada.",
       yes: "Jah, lõpeta",
-      no: "Ei",
     },
-    // "Ava järgmine õppetund": the student's first lesson she cannot open yet, opened for her
+    // "Ava järgmine õppetund" under „Veel ▾“: the student's first lesson she cannot open yet, opened for her (a ConfirmPanel, P-13)
     unlock: {
       button: "Ava järgmine õppetund",
-      confirm: "Kas avan õpilasele õppetunni „{lesson}“? Ta saab selle kohe vaadata.",
+      question: "Kas avan õpilasele õppetunni „{lesson}“?",
+      line: "Ta saab selle kohe vaadata.",
       yes: "Jah, ava",
-      no: "Ei",
       done: "Õppetund „{lesson}“ on avatud.",
     },
-    // the drawer's line about each e-course access (e-course completion, spec §5.5): {done}/{total} her lessons, {state} a step's state in the
-    // words below, {percent} her newest test score, {date} the day the course was completed
+    // the card's line about each e-course access (e-course completion, spec §5.5; P-7: the prototype's, no colons): {done}/{total} her lessons, {state} a
+    // step's state in the words below, {percent} her newest test score. The phone's line is shorter („3/3 · test läbitud · praktiline ootab“): the same
+    // steps, ' hindamist' dropped from the states. A completed course has no line (its pill says „Läbitud {date}“)
     steps: {
       lessons: "Õppetunnid {done}/{total}",
-      test: "Test: {state}",
-      testScore: "Test: {state} ({percent} %)",
-      practical: "Praktiline töö: {state}",
-      completed: "Lõpetatud {date}",
+      test: "Test {state}",
+      testScore: "Test {state} ({percent} %)",
+      practical: "Praktiline töö {state}",
+      lessonsShort: "{done}/{total}",
+      testShort: "test {state}",
+      practicalShort: "praktiline {state}",
       testStates: { locked: "lukus", open: "avatud", review: "ootab hindamist", fix: "parandamisel", done: "läbitud", used: "katsed otsas" },
       practicalStates: { locked: "lukus", open: "avatud", review: "ootab hindamist", fix: "parandamisel", done: "kinnitatud" },
     },

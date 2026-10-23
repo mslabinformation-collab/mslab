@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { clients, courseAccess, courses, payments } from "@/db/schema";
+import { formatEUR } from "@/domain/money";
 import { adminEt } from "@/i18n/dict/admin";
 import { makeTestDb } from "./helpers";
 import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtures";
@@ -27,7 +28,7 @@ vi.mock("@/components/admin/Drawer", async () => {
   return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useUnsavedInDrawer: () => {} };
 });
 vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), addManualPaymentAction: vi.fn(), saveRegistrationStatus: vi.fn() }));
-vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn() }));
+vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn(), extendAccessAction: vi.fn() }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn(), reissueCertificateAction: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({ createInvoiceAction: vi.fn(), sendInvoiceAction: vi.fn(), markInvoicePaidAction: vi.fn(), undoInvoicePaidAction: vi.fn(), cancelInvoiceAction: vi.fn(), updateInvoiceBuyerAction: vi.fn(), catchUpInvoiceAction: vi.fn(), saveInvoiceSettingsAction: vi.fn() }));
@@ -251,8 +252,13 @@ test("Registreerimised: no online payments, no block; and the old e-learning not
 test("Õpilased drawer: 'Maksed' lists hers — her own and her registration's — with the course; an access a payment opened says 'Avas veebimakse'", async () => {
   const detail = (await clientDetail(db, ids.kati))!;
   const html = renderToStaticMarkup(ClientDetailView({ detail, ecourses: await listEcourses(db), now: at(10) }));
-  const block = /<section[^>]*data-client-payments[^>]*>([\s\S]*?)<\/section>/.exec(html)![1];
-  expect(block).toContain(">Maksed</h3>");
+  // „Maksed“ is a folded row of the drawer: its summary says how many and the sum paid (the paid ones: the money in, not the held or voided), what is inside is the lines
+  const at0 = html.indexOf("data-client-payments");
+  const folded = html.slice(html.lastIndexOf("<details", at0), html.indexOf("</details>", at0));
+  const block = folded.slice(folded.indexOf("data-client-payments"));
+  const paid = detail.payments.filter((p) => p.status === "paid").reduce((sum, p) => sum + p.amountCents, 0);
+  expect(folded).toContain(">Maksed</span>");
+  expect(/data-fold-summary="">([^<]*)</.exec(folded)![1]).toBe(`3 · ${formatEUR(paid, "et")}`);
   expect(refs(block)).toEqual([refsOf.ecourse, refsOf.balance, refsOf.prepayment]);
   const ecourse = row(block, refsOf.ecourse);
   expect(ecourse).toContain("190 €");

@@ -1,0 +1,47 @@
+/* The actions of an e-course card (README A5): „Hinda“, „Pikenda ▾“ and „Veel ▾“ in a wrapping row, the question of a ConfirmPanel under them and the
+   line that says which lesson was opened. */
+
+.actions {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* a ConfirmPanel keeps its own bottom margin (16px); here it is the last thing in the card's column */
+.panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.panel > div[data-confirm-panel] {
+  margin-bottom: 0;
+}
+
+.panel p:empty {
+  display: none;
+}
+
+/* "Ava järgmine õppetund": the line that says which lesson was opened. It is a status region from the start, so while it is empty it takes no room
+   (the column's gap is taken back) and when it fills the focus comes to it. */
+.done {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.done:empty {
+  margin-top: -10px;
+}
+
+.done:focus {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}

@@ -211,7 +211,7 @@ describe("the contract checks sit where their preconditions exist", () => {
       expect(at(id), id).toBeGreaterThanOrEqual(at(add!.id));
     }
     // the ask button and the „Õpilased“ panel are read after the step that adds her, within the same check
-    expect(item("registreerimine-leping-plokk").steps.findIndex((s) => s.includes("Saada leping kinnitamiseks") || s.includes("vaata plokki „Lepingud“"))).toBeGreaterThan(0);
+    expect(item("registreerimine-leping-plokk").steps.findIndex((s) => s.includes("Saada leping kinnitamiseks") || s.includes("voldirida „Lepingud“"))).toBeGreaterThan(0);
     expect(at("konto-kood")).toBeLessThan(at("konto-minu-koolitused"));
     expect(at("konto-kood")).toBeLessThan(at("konto-leping-kinnita"));
     expect(at("konto-kood")).toBeLessThan(at("konto-leping-kaardil"));

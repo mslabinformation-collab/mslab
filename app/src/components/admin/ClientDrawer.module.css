@@ -206,3 +206,154 @@
   gap: 4px;
   margin-top: 6px;
 }
+
+/* ---------- A5 (admin UX pass, README A5; the Part 2 prototype's Õpilased frames) ---------- */
+
+/* "Lisa õpilane +" at the right of the list's heading: the button, and the small form under it (full width under the heading on a phone) */
+.addBox {
+  display: grid;
+  justify-items: end;
+  gap: 14px;
+  flex: 0 1 460px;
+  min-width: 0;
+}
+
+.addBox .add {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .addBox {
+    flex-basis: 100%;
+    justify-items: start;
+  }
+}
+
+/* the drawer's head: the phone and the e-mail as links (600 13px, underlined), then the one line "Konto loodud … · Keel … · Uudiskiri: …" */
+.headContact {
+  font: 600 13px/1.3 var(--font-body);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.account {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* "Koolitused": one list of cards, an e-course access or a registration each */
+.courses {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.cards {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.what {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* the kicker over the title: "E-ÕPE", "KONTAKTÕPE · 14.11.2026 PÄRNU" (written in the dictionary's case, drawn in capitals) */
+.kicker {
+  color: var(--muted-2);
+  font: 600 10px/1.4 var(--font-body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.kicker:focus {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pill {
+  flex: none;
+}
+
+.pill:focus {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.steps {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* a registration's buttons */
+.cardButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* the same thing in two lengths (ClientDrawer.tsx Swap): the page holds the wide text; below the drawer's 640 px the phone's words, from `data-short`, are
+   drawn in its place */
+@media (max-width: 640px) {
+  .swap > .wide {
+    display: none;
+  }
+
+  .swap::after {
+    content: attr(data-short);
+  }
+
+  /* the phone card has no pill: its state is in the kicker */
+  .pill {
+    display: none;
+  }
+
+  /* a registration's two buttons share the card's width */
+  .cardButtons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cardButtons > a {
+    min-width: 0;
+    padding-inline: 10px;
+  }
+}
+
+/* the folded rows at the end of the drawer: a list under a rule */
+.folds {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}

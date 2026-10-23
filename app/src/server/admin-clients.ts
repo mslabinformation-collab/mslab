@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { contractView, type ContractView } from "@/components/admin/contract-view";
 import type { Db } from "@/db/client";
@@ -10,9 +10,10 @@ import { certificates, clients, courseAccess, courses, lessonProgress, practiceP
 import { accessState, defaultExpiryDate, endOfDayTallinn, extendByMonths, grantExpiry, isExtension, type AccessState } from "@/domain/client-access";
 import { percentOf, type CourseSteps } from "@/domain/completion";
 import { isEmail, normalizeEmail } from "@/domain/email";
-import { containsPattern, PAGE_SIZE } from "@/domain/paging";
+import { containsPattern, PAGE_SIZE, parsePage, parseSearch } from "@/domain/paging";
 import type { ReviewStatus } from "@/domain/review";
 import { registrationHeading } from "@/domain/registration-card";
+import { phoneQuery } from "@/domain/search";
 import { pick, type I18n } from "@/i18n/field";
 import { getDict } from "@/i18n/locales";
 import { parseRowId } from "@/lib/row-id";
@@ -46,9 +47,51 @@ const COURSES = sql<number>`((select count(*) from registrations r where r.clien
 const HAS_ACCESS = sql`exists (select 1 from course_access a where a.client_id = clients.id)`;
 const HAS_CONTACT = sql`exists (select 1 from registrations r join courses c on c.id = r.course_id where r.client_id = clients.id and c.type = 'contact')`;
 
+/**
+ * The search of the list (B7): the e-mail or the name holds the text (ILIKE, `%` `_` `\` escaped: containsPattern), or the phone's digits hold the
+ * text's digits (domain/search.ts: from 3 digits, so „+372 5123 4567“ finds a number stored as „51234567“ or „5123-4567“).
+ */
+function searchOf(q: string) {
+  if (!q) return undefined;
+  const text = containsPattern(q);
+  const phone = phoneQuery(q);
+  return or(
+    sql`clients.email ilike ${text}`,
+    sql`${NAME} ilike ${text}`,
+    phone ? sql`regexp_replace(clients.phone, '[^0-9]', '', 'g') like ${phone}` : undefined,
+  );
+}
+
 function clientWhere(filter: ClientFilter, q: string) {
-  const search = q ? sql`(clients.email ilike ${containsPattern(q)} or ${NAME} ilike ${containsPattern(q)})` : undefined;
-  return and(filter === "e" ? HAS_ACCESS : filter === "k" ? HAS_CONTACT : undefined, search);
+  return and(filter === "e" ? HAS_ACCESS : filter === "k" ? HAS_CONTACT : undefined, searchOf(q));
+}
+
+/** The counts on the list's form pills (README A5): everybody, those with an e-course access, those with a registration on a contact course — all under the search `q`, whichever form is chosen. */
+export type ClientCounts = { all: number; e: number; k: number };
+
+export async function clientCounts(db: Db, q: string): Promise<ClientCounts> {
+  const [row] = await db
+    .select({ all: sql<number>`count(*)::int`, e: sql<number>`(count(*) filter (where ${HAS_ACCESS}))::int`, k: sql<number>`(count(*) filter (where ${HAS_CONTACT}))::int` })
+    .from(clients)
+    .where(searchOf(q));
+  return { all: Number(row.all), e: Number(row.e), k: Number(row.k) };
+}
+
+/**
+ * Where the drawer of a student just added opens (README A5: „Lisa õpilane“ keeps the list it was added from): the list's own address `back`
+ * (`vorm`, `otsi`, `leht` — the form, the search and the page; anything else in it is dropped) with the student's `id`, in the order the page writes them.
+ */
+export function openStudentHref(back: string | null | undefined, id: number): string {
+  const from = new URLSearchParams(back ?? "");
+  const q = new URLSearchParams();
+  const vorm = from.get("vorm");
+  if (vorm === "e" || vorm === "k") q.set("vorm", vorm);
+  const otsi = parseSearch(from.get("otsi") ?? undefined);
+  if (otsi) q.set("otsi", otsi);
+  const leht = parsePage(from.get("leht") ?? undefined);
+  if (leht > 1) q.set("leht", String(leht));
+  q.set("id", String(id));
+  return `/admin/opilased?${q.toString()}`;
 }
 
 /**
@@ -86,6 +129,8 @@ export type ClientAccessRow = {
   grantedAt: Date;
   expiresAt: Date;
   revokedAt: Date | null;
+  /** The day the course was completed (never cleared, also when the access ended or ran out): „Läbitud {date}“. */
+  completedAt: Date | null;
   state: AccessState;
   /** Her lessons of this e-course: done of total (hidden lessons not counted), as the course page counts them. */
   progress: { done: number; total: number };
@@ -102,6 +147,8 @@ export type ClientAccessRow = {
   testPercent: number | null;
   /** She has made an attempt at the course's test ("Testi katsed"). */
   hasAttempts: boolean;
+  /** Her newest test attempt whose open answers wait for Maria's review (/admin/hindamine/test?id=), or null: „Hinda“. */
+  waitingAttemptId: number | null;
   /**
    * Her certificate of this e-course (phase 3d, spec §6), or null before she has confirmed her name; `revoked`: an admin ended the access, so
    * she can no longer download it (Maria still can, Review Focus 5).
@@ -193,7 +240,10 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
     ),
     access.length ? db.select({ id: protocols.id, accessId: protocols.accessId }).from(protocols).where(inArray(protocols.accessId, access.map((a) => a.id))) : [],
     regs.length ? db.select({ id: protocols.id, registrationId: protocols.registrationId }).from(protocols).where(inArray(protocols.registrationId, regs.map((r) => r.id))) : [],
-    db.select({ courseId: testAttempts.courseId, number: testAttempts.number, correct: testAttempts.correct, total: testAttempts.total }).from(testAttempts).where(eq(testAttempts.clientId, id)),
+    db
+      .select({ id: testAttempts.id, courseId: testAttempts.courseId, number: testAttempts.number, correct: testAttempts.correct, total: testAttempts.total, status: testAttempts.status })
+      .from(testAttempts)
+      .where(eq(testAttempts.clientId, id)),
     // her certificates (phase 3d): at most one per access
     access.length
       ? db
@@ -208,6 +258,9 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
   // her newest attempt at each course's test: its score is the step line's (none for an attempt of open answers only)
   const newest = new Map<number, { number: number; percent: number | null }>();
   for (const t of attempts) if ((newest.get(t.courseId)?.number ?? 0) < t.number) newest.set(t.courseId, { number: t.number, percent: t.total > 0 ? percentOf(t.correct, t.total) : null });
+  // the newest attempt of each course whose open answers wait for Maria
+  const waiting = new Map<number, { id: number; number: number }>();
+  for (const t of attempts) if (t.status === "review" && (waiting.get(t.courseId)?.number ?? 0) < t.number) waiting.set(t.courseId, { id: t.id, number: t.number });
   return {
     client,
     registrations: regs.map((r) => ({ ...r, protocolId: registrationProtocol.get(r.id) ?? null, contact: r.course.type === "contact" })),
@@ -223,6 +276,7 @@ export async function clientDetail(db: Db, id: number, now: Date = new Date()): 
         protocolId: accessProtocol.get(a.id) ?? null,
         testPercent: newest.get(a.courseId)?.percent ?? null,
         hasAttempts: newest.has(a.courseId),
+        waitingAttemptId: waiting.get(a.courseId)?.id ?? null,
         certificate: certificateView(certificateOf.get(a.id), a.revokedAt !== null),
       };
     }),

@@ -496,13 +496,15 @@ test("§9 e2e 7: 'Lisa protokoll' from the student's drawer, for her e-course ac
   const registrationId = await insertContactRegistration(s.email, s.clientId, courseEmail);
   await signInAsAdmin(page, context, visitorIp, created);
 
-  // her e-course: the step line, "Lisa protokoll" → the access's screen; Maria writes before the student has sent anything
+  // her e-course: the step line, „Veel ▾“ → "Lisa protokoll" → the access's screen; Maria writes before the student has sent anything
   await page.goto(`/admin/opilased?id=${s.clientId}`);
   await adminReady(page);
   const accessRow = page.locator(`[data-access="${s.courseId}"]`);
+  const veel = accessRow.locator('[data-more="veel"] button[aria-haspopup="menu"]');
   await expect(accessRow.locator("[data-access-steps]")).toContainText("Praktiline töö");
-  await expect(accessRow.locator("[data-access-protocol]")).toHaveText("Lisa protokoll");
-  await accessRow.locator("[data-access-protocol]").click();
+  await veel.click();
+  await expect(accessRow.getByRole("menuitem", { name: "Lisa protokoll" })).toBeVisible();
+  await accessRow.getByRole("menuitem", { name: "Lisa protokoll" }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/protokollid\\?ligipaas=${s.accessId}$`));
   await adminReady(page);
   await general(page, s.accessId).fill("Tere! Alusta ettevalmistusest; fotod lisad siis, kui test on tehtud.");
@@ -510,7 +512,9 @@ test("§9 e2e 7: 'Lisa protokoll' from the student's drawer, for her e-course ac
   expect(await storedProtocolOf(s.accessId)).toMatchObject({ round: 0, generalNote: "Tere! Alusta ettevalmistusest; fotod lisad siis, kui test on tehtud." });
   await page.goto(`/admin/opilased?id=${s.clientId}`);
   await adminReady(page);
-  await expect(page.locator(`[data-access="${s.courseId}"] [data-access-protocol]`)).toHaveText("Ava protokoll");
+  await veel.click();
+  await expect(accessRow.getByRole("menuitem", { name: "Ava protokoll" })).toBeVisible();
+  await veel.click();
 
   // her contact registration: "Lisa protokoll" → the registration's screen
   const regRow = page.locator(`[data-client-registration="${registrationId}"]`);

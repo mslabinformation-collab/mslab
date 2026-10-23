@@ -5,12 +5,13 @@ import type { Db } from "@/db/client";
 import { clients, courseAccess, courseModules, courses, courseSessions, courseTests, lessonProgress, lessons, protocols, registrations, testAttempts } from "@/db/schema";
 import { makeTestDb } from "./helpers";
 
-// The Õpilased drawer's e-course and registration rows (e-course completion, spec §5.5), rendered from a real (PGlite) database to HTML: the
-// step line as her own page reads her steps, "Lisa protokoll" before the protocol's first save and "Ava protokoll" after it, "Testi katsed" once
-// she has an attempt, "Ava test uuesti" while her tries are used up, "Lõpetatud" with its day, nothing to open on an access an admin ended,
-// and the contact registrations' own "Lisa protokoll". The server actions are stand-ins (they need a request).
+// The Õpilased drawer's cards (e-course completion, spec §5.5; admin UX pass A5), rendered from a real (PGlite) database to HTML: the step line as her own
+// page reads her steps (P-7: no colons; the phone's shorter line beside it), "Hinda" once work waits for Maria and "Ava test uuesti" while her tries are used
+// up, the pill — "Avatud kuni …", "Läbitud …" with its day, "Ligipääs lõppes …", "Ligipääs lõpetatud …" —, nothing to open on an access an admin ended, and the
+// contact registrations' own "Lisa protokoll" / "Ava protokoll". (What is under "Veel ▾" — the protocol, "Testi katsed" … — opens on a click: client-drawer-dom.test.ts.)
+// The server actions are stand-ins (they need a request).
 
-vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn() }));
+vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn(), extendAccessAction: vi.fn() }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn(), reissueCertificateAction: vi.fn() }));
 
@@ -58,38 +59,74 @@ const part = (html: string, attribute: string, value: string | number) => {
   return html.slice(from, next === -1 ? undefined : next);
 };
 
-test("an e-course's line, as she stands; 'Lisa protokoll' before the protocol's first save, 'Ava protokoll' after; 'Testi katsed' and 'Ava test uuesti' once her tries are used up", async () => {
+test("an e-course's line, as she stands (the phone's line beside it); 'Hinda' only once work waits; 'Ava test uuesti' once her tries are used up", async () => {
   const { client, access } = await kati();
   await lessonDone(client.id, lesson.one);
   let row = part(await drawer(client.id), "data-access", veeb.id);
-  expect(row).toContain("Õppetunnid 1/2 · Test: lukus · Praktiline töö: lukus");
-  expect(row).toContain(`href="/admin/protokollid?ligipaas=${access.id}"`);
-  expect(part(row, "data-access-protocol", "")).toContain("Lisa protokoll");
-  expect(row).not.toContain("data-access-attempts");
+  expect(part(row, "data-access-steps", "")).toContain("Õppetunnid 1/2 · Test lukus · Praktiline töö lukus");
+  expect(part(row, "data-access-steps", "")).toContain("1/2 · test lukus · praktiline lukus");
+  expect(row).not.toContain("data-access-assess");
   expect(row).not.toContain('data-reopen=""');
 
   await lessonDone(client.id, lesson.two);
   for (const n of [1, 2]) await failedAttempt(client.id, n);
   await db.insert(protocols).values({ accessId: access.id, stages: [{ title: "Ettevalmistus", note: "Alusta puhastusest." }, { title: "Värvimine", note: "" }] });
   row = part(await drawer(client.id), "data-access", veeb.id);
-  expect(row).toContain("Õppetunnid 2/2 · Test: katsed otsas (0 %) · Praktiline töö: lukus");
-  expect(row).toContain("Ava protokoll");
-  expect(row).toContain(`href="/admin/hindamine/test?ligipaas=${access.id}"`);
+  expect(part(row, "data-access-steps", "")).toContain("Õppetunnid 2/2 · Test katsed otsas (0 %) · Praktiline töö lukus");
+  expect(part(row, "data-access-steps", "")).toContain("2/2 · test katsed otsas · praktiline lukus");
   expect(row).toContain('data-reopen=""');
   expect(row).toContain("Ava test uuesti");
+  expect(row).not.toContain("data-access-assess");
 });
 
-test("'Lõpetatud' with its day once the course is completed; an access an admin ended keeps its line and has nothing to open", async () => {
+test("'Hinda' when the practical work waits (her protocol screen) or the test's open answers wait (that attempt); the practical work first", async () => {
+  const { client, access } = await kati();
+  const stages = [{ title: "Ettevalmistus", note: "" }, { title: "Värvimine", note: "" }];
+  // the test has an open question: her attempt waits for Maria
+  const open = { id: "qavatud1", kind: "open" as const, text: "Kirjelda." };
+  const [attempt] = await db
+    .insert(testAttempts)
+    .values({ clientId: client.id, courseId: veeb.id, number: 1, questions: [open], answers: { qavatud1: "Nii." }, correct: 0, total: 0, status: "review", submittedAt: NOW })
+    .returning();
+  let row = part(await drawer(client.id), "data-access", veeb.id);
+  expect(part(row, "data-access-assess", "")).toContain(`href="/admin/hindamine/test?id=${attempt.id}"`);
+  expect(part(row, "data-access-assess", "")).toContain("Hinda");
+  // and her practical work was sent too: it comes first
+  await db.insert(protocols).values({ accessId: access.id, stages, verdicts: [null, null], round: 1, submittedAt: NOW });
+  row = part(await drawer(client.id), "data-access", veeb.id);
+  expect(part(row, "data-access-assess", "")).toContain(`href="/admin/protokollid?ligipaas=${access.id}"`);
+  expect(row.match(/data-access-assess/g)).toHaveLength(1);
+});
+
+test("the pill: a completed course says 'Läbitud' with its day (and has no step line); an access an admin ended 'Ligipääs lõpetatud' and has nothing to open", async () => {
   const { client, access } = await kati({ completedAt: new Date("2026-11-14T10:00:00Z") });
   const row = part(await drawer(client.id), "data-access", veeb.id);
-  expect(row).toContain("Lõpetatud 14.11.2026");
+  expect(part(row, "data-access-pill", "")).toContain("Läbitud 14.11.2026");
+  expect(row).toContain('data-access-state="active"');
+  expect(row).not.toContain("data-access-steps");
   expect(row).not.toContain("Õppetunnid");
+  expect(row).toContain("data-access-actions");
   await db.update(courseAccess).set({ revokedAt: NOW }).where(eq(courseAccess.id, access.id));
   const ended = part(await drawer(client.id), "data-access", veeb.id);
-  expect(ended).toContain("Lõpetatud 14.11.2026");
-  expect(ended).not.toContain("data-access-protocol");
-  expect(ended).not.toContain("data-access-attempts");
+  expect(part(ended, "data-access-pill", "")).toContain("Ligipääs lõpetatud 20.10.2026");
+  expect(ended).toContain('data-access-state="revoked"');
+  expect(ended).not.toContain("Läbitud");
+  expect(ended).not.toContain("data-access-actions");
+  expect(ended).not.toContain("data-extend");
+  expect(ended).not.toContain("data-access-assess");
   expect(ended).not.toContain("data-reopen");
+});
+
+test("the pill of an access that ran out by date says 'Ligipääs lõppes …' (S3-h), with 'Pikenda ▾' beside it; one that ran out after the course was completed still says 'Läbitud'", async () => {
+  const { client, access } = await kati({ expiresAt: new Date("2026-09-30T20:59:59.999Z") });
+  let row = part(await drawer(client.id), "data-access", veeb.id);
+  expect(row).toContain('data-access-state="expired"');
+  expect(part(row, "data-access-pill", "")).toContain("Ligipääs lõppes 30.09.2026");
+  expect(row).toContain("data-extend");
+  await db.update(courseAccess).set({ completedAt: new Date("2026-09-20T10:00:00Z") }).where(eq(courseAccess.id, access.id));
+  row = part(await drawer(client.id), "data-access", veeb.id);
+  expect(part(row, "data-access-pill", "")).toContain("Läbitud 20.09.2026");
+  expect(part(row, "data-access-pill", "")).not.toContain("lõppes");
 });
 
 test("each contact registration: 'Lisa protokoll' before its first save, 'Ava protokoll' after; none for a cancelled one or an e-course's", async () => {

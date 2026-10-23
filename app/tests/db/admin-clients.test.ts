@@ -10,6 +10,7 @@ import { getDict } from "@/i18n/locales";
 import {
   addClient,
   addClientForm,
+  clientCounts,
   clientDetail,
   clientLabel,
   extendAccess,
@@ -18,6 +19,7 @@ import {
   grantAccessForm,
   listClients,
   listEcourses,
+  openStudentHref,
   revokeAccess,
   revokeAccessForm,
   undoExtendAccess,
@@ -122,6 +124,41 @@ describe("listClients", () => {
     expect(await find("'; drop table clients; --")).toEqual([]);
     expect(await find("example", "e")).toEqual(["kati.kask@example.test"]);
     expect(await db.select().from(clients)).toHaveLength(3);
+  });
+
+  test("search: a phone is found by its digits, whatever separators it was stored with or is typed with (from 3 digits; +372 is not needed)", async () => {
+    await client("a@example.test", { phone: "+372 5123 4567" });
+    await client("b@example.test", { phone: "5123-4568" });
+    await client("c@example.test", { phone: "" });
+    await client("d@example.test", { name: "Kati 5", phone: "+372 6123456" });
+    const find = async (q: string) => (await listClients(db, { filter: "all", q, page: 1 })).rows.map((r) => r.email).sort();
+    expect(await find("51234567")).toEqual(["a@example.test"]);
+    expect(await find("+372 5123 4567")).toEqual(["a@example.test"]);
+    expect(await find("5123-4568")).toEqual(["b@example.test"]);
+    expect(await find("5123")).toEqual(["a@example.test", "b@example.test"]);
+    expect(await find("+372 612 3456")).toEqual(["d@example.test"]);
+    expect(await find("51")).toEqual([]); // two digits are not a phone
+    expect(await find("Kati 5")).toEqual(["d@example.test"]); // a name with a digit is still a name
+  });
+
+  test("the form pills' counts: everybody, E-õpe, Kontaktõpe — under the search, whichever form is chosen", async () => {
+    const onlyE = await client("kati.e@example.test", { name: "Kati E" });
+    const onlyK = await client("kati.k@example.test", { name: "Kati K" });
+    const both = await client("kati.both@example.test", { name: "Kati Both" });
+    const other = await client("liis@example.test", { name: "Liis" });
+    await client("kati.none@example.test", { name: "Kati None" });
+    await access(onlyE.id);
+    await access(both.id, { revokedAt: NOW }); // ended, still an e-course access
+    await register(onlyK.id, onlyK.email);
+    await register(both.id, both.email);
+    await access(other.id);
+    expect(await clientCounts(db, "")).toEqual({ all: 5, e: 3, k: 2 });
+    expect(await clientCounts(db, "kati")).toEqual({ all: 4, e: 2, k: 2 });
+    expect(await clientCounts(db, "KATI B")).toEqual({ all: 1, e: 1, k: 1 });
+    expect(await clientCounts(db, "100%")).toEqual({ all: 0, e: 0, k: 0 });
+    // each count is what its pill then lists
+    const listed = async (filter: "all" | "e" | "k") => (await listClients(db, { filter, q: "kati", page: 1 })).total;
+    expect([await listed("all"), await listed("e"), await listed("k")]).toEqual([4, 2, 2]);
   });
 
   test("50 a page; a page beyond the end shows the last one", async () => {
@@ -258,7 +295,44 @@ describe("clientDetail", () => {
   });
 });
 
+describe("clientDetail for the Koolitused cards (A5)", () => {
+  test("each access carries the day it was completed and the attempt whose open answers wait for Maria (the newest one), for „Hinda“", async () => {
+    const kati = await client("kati@example.test", { name: "Kati" });
+    const open = { id: "qavatud1", kind: "open" as const, text: "Kirjelda." };
+    const choice = { id: "qvalik01", kind: "choice" as const, text: "Üks?", options: [{ id: "o1oige01", text: "Jah", correct: true }, { id: "o1vale01", text: "Ei", correct: false }] };
+    await db.insert(courseTests).values({ courseId: ecourse.id, questions: [open, choice], passPercent: 80, tries: 3 });
+    const waiting = await access(kati.id, { completedAt: null });
+    const completed = await access(kati.id, { courseId: draftEcourse.id, completedAt: new Date("2026-10-01T10:00:00Z") });
+    const attempt = (number: number, status: "failed" | "review" | "passed", submittedAt: string, courseId = ecourse.id) =>
+      db
+        .insert(testAttempts)
+        .values({ clientId: kati.id, courseId, number, questions: [open], answers: { qavatud1: "Nii." }, correct: 0, total: 0, status, submittedAt: new Date(submittedAt) })
+        .returning();
+    const [, second] = [await attempt(1, "failed", "2026-10-02T10:00:00Z"), await attempt(2, "review", "2026-10-03T10:00:00Z")];
+    const d = (await clientDetail(db, kati.id, NOW))!;
+    const byId = new Map(d.access.map((a) => [a.id, a]));
+    expect(byId.get(waiting.id)).toMatchObject({ completedAt: null, waitingAttemptId: second[0].id });
+    expect(byId.get(completed.id)).toMatchObject({ completedAt: new Date("2026-10-01T10:00:00Z"), waitingAttemptId: null });
+    // once it is reviewed nothing waits
+    await db.update(testAttempts).set({ status: "passed" }).where(eq(testAttempts.id, second[0].id));
+    expect((await clientDetail(db, kati.id, NOW))!.access.find((a) => a.id === waiting.id)).toMatchObject({ waitingAttemptId: null });
+  });
+});
+
 describe("Lisa õpilane", () => {
+  test("the drawer opened after adding keeps the list it was added from: only vorm, otsi and leht are carried, the student's id is last", () => {
+    expect(openStudentHref("vorm=e&otsi=kati&leht=3", 17)).toBe("/admin/opilased?vorm=e&otsi=kati&leht=3&id=17");
+    expect(openStudentHref("otsi=Kati+Kask", 17)).toBe("/admin/opilased?otsi=Kati+Kask&id=17");
+    expect(openStudentHref("", 17)).toBe("/admin/opilased?id=17");
+    expect(openStudentHref(null, 17)).toBe("/admin/opilased?id=17");
+    expect(openStudentHref(undefined, 5)).toBe("/admin/opilased?id=5");
+    // page 1 is no parameter; a bad form, a bad page, a second id and anything else the address holds are dropped
+    expect(openStudentHref("leht=1&vorm=x&id=99&evil=1", 17)).toBe("/admin/opilased?id=17");
+    expect(openStudentHref("leht=abc&vorm=k", 17)).toBe("/admin/opilased?vorm=k&id=17");
+    expect(openStudentHref(`otsi=${"x".repeat(150)}`, 17)).toBe(`/admin/opilased?otsi=${"x".repeat(100)}&id=17`);
+  });
+
+
   test("creates the student of a new address (normalised, no session), with the language of her latest registration, and links her records", async () => {
     await register(null, "Mari.Maasikas@Example.test", { locale: "et", createdAt: new Date("2026-09-01T10:00:00Z") });
     const latest = await register(null, "mari.maasikas@example.test", { locale: "ru", createdAt: new Date("2026-09-20T10:00:00Z") });

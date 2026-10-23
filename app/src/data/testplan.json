@@ -765,17 +765,17 @@
         "Ava halduses „Õpilased“.",
         "Kui õpilasi veel pole, kirjuta see märkusesse ja jäta kontroll vahele.",
         "Vajuta mõne õpilase nimele.",
-        "Vaata paneeli ülaosas uudiskirja rida."
+        "Vaata paneeli ülaosas rida „Konto loodud … · Keel … · Uudiskiri: …“."
       ],
       "expect": [
-        "Paneeli ülaosas on rida „Uudiskiri: …“, kus on „jah“, „ootab kinnitust“ või „ei“.",
-        "Paneeli ülaosas on ka õpilase nimi ja e-posti aadress."
+        "Sama rea lõpus on „Uudiskiri: …“, kus on „jah“, „ootab kinnitust“ või „ei“.",
+        "Paneeli ülaosas on ka õpilase nimi, telefon ja e-posti aadress."
       ],
       "why": "Paneelist näeb Maria kohe, kas õpilane uudiskirja saab.",
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-20T15:31:39.437Z"
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-kontaktivorm",
@@ -2716,20 +2716,20 @@
       "title": "Leping registreeringu paneelis",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava „Õpilased“ ja kirjuta „Lisa õpilane e-posti järgi“: oma aadress, kuhu lisad enne @-märki +proov1.",
+        "Ava „Õpilased“, vajuta „Lisa õpilane +“ ja kirjuta „Lisa õpilane e-posti järgi“: oma aadress, kuhu lisad enne @-märki +proov1.",
         "Vajuta „Lisa õpilane“.",
         "Ava „Registreerimised“ ja vajuta nimele Proov 1.",
         "Ava voldirida „Leping“ ja vajuta „Laadi alla (PDF)“.",
-        "Ava „Õpilased“, Proov 1 paneel ja vaata plokki „Lepingud“.",
+        "Ava „Õpilased“, Proov 1 paneel ja voldirida „Lepingud“.",
         "Ava registreering, mille õpilasel pole kontot (kui sellist pole, jäta see samm vahele)."
       ],
       "expect": [
-        "Pärast „Lisa õpilane“ avaneb Proov 1 paneel, kus on „Registreerimised“ all tema registreering.",
+        "Pärast „Lisa õpilane“ avaneb Proov 1 paneel, kus on „Koolitused“ all tema registreering.",
         "Suletud real „Leping“ on kokkuvõte „Kinnitatud …“ kuupäevaga.",
         "Voldireas „Leping“ on pealkiri ja „Kinnitatud …“ koos kuupäeva ja viisiga „Registreerimisvorm“.",
         "Plokis on nupud „Saada koopia õpilasele“, „Laadi alla (PDF)“ ja „Saada leping kinnitamiseks“.",
         "PDF-is on pooled, koolitus, lepingu tekst ja rida „Kinnitatud elektrooniliselt …“.",
-        "Õpilase paneelis on sama leping koos „Laadi alla (PDF)“ ja viitega „Ava registreerimine“.",
+        "Õpilase paneeli voldireas „Lepingud“ on sama leping koos „Laadi alla (PDF)“ ja viitega „Ava registreering“.",
         "Ilma kontota õpilasel on nupu asemel „Õpilasel pole kontot — lisa ta Õpilased lehel.“."
       ],
       "why": "Maria hoiab iga registreeringu lepingut ühe puudutuse kaugusel.",
@@ -3598,13 +3598,16 @@
       "href": "/admin/opilased",
       "steps": [
         "Ava „Õpilased“.",
-        "Kirjuta otsingusse proov1 ja vajuta „Otsi“.",
+        "Kirjuta otsingusse proov1.",
+        "Hoia hiirt veeru „Koolitusi“ päisel.",
         "Vajuta nimele Proov 1.",
         "Vajuta paneelis „Vaata tema vaadet“."
       ],
       "expect": [
-        "Otsing leiab Proov 1.",
-        "Paneelis on „Konto loodud …“, telefon, keel ja „Registreerimised“.",
+        "Otsing leiab Proov 1 kohe kirjutades; nuppu „Otsi“ pole.",
+        "Nuppudel „Kõik“, „E-õpe“ ja „Kontaktõpe“ on arvud.",
+        "Päis selgitab, mida „Koolitusi“ loeb: tühistatud registreerimisi ei arvestata.",
+        "Paneelis on „Konto loodud …“, telefon, keel ja „Koolitused“ koos voldiridadega „Maksed“ ja „Lepingud“.",
         "„Vaata tema vaadet“ avab lehe ribaga „Vaatad kliendi … vaadet — muuta ei saa“.",
         "Seal näed sama kaarti, mida näeb Proov 1.",
         "Arve rea link „Laadi alla (PDF)“ on seal, aga ei tööta."
@@ -3613,7 +3616,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ostukorv-leping",
@@ -4240,20 +4243,22 @@
       "href": "/admin/opilased",
       "steps": [
         "Ava „Õpilased“ ja vajuta nimele Proov 1.",
-        "Vajuta tunnistuse real „Paranda nimi“.",
+        "Vajuta e-koolituse kaardil tunnistuse real „Paranda nimi“.",
         "Kirjuta „Nimi tunnistusel“: Proov Parandatud.",
         "Vajuta „Väljasta uuesti“.",
         "Laadi Proov 1 kontol tunnistus uuesti alla."
       ],
       "expect": [
-        "Paneelis on rida „Tunnistus MS LAB … · …“ ja „Laada alla“.",
+        "Kaardil on rida „Tunnistus MS LAB … · …“ ja „Laada alla“.",
         "Pärast näed „Tunnistus … on uuesti väljastatud nimega Proov Parandatud.“.",
         "Uuel failil on uus nimi, sama number ja sama kuupäev.",
         "Proov 1 ei saa selle kohta kirja."
       ],
       "why": "Maria parandab nime, kui õpilane kirjutab veast.",
       "risk": "med",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-tunnistused",
@@ -4287,22 +4292,25 @@
       "title": "E-koolituse avamine käsitsi",
       "href": "/admin/opilased",
       "steps": [
-        "Ava „Õpilased“.",
+        "Ava „Õpilased“ ja vajuta „Lisa õpilane +“.",
         "Kirjuta „Lisa õpilane e-posti järgi“: oma aadress, kuhu lisad enne @-märki +proov5.",
         "Vajuta „Lisa õpilane“.",
-        "Vali paneelis „Ava ligipääs“ all testiks valmistatud e-koolitus.",
+        "Ava paneelis voldirida „Ava ligipääs e-koolitusele“ ja vali testiks valmistatud e-koolitus.",
         "Vaata üle „Ligipääs kuni“ ja vajuta „Ava ligipääs“.",
         "Logi teises seadmes sisse kui Proov 5."
       ],
       "expect": [
         "Pärast „Lisa õpilane“ avaneb uue õpilase paneel.",
+        "Voldirea selgituses on „vali koolitus“ ja valikus „… · mustand“ või „… · avatud kuni …“.",
         "Pärast avamist näed „Ligipääs on avatud.“.",
-        "E-koolituse real on „Avatud kuni …“ ja „Avas …“.",
+        "Kaardil „Koolitused“ all on „Avatud kuni …“ ja „Avas …“.",
         "Proov 5 „Minu koolitused“ all on see e-koolitus nupuga „Ava koolitus“."
       ],
       "why": "Maria saab avada e-koolituse ka ilma veebimakseta.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ligipaas-pikenda",
@@ -4333,6 +4341,31 @@
       "markedAt": "deploy"
     },
     {
+      "id": "haldus-opilased-telefon",
+      "area": "haldus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Õpilase paneel telefonis",
+      "href": "/admin/opilased",
+      "steps": [
+        "Ava telefonis „Õpilased“ ja vajuta nimele Proov 1.",
+        "Vaata e-koolituse ja registreeringu kaarte.",
+        "Vajuta e-koolituse kaardil „Pikenda ▾“ ja siis „Veel ▾“.",
+        "Keri paneeli lõpuni ja ava voldirida „Ava ligipääs e-koolitusele“."
+      ],
+      "expect": [
+        "Kaardil pole olekusilti: olek on kaardi ülemisel real, nt „E-ÕPE · AVATUD KUNI …“.",
+        "Registreeringu kaardil on kõrvuti nupud „Registreering“ ja „Protokoll“ või „Lisa protokoll“.",
+        "Mõlemad menüüd avanevad ekraani sees ja leht ei kerigi küljele.",
+        "Voldiread on täislaiuses ja ligipääsu vorm mahub ekraanile."
+      ],
+      "why": "Telefonis ei tohi paneeli osad ekraanilt välja minna.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "ekursus-tingimused-leping",
       "area": "ekursus",
       "who": "maria",
@@ -4356,7 +4389,7 @@
         "Kirjutatud nimi ilmub kohe tekstis {nimi} kohale, kui tekstis see on; pärast nõustumist avaneb koolituse leht.",
         "E-koolituse kaardil on rida „Leping · kinnitatud …“; „Minu andmed“ all on nimi Proov 5.",
         "Kiri „MS LAB leping“ tuleb reaga „Leping on lisatud.“; manuses on sama tekst Proov 5 nimega.",
-        "Halduses Proov 5 paneelis on „Lepingud“ all „Kinnitatud … · E-koolituse tingimuste kinnitus“ ja „Laadi alla (PDF)“."
+        "Halduses Proov 5 paneeli voldireas „Lepingud“ on „Kinnitatud … · E-koolituse tingimuste kinnitus“ ja „Laadi alla (PDF)“."
       ],
       "why": "Maria avatud e-koolitusel on lepinguks tingimuste kinnitus.",
       "risk": "high",
@@ -4373,18 +4406,22 @@
       "href": "/admin/opilased",
       "steps": [
         "Ava Proov 5 paneel.",
-        "Vajuta e-koolituse real „Ava järgmine õppetund“.",
+        "Vajuta e-koolituse kaardil „Veel ▾“ ja vali „Ava järgmine õppetund“.",
+        "Vajuta „Katkesta“ ja tee sama uuesti.",
         "Vajuta „Jah, ava“.",
         "Ava Proov 5 e-koolituse leht."
       ],
       "expect": [
-        "Enne on küsimus „Kas avan õpilasele õppetunni „…“? …“.",
+        "Enne on küsimus „Kas avan õpilasele õppetunni „…“?“ ja rida „Ta saab selle kohe vaadata.“.",
+        "„Katkesta“ sulgeb küsimuse ja kursor on jälle nupul „Veel ▾“.",
         "Pärast näed „Õppetund „…“ on avatud.“.",
         "Proov 5 näeb videotundi lukuta, kuigi tekstitund pole tehtud."
       ],
       "why": "Maria saab õpilast aidata, kui tund jääb kinni.",
       "risk": "low",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ligipaas-lopeta",
@@ -4395,18 +4432,21 @@
       "href": "/admin/opilased",
       "steps": [
         "Ava Proov 5 paneel.",
-        "Vajuta e-koolituse real „Lõpeta ligipääs“.",
+        "Vajuta e-koolituse kaardil „Veel ▾“ ja vali „Lõpeta ligipääs“.",
         "Vajuta „Jah, lõpeta“.",
         "Ava Proov 5 „Minu koolitused“."
       ],
       "expect": [
-        "Enne on küsimus „Kas lõpetan ligipääsu koolitusele „…“? …“.",
-        "E-koolituse real on nüüd „Lõpetatud …“.",
+        "Enne on küsimus „Kas lõpetan ligipääsu koolitusele „…“?“ ja rida „Õpilane ei saa seda enam avada.“.",
+        "Kaardil on nüüd „Ligipääs lõpetatud …“; „Pikenda ▾“ ja „Veel ▾“ kaovad.",
+        "Uuesti avamiseks on voldirida „Ava ligipääs e-koolitusele“.",
         "Proov 5 kaardil on „Ligipääs on lõppenud.“ ja nuppu „Ava koolitus“ pole."
       ],
       "why": "Lõpetatud ligipääsuga ei saa koolitust enam avada.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-protokoll",
@@ -4417,19 +4457,19 @@
       "href": "/admin/opilased",
       "steps": [
         "Ava „Õpilased“ ja vajuta nimele Proov 1.",
-        "Vajuta paneelis kontaktkoolituse registreeringu juures „Lisa protokoll“.",
+        "Vajuta paneelis kontaktkoolituse registreeringu kaardil „Lisa protokoll“.",
         "Kirjuta esimese punkti alla: Proov 1, esimene punkt.",
         "Kirjuta „Üldised märkused“ alla: Proov 1.",
         "Laadi leht uuesti.",
         "Ava uuesti „Õpilased“ ja Proov 1 paneel."
       ],
       "expect": [
-        "Enne kirjutamist on registreeringu juures nupp „Lisa protokoll“, sest protokolli veel pole.",
+        "Enne kirjutamist on registreeringu kaardil nupp „Lisa protokoll“, sest protokolli veel pole.",
         "Lehel on koolituse nimi, kuupäev ja Proov 1 nimi.",
         "„Praktiline osa“ all on koolituse punktid ja nende all „Üldised märkused“.",
         "Kirjutades näed nime kõrval „Salvestamata muudatused“, siis „✓ Salvestatud …“ kellaajaga; püsti tahvlis „✓“ ja kellaaeg.",
         "Pärast uuesti laadimist on tekst alles.",
-        "Paneelis on nüüd sama nupu nimi „Ava protokoll“."
+        "Kaardil on nüüd sama nupu nimi „Ava protokoll“."
       ],
       "why": "Maria kirjutab protokolli koolituspäeval tahvlis.",
       "risk": "high",
@@ -4665,7 +4705,7 @@
         "Vajuta lehe üleval nupul, millel on Proov 1 koolituse nimi.",
         "Vajuta loendis nimele Proov 1.",
         "Ava „Registreerimised“, Proov 1 paneel ja voldirida „Tagasiside“.",
-        "Ava „Õpilased“ ja Proov 1 paneel ning vaata plokki „Tagasiside“."
+        "Ava „Õpilased“, Proov 1 paneel ja voldirida „Tagasiside“."
       ],
       "expect": [
         "Loendis on Proov 1 vastus koos hindega.",
@@ -4674,7 +4714,7 @@
         "Koolituse valikul on „Keskmine hinne: … / 10“ ja iga vastusevariandi arv.",
         "Paneeli üleval on nimi Proov 1 ja e-post, all kõik vastused.",
         "Registreeringu paneelis on voldirida „Tagasiside“; suletuna näitab see kokkuvõtet „Saadetud …“.",
-        "Õpilase paneeli plokis „Tagasiside“ on rida „Lubab avaldada: Ootab kinnitust“."
+        "Õpilase paneeli voldireas „Tagasiside“ on rida „Lubab avaldada: Ootab kinnitust“."
       ],
       "why": "Maria loeb vastused ühest kohast.",
       "risk": "med",

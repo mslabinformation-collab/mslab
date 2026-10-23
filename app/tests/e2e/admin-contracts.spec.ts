@@ -180,8 +180,11 @@ test.describe("the Õpilased drawer's „Lepingud“", () => {
     const old = await addContract(f, clientId, { title: "E2E vana leping", acceptedDaysAgo: 8, supersededDaysAgo: 1 });
     await signIn(page, context, visitorIp);
     await page.goto(`/admin/opilased?id=${clientId}`);
-    const section = page.locator("[data-client-contracts]");
-    await expect(section.getByRole("heading", { level: 3 })).toHaveText("Lepingud");
+    // „Lepingud“ is a folded row of the drawer (README A5) with its count; opened, it lists them
+    const row = page.locator("details[data-fold]", { has: page.locator("summary", { hasText: "Lepingud" }) });
+    await expect(row.locator("[data-fold-summary]")).toHaveText("2");
+    await row.locator("summary").click();
+    const section = row.locator("[data-client-contracts]");
     expect(await section.locator("[data-client-contract]").evaluateAll((els) => els.map((e) => e.getAttribute("data-client-contract")))).toEqual([String(current), String(old)]);
     await expect(section.locator(`[data-client-contract="${current}"]`)).toContainText("Õpilase konto");
     await expect(section.locator(`[data-client-contract="${old}"]`)).toContainText("Asendatud");

@@ -12,7 +12,7 @@ import { makeTestDb } from "./helpers";
 // where Maria can send a copy or ask again, an e-course contract has no drawer of its own. Rendered from a real (PGlite) database to HTML; the server
 // actions are stand-ins (they need a request).
 
-vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn() }));
+vi.mock("@/server/actions/admin-clients", () => ({ addStudent: vi.fn(), grantCourseAccess: vi.fn(), revokeCourseAccess: vi.fn(), unlockNextLesson: vi.fn(), extendAccessAction: vi.fn() }));
 vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.fn(), reviewAttemptAction: vi.fn(), reopenTestAction: vi.fn() }));
 vi.mock("@/server/actions/admin-certificates", () => ({ saveCertificateSettingsAction: vi.fn(), reissueCertificateAction: vi.fn() }));
 
@@ -36,11 +36,12 @@ beforeEach(async () => {
 });
 
 const drawer = async (clientId: number) => renderToStaticMarkup(ClientDetailView({ detail: (await clientDetail(db, clientId, NOW))!, ecourses: [], now: NOW }));
-/** The HTML of the contracts section only. */
+/** The HTML of the contracts row only: „Lepingud“ is a folded row (README A5), its summary — the title and how many — and what is inside. */
 const section = (html: string) => {
-  const from = html.indexOf("data-client-contracts");
-  expect(from, "the contracts section").toBeGreaterThan(-1);
-  const to = html.indexOf("</section>", from);
+  const at = html.indexOf("data-client-contracts");
+  expect(at, "the contracts row").toBeGreaterThan(-1);
+  const from = html.lastIndexOf("<details", at);
+  const to = html.indexOf("</details>", at);
   return html.slice(from, to);
 };
 const row = (html: string, id: number) => {
@@ -51,10 +52,10 @@ const row = (html: string, id: number) => {
 };
 const text = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 
-test("a student with no contract: „Lepingud“ says there are none yet; the old list of accepted terms is gone", async () => {
+test("a student with no contract: the folded row „Lepingud“ counts 0 and says there are none yet; the old list of accepted terms is gone", async () => {
   const [kati] = await db.insert(clients).values({ email: "kati@example.test", name: "Kati" }).returning();
   const html = await drawer(kati.id);
-  expect(text(section(html))).toContain("Lepingud Lepinguid veel pole.");
+  expect(text(section(html))).toContain("Lepingud 0 ▸ Lepinguid veel pole.");
   expect(html).not.toContain("Tingimustega nõustumised");
   expect(html).not.toContain("data-client-terms");
 });
@@ -88,7 +89,8 @@ test("her contracts newest acceptance first, the superseded one marked, each wit
   expect(current).toContain(`aria-label="Laadi alla (PDF): leping ${currentContact.id}"`);
   expect(text(current)).toContain("Laadi alla (PDF)");
   expect(current).toContain(`href="/admin/registreerimised?id=${reg.id}"`);
-  expect(text(current)).toContain("Ava registreerimine");
+  expect(text(current)).toContain("Ava registreering");
+  expect(text(current)).not.toContain("Ava registreerimine");
 
   const old = row(html, oldContact.id);
   expect(old).toContain('data-contract-state="superseded"');

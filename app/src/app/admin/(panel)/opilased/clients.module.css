@@ -1,32 +1,9 @@
-/* Õpilased: the list's own pieces — "Lisa õpilane" beside the heading, the search beside the filter, the count's line and
+/* Õpilased: the list's own pieces — "Lisa õpilane +" beside the heading (the toolbar, the pills and the search are the shared ListToolbar), the count's line, the open student's row and
    the e-mail under the name. The table itself is the shared admin list (components/admin/list-table.module.css).
    Colours from tokens.css only. */
 
 .heading {
   flex-wrap: wrap;
-}
-
-.tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0 24px;
-}
-
-.search {
-  display: flex;
-  flex: 0 1 460px;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 18px;
-}
-
-.searchInput {
-  flex: 1 1 200px;
-  width: auto;
-  min-width: 0;
 }
 
 .count {
@@ -39,8 +16,7 @@
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 640px) {
-  .search {
-    flex-basis: 100%;
-  }
+/* the student whose drawer is open: the admin's one extra colour, the same as the row under the pointer */
+.selected {
+  background: var(--row-highlight);
 }
