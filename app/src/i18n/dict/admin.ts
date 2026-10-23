@@ -1464,6 +1464,30 @@ export const adminEt = {
     empty: "Ridu veel pole.",
   },
 
+  // DragList (the B screens, piece 3 texts S3-P3-m; README B1 `aria-roledescription="lohistatav"`): the handle's name and what a screen reader hears after
+  // a move, by name (`name`: the course or module) or, for a row with no name of its own, by number (`n`: the row's number, `k`: the new place).
+  // The arrows' names are the lists' own words (courses.moveUp / list.up).
+  drag: {
+    roleDescription: "lohistatav",
+    handle: "Lohista: {name}",
+    handleRow: "Lohista rida {n}",
+    up: "Liiguta üles: {name}",
+    down: "Liiguta alla: {name}",
+    upRow: "Liiguta rida {n} üles",
+    downRow: "Liiguta rida {n} alla",
+    moved: "„{name}“ on nüüd {k}. kohal.",
+    movedRow: "Rida {n} on nüüd {k}. kohal.",
+  },
+
+  // SectionMap (the B screens, README B2; the Part 3 and 4 prototypes): the list of links beside a long editor page and, below 1180 px, the select
+  // „Jaotised ▾“ in its place, which shows „Jaotised · Põhiinfo“. `join` is what stands between those two and between a count and a flag („6 · RU puudub“).
+  sectionMap: {
+    label: "Jaotised",
+    join: " · ",
+    ru: "RU puudub",
+    check: "Kontrolli",
+  },
+
   // The admin's lists (admin UX pass, README §1.10; components/admin/ListToolbar.tsx and ListStates.tsx): the sentence frames the pages fill with
   // their own word for the things in the list: {Asju} capitalised („Registreerimisi“), {asju} as it stands in a sentence („registreerimisi“).
   lists: {

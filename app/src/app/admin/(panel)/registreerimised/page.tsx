@@ -32,7 +32,7 @@ import { feedbackOf, type FeedbackRow } from "@/db/queries/protocols";
 import { seatsTaken } from "@/db/queries/seats";
 import { tallinnFormParts } from "@/domain/calendar";
 import { coveringInvoices, openAmounts, receiptTakeBack, sellerReady, uninvoicedOf } from "@/domain/invoice";
-import { formatEUR } from "@/domain/money";
+import { euro, euroBare } from "@/domain/money-text";
 import { parsePage, parseSearch } from "@/domain/paging";
 import { registrationPrice, type RegStatus } from "@/domain/registration";
 import { holdsSeat } from "@/domain/sessions";
@@ -127,8 +127,8 @@ function listSession(r: RegistrationRow): string {
 /** „Laekunud“: „{paid} / {price} €“ (the euro sign once, after the price); a course with no price: the money alone. */
 function paidText(r: RegistrationRow): string {
   const price = registrationPrice(r.course, r.kind);
-  if (price == null) return formatEUR(r.paidCents, "et");
-  return fill(adminEt.registrations.paidOf, { paid: formatEUR(r.paidCents, "et").replace(/ €$/, ""), price: formatEUR(price, "et") });
+  if (price == null) return euro(r.paidCents);
+  return fill(adminEt.registrations.paidOf, { paid: euroBare(r.paidCents), price: euro(price) });
 }
 
 /** The indent of a session under its course in the scope select: two no-break spaces (a browser cuts plain ones off an option's text). */

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import type { ManualPaidMethod } from "@/domain/invoice";
-import { formatEUR, parseEuroCents } from "@/domain/money";
+import { parseEuroCents } from "@/domain/money";
+import { euro, euroBare } from "@/domain/money-text";
 import { prepaymentDue, type PaymentChoice, type RegStatus } from "@/domain/registration";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
@@ -32,10 +33,6 @@ export type AmountKey = "half" | "rest" | "other";
 type Offer = { key: AmountKey; cents: number | null; label: string };
 const METHODS: readonly ManualPaidMethod[] = ["bank", "cash", "card"];
 
-const eur = (cents: number) => formatEUR(cents, "et");
-/** "290" or "145,50": an amount without its euro sign (S3-e writes the sign itself). */
-const bare = (cents: number) => eur(cents).replace(/ €$/, "");
-
 /**
  * The amount pills by P-2. A course with no price offers only „Muu summa“. Else: under 50 % paid, what is missing up to 50 % („{x} · ettemaks“) first;
  * then what is left of the price („{x} · kogu summa“ while nothing is paid, „{x} · ülejäänud summa“ after); and „Muu summa“. The first is preselected.
@@ -47,8 +44,8 @@ export function amountOffers(paidCents: number, priceCents: number | null): Offe
   const pool = prepaymentDue(priceCents, "half");
   const left = priceCents - paidCents;
   const out: Offer[] = [];
-  if (paidCents < pool) out.push({ key: "half", cents: pool - paidCents, label: fill(t.half, { x: eur(pool - paidCents) }) });
-  if (left > 0) out.push({ key: "rest", cents: left, label: fill(paidCents === 0 ? t.full : t.rest, { x: eur(left) }) });
+  if (paidCents < pool) out.push({ key: "half", cents: pool - paidCents, label: fill(t.half, { x: euro(pool - paidCents) }) });
+  if (left > 0) out.push({ key: "rest", cents: left, label: fill(paidCents === 0 ? t.full : t.rest, { x: euro(left) }) });
   return [...out, other];
 }
 
@@ -62,7 +59,7 @@ type Result = { text: string; full: boolean };
 function resultOf(r: Extract<ManualPaymentResult, { ok: true }>, priceCents: number | null, hasSession: boolean): Result {
   const d = adminEt.registrations.drawer.money.done;
   const pool = priceCents === null ? null : prepaymentDue(priceCents, "half");
-  const vars = { x: eur(r.addedCents), nr: r.receiptNumber ?? "", pool: pool === null ? "" : eur(pool) };
+  const vars = { x: euro(r.addedCents), nr: r.receiptNumber ?? "", pool: pool === null ? "" : euro(pool) };
   const pick = (plain: string, receipt: string) => fill(r.receiptNumber ? receipt : plain, vars);
   if (r.full) return { text: pick(d.full, d.fullReceipt), full: true };
   if (r.confirmedNow) return { text: hasSession ? pick(d.confirmed, d.confirmedReceipt) : pick(d.confirmedAlone, d.confirmedAloneReceipt), full: false };
@@ -79,7 +76,7 @@ function refusalText(error: Refusal | "future", left: number): string {
     case "stale":
       return t.money.stale;
     case "overRemainder":
-      return fill(t.money.overRemainder, { x: bare(Math.max(0, left)) });
+      return fill(t.money.overRemainder, { x: euroBare(Math.max(0, left)) });
     case "sellerMissing":
       return adminEt.invoices.errors.sellerMissing;
     case "future":
@@ -153,7 +150,7 @@ export function MoneyCard({
   // the place is confirmed only where a seat is free for it, the others' counted and its own not (the server's hasFreeSeat, which leaves the registration
   // out): on a full session where it holds none the money is taken and the place is not (S3-b's „Koolitus on vahepeal täis“), so the button does not promise it
   const seatFree = session === null || session.taken - (takesSeat ? 1 : 0) < session.capacity;
-  const submitLabel = cents === null ? m.add : fill(reaches && seatFree ? (session ? m.submitSeat : m.submitAlone) : m.submit, { x: eur(cents) });
+  const submitLabel = cents === null ? m.add : fill(reaches && seatFree ? (session ? m.submitSeat : m.submitAlone) : m.submit, { x: euro(cents) });
 
   useEffect(() => {
     const next = focusNext.current;
@@ -229,7 +226,7 @@ export function MoneyCard({
   };
 
   const [sellerBefore, sellerAfter] = m.needSeller.split("{link}");
-  const otherError = fieldError === null ? null : fieldError === "over" ? fill(m.overRemainder, { x: bare(left) }) : t.paidInvalid;
+  const otherError = fieldError === null ? null : fieldError === "over" ? fill(m.overRemainder, { x: euroBare(left) }) : t.paidInvalid;
 
   return (
     <section className={styles.card} aria-labelledby={`${uid}-title`} data-money-card="">
@@ -245,10 +242,10 @@ export function MoneyCard({
       </div>
       <p className={styles.sum}>
         <span className={styles.paid} data-paid="">
-          {eur(paidCents)}
+          {euro(paidCents)}
         </span>{" "}
         <span className={styles.of} data-money-total={priceCents === null ? undefined : ""}>
-          {priceCents === null ? adminEt.registrations.paidWord : fill(m.of, { price: eur(priceCents) })}
+          {priceCents === null ? adminEt.registrations.paidWord : fill(m.of, { price: euro(priceCents) })}
         </span>
       </p>
       {priceCents === null || pool === null ? (
@@ -261,8 +258,8 @@ export function MoneyCard({
           </div>
           <p className={styles.seat} data-money-seat="">
             {session
-              ? fill(m.seat, { pool: eur(pool), free: Math.max(0, session.capacity - session.taken), cap: session.capacity })
-              : fill(m.seatAlone, { pool: eur(pool) })}
+              ? fill(m.seat, { pool: euro(pool), free: Math.max(0, session.capacity - session.taken), cap: session.capacity })
+              : fill(m.seatAlone, { pool: euro(pool) })}
           </p>
         </>
       )}

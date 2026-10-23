@@ -109,6 +109,8 @@ const BROWSER_FILES = [
   "src/components/admin/request-view.ts",
   "src/components/admin/RequestCard.tsx",
   "src/components/admin/RequestTarget.tsx",
+  // the B screens, Task 1: the two spellings of an amount (pure; it pulls domain/money.ts), which the Raha card, the invoice row and the cancel form run in the browser
+  "src/domain/money-text.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

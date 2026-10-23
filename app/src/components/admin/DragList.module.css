@@ -1,0 +1,135 @@
+/* DragList (the B screens, Task 1; README B1 and B2, the Part 3 and Part 4 prototypes): the handle „⋮⋮“ (#ad9fa6, 18 px, a grab cursor), the two 44 px round
+   arrows (a #d5d0d3 outline, 35 % at the ends of the list) and, while a row is dragged, the row lifted with the row highlight (#faf6f8) and the rows it
+   passes making room. The page puts the handle and the arrows where its layout wants them (renderRow); this file only draws them.
+
+   A drag moves nothing in the DOM. The list carries two custom properties while a row is dragged: --drag-dy, how far the dragged row has gone from its
+   place (px, kept inside the list), and --drag-step, how far a passed row moves over (the dragged row's height and the gap under it). The dragged row is
+   data-dragging, a row that makes room is data-shift="up" (the row goes down, so those it passes move up) or "down". All of it ends on the drop, at the
+   same moment as the page puts the list in its new order, so the transitions below run only while a row is dragged: on the drop the rows are where the
+   new order puts them with nothing left to animate. */
+
+.list {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* the row stacks above the others when it is the dragged one */
+.row {
+  position: relative;
+}
+
+.row[data-dragging] {
+  z-index: 2;
+  transform: translateY(var(--drag-dy, 0px));
+  border-radius: 12px;
+  background: var(--row-highlight);
+  box-shadow: 0 10px 30px rgba(34, 34, 34, 0.14);
+}
+
+.row[data-shift="up"] {
+  transform: translateY(calc(var(--drag-step, 0px) * -1));
+}
+
+.row[data-shift="down"] {
+  transform: translateY(var(--drag-step, 0px));
+}
+
+/* the rows that make room move smoothly while a row is dragged (also back, when it goes back); the dragged row itself is the finger's */
+.list[data-dragging] > .row:not([data-dragging]) {
+  transition: transform 0.15s var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list[data-dragging] > .row:not([data-dragging]) {
+    transition: none;
+  }
+}
+
+/* nothing in a dragged list is selected by the pointer's move */
+.list[data-dragging] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The handle: the one place with touch-action: none, so a finger on it drags the row and a finger anywhere else in the row still scrolls the page.
+   No callout and no selection on a long press. 44 px wide and tall; the glyph is two vertical ellipses, as drawn. */
+.handle {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--iced);
+  font: 500 18px/1 var(--font-body);
+  cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.handle:hover {
+  color: var(--ink);
+}
+
+.list[data-dragging] .handle {
+  cursor: grabbing;
+}
+
+.arrows {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.arrow {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--heather);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+  font: 500 16px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.arrow:hover {
+  background: var(--first);
+}
+
+/* at the ends of the list: aria-disabled, so the focus can stay on the arrow that has just moved the row there */
+.arrow[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.arrow[aria-disabled="true"]:hover {
+  background: transparent;
+}
+
+.handle:focus-visible,
+.arrow:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+/* the announcement after a move: for the screen reader only */
+.live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

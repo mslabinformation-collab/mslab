@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { euro, INVOICE_LIMITS, invoiceStatusText, paidMethodText, REFUNDED } from "@/domain/invoice";
-import { formatEUR } from "@/domain/money";
+import { euroBare } from "@/domain/money-text";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatDayMonth } from "@/i18n/format";
 import { cancelInvoiceAction, markInvoicePaidAction, sendInvoiceAction, undoInvoicePaidAction, updateInvoiceBuyerAction } from "@/server/actions/admin-invoices";
@@ -165,7 +165,6 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
    * A receipt whose registration is gone (`registrationId` null) is only cancelled by the server, so nothing comes off: no sum (0 leaves the line out).
    */
   const takeBackCents = v.takeBack ? v.takeBack.cents : v.registrationId === null ? 0 : v.amountCents;
-  const bare = (cents: number) => formatEUR(cents, "et").replace(/ €$/, "");
   const when = (iso: string) => formatDate(new Date(iso), "et");
   const short = (iso: string) => formatDayMonth(new Date(iso), "et");
   // The drawer's meta line: every date in full. The list's (`showWho`) is the Part 2 prototype's: „Osamakse · koostatud 20.10 · tasutud 15.10 · sularaha“,
@@ -358,7 +357,7 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
                   ? [
                       t.undoPanel.receiptCancelled,
                       // (a cap that leaves nothing to take back — an old receipt for money the online payment covers — has no sum to say)
-                      ...(takeBackCents > 0 ? [fill(t.undoPanel.receiptSum, { x: bare(takeBackCents) })] : []),
+                      ...(takeBackCents > 0 ? [fill(t.undoPanel.receiptSum, { x: euroBare(takeBackCents) })] : []),
                       ...(v.takeBack?.backToAwaiting ? [t.undoPanel.receiptBack] : []),
                     ]
                   : [t.undoPanel.request]

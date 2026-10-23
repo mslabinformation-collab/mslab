@@ -3,6 +3,7 @@
 
 import type { PaymentKind } from "@/db/schema";
 import { formatEUR } from "@/domain/money";
+import { euroBare } from "@/domain/money-text";
 import { paymentMethodLabel } from "@/domain/payments";
 import type { PaymentChoice } from "@/domain/registration";
 import { formatDate } from "@/i18n/format";
@@ -363,15 +364,12 @@ export function recordedAfterAlertSummary(s: StuckPayment, adminUrl: string): Su
   };
 }
 
-/** A number of cents as a plain amount ("125,50"), for a currency other than the euro. */
-const plainAmount = (cents: number): string => formatEUR(cents, "et").replace(/ €$/, "");
-
 /** What Montonio said was paid: "1 €", "125,50 PLN", and what is missing: "summa puudub", "valuuta puudub". The euro is written once. */
 function montonioSaid(cents: number | null, currency: string | null): string {
   const parts: string[] = [];
   if (cents === null) parts.push(currency && currency !== "EUR" ? `summa puudub, ${currency}` : "summa puudub");
   else if (currency === "EUR") parts.push(formatEUR(cents, "et"));
-  else parts.push(currency ? `${plainAmount(cents)} ${currency}` : plainAmount(cents));
+  else parts.push(currency ? `${euroBare(cents)} ${currency}` : euroBare(cents)); // (another currency: the amount without the euro sign)
   if (currency === null) parts.push("valuuta puudub");
   return parts.join(", ");
 }

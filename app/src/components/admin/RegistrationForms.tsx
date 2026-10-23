@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, startTransition, useActionState, useContext, useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
-import { formatEUR } from "@/domain/money";
+import { euroBare } from "@/domain/money-text";
 import { NOTE_MAX, type RegStatus } from "@/domain/registration";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
@@ -220,7 +220,7 @@ export function RegistrationCancel({
   };
 
   // S3-g: each line only when true; the amount as the Raha card writes it (no euro sign inside)
-  const money = paidCents > 0 ? formatEUR(paidCents, "et").replace(/ €$/, "") : null;
+  const money = paidCents > 0 ? euroBare(paidCents) : null;
   const lines = [
     ...(seat ? [fill(c.seat, { place: seat })] : []),
     ...(money !== null ? [fill(hasInvoices ? c.moneyAndInvoices : c.moneyOnly, { x: money })] : hasInvoices ? [c.invoicesOnly] : []),

@@ -1,0 +1,129 @@
+/* SectionMap (the B screens, Task 1; README B2, the Part 3 desktop and Part 4 phone prototypes). From 1180 px: a 190 px sticky list of links, 13 px / 500,
+   the current one on white, with its status at the right in 11 px / 600 (a count in the muted grey, „RU puudub“ and „Kontrolli“ in #6b4f5c, the
+   token --warn). Below 1180 px: the select „Jaotised · {card} ▾“, a 48 px white box with a #d9d2d5 outline.
+
+   The component draws no wrapper: the list is a grid item of the page's own grid (190px | 1fr | 300px, align-items: start), where `sticky` has the whole
+   column to move in. A link is 44 px tall (the prototype draws 40 px; a tablet in landscape has 1180 px and a finger). */
+
+.nav {
+  display: none;
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  width: 190px;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 9px;
+  color: var(--ink);
+  font: 500 13px/1.25 var(--font-body);
+  text-decoration: none;
+}
+
+.link:hover {
+  background: var(--first);
+}
+
+.link[aria-current="true"] {
+  background: var(--paper);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.status {
+  flex: none;
+  font: 600 11px/1.2 var(--font-body);
+  white-space: nowrap;
+}
+
+.status [data-count] {
+  color: var(--muted);
+}
+
+.status [data-flag] {
+  color: var(--warn);
+}
+
+/* The select: the real one lies over the box, invisible, and carries the tap (iOS opens its own list); the face under it shows the choice. */
+.select {
+  position: relative;
+  display: block;
+  min-height: 48px;
+}
+
+.select > select {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.face {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid #d9d2d5;
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 14px/1.3 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.prefix {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.caret {
+  flex: none;
+  font-size: 11px;
+}
+
+.select > select:focus-visible + .face {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+@media (min-width: 1180px) {
+  .nav {
+    display: flex;
+  }
+
+  .select {
+    display: none;
+  }
+}
+
+/* The page's cards (the class `sectionCard`): where a scroll to a card leaves its top. Below 900 px the phone top bar is 64 px and sticky. */
+.card {
+  scroll-margin-top: 24px;
+}
+
+@media (max-width: 899.98px) {
+  .card {
+    scroll-margin-top: calc(64px + 24px);
+  }
+}
