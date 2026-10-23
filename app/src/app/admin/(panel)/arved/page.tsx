@@ -5,6 +5,7 @@ import { InvoiceRow } from "@/components/admin/InvoiceRow";
 import { invoiceView } from "@/components/admin/invoice-view";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
+import { TabPills } from "@/components/admin/TabPills";
 import ui from "@/components/admin/ui.module.css";
 import blockStyles from "@/components/admin/InvoiceBlock.module.css";
 import { getDb } from "@/db/client";
@@ -51,7 +52,7 @@ function href(view: View): string {
  * (?staatus=); each with the actions of the registration's „Arved“ (InvoiceRow). On top, „Arveta maksed“ (D3, §6.3, R13) when there are any: the
  * payments paid online that have no invoice (the card was empty, or the invoice step failed), each with its own „Koosta arve“ and the invoice
  * it will pay if it was started for one. „Laadi alla (CSV)“ is the chosen month's file for the accountant (this month when none is chosen).
- * Not in the menu: it is reached from Maksed, which the shell marks.
+ * Not in the menu: it is the second tab of Maksed (TabPills, A6), whose heading it shares, and the shell marks Maksed ja arved.
  */
 export default async function InvoicesPage({ searchParams }: Props) {
   await requireAdmin();
@@ -73,15 +74,10 @@ export default async function InvoicesPage({ searchParams }: Props) {
 
   return (
     <div className={ui.page} data-invoices-page="">
-      <p className={styles.back}>
-        <Link className={ui.link} href="/admin/maksed">
-          <span aria-hidden="true">←</span> {t.eyebrow}
-        </Link>
-      </p>
       <div className={ui.heading}>
         <div>
-          <p className={ui.eyebrow}>{t.eyebrow}</p>
-          <h1 className={ui.h1}>{t.title}</h1>
+          <p className={ui.eyebrow}>{adminEt.payments.eyebrow}</p>
+          <h1 className={ui.h1}>{adminEt.payments.heading}</h1>
           <p className={ui.lead}>{t.lead}</p>
         </div>
         <div className={styles.csv}>
@@ -91,6 +87,14 @@ export default async function InvoicesPage({ searchParams }: Props) {
           <p className={ui.hint}>{fill(t.csvNote, { month: `${csvMonth.slice(5)}.${csvMonth.slice(0, 4)}` })}</p>
         </div>
       </div>
+
+      <TabPills
+        label={adminEt.nav.payments}
+        tabs={[
+          { href: "/admin/maksed", label: adminEt.payments.tabs.payments, current: false },
+          { href: "/admin/arved", label: adminEt.payments.tabs.invoices, current: true },
+        ]}
+      />
 
       {uninvoiced.length > 0 && (
         <section className={`${ui.card} ${styles.uninvoiced}`} aria-labelledby="uninvoiced-title" data-uninvoiced="">

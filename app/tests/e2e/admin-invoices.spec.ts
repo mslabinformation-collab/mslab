@@ -327,11 +327,12 @@ test("„Arved“: the list with its filters, the month's CSV, and „Arveta mak
   await expect(again.block.locator(`[data-uninvoiced-create="${payment.id}"]`)).toBeVisible();
   await expect(again.block.locator("[data-invoice-create]")).toHaveCount(0);
 
-  // Maksed links to it; the page lists the payment under „Arveta maksed“, and the invoice below
+  // Maksed has it as its second tab (A6); the page lists the payment under „Arveta maksed“, and the invoice below
   await page.goto("/admin/maksed");
-  await page.locator("[data-payments-invoices]").click();
+  await page.getByRole("navigation", { name: "Maksed ja arved" }).getByRole("link", { name: "Arved" }).click();
   await expect(page).toHaveURL(/\/admin\/arved$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Arved");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Maksed ja arved");
+  await expect(page.getByRole("navigation", { name: "Maksed ja arved" }).getByRole("link", { name: "Arved" })).toHaveAttribute("aria-current", "page");
   const uninvoiced = page.locator("[data-uninvoiced]");
   await expect(uninvoiced.getByRole("heading", { level: 2 })).toHaveText("Arveta maksed");
   const line = uninvoiced.locator(`[data-uninvoiced-payment="${payment.id}"]`);

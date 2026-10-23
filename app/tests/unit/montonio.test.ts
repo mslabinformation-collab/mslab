@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { billingAddressOf } from "@/domain/financing";
 import { signHs256, verifyHs256 } from "@/server/payments/jwt";
 import {
-  currentRuntime, LIVE_BASE, MontonioError, montonioClient, montonioConfig, montonioErrorText, paymentProvider, paymentsConfigured, REQUEST_TIMEOUT_MS, SANDBOX_BASE, mapMontonioStatus, toCents, toEuros, type MontonioConfig,
+  currentRuntime, LIVE_BASE, LIVE_PARTNER, MontonioError, montonioClient, montonioConfig, montonioErrorText, montonioPartnerUrl, paymentProvider, paymentsConfigured, REQUEST_TIMEOUT_MS, SANDBOX_BASE, SANDBOX_PARTNER, mapMontonioStatus, toCents, toEuros, type MontonioConfig,
 } from "@/server/payments/montonio";
 import { stubFetch } from "../fakes";
 
@@ -38,6 +38,26 @@ describe("montonioConfig: which store, which address", () => {
     expect(LIVE_BASE).toBe("https://stargate.montonio.com/api");
     expect(SANDBOX_BASE).toBe("https://sandbox-stargate.montonio.com/api");
     expect(montonioConfig({ ...KEYS, PAYMENT_PROVIDER: "montonio" }, LOCAL)).toMatchObject({ baseUrl: SANDBOX_BASE, mock: false });
+  });
+
+  test("montonioPartnerUrl (Maksed's „Montonios ↗“): the Partner System of the store in use — live only where montonioConfig says live, the sandbox's otherwise", () => {
+    expect(LIVE_PARTNER).toBe("https://partner.montonio.com");
+    expect(SANDBOX_PARTNER).toBe("https://sandbox-partner.montonio.com");
+    expect(montonioPartnerUrl({ ...KEYS, MONTONIO_ENV: "live" })).toBe(LIVE_PARTNER);
+    expect(montonioPartnerUrl({ ...KEYS, MONTONIO_ENV: "live", PAYMENT_PROVIDER: "montonio" })).toBe(LIVE_PARTNER);
+    // the same word as the API's: only the exact 'live'; no keys, the sandbox, a mock and a provider that is not Montonio are never the live store
+    for (const env of [undefined, "sandbox", "Live", "LIVE", "production", "prod"]) expect(montonioPartnerUrl({ ...KEYS, MONTONIO_ENV: env }), String(env)).toBe(SANDBOX_PARTNER);
+    expect(montonioPartnerUrl({})).toBe(SANDBOX_PARTNER);
+    expect(montonioPartnerUrl({ ...KEYS, MONTONIO_ENV: "live", PAYMENT_PROVIDER: "mock", MONTONIO_FAKE_URL: "http://localhost:3997" })).toBe(SANDBOX_PARTNER);
+    expect(montonioPartnerUrl({ ...KEYS, MONTONIO_ENV: "live", PAYMENT_PROVIDER: "MONTONIO" })).toBe(SANDBOX_PARTNER);
+    // and it agrees with the API's own choice wherever there is one
+    for (const env of [{}, { MONTONIO_ENV: "live" }, { MONTONIO_ENV: "sandbox" }])
+      expect(montonioPartnerUrl({ ...KEYS, ...env }) === LIVE_PARTNER, JSON.stringify(env)).toBe(montonioConfig({ ...KEYS, ...env }, LOCAL)!.live);
+    // with no env passed it reads this process's settings
+    vi.stubEnv("MONTONIO_ENV", "live");
+    expect(montonioPartnerUrl()).toBe(LIVE_PARTNER);
+    vi.stubEnv("MONTONIO_ENV", "");
+    expect(montonioPartnerUrl()).toBe(SANDBOX_PARTNER);
   });
 
   test("the mock: only PAYMENT_PROVIDER=mock with MONTONIO_FAKE_URL; never on Vercel; in production only with the explicit flag; never a fallback", () => {

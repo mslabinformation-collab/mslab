@@ -400,9 +400,17 @@ export const adminEt = {
 
   // "Maksed" (phase 2b, spec 8): the online payments through Montonio. Bank transfers stay Maria's own entries on the registration.
   payments: {
-    eyebrow: "Montonio",
+    // the heading both tabs (Maksed, Arved) share: the eyebrow of W21 and the H1 of the Part 2 mock
+    eyebrow: "Montonio ja raamatupidamine",
+    heading: "Maksed ja arved",
     title: "Maksed",
     lead: "Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures nagu varem.",
+    // the tabs „Maksed“ | „Arved“ (README A6; each its own page)
+    tabs: { payments: "Maksed", invoices: "Arved" },
+    // the toolbar's search (piece 2 texts S3-m): name, e-mail and Montonio id
+    searchPlaceholder: "Otsi nime, e-posti või Montonio id järgi",
+    // what the list is of, in a sentence (ListEmpty: „Makseid veel pole.“, „Selle valikuga makseid pole.“, „„{q}“ järgi makseid ei leitud.“)
+    things: "makseid",
     filterLabel: "Staatus",
     filter: { all: "Kõik", paid: "Makstud", pending: "Pooleli", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil" },
     // replaced (B22, README §5): an older open order a newer attempt of the same registration took the place of; shown under „Kõik“ only
@@ -415,9 +423,16 @@ export const adminEt = {
     // a held payment's check reason (payments.check_reason, domain/payments.ts CheckReason), said in place of `check` (B22, README §5; P-8)
     reason: { double: "Topeltmakse — tagasta" },
     count: "Makseid: {n}",
-    empty: "Makseid veel pole.",
-    emptyFiltered: "Selle valikuga makseid pole.",
-    col: { date: "Kuupäev", payer: "Maksja", what: "Eest", kind: "Liik", amount: "Summa", method: "Makseviis", status: "Staatus", provider: "Montonio id" },
+    // the columns (A6; the Part 2 prototype draws no desktop Maksed frame, so: the list's own, with „Liik“ under „Eest“ and „Makseviis“ under „Summa“)
+    col: { date: "Kuupäev", payer: "Maksja", what: "Eest", amount: "Summa", status: "Staatus", provider: "Montonio id" },
+    // the name's link (the whole row opens what it leads to): „Ava {name}“, as the other lists say it
+    open: "Ava {name}",
+    // where a row leads, as the phone card says it (the Part 2 phone frame „Ava registreering →“; P-8 „Ava õpilane →“ for an e-course payment)
+    openRegistration: "Ava registreering →",
+    openStudent: "Ava õpilane →",
+    // the Montonio id as a link (Dim 22.10): „Montonios ↗“ (the arrow is the component's) opens the Partner System and copies the order id; the line says the copy was made
+    montonio: "Montonios",
+    montonioCopied: "Montonio id kopeeritud.",
     courseGone: "Koolitus on kustutatud",
     // under "Laekunud" in a registration's drawer
     online: "Veebimaksed",
@@ -433,8 +448,6 @@ export const adminEt = {
   // invoice's number, {date} dd.mm.yyyy, {amount} euros like "175,00 €", {email} an address.
   invoices: {
     title: "Arved",
-    // the link on Maksed
-    fromPayments: "Arved",
     // the registration drawer's block (components/admin/InvoiceBlock.tsx)
     block: {
       none: "Sellele registreeringule pole arveid koostatud.",
@@ -551,9 +564,8 @@ export const adminEt = {
       mailFailed: "Kirja ei saadetud. Proovi uuesti.",
       server: "Midagi läks valesti. Proovi uuesti.",
     },
-    // the list (/admin/arved)
+    // the list (/admin/arved); its heading is the one it shares with Maksed (payments.eyebrow, payments.heading) and its tab is payments.tabs.invoices
     page: {
-      eyebrow: "Maksed",
       title: "Arved",
       lead: "Kõik arved, uuemad eespool. Veebimaksete arved tekivad ise; pangaülekannete arved koostad registreeringu juures.",
       filterLabel: "Staatus",

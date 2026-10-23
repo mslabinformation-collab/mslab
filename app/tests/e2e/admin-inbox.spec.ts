@@ -687,10 +687,15 @@ test.describe("signed in", () => {
     await expect(page).toHaveURL(/\/admin\/maksed$/);
     if (isMobile) await expect(page.locator("[data-admin-drawer]")).toBeHidden(); // the link closed the drawer
     await expect(page).toHaveTitle(/Maksed ja arved — Haldus/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Maksed");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Maksed ja arved");
     await expect(page.locator("aside [data-nav='payments']")).toHaveAttribute("aria-current", "page"); // (a phone has it in the menu drawer)
     await expect(page.getByText("Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses;")).toBeVisible();
     await expect(page.getByText("töölaual")).toHaveCount(0);
+    // the tabs Maksed | Arved (A6): Maksed is the current one; the old header button is gone
+    const tabs = page.getByRole("navigation", { name: "Maksed ja arved" });
+    await expect(tabs.getByRole("link")).toHaveText(["Maksed", "Arved"]);
+    await expect(tabs.getByRole("link", { name: "Maksed" })).toHaveAttribute("aria-current", "page");
+    await expect(page.locator("[data-payments-invoices]")).toHaveCount(0);
 
     const row = (reference: string) => page.locator(`[data-payment="${reference}"]`);
     const cell = (reference: string, label: string) => row(reference).locator(`[data-label="${label}"]`);
@@ -699,34 +704,52 @@ test.describe("signed in", () => {
     const mine = [p.ecourse, p.pending, p.voided, p.held, p.paid];
     expect(shown.filter((ref) => mine.includes(ref!))).toEqual(mine);
 
-    // Eest / Makseviis, the method in Maria's Estonian (never Montonio's code), the kind and the amount
+    // Eest (the kind under the course) / Summa (the method, in Maria's Estonian and never Montonio's code, under the amount)
     await expect(cell(p.paid, "Maksja")).toContainText(f.registration.name);
-    await expect(cell(p.paid, "Maksja").getByRole("link", { name: f.registration.email })).toHaveAttribute("href", `mailto:${f.registration.email}`);
+    // (the e-mail is a mail link; the phone card leaves it out — it is in the drawer — so it is looked for by its address, not as a visible link)
+    await expect(cell(p.paid, "Maksja").locator('a[href^="mailto:"]')).toHaveAttribute("href", `mailto:${f.registration.email}`);
+    await expect(cell(p.paid, "Maksja").locator('a[href^="mailto:"]')).toBeVisible({ visible: !isMobile });
     await expect(cell(p.paid, "Eest")).toContainText(f.course.title);
-    await expect(cell(p.paid, "Liik")).toHaveText("Ettemaks");
-    await expect(cell(p.paid, "Summa")).toHaveText("175 €");
-    await expect(cell(p.paid, "Makseviis")).toHaveText("Pangalink · Swedbank");
-    await expect(cell(p.held, "Makseviis")).toHaveText("Kaart");
-    await expect(cell(p.voided, "Makseviis")).toHaveText("Pangalink · LHV");
-    await expect(cell(p.ecourse, "Makseviis")).toHaveText("Apple Pay");
-    await expect(cell(p.pending, "Makseviis")).toHaveText("—");
+    await expect(row(p.paid).locator("[data-payment-kind]")).toHaveText("Ettemaks");
+    await expect(cell(p.paid, "Summa")).toContainText("175 €");
+    const method = (ref: string) => row(ref).locator("[data-payment-method]");
+    await expect(method(p.paid)).toHaveText("Pangalink · Swedbank");
+    await expect(method(p.held)).toHaveText("Kaart");
+    await expect(method(p.voided)).toHaveText("Pangalink · LHV");
+    await expect(method(p.ecourse)).toHaveText("Apple Pay");
+    await expect(method(p.pending)).toHaveCount(0);
     await expect(cell(p.ecourse, "Eest")).toContainText("Kulmumeistri e-koolitus");
-    await expect(cell(p.ecourse, "Liik")).toHaveText("E-koolitus");
-    await expect(cell(p.held, "Liik")).toHaveText("Ülejäänud");
-    await expect(cell(p.paid, "Montonio id")).not.toHaveText("—");
+    await expect(row(p.ecourse).locator("[data-payment-kind]")).toHaveText("E-koolitus");
+    await expect(row(p.held).locator("[data-payment-kind]")).toHaveText("Ülejäänud");
+    // the row leads to the registration's drawer (the e-course stand-in has neither a registration nor a student: no link)
+    await expect(cell(p.paid, "Maksja").getByRole("link", { name: `Ava ${f.registration.name}` })).toHaveAttribute("href", `/admin/registreerimised?id=${f.registration.id}`);
+    await expect(cell(p.ecourse, "Maksja").getByRole("link", { name: /^Ava / })).toHaveCount(0);
+    // the Montonio id is „Montonios ↗“, not text
+    await expect(cell(p.paid, "Montonio id").locator("[data-montonio-link]")).toHaveText("Montonios ↗");
     await expect(page.locator("main")).not.toContainText(/paymentInitiation|cardPayments|applePay/);
 
-    // statuses in Estonian; "Kontrolli Montonios" on the held and the voided row only, with a tinted row
+    // statuses in Estonian; "Kontrolli Montonios" on the held and the voided row only, with a tinted row (and a 3 px left border on a phone)
     await expect(cell(p.paid, "Staatus")).toHaveText("Makstud");
     await expect(cell(p.pending, "Staatus")).toHaveText("Pooleli");
     await expect(cell(p.held, "Staatus")).toContainText("Ootel kontrollil");
     await expect(cell(p.voided, "Staatus")).toContainText("Tühistatud pangas");
     for (const ref of [p.held, p.voided]) await expect(row(ref).locator("[data-payment-check]")).toHaveText("Kontrolli Montonios");
     for (const ref of [p.paid, p.pending, p.ecourse]) await expect(row(ref).locator("[data-payment-check]")).toHaveCount(0);
-    const tint = (ref: string) => cell(ref, "Staatus").evaluate((td) => getComputedStyle(td).backgroundColor);
-    expect(await tint(p.held)).not.toBe("rgba(0, 0, 0, 0)");
-    expect(await tint(p.voided)).not.toBe("rgba(0, 0, 0, 0)");
-    expect(await tint(p.paid)).toBe("rgba(0, 0, 0, 0)");
+    // (on a phone the card is tinted, on a laptop its cells are)
+    const tint = (ref: string) => row(ref).evaluate((tr) => [tr, ...Array.from(tr.querySelectorAll("td"))].some((e) => getComputedStyle(e).backgroundColor !== "rgba(0, 0, 0, 0)"));
+    expect(await tint(p.held)).toBe(true);
+    expect(await tint(p.voided)).toBe(true);
+    expect(await cell(p.paid, "Staatus").evaluate((td) => getComputedStyle(td).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+    const border = (ref: string) => row(ref).evaluate((tr) => `${getComputedStyle(tr).borderLeftWidth} ${getComputedStyle(tr).borderLeftColor}`);
+    if (isMobile) {
+      expect(await border(p.held)).toBe("3px rgb(158, 137, 147)"); // #9e8993
+      expect(await border(p.voided)).toBe("3px rgb(158, 137, 147)");
+      expect(await border(p.paid)).toBe("3px rgba(0, 0, 0, 0)"); // (every card has the border; only these two show it)
+      expect(await border(p.pending)).toBe("3px rgba(0, 0, 0, 0)");
+      // the phone card: the name and the sum, then "{day} · {course} · {way}", the status and where the row leads
+      await expect(row(p.paid).locator("[data-payment-meta]")).toContainText(`${f.course.title} · Pangalink · Swedbank`);
+      await expect(row(p.paid)).toContainText("Ava registreering →");
+    }
 
     expect(await noOverflow(page)).toBe(true);
     expect(await smallTargets(page.locator("main"))).toEqual([]);
@@ -737,17 +760,17 @@ test.describe("signed in", () => {
       await page.setViewportSize({ width: 1440, height: 900 });
     }
 
-    // the filter: Kõik / Makstud / Pooleli / Ebaõnnestunud / Tagastatud / Ootel kontrollil, each its own address
-    const filter = page.locator("[data-payment-filter]");
-    await expect(filter.getByRole("link")).toHaveText(["Kõik", "Makstud", "Pooleli", "Ebaõnnestunud", "Tagastatud", "Ootel kontrollil"]);
-    await expect(filter.getByRole("link", { name: "Kõik" })).toHaveAttribute("aria-current", "true");
-    await filter.getByRole("link", { name: "Ootel kontrollil" }).click();
+    // the pills with their counts (Kõik first, each its own address): Kõik / Makstud / Pooleli / Ebaõnnestunud / Tagastatud / Ootel kontrollil
+    const filter = page.locator("[data-list-pill-row]");
+    await expect(filter.getByRole("link")).toHaveText([/^Kõik\d+$/, /^Makstud\d+$/, /^Pooleli\d+$/, /^Ebaõnnestunud\d+$/, /^Tagastatud\d+$/, /^Ootel kontrollil\d+$/]);
+    await expect(filter.getByRole("link", { name: /^Kõik/ })).toHaveAttribute("aria-current", "true");
+    await filter.getByRole("link", { name: /^Ootel kontrollil/ }).click();
     await expect(page).toHaveURL(/\?staatus=kontroll$/);
-    await expect(filter.getByRole("link", { name: "Ootel kontrollil" })).toHaveAttribute("aria-current", "true");
+    await expect(filter.getByRole("link", { name: /^Ootel kontrollil/ })).toHaveAttribute("aria-current", "true");
     await expect(row(p.held)).toBeVisible();
     await expect(row(p.voided)).toBeVisible(); // B14: the bank's reversal after it was paid is counted with the ones to check in Montonio
     await expect(row(p.paid)).toHaveCount(0);
-    await filter.getByRole("link", { name: "Ebaõnnestunud" }).click();
+    await filter.getByRole("link", { name: /^Ebaõnnestunud/ }).click();
     await expect(page).toHaveURL(/\?staatus=ebaonnestunud$/);
     await expect(row(p.voided)).toHaveCount(0); // (it is no longer a plain failure)
     await expect(row(p.held)).toHaveCount(0);

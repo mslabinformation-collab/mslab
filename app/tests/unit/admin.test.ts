@@ -171,7 +171,12 @@ describe("Maksed (phase 2b, spec 8): Maria's words", () => {
   const t = adminEt.payments;
   test("the menu entry, the heading, the lead (Montonio halduses), the filter and the statuses", () => {
     expect(adminEt.nav.payments).toBe("Maksed ja arved");
-    expect([t.eyebrow, t.title]).toEqual(["Montonio", "Maksed"]);
+    // the heading Maksed and Arved share (A6: the eyebrow of W21 and the H1 of the Part 2 mock); `title` is the word „Maksed“ (the card, the Õpilased fold)
+    expect([t.eyebrow, t.heading, t.title]).toEqual(["Montonio ja raamatupidamine", "Maksed ja arved", "Maksed"]);
+    expect(t.tabs).toEqual({ payments: "Maksed", invoices: "Arved" });
+    expect(t.searchPlaceholder).toBe("Otsi nime, e-posti või Montonio id järgi"); // piece 2 texts S3-m
+    expect([t.things, t.open, t.openRegistration, t.openStudent]).toEqual(["makseid", "Ava {name}", "Ava registreering →", "Ava õpilane →"]);
+    expect([t.montonio, t.montonioCopied]).toEqual(["Montonios", "Montonio id kopeeritud."]); // (the arrow is the component's)
     expect(t.lead).toBe("Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures nagu varem.");
     expect(t.filter).toEqual({ all: "Kõik", paid: "Makstud", pending: "Pooleli", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil" });
     // replaced (B22, README §5): „Asendatud“, with no filter of its own (P-8: under „Kõik“ only)
@@ -182,8 +187,8 @@ describe("Maksed (phase 2b, spec 8): Maria's words", () => {
     // a held payment's check reason, said in place of „Kontrolli Montonios“ (B22, README §5)
     expect(t.reason).toEqual({ double: "Topeltmakse — tagasta" });
   });
-  test("the column heads: 'Eest' and 'Makseviis', not the bare question words 'Mis' and 'Viis'", () => {
-    expect(t.col).toEqual({ date: "Kuupäev", payer: "Maksja", what: "Eest", kind: "Liik", amount: "Summa", method: "Makseviis", status: "Staatus", provider: "Montonio id" });
+  test("the column heads: 'Eest', not the bare question word 'Mis'; the kind and the way it was paid are lines under 'Eest' and 'Summa', with no column of their own (A6)", () => {
+    expect(t.col).toEqual({ date: "Kuupäev", payer: "Maksja", what: "Eest", amount: "Summa", status: "Staatus", provider: "Montonio id" });
   });
   test("an access a payment opened says so in the student's drawer", () => {
     expect(adminEt.clients.drawer.byPayment).toBe("veebimakse");

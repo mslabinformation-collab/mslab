@@ -2147,20 +2147,28 @@
       "title": "Maksed halduses",
       "href": "/admin/maksed",
       "steps": [
-        "Ava „Maksed ja arved“.",
-        "Vajuta filtril „Makstud“.",
-        "Vaata Proov 1 rida."
+        "Ava „Maksed ja arved“ ja vaata üleval „Maksed“ ja „Arved“.",
+        "Kirjuta otsingu lahtrisse Proov 1 nimi ja vaata filtrite arve.",
+        "Vajuta filtril „Makstud“ ja vaata Proov 1 rida.",
+        "Vajuta rea tühjale kohale, mitte nimele ega lingile.",
+        "Mine tagasi ja vajuta sama rea lingile „Montonios ↗“.",
+        "Kleebi kopeeritud tekst Montonio Partner Systemis tellimuste otsingusse."
       ],
       "expect": [
-        "Real on maksja Proov 1, koolitus, „Ettemaks“, summa ja staatus „Makstud“.",
-        "Veerus „Montonio id“ on Montonio tellimuse number.",
+        "Üleval on „Maksed“ (valitud) ja „Arved“; „Arved“ avab arvete lehe.",
+        "Otsing leiab makse maksja nime, e-posti või Montonio id järgi.",
+        "Iga filter näitab arvu, mitu makset selle all otsinguga on.",
+        "Real on maksja Proov 1, koolitus, „Ettemaks“, summa, selle all makseviis, ja staatus „Makstud“.",
+        "Rea tühja koha vajutus avab selle registreeringu või õpilase paneeli.",
+        "„Montonios ↗“ avab uues aknas Montonio Partner Systemi ja ütleb „Montonio id kopeeritud.“.",
+        "Selle numbri kleepimine Montonio tellimuste otsingusse leiab sama makse.",
         "Uuemad maksed on eespool."
       ],
-      "why": "Maksete loend näitab iga Montonio makset.",
+      "why": "Maksete loend näitab iga Montonio makset ja viib makse juurde.",
       "risk": "high",
       "writes": false,
-      "mark": "reworded",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arveta-makse-paneelis",
@@ -2199,7 +2207,7 @@
       "title": "Arveta maksed",
       "href": "/admin/arved",
       "steps": [
-        "Ava „Maksed ja arved“ ja vajuta nuppu „Arved“.",
+        "Ava „Maksed ja arved“ ja vajuta üleval „Arved“.",
         "Vaata lehe ülaosas plokki „Arveta maksed“; kui seda pole, vajuta „Jäta vahele“.",
         "Vajuta ühe makse real „Koosta arve“."
       ],
@@ -2214,8 +2222,8 @@
       "why": "Ükski tasutud makse ei jää arveta.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arved-loend",
@@ -2225,7 +2233,7 @@
       "title": "Arvete loend",
       "href": "/admin/arved",
       "steps": [
-        "Ava „Maksed ja arved“ ja vajuta nuppu „Arved“.",
+        "Ava „Maksed ja arved“ ja vajuta üleval „Arved“.",
         "Vajuta filtril „Tasumata“ ja siis „Kõik“.",
         "Vali „Kuu“ välja see kuu ja vajuta „Näita“.",
         "Vajuta „Kõik kuud“."
@@ -2240,8 +2248,8 @@
       "why": "Maria leiab iga arve ühest kohast.",
       "risk": "med",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arved-csv",
@@ -3083,7 +3091,7 @@
       "steps": [
         "Tee see pärast järelmaksu registreerimise kontrolle.",
         "Ava „Maksed ja arved“ ja vajuta filtril „Makstud“.",
-        "Vaata Proov 9 rida ja Proov 10 pangalingiga makstud rida veerus „Makseviis“.",
+        "Vaata Proov 9 rida ja Proov 10 pangalingiga makstud rida summa all.",
         "Vajuta filtril „Kõik“ ja vaata Proov 10 järelmaksu rida, mis on „Asendatud“.",
         "Vajuta filtritel „Ebaõnnestunud“ ja „Pooleli“ ning vaata rida, mille makse katkestati testpangas (Proov 2 või Proov 13).",
         "Vajuta filtril „Ootel kontrollil“ ja loe iga rea staatust.",
@@ -3096,7 +3104,7 @@
         "Katkestatud pangamakse real on makseviis „Pangalink“, ükskõik kas pooleli või ebaõnnestunud.",
         "Filtri „Ootel kontrollil“ all on ka read „Tühistatud pangas“, kui neid on; filtri „Ebaõnnestunud“ all neid pole.",
         "Paneeli plokis „Veebimaksed“ on sama makse samuti märgitud „Järelmaks (Inbank)“.",
-        "Makseviisi näitavad ainult pärast uuendust tehtud read; varem tehtud ridade „Makseviis“ on tühi, see pole viga."
+        "Makseviisi näitavad ainult pärast uuendust tehtud read; varem tehtud ridade summa all pole midagi, see pole viga."
       ],
       "why": "Maria näeb, kas raha tuli pangast või järelmaksuna, ja pooleli ridade viis ei jää tühjaks.",
       "risk": "med",

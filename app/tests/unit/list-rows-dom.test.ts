@@ -158,11 +158,9 @@ describe("list tables (the stylesheet)", () => {
   };
   const squash = (s: string) => s.replace(/\s+/g, " ").trim();
 
-  it("a row becomes a block of label/value lines below a 760 px card; only the cards marked stackAt980 keep the old 980", () => {
-    expect(css.match(/@container[^{]*\{/g)).toEqual(["@container (max-width: 760px) {", "@container (max-width: 980px) {"]);
-    // the 980 block is the 760 block's rules, each selector under .stackAt980 (so a change to one must be made to the other)
-    const wide = squash(block("@container (max-width: 760px)")).replace(/(^|[,}{] ?)(\.table|\.who)/g, "$1.stackAt980 $2");
-    expect(squash(block("@container (max-width: 980px)"))).toBe(wide);
+  it("a row becomes a block of label/value lines below a 760 px card, for every list: there is no other switch (Maksed's 980 px one went with A6)", () => {
+    expect(css.match(/@container[^{]*\{/g)).toEqual(["@container (max-width: 760px) {"]);
+    expect(css).not.toMatch(/stackAt980|980px/);
   });
 
   it("nothing is stretched, positioned or clipped to make the row a link: the row is the link by ListRows", () => {
@@ -189,21 +187,23 @@ describe("list tables (the stylesheet)", () => {
     expect(block("@media (hover: hover)")).not.toMatch(/:active/);
   });
 
-  it("every page's own container queries agree: Maksed stacks at 980 with the card until its screen (A6), the rest, Registreerimised too (A2), at 760", () => {
+  it("every page's own container queries agree: every list stacks at the shared 760 switch; Registreerimised (A2) and Maksed (A6) draw a phone card of their own", () => {
     const page = (f: string) => readFileSync(join(process.cwd(), "src/app/admin/(panel)", f), "utf8");
     // Registreerimised has five columns and its own phone card (A2): the shared 760 switch, nothing at 980
     expect(page("registreerimised/registrations.module.css")).toMatch(/@container \(max-width: 760px\)/);
     expect(page("registreerimised/registrations.module.css")).not.toMatch(/980px/);
     expect(page("registreerimised/page.tsx")).not.toMatch(/stackAt980/);
-    expect(page("maksed/payments.module.css")).toMatch(/@container \(max-width: 980px\)/);
+    // Maksed has six columns and its own phone card (A6): the same 760 switch
+    expect(page("maksed/payments.module.css")).toMatch(/@container \(max-width: 760px\)/);
+    expect(page("maksed/payments.module.css")).not.toMatch(/980px/);
     expect(page("tagasiside/feedback.module.css")).toMatch(/@container \(max-width: 760px\)/);
     expect(page("tagasiside/feedback.module.css")).not.toMatch(/980px/);
-    expect(page("maksed/page.tsx")).toMatch(/listTable\.card\} \$\{listTable\.stackAt980\}/);
-    for (const f of ["registreerimised", "opilased", "tagasiside", "tunnistused"]) expect(page(`${f}/page.tsx`)).not.toMatch(/stackAt980/);
-    // every list's table is inside ListRows (Registreerimised adds its own class for the phone card)
+    for (const f of ["registreerimised", "opilased", "maksed", "tagasiside", "tunnistused"]) expect(page(`${f}/page.tsx`)).not.toMatch(/stackAt980/);
+    // every list's table is inside ListRows (Registreerimised and Maksed add their own class for the phone card)
     for (const f of ["registreerimised", "opilased", "maksed", "tagasiside", "tunnistused"])
       expect(page(`${f}/page.tsx`), f).toMatch(/<ListRows>\s*<table className=\{`\$\{ui\.table\} \$\{listTable\.table\}(?: \$\{styles\.list\})?`\}>/);
     // the card's rules outweigh the shared label rows' (`.table td`, `.table td:first-child`) by naming the table
     expect(page("registreerimised/registrations.module.css")).toMatch(/table\.list td:first-child \{/);
+    expect(page("maksed/payments.module.css")).toMatch(/table\.list td:first-child \{/);
   });
 });

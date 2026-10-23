@@ -1,9 +1,5 @@
-/* Arved (invoices Task 5): the way back to Maksed, the month's file for the accountant, „Arveta maksed“ above the list, the month filter. The invoice
+/* Arved (invoices Task 5): the month's file for the accountant, „Arveta maksed“ above the list, the month filter. The invoice
    rows are the registration drawer's (components/admin/InvoiceBlock.module.css). Colours from tokens.css only. */
-
-.back {
-  margin: 0 0 18px;
-}
 
 .csv {
   display: grid;

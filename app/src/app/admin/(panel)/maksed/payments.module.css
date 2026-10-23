@@ -1,4 +1,7 @@
-/* Maksed (phase 2b): the list's own pieces (the table itself is the shared admin list, components/admin/list-table.module.css). */
+/* Maksed (phase 2b; A6): the list's own pieces (the table itself is the shared admin list, components/admin/list-table.module.css). Six columns —
+   Kuupäev | Maksja | Eest | Summa | Staatus | Montonio id — fitted to the card of a 1180 px laptop (the kind is a line under „Eest“, the way it was paid
+   a line under the sum). Below 760 px of its card (the shared switch) each row is a card, as the Part 2 phone frame draws it: the name and the sum,
+   „{day} · {course} · {way}“, the status and where the row leads, then „Montonios ↗“. Colours from tokens.css only. */
 
 .count {
   margin-bottom: 6px;
@@ -9,7 +12,16 @@
   font-size: 12px;
 }
 
-/* a payer without a student record is plain text: the shared list's name is underlined as a link */
+.course {
+  display: block;
+}
+
+.amount {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* a payer without a student or a registration is plain text: the shared list's name is underlined as a link */
 span.plain {
   text-decoration: none;
 }
@@ -32,22 +44,124 @@ span.plain {
   gap: 6px;
 }
 
-.provider {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
 /* a row Maria must look at in Montonio: held, or voided after it was paid */
 .check > td {
   background: color-mix(in srgb, var(--bad) 6%, transparent);
 }
 
-/* the time next to the date once the row is a block. This list's card stacks below 980 px, not the shared 760: `stackAt980` on its card
-   (list-table.module.css), until the A6 screen drops columns; then this goes back to 760 with it. */
-@container (max-width: 980px) {
-  .sub {
-    display: inline;
-    margin-left: 6px;
+/* the shared payer block keeps 180 px (list-table.module.css .who); the e-mail breaks inside a word, so this list's payer may be a little narrower and the
+   six columns fit the narrowest card that is a table (761 px) */
+table.list .who {
+  min-width: 150px;
+}
+
+/* the phone card's own lines are not drawn in the table */
+.meta,
+.go {
+  display: none;
+}
+
+/* The card. The selectors say `table.list` so that they outweigh the shared label-row rules of the same container query (list-table.module.css
+   `.table td`, `.table td:first-child`), whichever stylesheet comes first. The row is a wrapping flex line, its items put in the card's order
+   (`order`): the payer cell gives its parts to the row (`display: contents`), so the name, the meta line and the „Ava … →“ hint can sit in
+   different lines of it. The name takes what the sum leaves; the meta line has a line of its own; the status takes what the hint leaves; „Montonios ↗“
+   has the last line. The date, the course and the kind are in the meta line, the e-mail is in the drawer. */
+@container (max-width: 760px) {
+  /* every card has a 3 px left border (transparent but for the ones to check, below) and the same padding, so all the text stays on one line down the list */
+  table.list tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 0;
+    padding: 14px 12px 14px 9px;
+    border-left: 3px solid transparent;
+  }
+
+  table.list td,
+  table.list td:first-child {
+    display: block;
+    width: auto;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  /* the labels of the shared label rows are not on this card */
+  table.list td::before {
+    content: none;
+  }
+
+  table.list td.dateCell:first-child,
+  table.list td.whatCell,
+  table.list a.contact,
+  table.list .method {
+    display: none;
+  }
+
+  table.list td.whoCell {
+    display: contents;
+  }
+
+  table.list td.whoCell .who {
+    order: 1;
+    flex: 1 1 8em;
+    min-width: 0;
+    font-size: 15px;
+  }
+
+  table.list td.amountCell {
+    order: 2;
+    flex: none;
+    margin-left: 8px;
+    font-size: 15px;
+  }
+
+  table.list .meta {
+    display: block;
+    order: 3;
+    flex: 0 0 100%;
+    min-width: 0;
+    color: var(--ink-soft);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+
+  table.list td.statusCell {
+    order: 4;
+    flex: 1 1 auto;
+    margin-top: 8px;
+  }
+
+  table.list .status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* „Ava registreering →“: the Part 2 phone frame's words, to the right of the status; the row is the link (ListRows), so this only says so */
+  table.list .go {
+    display: block;
+    order: 5;
+    flex: none;
+    margin: 8px 0 0 auto;
+    padding-left: 12px;
+    color: var(--ink);
+    font: 600 12px/1.3 var(--font-body);
+  }
+
+  table.list td.montonioCell {
+    order: 6;
+    flex: 0 0 100%;
+    margin-top: 10px;
+  }
+
+  /* held and voided rows keep their tint and get a 3 px #9e8993 (--rose) left border on the phone (README A6): the tint is the card's, not the cells' */
+  table.list tr.check {
+    border-left-color: var(--rose);
+    background: color-mix(in srgb, var(--bad) 6%, transparent);
+  }
+
+  table.list tr.check > td {
+    background: none;
   }
 }

@@ -1,6 +1,6 @@
 import type { Page, Request, TestInfo } from "@playwright/test";
 import { clientEmail, holdTerms, insertAccountFixtures, signInAsClient, storedAccess, storedClient } from "./account";
-import { signInAsAdmin, type CreatedRows } from "./admin-login";
+import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { insertStoredPayment, onLocalDb, removeAdminRows, removeClientRows, storedPayments, storedPayToken, storedRegistrations } from "./fixtures";
 import { ECOURSE_BUY_LOCK_CLASS } from "../../src/server/payments/start";
 import { E2E_MONTONIO } from "./montonio-values";
@@ -214,7 +214,7 @@ test("an e-course bought from the cart: paid → 'Ava e-koolitus'; the access is
   }
 });
 
-test("the admin's Maksed: the filter, 'Kontrolli Montonios' on a held payment; the registration's drawer lists its payments (spec 8)", async ({ page, context, visitorIp }, info) => {
+test("the admin's Maksed: tabs, search, pills with counts, the row link, „Montonios ↗“, 'Kontrolli Montonios' on a held payment; the registration's drawer lists its payments (spec 8, A6)", async ({ page, context, visitorIp }, info) => {
   const email = await fresh("admin", info);
   const f = await insertAccountFixtures(email, { cards: ["awaiting"], name: "E2E Maksja" });
   const regId = f.registrations.awaiting!;
@@ -222,20 +222,40 @@ test("the admin's Maksed: the filter, 'Kontrolli Montonios' on a held payment; t
   const paid = await insertStoredPayment({ ...own, kind: "prepayment", status: "paid", paid: true, minutesAgo: 5 });
   const held = await insertStoredPayment({ ...own, kind: "balance", status: "held" });
   await signInAsAdmin(page, context, visitorIp, created);
-  await page.goto("/admin/maksed");
+  // (this payer's rows only, found by the search; the pills count what the search finds)
+  await page.goto(`/admin/maksed?otsi=${encodeURIComponent(email)}`);
   await expect(page.locator("aside [data-nav='payments']")).toHaveAttribute("aria-current", "page"); // (a phone has it in the menu drawer)
-  await expect(page.locator("nav[data-payment-filter] a")).toHaveText(["Kõik", "Makstud", "Pooleli", "Ebaõnnestunud", "Tagastatud", "Ootel kontrollil"]);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Maksed ja arved");
+  const tabs = page.getByRole("navigation", { name: "Maksed ja arved" });
+  await expect(tabs.getByRole("link")).toHaveText(["Maksed", "Arved"]);
+  await expect(tabs.getByRole("link", { name: "Maksed" })).toHaveAttribute("aria-current", "page");
+  await expect(tabs.getByRole("link", { name: "Arved" })).toHaveAttribute("href", "/admin/arved");
+  const pills = page.locator("[data-list-pill-row] a");
+  await expect(pills).toHaveText(["Kõik2", "Makstud1", "Pooleli0", "Ebaõnnestunud0", "Tagastatud0", "Ootel kontrollil1"]);
   const row = (reference: string) => page.locator(`tr[data-payment="${reference}"]`);
-  for (const text of ["E2E Maksja", f.course.title, "Ettemaks", "175 €", "Makstud", "Pangalink · Testpank", paid.providerUuid]) await expect(row(paid.reference)).toContainText(text);
-  await expect(row(paid.reference).getByRole("link", { name: "E2E Maksja" })).toHaveAttribute("href", `/admin/opilased?id=${f.clientId}`);
+  for (const text of ["E2E Maksja", f.course.title, "Ettemaks", "175 €", "Makstud", "Pangalink · Testpank"]) await expect(row(paid.reference)).toContainText(text);
+  // the row leads to the registration's drawer; the Montonio id is no text any more
+  await expect(row(paid.reference).getByRole("link", { name: "Ava E2E Maksja" })).toHaveAttribute("href", `/admin/registreerimised?id=${regId}`);
+  await expect(row(paid.reference)).not.toContainText(paid.providerUuid);
   await expect(row(paid.reference)).not.toContainText("paymentInitiation"); // Maria never reads Montonio's code (Task 9)
   await expect(row(held.reference)).not.toContainText("paymentInitiation");
   await expect(row(paid.reference).locator("[data-payment-check]")).toHaveCount(0);
   await expect(row(held.reference).locator("[data-payment-check]")).toHaveText("Kontrolli Montonios");
-  await page.locator("nav[data-payment-filter]").getByRole("link", { name: "Ootel kontrollil" }).click();
-  await expect(page).toHaveURL(/\/admin\/maksed\?staatus=kontroll$/);
+  await page.locator("[data-list-pill-row]").getByRole("link", { name: /^Ootel kontrollil/ }).click();
+  await expect(page).toHaveURL(/\/admin\/maksed\?otsi=[^&]+&staatus=kontroll$/);
   await expect(row(held.reference)).toBeVisible();
   await expect(row(paid.reference)).toHaveCount(0);
+  // the search is as she types, and finds a payment by its Montonio id (a part of it, any case)
+  await page.goto("/admin/maksed");
+  const search = page.getByRole("searchbox", { name: "Otsi nime, e-posti või Montonio id järgi" });
+  await search.fill(paid.providerUuid.slice(4, 20).toUpperCase());
+  await expect(page).toHaveURL(/\/admin\/maksed\?otsi=/);
+  await expect(row(paid.reference)).toBeVisible();
+  await expect(page.locator("tr[data-payment]")).toHaveCount(1);
+  await search.fill("ei-leia-midagi");
+  await expect(page.getByText("„ei-leia-midagi“ järgi makseid ei leitud.")).toBeVisible();
+  await page.getByRole("link", { name: "Tühjenda otsing ja filtrid" }).click();
+  await expect(page).toHaveURL(/\/admin\/maksed$/);
 
   await page.goto(`/admin/registreerimised?id=${regId}`);
   const lines = page.locator("[data-registration-payments]");
@@ -243,6 +263,52 @@ test("the admin's Maksed: the filter, 'Kontrolli Montonios' on a held payment; t
   await expect(lines.locator(`[data-payment="${paid.reference}"] [data-payment-method]`)).toHaveText("Pangalink · Testpank");
   await expect(lines.locator(`[data-payment="${held.reference}"] [data-payment-check]`)).toHaveText("Kontrolli Montonios");
   await expect(lines).not.toContainText("paymentInitiation");
+});
+
+test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copies the order id at the same press; a refused clipboard changes nothing but the line (Dim 22.10)", async ({ page, context, visitorIp }, info) => {
+  const email = await fresh("partner", info);
+  const f = await insertAccountFixtures(email, { cards: ["awaiting"], name: "E2E Partner" });
+  const own = { email, name: "E2E Partner", registrationId: f.registrations.awaiting!, courseId: f.course.id, clientId: f.clientId, amountCents: 17500, method: "paymentInitiation", bank: "Testpank" };
+  const paid = await insertStoredPayment({ ...own, kind: "prepayment", status: "paid", paid: true, minutesAgo: 5 });
+  // (the sandbox's Partner System is not visited from a test: the new tab gets a stand-in page)
+  let opened = 0;
+  await context.route("https://sandbox-partner.montonio.com/**", (route) => {
+    opened++;
+    return route.fulfill({ status: 200, contentType: "text/html", body: "<title>Partner</title><p>Partner System</p>" });
+  });
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.goto(`/admin/maksed?otsi=${encodeURIComponent(email)}`);
+  const link = page.locator(`tr[data-payment="${paid.reference}"] [data-montonio-link]`);
+  await expect(link).toHaveText("Montonios ↗");
+  await expect(link).toHaveAttribute("href", "https://sandbox-partner.montonio.com");
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", "noopener");
+  await expect(link).toHaveAttribute("title", paid.providerUuid); // (the id stays readable where the clipboard is refused)
+  const line = page.locator(`tr[data-payment="${paid.reference}"] [data-montonio-copied]`);
+  await expect(line).toHaveText("");
+  await adminReady(page);
+
+  const [tab] = await Promise.all([context.waitForEvent("page"), link.click()]);
+  await tab.waitForLoadState();
+  expect(tab.url()).toBe("https://sandbox-partner.montonio.com/");
+  expect(opened).toBe(1);
+  await expect(line).toHaveText("Montonio id kopeeritud.");
+  await page.bringToFront();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(paid.providerUuid);
+  expect(page.url()).toContain("/admin/maksed"); // (the press did not also open the row)
+  await tab.close();
+  await expect(line).toHaveText("", { timeout: 10_000 }); // (the line goes by itself)
+
+  // a clipboard that refuses: the tab still opens, and no line says what did not happen
+  await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("NotAllowedError")) } }));
+  const [again] = await Promise.all([context.waitForEvent("page"), link.click()]);
+  await again.waitForLoadState();
+  expect(again.url()).toBe("https://sandbox-partner.montonio.com/");
+  await page.bringToFront();
+  await page.waitForTimeout(300);
+  await expect(line).toHaveText("");
+  await again.close();
 });
 
 test("four webhooks of the same PAID token at the same moment: all 200, the payment paid once, the registration credited once (Postgres, Task 3)", async ({ page }, info) => {

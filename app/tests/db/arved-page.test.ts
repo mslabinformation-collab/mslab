@@ -86,12 +86,18 @@ describe("the „Arved“ page", () => {
     await cancelInvoice(db, kati.invoice.id, OCTOBER);
   });
 
-  test("every invoice, newest first, with its buyer, its course and a link to its registration; a way back to Maksed", async () => {
+  test("every invoice, newest first, with its buyer, its course and a link to its registration; the tabs Maksed | Arved", async () => {
     const html = await render(InvoicesPage);
     expect(numbers(html)).toEqual(["MSL2026-003", "MSL2026-002", "MSL2026-001"]);
     expect(html).toContain("<h1");
-    expect(html).toContain(">Arved</h1>");
-    expect(html).toContain('href="/admin/maksed"');
+    // the heading both tabs share (A6), and the tabs: Maksed is a link back, Arved is the current one
+    expect(html).toContain(">Maksed ja arved</h1>");
+    expect(html).toContain("Montonio ja raamatupidamine");
+    const tabs = /<nav[^>]*aria-label="Maksed ja arved"[^>]*data-tab-pills[^>]*>([\s\S]*?)<\/nav>/.exec(html)![1];
+    expect([...tabs.matchAll(/<a [^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].map((m) => [m[2], m[1], /aria-current="page"/.test(m[0])])).toEqual([
+      ["Maksed", "/admin/maksed", false],
+      ["Arved", "/admin/arved", true],
+    ]);
     expect(html).toContain("Arveid: 3");
     const liisRow = html.slice(html.indexOf('data-invoice="MSL2026-003"'), html.indexOf('data-invoice="MSL2026-002"'));
     expect(liisRow).toContain("Liis Mets");
@@ -347,6 +353,6 @@ describe("the registration drawer's „Arved“", () => {
   });
 
   test("the text of the page's own dictionary is the one shown", () => {
-    expect(adminEt.invoices.fromPayments).toBe("Arved");
+    expect(adminEt.payments.tabs.invoices).toBe("Arved");
   });
 });

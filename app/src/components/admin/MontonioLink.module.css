@@ -1,0 +1,35 @@
+/* „Montonios ↗“ (admin Maksed, A6) and the line that says the order id was copied. Colours from tokens.css only.
+   The link is a 44px tall target (global constraint) made of transparent padding with its own cancelled by a negative margin, as the list's name
+   link is (list-table.module.css .name): the text sits on the first line of the cell, beside the other cells' first lines, and the row is not made
+   taller by it. */
+
+.link {
+  display: inline-block;
+  padding: 13px 0;
+  margin: -13px 0;
+  color: var(--ink);
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: var(--fog);
+  text-underline-offset: 4px;
+}
+
+.link:hover {
+  text-decoration-color: var(--ink);
+}
+
+/* „Montonio id kopeeritud.“: small and muted, under the link, for a few seconds. It breaks at its spaces, so its width never widens the column. */
+.copied {
+  display: block;
+  margin-top: 6px;
+  max-width: 9em;
+  color: var(--muted-2);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.copied:empty {
+  display: none;
+}

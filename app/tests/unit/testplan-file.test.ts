@@ -768,7 +768,7 @@ describe("the instalments checks (instalments, Task 8)", () => {
     // a cancel at the sandbox bank may leave the order pending, so the failed row is looked for under both filters; older rows have no method
     expect(text("haldus-maksed-jarelmaks")).toContain("Vajuta filtritel „Ebaõnnestunud“ ja „Pooleli“ ning vaata rida, mille makse katkestati testpangas (Proov 2 või Proov 13).");
     expect(text("haldus-maksed-jarelmaks")).toContain("ükskõik kas pooleli või ebaõnnestunud");
-    expect(text("haldus-maksed-jarelmaks")).toContain("varem tehtud ridade „Makseviis“ on tühi");
+    expect(text("haldus-maksed-jarelmaks")).toContain("varem tehtud ridade summa all pole midagi");
   });
 
   test("the toggle card's expectation is not „unticked“: the course-page check, which comes first, has ticked and saved it already", () => {
@@ -834,7 +834,7 @@ describe("the instalments checks (instalments, Task 8)", () => {
     expect(text("ekursus-jarelmaks")).toContain(`„Tasutud … · ${paidMethodText("financing")}“`);
     expect(paymentMethodLabel("hirePurchase", null)).toBe("Järelmaks (Inbank)");
     expect(paymentMethodLabel("paymentInitiation", "")).toBe("Pangalink");
-    for (const word of [adminEt.payments.filter.paid, adminEt.payments.filter.pending, adminEt.payments.filter.failed, adminEt.payments.filter.held, adminEt.payments.col.method, adminEt.payments.online])
+    for (const word of [adminEt.payments.filter.paid, adminEt.payments.filter.pending, adminEt.payments.filter.failed, adminEt.payments.filter.held, adminEt.payments.online])
       expect(text("haldus-maksed-jarelmaks") + text("registreerimine-jarelmaks-hiline"), word).toContain(`„${word}“`);
   });
 
