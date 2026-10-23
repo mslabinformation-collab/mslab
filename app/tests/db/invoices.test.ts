@@ -95,6 +95,21 @@ async function request(r: Registration, kind: "prepayment" | "full" | "balance" 
   return result.invoice;
 }
 
+/** A receipt as made before the ruling of B4, for money paid at the venue and never recorded: born paid, no due date, nothing added to Laekunud summa. */
+async function oldReceipt(r: Registration, courseId: number, seq: number, amountCents = 11500): Promise<Invoice> {
+  const [inserted] = await db
+    .insert(invoices)
+    .values({
+      number: `MSL2026-${seq}`, prefix: "MSL", year: 2026, seq, kind: "balance", registrationId: r.id, paymentId: null, courseId, clientId: null,
+      status: "paid", amountCents, vatRate: null, line: { course: "Kulmumeistri baaskoolitus", session: "14.11.2026 Pärnu", part: "Osamakse" },
+      seller: { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", receiver: "", iban: "", bank: "" },
+      buyer: { name: "Kati Tamm", email: "kati@example.test", address: "", company: "", companyCode: "", companyAddress: "" },
+      reference: "", issuedAt: PAID_AT, dueAt: null, paidAt: PAID_AT, paidMethod: "cash", paidAdds: false,
+    })
+    .returning();
+  return inserted;
+}
+
 /** What settle.ts paid() does with `p` inside its transaction (Task 4): the locks, the paid update, the amount added; then the invoice. */
 async function settle(p: Payment, paidAt = PAID_AT): Promise<Invoice | null> {
   return db.transaction(async (tx) => {
@@ -585,27 +600,38 @@ describe("undoInvoicePaid: „Võta tasumine tagasi“ (D6)", () => {
     expect(await settle(await pendingPayment(db, r))).toMatchObject({ paidMethod: "montonio", amountCents: 17500 });
     expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
     // receipts made before the ruling for 115 € paid at the venue and never recorded (born paid, no due date, nothing added)
-    const oldReceipt = async (seq: number) =>
-      (
-        await db
-          .insert(invoices)
-          .values({
-            number: `MSL2026-${seq}`, prefix: "MSL", year: 2026, seq, kind: "balance", registrationId: r.id, paymentId: null, courseId: c.course.id, clientId: null,
-            status: "paid", amountCents: 11500, vatRate: null, line: { course: "Kulmumeistri baaskoolitus", session: "14.11.2026 Pärnu", part: "Osamakse" },
-            seller: { company: "MS LAB OÜ", registryCode: "16346048", address: "Rüütli 1, 80010 Pärnu", vatNumber: "", receiver: "", iban: "", bank: "" },
-            buyer: { name: "Kati Tamm", email: "kati@example.test", address: "", company: "", companyCode: "", companyAddress: "" },
-            reference: "", issuedAt: PAID_AT, dueAt: null, paidAt: PAID_AT, paidMethod: "cash", paidAdds: false,
-          })
-          .returning()
-      )[0];
-    const first = await oldReceipt(901);
+    const first = await oldReceipt(r, c.course.id, 901);
     expect(await undoInvoicePaid(db, first.id, NOW)).toMatchObject({ ok: true, invoice: { status: "cancelled" } });
     expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
     // 50 € of Laekunud summa no paid invoice covers: at most that comes off
     await db.update(registrations).set({ paidCents: 22500 }).where(eq(registrations.id, r.id));
-    const second = await oldReceipt(902);
+    const second = await oldReceipt(r, c.course.id, 902);
     expect((await undoInvoicePaid(db, second.id, NOW)).ok).toBe(true);
     expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
+  });
+
+  test("L84: the same cap when the online payment has no invoice yet (Seaded's seller unset, the payment waits in „Arveta maksed“): its 175 € stays, and only the uncovered 50 € goes — the panel's sum agrees", async () => {
+    const c = await contactCourse(db);
+    const r = await registrationOn(db, c);
+    // (no `ready()`: there is no seller, so the paid payment makes no invoice)
+    const online = await pendingPayment(db, r);
+    expect(await settle(online)).toBeNull();
+    expect(await allInvoices()).toEqual([]);
+    expect((await uninvoicedPayments(db)).map((p) => p.id)).toEqual([online.id]);
+    expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
+    // the panel's own number (receiptTakeBack over the registration's invoices and its payments waiting for theirs), then what the server does
+    const first = await oldReceipt(r, c.course.id, 901);
+    expect((await receiptTakeBacks(db, await invoicesOfRegistration(db, r.id))).get(first.id)).toEqual({ cents: 0, backToAwaiting: false });
+    expect(await undoInvoicePaid(db, first.id, NOW)).toMatchObject({ ok: true, invoice: { status: "cancelled" } });
+    expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
+    // 50 € of Laekunud summa that neither a paid invoice nor the waiting online payment covers: at most that comes off
+    await db.update(registrations).set({ paidCents: 22500 }).where(eq(registrations.id, r.id));
+    const second = await oldReceipt(r, c.course.id, 902);
+    expect((await receiptTakeBacks(db, await invoicesOfRegistration(db, r.id))).get(second.id)).toEqual({ cents: 5000, backToAwaiting: false });
+    expect((await undoInvoicePaid(db, second.id, NOW)).ok).toBe(true);
+    expect(await registration(r.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
+    // and it is the online payment, not an invoice, that held the 175 €: the payment is still unbilled
+    expect((await uninvoicedPayments(db)).map((p) => p.id)).toEqual([online.id]);
   });
 
   test("spec §9: a receipt's undo never takes Laekunud summa below 0 (an old receipt for money never recorded: the take-back is capped at the paid sum), and a receipt whose registration is gone is only cancelled", async () => {
