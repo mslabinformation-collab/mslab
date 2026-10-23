@@ -66,6 +66,11 @@ describe("the admin's bars are marked data-fab-avoid", () => {
     expect(source).toMatch(/<div className=\{styles\.saveBar\} data-save-bar="" data-fab-avoid="">/);
   });
 
+  it("the practical work's send bar (fixed at the bottom on a phone; its markup is in AssessmentSend.tsx)", () => {
+    const source = readFileSync(join(process.cwd(), "src", "components", "admin", "AssessmentSend.tsx"), "utf8");
+    expect(source).toMatch(/className=\{styles\.dock\} data-assess-dock="" data-fab-avoid="">/);
+  });
+
   it("the phone's top bar is not marked (it is at the top: the mark would do nothing)", () => {
     const source = readFileSync(join(process.cwd(), "src", "components", "admin", "Sidebar.tsx"), "utf8");
     expect(source).toContain("<header className={styles.bar}>");
@@ -108,8 +113,9 @@ describe("a bar fixed or sticky at the bottom of the screen is known", () => {
     expect(names.some((n) => n.startsWith("app/admin/") && n.endsWith(".css"))).toBe(true);
   });
 
-  it("is the UndoBar's region, the PublishBar's phone bar and the two save bars: each marked above; a new one is to be marked too", () => {
+  it("is the UndoBar's region, the PublishBar's phone bar, the two save bars and the practical work's send bar: each marked above; a new one is to be marked too", () => {
     expect(bottomBars()).toEqual([
+      "components/admin/Assessment.module.css .dock",
       "components/admin/CourseEditor.module.css .saveBar",
       "components/admin/PublishBar.module.css .bar",
       "components/admin/UndoBar.module.css .region",
