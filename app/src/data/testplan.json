@@ -3805,11 +3805,13 @@
         "Pärast esitamist näed „Said 0 %, vaja … %. Valesti vastatud: 1.“.",
         "Viimase katse järel näed „Katsed on otsas. Maria sai teate ja avab testi sulle uuesti.“.",
         "Maria postkasti tuleb „Testi katsed otsas: Proov 1, …“.",
-        "Halduses „Hindamine“ on Proov 1 grupis „Katsed otsas“."
+        "Halduses „Hindamine“ on rida „Proov 1 · katsed otsas“."
       ],
       "why": "Õpilane ei saa testi lõputult proovida.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-test-uuesti",
@@ -3820,12 +3822,15 @@
       "href": "/admin/hindamine",
       "steps": [
         "Ava „Hindamine“.",
-        "Vajuta grupis „Katsed otsas“ Proov 1 real „Ava test uuesti“.",
-        "Vajuta „Jah, ava“."
+        "Vajuta real „Proov 1 · katsed otsas“ nuppu „Ava test uuesti“.",
+        "Vajuta „Katkesta“, siis uuesti „Ava test uuesti“ ja „Jah, ava“."
       ],
       "expect": [
-        "Enne avamist on küsimus „Kas avan testi „…“ uuesti? …“.",
-        "Pärast kaob Proov 1 grupist „Katsed otsas“ ja menüüs „Hindamine“ näitab märk ühe võrra vähem.",
+        "Nupu asemel on küsimus „Kas avan testi „…“ uuesti?“ koos nuppudega „Jah, ava“ ja „Katkesta“.",
+        "Küsimuse all on rida „Õpilane saab sama palju katseid juurde ja kirja.“.",
+        "„Katkesta“ toob nupu „Ava test uuesti“ tagasi ja test jääb suletuks.",
+        "Pärast avamist kaob Proov 1 rida ja menüüs „Hindamine“ näitab märk ühe võrra vähem.",
+        "Üleval lehel on „Test on uuesti avatud: katseid jäänud …“.",
         "Proov 1 postkasti tuleb kiri „Test on sinu jaoks uuesti avatud“.",
         "Õpilase testi lehel on jälle „Esita test“."
       ],
@@ -3833,7 +3838,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-test-oige",
@@ -3850,12 +3855,14 @@
       "expect": [
         "Näed „Ootab Maria hinnangut“ ja „Maria loeb sinu vastused läbi. …“.",
         "Maria postkasti tuleb „Test ootab hindamist: Proov 1, …“.",
-        "Halduses „Hindamine“ on Proov 1 grupis „Testi vastused“.",
+        "Halduses „Hindamine“ on rida „Proov 1 · testi vastus“.",
         "Halduse menüüs on „Hindamine“ juures arv."
       ],
       "why": "Vaba vastuse loeb läbi Maria.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-test-paranda",
@@ -3865,7 +3872,7 @@
       "title": "Hindamine: palu vastust parandada",
       "href": "/admin/hindamine",
       "steps": [
-        "Ava „Hindamine“ ja vajuta Proov 1 real „Vaata vastuseid“.",
+        "Ava „Hindamine“ ja vajuta Proov 1 real „Vaata“.",
         "Vali vaba vastuse juures „Paranda“.",
         "Vajuta „Saada“ enne kommentaari kirjutamist.",
         "Kirjuta „Kommentaar“: Proov 1, palun täienda.",
@@ -3879,7 +3886,9 @@
       ],
       "why": "Maria saab vastuse tagasi saata.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-test-saada-uuesti",
@@ -3912,7 +3921,7 @@
       "title": "Hindamine: kinnita test",
       "href": "/admin/hindamine",
       "steps": [
-        "Ava „Hindamine“ ja vajuta Proov 1 real „Vaata vastuseid“.",
+        "Ava „Hindamine“ ja vajuta Proov 1 real „Vaata“.",
         "Vali vastuse juures „Kinnitatud“.",
         "Vajuta „Saada“."
       ],
@@ -3923,7 +3932,9 @@
       ],
       "why": "Pärast testi avaneb praktiline töö.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-praktiline-saada",
@@ -3957,7 +3968,7 @@
       "title": "Hindamine: praktiline töö",
       "href": "/admin/hindamine",
       "steps": [
-        "Ava „Hindamine“ ja vajuta grupis „Praktilised tööd“ Proov 1 real „Hinda“.",
+        "Ava „Hindamine“ ja vajuta real „Proov 1 · praktiline töö“ nuppu „Hinda“.",
         "Vajuta fotole, suurenda kahe sõrmega ja sulge.",
         "Vali esimesel punktil „Kinnitatud“.",
         "Vali teisel punktil „Paranda“ ja kirjuta selle punkti märkus: Proov 1.",
@@ -3972,7 +3983,9 @@
       ],
       "why": "Maria hindab iga punkti eraldi.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-praktiline-paranda",
@@ -4181,18 +4194,21 @@
       "title": "Väljastatud tunnistused",
       "href": "/admin/tunnistused",
       "steps": [
-        "Ava „Hindamine“ ja vajuta „Väljastatud tunnistused“.",
+        "Ava „Hindamine“ ja vajuta üleval „Tunnistused“.",
         "Vajuta Proov 1 real „Laada alla“.",
         "Ava „Seaded“ ja kaart „Tunnistus“."
       ],
       "expect": [
+        "Üleval on „Ootab hindamist“ koos arvuga ja „Tunnistused“, millest teine on valitud.",
         "Lehel „Tunnistused“ on Proov 1 rida numbri, koolituse ja kuupäevaga.",
         "„Laada alla“ annab sama PDF-i.",
         "Seadetes on „Viimati väljastatud: MS LAB …“ Proov 1 numbriga."
       ],
       "why": "Register näitab kõiki väljastatud tunnistusi.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "ekursus-ligipaas-ava",

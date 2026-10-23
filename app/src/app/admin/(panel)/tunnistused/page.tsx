@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { assessmentTabs } from "@/components/admin/assessment-tabs";
 import { ListRows } from "@/components/admin/ListRows";
 import listTable from "@/components/admin/list-table.module.css";
 import { Pager } from "@/components/admin/Pager";
 import { adminTitle } from "@/components/admin/sections";
+import { TabPills } from "@/components/admin/TabPills";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
+import { assessmentCount } from "@/db/queries/assessment";
 import { parsePage } from "@/domain/paging";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate } from "@/i18n/format";
@@ -21,23 +24,19 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 /**
  * Tunnistused (phase 3d, spec §6): every issued e-course certificate, newest first, 50 a page (?leht=) — its number, the name printed (a link
  * to her drawer in Õpilased), the course's title as printed, the issue day (and the re-issue day; "ligipääs tühistatud" for an access an admin
- * ended: Maria's download works all the same, Review Focus 5) and "Laada alla". Reached from Hindamine, not from the menu: the shell marks
- * Hindamine.
+ * ended: Maria's download works all the same, Review Focus 5) and "Laada alla". The second tab of Hindamine (admin UX pass A4: the tabs „Ootab
+ * hindamist {n}“ and „Tunnistused“ are on both pages), not in the menu: the shell marks Hindamine.
  */
 export default async function CertificateRegisterPage({ searchParams }: Props) {
   await requireAdmin();
-  const list = await listCertificates(getDb(), parsePage((await searchParams).leht));
+  const db = getDb();
+  const [list, waiting] = await Promise.all([listCertificates(db, parsePage((await searchParams).leht)), assessmentCount(db)]);
   const t = adminEt.certificates.register;
   // the register says "nimi parandatud", "ligipääs tühistatud" and "Laada alla" in the drawer's words: one set of texts
   const d = adminEt.certificates.drawer;
 
   return (
     <div className={ui.page} data-certificate-register="">
-      <p className={styles.back}>
-        <Link className={ui.link} href="/admin/hindamine">
-          <span aria-hidden="true">←</span> {t.back}
-        </Link>
-      </p>
       <div className={ui.heading}>
         <div>
           <p className={ui.eyebrow}>{t.eyebrow}</p>
@@ -45,6 +44,8 @@ export default async function CertificateRegisterPage({ searchParams }: Props) {
           <p className={ui.lead}>{t.lead}</p>
         </div>
       </div>
+
+      <TabPills label={adminEt.assessment.title} tabs={assessmentTabs("certificates", waiting)} />
 
       <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
         <p className={`${ui.muted} ${ui.small}`} data-register-count="">

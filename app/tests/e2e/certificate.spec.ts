@@ -186,12 +186,15 @@ test("§10 e2e: Maria's 'Tunnistus' card; the student confirms her name (an emoj
   expect(fixed.reissuedAt).not.toBeNull();
   await expect(line).not.toContainText("Žukova"); // the refreshed line has the new name
 
-  // the register, from Hindamine
+  // the register, from Hindamine's second tab (A4: „Ootab hindamist {n}“ and „Tunnistused“ are on both pages)
   await page.goto("/admin/hindamine");
   await adminReady(page);
-  await page.locator("[data-to-register]").click();
+  await expect(page.locator("[data-to-register]")).toHaveCount(0);
+  await page.locator("[data-tab-pills]").getByRole("link", { name: "Tunnistused" }).click();
   await expect(page).toHaveURL(/\/admin\/tunnistused$/);
   await adminReady(page);
+  await expect(page.locator('[data-tab-pills] a[aria-current="page"]')).toHaveText("Tunnistused");
+  await expect(page.locator("[data-tab-pills]").getByRole("link", { name: /^Ootab hindamist/ })).toHaveAttribute("href", "/admin/hindamine");
   const entry = page.locator(`[data-certificate-register] [data-register-row="${stored.id}"]`);
   for (const text of [stored.number, "Kätlin Kask", "E2E lõpetamine"]) await expect(entry).toContainText(text);
   await expect(entry.locator("[data-register-download]")).toHaveAttribute("href", `/api/admin/tunnistus/${stored.id}`);
@@ -280,7 +283,7 @@ test("the student's row, Seaded's card, the drawer's line and the register at 39
     { page: herB.page, url: coursePage(b), scope: "[data-certificate]", admin: false, shows: ["[data-certificate-number]", "[data-certificate-download]"] },
     { page, url: "/admin/seaded", scope: "[data-certificate-settings]", admin: true, shows: ["[data-cert-save]", "[data-cert-trainer]"] },
     { page, url: `/admin/opilased?id=${b.clientId}`, scope: `[data-access="${b.courseId}"]`, admin: true, shows: ["[data-access-certificate]", "[data-reissue]"] },
-    { page, url: "/admin/tunnistused", scope: "[data-certificate-register]", admin: true, shows: [`[data-register-row="${cert.id}"]`] },
+    { page, url: "/admin/tunnistused", scope: "[data-certificate-register]", admin: true, shows: ["[data-tab-pills]", `[data-register-row="${cert.id}"]`] },
   ];
   for (const width of [390, 834, 1194, 1440]) {
     for (const v of screens) {

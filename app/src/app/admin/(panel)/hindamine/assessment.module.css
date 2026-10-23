@@ -1,9 +1,15 @@
-/* Hindamine (e-course completion, spec §5.2, §5.4): the three groups of what waits, each row who and what with its one way on; the test
-   review's page head and the attempts list. Rows wrap on a phone; every button and link is the admin's 44 px one. Tokens only. */
+/* Hindamine (e-course completion, spec §5.2, §5.4; admin UX pass A4): the one list of what waits, each row who and what with its ways on (and, for
+   "Ava test uuesti", the question on a line of its own); the test review's page head and the attempts list. Rows wrap on a phone; every button
+   and link is the admin's 44 px one. Tokens only. */
 
-.groups {
-  display: grid;
-  gap: 25px;
+/* the heading takes the focus when the row Maria worked on was the last one (AssessmentQueue.tsx); the ring is for the keyboard, not the mouse */
+.title:focus {
+  outline: none;
+}
+
+.title:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 4px;
 }
 
 .items {
@@ -28,20 +34,13 @@
   border-bottom: 0;
 }
 
+/* who and what, and the meta under it; it takes the room the row's ways on leave (they wrap under it on a phone) */
 .what {
   display: grid;
+  flex: 1 1 260px;
   gap: 2px;
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-/* "Testi katsed" and "Ava test uuesti" (with its confirming step under them on a narrow row) */
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  min-width: 0;
 }
 
 .back {

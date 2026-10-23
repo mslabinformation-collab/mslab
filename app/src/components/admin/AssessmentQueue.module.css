@@ -1,0 +1,11 @@
+/* Hindamine's status line (AssessmentQueue.tsx): under the tabs, above the list. While it is empty it takes no room (a live region must be in the
+   page from the start, so it is not left out). `p.status` outranks ui.success whichever stylesheet loads last. */
+
+p.status {
+  margin: 0 0 18px;
+  overflow-wrap: anywhere;
+}
+
+p.status:empty {
+  margin: 0;
+}

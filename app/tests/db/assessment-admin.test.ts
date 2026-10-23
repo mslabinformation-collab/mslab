@@ -3,11 +3,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { courseAccess, courseTests } from "@/db/schema";
-import { at, attempt, ecourse, practical, student } from "./hindamine-fixtures";
+import { at, attempt, ecourse, practical, student, tabsOf } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
 
 // Hindamine (e-course completion, spec §5.2, §5.4) and the overview's „Ootab hindamist“ row of „Sinu järjekord“ (R4, A1), rendered from a real (PGlite) database to
-// HTML: the three groups with their rows and their ways on, "Kõik on hinnatud." when nothing waits, the test review of one attempt (its own copy
+// HTML: the one list (A4) with its rows and their ways on, "Hindamist ootavaid töid pole." when nothing waits, the test review of one attempt (its own copy
 // of the questions: Review Focus 3), every attempt of a student, and "not found". The server actions are stand-ins (they need a
 // browser or a request); the menu counts are the real ones.
 
@@ -43,14 +43,27 @@ beforeEach(async () => {
   course = await ecourse(db);
 });
 
-test("nothing waits: Hindamine says 'Kõik on hinnatud.', and the overview's queue has no „Ootab hindamist“ row", async () => {
+/** One row of Hindamine's list: its markup, and its text with a bar between the parts. */
+const rowOf = (page: string, key: string) => {
+  const inner = new RegExp(`<li [^>]*data-queue-row="${key}"[^>]*>([\\s\\S]*?)</li>`).exec(page)?.[1];
+  expect(inner, `the row ${key}`).toBeDefined();
+  return { html: inner!, text: inner!.replace(/<[^>]+>/g, "|").replace(/\|+/g, "|").replace(/^\||\|$/g, "") };
+};
+const rowKeys = (page: string) => [...page.matchAll(/<li [^>]*data-queue-row="([^"]+)"/g)].map((m) => m[1]);
+
+test("nothing waits: Hindamine says 'Hindamist ootavaid töid pole.' under its tabs, and the overview's queue has no „Ootab hindamist“ row", async () => {
   const page = await html(AssessmentPage());
-  expect(page).toContain("Kõik on hinnatud.");
-  expect(page).not.toContain("data-queue=");
+  expect(page).toContain("Hindamist ootavaid töid pole.");
+  expect(page).not.toContain("Kõik on hinnatud.");
+  expect(rowKeys(page)).toEqual([]);
+  expect(tabsOf(page)).toEqual([
+    { href: "/admin/hindamine", text: "Ootab hindamist 0", current: true },
+    { href: "/admin/tunnistused", text: "Tunnistused", current: false },
+  ]);
   expect(await html(Overview())).not.toContain('data-overview-row="assessment"');
 });
 
-test("the three groups, each row with its way on; the overview's „Ootab hindamist“ row counts them (spec §5.2, R4)", async () => {
+test("one list, each row „{name} · {what}“ with its meta and its ways on; the first tab counts the rows, and the overview's „Ootab hindamist“ row counts them (spec §5.2, R4, A4)", async () => {
   const anu = await student(db, course.id, "Anu");
   await practical(db, anu, 2, 1, at(8));
   const eve = await student(db, course.id, "Eve");
@@ -59,20 +72,40 @@ test("the three groups, each row with its way on; the overview's „Ootab hindam
   for (const n of [1, 2]) await attempt(db, gea, course.id, n, "failed", at(n), { correct: n === 1 ? 1 : 0 });
 
   const page = await html(AssessmentPage());
-  const practicals = part(page, "data-queue", "practicals");
-  for (const text of ["Praktilised tööd", "Anu", "Kulmumeistri e-koolitus", "2. kord", "saadetud 19.10.2026"]) expect(practicals, text).toContain(text);
-  expect(practicals).toContain(`href="/admin/protokollid?ligipaas=${anu.access.id}"`);
-  const tests = part(page, "data-queue", "tests");
-  for (const text of ["Testi vastused", "Eve", "Katse 1/2"]) expect(tests, text).toContain(text);
-  expect(tests).toContain(`href="/admin/hindamine/test?id=${waiting.id}"`);
-  const tries = part(page, "data-queue", "tries");
-  for (const text of ["Katsed otsas", "Gea", "parim tulemus 50 %", "katseid 2", "Ava test uuesti"]) expect(tries, text).toContain(text);
-  expect(tries).toContain(`href="/admin/hindamine/test?ligipaas=${gea.access.id}"`);
-  expect(page).not.toContain("Kõik on hinnatud.");
+  // (19.10.2026 is in summer time: 8 o'clock UTC is 11:00 in Tallinn)
+  const practicalRow = rowOf(page, `practical-${anu.access.id}`);
+  expect(practicalRow.text).toBe("Anu · praktiline töö|2. kord · 19.10 11:00|Hinda");
+  expect(practicalRow.html).toContain(`href="/admin/protokollid?ligipaas=${anu.access.id}"`);
+  expect(practicalRow.html).not.toContain("secondary"); // „Hinda“ is the ink button
+  const testRow = rowOf(page, `test-${waiting.id}`);
+  expect(testRow.text).toBe("Eve · testi vastus|katse 1/2 · 19.10 10:00|Vaata");
+  expect(testRow.html).toContain(`href="/admin/hindamine/test?id=${waiting.id}"`);
+  const triesRow = rowOf(page, `triesUsed-${gea.access.id}`);
+  expect(triesRow.text).toBe("Gea · katsed otsas|parim tulemus 50 % · katseid 2|Testi katsed|Ava test uuesti");
+  expect(triesRow.html).toContain(`href="/admin/hindamine/test?ligipaas=${gea.access.id}"`);
+  expect(triesRow.html).toContain('data-reopen=""');
+  // (the three groups, their headings, the course and "saadetud" are gone; so is the register's header button)
+  for (const gone of ["Praktilised tööd", "Testi vastused", "Katsed otsas", "Kulmumeistri e-koolitus", "saadetud", "Vaata vastuseid", "Väljastatud tunnistused", "data-to-register", "Hindamist ootavaid töid pole.", "Kõik on hinnatud."]) {
+    expect(page, gone).not.toContain(gone);
+  }
+  expect(tabsOf(page)[0]).toEqual({ href: "/admin/hindamine", text: "Ootab hindamist 3", current: true });
 
   const row = /<a [^>]*data-overview-row="assessment"[^>]*>[\s\S]*?<\/a>/.exec(await html(Overview()))![0];
   expect(row).toContain('href="/admin/hindamine"');
   expect(row.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")).toContain("3 Ootab hindamist 1 praktiline töö · 1 testi vastus · 1 katsed otsas");
+});
+
+test("the list is oldest first by when each began to wait, whatever its kind; a student out of tries waits since her last attempt", async () => {
+  const anu = await student(db, course.id, "Anu");
+  await practical(db, anu, 1, null, at(9));
+  const eve = await student(db, course.id, "Eve");
+  const waiting = await attempt(db, eve, course.id, 1, "review", at(8));
+  const gea = await student(db, course.id, "Gea");
+  await attempt(db, gea, course.id, 1, "failed", at(1), { correct: 0 });
+  await attempt(db, gea, course.id, 2, "failed", at(7), { correct: 0 });
+  const dora = await student(db, course.id, "Dora");
+  await practical(db, dora, 1, null, at(6));
+  expect(rowKeys(await html(AssessmentPage()))).toEqual([`practical-${dora.access.id}`, `triesUsed-${gea.access.id}`, `test-${waiting.id}`, `practical-${anu.access.id}`]);
 });
 
 test("Review Focus 3: the review of an attempt made before Maria changed the test shows the attempt's copy, its picks against that copy's key, and the form", async () => {

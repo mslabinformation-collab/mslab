@@ -905,20 +905,22 @@ export const adminEt = {
         notFound: "Seda ligipääsu enam ei ole (see on tühistatud).",
       },
     },
-    // "Hindamine" (spec §5.2): /admin/hindamine, what waits for Maria in three groups, oldest first. {n} a count or a number, {max} the tries
-    // she has, {date} a day and a time, {course} a course's title
+    // "Hindamine" (spec §5.2, admin UX pass A4): /admin/hindamine, what waits for Maria as one list, oldest first. {n} a count or a number, {max}
+    // the tries she has, {date} a day and a time ("20.10 18:35"), {best} a percent, {attempts} a count. The row's first line is
+    // "{name} · {kind}" (README A4, A4-5), its second line `meta` (the prototype's, P-6 for the third kind). `tabs`: the tab pills of Hindamine and
+    // Tunnistused; the first one carries the count of the list as the pill's count bubble.
     eyebrow: "E-õpe",
     title: "Hindamine",
     lead: "Mis ootab sinu hinnangut, vanemad eespool: praktilised tööd, testide avatud vastused ja õpilased, kelle testikatsed on otsas.",
-    empty: "Kõik on hinnatud.",
-    groups: { practicals: "Praktilised tööd", tests: "Testi vastused", triesUsed: "Katsed otsas" },
-    round: "{n}. kord",
+    empty: "Hindamist ootavaid töid pole.",
+    tabs: { waiting: "Ootab hindamist", certificates: "Tunnistused" },
+    row: "{name} · {kind}",
+    kinds: { practical: "praktiline töö", test: "testi vastus", triesUsed: "katsed otsas" },
+    meta: { practical: "{n}. kord · {date}", test: "katse {n}/{max} · {date}", triesUsed: "parim tulemus {best} % · katseid {attempts}" },
+    // the test review's pages (Hindamine/test): the try and the day, as they were
     sentAt: "saadetud {date}",
     tryOf: "Katse {n}/{max}",
-    best: "parim tulemus {n} %",
-    attemptsMade: "katseid {n}",
     assess: "Hinda",
-    viewAnswers: "Vaata vastuseid",
     attempts: "Testi katsed",
     // the test review (spec §5.4): /admin/hindamine/test?id=<attempt>, and every attempt of a student, ?ligipaas=<access>. {percent} and
     // {pass} percentages, {text} Maria's earlier comment
@@ -966,12 +968,13 @@ export const adminEt = {
       noAttempts: "Katseid pole veel.",
       percent: "{n} %",
     },
-    // "Ava test uuesti" (spec §5.2, §5.5): the course's tries once more, with one confirming step
+    // "Ava test uuesti" (spec §5.2, §5.5): the course's tries once more, asked with a ConfirmPanel (piece 1; P-13: the old question split at the
+    // "?" into the question and the one line of what follows, "Jah, ava" as it was, „Katkesta“ is the panel's own)
     reopen: {
       button: "Ava test uuesti",
-      confirm: "Kas avan testi „{course}“ uuesti? Õpilane saab sama palju katseid juurde ja kirja.",
+      question: "Kas avan testi „{course}“ uuesti?",
+      line: "Õpilane saab sama palju katseid juurde ja kirja.",
       yes: "Jah, ava",
-      no: "Ei",
       done: "Test on uuesti avatud: katseid jäänud {n}.",
       notNeeded: "Test on juba avatud.",
     },
@@ -1284,13 +1287,11 @@ export const adminEt = {
         notFound: "Seda tunnistust ei leitud. Laadi leht uuesti.",
       },
     },
-    // /admin/tunnistused, from Hindamine's heading ("Väljastatud tunnistused")
+    // /admin/tunnistused, the second tab of Hindamine (assessment.tabs; the tab pills are on both pages, A4)
     register: {
-      fromAssessment: "Väljastatud tunnistused",
       eyebrow: "Hindamine",
       title: "Tunnistused",
       lead: "Kõik väljastatud e-kursuse tunnistused, uusimad eespool.",
-      back: "Hindamisse",
       count: "Tunnistusi: {n}",
       empty: "Tunnistusi pole veel väljastatud.",
       col: { number: "Number", name: "Nimi", course: "Koolitus", issued: "Väljastatud", file: "Tunnistus" },

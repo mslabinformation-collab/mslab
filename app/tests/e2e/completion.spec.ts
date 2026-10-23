@@ -15,7 +15,7 @@ import { expect, submitsForms, test } from "./test";
 // phone (Review Focus 1: 6000×4000 with GPS, sideways, a lost upload, a HEIC) and "Saada hindamiseks"; Maria's "Hindamine", her verdicts and
 // "Saada hinnang"; the "Paranda" point redone and approved, "Lõpetatud" on the page, the course page and the card; the open answers reviewed,
 // rewritten and accepted; "Ava test uuesti"; "Lisa protokoll" from the student's drawer; and the pages at 390, 834, 1194 and 1440 px (hers,
-// Hindamine with an item in each group, the review, the access screen and the overview's „Sinu järjekord“ with its „Ootab hindamist“ row). Every
+// Hindamine with a row of each kind, the review, the access screen and the overview's „Sinu järjekord“ with its „Ootab hindamist“ row). Every
 // student is a sample address (`e2e-client-compl-…@example.test`, never mailed) on an e-course of the test's own; all of it is removed after each
 // test. Under `next dev` and the production build (E2E_PROD_BUILD=1); Maria signs in as Dim (admin-login.ts). The locks on real Postgres are
 // completion-race.spec.ts.
@@ -129,11 +129,11 @@ async function sendAssessment(page: Page): Promise<void> {
   await expect(page.locator("[data-assess-sent]").first()).toBeVisible({ timeout: 30_000 });
 }
 
-/** Maria on "Hindamine", from where the access's item in `group` opens. */
-async function hindamine(page: Page, group: "practicals" | "tests" | "tries", accessId: number): Promise<Locator> {
+/** Maria on "Hindamine" (one list, A4), from where the access's row of `kind` opens. */
+async function hindamine(page: Page, kind: "practical" | "test" | "triesUsed", accessId: number): Promise<Locator> {
   await page.goto("/admin/hindamine");
   await adminReady(page);
-  return page.locator(`[data-queue="${group}"] [data-queue-item="${accessId}"]`);
+  return page.locator(`[data-queue-item="${accessId}"][data-queue-kind="${kind}"]`);
 }
 
 test("§9 e2e 1: the lessons done, the test opens; a fail with its score and its wrong numbers, 'Proovi uuesti', a pass; the answer key never reaches her", async ({ page }, info) => {
@@ -253,7 +253,7 @@ test("§9 e2e 3: Maria finds the work in 'Hindamine', marks one point 'Paranda' 
   const s = await student("t3", info, { points: E2E_POINTS, lessonsDone: true });
   await insertPractical(s.accessId, E2E_POINTS, await canvasJpeg(page, 640, 480), { round: 1, photos: [{ stage: 0, round: 1 }, { stage: 1, round: 1 }] });
   await signInAsAdmin(page, context, visitorIp, created);
-  const item = await hindamine(page, "practicals", s.accessId);
+  const item = await hindamine(page, "practical", s.accessId);
   await expect(item).toContainText("Kati Kask");
   await expect(item).toContainText("1. kord");
   await item.getByRole("link").first().click();
@@ -272,7 +272,7 @@ test("§9 e2e 3: Maria finds the work in 'Hindamine', marks one point 'Paranda' 
   expect(stored).toMatchObject({ round: 1, sentRound: 1, verdicts: ["ok", "fix"] });
   expect(stored.sent).toMatchObject({ verdicts: ["ok", "fix"], stages: [{ note: "" }, { note: "Värvi piir on ebaühtlane: tee uus foto päevavalges." }] });
   // assessed: the item has left Hindamine
-  await expect(await hindamine(page, "practicals", s.accessId)).toHaveCount(0);
+  await expect(await hindamine(page, "practical", s.accessId)).toHaveCount(0);
   // her page: ✓ on the first point, "Paranda" with the note on the second, which alone takes new photos
   const her = await studentPage(browser, s.email, visitorIp);
   await her.page.goto(practicalPage(s));
@@ -310,7 +310,7 @@ test("§9 e2e 4: she redoes only the 'Paranda' point and sends again; Maria appr
 
   // Maria: the second round in Hindamine; the second point approved; sent — the course is complete
   await signInAsAdmin(page, context, visitorIp, created);
-  const item = await hindamine(page, "practicals", s.accessId);
+  const item = await hindamine(page, "practical", s.accessId);
   await expect(item).toContainText("2. kord");
   await item.getByRole("link").first().click();
   await adminReady(page);
@@ -345,10 +345,11 @@ test("§9 e2e 5: open answers — Maria asks for one fix, she rewrites only that
   await expect(sp.getByText("Ootab Maria hinnangut").first()).toBeVisible();
   const [first] = await storedAttempts(s.clientId);
 
-  // Maria: "Testi vastused" → the review: the first answer accepted, the second "Paranda" with what to fix
+  // Maria: the row „testi vastus“ → the review: the first answer accepted, the second "Paranda" with what to fix
   await signInAsAdmin(page, context, visitorIp, created);
-  const item = await hindamine(page, "tests", s.accessId);
-  await expect(item).toContainText("Katse 1/3");
+  const item = await hindamine(page, "test", s.accessId);
+  await expect(item).toContainText("testi vastus");
+  await expect(item).toContainText("katse 1/3");
   await item.getByRole("link").first().click();
   await expect(page).toHaveURL(new RegExp(`/admin/hindamine/test\\?id=${first.id}$`));
   await adminReady(page);
@@ -388,7 +389,7 @@ test("§9 e2e 5: open answers — Maria asks for one fix, she rewrites only that
   await her.close();
 });
 
-test("§9 e2e 6: out of tries — her page says so; Maria reopens the test from 'Katsed otsas'; her page opens again", async ({ page, context, visitorIp, browser }, info) => {
+test("§9 e2e 6: out of tries — her page says so; Maria reopens the test from the row 'katsed otsas' (asked with a panel); her page opens again", async ({ page, context, visitorIp, browser }, info) => {
   const s = await student("t6", info, { questions: E2E_QUESTIONS, points: [], lessonsDone: true, tries: 2 });
   await insertAttempts(s.clientId, s.courseId, E2E_QUESTIONS, [
     { status: "failed", correct: 1, total: 2 },
@@ -401,14 +402,28 @@ test("§9 e2e 6: out of tries — her page says so; Maria reopens the test from 
   await expect(her.page.locator("[data-test-submit]")).toHaveCount(0);
 
   await signInAsAdmin(page, context, visitorIp, created);
-  const item = await hindamine(page, "tries", s.accessId);
-  await expect(item).toContainText("parim tulemus 50 %");
+  const item = await hindamine(page, "triesUsed", s.accessId);
+  await expect(item).toContainText("katsed otsas");
+  await expect(item).toContainText("parim tulemus 50 % · katseid 2");
+  // the button asks with a ConfirmPanel in its place (P-13); „Katkesta“ gives the button back, with the focus on it, and nothing is reopened
   await item.locator("[data-reopen]").click();
-  await confirmStep(item.locator("[data-reopen-confirm]"));
-  // the admin is revalidated (admin UX pass, B6: Hindamine's badge and the overview count one less): the page comes back without her row
+  await expect(item.locator("[data-confirm-panel]")).toContainText("Õpilane saab sama palju katseid juurde ja kirja.");
+  await expect(item.locator("[data-reopen]")).toHaveCount(0);
+  // on the phone too: the question has the row's width, nothing scrolls sideways, the buttons are 44 px
+  expect(await noOverflow(page)).toBe(true);
+  expect(await smallTargets(item.locator("[data-confirm-panel]"))).toEqual([]);
+  await item.locator("[data-confirm-panel]").getByRole("button", { name: "Katkesta" }).click();
+  await expect(item.locator("[data-reopen]")).toBeFocused();
+  expect(await storedAccessRow(s.accessId)).toMatchObject({ extraTries: 0 });
+  await item.locator("[data-reopen]").click();
+  await confirmStep(item.locator("[data-confirm-panel]"));
+  // the admin is revalidated (admin UX pass, B6: Hindamine's badge and the overview count one less): the page comes back without her row; the page's
+  // status line says what was done and the focus is on the row that followed, or the heading (ledger L99)
   await expect(item).toHaveCount(0);
+  await expect(page.locator("[data-queue-status]")).toHaveText("Test on uuesti avatud: katseid jäänud 2.");
+  await expect(page.locator("[data-assessment-page] :focus")).toHaveCount(1);
   expect(await storedAccessRow(s.accessId)).toMatchObject({ extraTries: 2 });
-  await expect(await hindamine(page, "tries", s.accessId)).toHaveCount(0);
+  await expect(await hindamine(page, "triesUsed", s.accessId)).toHaveCount(0);
 
   await her.page.reload();
   await expect(testState(her.page)).toHaveAttribute("data-test-state", "open");
@@ -462,7 +477,7 @@ test("§9 e2e 8: the pages at 390, 834, 1194 and 1440 px — no sideways scroll,
   await holdTerms(info); // the e-course page's "Lõpetamine" is one of the screens
   const jpeg = await canvasJpeg(page, 640, 480);
   // A: a test to take; B: practical work being prepared (one photo); C: open answers waiting for Maria; D: practical work sent, waiting;
-  // E: out of tries — so Hindamine has an item in each of its three groups, and the overview's queue has its „Ootab hindamist“ row
+  // E: out of tries — so Hindamine has a row of each of its three kinds, and the overview's queue has its „Ootab hindamist“ row
   const a = await student("look-a", info, { questions: [...E2E_QUESTIONS, E2E_OPEN[0]], points: [], lessonsDone: true });
   const b = await student("look-b", info, { points: E2E_POINTS, lessonsDone: true });
   await insertPractical(b.accessId, E2E_POINTS, jpeg, { round: 0, photos: [{ stage: 0, round: 1 }] });
@@ -476,8 +491,13 @@ test("§9 e2e 8: the pages at 390, 834, 1194 and 1440 px — no sideways scroll,
   await signInAsAdmin(page, context, visitorIp, created);
   const herA = await studentPage(browser, a.email, visitorIp);
   const herB = await studentPage(browser, b.email, visitorIp);
-  /** Hindamine's items: one in each group, the out-of-tries one with its "Ava test uuesti". */
-  const queued = [`[data-queue="practicals"] [data-queue-item="${d.accessId}"]`, `[data-queue="tests"] [data-queue-item="${c.accessId}"]`, `[data-queue="tries"] [data-queue-item="${e.accessId}"] [data-reopen]`];
+  /** Hindamine's rows: one of each kind, the out-of-tries one with its "Ava test uuesti"; and the two tabs above them. */
+  const queued = [
+    '[data-tab-pills]',
+    `[data-queue-item="${d.accessId}"][data-queue-kind="practical"]`,
+    `[data-queue-item="${c.accessId}"][data-queue-kind="test"]`,
+    `[data-queue-item="${e.accessId}"][data-queue-kind="triesUsed"] [data-reopen]`,
+  ];
   // `shows`: what the screen must show before it is measured (the options and the file field whose labels are measured, its items, the
   // review's buttons, the photos and verdicts)
   const screens: { page: Page; url: string; scope: string; admin: boolean; shows?: string[] }[] = [

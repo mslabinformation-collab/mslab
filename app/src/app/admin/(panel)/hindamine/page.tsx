@@ -1,126 +1,100 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AssessmentQueue, QueueStatus } from "@/components/admin/AssessmentQueue";
+import { assessmentTabs } from "@/components/admin/assessment-tabs";
 import { ReopenTest } from "@/components/admin/ReopenTest";
 import { adminTitle } from "@/components/admin/sections";
+import { TabPills } from "@/components/admin/TabPills";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
-import { assessmentQueue } from "@/db/queries/assessment";
+import { assessmentList, type AssessmentItem } from "@/db/queries/assessment";
 import { adminEt } from "@/i18n/dict/admin";
-import { pick } from "@/i18n/field";
-import { fill, formatDate, formatTime } from "@/i18n/format";
+import { fill, formatDayMonth, formatTime } from "@/i18n/format";
 import { requireAdmin } from "@/server/auth";
 import styles from "./assessment.module.css";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: adminTitle(adminEt.nav.assessment) };
 
-/** "19.10.2026 11:00" in Tallinn. */
-const stamp = (d: Date) => `${formatDate(d, "et")} ${formatTime(d, "et")}`;
+/** "20.10 18:35" in Tallinn (the prototype's row meta). */
+const stamp = (d: Date) => `${formatDayMonth(d, "et")} ${formatTime(d, "et")}`;
+
+/** A row's mark in the list: the practical work and the tries used are an access's, a test answer is an attempt's. */
+const rowKey = (i: AssessmentItem) => (i.kind === "test" ? `test-${i.attemptId}` : `${i.kind}-${i.accessId}`);
+
+/** The row's second line (the prototype's; P-6 for the third kind). */
+function meta(i: AssessmentItem): string {
+  const m = adminEt.assessment.meta;
+  if (i.kind === "practical") return fill(m.practical, { n: i.round ?? 0, date: stamp(i.at) });
+  if (i.kind === "test") return fill(m.test, { n: i.number ?? 0, max: i.allowed ?? 0, date: stamp(i.at) });
+  return fill(m.triesUsed, { best: i.best ?? 0, attempts: i.attempts ?? 0 });
+}
 
 /**
- * Hindamine (e-course completion, spec §5.2): what waits for Maria, in three groups, each oldest first — the practical work sent ("Hinda" opens
- * the access's protocol screen, ?ligipaas=), the open answers waiting for her review ("Vaata vastuseid": /admin/hindamine/test?id=), and the
- * students out of tries ("Ava test uuesti" with its confirmation, and their attempts). A group with nothing in it is left out; when nothing waits
- * at all: "Kõik on hinnatud." Each group has an anchor the overview's card links to. Its heading links the certificate register
- * (/admin/tunnistused, phase 3d), which is not in the menu.
+ * Hindamine (e-course completion, spec §5.2; admin UX pass A4): what waits for Maria as one list, oldest first, under the tabs „Ootab hindamist {n}“
+ * and „Tunnistused“ (the register, /admin/tunnistused, which is not in the menu). A row is „{name} · {praktiline töö | testi vastus | katsed
+ * otsas}“ with its meta and its ways on: „Hinda“ (ink) opens the access's protocol screen (?ligipaas=), „Vaata“ the open answers
+ * (/admin/hindamine/test?id=), and for a student out of tries „Testi katsed“ and „Ava test uuesti“ (asking with a ConfirmPanel). When nothing waits:
+ * „Hindamist ootavaid töid pole.“ The page is AssessmentQueue's: a reopened test's row leaves the list on the refresh, and the status line and the
+ * focus (the next row, else the heading) are the page's (ledger L99).
  */
 export default async function AssessmentPage() {
   await requireAdmin();
-  const queue = await assessmentQueue(getDb());
+  const items = await assessmentList(getDb());
   const t = adminEt.assessment;
   const reopen = { ...t.reopen, saving: adminEt.common.saving, error: adminEt.common.saveError };
-  const nothing = queue.practicals.length + queue.tests.length + queue.triesUsed.length === 0;
 
   return (
-    <div className={ui.page} data-assessment-page="">
+    <AssessmentQueue>
       <div className={ui.heading}>
         <div>
           <p className={ui.eyebrow}>{t.eyebrow}</p>
-          <h1 className={ui.h1}>{t.title}</h1>
+          <h1 className={`${ui.h1} ${styles.title}`} tabIndex={-1} data-assessment-heading="">
+            {t.title}
+          </h1>
           <p className={ui.lead}>{t.lead}</p>
         </div>
-        <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/admin/tunnistused" data-to-register="">
-          {adminEt.certificates.register.fromAssessment}
-        </Link>
       </div>
 
-      {nothing ? (
-        <section className={ui.card} aria-label={t.title}>
+      <TabPills label={t.title} tabs={assessmentTabs("waiting", items.length)} />
+      <QueueStatus />
+
+      <section className={ui.card} aria-label={t.title}>
+        {items.length === 0 ? (
           <p className={ui.empty} data-queue-empty="">
             {t.empty}
           </p>
-        </section>
-      ) : (
-        <div className={styles.groups}>
-          {queue.practicals.length > 0 && (
-            <section id="praktilised" className={ui.card} aria-labelledby="queue-practicals" data-queue="practicals">
-              <h2 id="queue-practicals" className={ui.h2}>
-                {t.groups.practicals}
-              </h2>
-              <ul className={styles.items}>
-                {queue.practicals.map((p) => (
-                  <li key={p.accessId} className={styles.item} data-queue-item={p.accessId}>
-                    <span className={styles.what}>
-                      <strong>{p.name}</strong>
-                      <span className={ui.muted}>{[pick(p.course, "et"), fill(t.round, { n: p.round }), fill(t.sentAt, { date: stamp(p.submittedAt) })].join(" · ")}</span>
-                    </span>
-                    <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?ligipaas=${p.accessId}`}>
-                      {t.assess}
+        ) : (
+          <ul className={styles.items} data-queue="">
+            {items.map((i) => (
+              <li key={rowKey(i)} className={styles.item} data-queue-row={rowKey(i)} data-queue-item={i.accessId} data-queue-kind={i.kind}>
+                <span className={styles.what}>
+                  <strong>{fill(t.row, { name: i.name, kind: t.kinds[i.kind] })}</strong>
+                  <span className={ui.muted}>{meta(i)}</span>
+                </span>
+                {i.kind === "practical" && (
+                  <Link className={`${ui.btn} ${ui.smallBtn}`} href={`/admin/protokollid?ligipaas=${i.accessId}`}>
+                    {t.assess}
+                  </Link>
+                )}
+                {i.kind === "test" && (
+                  <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/hindamine/test?id=${i.attemptId}`}>
+                    {t.review.view}
+                  </Link>
+                )}
+                {i.kind === "triesUsed" && (
+                  <>
+                    <Link className={ui.link} href={`/admin/hindamine/test?ligipaas=${i.accessId}`}>
+                      {t.attempts}
                     </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {queue.tests.length > 0 && (
-            <section id="testid" className={ui.card} aria-labelledby="queue-tests" data-queue="tests">
-              <h2 id="queue-tests" className={ui.h2}>
-                {t.groups.tests}
-              </h2>
-              <ul className={styles.items}>
-                {queue.tests.map((w) => (
-                  <li key={w.attemptId} className={styles.item} data-queue-item={w.accessId}>
-                    <span className={styles.what}>
-                      <strong>{w.name}</strong>
-                      <span className={ui.muted}>
-                        {[pick(w.course, "et"), fill(t.tryOf, { n: w.number, max: w.allowed }), fill(t.sentAt, { date: stamp(w.submittedAt) })].join(" · ")}
-                      </span>
-                    </span>
-                    <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/hindamine/test?id=${w.attemptId}`}>
-                      {t.viewAnswers}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {queue.triesUsed.length > 0 && (
-            <section id="katsed" className={ui.card} aria-labelledby="queue-tries" data-queue="tries">
-              <h2 id="queue-tries" className={ui.h2}>
-                {t.groups.triesUsed}
-              </h2>
-              <ul className={styles.items}>
-                {queue.triesUsed.map((u) => (
-                  <li key={u.accessId} className={styles.item} data-queue-item={u.accessId}>
-                    <span className={styles.what}>
-                      <strong>{u.name}</strong>
-                      <span className={ui.muted}>{[pick(u.course, "et"), fill(t.best, { n: u.best }), fill(t.attemptsMade, { n: u.attempts })].join(" · ")}</span>
-                    </span>
-                    <div className={styles.actions}>
-                      <Link className={ui.link} href={`/admin/hindamine/test?ligipaas=${u.accessId}`}>
-                        {t.attempts}
-                      </Link>
-                      <ReopenTest accessId={u.accessId} course={pick(u.course, "et")} used t={reopen} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
-      )}
-    </div>
+                    <ReopenTest accessId={i.accessId} course={i.course} used t={reopen} />
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </AssessmentQueue>
   );
 }

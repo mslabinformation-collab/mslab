@@ -245,58 +245,103 @@ describe("ReopenTest", () => {
     await act(async () => root.render(createElement(ReopenTest, { accessId: 9, course: "Kulmumeistri e-koolitus", used, t: reopenTexts })));
     await settle();
   };
-  const button = (name: string) => [...document.querySelectorAll("button")].find((b) => b.textContent === name) ?? null;
+  const panel = () => $("[data-confirm-panel]");
+  const trigger = () => $("[data-reopen]");
+  const panelButton = (name: string) => [...panel()!.querySelectorAll("button")].find((b) => b.textContent === name) ?? null;
 
-  test("one button; its step names the course; 'Ei' goes back; 'Jah, ava' sends the access, and the line says her tries and stays", async () => {
-    actions.reopen.mockResolvedValue({ kind: "reopened", triesLeft: 3 });
+  test("one button; pressed, a ConfirmPanel takes its place (P-13: the old question split at the „?“) and the focus; „Katkesta“ and Esc go back to the button, with the focus on it", async () => {
     await showReopen(true);
     expect($("[data-reopen-done]")!.getAttribute("role")).toBe("status");
-    await click($("[data-reopen]"));
-    expect($("[data-reopen-confirm] p")!.textContent).toBe("Kas avan testi „Kulmumeistri e-koolitus“ uuesti? Õpilane saab sama palju katseid juurde ja kirja.");
-    expect(document.activeElement).toBe($("[data-reopen-confirm] p"));
-    expect($("[data-reopen-confirm] button")!.textContent).toBe("Jah, ava"); // the step's first button is its yes
-    await click(button("Ei"));
-    expect($("[data-reopen-confirm]")).toBeNull();
+    expect(trigger()!.textContent).toBe("Ava test uuesti");
+    expect(panel()).toBeNull();
+    await click(trigger());
+    expect(trigger()).toBeNull(); // (the panel stands where the button stood)
+    expect($("[data-confirm-panel] > p")!.textContent).toBe("Kas avan testi „Kulmumeistri e-koolitus“ uuesti?");
+    expect([...panel()!.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Õpilane saab sama palju katseid juurde ja kirja."]);
+    expect([...panel()!.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Jah, ava", "Katkesta"]);
+    expect(document.activeElement).toBe(panel());
+    await click(panelButton("Katkesta"));
+    expect(panel()).toBeNull();
     expect(actions.reopen).not.toHaveBeenCalled();
-    await click($("[data-reopen]"));
-    await click(button("Jah, ava"));
+    expect(document.activeElement).toBe(trigger());
+    await click(trigger());
+    await act(async () => void panel()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(panel()).toBeNull();
+    expect(document.activeElement).toBe(trigger());
+    expect(actions.reopen).not.toHaveBeenCalled();
+  });
+
+  test("'Jah, ava' sends the access, and the line says her tries and takes the focus (the student's drawer); the page's refresh keeps the line", async () => {
+    actions.reopen.mockResolvedValue({ kind: "reopened", triesLeft: 3 });
+    await showReopen(true);
+    await click(trigger());
+    await click(panelButton("Jah, ava"));
     expect(actions.reopen).toHaveBeenCalledWith({ accessId: 9 });
     expect($("[data-reopen-done]")!.textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
     expect(document.activeElement).toBe($("[data-reopen-done]"));
     await showReopen(false); // the page's refresh: the test is open now
-    expect($("[data-reopen]")).toBeNull();
+    expect(trigger()).toBeNull();
+    expect(panel()).toBeNull();
     expect($("[data-reopen-done]")!.textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
   });
 
-  test("the page is not refreshed by the action, so the test still reads as used up: the line stays on the row, the button does not come back (Hindamine, the drawer)", async () => {
+  test("the page is not refreshed by the action, so the test still reads as used up: the line stays, the button does not come back; reopened elsewhere meanwhile is said the same way", async () => {
     actions.reopen.mockResolvedValue({ kind: "reopened", triesLeft: 3 });
     await showReopen(true);
-    await click($("[data-reopen]"));
-    await click(button("Jah, ava"));
+    await click(trigger());
+    await click(panelButton("Jah, ava"));
     expect($("[data-reopen-done]")!.textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
-    expect(document.activeElement).toBe($("[data-reopen-done]"));
-    expect($("[data-reopen]")).toBeNull(); // (`used` is still true here: nothing re-read the page)
-    expect($("[data-reopen-confirm]")).toBeNull();
+    expect(trigger()).toBeNull(); // (`used` is still true here: nothing re-read the page)
+    expect(panel()).toBeNull();
     expect(actions.reopen).toHaveBeenCalledTimes(1);
-    // reopened elsewhere meanwhile: said the same way, no second button
     actions.reopen.mockResolvedValue({ kind: "notNeeded" });
     await act(async () => root.unmount());
     root = createRoot(container);
     await showReopen(true);
-    await click($("[data-reopen]"));
-    await click(button("Jah, ava"));
+    await click(trigger());
+    await click(panelButton("Jah, ava"));
     expect($("[data-reopen-done]")!.textContent).toBe("Test on juba avatud.");
-    expect($("[data-reopen]")).toBeNull();
+    expect(trigger()).toBeNull();
   });
 
-  test("a failed answer stays in the step with the error; not used up: no button and no step", async () => {
+  test("a press while the first is on its way sends nothing more; the yes says that it is saving", async () => {
+    let finish: (r: unknown) => void = () => {};
+    actions.reopen.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    await showReopen(true);
+    await click(trigger());
+    const yes = panelButton("Jah, ava");
+    await click(yes);
+    expect(panel()!.querySelector("button")!.textContent).toBe(adminEt.common.saving);
+    await click(panel()!.querySelector("button"));
+    expect(actions.reopen).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ kind: "reopened", triesLeft: 2 }));
+    await settle();
+  });
+
+  test("a failed answer stays under the panel as an alert, the question still open to try again; not used up: no button and no panel", async () => {
     actions.reopen.mockResolvedValue({ kind: "failed" });
     await showReopen(true);
-    await click($("[data-reopen]"));
-    await click(button("Jah, ava"));
-    expect($("[data-reopen-confirm] [role='alert']")!.textContent).toBe(adminEt.common.saveError);
+    await click(trigger());
+    await click(panelButton("Jah, ava"));
+    expect($("[role='alert']")!.textContent).toBe(adminEt.common.saveError);
+    expect(panel()).not.toBeNull();
+    actions.reopen.mockResolvedValue({ kind: "reopened", triesLeft: 3 });
+    await click(panelButton("Jah, ava"));
+    expect(actions.reopen).toHaveBeenCalledTimes(2);
+    expect($("[role='alert']")).toBeNull();
+    await act(async () => root.unmount());
+    root = createRoot(container);
     await showReopen(false);
-    expect($("[data-reopen]")).toBeNull();
-    expect($("[data-reopen-confirm]")).toBeNull();
+    expect(trigger()).toBeNull();
+    expect(panel()).toBeNull();
+  });
+
+  test("the page came back with the test open while the question was asked: the question ends with it", async () => {
+    await showReopen(true);
+    await click(trigger());
+    expect(panel()).not.toBeNull();
+    await showReopen(false);
+    expect(panel()).toBeNull();
+    expect(trigger()).toBeNull();
   });
 });

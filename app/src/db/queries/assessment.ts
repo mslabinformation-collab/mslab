@@ -2,13 +2,14 @@ import { and, asc, count, desc, eq, gt, isNotNull, isNull, lt, or, sql } from "d
 import type { Db } from "../client";
 import { clients, courseAccess, courses, courseTests, protocols, testAttempts, type AttemptStatus, type OpenReview, type TestAnswers, type TestAttempt, type TestQuestion } from "../schema";
 import { percentOf, readQuestions, TEST_DEFAULTS, triesAllowed } from "@/domain/completion";
-import type { I18n } from "@/i18n/field";
+import { pick, type I18n } from "@/i18n/field";
 import { clientNameSql } from "./client-name";
 
 // "Hindamine" (e-course completion, spec §5.2, §5.4): what waits for Maria — the practical work sent and not yet assessed, the open answers
-// waiting for her review, the students out of tries — and an attempt as her review shows it. Callers have checked the admin session; nothing
-// here does authorization. An access an admin ended (revoked) is left out everywhere: her pages answer 404 and her items leave the list (spec
-// §8); a completed one has nothing left to assess. One that ran out stays: Maria can still assess it (spec §8).
+// waiting for her review, the students out of tries (three groups for the overview's counts, one list for Hindamine) — and an attempt as her
+// review shows it. Callers have checked the admin session; nothing here does authorization. An access an admin ended (revoked) is left out
+// everywhere: her pages answer 404 and her items leave the list (spec §8); a completed one has nothing left to assess. One that ran out stays:
+// Maria can still assess it (spec §8).
 
 /** The student as the admin sees her (client-name.ts): her own name, else her latest registration's, else her address. Every query below joins `clients` unaliased. */
 const NAME = clientNameSql(sql`clients.email`);
@@ -24,7 +25,8 @@ const USED = sql`bool_and(${testAttempts.status} = 'failed') and count(${testAtt
 
 export type WaitingPractical = { accessId: number; name: string; course: I18n; round: number; submittedAt: Date };
 export type WaitingTest = { attemptId: number; accessId: number; name: string; course: I18n; number: number; allowed: number; submittedAt: Date };
-export type TriesUsed = { accessId: number; name: string; course: I18n; best: number /* percent */; attempts: number };
+/** `at`: when her last attempt was sent (the time the row has waited since). */
+export type TriesUsed = { accessId: number; name: string; course: I18n; best: number /* percent */; attempts: number; at: Date };
 export type AssessmentQueue = { practicals: WaitingPractical[]; tests: WaitingTest[]; triesUsed: TriesUsed[] };
 
 async function waitingPracticals(db: Db): Promise<WaitingPractical[]> {
@@ -70,6 +72,7 @@ async function triesUsedRows(db: Db): Promise<TriesUsed[]> {
       course: courses.title,
       best: sql<number>`max(case when ${testAttempts.total} = 0 then 100 else (${testAttempts.correct} * 100) / ${testAttempts.total} end)`.mapWith(Number),
       attempts: sql<number>`count(${testAttempts.id})`.mapWith(Number),
+      at: sql<Date>`max(${testAttempts.submittedAt})`.mapWith(testAttempts.submittedAt),
     })
     .from(courseAccess)
     .innerJoin(testAttempts, ATTEMPT_ACCESS)
@@ -87,6 +90,45 @@ async function triesUsedRows(db: Db): Promise<TriesUsed[]> {
 export async function assessmentQueue(db: Db): Promise<AssessmentQueue> {
   const [practicals, tests, triesUsed] = await Promise.all([waitingPracticals(db), waitingTests(db), triesUsedRows(db)]);
   return { practicals, tests, triesUsed };
+}
+
+/**
+ * One row of Hindamine's list (admin UX pass, A4): something that waits for Maria, of one of the three kinds, with the time it started to wait.
+ * `at`: the practical work's send, the test answer's send, or the last attempt of a student out of tries. `course`: its Estonian title. Which
+ * fields are there depends on `kind`: practical `round`; test `attemptId`, `number` (which try) and `allowed` (the tries she has); triesUsed
+ * `best` (percent) and `attempts`.
+ */
+export type AssessmentItem = {
+  kind: "practical" | "test" | "triesUsed";
+  at: Date;
+  name: string;
+  course: string;
+  accessId: number;
+  attemptId?: number;
+  best?: number;
+  attempts?: number;
+  round?: number;
+  number?: number;
+  allowed?: number;
+};
+
+/** The order of kinds at one instant. */
+const KIND_ORDER: Record<AssessmentItem["kind"], number> = { practical: 0, test: 1, triesUsed: 2 };
+
+/**
+ * Everything that waits for Maria as one list, oldest first (A4): the three groups of `assessmentQueue` merged by the time each started to
+ * wait. At the same instant: practical work, then test answers, then tries used, then the access (a fixed order, whatever the database returns).
+ */
+export async function assessmentList(db: Db): Promise<AssessmentItem[]> {
+  const { practicals, tests, triesUsed } = await assessmentQueue(db);
+  const items: AssessmentItem[] = [
+    ...practicals.map((p): AssessmentItem => ({ kind: "practical", at: p.submittedAt, name: p.name, course: pick(p.course, "et"), accessId: p.accessId, round: p.round })),
+    ...tests.map(
+      (w): AssessmentItem => ({ kind: "test", at: w.submittedAt, name: w.name, course: pick(w.course, "et"), accessId: w.accessId, attemptId: w.attemptId, number: w.number, allowed: w.allowed }),
+    ),
+    ...triesUsed.map((u): AssessmentItem => ({ kind: "triesUsed", at: u.at, name: u.name, course: pick(u.course, "et"), accessId: u.accessId, best: u.best, attempts: u.attempts })),
+  ];
+  return items.sort((a, b) => a.at.getTime() - b.at.getTime() || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.accessId - b.accessId || (a.attemptId ?? 0) - (b.attemptId ?? 0));
 }
 
 /** The menu badge's number: the three groups together (the same rules, counted; the overview's queue counts them apart from the lists). */

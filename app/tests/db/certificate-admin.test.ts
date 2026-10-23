@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { certificates, clients, courseAccess } from "@/db/schema";
-import { at, ecourse, LATER, student, type Student } from "./hindamine-fixtures";
+import { at, attempt, ecourse, LATER, practical, student, tabsOf, type Student } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
 
 // Maria's side of an issued certificate (phase 3d, spec §6, §9; Review Focus 5), rendered from a real (PGlite) database to HTML: the
@@ -145,7 +145,21 @@ test("the register: number, name (to her drawer), course and issue day, newest f
   const other = part(html, "data-register-row", first.id);
   expect(other).not.toContain("ligipääs tühistatud");
   expect(other).not.toContain("parandatud");
-  expect(html).toContain('href="/admin/hindamine"'); // the way back
+  // the way back is the first tab (A4: „Ootab hindamist“ and „Tunnistused“ are on both pages; the back link „Hindamisse“ is gone)
+  expect(tabsOf(html)).toEqual([
+    { href: "/admin/hindamine", text: "Ootab hindamist 0", current: false },
+    { href: "/admin/tunnistused", text: "Tunnistused", current: true },
+  ]);
+  expect(html).not.toContain("Hindamisse");
+});
+
+test("the register's first tab counts what waits in Hindamine, whatever the kind", async () => {
+  const course = await ecourse(db);
+  await practical(db, await student(db, course.id, "Anu"), 1, null, at(5));
+  await attempt(db, await student(db, course.id, "Eve"), course.id, 1, "review", at(6));
+  const gea = await student(db, course.id, "Gea");
+  for (const n of [1, 2]) await attempt(db, gea, course.id, n, "failed", at(n), { correct: 0 });
+  expect(tabsOf(await register())[0]).toEqual({ href: "/admin/hindamine", text: "Ootab hindamist 3", current: false });
 });
 
 test("the register: nothing issued says so; 50 a page, the pager to the next (?leht=2)", async () => {
@@ -184,10 +198,18 @@ test("the register: nothing issued says so; 50 a page, the pager to the next (?l
   expect(page2).toContain("MS LAB 2026-01");
 });
 
-test("Hindamine links the register ('Väljastatud tunnistused'), whether anything waits or not", async () => {
+test("Hindamine links the register as its second tab „Tunnistused“, whether anything waits or not; the header button „Väljastatud tunnistused“ is gone", async () => {
   const html = renderToStaticMarkup(await AssessmentPage());
-  expect(html).toContain("Kõik on hinnatud.");
-  const tag = /<a[^>]*data-to-register=""[^>]*>/.exec(html)?.[0] ?? "";
-  expect(tag).toContain('href="/admin/tunnistused"');
-  expect(part(html, "data-to-register", "")).toContain("Väljastatud tunnistused");
+  expect(html).toContain("Hindamist ootavaid töid pole.");
+  expect(tabsOf(html)).toEqual([
+    { href: "/admin/hindamine", text: "Ootab hindamist 0", current: true },
+    { href: "/admin/tunnistused", text: "Tunnistused", current: false },
+  ]);
+  expect(html).not.toContain("Väljastatud tunnistused");
+  expect(html).not.toContain("data-to-register");
+  const course = await ecourse(db);
+  await practical(db, await student(db, course.id, "Anu"), 1, null, at(5));
+  const waiting = renderToStaticMarkup(await AssessmentPage());
+  expect(tabsOf(waiting)[1]).toEqual({ href: "/admin/tunnistused", text: "Tunnistused", current: false });
+  expect(waiting).not.toContain("data-to-register");
 });

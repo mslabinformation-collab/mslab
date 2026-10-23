@@ -85,3 +85,13 @@ export async function practical(db: Db, s: Student, round: number, sentRound: nu
     .returning();
   return row;
 }
+
+/** The tab pills of a rendered Hindamine or Tunnistused page (A4): each one's address, its text (the count bubble after the label) and whether it is the current one. */
+export function tabsOf(html: string): { href: string | undefined; text: string; current: boolean }[] {
+  const nav = /<nav [^>]*data-tab-pills=""[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? "";
+  return [...nav.matchAll(/<a ([^>]*)>([\s\S]*?)<\/a>/g)].map((m) => ({
+    href: /href="([^"]*)"/.exec(m[1])?.[1],
+    text: m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+    current: m[1].includes('aria-current="page"'),
+  }));
+}
