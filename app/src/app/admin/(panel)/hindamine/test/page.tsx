@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { adminTitle } from "@/components/admin/sections";
-import { TestReview } from "@/components/admin/TestReview";
+import { TestReview, type MarksDraft } from "@/components/admin/TestReview";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
 import { attemptForReview, attemptsOf, type ReviewAttempt } from "@/db/queries/assessment";
@@ -10,6 +10,7 @@ import { pick, type I18n } from "@/i18n/field";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { parseRowId } from "@/lib/row-id";
 import { requireAdmin } from "@/server/auth";
+import { marksOf } from "@/server/test-review-marks";
 import styles from "../assessment.module.css";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,9 @@ export default async function TestReviewPage({ searchParams }: Props) {
   const db = getDb();
   const [attempt, list] = await Promise.all([attemptId === null ? null : attemptForReview(db, attemptId), accessId === null ? null : attemptsOf(db, accessId)]);
   const t = adminEt.assessment.review;
+  // B15: the marks Maria made so far are read from the server (the draft of the review, for these answers), so the phone or another browser shows
+  // them too; only an attempt waiting for her is a form
+  const draft = attempt && attempt.status === "review" ? await marksOf(db, attempt) : undefined;
 
   return (
     <div className={ui.page} data-test-review-page="">
@@ -43,7 +47,7 @@ export default async function TestReviewPage({ searchParams }: Props) {
         </Link>
       </p>
       {attempt ? (
-        <OneAttempt a={attempt} />
+        <OneAttempt a={attempt} draft={draft && { version: draft.version, value: draft.value }} />
       ) : list && accessId !== null ? (
         <AttemptList accessId={accessId} name={list.name} course={list.course} attempts={list.attempts} />
       ) : (
@@ -53,28 +57,35 @@ export default async function TestReviewPage({ searchParams }: Props) {
   );
 }
 
-/** One attempt: who, which try, when, its state and the choice part's score; then the review itself. */
-function OneAttempt({ a }: { a: ReviewAttempt }) {
+/**
+ * One attempt: who, which try, when, its state and the choice part's score; then the review itself, with the marks saved so far (`draft`). The
+ * heading row is TestReview's, which puts the save status at its right end.
+ */
+function OneAttempt({ a, draft }: { a: ReviewAttempt; draft?: MarksDraft }) {
   const t = adminEt.assessment;
   const hasChoice = a.questions.some((q) => q.kind === "choice");
   return (
     <>
-      <div className={ui.heading}>
-        <div>
-          <p className={ui.eyebrow}>{pick(a.course, "et")}</p>
-          <h1 className={ui.h1}>{a.name}</h1>
-          <p className={ui.lead}>
-            {[fill(t.tryOf, { n: a.number, max: a.allowed }), fill(t.sentAt, { date: stamp(a.submittedAt) })].join(" · ")} ·{" "}
-            <span data-attempt-status={a.status}>{t.review.status[a.status]}</span>
-          </p>
-          {hasChoice && (
-            <p className={styles.score} data-review-score="">
-              {fill(t.review.score, { percent: a.percent, pass: a.passPercent })}
+      <TestReview
+        attempt={{ id: a.id, status: a.status, questions: a.questions, answers: a.answers, review: a.review, submittedAt: a.submittedAt.toISOString() }}
+        t={t.review}
+        draft={draft}
+        head={
+          <div>
+            <p className={ui.eyebrow}>{pick(a.course, "et")}</p>
+            <h1 className={ui.h1}>{a.name}</h1>
+            <p className={ui.lead}>
+              {[fill(t.tryOf, { n: a.number, max: a.allowed }), fill(t.sentAt, { date: stamp(a.submittedAt) })].join(" · ")} ·{" "}
+              <span data-attempt-status={a.status}>{t.review.status[a.status]}</span>
             </p>
-          )}
-        </div>
-      </div>
-      <TestReview attempt={{ id: a.id, status: a.status, questions: a.questions, answers: a.answers, review: a.review, submittedAt: a.submittedAt.toISOString() }} t={t.review} />
+            {hasChoice && (
+              <p className={styles.score} data-review-score="">
+                {fill(t.review.score, { percent: a.percent, pass: a.passPercent })}
+              </p>
+            )}
+          </div>
+        }
+      />
       <p className={styles.more}>
         <Link className={ui.link} href={`/admin/hindamine/test?ligipaas=${a.accessId}`}>
           {t.attempts}

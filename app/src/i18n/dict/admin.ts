@@ -950,8 +950,15 @@ export const adminEt = {
       commentHint: "„Paranda“ vajab kommentaari: õpilane näeb seda oma vastuse juures.",
       previous: "Eelmine kommentaar: {text}",
       notReviewed: "Hindamata",
-      send: "Saada",
+      // the informed send, with the summary on the button (README A4, strings.md W3): {ok} the answers marked „Kinnitatud“, {fix} the ones marked
+      // „Paranda“; „, 0 vale“ is dropped when nothing is to fix (piece2-texts P-6; the practical work's send does the same), õ = 0 stays literal
+      send: "Saada · {ok} õige, {fix} vale",
+      sendOk: "Saada · {ok} õige",
       sending: "Saadan…",
+      // the marks autosave to the server (B15): the chip's „Seda {asja} enam ei ole …“ when the attempt is gone (piece2-texts P-10), and the
+      // conflict's „Taasta minu tekst“ (README §1.3, B13), which saves this screen's marks over the other device's
+      goneThing: "katset",
+      restore: "Taasta minu tekst",
       sent: {
         passed: "Saadetud: test on sooritatud. Õpilane saab kirja.",
         fix: "Saadetud: õpilane parandab „Paranda“ vastused. Ta saab kirja.",

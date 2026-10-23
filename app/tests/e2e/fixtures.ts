@@ -390,6 +390,9 @@ export async function removeClientRows(email?: string): Promise<number> {
       join course_access a on a.id = pr.access_id
       join clients c on c.id = a.client_id
       where c.email like ${match} or a.course_id in (select id from courses where slug like ${courses})`;
+    // Maria's autosaved marks on their test attempts (B15; the draft layer has no foreign key, so nothing cascades)
+    await sql`delete from content_drafts where entity = 'test_review' and entity_id in (
+      select t.id from test_attempts t join clients c on c.id = t.client_id where c.email like ${match} or t.course_id in (select id from courses where slug like ${courses}))`;
     await sql`delete from registrations where email like ${match} or course_id in (select id from courses where slug like ${courses})`;
     await sql`delete from requests where payload->>'email' like ${match}`;
     await sql`delete from courses where slug like ${courses}`; // on delete cascade: its sessions

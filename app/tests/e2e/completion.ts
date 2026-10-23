@@ -162,6 +162,12 @@ export async function storedAttempts(clientId: number): Promise<StoredAttempt[]>
   return localDb((sql) => sql<StoredAttempt[]>`select id, number, status, correct, total, answers, review from test_attempts where client_id = ${clientId} order by number`);
 }
 
+/** Maria's autosaved marks on an attempt (B15: the draft of the review, entity "test_review"): empty once the review is sent. */
+export type StoredMarks = { version: number; value: { submittedAt: string; marks: Record<string, { verdict: "ok" | "fix" | null; comment: string }> } };
+export async function storedMarks(attemptId: number): Promise<StoredMarks[]> {
+  return localDb((sql) => sql<StoredMarks[]>`select version, value from content_drafts where entity = 'test_review' and entity_id = ${attemptId}`);
+}
+
 type Stage = { title: string; note: string };
 export type StoredPractical = {
   id: number;

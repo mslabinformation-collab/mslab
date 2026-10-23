@@ -9,7 +9,7 @@
 
 .title:focus-visible {
   outline: 2px solid var(--rose);
-  outline-offset: 4px;
+  outline-offset: 2px;
 }
 
 .items {
@@ -34,10 +34,20 @@
   border-bottom: 0;
 }
 
-/* who and what, and the meta under it; it takes the room the row's ways on leave (they wrap under it on a phone) */
-.what {
+/* who and what, and the meta under it, in the queue; it takes the room the row's ways on leave (they wrap under it on a phone) */
+.queueWhat {
   display: grid;
   flex: 1 1 260px;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* the attempts list's row (/admin/hindamine/test?ligipaas=): the text takes what the one „Vaata“ button leaves, so the button stays beside it at
+   375 px instead of wrapping under the text (the queue's basis of 260 px would push it down) */
+.what {
+  display: grid;
+  flex: 1 1 0;
   gap: 2px;
   min-width: 0;
   overflow-wrap: anywhere;

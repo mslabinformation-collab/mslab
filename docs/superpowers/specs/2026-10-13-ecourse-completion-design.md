@@ -182,9 +182,9 @@ This is the existing screen in its single mode, with these additions:
 
 ### 5.4 The test review: `/admin/hindamine/test?id=<attemptId>`
 - **The choice part:** read-only, with the score and each question showing the student's answer marked right or wrong.
-- **The open answers:** each with "Kinnitatud" / "Paranda" and a comment box. A comment is required for "Paranda".
-- **"Saada"** sends the review: every answer accepted makes the attempt `passed`; otherwise it becomes `fix`. The student gets a mail.
-- **Draft:** a plain form; unsent text is kept in the browser's storage until it's sent.
+- **The open answers:** each with "Kinnitatud" / "Paranda" and a comment box. A comment is required for "Paranda". *(Admin UX pass A4: a pressed verdict tapped again is cleared.)*
+- **"Saada"** sends the review: every answer accepted makes the attempt `passed`; otherwise it becomes `fix`. The student gets a mail. *(Admin UX pass A4: the summary is on the button, „Saada · {õ} õige, {v} vale“; „, 0 vale“ is left out when no answer is marked „Paranda“, and nothing is asked first.)*
+- **Draft:** a plain form; unsent text is kept in the browser's storage until it's sent. *(Admin UX pass B15: the marks are saved to the server as Maria works, so the phone or another browser shows them. They are a draft of the review in the draft layer (`content_drafts`: entity `test_review`, the attempt's id, part `marks`), never in `test_attempts.review`, which is what the student is shown; a draft belongs to the answers it was made for (their `submittedAt`) and is ignored after a rewrite; "Saada" deletes it. The browser keeps its own copy only until the server has the marks. The status chip is the editors' SaveStatus.)*
 - **Every attempt of a student** is listed at `/admin/hindamine/test?ligipaas=<accessId>`, newest first.
 
 ### 5.5 The student's profile (Õpilased drawer)

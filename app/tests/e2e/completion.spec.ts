@@ -4,10 +4,10 @@ import { clientEmail, signInAsClient, takeTerms } from "./account";
 import { adminReady, signInAsAdmin, type CreatedRows } from "./admin-login";
 import {
   canvasJpeg, E2E_OPEN, E2E_POINTS, E2E_QUESTIONS, hasExif, insertAttempts, insertCompletionCourse, insertContactRegistration, insertPractical, jpegSize, localFile,
-  storedAccessRow, storedAttempts, storedPhotos, storedProtocolOf, withExif, type CompletionCourse,
+  storedAccessRow, storedAttempts, storedMarks, storedPhotos, storedProtocolOf, withExif, type CompletionCourse,
 } from "./completion";
 import { LOCK_WAIT_MS, removeAdminRows, removeClientRows } from "./fixtures";
-import { general, note, runName, saved, storedProtocol, studentPage } from "./protocols";
+import { general, note, runName, saved, storedProtocol, studentContext, studentPage } from "./protocols";
 import { smallTargets } from "./targets";
 import { expect, submitsForms, test } from "./test";
 
@@ -376,13 +376,45 @@ test("§9 e2e 5: open answers — Maria asks for one fix, she rewrites only that
   await expect(page).toHaveURL(new RegExp(`/admin/hindamine/test\\?id=${first.id}$`));
   await adminReady(page);
   const reviewOf = (q: string) => page.locator(`[data-review-answer="${q}"]`);
+  const sendButton = page.locator("[data-review-send]");
   await expect(reviewOf("q3")).toContainText("Puhastan, mõõdan, siis värvin.");
+  await expect(sendButton).toHaveText("Saada · 0 õige"); // B15: the summary is on the button; „, 0 vale“ is left out
   await reviewOf("q3").locator('[data-review-verdict="ok"]').click();
   await reviewOf("q4").locator('[data-review-verdict="fix"]').click();
-  await reviewOf("q4").locator("[data-review-comment]").fill("Kirjuta, millal katkestad töö ja mida kliendile soovitad.");
-  await page.locator("[data-review-send]").click();
+  await expect(sendButton).toHaveText("Saada · 1 õige, 1 vale");
+  const box = reviewOf("q4").locator("[data-review-comment]");
+  await box.fill("Kirjuta, millal katkestad töö ja mida kliendile soovitad.");
+  await box.blur();
+  // the chip: saved to the server (it shows the time once a save has been confirmed)
+  await expect(page.locator("[data-review-head] [data-save-status]")).toContainText(/Salvestatud \d{2}:\d{2}/, { timeout: 30_000 });
+  expect((await storedMarks(first.id)).map((d) => d.value)).toEqual([
+    {
+      submittedAt: expect.any(String),
+      marks: { q3: { verdict: "ok", comment: "" }, q4: { verdict: "fix", comment: "Kirjuta, millal katkestad töö ja mida kliendile soovitad." } },
+    },
+  ]);
+  expect((await storedAttempts(s.clientId))[0]).toMatchObject({ number: 1, status: "review", review: null }); // (never the review the student is shown)
+
+  // B15: her other browser (the phone) has the marks as soon as it opens the page; a pressed verdict tapped again is cleared
+  const other = await studentContext(browser, visitorIp, "phone");
+  const phone = await other.newPage();
+  await signInAsAdmin(phone, other, `${visitorIp}-phone`, created);
+  await phone.goto(`/admin/hindamine/test?id=${first.id}`);
+  await adminReady(phone);
+  await expect(phone.locator('[data-review-answer="q3"] [data-review-verdict="ok"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(phone.locator('[data-review-answer="q4"] [data-review-verdict="fix"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(phone.locator('[data-review-answer="q4"] [data-review-comment]')).toHaveValue("Kirjuta, millal katkestad töö ja mida kliendile soovitad.");
+  await expect(phone.locator("[data-review-send]")).toHaveText("Saada · 1 õige, 1 vale");
+  await other.close();
+  await reviewOf("q3").locator('[data-review-verdict="ok"]').click();
+  await expect(reviewOf("q3").locator('[data-review-verdict="ok"]')).toHaveAttribute("aria-pressed", "false");
+  await expect(sendButton).toHaveText("Saada · 0 õige, 1 vale");
+  await reviewOf("q3").locator('[data-review-verdict="ok"]').click();
+  await expect(sendButton).toHaveText("Saada · 1 õige, 1 vale");
+  await sendButton.click();
   await expect(page.locator("[data-review-sent]")).toContainText("Saadetud");
   expect((await storedAttempts(s.clientId))[0]).toMatchObject({ number: 1, status: "fix" });
+  expect(await storedMarks(first.id)).toEqual([]); // the marks were a draft of this review: sent, they are gone
 
   // her page: Maria's comment at that answer, which alone opens again; "Saada uuesti" uses no try
   await sp.reload();
@@ -627,4 +659,45 @@ test("§9 e2e 9 (A4, README: the send bar sticks to the bottom on a phone): at 3
   await expect(dock.locator("[data-assess-error]")).toContainText("Lisa märkus Paranda-punktidele: 2.");
   await expect(box1).toBeFocused();
   await clearOfBar(box1, "the comment box");
+});
+
+test("§9 e2e 10 (B15 and the Hindamine rows at 375 px): the attempts list keeps „Vaata“ beside its text, and the test review's status chip sits under the heading, the marks are saved and no sideways scroll", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(isMobile, "sets its own width: the desktop project only");
+  const questions = [E2E_QUESTIONS[0], ...E2E_OPEN];
+  const s = await student("t10", info, { questions, points: [], lessonsDone: true });
+  const [failedId, reviewId] = await insertAttempts(s.clientId, s.courseId, questions, [
+    { status: "failed", correct: 0, total: 1 },
+    { status: "review", correct: 1, total: 1 },
+  ]);
+  await signInAsAdmin(page, context, visitorIp, created);
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  // „Testi katsed“: each row's „Vaata“ is on the row's first line, to the right of the text, not under it
+  await page.goto(`/admin/hindamine/test?ligipaas=${s.accessId}`);
+  await adminReady(page);
+  for (const id of [failedId, reviewId]) {
+    const row = page.locator(`[data-attempt="${id}"]`);
+    await expect(row).toBeVisible();
+    const text = (await row.locator("strong").boundingBox())!;
+    const view = (await row.getByRole("link").boundingBox())!;
+    expect(view.x, `attempt ${id}: „Vaata“ is to the right of the text`).toBeGreaterThanOrEqual(text.x + text.width - 1);
+    expect(view.y, `attempt ${id}: „Vaata“ is on the text's first line`).toBeLessThan(text.y + text.height);
+    expect(view.x + view.width, `attempt ${id}: „Vaata“ is on the screen`).toBeLessThanOrEqual(375);
+  }
+  expect(await noOverflow(page)).toBe(true);
+
+  // the review: the chip is under the heading (not beside it), a tap is saved, and the page fits
+  await page.goto(`/admin/hindamine/test?id=${reviewId}`);
+  await adminReady(page);
+  const chip = page.locator("[data-review-head] [data-save-status]");
+  await expect(chip).toBeVisible();
+  const h1 = (await page.locator("[data-review-head] h1").boundingBox())!;
+  const chipBox = (await chip.boundingBox())!;
+  expect(chipBox.y, "the status chip is under the heading").toBeGreaterThanOrEqual(h1.y + h1.height - 1);
+  await page.locator('[data-review-answer="q3"] [data-review-verdict="ok"]').click();
+  await expect(page.locator("[data-review-send]")).toHaveText("Saada · 1 õige");
+  await expect(chip).toContainText(/Salvestatud \d{2}:\d{2}/, { timeout: 30_000 });
+  expect((await storedMarks(reviewId)).map((d) => d.value.marks.q3)).toEqual([{ verdict: "ok", comment: "" }]);
+  expect(await noOverflow(page)).toBe(true);
+  expect(await smallTargets(page.locator("[data-test-review-page]"))).toEqual([]);
 });

@@ -1,21 +1,30 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition, type ReactNode, type RefObject } from "react";
 import type { AttemptStatus, OpenReview, TestAnswers, TestQuestion, Verdict } from "@/db/schema";
 import { grade, TEST_LIMITS } from "@/domain/completion";
+import { markCounts, NO_MARK, startMarks, type Mark, type Marks } from "@/domain/test-review-marks";
 import type { AdminDict } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { reviewAttemptAction } from "@/server/actions/admin-assessment";
+import { patchSender } from "./autosave/engine";
+import { useAutosave } from "./autosave/useAutosave";
+import { SaveStatus } from "./SaveStatus";
 import ui from "./ui.module.css";
 import styles from "./TestReview.module.css";
 
-// Maria's review of one test attempt (e-course completion, spec §5.4): every question of the attempt's own copy in order, numbered as the
-// student saw them. The choice part is read-only: each option she picked is marked right (✓) or wrong (✗) against the key, and a correct one she
-// left out is named. Each open answer takes "Kinnitatud" or "Paranda" and a comment (required for "Paranda"); "Saada" sends them all
-// (reviewAttemptAction). A plain form: what Maria marks and writes is kept in this browser (localStorage `mslab-review:<attemptId>`) until it is
-// sent, so a reload or a closed tab loses nothing. The draft belongs to the answers it was written for (their `submittedAt`): after the student
-// rewrote them it is dropped, never put onto answers Maria has not seen. An attempt not waiting for her ("fix", "passed", "failed") shows her
-// last review, read-only.
+// Maria's review of one test attempt (e-course completion, spec §5.4; admin UX pass A4, B15): every question of the attempt's own copy in order,
+// numbered as the student saw them. The choice part is read-only: each option she picked is marked right (✓) or wrong (✗) against the key, and a
+// correct one she left out is named. Each open answer takes "Kinnitatud" or "Paranda" (a pressed one tapped again is cleared) and a comment
+// (required for "Paranda"); "Saada · {õ} õige, {v} vale" sends them all (reviewAttemptAction).
+// What Maria marks and writes is saved to the server as she works (the editors' autosave, autosave/useAutosave.ts → POST
+// /api/admin/testi-hinnang/<attempt>, server/test-review-marks.ts), so a reload, the phone or another browser has the marks: a tap at once, a
+// comment when she leaves its box. The marks are a draft of the review, apart from `review` (what the student is shown); the send deletes the
+// draft. The engine keeps its own copy in this browser until the server has the marks, for the answers they were typed on (their `submittedAt` is
+// in its key, and the server ignores a draft of other answers): after the student rewrote the answers, an earlier mark is never put onto answers
+// Maria has not seen. The SaveStatus chip is at the right end of the heading row (`head` is the page's heading text), and the conflict's
+// „Taasta minu tekst“ saves this screen's marks over another device's. An attempt not waiting for her ("fix", "passed", "failed") shows her last
+// review, read-only, with no saving.
 
 export type ReviewTexts = AdminDict["assessment"]["review"];
 /**
@@ -23,65 +32,10 @@ export type ReviewTexts = AdminDict["assessment"]["review"];
  * back with the review: answers the student rewrote after this page was read make the server answer `stale` (server/test-attempts.ts).
  */
 export type ReviewedAttempt = { id: number; status: AttemptStatus; questions: TestQuestion[]; answers: TestAnswers; review: OpenReview | null; submittedAt: string };
+/** The marks as the server holds them (server/test-review-marks.ts readMarks): their version for the autosave and every open answer's mark. */
+export type MarksDraft = { version: string; value: Marks };
 
-type Mark = { verdict: Verdict | null; comment: string };
-type Marks = Record<string, Mark>;
 type Problem = "verdict" | "comment" | "tooLong";
-
-const draftKey = (attemptId: number) => `mslab-review:${attemptId}`;
-
-/** Where the form starts: an answer Maria accepted before (a rewrite brings the attempt back) stays accepted; every other one is unmarked. */
-function startMarks(a: ReviewedAttempt): Marks {
-  const marks: Marks = {};
-  for (const q of a.questions) {
-    if (q.kind !== "open") continue;
-    const last = a.review?.[q.id];
-    marks[q.id] = last?.verdict === "ok" ? { verdict: "ok", comment: last.comment } : { verdict: null, comment: "" };
-  }
-  return marks;
-}
-
-/**
- * The draft this browser kept, read defensively (the storage may hold anything, or be blocked): this attempt's open answers only, and only if it
- * was written for the answers the page shows now (`submittedAt`). A draft of older answers (the student rewrote since: the server refused the
- * review as stale), or one that names none, is removed and the form starts afresh.
- */
-function readDraft(a: ReviewedAttempt): Marks | null {
-  try {
-    const raw = localStorage.getItem(draftKey(a.id));
-    if (!raw) return null;
-    const draft = JSON.parse(raw) as { submittedAt?: unknown; marks?: Record<string, { verdict?: unknown; comment?: unknown } | undefined> };
-    if (draft.submittedAt !== a.submittedAt) {
-      dropDraft(a.id);
-      return null;
-    }
-    const kept = draft.marks ?? {};
-    const marks = startMarks(a);
-    for (const id of Object.keys(marks)) {
-      const m = kept[id];
-      if (m) marks[id] = { verdict: m.verdict === "ok" || m.verdict === "fix" ? m.verdict : null, comment: typeof m.comment === "string" ? m.comment : "" };
-    }
-    return marks;
-  } catch {
-    return null; // blocked storage, or not JSON: the form starts afresh
-  }
-}
-
-function writeDraft(attemptId: number, submittedAt: string, marks: Marks): void {
-  try {
-    localStorage.setItem(draftKey(attemptId), JSON.stringify({ marks, at: Date.now(), submittedAt }));
-  } catch {
-    // the storage is full or blocked: the form still works, its text is just not kept
-  }
-}
-
-function dropDraft(attemptId: number): void {
-  try {
-    localStorage.removeItem(draftKey(attemptId));
-  } catch {
-    // blocked storage kept nothing
-  }
-}
 
 /** What stops the send, per open answer: no verdict; "Paranda" without a comment; a comment over its limit (nothing is cut silently). */
 function problemsOf(questions: readonly TestQuestion[], marks: Marks): Record<string, Problem> {
@@ -96,39 +50,125 @@ function problemsOf(questions: readonly TestQuestion[], marks: Marks): Record<st
   return out;
 }
 
-export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: ReviewTexts }) {
-  const uid = useId();
+/** The marks whose comment is over its limit: the autosave holds them back (the others still save), and the screen says so at their box. */
+function tooLongMarks(marks: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [id, m] of Object.entries(marks)) {
+    const comment = (m as Mark | undefined)?.comment;
+    if (typeof comment === "string" && comment.length > TEST_LIMITS.comment) out[id] = "tooLong";
+  }
+  return out;
+}
+
+/** What the questions' list needs to be a form: the marks, what is wrong with them, and what a tap or a typed word does. */
+type Edit = {
+  marks: Marks;
+  problems: Record<string, Problem>;
+  /** Sent: the marks are shown as they were sent, read-only. */
+  locked: boolean;
+  onVerdict: (id: string, verdict: Verdict) => void;
+  onComment: (id: string, text: string) => void;
+  onLeaveBox: () => void;
+};
+
+export function TestReview({ attempt, t, draft, head }: { attempt: ReviewedAttempt; t: ReviewTexts; draft?: MarksDraft; head?: ReactNode }) {
   const editable = attempt.status === "review";
-  const [marks, setMarks] = useState<Marks>(() => startMarks(attempt));
-  const [problems, setProblems] = useState<Record<string, Problem>>({});
-  const [error, setError] = useState("");
   const [sent, setSent] = useState("");
-  const [pending, start] = useTransition();
-  const errorLine = useRef<HTMLParagraphElement>(null);
   const sentLine = useRef<HTMLParagraphElement>(null);
-
-  useEffect(() => {
-    if (!editable) return;
-    const kept = readDraft(attempt);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the draft this browser kept is only known after hydration
-    if (kept) setMarks(kept);
-  }, [attempt, editable]);
-
-  useEffect(() => {
-    if (error) errorLine.current?.focus();
-  }, [error]);
 
   // and again when the page's refresh swaps the form for the read-only review: the line is a new element there
   useEffect(() => {
     if (sent) sentLine.current?.focus();
   }, [sent, editable]);
 
-  const change = (id: string, part: Partial<Mark>) => {
-    const next = { ...marks, [id]: { ...marks[id], ...part } };
-    setMarks(next);
-    writeDraft(attempt.id, attempt.submittedAt, next);
+  if (!editable)
+    return (
+      <>
+        <Heading head={head} />
+        <div className={styles.review} data-review-readonly={attempt.id}>
+          <Questions attempt={attempt} t={t} edit={null} />
+          {/* the refresh after Maria's send lands here (this component's state survives it): her confirmation stays */}
+          {sent && (
+            <p ref={sentLine} tabIndex={-1} role="status" className={`${ui.success} ${styles.line}`} data-review-sent="">
+              {sent}
+            </p>
+          )}
+        </div>
+      </>
+    );
+  // (keyed by the answers it is for: the autosave reads its options once, so answers rewritten meanwhile start a form of their own)
+  return <ReviewForm key={`${attempt.id}-${attempt.submittedAt}`} attempt={attempt} t={t} draft={draft} head={head} sent={sent} onSent={setSent} sentLine={sentLine} />;
+}
+
+/** The page's heading row: its text at the left (the page hands it over), the save status at the right (below the text on a phone: ui.headAside). */
+function Heading({ head, chip }: { head?: ReactNode; chip?: ReactNode }) {
+  return (
+    <div className={ui.heading} data-review-head="">
+      {head}
+      {chip && <div className={ui.headAside}>{chip}</div>}
+    </div>
+  );
+}
+
+/** The review while it waits for Maria: the autosave of the marks (one field for each open answer: its id → `{ verdict, comment }`) and the send. */
+function ReviewForm({
+  attempt,
+  t,
+  draft,
+  head,
+  sent,
+  onSent,
+  sentLine,
+}: {
+  attempt: ReviewedAttempt;
+  t: ReviewTexts;
+  draft?: MarksDraft;
+  head?: ReactNode;
+  sent: string;
+  onSent: (line: string) => void;
+  sentLine: RefObject<HTMLParagraphElement | null>;
+}) {
+  const [problems, setProblems] = useState<Record<string, Problem>>({});
+  const [error, setError] = useState("");
+  const [pending, start] = useTransition();
+  const errorLine = useRef<HTMLParagraphElement>(null);
+  const [sender] = useState(() => patchSender(`/api/admin/testi-hinnang/${attempt.id}`));
+  const first = draft ?? { version: "0", value: startMarks(attempt.questions, attempt.review) };
+
+  // the guard's notice and the status name an answer by its number, as the verdict buttons' group does (piece2-texts P-12 has no label for these)
+  const numbers = useMemo(() => new Map(attempt.questions.map((q, i) => [q.id, i + 1])), [attempt.questions]);
+  const label = useCallback((id: string) => fill(t.verdictLabel, { n: numbers.get(id) ?? 0 }), [numbers, t.verdictLabel]);
+  const auto = useAutosave({
+    owner: "testi-hinnang",
+    // the browser's copy is for these answers only: the time they were sent is in its key
+    key: `${attempt.id}-${Date.parse(attempt.submittedAt)}`,
+    version: first.version,
+    fields: first.value,
+    save: sender,
+    validate: tooLongMarks,
+    label,
+  });
+  const marks = auto.fields as Marks;
+
+  useEffect(() => {
+    if (error) errorLine.current?.focus();
+  }, [error]);
+
+  const settle = (id: string) => {
     if (problems[id]) setProblems(Object.fromEntries(Object.entries(problems).filter(([key]) => key !== id)));
     setError("");
+  };
+  const markOf = (id: string): Mark => marks[id] ?? NO_MARK;
+  /** A pressed verdict tapped again is cleared (as on the practical work's cards); a tap is saved at once. */
+  const onVerdict = (id: string, verdict: Verdict) => {
+    const m = markOf(id);
+    auto.setField(id, { verdict: m.verdict === verdict ? null : verdict, comment: m.comment });
+    void auto.flush();
+    settle(id);
+  };
+  const onComment = (id: string, text: string) => {
+    auto.setField(id, { verdict: markOf(id).verdict, comment: text });
+    settle(id);
   };
 
   const send = () => {
@@ -142,21 +182,73 @@ export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: Review
     setError("");
     const review: OpenReview = Object.fromEntries(Object.entries(marks).map(([id, m]) => [id, { verdict: m.verdict as Verdict, comment: m.comment }]));
     start(async () => {
+      // what she typed last is saved first: no save of the marks is on its way when the review is stored (the server then deletes the draft)
+      await auto.flush();
       const result = await reviewAttemptAction({ attemptId: attempt.id, review, submittedAt: attempt.submittedAt });
       if (result.kind === "reviewed") {
-        dropDraft(attempt.id);
-        setSent(result.completed ? t.sent.completed : result.status === "passed" ? t.sent.passed : t.sent.fix);
+        onSent(result.completed ? t.sent.completed : result.status === "passed" ? t.sent.passed : t.sent.fix);
       } else {
         setError(result.kind === "invalid" ? t.errors[result.error] : t.errors[result.kind]);
       }
     });
   };
 
+  // the chip's „Näita“: the first comment over its limit
+  const showInvalid = () => {
+    const id = Object.keys(tooLongMarks(marks))[0];
+    if (id) document.querySelector<HTMLTextAreaElement>(`[data-review-answer="${id}"] [data-review-comment]`)?.focus();
+  };
+
   // after a send the form shows what was sent (the page's refresh then shows what the server holds, read-only, with the sent line kept)
-  const locked = !editable || sent !== "";
+  const edit: Edit = { marks, problems, locked: sent !== "", onVerdict, onComment, onLeaveBox: () => void auto.flush() };
+  const { ok, fix } = markCounts(marks);
+  // the summary is on the button: „, 0 vale“ is left out when nothing is to fix (õ = 0 stays)
+  const sendLabel = fix === 0 ? fill(t.sendOk, { ok }) : fill(t.send, { ok, fix });
+  return (
+    <>
+      <Heading head={head} chip={<SaveStatus status={auto.status} thing={t.goneThing} onShowInvalid={showInvalid} />} />
+      <form
+        className={styles.review}
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          send();
+        }}
+        data-review-form={attempt.id}
+      >
+        {/* marks changed on another device meanwhile (README §1.3, B13); with no marks stored there (reviewed elsewhere) there is nothing to restore over */}
+        {auto.conflict && auto.conflict.value !== null && (
+          <div>
+            <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => void auto.restore()} data-review-restore="">
+              {t.restore}
+            </button>
+          </div>
+        )}
+        <Questions attempt={attempt} t={t} edit={edit} />
+        <div className={styles.send}>
+          {!sent && (
+            <button type="submit" className={ui.btn} aria-disabled={pending || undefined} data-review-send="">
+              {pending ? t.sending : sendLabel}
+            </button>
+          )}
+          <p ref={errorLine} tabIndex={-1} role="alert" className={`${ui.error} ${styles.line}`} data-review-error="">
+            {error}
+          </p>
+          <p ref={sentLine} tabIndex={-1} role="status" className={`${ui.success} ${styles.line}`} data-review-sent="">
+            {sent}
+          </p>
+        </div>
+      </form>
+    </>
+  );
+}
+
+/** The questions in order: the choice part read-only; each open answer with its verdict buttons and comment box (`edit`), or as Maria's review shows it. */
+function Questions({ attempt, t, edit }: { attempt: ReviewedAttempt; t: ReviewTexts; edit: Edit | null }) {
+  const uid = useId();
   // the wrong choice questions' 1-based positions, by domain/completion.ts grade's own rule (the picked set equals the correct set)
   const wrong = grade(attempt.questions, attempt.answers).wrong;
-  const list = (
+  return (
     <ol className={styles.questions}>
       {attempt.questions.map((q, i) => {
         const raw = attempt.answers[q.id];
@@ -191,9 +283,11 @@ export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: Review
         }
         const answer = typeof raw === "string" ? raw : "";
         const last = attempt.review?.[q.id];
-        const mark = marks[q.id] ?? { verdict: null, comment: "" };
-        const shown = editable ? mark : (last ?? null);
-        const problem = problems[q.id];
+        const mark = edit ? (edit.marks[q.id] ?? NO_MARK) : null;
+        const shown = edit ? mark : (last ?? null);
+        const controls = edit !== null && !edit.locked;
+        // a comment over its limit is said as soon as it is typed (the autosave holds it back), as well as at the send
+        const problem = edit ? (edit.problems[q.id] ?? (mark && mark.comment.length > TEST_LIMITS.comment ? "tooLong" : undefined)) : undefined;
         const box = `${uid}-${q.id}`;
         return (
           <li key={q.id} className={styles.question} data-review-answer={q.id}>
@@ -202,11 +296,11 @@ export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: Review
               {q.text}
             </p>
             <p className={styles.answer}>{answer || t.noAnswer}</p>
-            {!locked ? (
+            {edit && mark && controls ? (
               <>
                 <div className={styles.verdicts} role="group" aria-label={fill(t.verdictLabel, { n: i + 1 })}>
                   {(["ok", "fix"] as const).map((v) => (
-                    <button key={v} type="button" className={styles.verdict} aria-pressed={mark.verdict === v} onClick={() => change(q.id, { verdict: v })} data-review-verdict={v}>
+                    <button key={v} type="button" className={styles.verdict} aria-pressed={mark.verdict === v} onClick={() => edit.onVerdict(q.id, v)} data-review-verdict={v}>
                       {v === "ok" ? t.ok : t.fix}
                     </button>
                   ))}
@@ -215,9 +309,11 @@ export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: Review
                   <label htmlFor={box}>{t.comment}</label>
                   <textarea
                     id={box}
+                    name={q.id}
                     className={ui.textarea}
                     value={mark.comment}
-                    onChange={(e) => change(q.id, { comment: e.target.value })}
+                    onChange={(e) => edit.onComment(q.id, e.target.value)}
+                    onBlur={edit.onLeaveBox}
                     aria-invalid={problem === "comment" || problem === "tooLong" ? true : undefined}
                     aria-describedby={`${box}-hint`}
                     data-review-comment=""
@@ -246,44 +342,5 @@ export function TestReview({ attempt, t }: { attempt: ReviewedAttempt; t: Review
         );
       })}
     </ol>
-  );
-
-  if (!editable)
-    return (
-      <div className={styles.review} data-review-readonly={attempt.id}>
-        {list}
-        {/* the refresh after Maria's send lands here (this component's state survives it): her confirmation stays */}
-        {sent && (
-          <p ref={sentLine} tabIndex={-1} role="status" className={`${ui.success} ${styles.line}`} data-review-sent="">
-            {sent}
-          </p>
-        )}
-      </div>
-    );
-  return (
-    <form
-      className={styles.review}
-      noValidate
-      onSubmit={(e) => {
-        e.preventDefault();
-        send();
-      }}
-      data-review-form={attempt.id}
-    >
-      {list}
-      <div className={styles.send}>
-        {!sent && (
-          <button type="submit" className={ui.btn} aria-disabled={pending || undefined} data-review-send="">
-            {pending ? t.sending : t.send}
-          </button>
-        )}
-        <p ref={errorLine} tabIndex={-1} role="alert" className={`${ui.error} ${styles.line}`} data-review-error="">
-          {error}
-        </p>
-        <p ref={sentLine} tabIndex={-1} role="status" className={`${ui.success} ${styles.line}`} data-review-sent="">
-          {sent}
-        </p>
-      </div>
-    </form>
   );
 }

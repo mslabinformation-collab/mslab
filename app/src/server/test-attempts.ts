@@ -5,9 +5,11 @@ import {
   checkAnswers, checkReview, fixAnswers, grade, percentOf, publicQuestions, readQuestions, reviewStatus, submitStatus, testState, triesAllowed,
   type PublicQuestion, type TestState,
 } from "@/domain/completion";
+import { MARKS_ENTITY } from "@/domain/test-review-marks";
 import { pick, type I18n } from "@/i18n/field";
 import type { CompletionMailKind } from "./account-mail";
 import { accessFor, completeIfDone, completionJob, courseSetup, hasPointsOf, isActive, lockAccess, mailCompletion, type AccessWithCourse, type CompletionJob, type CourseSetup } from "./completion";
+import { discardDrafts } from "./drafts";
 import { courseOutline } from "./lesson-outline";
 import { testReviewSummary, triesUsedSummary, type CompletionNotice, type Summary } from "./messages";
 import { adminUrl, notifyMaria, type Env } from "./notify";
@@ -282,7 +284,8 @@ export async function resubmitAnswers(deps: TestDeps, clientId: number, slug: st
  * mail: "completed" when it completed the course, "testFix" for a rewrite, "testPassed" when the practical work is next (a course with points).
  * An expired access is still reviewed (spec §8) and the review is stored, but its "testFix" and "testPassed" mails are not sent: her pages are
  * read-only until the access is extended (a rewrite answers `closed`), so they would invite her to what she cannot do (as with `reopenTest`);
- * "completed" still goes, it only tells her the course is done. A revoked access is notFound. `raw`: the review form's verdicts and comments. `shownSubmittedAt`:
+ * "completed" still goes, it only tells her the course is done. The marks she autosaved while working (B15: the draft of the review in the draft
+ * layer, server/test-review-marks.ts) are deleted in the same transaction once the review is stored. A revoked access is notFound. `raw`: the review form's verdicts and comments. `shownSubmittedAt`:
  * the attempt's `submittedAt` (ISO) as the review page showed it; when given and the stored one differs, the student has rewritten her answers
  * since that page was read (a screen on Maria's other device, older than the rewrite): `stale`, nothing stored for answers she never saw.
  */
@@ -307,6 +310,7 @@ export async function reviewAttempt(deps: TestDeps, adminEmail: string, attemptI
     if (!review.ok) return stop({ kind: "invalid", error: review.error });
     const status = reviewStatus(review.review);
     await tx.update(testAttempts).set({ review: review.review, status, reviewedAt: deps.now, reviewedBy: adminEmail }).where(eq(testAttempts.id, attemptId));
+    await discardDrafts(t, MARKS_ENTITY, attemptId); // the marks she autosaved (B15) were a draft of this review: it is stored, they go
     const completed = status === "passed" && (await completeIfDone(t, access.id, deps.now));
     const job = await completionJob(t, access.id, deps.now);
     const active = isActive(access, deps.now); // an ended access: no mail sends her to a page she can only read

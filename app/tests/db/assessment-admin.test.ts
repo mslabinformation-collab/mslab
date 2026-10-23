@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { courseAccess, courseTests } from "@/db/schema";
+import { contentDrafts, courseAccess, courseTests } from "@/db/schema";
+import { saveDraftPart } from "@/server/drafts";
 import { at, attempt, ecourse, practical, student, tabsOf } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
 
@@ -124,6 +125,34 @@ test("Review Focus 3: the review of an attempt made before Maria changed the tes
   expect(wrongPick).not.toContain("data-correct");
   expect(part(page, "data-review-answer", "qavatud1")).toContain("Puhastan pintsli.");
   expect(page).toContain(`href="/admin/hindamine/test?ligipaas=${eve.access.id}"`);
+});
+
+test("B15: the review hands its form the marks saved on the server (the phone shows them too), not those of a draft for older answers; the send button counts them", async () => {
+  const eve = await student(db, course.id, "Eve");
+  const a = await attempt(db, eve, course.id, 1, "review", at(7));
+  const draft = (submittedAt: Date) =>
+    saveDraftPart(db, {
+      entity: "test_review",
+      entityId: a.id,
+      part: "marks",
+      value: { submittedAt: submittedAt.toISOString(), marks: { qavatud1: { verdict: "fix", comment: "Lisa samm." } } },
+      baseVersion: submittedAt.toISOString(),
+      version: null,
+      by: "maria@example.test",
+    });
+  const pressed = (page: string) => /aria-pressed="true"[^>]*data-review-verdict="fix"/.test(part(page, "data-review-answer", "qavatud1"));
+  const none = await review({ id: String(a.id) });
+  expect(pressed(none)).toBe(false);
+  expect(none).toContain("Saada · 0 õige");
+  // a draft made for older answers (the student rewrote since) is not shown
+  await draft(at(3));
+  expect(pressed(await review({ id: String(a.id) }))).toBe(false);
+  await db.delete(contentDrafts);
+  await draft(at(7));
+  const shown = await review({ id: String(a.id) });
+  expect(pressed(shown)).toBe(true);
+  expect(part(shown, "data-review-answer", "qavatud1")).toContain("Lisa samm.");
+  expect(shown).toContain("Saada · 0 õige, 1 vale");
 });
 
 test("?ligipaas=: every attempt of hers, newest first, each with its result and its link; an attempt already reviewed is read-only", async () => {

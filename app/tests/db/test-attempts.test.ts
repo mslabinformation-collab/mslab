@@ -1,9 +1,10 @@
 import { asc, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
-import { clients, courseAccess, courseModules, courses, courseTests, lessonProgress, lessons, testAttempts, type TestAnswers, type TestQuestion } from "@/db/schema";
+import { clients, contentDrafts, courseAccess, courseModules, courses, courseTests, lessonProgress, lessons, testAttempts, type TestAnswers, type TestQuestion } from "@/db/schema";
 import { publicQuestions } from "@/domain/completion";
 import { loadSteps } from "@/server/completion";
+import { saveDraftPart } from "@/server/drafts";
 import type { Env } from "@/server/notify";
 import { reopenTest, resubmitAnswers, reviewAttempt, submitAttempt, testView, type SubmitResult, type TestDeps, type TestView } from "@/server/test-attempts";
 import { fakeKv, stubFetch } from "../fakes";
@@ -312,6 +313,23 @@ describe("open answers: Maria's review and the rewrite", () => {
     expect(infoLog()).not.toContain(`[test] attempt ${attempt.id}: reviewed (passed)`);
     // the page read after the rewrite
     expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "ok", comment: "" } }, LATER.toISOString())).toEqual({ kind: "reviewed", status: "passed", completed: true });
+  });
+
+  test("B15: the marks Maria autosaved (the draft of the review) go once the review is stored; a refused or a stale review keeps them, another attempt's draft stays", async () => {
+    const w = await world({ questions: [Q1, Q2, OPEN] });
+    const { d } = deps();
+    viewOf(await submitAttempt(d, w.client.id, "e-kulm", { ...RIGHT, [OPEN.id]: ANSWER }));
+    const [attempt] = await stored(w.client.id);
+    const draft = (entityId: number) =>
+      saveDraftPart(db, { entity: "test_review", entityId, part: "marks", value: { submittedAt: NOW.toISOString(), marks: { [OPEN.id]: { verdict: "ok", comment: "" } } }, baseVersion: NOW.toISOString(), version: null, by: MARIA });
+    const left = async () => (await db.select().from(contentDrafts).where(eq(contentDrafts.entity, "test_review"))).map((r) => r.entityId).sort((a, b) => a - b);
+    await draft(attempt.id);
+    await draft(attempt.id + 100); // (another attempt's: not touched)
+    expect(await reviewAttempt(d, MARIA, attempt.id, {})).toEqual({ kind: "invalid", error: "incomplete" });
+    expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "ok", comment: "" } }, LATER.toISOString())).toEqual({ kind: "stale" });
+    expect(await left()).toEqual([attempt.id, attempt.id + 100]);
+    expect(await reviewAttempt(d, MARIA, attempt.id, { [OPEN.id]: { verdict: "ok", comment: "" } }, NOW.toISOString())).toMatchObject({ kind: "reviewed" });
+    expect(await left()).toEqual([attempt.id + 100]);
   });
 });
 

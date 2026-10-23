@@ -3877,18 +3877,22 @@
       "steps": [
         "Ava Proov 1 test uuesti.",
         "Vali valikküsimusele õige vastus ja kirjuta vabaks vastuseks: Proov 1, õige katse.",
-        "Vajuta „Esita test“ ja „Jah, esita“."
+        "Vajuta „Esita test“ ja „Jah, esita“.",
+        "Ava telefonis „Hindamine“, vajuta Proov 1 real „Vaata“ ja vali vaba vastuse juures „Kinnitatud“.",
+        "Ava sama katse arvutis või sulge see telefonis ja ava uuesti."
       ],
       "expect": [
         "Näed „Ootab Maria hinnangut“ ja „Maria loeb sinu vastused läbi. …“.",
         "Maria postkasti tuleb „Test ootab hindamist: Proov 1, …“.",
         "Halduses „Hindamine“ on rida „Proov 1 · testi vastus“.",
-        "Halduse menüüs on „Hindamine“ juures arv."
+        "Halduse menüüs on „Hindamine“ juures arv.",
+        "Pärast valimist on nupul „Saada · 1 õige“ ja lehe ülaservas „Salvestatud“.",
+        "Uuesti avatud lehel on „Kinnitatud“ juba valitud."
       ],
       "why": "Vaba vastuse loeb läbi Maria.",
       "risk": "high",
       "writes": true,
-      "mark": "reworded",
+      "mark": "redo",
       "markedAt": "deploy"
     },
     {
@@ -3901,20 +3905,25 @@
       "steps": [
         "Ava „Hindamine“ ja vajuta Proov 1 real „Vaata“.",
         "Vali vaba vastuse juures „Paranda“.",
-        "Vajuta „Saada“ enne kommentaari kirjutamist.",
+        "Vajuta sama „Paranda“ uuesti ja siis veel kord.",
+        "Vajuta „Saada · 0 õige, 1 vale“ enne kommentaari kirjutamist.",
         "Kirjuta „Kommentaar“: Proov 1, palun täienda.",
-        "Vajuta „Saada“."
+        "Ava sama katse uuesti.",
+        "Vajuta „Saada · 0 õige, 1 vale“."
       ],
       "expect": [
         "Lehel on „Valikküsimused: 100 % (vaja … %)“.",
+        "Pärast esimest „Paranda“ vajutust on nupul „Saada · 0 õige, 1 vale“ ja lehe ülaservas „Salvestatud“.",
+        "Teisel vajutusel kaob valik ja nupul on „Saada · 0 õige“.",
         "Ilma kommentaarita ei lase leht saata ja palub kirjutada, mida parandada.",
+        "Uuesti avatud lehel on „Paranda“ ja kommentaar alles.",
         "Pärast saatmist näed „Saadetud: õpilane parandab „Paranda“ vastused. Ta saab kirja.“.",
         "Proov 1 postkasti tuleb kiri „Vaata üle oma testi vastused“."
       ],
       "why": "Maria saab vastuse tagasi saata.",
       "risk": "high",
       "writes": true,
-      "mark": "reworded",
+      "mark": "redo",
       "markedAt": "deploy"
     },
     {
@@ -3950,9 +3959,12 @@
       "steps": [
         "Ava „Hindamine“ ja vajuta Proov 1 real „Vaata“.",
         "Vali vastuse juures „Kinnitatud“.",
-        "Vajuta „Saada“."
+        "Ava sama katse telefonis.",
+        "Vajuta „Saada · 1 õige“."
       ],
       "expect": [
+        "Pärast valimist on nupul „Saada · 1 õige“ ja lehe ülaservas „Salvestatud“.",
+        "Telefonis on „Kinnitatud“ juba valitud ja nupul on „Saada · 1 õige“.",
         "Pärast saatmist näed „Saadetud: test on sooritatud. Õpilane saab kirja.“.",
         "Proov 1 postkasti tuleb kiri „Test on sooritatud“.",
         "Õpilase lehel on „Test on sooritatud“ ja nupp „Ava praktiline töö“."
@@ -3960,7 +3972,7 @@
       "why": "Pärast testi avaneb praktiline töö.",
       "risk": "high",
       "writes": true,
-      "mark": "reworded",
+      "mark": "redo",
       "markedAt": "deploy"
     },
     {
