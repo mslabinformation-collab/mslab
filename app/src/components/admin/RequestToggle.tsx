@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { adminEt } from "@/i18n/dict/admin";
 import { toggleRequestHandled } from "@/server/actions/admin";
 import { useUndo } from "./UndoBar";
@@ -14,16 +14,32 @@ import ui from "./ui.module.css";
  * Every press says which state the card showed (`expected`), and „Võta tagasi“ also the version the marking left: the server writes only while the request is
  * still that, so an undo never overwrites a newer change (a request reopened elsewhere, or reopened and marked done again). A refusal at the button is the
  * generic „Salvestamine ei õnnestunud. Proovi uuesti.“, as is an undo's in the bar: no existing text names a request that changed meanwhile.
+ *
+ * The pressed button goes with its card, which moves to the other list. So that the keyboard focus does not fall to the page, the press works out
+ * where it goes next, from the page as it is (`planFocus`), and does it when this button is gone (the card's own toggle in its new place is another instance).
  */
 export function RequestToggle({ id, handled }: { id: number; handled: boolean }) {
   const t = adminEt.requests;
   const undo = useUndo();
   const [pending, start] = useTransition();
   const [failed, setFailed] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  /** Where the focus goes once this button is gone: set by a press that went through, done when the card (and with it this component) leaves the page. */
+  const afterGone = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      const move = afterGone.current;
+      afterGone.current = null;
+      move?.();
+    },
+    [],
+  );
 
   const press = () => {
     if (pending) return;
     setFailed(false);
+    // (worked out now, while the card is where it is)
+    const focusNext = planFocus(root.current, handled);
     start(async () => {
       let answer: Awaited<ReturnType<typeof toggleRequestHandled>>;
       try {
@@ -35,6 +51,7 @@ export function RequestToggle({ id, handled }: { id: number; handled: boolean })
         setFailed(true);
         return;
       }
+      afterGone.current = focusNext;
       if (handled) return;
       const { version } = answer;
       undo.show({
@@ -46,7 +63,7 @@ export function RequestToggle({ id, handled }: { id: number; handled: boolean })
   };
 
   return (
-    <div data-request-toggle="">
+    <div ref={root} data-request-toggle="">
       <button type="button" className={`${ui.btn} ${ui.smallBtn} ${handled ? ui.secondary : ""}`} aria-disabled={pending || undefined} onClick={press}>
         {pending ? adminEt.common.saving : handled ? t.markOpen : t.markDone}
       </button>
@@ -55,4 +72,29 @@ export function RequestToggle({ id, handled }: { id: number; handled: boolean })
       </p>
     </div>
   );
+}
+
+/**
+ * Where the focus goes after a press, worked out from the page before the card moves. The next card of the list the pressed card is in, its first control (the
+ * „Märgi …“ button), else the one before it; with none left: for „Märgi tehtuks“ the fold „Tehtud ({n})“ (the card is in it now), for „Märgi tegemata“ the
+ * reopened card itself (it is in the list now); else the page's heading (the one the page marks `data-requests-heading`, focusable). The returned function
+ * does it, and only if the focus has fallen to the page: when she has moved on to something else meanwhile, it is left where she put it.
+ */
+function planFocus(from: HTMLElement | null, wasDone: boolean): () => void {
+  const card = from?.closest("article[data-request]") ?? null;
+  const cell = card?.parentElement ?? null;
+  const neighbour = cell?.nextElementSibling ?? cell?.previousElementSibling ?? null;
+  const nextId = neighbour?.querySelector("article[data-request]")?.getAttribute("data-request") ?? null;
+  const ownId = card?.getAttribute("data-request") ?? null;
+  return () => {
+    const now = document.activeElement;
+    if (now && now !== document.body && now.isConnected) return;
+    const button = (cardId: string | null) => (cardId ? document.querySelector<HTMLElement>(`article[data-request="${cardId}"] [data-request-toggle] button`) : null);
+    const candidates = [button(nextId), wasDone ? button(ownId) : document.querySelector<HTMLElement>("details[data-fold] > summary"), document.querySelector<HTMLElement>("[data-requests-heading]")];
+    // (the first that takes the focus: a control inside a shut fold does not)
+    for (const target of candidates) {
+      target?.focus();
+      if (target && document.activeElement === target) return;
+    }
+  };
 }

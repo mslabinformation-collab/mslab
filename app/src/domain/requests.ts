@@ -36,10 +36,20 @@ function when(startsAt: string, city: string, time: boolean): string {
   return [formatDate(d, "et"), city].filter(Boolean).join(" ");
 }
 
+/** One part of the facts line: its text, and for the phone the number to call (`tel:`), digits and a leading + only. */
+export type FactPart = { text: string; tel?: string };
+
+/** The number of a phone as a `tel:` target: its digits and a leading +; null when it has no digit (then it is text only). */
+function telOf(phone: string): string | null {
+  const dialled = phone.replace(/[^\d+]/g, "");
+  return /\d/.test(dialled) ? dialled : null;
+}
+
 /**
- * The one muted line under a card's message (README A7, piece2-texts S3-j): what the card's header (the name, „{date} · {lang} · {email}“) and its message do not
- * say. Parts are joined with „ · “, empty parts are dropped, a yes/no field is its label only when it is ticked, and a Russian request starts with „Vastus
- * vene keeles“. "" when there is nothing to say (then the card has no such line).
+ * The one muted line under a card's message (README A7, piece2-texts S3-j), as its parts: what the card's header (the name, „{date} · {lang} · {email}“) and its
+ * message do not say. Parts are joined with „ · “ (`requestFacts`), empty parts are dropped, a yes/no field is its label only when it is ticked, and a Russian
+ * request starts with „Vastus vene keeles“. The phone part also carries its number as `tel`, so that the card can make it a link (Maria phones students); the
+ * text is the same either way. No parts when there is nothing to say (then the card has no such line).
  *
  * `payload` is what the request stores, with what the page looked up put beside it, because the stored value is an id or a slug: `course` is the
  * course's title (a practice request's `course` is free text and stays as she wrote it), and for a waitlist entry or a change request `startsAt` (ISO) and
@@ -51,18 +61,23 @@ function when(startsAt: string, city: string, time: boolean): string {
  * - Muutmine: Soovib tühistada | Soovib muuta aega · koolitus, 14.11.2026 Pärnu
  * - Kontakt: nothing; the e-learning interest: Ostu ei lõpetanud · ostukorvist
  */
-export function requestFacts(kind: RequestKind, payload: RequestPayload): string {
+export function requestFactParts(kind: RequestKind, payload: RequestPayload): FactPart[] {
   const t = adminEt.requests;
   const labelled = (label: string, value: string) => (value ? fill(t.fact, { label, value }) : "");
   const ticked = (v: unknown, label: string) => (v === true ? label : "");
+  const phone = (): FactPart => {
+    const text = line(payload.phone);
+    const tel = telOf(text);
+    return tel ? { text, tel } : { text };
+  };
   const russian = payload.locale === "ru" ? t.facts.russian : "";
   const startsAt = line(payload.startsAt);
   const city = line(payload.city);
-  let parts: string[] = [];
+  let parts: (string | FactPart)[] = [];
   switch (kind) {
     case "individual":
       parts = [
-        line(payload.phone),
+        phone(),
         line(payload.course),
         labelled(t.fields.period, line(payload.preferredPeriod)),
         ticked(payload.wantsModelHelp, t.fields.modelHelp),
@@ -71,7 +86,7 @@ export function requestFacts(kind: RequestKind, payload: RequestPayload): string
       break;
     case "practice":
       parts = [
-        line(payload.phone),
+        phone(),
         labelled(t.fields.package, line(payload.package)),
         labelled(t.fields.completedCourse, line(payload.course)),
         labelled(t.fields.times, line(payload.times)),
@@ -95,7 +110,14 @@ export function requestFacts(kind: RequestKind, payload: RequestPayload): string
       parts = [isInterest(kind, payload) ? t.facts.cart : ""];
       break;
   }
-  return [russian, ...parts].filter(Boolean).join(" · ");
+  return [russian, ...parts].map((p): FactPart => (typeof p === "string" ? { text: p } : p)).filter((p) => p.text !== "");
+}
+
+/** The facts line as one text: the parts of `requestFactParts` joined with „ · “. */
+export function requestFacts(kind: RequestKind, payload: RequestPayload): string {
+  return requestFactParts(kind, payload)
+    .map((p) => p.text)
+    .join(" · ");
 }
 
 /**

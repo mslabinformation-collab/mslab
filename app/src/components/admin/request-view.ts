@@ -1,6 +1,6 @@
 import type { RegistrationRow } from "@/db/queries/admin";
 import type { CourseSession, Request as RequestRow } from "@/db/schema";
-import { isInterest, KIND_TAB, replySubject, requestFacts, type RequestPayload, type TabKey } from "@/domain/requests";
+import { isInterest, KIND_TAB, replySubject, requestFactParts, type FactPart, type RequestPayload, type TabKey } from "@/domain/requests";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick, type I18n } from "@/i18n/field";
 import { fill, formatDate, formatDayMonth, formatTime } from "@/i18n/format";
@@ -32,6 +32,8 @@ export type RequestView = {
   tag: string;
   interest: boolean;
   message: string;
+  /** The facts line as its parts (the phone one carries its `tel:` number) and as one text. */
+  factParts: FactPart[];
   facts: string;
   /** `mailto:` to the requester with the subject filled in (S3-k); null when there is no address. */
   reply: string | null;
@@ -98,6 +100,7 @@ export function requestView(r: RequestRow, lookup: RequestLookup): RequestView {
       ? { href: `/admin/kalender?id=${session.id}`, text: t.openSession }
       : null;
 
+  const factParts = requestFactParts(r.kind, facts);
   return {
     id: r.id,
     handled: r.handled,
@@ -108,7 +111,8 @@ export function requestView(r: RequestRow, lookup: RequestLookup): RequestView {
     tag: interest ? t.interest : t.tabs[KIND_TAB[r.kind]],
     interest,
     message,
-    facts: requestFacts(r.kind, facts),
+    factParts,
+    facts: factParts.map((p) => p.text).join(" · "),
     reply: email ? mailto(email, replySubject(lang ?? "et", subjectTitle)) : null,
     go,
   };

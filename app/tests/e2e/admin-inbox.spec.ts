@@ -1020,6 +1020,60 @@ test.describe("signed in", () => {
     expect(await requestHandled(f.practice.id)).toBe(true);
   });
 
+  test("requests: „Märgi tehtuks“ with the keyboard — the focus goes to the next card's button, to the one before for the last, and to the open fold when none is left; „Märgi tegemata“ likewise", async ({ page, context, visitorIp }, info) => {
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/paringud?otsi=${f.tag}`);
+    await adminReady(page);
+    const button = (id: number) => page.locator(`[data-request="${id}"] [data-request-toggle] button`);
+    const fold = page.locator("details[data-fold]");
+    // newest first: the waitlist entry, the practice request, the individual one, the interest, the contact message
+    await button(f.practice.id).focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => requestHandled(f.practice.id)).toBe(true);
+    await expect(button(f.individual.id)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(button(f.interest.id)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(button(f.contact.id)).toBeFocused();
+    // the last card of the list: the one before it (the waitlist entry, the only one left above)
+    await page.keyboard.press("Enter");
+    await expect(button(f.waitlist.id)).toBeFocused();
+    await expect(fold).not.toHaveAttribute("open", ""); // (one card is still open: the fold stays as she left it, shut)
+    // none left: the fold's row, and the fold is open (all there is on the page now)
+    await page.keyboard.press("Enter");
+    await expect.poll(() => requestHandled(f.waitlist.id)).toBe(true);
+    await expect(fold.locator("summary")).toBeFocused();
+    await expect(fold).toHaveAttribute("open", "");
+    await expect(fold.locator("summary")).toContainText("Tehtud (5)");
+    await expect(page.locator("article[data-request]:visible")).toHaveCount(5);
+
+    // „Märgi tegemata“ in the fold: the next done card's button (the waitlist entry is first), and the reopened one is back in the list
+    await button(f.waitlist.id).focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => requestHandled(f.waitlist.id)).toBe(false);
+    await expect(button(f.practice.id)).toBeFocused();
+    await expect(page.locator(`[data-request="${f.waitlist.id}"]`)).toHaveAttribute("data-handled", "0");
+  });
+
+  test("requests: the fold „Tehtud ({n})“ is open when it is all there is — a search whose hits are all done — and shut when a request is open", async ({ page, context, visitorIp }, info) => {
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/paringud?otsi=${f.tag}`);
+    await adminReady(page);
+    await expect(page.locator("details[data-fold]")).toHaveCount(0); // (nothing done yet)
+    for (const id of [f.contact.id, f.interest.id, f.individual.id, f.practice.id]) await storeRequestHandled(id, true);
+    await page.goto(`/admin/paringud?otsi=${f.tag}`); // one open request left (the waitlist entry): the fold is shut
+    await expect(page.locator("details[data-fold] summary")).toContainText("Tehtud (4)");
+    await expect(page.locator("details[data-fold]")).not.toHaveAttribute("open", "");
+    await expect(page.locator(`[data-request="${f.contact.id}"]`)).toBeHidden();
+    await storeRequestHandled(f.waitlist.id, true);
+    await page.goto(`/admin/paringud?otsi=${f.tag}`); // all done: the fold is the page
+    await expect(page.locator("details[data-fold]")).toHaveAttribute("open", "");
+    await expect(page.locator(`[data-request="${f.contact.id}"]`)).toBeVisible();
+    await expect(page.locator("details[data-fold] summary")).toContainText("Tehtud (5)");
+  });
+
   test("requests: the search looks in every tab and finds a phone by its digits; a result carries its tab's tag; nothing found says so, and the button returns", async ({ page, context, visitorIp }, info) => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
@@ -1145,6 +1199,46 @@ test.describe("signed in", () => {
     await expect(contact.locator("[data-request-reply] [data-swap] > span")).toBeHidden(); // (the long words)
   });
 
+  test("requests: the cards are two columns at every desktop width — 1920, 1440, 1280, 1024 and a tablet's 800 — and one in a row that holds no two 340 px cards", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(isMobile, "sets its own widths: the desktop project only");
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/paringud?otsi=${f.tag}`);
+    await adminReady(page);
+    const cards = page.locator("article[data-request]");
+    await expect(cards).toHaveCount(5);
+    /** The columns the cards stand in (their distinct left edges), and whether every part of every card is inside it. */
+    const columns = () =>
+      page.evaluate(() => {
+        const boxes = Array.from(document.querySelectorAll("article[data-request]")).map((c) => ({ c, r: c.getBoundingClientRect() }));
+        const lefts = new Set(boxes.map(({ r }) => Math.round(r.left)));
+        const spill = boxes.flatMap(({ c, r }) =>
+          Array.from(c.querySelectorAll("*"))
+            .filter((e) => e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().right > r.right + 0.5)
+            .map((e) => e.outerHTML.slice(0, 80)),
+        );
+        return { n: lefts.size, width: Math.round(boxes[0].r.width), spill };
+      });
+    for (const [width, n] of [
+      [1920, 2],
+      [1440, 2],
+      [1280, 2],
+      [1024, 2], // (the sidebar is there: a row of 729 px holds two cards of 356 px, each wide enough for its two buttons)
+      [800, 2], // (the top bar: no sidebar)
+      [700, 1], // (a row of 652 px does not hold two 340 px cards)
+      [900, 1], // (the sidebar comes back at 900 px: a row of 605 px)
+    ] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect.poll(async () => (await columns()).n, { message: `${width} px` }).toBe(n);
+      const c = await columns();
+      expect(c.spill, `${width} px`).toEqual([]);
+      if (n === 2) expect(c.width, `${width} px`).toBeGreaterThanOrEqual(340);
+      expect(await noOverflow(page), `${width} px`).toBe(true);
+      // a column is never wider than the one card's own half row: at 1920 the two cards are not stretched to a third
+      if (width === 1920) expect(c.width).toBeLessThan(800);
+    }
+  });
+
   test("e-mail and phone links are 44 px touch targets: the registrations list's phone, the drawer, requests (item 12)", async ({ page, context, visitorIp, isMobile }, info) => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
@@ -1197,10 +1291,15 @@ test.describe("signed in", () => {
     // the header's phone and e-mail, and — in „Registreerimise andmed“, a folded row, opened here — the same two again
     await openRow(drawer, "Registreerimise andmed");
     await targets(drawer, 4);
-    // a request's card (A7): its e-mail and phone are text now (the header's line and the facts line); what is pressed is „Vasta e-kirjaga ↗“ (on a phone „Vasta ↗“)
+    // a request's card (A7): the e-mail is text in the header's line (what is pressed is „Vasta e-kirjaga ↗“, on a phone „Vasta ↗“); the phone in the facts line is
+    // a tel: link of its own, in the muted line, with a 44 px target that does not reach the buttons under it
     await page.goto(`/admin/paringud?liik=individuaal&otsi=${f.tag}`);
     const card = page.locator(`[data-request="${f.individual.id}"]`);
-    await targets(card, 1);
+    await targets(card, 2);
+    await expect(card.locator("[data-request-facts] a")).toHaveAttribute("href", "tel:+37255550102");
+    await expect(card.locator("[data-request-facts] a")).toHaveText("+372 5555 0102");
+    await expect(card.locator("a[href^='mailto:']")).toHaveCount(1); // (the reply)
+    await disjoint(card);
     expect(await smallTargets(card)).toEqual([]);
     expect(await noOverflow(page)).toBe(true);
   });

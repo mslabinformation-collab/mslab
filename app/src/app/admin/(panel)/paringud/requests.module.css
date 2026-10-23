@@ -1,9 +1,11 @@
-/* Päringud (admin UX pass, README A7, piece 2 Task 15): the cards in a grid of two columns on a laptop (a column is at least 420 px, so a phone and a
-   narrow tablet have one), 16px apart; the card itself is components/admin/RequestCard.module.css. */
+/* Päringud (admin UX pass, README A7, piece 2 Task 15): the cards in a grid of two columns at every desktop width and one on a phone, 16px apart; the card
+   itself is components/admin/RequestCard.module.css. A column is half the row less half the gap (minus a pixel of slack for rounding), never less than 340 px:
+   so a wide screen has two columns, not three, and a row narrower than two 340 px cards (a phone, a small tablet with the top bar, a laptop under about
+   990 px with the sidebar) has one. */
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, max(340px, calc(50% - 9px))), 1fr));
   gap: 16px;
   margin: 0 0 18px;
   padding: 0;

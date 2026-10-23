@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { RequestCard } from "@/components/admin/RequestCard";
+import { RequestFold } from "@/components/admin/RequestFold";
 import { requestView, type RequestLookup } from "@/components/admin/request-view";
 import { RequestTarget } from "@/components/admin/RequestTarget";
 import { UndoProvider } from "@/components/admin/UndoBar";
@@ -139,6 +140,31 @@ describe("the card", () => {
     );
     expect($("[data-request-message]")).toBeNull();
     expect(text($("[data-request-facts]"))).toBe("+372 5555 0102 · Kulmumeistri baaskoolitus · Soovitud periood: Jaanuari teine pool · Soovib kontot");
+  });
+
+  test("the phone in the facts line is a tel: link, in the same muted line: the text of the line is as it was (S3-j), the link only wraps the number", async () => {
+    await draw(
+      request({
+        kind: "individual",
+        payload: { course: "kulm", name: "Jaan", email: "jaan@example.test", phone: "+372 5555 0102", preferredPeriod: "Jaanuari teine pool", wantsAccount: true, locale: "et" },
+      }),
+    );
+    const links = document.querySelectorAll<HTMLAnchorElement>("[data-request-facts] a");
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute("href")).toBe("tel:+37255550102");
+    expect(text(links[0])).toBe("+372 5555 0102");
+    expect(text($("[data-request-facts]"))).toBe("+372 5555 0102 · Kulmumeistri baaskoolitus · Soovitud periood: Jaanuari teine pool · Soovib kontot");
+    expect(text($("[data-request-meta]"))).not.toContain("5555"); // (the header line has no number)
+  });
+
+  test("a Praktika request's phone is a link too; a card with no number, or one with no digits, has none", async () => {
+    await draw(request({ kind: "practice", payload: { package: "MINI", name: "Liis", email: "liis@example.test", phone: "5555-0103", locale: "et" } }));
+    expect($("[data-request-facts] a")!.getAttribute("href")).toBe("tel:55550103");
+    expect(text($("[data-request-facts]"))).toBe("5555-0103 · Pakett: MINI");
+    await draw(request({ kind: "practice", payload: { package: "MINI", name: "Liis", email: "liis@example.test", phone: "ei ole", locale: "et" } }));
+    expect($("[data-request-facts] a")).toBeNull();
+    await draw(request({ kind: "waitlist", payload: { session: 7, course: "kulm", name: "Ott", email: "ott@example.test", locale: "et" } }));
+    expect($("[data-request-facts] a")).toBeNull();
   });
 
   test("„Vasta e-kirjaga ↗“ opens a mail to her address with the subject filled in her language (S3-k), URL-encoded", async () => {
@@ -294,6 +320,134 @@ describe("„Märgi tehtuks“ (instant, with an UndoBar)", () => {
     await act(async () => answer({ ok: true, version: "1" }));
     await settle();
     expect(barText()).toBe("Märgitud tehtuks.");
+  });
+});
+
+describe("focus after a press: the card leaves its list, the focus does not fall to the page", () => {
+  const row = (id: number, handled = false) => request({ id, handled, payload: { name: `N${id}`, email: `n${id}@example.test`, message: "Tere", locale: "et" } });
+  type Lists = { open: number[]; done: number[] };
+  /** The page's own shape (paringud/page.tsx): a heading, the list of the open cards, and the fold with the done ones when there are any. */
+  const page = ({ open, done }: Lists) => {
+    const cards = (ids: number[], handled: boolean) =>
+      createElement("ul", null, ids.map((id) => createElement("li", { key: id }, createElement(RequestCard, { view: requestView(row(id, handled), lookup()) }))));
+    return createElement(
+      UndoProvider,
+      null,
+      createElement(
+        "main",
+        null,
+        createElement("h2", { tabIndex: -1, "data-requests-heading": "" }, "Kontakt"),
+        open.length ? cards(open, false) : null,
+        done.length ? createElement("details", { "data-fold": "", open: true }, createElement("summary", null, "Tehtud"), cards(done, true)) : null,
+      ),
+    );
+  };
+  const show = async (lists: Lists) => {
+    await act(async () => root.render(page(lists)));
+    await settle();
+  };
+  const toggle = (id: number) => $<HTMLButtonElement>(`article[data-request="${id}"] [data-request-toggle] button`)!;
+  /** She presses the button of card `id` (with the focus on it, as a tap or Enter leaves it). */
+  const press = async (id: number) => {
+    toggle(id).focus();
+    await click(toggle(id));
+  };
+  const active = () => document.activeElement;
+
+  test("„Märgi tehtuks“: the focus goes to the next card's button", async () => {
+    action.mockResolvedValueOnce({ ok: true, version: "1" });
+    await show({ open: [1, 2, 3], done: [] });
+    await press(1);
+    await show({ open: [2, 3], done: [1] });
+    expect(active()).toBe(toggle(2));
+  });
+
+  test("the last card of the list: the one before it", async () => {
+    action.mockResolvedValueOnce({ ok: true, version: "1" });
+    await show({ open: [1, 2], done: [] });
+    await press(2);
+    await show({ open: [1], done: [2] });
+    expect(active()).toBe(toggle(1));
+  });
+
+  test("none left in the list: the fold's row", async () => {
+    action.mockResolvedValueOnce({ ok: true, version: "1" });
+    await show({ open: [1], done: [] });
+    await press(1);
+    await show({ open: [], done: [1] });
+    expect(active()).toBe($("details[data-fold] > summary"));
+  });
+
+  test("none left and no fold either: the heading", async () => {
+    action.mockResolvedValueOnce({ ok: true, version: "1" });
+    await show({ open: [1], done: [] });
+    await press(1);
+    await show({ open: [], done: [] });
+    expect(active()).toBe($("[data-requests-heading]"));
+  });
+
+  test("„Märgi tegemata“ in the fold: the next done card; the last one: the reopened card itself, now in the list", async () => {
+    action.mockResolvedValue({ ok: true, version: "1" });
+    await show({ open: [], done: [1, 2] });
+    await press(1);
+    await show({ open: [1], done: [2] });
+    expect(active()).toBe(toggle(2));
+    await press(2);
+    await show({ open: [1, 2], done: [] });
+    expect(active()).toBe(toggle(2));
+  });
+
+  test("a press the server refuses moves nothing: the focus stays on the button", async () => {
+    action.mockResolvedValueOnce({ ok: false, error: "notFound" });
+    await show({ open: [1, 2], done: [] });
+    await press(1);
+    expect(active()).toBe(toggle(1));
+  });
+
+  test("she has moved on by the time the card has gone: her focus is left where it is", async () => {
+    action.mockResolvedValueOnce({ ok: true, version: "1" });
+    await show({ open: [1, 2, 3], done: [] });
+    await press(1);
+    toggle(3).focus();
+    await show({ open: [2, 3], done: [1] });
+    expect(active()).toBe(toggle(3));
+  });
+});
+
+describe("the fold „Tehtud ({n})“ opens by default when it is all there is, and is never shut under her", () => {
+  const fold = (over: { defaultOpen: boolean; id?: string }) =>
+    act(async () => root.render(createElement(RequestFold, { key: over.id ?? "kontakt", title: "Tehtud", summary: "", count: 2, defaultOpen: over.defaultOpen }, createElement("p", null, "kaardid"))));
+  const details = () => $<HTMLDetailsElement>("details[data-fold]")!;
+
+  test("shut when a request is open; open when none is", async () => {
+    await fold({ defaultOpen: false });
+    expect(details().open).toBe(false);
+    await fold({ defaultOpen: false, id: "praktika" });
+    expect(details().open).toBe(false);
+    await fold({ defaultOpen: true, id: "individuaal" });
+    expect(details().open).toBe(true);
+    expect(text($("[data-fold-count]"))).toBe("(2)");
+  });
+
+  test("once it is open by default it stays open when a request is reopened (the page then has an open one): she is working in it", async () => {
+    await fold({ defaultOpen: true });
+    expect(details().open).toBe(true);
+    await fold({ defaultOpen: false });
+    expect(details().open).toBe(true);
+  });
+
+  test("what she did with it stays: shut by her under a default of open, it is not opened again by a new render", async () => {
+    await fold({ defaultOpen: true });
+    details().open = false;
+    await fold({ defaultOpen: true });
+    expect(details().open).toBe(false);
+  });
+
+  test("another list (another tab or search, another key) starts from its own default", async () => {
+    await fold({ defaultOpen: true, id: "kontakt" });
+    expect(details().open).toBe(true);
+    await fold({ defaultOpen: false, id: "praktika" });
+    expect(details().open).toBe(false);
   });
 });
 

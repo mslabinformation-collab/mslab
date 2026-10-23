@@ -76,12 +76,28 @@
   overflow-wrap: anywhere;
 }
 
+/* The phone in the facts line is a link in the same muted line (Maria phones students). Its tap target is 44 px tall: the padding is the target, and the
+   equal negative margin keeps the line as high as it was (an inline box's padding does not move the lines around it). */
+.tel {
+  padding: 15px 2px;
+  margin: -15px -2px;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: #cfc6ca;
+  text-underline-offset: 2px;
+}
+
+.tel:hover {
+  text-decoration-color: currentColor;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 8px;
-  padding-top: 2px;
+  /* (with the card's 10px gap: 14px under the facts line, which a phone link's 44px tap target reaches into by less than that) */
+  padding-top: 4px;
 }
 
 /* the link to the session or the registration: a text link beside the buttons, level with them */

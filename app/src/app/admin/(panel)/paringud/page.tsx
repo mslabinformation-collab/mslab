@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { FoldRow } from "@/components/admin/FoldRow";
 import { ListEmpty } from "@/components/admin/ListStates";
 import { ListToolbar, type ListPill } from "@/components/admin/ListToolbar";
 import { Pager } from "@/components/admin/Pager";
 import { RequestCard } from "@/components/admin/RequestCard";
+import { RequestFold } from "@/components/admin/RequestFold";
 import { RequestTarget } from "@/components/admin/RequestTarget";
 import { changedRegistration, requestView, waitedSession, type RequestLookup } from "@/components/admin/request-view";
 import { adminTitle } from "@/components/admin/sections";
@@ -50,7 +50,8 @@ const unique = (ids: (number | null)[]): number[] => [...new Set(ids.filter((n):
 /**
  * Päringud (README A7, the Part 2 prototype): the requests Maria has to answer, as compact cards in two columns (one on a phone), the done ones folded
  * away at the bottom. The toolbar's search looks in every tab and a result carries its tab's tag; the tabs are its pills, each with the number of requests
- * still open (the menu badge's numbers). Open requests newest first, 50 a page; the fold „Tehtud ({n})“ holds the done ones, 50 a page of its own.
+ * still open (the menu badge's numbers). Open requests newest first, 50 a page; the fold „Tehtud ({n})“ holds the done ones, 50 a page of its own, and is open
+ * when it is all there is (nothing open in the tab, or a search whose hits are all done).
  */
 export default async function RequestsPage({ searchParams }: Props) {
   await requireAdmin();
@@ -101,7 +102,10 @@ export default async function RequestsPage({ searchParams }: Props) {
 
       <ListToolbar placeholder={t.searchPlaceholder} pillRows={[{ label: t.tabsLabel, pills }]} />
 
-      <h2 className={ui.sr}>{view.otsi ? t.title : t.tabs[view.tab]}</h2>
+      {/* (focusable, for the keyboard focus to land on when the last card of the page has been marked: RequestToggle) */}
+      <h2 className={ui.sr} tabIndex={-1} data-requests-heading="">
+        {view.otsi ? t.title : t.tabs[view.tab]}
+      </h2>
       {open.total === 0 && done.total === 0 ? (
         <section className={ui.card}>
           <ListEmpty things={t.things} filtered search={view.otsi || undefined} clearHref={view.otsi ? href({ tab: view.tab }) : undefined} />
@@ -112,10 +116,11 @@ export default async function RequestsPage({ searchParams }: Props) {
           <Pager info={open} href={(n) => href({ ...view, leht: n, tehtud: view.fold ? view.tehtud : undefined })} />
           {done.total > 0 && (
             <div className={styles.done}>
-              <FoldRow title={t.doneFold} count={done.total} summary="" defaultOpen={view.fold}>
+              {/* (keyed by the view: another tab or search starts from its own default; RequestFold keeps a default that was open, open) */}
+              <RequestFold key={`${view.tab}|${view.otsi}`} title={t.doneFold} count={done.total} summary="" defaultOpen={view.fold || open.total === 0}>
                 {list(done.rows)}
                 <Pager info={done} href={(n) => href({ ...view, tehtud: n })} />
-              </FoldRow>
+              </RequestFold>
             </div>
           )}
         </>

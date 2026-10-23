@@ -795,11 +795,13 @@
         "Tühja vormi korral on väljade all „See väli on kohustuslik.“.",
         "Pärast saatmist näed „Aitäh! Sinu sõnum on saadetud.“.",
         "Maria postkasti tuleb kiri „Sõnum kodulehelt — Proov 3“.",
-        "Halduses „Päringud“ → „Kontakt“ on Proov 3 sõnum märkega „Uus“."
+        "Halduses „Päringud“ → „Kontakt“ on Proov 3 sõnum, kaardil on tekst „Proov 3, kontaktivormi test.“."
       ],
       "why": "Kontaktivorm on õpilase lihtsaim tee Mariani.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "avalik-ru-avaleht",
@@ -2819,11 +2821,13 @@
         "Näed teadet „Aitäh! Sinu päring on saadetud.“.",
         "Postkasti tuleb kiri „Päring on vastu võetud — …“.",
         "Maria postkasti tuleb „Individuaalkoolituse päring: … — Proov 3“.",
-        "Halduses „Päringud“ → „Individuaal“ on Proov 3 päring märkega „Uus“."
+        "Halduses „Päringud“ → „Individuaal“ on Proov 3 päring, mille viimasel real on tema telefon ja soovitud periood."
       ],
       "why": "Individuaalkoolituse aeg lepitakse kokku päringu kaudu.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-praktika",
@@ -3286,12 +3290,14 @@
       "expect": [
         "Kaardil on „Saadetud. Maria võtab sinuga ühendust.“.",
         "Maria postkasti tuleb „Soov registreeringu aega muuta: … — Proov 1“.",
-        "Päringutes on Proov 1 soov märkega „Soovib muuta aega“.",
+        "Päringutes on Proov 1 kaart, mille viimasel real on „Soovib muuta aega“ ja koolituse nimi.",
         "Registreering ise jääb muutmata."
       ],
       "why": "Õpilane küsib muudatust, aga otsuse teeb Maria.",
       "risk": "med",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "konto-arve-maksa",

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { isInterest, KIND_TAB, REQUEST_TABS, replySubject, requestFacts, TAB_KIND } from "@/domain/requests";
+import { isInterest, KIND_TAB, REQUEST_TABS, replySubject, requestFactParts, requestFacts, TAB_KIND } from "@/domain/requests";
 import { adminEt } from "@/i18n/dict/admin";
 import { getDict } from "@/i18n/locales";
 
@@ -87,6 +87,32 @@ describe("requestFacts (S3-j)", () => {
       "Sobivad ajad",
       "Toimumine",
     ]);
+  });
+});
+
+describe("requestFactParts: the facts line as parts, the phone one a `tel:` link", () => {
+  test("the line is the parts' texts joined with „ · “ (requestFacts is exactly that)", () => {
+    const payload = { phone: "+372 5555 0102", course: "Kulmumeistri baaskoolitus", preferredPeriod: "Jaanuari teine pool", wantsModelHelp: true, wantsAccount: false, locale: "ru" };
+    const parts = requestFactParts("individual", payload);
+    expect(parts.map((p) => p.text)).toEqual(["Vastus vene keeles", "+372 5555 0102", "Kulmumeistri baaskoolitus", "Soovitud periood: Jaanuari teine pool", "Vajab abi modelli leidmisel"]);
+    expect(parts.map((p) => p.text).join(" · ")).toBe(requestFacts("individual", payload));
+  });
+
+  test("Individuaal and Praktika: the phone part carries the number as a tel: target (digits and a leading +), no other part does", () => {
+    const individual = requestFactParts("individual", { phone: "+372 5555 0102", course: "Kulm" });
+    expect(individual).toEqual([{ text: "+372 5555 0102", tel: "+37255550102" }, { text: "Kulm" }]);
+    const practice = requestFactParts("practice", { phone: "5555-0103 (õhtul)", package: "MINI" });
+    expect(practice).toEqual([{ text: "5555-0103 (õhtul)", tel: "55550103" }, { text: "Pakett: MINI" }]);
+  });
+
+  test("a phone with no digits is text only; the Russian marker leads and is no link", () => {
+    expect(requestFactParts("individual", { phone: "ei ole", course: "Kulm", locale: "ru" })).toEqual([{ text: "Vastus vene keeles" }, { text: "ei ole" }, { text: "Kulm" }]);
+  });
+
+  test("the kinds with no phone have no link", () => {
+    expect(requestFactParts("waitlist", { session: 7, course: "Kulm", startsAt: "2026-11-14T08:00:00.000Z", city: "Pärnu" }).some((p) => p.tel)).toBe(false);
+    expect(requestFactParts("change_request", { registrationId: 12, kind: "cancel", course: "Kulm" }).some((p) => p.tel)).toBe(false);
+    expect(requestFactParts("contact", { name: "Mari", message: "Tere", phone: "5555 0102" })).toEqual([]);
   });
 });
 

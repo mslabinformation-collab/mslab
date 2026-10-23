@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { adminEt } from "@/i18n/dict/admin";
 import { RequestToggle } from "./RequestToggle";
 import type { RequestView } from "./request-view";
@@ -7,7 +8,7 @@ import styles from "./RequestCard.module.css";
 
 /**
  * One request of Päringud (admin UX pass, README A7, the Part 2 prototype's compact card): the name in Jost 20 with „{date} · {lang} · {email}“ under it, the
- * type tag at the right, the message, one muted facts line (piece2-texts S3-j), then „Märgi tehtuks“ (instant, with an UndoBar) and „Vasta e-kirjaga ↗“
+ * type tag at the right, the message, one muted facts line (piece2-texts S3-j; its phone is a `tel:` link, Maria phones students), then „Märgi tehtuks“ (instant, with an UndoBar) and „Vasta e-kirjaga ↗“
  * (a `mailto:` with the subject filled in, S3-k). A waitlist entry adds „Ava toimumine →“, a change request „Ava registreering →“. A done request, in the
  * fold „Tehtud ({n})“, has „Märgi tegemata“ in place of the first button.
  *
@@ -50,9 +51,20 @@ export function RequestCard({ view }: { view: RequestView }) {
           {view.message}
         </p>
       )}
-      {view.facts && (
+      {view.factParts.length > 0 && (
         <p className={styles.facts} data-request-facts="">
-          {view.facts}
+          {view.factParts.map((part, i) => (
+            <Fragment key={i}>
+              {i > 0 && " · "}
+              {part.tel ? (
+                <a className={styles.tel} href={`tel:${part.tel}`}>
+                  {part.text}
+                </a>
+              ) : (
+                part.text
+              )}
+            </Fragment>
+          ))}
         </p>
       )}
       <div className={styles.actions}>
