@@ -1,61 +1,303 @@
-.stats {
-  padding: 0;
-  list-style: none;
-}
+/* The overview (admin UX pass piece 2, A1; README A1 and the Part 2 prototype's desktop and phone frames): a dark „Täna“ card for each session today,
+   then „Sinu järjekord“ and „Tulevased koolitused“ side by side (1.15fr | 1fr) from a 1181 px viewport, stacked in that order below it. Tokens only
+   (the prototype's #222, #c0b7bb, #d5d0d3, #e6e1e3, #8a3b3b and #716a6d are --ink, --fog, --heather, --line, --bad and --muted; the arrow's #86707d is a mix of --rose and --warn);
+   every target is 44 px or taller. */
 
-.stats > li {
-  display: grid;
-}
-
-/* B table min-width: on a phone the table scrolls inside its card instead of squeezing the course names. */
-.upcoming {
-  min-width: 460px;
-}
-
-@media (max-width: 640px) {
-  .upcoming {
-    min-width: 0;
-  }
-
-  .upcoming th,
-  .upcoming td {
-    padding-right: 8px;
-    padding-left: 0;
-  }
-}
-
-/* "Täna" (phase protocols): today's sessions, each with its "Protokollid" */
+/* „Täna“: text on the left, the white pill on the right; on a phone the pill goes under the text and takes its width */
 .today {
-  margin-bottom: 25px;
-}
-
-.todayRow {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px 16px;
-  min-height: 44px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
+  gap: 24px;
+  margin-bottom: 25px;
+  padding: 26px 30px;
+  border-radius: 22px;
+  background: var(--ink);
+  color: var(--paper);
 }
 
-.todayRow:last-child {
-  border-bottom: 0;
-}
-
-.todayWhat {
+.todayText {
   display: grid;
-  gap: 2px;
+  gap: 6px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-/* "Ootab hindamist" (e-course completion): what waits in Hindamine, per group; its head wraps on a phone */
-.assessment {
-  margin-bottom: 25px;
+/* „Täna 10:00 · Pärnu, MS LAB stuudio“ is written in sentence case and shown in capitals */
+.todayWhen {
+  margin: 0;
+  color: var(--fog);
+  font: 600 11px/1.4 var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
-.assessmentHead {
+.todayCourse {
+  margin: 0;
+  font: 400 28px/1.15 var(--font-display);
+}
+
+.todayCounts {
+  margin: 0;
+  color: var(--heather);
+  font-size: 14px;
+}
+
+.todayOpen {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 49px;
+  padding: 0 24px;
+  border-radius: 99px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 600 13px/1.2 var(--font-body);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.todayOpen:hover {
+  background: var(--first);
+}
+
+/* the two cards */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.card {
+  min-width: 0;
+  padding: 24px 28px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--paper);
+}
+
+.cardTitle {
+  margin: 0 0 6px;
+  font: 300 27px/1.15 var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.cardHead {
+  display: flex;
   flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 16px;
+  margin-bottom: 10px;
+}
+
+.cardHead .cardTitle {
+  margin: 0;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* „Sinu järjekord“: a row is a link as a whole: the count (Jost 30), the label (600) over its hint (13 px, muted) and „→“ */
+.queue {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.queue > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.queueRow {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 8px 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .queueRow:hover,
+  .upList .upRow:hover {
+    background: var(--row-highlight);
+  }
+}
+
+.queueRow:active,
+.upList .upRow:active {
+  background: var(--row-highlight);
+}
+
+.count {
+  font: 300 30px/1 var(--font-display);
+}
+
+.what {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.arrow {
+  color: color-mix(in srgb, var(--rose) 50%, var(--warn));
+}
+
+/* the empty queue: a white card of its own, as drawn */
+.empty {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+}
+
+.emptyTitle {
+  margin: 0;
+  font: 300 22px/1.2 var(--font-display);
+}
+
+.emptyHint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* „Tulevased koolitused“: date | course over its city | seats left, a link to the session's Kalender drawer */
+.upList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.upRow {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) 70px;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.upHead {
+  min-height: 0;
+  padding: 6px 0 8px;
+  color: var(--muted);
+  font: 500 11px/1.4 var(--font-body);
+}
+
+.upWhat {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.upWhat b {
+  font-weight: 600;
+}
+
+.upWhat span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.seats {
+  text-align: right;
+  font-weight: 600;
+}
+
+.upHead .seats {
+  font-weight: inherit;
+}
+
+/* no seat left */
+.full {
+  color: var(--bad);
+}
+
+.calendar {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 4px;
+  color: var(--ink);
+  font: 600 13px/1.3 var(--font-body);
+  text-decoration: none;
+}
+
+.calendar:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* a narrow main column (the sidebar takes 235 px of a tablet in landscape): the cards stack, as ui.columns do */
+@media (max-width: 1180px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .card {
+    padding: 20px;
+  }
+}
+
+/* the phone frame: the pill under the text and as wide as the card, a smaller course line, narrower count and hint columns */
+@media (max-width: 720px) {
+  .today {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 20px;
+  }
+
+  .todayCourse {
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
+  .todayCounts {
+    font-size: 13px;
+  }
+
+  .todayOpen {
+    margin-top: 4px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .queueRow {
+    grid-template-columns: 40px minmax(0, 1fr) 16px;
+    gap: 10px;
+    min-height: 58px;
+  }
+
+  .count {
+    font-size: 24px;
+  }
+
+  .hint {
+    font-size: 12px;
+  }
 }

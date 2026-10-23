@@ -103,24 +103,28 @@ test.describe("guard (GET only, also against a deployment)", () => {
 test.describe("signed in", () => {
   test.beforeEach(() => submitsForms());
 
-  test("overview: greeting, the numbers, the B menu with badges, quick links", async ({ page, context, visitorIp, isMobile }, info) => {
+  test("overview: greeting, „Sinu järjekord“, the B menu with badges", async ({ page, context, visitorIp, isMobile }, info) => {
     await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tere, Dim.");
     await expect(page).toHaveTitle(/Ülevaade — Haldus/);
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
-    expect(Number(await page.locator('[data-stat="awaiting"] strong').textContent())).toBeGreaterThanOrEqual(1);
-    expect(Number(await page.locator('[data-stat="requests"] strong').textContent())).toBeGreaterThanOrEqual(5);
-    await expect(page.locator('[data-stat="sessions"]')).toContainText("Koolitused järgmise 30 päeva jooksul");
-    await expect(page.locator('[data-stat="awaiting"]')).toHaveAttribute("href", "/admin/registreerimised?staatus=ootab");
-    for (const key of ["contact", "interest", "individual", "practice", "waitlist"]) await expect(page.locator(`[data-inbox="${key}"]`)).toContainText("tegemata");
-    await expect(page.getByRole("link", { name: "Lae alla kinnitatud tellijad (CSV)" })).toHaveAttribute("href", "/api/admin/subscribers.csv?kinnitatud=1");
-    // "Kiirlingid → Vaata lehte ↗" goes through api/admin/preview like the top line's: with the coming-soon
-    // gate on, a plain "/" would show the coming-soon page to an admin who has no preview cookie yet
-    const quickSite = page.locator('section[aria-labelledby="links-title"]').getByRole("link", { name: /Vaata lehte/ });
-    await expect(quickSite).toHaveAttribute("href", "/api/admin/preview");
-    await expect(quickSite).toHaveAttribute("target", "_blank");
-    await expect(quickSite).toHaveAttribute("rel", "noopener");
+    // „Sinu järjekord“ (A1): a row for each thing to do, each to its list; this test's registration and its five open requests are among them
+    const queue = page.locator("[data-overview-queue]");
+    await expect(queue.getByRole("heading", { name: "Sinu järjekord" })).toBeVisible();
+    const awaiting = queue.locator('[data-overview-row="awaiting"]');
+    await expect(awaiting).toContainText("Ootab ettemaksu");
+    await expect(awaiting).toHaveAttribute("href", "/admin/registreerimised?staatus=ootab");
+    expect(Number(await awaiting.locator("strong").textContent())).toBeGreaterThanOrEqual(1);
+    const requests = queue.locator('[data-overview-row="requests"]');
+    await expect(requests).toContainText("Päringut tegemata");
+    await expect(requests).toHaveAttribute("href", "/admin/paringud");
+    expect(Number(await requests.locator("strong").textContent())).toBeGreaterThanOrEqual(5);
+    // gone: the four tiles, the Päringud card, Kiirlingid (the site link is the top line's) and the button to the registrations
+    for (const gone of ["[data-stat]", "[data-inbox]", "[data-overview-assessment]", 'section[aria-labelledby="links-title"]']) await expect(page.locator(gone)).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Vaata registreerimisi/ })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Lae alla kinnitatud tellijad/ })).toHaveCount(0);
+    await expect(page.locator("[data-overview-upcoming]")).toContainText(/järgmise 30 päeva jooksul: \d+/);
     expect(await noOverflow(page)).toBe(true);
 
     const nav = await menu(page, isMobile);
@@ -154,6 +158,18 @@ test.describe("signed in", () => {
       await expect(page.locator("[data-admin-top] [title]")).toHaveCount(0); // the avatar has no tooltip (a touch screen has none)
     }
     for (const target of await side.locator("nav a, nav button, [data-nav-foot] a, [data-nav-foot] button").all()) expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  });
+
+  test("overview: a row of „Tulevased koolitused“ opens that session's Kalender drawer", async ({ page, context, visitorIp }) => {
+    await signIn(page, context, visitorIp);
+    const rows = page.locator("[data-overview-upcoming] [data-upcoming-session]");
+    expect(await rows.count()).toBeLessThanOrEqual(5);
+    const first = rows.first(); // (the sample sessions are scheduled from today on at the start of every run)
+    const id = await first.getAttribute("data-upcoming-session");
+    await expect(first).toHaveAttribute("href", `/admin/kalender?id=${id}`);
+    await first.click();
+    await expect(page).toHaveURL(new RegExp(`/admin/kalender\\?id=${id}$`));
+    await expect(page.locator("[data-drawer]")).toBeVisible();
   });
 
   test("every content section opens its editor from the menu; none says 'Tulekul' any more", async ({ page, context, visitorIp, isMobile }) => {

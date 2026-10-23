@@ -15,7 +15,7 @@ import { expect, submitsForms, test } from "./test";
 // phone (Review Focus 1: 6000×4000 with GPS, sideways, a lost upload, a HEIC) and "Saada hindamiseks"; Maria's "Hindamine", her verdicts and
 // "Saada hinnang"; the "Paranda" point redone and approved, "Lõpetatud" on the page, the course page and the card; the open answers reviewed,
 // rewritten and accepted; "Ava test uuesti"; "Lisa protokoll" from the student's drawer; and the pages at 390, 834, 1194 and 1440 px (hers,
-// Hindamine with an item in each group, the review, the access screen and the overview's "Ootab hindamist"). Every
+// Hindamine with an item in each group, the review, the access screen and the overview's „Sinu järjekord“ with its „Ootab hindamist“ row). Every
 // student is a sample address (`e2e-client-compl-…@example.test`, never mailed) on an e-course of the test's own; all of it is removed after each
 // test. Under `next dev` and the production build (E2E_PROD_BUILD=1); Maria signs in as Dim (admin-login.ts). The locks on real Postgres are
 // completion-race.spec.ts.
@@ -462,7 +462,7 @@ test("§9 e2e 8: the pages at 390, 834, 1194 and 1440 px — no sideways scroll,
   await holdTerms(info); // the e-course page's "Lõpetamine" is one of the screens
   const jpeg = await canvasJpeg(page, 640, 480);
   // A: a test to take; B: practical work being prepared (one photo); C: open answers waiting for Maria; D: practical work sent, waiting;
-  // E: out of tries — so Hindamine has an item in each of its three groups, and the overview shows "Ootab hindamist"
+  // E: out of tries — so Hindamine has an item in each of its three groups, and the overview's queue has its „Ootab hindamist“ row
   const a = await student("look-a", info, { questions: [...E2E_QUESTIONS, E2E_OPEN[0]], points: [], lessonsDone: true });
   const b = await student("look-b", info, { points: E2E_POINTS, lessonsDone: true });
   await insertPractical(b.accessId, E2E_POINTS, jpeg, { round: 0, photos: [{ stage: 0, round: 1 }] });
@@ -484,7 +484,7 @@ test("§9 e2e 8: the pages at 390, 834, 1194 and 1440 px — no sideways scroll,
     { page: herA.page, url: testPage(a), scope: "[data-test-page]", admin: false, shows: ["[data-answer-option]"] },
     { page: herA.page, url: coursePage(a), scope: "[data-completion]", admin: false },
     { page: herB.page, url: practicalPage(b), scope: "[data-practical-page]", admin: false, shows: ["[data-photo]", '[data-photo-add] input[type="file"]'] },
-    { page, url: "/admin", scope: "[data-overview-assessment]", admin: true, shows: ['[data-overview-assessment-group="practicals"]', '[data-overview-assessment-group="tests"]', '[data-overview-assessment-group="tries"]'] },
+    { page, url: "/admin", scope: "[data-overview-queue]", admin: true, shows: ['[data-overview-row="assessment"]'] },
     { page, url: "/admin/hindamine", scope: "[data-assessment-page]", admin: true, shows: queued },
     { page, url: `/admin/hindamine/test?id=${attemptId}`, scope: "[data-test-review-page]", admin: true, shows: ["[data-review-verdict]", "[data-review-send]"] },
     { page, url: `/admin/protokollid?ligipaas=${d.accessId}`, scope: "[data-protocol-screen]", admin: true, shows: ["[data-assess-photo]", "[data-verdict]", "[data-assess-send]"] },

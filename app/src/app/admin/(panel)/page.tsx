@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AdminIcon, type AdminIconName } from "@/components/admin/AdminIcon";
-import { getAdminCounts } from "@/components/admin/data";
+import { checkReasonLabel } from "@/components/admin/PaymentLines";
 import { adminTitle } from "@/components/admin/sections";
 import { TestplanCard } from "@/components/admin/TestplanCard";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
-import { assessmentQueue } from "@/db/queries/assessment";
-import { todaySessions } from "@/db/queries/protocols";
-import { listUpcomingSessions } from "@/db/queries/public";
-import { startOfDayTallinn } from "@/domain/calendar";
+import { listAdminSessions, type RequestKind } from "@/db/queries/admin";
+import { overviewQueue, type Oldest } from "@/db/queries/overview";
+import { protocolIndex } from "@/db/queries/protocols";
+import { startOfDayTallinn, tallinnFormParts } from "@/domain/calendar";
+import { endOfDayTallinn, tallinnToday } from "@/domain/client-access";
 import { seatsLeft } from "@/domain/sessions";
 import { adminEt } from "@/i18n/dict/admin";
 import { pick } from "@/i18n/field";
-import { fill, formatDate, formatLongDate, formatTime } from "@/i18n/format";
+import { fill, formatDayMonth, formatLongDate, formatTime } from "@/i18n/format";
 import { adminName, requireAdmin } from "@/server/auth";
 import { serverEnv } from "@/server/env";
 import { logFailure } from "@/server/log";
@@ -23,59 +23,76 @@ import styles from "./overview.module.css";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: adminTitle(adminEt.nav.overview) };
 
-const DAY = 24 * 60 * 60_000;
-/** Rows of the "Tulevased koolitused" table. */
+/** Rows of the „Tulevased koolitused“ list. */
 const UPCOMING_ROWS = 5;
+/** „järgmise 30 päeva jooksul“: today and the 30 Tallinn days after it. */
+const UPCOMING_DAYS = 30;
+/** The kinds of request in the hint of „Päringut tegemata“, in the order P-1 writes them. */
+const REQUEST_KINDS: RequestKind[] = ["contact", "individual", "practice", "waitlist", "change_request"];
+
+/** The date text "2026-10-21" `days` calendar days later: plain calendar arithmetic, so the two days the clocks change cannot move it. */
+function plusDays(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
 
 /**
- * Overview (prototype B `adminHome()`): greeting, the four numbers Maria acts on (registrations waiting for their
- * prepayment, open requests, sessions in the next 30 days, confirmed newsletter subscribers), the next sessions, the
- * open requests per kind and quick links; and, while anything waits in Hindamine, "Ootab hindamist" with its three groups (e-course completion).
+ * Overview (admin UX pass piece 2, A1; README A1 and the Part 2 prototype): the date and „Tere, {name}.“; a dark „Täna“ card for each session today,
+ * with its protocols' progress and one tap to them; „Sinu järjekord“, one row for each thing Maria has to act on (a count, a label, a hint, the page
+ * that lists them; a row with 0 is not drawn, and an empty queue says so); the Testimine card while checks are open; and „Tulevased koolitused“,
+ * the next five sessions, each opening its Kalender drawer. On a phone the parts stack in that order.
  */
 export default async function Overview() {
   const email = await requireAdmin();
   const name = adminName(email);
   const now = new Date();
   const db = getDb();
-  const [counts, sessions, today, waiting, testing] = await Promise.all([
-    getAdminCounts(email),
-    listUpcomingSessions(db, startOfDayTallinn(now)),
-    todaySessions(db, now),
-    assessmentQueue(db),
+  const [queue, index, sessions, testing] = await Promise.all([
+    overviewQueue(db, now),
+    protocolIndex(db, now),
+    // every session from the start of today's Tallinn day, drafts' too and called-off ones included (left out below), as the Kalender lists them
+    listAdminSessions(db, { from: startOfDayTallinn(now), upcoming: true }, now),
     // the test page's card (phase 4, piece 1): a failing read leaves the card out, never the overview
     testplanCard(db, email, serverEnv().ADMIN_NAMES).catch((e) => {
       logFailure("[testplan] the card's numbers could not be read", e);
       return null;
     }),
   ]);
-  const scheduled = sessions.filter((s) => s.status === "scheduled");
-  const soon = scheduled.filter((s) => s.startsAt.getTime() < now.getTime() + 30 * DAY).length;
-  const open = counts.openRequests;
-  const openTotal = Object.values(open).reduce((a, b) => a + b, 0);
   const t = adminEt.overview;
-  const tabs = adminEt.requests.tabs;
+  const q = t.queue;
 
-  const stats: { key: string; n: number; label: string; href: string }[] = [
-    { key: "awaiting", n: counts.awaitingPrepayment, label: t.stats.awaiting, href: "/admin/registreerimised?staatus=ootab" },
-    { key: "requests", n: openTotal, label: t.stats.requests, href: "/admin/paringud" },
-    { key: "sessions", n: soon, label: t.stats.sessions, href: "/admin/kalender" },
-    { key: "subscribers", n: counts.confirmedSubscribers, label: t.stats.subscribers, href: "/admin/uudiskiri" },
-  ];
-  const inbox: { key: string; label: string; n: number; href: string; icon: AdminIconName }[] = [
-    { key: "contact", label: tabs.kontakt, n: open.contact - counts.openPurchaseInterest, href: "/admin/paringud?liik=kontakt", icon: "mail" },
-    { key: "interest", label: adminEt.requests.interest, n: counts.openPurchaseInterest, href: "/admin/paringud?liik=kontakt", icon: "book" },
-    { key: "individual", label: tabs.individuaal, n: open.individual, href: "/admin/paringud?liik=individuaal", icon: "user" },
-    { key: "practice", label: tabs.praktika, n: open.practice, href: "/admin/paringud?liik=praktika", icon: "flower" },
-    { key: "waitlist", label: tabs.ootenimekiri, n: open.waitlist, href: "/admin/paringud?liik=ootenimekiri", icon: "calendar" },
-  ];
-  // "Ootab hindamist" (e-course completion, spec §5.2, R4): what waits in Hindamine, per group, each to its group on that page
-  const assessment = adminEt.assessment.groups;
-  const waitingGroups: { key: string; n: number; label: string; href: string }[] = [
-    { key: "practicals", n: waiting.practicals.length, label: assessment.practicals, href: "/admin/hindamine#praktilised" },
-    { key: "tests", n: waiting.tests.length, label: assessment.tests, href: "/admin/hindamine#testid" },
-    { key: "tries", n: waiting.triesUsed.length, label: assessment.triesUsed, href: "/admin/hindamine#katsed" },
-  ];
-  const waitingTotal = waitingGroups.reduce((sum, g) => sum + g.n, 0);
+  // „Täna“: the index (14 days back, today and later today) holds today's sessions, newest first; the cards go earliest first
+  const today = tallinnToday(now);
+  const todays = index.sessions.filter((s) => tallinnFormParts(s.startsAt).date === today).reverse();
+
+  const scheduled = sessions.filter((s) => s.status !== "cancelled");
+  const windowEnd = endOfDayTallinn(plusDays(today, UPCOMING_DAYS))!;
+  const soon = scheduled.filter((s) => s.startsAt.getTime() <= windowEnd.getTime()).length;
+
+  const oldest = (o: Oldest | null) => (o ? fill(q.oldest, { date: formatDayMonth(o.at, "et"), name: o.name }) : "");
+  /** "3 kontakt · 2 individuaal": the parts with a number, joined. */
+  const parts = (list: [number, string][]) => list.filter(([n]) => n > 0).map(([n, template]) => fill(template, { n })).join(" · ");
+  const checkWhy = queue.check.reason ? checkReasonLabel(queue.check.reason) : q.checkAt;
+  // README order; a row with 0 is left out
+  const rows = [
+    { key: "awaiting", n: queue.awaiting.count, href: "/admin/registreerimised?staatus=ootab", hint: oldest(queue.awaiting.oldest) },
+    {
+      key: "assessment",
+      n: queue.assessment.count,
+      href: "/admin/hindamine",
+      hint: parts([
+        [queue.assessment.practical, q.assessmentParts.practical],
+        [queue.assessment.test, q.assessmentParts.test],
+        [queue.assessment.triesUsed, q.assessmentParts.triesUsed],
+      ]),
+    },
+    { key: "requests", n: queue.requests.count, href: "/admin/paringud", hint: parts(REQUEST_KINDS.map((kind): [number, string] => [queue.requests.byKind[kind], q.requestParts[kind]])) },
+    // (the anchor is on the Arved page from the "Arveta maksed" card's task on)
+    { key: "unbilled", n: queue.unbilled.count, href: "/admin/arved#arveta", hint: oldest(queue.unbilled.oldest) },
+    { key: "reviews", n: queue.reviews.count, href: "/admin/tagasiside?vaade=arvustused&olek=ootel", hint: oldest(queue.reviews.oldest) },
+    { key: "check", n: queue.check.count, href: "/admin/maksed?staatus=kontroll", hint: `${oldest(queue.check.oldest)} · ${checkWhy}` },
+  ] as const;
+  const waiting = rows.filter((r) => r.n > 0);
 
   return (
     <div className={ui.page}>
@@ -83,171 +100,107 @@ export default async function Overview() {
         <div>
           <p className={ui.eyebrow}>{formatLongDate(now, "et")}</p>
           <h1 className={ui.h1}>{name ? fill(adminEt.panel.hello, { name }) : adminEt.panel.helloNoName}</h1>
-          <p className={ui.lead}>{t.lead}</p>
         </div>
-        <Link className={ui.btn} href="/admin/registreerimised">
-          {t.primary}
-          <AdminIcon name="arrow" />
-        </Link>
       </div>
 
-      <ul className={`${ui.stats} ${styles.stats}`}>
-        {stats.map((s) => (
-          <li key={s.key}>
-            <Link className={ui.stat} href={s.href} data-stat={s.key}>
-              <strong className={ui.statNumber}>{s.n}</strong>
-              <span className={ui.statLabel}>{s.label}</span>
-              <span className={ui.statMore} aria-hidden="true">
-                {t.more} ↗
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-
-      {/* "Ootab hindamist" (e-course completion, spec §5.2, R4): the three groups of Hindamine with their counts; hidden when nothing waits */}
-      {waitingTotal > 0 && (
-        <section className={`${ui.card} ${styles.assessment}`} aria-labelledby="assessment-title" data-overview-assessment="">
-          <div className={`${ui.cardHead} ${styles.assessmentHead}`}>
-            <h2 id="assessment-title" className={ui.h2}>
-              {fill(t.assessment.title, { n: waitingTotal })}
-            </h2>
-            <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href="/admin/hindamine">
-              {t.assessment.open}
-            </Link>
-          </div>
-          <ul className={ui.rows}>
-            {waitingGroups.map((g) => (
-              <li key={g.key}>
-                <Link className={ui.row} href={g.href} data-overview-assessment-group={g.key}>
-                  <AdminIcon name="check" />
-                  <span className={ui.rowLabel}>{g.label}</span>
-                  <span className={`${ui.tag} ${g.n > 0 ? ui.warn : ""}`}>{g.n}</span>
+      {/* „Täna“: one dark card for each session today, with its protocols' progress and the way to them; none on a day without a session */}
+      {todays.length > 0 && (
+        <div data-today="">
+          {todays.map((s) => {
+            // „alustamata“: students with no protocol yet (a protocol sent and edited since is a draft, protocolIndex)
+            const notStarted = Math.max(0, s.students - s.sent - s.drafts);
+            const when = fill(t.today.when, { time: formatTime(s.startsAt, "et"), place: s.place }).replace(/ · $/, "");
+            return (
+              <section key={s.id} className={styles.today} aria-labelledby={`today-${s.id}`} data-today-session={s.id}>
+                <div className={styles.todayText}>
+                  <p className={styles.todayWhen}>{when}</p>
+                  <h2 id={`today-${s.id}`} className={styles.todayCourse}>
+                    {s.course}
+                  </h2>
+                  <p className={styles.todayCounts}>{fill(t.today.counts, { n: s.students, a: s.sent, b: s.drafts, c: notStarted })}</p>
+                </div>
+                <Link className={styles.todayOpen} href={`/admin/protokollid?sessioon=${s.id}`}>
+                  {t.today.open}
                 </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
+              </section>
+            );
+          })}
+        </div>
       )}
 
       {/* "Testimine: N avatud, M viga" (phase 4, piece 1, spec D1, §5): the signed-in admin's open and failed checks; hidden when there are none */}
       {testing && <TestplanCard open={testing.open} bad={testing.bad} />}
 
-      {/* "Täna" (phase protocols, spec §4): today's sessions, each with one tap to its protocols; hidden on a day with none */}
-      {today.length > 0 && (
-        <section className={`${ui.card} ${styles.today}`} aria-labelledby="today-title" data-today="">
-          <h2 id="today-title" className={ui.h2}>
-            {t.today.title}
-          </h2>
-          <ul className={ui.rows}>
-            {today.map((s) => (
-              <li key={s.id} className={styles.todayRow} data-today-session={s.id}>
-                <span className={styles.todayWhat}>
-                  <strong>{pick(s.title, "et")}</strong>
-                  <span className={ui.muted}>
-                    {formatTime(s.startsAt, "et")} · {[s.city, s.venue].filter(Boolean).join(", ")} · {fill(t.today.students, { n: s.students })}
-                  </span>
-                </span>
-                <Link className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/admin/protokollid?sessioon=${s.id}`}>
-                  {adminEt.protocols.open}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <div className={ui.columns}>
-        <section className={ui.card} aria-labelledby="upcoming-title">
-          <div className={ui.cardHead}>
-            <h2 id="upcoming-title" className={ui.h2}>
-              {t.upcoming.title}
+      <div className={styles.grid}>
+        {waiting.length === 0 ? (
+          <section className={`${styles.card} ${styles.empty}`} data-overview-empty="">
+            <h2 className={styles.emptyTitle}>{q.empty}</h2>
+            <p className={styles.emptyHint}>{q.emptyHint}</p>
+          </section>
+        ) : (
+          <section className={styles.card} aria-labelledby="queue-title" data-overview-queue="">
+            <h2 id="queue-title" className={styles.cardTitle}>
+              {q.title}
             </h2>
-            <Link className={ui.link} href="/admin/kalender">
-              {t.upcoming.calendar}
-            </Link>
-          </div>
-          {scheduled.length === 0 ? (
-            <p className={ui.empty}>{t.upcoming.empty}</p>
-          ) : (
-            <div className={ui.tableWrap}>
-              <table className={`${ui.table} ${styles.upcoming}`}>
-                <thead>
-                  <tr>
-                    <th scope="col">{t.upcoming.course}</th>
-                    <th scope="col">{t.upcoming.date}</th>
-                    <th scope="col">{t.upcoming.city}</th>
-                    <th scope="col">{t.upcoming.seats}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scheduled.slice(0, UPCOMING_ROWS).map((s) => (
-                    <tr key={s.id}>
-                      <td>
-                        <strong>{pick(s.course.title, "et")}</strong>
-                      </td>
-                      <td className={ui.nowrap}>{formatDate(s.startsAt, "et")}</td>
-                      <td>{s.city}</td>
-                      <td>
-                        {seatsLeft(s.capacity, s.taken)} / {s.capacity}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <div className={ui.stack}>
-          <section className={ui.card} aria-labelledby="inbox-title">
-            <h2 id="inbox-title" className={ui.h2}>
-              {t.inbox.title}
-            </h2>
-            <ul className={ui.rows}>
-              {inbox.map((row) => (
-                <li key={row.key}>
-                  <Link className={ui.row} href={row.href} data-inbox={row.key}>
-                    <AdminIcon name={row.icon} />
-                    <span className={ui.rowLabel}>{row.label}</span>
-                    <span className={`${ui.tag} ${row.n > 0 ? ui.warn : ""}`}>{row.n > 0 ? fill(t.inbox.open, { n: row.n }) : t.inbox.done}</span>
+            <ul className={styles.queue}>
+              {waiting.map((r) => (
+                <li key={r.key}>
+                  <Link className={styles.queueRow} href={r.href} data-overview-row={r.key}>
+                    <strong className={styles.count}>{r.n}</strong>
+                    <span className={styles.what}>
+                      <b className={styles.label}>{q.label[r.key]}</b>
+                      <span className={styles.hint}>{r.hint}</span>
+                    </span>
+                    <span className={styles.arrow} aria-hidden="true">
+                      →
+                    </span>
                   </Link>
                 </li>
               ))}
             </ul>
           </section>
+        )}
 
-          <section className={ui.card} aria-labelledby="links-title">
-            <h2 id="links-title" className={ui.h2}>
-              {t.links.title}
+        <section className={styles.card} aria-labelledby="upcoming-title" data-overview-upcoming="">
+          <div className={styles.cardHead}>
+            <h2 id="upcoming-title" className={styles.cardTitle}>
+              {t.upcoming.title}
             </h2>
-            <ul className={ui.rows}>
-              <li>
-                <Link className={ui.row} href="/admin/uudiskiri">
-                  <AdminIcon name="mail" />
-                  <span className={ui.rowLabel}>{t.links.newsletter}</span>
-                </Link>
-              </li>
-              <li>
-                <a className={ui.row} href="/api/admin/subscribers.csv?kinnitatud=1" download>
-                  <AdminIcon name="arrow" />
-                  <span className={ui.rowLabel}>{t.links.csv}</span>
-                </a>
-              </li>
-              <li>
-                {/* The home page through the coming-soon gate, like the sidebar's and the top line's links: api/admin/preview
-                    gives this admin the preview cookie, then opens "/" (a plain <a>: it is an API route, not a page). */}
-                <a className={ui.row} href="/api/admin/preview" target="_blank" rel="noopener">
-                  <AdminIcon name="up" />
-                  <span className={ui.rowLabel}>
-                    {t.links.site} <span aria-hidden="true">↗</span>
-                    <span className={ui.sr}> ({adminEt.shell.newWindow})</span>
-                  </span>
-                </a>
-              </li>
-            </ul>
-          </section>
-        </div>
+            <p className={styles.note}>{fill(t.upcoming.window, { n: soon })}</p>
+          </div>
+          {scheduled.length > 0 && (
+            <>
+              <div className={`${styles.upRow} ${styles.upHead}`} aria-hidden="true">
+                <span>{t.upcoming.date}</span>
+                <span>{t.upcoming.course}</span>
+                <span className={styles.seats}>{t.upcoming.seats}</span>
+              </div>
+              <ul className={styles.upList}>
+                {scheduled.slice(0, UPCOMING_ROWS).map((s) => {
+                  const left = seatsLeft(s.capacity, s.taken);
+                  return (
+                    <li key={s.id}>
+                      <Link className={styles.upRow} href={`/admin/kalender?id=${s.id}`} data-upcoming-session={s.id} data-seats-left={left}>
+                        <span>{formatDayMonth(s.startsAt, "et")}</span>
+                        <span className={styles.upWhat}>
+                          <b>{pick(s.course.title, "et")}</b>
+                          <span>{s.city}</span>
+                        </span>
+                        <span className={`${styles.seats} ${left === 0 ? styles.full : ""}`}>
+                          <span className={ui.sr}>{t.upcoming.seats} </span>
+                          {left} / {s.capacity}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+          <Link className={styles.calendar} href="/admin/kalender">
+            {t.upcoming.calendar}
+          </Link>
+        </section>
       </div>
     </div>
   );

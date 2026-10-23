@@ -1895,6 +1895,32 @@
       "markedAt": "deploy"
     },
     {
+      "id": "haldus-ulevaade-jarjekord",
+      "area": "haldus",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Ülevaate „Sinu järjekord“",
+      "href": "/admin",
+      "steps": [
+        "Ava halduse „Ülevaade“ ja vaata kaarti „Sinu järjekord“.",
+        "Vajuta kaardi ridu ükshaaval ja tule iga kord menüüst „Ülevaade“ tagasi.",
+        "Kui kaardil ridu enam pole, vaata, mis on selle asemel; muidu jäta see samm vahele."
+      ],
+      "expect": [
+        "Kaardil on ainult read, kus on midagi teha; rida, mille arv on 0, ei ole.",
+        "Read on selles järjekorras: „Ootab ettemaksu“, „Ootab hindamist“, „Päringut tegemata“, „Arveta makset“, „Arvustus ootab avaldamist“, „Makse ootel kontrollil“.",
+        "Rea nime all on hall vihje, näiteks „Vanim 15.10 · nimi“ või „2 kontakt · 1 muutmine“.",
+        "Iga rida avab oma loendi: ettemaksu ootajad, Hindamine, Päringud, Arved, arvustused „Ootab kinnitust“ ja Maksed „Ootel kontrollil“.",
+        "Rea „Päringut tegemata“ arv sisaldab ka „Muutmine“ päringuid, nagu menüü märk.",
+        "Tühja järjekorra asemel on „Järjekord on tühi.“ ja „Kõik on tehtud. Uued registreerimised ja päringud ilmuvad siia.“."
+      ],
+      "why": "Maria näeb ühest kohast, mis ootab teda, ja jõuab sinna ühe vajutusega.",
+      "risk": "low",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "registreerimine-vorm-vead",
       "area": "registreerimine",
       "who": "maria",
@@ -2078,7 +2104,7 @@
         "„Laekunud“ on pool hinnast.",
         "„Veebimaksed“ all on makse märkega „Makstud“.",
         "Plokis „Arved“ on Proov 1 ettemaksu arve märkega „Tasutud“ ja nupuga „Laadi alla (PDF)“.",
-        "Ülevaate arv „Ootab ettemaksu“ ei loe Proov 1 registreeringut."
+        "Ülevaate kaardi „Sinu järjekord“ rea „Ootab ettemaksu“ arv ei loe Proov 1 registreeringut."
       ],
       "why": "Maria näeb siin, kes on maksnud.",
       "risk": "high",
@@ -2489,7 +2515,7 @@
         "Näed teadet „Arve on märgitud tasutuks.“.",
         "Arve real on „Tasutud“, kuupäev ja „Pangaülekanne“.",
         "„Raha“ näitab 50% hinnast laekununa ja staatus on „Kinnitatud“, ilma et trükiksid summat ise.",
-        "Ülevaate arv „Ootab ettemaksu“ ei loe Proov 6 enam."
+        "Ülevaate kaardi „Sinu järjekord“ rea „Ootab ettemaksu“ arv ei loe Proov 6 enam."
       ],
       "why": "Maria ei trüki sama summat kaks korda: arve märkimine kinnitab koha.",
       "risk": "high",
@@ -2822,11 +2848,13 @@
         "Kui ootenimekirja kontroll tehti, on Proov 3 ka vahelehel „Ootenimekiri“.",
         "„Vasta e-kirjaga“ avab kirja Proov 3 aadressile.",
         "Tehtud päring liigub loendi lõppu märkega „Tehtud“.",
-        "Ülevaates „Tegemata päringud“ arv väheneb ühe võrra."
+        "Ülevaate kaardi „Sinu järjekord“ rea „Päringut tegemata“ arv väheneb ühe võrra."
       ],
       "why": "Päringud on Maria postkast lehel.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-tuhista",
@@ -4770,16 +4798,19 @@
       "steps": [
         "Tee see kontroll mõnel päris koolituspäeval; muul päeval vajuta „Jäta vahele“.",
         "Ava halduse „Ülevaade“.",
-        "Vajuta kaardil „Täna“ nuppu „Protokollid“."
+        "Vaata tumedat kaarti „Täna“ ja vajuta selle nuppu „Ava protokollid →“."
       ],
       "expect": [
-        "Kaardil „Täna“ on tänane koolitus ja „Õpilasi: …“.",
-        "„Protokollid“ avab selle päeva protokollid.",
+        "Kaardil on „TÄNA“, kellaaeg ja koht, tänane koolitus ning „… õpilast · protokollid: … saadetud, … mustand, … alustamata“.",
+        "Kaardi arvud on samad, mis protokollide nimekirja tänasel real.",
+        "„Ava protokollid →“ avab selle päeva protokollid.",
         "Päeval, kus koolitust pole, kaarti ei ole."
       ],
       "why": "Koolituspäeval jõuab Maria protokollideni ühe vajutusega.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-protokollid-nimekiri",

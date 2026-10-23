@@ -114,15 +114,15 @@ test("answers lost on the way, then no network and a reload: nothing is lost, no
   expect(await keptKeys(page, mari.id)).toEqual([]); // the browser's copy is gone once confirmed
 });
 
-test("'Täna' opens the day's screen; 'Lukusta ja saada kõik' names who gets one and who is skipped, sends, and the student reads hers (§10 e2e 3)", async ({ page, context, visitorIp, browser }, info) => {
+test("'Täna' (Ava protokollid →) opens the day's screen; 'Lukusta ja saada kõik' names who gets one and who is skipped, sends, and the student reads hers (§10 e2e 3)", async ({ page, context, visitorIp, browser }, info) => {
   const fx = await fixtures("send", runName(info), ["Mari Maasikas", "Anu Aas"]);
   const [mari, anu] = fx.students;
   await signInAsAdmin(page, context, visitorIp, created); // lands on the overview
   await adminReady(page);
   const today = page.locator(`[data-today-session="${fx.session.id}"]`);
   await expect(today).toContainText("E2E protokollikoolitus");
-  await expect(today).toContainText("Õpilasi: 2");
-  await today.getByRole("link", { name: "Protokollid" }).click();
+  await expect(today).toContainText("2 õpilast · protokollid: 0 saadetud, 0 mustand, 2 alustamata");
+  await today.getByRole("link", { name: "Ava protokollid →" }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/protokollid\\?sessioon=${fx.session.id}$`));
   await adminReady(page);
   await chip(page, mari.id).click();

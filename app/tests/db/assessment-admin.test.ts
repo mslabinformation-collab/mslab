@@ -6,7 +6,7 @@ import { courseAccess, courseTests } from "@/db/schema";
 import { at, attempt, ecourse, practical, student } from "./hindamine-fixtures";
 import { makeTestDb } from "./helpers";
 
-// Hindamine (e-course completion, spec §5.2, §5.4) and the overview's "Ootab hindamist" card (R4), rendered from a real (PGlite) database to
+// Hindamine (e-course completion, spec §5.2, §5.4) and the overview's „Ootab hindamist“ row of „Sinu järjekord“ (R4, A1), rendered from a real (PGlite) database to
 // HTML: the three groups with their rows and their ways on, "Kõik on hinnatud." when nothing waits, the test review of one attempt (its own copy
 // of the questions: Review Focus 3), every attempt of a student, and "not found". The server actions are stand-ins (they need a
 // browser or a request); the menu counts are the real ones.
@@ -43,14 +43,14 @@ beforeEach(async () => {
   course = await ecourse(db);
 });
 
-test("nothing waits: Hindamine says 'Kõik on hinnatud.', and the overview has no 'Ootab hindamist' card", async () => {
+test("nothing waits: Hindamine says 'Kõik on hinnatud.', and the overview's queue has no „Ootab hindamist“ row", async () => {
   const page = await html(AssessmentPage());
   expect(page).toContain("Kõik on hinnatud.");
   expect(page).not.toContain("data-queue=");
-  expect(await html(Overview())).not.toContain("data-overview-assessment");
+  expect(await html(Overview())).not.toContain('data-overview-row="assessment"');
 });
 
-test("the three groups, each row with its way on; the overview's card counts them (spec §5.2, R4)", async () => {
+test("the three groups, each row with its way on; the overview's „Ootab hindamist“ row counts them (spec §5.2, R4)", async () => {
   const anu = await student(db, course.id, "Anu");
   await practical(db, anu, 2, 1, at(8));
   const eve = await student(db, course.id, "Eve");
@@ -70,10 +70,9 @@ test("the three groups, each row with its way on; the overview's card counts the
   expect(tries).toContain(`href="/admin/hindamine/test?ligipaas=${gea.access.id}"`);
   expect(page).not.toContain("Kõik on hinnatud.");
 
-  const card = part(await html(Overview()), "data-overview-assessment", "");
-  expect(card).toContain("Ootab hindamist: 3");
-  expect(card).toContain('href="/admin/hindamine"');
-  expect(part(card, "data-overview-assessment-group", "practicals")).toContain(">1<");
+  const row = /<a [^>]*data-overview-row="assessment"[^>]*>[\s\S]*?<\/a>/.exec(await html(Overview()))![0];
+  expect(row).toContain('href="/admin/hindamine"');
+  expect(row.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")).toContain("3 Ootab hindamist 1 praktiline töö · 1 testi vastus · 1 katsed otsas");
 });
 
 test("Review Focus 3: the review of an attempt made before Maria changed the test shows the attempt's copy, its picks against that copy's key, and the form", async () => {

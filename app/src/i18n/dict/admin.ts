@@ -223,45 +223,45 @@ export const adminEt = {
     phonePublish: "Avalda",
   },
 
+  // The overview (admin UX pass piece 2, A1; README A1, Part 2 prototype, P-1): „Täna“ cards, „Sinu järjekord“, „Tulevased koolitused“
   overview: {
-    lead: "Sinu koolituskeskuse järgmised sammud.",
-    primary: "Vaata registreerimisi",
-    more: "Vaata ja halda",
-    stats: {
-      awaiting: "Ootab ettemaksu",
-      requests: "Tegemata päringud",
-      sessions: "Koolitused järgmise 30 päeva jooksul",
-      subscribers: "Kinnitatud uudiskirja tellijad",
+    // a session today: the line over its course (shown in capitals: CSS), the numbers under it ({n} the listed students, {a} the sent protocols,
+    // {b} the drafts, {c} the students with none yet: zero parts are said, as the Protokollid index does) and the way to its protocols
+    today: {
+      when: "Täna {time} · {place}",
+      counts: "{n} õpilast · protokollid: {a} saadetud, {b} mustand, {c} alustamata",
+      open: "Ava protokollid →",
+    },
+    // each row is something to act on: a count, the label, a hint line under it; a row with 0 is not drawn
+    queue: {
+      title: "Sinu järjekord",
+      empty: "Järjekord on tühi.",
+      emptyHint: "Kõik on tehtud. Uued registreerimised ja päringud ilmuvad siia.",
+      label: {
+        awaiting: "Ootab ettemaksu",
+        assessment: "Ootab hindamist",
+        requests: "Päringut tegemata",
+        unbilled: "Arveta makset",
+        reviews: "Arvustus ootab avaldamist",
+        check: "Makse ootel kontrollil",
+      },
+      // „Ootab ettemaksu“, „Arveta makset“, „Arvustus ootab avaldamist“ and „Makse ootel kontrollil“: the oldest one that waits ({date} dd.mm, {name} whose)
+      oldest: "Vanim {date} · {name}",
+      // „Makse ootel kontrollil“ ends with what to do about the oldest one: its check reason's words when it has one (adminEt.payments.reason), else this
+      checkAt: "kontrolli Montonios",
+      // „Ootab hindamist“: the parts of the hint, zero ones left out ({n} each)
+      assessmentParts: { practical: "{n} praktiline töö", test: "{n} testi vastus", triesUsed: "{n} katsed otsas" },
+      // „Päringut tegemata“: the parts of the hint, in this order, zero ones left out ({n} each)
+      requestParts: { contact: "{n} kontakt", individual: "{n} individuaal", practice: "{n} praktika", waitlist: "{n} ootenimekiri", change_request: "{n} muutmine" },
     },
     upcoming: {
       title: "Tulevased koolitused",
-      calendar: "Kalender",
-      course: "Koolitus",
+      // the number of sessions in the next 30 days ({n}); the rows are the next five
+      window: "järgmise 30 päeva jooksul: {n}",
       date: "Kuupäev",
-      city: "Linn",
+      course: "Koolitus ja linn",
       seats: "Vabu kohti",
-      empty: "Kalendris pole tulevasi koolitusi.",
-    },
-    // today's sessions in Tallinn, each with "Protokollid" (phase protocols, spec §4); the card is hidden on a day with none
-    today: {
-      title: "Täna",
-      students: "Õpilasi: {n}",
-    },
-    // "Ootab hindamist" (e-course completion, spec §5.2, R4): what waits in Hindamine, per group; the card is hidden when nothing waits
-    assessment: {
-      title: "Ootab hindamist: {n}",
-      open: "Ava hindamine",
-    },
-    inbox: {
-      title: "Päringud",
-      open: "{n} tegemata",
-      done: "Kõik tehtud",
-    },
-    links: {
-      title: "Kiirlingid",
-      site: "Vaata lehte",
-      csv: "Lae alla kinnitatud tellijad (CSV)",
-      newsletter: "Uudiskirja tellijad",
+      calendar: "Kalender →",
     },
   },
 
