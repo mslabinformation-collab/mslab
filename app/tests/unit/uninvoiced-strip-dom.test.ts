@@ -29,8 +29,8 @@ const settle = () =>
   act(async () => {
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   });
-type Props = { ids: number[]; first: string; last: string; summary: string; ready: boolean };
-const THREE: Props = { ids: [4, 5, 6], first: "MSL2026-004", last: "MSL2026-006", summary: SUMMARY, ready: true };
+type Props = { ids: number[]; first: string; last: string; linked: number; summary: string; ready: boolean };
+const THREE: Props = { ids: [4, 5, 6], first: "MSL2026-004", last: "MSL2026-006", linked: 0, summary: SUMMARY, ready: true };
 let shown = 0;
 const show = async (over: Partial<Props> = {}, fresh = true) => {
   await act(async () => root.render(createElement(UninvoicedStrip, { key: fresh ? ++shown : shown, ...THREE, ...over }, ROWS)));
@@ -143,6 +143,36 @@ describe("„Koosta {n} arvet“ asks with a ConfirmPanel (B11)", () => {
     expect(all("button", panel()!).map(text)).toEqual(["Jah, koosta 1 arve", "Katkesta"]);
   });
 
+  test("when a payment pays an invoice already made the line names no range (it would not be one): „Iga arve saab oma numbri. Õpilastele neid ei saadeta.“; n = 1 keeps its number, whoever's it is", async () => {
+    await show({ linked: 1, first: "MSL2026-042", last: "MSL2026-043" });
+    await click(bulk());
+    expect(text($("p", panel()!))).toBe("Kas koostan 3 arvet?");
+    expect(all("li", panel()!).map(text)).toEqual(["Iga arve saab oma numbri. Õpilastele neid ei saadeta."]);
+    await click(cancelButton());
+    await show({ ids: [4], first: "MSL2026-007", last: "MSL2026-007", linked: 1 });
+    await click(bulk());
+    expect(all("li", panel()!).map(text)).toEqual(["Arve saab numbri MSL2026-007. Õpilasele seda ei saadeta."]);
+  });
+
+  test("while the batch is on its way „Katkesta“ and Esc do nothing: the panel stays, the focus does not move, and when the answer comes the result is shown", async () => {
+    let finish: (v: unknown) => void = () => {};
+    actions.createInvoicesForUnbilledAction.mockReturnValue(new Promise((r) => (finish = r)));
+    await show();
+    await click(bulk());
+    await click(yes());
+    const before = document.activeElement;
+    await click(cancelButton());
+    await press(panel()!, "Escape");
+    expect(panel(), "the panel is still there").not.toBeNull();
+    expect(text(yes())).toBe("Koostan…");
+    expect(document.activeElement).toBe(before);
+    expect(actions.createInvoicesForUnbilledAction).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ ok: true, made: ["MSL2026-004", "MSL2026-005", "MSL2026-006"], already: 0, failed: [], sellerMissing: false, linked: 0 }));
+    await settle();
+    expect(panel()).toBeNull();
+    expect(status()).toBe("Koostatud 3 arvet: MSL2026-004–MSL2026-006.");
+  });
+
   test("„Katkesta“ and Esc close the panel, send nothing, and the focus goes back to the button", async () => {
     await show();
     await click(bulk());
@@ -166,7 +196,7 @@ describe("„Koosta {n} arvet“ asks with a ConfirmPanel (B11)", () => {
     expect(text(yes())).toBe("Koostan…");
     await click(yes()); // (a second press while it is on its way)
     expect(actions.createInvoicesForUnbilledAction).toHaveBeenCalledTimes(1);
-    await act(async () => finish({ ok: true, made: ["MSL2026-004", "MSL2026-005", "MSL2026-006"], already: 0, failed: [], sellerMissing: false }));
+    await act(async () => finish({ ok: true, made: ["MSL2026-004", "MSL2026-005", "MSL2026-006"], already: 0, failed: [], sellerMissing: false, linked: 0 }));
     await settle();
     expect(panel()).toBeNull();
     expect(status()).toBe("Koostatud 3 arvet: MSL2026-004–MSL2026-006.");
@@ -175,7 +205,7 @@ describe("„Koosta {n} arvet“ asks with a ConfirmPanel (B11)", () => {
   });
 
   test("one made: the existing „Arve {number} on valmis.“", async () => {
-    actions.createInvoicesForUnbilledAction.mockResolvedValue({ ok: true, made: ["MSL2026-004"], already: 0, failed: [], sellerMissing: false });
+    actions.createInvoicesForUnbilledAction.mockResolvedValue({ ok: true, made: ["MSL2026-004"], already: 0, failed: [], sellerMissing: false, linked: 0 });
     await show({ ids: [4], first: "MSL2026-004", last: "MSL2026-004" });
     await click(bulk());
     await click(yes());
@@ -193,7 +223,7 @@ describe("„Koosta {n} arvet“ asks with a ConfirmPanel (B11)", () => {
   });
 
   test("when the payments are all billed the page refreshes to none: the strip is gone but for the line that says what was done", async () => {
-    actions.createInvoicesForUnbilledAction.mockResolvedValue({ ok: true, made: ["MSL2026-004", "MSL2026-005", "MSL2026-006"], already: 0, failed: [], sellerMissing: false });
+    actions.createInvoicesForUnbilledAction.mockResolvedValue({ ok: true, made: ["MSL2026-004", "MSL2026-005", "MSL2026-006"], already: 0, failed: [], sellerMissing: false, linked: 0 });
     await show();
     await click(bulk());
     await click(yes());
@@ -212,12 +242,19 @@ describe("„Koosta {n} arvet“ asks with a ConfirmPanel (B11)", () => {
 });
 
 describe("what a press made, in words (piece2-texts S3-l)", () => {
-  const done = (over: Partial<Parameters<typeof resultLines>[0]> = {}) => ({ made: [], already: 0, failed: [], sellerMissing: false, ...over });
+  const done = (over: Partial<Parameters<typeof resultLines>[0]> = {}) => ({ made: [], already: 0, failed: [], sellerMissing: false, linked: 0, ...over });
 
   test("one made: „Arve {number} on valmis.“; two or more: „Koostatud {n} arvet: {first}–{last}.“", () => {
     expect(resultLines(done({ made: ["MSL2026-004"] }))).toEqual(["Arve MSL2026-004 on valmis."]);
     expect(resultLines(done({ made: ["MSL2026-004", "MSL2026-005"] }))).toEqual(["Koostatud 2 arvet: MSL2026-004–MSL2026-005."]);
     expect(resultLines(done({ made: ["MSL2026-004", "MSL2026-005", "MSL2026-006"] }))).toEqual(["Koostatud 3 arvet: MSL2026-004–MSL2026-006."]);
+  });
+
+  test("when some paid an invoice already made the numbers are no range, so two or more made say only how many: „Koostatud {n} arvet.“", () => {
+    expect(resultLines(done({ made: ["MSL2026-042", "MSL2026-007"], linked: 1 }))).toEqual(["Koostatud 2 arvet."]);
+    expect(resultLines(done({ made: ["MSL2026-007", "MSL2026-008", "MSL2026-001"], linked: 1, already: 1 }))).toEqual(["Koostatud 3 arvet.", "Juba arvega: 1."]);
+    // one made keeps its number, linked or not
+    expect(resultLines(done({ made: ["MSL2026-001"], linked: 1 }))).toEqual(["Arve MSL2026-001 on valmis."]);
   });
 
   test("billed meanwhile: „Juba arvega: {n}.“; failures: „Ei õnnestunud: {names}. Proovi uuesti.“; all of them, in that order", () => {
@@ -236,7 +273,7 @@ describe("what a press made, in words (piece2-texts S3-l)", () => {
   });
 
   test("the screen shows each in its tone: a failure or an empty card as an error, the rest as done", async () => {
-    actions.createInvoicesForUnbilledAction.mockResolvedValue({ ok: true, made: ["MSL2026-004", "MSL2026-005"], already: 0, failed: ["Liis Mets"], sellerMissing: false });
+    actions.createInvoicesForUnbilledAction.mockResolvedValue({ ok: true, made: ["MSL2026-004", "MSL2026-005"], already: 0, failed: ["Liis Mets"], sellerMissing: false, linked: 0 });
     await show();
     await click(bulk());
     await click(yes());

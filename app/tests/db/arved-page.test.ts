@@ -207,6 +207,32 @@ describe("the „Arved“ page", () => {
     expect(none).toContain('placeholder="Otsi nime, e-posti või arve numbri järgi"');
   });
 
+  test("a search with no month chosen looks in every month, so an earlier month's invoice is found; the select then says „Kõik kuud“ and the CSV button still names this month; a chosen month keeps its limit", async () => {
+    // (Kati Tamm's invoice is September's, cancelled; this month is October)
+    const found = await render(InvoicesPage, { otsi: "kati" });
+    expect(numbers(found)).toEqual(["MSL2026-001"]);
+    expect(found).toContain("Arveid: 1");
+    expect(found).toMatch(/<option value="koik" selected[^>]*>Kõik kuud</);
+    expect(found).toContain("Laadi alla (CSV) · oktoober 2026");
+    expect(found).toContain('href="/api/admin/arved?kuu=2026-10"');
+    // the pills count across the months too, and keep the search without a month in their links
+    const nav = /<nav[^>]*aria-label="Staatus"[^>]*data-list-pill-row[^>]*>([\s\S]*?)<\/nav>/.exec(found)![1];
+    expect([...nav.matchAll(/<a [^>]*href="([^"]*)"[^>]*>([^<]*)<span[^>]*>(\d+)<\/span><\/a>/g)].map((m) => [m[2], Number(m[3]), m[1]])).toEqual([
+      ["Kõik", 1, "/admin/arved?otsi=kati"],
+      ["Tasumata", 0, "/admin/arved?otsi=kati&staatus=unpaid"],
+      ["Tasutud", 0, "/admin/arved?otsi=kati&staatus=paid"],
+      ["Tühistatud", 1, "/admin/arved?otsi=kati&staatus=cancelled"],
+    ].map(([a, b, c]) => [a, b, (c as string).replace(/&/g, "&amp;")]));
+    // the pills find the earlier month's invoice too (an unpaid one would be under „Tasumata“ the same way)
+    expect(numbers(await render(InvoicesPage, { otsi: "kati", staatus: "cancelled" }))).toEqual(["MSL2026-001"]);
+    // a month that was chosen keeps its limit, and without a search the list is still this month's
+    expect(numbers(await render(InvoicesPage, { otsi: "kati", kuu: "2026-10" }))).toEqual([]);
+    expect(await render(InvoicesPage, { otsi: "kati", kuu: "2026-10" })).toMatch(/<option value="2026-10" selected/);
+    expect(numbers(await render(InvoicesPage))).toEqual(["MSL2026-003", "MSL2026-002"]);
+    // nothing found in any month says so
+    expect(await render(InvoicesPage, { otsi: "nobody" })).toContain("„nobody“ järgi arveid ei leitud.");
+  });
+
   test("„Laadi alla (CSV) · {kuu aasta}“ is the file of the month on the screen, and says which; while „Kõik kuud“ is chosen it is this month's", async () => {
     const sept = await render(InvoicesPage, { kuu: "2026-09" });
     expect(sept).toContain('href="/api/admin/arved?kuu=2026-09"');

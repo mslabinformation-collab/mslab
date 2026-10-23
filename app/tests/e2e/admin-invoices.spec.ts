@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext, Locator, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
 import { adminReady, signInAsAdmin } from "./admin-login";
 import {
@@ -414,6 +414,17 @@ const madeInvoices = () =>
   onLocalDb((sql) => sql<{ number: string; paymentId: number | null; status: string; paidMethod: string | null; sentAt: Date | null }[]>`
     select number, payment_id as "paymentId", status, paid_method as "paidMethod", sent_at as "sentAt" from invoices where seller->>'company' = ${INVOICE_COMPANY} order by seq`, { marksPages: false });
 
+/**
+ * The folded strip's own space: as much below its head as above it. The empty line that says what was done is in the page for a screen reader but
+ * takes no row of the strip's grid, so the strip's gap is not paid for it (it once was: 14 px more below than above).
+ */
+const spaceAround = (strip: Locator) =>
+  strip.evaluate((el) => {
+    const head = el.firstElementChild!.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    return { above: head.top - box.top, below: box.bottom - head.bottom };
+  });
+
 test("B11: „Koosta {n} arvet“ — the panel names the numbers, nothing is made before „Jah“, the result says what was made, nothing is mailed, and the strip is gone", async ({ page, context, visitorIp }, info) => {
   giveBack = await holdInvoiceSettings(info);
   const f = await fixtures(info.project.name);
@@ -432,6 +443,10 @@ test("B11: „Koosta {n} arvet“ — the panel names the numbers, nothing is ma
   await expect(strip.locator("[data-uninvoiced-summary]")).toContainText("Tasutud, aga arve puudub · ");
   const bulk = strip.getByRole("button", { name: `Koosta ${n} arvet`, exact: true }); // (exact: „Jah, koosta {n} arvet“ in the panel is another button)
   await expect(bulk).toBeVisible();
+  const space = await spaceAround(strip);
+  expect(Math.abs(space.below - space.above), `the folded strip: ${space.above} px above its head, ${space.below} px below`).toBeLessThan(1);
+  // (the empty line is still in the page, for the screen reader that is told what was done)
+  await expect(strip.getByRole("status")).toHaveCount(1);
 
   // asking: the question, the one line with the numbers, the two buttons; „Katkesta“ makes nothing and the focus is back on the button
   await bulk.click();
@@ -577,6 +592,15 @@ test("the Arved page at 375 × 812: the strip folded, opened and asking, the too
   const at = (await menu.boundingBox())!;
   expect(at.x).toBeGreaterThanOrEqual(0);
   expect(at.x + at.width).toBeLessThanOrEqual(375);
+  // an address that points at the strip (the overview's „Arveta makset“ row) leaves it clear of the sticky phone bar: 64 px high, a gap under it
+  await page.keyboard.press("Escape");
+  expect(await strip.evaluate((el) => getComputedStyle(el).scrollMarginTop)).toBe("76px");
+  await page.evaluate(() => {
+    document.body.style.paddingBottom = "3000px"; // (so the page can scroll that far)
+    document.querySelector("#arveta")!.scrollIntoView();
+  });
+  const stripTop = await strip.evaluate((el) => el.getBoundingClientRect().top);
+  expect(stripTop, "the strip is under the phone bar, not behind it").toBeGreaterThanOrEqual(64);
 });
 
 test("„Arve andmed“ in Seaded: refused without a KMKR number, saved, a new prefix starts at 001, and the sample shows what is typed — and stores nothing", async ({ page, context, visitorIp }, info) => {

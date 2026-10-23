@@ -2208,7 +2208,7 @@
       "href": "/admin/arved",
       "steps": [
         "Ava „Maksed ja arved“ ja vajuta üleval „Arved“.",
-        "Vaata lehe ülaosas riba „Arveta maksed“; kui seda pole, vajuta „Jäta vahele“.",
+        "Vaata lehe ülaosas riba „Arveta maksed“; kui seal pole kaht makset, tee Proov makse juurde või vajuta „Jäta vahele“.",
         "Vajuta „Näita ▸“ ja siis ühe makse real „Koosta arve“.",
         "Vajuta riba nuppu „Koosta … arvet“ (ühe makse korral „Koosta 1 arve“), loe küsimust ja vajuta „Katkesta“.",
         "Vajuta nuppu uuesti ja siis „Jah, koosta … arvet“."
@@ -2216,6 +2216,7 @@
       "expect": [
         "Ribal on „Arveta maksed: …“ ja rida „Tasutud, aga arve puudub“ summa ja maksjate nimedega.",
         "„Näita ▸“ avab makseread ja muutub nupuks „Peida ▾“; rida ütleb „Koostab uue arve“ või „Tasub arve …“.",
+        "Makse rea „Koosta arve“ järel kaob see rida ribalt ja riba arv väheneb ühe võrra.",
         "Küsimus „Kas koostan … arvet?“ ütleb numbrite vahemiku ja „Õpilastele neid ei saadeta.“; „Katkesta“ ei tee midagi.",
         "Pärast „Jah“ ütleb riba „Koostatud … arvet“ ja numbrid; read kaovad ribalt ja arved on loendis.",
         "Iga arve on „Tasutud“, makse päevaga ja makseviisiga „Montonio“; õpilasele kirja ei saadeta.",
@@ -2246,7 +2247,7 @@
         "Uuemad arved on eespool.",
         "Filtritel „Kõik“, „Tasumata“, „Tasutud“ ja „Tühistatud“ on arv; filter näitab ainult selle olekuga arveid.",
         "Kuu valik muudab loendit kohe, ilma nuputa „Näita“; „Kõik kuud“ näitab kõiki arveid.",
-        "Otsing leiab arve numbri, ostja nime või e-posti järgi.",
+        "Otsing leiab arve numbri, ostja nime või e-posti järgi, ka varasematest kuudest.",
         "Arve real on samad nupud nagu registreeringu paneelis ja link „Ava registreering“."
       ],
       "why": "Maria leiab iga arve ühest kohast.",

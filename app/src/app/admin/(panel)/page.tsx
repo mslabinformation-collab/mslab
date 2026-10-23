@@ -87,7 +87,7 @@ export default async function Overview() {
       ]),
     },
     { key: "requests", n: queue.requests.count, href: "/admin/paringud", hint: parts(REQUEST_KINDS.map((kind): [number, string] => [queue.requests.byKind[kind], q.requestParts[kind]])) },
-    // (the anchor is on the Arved page from the "Arveta maksed" card's task on)
+    // (#arveta is the strip „Arveta maksed: {n}“ on the Arved page; it opens its list when the address names it)
     { key: "unbilled", n: queue.unbilled.count, href: "/admin/arved#arveta", hint: oldest(queue.unbilled.oldest) },
     { key: "reviews", n: queue.reviews.count, href: "/admin/tagasiside?vaade=arvustused&olek=ootel", hint: oldest(queue.reviews.oldest) },
     { key: "check", n: queue.check.count, href: "/admin/maksed?staatus=kontroll", hint: `${oldest(queue.check.oldest)} · ${checkWhy}` },

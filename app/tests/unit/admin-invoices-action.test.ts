@@ -266,7 +266,7 @@ describe("catchUpInvoiceAction: „Arveta maksed“ → „Koosta arve“", () =
 });
 
 describe("createInvoicesForUnbilledAction: „Arveta maksed“ → „Koosta {n} arvet“ (B11)", () => {
-  const DONE = { made: ["MSL2026-004", "MSL2026-005"], already: 1, failed: ["Mari Kask"], sellerMissing: false };
+  const DONE = { made: ["MSL2026-004", "MSL2026-005"], already: 1, failed: ["Mari Kask"], sellerMissing: false, linked: 1 };
 
   test("the list the panel showed goes on; what was made, what was already billed and what failed comes back as it is; the page refreshes", async () => {
     work.createInvoicesForUnbilled.mockResolvedValue(DONE);
@@ -278,14 +278,14 @@ describe("createInvoicesForUnbilledAction: „Arveta maksed“ → „Koosta {n}
     expect(pub.revalidatePublic).not.toHaveBeenCalled(); // (a payment's invoice moves no paid sum)
   });
 
-  test("everything was billed meanwhile: the page still refreshes, it has moved; the seller card empty and nothing made: it has not", async () => {
-    work.createInvoicesForUnbilled.mockResolvedValue({ made: [], already: 3, failed: [], sellerMissing: false });
-    expect(await actions.createInvoicesForUnbilledAction({ ids: [4, 5, 6] })).toEqual({ ok: true, made: [], already: 3, failed: [], sellerMissing: false });
+  test("everything was billed meanwhile: the page still refreshes, it has moved; so it does when the seller card is empty, to swap its stale button for the link", async () => {
+    work.createInvoicesForUnbilled.mockResolvedValue({ made: [], already: 3, failed: [], sellerMissing: false, linked: 0 });
+    expect(await actions.createInvoicesForUnbilledAction({ ids: [4, 5, 6] })).toEqual({ ok: true, made: [], already: 3, failed: [], sellerMissing: false, linked: 0 });
     refreshed();
     cache.refresh.mockClear();
-    work.createInvoicesForUnbilled.mockResolvedValue({ made: [], already: 0, failed: [], sellerMissing: true });
-    expect(await actions.createInvoicesForUnbilledAction({ ids: [4] })).toEqual({ ok: true, made: [], already: 0, failed: [], sellerMissing: true });
-    expect(cache.refresh).not.toHaveBeenCalled();
+    work.createInvoicesForUnbilled.mockResolvedValue({ made: [], already: 0, failed: [], sellerMissing: true, linked: 0 });
+    expect(await actions.createInvoicesForUnbilledAction({ ids: [4] })).toEqual({ ok: true, made: [], already: 0, failed: [], sellerMissing: true, linked: 0 });
+    refreshed(); // (the page then draws the link in place of its stale button)
   });
 
   test("a list the page never sends (none, a thousand, not ids) is notPayment in words, nothing read", async () => {

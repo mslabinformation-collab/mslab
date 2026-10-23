@@ -33,7 +33,9 @@ type Props = { searchParams: Promise<Search> };
 
 // Addresses (README A6, §1.10): ?otsi=<text> (the search across the invoice's number and its buyer's name and e-mail, B7), ?kuu=YYYY-MM (the month of the
 // issue, Tallinn's calendar) or ?kuu=koik (every month); without one the list shows this month — the CSV button always names a month, and the
-// list it follows is the one on the screen —, ?staatus=unpaid|paid|cancelled (the pill), ?leht=<n> (50 a page). A new search, month or pill starts at page 1.
+// list it follows is the one on the screen — unless a search is typed: then every month is searched (an unpaid invoice of last month is found), the
+// select says „Kõik kuud“ and the CSV button still names this month. ?staatus=unpaid|paid|cancelled (the pill), ?leht=<n> (50 a page). A new search,
+// month or pill starts at page 1.
 const STATUSES: readonly InvoiceStatus[] = ["unpaid", "paid", "cancelled"];
 /** ?kuu= for „Kõik kuud“: the choice of every month. */
 const ALL_MONTHS = "koik";
@@ -65,8 +67,8 @@ const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1
  * Arved (invoices Task 5, spec §5; admin UX pass A6 and B11): every invoice of the month on the screen, newest first, 50 a page (?leht=), by its state
  * (?staatus=, the pills with their counts) and the search (?otsi=: number, name, e-mail); each with the actions of the registration's „Arved“
  * (InvoiceRow), laid out as the Part 2 prototype draws it. The month is the select beside the search and applies on change (?kuu=; this month when none
- * is chosen, „Kõik kuud“ for every month); the header's „Laadi alla (CSV) · {kuu aasta}“ is the file of the month on the screen (this month while
- * „Kõik kuud“ is chosen). On top, the strip „Arveta maksed: {n}“ (UninvoicedStrip) when there are any: the payments paid online that have no invoice (the
+ * is chosen — every month while a search is typed —, „Kõik kuud“ for every month); the header's „Laadi alla (CSV) · {kuu aasta}“ is the file of the month
+ * on the screen (this month while every month is on it). On top, the strip „Arveta maksed: {n}“ (UninvoicedStrip) when there are any: the payments paid online that have no invoice (the
  * card was empty, or the invoice step failed), with „Koosta {n} arvet“ for all of them and, opened, each one's own „Koosta arve“ and the invoice it will
  * pay if it was started for one. The „Võta tasumine tagasi“ of a receipt says what the drawer's says (S3-f): the page reads the registrations of the
  * receipts it shows for it. Not in the menu: it is the second tab of Maksed (TabPills, A6), whose heading it shares, and the shell marks Maksed ja arved.
@@ -78,8 +80,9 @@ export default async function InvoicesPage({ searchParams }: Props) {
   const now = new Date();
   const today = tallinnFormParts(now).date;
   const thisMonth = today.slice(0, 7);
-  // the month on the screen: the chosen one, this month when none is chosen, none (every month) for „Kõik kuud“
-  const month = view.kuu === ALL_MONTHS ? undefined : (view.kuu ?? thisMonth);
+  // the month on the screen: the chosen one; none (every month) for „Kõik kuud“; when none is chosen, this month — or every month while a search is
+  // typed, so that a name or a number from an earlier month is found
+  const month = view.kuu === ALL_MONTHS ? undefined : (view.kuu ?? (view.otsi !== "" ? undefined : thisMonth));
   const [list, counts, months, unbilled, seller] = await Promise.all([
     listInvoices(db, { month, status: view.staatus ?? undefined, search: view.otsi }, view.leht),
     invoiceCounts(db, { month, search: view.otsi }),
@@ -138,6 +141,7 @@ export default async function InvoicesPage({ searchParams }: Props) {
         ids={preview?.ids ?? []}
         first={preview?.first ?? ""}
         last={preview?.last ?? ""}
+        linked={preview?.linked ?? 0}
         summary={unbilledSummary(unbilled.map(({ payment: p }) => ({ name: p.name, amountCents: p.amountCents })))}
         ready={ready}
       >

@@ -3,6 +3,7 @@
    ConfirmPanel, the line that says what was done, and the per-row list when it is open. Colours from tokens.css only; the targets are 44 px. */
 
 .strip {
+  position: relative;
   display: grid;
   gap: 14px;
   min-width: 0;
@@ -67,8 +68,10 @@
   margin: 0;
 }
 
+/* the empty line stays in the accessibility tree (a live region must be there before it speaks) but takes no row: out of the flow, so the strip's
+   gap is not paid for it (a margin could not cancel it: a grid track does not go under 0) */
 .status:empty {
-  margin: 0;
+  position: absolute;
 }
 
 .status:focus {
@@ -88,6 +91,13 @@
 .strip > [data-uninvoiced-list]:not([hidden]) {
   padding-top: 4px;
   border-top: 1px solid var(--line);
+}
+
+/* below 900 px the admin has the phone top bar (64 px, sticky): an address that points at the strip (the overview's #arveta) leaves it a gap under the bar */
+@media (max-width: 900px) {
+  .strip {
+    scroll-margin-top: 76px;
+  }
 }
 
 @media (max-width: 640px) {

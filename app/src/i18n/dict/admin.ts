@@ -613,12 +613,16 @@ export const adminEt = {
         questionMany: "Kas koostan {n} arvet?",
         lineOne: "Arve saab numbri {first}. Õpilasele seda ei saadeta.",
         lineMany: "Iga arve saab oma numbri ({first}–{last}). Õpilastele neid ei saadeta.",
+        // a payment pays an invoice already made (its number is no part of a range): the sentence without the parenthesis
+        lineManyLinked: "Iga arve saab oma numbri. Õpilastele neid ei saadeta.",
         yesOne: "Jah, koosta 1 arve",
         yesMany: "Jah, koosta {n} arvet",
       },
       result: {
         // n ≥ 2 made ({n}, {first}–{last}); one made says `done` above
         many: "Koostatud {n} arvet: {first}–{last}.",
+        // some of them were invoices already made: no range
+        manyLinked: "Koostatud {n} arvet.",
         // some had an invoice by now ({n})
         already: "Juba arvega: {n}.",
         // {names}: the payers whose invoice was not made

@@ -193,8 +193,10 @@ const batchInput = z.object({ ids: z.array(rowId).min(1).max(BATCH_MAX) });
 /**
  * „Arveta maksed“ → „Koosta {n} arvet“ (admin UX pass B11, piece2-texts S3-l): `{ ids }` — the payments the panel listed; each gets its invoice, one
  * after the other, oldest first (server/invoices.ts createInvoicesForUnbilled). Answers what was done, as the work counted it: `{ ok: true, made,
- * already, failed, sellerMissing }` (the numbers made, how many were billed meanwhile, the payers whose invoice failed, Seaded's seller card empty);
- * the screen puts these in words. The page is refreshed when anything was made or was billed already, so „Arveta maksed“ and the list show the new state.
+ * already, failed, sellerMissing, linked }` (the numbers made, how many were billed meanwhile, the payers whose invoice failed, Seaded's seller card
+ * empty, how many of the numbers made are of invoices that were already made); the screen puts these in words. The page is refreshed when anything was
+ * made or was billed already, so „Arveta maksed“ and the list show the new state, and when the seller card turns out to be empty, so that the link
+ * „Täida Seaded → Arve andmed“ takes the place of the button the screen still had.
  * A list that is none, too long or not ids is `notFound` in the payment's words; a throw is `server`, logged by the error's class only.
  */
 export const createInvoicesForUnbilledAction = adminAction(async (_admin, input: { ids: number[] }) => {
@@ -202,7 +204,7 @@ export const createInvoicesForUnbilledAction = adminAction(async (_admin, input:
   if (!parsed.success) return { ok: false as const, error: "notFound" as const, text: adminEt.invoices.errors.notPayment };
   try {
     const result = await createInvoicesForUnbilled(getDb(), parsed.data.ids, new Date());
-    if (result.made.length > 0 || result.already > 0) refresh();
+    if (result.made.length > 0 || result.already > 0 || result.sellerMissing) refresh();
     return { ok: true as const, ...result };
   } catch (e) {
     logFailure("[invoices] the batch of unbilled payments failed", e);
