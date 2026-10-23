@@ -334,7 +334,12 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
               question={receipt ? fill(t.undoPanel.receiptQuestion, { number: v.number }) : t.undoPanel.request}
               lines={
                 receipt
-                  ? [t.undoPanel.receiptCancelled, fill(t.undoPanel.receiptSum, { x: bare(takeBackCents) }), ...(v.takeBack?.backToAwaiting ? [t.undoPanel.receiptBack] : [])]
+                  ? [
+                      t.undoPanel.receiptCancelled,
+                      // (a cap that leaves nothing to take back — an old receipt for money the online payment covers — has no sum to say)
+                      ...(takeBackCents > 0 ? [fill(t.undoPanel.receiptSum, { x: bare(takeBackCents) })] : []),
+                      ...(v.takeBack?.backToAwaiting ? [t.undoPanel.receiptBack] : []),
+                    ]
                   : undefined
               }
               yesLabel={t.undoPanel.confirm}

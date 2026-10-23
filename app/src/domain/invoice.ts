@@ -296,7 +296,7 @@ export function receiptTakeBack(
 }
 
 /** A paid online payment of a registration that no invoice names yet: it waits in „Arveta maksed“ (I1). */
-export type UninvoicedPayment ={ id: number; kind: "prepayment" | "balance" | "ecourse"; invoiceId: number | null; amountCents: number };
+export type UninvoicedPayment = { id: number; kind: "prepayment" | "balance" | "ecourse"; invoiceId: number | null; amountCents: number };
 
 /** `payments` that are paid and that no invoice of `invoices` names as its payment (invoices.payment_id: ruling R13's "invoiced"). */
 export function uninvoicedOf<P extends { id: number; status: string }>(payments: P[], invoices: { paymentId: number | null }[]): P[] {

@@ -268,9 +268,19 @@ describe("„Võta tasumine tagasi“ of a receipt asks with a ConfirmPanel (S3-
     await show(view({ ...RECEIPT, amountCents: 17500, takeBack: { cents: 5050, backToAwaiting: false } }));
     await choose("Võta tasumine tagasi");
     expect(linesOf(panel()!)[1]).toBe("Laekunud summa väheneb 50,50 €.");
+  });
+
+  test("a cap that leaves nothing to take back (a pre-B4 receipt for venue money covered by online money): the sum line is left out — \"väheneb 0 €\" would say nothing — and the rest stays", async () => {
     await show(view({ ...RECEIPT, amountCents: 17500, takeBack: { cents: 0, backToAwaiting: false } }));
     await choose("Võta tasumine tagasi");
-    expect(linesOf(panel()!)[1]).toBe("Laekunud summa väheneb 0 €.");
+    expect(text($("[data-confirm-panel] p"))).toBe("Kas võtan kviitungi MSL2026-003 tasumise tagasi?");
+    expect(linesOf(panel()!)).toEqual(["Kviitung tühistatakse (number jääb alles)."]);
+    expect(text(panel()!)).not.toContain("Laekunud summa väheneb");
+    expect(buttonsOf(panel()!)).toEqual(["Jah, võta tasumine tagasi", "Katkesta"]);
+    // (a sum of one cent is a sum)
+    await show(view({ ...RECEIPT, amountCents: 17500, takeBack: { cents: 1, backToAwaiting: false } }));
+    await choose("Võta tasumine tagasi");
+    expect(linesOf(panel()!)).toEqual(["Kviitung tühistatakse (number jääb alles).", "Laekunud summa väheneb 0,01 €."]);
   });
 
   test("where the page does not know the registration (the Arved list) the receipt's own amount is shown and the third line is left out", async () => {

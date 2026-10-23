@@ -2120,20 +2120,23 @@
         "Ava „Maksed ja arved“, vajuta „Arved“ ja vaata plokki „Arveta maksed“; kui tühi, vajuta „Jäta vahele“.",
         "Kirjuta selle kontrolli märkusesse ühe kontaktkoolituse makse maksja nimi.",
         "Ava „Registreerimised“, vajuta selle maksja nimele ja keri plokini „Arved“.",
-        "Vajuta plokis „Koosta arve“, vaata pakutud summasid ja vajuta „Katkesta“.",
-        "Vajuta makse real „Koosta arve“."
+        "Loe plokis üle kõik nupud „Koosta arve“, enne kui vajutad ühtegi.",
+        "Vajuta makse real „Koosta arve“.",
+        "Vajuta nüüd plokis üldist nuppu „Koosta arve“, vaata pakutud summasid ja vajuta „Katkesta“."
       ],
       "expect": [
         "Plokis on rida „Veebimakse … on veel arveta.“ ja selle all oma nupp „Koosta arve“.",
-        "Veebis makstud summat „Koosta arve“ uuesti ei paku, näiteks ettemaksu järel ainult „Jääk 50%“.",
+        "Kuni makse on arveta, on plokis ainult selle makse rea „Koosta arve“; üldist nuppu pole.",
         "Pärast makse rea vajutust on plokis selle makse arve märkega „Tasutud“.",
+        "Nüüd on plokis üldine „Koosta arve“ ja see pakub ainult seda, mis on veel arveta, näiteks „Jääk 50%“.",
+        "Veebis makstud summat „Koosta arve“ uuesti ei paku.",
         "„Arved“ lehe plokk „Arveta maksed“ seda makset enam ei näita."
       ],
       "why": "Veebis makstud raha ei saa teist arvet ega teist maksenõuet.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arveta-maksed",
@@ -3242,8 +3245,8 @@
       "why": "Õpilane tasub Maria koostatud arve ise ja iga euro saab täpselt ühe arve.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "konto-arve-pdf",
@@ -4475,7 +4478,7 @@
         "Ava „Tagasiside“.",
         "Vajuta lehe üleval nupul, millel on Proov 1 koolituse nimi.",
         "Vajuta loendis nimele Proov 1.",
-        "Ava „Registreerimised“ ja Proov 1 paneel.",
+        "Ava „Registreerimised“, Proov 1 paneel ja voldirida „Tagasiside“.",
         "Ava „Õpilased“ ja Proov 1 paneel ning vaata plokki „Tagasiside“."
       ],
       "expect": [
@@ -4484,14 +4487,14 @@
         "Nuppude reas on ka „Kõik koolitused“.",
         "Koolituse valikul on „Keskmine hinne: … / 10“ ja iga vastusevariandi arv.",
         "Paneeli üleval on nimi Proov 1 ja e-post, all kõik vastused.",
-        "Registreeringu paneelis on plokk „Tagasiside“.",
+        "Registreeringu paneelis on voldirida „Tagasiside“; suletuna näitab see kokkuvõtet „Saadetud …“.",
         "Õpilase paneeli plokis „Tagasiside“ on rida „Lubab avaldada: Ootab kinnitust“."
       ],
       "why": "Maria loeb vastused ühest kohast.",
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "2026-10-18T16:48:36.596Z"
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-arvustus-toend",
