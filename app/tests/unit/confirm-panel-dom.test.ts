@@ -118,17 +118,40 @@ describe("ConfirmPanel", () => {
     expect(yes().hasAttribute("aria-disabled")).toBe(false);
   });
 
-  it("while busy, yes is aria-disabled and does nothing; „Katkesta“ still works", async () => {
+  it("while busy, yes is aria-disabled and does nothing; so is „Katkesta“ (the action is running, there is nothing to step back from)", async () => {
     const onYes = vi.fn();
     const onCancel = vi.fn();
     await show({ onYes, onCancel, busy: true });
     expect(yes().getAttribute("aria-disabled")).toBe("true");
     expect(yes().disabled).toBe(false); // aria-disabled keeps the button focusable
+    expect(no().getAttribute("aria-disabled")).toBe("true");
+    expect(no().disabled).toBe(false);
     await click(yes());
     await click(yes());
     expect(onYes).not.toHaveBeenCalled();
     await click(no());
+    await click(no());
+    expect(onCancel).not.toHaveBeenCalled();
+    // and when the action is over, both work again
+    await show({ onYes, onCancel, busy: false });
+    expect(no().hasAttribute("aria-disabled")).toBe(false);
+    await click(no());
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("while busy, Esc does not call onCancel either, but the panel still takes it: the drawer round it does not close under the running action", async () => {
+    const onCancel = vi.fn();
+    const outer = vi.fn();
+    document.addEventListener("keydown", outer);
+    await show({ onCancel, busy: true });
+    const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    await act(async () => void panel().dispatchEvent(event));
+    await key(yes(), "Escape");
+    await key(no(), "Escape");
+    document.removeEventListener("keydown", outer);
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(outer).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("the buttons are type=button (the panel may sit inside a form)", async () => {

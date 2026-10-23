@@ -239,6 +239,12 @@ describe("„Tühista arve“ asks with a ConfirmPanel (P-11)", () => {
     await click(yes);
     await click(yes);
     expect(actions.cancelInvoiceAction).toHaveBeenCalledTimes(1);
+    // the cancelling is running and completes whatever the panel does: „Katkesta“ and Esc leave the question standing
+    const no = all("button", panel()!).find((b) => text(b) === "Katkesta") ?? null;
+    expect(no?.getAttribute("aria-disabled")).toBe("true");
+    await click(no);
+    await press(panel()!, "Escape");
+    expect(panel()).not.toBeNull();
     await act(async () => finish({ ok: true }));
     await settle();
     expect(status()).toBe("Arve on tühistatud.");

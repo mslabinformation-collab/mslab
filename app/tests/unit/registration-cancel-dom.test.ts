@@ -160,6 +160,11 @@ describe("the answer", () => {
     await click(yes);
     await click(yes);
     expect(actions.cancelRegistration).toHaveBeenCalledTimes(1);
+    // the cancelling is running and completes whatever the panel does: „Katkesta“ and Esc leave the question standing, and it says so (aria-disabled)
+    expect(buttonOf("Katkesta")!.getAttribute("aria-disabled")).toBe("true");
+    await click(buttonOf("Katkesta"));
+    await act(async () => void panel()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(panel()).not.toBeNull();
     await act(async () => finish({ ok: true }));
     await settle();
   });

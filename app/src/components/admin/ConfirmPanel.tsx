@@ -11,10 +11,11 @@ import styles from "./ConfirmPanel.module.css";
  * changes in public, what cannot be undone), and has two buttons: `yesLabel` (always „Jah, {tegusõna}[ {n} …]“) and „Katkesta“.
  *
  * - `tone` "danger": the yes button is the red outline; "send": the ink pill.
- * - `busy`: the action is running. Yes is aria-disabled (it stays focusable, so the focus is not lost) and does nothing; the parent says
- *   in `yesLabel` what is happening, if it wants to.
- * - „Katkesta“ and Esc call `onCancel`; the parent then shows its trigger again and focuses it. Esc goes no further: a drawer round the
- *   panel stays open (the next Esc closes it).
+ * - `busy`: the action is running. Yes and „Katkesta“ are aria-disabled (they stay focusable, so the focus is not lost) and do nothing: the action
+ *   completes whatever the panel does, and a closed panel would read as if it had been stopped. Esc does nothing either, but is still taken (a drawer
+ *   round the panel stays open). The parent says in `yesLabel` what is happening, if it wants to.
+ * - „Katkesta“ and Esc call `onCancel` (when not busy); the parent then shows its trigger again and focuses it. Esc goes no further: a drawer round
+ *   the panel stays open (the next Esc closes it).
  */
 export function ConfirmPanel({
   question,
@@ -53,7 +54,7 @@ export function ConfirmPanel({
         // the panel's own question: not the dialog's (a drawer round it) nor the page's
         e.preventDefault();
         e.stopPropagation();
-        onCancel();
+        if (!busy) onCancel();
       }}
     >
       <p id={qid} className={styles.question}>
@@ -77,7 +78,14 @@ export function ConfirmPanel({
         >
           {yesLabel}
         </button>
-        <button type="button" className={`${ui.btn} ${ui.secondary}`} onClick={onCancel}>
+        <button
+          type="button"
+          className={`${ui.btn} ${ui.secondary}`}
+          aria-disabled={busy || undefined}
+          onClick={() => {
+            if (!busy) onCancel();
+          }}
+        >
           {adminEt.common.cancel}
         </button>
       </div>
