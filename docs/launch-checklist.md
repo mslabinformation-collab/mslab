@@ -341,6 +341,6 @@ From the final review of phase 2a (04.10.2026); the merge-blocking items were fi
   - A cancelled registration cannot be put back from the drawer (the status pills are „Ootab ettemaksu“ and „Kinnitatud“ only).
   - „Montonios ↗“ opens the Partner System's home, not the order: Montonio has no page for one order (Rempire's finding of 24.09). The order id is copied for Orders' search.
   - Hindamine's rows no longer name the course (the prototype's meta has none), so a student with work waiting in two courses reads as two alike rows until one is opened.
-  - A new online payment for a registration marks the older open order „Asendatud“ even when the new one is refused for want of a seat; the older order can still be paid and settles, but it does not show in the Raha card then (the money is safe).
+  - A new online payment for a registration marks the older open order „Asendatud“ before Montonio is called, so when Montonio itself refuses the new order, the older order stays „Asendatud“: it can still be paid and settles, but it does not show in the Raha card then (the money is safe). A new order refused for want of a seat replaces nothing (the seat check comes first).
   - „Hinda“ is one button for an access with both a practical work and a test waiting: the practical work comes first, and the test is reached through „Testi katsed“.
   - Accepted piece-wide: the conflict notice of an autosaved field is the status chip with „Taasta minu tekst“ only; it does not show the other device's text, because no approved text frames it.
