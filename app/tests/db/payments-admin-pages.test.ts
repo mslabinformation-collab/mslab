@@ -116,9 +116,11 @@ test("Maksed: the filter pills in Maria's words, each with its own address; the 
     ["Ootel kontrollil", "/admin/maksed?staatus=kontroll"],
   ]);
   expect(nav).toMatch(/aria-current="true"[^>]*>Ootel kontrollil</);
-  expect(refs(html)).toEqual([refsOf.balance]);
+  // B14: the held one and the one the bank voided after it was paid, newest first (by the day it was paid)
+  expect(refs(html)).toEqual([refsOf.voided, refsOf.balance]);
   expect(refs(await render(PaymentsPage, { staatus: "makstud" }))).toEqual([refsOf.ecourse, refsOf.prepayment]);
-  expect(refs(await render(PaymentsPage, { staatus: "ebaonnestunud" }))).toEqual([refsOf.voided]);
+  expect(refs(await render(PaymentsPage, { staatus: "ebaonnestunud" }))).toEqual([]); // (the voided one moved to „Ootel kontrollil“: this one was paid)
+  expect(await render(PaymentsPage, { staatus: "ebaonnestunud" })).toContain("Selle valikuga makseid pole.");
   expect(refs(await render(PaymentsPage, { staatus: "tagastatud" }))).toEqual([refsOf.refunded]);
   expect(refs(await render(PaymentsPage, { staatus: "midagi-muud", leht: "x" }))).toHaveLength(6); // an unknown filter is "Kõik", an unknown page is page 1
   for (const own of ["constructor", "__proto__", "toString", "hasOwnProperty"]) expect(refs(await render(PaymentsPage, { staatus: own })), own).toHaveLength(6); // not a name of the object's prototype

@@ -745,10 +745,11 @@ test.describe("signed in", () => {
     await expect(page).toHaveURL(/\?staatus=kontroll$/);
     await expect(filter.getByRole("link", { name: "Ootel kontrollil" })).toHaveAttribute("aria-current", "true");
     await expect(row(p.held)).toBeVisible();
+    await expect(row(p.voided)).toBeVisible(); // B14: the bank's reversal after it was paid is counted with the ones to check in Montonio
     await expect(row(p.paid)).toHaveCount(0);
     await filter.getByRole("link", { name: "Ebaõnnestunud" }).click();
     await expect(page).toHaveURL(/\?staatus=ebaonnestunud$/);
-    await expect(row(p.voided)).toBeVisible(); // the bank's reversal is a failure that carries the note
+    await expect(row(p.voided)).toHaveCount(0); // (it is no longer a plain failure)
     await expect(row(p.held)).toHaveCount(0);
     await page.goto("/admin/maksed?staatus=makstud");
     await expect(row(p.paid)).toBeVisible();

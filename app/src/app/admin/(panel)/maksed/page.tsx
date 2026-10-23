@@ -7,8 +7,7 @@ import { PAYMENT_TONE, paymentMethodText, paymentStatusLabel } from "@/component
 import { adminTitle } from "@/components/admin/sections";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
-import { pagePayments } from "@/db/queries/payments";
-import type { PaymentStatus } from "@/db/schema";
+import { pagePayments, type PaymentFilter } from "@/db/queries/payments";
 import { formatEUR } from "@/domain/money";
 import { parsePage } from "@/domain/paging";
 import { needsCheck } from "@/domain/payments";
@@ -25,24 +24,25 @@ type Search = Record<string, string | string[] | undefined>;
 type Props = { searchParams: Promise<Search> };
 
 // Addresses: ?staatus=makstud|pooleli|ebaonnestunud|tagastatud|kontroll (the filter), ?leht=<n> (50 a page). A new filter starts at page 1.
-// A replaced order („Asendatud“, B22) has no filter of its own: it shows under „Kõik“ only (P-8), so no address names it (FilterStatus).
-type FilterStatus = Exclude<PaymentStatus, "replaced">;
-const STATUS_PARAM: Record<string, FilterStatus> = { makstud: "paid", pooleli: "pending", ebaonnestunud: "failed", tagastatud: "refunded", kontroll: "held" };
-const PARAM_OF: Record<FilterStatus, string> = { paid: "makstud", pending: "pooleli", failed: "ebaonnestunud", refunded: "tagastatud", held: "kontroll" };
+// The pills are the words of the address (db/queries/payments.ts PaymentFilter, B14): „Ootel kontrollil“ (kontroll) holds what Maria must look at in
+// Montonio, the payments voided after they were paid („Tühistatud pangas“) too; „Ebaõnnestunud“ only those never paid. A replaced order („Asendatud“,
+// B22) has no pill of its own: it shows under „Kõik“ only (P-8), so no address names it.
+type Pill = Exclude<PaymentFilter, "all">;
+const PILLS: readonly Pill[] = ["makstud", "pooleli", "ebaonnestunud", "tagastatud", "kontroll"];
 
-type View = { staatus: FilterStatus | null; leht: number };
+type View = { staatus: Pill | null; leht: number };
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
 
 function parse(sp: Search): View {
   const staatus = one(sp.staatus);
-  // (own keys only: "constructor" or "__proto__" in the address must not read the object's prototype)
-  return { staatus: staatus && Object.hasOwn(STATUS_PARAM, staatus) ? STATUS_PARAM[staatus] : null, leht: parsePage(sp.leht) };
+  // (a name from the list only: "constructor" or "__proto__" in the address is no pill)
+  return { staatus: PILLS.find((p) => p === staatus) ?? null, leht: parsePage(sp.leht) };
 }
 
 function href(view: View): string {
   const q = new URLSearchParams();
-  if (view.staatus) q.set("staatus", PARAM_OF[view.staatus]);
+  if (view.staatus) q.set("staatus", view.staatus);
   if (view.leht > 1) q.set("leht", String(view.leht));
   const s = q.toString();
   return `/admin/maksed${s ? `?${s}` : ""}`;
@@ -58,15 +58,15 @@ function href(view: View): string {
 export default async function PaymentsPage({ searchParams }: Props) {
   await requireAdmin();
   const view = parse(await searchParams);
-  const list = await pagePayments(getDb(), view.staatus ?? "all", view.leht);
+  const list = await pagePayments(getDb(), { filter: view.staatus ?? "all" }, view.leht);
   const t = adminEt.payments;
-  const filters: { key: FilterStatus | null; label: string }[] = [
+  const filters: { key: Pill | null; label: string }[] = [
     { key: null, label: t.filter.all },
-    { key: "paid", label: t.filter.paid },
-    { key: "pending", label: t.filter.pending },
-    { key: "failed", label: t.filter.failed },
-    { key: "refunded", label: t.filter.refunded },
-    { key: "held", label: t.filter.held },
+    { key: "makstud", label: t.filter.paid },
+    { key: "pooleli", label: t.filter.pending },
+    { key: "ebaonnestunud", label: t.filter.failed },
+    { key: "tagastatud", label: t.filter.refunded },
+    { key: "kontroll", label: t.filter.held },
   ];
 
   return (

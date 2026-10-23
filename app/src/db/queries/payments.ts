@@ -1,8 +1,8 @@
-import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lte, ne, not, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, ilike, inArray, isNotNull, isNull, lte, ne, not, or, sql, type SQL } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { ContractSnapshot } from "@/domain/contract";
 import { FINANCING_ATTEMPT_MS, isHirePurchase } from "@/domain/financing";
-import { PAGE_SIZE } from "@/domain/paging";
+import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
 import { orderReference } from "@/domain/payments";
 import { SEAT_HOLD_MS } from "@/domain/sessions";
 import type { I18n } from "@/i18n/field";
@@ -11,6 +11,7 @@ import { dbErrorCode } from "../safe-error";
 import * as schema from "../schema";
 import { courses, courseSessions, payments, registrations, type Payment, type PaymentKind, type PaymentStatus } from "../schema";
 import { paged, type Paged } from "./paged";
+import { NEEDS_CHECK } from "./payment-checks";
 import { lockRegistration } from "./seats";
 
 // The payments table (phase 2b, spec 5.1): one row per online payment attempt. The rows are written here and by server/payments/settle.ts
@@ -344,8 +345,35 @@ export async function holdsEnded(db: Db, since: Date, now: Date): Promise<number
 /** A payment with what it was for: the course's title and slug (null when the course is gone) and its registration's session day. */
 export type PaymentRow = Payment & { courseTitle: I18n | null; courseSlug: string | null; startsAt: Date | null };
 
-/** "Maksed"'s filter: every payment, or one status. */
-export type PaymentFilter = "all" | PaymentStatus;
+/**
+ * "Maksed"'s pills, as the words of the address (?staatus=): every payment, or one pill. Each payment is under exactly one pill (admin UX pass
+ * B9, B14): makstud (paid), pooleli (pending), ebaonnestunud (failed and never paid), tagastatud (refunded) and kontroll („Ootel kontrollil“:
+ * the ones Maria must look at in Montonio, NEEDS_CHECK — held, or voided by the bank after they were paid, „Tühistatud pangas“). A replaced order
+ * („Asendatud“, B22) is under none of them, only under all.
+ */
+export type PaymentFilter = "all" | "makstud" | "pooleli" | "ebaonnestunud" | "tagastatud" | "kontroll";
+
+/** The SQL of each pill (none for all). The list and the counts use these very conditions, so a pill's count is the number of rows it shows. */
+const FILTER_WHERE: Record<PaymentFilter, SQL | undefined> = {
+  all: undefined,
+  makstud: eq(payments.status, "paid"),
+  pooleli: eq(payments.status, "pending"),
+  ebaonnestunud: and(eq(payments.status, "failed"), isNull(payments.paidAt)),
+  tagastatud: eq(payments.status, "refunded"),
+  kontroll: NEEDS_CHECK,
+};
+
+/**
+ * The search of Maksed (A6, B7): the payer's name or e-mail address, Montonio's id (the order's uuid) or Maria's reference (MSLAB-M<id>) holds the
+ * text — ILIKE, any case, with LIKE's wildcards and escape character escaped (containsPattern), so it is taken literally. A payment has no phone
+ * number of its own to search.
+ */
+function paymentSearch(search: string | undefined) {
+  const q = parseSearch(search);
+  if (!q) return undefined;
+  const text = containsPattern(q);
+  return or(ilike(payments.name, text), ilike(payments.email, text), ilike(payments.providerUuid, text), ilike(payments.reference, text));
+}
 
 const rowFields = { payment: payments, courseTitle: courses.title, courseSlug: courses.slug, startsAt: courseSessions.startsAt };
 
@@ -367,15 +395,38 @@ const toRow = (r: { payment: Payment; courseTitle: I18n | null; courseSlug: stri
  */
 const listedAt = sql`coalesce(${payments.paidAt}, ${payments.createdAt})`;
 
-/** One page of "Maksed": newest first by listedAt, `size` (50) a page, all or one status. */
-export async function pagePayments(db: Db, filter: PaymentFilter, page: number, size: number = PAGE_SIZE): Promise<Paged<PaymentRow>> {
-  const where = filter === "all" ? undefined : eq(payments.status, filter);
+/** What "Maksed" is asked for: a pill (`filter`) and the text typed in the search (`search`; none: every payment of the pill). */
+export type PaymentQuery = { filter: PaymentFilter; search?: string };
+
+/** One page of "Maksed": newest first by listedAt, `size` (50) a page, the payments of one pill that the search finds. */
+export async function pagePayments(db: Db, query: PaymentQuery, page: number, size: number = PAGE_SIZE): Promise<Paged<PaymentRow>> {
+  const where = and(FILTER_WHERE[query.filter], paymentSearch(query.search));
   return paged(
     page,
     size,
     async () => Number((await db.select({ n: count() }).from(payments).where(where))[0].n),
     async (range) => (await rowQuery(db).where(where).orderBy(desc(listedAt), desc(payments.id)).limit(range.limit).offset(range.offset)).map(toRow),
   );
+}
+
+/**
+ * The counts on the pills of "Maksed" (B9, B14): under the search, as many payments as each pill then shows (the pill chosen now does not
+ * narrow the others). One query; the conditions are the list's own (FILTER_WHERE).
+ */
+export async function paymentCounts(db: Db, query: { search?: string } = {}): Promise<Record<PaymentFilter, number>> {
+  const countOf = (where: SQL | undefined) => (where ? sql<number>`count(*) filter (where ${where})` : sql<number>`count(*)`).mapWith(Number);
+  const [row] = await db
+    .select({
+      all: countOf(FILTER_WHERE.all),
+      makstud: countOf(FILTER_WHERE.makstud),
+      pooleli: countOf(FILTER_WHERE.pooleli),
+      ebaonnestunud: countOf(FILTER_WHERE.ebaonnestunud),
+      tagastatud: countOf(FILTER_WHERE.tagastatud),
+      kontroll: countOf(FILTER_WHERE.kontroll),
+    })
+    .from(payments)
+    .where(paymentSearch(query.search));
+  return row;
 }
 
 /**

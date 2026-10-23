@@ -3086,6 +3086,7 @@
         "Vaata Proov 9 rida ja Proov 10 pangalingiga makstud rida veerus „Makseviis“.",
         "Vajuta filtril „Kõik“ ja vaata Proov 10 järelmaksu rida, mis on „Asendatud“.",
         "Vajuta filtritel „Ebaõnnestunud“ ja „Pooleli“ ning vaata rida, mille makse katkestati testpangas (Proov 2 või Proov 13).",
+        "Vajuta filtril „Ootel kontrollil“ ja loe iga rea staatust.",
         "Ava Proov 9 registreeringu paneel ja vaata plokki „Veebimaksed“."
       ],
       "expect": [
@@ -3093,6 +3094,7 @@
         "Pangalingiga tasutud Proov 10 makse real on makseviis „Pangalink …“.",
         "Asendatud järelmaksu real on makseviis „Järelmaks (Inbank)“, mitte tühi.",
         "Katkestatud pangamakse real on makseviis „Pangalink“, ükskõik kas pooleli või ebaõnnestunud.",
+        "Filtri „Ootel kontrollil“ all on ka read „Tühistatud pangas“, kui neid on; filtri „Ebaõnnestunud“ all neid pole.",
         "Paneeli plokis „Veebimaksed“ on sama makse samuti märgitud „Järelmaks (Inbank)“.",
         "Makseviisi näitavad ainult pärast uuendust tehtud read; varem tehtud ridade „Makseviis“ on tühi, see pole viga."
       ],
