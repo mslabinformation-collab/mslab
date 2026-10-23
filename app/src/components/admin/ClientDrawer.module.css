@@ -1,6 +1,6 @@
-/* Õpilased: a student's drawer and the forms of the list (Lisa õpilane, Ava ligipääs, Lõpeta ligipääs). The drawer's
-   sections are the registration drawer's label + value rows (registrations.module.css .dl) as a list; buttons, tags,
-   fields and the notice come from ui.module.css. Colours from tokens.css only. */
+/* Õpilased: a student's drawer (the header, the „Koolitused“ cards and the folded rows: the A5 block at the end) and the forms of the list („Lisa õpilane +“, „Ava
+   ligipääs“). The classes before it — the label + value rows, the confirming step, the dates — are shared with the lesson drawer, the certificate's „Paranda nimi“
+   and „Ava test uuesti“; buttons, tags, fields and the notice come from ui.module.css. Colours from tokens.css only. */
 
 .detail {
   display: grid;
