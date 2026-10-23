@@ -199,7 +199,7 @@ export default async function PaymentsPage({ searchParams }: Props) {
                         </span>
                       </td>
                       <td data-label={t.col.provider} className={styles.montonioCell}>
-                        {p.providerUuid ? <MontonioLink href={partner} uuid={p.providerUuid} /> : adminEt.common.none}
+                        {p.providerUuid ? <MontonioLink href={partner} uuid={p.providerUuid} name={p.name} /> : adminEt.common.none}
                       </td>
                     </tr>
                   );

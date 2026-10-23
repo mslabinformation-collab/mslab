@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { expect, test } from "vitest";
 import { listPaymentsOf, pagePayments, paymentCounts, type PaymentFilter } from "@/db/queries/payments";
-import { NEEDS_CHECK } from "@/db/queries/payment-checks";
+import { adminCounts } from "@/db/queries/admin";
+import { overviewQueue } from "@/db/queries/overview";
 import { clients, courses, payments, registrations } from "@/db/schema";
 import { needsCheck } from "@/domain/payments";
 import { clientDetail } from "@/server/admin-clients";
@@ -123,11 +124,27 @@ test("B14: each state is under exactly one pill; a replaced order is under „K�
   expect((await idsOf(db, "all")).length).toBe(8);
 });
 
-test("B14: „Ootel kontrollil“ is the list the overview counts: the same rows as NEEDS_CHECK", async () => {
-  const { db } = await everyState();
-  const ids = (await db.select({ id: payments.id }).from(payments).where(NEEDS_CHECK)).map((r) => r.id).sort((a, b) => a - b);
-  expect((await idsOf(db, "kontroll")).sort((a, b) => a - b)).toEqual(ids);
-  expect((await paymentCounts(db)).kontroll).toBe(ids.length);
+test("B14: „Ootel kontrollil“ shows what the overview's „Makse ootel kontrollil“ counts and what the menu badge counts of it", async () => {
+  const { db, rows } = await everyState();
+  const now = new Date("2026-10-23T09:00:00Z");
+  const queue = await overviewQueue(db, now);
+  const { paymentsAttention } = await adminCounts(db, "maria@example.test", now);
+  const counts = await paymentCounts(db);
+  // the overview row opens /admin/maksed?staatus=kontroll: its count is that list's, its rows are that list's (held, with a reason, voided after it was paid)
+  expect(queue.check.count).toBe(3);
+  expect(counts.kontroll).toBe(queue.check.count);
+  expect((await pagePayments(db, { filter: "kontroll" }, 1)).total).toBe(queue.check.count);
+  expect(await idsOf(db, "kontroll")).toEqual([rows.double.id, rows.held.id, rows.voided.id]);
+  // the menu badge of „Maksed ja arved“ is those, plus the paid ones no invoice names (the Arved tab's „Arveta maksed“)
+  expect(queue.unbilled.count).toBe(1);
+  expect(paymentsAttention).toBe(counts.kontroll + queue.unbilled.count);
+  // a payment voided after it was paid moves the three together
+  await db.update(payments).set({ status: "failed", paidAt: at(2) }).where(eq(payments.id, rows.pending.id));
+  const after = await paymentCounts(db);
+  expect(after.kontroll).toBe(4);
+  expect(after.pooleli).toBe(0);
+  expect((await overviewQueue(db, now)).check.count).toBe(after.kontroll);
+  expect((await adminCounts(db, "maria@example.test", now)).paymentsAttention).toBe(after.kontroll + 1);
 });
 
 test("B14: the counts are the rows each pill shows, with and without a search (B9)", async () => {

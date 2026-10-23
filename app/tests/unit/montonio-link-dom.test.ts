@@ -1,9 +1,12 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MontonioLink } from "@/components/admin/MontonioLink";
 import { adminEt } from "@/i18n/dict/admin";
+import { fill } from "@/i18n/format";
 
 // „Montonios ↗“ (admin UX pass, piece 2, A6 Maksed; Dim 22.10): Montonio has no page for one order, so the link opens the Partner System (a new tab)
 // and copies the order id at the same press; a polite status line „Montonio id kopeeritud.“ says so. If the clipboard is refused (or there is none),
@@ -20,7 +23,8 @@ const UUID = "9c1f6d1a-6a53-4c0e-8f1e-4f0b0f3a1b2c";
 let container: HTMLDivElement;
 let root: Root;
 
-const draw = () => act(async () => root.render(createElement(MontonioLink, { href: PARTNER, uuid: UUID })));
+const NAME = "Kati Tamm";
+const draw = () => act(async () => root.render(createElement(MontonioLink, { href: PARTNER, uuid: UUID, name: NAME })));
 const link = () => container.querySelector("a")!;
 const status = () => container.querySelector<HTMLElement>("[role=status]")!;
 /** A primary-button click on the link, as the browser makes it; `defaultPrevented` tells whether anything stopped the link from opening. */
@@ -67,10 +71,13 @@ describe("MontonioLink", () => {
     expect(link().hasAttribute("data-montonio-link")).toBe(true);
   });
 
-  it("the arrow is decoration: the link is named „Montonios“", async () => {
+  it("the arrow is decoration; the link's name is its visible words and the payer's, so fifty of them on a page tell one from another", async () => {
     clipboard(undefined);
     await draw();
     expect(link().querySelector("[aria-hidden=true]")!.textContent).toBe("↗");
+    expect(link().getAttribute("aria-label")).toBe("Montonios ↗ — Kati Tamm");
+    expect(link().getAttribute("aria-label")).toBe(fill(adminEt.payments.montonioFor, { name: NAME }));
+    expect(link().getAttribute("aria-label")!.startsWith(link().textContent!)).toBe(true); // (the visible text is the start of the name)
   });
 
   it("one press copies the order id and the link still opens (the press is not stopped); „Montonio id kopeeritud.“ is said politely", async () => {
@@ -84,6 +91,25 @@ describe("MontonioLink", () => {
     expect(copied).toEqual([UUID]);
     expect(status().textContent).toBe("Montonio id kopeeritud.");
     expect(status().textContent).toBe(adminEt.payments.montonioCopied);
+  });
+
+  it("a middle-click (it opens the tab too) copies the order id as well; the right button does not", async () => {
+    const copied: string[] = [];
+    clipboard(async (text) => void copied.push(text));
+    await draw();
+    const aux = (button: number) => act(async () => void link().dispatchEvent(new MouseEvent("auxclick", { bubbles: true, cancelable: true, button })));
+    await aux(2);
+    expect(copied).toEqual([]);
+    expect(status().textContent).toBe("");
+    await aux(1);
+    expect(copied).toEqual([UUID]);
+    expect(status().textContent).toBe("Montonio id kopeeritud.");
+  });
+
+  it("the empty status line stays in the page (a region that appears already filled is announced unreliably): its stylesheet never hides it", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/MontonioLink.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).not.toMatch(/display:\s*none/);
+    expect(css).toMatch(/\.copied:empty\s*\{\s*margin:\s*0;?\s*\}/);
   });
 
   it("the line goes away by itself, and comes again with the next press", async () => {

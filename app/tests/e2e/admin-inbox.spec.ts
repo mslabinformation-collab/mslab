@@ -782,6 +782,52 @@ test.describe("signed in", () => {
     await expect(row(p.paid)).toBeVisible();
   });
 
+  test("payments: the Maksed phone card at 375 × 812 — a held row with its reason and a very long name, the copied line: no sideways scroll, every target 44 px, everything inside the screen", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(!isMobile, "the phone project only");
+    const f = await fixtures(info.project.name);
+    const p = await insertAdminPayments(f);
+    // the worst row there is: held with a check reason (two tags: „Ootel kontrollil“ and „Topeltmakse — tagasta“), a name of 45 letters with no place to break
+    const longName = "Pneumonoultramicroscopicsilicovolcanoconiosis";
+    await onLocalDb((sql) => sql`update payments set check_reason = 'double', name = ${longName} where reference = ${p.held}`, { marksPages: false });
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await context.route("https://sandbox-partner.montonio.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<title>Partner</title><p>Partner System</p>" }));
+    await signIn(page, context, visitorIp);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/admin/maksed?otsi=${encodeURIComponent(f.registration.email)}`);
+    await adminReady(page);
+    const row = (reference: string) => page.locator(`tr[data-payment="${reference}"]`);
+    await expect(row(p.held)).toBeVisible();
+    await expect(row(p.held).locator("[data-payment-check]")).toHaveText("Topeltmakse — tagasta");
+    await expect(row(p.held)).toContainText(longName.slice(0, 12));
+    await expect(row(p.voided).locator("[data-payment-check]")).toHaveText("Kontrolli Montonios");
+    // every part of every card lies inside the 375 px screen, and nothing makes the page wider
+    const outside = () =>
+      page.evaluate(() =>
+        Array.from(document.querySelectorAll("tr[data-payment] *"))
+          .map((e) => ({ e, r: e.getBoundingClientRect() }))
+          .filter(({ r }) => r.width > 0 && (r.left < -0.5 || r.right > window.innerWidth + 0.5))
+          .map(({ e }) => e.outerHTML.slice(0, 100)),
+      );
+    expect(await outside()).toEqual([]);
+    expect(await noOverflow(page)).toBe(true);
+    expect(await smallTargets(page.locator("main"))).toEqual([]);
+    // the card keeps its parts in the card (the sum at the right, the tags and the hint under the line)
+    const card = (await row(p.held).boundingBox())!;
+    for (const selector of ["[data-payment-meta]", "[data-payment-check]", "[data-montonio-link]"]) {
+      const b = (await row(p.held).locator(selector).first().boundingBox())!;
+      expect(b.x, selector).toBeGreaterThanOrEqual(card.x - 1);
+      expect(b.x + b.width, selector).toBeLessThanOrEqual(card.x + card.width + 1);
+    }
+    // „Montonio id kopeeritud.“ appears under the link: still inside, still no scroll, and the target stays 44 px
+    const [tab] = await Promise.all([context.waitForEvent("page"), row(p.held).locator("[data-montonio-link]").click()]);
+    await tab.close();
+    await page.bringToFront();
+    await expect(row(p.held).locator("[data-montonio-copied]")).toHaveText("Montonio id kopeeritud.");
+    expect(await outside()).toEqual([]);
+    expect(await noOverflow(page)).toBe(true);
+    expect(await smallTargets(page.locator("main"))).toEqual([]);
+  });
+
   test("payments: the registration's drawer lists its online payments in the Raha card; „Lisa laekumine“ adds money beside them", async ({ page, context, visitorIp }, info) => {
     const f = await fixtures(info.project.name);
     const p = await insertAdminPayments(f);

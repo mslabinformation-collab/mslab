@@ -433,6 +433,8 @@ export const adminEt = {
     // the Montonio id as a link (Dim 22.10): „Montonios ↗“ (the arrow is the component's) opens the Partner System and copies the order id; the line says the copy was made
     montonio: "Montonios",
     montonioCopied: "Montonio id kopeeritud.",
+    // the link's name for a screen reader: its visible words and the payer's, so the fifty links of a page tell one from another ({name} the payer)
+    montonioFor: "Montonios ↗ — {name}",
     courseGone: "Koolitus on kustutatud",
     // under "Laekunud" in a registration's drawer
     online: "Veebimaksed",

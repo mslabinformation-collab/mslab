@@ -177,6 +177,7 @@ describe("Maksed (phase 2b, spec 8): Maria's words", () => {
     expect(t.searchPlaceholder).toBe("Otsi nime, e-posti või Montonio id järgi"); // piece 2 texts S3-m
     expect([t.things, t.open, t.openRegistration, t.openStudent]).toEqual(["makseid", "Ava {name}", "Ava registreering →", "Ava õpilane →"]);
     expect([t.montonio, t.montonioCopied]).toEqual(["Montonios", "Montonio id kopeeritud."]); // (the arrow is the component's)
+    expect(t.montonioFor).toBe(`${t.montonio} ↗ — {name}`); // (the link's name: its visible text and the payer's, no other words)
     expect(t.lead).toBe("Veebimaksed Montonio kaudu, uuemad eespool. Tagastused tehakse Montonio halduses; pangaülekanded märgid registreerimise juures nagu varem.");
     expect(t.filter).toEqual({ all: "Kõik", paid: "Makstud", pending: "Pooleli", failed: "Ebaõnnestunud", refunded: "Tagastatud", held: "Ootel kontrollil" });
     // replaced (B22, README §5): „Asendatud“, with no filter of its own (P-8: under „Kõik“ only)

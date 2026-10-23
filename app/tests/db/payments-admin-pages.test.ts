@@ -239,6 +239,11 @@ test("Maksed: the Montonio id is „Montonios ↗“ — a link to the Partner S
   expect(prepayment).toContain('target="_blank"');
   expect(prepayment).toContain('rel="noopener"');
   expect(prepayment).toContain('title="uuid-prepayment-0001"');
+  // its name for a screen reader: the visible words and the payer's (the page has one such link a row)
+  expect(prepayment).toContain('aria-label="Montonios ↗ — Kati Tamm"');
+  expect([...html.matchAll(/<a [^>]*data-montonio-link[^>]*aria-label="([^"]*)"|<a [^>]*aria-label="([^"]*)"[^>]*data-montonio-link/g)].map((m) => m[1] ?? m[2]).sort()).toEqual(
+    ["Juhan Kask", "Kati Tamm", "Kati Tamm", "Kati Tamm", "Liis Mets", "Mari Kask"].map((n) => `Montonios ↗ — ${n}`),
+  );
   expect(row(html, refsOf.prepayment)).toMatch(/data-label="Montonio id"[^>]*>[\s\S]*Montonios <span aria-hidden="true">↗<\/span>/);
   expect(row(html, refsOf.prepayment)).toContain('role="status"');
   // the order's id is no longer text on the page (the title and the clipboard have it)

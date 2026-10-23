@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { adminEt } from "@/i18n/dict/admin";
+import { fill } from "@/i18n/format";
 import styles from "./MontonioLink.module.css";
 
 /** How long „Montonio id kopeeritud.“ stays on the screen. */
@@ -14,10 +15,14 @@ export const COPIED_MS = 4000;
  * kopeeritud.“ — only when the copy was made. The press itself is never stopped: if the clipboard is refused, missing (an old browser) or throws,
  * the link still opens and nothing untrue is said; the id stays readable in the link's `title`.
  *
- * The status line is in the page before anything is said (an empty `role="status"`), so a screen reader hears what is put into it. The row of a
- * list is a link as a whole (ListRows); this link is a control of its own, so the press is its own and does not open the row.
+ * A click and a middle-click copy (both open the tab); the context menu's „Open in new tab“ and a key-press that opens it elsewhere do not (the
+ * browser gives the page no event for them), so the id is also in the title.
+ *
+ * The status line is in the page before anything is said (an empty `role="status"`, never hidden), so a screen reader hears what is put into it.
+ * The link's accessible name is its visible words and the payer's `name` („Montonios ↗ — Kati Tamm“): a page of fifty rows has fifty of them. The
+ * row of a list is a link as a whole (ListRows); this link is a control of its own, so the press is its own and does not open the row.
  */
-export function MontonioLink({ href, uuid }: { href: string; uuid: string }) {
+export function MontonioLink({ href, uuid, name }: { href: string; uuid: string; name: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);
@@ -54,7 +59,20 @@ export function MontonioLink({ href, uuid }: { href: string; uuid: string }) {
 
   return (
     <>
-      <a className={styles.link} href={href} target="_blank" rel="noopener" title={uuid} data-montonio-link="" onClick={copy}>
+      <a
+        className={styles.link}
+        href={href}
+        target="_blank"
+        rel="noopener"
+        title={uuid}
+        aria-label={fill(adminEt.payments.montonioFor, { name })}
+        data-montonio-link=""
+        onClick={copy}
+        // (the middle button opens the link in a new tab too: only that one, not the right button's menu)
+        onAuxClick={(e) => {
+          if (e.button === 1) copy();
+        }}
+      >
         {adminEt.payments.montonio} <span aria-hidden="true">↗</span>
       </a>
       <span className={styles.copied} role="status" aria-live="polite" data-montonio-copied="">

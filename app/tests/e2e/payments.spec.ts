@@ -285,6 +285,7 @@ test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copie
   await expect(link).toHaveAttribute("target", "_blank");
   await expect(link).toHaveAttribute("rel", "noopener");
   await expect(link).toHaveAttribute("title", paid.providerUuid); // (the id stays readable where the clipboard is refused)
+  await expect(link).toHaveAttribute("aria-label", "Montonios ↗ — E2E Partner"); // (its visible words and the payer's)
   const line = page.locator(`tr[data-payment="${paid.reference}"] [data-montonio-copied]`);
   await expect(line).toHaveText("");
   await adminReady(page);
@@ -299,6 +300,17 @@ test("„Montonios ↗“ opens Montonio's Partner System in a new tab and copie
   expect(page.url()).toContain("/admin/maksed"); // (the press did not also open the row)
   await tab.close();
   await expect(line).toHaveText("", { timeout: 10_000 }); // (the line goes by itself)
+
+  // a middle-click opens the tab too, and copies as well
+  await page.bringToFront();
+  await page.evaluate(() => navigator.clipboard.writeText("not copied yet"));
+  const [middle] = await Promise.all([context.waitForEvent("page"), link.click({ button: "middle" })]);
+  // (a middle-clicked tab opens behind this one: it is not shown or waited for here, only closed)
+  await expect(line).toHaveText("Montonio id kopeeritud.");
+  await page.bringToFront();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(paid.providerUuid);
+  await middle.close();
+  await expect(line).toHaveText("", { timeout: 10_000 });
 
   // a clipboard that refuses: the tab still opens, and no line says what did not happen
   await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("NotAllowedError")) } }));

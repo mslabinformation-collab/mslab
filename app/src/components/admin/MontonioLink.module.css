@@ -30,6 +30,7 @@
   line-height: 1.35;
 }
 
+/* (an empty block has no height already: only its margin is taken away. It is never display: none, so the region is in the page when it is filled) */
 .copied:empty {
-  display: none;
+  margin: 0;
 }
