@@ -1016,7 +1016,7 @@ test.describe("signed in", () => {
     await storeRequestHandled(f.practice.id, false);
     await storeRequestHandled(f.practice.id, true);
     await bar.getByRole("button", { name: "Võta tagasi" }).click();
-    await expect(bar).toContainText("Salvestamine ei õnnestunud. Proovi uuesti.");
+    await expect(bar).toContainText("Päringut muudeti vahepeal. Vaata see üle.");
     expect(await requestHandled(f.practice.id)).toBe(true);
   });
 
