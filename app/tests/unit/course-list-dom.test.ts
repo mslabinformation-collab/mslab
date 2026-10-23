@@ -290,16 +290,77 @@ describe("CourseList: the whole row opens the editor", () => {
   });
 });
 
-describe("CourseList: the layout (the stylesheet)", () => {
-  const css = readFileSync(join(process.cwd(), "src/components/admin/CourseList.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+describe("CourseList: a click inside the open „↕“ menu does not open the row", () => {
+  it("a click on the menu's own box (between its items) stays in the list; an item still moves the row", async () => {
+    await draw();
+    const li = $('[data-course-row="lash-lift"]')!;
+    const link = li.querySelector<HTMLAnchorElement>("a")!;
+    const seen: Element[] = [];
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      seen.push(e.target as Element);
+    });
+    await click(button("Liiguta: Lash Lift BOTOX"));
+    await click(li.querySelector("[role=menu]")!);
+    expect(seen).toHaveLength(0);
+    expect($("[role=menu]")).not.toBeNull();
+  });
+});
 
-  it("switches to the phone card at the shared 760 px of the list card, and not at the old 900", () => {
+describe("CourseList: its classes", () => {
+  // (a CSS module named in the component but missing from its stylesheet is `undefined` in the browser and prints as „undefined“ in the class list; in these tests a
+  // stylesheet is not processed, so the check is on the two files)
+  it("every `styles.x` the component uses is a class of CourseList.module.css, and every `courses.module.css` one of the page's is too", () => {
+    const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8");
+    const classesIn = (sheet: string) => new Set(Array.from(sheet.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/\.([A-Za-z_][\w-]*)/g), (m) => m[1]));
+    const used = (source: string) => Array.from(new Set(Array.from(source.matchAll(/styles\.([A-Za-z_]\w*)/g), (m) => m[1])));
+    const list = classesIn(read("src/components/admin/CourseList.module.css"));
+    expect(used(read("src/components/admin/CourseList.tsx")).filter((name) => !list.has(name))).toEqual([]);
+    const page = classesIn(read("src/app/admin/(panel)/koolitused/courses.module.css"));
+    expect(used(read("src/app/admin/(panel)/koolitused/page.tsx")).filter((name) => !page.has(name))).toEqual([]);
+  });
+});
+
+describe("CourseList: the layout (the stylesheets)", () => {
+  const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const css = read("src/components/admin/CourseList.module.css");
+  const page = read("src/app/admin/(panel)/koolitused/courses.module.css");
+  /** The declarations of the first rule with this selector inside the block that opens with `at` (the whole file when `at` is empty). */
+  const rule = (source: string, at: string, selector: string) => {
+    const from = at ? source.indexOf(at) : 0;
+    expect(from, at).toBeGreaterThanOrEqual(0);
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(source.slice(from))?.[1] ?? "";
+  };
+
+  it("four layouts by the width of the list's box: eight columns from 1098 px, the same closed up from 998, two lines from 997 down, the phone at 760", () => {
+    expect(css).toMatch(/@container \(min-width: 998px\) and \(max-width: 1097px\)/);
+    expect(css).toMatch(/@container \(max-width: 997px\)/);
     expect(css).toMatch(/@container \(max-width: 760px\)/);
+    expect(css).not.toMatch(/1039px/);
     expect(css).not.toMatch(/max-width: 900px/);
   });
 
-  it("the README's columns on a wide card: 8 tracks with the title taking what is left; the middle card has two lines, from 1039 px down", () => {
+  it("the README's eight columns at the 1440 frame's widths, the title taking what is left", () => {
     expect(css).toMatch(/grid-template-columns:\s*44px 96px 56px minmax\(0, 1fr\) 120px 150px 120px 180px;/);
-    expect(css).toMatch(/@container \(max-width: 1039px\)/);
+  });
+
+  it("the closed-up band: the fixed columns at what they hold, a title of at least 150 px, gaps of 12 px; the plain view the same without the first two", () => {
+    const band = "@container (min-width: 998px) and (max-width: 1097px)";
+    expect(rule(css, band, ".grid")).toMatch(/grid-template-columns:\s*44px 96px 56px minmax\(150px, 1fr\) 100px 124px 108px 164px;/);
+    expect(rule(css, band, ".grid")).toMatch(/column-gap:\s*12px;/);
+    expect(rule(css, band, ".grid.plain")).toMatch(/grid-template-columns:\s*56px minmax\(150px, 1fr\) 100px 124px 108px 164px;/);
+  });
+
+  it("the phone: each course a white 18 px card of its own, 12 px apart (Part 4), and the section's own card goes (the page's box is the container)", () => {
+    const phone = "@container (max-width: 760px)";
+    expect(rule(css, phone, ".row")).toMatch(/background:\s*#fff;/);
+    expect(rule(css, phone, ".row")).toMatch(/border-radius:\s*18px;/);
+    expect(rule(css, phone, ".row")).toMatch(/margin:\s*0 0 12px;/);
+    expect(rule(css, phone, ".row")).toMatch(/padding:\s*10px 10px 10px 6px;/);
+    expect(page).toMatch(/\.box \{\s*container-type: inline-size;/);
+    expect(rule(page, "@container (max-width: 760px)", ".box .card")).toMatch(/background:\s*transparent;/);
+    expect(rule(page, "@container (max-width: 760px)", ".box .card")).toMatch(/border:\s*0;/);
+    expect(rule(page, "@container (max-width: 760px)", ".box .card")).toMatch(/padding:\s*0;/);
   });
 });

@@ -1,12 +1,16 @@
 /* The Koolitused list (README B1; the Part 3 desktop frame and the Part 4 phone frame). A list of rows (DragList's `ol > li`) whose columns are drawn by a grid
-   on an inner div, one grid per row and one over the headings. Three layouts, switched by the width of the list's card (list-table.module.css .card is the
-   container), as the shared list table switches at 760:
+   on an inner div, one grid per row and one over the headings. Four layouts, switched by the width of the list's box (courses.module.css .box is the container:
+   the card's outer width, its content plus the 58 px of the card's padding and border; the card has none on a phone, where the box is the content):
 
-   - a wide card (from 1040 px): the README's eight columns, handle | ↑/↓ | thumbnail | title | Õppevorm | Hind | Märgis | Staatus, as the 1440 frame draws them;
-   - a middle card (761 to 1039 px: an iPad or a laptop with the sidebar): the same cells in two lines, the title and the status on the first, the type, price and
-     badge under the title. The frames draw nothing between 1440 and 390, and the eight columns do not fit a card of 827 px;
-   - the phone card (760 px and under): handle | thumbnail | title over „{Õppevorm} · {Staatus}“ | the round „↕“ menu, as the 390 frame draws it. Price, badge and
-     the „{tase} · /{slug}“ line are not drawn there (the frame has none).
+   - a wide box (from 1098 px; a card content of 1040 and up, a 1440 screen with the sidebar): the README's eight columns, handle | ↑/↓ | thumbnail | title |
+     Õppevorm | Hind | Märgis | Staatus, at the 1440 frame's widths;
+   - a box of 998 to 1097 px (a card content of 940 to 1039: a 1366 laptop, an iPad Pro in landscape): the same eight columns with the fixed ones closed up to
+     what they hold (a title of at least 150 px), so the columns show from a card content of 940;
+   - a box of 761 to 997 px (an iPad, a 1280 laptop): the same cells in two lines, the title and the status on the first, the type, price and badge under the
+     title. The frames draw nothing between 1440 and 390, and the eight columns need about 925 px of card content;
+   - the phone (760 px and under): each course a white card of its own on the grey canvas, handle | thumbnail | title over „{Õppevorm} · {Staatus}“ | the round
+     „↕“ menu, as the 390 frame draws it (the page takes the section's own card away, courses.module.css). Price, badge and the „{tase} · /{slug}“ line are not drawn
+     there (the frame has none).
 
    The row is the shared list's: a divider, the highlight under the mouse and under a finger (list-table.module.css), the title a 44 px target and the one link.
    Colours: tokens and the admin's own greys (#ebe8e9 / #5e5559 of the neutral status, SaveStatus.module.css). */
@@ -181,9 +185,26 @@
   color: var(--ink);
 }
 
-/* ---------- a middle card: two lines ---------- */
+/* ---------- a box of 998 to 1097 px: the eight columns closed up ---------- */
 
-@container (max-width: 1039px) {
+/* the fixed columns at what they hold: the tag „Kontaktõpe“, „Individuaal 450 €“, a badge, „Avaldamata muudatused“ (a „Näidis“ beside it wraps under it); the
+   minimum of the band is 842 px of tracks and gaps, so it holds from a card content of 940 */
+@container (min-width: 998px) and (max-width: 1097px) {
+  .head,
+  .grid {
+    grid-template-columns: 44px 96px 56px minmax(150px, 1fr) 100px 124px 108px 164px;
+    column-gap: 12px;
+  }
+
+  .head.plain,
+  .grid.plain {
+    grid-template-columns: 56px minmax(150px, 1fr) 100px 124px 108px 164px;
+  }
+}
+
+/* ---------- a box of 761 to 997 px: two lines ---------- */
+
+@container (max-width: 997px) {
   .head {
     display: none;
   }
@@ -234,6 +255,18 @@
 /* ---------- the phone card ---------- */
 
 @container (max-width: 760px) {
+  /* a white card of its own on the grey canvas (Part 4: #fff, 18 px radius, 10 px 10 px 10 px 6 px inside, 12 px between) */
+  .row {
+    margin: 0 0 12px;
+    padding: 10px 10px 10px 6px;
+    border-radius: 18px;
+    background: #fff;
+  }
+
+  .row:last-child {
+    margin-bottom: 0;
+  }
+
   .grid,
   .grid.plain {
     --phone-ink: var(--warn);
@@ -244,8 +277,9 @@
       "handle thumb line menu";
     column-gap: 8px;
     row-gap: 0;
-    min-height: 72px;
-    padding: 10px 0;
+    min-height: 52px;
+    padding: 0;
+    border-bottom: 0;
   }
 
   .grid.plain {

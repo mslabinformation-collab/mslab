@@ -54,7 +54,7 @@ export function menuPlacement(button: Box, menu: { width: number; height: number
  *   does not fit to the right, and when it fits neither way takes the side with more room (`data-flip="up"`, `data-align="right"`, MoreMenu.module.css;
  *   the list is never wider than the screen less 16 px).
  * - `variant="icon"` is the round „↕“ of the phone's course list (Part 4 prototype): the label alone, with no ▾, in a 44 px circle; the page names it with
- *   `buttonLabel` („Liiguta: {nimi}“).
+ *   `buttonLabel` („Liiguta: {nimi}“), and without one the label is its name (the label is drawn in an aria-hidden span).
  * - `title`: a muted line over the items, as the prototype draws „Pikenda ligipääsu (praegu kuni …)“ over the choices. It is not an item (the focus and the
  *   arrows pass it by) and it is what the list is named by.
  * - Items are buttons (or links, with an `href`); a `tone: "danger"` item has data-tone="danger". The page that wants a question first (a
@@ -191,7 +191,7 @@ export function MoreMenu({
         type="button"
         className={styles.button}
         data-variant={variant}
-        aria-label={buttonLabel}
+        aria-label={buttonLabel ?? (variant === "icon" ? label : undefined)}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}

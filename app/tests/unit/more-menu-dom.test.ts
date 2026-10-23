@@ -392,6 +392,15 @@ describe("MoreMenu: the round „↕“ (variant icon, B1 Koolitused on a phone)
     expect(items().map((i) => text(i))).toEqual(["Üles", "Alla"]);
   });
 
+  it("without buttonLabel the label is its name (the label is drawn in an aria-hidden span, so a button with no aria-label would have none); the other variants are named by their text", async () => {
+    await draw({ label: "↕", variant: "icon", items: [{ label: "Üles" }] });
+    expect(button().getAttribute("aria-label")).toBe("↕");
+    await draw({ label: "Pikenda", variant: "pill" });
+    expect(button().hasAttribute("aria-label")).toBe(false);
+    await draw({ label: "↕", variant: "icon", buttonLabel: "Liiguta: Kulmude LAMI" });
+    expect(button().getAttribute("aria-label")).toBe("Liiguta: Kulmude LAMI");
+  });
+
   it("is the prototype's circle: 44 px wide and tall, a 1px #d5d0d3 outline, no padding (the stylesheet)", () => {
     const css = readFileSync(join(process.cwd(), "src/components/admin/MoreMenu.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const rule = /\.button\[data-variant="icon"\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";

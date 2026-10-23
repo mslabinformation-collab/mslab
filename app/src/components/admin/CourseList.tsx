@@ -121,7 +121,7 @@ export function CourseList({ courses, ordered }: { courses: CourseRowData[]; ord
                   </span>
                 </div>
                 <div className={styles.statusCell}>
-                  <span className={`${ui.tag} ${c.status === "published" ? ui.ok : c.status === "changes" ? ui.warn : styles.draftTag} ${styles.status}`} data-course-state="" data-status={c.status}>
+                  <span className={`${ui.tag} ${c.status === "published" ? ui.ok : c.status === "changes" ? ui.warn : styles.draftTag}`} data-course-state="" data-status={c.status}>
                     {c.statusLabel}
                   </span>
                   {c.sample && (

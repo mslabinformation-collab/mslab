@@ -3,8 +3,11 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import styles from "./list-table.module.css";
 
-/** What a click on is the control's own, never the row's: a link, a button, a field, a label, or anything marked as one. */
-const CONTROL = "a, button, input, select, textarea, label, summary, [role=button], [role=link], [contenteditable]";
+/**
+ * What a click on is the control's own, never the row's: a link, a button, a field, a label, or anything marked as one. An open menu (MoreMenu's „Veel ▾“,
+ * the phone's „↕“) is one as a whole: a click on its padding, between the items, is not a tap on the row behind it.
+ */
+const CONTROL = "a, button, input, select, textarea, label, summary, [role=button], [role=link], [role=menu], [contenteditable]";
 
 /** A row of a table, or of a DragList (the Koolitused list is a list of rows, `ol > li`, with the columns drawn by a grid: B1). */
 const ROW = "tbody tr, li[data-drag-row]";

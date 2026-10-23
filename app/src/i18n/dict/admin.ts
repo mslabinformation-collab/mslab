@@ -1466,7 +1466,7 @@ export const adminEt = {
 
   // DragList (the B screens, piece 3 texts S3-P3-m; README B1 `aria-roledescription="lohistatav"`): the handle's name and what a screen reader hears after
   // a move, by name (`name`: the course or module) or, for a row with no name of its own, by number (`n`: the row's number, `k`: the new place).
-  // The arrows' names are the lists' own words (courses.moveUp / list.up).
+  // The arrows' names are `up`, `down` (by name: the course list, the module rows) and `upRow`, `downRow` (by number: the list editors' „Liiguta rida {n} üles“).
   drag: {
     roleDescription: "lohistatav",
     handle: "Lohista: {name}",

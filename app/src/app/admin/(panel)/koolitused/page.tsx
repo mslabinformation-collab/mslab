@@ -4,7 +4,6 @@ import { CourseList } from "@/components/admin/CourseList";
 import { courseRowOf } from "@/components/admin/course-rows";
 import { ListEmpty } from "@/components/admin/ListStates";
 import { ListToolbar, type ListPill } from "@/components/admin/ListToolbar";
-import listTable from "@/components/admin/list-table.module.css";
 import { adminTitle } from "@/components/admin/sections";
 import ui from "@/components/admin/ui.module.css";
 import { getDb } from "@/db/client";
@@ -55,21 +54,23 @@ export default async function CoursesPage({ searchParams }: Props) {
 
       <ListToolbar pillRows={[{ label: t.typeLabel, pills }]} />
 
-      <section className={`${ui.card} ${listTable.card}`} aria-label={t.title}>
-        <p className={`${ui.muted} ${ui.small} ${styles.count}`}>{fill(t.count, { n: list.length })}</p>
-        {list.length === 0 ? (
-          <ListEmpty things={t.things} filtered={vorm !== null} clearHref="/admin/koolitused" />
-        ) : (
-          <>
-            {vorm && (
-              <p className={styles.hint} data-order-hint="">
-                {t.orderHint}
-              </p>
-            )}
-            <CourseList courses={list.map(courseRowOf)} ordered={vorm === null} />
-          </>
-        )}
-      </section>
+      <div className={styles.box}>
+        <section className={`${ui.card} ${styles.card}`} aria-label={t.title}>
+          <p className={`${ui.muted} ${ui.small} ${styles.count}`}>{fill(t.count, { n: list.length })}</p>
+          {list.length === 0 ? (
+            <ListEmpty things={t.things} filtered={vorm !== null} clearHref="/admin/koolitused" />
+          ) : (
+            <>
+              {vorm && (
+                <p className={styles.hint} data-order-hint="">
+                  {t.orderHint}
+                </p>
+              )}
+              <CourseList courses={list.map(courseRowOf)} ordered={vorm === null} />
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

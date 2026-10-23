@@ -130,24 +130,41 @@ test("every list that uses the shared table keeps all its columns inside its car
   }
 });
 
-// Koolitused (B1, piece 3a) is a list of rows (DragList's `ol > li`) with a grid for the columns, not the shared table, and has three layouts by the width of its
-// card: the README's eight columns on a card from 1040 px (a 1440 screen with the sidebar), two lines on a middle one (761 to 1039: an iPad, a small laptop), and the
-// phone card from 760 px down. At each width every cell of a seeded row lies inside the content box of the card, the page does not scroll sideways, and the row has the
-// grid it should.
-test("Koolitused keeps its cells inside its card from 390 to 1440 px: eight columns, two lines, or the phone card", async ({ page, context, visitorIp, isMobile }, info) => {
+// Koolitused (B1, piece 3a) is a list of rows (DragList's `ol > li`) with a grid for the columns, not the shared table, and has four layouts by the width of its
+// box (the card's whole width, courses.module.css .box: a card content plus the 58 px of its padding and border, which a phone's card has none of): the README's
+// eight columns from 1098 px (a 1440 screen with the sidebar), the same closed up from 998 (a card content of 940: a 1366 laptop, an iPad Pro in landscape), two lines
+// from 997 down to 761 (an iPad, a 1280 laptop), and the phone from 760 down, each course a white card of its own. At each width every cell of a seeded row lies
+// inside the content box of the card, the page does not scroll sideways, and the row has the grid it should.
+// The cases are the box's width the layouts switch on, and the test sets the viewport that gives it: the box is the viewport less the page's scrollbar (the
+// headless browser has a classic one, 15 px, which a Windows browser has too; an iPad or a Mac has none, measured here), the sidebar (235 px, none below 900) and
+// the page's side padding (2 x 45, 30 from 1180 down, 24 from 899, 16 from 640). The box is measured again at each width, so a change of the shell's widths says so here
+// and not as a layout that quietly switches somewhere else.
+test("Koolitused keeps its cells inside its card from 390 to 1440 px: eight columns, the closed-up eight, two lines, or the phone cards", async ({ page, context, visitorIp, isMobile }, info) => {
   test.skip(isMobile, "sets its own widths: the desktop project only");
-  info.setTimeout(info.timeout + 60_000);
+  info.setTimeout(info.timeout + 90_000);
   await signInAsAdmin(page, context, visitorIp, created);
-  // the viewport's width, how many tracks a row's grid has, and whether the heading row over the columns is drawn
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/admin/koolitused");
+  await adminReady(page);
+  const scrollbar = await page.evaluate(() => window.innerWidth - document.documentElement.getBoundingClientRect().width);
+  // the box's width, the shell's own (sidebar and side paddings) at that width, the row grid's tracks, whether the heading row is drawn, and which layout it is
+  const WIDE = [44, 96, 56, 0, 120, 150, 120, 180];
+  const CLOSED = [44, 96, 56, 0, 100, 124, 108, 164];
   const layouts = [
-    { width: 390, tracks: 4, headed: false },
-    { width: 880, tracks: 5, headed: false },
-    { width: 1180, tracks: 5, headed: false },
-    { width: 1280, tracks: 5, headed: false },
-    { width: 1360, tracks: 5, headed: false },
-    { width: 1440, tracks: 8, headed: true },
+    { box: 340, shell: 32, tracks: 4, headed: false, kind: "phone" }, // (a 390 phone)
+    { box: 740, shell: 48, tracks: 4, headed: false, kind: "phone" }, // (the widest phone box: 760)
+    { box: 830, shell: 48, tracks: 5, headed: false, kind: "lines" }, // (an iPad in portrait)
+    { box: 870, shell: 295, tracks: 5, headed: false, kind: "lines" }, // (an iPad Air in landscape: a 1180 viewport)
+    { box: 940, shell: 325, tracks: 5, headed: false, kind: "lines" }, // (a 1280 laptop)
+    { box: 997, shell: 325, tracks: 5, headed: false, kind: "lines" }, // (the widest box of the two lines)
+    { box: 998, shell: 325, tracks: 8, headed: true, kind: "eight", fixed: CLOSED }, // (the narrowest of the closed-up eight: a card content of 940)
+    { box: 1000, shell: 325, tracks: 8, headed: true, kind: "eight", fixed: CLOSED },
+    { box: 1026, shell: 325, tracks: 8, headed: true, kind: "eight", fixed: CLOSED }, // (a 1366 laptop)
+    { box: 1097, shell: 325, tracks: 8, headed: true, kind: "eight", fixed: CLOSED }, // (the widest of them)
+    { box: 1100, shell: 325, tracks: 8, headed: true, kind: "eight", fixed: WIDE }, // (a 1440 viewport: the frame's)
   ];
-  for (const { width, tracks, headed } of layouts) {
+  for (const { box, shell, tracks, headed, kind, fixed } of layouts) {
+    const width = Math.round(box + shell + scrollbar);
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/admin/koolitused");
     await adminReady(page);
@@ -156,24 +173,30 @@ test("Koolitused keeps its cells inside its card from 390 to 1440 px: eight colu
     const f = await rowBox.evaluate((row) => {
       const card = row.closest("section")!;
       const css = getComputedStyle(card);
-      const box = card.getBoundingClientRect();
-      const left = box.left + parseFloat(css.borderLeftWidth) + parseFloat(css.paddingLeft);
-      const right = box.right - parseFloat(css.borderRightWidth) - parseFloat(css.paddingRight);
+      const outer = card.getBoundingClientRect();
+      const left = outer.left + parseFloat(css.borderLeftWidth) + parseFloat(css.paddingLeft);
+      const right = outer.right - parseFloat(css.borderRightWidth) - parseFloat(css.paddingRight);
       // the cells: the row's children, and the children of the wrapper that takes no box of its own (display: contents) on a wide card
       const cells = Array.from(row.children)
         .flatMap((c) => (getComputedStyle(c).display === "contents" ? Array.from(c.children) : [c]))
         .map((c) => ({ name: c.className.toString().trim().split(/\s+/).pop() ?? "", rect: c.getBoundingClientRect() }))
         .filter((c) => c.rect.width > 0 && c.rect.height > 0);
-      const grid = getComputedStyle(row).gridTemplateColumns.split(" ").length;
+      const columns = getComputedStyle(row).gridTemplateColumns.split(" ").map(parseFloat);
       const list = row.closest("ol")!;
       const head = document.querySelector("[data-course-head]")!;
+      const li = row.closest("li")!;
+      const liCss = getComputedStyle(li);
       return {
+        box: card.parentElement!.getBoundingClientRect().width,
         inner: right - left,
+        // the section's own card, and the row's: the phone has the rows as cards and no card of the section's
+        sectionCard: { background: css.backgroundColor, border: css.borderTopWidth, padding: css.paddingLeft },
+        rowCard: { background: liCss.backgroundColor, radius: liCss.borderTopLeftRadius },
         cellsLeft: Math.min(...cells.map((c) => c.rect.left)) - left,
         cellsRight: right - Math.max(...cells.map((c) => c.rect.right)),
         listScroll: list.scrollWidth,
         pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        grid,
+        columns,
         headed: getComputedStyle(head).display !== "none",
         names: cells.map((c) => c.name),
         lefts: cells.map((c) => c.rect.left),
@@ -184,20 +207,33 @@ test("Koolitused keeps its cells inside its card from 390 to 1440 px: eight colu
         line: cells.find((c) => /phoneLine$/.test(c.name))?.rect.toJSON() as { top: number; left: number },
       };
     });
-    const where = `/admin/koolitused at ${width} px (card ${Math.round(f.inner)} px)`;
-    expect(f.cellsLeft, `${where}: the first cell against the card's left edge`).toBeGreaterThanOrEqual(-9); // (the row bleeds 8 px into the card's padding, its cells do not)
+    const where = `/admin/koolitused at ${width} px (box ${Math.round(f.box)} px, card content ${Math.round(f.inner)} px)`;
+    expect(Math.abs(f.box - box), `${where}: the box the shell gives (expected ${box}; if this moved, the container thresholds in CourseList.module.css need working out again)`).toBeLessThanOrEqual(1);
     expect(f.cellsLeft, `${where}: the cells start inside the card's content`).toBeGreaterThanOrEqual(-1);
     expect(f.cellsRight, `${where}: the last cell against the card's right edge`).toBeGreaterThanOrEqual(-1);
     expect(f.listScroll, `${where}: the list's scroll width`).toBeLessThanOrEqual(f.inner + 17);
     expect(f.pageScroll, `${where}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
-    expect(f.grid, `${where}: the row's grid has ${tracks} tracks`).toBe(tracks);
+    expect(f.columns.length, `${where}: the row's grid has ${tracks} tracks`).toBe(tracks);
     expect(f.headed, `${where}: the heading row`).toBe(headed);
-    if (width === 1440) {
-      // the README's eight columns side by side: the cells in the order of the columns, each to the right of the one before
+    // the card: the section's own one everywhere but the phone, where each row is a white 18 px card of its own on the grey canvas
+    if (kind === "phone") {
+      expect(f.sectionCard, `${where}: no card of the section's own`).toEqual({ background: "rgba(0, 0, 0, 0)", border: "0px", padding: "0px" });
+      expect(f.rowCard, `${where}: the row is a white card`).toEqual({ background: "rgb(255, 255, 255)", radius: "18px" });
+      expect(Math.round(f.inner), `${where}: the cards use the box's whole width`).toBe(Math.round(f.box));
+    } else {
+      expect(f.sectionCard.background, `${where}: the section's own card`).toBe("rgb(255, 255, 255)");
+      expect(f.sectionCard.padding, `${where}: the section's own card`).not.toBe("0px");
+      expect(f.rowCard.background, `${where}: the row has no card of its own`).toBe("rgba(0, 0, 0, 0)");
+    }
+    if (kind === "eight") {
+      // the eight columns side by side: the cells in the order of the columns, each to the right of the one before, the fixed columns at their widths, the title not under 150 px
       expect(f.lefts.length, `${where}: eight cells`).toBe(8);
       expect(f.lefts, `${where}: left to right`).toEqual([...f.lefts].sort((a, b) => a - b));
       expect(new Set(f.lefts.map(Math.round)).size, `${where}: no two in one column`).toBe(8);
-    } else if (width >= 880) {
+      expect(f.columns.map((w, i) => (i === 3 ? 0 : Math.round(w))), `${where}: the fixed columns`).toEqual(fixed);
+      expect(f.columns[3], `${where}: the title column`).toBeGreaterThanOrEqual(150);
+      if (fixed === WIDE) expect(f.columns[3], `${where}: the frame's title column (179 px at 1440 with the frame's sidebar and padding)`).toBeGreaterThanOrEqual(170);
+    } else if (kind === "lines") {
       // two lines: the type, price and badge under the title, the status on the title's line
       expect(f.meta.top, `${where}: the type, price and badge under the title`).toBeGreaterThanOrEqual(f.title.bottom - 1);
       expect(f.status.top, `${where}: the status on the title's line`).toBeLessThan(f.title.bottom);

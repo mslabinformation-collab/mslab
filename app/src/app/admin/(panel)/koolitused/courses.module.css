@@ -1,5 +1,25 @@
-/* The Koolitused page (README B1). The list itself, its rows and its three layouts are components/admin/CourseList.module.css; the card is the shared
-   list card (list-table.module.css .card: the container the layouts switch on). */
+/* The Koolitused page (README B1). The list itself, its rows and its layouts are components/admin/CourseList.module.css.
+
+   `.box` is the container those layouts switch on: the card's whole width, not its content (an element cannot be restyled by a query on its own size, and on a
+   phone the card has to go: Part 4 draws each course as a white card of its own on the grey canvas). At 760 px and under the section loses its card, and
+   its rows (CourseList.module.css) are the cards. `.box .card` outweighs the shared `ui.card` whichever stylesheet comes last. */
+.box {
+  container-type: inline-size;
+}
+
+@container (max-width: 760px) {
+  .box .card {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .box .count,
+  .box .hint {
+    margin-bottom: 12px;
+  }
+}
 
 .count {
   margin-bottom: 6px;

@@ -208,7 +208,12 @@ export async function saveCourseWithImages(
  */
 export async function moveCourseTo(db: Db, id: number, index: number): Promise<"ok" | "notFound"> {
   return db.transaction(async (tx) => {
-    const list = await tx.select({ id: courses.id, sort: courses.sort }).from(courses).orderBy(asc(courses.sort), asc(courses.id)).for("update");
+    // The locks first, the order second, as two statements. One `select … order by sort, id for update` works the order out BEFORE it waits for the locks: under
+    // READ COMMITTED a move that waited for another's commit then gets the rows' new sorts in the old order, applies its place to that old order, and so overwrites
+    // the other's move (both answer "ok"). `order by id` is a key no move changes, and the second statement takes a fresh snapshot, after the locks are ours.
+    // (tests/e2e/course-order-race.spec.ts shows it on real Postgres: PGlite runs one transaction at a time and cannot.)
+    await tx.select({ id: courses.id }).from(courses).orderBy(asc(courses.id)).for("update");
+    const list = await tx.select({ id: courses.id, sort: courses.sort }).from(courses).orderBy(asc(courses.sort), asc(courses.id));
     const from = list.findIndex((c) => c.id === id);
     if (from < 0) return "notFound";
     const [moved] = list.splice(from, 1);

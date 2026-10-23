@@ -277,7 +277,9 @@ describe("course list", () => {
     expect((await order()).map(([slug]) => slug)).toEqual(["kulmude-lami", "e-kulm", "c3", "c4", "c5"]);
   });
 
-  test("two moves at once end in one order with every course once (the rows are locked)", async () => {
+  // (PGlite runs one transaction at a time, so this shows only that two calls started together end in one whole order. That the second is made on the order the first
+  // left, which the locks and their order decide, is shown on real Postgres: tests/e2e/course-order-race.spec.ts.)
+  test("two moves started together end in one order with every course once", async () => {
     const [c3, c4] = await more();
     const answers = await Promise.all([moveCourseTo(db, c3.id, 0), moveCourseTo(db, c4.id, 0)]);
     expect(answers).toEqual(["ok", "ok"]);

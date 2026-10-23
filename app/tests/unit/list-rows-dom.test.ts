@@ -240,6 +240,35 @@ describe("ListRows: a list of rows (DragList's li) as well as a table", () => {
     expect(seen).toHaveLength(5); // the link's own click is one click
   });
 
+  it("an open menu in the row is a control as a whole: a click on its own box, between its items, does not open the row (Õpilased's „Veel ▾“ too)", async () => {
+    await draw(
+      createElement(
+        "ol",
+        null,
+        createElement(
+          "li",
+          { id: "li3", "data-drag-row": "3" },
+          createElement("a", { id: "mname", className: listTable.name, href: "/admin/koolitused/3" }, "Kulmude LAMI"),
+          createElement(
+            "div",
+            { id: "menu", role: "menu" },
+            createElement("button", { id: "item", type: "button", role: "menuitem" }, "Esimeseks"),
+          ),
+        ),
+      ),
+    );
+    const seen: Element[] = [];
+    $("mname").addEventListener("click", (e) => {
+      e.preventDefault();
+      seen.push(e.target as Element);
+    });
+    await click($("menu"));
+    await click($("item"));
+    expect(seen).toHaveLength(0);
+    await click($("li3"));
+    expect(seen).toHaveLength(1);
+  });
+
   it("the handle and the arrows get their own click; a row with no name link does nothing", async () => {
     await draw(rows());
     const seen: Element[] = [];
