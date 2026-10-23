@@ -175,7 +175,21 @@
   margin: 0;
 }
 
+/* what is under the heading (or the folded row on a phone, PhoneFold): the block's own rhythm */
+.blockBody {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
 @media (max-width: 640px) {
+  /* a phone: the block is the folded row (PhoneFold draws its own rule under it), not a section with a rule above */
+  .block {
+    gap: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+
   .grid {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -11,11 +11,11 @@ import { tallinnDateText, tallinnYear } from "@/domain/certificate";
 import { isHirePurchase } from "@/domain/financing";
 import {
   coveringInvoices, formatInvoiceNumber, INVOICE_KEY, INVOICE_LIMITS, invoiceCsv, invoiceKindOfPayment, invoiceSeq, ODD_PART, openAmounts, partOf, readInvoiceSettings,
-  receiptKind, sellerReady, type Covering, type InvoiceBuyer, type InvoiceKind, type InvoiceLine, type InvoiceSettings, type InvoiceStatus, type ManualPaidMethod,
+  receiptKind, registrationStatusAfterTakeBack, sellerReady, takeBackCents, type Covering, type InvoiceBuyer, type InvoiceKind, type InvoiceLine, type InvoiceSettings, type InvoiceStatus, type ManualPaidMethod,
   type PaidMethod,
 } from "@/domain/invoice";
 import { PAGE_SIZE } from "@/domain/paging";
-import { registrationPrice, registrationStatusAfterPayment } from "@/domain/registration";
+import { registrationPrice } from "@/domain/registration";
 import { prepaymentDraft, type PrepaymentDraft } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
 import { toStorable } from "@/lib/to-storable";
@@ -330,11 +330,9 @@ async function takeBackRegistrationPayment(tx: Tx, registrationId: number, cents
   if (!current) return;
   const { registration: r, course } = current;
   const others = (await coveringOf(tx, r, invoiceId)).filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amountCents, 0);
-  const taken = Math.max(0, Math.min(cents, r.paidCents - others));
+  const taken = takeBackCents(r.paidCents, cents, others);
   const paidCents = r.paidCents - taken;
-  const total = registrationPrice(course, r.kind);
-  const next = total == null ? r.status : registrationStatusAfterPayment({ status: r.status, paidCents }, total);
-  const status = next === "confirmed" && r.status !== "confirmed" ? r.status : next;
+  const status = registrationStatusAfterTakeBack({ status: r.status, paidCents }, registrationPrice(course, r.kind));
   await tx.update(registrations).set({ paidCents, status }).where(eq(registrations.id, registrationId));
 }
 

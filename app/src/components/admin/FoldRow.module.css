@@ -30,6 +30,8 @@
   justify-content: space-between;
   gap: 12px;
   min-height: 52px;
+  /* the turning „▸“ sticks out a few px for 0.15 s (a diagonal is wider than its box): clipped here, so the drawer shows no scrollbar flash */
+  overflow: hidden;
   font-size: 14px;
 }
 
@@ -55,9 +57,29 @@
   overflow-wrap: anywhere;
 }
 
+/* the phone's words (FoldRow `shortSummary`): hidden, until a phone (the drawer's 640 px) swaps them for the long ones */
+.short {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .hasShort {
+    display: none;
+  }
+
+  .short {
+    display: inline;
+  }
+}
+
+/* a square box: turned a quarter it takes the same room, so an open row adds no sideways scroll to the drawer */
 .arrow {
-  display: inline-block;
+  display: inline-grid;
+  place-items: center;
   flex: none;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
   transition: transform 0.15s;
 }
 

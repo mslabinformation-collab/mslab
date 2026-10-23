@@ -117,7 +117,11 @@ test("the drawers: the registration's answers (none for 'Ei soovi'); the student
   const reg = await render(RegistrationsPage, { id: String(mari.id) });
   expect(part(reg, "data-registration-detail", mari.id)).toContain("data-registration-feedback");
   expect(reg).toContain("Aitäh!\nVäga hea päev.");
-  expect(await render(RegistrationsPage, { id: String(liis.id) })).not.toContain("data-registration-feedback");
+  // (a folded row of the drawer, P-3: „Saadetud {date}“ when she answered, „pole antud“ when she has not — the row is there for a contact course either way)
+  expect(reg).toMatch(/Tagasiside<\/span>[\s\S]*?Saadetud \d\d\.\d\d\.\d{4}/);
+  const none = await render(RegistrationsPage, { id: String(liis.id) });
+  expect(none).not.toContain("data-registration-feedback");
+  expect(none).toMatch(/Tagasiside<\/span>[\s\S]*?pole antud/);
   const html = renderToStaticMarkup(ClientDetailView({ detail: (await clientDetail(db, kati))!, ecourses: [], now: at(20) }));
   const section = html.slice(html.indexOf("data-client-feedback"));
   for (const text of ["Tagasiside", "Kulmude lamineerimine", "Vastas ootustele", "9/10"]) expect(section, text).toContain(text);

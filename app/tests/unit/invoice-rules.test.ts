@@ -4,7 +4,7 @@ import { seqToIssue } from "@/domain/certificate";
 import {
   INVOICE_DEFAULTS, INVOICE_KEY, INVOICE_LIMITS, euro, formatInvoiceNumber, invoiceCsv, invoiceDownloadHeaders, invoiceFileName, invoiceKindOfPayment,
   invoiceSeq, invoiceStatusText, openAmounts, coveringInvoices, paidDay, paidMethodText, parseMonth, partOf, partText, readInvoiceSettings, sellerReady,
-  receiptKind, uninvoicedOf, vatSplit,
+  receiptKind, receiptTakeBack, registrationStatusAfterTakeBack, takeBackCents, uninvoicedOf, vatSplit,
   type InvoiceKind, type InvoiceStatus,
 } from "@/domain/invoice";
 import { prepaymentDue, registrationStatusAfterPayment } from "@/domain/registration";
@@ -259,6 +259,55 @@ describe("coveringInvoices: what covers a registration's price, its paid online 
       { kind: "prepayment", status: "paid", amountCents: 17500 },
       { kind: "balance", status: "paid", amountCents: 17500 },
     ]);
+  });
+});
+
+describe("receiptTakeBack: what „Võta tasumine tagasi“ of a receipt takes off Laekunud summa and does to the status (S3-f; B4 review I1, m4)", () => {
+  const inv = (id: number, kind: InvoiceKind, status: InvoiceStatus, amountCents: number) => ({ id, kind, status, amountCents });
+  const reg = (over: Partial<Parameters<typeof receiptTakeBack>[0]> = {}) => ({ status: "confirmed" as const, paidCents: 14500, paymentChoice: "half" as const, ...over });
+  const receipt = { id: 1, amountCents: 14500 };
+
+  test("takeBackCents: the receipt's amount, but never more than what no other paid invoice covers, and never below 0", () => {
+    expect(takeBackCents(14500, 14500, 0)).toBe(14500);
+    expect(takeBackCents(29000, 14500, 14500)).toBe(14500);
+    // an old receipt for venue money that was never recorded: the online payment's 145 € is not its to take back
+    expect(takeBackCents(14500, 14500, 14500)).toBe(0);
+    expect(takeBackCents(20000, 14500, 14500)).toBe(5500);
+    expect(takeBackCents(0, 14500, 0)).toBe(0);
+    expect(takeBackCents(5000, 14500, 9000)).toBe(0); // (never negative)
+  });
+
+  test("the receipt alone covers the money: all of it comes off, and a confirmed registration under 50 % goes back to „Ootab ettemaksu“", () => {
+    expect(receiptTakeBack(reg(), 29000, receipt, [inv(1, "prepayment", "paid", 14500)], [])).toEqual({ cents: 14500, backToAwaiting: true });
+  });
+
+  test("the rest still makes 50 %: the place stays", () => {
+    expect(receiptTakeBack(reg({ paidCents: 29000 }), 29000, { id: 2, amountCents: 14500 }, [inv(1, "prepayment", "paid", 14500), inv(2, "balance", "paid", 14500)], [])).toEqual({
+      cents: 14500,
+      backToAwaiting: false,
+    });
+  });
+
+  test("another paid invoice, or a paid online payment waiting for its invoice, covers its part: the cap", () => {
+    // 145 € paid online (no invoice yet) and a 145 € receipt for venue money never recorded: the receipt takes nothing off
+    expect(receiptTakeBack(reg(), 29000, receipt, [inv(1, "balance", "paid", 14500)], [{ id: 9, kind: "prepayment", invoiceId: null, amountCents: 14500 }])).toEqual({ cents: 0, backToAwaiting: false });
+    // an unpaid or cancelled invoice covers nothing
+    expect(receiptTakeBack(reg(), 29000, receipt, [inv(1, "prepayment", "paid", 14500), inv(2, "balance", "unpaid", 14500), inv(3, "balance", "cancelled", 14500)], [])).toEqual({ cents: 14500, backToAwaiting: true });
+  });
+
+  test("only a confirmed registration goes back: an awaiting one stays, a cancelled one stays, a course with no price keeps its status", () => {
+    expect(receiptTakeBack(reg({ status: "awaiting_prepayment" }), 29000, receipt, [inv(1, "prepayment", "paid", 14500)], []).backToAwaiting).toBe(false);
+    expect(receiptTakeBack(reg({ status: "cancelled" }), 29000, receipt, [inv(1, "prepayment", "paid", 14500)], []).backToAwaiting).toBe(false);
+    expect(receiptTakeBack(reg(), null, receipt, [inv(1, "prepayment", "paid", 14500)], [])).toEqual({ cents: 14500, backToAwaiting: false });
+  });
+
+  test("the status after: it only stays or steps down, never confirms (registrationStatusAfterTakeBack)", () => {
+    expect(registrationStatusAfterTakeBack({ status: "confirmed", paidCents: 14500 }, 29000)).toBe("confirmed");
+    expect(registrationStatusAfterTakeBack({ status: "confirmed", paidCents: 14499 }, 29000)).toBe("awaiting_prepayment");
+    // awaiting with 50 % paid (its session was full): taking money back never confirms it
+    expect(registrationStatusAfterTakeBack({ status: "awaiting_prepayment", paidCents: 20000 }, 29000)).toBe("awaiting_prepayment");
+    expect(registrationStatusAfterTakeBack({ status: "cancelled", paidCents: 0 }, 29000)).toBe("cancelled");
+    expect(registrationStatusAfterTakeBack({ status: "confirmed", paidCents: 0 }, null)).toBe("confirmed");
   });
 });
 

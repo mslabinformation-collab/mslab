@@ -4,11 +4,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { coveringInvoices, openAmounts, type OpenAmount, type OpenAmounts } from "@/domain/invoice";
 
-// The registration drawer's „Arved“ (invoices Task 5, spec §5, D5, D6, rulings R10 and R1) in a browser-like document (happy-dom), with the
-// server actions answered here: the actions each state allows (and none other), „Koosta arve“ offering exactly the open amounts and the two
-// kinds with the day and the way for „Juba tasutud“, the link to Seaded when there is no seller, „Saada õpilasele“ with its second address,
-// „Märgi tasutuks“, the confirmation of „Võta tasumine tagasi“ saying what will happen (a receipt is cancelled, a marked request is unpaid
-// again) and of „Tühista arve“, and „Muuda saajat“ with its refused fields.
+// The registration drawer's „Arved“ (invoices Task 5, spec §5, D5, D6, rulings R10 and R1; admin UX pass, piece 2, Task 6) in a browser-like document
+// (happy-dom), with the server actions answered here: the actions each state has in view (the rest, and the two ConfirmPanels of „Võta tasumine
+// tagasi“ and „Tühista arve“, are tests/unit/invoice-row-dom.test.ts), „Koosta arve“ — one button, never two — offering exactly the open amounts
+// and the two kinds with the day and the way for „Juba tasutud“, the link to Seaded when there is no seller, „Saada õpilasele“ with its second
+// address, „Märgi tasutuks“ and „Muuda saajat“ chosen under „Veel ▾“ with its refused fields, and the block's folded row on a phone.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -49,6 +49,7 @@ const view = (over: Partial<InvoiceView> = {}): InvoiceView => ({
   paidOnline: false,
   refunded: false,
   paidAdds: false,
+  takeBack: null,
   sentAt: null,
   sentNote: "",
   buyer: BUYER,
@@ -56,7 +57,8 @@ const view = (over: Partial<InvoiceView> = {}): InvoiceView => ({
   ...over,
 });
 const UNPAID = view();
-const MARKED = view({ id: 12, number: "MSL2026-002", status: "paid", dueAt: null, paidAt: "2026-10-15T09:00:00.000Z", paidMethod: "bank", paidAdds: true });
+// (a request she marked paid keeps its due date; only a receipt is born paid with none)
+const MARKED = view({ id: 12, number: "MSL2026-002", status: "paid", paidAt: "2026-10-15T09:00:00.000Z", paidMethod: "bank", paidAdds: true });
 const RECEIPT = view({ id: 13, number: "MSL2026-003", status: "paid", dueAt: null, paidAt: "2026-10-12T09:00:00.000Z", paidMethod: "cash", paidAdds: false });
 const ONLINE = view({ id: 14, number: "MSL2026-004", status: "paid", dueAt: null, paidAt: "2026-10-14T09:00:00.000Z", paidMethod: "montonio", online: true });
 const CANCELLED = view({ id: 15, number: "MSL2026-005", status: "cancelled" });
@@ -100,6 +102,11 @@ const submitForm = async (form: Element | null) => {
   await settle();
 };
 const line = (within: ParentNode) => $('[role="status"]', within)!.textContent;
+/** An action under a row's „Veel ▾“: opens the menu and chooses the item by its words. */
+const viaMenu = async (number: string, label: string) => {
+  await click($("[data-more-menu] > button", rowOf(number)));
+  await click(all('[role="menuitem"]', rowOf(number)).find((el) => el.textContent === label) ?? null);
+};
 
 beforeEach(() => {
   for (const fn of Object.values(actions)) fn.mockReset();
@@ -115,14 +122,14 @@ afterEach(async () => {
 describe("the list: each state shows the actions it allows, and no others", () => {
   test("Tasumata: Saada õpilasele, Muuda saajat, Märgi tasutuks, Tühista arve and the PDF", async () => {
     await show();
-    expect(actionsOf("MSL2026-001")).toEqual(["Saada õpilasele", "Muuda saajat", "Märgi tasutuks", "Tühista arve", "Laadi alla (PDF)"]);
+    expect(actionsOf("MSL2026-001")).toEqual(["Saada õpilasele", "Laadi alla (PDF)", "Veel ▾"]);
     expect($("[data-invoice-state]", rowOf("MSL2026-001"))!.textContent).toBe("Tasumata");
   });
 
   test("Tasutud by Maria's mark or receipt: send, undo and the PDF — not mark, cancel or edit; an online payment's invoice: send and the PDF only", async () => {
     await show({ invoices: [MARKED, RECEIPT, ONLINE] });
-    expect(actionsOf("MSL2026-002")).toEqual(["Saada õpilasele", "Võta tasumine tagasi", "Laadi alla (PDF)"]);
-    expect(actionsOf("MSL2026-003")).toEqual(["Saada õpilasele", "Võta tasumine tagasi", "Laadi alla (PDF)"]);
+    expect(actionsOf("MSL2026-002")).toEqual(["Saada õpilasele", "Laadi alla (PDF)", "Veel ▾"]);
+    expect(actionsOf("MSL2026-003")).toEqual(["Saada õpilasele", "Laadi alla (PDF)", "Veel ▾"]);
     expect(actionsOf("MSL2026-004")).toEqual(["Saada õpilasele", "Laadi alla (PDF)"]);
     for (const n of ["MSL2026-002", "MSL2026-003", "MSL2026-004"]) expect($("[data-invoice-state]", rowOf(n))!.textContent).toBe("Tasutud");
   });
@@ -252,20 +259,25 @@ describe("the final review's wave on the block: paid online payments without an 
   const PAID = { paymentId: 21, amountCents: 17500, paidAt: "2026-10-15T09:00:00.000Z", pays: null };
   const afterPaid = openAmounts({ priceCents: 35000, paymentChoice: "half", paidCents: 17500 }, coveringInvoices({ paymentChoice: "half" }, [], [{ id: 21, kind: "prepayment", invoiceId: null, amountCents: 17500 }]));
 
-  test("I1: the paid payment is listed with its own „Koosta arve“ (the catch-up), and „Koosta arve“ offers only the rest, as a request or a receipt", async () => {
+  test("I1: the paid payment is listed with its own „Koosta arve“ (the catch-up), which is the only one in view; the generic one waits", async () => {
     actions.catchUpInvoiceAction.mockResolvedValue({ ok: true, number: "MSL2026-002" });
     await show({ invoices: [], uninvoiced: [PAID], open: afterPaid });
     const row = $("[data-uninvoiced-payment='21']")!;
     expect($("[data-uninvoiced-line]", row)!.textContent).toBe(`Veebimakse 175,00${NBSP}€ (15.10.2026) on veel arveta.`);
     expect($("[data-uninvoiced-pays]", row)!.textContent).toBe("Koostab uue arve");
-    await click($("[data-invoice-create]"));
-    expect(all("[data-invoice-kind]").map((k) => k.getAttribute("data-invoice-kind"))).toEqual(["balance"]);
-    await click($('[data-invoice-mode="receipt"]'));
-    expect(all("[data-invoice-kind]").map((k) => [k.getAttribute("data-invoice-kind"), k.closest("label")!.textContent])).toEqual([["balance", `Jääk 50% · 175,00${NBSP}€`]]);
+    expect($("[data-invoice-create]")).toBeNull();
     // the row's own button is the catch-up: it makes the payment's invoice
     await click($("[data-uninvoiced-create='21']", row));
     expect(actions.catchUpInvoiceAction).toHaveBeenCalledWith({ paymentId: 21 });
     expect(line(row)).toBe("Arve MSL2026-002 on valmis.");
+  });
+
+  test("I1: with the payment invoiced, „Koosta arve“ offers only the rest, as a request or a receipt", async () => {
+    await show({ invoices: [], uninvoiced: [], open: afterPaid });
+    await click($("[data-invoice-create]"));
+    expect(all("[data-invoice-kind]").map((k) => k.getAttribute("data-invoice-kind"))).toEqual(["balance"]);
+    await click($('[data-invoice-mode="receipt"]'));
+    expect(all("[data-invoice-kind]").map((k) => [k.getAttribute("data-invoice-kind"), k.closest("label")!.textContent])).toEqual([["balance", `Jääk 50% · 175,00${NBSP}€`]]);
   });
 
   test("I1: one started for an unpaid invoice names the invoice its catch-up will pay; without a seller the row has no button", async () => {
@@ -305,17 +317,17 @@ describe("the final review's wave on a row: paid online, waiting for its catch-u
   test("m2: an invoice paid online that waits for „Arveta maksed“ says so, and offers no „Saada õpilasele“ and no „Märgi tasutuks“", async () => {
     await show({ invoices: [view({ paidOnline: true })] });
     expect($("[data-invoice-paid-online]", rowOf("MSL2026-001"))!.textContent).toBe("Veebis tasutud — ootab „Arveta maksed“ alt arvet.");
-    expect(actionsOf("MSL2026-001")).toEqual(["Muuda saajat", "Tühista arve", "Laadi alla (PDF)"]);
+    expect(actionsOf("MSL2026-001")).toEqual(["Laadi alla (PDF)", "Veel ▾"]);
     await show({ invoices: [UNPAID] });
     expect($("[data-invoice-paid-online]")).toBeNull();
   });
 
-  test("I3: a paid invoice whose payment was refunded or voided reads „Tagastatud“ (stored paid); its actions are a paid online invoice's", async () => {
+  test("I3: a paid invoice whose payment was refunded or voided reads „Tagastatud“ (stored paid); it is not sent again (README A2 drawer 4): the PDF only", async () => {
     await show({ invoices: [view({ ...ONLINE, refunded: true })] });
     expect($("[data-invoice-state]", rowOf("MSL2026-004"))!.textContent).toBe("Tagastatud");
     expect(rowOf("MSL2026-004").getAttribute("data-invoice-status")).toBe("paid");
     expect(rowOf("MSL2026-004").getAttribute("data-invoice-refunded")).toBe("true");
-    expect(actionsOf("MSL2026-004")).toEqual(["Saada õpilasele", "Laadi alla (PDF)"]);
+    expect(actionsOf("MSL2026-004")).toEqual(["Laadi alla (PDF)"]);
     await show({ invoices: [ONLINE] });
     expect($("[data-invoice-state]", rowOf("MSL2026-004"))!.textContent).toBe("Tasutud");
   });
@@ -371,7 +383,7 @@ describe("„Saada õpilasele“", () => {
 });
 
 describe("„Märgi tasutuks“", () => {
-  const open = async () => click($("[data-invoice-mark-paid]"));
+  const open = async () => viaMenu("MSL2026-001", "Märgi tasutuks");
 
   test("asks the day (today) and the way (Pangaülekanne), says what it does to „Laekunud summa“, and sends both", async () => {
     actions.markInvoicePaidAction.mockResolvedValue({ ok: true, full: false });
@@ -405,79 +417,8 @@ describe("„Märgi tasutuks“", () => {
   });
 });
 
-describe("„Võta tasumine tagasi“ (ruling R10)", () => {
-  const open = async (number: string) => click($("[data-invoice-undo]", rowOf(number)));
-
-  test("a marked request: the words say it is unpaid again and the amount comes off „Laekunud summa“; nothing is done before the confirmation", async () => {
-    await show({ invoices: [MARKED] });
-    await open("MSL2026-002");
-    expect($("[data-invoice-undo-text]")!.textContent).toBe("Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha.");
-    expect(actions.undoInvoicePaidAction).not.toHaveBeenCalled();
-  });
-
-  test("a receipt: the words say it is cancelled and keeps its number", async () => {
-    await show({ invoices: [RECEIPT] });
-    await open("MSL2026-003");
-    expect($("[data-invoice-undo-text]")!.textContent).toBe("Kviitung tühistatakse (number jääb alles).");
-  });
-
-  test("the confirmation takes the focus on „Katkesta“, never on the button that does it", async () => {
-    await show({ invoices: [MARKED] });
-    await open("MSL2026-002");
-    expect(document.activeElement).toBe($("[data-invoice-close]", rowOf("MSL2026-002")));
-    expect(document.activeElement).not.toBe($("[data-invoice-undo-confirm]"));
-  });
-
-  test("confirmed: the action runs, and the screen says which of the two it was, by the status that came back", async () => {
-    actions.undoInvoicePaidAction.mockResolvedValueOnce({ ok: true, status: "unpaid" }).mockResolvedValueOnce({ ok: true, status: "cancelled" });
-    await show({ invoices: [MARKED, RECEIPT] });
-    await open("MSL2026-002");
-    await click($("[data-invoice-undo-confirm]"));
-    expect(actions.undoInvoicePaidAction).toHaveBeenLastCalledWith({ id: 12 });
-    expect(line(rowOf("MSL2026-002"))).toBe("Arve on jälle tasumata.");
-    await open("MSL2026-003");
-    await click($("[data-invoice-undo-confirm]"));
-    expect(actions.undoInvoicePaidAction).toHaveBeenLastCalledWith({ id: 13 });
-    expect(line(rowOf("MSL2026-003"))).toBe("Kviitung on tühistatud.");
-  });
-
-  test("„Katkesta“ leaves everything as it was; a refusal is shown", async () => {
-    await show({ invoices: [MARKED] });
-    await open("MSL2026-002");
-    await click(button("Katkesta"));
-    expect($('[data-invoice-panel="undo"]')).toBeNull();
-    expect(actions.undoInvoicePaidAction).not.toHaveBeenCalled();
-    actions.undoInvoicePaidAction.mockResolvedValue({ ok: false, error: "notManual", text: "Veebis tasutud arvet ei saa tagasi võtta." });
-    await open("MSL2026-002");
-    await click($("[data-invoice-undo-confirm]"));
-    expect(line(rowOf("MSL2026-002"))).toBe("Veebis tasutud arvet ei saa tagasi võtta.");
-  });
-});
-
-describe("„Tühista arve“", () => {
-  test("asks to be confirmed, saying the number stays; then cancels", async () => {
-    actions.cancelInvoiceAction.mockResolvedValue({ ok: true });
-    await show();
-    await click($("[data-invoice-cancel]"));
-    expect($('[data-invoice-panel="cancel"]')!.textContent).toContain("Arve tühistatakse. Number jääb alles");
-    expect(actions.cancelInvoiceAction).not.toHaveBeenCalled();
-    await click($("[data-invoice-cancel-confirm]"));
-    expect(actions.cancelInvoiceAction).toHaveBeenCalledWith({ id: 11 });
-    expect(line(rowOf("MSL2026-001"))).toBe("Arve on tühistatud.");
-  });
-
-  test("„Katkesta“ keeps the invoice; the focus starts on it", async () => {
-    await show();
-    await click($("[data-invoice-cancel]"));
-    expect(document.activeElement).toBe($("[data-invoice-close]", rowOf("MSL2026-001")));
-    await click(button("Katkesta"));
-    expect($('[data-invoice-panel="cancel"]')).toBeNull();
-    expect(actions.cancelInvoiceAction).not.toHaveBeenCalled();
-  });
-});
-
 describe("„Muuda saajat“", () => {
-  const open = async () => click($("[data-invoice-buyer]"));
+  const open = async () => viaMenu("MSL2026-001", "Muuda saajat");
   const field = (name: string) => $<HTMLInputElement>(`[data-buyer-field="${name}"]`)!;
 
   test("the buyer's fields as they are; saved as typed (the company's too)", async () => {
@@ -508,17 +449,73 @@ describe("„Muuda saajat“", () => {
   });
 });
 
-describe("one action at a time", () => {
-  test("a second tap on a submit while the first is on its way sends nothing more", async () => {
-    let finish: (r: unknown) => void = () => {};
-    actions.cancelInvoiceAction.mockReturnValue(new Promise((resolve) => (finish = resolve)));
-    await show();
-    await click($("[data-invoice-cancel]"));
-    await click($("[data-invoice-cancel-confirm]"));
-    await click($("[data-invoice-cancel-confirm]"));
-    expect(actions.cancelInvoiceAction).toHaveBeenCalledTimes(1);
-    await act(async () => finish({ ok: true }));
-    await settle();
-    expect(line(rowOf("MSL2026-001"))).toBe("Arve on tühistatud.");
+describe("only one „Koosta arve“ (README A2 drawer 4)", () => {
+  const PAID = { paymentId: 21, amountCents: 17500, paidAt: "2026-10-15T09:00:00.000Z", pays: null };
+  const rest = both([{ kind: "balance", cents: 17500, part: "Jääk 50%" }]);
+
+  test("with an unbilled online payment, its row's button is the only one: the generic button is not there", async () => {
+    await show({ invoices: [], uninvoiced: [PAID], open: rest });
+    expect(all("button").filter((b) => b.textContent === "Koosta arve")).toHaveLength(1);
+    expect($("[data-uninvoiced-create='21']")!.textContent).toBe("Koosta arve");
+    expect($("[data-invoice-create]")).toBeNull();
+  });
+
+  test("two unbilled payments: each has its own button and still no generic one", async () => {
+    await show({ invoices: [], uninvoiced: [PAID, { ...PAID, paymentId: 22 }], open: rest });
+    expect(all("[data-uninvoiced-create]").map((b) => b.getAttribute("data-uninvoiced-create"))).toEqual(["21", "22"]);
+    expect($("[data-invoice-create]")).toBeNull();
+  });
+
+  test("with none, the generic button is the only one; once the payment has its invoice, it comes back", async () => {
+    await show({ invoices: [], uninvoiced: [], open: rest });
+    expect(all("button").filter((b) => b.textContent === "Koosta arve")).toHaveLength(1);
+    expect($("[data-invoice-create]")).not.toBeNull();
+    await show({ invoices: [], uninvoiced: [PAID], open: rest });
+    expect($("[data-invoice-create]")).toBeNull();
+    await show({ invoices: [], uninvoiced: [], open: rest });
+    expect($("[data-invoice-create]")).not.toBeNull();
+  });
+
+  test("without a seller there is no button at all: the payment's row has none and the link to Seaded stands in", async () => {
+    await show({ invoices: [], uninvoiced: [PAID], open: rest, sellerReady: false });
+    expect(all("button").filter((b) => b.textContent === "Koosta arve")).toHaveLength(0);
+    expect($("[data-invoice-need-seller]")).not.toBeNull();
+  });
+});
+
+describe("the block on a phone: a folded row (README A2 phone drawer)", () => {
+  const fold = () => $("[data-phone-fold]")!;
+  const summary = () => $("[data-phone-fold-toggle] [data-fold-summary]")!.textContent;
+
+  test("it is the PhoneFold: „Arved“ as the heading and as the row, closed to begin with, the invoices in the body", async () => {
+    await show({ invoices: [UNPAID] });
+    expect(fold().hasAttribute("data-registration-invoices")).toBe(true);
+    expect($("h3", fold())!.textContent).toBe("Arved");
+    expect($("[data-phone-fold-toggle]")!.getAttribute("aria-expanded")).toBe("false");
+    expect(fold().contains(rowOf("MSL2026-001"))).toBe(true);
+    await click($("[data-phone-fold-toggle]"));
+    expect($("[data-phone-fold-toggle]")!.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  test("the row's summary (P-3): „{n} tasumata“, „kõik tasutud“, „arveid pole“", async () => {
+    await show({ invoices: [UNPAID, view({ id: 16, number: "MSL2026-006" }), RECEIPT] });
+    expect(summary()).toBe("2 tasumata");
+    await show({ invoices: [view({ ...UNPAID, status: "paid", paidAt: "2026-10-15T09:00:00.000Z", paidMethod: "bank" }), CANCELLED] });
+    expect(summary()).toBe("kõik tasutud");
+    await show({ invoices: [] });
+    expect(summary()).toBe("arveid pole");
+    // (a cancelled invoice is no invoice to speak of)
+    await show({ invoices: [CANCELLED] });
+    expect(summary()).toBe("arveid pole");
+  });
+
+  test("an invoice made or paid while the row is open leaves it open", async () => {
+    actions.createInvoiceAction.mockResolvedValue({ ok: true, number: "MSL2026-006" });
+    await show({ invoices: [] });
+    await click($("[data-phone-fold-toggle]"));
+    await click($("[data-invoice-create]"));
+    await submitForm($("[data-invoice-create-form]"));
+    expect($("[data-phone-fold-toggle]")!.getAttribute("aria-expanded")).toBe("true");
+    expect(line(container)).toBe("Arve MSL2026-006 on koostatud.");
   });
 });

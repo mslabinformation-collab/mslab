@@ -1,14 +1,17 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate } from "@/i18n/format";
 import { requestContractAction, sendContractCopyAction } from "@/server/actions/admin-contracts";
 import type { ContractView } from "./contract-view";
+import { FoldRow } from "./FoldRow";
 import ui from "./ui.module.css";
 import styles from "./ContractBlock.module.css";
 
-// The registration drawer's „Leping“ (contracts Task 5, spec §4, D4, D7): the registration's contracts — the current one first, with the day it was
+// The registration drawer's „Leping“ (contracts Task 5, spec §4, D4, D7; admin UX pass, piece 2, Task 6: a folded row of the drawer, README A2 drawer 5 —
+// closed, its one-line summary is the block's own state line, P-3: „Kinnitatud {date}“, „Kinnitamist ootab (saadetud {date})“, „Asendatud {date}“, or
+// „Sellele registreeringule pole lepingut“ — „puudub“ on a phone): the registration's contracts — the current one first, with the day it was
 // accepted and the way, „Laadi alla (PDF)“ and „Saada koopia õpilasele“, then the superseded ones with „Asendatud {date}“ (they can be downloaded, not
 // sent) — and „Saada leping kinnitamiseks“. The ask is offered to a registration linked to an account and not cancelled, whether or not it has a contract
 // (D4: none, or the session or the terms changed since). Without an account the block says so in words and offers no button; a cancelled registration
@@ -39,11 +42,23 @@ export function ContractBlock({
   cancelled: boolean;
 }) {
   const t = adminEt.contracts.block;
-  const uid = useId();
   const [line, setLine] = useState<Line>(IDLE);
   const [pending, start] = useTransition();
 
   const when = (iso: string) => formatDate(new Date(iso), "et");
+
+  // P-3: what is waiting (an ask not yet accepted, as the block says it below), else the current contract, else the newest superseded one, else none
+  const accepted = contracts.find((c) => c.supersededAt === null);
+  const newest = contracts[0];
+  const asked = requestedAt !== null && !cancelled;
+  const summary = asked
+    ? fill(t.pending, { date: when(requestedAt) })
+    : accepted
+      ? fill(adminEt.contracts.fold.accepted, { date: when(accepted.acceptedAt) })
+      : newest?.supersededAt
+        ? fill(t.superseded, { date: when(newest.supersededAt) })
+        : adminEt.contracts.fold.none;
+  const none = !asked && contracts.length === 0;
 
   const ask = () => {
     if (pending) return;
@@ -64,74 +79,73 @@ export function ContractBlock({
   };
 
   return (
-    <section className={styles.block} aria-labelledby={`${uid}-title`} data-registration-contracts="">
-      <h3 id={`${uid}-title`} className={ui.h3}>
-        {adminEt.contracts.title}
-      </h3>
-      {contracts.length === 0 ? (
-        <p className={ui.muted} data-contracts-none="">
-          {t.none}
-        </p>
-      ) : (
-        <ul className={styles.list} data-contract-list="">
-          {contracts.map((c) => {
-            const current = c.supersededAt === null;
-            return (
-              <li key={c.id} className={styles.row} data-contract={c.id} data-contract-state={current ? "current" : "superseded"}>
-                <div className={styles.head}>
-                  <strong className={styles.name}>{c.title || adminEt.contracts.title}</strong>
-                  {!current && (
-                    <span className={ui.tag} data-contract-superseded="">
-                      {fill(t.superseded, { date: when(c.supersededAt!) })}
-                    </span>
-                  )}
-                </div>
-                <p className={styles.meta} data-contract-facts="">
-                  {fill(t.accepted, { date: when(c.acceptedAt), way: adminEt.contracts.via[c.acceptedVia] })}
-                </p>
-                {current && c.sentAt && (
-                  <p className={styles.meta} data-contract-sent="">
-                    {fill(t.sent, { date: when(c.sentAt) })}
+    <FoldRow title={adminEt.contracts.title} summary={summary} shortSummary={none ? adminEt.contracts.fold.nonePhone : undefined}>
+      <section className={styles.block} aria-label={adminEt.contracts.title} data-registration-contracts="">
+        {contracts.length === 0 ? (
+          <p className={ui.muted} data-contracts-none="">
+            {t.none}
+          </p>
+        ) : (
+          <ul className={styles.list} data-contract-list="">
+            {contracts.map((c) => {
+              const current = c.supersededAt === null;
+              return (
+                <li key={c.id} className={styles.row} data-contract={c.id} data-contract-state={current ? "current" : "superseded"}>
+                  <div className={styles.head}>
+                    <strong className={styles.name}>{c.title || adminEt.contracts.title}</strong>
+                    {!current && (
+                      <span className={ui.tag} data-contract-superseded="">
+                        {fill(t.superseded, { date: when(c.supersededAt!) })}
+                      </span>
+                    )}
+                  </div>
+                  <p className={styles.meta} data-contract-facts="">
+                    {fill(t.accepted, { date: when(c.acceptedAt), way: adminEt.contracts.via[c.acceptedVia] })}
                   </p>
-                )}
-                <div className={styles.actions}>
-                  {current && (
-                    <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} aria-disabled={pending || undefined} onClick={() => copy(c.id)} data-contract-send-copy={c.id}>
-                      {t.sendCopy}
-                    </button>
+                  {current && c.sentAt && (
+                    <p className={styles.meta} data-contract-sent="">
+                      {fill(t.sent, { date: when(c.sentAt) })}
+                    </p>
                   )}
-                  <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/api/admin/leping/${c.id}`} aria-label={fill(t.downloadLabel, { id: c.id })} data-contract-download={c.id}>
-                    {t.download}
-                  </a>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                  <div className={styles.actions}>
+                    {current && (
+                      <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} aria-disabled={pending || undefined} onClick={() => copy(c.id)} data-contract-send-copy={c.id}>
+                        {t.sendCopy}
+                      </button>
+                    )}
+                    <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/api/admin/leping/${c.id}`} aria-label={fill(t.downloadLabel, { id: c.id })} data-contract-download={c.id}>
+                      {t.download}
+                    </a>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
-      {requestedAt !== null && !cancelled && (
-        <p className={styles.line} data-contract-pending="">
-          {fill(t.pending, { date: when(requestedAt) })}
-        </p>
-      )}
+        {requestedAt !== null && !cancelled && (
+          <p className={styles.line} data-contract-pending="">
+            {fill(t.pending, { date: when(requestedAt) })}
+          </p>
+        )}
 
-      {linked && !cancelled && (
-        <div className={styles.ask}>
-          <button type="button" className={`${ui.btn} ${ui.smallBtn}`} aria-disabled={pending || undefined} onClick={ask} data-contract-request="">
-            {t.request}
-          </button>
-          <p className={ui.hint}>{t.requestHint}</p>
-        </div>
-      )}
-      {!linked && !cancelled && (
-        <p className={ui.notice} data-contract-no-account="">
-          {t.noAccount}
+        {linked && !cancelled && (
+          <div className={styles.ask}>
+            <button type="button" className={`${ui.btn} ${ui.smallBtn}`} aria-disabled={pending || undefined} onClick={ask} data-contract-request="">
+              {t.request}
+            </button>
+            <p className={ui.hint}>{t.requestHint}</p>
+          </div>
+        )}
+        {!linked && !cancelled && (
+          <p className={ui.notice} data-contract-no-account="">
+            {t.noAccount}
+          </p>
+        )}
+        <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-contract-status="">
+          {line.text}
         </p>
-      )}
-      <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-contract-status="">
-        {line.text}
-      </p>
-    </section>
+      </section>
+    </FoldRow>
   );
 }

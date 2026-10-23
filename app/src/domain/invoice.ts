@@ -7,7 +7,7 @@
 import type { Invoice } from "@/db/schema";
 import { tallinnFormParts, tallinnInstant } from "./calendar";
 import { seqToIssue, tallinnDateText, tallinnYear } from "./certificate";
-import { prepaymentDue, type PaymentChoice } from "./registration";
+import { prepaymentDue, registrationStatusAfterPayment, type PaymentChoice, type RegStatus } from "./registration";
 
 /** What an invoice is for (D4): a contact course's half, whole sum or rest, or an e-course's price. */
 export type InvoiceKind = "prepayment" | "full" | "balance" | "ecourse";
@@ -253,8 +253,50 @@ export function receiptKind(r: { priceCents: number | null; paymentChoice: Payme
   return cents === r.priceCents ? "full" : r.paymentChoice === "half" ? "prepayment" : "full";
 }
 
+/**
+ * What taking a receipt's payment back takes off Laekunud summa (server/invoices.ts takeBackRegistrationPayment; S3-f's „Laekunud summa väheneb {x} €“):
+ * the receipt's `amountCents`, but never more than the part of `paidCents` that no other paid invoice covers (`othersPaidCents`), and never below 0.
+ * So a receipt made before B4 for venue money that was never recorded cannot take an online payment's money off (the B4 review's m4).
+ */
+export function takeBackCents(paidCents: number, amountCents: number, othersPaidCents: number): number {
+  return Math.max(0, Math.min(amountCents, paidCents - othersPaidCents));
+}
+
+/**
+ * The status after money is taken back (the B4 review's I1): the payments rule (registrationStatusAfterPayment: confirmed from 50 %, awaiting
+ * below it, cancelled stays) on `r.paidCents` (the total after), but taking money back only keeps the status or steps it down, never confirms: a
+ * registration that is not confirmed may be awaiting with 50 % paid because its session was full or because Maria set it so, and confirming it
+ * here would take a seat no one checked. A course with no price (`totalCents` null) keeps its status.
+ */
+export function registrationStatusAfterTakeBack(r: { status: RegStatus; paidCents: number }, totalCents: number | null): RegStatus {
+  if (totalCents == null) return r.status;
+  const next = registrationStatusAfterPayment(r, totalCents);
+  return next === "confirmed" && r.status !== "confirmed" ? r.status : next;
+}
+
+/**
+ * What „Võta tasumine tagasi“ of the receipt `receipt` does, as the drawer says it before it is pressed (S3-f) — the same sum and status as
+ * the server's takeBackRegistrationPayment, from the registration as the page reads it: `cents` comes off Laekunud summa (takeBackCents, over the
+ * paid ones among `invoices` but the receipt itself and the paid online payments waiting for their invoice: coveringInvoices), and
+ * `backToAwaiting` when a confirmed registration then falls under 50 % („Registreering läheb tagasi olekusse „Ootab ettemaksu““).
+ */
+export function receiptTakeBack(
+  r: { status: RegStatus; paidCents: number; paymentChoice: PaymentChoice },
+  totalCents: number | null,
+  receipt: { id: number; amountCents: number },
+  invoices: (Covering & { id: number })[],
+  uninvoiced: UninvoicedPayment[],
+): { cents: number; backToAwaiting: boolean } {
+  const others = coveringInvoices(r, invoices.filter((i) => i.id !== receipt.id), uninvoiced)
+    .filter((i) => i.status === "paid")
+    .reduce((sum, i) => sum + i.amountCents, 0);
+  const cents = takeBackCents(r.paidCents, receipt.amountCents, others);
+  const after = registrationStatusAfterTakeBack({ status: r.status, paidCents: r.paidCents - cents }, totalCents);
+  return { cents, backToAwaiting: r.status === "confirmed" && after === "awaiting_prepayment" };
+}
+
 /** A paid online payment of a registration that no invoice names yet: it waits in „Arveta maksed“ (I1). */
-export type UninvoicedPayment = { id: number; kind: "prepayment" | "balance" | "ecourse"; invoiceId: number | null; amountCents: number };
+export type UninvoicedPayment ={ id: number; kind: "prepayment" | "balance" | "ecourse"; invoiceId: number | null; amountCents: number };
 
 /** `payments` that are paid and that no invoice of `invoices` names as its payment (invoices.payment_id: ruling R13's "invoiced"). */
 export function uninvoicedOf<P extends { id: number; status: string }>(payments: P[], invoices: { paymentId: number | null }[]): P[] {

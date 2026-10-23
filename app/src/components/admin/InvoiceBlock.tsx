@@ -10,6 +10,7 @@ import type { InvoiceView } from "./invoice-view";
 import { InvoiceCatchUp } from "./InvoiceCatchUp";
 import { InvoiceRow } from "./InvoiceRow";
 import { PaidFields, type ManualMethod } from "./PaidFields";
+import { PhoneFold } from "./PhoneFold";
 import ui from "./ui.module.css";
 import styles from "./InvoiceBlock.module.css";
 
@@ -20,8 +21,10 @@ import styles from "./InvoiceBlock.module.css";
 // money typed by hand into „Laekunud summa“, a receipt for exactly that money: m4) as radio choices, and one of two kinds: „Maksmiseks“ (a
 // request to pay, unpaid) and „Juba tasutud“ (a receipt for money already received; it asks the day and the way, and does not touch „Laekunud
 // summa“); a kind with nothing to offer cannot be chosen. Without a seller (D3) „Koosta arve“ is a link to Seaded → Arve andmed instead, and the
-// payments have no button. The page is refreshed by the action, so the list then shows the new invoice. This file runs on old iPads: no regular
-// expression with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
+// payments have no button. Only one „Koosta arve“ is ever in view (README A2 drawer 4): while a paid online payment waits for its invoice, its row's
+// button is the one and the generic one is not drawn; with none waiting, the generic one is. On a phone the whole block is a folded row (PhoneFold:
+// „Arved … 1 tasumata ▸“, README A2 phone drawer; P-3's summaries). The page is refreshed by the action, so the list then shows the new invoice. This
+// file runs on old iPads: no regular expression with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
 
 type Mode = "request" | "receipt";
 /** A paid online payment of the registration that no invoice names (domain/invoice.ts uninvoicedOf), as the block lists it. */
@@ -76,6 +79,12 @@ export function InvoiceBlock({
   const amounts = open[shownMode];
   // the choice follows what is open: after an invoice is made the amounts change, and a kind no longer open falls back to the first
   const chosen = amounts.some((o) => o.kind === kind) ? kind : (amounts[0]?.kind ?? null);
+  // each paid online payment without an invoice has its own „Koosta arve“ (the catch-up): while any is waiting, the generic one is not drawn
+  const catchUps = sellerReady && uninvoiced.length > 0;
+  // the folded row's words (P-3): the invoices still to pay, else that all are paid, else that there are none (a cancelled one is no invoice to speak of)
+  const live = invoices.filter((i) => i.status !== "cancelled");
+  const unpaid = live.filter((i) => i.status === "unpaid").length;
+  const summary = unpaid > 0 ? fill(t.fold.unpaid, { n: unpaid }) : live.length > 0 ? t.fold.paid : t.fold.none;
 
   useEffect(() => {
     if (opened) form.current?.querySelector<HTMLElement>("input")?.focus();
@@ -95,10 +104,7 @@ export function InvoiceBlock({
   };
 
   return (
-    <section className={styles.block} aria-labelledby={`${uid}-title`} data-registration-invoices="">
-      <h3 id={`${uid}-title`} className={ui.h3}>
-        {adminEt.invoices.title}
-      </h3>
+    <PhoneFold title={adminEt.invoices.title} summary={summary} className={styles.block} bodyClassName={styles.blockBody} data-registration-invoices="">
       {invoices.length === 0 ? (
         <p className={ui.muted} data-invoices-none="">
           {t.none}
@@ -138,7 +144,7 @@ export function InvoiceBlock({
           <p className={ui.hint} data-invoice-all-covered="">
             {t.allCovered}
           </p>
-        ) : !opened ? (
+        ) : catchUps ? null : !opened ? (
           <div>
             <button type="button" className={`${ui.btn} ${ui.smallBtn}`} onClick={() => setOpened(true)} data-invoice-create="">
               {t.create}
@@ -210,6 +216,6 @@ export function InvoiceBlock({
       <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-invoice-create-status="">
         {line.text}
       </p>
-    </section>
+    </PhoneFold>
   );
 }

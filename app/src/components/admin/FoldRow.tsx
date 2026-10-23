@@ -11,6 +11,9 @@ import styles from "./FoldRow.module.css";
  * - `defaultOpen`: starts open (a row that has something to do). It is a start only: a row the visitor opened or closed stays as she left it
  *   when the page renders again with the same value.
  * - `summary` may be "" (the row says only its title and count); `count` of 0 is shown.
+ * - `shortSummary`: the words the phone frame draws instead (Part 2: „Leping … puudub ▸“ against the desktop's „Sellele registreeringule pole
+ *   lepingut“). Both are in the row; the stylesheet shows the short one below 640 px (the drawer's phone width) and hides it above. Drawn only
+ *   when there is a `summary` to replace.
  *
  * No state and no event handlers, so there is no "use client" line: a server page draws it as it is, a client component too
  * (tests/unit/old-safari.test.ts lists it).
@@ -18,6 +21,7 @@ import styles from "./FoldRow.module.css";
 export function FoldRow({
   title,
   summary,
+  shortSummary,
   count,
   id,
   defaultOpen,
@@ -25,6 +29,7 @@ export function FoldRow({
 }: {
   title: string;
   summary: string;
+  shortSummary?: string;
   count?: number;
   id?: string;
   defaultOpen?: boolean;
@@ -47,9 +52,16 @@ export function FoldRow({
           <span className={styles.aside}>
             {summary !== "" && (
               <>
-                <span className={styles.text} data-fold-summary="">
+                <span className={`${styles.text} ${shortSummary ? styles.hasShort : ""}`.trim()} data-fold-summary="">
                   {summary}
                 </span>{" "}
+                {shortSummary && (
+                  <>
+                    <span className={`${styles.text} ${styles.short}`} data-fold-summary-short="">
+                      {shortSummary}
+                    </span>{" "}
+                  </>
+                )}
               </>
             )}
             <span className={styles.arrow} aria-hidden="true">

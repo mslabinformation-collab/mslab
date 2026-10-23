@@ -4,7 +4,7 @@ import { formatDate } from "../../src/i18n/format";
 import { clientEmail, insertAccountFixtures } from "./account";
 import { adminReady, signInAsAdmin } from "./admin-login";
 import { onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
-import { expectFits, holdInvoiceSettings, INVOICE_COMPANY, openDrawer, today, WIDTHS } from "./invoices";
+import { expectFits, holdInvoiceSettings, INVOICE_COMPANY, openDrawer, openFold, today, viaMenu, WIDTHS } from "./invoices";
 import { runName, studentPage } from "./protocols";
 import { expect, submitsForms, test } from "./test";
 
@@ -125,23 +125,24 @@ test("the whole path: „Arve andmed“, a request to pay, the student's account
     // the three screens at four widths, with the unpaid invoice (every action shown) on them: the phone project is a phone already
     await test.step("the registration's „Arved“, the „Arved“ page and the course card at 390 / 834 / 1194 / 1440", async () => {
       const widths = isMobile ? [page.viewportSize()!.width] : [...WIDTHS];
-      const fit = async (p: Page, surface: Locator, what: string) => {
+      const fit = async (p: Page, surface: Locator, what: string, unfold?: Locator) => {
         const before = p.viewportSize()!;
         try {
           for (const width of widths) {
             if (!isMobile) await p.setViewportSize({ width, height: 900 });
+            if (unfold) await openFold(unfold); // (a phone's folded „Arved“, closed again by every new width)
             await expectFits(p, surface, what);
           }
         } finally {
           await p.setViewportSize(before);
         }
       };
-      await fit(page, block, "the registration's „Arved“");
+      await fit(page, block, "the registration's „Arved“", block);
       // „Koosta arve“ open, „Lisa laekumine“ open (the day, the ways of paying and the receipt box show; a receipt is made with the money there,
       // B4, so „Koosta arve“ offers none while nothing is recorded) and „Märgi tasutuks“ open: the fields people touch
       await block.locator("[data-invoice-create]").click();
       await expect(block.locator('[data-invoice-mode="receipt"]')).toBeDisabled();
-      await fit(page, block, "„Koosta arve“ in the registration's „Arved“");
+      await fit(page, block, "„Koosta arve“ in the registration's „Arved“", block);
       await block.getByRole("button", { name: "Katkesta" }).click();
       const money = drawer.locator("[data-money-card]"); // (not `card`: that is the student's course card here)
       await money.locator("[data-add-payment]").click();
@@ -150,9 +151,9 @@ test("the whole path: „Arve andmed“, a request to pay, the student's account
       await fit(page, money, "„Lisa laekumine“ in the registration's Raha card");
       await money.getByRole("button", { name: "Katkesta" }).click();
       await expect(money.locator("[data-add-payment-panel]")).toHaveCount(0);
-      await row.locator("[data-invoice-mark-paid]").click();
+      await viaMenu(row, "Märgi tasutuks");
       await expect(row.locator('[data-invoice-panel="paid"]')).toBeVisible();
-      await fit(page, block, "„Märgi tasutuks“ in the registration's „Arved“");
+      await fit(page, block, "„Märgi tasutuks“ in the registration's „Arved“", block);
       await row.locator('[data-invoice-panel="paid"]').getByRole("button", { name: "Katkesta" }).click();
       await page.goto("/admin/arved");
       await expect(page.locator(`[data-invoice="${number}"]`)).toBeVisible();
@@ -174,7 +175,7 @@ test("the whole path: „Arve andmed“, a request to pay, the student's account
 
     // 6. „Märgi tasutuks“: the amount is on the registration and it confirms
     await test.step("Maria marks it paid: the registration confirms", async () => {
-      await row.locator("[data-invoice-mark-paid]").click();
+      await viaMenu(row, "Märgi tasutuks");
       const panel = row.locator('[data-invoice-panel="paid"]');
       await expect(panel.locator("[data-paid-date]")).toHaveValue(today());
       await panel.getByRole("button", { name: "Salvesta tasumine" }).click();
@@ -199,8 +200,8 @@ test("the whole path: „Arve andmed“, a request to pay, the student's account
 
     // 8. „Võta tasumine tagasi“: unpaid again, the registration back to awaiting
     await test.step("Maria takes the payment back: unpaid again", async () => {
-      await row.locator("[data-invoice-undo]").click();
-      await row.locator("[data-invoice-undo-confirm]").click();
+      await viaMenu(row, "Võta tasumine tagasi");
+      await row.getByRole("button", { name: "Jah, võta tasumine tagasi" }).click();
       await expect(row.locator("[data-invoice-status-line]")).toHaveText("Arve on jälle tasumata.");
       await expect(row.locator("[data-invoice-state]")).toHaveText("Tasumata");
       await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
@@ -211,8 +212,8 @@ test("the whole path: „Arve andmed“, a request to pay, the student's account
 
     // 9. „Tühista arve“: hidden from the student, her download a 404
     await test.step("Maria cancels it: the student no longer sees it", async () => {
-      await row.locator("[data-invoice-cancel]").click();
-      await row.locator("[data-invoice-cancel-confirm]").click();
+      await viaMenu(row, "Tühista arve");
+      await row.getByRole("button", { name: "Jah, tühista arve" }).click();
       await expect(row.locator("[data-invoice-state]")).toHaveText("Tühistatud");
       expect(await storedInvoice(email)).toMatchObject({ status: "cancelled" });
       await hers.reload();

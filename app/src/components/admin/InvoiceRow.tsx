@@ -3,24 +3,30 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { euro, INVOICE_LIMITS, invoiceStatusText, paidMethodText, REFUNDED } from "@/domain/invoice";
+import { formatEUR } from "@/domain/money";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate } from "@/i18n/format";
 import { cancelInvoiceAction, markInvoicePaidAction, sendInvoiceAction, undoInvoicePaidAction, updateInvoiceBuyerAction } from "@/server/actions/admin-invoices";
+import { ConfirmPanel } from "./ConfirmPanel";
 import type { InvoiceView } from "./invoice-view";
+import { MoreMenu, type MoreMenuItem } from "./MoreMenu";
 import { PaidFields, type ManualMethod } from "./PaidFields";
 import ui from "./ui.module.css";
 import styles from "./InvoiceBlock.module.css";
 
-// One invoice with the actions its state allows (spec §5, D6, ruling R10), in the registration drawer and on the „Arved“ list:
-// - Tasumata: „Saada õpilasele“, „Muuda saajat“, „Märgi tasutuks“, „Tühista arve“; one whose online payment is paid and waits for its catch-up
-//   (R14, the final review's m2) says so and has neither „Saada õpilasele“ (a request for money already in) nor „Märgi tasutuks“ (refused);
-// - Tasutud: „Saada õpilasele“, and „Võta tasumine tagasi“ when Maria marked it (an online payment's invoice is never changed by the site); one
-//   whose online payment was refunded or voided reads „Tagastatud“ (I3), its actions as they were;
+// One invoice with the actions its state allows (spec §5, D6, ruling R10), in the registration drawer and on the „Arved“ list. In view (README A2
+// drawer 4, the Part 2 prototype's Arved row): „Saada õpilasele“ and „Laadi alla (PDF)“; the rest under „Veel ▾“ (MoreMenu), as the state allows:
+// - Tasumata: „Saada õpilasele“; Muuda saajat, Märgi tasutuks, Tühista arve under „Veel ▾“. One whose online payment is paid and waits for its
+//   catch-up (R14, the final review's m2) says so and has neither „Saada õpilasele“ (a request for money already in) nor „Märgi tasutuks“ (refused);
+// - Tasutud: „Saada õpilasele“, and „Võta tasumine tagasi“ under „Veel ▾“ when Maria marked or recorded it (an online payment's invoice is never
+//   changed by the site: no menu); one whose online payment was refunded or voided reads „Tagastatud“ (I3) and is not sent again (README);
 // - Tühistatud: nothing but the download.
-// „Laadi alla (PDF)“ is on every invoice. An action that needs more than a tap opens a panel under the buttons (the second address, the day and
-// the way, the buyer's fields) or asks to be confirmed (undo, cancel), saying what will happen; the page is refreshed by the action when it
-// succeeds, so this row then shows the new state. This file runs on old iPads: no regular expression with a lookbehind, here or in anything it
-// imports (tests/unit/old-safari.test.ts).
+// „Laadi alla (PDF)“ is on every invoice. An action that needs more than a tap opens a panel under the buttons (the second address, the day and the
+// way, the buyer's fields) or asks to be confirmed with a ConfirmPanel, saying what will happen: „Tühista arve“ (P-11) and „Võta tasumine tagasi“
+// (S3-f for a receipt — a paid invoice with no due date —, which lowers „Laekunud summa“ by the sum the server will really take back, the
+// InvoiceView's `takeBack`; a request Maria marked paid keeps its words). The focus goes back to the trigger when a panel is cancelled; the page is
+// refreshed by an action when it succeeds, so this row then shows the new state. This file runs on old iPads: no regular expression with a
+// lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts).
 
 type Panel = "send" | "paid" | "buyer" | "undo" | "cancel";
 /** The status line: empty, on its way, done or refused (`code` is the refusal's, so a field can be marked). */
@@ -45,38 +51,61 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
   const [method, setMethod] = useState<ManualMethod>("bank");
   const [buyer, setBuyer] = useState<BuyerDraft>(() => buyerDraft(v.buyer));
   const [fields, setFields] = useState<Record<string, string>>({});
+  const actionsBox = useRef<HTMLDivElement>(null);
+  const sendButton = useRef<HTMLButtonElement>(null);
+  const statusLine = useRef<HTMLParagraphElement>(null);
+  /** The button the open panel came from: „Saada õpilasele“, or „Veel ▾“ for the menu's items. */
+  const [from, setFrom] = useState<"send" | "menu">("menu");
+  /**
+   * Where the focus goes now that a panel has gone (a new object each time, so the same place again is a change too): the button it was opened from
+   * when it was cancelled, the line that says what happened when the action went through (the trigger may be gone by the time the page is refreshed).
+   */
+  const [back, setBack] = useState<{ to: "send" | "menu" | "line" } | null>(null);
 
-  // an opened panel takes the focus, so the keyboard follows the tap: its first field, or for a confirmation (which undoes or cancels something)
-  // the harmless „Katkesta“, never the button that does it
+  // an opened panel takes the focus, so the keyboard follows the tap: its first field. A ConfirmPanel (undo, cancel) takes the focus itself.
   useEffect(() => {
-    if (panel) panelBox.current?.querySelector<HTMLElement>(panel === "undo" || panel === "cancel" ? "[data-invoice-close]" : "input, button")?.focus();
+    if (panel && panel !== "undo" && panel !== "cancel") panelBox.current?.querySelector<HTMLElement>("input, button")?.focus();
   }, [panel]);
 
-  const open = (p: Panel) => {
+  // the panel cancelled (or done): the focus goes back to its trigger when there is one, else to the line that says what happened
+  useEffect(() => {
+    if (!back) return;
+    const trigger = back.to === "send" ? sendButton.current : back.to === "menu" ? actionsBox.current?.querySelector<HTMLElement>("[data-more-menu] > button") : null;
+    (trigger ?? statusLine.current)?.focus();
+  }, [back]);
+
+  /** `opener`: the button the panel opens from, which gets the focus back. */
+  const open = (p: Panel, opener: "send" | "menu") => {
+    setFrom(opener);
     setPanel(p);
     setLine(IDLE);
     setFields({});
     if (p === "buyer") setBuyer(buyerDraft(v.buyer));
   };
   const close = () => {
+    setBack({ to: from });
     setPanel(null);
     setLine(IDLE);
     setFields({});
   };
   const busy = (text: string) => setLine({ tone: "busy", text });
   const finish = (text: string) => {
+    setBack({ to: "line" });
     setPanel(null);
     setFields({});
     setLine({ tone: "done", text });
   };
   const refuse = (text: string, code?: string) => setLine({ tone: "error", text, code });
 
-  /** A confirm button or a form's submit: runs `work` once at a time. */
-  const submit = (text: string, work: () => Promise<void>) => (e: { preventDefault(): void }) => {
-    e.preventDefault();
+  /** A confirmation's yes or a form's submit: runs `work` once at a time. */
+  const run = (text: string, work: () => Promise<void>) => {
     if (pending) return;
     busy(text);
     start(work);
+  };
+  const submit = (text: string, work: () => Promise<void>) => (e: { preventDefault(): void }) => {
+    e.preventDefault();
+    run(text, work);
   };
 
   const send = submit(t.sendPanel.sending, async () => {
@@ -90,17 +119,19 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
     if (!r.ok) return refuse(r.text, r.error);
     finish(r.full ? `${t.paidPanel.done} ${t.paidPanel.full}` : t.paidPanel.done);
   });
-  const undo = submit(adminEt.common.saving, async () => {
-    const r = await undoInvoicePaidAction({ id: v.id });
-    if (!r.ok) return refuse(r.text, r.error);
-    // (ruling R10: the screen says which of the two it was)
-    finish(r.status === "cancelled" ? t.undoPanel.doneReceipt : t.undoPanel.doneRequest);
-  });
-  const cancel = submit(adminEt.common.saving, async () => {
-    const r = await cancelInvoiceAction({ id: v.id });
-    if (!r.ok) return refuse(r.text, r.error);
-    finish(t.cancelPanel.done);
-  });
+  const undo = () =>
+    run(adminEt.common.saving, async () => {
+      const r = await undoInvoicePaidAction({ id: v.id });
+      if (!r.ok) return refuse(r.text, r.error);
+      // (ruling R10: the screen says which of the two it was)
+      finish(r.status === "cancelled" ? t.undoPanel.doneReceipt : t.undoPanel.doneRequest);
+    });
+  const cancel = () =>
+    run(adminEt.common.saving, async () => {
+      const r = await cancelInvoiceAction({ id: v.id });
+      if (!r.ok) return refuse(r.text, r.error);
+      finish(t.cancelPanel.done);
+    });
   const saveBuyer = submit(t.buyerPanel.saving, async () => {
     const r = await updateInvoiceBuyerAction({ id: v.id, ...buyer });
     if (r.ok) return finish(t.buyerPanel.done);
@@ -117,7 +148,21 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
   }, [panel, fields]);
 
   const status = v.status;
-  const sendable = status !== "cancelled" && !v.paidOnline;
+  // (not to a cancelled invoice, one whose online payment is paid — a request for money already in —, nor to „Tagastatud“: README A2 drawer 4)
+  const sendable = status !== "cancelled" && !v.paidOnline && !v.refunded;
+  // a receipt („Juba tasutud“, „Lisa laekumine“'s) is born paid, with no due date: its undo cancels it and lowers „Laekunud summa“ (S3-f); a request
+  // Maria marked paid has its due date and is unpaid again
+  const receipt = status === "paid" && v.dueAt === null;
+  const more: MoreMenuItem[] = [];
+  if (status === "unpaid") {
+    more.push({ label: t.editBuyer, onSelect: () => open("buyer", "menu") });
+    if (!v.paidOnline) more.push({ label: t.markPaid, onSelect: () => open("paid", "menu") });
+    more.push({ label: t.cancelInvoice, tone: "danger", onSelect: () => open("cancel", "menu") });
+  }
+  if (status === "paid" && !v.online) more.push({ label: t.undoPaid, tone: "danger", onSelect: () => open("undo", "menu") });
+  /** What S3-f's panel says comes off: the sum the server will take back (capped), else — where the page does not know — the receipt's own amount. */
+  const takeBackCents = v.takeBack ? v.takeBack.cents : v.amountCents;
+  const bare = (cents: number) => formatEUR(cents, "et").replace(/ €$/, "");
   const when = (iso: string) => formatDate(new Date(iso), "et");
   const facts = [
     v.part,
@@ -193,35 +238,23 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
         </p>
       )}
 
-      <div className={styles.actions} role="group" aria-label={fill(t.actionsLabel, { number: v.number })}>
+      <div ref={actionsBox} className={styles.actions} role="group" aria-label={fill(t.actionsLabel, { number: v.number })}>
         {sendable && (
-          <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => open("send")} aria-expanded={panel === "send"} data-invoice-send="">
+          <button
+            ref={sendButton}
+            type="button"
+            className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}
+            onClick={() => open("send", "send")}
+            aria-expanded={panel === "send"}
+            data-invoice-send=""
+          >
             {t.send}
-          </button>
-        )}
-        {status === "unpaid" && (
-          <>
-            <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => open("buyer")} aria-expanded={panel === "buyer"} data-invoice-buyer="">
-              {t.editBuyer}
-            </button>
-            {!v.paidOnline && (
-              <button type="button" className={`${ui.btn} ${ui.smallBtn}`} onClick={() => open("paid")} aria-expanded={panel === "paid"} data-invoice-mark-paid="">
-                {t.markPaid}
-              </button>
-            )}
-            <button type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => open("cancel")} aria-expanded={panel === "cancel"} data-invoice-cancel="">
-              {t.cancelInvoice}
-            </button>
-          </>
-        )}
-        {status === "paid" && !v.online && (
-          <button type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => open("undo")} aria-expanded={panel === "undo"} data-invoice-undo="">
-            {t.undoPaid}
           </button>
         )}
         <a className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} href={`/api/admin/arve/${v.id}`} aria-label={fill(t.downloadLabel, { number: v.number })} data-invoice-download="">
           {t.download}
         </a>
+        {more.length > 0 && <MoreMenu items={more} buttonLabel={fill(t.moreLabel, { number: v.number })} />}
       </div>
 
       <div ref={panelBox} className={styles.panelBox}>
@@ -293,38 +326,36 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
           </form>
         )}
 
+        {/* S3-f: the undo of a receipt asks the question and lists what follows; a request Maria marked paid keeps its words (ruling R10: the words say
+            what will happen — a receipt is cancelled and keeps its number, a marked request is unpaid again) */}
         {panel === "undo" && (
-          <div className={styles.panel} role="group" aria-label={t.undoPaid} data-invoice-panel="undo">
-            {/* ruling R10: the words say what will happen — a receipt asked for no money, so it is cancelled; a marked request is unpaid again */}
-            <p data-invoice-undo-text="">{v.paidAdds ? t.undoPanel.request : t.undoPanel.receipt}</p>
-            <div className={styles.panelActions}>
-              <button type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} aria-disabled={pending || undefined} onClick={undo} data-invoice-undo-confirm="">
-                {t.undoPanel.confirm}
-              </button>
-              <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={close} data-invoice-close="">
-                {t.close}
-              </button>
-            </div>
+          <div data-invoice-panel="undo">
+            <ConfirmPanel
+              question={receipt ? fill(t.undoPanel.receiptQuestion, { number: v.number }) : t.undoPanel.request}
+              lines={
+                receipt
+                  ? [t.undoPanel.receiptCancelled, fill(t.undoPanel.receiptSum, { x: bare(takeBackCents) }), ...(v.takeBack?.backToAwaiting ? [t.undoPanel.receiptBack] : [])]
+                  : undefined
+              }
+              yesLabel={t.undoPanel.confirm}
+              tone="danger"
+              busy={pending}
+              onYes={undo}
+              onCancel={close}
+            />
           </div>
         )}
 
+        {/* P-11 */}
         {panel === "cancel" && (
-          <div className={styles.panel} role="group" aria-label={t.cancelInvoice} data-invoice-panel="cancel">
-            <p>{t.cancelPanel.text}</p>
-            <div className={styles.panelActions}>
-              <button type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} aria-disabled={pending || undefined} onClick={cancel} data-invoice-cancel-confirm="">
-                {t.cancelPanel.confirm}
-              </button>
-              <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={close} data-invoice-close="">
-                {t.close}
-              </button>
-            </div>
+          <div data-invoice-panel="cancel">
+            <ConfirmPanel question={fill(t.cancelPanel.question, { number: v.number })} lines={[t.cancelPanel.text]} yesLabel={t.cancelPanel.confirm} tone="danger" busy={pending} onYes={cancel} onCancel={close} />
           </div>
         )}
 
       </div>
 
-      <p role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-invoice-status-line="">
+      <p ref={statusLine} tabIndex={-1} role="status" className={`${styles.status} ${toneClass(line.tone)}`} data-invoice-status-line="">
         {line.text}
       </p>
     </li>

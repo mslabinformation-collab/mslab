@@ -73,6 +73,17 @@ describe("FoldRow", () => {
     expect(text(summary().querySelector("[data-fold-summary]"))).toBe("11 rida");
   });
 
+  it("a short summary for a phone: both are in the row (the stylesheet shows one), the short one is drawn only when given", async () => {
+    await draw({ summary: "Sellele registreeringule pole lepingut", shortSummary: "puudub" });
+    expect(text(summary().querySelector("[data-fold-summary]"))).toBe("Sellele registreeringule pole lepingut");
+    expect(text(summary().querySelector("[data-fold-summary-short]"))).toBe("puudub");
+    expect(text(summary())).toBe("Leping Sellele registreeringule pole lepingut puudub ▸");
+    await draw({ summary: "Kinnitatud 17.10.2026", shortSummary: undefined });
+    expect(summary().querySelector("[data-fold-summary-short]")).toBeNull();
+    await draw({ summary: "", shortSummary: "puudub" });
+    expect(summary().querySelector("[data-fold-summary-short]")).toBeNull(); // (a short line for no line makes none)
+  });
+
   it("opening shows the children; they stay in the details, after the summary", async () => {
     await draw();
     expect(fold().open).toBe(false);
@@ -137,6 +148,23 @@ describe("FoldRow: the stylesheet", () => {
     expect(rule(".arrow")).toMatch(/transition:\s*transform/);
     const reduced = /@media \(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?\n\})/.exec(css())?.[1] ?? "";
     expect(reduced).toMatch(/\.arrow\s*\{[^}]*transition:\s*none;/);
+  });
+
+  it("the short summary replaces the long one on a phone (640 px, the drawer's) and is hidden above it", () => {
+    expect(rule(".short")).toMatch(/display:\s*none;/);
+    const phone = /@media \(max-width:\s*640px\)\s*\{([\s\S]*?\n\})/.exec(css())?.[1] ?? "";
+    expect(phone).toMatch(/\.short\s*\{[^}]*display:\s*inline;/);
+    expect(phone).toMatch(/\.hasShort\s*\{[^}]*display:\s*none;/);
+  });
+
+  it("the „▸“ has a square box, so that turning it down adds no sideways scroll to the drawer (a box wider than it is tall sticks out when turned)", () => {
+    const box = /\.arrow\s*\{([^}]*)\}/.exec(css())?.[1] ?? "";
+    const [w, h] = [/(?:^|;|\s)width:\s*(\d+)px;/.exec(box)?.[1], /(?:^|;|\s)height:\s*(\d+)px;/.exec(box)?.[1]];
+    expect([w, h]).toEqual([expect.stringMatching(/^\d+$/), w]);
+  });
+
+  it("the row clips what its „▸“ sticks out while it turns (the 0.15 s turn is a diagonal wider than the box), so the drawer shows no scrollbar flash", () => {
+    expect(rule(".row")).toMatch(/overflow:\s*hidden;/);
   });
 
   it("the keyboard ring is the admin's: 2px rose, offset 2", () => {

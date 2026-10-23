@@ -1,0 +1,102 @@
+/* PhoneFold (the A screens, Task 6): a block with its heading above 640 px (the drawer's phone width), a folded row below it — the same 52 px row as
+   FoldRow (the Part 2 prototype's folded rows): the title in 600 14px on the left, the one-line summary in 13px muted and the „▸“ on the right, a 1px
+   rule under it, the whole row a tap target. Colours from tokens.css only. */
+
+.root {
+  min-width: 0;
+}
+
+/* the desktop frame: the heading and the content; the row is not there */
+.toggle {
+  display: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  /* the turning „▸“ sticks out a few px for 0.15 s (a diagonal is wider than its box): clipped here, so the drawer shows no scrollbar flash */
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.title {
+  flex: none;
+  font-weight: 600;
+}
+
+/* the summary may wrap on a phone; the arrow stays beside its last line */
+.aside {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted-2);
+  font-size: 13px;
+  text-align: right;
+}
+
+.text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* a square box: turned a quarter it takes the same room, so an open row adds no sideways scroll to the drawer */
+.arrow {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrow {
+    transition: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .heading {
+    display: none;
+  }
+
+  .toggle {
+    display: block;
+    width: 100%;
+    min-height: 52px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .toggle:focus-visible {
+    outline: 2px solid var(--rose);
+    outline-offset: 2px;
+  }
+
+  /* folded: only the row; open: the content under it, and the „▸“ points down */
+  .root[data-open="false"] .body {
+    display: none;
+  }
+
+  .root[data-open="true"] .arrow {
+    transform: rotate(90deg);
+  }
+
+  .body {
+    padding: 14px 0 18px;
+  }
+}

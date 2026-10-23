@@ -2,6 +2,8 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { PaymentRow } from "@/db/queries/payments";
 
 // The registration drawer's Raha card (admin UX pass, piece 2, Task 5; README A2 drawer 2, piece2-texts P-2, S3-a…e) in a browser-like document
@@ -18,6 +20,7 @@ const actions = vi.hoisted(() => ({ addManualPaymentAction: vi.fn(), saveRegistr
 vi.mock("@/server/actions/admin", () => actions);
 
 import { MoneyCard } from "@/components/admin/MoneyCard";
+import { PaymentLines } from "@/components/admin/PaymentLines";
 
 const TODAY = "2026-10-20";
 type Props = Parameters<typeof MoneyCard>[0];
@@ -35,7 +38,7 @@ const settle = () =>
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   });
 const show = async (over: Partial<Props> = {}) => {
-  await act(async () => root.render(createElement(MoneyCard, { registration: reg(), session: SESSION, sellerReady: true, payments: [], today: TODAY, ...over })));
+  await act(async () => root.render(createElement(MoneyCard, { registration: reg(), session: SESSION, sellerReady: true, paymentLines: null, today: TODAY, ...over })));
   await settle();
 };
 const click = async (el: Element | null) => {
@@ -104,17 +107,28 @@ describe("the card: the money, the 50 % marker and the seats", () => {
     expect(text($("[data-money-card]"))).toContain("Koolitusel pole hinda, staatust ei arvutata. Muuda staatust käsitsi.");
   });
 
-  test("the online payments are listed in the card, under „Veebimaksed“", async () => {
+  test("the online payments are listed in the card, under „Veebimaksed“: the page hands the card their lines drawn on the server, not the rows", async () => {
     const payment = {
       id: 3, reference: "MSLAB-M7", kind: "prepayment", amountCents: 14500, status: "pending", method: "", bank: "", checkReason: null,
       createdAt: new Date("2026-10-17T17:35:00Z"), paidAt: null, courseTitle: null,
     } as unknown as PaymentRow;
-    await show({ payments: [payment] });
+    await show({ paymentLines: createElement(PaymentLines, { rows: [payment] }) });
     const lines = $("[data-money-card] [data-registration-payments]")!;
     expect(text($("h4", lines))).toBe("Veebimaksed");
     expect(text($('[data-payment="MSLAB-M7"]', lines))).toContain("145 €");
-    await show({ payments: [] });
+    await show({ paymentLines: null });
     expect($("[data-registration-payments]")).toBeNull();
+  });
+
+  test("the card takes no payment rows (their provider ids, e-mails and names stay out of the browser's page): no `payments` prop, no `PaymentRow` import", () => {
+    const source = readFileSync(join(process.cwd(), "src/components/admin/MoneyCard.tsx"), "utf8");
+    expect(source).not.toMatch(/PaymentRow/);
+    expect(source).not.toMatch(/payments:/);
+  });
+
+  test("the panel's empty refusal line takes no room (a gap of its own under the buttons), and a refusal shows it", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/admin/MoneyCard.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(/\.refusal:empty\s*\{([^}]*)\}/.exec(css)?.[1] ?? "").toMatch(/display:\s*none;/);
   });
 
   test("a cancelled registration has no „Lisa laekumine“ (its money stays on the card)", async () => {

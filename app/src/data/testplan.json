@@ -2225,19 +2225,21 @@
         "Kui tagasimakse nuppu pole, kirjuta see märkusesse ja vajuta „Jäta vahele“.",
         "Halduses ava „Maksed ja arved“ ja vaata Proov 0 makset.",
         "Ava „Arved“, vaata Proov 0 arvet ja laadi alla selle kuu CSV.",
+        "Vaata Proov 0 arve rea nuppe.",
         "Laadi alla Proov 0 arve PDF."
       ],
       "expect": [
         "Proov 0 makse on „Tagastatud“ ja Maria sai teate „Kontrolli Montonios“.",
         "Proov 0 arve real on „Tagastatud“ ja filter „Tasutud“ näitab seda arvet ikka.",
         "CSV-failis on selle arve olek „Tagastatud“ ja summa nagu arvel.",
+        "Proov 0 arve real pole nuppu „Saada õpilasele“; „Laadi alla (PDF)“ on alles.",
         "PDF on endine: „Tasutud“, makse kuupäev ja „Montonio“."
       ],
       "why": "Tagastatud raha ei paista raamatupidajale tavalise tuluna.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-kohad",
@@ -2276,7 +2278,7 @@
         "Lehel on koolitus, kuupäev ja ülejäänud summa.",
         "Pärast makset on lehel „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“.",
         "Postkasti tuleb kiri „Makse on kätte saadud — …“ reaga „Kogu summa on tasutud.“.",
-        "Halduses on Proov 1 „Laekunud“ võrdne koolituse hinnaga."
+        "Halduses näitab Proov 1 „Raha“ kaart laekununa koolituse hinda."
       ],
       "why": "Teise poole saab õpilane maksta ise, ilma Mariata.",
       "risk": "high",
@@ -2385,13 +2387,13 @@
         "Plokis on uus arve numbriga, näiteks MSL2026-001, märkega „Tasumata“ ja tähtajaga.",
         "PDF-il on „Maksmiseks“ ja Saaja, IBAN, Pank ja Selgitus, nagu „Ettemaksu juhised“.",
         "Pärast koostamist pakub „Koosta arve“ ainult summat „Jääk 50%“.",
-        "„Laekunud“ jääb nulliks ja staatus on „Ootab ettemaksu“."
+        "„Raha“ näitab nulli laekununa ja staatus on „Ootab ettemaksu“."
       ],
       "why": "Maria koostab pangaülekande arve kahe vajutusega ja ei trüki summat ise.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-saaja",
@@ -2401,7 +2403,7 @@
       "title": "Arve saaja muutmine",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava Proov 6 paneelis tasumata arve rida ja vajuta „Muuda saajat“.",
+        "Ava Proov 6 paneelis tasumata arve real „Veel ▾“ ja vali „Muuda saajat“.",
         "Kirjuta „Ettevõtte nimi“: Proov OÜ ja „Ettevõtte registrikood“: 12345678.",
         "Tühjenda „Nimi“ ja vajuta „Salvesta saaja“.",
         "Kirjuta „Nimi“: Proov 6 ja vajuta „Salvesta saaja“.",
@@ -2415,8 +2417,8 @@
       "why": "Ettevõtte eest tasuv õpilane saab arve ettevõtte nimele.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-saada",
@@ -2475,7 +2477,7 @@
       "title": "Arve märkimine tasutuks",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava Proov 6 paneelis tasumata arve rida ja vajuta „Märgi tasutuks“.",
+        "Ava Proov 6 paneelis tasumata arve real „Veel ▾“ ja vali „Märgi tasutuks“.",
         "Jäta kuupäevaks täna ja makseviisiks „Pangaülekanne“.",
         "Vajuta „Salvesta tasumine“."
       ],
@@ -2483,14 +2485,14 @@
         "Enne salvestamist ütleb paneel, et summa lisatakse „Laekunud summa“ juurde.",
         "Näed teadet „Arve on märgitud tasutuks.“.",
         "Arve real on „Tasutud“, kuupäev ja „Pangaülekanne“.",
-        "„Laekunud“ on 50% hinnast ja staatus on „Kinnitatud“, ilma et trükiksid summat ise.",
+        "„Raha“ näitab 50% hinnast laekununa ja staatus on „Kinnitatud“, ilma et trükiksid summat ise.",
         "Ülevaate arv „Ootab ettemaksu“ ei loe Proov 6 enam."
       ],
       "why": "Maria ei trüki sama summat kaks korda: arve märkimine kinnitab koha.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-tagasi",
@@ -2500,23 +2502,23 @@
       "title": "Arve tasumise tagasivõtmine",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava Proov 6 paneelis tasutud arve rida ja vajuta „Võta tasumine tagasi“.",
+        "Ava Proov 6 paneelis tasutud arve real „Veel ▾“ ja vali „Võta tasumine tagasi“.",
         "Loe kinnitus läbi ja vajuta „Katkesta“.",
-        "Vajuta uuesti „Võta tasumine tagasi“ ja siis „Jah, võta tasumine tagasi“.",
+        "Vali uuesti „Veel ▾“ → „Võta tasumine tagasi“ ja vajuta „Jah, võta tasumine tagasi“.",
         "Märgi arve uuesti tasutuks."
       ],
       "expect": [
         "Kinnituses on „Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha.“.",
-        "„Katkesta“ ei muuda midagi.",
+        "„Katkesta“ ei muuda midagi ja fookus läheb tagasi nupule „Veel ▾“.",
         "Pärast kinnitamist näed „Arve on jälle tasumata.“ ja arve on „Tasumata“.",
-        "„Laekunud“ on null ja staatus on jälle „Ootab ettemaksu“.",
-        "Uuesti märkimisel on „Laekunud“ jälle 50% ja staatus „Kinnitatud“."
+        "„Raha“ näitab nulli laekununa ja staatus on jälle „Ootab ettemaksu“.",
+        "Uuesti märkimisel näitab „Raha“ jälle 50% ja staatus on „Kinnitatud“."
       ],
       "why": "Vale vajutus ei tohi jääda püsima.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-kviitung",
@@ -2536,7 +2538,7 @@
         "Paneelis on kuupäev ning makseviisid „Pangaülekanne“, „Sularaha“ ja „Kaart“.",
         "Näed teadet „… lisatud · kviitung ….“ ja „Raha“ näitab kogu hinda laekununa.",
         "Plokis „Arved“ on uus kviitung märkega „Tasutud“, tänase kuupäeva ja makseviisiga „Sularaha“.",
-        "Kviitungi real pole nuppe „Märgi tasutuks“ ega „Tühista arve“."
+        "Kviitungi „Veel ▾“ all on ainult „Võta tasumine tagasi“."
       ],
       "why": "Koolituspäeval makstud jääk saab kviitungi samal vajutusel, millega Maria raha lisab.",
       "risk": "high",
@@ -2552,14 +2554,17 @@
       "title": "Kviitungi tasumise tagasivõtmine",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava Proov 6 paneelis „Sularaha“ kviitungi rida ja vajuta „Võta tasumine tagasi“.",
-        "Loe kinnitus läbi ja vajuta „Jah, võta tasumine tagasi“."
+        "Ava Proov 6 paneelis „Sularaha“ kviitungi real „Veel ▾“ ja vali „Võta tasumine tagasi“.",
+        "Loe küsimus ja read läbi ja vajuta „Jah, võta tasumine tagasi“."
       ],
       "expect": [
+        "Küsimus on „Kas võtan kviitungi … tasumise tagasi?“ ja nupud „Jah, võta tasumine tagasi“ ja „Katkesta“.",
+        "Küsimuse all on read „Kviitung tühistatakse (number jääb alles).“ ja „Laekunud summa väheneb … €.“.",
         "Näed teadet „Kviitung on tühistatud.“ ja kviitung on „Tühistatud“.",
         "Kviitungi number jääb loendisse.",
         "„Raha“ laekunud summa väheneb kviitungi summa võrra: jälle on laekunud pool hinnast.",
         "Staatus jääb „Kinnitatud“, sest pool hinnast on endiselt laekunud.",
+        "Kui laekunud summa jääb alla poole hinnast, on kolmas rida „Registreering läheb tagasi olekusse „Ootab ettemaksu“.“.",
         "„Koosta arve“ pakub jälle summat „Jääk 50%“."
       ],
       "why": "Kviitung kinnitab laekunud raha, nii et selle tühistamine võtab ka raha maha.",
@@ -2577,22 +2582,23 @@
       "href": "/admin/registreerimised",
       "steps": [
         "Koosta Proov 6 jaoks „Jääk 50%“ arve valikuga „Maksmiseks“.",
-        "Vajuta selle arve real „Tühista arve“.",
+        "Ava selle arve real „Veel ▾“ ja vali „Tühista arve“.",
         "Loe kinnitus läbi ja vajuta „Katkesta“.",
-        "Vajuta uuesti „Tühista arve“ ja siis „Jah, tühista arve“."
+        "Vali uuesti „Veel ▾“ → „Tühista arve“ ja vajuta „Jah, tühista arve“."
       ],
       "expect": [
-        "Kinnituses on „Arve tühistatakse. Number jääb alles …“.",
+        "Küsimus on „Kas tühistan arve …?“ ja nupud „Jah, tühista arve“ ja „Katkesta“.",
+        "Küsimuse all on rida „Number jääb alles ja summa on uue arve jaoks jälle vaba.“.",
         "„Katkesta“ jätab arve „Tasumata“.",
         "Pärast kinnitamist näed „Arve on tühistatud.“ ja arve on „Tühistatud“, numbriga.",
-        "„Laekunud“ ei muutu.",
+        "„Raha“ ei muutu.",
         "„Koosta arve“ pakub jälle summat „Jääk 50%“."
       ],
       "why": "Tühistatud arve number ei kao ega saa uuesti kasutada.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-jalus",
@@ -2606,7 +2612,7 @@
         "Ava „Seaded“, kirjuta kaardil „Arve andmed“ väljale „Arve alumine rida“: Proov jalus, ja salvesta.",
         "Laadi sama Proov 6 arve uuesti alla ja vaata arve alumist rida.",
         "Koosta Proov 6 jaoks „Jääk 50%“ arve valikuga „Maksmiseks“ ja laadi see alla.",
-        "Tühista see uus arve nupuga „Tühista arve“.",
+        "Tühista see uus arve: „Veel ▾“, „Tühista arve“ ja „Jah, tühista arve“.",
         "Pane „Arve alumine rida“ tagasi endiseks ja salvesta."
       ],
       "expect": [
@@ -2617,8 +2623,8 @@
       "why": "Väljastatud arve ei muutu, ka mitte selle alumine rida.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-16T22:27:00.452Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-arve-laekunud",
@@ -2657,13 +2663,14 @@
         "Ava „Õpilased“ ja kirjuta „Lisa õpilane e-posti järgi“: oma aadress, kuhu lisad enne @-märki +proov1.",
         "Vajuta „Lisa õpilane“.",
         "Ava „Registreerimised“ ja vajuta nimele Proov 1.",
-        "Vaata plokki „Leping“ ja vajuta „Laadi alla (PDF)“.",
+        "Ava voldirida „Leping“ ja vajuta „Laadi alla (PDF)“.",
         "Ava „Õpilased“, Proov 1 paneel ja vaata plokki „Lepingud“.",
         "Ava registreering, mille õpilasel pole kontot (kui sellist pole, jäta see samm vahele)."
       ],
       "expect": [
         "Pärast „Lisa õpilane“ avaneb Proov 1 paneel, kus on „Registreerimised“ all tema registreering.",
-        "Plokis „Leping“ on pealkiri ja „Kinnitatud …“ koos kuupäeva ja viisiga „Registreerimisvorm“.",
+        "Suletud real „Leping“ on kokkuvõte „Kinnitatud …“ kuupäevaga.",
+        "Voldireas „Leping“ on pealkiri ja „Kinnitatud …“ koos kuupäeva ja viisiga „Registreerimisvorm“.",
         "Plokis on nupud „Saada koopia õpilasele“, „Laadi alla (PDF)“ ja „Saada leping kinnitamiseks“.",
         "PDF-is on pooled, koolitus, lepingu tekst ja rida „Kinnitatud elektrooniliselt …“.",
         "Õpilase paneelis on sama leping koos „Laadi alla (PDF)“ ja viitega „Ava registreerimine“.",
@@ -2672,8 +2679,8 @@
       "why": "Maria hoiab iga registreeringu lepingut ühe puudutuse kaugusel.",
       "risk": "high",
       "writes": false,
-      "mark": "new",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-leping-kinnitamiseks",
@@ -2683,22 +2690,23 @@
       "title": "Lepingu kinnitamise küsimine uuesti",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava Proov 1 registreeringu paneel ja vajuta „Saada leping kinnitamiseks“.",
+        "Ava Proov 1 registreeringu paneel, voldirida „Leping“ ja vajuta „Saada leping kinnitamiseks“.",
         "Ava Proov 1 postkastis kiri „MS LAB leping kinnitamiseks“ ja vajuta kirjas nuppu.",
-        "Vajuta paneelis uuesti „Saada leping kinnitamiseks“."
+        "Vajuta voldireas uuesti „Saada leping kinnitamiseks“."
       ],
       "expect": [
         "Paneelis näed „Palve on õpilasele saadetud.“ ja rida „Kinnitamist ootab (saadetud …)“.",
         "Kirjas on lühike tervitus, üks rida, mis nimetab koolitust, ja nupp „Ava minu konto“.",
         "Nupp avab konto lehe: sisselogituna „Minu koolitused“, muidu sisselogimise lehe; kirjas pole sisselogimise linki.",
         "Vana leping jääb paneelis alles.",
+        "Suletud real „Leping“ on kokkuvõte „Kinnitamist ootab (saadetud …)“.",
         "Uuesti vajutades jääb rida „Kinnitamist ootab (saadetud …)“ tänase kuupäevaga ja tuleb teine kiri."
       ],
       "why": "Maria saab õpilaselt uue kinnituse küsida, kui koolitus või tekst muutus.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-leping-koopia",
@@ -2708,7 +2716,7 @@
       "title": "Lepingu koopia õpilasele",
       "href": "/admin/registreerimised",
       "steps": [
-        "Ava Proov 1 registreeringu paneel ja vajuta lepingul „Saada koopia õpilasele“.",
+        "Ava Proov 1 registreeringu paneel, voldirida „Leping“ ja vajuta lepingul „Saada koopia õpilasele“.",
         "Ava Proov 1 postkastis kiri „MS LAB leping“ ja selle manus."
       ],
       "expect": [
@@ -2720,8 +2728,8 @@
       "why": "Õpilane saab lepingu uuesti, kui esimene kiri läks kaduma.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-18T01:56:41.789Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "registreerimine-individuaal",
@@ -2854,7 +2862,7 @@
         "Kirjuta „Telefon“: oma Eesti number, vali „Järelmaks (Inbank)“, märgi lepingu ruut ja vajuta „Registreeru“.",
         "Inbanki lehel kirjuta isikukood 10101010005 ja SMS-kood 0000 ning kinnita taotlus; kirjuta märkusesse iga samm.",
         "Kirjuta märkusesse ka, kas nimi, e-post ja telefon olid Inbanki vormis juba täidetud.",
-        "Ava halduses „Registreerimised“ ja Proov 9; laadi alla plokkide „Arved“ ja „Leping“ PDF-id.",
+        "Ava halduses „Registreerimised“ ja Proov 9; laadi alla plokkide „Arved“ ja voldirea „Leping“ PDF-id.",
         "Vajuta „Tühista registreerimine“."
       ],
       "expect": [
@@ -2862,7 +2870,7 @@
         "Pärast kinnitamist on lehel „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“.",
         "Postkasti tuleb kiri „Koht on kinnitatud — …“.",
         "Maria postkasti tuleb teade „Uus makse: Proov 9, …“ makseviisiga „Järelmaks (Inbank)“.",
-        "Paneelis on Proov 9 staatus „Kinnitatud“, makseviis „Järelmaks (Inbank)“ ja „Laekunud“ on kogu hind.",
+        "Paneelis on Proov 9 staatus „Kinnitatud“, makseviis „Järelmaks (Inbank)“ ja „Raha“ näitab kogu hinda laekununa.",
         "Plokis „Arved“ on arve kogu hinna eest ja rida „Tasutud … · Järelmaks (Inbank)“, arve PDF-il samuti.",
         "Lepingu PDF-il on real „Makse“ lause „Koolituse hind tasutakse täies ulatuses: järelmaksuga (Inbank) või pangamaksega.“.",
         "Märkuses on Inbanki sammud, mida Maria saab järgida."
@@ -2894,11 +2902,11 @@
         "Pärast Inbanki keeldumist on lehel „Järelmaksu taotlus on pooleli või jäi lõpetamata. Kui Inbank selle kinnitab, saadame sulle kinnituse.“.",
         "Lehel on nupud „Maksa pangalingiga“ ja „Proovi uuesti“, teksti „Kui pank selle kinnitab …“ pole.",
         "„Proovi uuesti“ viib uuesti Inbanki lehele.",
-        "Enne pangamakset on halduses Proov 10 staatus „Ootab ettemaksu“ ja „Laekunud“ on null.",
+        "Enne pangamakset on halduses Proov 10 staatus „Ootab ettemaksu“ ja „Raha“ näitab nulli laekununa.",
         "„Maksa pangalingiga“ avab Montonio makselehe koolituse täishinnaga.",
         "Pärast makset on lehel „Makse õnnestus. Saatsime sulle kinnituse e-postiga.“ ja Proov 10 staatus on „Kinnitatud“.",
         "„Maksed ja arved“ all „Kõik“ näitab Proov 10 kaks rida: „Järelmaks (Inbank)“ staatusega „Asendatud“ ja „Pangalink …“ staatusega „Makstud“.",
-        "„Laekunud“ on täpselt koolituse hind."
+        "„Raha“ näitab laekununa täpselt koolituse hinda."
       ],
       "why": "Keeldutud taotlus ei tohi õpilast ummikusse jätta: ta maksab pangalingiga ja koht kinnitub.",
       "risk": "high",
@@ -2987,13 +2995,13 @@
         "Tühista halduses Proov 14 registreering."
       ],
       "expect": [
-        "Pangamakse järel on Proov 14 staatus „Kinnitatud“ ja „Laekunud“ on kogu hind.",
+        "Pangamakse järel on Proov 14 staatus „Kinnitatud“ ja „Raha“ näitab kogu hinda laekununa.",
         "Hilinenud järelmaks on filtri „Ootel kontrollil“ all makseviisiga „Järelmaks (Inbank)“.",
         "Registreeringu paneelis on hilinenud järelmaksu real „Topeltmakse — tagasta“, mitte „Kontrolli Montonios“.",
         "Maria postkasti tuleb teade „Topeltmakse: Proov 14, …“.",
         "Teates on lause „Järelmaks (Inbank) laekus, kui koolitus oli juba täies ulatuses tasutud.“.",
         "Teates on ka „Tagasta see Montonio halduses: täielik tagastus tühistab järelmaksu.“.",
-        "„Laekunud“ jääb kogu hinnaks: hilinenud järelmaks ei lisandu ja uut arvet ei tekkinud.",
+        "„Raha“ jääb kogu hinna juurde: hilinenud järelmaks ei lisandu ja uut arvet ei tekkinud.",
         "Õpilasele teist kinnituskirja ei tule."
       ],
       "why": "Õpilane ei tohi sama koolituse eest maksta kaks korda ja Maria peab sellest teada saama.",
@@ -3053,7 +3061,7 @@
         "Proov 15 pangalingi rida on uuem ja staatusega „Pooleli“ või „Ebaõnnestunud“.",
         "Filtrite „Pooleli“ ja „Ootel kontrollil“ all Proov 15 järelmaksu rida pole.",
         "Paneelis on ainult pangalingi makse; asendatud järelmaksu rida seal pole.",
-        "Proov 15 staatus on „Ootab ettemaksu“ ja „Laekunud“ on null."
+        "Proov 15 staatus on „Ootab ettemaksu“ ja „Raha“ näitab nulli laekununa."
       ],
       "why": "Uus makse asendab vana pooleli tellimuse, et Maria näeks registreeringul ühte avatud makset.",
       "risk": "med",
@@ -3215,7 +3223,7 @@
         "Koosta halduses Proov 7 jaoks „Ettemaks 50%“ arve valikuga „Maksmiseks“.",
         "Logi sisse kui Proov 7, ava „Minu koolitused“ ja vajuta rea „Arve …“ juures „Laadi alla (PDF)“.",
         "Vajuta kaardil „Maksa …“ ja tee makse testpangas, nagu Dimi märkus ütleb.",
-        "Ava „Minu koolitused“ uuesti ja vaata halduses Proov 7 plokki „Arved“."
+        "Ava „Minu koolitused“ uuesti ja halduses Proov 7 paneelis voldirida „Arved“."
       ],
       "expect": [
         "Kaardil on rida „Arve MSL2026-… · … · Tasumata · tasu …“ koos summa ja tähtajaga.",
@@ -3224,7 +3232,7 @@
         "„Maksa …“ võtab täpselt arve summa.",
         "Pärast makset on sama arve rida „Tasutud“ ja pangaandmeid enam ei näita.",
         "Plokis „Arved“ on üks arve, „Tasutud“ ja „Montonio“; teist arvet ei tekkinud.",
-        "„Laekunud“ on arve summa ja staatus on „Kinnitatud“."
+        "„Raha“ näitab arve summat laekununa ja staatus on „Kinnitatud“."
       ],
       "why": "Õpilane tasub Maria koostatud arve ise ja iga euro saab täpselt ühe arve.",
       "risk": "high",

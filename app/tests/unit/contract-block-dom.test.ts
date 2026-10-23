@@ -69,9 +69,11 @@ afterEach(async () => {
 });
 
 describe("what the block shows", () => {
-  test("a section headed „Leping“; with no contract it says so and still offers „Saada leping kinnitamiseks“ (D4: any linked, not cancelled group registration)", async () => {
+  test("a folded row „Leping“; with no contract the block says so and still offers „Saada leping kinnitamiseks“ (D4: any linked, not cancelled group registration)", async () => {
     await show();
-    expect($("h3")!.textContent).toBe("Leping");
+    expect($("details[data-fold] > summary")!.textContent).toContain("Leping");
+    expect($("details[data-fold]")!.contains($("[data-registration-contracts]"))).toBe(true);
+    expect($("[data-registration-contracts]")!.getAttribute("aria-label")).toBe("Leping");
     expect($("[data-contracts-none]")!.textContent).toBe("Sellele registreeringule pole lepingut.");
     expect($("[data-contract-list]")).toBeNull();
     expect(requestButton()!.textContent).toBe("Saada leping kinnitamiseks");
@@ -118,6 +120,50 @@ describe("what the block shows", () => {
     // (a contract with no title is named after the block)
     await show({ contracts: [view({ title: "" })] });
     expect($("strong", rowOf(7))!.textContent).toBe("Leping");
+  });
+});
+
+describe("the folded row's summary (README A2 drawer 5, P-3): the block's own state line", () => {
+  const fold = () => $("details[data-fold]")!;
+  const summary = () => $("[data-fold-summary]", fold())!.textContent;
+  const short = () => $("[data-fold-summary-short]", fold())?.textContent ?? null;
+
+  test("closed to begin with, and the block is inside it", async () => {
+    await show({ contracts: [CURRENT] });
+    expect((fold() as HTMLDetailsElement).open).toBe(false);
+    expect(fold().contains($("[data-contract-list]"))).toBe(true);
+  });
+
+  test("no contract: „Sellele registreeringule pole lepingut“, and on a phone „puudub“", async () => {
+    await show();
+    expect(summary()).toBe("Sellele registreeringule pole lepingut");
+    expect(short()).toBe("puudub");
+  });
+
+  test("the current contract: „Kinnitatud {date}“ (the other states have no phone words of their own)", async () => {
+    await show({ contracts: [CURRENT, OLD] });
+    expect(summary()).toBe("Kinnitatud 17.10.2026");
+    expect(short()).toBeNull();
+  });
+
+  test("asked and not yet accepted: „Kinnitamist ootab (saadetud {date})“, whether or not there is a contract", async () => {
+    await show({ contracts: [CURRENT], requestedAt: "2026-10-18T07:00:00.000Z" });
+    expect(summary()).toBe("Kinnitamist ootab (saadetud 18.10.2026)");
+    await show({ contracts: [], requestedAt: "2026-10-18T07:00:00.000Z" });
+    expect(summary()).toBe("Kinnitamist ootab (saadetud 18.10.2026)");
+    expect(short()).toBeNull();
+  });
+
+  test("cancelled: no ask is shown as pending (cancelling never clears it) — the contract's own state, or none", async () => {
+    await show({ contracts: [CURRENT], cancelled: true, requestedAt: "2026-10-18T07:00:00.000Z" });
+    expect(summary()).toBe("Kinnitatud 17.10.2026");
+    await show({ contracts: [], cancelled: true, requestedAt: "2026-10-18T07:00:00.000Z" });
+    expect(summary()).toBe("Sellele registreeringule pole lepingut");
+  });
+
+  test("only superseded contracts: „Asendatud {date}“ of the newest", async () => {
+    await show({ contracts: [OLD, OLDER] });
+    expect(summary()).toBe("Asendatud 17.10.2026");
   });
 });
 

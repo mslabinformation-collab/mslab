@@ -250,11 +250,26 @@ describe("the registration drawer's „Arved“", () => {
     expect(block).toContain(">Arved</h3>");
     expect(numbers(block)).toEqual(["MSL2026-001"]);
     expect(block).toContain(">Tasumata<");
-    expect(block).toContain(">Märgi tasutuks<");
+    // (README A2 drawer 4: „Saada õpilasele“ and „Laadi alla (PDF)“ in view; the rest is under „Veel ▾“, whose items are drawn when it is opened)
+    expect(block).toContain(">Saada õpilasele<");
+    expect(block).toContain('aria-label="Veel: MSL2026-001"');
+    expect(block).not.toContain(">Märgi tasutuks<");
     expect(block).toContain(`href="/api/admin/arve/${a.invoice.id}"`);
-    expect(html.indexOf("data-registration-invoices")).toBeGreaterThan(html.indexOf("data-paid=")); // after the money block
-    expect(html.indexOf("data-status-form")).toBeGreaterThan(-1);
-    expect(html.indexOf("data-registration-invoices")).toBeGreaterThan(html.indexOf("data-status-form")); // after „Staatus ja märkus“ (item 3 before 4)
+    // the drawer's order (README A2 drawer 1–6): the header, Raha, „Staatus ja märkus“, Arved, the folded rows Leping, Tagasiside and Registreerimise andmed,
+    // then „Tühista registreerimine“
+    const at = (needle: string) => {
+      const i = html.indexOf(needle);
+      expect(i, needle).toBeGreaterThan(-1);
+      return i;
+    };
+    const order = ["data-registration-line", "data-money-card", "data-status-form", "data-registration-invoices", ">Leping<", ">Tagasiside<", ">Registreerimise andmed<", ">Tühista registreerimine<"];
+    expect(order.map(at), "the drawer's order").toEqual(order.map(at).sort((x, y) => x - y));
+    // (the folded rows are folds: closed, each with its one-line summary)
+    expect(html.match(/<details[^>]*data-fold=""[^>]*>/g)).toHaveLength(3);
+    expect(html).not.toMatch(/<details[^>]*\sopen/);
+    expect(html).toContain("1 tasumata"); // (the block's folded row on a phone, P-3)
+    expect(html).toContain("11 rida");
+    expect(html).toContain("pole antud");
   });
 
   test("with the 50% invoiced the rest is what is left to offer; „Koosta arve“ is there while an amount is open", async () => {
@@ -303,11 +318,12 @@ describe("the registration drawer's „Arved“", () => {
     ({ block } = await drawer(r.id));
     expect(block).toContain(`data-uninvoiced-create="${p.id}"`);
     expect(block).toContain("Koostab uue arve");
-    expect(block).toContain('data-invoice-create=""'); // the rest is still open
-    // its catch-up made, the row leaves the block and its invoice is in the list
+    expect(block).not.toContain('data-invoice-create=""'); // only one „Koosta arve“ (README A2 drawer 4): the payment's own, while it waits
+    // its catch-up made, the row leaves the block, its invoice is in the list, and the generic „Koosta arve“ is back for the rest that is still open
     await catchUpInvoice(db, p.id, OCTOBER);
     ({ block } = await drawer(r.id));
     expect(block).not.toContain("data-uninvoiced-payment");
+    expect(block).toContain('data-invoice-create=""');
     expect(numbers(block)).toEqual(["MSL2026-001"]);
   });
 
@@ -318,11 +334,13 @@ describe("the registration drawer's „Arved“", () => {
     await db.update(payments).set({ status: "paid", paidAt: OCTOBER, invoiceId: a.invoice.id }).where(eq(payments.id, p.id));
     const { block } = await drawer(a.registration.id);
     expect(block).toContain("Veebis tasutud — ootab „Arveta maksed“ alt arvet.");
-    expect(block).not.toContain(">Märgi tasutuks<");
+    expect(block).not.toContain("data-invoice-send"); // (no „Saada õpilasele“ for a request for money already in)
     expect(block).toContain("Tasub arve MSL2026-001"); // (its payment on the block, whose catch-up pays it)
     await catchUpInvoice(db, p.id, OCTOBER);
     await db.update(payments).set({ status: "refunded" }).where(eq(payments.id, p.id));
-    expect((await drawer(a.registration.id)).block).toContain(">Tagastatud<");
+    const refunded = (await drawer(a.registration.id)).block;
+    expect(refunded).toContain(">Tagastatud<");
+    expect(refunded).not.toContain("data-invoice-send"); // (README A2 drawer 4: not sent again)
     const list = await render(InvoicesPage);
     expect(list).toContain(">Tagastatud<");
     expect(numbers(await render(InvoicesPage, { staatus: "paid" }))).toEqual(["MSL2026-001"]); // (the stored state is paid)

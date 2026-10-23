@@ -10,7 +10,7 @@ import { adminReady, signInAsAdmin } from "./admin-login";
 import { holdContractTexts } from "./contracts";
 import { test } from "./edit-lock";
 import { onLocalDb, removeAdminRows, removeClientRows } from "./fixtures";
-import { expectFits, holdInvoiceSettings, INVOICE_COMPANY, noOverflow, today, WIDTHS } from "./invoices";
+import { expectFits, holdInvoiceSettings, INVOICE_COMPANY, noOverflow, openRow, today, WIDTHS } from "./invoices";
 import { E2E_MONTONIO } from "./montonio-values";
 import { expect as plainExpect, submitsForms } from "./test";
 
@@ -220,8 +220,10 @@ test("a contract from Maria's text to the student's PDF: written in Seaded, acce
   await page.goto(`/admin/registreerimised?id=${registration.id}`);
   const drawer = page.getByRole("dialog", { name: `Registreerimine: ${NAME}` });
   await expect(drawer).toBeVisible();
-  const block = drawer.locator("[data-registration-contracts]");
-  await expect(block.getByRole("heading", { level: 3 })).toHaveText("Leping");
+  // (a folded row of the drawer: closed it says „Kinnitatud {date}“; opened, the block is in it)
+  await expect(drawer.locator("details[data-fold]").filter({ hasText: /^\s*Leping/ }).locator("[data-fold-summary]")).toHaveText(`Kinnitatud ${formatDate(new Date(), "et")}`);
+  const block = (await openRow(drawer, "Leping")).locator("[data-registration-contracts]");
+  await expect(block).toHaveAttribute("aria-label", "Leping");
   await expect(block.locator("[data-contract]")).toHaveCount(1);
   const row = block.locator(`[data-contract="${first.id}"]`);
   await expect(row).toHaveAttribute("data-contract-state", "current");
@@ -281,7 +283,7 @@ test("a contract from Maria's text to the student's PDF: written in Seaded, acce
 
   // Maria sees the old one „Asendatud“ and the new one as the account's
   await page.goto(`/admin/registreerimised?id=${registration.id}`);
-  const after = page.getByRole("dialog", { name: `Registreerimine: ${NAME}` }).locator("[data-registration-contracts]");
+  const after = (await openRow(page.getByRole("dialog", { name: `Registreerimine: ${NAME}` }), "Leping")).locator("[data-registration-contracts]");
   await expect(after.locator("[data-contract]")).toHaveCount(2);
   expect(await after.locator("[data-contract]").evaluateAll((els) => els.map((e) => [e.getAttribute("data-contract"), e.getAttribute("data-contract-state")]))).toEqual([
     [String(second), "current"],

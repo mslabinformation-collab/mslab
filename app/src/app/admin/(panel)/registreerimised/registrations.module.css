@@ -177,16 +177,24 @@
   text-underline-offset: 3px;
 }
 
-.detailsTitle {
-  margin-top: 8px;
+/* under „Staatus ja märkus“: the invoices (a section; on a phone a folded row) and the folded rows. On a phone they are the rows of one list, as the
+   phone frame draws them: the rule above the first, one under each (PhoneFold, FoldRow) */
+.rest {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
 }
 
-/* the feedback form's answers (phase protocols) */
+/* the folded rows (README A2 drawer 5): a list under a rule */
+.folds {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* the feedback form's answers (phase protocols), in the folded row */
 .feedback {
   display: grid;
   gap: 10px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
 }
 
 .dl {
@@ -220,6 +228,15 @@
 
 /* a phone (the Drawer's body: 24 px above, the ✕ 14 px from the top): the name in Jost 26, as the phone frame draws it */
 @media (max-width: 640px) {
+  .rest {
+    gap: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .folds {
+    border-top: 0;
+  }
+
   .headTop {
     margin-top: -10px;
   }

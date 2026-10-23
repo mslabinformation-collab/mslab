@@ -4,6 +4,7 @@ import { ContractBlock } from "@/components/admin/ContractBlock";
 import { contractView, type ContractView } from "@/components/admin/contract-view";
 import { Drawer } from "@/components/admin/Drawer";
 import { FeedbackAnswers } from "@/components/admin/FeedbackAnswers";
+import { FoldRow } from "@/components/admin/FoldRow";
 import { InvoiceBlock, type UninvoicedView } from "@/components/admin/InvoiceBlock";
 import { invoiceView } from "@/components/admin/invoice-view";
 import { ListEmpty } from "@/components/admin/ListStates";
@@ -11,6 +12,7 @@ import { ListToolbar, type ListPill, type ListScope } from "@/components/admin/L
 import { Pager } from "@/components/admin/Pager";
 import { MoneyCard } from "@/components/admin/MoneyCard";
 import { NoteSaveStatus, RegistrationCancel, RegistrationNote, StatusAndNote } from "@/components/admin/RegistrationForms";
+import { PaymentLines } from "@/components/admin/PaymentLines";
 import { adminTitle } from "@/components/admin/sections";
 import { ListRows } from "@/components/admin/ListRows";
 import listTable from "@/components/admin/list-table.module.css";
@@ -29,7 +31,7 @@ import { listPaymentsOf, type PaymentRow } from "@/db/queries/payments";
 import { feedbackOf, type FeedbackRow } from "@/db/queries/protocols";
 import { seatsTaken } from "@/db/queries/seats";
 import { tallinnFormParts } from "@/domain/calendar";
-import { coveringInvoices, openAmounts, sellerReady, uninvoicedOf } from "@/domain/invoice";
+import { coveringInvoices, openAmounts, receiptTakeBack, sellerReady, uninvoicedOf } from "@/domain/invoice";
 import { formatEUR } from "@/domain/money";
 import { parsePage, parseSearch } from "@/domain/paging";
 import { registrationPrice, type RegStatus } from "@/domain/registration";
@@ -134,7 +136,8 @@ const INDENT = String.fromCharCode(160, 160);
 /**
  * Registrations (A2): the toolbar (search across name, e-mail and phone, the course / session scope, the status and form pills with their
  * counts), the table of five columns (below 760 px of the card: a card per registration), and a drawer per registration (RegistrationDetail: Raha with
- * „Lisa laekumine“, the status pills and the autosaved note, the invoices, the contract, the feedback, the details, and „Tühista registreerimine“).
+ * „Lisa laekumine“, the status pills and the autosaved note, the invoices, the folded rows Leping, Tagasiside and Registreerimise andmed, and
+ * „Tühista registreerimine“).
  */
 export default async function RegistrationsPage({ searchParams }: Props) {
   await requireAdmin();
@@ -324,10 +327,11 @@ async function seatsOf(db: Db, r: RegistrationRow, now: Date): Promise<{ taken: 
 }
 
 /**
- * A registration's drawer, in README A2's order (piece 2, Task 5 builds 1–3): the header (the status pill, the note's SaveStatus left of the
+ * A registration's drawer, in README A2's order (piece 2, Tasks 5 and 6): the header (the status pill, the note's SaveStatus left of the
  * Drawer's ✕, the name, the course and the session, the phone and the e-mail, „Ava protokoll“ for a contact course); Raha (MoneyCard, with „Lisa
- * laekumine“); „Staatus ja märkus“; then the invoices, the contract, the feedback answers, the details, and „Tühista registreerimine“. The note's
- * engine is around the whole drawer (RegistrationNote): its status chip is in the header, its field in „Staatus ja märkus“.
+ * laekumine“); „Staatus ja märkus“; Arved (a section; a folded row on a phone); the folded rows (FoldRow, 52 px, each with a one-line summary, P-3)
+ * Leping, Tagasiside and Registreerimise andmed; and „Tühista registreerimine“. The note's engine is around the whole drawer (RegistrationNote): its
+ * status chip is in the header, its field in „Staatus ja märkus“.
  */
 function RegistrationDetail({
   r,
@@ -360,6 +364,12 @@ function RegistrationDetail({
   });
   const yesNo = (v: boolean) => (v ? adminEt.common.yes : adminEt.common.no);
   const total = registrationPrice(r.course, r.kind);
+  // „Võta tasumine tagasi“ of a receipt (S3-f) says what it will do: the sum the server takes off Laekunud summa (capped at what no other paid invoice
+  // covers) and whether a confirmed registration then falls under 50 % — domain/invoice.ts receiptTakeBack, the server's own rule
+  const invoiceOf = (inv: AdminInvoice) => {
+    const view = invoiceView(inv);
+    return view.status === "paid" && view.dueAt === null && !view.online ? { ...view, takeBack: receiptTakeBack(r, total, inv, invoices, uninvoiced) } : view;
+  };
   const details: [string, React.ReactNode][] = [
     [t.email, <a key="e" className={ui.contactLink} href={`mailto:${r.email}`}>{r.email}</a>],
     [t.phone, r.phone ? <a key="p" className={ui.contactLink} href={tel(r.phone)}>{r.phone}</a> : adminEt.common.none],
@@ -375,6 +385,8 @@ function RegistrationDetail({
   ];
   if (r.preferredPeriod) details.push([t.period, r.preferredPeriod]);
   if (r.message) details.push([t.message, r.message]);
+  // her answers to the course feedback form (phase protocols, spec §7): a contact course's registration has none, or the one
+  const showFeedback = feedback !== null || r.course.type === "contact";
 
   return (
     <RegistrationNote id={r.id} note={r.note} version={version}>
@@ -410,57 +422,68 @@ function RegistrationDetail({
           registration={{ id: r.id, paidCents: r.paidCents, priceCents: total, status: r.status, cancelled: r.status === "cancelled", choice: r.paymentChoice }}
           session={session}
           sellerReady={seller}
-          payments={payments}
+          paymentLines={payments.length > 0 ? <PaymentLines rows={payments} /> : null}
           today={today}
         />
 
         <StatusAndNote id={r.id} status={r.status} />
 
-        {/* the registration's invoices, its paid payments without one, and „Koosta arve“ (invoices Task 5, spec §5): the amounts still open are those
-            no unpaid or paid invoice, nor such a payment, covers; money recorded with „Lisa laekumine“ and no receipt is offered as a receipt only */}
-        <InvoiceBlock
-          registrationId={r.id}
-          invoices={invoices.map(invoiceView)}
-          uninvoiced={uninvoicedViews}
-          open={
-            total == null
-              ? { request: [], receipt: [] }
-              : openAmounts({ priceCents: total, paymentChoice: r.paymentChoice, paidCents: r.paidCents }, coveringInvoices(r, invoices, uninvoiced))
-          }
-          sellerReady={seller}
-          canCreate={total != null}
-          today={today}
-        />
-
-        {/* the registration's contract (contracts Task 5, spec §4): a group registration on a contact course has one (the form's tick), an individual
-            one and an e-learning one do not (D1) */}
-        {r.course.type === "contact" && r.kind === "group" && (
-          <ContractBlock
+        <div className={styles.rest}>
+          {/* the registration's invoices, its paid payments without one, and „Koosta arve“ (invoices Task 5, spec §5): the amounts still open are those
+              no unpaid or paid invoice, nor such a payment, covers; money recorded with „Lisa laekumine“ and no receipt is offered as a receipt only.
+              A folded row on a phone (README A2 phone drawer) */}
+          <InvoiceBlock
             registrationId={r.id}
-            contracts={contracts}
-            requestedAt={r.contractRequestedAt ? r.contractRequestedAt.toISOString() : null}
-            linked={r.clientId !== null}
-            cancelled={r.status === "cancelled"}
+            invoices={invoices.map(invoiceOf)}
+            uninvoiced={uninvoicedViews}
+            open={
+              total == null
+                ? { request: [], receipt: [] }
+                : openAmounts({ priceCents: total, paymentChoice: r.paymentChoice, paidCents: r.paidCents }, coveringInvoices(r, invoices, uninvoiced))
+            }
+            sellerReady={seller}
+            canCreate={total != null}
+            today={today}
           />
-        )}
 
-        {/* her answers to the course feedback form (phase protocols, spec §7): none, or the one */}
-        {feedback && (
-          <section className={styles.feedback} aria-label={adminEt.feedback.section} data-registration-feedback="">
-            <h3 className={ui.h3}>{adminEt.feedback.section}</h3>
-            <FeedbackAnswers answers={feedback.answers} locale={feedback.locale} submittedAt={feedback.submittedAt} />
-          </section>
-        )}
+          {/* the folded rows (README A2 drawer 5; 52 px, „▸“, each with a one-line summary, P-3) */}
+          <div className={styles.folds}>
+            {/* the registration's contract (contracts Task 5, spec §4): a group registration on a contact course has one (the form's tick), an
+                individual one and an e-learning one do not (D1) */}
+            {r.course.type === "contact" && r.kind === "group" && (
+              <ContractBlock
+                registrationId={r.id}
+                contracts={contracts}
+                requestedAt={r.contractRequestedAt ? r.contractRequestedAt.toISOString() : null}
+                linked={r.clientId !== null}
+                cancelled={r.status === "cancelled"}
+              />
+            )}
 
-        <h3 className={`${ui.h3} ${styles.detailsTitle}`}>{t.details}</h3>
-        <dl className={styles.dl}>
-          {details.map(([k, v]) => (
-            <div key={k}>
-              <dt>{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-        </dl>
+            {showFeedback && (
+              <FoldRow title={adminEt.feedback.section} summary={feedback ? fill(adminEt.feedback.submitted, { date: formatDate(feedback.submittedAt, "et") }) : adminEt.feedback.foldNone}>
+                {feedback ? (
+                  <div className={styles.feedback} data-registration-feedback="">
+                    <FeedbackAnswers answers={feedback.answers} locale={feedback.locale} submittedAt={feedback.submittedAt} />
+                  </div>
+                ) : (
+                  <p className={ui.muted}>{adminEt.feedback.none}</p>
+                )}
+              </FoldRow>
+            )}
+
+            <FoldRow title={t.details} summary={fill(t.rows, { n: details.length })}>
+              <dl className={styles.dl}>
+                {details.map(([k, v]) => (
+                  <div key={k}>
+                    <dt>{k}</dt>
+                    <dd>{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </FoldRow>
+          </div>
+        </div>
 
         <RegistrationCancel id={r.id} status={r.status} />
       </div>

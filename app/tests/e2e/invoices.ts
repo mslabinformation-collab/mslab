@@ -74,14 +74,41 @@ export async function holdInvoiceSettings(
 /** Whether the page is no wider than its window (no sideways scrolling). */
 export const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
-/** Opens a registration's drawer; returns its dialog and its „Arved“ block. */
-export async function openDrawer(page: Page, f: { registration: { id: number; name: string } }): Promise<{ drawer: Locator; block: Locator }> {
+/**
+ * Opens a registration's drawer; returns its dialog and its „Arved“ block. On a phone the block is a folded row (PhoneFold, README A2 phone drawer):
+ * it is opened here, so the specs work with the invoices on either width (`open: false` leaves it as the page draws it).
+ */
+export async function openDrawer(page: Page, f: { registration: { id: number; name: string } }, opts: { open?: boolean } = {}): Promise<{ drawer: Locator; block: Locator }> {
   await page.goto(`/admin/registreerimised?id=${f.registration.id}`);
   const drawer = page.getByRole("dialog", { name: `Registreerimine: ${f.registration.name}` });
   await expect(drawer).toBeVisible();
   const block = drawer.locator("[data-registration-invoices]");
   await expect(block).toBeVisible();
+  if (opts.open !== false) await openFold(block);
   return { drawer, block };
+}
+
+/** A phone's folded block (PhoneFold: „Arved ▸“) opened, if it is closed; a no-op above 640 px, where the block is a section. */
+export async function openFold(block: Locator): Promise<void> {
+  const toggle = block.locator("[data-phone-fold-toggle]");
+  if ((await toggle.isVisible()) && (await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+  await expect(block.locator("[data-invoices-none], [data-invoice-list], [data-invoice-uninvoiced]").first()).toBeVisible();
+}
+
+/** A folded row of the drawer (FoldRow: Leping, Tagasiside, Registreerimise andmed) by its title, opened if it is closed; returns it. */
+export async function openRow(drawer: Locator, title: string): Promise<Locator> {
+  // (the row's text starts with its title; the words inside it, closed or open, are not looked at)
+  const row = drawer.locator("details[data-fold]").filter({ hasText: new RegExp(`^\\s*${title}`) });
+  await expect(row).toBeVisible();
+  if (!(await row.evaluate((el) => (el as HTMLDetailsElement).open))) await row.locator("summary").click();
+  await expect(row).toHaveJSProperty("open", true);
+  return row;
+}
+
+/** An action under an invoice row's „Veel ▾“: opens the menu and chooses the item by its words. */
+export async function viaMenu(row: Locator, label: string): Promise<void> {
+  await row.locator("[data-more-menu] > button").click();
+  await row.getByRole("menuitem", { name: label, exact: true }).click();
 }
 
 /** The amounts „Koosta arve“ offers, as their kinds. */

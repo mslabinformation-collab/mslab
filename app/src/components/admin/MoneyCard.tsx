@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, useTransition, type FormEvent } from "react";
-import type { PaymentRow } from "@/db/queries/payments";
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import type { ManualPaidMethod } from "@/domain/invoice";
 import { formatEUR, parseEuroCents } from "@/domain/money";
 import { prepaymentDue, type PaymentChoice, type RegStatus } from "@/domain/registration";
@@ -10,14 +9,13 @@ import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { addManualPaymentAction } from "@/server/actions/admin";
 import type { ManualPaymentAnswer, ManualPaymentResult } from "@/server/registration-money";
-import { PaymentLines } from "./PaymentLines";
 import { PillChoice } from "./PillChoice";
 import ui from "./ui.module.css";
 import styles from "./MoneyCard.module.css";
 
 // The registration drawer's Raha card (admin UX pass, piece 2, Task 5; README A2 drawer 2, the Part 2 prototype's drawer frames; piece2-texts P-2,
 // S3-a…e): what has come in against the price („{laekunud} / {hind} laekunud“, an 8 px bar with its marker at 50 %), from where the place is
-// confirmed and the session's free seats, the online payments (PaymentLines, without replaced orders: listPaymentsOf), and „Lisa laekumine“ — the one
+// confirmed and the session's free seats, the online payments (PaymentLines, drawn on the server and handed in as paymentLines so the rows stay out of the browser's page; without replaced orders: listPaymentsOf), and „Lisa laekumine“ — the one
 // way Maria records money that came in outside the site (B4: server/registration-money.ts addManualPayment, one transaction with the seat check and
 // the receipt). The panel opens in place of its button: the amount pills (P-2: what is missing up to 50 %, preselected; the remainder; „Muu summa“,
 // refused in the field above what is left, S3-e), the day (today, never later), the way (Pangaülekanne by default), „Koosta kviitung“ (ticked when
@@ -100,7 +98,7 @@ export function MoneyCard({
   registration,
   session,
   sellerReady,
-  payments,
+  paymentLines,
   today,
 }: {
   /** The registration as the drawer shows it: what has come in, the price it is measured against (null: the course has none), its state, its choice. */
@@ -109,8 +107,11 @@ export function MoneyCard({
   session: { taken: number; capacity: number } | null;
   /** Seaded → Arve andmed has a seller (domain/invoice.ts sellerReady): a receipt can be made. */
   sellerReady: boolean;
-  /** Its online payments, newest first (listPaymentsOf: no replaced orders). */
-  payments: PaymentRow[];
+  /**
+   * Its online payments, newest first (listPaymentsOf: no replaced orders), as PaymentLines drawn by the page on the server — or null when there are
+   * none. A node, not the rows: a payment's provider id, e-mail and name are not sent to the browser for the card to draw (the Task 5 review).
+   */
+  paymentLines: ReactNode;
   /** Today in Tallinn, "YYYY-MM-DD": the day a payment is recorded on unless she changes it, and the latest it may be. */
   today: string;
 }) {
@@ -261,10 +262,10 @@ export function MoneyCard({
       )}
 
       {/* the online payments (phase 2b, spec 8), as today: when, how much, the kind, the way, the status */}
-      {payments.length > 0 && (
+      {paymentLines && (
         <div className={styles.online} data-registration-payments="">
           <h4 className={styles.onlineTitle}>{adminEt.payments.online}</h4>
-          <PaymentLines rows={payments} />
+          {paymentLines}
         </div>
       )}
 
@@ -367,7 +368,7 @@ export function MoneyCard({
                 {adminEt.common.cancel}
               </button>
             </div>
-            <p role="alert" className={ui.error} data-add-payment-error="">
+            <p role="alert" className={`${ui.error} ${styles.refusal}`} data-add-payment-error="">
               {refusal ? refusalText(refusal, left) : ""}
             </p>
           </form>

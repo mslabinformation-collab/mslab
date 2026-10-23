@@ -2,7 +2,7 @@ import type { BrowserContext, Page } from "@playwright/test";
 import { submitsForms, test, expect } from "./test";
 import { signInAsAdmin } from "./admin-login";
 import { insertAdminFixtures, onLocalDb, removeAdminFixtures, removeAdminRows, type AdminFixtures } from "./fixtures";
-import { expectFits, openDrawer, today } from "./invoices";
+import { expectFits, openDrawer, openRow, today } from "./invoices";
 
 // Contracts, Maria's side (contracts Task 5, spec §4): the registration drawer's „Leping“ (the current contract with its PDF and „Saada koopia
 // õpilasele“, „Saada leping kinnitamiseks“ and the pending state, the no-account words, a cancelled registration), the Õpilased drawer's „Lepingud“, and
@@ -75,12 +75,19 @@ test.describe("guard", () => {
 });
 
 test.describe("the registration drawer's „Leping“", () => {
-  test("no account: the words of the spec and no button; the block fits the screen", async ({ page, context, visitorIp }, info) => {
+  test("no account: a folded row saying there is no contract (on a phone: „puudub“), then the words of the spec and no button; the block fits the screen", async ({ page, context, visitorIp, isMobile }, info) => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
     const { drawer } = await openDrawer(page, f);
-    const block = drawer.locator("[data-registration-contracts]");
-    await expect(block.getByRole("heading", { level: 3 })).toHaveText("Leping");
+    // closed, the row says what is inside (README A2 drawer 5, P-3); the words are the phone's own on a phone
+    const fold = drawer.locator("details[data-fold]").filter({ hasText: /^\s*Leping/ });
+    await expect(fold).toHaveJSProperty("open", false);
+    await expect(fold.locator("[data-fold-summary]")).toHaveText("Sellele registreeringule pole lepingut");
+    await expect(fold.locator("[data-fold-summary-short]")).toHaveText("puudub");
+    await expect(isMobile ? fold.locator("[data-fold-summary-short]") : fold.locator("[data-fold-summary]")).toBeVisible();
+    await expect(isMobile ? fold.locator("[data-fold-summary]") : fold.locator("[data-fold-summary-short]")).toBeHidden();
+    const block = (await openRow(drawer, "Leping")).locator("[data-registration-contracts]");
+    await expect(block).toHaveAttribute("aria-label", "Leping");
     await expect(block.locator("[data-contracts-none]")).toHaveText("Sellele registreeringule pole lepingut.");
     await expect(block.locator("[data-contract-no-account]")).toHaveText("Õpilasel pole kontot — lisa ta Õpilased lehel.");
     await expect(block.getByRole("button")).toHaveCount(0);
@@ -94,7 +101,9 @@ test.describe("the registration drawer's „Leping“", () => {
     const old = await addContract(f, clientId, { title: "E2E vana leping", via: "account", acceptedDaysAgo: 9, supersededDaysAgo: 1 });
     await signIn(page, context, visitorIp);
     const { drawer } = await openDrawer(page, f);
-    const block = drawer.locator("[data-registration-contracts]");
+    // closed, the row's summary is the contract's state (P-3)
+    await expect(drawer.locator("details[data-fold]").filter({ hasText: /^\s*Leping/ }).locator("[data-fold-summary]")).toHaveText(/^Kinnitatud \d\d\.\d\d\.\d{4}$/);
+    const block = (await openRow(drawer, "Leping")).locator("[data-registration-contracts]");
 
     // the current contract first, the superseded one after it
     await expect(block.locator("[data-contract]")).toHaveCount(2);
@@ -130,6 +139,7 @@ test.describe("the registration drawer's „Leping“", () => {
     await expect(block.locator("[data-contract-status]")).toHaveText("Palve on märgitud, aga kirja ei saadetud. Õpilane näeb seda oma kontol ka ilma kirjata.");
     const [y, m, d] = today().split("-");
     await expect(block.locator("[data-contract-pending]")).toHaveText(`Kinnitamist ootab (saadetud ${d}.${m}.${y})`);
+    await expect(drawer.locator("details[data-fold]").filter({ hasText: /^\s*Leping/ }).locator("[data-fold-summary]")).toHaveText(`Kinnitamist ootab (saadetud ${d}.${m}.${y})`);
     expect((await onLocalDb((sql) => sql<{ at: Date | null }[]>`select contract_requested_at as at from registrations where id = ${f.registration.id}`, { marksPages: false }))[0].at).toBeInstanceOf(Date);
     // the contract itself is as it was
     expect((await onLocalDb((sql) => sql<{ superseded: Date | null }[]>`select superseded_at as superseded from contracts where id = ${current}`, { marksPages: false }))[0].superseded).toBeNull();
@@ -144,7 +154,7 @@ test.describe("the registration drawer's „Leping“", () => {
     await onLocalDb((sql) => sql`update registrations set status = 'cancelled', contract_requested_at = now() where id = ${f.registration.id}`, { marksPages: false });
     await signIn(page, context, visitorIp);
     const { drawer } = await openDrawer(page, f);
-    const block = drawer.locator("[data-registration-contracts]");
+    const block = (await openRow(drawer, "Leping")).locator("[data-registration-contracts]");
     await expect(block.locator(`[data-contract="${current}"]`)).toBeVisible();
     await expect(block.locator("[data-contract-pending]")).toHaveCount(0);
     await expect(block.getByRole("button", { name: "Saada leping kinnitamiseks" })).toHaveCount(0);

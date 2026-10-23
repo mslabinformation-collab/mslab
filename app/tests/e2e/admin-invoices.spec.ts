@@ -10,12 +10,12 @@ import {
   storedAdminRegistration,
   type AdminFixtures,
 } from "./fixtures";
-import { holdInvoiceSettings, INVOICE_COMPANY, INVOICE_NUMBER, noOverflow, offered, openDrawer, rowOf, today } from "./invoices";
+import { expectFits, holdInvoiceSettings, INVOICE_COMPANY, INVOICE_NUMBER, noOverflow, offered, openDrawer, rowOf, today, viaMenu } from "./invoices";
 
 // Invoices, Maria's side (invoices Task 5, spec §5): the registration drawer's „Arved“ — „Koosta arve“ as a request to pay, a receipt made with the
 // money by the Raha card's „Lisa laekumine“ (admin UX pass B4, Task 5: „Koosta arve“ offers a receipt only for money recorded without one),
-// „Märgi tasutuks“ (which confirms the registration at 50 %), „Võta tasumine tagasi“ for a request and for a receipt, „Tühista arve“, „Saada
-// õpilasele“ — the „Arved“ page with its „Arveta maksed“ and the month's CSV, and Seaded → „Arve andmed“ with the sample. The signed-in tests
+// „Märgi tasutuks“ (which confirms the registration at 50 %), „Võta tasumine tagasi“ for a request and for a receipt, „Tühista arve“ (these under
+// each row's „Veel ▾“, the last two as ConfirmPanels: S3-f and P-11, admin UX pass piece 2 Task 6), „Saada õpilasele“ — the „Arved“ page with its „Arveta maksed“ and the month's CSV, and Seaded → „Arve andmed“ with the sample. The signed-in tests
 // run against the local dev server only: they sign in as Dim through the devLink and look at rows each test inserts for itself and deletes again
 // (tests/e2e/fixtures.ts, an unpublished fixture course; its invoices have no cascade, so they are deleted by the buyer's address). The
 // seller card and the bank details are shared settings other tests read: a test holds the prepayment setting's lock, writes its own and puts the
@@ -69,7 +69,7 @@ test("a request to pay: made in two taps, marked paid (the registration confirms
   const f = await fixtures(info.project.name);
   await signIn(page, context, visitorIp);
   const { drawer, block } = await openDrawer(page, f);
-  await expect(block.getByRole("heading", { level: 3 })).toHaveText("Arved");
+  await expect(block.locator("h3")).toHaveText("Arved"); // (a phone shows the folded row instead of the heading: the block is a PhoneFold)
   await expect(block.locator("[data-invoices-none]")).toHaveText("Sellele registreeringule pole arveid koostatud.");
 
   // „Koosta arve“ offers exactly the two amounts of a half-choice registration, „Maksmiseks“ chosen
@@ -107,7 +107,7 @@ test("a request to pay: made in two taps, marked paid (the registration confirms
   await block.getByRole("button", { name: "Katkesta" }).click();
 
   // „Märgi tasutuks“ adds the amount to „Laekunud summa“ and the registration confirms
-  await unpaid.locator("[data-invoice-mark-paid]").click();
+  await viaMenu(unpaid, "Märgi tasutuks");
   const panel = unpaid.locator('[data-invoice-panel="paid"]');
   await expect(panel).toContainText("Summa lisatakse registreeringu „Laekunud summa“ juurde");
   await expect(panel.locator("[data-paid-date]")).toHaveAttribute("type", "date");
@@ -121,12 +121,13 @@ test("a request to pay: made in two taps, marked paid (the registration confirms
   expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
 
   // „Võta tasumine tagasi“ of a request: it asks first (and „Katkesta“ changes nothing), then the amount comes off again
-  await paid.locator("[data-invoice-undo]").click();
-  await expect(paid.locator("[data-invoice-undo-text]")).toHaveText("Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha.");
+  await viaMenu(paid, "Võta tasumine tagasi");
+  await expect(paid.locator('[data-invoice-panel="undo"]')).toContainText("Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha.");
   await paid.getByRole("button", { name: "Katkesta" }).click();
+  await expect(paid.locator("[data-more-menu] > button")).toBeFocused(); // (the question is gone and the focus is back where it came from)
   expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
-  await paid.locator("[data-invoice-undo]").click();
-  await paid.locator("[data-invoice-undo-confirm]").click();
+  await viaMenu(paid, "Võta tasumine tagasi");
+  await paid.getByRole("button", { name: "Jah, võta tasumine tagasi" }).click();
   await expect(paid.locator("[data-invoice-status-line]")).toHaveText("Arve on jälle tasumata.");
   await expect(unpaid.locator("[data-invoice-state]")).toHaveText("Tasumata");
   await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
@@ -154,15 +155,20 @@ test("a request to pay: made in two taps, marked paid (the registration confirms
   await expect(receipt.locator("[data-invoice-state]")).toHaveText("Tasutud");
   await expect(receipt.locator("[data-invoice-amount]")).toContainText("175,00");
   await expect(receipt.locator("[data-invoice-facts]")).toContainText("Sularaha");
-  await expect(receipt.locator("[data-invoice-mark-paid], [data-invoice-cancel]")).toHaveCount(0);
+  // (a receipt can only be taken back: that is the one item under its „Veel ▾“; it is neither marked nor cancelled)
+  await receipt.locator("[data-more-menu] > button").click();
+  await expect(receipt.getByRole("menuitem")).toHaveText(["Võta tasumine tagasi"]);
   await expect(drawer.locator("[data-paid]")).toHaveText("175 €");
   await expect(drawer.locator("[data-reg-status]")).toHaveText("Kinnitatud");
   expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 17500, status: "confirmed" });
-  // „Võta tasumine tagasi“ of the receipt: it asks first, then it is cancelled — the number stays — and its money comes off „Laekunud summa“
-  // (the question's words are Task 6's S3-f ConfirmPanel: today's panel words a receipt by `paidAdds`, the ledger's carry to Task 6)
-  await receipt.locator("[data-invoice-undo]").click();
-  await expect(receipt.locator("[data-invoice-undo-text]")).toBeVisible();
-  await receipt.locator("[data-invoice-undo-confirm]").click();
+  // „Võta tasumine tagasi“ of the receipt asks first (S3-f: the question, the three lines — the sum then falls under 50 % —, the two buttons), then it is
+  // cancelled — the number stays — and its money comes off „Laekunud summa“
+  await receipt.getByRole("menuitem", { name: "Võta tasumine tagasi" }).click();
+  const ask = receipt.locator('[data-invoice-panel="undo"]');
+  await expect(ask.locator("[data-confirm-panel] > p")).toHaveText(`Kas võtan kviitungi ${receiptNumber} tasumise tagasi?`);
+  await expect(ask.locator("li")).toHaveText(["Kviitung tühistatakse (number jääb alles).", "Laekunud summa väheneb 175 €.", "Registreering läheb tagasi olekusse „Ootab ettemaksu“."]);
+  await expect(ask.getByRole("button")).toHaveText(["Jah, võta tasumine tagasi", "Katkesta"]);
+  await ask.getByRole("button", { name: "Jah, võta tasumine tagasi" }).click();
   await expect(receipt.locator("[data-invoice-status-line]")).toHaveText("Kviitung on tühistatud.");
   await expect(receipt.locator("[data-invoice-state]")).toHaveText("Tühistatud");
   await expect(rowOf(block, "cancelled")).toHaveCount(1);
@@ -170,14 +176,16 @@ test("a request to pay: made in two taps, marked paid (the registration confirms
   await expect(drawer.locator("[data-reg-status]")).toHaveText("Ootab ettemaksu");
   expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 0, status: "awaiting_prepayment" });
 
-  // „Tühista arve“ of the unpaid request: it asks first
+  // „Tühista arve“ of the unpaid request: it asks first (P-11)
   const request = unpaid;
-  await request.locator("[data-invoice-cancel]").click();
-  await expect(request.locator('[data-invoice-panel="cancel"]')).toContainText("Arve tühistatakse. Number jääb alles");
-  await request.getByRole("button", { name: "Katkesta" }).click();
+  await viaMenu(request, "Tühista arve");
+  const cancelling = request.locator('[data-invoice-panel="cancel"]');
+  await expect(cancelling.locator("[data-confirm-panel] > p")).toHaveText(`Kas tühistan arve ${number}?`);
+  await expect(cancelling.locator("li")).toHaveText(["Number jääb alles ja summa on uue arve jaoks jälle vaba."]);
+  await cancelling.getByRole("button", { name: "Katkesta" }).click();
   await expect(request.locator("[data-invoice-state]")).toHaveText("Tasumata");
-  await request.locator("[data-invoice-cancel]").click();
-  await request.locator("[data-invoice-cancel-confirm]").click();
+  await viaMenu(request, "Tühista arve");
+  await request.getByRole("button", { name: "Jah, tühista arve" }).click();
   await expect(request.locator("[data-invoice-state]")).toHaveText("Tühistatud");
   await expect(rowOf(block, "cancelled")).toHaveCount(2);
   await expect(rowOf(block, "unpaid")).toHaveCount(0);
@@ -185,6 +193,90 @@ test("a request to pay: made in two taps, marked paid (the registration confirms
   await block.locator("[data-invoice-create]").click();
   expect(await offered(block)).toEqual(["prepayment", "full"]);
   expect(await noOverflow(page)).toBe(true);
+});
+
+test("Esc inside the drawer closes „Veel ▾“ only: the focus is back on its button and the drawer stays open; the next Esc is the drawer's own (Task 1 review M5)", async ({ page, context, visitorIp }, info) => {
+  test.skip(info.project.name !== "chromium", "chromium only");
+  giveBack = await holdInvoiceSettings(info);
+  const f = await fixtures(info.project.name);
+  await signIn(page, context, visitorIp);
+  const { drawer, block } = await openDrawer(page, f);
+  await block.locator("[data-invoice-create]").click();
+  await block.locator("[data-invoice-create-confirm]").click();
+  const row = rowOf(block, "unpaid");
+  await expect(row).toHaveCount(1);
+  const more = row.locator("[data-more-menu] > button");
+  await more.click();
+  await expect(row.getByRole("menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(row.getByRole("menu")).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+  await expect(more).toBeFocused();
+  // the question of „Tühista arve“ is the same: Esc cancels it and nothing more
+  await viaMenu(row, "Tühista arve");
+  await expect(row.locator("[data-confirm-panel]")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(row.locator("[data-confirm-panel]")).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+  await expect(more).toBeFocused();
+  expect(await onLocalDb((sql) => sql<{ status: string }[]>`select status from invoices where buyer->>'email' like ${`%${f.tag}%`}`, { marksPages: false })).toEqual([{ status: "unpaid" }]);
+  // with nothing open, Esc is the drawer's own
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+});
+
+test("the phone drawer (375 × 812): Arved is a folded row with its summary, the invoice and its „Veel ▾“ open inside the screen, nothing scrolls sideways", async ({ page, context, visitorIp, isMobile }, info) => {
+  test.skip(!isMobile, "the phone project only");
+  giveBack = await holdInvoiceSettings(info);
+  const f = await fixtures(info.project.name);
+  await signIn(page, context, visitorIp);
+  await page.setViewportSize({ width: 375, height: 812 });
+  // one request to pay, made through the block (opened to do it)
+  const made = await openDrawer(page, f);
+  await made.block.locator("[data-invoice-create]").click();
+  await made.block.locator("[data-invoice-create-confirm]").click();
+  await expect(rowOf(made.block, "unpaid")).toHaveCount(1);
+  // as the page draws it: the row, closed, with its summary (P-3); the invoice is not in view
+  const { drawer, block } = await openDrawer(page, f, { open: false });
+  await drawer.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished))); // (it slides in: measured in place)
+  const toggle = block.locator("[data-phone-fold-toggle]");
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toContainText("Arved");
+  await expect(toggle).toContainText("1 tasumata");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(block.locator("h3")).toBeHidden(); // (the heading is the desktop's)
+  await expect(block.locator("[data-invoice-id]")).toBeHidden();
+  // the folded rows are 52 px rows of the drawer's width, and the page does not scroll sideways
+  for (const title of ["Tagasiside", "Registreerimise andmed"]) {
+    const summary = drawer.locator("details[data-fold] > summary", { hasText: title });
+    await expect(summary).toBeVisible();
+    const box = (await summary.boundingBox())!;
+    expect(box.height, title).toBeGreaterThanOrEqual(52);
+    expect(box.x, title).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, title).toBeLessThanOrEqual(375);
+  }
+  const box = (await toggle.boundingBox())!;
+  expect([box.height >= 52, box.x >= 0, box.x + box.width <= 375]).toEqual([true, true, true]);
+  expect(await noOverflow(page)).toBe(true);
+  // opened: the invoice and its two buttons in view; „Veel ▾“ lists the rest, inside the screen
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const row = rowOf(block, "unpaid");
+  await expect(row).toBeVisible();
+  await expect(row.getByRole("button", { name: "Saada õpilasele" })).toBeVisible();
+  await expect(row.getByRole("link", { name: /^Laadi alla \(PDF\)/ })).toBeVisible();
+  await row.locator("[data-more-menu] > button").click();
+  const menu = row.getByRole("menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem")).toHaveText(["Muuda saajat", "Märgi tasutuks", "Tühista arve"]);
+  const place = (await menu.boundingBox())!;
+  expect([place.x >= 0, place.x + place.width <= 375, place.y >= 0, place.y + place.height <= 812]).toEqual([true, true, true, true]);
+  expect(await noOverflow(page)).toBe(true);
+  await menu.getByRole("menuitem", { name: "Tühista arve" }).click();
+  await expect(row.locator("[data-confirm-panel]")).toBeVisible();
+  await expectFits(page, block, "the question of „Tühista arve“ in the phone drawer");
+  await row.getByRole("button", { name: "Katkesta" }).click();
+  await expectFits(page, block, "the opened „Arved“ in the phone drawer");
 });
 
 test("„Saada õpilasele“: a second address that is no address is refused; the send is recorded with the second address as its note", async ({ page, context, visitorIp }, info) => {
@@ -219,17 +311,21 @@ test("„Saada õpilasele“: a second address that is no address is refused; th
 test("„Arved“: the list with its filters, the month's CSV, and „Arveta maksed“ with its own „Koosta arve“", async ({ page, context, visitorIp }, info) => {
   giveBack = await holdInvoiceSettings(info);
   const f = await fixtures(info.project.name);
-  // a payment that was paid while there was no invoice for it (the card was empty, or the step failed)
   const payer = f.registration;
-  const payment = await insertStoredPayment({ email: payer.email, name: payer.name, kind: "prepayment", status: "paid", amountCents: 17500, registrationId: payer.id, courseId: f.course.id, method: "paymentInitiation", bank: "Swedbank", paid: true, minutesAgo: 5 });
   await signIn(page, context, visitorIp);
-  // one invoice of Maria's, to find in the list
+  // one invoice of Maria's, to find in the list (made before the payment below: while a paid payment waits for its invoice, its row's button is the only „Koosta arve“)
   const { block } = await openDrawer(page, f);
   await block.locator("[data-invoice-create]").click();
   await block.locator("[data-invoice-create-confirm]").click();
   await expect(rowOf(block, "unpaid")).toHaveCount(1);
   const number = (await rowOf(block, "unpaid").locator("strong").first().textContent())!.trim();
   expect(number).toMatch(INVOICE_NUMBER);
+  // a payment that was paid while there was no invoice for it (the card was empty, or the step failed)
+  const payment = await insertStoredPayment({ email: payer.email, name: payer.name, kind: "prepayment", status: "paid", amountCents: 17500, registrationId: payer.id, courseId: f.course.id, method: "paymentInitiation", bank: "Swedbank", paid: true, minutesAgo: 5 });
+  // the drawer then lists it with its own „Koosta arve“, which is the only one in view (README A2 drawer 4)
+  const again = await openDrawer(page, f);
+  await expect(again.block.locator(`[data-uninvoiced-create="${payment.id}"]`)).toBeVisible();
+  await expect(again.block.locator("[data-invoice-create]")).toHaveCount(0);
 
   // Maksed links to it; the page lists the payment under „Arveta maksed“, and the invoice below
   await page.goto("/admin/maksed");
@@ -277,7 +373,7 @@ test("„Arved“: the list with its filters, the month's CSV, and „Arveta mak
   await expect(page.locator(`[data-uninvoiced-payment="${payment.id}"]`)).toHaveCount(0);
   const made = page.locator('[data-invoice-status="paid"]', { hasText: payer.name }).first();
   await expect(made.locator("[data-invoice-facts]")).toContainText("Montonio");
-  await expect(made.locator("[data-invoice-undo]")).toHaveCount(0); // (an online payment's invoice is never changed by Maria)
+  await expect(made.locator("[data-more-menu]")).toHaveCount(0); // (an online payment's invoice is never changed by Maria: nothing is under „Veel ▾“, so there is none)
   // the registration's paid sum was not touched by it (the payment itself had added it, here a stored row that did not)
   expect(await storedAdminRegistration(f.registration.id)).toMatchObject({ paidCents: 0 });
 });

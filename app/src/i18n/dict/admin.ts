@@ -301,6 +301,8 @@ export const adminEt = {
       label: "Registreerimine: {name}",
       notFound: "Seda registreerimist ei leitud.",
       details: "Registreerimise andmed",
+      // the details' folded row summary (P-3): {n} the rows inside
+      rows: "{n} rida",
       email: "E-post",
       phone: "Telefon",
       course: "Koolitus",
@@ -442,6 +444,8 @@ export const adminEt = {
       cancel: "Katkesta",
       working: "Koostan…",
       done: "Arve {number} on koostatud.",
+      // the block's folded row on a phone (piece2-texts P-3; the Part 2 phone frame „Arved … 1 tasumata ▸“): {n} the invoices still unpaid
+      fold: { unpaid: "{n} tasumata", paid: "kõik tasutud", none: "arveid pole" },
     },
     // one invoice with its actions (components/admin/InvoiceRow.tsx), in the drawer and on the list
     row: {
@@ -481,15 +485,25 @@ export const adminEt = {
         done: "Arve on märgitud tasutuks.",
         full: "Koolitus on vahepeal täis, nii et koht jäi kinnitamata.",
       },
+      // „Veel ▾“ names itself from the number on screen, as a list has one on every row ({number}); admin UX pass, piece 2, Task 6
+      moreLabel: "Veel: {number}",
+      // „Võta tasumine tagasi“ as a ConfirmPanel (piece2-texts S3-f): a receipt asks the question and lists its three lines ({number} the receipt's,
+      // {x} what comes off „Laekunud summa“, as euros without the sign: "175" or "50,50"; the third line only when the sum then falls under 50 %);
+      // a request Maria marked paid keeps its words as they were (ruling R10), said as the panel's first line
       undoPanel: {
-        receipt: "Kviitung tühistatakse (number jääb alles).",
+        receiptQuestion: "Kas võtan kviitungi {number} tasumise tagasi?",
+        receiptCancelled: "Kviitung tühistatakse (number jääb alles).",
+        receiptSum: "Laekunud summa väheneb {x} €.",
+        receiptBack: "Registreering läheb tagasi olekusse „Ootab ettemaksu“.",
         request: "Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha.",
         confirm: "Jah, võta tasumine tagasi",
         doneReceipt: "Kviitung on tühistatud.",
         doneRequest: "Arve on jälle tasumata.",
       },
+      // „Tühista arve“ as a ConfirmPanel (piece2-texts P-11)
       cancelPanel: {
-        text: "Arve tühistatakse. Number jääb alles ja summa on uue arve jaoks jälle vaba.",
+        question: "Kas tühistan arve {number}?",
+        text: "Number jääb alles ja summa on uue arve jaoks jälle vaba.",
         confirm: "Jah, tühista arve",
         done: "Arve on tühistatud.",
       },
@@ -648,6 +662,8 @@ export const adminEt = {
       downloadLabel: "Laadi alla (PDF): leping {id}",
       working: "Saadan…",
     },
+    // the drawer's folded row (admin UX pass, piece 2, Task 6; P-3, the Part 2 frames): {date} the day it was accepted; `nonePhone` is the phone frame's word
+    fold: { accepted: "Kinnitatud {date}", none: "Sellele registreeringule pole lepingut", nonePhone: "puudub" },
     // how a contract was accepted (domain/contract.ts AcceptedVia), as the drawers say it
     via: {
       form: "Registreerimisvorm",
@@ -972,6 +988,8 @@ export const adminEt = {
     // the Õpilased and Registreerimised drawers
     section: "Tagasiside",
     none: "Tagasisidet pole antud.",
+    // the registration drawer's folded row when she has given none (P-3, the Part 2 frame); given: `submitted`
+    foldNone: "pole antud",
   },
 
   // Arvustused (student reviews, Task 4; spec D2, D4, §4, §5): the second view of Tagasiside, /admin/tagasiside?vaade=arvustused, ?olek=ootel|avaldatud|peidetud
