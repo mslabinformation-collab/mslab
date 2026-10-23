@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gt, inArray, isNull, not, or, sql } from "drizzle-orm";
 import type { Db, Q, Tx } from "@/db/client";
-import { attachOrder, failPayment, hirePurchaseRow, insertPayment, OPEN_ORDER, replaceOlderOrders } from "@/db/queries/payments";
+import { attachOrder, failPayment, hirePurchaseRow, insertPayment, OPEN_ORDER, replaceOlderOrders, reviveAttempt } from "@/db/queries/payments";
 import { readSetting } from "@/db/queries/public";
 import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
@@ -204,7 +204,9 @@ async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment,
  * and holds it for the attempt's window from now (D2: 30 minutes for the bank, 60 for a järelmaks: attemptWindowMs), never ending a longer
  * hold sooner (her open järelmaks attempt's, when she presses the bank meanwhile); a confirmed registration's needs none and holds nothing.
  * The open attempt of the same amount, invoice and method, when there is one, is sent again instead of a new one (liveAttempt; not counted
- * in STARTS_PER_HOUR); a new attempt marks the registration's older open ones „Asendatud“ (B22: replaceOlderOrders, in this transaction).
+ * in STARTS_PER_HOUR); a new attempt marks the registration's older open ones „Asendatud“ (B22: replaceOlderOrders, in this transaction). An
+ * open attempt whose revive UPDATE changes no row (a settlement that takes no registration lock, held or refunded, won the race) is no open
+ * attempt after all: a new one is made, and nothing is replaced on the lost one's account.
  * `target`: the registration (with `clientId`: only when it is that client's) or its "Maksa" token.
  * `opts.method`: the bank link by default; "hirePurchase" (Järelmaks (Inbank), instalments §4) only for a registration booked with that
  * choice and while financingRefusedNow allows it, else `financing` — the bank stays open to every registration, a järelmaks one included (she
@@ -256,13 +258,14 @@ export async function startRegistrationPayment(
     const invoiceId = "invoiceId" in due ? due.invoiceId : null;
     // the open attempt of this amount (and invoice) and method is sent again, not doubled; it is no new attempt, so it is not counted here
     const live = await liveAttempt(tx, { registrationId: r.id, kind: due.kind, invoiceId }, due.cents, method, deps.now);
-    if (!live) {
+    const overLimit = async () => {
       const [{ n }] = await tx
         .select({ n: count() })
         .from(payments)
         .where(and(eq(payments.registrationId, r.id), gt(payments.createdAt, new Date(deps.now.getTime() - 60 * 60_000))));
-      if (Number(n) >= STARTS_PER_HOUR) return { kind: "rate" };
-    }
+      return Number(n) >= STARTS_PER_HOUR;
+    };
+    if (!live && (await overLimit())) return { kind: "rate" };
     // an unconfirmed registration's payment, whatever it pays (amountDue's prepayment, or an invoice's prepayment or rest), would confirm her
     // place: it needs a free seat and holds it; a confirmed one holds its place already
     if (r.status === "awaiting_prepayment") {
@@ -279,12 +282,14 @@ export async function startRegistrationPayment(
       // its window starts again now (and a start at the same moment, waiting for this row lock, finds it open). A replaced one (B22: the loan
       // application she left for the bank, pressed again inside its window) is the open order again: `pending`, and the row that had taken its
       // place is replaced in its turn — under the same locks, so a settlement (which takes them too) sees one or the other
-      await tx
-        .update(payments)
-        .set({ status: "pending", updatedAt: deps.now })
-        .where(and(eq(payments.id, live.id), inArray(payments.status, OPEN_ORDER), isNull(payments.paidAt)));
-      if (live.status === "replaced") await replaceOlderOrders(tx, r.id, live.id);
-      return { kind: "ready", payment: { ...live, status: "pending", updatedAt: deps.now }, again: true, billing };
+      if (await reviveAttempt(tx, live.id, deps.now)) {
+        if (live.status === "replaced") await replaceOlderOrders(tx, r.id, live.id);
+        return { kind: "ready", payment: { ...live, status: "pending", updatedAt: deps.now }, again: true, billing };
+      }
+      // 0 rows: a settlement that takes no registration lock (held, refunded: settle.ts) changed the row between the look and this UPDATE. It is
+      // no open attempt after all, so nothing is replaced on its account (the open order she has stays open until the new row replaces it): a new
+      // attempt, as usual, counted like any other
+      if (await overLimit()) return { kind: "rate" };
     }
     const payment = await insertPayment(
       tx,

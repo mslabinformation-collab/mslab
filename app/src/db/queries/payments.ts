@@ -93,6 +93,21 @@ const OPEN_ORDER_SQL = sql.join(
 );
 
 /**
+ * An open attempt sent again (start.ts, under the registration's lock): `pending`, its window starting `now`, and a replaced one is the open order
+ * again. Only while it is still an open order and unpaid; true when the row changed. false: a settlement that takes no registration lock (held,
+ * refunded: settle.ts) changed it between the start's look and this UPDATE, so it is no open attempt after all (the caller makes a new one).
+ */
+export async function reviveAttempt(q: Q, id: number, now: Date): Promise<boolean> {
+  // (The cast: on the Db union, returning(fields) has no common overload.)
+  const rows = await (q as unknown as PostgresJsDatabase<typeof schema>)
+    .update(payments)
+    .set({ status: "pending", updatedAt: now })
+    .where(and(eq(payments.id, id), inArray(payments.status, OPEN_ORDER), isNull(payments.paidAt)))
+    .returning({ id: payments.id });
+  return rows.length > 0;
+}
+
+/**
  * One open order per registration (B22, admin UX pass piece 2): every other `pending` payment of `registrationId` — whatever its kind or
  * method, a loan application too — becomes `replaced` („Asendatud“), the open attempt `keepId` excepted. Only the status changes: the row keeps
  * its order, its reference and its last sending (`updated_at`), so its seat window (attemptEnds) and its daily-check age stay its own. It stays

@@ -747,6 +747,45 @@ describe("a start with its method: the bank, or Järelmaks (Inbank) (instalments
     expect((await reg()).seatHoldUntil).toEqual(new Date(again.getTime() + 60 * MIN));
   });
 
+  // `held()` and `refunded()` (settle.ts) take no registration lock, so one can commit between the start's look for the open attempt and the UPDATE that
+  // revives it. The race is made exact with a trigger: the seat-hold UPDATE of the registration, which comes between the two statements, takes the
+  // replaced loan row to „held“ in the same transaction, as the other session's commit would have
+  test("loan, bank, loan again, but the loan's row is held meanwhile (a settlement that took no lock): not a live attempt after all, so a new row is made as usual; the bank's open row is replaced by it and nothing is left without an order", async () => {
+    const m = stubMontonio();
+    const c = await contactCourse(db);
+    await financingOn();
+    const r = await registrationOn(db, c, { email: "kati@example.test", paymentChoice: "financing" });
+    expect(await start(m.montonio, { registrationId: r.id }, "hirePurchase")).toMatchObject({ kind: "started" });
+    expect(await start(m.montonio, { registrationId: r.id }, undefined, new Date(NOW.getTime() + 5 * MIN))).toMatchObject({ kind: "started" });
+    const [loan, bank] = await ordered();
+    expect([loan.status, bank.status]).toEqual(["replaced", "pending"]);
+    await db.execute(sql`
+      create function race_hold_replaced() returns trigger language plpgsql as $$
+      begin
+        update payments set status = 'held' where registration_id = new.id and status = 'replaced';
+        return new;
+      end $$`);
+    await db.execute(sql`create trigger race_hold_replaced after update on registrations for each row execute function race_hold_replaced()`);
+    const again = new Date(NOW.getTime() + 55 * MIN);
+    const result = await start(m.montonio, { registrationId: r.id }, "hirePurchase", again);
+    await db.execute(sql`drop trigger race_hold_replaced on registrations`);
+    // a new application under a new reference, sent to Montonio and answered with its payment page: not "nothing to pay"
+    expect(result).toEqual({ kind: "started", paymentUrl: expect.any(String) });
+    const after = await ordered();
+    expect(after.map((p) => [p.id, p.method, p.status])).toEqual([
+      [loan.id, "hirePurchase", "held"],
+      [bank.id, "paymentInitiation", "replaced"],
+      [bank.id + 1, "hirePurchase", "pending"],
+    ]);
+    expect(after[2].reference).toBe(`MSLAB-M${bank.id + 1}`);
+    // the held row was neither revived nor re-sent; the new one is the one open order
+    expect(after[0].updatedAt).toEqual(loan.updatedAt);
+    expect(claimsOf(m, loan.reference)).toHaveLength(1);
+    expect(claimsOf(m, after[2].reference).map(methodOf)).toEqual(["hirePurchase"]);
+    expect(after.filter((p) => p.status === "pending")).toHaveLength(1);
+    expect((await reg()).seatHoldUntil).toEqual(new Date(again.getTime() + 60 * MIN));
+  });
+
   test("…after the loan's window has ended, the loan pressed again is a new application (a new row), which replaces the bank's", async () => {
     const m = stubMontonio();
     const c = await contactCourse(db);
