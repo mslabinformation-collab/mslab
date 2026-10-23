@@ -266,3 +266,10 @@
 .generalCard .note {
   min-height: 80px;
 }
+
+/* on a phone „Üldised märkused“ is scrolled clear of the assessment screen's send bar when it takes the focus (--dock-h is set by AssessmentScreen) */
+@media (max-width: 640px) {
+  .generalCard .note {
+    scroll-margin-bottom: calc(var(--dock-h, 0px) + 16px);
+  }
+}

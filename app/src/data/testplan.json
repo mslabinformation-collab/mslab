@@ -4038,6 +4038,30 @@
       "markedAt": "deploy"
     },
     {
+      "id": "ekursus-hinda-praktiline-telefon",
+      "area": "ekursus",
+      "who": "maria",
+      "device": "telefon",
+      "title": "Hindamine telefonis: nupu riba",
+      "href": "/admin/hindamine",
+      "steps": [
+        "Ava telefonis „Hindamine“ ja vajuta Proov 1 real „Hinda“.",
+        "Keri lehte alla, kuni näed viimast punkti ja „Üldised märkused“ kasti.",
+        "Vajuta alumist nuppu „Saada hinnang“, ilma et oleksid ühtki punkti hinnanud."
+      ],
+      "expect": [
+        "Nupu riba jääb keri ajal ekraani alumisse serva.",
+        "Viimane punkt ja „Üldised märkused“ on kerimise lõpus täielikult riba kohal.",
+        "Nupp „Kommentaar“ on nupu ribast kõrgemal ja ei kata nuppu „Saada hinnang“.",
+        "Riba kohal on rida „Vali hinnang ka punktidele: …“ ja esimese hindamata punkti „Kinnitatud“ on riba kohal."
+      ],
+      "why": "Telefonis ei tohi alumine nupp midagi katta.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
+      "markedAt": "deploy"
+    },
+    {
       "id": "ekursus-lopetatud",
       "area": "ekursus",
       "who": "maria",

@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -212,6 +214,7 @@ test("'Kinnita kõik' approves only the points without a verdict, one tap each n
   await click("[data-approve-all]");
   expect(posted("/api/admin/hinnang")).toHaveLength(2);
   expect($("[data-verdict-unsaved]")).toBeNull();
+  expect($("[data-assess-error]")).toBeNull(); // stored: nothing to say
 });
 
 test("'Kinnita kõik' with no answer keeps the taps ('Salvestamata'); the next tap's refusal drops them, says so and reads the server again", async () => {
@@ -220,6 +223,9 @@ test("'Kinnita kõik' with no answer keeps the taps ('Salvestamata'); the next t
   await click("[data-approve-all]");
   expect($$("[data-verdict-unsaved]")).toHaveLength(3);
   expect([pressed(0), pressed(1), pressed(2)]).toEqual([["true", "false"], ["true", "false"], ["true", "false"]]);
+  // every point looks approved, so the bar says next to the button that they are not stored (the line of a send that finds them unsaved)
+  expect($("[data-assess-dock]")!.contains($("[data-assess-error]"))).toBe(true);
+  expect($("[data-assess-error]")!.textContent).toBe("Kõik hinnangud ei ole veel salvestatud. Proovi uuesti, kui ühendus on tagasi.");
   verdictAnswer = async () => json(409, { ok: false, error: "closed" });
   const reads = read.mock.calls.length;
   await click("[data-assess-point='0'] [data-verdict='ok']"); // sends the kept ones first: refused
@@ -344,9 +350,11 @@ test("'Saada hinnang' names the points without a verdict, then the Paranda point
   await click("[data-assess-point='1'] [data-verdict='fix']");
   await click("[data-assess-send]");
   expect($("[data-assess-error]")!.textContent).toBe("Vali hinnang ka punktidele: 3.");
+  expect(document.activeElement).toBe($("[data-assess-point='2'] [data-verdict='ok']")); // the refusal leads to the point
   await click("[data-assess-point='2'] [data-verdict='ok']");
   await click("[data-assess-send]");
   expect($("[data-assess-error]")!.textContent).toBe("Lisa märkus Paranda-punktidele: 2.");
+  expect(document.activeElement).toBe($("[data-note='1']")); // … and to its comment box
   expect(action.sendAssessmentAction).not.toHaveBeenCalled(); // both refusals were the screen's own
   await type("[data-note='1']", "Kuju on ebaühtlane");
   await click("[data-assess-send]");
@@ -362,6 +370,32 @@ test("'Saada hinnang' names the points without a verdict, then the Paranda point
   expect(allOff()).toBe(true);
   await click("[data-edit]");
   expect([allOff(), ($("[data-note='1']") as HTMLTextAreaElement).readOnly, $("[data-assess-send]")!.textContent]).toEqual([false, false, "Saada hinnang · 2 kinnitatud, 1 paranda"]);
+});
+
+test("a refusal leads Maria to the field: the first point without a verdict gets the focus on its „Kinnitatud“, the first „Paranda“ without a comment on its comment box; nothing submitted leads nowhere", async () => {
+  await render(student());
+  await click("[data-assess-point='1'] [data-verdict='ok']");
+  await click("[data-assess-send]");
+  expect($("[data-assess-error]")!.textContent).toBe("Vali hinnang ka punktidele: 1, 3.");
+  expect(document.activeElement).toBe($("[data-assess-point='0'] [data-verdict='ok']")); // the first of the two, not the last
+  expect($("[data-assess-point='0'] [data-verdict='ok']")!.getAttribute("aria-pressed")).toBe("false");
+  // two „Paranda“ without a comment: the first one's box; the one with words is passed over
+  await click("[data-assess-point='0'] [data-verdict='fix']");
+  await click("[data-assess-point='2'] [data-verdict='fix']");
+  await type("[data-note='2']", "Ebaühtlane");
+  await click("[data-assess-point='1'] [data-verdict='fix']");
+  await (document.activeElement as HTMLElement).blur();
+  await click("[data-assess-send]");
+  expect($("[data-assess-error]")!.textContent).toBe("Lisa märkus Paranda-punktidele: 1, 2.");
+  expect(document.activeElement).toBe($("[data-note='0']"));
+  expect(action.sendAssessmentAction).not.toHaveBeenCalled();
+});
+
+test("a refusal because nothing is submitted has no field to lead to: the focus stays where it was", async () => {
+  await render(student({ protocolId: null, version: 0, assessment: assessment({ status: "open", round: 0, submittedAt: null, photos: [[], [], []] }) }));
+  await click("[data-assess-send]");
+  expect($("[data-assess-error]")!.textContent).toBe("Õpilane ei ole tööd veel hindamiseks saatnud.");
+  expect(document.activeElement?.closest("[data-assess-point]") ?? null).toBeNull();
 });
 
 test("an approving send locks the verdicts for good: 'Muuda' opens the notes only, and they go again with 'Saada uuesti'", async () => {
@@ -563,4 +597,19 @@ test("the send's dock (fixed to the bottom on a phone) carries data-fab-avoid so
 test("wording: always „kord“, never „voor“ — nowhere in the admin's texts (README A4)", () => {
   expect(JSON.stringify(adminEt).match(/\bvoor\w*/gi) ?? []).toEqual([]);
   expect(adminEt.assessment.screen.errors.newRound).toBe(NEW_ROUND);
+});
+
+test("on a phone a field that takes the focus is scrolled clear of the send bar: scroll-margin-bottom of the bar's height (--dock-h) and 16 px", () => {
+  const css = (file: string) => readFileSync(join(process.cwd(), file), "utf8");
+  const margin = /scroll-margin-bottom:\s*calc\(var\(--dock-h, 0px\) \+ 16px\);/;
+  const assessmentCss = css("src/components/admin/Assessment.module.css");
+  const comment = assessmentCss.search(/\.card \.comment\s*\{[^}]*scroll-margin-bottom/);
+  expect(comment, "the card's comment box").toBeGreaterThan(-1);
+  expect(assessmentCss.slice(comment).match(margin)).not.toBeNull();
+  expect(assessmentCss.slice(assessmentCss.slice(0, comment).lastIndexOf("@media")).startsWith("@media (max-width: 640px)"), "in the phone block").toBe(true);
+  const protocolCss = css("src/components/admin/ProtocolScreen.module.css");
+  const general = protocolCss.search(/\.generalCard \.note\s*\{\s*scroll-margin-bottom/);
+  expect(general, "„Üldised märkused“").toBeGreaterThan(-1);
+  expect(protocolCss.slice(general).match(margin)).not.toBeNull();
+  expect(protocolCss.slice(protocolCss.slice(0, general).lastIndexOf("@media")).startsWith("@media (max-width: 640px)"), "in the phone block").toBe(true);
 });

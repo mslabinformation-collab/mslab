@@ -316,6 +316,13 @@
     width: 100%;
   }
 
+  /* a field that takes the focus (a comment box, the verdict a refusal leads to) is scrolled clear of the dock, not left under it */
+  .verdict,
+  .addNote,
+  .card .comment {
+    scroll-margin-bottom: calc(var(--dock-h, 0px) + 16px);
+  }
+
   .openHint {
     display: block;
   }

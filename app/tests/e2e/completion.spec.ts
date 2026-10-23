@@ -600,4 +600,31 @@ test("§9 e2e 9 (A4, README: the send bar sticks to the bottom on a phone): at 3
   expect(await page.locator("[data-assessment-screen]").evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom))).toBeGreaterThanOrEqual(Math.floor(taller.height));
   expect(await noOverflow(page)).toBe(true);
   expect(await smallTargets(page.locator("[data-protocol-screen]"))).toEqual([]);
+  // the refusal leads to the first point without a verdict (the line was said above: it took the focus to point 1's „Kinnitatud“ at the top)
+  await expect(assessPoint(page, 0).locator('[data-verdict="ok"]')).toBeFocused();
+
+  // a field the refusal leads to is never left under the bar: point 1 is far down, scrolled so that its „Kinnitatud“ sits under the bar, and the
+  // press brings it clear (scroll-margin-bottom, the bar's height and 16 px)
+  await assessPoint(page, 0).locator('[data-verdict="ok"]').click();
+  const underBar = (target: Locator) => target.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().bottom - (window.innerHeight - 12)));
+  const clearOfBar = async (target: Locator, what: string) => {
+    const [field, bar] = [(await target.boundingBox())!, (await dock.boundingBox())!];
+    expect(field.y + field.height, `${what} ends above the bar`).toBeLessThanOrEqual(bar.y);
+    expect(field.y, `${what} is on the screen`).toBeGreaterThanOrEqual(0);
+  };
+  const verdict1 = assessPoint(page, 1).locator('[data-verdict="ok"]');
+  await underBar(verdict1);
+  await page.locator("[data-assess-send]").click();
+  await expect(dock.locator("[data-assess-error]")).toContainText("Vali hinnang ka punktidele: 2.");
+  await expect(verdict1).toBeFocused();
+  await clearOfBar(verdict1, "the verdict button");
+  // „Paranda“ without a comment: its box is open (by itself), takes the focus, and is clear of the bar as well
+  await assessPoint(page, 1).locator('[data-verdict="fix"]').click();
+  const box1 = note(page, s.accessId, 1);
+  await expect(box1).toBeVisible();
+  await underBar(box1);
+  await page.locator("[data-assess-send]").click();
+  await expect(dock.locator("[data-assess-error]")).toContainText("Lisa märkus Paranda-punktidele: 2.");
+  await expect(box1).toBeFocused();
+  await clearOfBar(box1, "the comment box");
 });

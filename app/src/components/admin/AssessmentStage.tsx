@@ -71,7 +71,9 @@ export function AssessmentStage({
     // "Lisa märkus" pressed: its button is gone, so the focus goes to the box that took its place
     if (!focusBox.current || !open) return;
     focusBox.current = false;
-    field.current?.querySelector("textarea")?.focus();
+    const box = field.current?.querySelector("textarea");
+    box?.focus();
+    box?.scrollIntoView({ block: "nearest" }); // (clear of the send bar on a phone: the box is taller than the button it replaced)
   });
   const image = (p: Photo, group: { round: number; photos: Photo[] }, i: number) => (
     <button

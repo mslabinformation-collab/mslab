@@ -187,7 +187,11 @@ export function AssessmentScreen({
         const protocolId = state.entry.protocolId;
         if (protocolId === null) return;
         state.engine.setSendError(state.entry.registrationId, null);
-        void taps.approveAll(protocolId, state.entry.titles.length).then((result) => afterTaps(state, result));
+        void taps.approveAll(protocolId, state.entry.titles.length).then((result) => {
+          afterTaps(state, result);
+          // taps with no answer: every point looks approved, so the bar says that they are not stored (a single tap shows it on its card only)
+          if (result === "unsaved") state.engine.setSendError(state.entry.registrationId, s.errors.unsavedVerdicts);
+        });
       }}
       onDock={setDock}
     />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { Verdict } from "@/db/schema";
 import type { PracticalStatus } from "@/domain/completion";
 import type { AssessmentView } from "@/domain/protocols";
@@ -131,18 +132,25 @@ export function AssessmentSend({
   const ok = shown.filter((v) => v === "ok").length;
   const fix = shown.filter((v) => v === "fix").length;
 
-  /** Why "Saada hinnang" cannot go, from what the screen shows (the server checks it all again): null when it can. */
-  function why(): string | null {
-    if (assessment.status === "open") return s.errors.notSubmitted;
+  /**
+   * Why "Saada hinnang" cannot go, from what the screen shows (the server checks it all again), and where Maria puts it right (`at`: a selector
+   * inside her screen; none when there is nothing to put right there): null when it can go. The first point without a verdict leads to its
+   * „Kinnitatud“ button, the first „Paranda“ without a comment to its comment box (open, as it is „Paranda“).
+   */
+  function why(): { line: string; at: string | null } | null {
+    if (assessment.status === "open") return { line: s.errors.notSubmitted, at: null };
     if (assessment.locked) return null; // approved: only the notes go again
     const missing = shown.flatMap((v, i) => (v === null ? [i] : []));
-    if (missing.length > 0) return fill(s.errors.verdicts, { points: list(missing) });
+    if (missing.length > 0) return { line: fill(s.errors.verdicts, { points: list(missing) }), at: `[data-assess-point="${missing[0]}"] [data-verdict="ok"]` };
     const bare = shown.flatMap((v, i) => (v === "fix" && !(entry.content.notes[i] ?? "").trim() ? [i] : []));
-    if (bare.length > 0) return fill(s.errors.comments, { points: list(bare) });
+    if (bare.length > 0) return { line: fill(s.errors.comments, { points: list(bare) }), at: `[data-note="${bare[0]}"]` };
     return null;
   }
 
-  /** The send's press: what is missing is said; otherwise it goes (no confirmation: the button already says what it sends). */
+  /**
+   * The send's press: what is missing is said, and the focus (so the screen) goes to the first field that needs her — the line sits in the bar, the
+   * card may be far off; otherwise it goes (no confirmation: the button already says what it sends).
+   */
   function press() {
     if (busy) return;
     setDone(null);
@@ -150,9 +158,22 @@ export function AssessmentSend({
       void send(); // as a contact course's "Saada"
       return;
     }
-    const line = why();
-    engine.setSendError(id, line);
-    if (!line) void send();
+    const problem = why();
+    if (!problem) {
+      engine.setSendError(id, null);
+      void send();
+      return;
+    }
+    // the line comes into the dock first (flushSync: the dock grows by it and the screen's bottom padding follows), so the field that takes the
+    // focus is scrolled clear of the dock as it is with the line, not as it was without it (Assessment.module.css scroll-margin-bottom)
+    flushSync(() => engine.setSendError(id, problem.line));
+    const field = problem.at ? document.querySelector<HTMLElement>(`[data-editor="${id}"] ${problem.at}`) : null;
+    if (field) {
+      field.focus();
+      // (focusing a text box reveals its caret, which can be under the dock while the box is "on the screen"; the whole field, with its
+      // scroll-margin, is brought clear of it)
+      field.scrollIntoView({ block: "nearest" });
+    }
   }
 
   /**
