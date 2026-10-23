@@ -2123,14 +2123,14 @@
         "Ava „Registreerimised“; tahvlis hoia seade külili.",
         "Vaata Proov 1 rida ja nuppe loendi kohal.",
         "Vajuta nimele Proov 1.",
-        "Vaata avanenud paneelis hinda ja laekunud summat."
+        "Vaata avanenud paneelis kaarti „Raha“."
       ],
       "expect": [
         "Arvutis ja külili hoitud tahvlis on loendis viis veergu: „Kuupäev“, „Nimi ja kontakt“, „Koolitus ja toimumine“, „Laekunud“ ja „Staatus“.",
         "Proov 1 real on tema telefon, koolitus, toimumise päev ja linn, „Laekunud“ kujul „pool / hind €“ ja staatus „Kinnitatud“.",
         "Nuppudel „Kõik“, „Ootab ettemaksu“, „Kinnitatud“ ja „Tühistatud“ on arvud, mis näitavad, mitu rida valikust jääb.",
         "Paneeli üleval on Proov 1, koolitus ja nupp „Ava protokoll“.",
-        "„Laekunud“ on pool hinnast.",
+        "„Raha“ näitab pool hinnast laekununa.",
         "„Veebimaksed“ all on makse märkega „Makstud“.",
         "Plokis „Arved“ on Proov 1 ettemaksu arve märkega „Tasutud“ ja nupuga „Laadi alla (PDF)“.",
         "Ülevaate kaardi „Sinu järjekord“ rea „Ootab ettemaksu“ arv ei loe Proov 1 registreeringut."
@@ -3140,19 +3140,21 @@
         "Registreeri: Proov 15, +proov15, oma Eesti telefon, „Järelmaks (Inbank)“ ja lepingu ruut; vajuta „Registreeru“.",
         "Inbanki lehel jäta taotlus pooleli ja mine tagasi MS LABi lehele, nagu Montonio pakub.",
         "Vajuta „Maksa pangalingiga“; Montonio lehel katkesta makse või mine tagasi, nagu Dimi märkus ütleb.",
-        "Ava halduses „Maksed ja arved“, vajuta filtril „Kõik“ ja vaata Proov 15 ridu.",
-        "Vajuta filtritel „Pooleli“ ja „Ootel kontrollil“ ning otsi Proov 15 järelmaksu rida.",
+        "Ava halduses „Maksed ja arved“, vajuta filtril „Kõik“ ja vaata Proov 15 ridu; vaata ka filtreid „Pooleli“ ja „Ootel kontrollil“.",
         "Ava Proov 15 registreeringu paneel ja vaata selle makseid.",
-        "Tühista halduses Proov 15 registreering ja kinnita „Jah, tühista“."
+        "Ava 60 minuti jooksul pärast esimest taotlust registreerimiskirja link „Maksa …“ ja vajuta „Maksa järelmaksuga (Inbank)“.",
+        "Vaata „Maksed ja arved“ filtril „Kõik“ uuesti ja tühista siis Proov 15 registreering („Jah, tühista“)."
       ],
       "expect": [
         "„Kõik“ all on Proov 15 järelmaksu rida staatusega „Asendatud“ ja makseviisiga „Järelmaks (Inbank)“.",
         "Proov 15 pangalingi rida on uuem ja staatusega „Pooleli“ või „Ebaõnnestunud“.",
-        "Filtrite „Pooleli“ ja „Ootel kontrollil“ all Proov 15 järelmaksu rida pole.",
+        "Enne järelmaksu uuesti vajutamist pole filtrite „Pooleli“ ja „Ootel kontrollil“ all Proov 15 järelmaksu rida.",
         "Paneelis on ainult pangalingi makse; asendatud järelmaksu rida seal pole.",
-        "Proov 15 staatus on „Ootab ettemaksu“ ja „Raha“ näitab nulli laekununa."
+        "Proov 15 staatus on „Ootab ettemaksu“ ja „Raha“ näitab nulli laekununa.",
+        "Pärast teist järelmaksu vajutust avaneb Inbanki leht ja „Kõik“ all on Proov 15 jaoks ikka kaks rida, kolmandat pole.",
+        "Järelmaksu rida on jälle „Pooleli“ (esimene taotlus saadeti uuesti) ja pangalingi rida „Asendatud“."
       ],
-      "why": "Uus makse asendab vana pooleli tellimuse, et Maria näeks registreeringul ühte avatud makset.",
+      "why": "Maria näeb registreeringul ühte avatud makset ja järelmaksu uuesti vajutades ei teki teist Inbanki taotlust.",
       "risk": "med",
       "writes": true,
       "mark": "new",

@@ -139,7 +139,7 @@ The README names three mechanisms that the code does differently, with the same 
 - **`removed_at`** on the tables whose rows get an UndoBar removal (B5): lesson files and manual reviews. Rows are purged after 10 s, plus the daily sweep. Each table gets its column in the piece that adds its UndoBar.
 - **On `payments`:** status `replaced` (B22) and `check_reason`, which holds „Topeltmakse — tagasta".
 
-**Numbering:** they take the next free numbers when built. The instalments spec reserved 0017, but that work waits on Montonio, so whichever ships second renumbers. Each migration is applied on Railway before the push (`docs/deploy.md`).
+**Numbering:** they take the next free numbers when built. The instalments spec reserved 0017, but that work waited on Montonio, so the pass's drafts table took 0017 (`content_drafts`, piece 1) and the instalments 0018 (`financing`). Piece 2 built the `payments` part as **0019** (`0019_payments_replaced`: the status `replaced` and `check_reason`; `docs/deploy.md` section 22). The "not yet published" flag and `removed_at` are still to come and take the next free numbers (0020 and later) in the pieces that add them. Each migration is applied on Railway before the push (`docs/deploy.md`).
 
 ## 8. Delivery
 

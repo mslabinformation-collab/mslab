@@ -899,12 +899,31 @@ describe("B22: one open order per registration (admin UX pass, piece 2, Task 2)"
   const replaced = adminEt.payments.status.replaced;
 
   test("the new check: a declined loan left for the bank is „Asendatud“ under „Kõik“, and the drawer shows only the latest order", () => {
-    expect(item("haldus-maksed-asendatud")).toMatchObject({ area: "registreerimine", who: "dim", writes: true, mark: "new", markedAt: "deploy" });
+    expect(item("haldus-maksed-asendatud")).toMatchObject({ area: "registreerimine", who: "dim", writes: true, mark: "new" });
+    expect(markedSince(item("haldus-maksed-asendatud").markedAt)).toBe(true); // "deploy" until the stamp, then the deploy instant
     expect(text("haldus-maksed-asendatud")).toContain(`„${replaced}“`);
     expect(text("haldus-maksed-asendatud")).toContain(`„${et.payment.payBank}“`);
     // the toggle is on by then, and it reads Maksed the way the Maksed check does
     expect(at("haldus-seaded-jarelmaks")).toBeLessThan(at("haldus-maksed-asendatud"));
     expect(at("haldus-maksed-jarelmaks")).toBeLessThan(at("haldus-maksed-asendatud"));
+  });
+
+  // Task 2's review (liveAttempt revives a replaced row): loan → bank → loan inside the loan's 60 minutes is ONE Inbank application, so the same
+  // check presses the loan once more after it has read the replaced state, and expects no third row (the steps run in order, the expect lines don't)
+  test("the same check presses „Maksa järelmaksuga (Inbank)“ again inside 60 minutes and expects two rows, not three", () => {
+    const { steps, expect: lines } = item("haldus-maksed-asendatud");
+    const press = steps.findIndex((s) => s.includes(`„${et.payment.payFinancing}“`));
+    expect(press, "the second loan press").toBeGreaterThan(steps.findIndex((s) => s.includes(`„${et.payment.payBank}“`)));
+    expect(press, "after the first reading of the replaced state").toBeGreaterThan(steps.findIndex((s) => s.includes("Ava Proov 15 registreeringu paneel")));
+    expect(steps[press]).toContain("60 minuti jooksul");
+    expect(steps[steps.length - 1]).toContain("tühista siis Proov 15 registreering"); // the cleanup stays last
+    // what the first reading expects is said to be "before" the second press
+    expect(lines.some((l) => l.startsWith("Enne järelmaksu uuesti vajutamist"))).toBe(true);
+    const after = lines.filter((l) => l.startsWith("Pärast teist järelmaksu vajutust") || l.startsWith("Järelmaksu rida on jälle"));
+    expect(after).toHaveLength(2);
+    expect(after.join("\n")).toContain("kaks rida, kolmandat pole");
+    expect(after.join("\n")).toContain(`„${adminEt.payments.status.pending}“`);
+    expect(after.join("\n")).toContain(`„${replaced}“`);
   });
 
   test("the checks whose rows B22 changed are to be run again, with the words they now see", () => {
