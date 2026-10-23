@@ -10,7 +10,8 @@ const DRAG_START = 4;
 /** How long a moved row waits for the page to put it in its new place before it gives up on the focus, in ms (a move that waits for the server). */
 const FOCUS_WINDOW = 5000;
 
-type Tool = "handle" | "up" | "down";
+/** What moved a row, and so where the focus comes back to: the handle, an arrow, or the page's own trigger (`data-drag-tool="menu"`, see `DragRowTools`). */
+type Tool = "handle" | "up" | "down" | "menu";
 type Rect = { top: number; bottom: number };
 /** One press on a handle, from `pointerdown` to its end. Kept in a ref, not in state: the handlers read it before React has drawn again. */
 type Session = {
@@ -18,6 +19,10 @@ type Session = {
   to: number;
   pointerId: number;
   handle: HTMLElement;
+  /** The dragged row's `li`: it carries --drag-dy, so that only it, not every row, is restyled as the pointer moves. */
+  row: HTMLElement;
+  /** false when the browser would not capture the pointer: no `pointerup` is then sure to reach the handle, so a new press may take over. */
+  captured: boolean;
   startY: number;
   /** false until the pointer has gone DRAG_START px: a tap lifts nothing. */
   active: boolean;
@@ -25,6 +30,16 @@ type Session = {
   centres: number[];
   minDy: number;
   maxDy: number;
+};
+
+/** What the page gets for a row besides its handle and arrows: a way to move it that is not a step of one (the phone's „↕“ menu: „Esimeseks“, „Viimaseks“). */
+export type DragRowTools = {
+  /**
+   * Moves the row to the place `toIndex` (0 is the first) as the arrows do: one `onMove`, the announcement, and the focus coming back to the row's trigger once
+   * the list has its new order. Mark that trigger `data-drag-tool="menu"` (a button, or a wrapper with a button in it). No move for the row's own place, a
+   * place outside the list, or a `disabled` list.
+   */
+  moveTo: (toIndex: number) => void;
 };
 
 export type DragListProps<T> = {
@@ -35,8 +50,8 @@ export type DragListProps<T> = {
   label: (item: T, index: number) => string;
   /** Called once per move, with the place the item is taken from and the place it goes to (an item dropped where it was is no move). The page puts the list in the new order. */
   onMove: (fromIndex: number, toIndex: number) => void;
-  /** The row's content. `handle` and `arrows` are what the page puts where its layout wants them; they are null while the list is `disabled`. */
-  renderRow: (item: T, index: number, handle: ReactNode, arrows: ReactNode) => ReactNode;
+  /** The row's content. `handle` and `arrows` are what the page puts where its layout wants them; they are null while the list is `disabled`. `tools`: see DragRowTools. */
+  renderRow: (item: T, index: number, handle: ReactNode, arrows: ReactNode, tools: DragRowTools) => ReactNode;
   /** No handles and no arrows (a filtered view, where the neighbours are not all in sight). */
   disabled?: boolean;
   /** For the list (an `ol`) and for each row (an `li`): the page's layout. */
@@ -44,19 +59,54 @@ export type DragListProps<T> = {
   rowClassName?: string;
 };
 
+/** One row's `li`. A component of its own so that the page's `renderRow` is called here, with `moveTo` as the prop it is, and not in DragList's render beside the refs. */
+function Row<T>({
+  item,
+  index,
+  rowKey,
+  className,
+  dragging,
+  shift,
+  handle,
+  arrows,
+  renderRow,
+  onMoveTo,
+}: {
+  item: T;
+  index: number;
+  rowKey: string;
+  className: string;
+  dragging: boolean;
+  shift: "up" | "down" | undefined;
+  handle: ReactNode;
+  arrows: ReactNode;
+  renderRow: DragListProps<T>["renderRow"];
+  onMoveTo: DragRowTools["moveTo"];
+}) {
+  return (
+    <li className={className} data-drag-row={rowKey} data-dragging={dragging ? "" : undefined} data-shift={shift}>
+      {renderRow(item, index, handle, arrows, { moveTo: onMoveTo })}
+    </li>
+  );
+}
+
 /**
  * The order control of the B screens (README B1 and B2; piece 3 texts S3-P3-m): a list of rows that each have a handle „⋮⋮“ to drag, and the arrows ↑ / ↓.
- * Three ways to move a row, all of which end in one `onMove(from, to)` and one announcement („{nimi}“ on nüüd {k}. kohal.) in a polite live region:
+ * Four ways to move a row, all of which end in one `onMove(from, to)` and one announcement („{nimi}“ on nüüd {k}. kohal.) in a polite live region:
  *
  * - Dragging the handle, with a finger, a pen or the mouse: pointer events with the pointer captured by the handle (no HTML drag and drop, which an iPad
  *   before iPadOS 15 does not do with a finger). Only the handle has `touch-action: none`, so the rest of the row still scrolls the page. The row follows
- *   the pointer and the rows it passes make room, drawn by the stylesheet from `data-dragging` / `data-shift` and two custom properties on the list; nothing
- *   is moved in the DOM until the drop, when `onMove` is called once. Esc and a cancelled pointer end the drag with no move.
+ *   the pointer and the rows it passes make room, drawn by the stylesheet from `data-dragging` / `data-shift` and two custom properties (--drag-dy on the
+ *   dragged row, --drag-step on the list); nothing is moved in the DOM until the drop, when `onMove` is called once. Esc and a cancelled pointer end the drag
+ *   with no move.
  * - The ↑ / ↓ buttons. They are aria-disabled at the ends, never disabled (a disabled button would drop the focus).
- * - ArrowUp / ArrowDown on the handle, which says „lohistatav“ and so is expected to move.
+ * - ArrowUp / ArrowDown on the handle, which says „lohistatav“ and so is expected to move (not with Ctrl, Cmd, Alt or Shift down: those chords are the
+ *   browser's and the screen reader's).
+ * - `tools.moveTo(index)`, for a control the page draws itself (the phone's „↕“ menu).
  *
- * The focus stays on what moved the row (the handle or the arrow) even where the browser drops it as the row's node moves; it is given back as soon as
- * the page's list has the new order. A page that waits for the server before it reorders gets the same, for a few seconds.
+ * The focus stays on what moved the row (the handle, the arrow, or the page's `data-drag-tool="menu"` trigger) even where the browser drops it as the row's
+ * node moves; it is given back as soon as the page's list has the new order, unless the reader has put it elsewhere meanwhile (it is given back only when it
+ * is on the page's body or still in the moved row). A page that waits for the server before it reorders gets the same, for a few seconds.
  */
 export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, className, rowClassName }: DragListProps<T>) {
   const t = adminEt.drag;
@@ -79,7 +129,7 @@ export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, 
     const s = session.current;
     if (!s) return;
     session.current = null;
-    list.current?.style.removeProperty("--drag-dy");
+    s.row.style.removeProperty("--drag-dy");
     list.current?.style.removeProperty("--drag-step");
     try {
       if (s.handle.hasPointerCapture?.(s.pointerId)) s.handle.releasePointerCapture(s.pointerId);
@@ -108,9 +158,19 @@ export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, 
     move(index, to, tool);
   };
 
+  const moveTo = (index: number, to: number) => {
+    if (disabled || to === index || to < 0 || to >= items.length) return;
+    move(index, to, "menu");
+  };
+
   const begin = (e: PointerEvent<HTMLButtonElement>, index: number) => {
-    if (session.current || disabled) return;
+    if (disabled) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    // a press that is under way keeps the list (a second finger does not steer it); only one whose pointer was never captured, and so may never end, is taken over
+    if (session.current) {
+      if (session.current.captured) return;
+      finish(false);
+    }
     const rows = rowsOf();
     if (rows.length !== items.length) return;
     const rects: Rect[] = rows.map((row) => row.getBoundingClientRect());
@@ -122,6 +182,8 @@ export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, 
       to: index,
       pointerId: e.pointerId,
       handle: e.currentTarget,
+      row: rows[index],
+      captured: false,
       startY: e.clientY,
       active: false,
       centres: rects.map((r) => (r.top + r.bottom) / 2),
@@ -133,6 +195,7 @@ export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, 
     e.preventDefault();
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
+      if (session.current) session.current.captured = true;
     } catch {
       /* (an old browser, or a pointer that is gone: the move events still come while the pointer is over the handle) */
     }
@@ -146,7 +209,7 @@ export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, 
     if (!s.active && Math.abs(raw) < DRAG_START) return;
     s.active = true;
     const dy = Math.min(s.maxDy, Math.max(s.minDy, raw));
-    list.current?.style.setProperty("--drag-dy", `${dy}px`);
+    s.row.style.setProperty("--drag-dy", `${dy}px`);
     // the place whose middle is nearest to the dragged row's middle
     const middle = s.centres[s.from] + dy;
     let to = s.from;
@@ -166,6 +229,8 @@ export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, 
       e.stopPropagation();
       finish(false);
     } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !session.current) {
+      // Ctrl, Cmd, Alt and Shift with an arrow are the browser's and the screen reader's chords, not a move
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       e.preventDefault();
       step(index, e.key === "ArrowUp" ? -1 : 1, "handle");
     }
@@ -183,7 +248,13 @@ export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, 
     if (!p || p.sig === sig) return;
     pending.current = null;
     const row = rowsOf().find((li) => li.dataset.dragRow === p.key);
-    row?.querySelector<HTMLElement>(`[data-drag-tool="${p.tool}"]`)?.focus();
+    if (!row) return;
+    // only where the focus was dropped (it is on the body) or is still in the row: a reader who has gone on to a field elsewhere while the page was reordering stays there
+    const now = document.activeElement;
+    if (now && now !== document.body && !row.contains(now)) return;
+    const trigger = row.querySelector<HTMLElement>(`[data-drag-tool="${p.tool}"]`);
+    // (a page may mark the wrapper of its menu button: the button inside takes the focus)
+    (trigger?.matches("button, a[href], input, select, textarea, [tabindex]") ? trigger : trigger?.querySelector<HTMLElement>("button, a[href], [tabindex]"))?.focus();
   });
 
   useEffect(
@@ -244,15 +315,19 @@ export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, 
             </span>
           );
           return (
-            <li
+            <Row
               key={keys[i]}
+              item={item}
+              index={i}
+              rowKey={keys[i]}
               className={rowClassName ? `${styles.row} ${rowClassName}` : styles.row}
-              data-drag-row={keys[i]}
-              data-dragging={drag?.from === i ? "" : undefined}
-              data-shift={shift}
-            >
-              {renderRow(item, i, handle, arrows)}
-            </li>
+              dragging={drag?.from === i}
+              shift={shift}
+              handle={handle}
+              arrows={arrows}
+              renderRow={renderRow}
+              onMoveTo={(to) => moveTo(i, to)}
+            />
           );
         })}
       </ol>

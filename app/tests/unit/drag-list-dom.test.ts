@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { act, createElement, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DragList } from "@/components/admin/DragList";
+import { DragList, type DragRowTools } from "@/components/admin/DragList";
 
 // DragList (the B screens, Task 1; README B1 „⋮⋮ (pointer + touch, aria-roledescription="lohistatav")“ | ↑/↓, B2 „drag + ↑/↓“): the shared order control of the
 // course list, the module rows and the list editors. A row is moved three ways, and each one calls `onMove(from, to)` once and announces it (piece 3
@@ -41,11 +41,14 @@ type Over = {
   className?: string;
   rowClassName?: string;
   onMove?: (from: number, to: number) => void;
-  seen?: (args: { item: Item; index: number; handle: ReactNode; arrows: ReactNode }) => void;
+  seen?: (args: { item: Item; index: number; handle: ReactNode; arrows: ReactNode; tools: DragRowTools }) => void;
+  /** The page's own trigger in each row (the phone's „↕“ menu): a button marked data-drag-tool="menu", or a wrapper with a button in it. It moves its row to `menuTo`. */
+  menu?: "button" | "wrapper";
+  menuTo?: number;
 };
 
 /** A parent that keeps the order, as the editors do. */
-function Harness({ items: initial = ITEMS, label = (item) => item.name, disabled, before, reorder = true, defer, className, rowClassName, onMove, seen }: Over) {
+function Harness({ items: initial = ITEMS, label = (item) => item.name, disabled, before, reorder = true, defer, className, rowClassName, onMove, seen, menu, menuTo = 0 }: Over) {
   const [items, setItems] = useState(initial);
   return createElement(DragList<Item>, {
     items,
@@ -67,9 +70,17 @@ function Harness({ items: initial = ITEMS, label = (item) => item.name, disabled
       if (defer) defer.push(apply);
       else apply();
     },
-    renderRow: (item, index, handle, arrows) => {
-      seen?.({ item, index, handle, arrows });
-      return createElement("div", { "data-test-row": item.id }, createElement("span", { "data-name": "" }, item.name), handle, arrows);
+    renderRow: (item, index, handle, arrows, tools) => {
+      seen?.({ item, index, handle, arrows, tools });
+      const trigger = createElement("button", { type: "button", "data-menu-button": "", ...(menu === "button" ? { "data-drag-tool": "menu" } : {}), onClick: () => tools.moveTo(menuTo) }, "↕");
+      return createElement(
+        "div",
+        { "data-test-row": item.id },
+        createElement("span", { "data-name": "" }, item.name),
+        handle,
+        arrows,
+        menu === "button" ? trigger : menu === "wrapper" ? createElement("span", { "data-drag-tool": "menu" }, trigger) : null,
+      );
     },
   });
 }
@@ -84,7 +95,8 @@ const live = () => container.querySelector<HTMLElement>("[role=status]")!;
 const list = () => container.querySelector<HTMLElement>("[data-drag-list]")!;
 const text = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
 const click = (el: Element) => act(async () => void (el as HTMLElement).click());
-const key = (el: Element, k: string) => act(async () => void el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true })));
+const key = (el: Element, k: string, init: KeyboardEventInit = {}) => act(async () => void el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...init })));
+const menuButton = (id: string) => row(id).querySelector<HTMLButtonElement>("[data-menu-button]")!;
 
 type Pointer = { pointerId?: number; pointerType?: string; button?: number; clientY?: number };
 const pointer = (el: Element, type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel", init: Pointer = {}) =>
@@ -211,6 +223,96 @@ describe("DragList: the handle and the arrows", () => {
     await key(tool("c", "handle"), "ArrowDown");
     expect(onMove).not.toHaveBeenCalled();
   });
+
+  it("with Ctrl, Cmd, Alt or Shift down the arrow keys are the browser's and the screen reader's: no move, and the key is not taken", async () => {
+    const onMove = vi.fn();
+    await draw({ onMove, reorder: false });
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { shiftKey: true }]) {
+      for (const k of ["ArrowUp", "ArrowDown"]) {
+        const e = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...init });
+        await act(async () => void tool("b", "handle").dispatchEvent(e));
+        expect(e.defaultPrevented).toBe(false);
+      }
+    }
+    expect(onMove).not.toHaveBeenCalled();
+    expect(live().textContent).toBe("");
+    const plain = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
+    await act(async () => void tool("b", "handle").dispatchEvent(plain));
+    expect(plain.defaultPrevented).toBe(true);
+    expect(onMove.mock.calls).toEqual([[1, 0]]);
+  });
+});
+
+describe("DragList: a move the page draws itself (tools.moveTo, the phone's „↕“ menu)", () => {
+  it("renderRow gets a fifth argument with moveTo, also while the list is disabled", async () => {
+    const seen = vi.fn();
+    await draw({ seen });
+    expect(seen.mock.calls.every(([x]) => typeof x.tools.moveTo === "function")).toBe(true);
+    seen.mockClear();
+    await draw({ seen, disabled: true });
+    expect(seen.mock.calls.every(([x]) => typeof x.tools.moveTo === "function")).toBe(true);
+  });
+
+  it("moveTo(0) on the last row is onMove(2, 0), once, announced as any move is", async () => {
+    const onMove = vi.fn();
+    await draw({ onMove, menu: "button", menuTo: 0 });
+    await click(menuButton("c"));
+    expect(onMove.mock.calls).toEqual([[2, 0]]);
+    expect(order()).toEqual(["C", "A", "B"]);
+    expect(text(live())).toBe("„C“ on nüüd 1. kohal.");
+  });
+
+  it("the move to the last place is announced by number for a row with no name", async () => {
+    const onMove = vi.fn();
+    await draw({ onMove, menu: "button", menuTo: 2, label: () => "" });
+    await click(menuButton("a"));
+    expect(onMove.mock.calls).toEqual([[0, 2]]);
+    expect(text(live())).toBe("Rida 1 on nüüd 3. kohal.");
+  });
+
+  it("the focus comes back to the row's trigger marked data-drag-tool=\"menu\", where the browser drops it as the row moves", async () => {
+    await draw({ menu: "button", menuTo: 0, before: () => (document.activeElement as HTMLElement | null)?.blur() });
+    menuButton("c").focus();
+    await click(menuButton("c"));
+    expect(order()).toEqual(["C", "A", "B"]);
+    expect(document.activeElement).toBe(menuButton("c"));
+  });
+
+  it("a marked wrapper will do: the button inside it takes the focus", async () => {
+    await draw({ menu: "wrapper", menuTo: 0, before: () => (document.activeElement as HTMLElement | null)?.blur() });
+    menuButton("b").focus();
+    await click(menuButton("b"));
+    expect(order()).toEqual(["B", "A", "C"]);
+    expect(document.activeElement).toBe(menuButton("b"));
+  });
+
+  it("and a reorder that waits for the server gives it back later", async () => {
+    const later: Array<() => void> = [];
+    await draw({ menu: "button", menuTo: 0, defer: later });
+    menuButton("c").focus();
+    await click(menuButton("c"));
+    expect(order()).toEqual(["A", "B", "C"]);
+    (document.activeElement as HTMLElement).blur();
+    await act(async () => later.forEach((run) => run()));
+    expect(order()).toEqual(["C", "A", "B"]);
+    expect(document.activeElement).toBe(menuButton("c"));
+  });
+
+  it("no move for the row's own place, a place outside the list, or a disabled list", async () => {
+    const onMove = vi.fn();
+    const seen = vi.fn();
+    await draw({ onMove, seen, reorder: false });
+    const b = seen.mock.calls.map(([x]) => x).find((x) => x.item.id === "b");
+    b.tools.moveTo(1);
+    b.tools.moveTo(-1);
+    b.tools.moveTo(3);
+    expect(onMove).not.toHaveBeenCalled();
+    expect(live().textContent).toBe("");
+    seen.mockClear();
+    await draw({ onMove, seen, reorder: false, disabled: true });
+    seen.mock.calls.map(([x]) => x).find((x) => x.item.id === "b").tools.moveTo(0);
+    expect(onMove).not.toHaveBeenCalled();
+  });
 });
 
 describe("DragList: disabled", () => {
@@ -330,21 +432,25 @@ describe("DragList: dragging the handle", () => {
     expect(container.querySelector("[data-shift]")).toBeNull();
   });
 
-  it("the dragged row follows the finger: the list carries the distance and the step as custom properties", async () => {
+  it("the dragged row follows the finger: it carries the distance (--drag-dy), the list the step the others make room by (--drag-step)", async () => {
     await draw({ reorder: false });
     await drag("a", 170, { release: false });
-    expect(list().style.getPropertyValue("--drag-dy")).toBe("120px");
+    expect(row("a").style.getPropertyValue("--drag-dy")).toBe("120px");
     expect(list().style.getPropertyValue("--drag-step")).toBe(`${ROW}px`);
-    await pointer(tool("a", "handle"), "pointerup", { clientY: 170 });
+    // only the dragged row is restyled as the pointer moves, not every row through the list's inheritance
     expect(list().style.getPropertyValue("--drag-dy")).toBe("");
+    expect(row("b").style.getPropertyValue("--drag-dy")).toBe("");
+    await pointer(tool("a", "handle"), "pointerup", { clientY: 170 });
+    expect(row("a").style.getPropertyValue("--drag-dy")).toBe("");
+    expect(list().style.getPropertyValue("--drag-step")).toBe("");
   });
 
   it("the dragged row stays inside the list: it does not follow the finger past the first or the last row", async () => {
     await draw({ reorder: false });
     await drag("a", 5000, { release: false });
-    expect(list().style.getPropertyValue("--drag-dy")).toBe("200px"); // up to the last row's place
+    expect(row("a").style.getPropertyValue("--drag-dy")).toBe("200px"); // up to the last row's place
     await pointer(tool("a", "handle"), "pointermove", { clientY: -5000 });
-    expect(list().style.getPropertyValue("--drag-dy")).toBe("0px");
+    expect(row("a").style.getPropertyValue("--drag-dy")).toBe("0px");
   });
 
   it("pointercancel ends the drag with no move (the browser took the touch)", async () => {
@@ -378,6 +484,36 @@ describe("DragList: dragging the handle", () => {
     expect(onMove).not.toHaveBeenCalled();
     await pointer(handle, "pointerup", { clientY: 150, pointerId: 1 });
     expect(onMove.mock.calls).toEqual([[0, 1]]);
+  });
+
+  it("a second press while the first holds its pointer does not take the drag over", async () => {
+    const onMove = vi.fn();
+    await draw({ onMove, reorder: false });
+    vi.spyOn(Element.prototype, "setPointerCapture").mockImplementation(() => {});
+    const handle = tool("a", "handle");
+    await pointer(handle, "pointerdown", { clientY: 50, pointerId: 1 });
+    await pointer(tool("b", "handle"), "pointerdown", { clientY: 150, pointerId: 2 });
+    await pointer(handle, "pointermove", { clientY: 150, pointerId: 1 });
+    await pointer(handle, "pointerup", { clientY: 150, pointerId: 1 });
+    expect(onMove.mock.calls).toEqual([[0, 1]]);
+  });
+
+  it("a pointer the browser would not capture may never end: the next press takes the drag over instead of being ignored", async () => {
+    const onMove = vi.fn();
+    await draw({ onMove, reorder: false });
+    vi.spyOn(Element.prototype, "setPointerCapture").mockImplementation(() => {
+      throw new Error("InvalidStateError");
+    });
+    const handle = tool("a", "handle");
+    await pointer(handle, "pointerdown", { clientY: 50, pointerId: 1 });
+    await pointer(handle, "pointermove", { clientY: 150, pointerId: 1 }); // (and no pointerup ever comes)
+    expect(row("a").hasAttribute("data-dragging")).toBe(true);
+    await pointer(handle, "pointerdown", { clientY: 50, pointerId: 2 });
+    expect(container.querySelector("[data-dragging]")).toBeNull(); // the first drag ended with no move
+    expect(onMove).not.toHaveBeenCalled();
+    await pointer(handle, "pointermove", { clientY: 300, pointerId: 2 });
+    await pointer(handle, "pointerup", { clientY: 300, pointerId: 2 });
+    expect(onMove.mock.calls).toEqual([[0, 2]]);
   });
 
   it("a mouse drags with its main button only", async () => {
@@ -502,6 +638,34 @@ describe("DragList: the focus", () => {
     await act(async () => later.forEach((run) => run()));
     expect(order()).toEqual(["B", "A", "C"]);
     expect(document.activeElement).toBe(tool("b", "up"));
+  });
+
+  it("is not given back to a reader who has gone on to a field elsewhere while the page was reordering", async () => {
+    const later: Array<() => void> = [];
+    const other = document.createElement("input");
+    document.body.append(other);
+    try {
+      await draw({ defer: later });
+      tool("b", "up").focus();
+      await click(tool("b", "up"));
+      other.focus();
+      await act(async () => later.forEach((run) => run()));
+      expect(order()).toEqual(["B", "A", "C"]);
+      expect(document.activeElement).toBe(other);
+    } finally {
+      other.remove();
+    }
+  });
+
+  it("is given back when it is still in the moved row (the arrow that was pressed) or on the body", async () => {
+    const later: Array<() => void> = [];
+    await draw({ defer: later });
+    tool("b", "down").focus();
+    await click(tool("b", "down"));
+    tool("b", "up").focus(); // another control of the same row
+    await act(async () => later.forEach((run) => run()));
+    expect(order()).toEqual(["A", "C", "B"]);
+    expect(document.activeElement).toBe(tool("b", "down"));
   });
 });
 

@@ -131,6 +131,7 @@ export function vatSplit(grossCents: number, rate: number | null): { net: number
 
 const NBSP = "\u00a0";
 
+// (The admin's plain "175 €" / "175" spellings are another `euro` / `euroBare`, in domain/money-text.ts: not this one.)
 /**
  * "175,00 €": the euros and always two cents, a comma, the thousands and the sign set off by no-break spaces so that an amount never breaks
  * across lines. The amounts are positive (an invoice's amount_cents is above 0).
