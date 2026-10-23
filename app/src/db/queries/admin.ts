@@ -494,8 +494,6 @@ export type AdminCounts = {
   awaitingPrepayment: number;
   /** Requests not marked handled, per kind. */
   openRequests: Record<RequestKind, number>;
-  /** Of the open contact requests: e-learning purchase interest (cart "let me know"). */
-  openPurchaseInterest: number;
   subscribers: number;
   confirmedSubscribers: number;
   /** What waits in Hindamine (e-course completion, spec §5.2): practical work to assess, open answers to review, students out of tries. */
@@ -518,7 +516,6 @@ export function emptyCounts(): AdminCounts {
   return {
     awaitingPrepayment: 0,
     openRequests: { contact: 0, individual: 0, practice: 0, waitlist: 0, change_request: 0 },
-    openPurchaseInterest: 0,
     subscribers: 0,
     confirmedSubscribers: 0,
     assessment: 0,
@@ -530,17 +527,13 @@ export function emptyCounts(): AdminCounts {
 }
 
 /**
- * The numbers of the overview and the menu badges, for the admin `email` at `now`: each count is one query, all read together. The test page's
+ * The numbers of the menu badges (and Päringud's and Uudiskiri's counts), for the admin `email` at `now`: each count is one query, all read together. The test page's
  * answers are one settings row, read by server/testplan.ts ownFaultCount.
  */
 export async function adminCounts(db: Db, email: string, now: Date): Promise<AdminCounts> {
-  const [[awaiting], byKind, [interest], [subs], assessment, today, [waiting], [attention], ownFaults] = await Promise.all([
+  const [[awaiting], byKind, [subs], assessment, today, [waiting], [attention], ownFaults] = await Promise.all([
     db.select({ n: count() }).from(registrations).where(eq(registrations.status, "awaiting_prepayment")),
     db.select({ kind: requests.kind, n: count() }).from(requests).where(eq(requests.handled, false)).groupBy(requests.kind),
-    db
-      .select({ n: count() })
-      .from(requests)
-      .where(and(eq(requests.kind, "contact"), eq(requests.handled, false), sql`${requests.payload}->>'intent' = 'purchase'`)),
     db.select({ total: count(), confirmed: count(subscribers.confirmedAt) }).from(subscribers),
     assessmentCount(db),
     todaySessions(db, now),
@@ -555,7 +548,6 @@ export async function adminCounts(db: Db, email: string, now: Date): Promise<Adm
   return {
     awaitingPrepayment: Number(awaiting.n),
     openRequests,
-    openPurchaseInterest: Number(interest.n),
     subscribers: Number(subs.total),
     confirmedSubscribers: Number(subs.confirmed),
     assessment,

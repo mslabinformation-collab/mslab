@@ -190,11 +190,10 @@ describe("pages of 50 (?leht=)", () => {
 });
 
 describe("adminCounts", () => {
-  test("registrations waiting for the prepayment, open requests per kind (purchase interest apart), subscribers", async () => {
+  test("registrations waiting for the prepayment, open requests per kind (e-learning purchase interest is a contact request), subscribers", async () => {
     expect(await adminCounts(db, "maria@example.test", NOW)).toEqual({
       awaitingPrepayment: 0,
       openRequests: { contact: 0, individual: 0, practice: 0, waitlist: 0, change_request: 0 },
-      openPurchaseInterest: 0,
       subscribers: 0,
       confirmedSubscribers: 0,
       assessment: 0,
@@ -222,7 +221,6 @@ describe("adminCounts", () => {
     expect(await adminCounts(db, "maria@example.test", NOW)).toEqual({
       awaitingPrepayment: 2,
       openRequests: { contact: 2, individual: 0, practice: 1, waitlist: 1, change_request: 0 },
-      openPurchaseInterest: 1,
       subscribers: 2,
       confirmedSubscribers: 1,
       assessment: 0,

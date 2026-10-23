@@ -9,7 +9,6 @@ import type { AdminCounts } from "@/db/queries/admin";
 const none: AdminCounts = {
   awaitingPrepayment: 0,
   openRequests: { contact: 0, individual: 0, practice: 0, waitlist: 0, change_request: 0 },
-  openPurchaseInterest: 0,
   subscribers: 0,
   confirmedSubscribers: 0,
   assessment: 0,

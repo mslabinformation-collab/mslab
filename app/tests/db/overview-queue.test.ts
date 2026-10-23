@@ -248,6 +248,17 @@ describe("the overview page", () => {
       expect(html, gone).not.toContain(gone);
   });
 
+  test("the parts stand in the designed order (and so stack on a phone): Täna → Sinu järjekord → Tulevased koolitused → the Testimine card", async () => {
+    const { course } = await protocolCourse(db);
+    await sessionAt("2026-10-21T07:00:00Z", { courseId: course.id, city: "Pärnu" });
+    await db.insert(requests).values({ kind: "contact", payload: { name: "A", email: "a@example.test" } });
+    const html = await render();
+    const marks = ["data-today-session=", "data-overview-queue=", "data-overview-upcoming=", "data-testplan-card="];
+    const at = marks.map((mark) => html.indexOf(mark));
+    expect(at.map((i) => i > -1), `all four are drawn: ${marks.join(" ")}`).toEqual([true, true, true, true]);
+    expect(at).toEqual([...at].sort((a, b) => a - b));
+  });
+
   describe("„Täna“", () => {
     test("one dark card per session today, earliest first: when and where, the course, the students and their protocols, and the way to the protocols", async () => {
       const { course } = await protocolCourse(db);

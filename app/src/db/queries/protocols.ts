@@ -203,13 +203,13 @@ async function accessScreen(db: Db, accessId: number): Promise<ScreenData | null
   };
 }
 
-// ---------- the overview's "Täna" (Task 5) ----------
+// ---------- today's sessions (Task 5; the menu's „Täna“, B6, B16) ----------
 
 /** One of today's sessions: its course, when and where, and how many students are listed on its screen (not cancelled). */
 export type TodaySession = { id: number; startsAt: Date; city: string; venue: string; title: I18n; students: number };
 
 /**
- * Today's sessions in Tallinn (spec §4: the overview's "Täna" card), scheduled ones of contact courses, earliest first. A window of two days
+ * Today's sessions in Tallinn (spec §4: the menu's „Täna“ badge and its shortcut), scheduled ones of contact courses, earliest first. A window of two days
  * either side is read and each session's Tallinn date compared with today's: the same on the two days the clocks change.
  */
 export async function todaySessions(db: Db, now: Date): Promise<TodaySession[]> {

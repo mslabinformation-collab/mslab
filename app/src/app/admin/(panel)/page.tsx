@@ -39,8 +39,8 @@ function plusDays(date: string, days: number): string {
 /**
  * Overview (admin UX pass piece 2, A1; README A1 and the Part 2 prototype): the date and „Tere, {name}.“; a dark „Täna“ card for each session today,
  * with its protocols' progress and one tap to them; „Sinu järjekord“, one row for each thing Maria has to act on (a count, a label, a hint, the page
- * that lists them; a row with 0 is not drawn, and an empty queue says so); the Testimine card while checks are open; and „Tulevased koolitused“,
- * the next five sessions, each opening its Kalender drawer. On a phone the parts stack in that order.
+ * that lists them; a row with 0 is not drawn, and an empty queue says so); and „Tulevased koolitused“, the next five sessions, each opening its
+ * Kalender drawer. On a phone the parts stack in that order; the Testimine card, while checks are open, comes last.
  */
 export default async function Overview() {
   const email = await requireAdmin();
@@ -105,7 +105,7 @@ export default async function Overview() {
 
       {/* „Täna“: one dark card for each session today, with its protocols' progress and the way to them; none on a day without a session */}
       {todays.length > 0 && (
-        <div data-today="">
+        <>
           {todays.map((s) => {
             // „alustamata“: students with no protocol yet (a protocol sent and edited since is a draft, protocolIndex)
             const notStarted = Math.max(0, s.students - s.sent - s.drafts);
@@ -125,15 +125,12 @@ export default async function Overview() {
               </section>
             );
           })}
-        </div>
+        </>
       )}
-
-      {/* "Testimine: N avatud, M viga" (phase 4, piece 1, spec D1, §5): the signed-in admin's open and failed checks; hidden when there are none */}
-      {testing && <TestplanCard open={testing.open} bad={testing.bad} />}
 
       <div className={styles.grid}>
         {waiting.length === 0 ? (
-          <section className={`${styles.card} ${styles.empty}`} data-overview-empty="">
+          <section className={`${styles.card} ${styles.empty}`}>
             <h2 className={styles.emptyTitle}>{q.empty}</h2>
             <p className={styles.emptyHint}>{q.emptyHint}</p>
           </section>
@@ -202,6 +199,10 @@ export default async function Overview() {
           </Link>
         </section>
       </div>
+
+      {/* "Testimine: N avatud, M viga" (phase 4, piece 1, spec D1, §5): the signed-in admin's open and failed checks; hidden when there are none.
+          README fixes the order Täna → queue → upcoming and says only that this card "stays the same": it comes last, so that order is unbroken. */}
+      {testing && <TestplanCard open={testing.open} bad={testing.bad} />}
     </div>
   );
 }

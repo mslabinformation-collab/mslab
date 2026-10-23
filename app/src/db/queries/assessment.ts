@@ -89,7 +89,7 @@ export async function assessmentQueue(db: Db): Promise<AssessmentQueue> {
   return { practicals, tests, triesUsed };
 }
 
-/** The menu badge's and the overview's number: the three groups together (the same rules, counted). */
+/** The menu badge's number: the three groups together (the same rules, counted; the overview's queue counts them apart from the lists). */
 export async function assessmentCount(db: Db): Promise<number> {
   const [[practicals], [tests], used] = await Promise.all([
     db.select({ n: count() }).from(protocols).innerJoin(courseAccess, eq(protocols.accessId, courseAccess.id)).where(and(PRACTICAL_WAITING, LIVE)),
