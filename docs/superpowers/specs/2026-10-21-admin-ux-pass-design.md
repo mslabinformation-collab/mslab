@@ -216,4 +216,4 @@ What the design leaves out, as its §6 lists:
 - How the components are split into files, and CSS beyond the design's numbers.
 - One generic autosave route or one per editor (C1).
 - How each editor's fields map to draft parts.
-- Nothing else. The texts of S3 go to Dim before the piece that needs them. Piece 1's eight texts were approved on 21.10: four badge labels and four reasons for the leave guard. Piece 2's texts were approved on 22.10 (`admin-ux-pass/analysis/piece2-texts.md`).
+- Nothing else. The texts of S3 go to Dim before the piece that needs them. Piece 1's eight texts were approved on 21.10: four badge labels and four reasons for the leave guard. Piece 2's texts were approved on 22.10 (`admin-ux-pass/analysis/piece2-texts.md`). Piece 3's texts were approved on 23.10 (`admin-ux-pass/analysis/piece3-texts.md`).
