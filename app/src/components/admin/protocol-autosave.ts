@@ -19,8 +19,9 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 //   notice). A refusal (409) brings what is stored: the screen's own text is simply saved; a
 //   text this screen sent and never heard back about (the answer was lost on the way) was ours, and the newer text is saved on top of it with
 //   no notice; otherwise another device or tab saved first, its text is shown, and this screen's unsaved words go into the notice: newer text
-//   is never overwritten. The texts sent without an answer are kept once each, up to SENT_MAX_CHARS; the notice's words are kept until
-//   "Selge", across a reload, a second refusal adds its words to them (the newest within NOTICE_MAX_CHARS), and while this browser cannot
+//   is never overwritten by a save, only when Maria asks for her words back („Taasta minu tekst“, B13: restoreLost). The texts sent without an
+//   answer are kept once each, up to SENT_MAX_CHARS; the notice's words are kept until "Selge" (or until „Taasta“ has put them back in the
+//   boxes), across a reload, a second refusal adds its words to them (the newest within NOTICE_MAX_CHARS), and while this browser cannot
 //   keep them under the notice's key they stay in the copy and the entry says so;
 // - while a save's answer is unknown (on its way, or lost) the protocol is not "saved", even when the screen shows the text confirmed last:
 //   the server may hold the newer one, so it is asked again;
@@ -213,6 +214,51 @@ function capParts(parts: readonly Conflict[]): Part[] {
 
 /** The notice the screen shows: its parts as one. */
 const combine = (parts: readonly Part[]): Conflict | null => parts.reduce<Part | null>((acc, p) => (acc ? mergeTwo(acc, p) : { titles: [...p.titles], lost: copy(p.lost) }), null);
+
+/** Does a lost text hold words (the notice shows only those)? */
+const hasWords = (text: string): boolean => text.trim() !== "";
+
+/**
+ * Where „Taasta minu tekst“ puts each of the notice's words (B13): the box under the same heading (the same box when the headings are the ones on the
+ * screen; else by its heading, the n-th of a heading that is there twice into its n-th box, or its last), and the general notes into the general notes.
+ * A box gets her lost words in place of the server's text it shows; a box she typed in since (its text is not the server's) keeps that too, her lost
+ * words first (as two refusals' words are joined). A box she had no words in keeps what it shows. `rest`: the words under a heading the protocol no
+ * longer has, which stay in the notice; `placed`: whether any word has a box.
+ */
+function restoreInto(titles: readonly string[], shown: Content, confirmed: Content, notice: Conflict & { lost: Content }): { content: Content; rest: Part | null; placed: boolean } {
+  const notes = [...shown.notes];
+  const taken = new Set<number>(); // (the boxes that already took lost words: a second text for one joins it)
+  const put = (i: number, words: string) => {
+    if (taken.has(i)) notes[i] = joinText(notes[i], words);
+    else notes[i] = shown.notes[i] === (confirmed.notes[i] ?? "") ? words : joinText(words, shown.notes[i]);
+    taken.add(i);
+  };
+  const same = sameTitles(notice.titles, titles);
+  const seen = new Map<string, number>();
+  const rest: Part = { titles: [], lost: { notes: [], generalNote: "" } };
+  let placed = false;
+  notice.titles.forEach((title, j) => {
+    const words = notice.lost.notes[j] ?? "";
+    const nth = seen.get(title) ?? 0;
+    seen.set(title, nth + 1);
+    if (!hasWords(words)) return;
+    const boxes = titles.flatMap((t, i) => (t === title ? [i] : []));
+    const box = same ? j : boxes.length > 0 ? boxes[Math.min(nth, boxes.length - 1)] : -1;
+    if (box < 0 || box >= notes.length) {
+      rest.titles.push(title);
+      rest.lost.notes.push(words);
+      return;
+    }
+    put(box, words);
+    placed = true;
+  });
+  let generalNote = shown.generalNote;
+  if (hasWords(notice.lost.generalNote)) {
+    generalNote = shown.generalNote === confirmed.generalNote ? notice.lost.generalNote : joinText(notice.lost.generalNote, shown.generalNote);
+    placed = true;
+  }
+  return { content: { notes, generalNote }, rest: rest.titles.length > 0 ? rest : null, placed };
+}
 
 // ---------- this browser's storage ----------
 
@@ -884,6 +930,43 @@ export class ProtocolAutosave {
     this.changed();
   }
 
+  /** Can „Taasta minu tekst“ put any of the notice's words back (words under a heading the protocol still has), now (no send on its way)? */
+  restorable(id: number): boolean {
+    const e = this.entries.get(id);
+    if (!e || e.sending || !e.conflict || !isPart(e.conflict)) return false;
+    return restoreInto(e.titles, e.content, e.confirmed, e.conflict).placed;
+  }
+
+  /**
+   * „Taasta minu tekst“ (admin UX pass B13; its spec §9 replaces this file's "newer text is never overwritten" for this one press): the notice's words
+   * go back into their boxes (restoreInto: in place of the server's text a box shows, in front of words typed there since) and are saved at once,
+   * over the server's text. The save goes from the version the screen shows, which is the server's own (the refusal or the read that opened the
+   * notice adopted it), so the server takes it — unless another device saved again meanwhile, and then its refusal puts these words into a notice
+   * again (nothing is lost either way). The words are in this browser's copy before the notice's key goes; words under a heading the protocol no
+   * longer has stay in the notice. Nothing while a send is on its way, nor for a notice without her words. True when the server confirmed the text.
+   */
+  restoreLost(id: number): Promise<boolean> {
+    const e = this.entries.get(id);
+    if (!e || e.sending || !e.conflict || !isPart(e.conflict)) return Promise.resolve(false);
+    const plan = restoreInto(e.titles, e.content, e.confirmed, e.conflict);
+    if (!plan.placed) return Promise.resolve(false);
+    this.edit(id, plan.content); // (kept in this browser first: the copy holds the words before the notice lets them go)
+    if (plan.rest) {
+      this.parts.set(id, [plan.rest]);
+      e.conflict = combine([plan.rest]);
+      this.storeNotice(e);
+    } else {
+      e.conflict = null;
+      this.parts.delete(id);
+      this.unkept.delete(id);
+      removeKey(this.storage, this.keys.conflictKey(id, this.keyTab));
+    }
+    if (this.uncertain(e)) this.keep(e);
+    else this.dropCopy(e);
+    this.changed();
+    return e.status.kind === "tooLong" ? Promise.resolve(false) : this.save(id);
+  }
+
   private readonly onBack = (): void => {
     for (const e of this.entries.values())
       if (e.status.kind === "retrying" || e.status.kind === "signedOut") {
@@ -1131,8 +1214,9 @@ export class ProtocolAutosave {
       this.adopt(e, stored);
       return how.resend ? how.resend() : this.sendIfNeeded(e.registrationId);
     }
-    // another device or tab saved first: its text is shown, and this screen's goes into the notice (newer text is never overwritten); a
-    // screen that shows the text confirmed last has no words of its own to lose (the other device built on that text)
+    // another device or tab saved first: its text is shown, and this screen's goes into the notice (newer text is never overwritten here; only
+    // „Taasta minu tekst“ puts these words back over it, restoreLost); a screen that shows the text confirmed last has no words of its own to
+    // lose (the other device built on that text)
     const nothingNew = sameContent(e.content, stored.content) || (!how.words && sameContent(e.content, e.confirmed));
     this.showConflict(e, { titles: e.titles, lost: nothingNew ? null : copy(e.content) });
     this.adopt(e, stored);

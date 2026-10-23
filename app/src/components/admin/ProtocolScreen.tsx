@@ -6,7 +6,9 @@ import { adminEt } from "@/i18n/dict/admin";
 import { fill, formatDate, formatTime } from "@/i18n/format";
 import { GrowingText } from "./GrowingText";
 import { SendAll, StudentSend } from "./ProtocolSend";
-import { getScreen, keepReading, postSave, ProtocolAutosave, serverDraft, statusOf, type Conflict, type Entry, type ReadScreen, type SaveStatus, type ScreenOwner, type ScreenSource } from "./protocol-autosave";
+import { getScreen, keepReading, postSave, ProtocolAutosave, serverDraft, statusOf, type Conflict, type Entry, type ReadScreen, type ScreenOwner, type ScreenSource } from "./protocol-autosave";
+import { protocolSaveStatus } from "./protocol-status";
+import { SaveStatus } from "./SaveStatus";
 import ui from "./ui.module.css";
 import styles from "./ProtocolScreen.module.css";
 
@@ -27,8 +29,6 @@ export type ScreenView = { single: boolean; source: ScreenSource; students: Scre
  */
 export type EditorState = { engine: ProtocolAutosave; entry: Entry; locked: boolean; frozen: boolean; unlocked: boolean; onUnlock(on: boolean): void };
 
-type T = typeof adminEt.protocols;
-
 /**
  * The students of a read, and after them those it no longer lists (cancelled or moved meanwhile): they stay, so the screen says she is gone
  * ("Seda registreeringut enam ei ole …", with her text kept) instead of her editor disappearing under Maria's hands.
@@ -40,27 +40,24 @@ const withDropped = (now: ScreenStudentView[], before: ScreenStudentView[]): Scr
 
 const TONE: Record<Exclude<ProtocolStatus, "none">, string> = { draft: ui.warn, sent: ui.ok, changed: ui.bad };
 
-/** The save's status line: "Salvestatud HH:MM" (Tallinn), the waiting states, and the failing ones (in the error colour). */
-export function statusLine(s: SaveStatus, t: T): { text: string; failing: boolean } {
-  switch (s.kind) {
-    case "saved":
-      return { text: s.at === null ? "" : fill(t.saved, { time: formatTime(new Date(s.at), "et") }), failing: false };
-    case "checking":
-      return { text: t.checking, failing: false };
-    case "pending":
-      return { text: t.pending, failing: false };
-    case "saving":
-      return { text: t.saving, failing: false };
-    case "retrying":
-      return { text: t.retrying, failing: true };
-    case "tooLong":
-      return { text: t.tooLongStatus, failing: true };
-    case "signedOut":
-      return { text: t.signedOut, failing: true };
-    case "gone":
-      return { text: t.gone, failing: true };
+/** The admin's phone layout is below this (README Q3: the phone top bar below 900 px; Sidebar.tsx's WIDE). */
+const WIDE = "(min-width: 900px)";
+/** Told when the window crosses 900 px (one subscription for the screen's life: the function is the same at every render). */
+function onWidth(tell: () => void): () => void {
+  if (typeof window.matchMedia !== "function") return () => {};
+  const wide = window.matchMedia(WIDE);
+  // (iOS before 14 has only the older addListener)
+  if (typeof wide.addEventListener === "function") {
+    wide.addEventListener("change", tell);
+    return () => wide.removeEventListener("change", tell);
   }
+  wide.addListener(tell);
+  return () => wide.removeListener(tell);
 }
+const narrowNow = (): boolean => typeof window.matchMedia === "function" && !window.matchMedia(WIDE).matches;
+const wideOnServer = (): boolean => false;
+/** Below 900 px the chip's saved state is the phone page's short one (strings.md D1: „✓ 11:20“); the server render and the first paint have the full one. */
+const usePhoneChip = (): boolean => useSyncExternalStore(onWidth, narrowNow, wideOnServer);
 
 /**
  * The course day's protocols (spec §4): the students — a column on the left on a wide screen, a row of chips across the top on a narrow one
@@ -68,10 +65,12 @@ export function statusLine(s: SaveStatus, t: T): { text: string; failing: boolea
  * mark (Mustand, Saadetud, Muudetud; none before the first save), "ootab ettemaksu" while her prepayment is not in, and "Salvestamata"
  * while her text is not confirmed; and the selected student's protocol: the practice part (each heading with a box that grows with its
  * text), then "Üldised märkused". Switching student is one tap: the one left saves in the background at once, never waited for; a student
- * whose boxes were never typed in is never saved (a first save creates the protocol). The autosave is protocol-autosave.ts; a sent protocol
- * shows read-only. The sends are ProtocolSend.tsx: "Lukusta ja saada kõik" above the students (the session's primary button), each student's
- * "Saada" / "Muuda" / "Saada uuesti" under her protocol. Leaving the page while a text is not confirmed asks first (it is in this browser
- * all the same). One student (an individual course, or a session with one): no list.
+ * whose boxes were never typed in is never saved (a first save creates the protocol). The autosave is protocol-autosave.ts, and its status is the
+ * SaveStatus chip next to her name (admin UX pass, README A3: protocol-status.ts says the engine's states in its kinds; below 900 px its saved
+ * state is the short „✓ 11:20“); a sent protocol shows read-only. The sends are ProtocolSend.tsx: „Saada kõigile ({n})“ above the students (the
+ * session's primary button), each student's „Saada protokoll {eesnimi}le“ / "Muuda" / „… uuesti“ under her protocol. Another device's text that
+ * refused hers opens a notice with her words, „Taasta minu tekst“ (B13) and „Selge“. Leaving the page while a text is not confirmed asks first (it
+ * is in this browser all the same). One student (an individual course, or a session with one): no list.
  * The browser's Back restores this page from the client router's copy of the visit's server render, older than what was saved since: so the
  * screen never takes its text for the server's. It says "Kontrollin …" instead of "Salvestatud" until it has read the server's text again (GET
  * /api/admin/protokoll when the screen is shown, and again when the page comes back from the browser's cache, when a tab hidden for over five
@@ -96,6 +95,9 @@ export function ProtocolScreen({
   opened?: boolean;
 }) {
   const t = adminEt.protocols;
+  const phone = usePhoneChip();
+  // what the chip calls a protocol that is gone (P-10): an access's on the e-course assessment, a registration's on the course day
+  const thing = view.owner === "access" ? adminEt.assessment.screen.goneThing : t.goneThing;
   const [engine] = useState(() => {
     const made = new ProtocolAutosave(view.students.map(serverDraft), postSave, { owner: view.owner ?? "registration" });
     made.awaitFresh();
@@ -195,6 +197,8 @@ export function ProtocolScreen({
             entry={entry}
             name={student.name}
             primary={view.single}
+            phone={phone}
+            thing={thing}
             unlocked={unlocked.has(entry.registrationId)}
             onUnlock={(on) => unlock(entry.registrationId, on)}
             opened={opened}
@@ -207,12 +211,14 @@ export function ProtocolScreen({
   );
 }
 
-/** One student's protocol: her name and the save's status, a conflict's notice, the practice part's boxes, the general notes, the sends. */
+/** One student's protocol: her name and the save's status (SaveStatus), a conflict's notice, the practice part's boxes, the general notes, the sends. */
 function StudentEditor({
   engine,
   entry,
   name,
   primary,
+  phone,
+  thing,
   unlocked,
   onUnlock,
   opened,
@@ -223,6 +229,10 @@ function StudentEditor({
   entry: Entry;
   name: string;
   primary: boolean;
+  /** The admin's phone layout: the chip's short saved state. */
+  phone: boolean;
+  /** The chip's word for a protocol that is gone („Seda {asja} enam ei ole …“). */
+  thing: string;
   unlocked: boolean;
   onUnlock(on: boolean): void;
   opened: boolean;
@@ -237,7 +247,6 @@ function StudentEditor({
   // read-only while it is sent, and while a send is on its way (its text must stay the one sent)
   const frozen = locked || entry.sending;
   const state: EditorState = { engine, entry, locked, frozen, unlocked, onUnlock };
-  const line = statusLine(entry.status, t);
   const sentAt = entry.sentAt ? new Date(entry.sentAt) : null;
   // "Muuda" pressed: its button is gone (the hint takes its place), so the focus goes to the first box, or to the general notes when the
   // course has no headings; a screen opened again with the protocol already open takes no focus
@@ -247,6 +256,25 @@ function StudentEditor({
     if (unlocked && !wasUnlocked.current) section.current?.querySelector("textarea")?.focus();
     wasUnlocked.current = unlocked;
   }, [unlocked]);
+  // „Taasta minu tekst“: its button goes with the notice, so the focus goes to the box her words went back into (after the render that shows them,
+  // and after "Muuda"'s focus above when the press also unlocked a sent protocol)
+  const restoredInto = useRef<string | null>(null);
+  useEffect(() => {
+    if (restoredInto.current === null) return;
+    section.current?.querySelector<HTMLElement>(restoredInto.current)?.focus();
+    restoredInto.current = null;
+  });
+
+  /** B13: the notice's words back into their boxes, saved over the other device's text (a sent protocol is opened for it, as "Muuda" does). */
+  function restore() {
+    const before = entry.content;
+    if (!engine.restorable(id)) return;
+    if (locked) onUnlock(true);
+    void engine.restoreLost(id);
+    const after = engine.get(id)!.content;
+    const box = after.notes.findIndex((note, i) => note !== before.notes[i]);
+    restoredInto.current = box >= 0 ? `[data-note="${box}"]` : "[data-general]";
+  }
 
   return (
     <section ref={section} className={styles.editor} aria-labelledby={`${uid}-name`} data-editor={id}>
@@ -254,11 +282,14 @@ function StudentEditor({
         <h2 id={`${uid}-name`} className={ui.h2}>
           {name}
         </h2>
-        <p role="status" className={line.failing ? ui.error : ui.hint} data-save-status={entry.status.kind}>
-          {line.text}
-        </p>
+        <SaveStatus
+          status={protocolSaveStatus(entry.status, entry.conflict, entry.titles)}
+          compact={phone}
+          thing={thing}
+          onShowInvalid={() => section.current?.querySelector<HTMLElement>("[aria-invalid='true']")?.focus()}
+        />
       </div>
-      {entry.conflict && <ConflictNotice conflict={entry.conflict} onDismiss={() => engine.dismissConflict(id)} />}
+      {entry.conflict && <ConflictNotice conflict={entry.conflict} onRestore={engine.restorable(id) ? restore : null} onDismiss={() => engine.dismissConflict(id)} />}
       {!entry.kept && (
         <p className={ui.error} role="alert" data-not-kept="">
           {t.notKept}
@@ -289,7 +320,7 @@ function StudentEditor({
       <div className={styles.part}>
         <NoteBox id={`${uid}-general`} label={t.general} heading value={entry.content.generalNote} readOnly={frozen} onChange={(v) => engine.editGeneral(id, v)} onBlur={() => void engine.save(id)} />
       </div>
-      {sendBar ? sendBar(entry, state) : <StudentSend engine={engine} id={id} primary={primary} unlocked={unlocked} onUnlock={onUnlock} />}
+      {sendBar ? sendBar(entry, state) : <StudentSend engine={engine} id={id} name={name} primary={primary} unlocked={unlocked} onUnlock={onUnlock} />}
     </section>
   );
 }
@@ -350,8 +381,11 @@ function NoteBox({
   );
 }
 
-/** Another device saved first (spec §4): the short notice, and this screen's text that could not be saved, to copy what is still wanted. */
-function ConflictNotice({ conflict, onDismiss }: { conflict: Conflict; onDismiss(): void }) {
+/**
+ * Another device saved first (spec §4): the short notice, and this screen's text that could not be saved; „Taasta minu tekst“ (B13, `onRestore`, there
+ * while some of those words have a box) puts them back and saves them, „Selge“ closes the notice and lets them go.
+ */
+function ConflictNotice({ conflict, onRestore, onDismiss }: { conflict: Conflict; onRestore: (() => void) | null; onDismiss(): void }) {
   const t = adminEt.protocols;
   const lost = conflict.lost;
   return (
@@ -376,9 +410,16 @@ function ConflictNotice({ conflict, onDismiss }: { conflict: Conflict; onDismiss
           )}
         </details>
       )}
-      <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={onDismiss} data-conflict-dismiss="">
-        {t.dismiss}
-      </button>
+      <div className={styles.conflictActions}>
+        {onRestore && (
+          <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={onRestore} data-conflict-restore="">
+            {t.restore}
+          </button>
+        )}
+        <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={onDismiss} data-conflict-dismiss="">
+          {t.dismiss}
+        </button>
+      </div>
     </div>
   );
 }

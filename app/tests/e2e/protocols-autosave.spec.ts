@@ -1,13 +1,18 @@
 import type { Page } from "@playwright/test";
 import { adminReady, signInAsAdmin } from "./admin-login";
-import { chip, E2E_HEADINGS, editor, emptyNotes, holdRefresh, insertDraftProtocol, keptKeys, keptTexts, note, protocolRows, runName, saved, SAVE_ROUTE, saveStatus, storedProtocol } from "./protocols";
+import {
+  chip, E2E_HEADINGS, editor, emptyNotes, holdRefresh, insertDraftProtocol, keptKeys, keptTexts, note, protocolRows, runName, saved, SAVE_ROUTE, saveStatus, saveWords,
+  sendAllLines, sendAllYes, storedProtocol,
+} from "./protocols";
 import { test, expect } from "./test";
 
 // Phase protocols, the autosave in a real browser (spec §4, §10; Task 5's review). protocol-autosave.test.ts runs the engine against a stand-in;
 // these run the screen against the real server and a real Chromium:
 // - no network: the words typed stay in this browser, the status says so, and once the network is back the server has the newest text; a reload
 //   while offline cannot load the page at all, so the reload is made once the network is back and the text resumes from this browser's copy;
-// - Back: leaving the screen for Kalender and coming back with the browser's Back button (the screen asks the server again; see backToStaleScreen);
+// - Back: leaving the screen for the index („← Protokollid“) and coming back with the browser's Back button (the screen asks the server again; see
+//   backToStaleScreen);
+// - two tabs: the second saves first, the first's notice and „Taasta minu tekst“ (B13);
 // - the server's refusals on POST /api/admin/protokoll (413, 400 body / text / tooLong), real ones: the screen's own request is sent on to the
 //   server with a body that earns the refusal, and its answer is handed to the page as it came;
 // - a box over 10 000 characters (nothing is sent), and the route's answers asked for directly.
@@ -24,8 +29,8 @@ test("no network: the typed words stay in this browser and the status says so; b
   await adminReady(page);
   await context.setOffline(true);
   await note(page, mari.id, 0).fill("Ühendus katkes.");
-  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "retrying", { timeout: 20_000 });
-  await expect(saveStatus(page, mari.id)).toHaveText("Salvestamata — proovin uuesti");
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "retry", { timeout: 20_000 });
+  await expect(saveWords(page, mari.id)).toHaveText("Salvestamata — proovin uuesti");
   await note(page, mari.id, 0).fill("Ühendus katkes. Kirjutan edasi.");
   expect(await keptTexts(page, mari.id)).toEqual(["Ühendus katkes. Kirjutan edasi."]); // the newest words are in this browser
   expect(await storedProtocol(mari.id)).toBeNull(); // and nothing reached the server
@@ -49,7 +54,7 @@ test("a reload while offline cannot load the page; once online the text resumes 
   await saved(page, mari.id);
   await context.setOffline(true);
   await note(page, mari.id, 0).fill("Esimene. Teine, ilma ühenduseta.");
-  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "retrying", { timeout: 20_000 });
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "retry", { timeout: 20_000 });
   const reloadedOffline = await page.reload().then(
     () => true,
     () => false,
@@ -67,14 +72,14 @@ test("a reload while offline cannot load the page; once online the text resumes 
 });
 
 /**
- * Back (Task 5's review; fixed in fix round 1 of Task 11): the screen is left for Kalender (a link: the client router) and the browser's Back button
- * comes back to it. Next restores the screen from the client router's copy of the visit's server render, which is older than what was saved since.
+ * Back (Task 5's review; fixed in fix round 1 of Task 11): the screen is left for the index (its link „← Protokollid“: the client router) and the
+ * browser's Back button comes back to it. Next restores the screen from the client router's copy of the visit's server render, which is older than what was saved since.
  * The screen reads the server's text again (GET /api/admin/protokoll) and, until that answer is read, says "Kontrollin salvestatud teksti…", never
  * "Salvestatud"; the server's newer text is then taken, silently when nothing was typed here, through the conflict notice when something was; and
- * "Saada" / "Lukusta ja saada kõik" wait for it and never send text the screen has not shown.
- * Here: version 1 "Esimene." is what the visit loaded, version 2 "Teine." is saved, Kalender, Back. `refresh` (holdRefresh) keeps the screen's
+ * the student's send and „Saada kõigile“ wait for it and never send text the screen has not shown.
+ * Here: version 1 "Esimene." is what the visit loaded, version 2 "Teine." is saved, the index, Back. `refresh` (holdRefresh) keeps the screen's
  * request for the server's text waiting from the Back on, so the restored screen can be looked at, typed into and pressed before it comes;
- * `beforeBack` runs on the Kalender page, just before the Back.
+ * `beforeBack` runs on the index, just before the Back.
  */
 async function backToStaleScreen(page: Page, sessionId: number, id: number, opts: { refresh?: Awaited<ReturnType<typeof holdRefresh>>; beforeBack?: () => Promise<unknown> } = {}) {
   await page.goto(`/admin/protokollid?sessioon=${sessionId}`);
@@ -89,8 +94,9 @@ async function backToStaleScreen(page: Page, sessionId: number, id: number, opts
   await note(page, id, 0).fill("Teine.");
   await saved(page, id);
   expect((await storedProtocol(id))!.stages[0].note).toBe("Teine."); // stored: the second text (version 2)
-  await page.getByRole("link", { name: "Kalendrisse" }).click();
-  await expect(page).toHaveURL(/\/admin\/kalender/);
+  await page.getByRole("link", { name: "← Protokollid", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/protokollid$/);
+  await expect(page.locator("[data-protocol-index]")).toBeVisible();
   await adminReady(page);
   opts.refresh?.arm();
   await opts.beforeBack?.();
@@ -115,7 +121,7 @@ const recordFrames = (page: Page) =>
       if (!on) return;
       const box = document.querySelector<HTMLTextAreaElement>('[data-note="0"]');
       const status = document.querySelector("[data-save-status]");
-      if (box && status) w.__frames.push([box.value, status.getAttribute("data-save-status") ?? ""]);
+      if (box && status) w.__frames.push([box.value, status.getAttribute("data-save-kind") ?? ""]);
       requestAnimationFrame(look);
     };
     w.__stopFrames = () => void (on = false);
@@ -128,21 +134,21 @@ const stopFrames = (page: Page) =>
     return w.__frames;
   });
 
-test("Back from Kalender: the restored screen never says 'Salvestatud' over the older text; it ends showing the stored text, saved at its time", async ({ page, context, visitorIp }, info) => {
+test("Back from the index: the restored screen never says 'Salvestatud' over the older text; it ends showing the stored text, saved at its time", async ({ page, context, visitorIp }, info) => {
   const fx = await fixtures("stale", runName(info), ["Mari Maasikas"]);
   const [mari] = fx.students;
   await signInAsAdmin(page, context, visitorIp, created);
   await backToStaleScreen(page, fx.session.id, mari.id, { beforeBack: () => recordFrames(page) });
   await expect(note(page, mari.id, 0)).toHaveValue("Teine.");
-  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "saved");
-  await expect(saveStatus(page, mari.id)).toHaveText(/^Salvestatud \d\d:\d\d$/);
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "saved");
+  await expect(saveWords(page, mari.id)).toHaveText(/^Salvestatud \d\d:\d\d$/);
   const frames = await stopFrames(page);
   info.annotations.push({ type: "frames after Back", description: JSON.stringify([...new Set(frames.map((f) => f.join(" | ")))]) });
   expect(frames.filter(([text, status]) => status === "saved" && text !== "Teine."), "frames that said 'saved' over an older text").toEqual([]);
   expect((await storedProtocol(mari.id))!.stages[0].note).toBe("Teine.");
 });
 
-test("Back from Kalender, the server's text not come yet: the old text is shown as 'Kontrollin salvestatud teksti…'; when it comes it replaces it, silently", async ({ page, context, visitorIp }, info) => {
+test("Back from the index, the server's text not come yet: the old text is shown as 'Kontrollin salvestatud teksti…'; when it comes it replaces it, silently", async ({ page, context, visitorIp }, info) => {
   const fx = await fixtures("check", runName(info), ["Mari Maasikas"]);
   const [mari] = fx.students;
   await signInAsAdmin(page, context, visitorIp, created);
@@ -150,16 +156,16 @@ test("Back from Kalender, the server's text not come yet: the old text is shown 
   await backToStaleScreen(page, fx.session.id, mari.id, { refresh });
   await expect.poll(() => refresh.held(), { message: "the screen asked the server for its text" }).toBeGreaterThan(0);
   await expect(note(page, mari.id, 0)).toHaveValue("Esimene.");
-  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "checking");
-  await expect(saveStatus(page, mari.id)).toHaveText("Kontrollin salvestatud teksti…");
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "checking");
+  await expect(saveWords(page, mari.id)).toHaveText("Kontrollin salvestatud teksti…");
   refresh.release();
   await expect(note(page, mari.id, 0)).toHaveValue("Teine.");
-  await expect(saveStatus(page, mari.id)).toHaveText(/^Salvestatud \d\d:\d\d$/);
+  await expect(saveWords(page, mari.id)).toHaveText(/^Salvestatud \d\d:\d\d$/);
   await expect(editor(page, mari.id).locator("[data-conflict]")).toHaveCount(0); // nothing of hers was lost, so nothing is told
   expect((await storedProtocol(mari.id))!.version).toBe(2); // and nothing was saved
 });
 
-test("Back from Kalender: words typed on the restored screen before the server's text came go into the conflict notice; the stored text is never overwritten", async ({ page, context, visitorIp }, info) => {
+test("Back from the index: words typed on the restored screen before the server's text came go into the conflict notice; the stored text is not overwritten unasked", async ({ page, context, visitorIp }, info) => {
   const fx = await fixtures("typed", runName(info), ["Mari Maasikas"]);
   const [mari] = fx.students;
   await signInAsAdmin(page, context, visitorIp, created);
@@ -174,7 +180,7 @@ test("Back from Kalender: words typed on the restored screen before the server's
   expect((await storedProtocol(mari.id))!.version).toBe(2);
 });
 
-test("Back from Kalender: 'Saada' on the restored screen sends nothing older; the stored text is shown, and pressed again it sends that", async ({ page, context, visitorIp }, info) => {
+test("Back from the index: „Saada protokoll Marile“ on the restored screen sends nothing older; the stored text is shown, and pressed again it sends that", async ({ page, context, visitorIp }, info) => {
   const fx = await fixtures("send1", runName(info), ["Mari Maasikas"]);
   const [mari] = fx.students;
   await signInAsAdmin(page, context, visitorIp, created);
@@ -188,14 +194,14 @@ test("Back from Kalender: 'Saada' on the restored screen sends nothing older; th
   refresh.release();
   await expect(editor(page, mari.id).locator("[data-send-error]")).toHaveText("Protokolli muudeti vahepeal mujal ja siin on nüüd uus tekst. Vaata see üle ja saada siis.");
   await expect(note(page, mari.id, 0)).toHaveValue("Teine.");
-  await expect(send).toHaveText("Saada");
+  await expect(send).toHaveText("Saada protokoll Marile");
   expect((await storedProtocol(mari.id))!.sentAt, "the older text was not sent").toBeNull();
   await send.click();
   await expect(editor(page, mari.id).locator("[data-locked]")).toBeVisible();
   expect(await storedProtocol(mari.id)).toMatchObject({ version: 2, sentVersion: 2, sent: { stages: [{ note: "Teine." }, ...emptyNotes(2)] } });
 });
 
-test("Back from Kalender: 'Lukusta ja saada kõik' on the restored screen leaves out and names whose text turned out newer, sends the rest, and sends hers when pressed again", async ({ page, context, visitorIp }, info) => {
+test("Back from the index: „Saada kõigile“ on the restored screen leaves out and names whose text turned out newer, sends the rest, and sends hers when pressed again", async ({ page, context, visitorIp }, info) => {
   const fx = await fixtures("sendall", runName(info), ["Mari Maasikas", "Anu Aas"]);
   const [mari, anu] = fx.students;
   await insertDraftProtocol(anu.id, ["Anu valmis.", "", ""], ""); // hers is as it was on the restored screen
@@ -203,10 +209,9 @@ test("Back from Kalender: 'Lukusta ja saada kõik' on the restored screen leaves
   const refresh = await holdRefresh(page);
   await backToStaleScreen(page, fx.session.id, mari.id, { refresh });
   await expect.poll(() => refresh.held()).toBeGreaterThan(0);
-  await page.locator("[data-send-all-open]").click();
-  const confirm = page.locator("[data-send-confirm]");
-  await expect(confirm.locator("[data-confirm-will]")).toContainText("Anu Aas, Mari Maasikas"); // what the old render says
-  await confirm.locator("[data-confirm-send]").click();
+  await page.getByRole("button", { name: "Saada kõigile (2)", exact: true }).click();
+  await expect(sendAllLines(page).first()).toHaveText("Saavad protokolli: Anu Aas, Mari Maasikas"); // what the old render says
+  await sendAllYes(page).click();
   expect((await storedProtocol(mari.id))!.sentAt).toBeNull();
   expect((await storedProtocol(anu.id))!.sentAt).toBeNull(); // waiting for the server's text
   refresh.release();
@@ -215,10 +220,41 @@ test("Back from Kalender: 'Lukusta ja saada kõik' on the restored screen leaves
   expect((await storedProtocol(mari.id))!.sentAt, "Mari's older text was not sent").toBeNull();
   expect(await storedProtocol(anu.id)).toMatchObject({ sentVersion: 1, sent: { stages: [{ note: "Anu valmis." }, ...emptyNotes(2)] } });
   await expect(note(page, mari.id, 0)).toHaveValue("Teine.");
-  await page.locator("[data-send-all-open]").click();
-  await confirm.locator("[data-confirm-send]").click();
+  await page.getByRole("button", { name: "Saada kõigile (1)", exact: true }).click();
+  await sendAllYes(page).click();
   await expect(page.locator("[data-summary-sent]")).toHaveText("Saadetud: Mari Maasikas.");
   expect(await storedProtocol(mari.id)).toMatchObject({ version: 2, sentVersion: 2, sent: { stages: [{ note: "Teine." }, ...emptyNotes(2)] } });
+});
+
+test("B13, two tabs: the second saves first, the first's save is refused into the notice; „Taasta minu tekst“ puts its words back and saves them over the second's", async ({ page, context, visitorIp }, info) => {
+  const fx = await fixtures("restore", runName(info), ["Mari Maasikas"]);
+  const [mari] = fx.students;
+  await signInAsAdmin(page, context, visitorIp, created);
+  const url = `/admin/protokollid?sessioon=${fx.session.id}`;
+  await page.goto(url);
+  await adminReady(page);
+  const other = await context.newPage(); // the second tab, on the same screen
+  await other.goto(url);
+  await adminReady(other);
+  await note(other, mari.id, 0).fill("Teisest aknast.");
+  await saved(other, mari.id);
+  // the first tab still builds on the text it was opened with: its save is refused, the second's text is shown, its own words go into the notice
+  await note(page, mari.id, 0).fill("Esimesest aknast.");
+  const notice = editor(page, mari.id).locator("[data-conflict]");
+  await expect(notice).toBeVisible({ timeout: 30_000 });
+  await expect(notice).toContainText("Esimesest aknast.");
+  await expect(note(page, mari.id, 0)).toHaveValue("Teisest aknast.");
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "conflict");
+  await expect(saveWords(page, mari.id)).toHaveText("Muudeti teises aknas — vaata üle");
+  expect((await storedProtocol(mari.id))!.stages[0].note).toBe("Teisest aknast.");
+  await notice.getByRole("button", { name: "Taasta minu tekst", exact: true }).click();
+  await expect(note(page, mari.id, 0)).toHaveValue("Esimesest aknast.");
+  await expect(notice).toHaveCount(0);
+  await expect(note(page, mari.id, 0)).toBeFocused();
+  await saved(page, mari.id);
+  expect(await storedProtocol(mari.id)).toMatchObject({ version: 2, stages: [{ note: "Esimesest aknast." }, ...emptyNotes(2)] });
+  expect(await keptKeys(page, mari.id)).toEqual([]); // nothing left in this browser: no copy, no notice
+  await other.close();
 });
 
 /** The refusals the route can answer, each with a body that earns it (b: the screen's own body). */
@@ -255,9 +291,9 @@ test("a lost answer, 'AB' on its way, and the read that finds the lost answer's 
   });
   await page.goto(`/admin/protokollid?sessioon=${fx.session.id}`);
   await adminReady(page);
-  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "checking"); // (the read is held back)
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "checking"); // (the read is held back)
   await note(page, mari.id, 0).fill("A");
-  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "retrying", { timeout: 20_000 });
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "retry", { timeout: 20_000 });
   await expect.poll(async () => (await storedProtocol(mari.id))?.stages[0].note).toBe("A"); // stored as version 1, unknown to the screen
   mode = "hold";
   await note(page, mari.id, 0).fill("AB");
@@ -313,8 +349,8 @@ for (const refusal of REFUSALS) {
     await expect.poll(() => answers.length, { timeout: 20_000 }).toBeGreaterThan(0);
     expect(answers[0].status, "the real route's status").toBe(refusal.status);
     expect(answers[0].body).toMatchObject({ ok: false, error: refusal.error });
-    await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "retrying");
-    await expect(saveStatus(page, mari.id)).toHaveText("Salvestamata — proovin uuesti");
+    await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "retry");
+    await expect(saveWords(page, mari.id)).toHaveText("Salvestamata — proovin uuesti");
     await expect(note(page, mari.id, 0)).toHaveValue("Sõnad, mis ei lähe kaduma.");
     expect(await keptTexts(page, mari.id)).toEqual(["Sõnad, mis ei lähe kaduma."]);
     expect(await storedProtocol(mari.id)).toBeNull();
@@ -347,8 +383,8 @@ test("a box over 10 000 characters is never cut and nothing is sent; shortened, 
   });
   const over = "a".repeat(10_001);
   await note(page, mari.id, 0).fill(over);
-  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "tooLong");
-  await expect(saveStatus(page, mari.id)).toHaveText("Salvestamata — üks tekst on liiga pikk");
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "invalid");
+  await expect(saveWords(page, mari.id)).toHaveText("Salvestamata — kontrolli märgitud välja");
   await expect(editor(page, mari.id).locator("[data-note-long]")).toHaveText("Liiga pikk: 10001 / 10000 märki. Lühenda, siis salvestan.");
   await expect(note(page, mari.id, 0)).toHaveValue(over); // nothing is cut
   await page.getByRole("heading", { level: 1 }).click(); // leaving the box tries a save: still nothing goes

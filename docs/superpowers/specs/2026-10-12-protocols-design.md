@@ -99,14 +99,14 @@ Route `/admin/protokollid`, behind `requireAdmin`. It opens one of two ways:
 - **Autosave:**
   - **When:** a box saves 1.5 s after typing stops, on blur, and on switching student.
   - **What a save sends:** the protocol's `version`; the server refuses a save made from an older version.
-  - **Status mark:** "Salvestatud HH:MM" or "Salvestamata — proovin uuesti".
+  - **Status mark:** "Salvestatud HH:MM" or "Salvestamata — proovin uuesti". *(Admin UX pass, 23.10.2026: the mark is the admin's SaveStatus chip, README A3.)*
   - **Unsaved text** is kept in the browser's storage, keyed by registration, until the server confirms it, and is retried on reconnect and on reload.
-  - **A refused save** (another device saved first) reloads that protocol with a short notice, so newer text is never overwritten.
+  - **A refused save** (another device saved first) reloads that protocol with a short notice, so newer text is never overwritten by a save. *(Admin UX pass B13, spec 2026-10-21 §9: the notice holds this screen's words and „Taasta minu tekst“, which writes them back into their boxes and saves them over the newer text when Maria presses it. A box she had no words in keeps what it shows; words typed since the notice opened stay, after hers; words under a heading the protocol no longer has stay in the notice. The save goes from the version the refusal brought, so it is taken unless another device saved again, which opens the notice again.)*
 - **Sending:**
-  - "Saada" sends one student.
-  - "Lukusta ja saada kõik" opens one confirmation that lists who will get a protocol and who is skipped because theirs is empty. One more tap sends them.
+  - "Saada" sends one student. *(Admin UX pass, README A3: the informed „Saada protokoll {eesnimi}le“, no confirmation.)*
+  - "Lukusta ja saada kõik" opens one confirmation that lists who will get a protocol and who is skipped because theirs is empty. One more tap sends them. *(Admin UX pass, README A3 and spec 2026-10-21 §9: the button is „Saada kõigile ({n})“, n the protocols it would send; its ConfirmPanel asks „Kas saadan {n} protokolli?“ with the same lines and „Jah, saada {n} protokolli“ / „Katkesta“. With nothing to send it asks nothing and says „Pole midagi uut saata.“ with the lines.)*
   - "Saada kõik" sends only protocols with something new to send: status `draft` with text, or `changed`.
-- **After sending:** a sent protocol shows read-only with "Muuda". "Muuda" unlocks it, and "Saada uuesti" sends again.
+- **After sending:** a sent protocol shows read-only with "Muuda". "Muuda" unlocks it, and "Saada uuesti" sends again. *(Admin UX pass: „Saada protokoll {eesnimi}le uuesti“.)*
 
 ## 5. The student's side
 
@@ -194,7 +194,7 @@ The mail goes out after the commit. "Saada kõik" runs each student separately, 
 - **Registration moved to another session:** its protocol follows it.
 - **Course headings changed:** existing protocols keep their copy; only protocols not yet created get the new headings.
 - **Session cancelled:** its protocols stay reachable through `?sessioon=` from the calendar for the record. No feedback opens for its registrations by date.
-- **Two devices:** the version check reloads the older screen.
+- **Two devices:** the version check reloads the older screen. *(Admin UX pass B13: its words wait in the notice, and „Taasta minu tekst“ puts them back over the newer text, §4.)*
 - **Empty protocol:** skipped by "Saada kõik" and named in the confirmation. A single "Saada" on an empty protocol is refused with a short notice.
 - **Account deleted:** its protocols and feedback are deleted (§3).
 - **A student signed in under a different address** than her registration: same as the dashboard today; not visible until Maria links them (out of scope).

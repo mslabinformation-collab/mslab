@@ -1750,3 +1750,152 @@ describe("the owner: an e-course access's protocol (phase e-course completion)",
     f.restore();
   });
 });
+
+// B13 (admin UX pass, README A3; spec §9 replaces the protocols spec's "newer text is never overwritten"): „Taasta minu tekst“ puts the notice's
+// words back into the boxes they were written in and saves them over the server's text the screen shows. Nothing typed is lost on the way: the
+// words are in this browser's copy before the notice's key goes, words typed since the notice opened stay, a box she had no words in keeps what
+// is there, and words under a heading the protocol no longer has stay in the notice.
+describe("„Taasta minu tekst“ (B13)", () => {
+  const shown = () => draft({ version: 1, content: { notes: ["vana", ""], generalNote: "" } });
+  /** The refusal of her save "tahvel" (and "üldine tahvlist") by the phone's version 2: the notice holds her words. */
+  async function refusedByThePhone(s: ReturnType<typeof server>) {
+    const e = start([shown()], s.send);
+    e.editNote(7, 0, "tahvel");
+    e.editGeneral(7, "üldine tahvlist");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer(refused(2, ["telefon", "telefoni teine"], "telefoni üldine"));
+    await tick();
+    expect(e.get(7)).toMatchObject({ version: 2, content: { notes: ["telefon", "telefoni teine"], generalNote: "telefoni üldine" }, conflict: { lost: { notes: ["tahvel", ""], generalNote: "üldine tahvlist" } } });
+    return e;
+  }
+
+  test("her words go back into their boxes (a box she wrote nothing in keeps the server's text) and are saved at once, from the version the refusal brought", async () => {
+    const s = server();
+    const e = await refusedByThePhone(s);
+    expect(e.restorable(7)).toBe(true);
+    const done = e.restoreLost(7);
+    const restored = { notes: ["tahvel", "telefoni teine"], generalNote: "üldine tahvlist" };
+    expect(e.get(7)).toMatchObject({ content: restored, conflict: null, sendError: null });
+    expect(e.restorable(7)).toBe(false);
+    expect(readConflict(localStorage, 7)).toBeNull(); // the notice's key goes …
+    expect(readLocal(localStorage, 7)?.content).toEqual(restored); // … once the words are in this browser's copy
+    await tick();
+    expect(s.calls).toHaveLength(2); // at once, without the 1.5 s
+    expect(s.calls[1].body).toMatchObject({ version: 2, titles: TITLES, notes: restored.notes, generalNote: restored.generalNote });
+    s.calls[1].answer(ok(3, "2026-10-12T08:02:00.000Z"));
+    expect(await done).toBe(true);
+    expect(e.get(7)).toMatchObject({ version: 3, confirmed: restored, conflict: null, status: { kind: "saved", at: Date.parse("2026-10-12T08:02:00.000Z") } });
+    expect(readLocal(localStorage, 7)).toBeNull();
+    expect(e.unsaved()).toBe(false);
+  });
+
+  test("against a server that checks the version (as saveProtocol does): the restore is taken, typing on goes on from it, and nothing is refused after the one refusal", async () => {
+    // the server: version 1 "vana"; the phone saves version 2 "telefon" behind the tablet's back
+    const stored = { version: 2, notes: ["telefon", ""], generalNote: "" };
+    const bodies: SaveBody[] = [];
+    const send = async (b: SaveBody): Promise<Answer> => {
+      bodies.push(b);
+      if (b.version !== stored.version) return refused(stored.version, stored.notes, stored.generalNote);
+      Object.assign(stored, { version: stored.version + 1, notes: [...b.notes], generalNote: b.generalNote });
+      return ok(stored.version);
+    };
+    const e = start([shown()], send);
+    e.editNote(7, 0, "tahvel");
+    await tick(DEBOUNCE_MS);
+    expect(e.get(7)).toMatchObject({ content: { notes: ["telefon", ""] }, conflict: { lost: { notes: ["tahvel", ""] } } });
+    expect(await e.restoreLost(7)).toBe(true);
+    expect(stored).toEqual({ version: 3, notes: ["tahvel", ""], generalNote: "" }); // her text over the phone's
+    e.editNote(7, 0, "tahvel, lisa");
+    await tick(DEBOUNCE_MS);
+    expect(stored).toEqual({ version: 4, notes: ["tahvel, lisa", ""], generalNote: "" });
+    expect(bodies.map((b) => [b.version, b.notes[0]])).toEqual([[1, "tahvel"], [2, "tahvel"], [3, "tahvel, lisa"]]); // one refusal: the first
+    expect(e.get(7)).toMatchObject({ version: 4, conflict: null, status: { kind: "saved" } });
+    expect(readConflict(localStorage, 7)).toBeNull();
+    expect(readLocal(localStorage, 7)).toBeNull();
+  });
+
+  test("words she typed after the notice opened stay: her lost words go in front of them in that box", async () => {
+    const s = server();
+    const e = await refusedByThePhone(s);
+    e.editNote(7, 1, "telefoni teine, minu lisa");
+    void e.restoreLost(7);
+    expect(e.get(7)!.content).toEqual({ notes: ["tahvel", "telefoni teine, minu lisa"], generalNote: "üldine tahvlist" });
+    e.editNote(7, 0, "tahvel ja veel"); // (the box she restored is hers now)
+    await tick(DEBOUNCE_MS);
+    expect(s.calls.map((c) => c.body.notes)).toEqual([["tahvel", ""], ["tahvel ja veel", "telefoni teine, minu lisa"]]); // one save: the newest text
+  });
+
+  test("a box she typed in after the notice opened, with lost words of hers too: both are kept, the older first", async () => {
+    const s = server();
+    const e = await refusedByThePhone(s);
+    e.editNote(7, 0, "telefon, minu lisa");
+    void e.restoreLost(7);
+    expect(e.get(7)!.content.notes[0]).toBe("tahvel\n\ntelefon, minu lisa");
+  });
+
+  test("a heading the protocol no longer has: its words stay in the notice (on the screen and in this browser); the others go back", async () => {
+    // a copy of an older screen, under a heading Maria has since renamed: the server moved on, so a reload shows it in the notice
+    localStorage.setItem(localKey(7), JSON.stringify({ version: 1, titles: ["Ettevalmistus", "Vana punkt"], content: { notes: ["minu ettevalmistus", "vana punkti tekst"], generalNote: "minu üldine" }, sent: [] }));
+    const s = server();
+    const e = start([draft({ version: 2, content: { notes: ["serveri tekst", ""], generalNote: "" } })], s.send);
+    expect(e.get(7)!.conflict).toEqual({ titles: ["Ettevalmistus", "Vana punkt"], lost: { notes: ["minu ettevalmistus", "vana punkti tekst"], generalNote: "minu üldine" } });
+    void e.restoreLost(7);
+    const rest = { titles: ["Vana punkt"], lost: { notes: ["vana punkti tekst"], generalNote: "" } };
+    expect(e.get(7)).toMatchObject({ content: { notes: ["minu ettevalmistus", ""], generalNote: "minu üldine" }, conflict: rest });
+    expect(readConflict(localStorage, 7)).toEqual(rest);
+    expect(e.restorable(7)).toBe(false); // (nothing of the rest has a box)
+    await tick();
+    expect(s.calls.map((c) => [c.body.version, c.body.notes, c.body.generalNote])).toEqual([[2, ["minu ettevalmistus", ""], "minu üldine"]]);
+  });
+
+  test("a reload before the restored text is confirmed: it comes back from this browser and is saved, with no notice", async () => {
+    const s = server();
+    const e = await refusedByThePhone(s);
+    void e.restoreLost(7);
+    await tick();
+    expect(s.calls).toHaveLength(2); // on its way; its answer never comes (the tablet reloads)
+    e.stop();
+    const after = server();
+    const again = start([draft({ version: 2, content: { notes: ["telefon", "telefoni teine"], generalNote: "telefoni üldine" } })], after.send);
+    expect(again.get(7)).toMatchObject({ content: { notes: ["tahvel", "telefoni teine"], generalNote: "üldine tahvlist" }, conflict: null });
+    await tick();
+    expect(after.calls.map((c) => [c.body.version, c.body.notes[0]])).toEqual([[2, "tahvel"]]);
+  });
+
+  test("the server moved on again before the restore was saved: refused, and her words are in a notice again, never lost", async () => {
+    const s = server();
+    const e = await refusedByThePhone(s);
+    const done = e.restoreLost(7);
+    await tick();
+    s.calls[1].answer(refused(3, ["arvuti", ""]));
+    expect(await done).toBe(false);
+    expect(e.get(7)).toMatchObject({ version: 3, content: { notes: ["arvuti", ""] }, conflict: { lost: { notes: ["tahvel", "telefoni teine"], generalNote: "üldine tahvlist" } } });
+  });
+
+  test("nothing while a send is on its way, nor for a notice without words of hers", async () => {
+    const s = server();
+    const e = await refusedByThePhone(s);
+    e.setSending(7, true);
+    expect(e.restorable(7)).toBe(false);
+    expect(await e.restoreLost(7)).toBe(false);
+    expect(e.get(7)!.content.notes[0]).toBe("telefon");
+    expect(e.get(7)!.conflict).not.toBeNull();
+    e.setSending(7, false);
+    expect(e.restorable(7)).toBe(true);
+    expect(await e.restoreLost(99)).toBe(false); // (no such protocol)
+    // a refusal while the screen shows the text confirmed last ("uus" on its way, typed back to "vana"): the other device built on that text, and
+    // the notice has no words of hers
+    e.stop();
+    const t = server();
+    const other = start([draft({ registrationId: 8, version: 1, content: { notes: ["vana", ""], generalNote: "" } })], t.send);
+    other.editNote(8, 0, "uus");
+    await tick(DEBOUNCE_MS);
+    other.editNote(8, 0, "vana");
+    t.calls[0].answer(refused(2, ["telefon", ""]));
+    await tick();
+    expect(other.get(8)).toMatchObject({ content: { notes: ["telefon", ""] }, conflict: { lost: null } });
+    expect(other.restorable(8)).toBe(false);
+    expect(await other.restoreLost(8)).toBe(false);
+    expect(other.get(8)!.content.notes[0]).toBe("telefon");
+  });
+});

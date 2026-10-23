@@ -1,19 +1,21 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { allative, firstName } from "@/domain/names";
 import { newToSend } from "@/domain/protocols";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { sendProtocolAction, sendProtocolsAction } from "@/server/actions/admin-protocols";
 import type { BulkResult, SendOutcome } from "@/server/protocols";
+import { ConfirmPanel } from "./ConfirmPanel";
 import { sameContent, statusOf, unsavedEntry, written, type Content, type Entry, type ProtocolAutosave } from "./protocol-autosave";
 import ui from "./ui.module.css";
 import styles from "./ProtocolScreen.module.css";
 
-// The sends of the course day's screen (phase protocols, spec §4, §8, D4). Every send saves first and sends the version the server confirmed,
-// with the protocol read-only meanwhile (ProtocolAutosave.setSending), so the student gets exactly what Maria sees and her own typing can
-// never make a send "stale". This file runs on old iPads: no regular expression with a lookbehind, here or in anything it imports
-// (tests/unit/old-safari.test.ts follows the imports).
+// The sends of the course day's screen (phase protocols, spec §4, §8, D4; admin UX pass README A3: the informed „Saada protokoll {eesnimi}le“ and
+// „Saada kõigile ({n})“ with its ConfirmPanel). Every send saves first and sends the version the server confirmed, with the protocol read-only
+// meanwhile (ProtocolAutosave.setSending), so the student gets exactly what Maria sees and her own typing can never make a send "stale". This file
+// runs on old iPads: no regular expression with a lookbehind, here or in anything it imports (tests/unit/old-safari.test.ts follows the imports).
 
 type T = typeof adminEt.protocols;
 
@@ -110,11 +112,11 @@ export function bounded<T>(work: Promise<T>): Promise<T | "timeout"> {
   });
 }
 
-/** What "Lukusta ja saada kõik" would do with each protocol (planSendAll). */
+/** What „Saada kõigile“ would do with each protocol (planSendAll). */
 export type SendPlan = { will: number[]; skipped: number[]; already: number[]; sending: number[]; review: number[] };
 
 /**
- * What "Lukusta ja saada kõik" would do now (spec §4): `will` — the protocols with something new (a draft with text, one changed after it was
+ * What „Saada kõigile“ would do now (spec §4): `will` — the protocols with something new (a draft with text, one changed after it was
  * sent, or a sent one whose new text is still on its way); `skipped` — those without text; `already` — the sent ones with nothing new;
  * `sending` — those with a send already on its way (a single "Saada"), which this one leaves alone; `review` — those that would go but have
  * the notice of a refusal open (another device's text is on the screen, which Maria has not looked at), which are left out until she has.
@@ -141,20 +143,37 @@ export function planSendAll(engine: ProtocolAutosave, shown?: ReadonlyMap<number
 }
 
 /**
- * One student's sends, under her protocol (spec §4, D4): "Saada" (a draft) and "Saada uuesti" (changed after it was sent) — each saves first and
- * sends the version the server confirmed, and an empty protocol is refused at once; "Muuda" on a sent protocol, which only unlocks the screen
- * (the first saved edit raises the version). `primary`: the screen of one registration, where "Saada" is the one primary button.
+ * One student's sends, under her protocol (spec §4, D4; README A3): the informed „Saada protokoll {eesnimi}le“ (a draft; `name` is her name as
+ * written, said by its first word with S5's ending, domain/names.ts) and „Saada protokoll {eesnimi}le uuesti“ (changed after it was sent, P-5),
+ * with no confirmation — each saves first and sends the version the server confirmed, and an empty protocol is refused at once; "Muuda" on a sent
+ * protocol, which only unlocks the screen (the first saved edit raises the version). `primary`: the screen of one registration, where the send is
+ * the one primary button.
  * The state of a send is the engine's, not this component's, so it outlives it when Maria goes to another student and back: that a send is on
- * its way (`sending`, also true while "Lukusta ja saada kõik" sends this protocol, so one protocol is never sent by two taps at once), and the
+ * its way (`sending`, also true while „Saada kõigile“ sends this protocol, so one protocol is never sent by two taps at once), and the
  * line under the button (`sendError`) until her next send or edit.
  */
-export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engine: ProtocolAutosave; id: number; primary: boolean; unlocked: boolean; onUnlock(on: boolean): void }) {
+export function StudentSend({
+  engine,
+  id,
+  name,
+  primary,
+  unlocked,
+  onUnlock,
+}: {
+  engine: ProtocolAutosave;
+  id: number;
+  name: string;
+  primary: boolean;
+  unlocked: boolean;
+  onUnlock(on: boolean): void;
+}) {
   const t = adminEt.protocols;
   const e = engine.get(id);
   if (!e) return null;
   const status = statusOf(e);
   const busy = e.sending;
   const button = primary ? ui.btn : `${ui.btn} ${ui.secondary} ${ui.smallBtn}`;
+  const to = allative(firstName(name));
 
   async function send() {
     let now = engine.get(id);
@@ -254,7 +273,7 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
         </p>
       ) : (
         <button type="button" className={button} aria-disabled={busy || undefined} onClick={() => void send()} data-send={status === "changed" ? "again" : "first"}>
-          {busy ? t.sending : status === "changed" ? t.resend : t.send}
+          {busy ? t.sending : fill(status === "changed" ? t.resend : t.send, { name: to })}
         </button>
       )}
       {e.sendError && (
@@ -266,42 +285,56 @@ export function StudentSend({ engine, id, primary, unlocked, onUnlock }: { engin
   );
 }
 
-/** The summary of a "Saada kõik": who got one, and per reason (in a single "Saada"'s words) who did not: each group is one line. */
+/** The summary of a „Saada kõigile“: who got one, and per reason (in a single send's words) who did not: each group is one line. */
 type Summary = { sent: string[]; notSent: { key: string; line: string }[] };
 
 /**
- * "Lukusta ja saada kõik" (spec §4, §8): the session screen's primary button. The first tap opens one confirmation that names who will get a
- * protocol, who is skipped because hers is empty, who has hers already, whose send is on its way already (left alone), and whose text is
- * another device's with its notice still open (left out until she has looked at it and pressed "Selge"). "Saada" there saves
- * each of those protocols on its own (read-only meanwhile), sends the ones whose save the server confirmed, each in its own transaction
- * (sendProtocolsAction), and leaves out and names one that could not be saved, under the reason of that (unsavedMessage): one student's failure
- * never stops the others. The summary says who got one and, per reason, who did not; every protocol that was to go is in it, one the server
- * gave no answer for as "Saatmine ei õnnestunud". The summary's place is always on the screen, so that a screen reader announces what comes
- * into it; when the confirmation closes the focus goes back to the button that opened it.
+ * „Saada kõigile ({n})“ (spec §4, §8; README A3): the session screen's primary button, n the protocols it would send. The tap puts piece 1's
+ * ConfirmPanel in its place: „Kas saadan {n} protokolli?“, its lines naming who will get a protocol, who is skipped because hers is empty, who has
+ * hers already, whose send is on its way already (left alone), and whose text is another device's with its notice still open (left out until she
+ * has looked at it), and „Jah, saada {n} protokolli“ / „Katkesta“. With nothing to send there is nothing to say yes to: the tap asks nothing, and
+ * the summary's place says „Pole midagi uut saata.“ with those lines until there is something to send. „Jah“ saves each of the protocols on its own
+ * (read-only meanwhile), sends the ones whose save the server confirmed, each in its own transaction (sendProtocolsAction), and leaves out and
+ * names one that could not be saved, under the reason of that (unsavedMessage): one student's failure never stops the others. While it runs the
+ * question stays („Katkesta“ and Esc do nothing). The summary says who got one and, per reason, who did not; every protocol that was to go is in it,
+ * one the server gave no answer for as "Saatmine ei õnnestunud". The summary's place is always on the screen, so that a screen reader announces what
+ * comes into it; when the question closes the focus goes back to the button (unless Maria has gone elsewhere meanwhile).
  */
 export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; names: ReadonlyMap<number, string>; onSent(id: number): void }) {
   const t = adminEt.protocols;
-  const uid = useId();
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   // what the send in progress was started with: its protocols are "sending" meanwhile, which a plan made now would leave out
   const [started, setStarted] = useState<SendPlan | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  // the button was pressed with nothing to send: the summary's place says why, until there is something to send
+  const [nothing, setNothing] = useState(false);
+  /** A new object each time the question closes with the focus in it: the focus goes back to the button, which is drawn again by then. */
+  const [back, setBack] = useState<object | null>(null);
   const opener = useRef<HTMLButtonElement>(null);
-  const question = useRef<HTMLParagraphElement>(null);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (asking) question.current?.focus();
-  }, [asking]);
+    if (back) opener.current?.focus();
+  }, [back]);
   const plan = started ?? planSendAll(engine, names);
+  const n = plan.will.length;
+  if (nothing && n > 0) setNothing(false); // (a state set while rendering is applied before anything is shown)
   const nameOf = (id: number) => names.get(id) ?? String(id);
   const list = (ids: number[]) => ids.map(nameOf).join(", ");
+  // the existing lines of the question, each only when it names someone
+  const lines = [
+    ...(plan.will.length > 0 ? [fill(t.confirm.will, { names: list(plan.will) })] : []),
+    ...(plan.skipped.length > 0 ? [fill(t.confirm.skipped, { names: list(plan.skipped) })] : []),
+    ...(plan.already.length > 0 ? [fill(t.confirm.already, { names: list(plan.already) })] : []),
+    ...(plan.sending.length > 0 ? [fill(t.confirm.onItsWay, { names: list(plan.sending) })] : []),
+    ...(plan.review.length > 0 ? [fill(t.confirm.review, { names: list(plan.review) })] : []),
+  ];
 
-  /** Closes the confirmation; its focused button goes with it, so the focus returns to the opener (unless Maria has gone elsewhere meanwhile). */
+  /** Closes the question; when the focus was in it (or nowhere), it goes back to the button, else it stays where Maria put it meanwhile. */
   function close() {
     const active = document.activeElement;
-    if (!active || active === document.body || box.current?.contains(active)) opener.current?.focus();
     setAsking(false);
+    if (!active || active === document.body || box.current?.contains(active)) setBack({});
   }
 
   async function confirm() {
@@ -385,52 +418,50 @@ export function SendAll({ engine, names, onSent }: { engine: ProtocolAutosave; n
 
   return (
     <div className={styles.sendAll} data-send-all="">
-      <button
-        ref={opener}
-        type="button"
-        className={asking ? `${ui.btn} ${ui.secondary}` : ui.btn}
-        aria-expanded={asking}
-        aria-disabled={busy || undefined}
-        onClick={() => {
-          if (busy) return;
-          setSummary(null);
-          setAsking(true);
-        }}
-        data-send-all-open=""
-      >
-        {t.sendAll}
-      </button>
-      {asking && (
-        <div ref={box} className={`${ui.notice} ${styles.confirm}`} role="group" aria-labelledby={`${uid}-ask`} data-send-confirm="">
-          <p id={`${uid}-ask`} ref={question} tabIndex={-1}>
-            <strong>{t.confirm.title}</strong>
-          </p>
-          {plan.will.length > 0 ? <p data-confirm-will="">{fill(t.confirm.will, { names: list(plan.will) })}</p> : <p>{t.confirm.nothing}</p>}
-          {plan.skipped.length > 0 && <p data-confirm-skipped="">{fill(t.confirm.skipped, { names: list(plan.skipped) })}</p>}
-          {plan.already.length > 0 && <p data-confirm-already="">{fill(t.confirm.already, { names: list(plan.already) })}</p>}
-          {plan.sending.length > 0 && <p data-confirm-sending="">{fill(t.confirm.onItsWay, { names: list(plan.sending) })}</p>}
-          {plan.review.length > 0 && <p data-confirm-review="">{fill(t.confirm.review, { names: list(plan.review) })}</p>}
-          <div className={styles.answers}>
-            {plan.will.length > 0 && (
-              <button type="button" className={ui.btn} aria-disabled={busy || undefined} onClick={() => void confirm()} data-confirm-send="">
-                {busy ? t.sending : t.confirm.yes}
-              </button>
-            )}
-            <button
-              type="button"
-              className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`}
-              aria-disabled={busy || undefined}
-              onClick={() => {
-                if (!busy) close();
-              }}
-              data-confirm-cancel=""
-            >
-              {t.confirm.no}
-            </button>
-          </div>
+      {asking ? (
+        <div ref={box} className={styles.confirm} data-send-confirm="">
+          <ConfirmPanel
+            question={fill(t.confirm.question, { n })}
+            lines={lines}
+            yesLabel={busy ? t.sending : fill(t.confirm.yes, { n })}
+            tone="send"
+            busy={busy}
+            onYes={() => void confirm()}
+            onCancel={() => {
+              if (!busy) close();
+            }}
+          />
         </div>
+      ) : (
+        <button
+          ref={opener}
+          type="button"
+          className={ui.btn}
+          aria-disabled={busy || undefined}
+          onClick={() => {
+            if (busy) return;
+            setSummary(null);
+            if (n === 0) setNothing(true);
+            else setAsking(true);
+          }}
+          data-send-all-open=""
+        >
+          {fill(t.sendAll, { n })}
+        </button>
       )}
       <div className={styles.summary} role="status" data-send-summary="">
+        {nothing && n === 0 && (
+          <>
+            <p className={ui.hint} data-send-nothing="">
+              {t.confirm.nothing}
+            </p>
+            {lines.map((line, i) => (
+              <p key={i} className={ui.hint}>
+                {line}
+              </p>
+            ))}
+          </>
+        )}
         {summary && summary.sent.length > 0 && (
           <p className={ui.success} data-summary-sent="">
             {fill(t.result.sent, { names: summary.sent.join(", ") })}

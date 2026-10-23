@@ -3,7 +3,7 @@ import { expect, test, vi } from "vitest";
 import type { ScreenData } from "@/db/queries/protocols";
 import { MAIL_GAP_MS } from "@/server/protocols";
 
-// The page that hosts "Lukusta ja saada kõik" (spec §4, §8). The bulk send answers once its transactions are done, and its mails go out
+// The page that hosts „Saada kõigile“ (spec §4, §8). The bulk send answers once its transactions are done, and its mails go out
 // afterwards as ONE task of after(), one after another MAIL_GAP_MS apart (server/protocols.ts mailProtocols); that task runs under the host
 // page's time limit (maxDuration), which the page must set itself: a task cut short loses the mails of the students it did not reach, and a
 // mail cannot be sent again for its version. The action takes at most 100 protocols (actions/admin-protocols.ts), so the limit must hold 100
@@ -28,6 +28,7 @@ vi.mock("@/components/admin/AssessmentScreen", () => ({
     return null;
   },
 }));
+vi.mock("@/components/admin/ProtocolScreen", () => ({ ProtocolScreen: () => null }));
 
 import * as page from "@/app/admin/(panel)/protokollid/page";
 
@@ -104,4 +105,36 @@ test("?sessioon= and ?registreering= come before ?ligipaas= (the course day's ad
   expect(html).toContain("Sellist e-kursuse ligipääsu ei leitud, või see on tühistatud.");
   expect(html).toContain('href="/admin/hindamine"');
   expect(seen.views).toEqual([]);
+});
+
+// ---------- the course day's screens: the way back (admin UX pass, README A3) ----------
+
+const sessionScreen = (kind: "session" | "registration"): ScreenData => ({
+  kind,
+  course: { id: 3, title: { et: "Kulmumeistri baaskoolitus", ru: "Брови" } },
+  session: kind === "session" ? { id: 5, startsAt: new Date("2026-10-20T07:00:00Z"), city: "Pärnu", venue: "MS LAB stuudio", cancelled: false } : null,
+  students: [
+    {
+      registrationId: 7,
+      name: "Kati Kask",
+      status: "confirmed",
+      state: "draft",
+      protocol: { id: 9, version: 1, stages: [{ title: "Ettevalmistus", note: "Valmis" }], generalNote: "", sentVersion: null, sentAt: null, updatedAt: new Date("2026-10-20T10:00:00Z") },
+    },
+  ],
+  hidden: 0,
+  assessment: null,
+});
+const backLink = (html: string) => html.match(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/);
+
+test("a session's screen and a registration's lead back to the index: „← Protokollid“; so does the not-found card of the course day's addresses", async () => {
+  reset(sessionScreen("session"));
+  expect(backLink(await render({ sessioon: "5" }))?.slice(1)).toEqual(["/admin/protokollid", "← Protokollid"]);
+  reset(sessionScreen("registration"));
+  expect(backLink(await render({ registreering: "7" }))?.slice(1)).toEqual(["/admin/protokollid", "← Protokollid"]);
+  reset(null);
+  const missing = await render({ sessioon: "5" });
+  expect(missing).toContain("Seda toimumist või registreeringut ei leitud, või pole see kontaktkoolitus.");
+  expect(backLink(missing)?.slice(1)).toEqual(["/admin/protokollid", "← Protokollid"]);
+  expect(missing).not.toContain("Kalendrisse");
 });

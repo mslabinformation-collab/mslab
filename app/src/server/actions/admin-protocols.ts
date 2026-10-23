@@ -32,7 +32,7 @@ export const sendProtocolAction = adminAction(async (_admin, input: SendInput): 
   }
 });
 
-/** "Lukusta ja saada kõik": the protocols the confirmation listed, each in a transaction of its own; a failure is reported by its id. */
+/** „Saada kõigile“: the protocols the confirmation listed, each in a transaction of its own; a failure is reported by its id. */
 export const sendProtocolsAction = adminAction(async (_admin, input: SendInput[]): Promise<BulkResult[]> => {
   const parsed = items.safeParse(input);
   if (!parsed.success) return [];

@@ -3,10 +3,12 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { localKey, type ScreenAnswer } from "@/components/admin/protocol-autosave";
+import { protocolSaveStatus } from "@/components/admin/protocol-status";
 import { ProtocolScreen, type ScreenStudentView, type ScreenView } from "@/components/admin/ProtocolScreen";
 
-// The course day's screen (spec §4): the students with their marks, the selected one's boxes under her headings, the autosave's status,
-// switching without waiting, the too-long box, a sent protocol read-only, the conflict's notice, and a text kept in the browser coming back.
+// The course day's screen (spec §4): the students with their marks, the selected one's boxes under her headings, the autosave's status (the
+// SaveStatus chip since the admin UX pass, README A3), switching without waiting, the too-long box, a sent protocol read-only, the conflict's
+// notice with „Taasta minu tekst“ (B13), and a text kept in the browser coming back.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -63,6 +65,9 @@ const type = async (selector: string, value: string) =>
 const click = async (selector: string) => act(async () => ($(selector) as HTMLElement).click());
 const wait = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
 const bodies = () => fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)) as { registrationId: number; version: number; notes: string[] });
+/** The SaveStatus chip of the open protocol (or of `editor`'s): its state, and the words she sees (the ✓ of the saved state in front). */
+const kind = (editor = "") => $(`${editor} [data-save-status]`.trim())!.getAttribute("data-save-kind");
+const shownText = (editor = "") => $(`${editor} [data-save-text]`.trim())!.textContent;
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -96,7 +101,7 @@ test("the students with their marks; the first is open; a note saves 1.5 s after
   await wait(1);
   expect(bodies()).toEqual([{ registrationId: 1, protocolId: null, version: 0, titles: TITLES, notes: ["Kulmud ühtlased", ""], generalNote: "" }]);
   await wait(0);
-  expect($("[data-save-status]")!.textContent).toBe("Salvestatud 11:00");
+  expect(shownText()).toBe("✓ Salvestatud 11:00");
 });
 
 test("switching student is one tap: the one left saves at once, the next is shown without waiting for it", async () => {
@@ -146,7 +151,11 @@ test("Review Focus 4: a paste over 10 000 characters is kept whole, the box says
   expect(fetchMock).not.toHaveBeenCalled();
   expect($("[data-note-long]")!.textContent).toBe("Liiga pikk: 10001 / 10000 märki. Lühenda, siis salvestan.");
   expect($("[data-note='1']")!.getAttribute("aria-invalid")).toBe("true");
-  expect($("[data-save-status]")!.textContent).toBe("Salvestamata — üks tekst on liiga pikk");
+  expect(kind()).toBe("invalid");
+  expect(shownText()).toBe("Salvestamata — kontrolli märgitud välja");
+  // „Näita“ takes her to the box that is too long
+  await act(async () => ($("[data-save-status] button") as HTMLElement).click());
+  expect(document.activeElement).toBe($("[data-note='1']"));
   expect(($("[data-note='1']") as HTMLTextAreaElement).value).toHaveLength(10_001);
 });
 
@@ -175,8 +184,90 @@ test("another device saved first: the stored text is shown and this screen's wor
   await wait(0);
   expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("teine seade");
   expect($("[data-conflict]")!.textContent).toContain("minu tekst");
+  expect(kind()).toBe("conflict");
+  expect(shownText()).toBe("Muudeti teises aknas — vaata üle");
   await click("[data-conflict-dismiss]");
   expect($("[data-conflict]")).toBeNull();
+  expect(kind()).toBe("saved");
+});
+
+test("B13: „Taasta minu tekst“ puts this screen's words back into their box and saves them over the other device's text, at its version", async () => {
+  const other = { version: 3, stages: TITLES.map((title, i) => ({ title, note: i === 0 ? "teine seade" : "" })), generalNote: "teise seadme üldine", sentVersion: null, sentAt: null, updatedAt: "2026-10-12T08:01:00.000Z" };
+  fetchMock.mockImplementationOnce(async () => json(409, { ok: false, error: "conflict", protocol: other }));
+  fetchMock.mockImplementationOnce(async () => json(200, { ok: true, version: 4, savedAt: "2026-10-12T08:02:00.000Z" }));
+  await render({ single: true, students: [student(1, "Anu", { version: 2, notes: ["vana", ""] })] });
+  await type("[data-note='0']", "minu tekst");
+  await wait(1500);
+  await wait(0);
+  const restore = $("[data-conflict] [data-conflict-restore]") as HTMLButtonElement;
+  expect(restore.textContent).toBe("Taasta minu tekst");
+  expect(restore.type).toBe("button");
+  await click("[data-conflict-restore]");
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("minu tekst");
+  expect(($("[data-general]") as HTMLTextAreaElement).value).toBe("teise seadme üldine"); // (she wrote nothing there: it keeps what is there)
+  expect($("[data-conflict]")).toBeNull();
+  expect(document.activeElement).toBe($("[data-note='0']")); // the box her words went back into
+  await wait(0);
+  expect(bodies().map((b) => [b.version, b.notes])).toEqual([[2, ["minu tekst", ""]], [3, ["minu tekst", ""]]]);
+  expect(kind()).toBe("saved");
+  expect(shownText()).toBe("✓ Salvestatud 11:02");
+  expect(localStorage.length).toBe(0); // the server has it: no copy, no notice left in this browser
+});
+
+test("B13: a sent protocol the notice is on is unlocked by „Taasta minu tekst“, so the words she wants back can go in (it becomes „Muudetud“)", async () => {
+  // a copy kept in this browser of a text typed after „Muuda“, and the server moved on meanwhile (another device saved and sent it)
+  localStorage.setItem(localKey(1), JSON.stringify({ version: 2, titles: TITLES, content: { notes: ["minu parandus", ""], generalNote: "" }, sent: [] }));
+  fetchMock.mockImplementation(async () => json(200, { ok: true, version: 4, savedAt: "2026-10-12T08:02:00.000Z" }));
+  await render({ single: true, students: [student(1, "Anu", { version: 3, notes: ["teise seadme", ""], sentVersion: 3, sentAt: "2026-10-12T07:00:00.000Z" })] });
+  expect($("[data-locked]")).not.toBeNull();
+  await click("[data-conflict-restore]");
+  expect($("[data-locked]")).toBeNull();
+  expect(($("[data-note='0']") as HTMLTextAreaElement).readOnly).toBe(false);
+  expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("minu parandus");
+  await wait(0);
+  expect(bodies().map((b) => [b.version, b.notes[0]])).toEqual([[3, "minu parandus"]]);
+});
+
+test("B13: words under a heading the protocol no longer has stay in the notice; „Taasta minu tekst“ is offered only while some words have a box", async () => {
+  localStorage.setItem(localKey(1), JSON.stringify({ version: 1, titles: ["Vana punkt"], content: { notes: ["vana punkti tekst"], generalNote: "" }, sent: [] }));
+  await render({ single: true, students: [student(1, "Anu", { version: 2, notes: ["serveri tekst", ""] })] });
+  expect($("[data-conflict]")!.textContent).toContain("vana punkti tekst");
+  expect($("[data-conflict-restore]")).toBeNull();
+  expect($("[data-conflict-dismiss]")).not.toBeNull();
+});
+
+test("on a phone (below 900 px, the admin's phone layout) the saved chip is the short one: „✓ 11:00“; the screen reader still hears the whole sentence", async () => {
+  const media = vi.spyOn(window, "matchMedia").mockImplementation(
+    (query: string) => ({ matches: !query.includes("min-width: 900px"), media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }) as unknown as MediaQueryList,
+  );
+  await render({ single: true, students: [student(1, "Anu", { version: 1, notes: ["Esimene.", ""], savedAt: "2026-10-12T08:00:00.000Z" })] });
+  expect(shownText()).toBe("✓ 11:00");
+  expect($("[data-save-status] [role='status']")!.textContent).toBe("Salvestatud 11:00");
+  media.mockRestore();
+});
+
+test("protocolSaveStatus: every state of the protocol's own engine in SaveStatus' kinds; an open notice turns 'saved' into 'conflict', and only 'saved'", () => {
+  const notice = { titles: TITLES, lost: { notes: ["minu", ""], generalNote: "" } };
+  const at = Date.parse("2026-10-12T08:00:00.000Z");
+  expect(protocolSaveStatus({ kind: "saved", at }, null)).toEqual({ kind: "saved", at: new Date(at) });
+  expect(protocolSaveStatus({ kind: "saved", at: null }, null)).toEqual({ kind: "saved", at: null });
+  expect(protocolSaveStatus({ kind: "pending" }, null)).toEqual({ kind: "dirty" });
+  expect(protocolSaveStatus({ kind: "saving" }, null)).toEqual({ kind: "saving" });
+  expect(protocolSaveStatus({ kind: "checking" }, null)).toEqual({ kind: "checking" });
+  expect(protocolSaveStatus({ kind: "retrying" }, null)).toEqual({ kind: "retry" });
+  expect(protocolSaveStatus({ kind: "tooLong", places: [1, "general"] }, null, TITLES)).toEqual({ kind: "invalid", fields: ["Värvimine", "Üldised märkused"] });
+  expect(protocolSaveStatus({ kind: "signedOut" }, null)).toEqual({ kind: "signedOut" });
+  expect(protocolSaveStatus({ kind: "gone" }, null)).toEqual({ kind: "gone" });
+  // the notice is open: a settled protocol says so; a save on its way, a retry, and the states she must act on keep their own words
+  expect(protocolSaveStatus({ kind: "saved", at }, notice)).toEqual({ kind: "conflict" });
+  expect(protocolSaveStatus({ kind: "saved", at }, { titles: TITLES, lost: null })).toEqual({ kind: "conflict" });
+  expect(protocolSaveStatus({ kind: "pending" }, notice)).toEqual({ kind: "dirty" });
+  expect(protocolSaveStatus({ kind: "saving" }, notice)).toEqual({ kind: "saving" });
+  expect(protocolSaveStatus({ kind: "checking" }, notice)).toEqual({ kind: "checking" });
+  expect(protocolSaveStatus({ kind: "retrying" }, notice)).toEqual({ kind: "retry" });
+  expect(protocolSaveStatus({ kind: "tooLong", places: [0] }, notice, TITLES)).toEqual({ kind: "invalid", fields: ["Ettevalmistus"] });
+  expect(protocolSaveStatus({ kind: "signedOut" }, notice)).toEqual({ kind: "signedOut" });
+  expect(protocolSaveStatus({ kind: "gone" }, notice)).toEqual({ kind: "gone" });
 });
 
 test("a browser that cannot keep the text (storage full): 'Salvestamata' and a short notice until the server has it", async () => {
@@ -220,7 +311,8 @@ test("the chip says 'Salvestamata' while a save's answer is unknown, also when t
   expect(fetchMock).toHaveBeenCalledTimes(1);
   await type("[data-note='0']", "A");
   expect($("[data-student='1'] [data-unsaved]")!.textContent).toBe("Salvestamata");
-  expect($("[data-save-status]")!.textContent).toBe("Salvestamata muudatused");
+  expect(kind()).toBe("dirty");
+  expect(shownText()).toBe("Salvestamata muudatused");
 });
 
 test("a text kept in this browser comes back after a reload and is saved at once", async () => {
@@ -238,11 +330,11 @@ test("shown, the screen reads the server's text again and says so instead of 'Sa
   await renderOnly(view);
   expect(read).toHaveBeenCalledTimes(1);
   expect(read).toHaveBeenCalledWith({ sessioon: 5 });
-  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("checking");
-  expect($("[data-save-status]")!.textContent).toBe("Kontrollin salvestatud teksti…");
+  expect(kind()).toBe("checking");
+  expect(shownText()).toBe("Kontrollin salvestatud teksti…");
   await answered(answer(view.students));
-  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("saved");
-  expect($("[data-save-status]")!.textContent).toBe("Salvestatud 11:00");
+  expect(kind()).toBe("saved");
+  expect(shownText()).toBe("✓ Salvestatud 11:00");
 });
 
 test("the server's text newer: it is on the screen (and the student's mark), 'Salvestatud' with the server's time, nothing sent, no notice", async () => {
@@ -256,7 +348,7 @@ test("the server's text newer: it is on the screen (and the student's mark), 'Sa
   );
   expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Kolmas versioon.");
   expect(($("[data-general]") as HTMLTextAreaElement).value).toBe("Üldiselt hästi.");
-  expect($("[data-save-status]")!.textContent).toBe("Salvestatud 11:05");
+  expect(shownText()).toBe("✓ Salvestatud 11:05");
   expect($("[data-student='1']")!.getAttribute("data-status")).toBe("changed"); // sent version 2 of 3
   expect($("[data-conflict]")).toBeNull();
   await wait(10_000);
@@ -285,8 +377,8 @@ test("a student the server's answer adds appears, and the open student stays ope
   await answered(answer([student(1, "Anu"), student(3, "Kati")]));
   expect($$("[data-student]").map((b) => b.getAttribute("data-student"))).toEqual(["1", "3", "2"]); // (hers last: the answer's students first)
   expect($("[data-student='2']")!.getAttribute("aria-pressed")).toBe("true"); // and she is still the open one, not gone from under Maria's hands
-  expect($("[data-editor='2'] [data-save-status]")!.getAttribute("data-save-status")).toBe("gone");
-  expect($("[data-editor='2'] [data-save-status]")!.textContent).toBe("Seda registreeringut enam ei ole. Tekst on selles seadmes alles.");
+  expect(kind("[data-editor='2']")).toBe("gone");
+  expect(shownText("[data-editor='2']")).toBe("Seda registreeringut enam ei ole. Tekst on selles seadmes alles."); // (P-10: „registreeringut“)
   expect($("[data-editor='2'] [data-note='0']")).not.toBeNull(); // her editor is still there
   expect($("[data-student='1'] [data-unsaved]")).toBeNull();
 });
@@ -295,9 +387,9 @@ test("the read answers 404 (no such session now): every student says she is gone
   await renderOnly({ single: false, students: [student(1, "Anu"), student(2, "Mari")] });
   await answered({ status: 404, body: { ok: false, error: "notFound" } });
   expect($$("[data-student]")).toHaveLength(2);
-  expect($("[data-editor='1'] [data-save-status]")!.getAttribute("data-save-status")).toBe("gone");
+  expect(kind("[data-editor='1']")).toBe("gone");
   await click("[data-student='2']");
-  expect($("[data-editor='2'] [data-save-status]")!.getAttribute("data-save-status")).toBe("gone");
+  expect(kind("[data-editor='2']")).toBe("gone");
   await wait(120_000);
   expect(read).toHaveBeenCalledTimes(1);
 });
@@ -305,8 +397,8 @@ test("the read answers 404 (no such session now): every student says she is gone
 test("the read is refused (401): the screen says she is signed out instead of 'checking', with her text; the read is not repeated", async () => {
   await renderOnly({ single: true, students: [student(1, "Anu", { version: 1, notes: ["Esimene.", ""] })] });
   await answered({ status: 401, body: { ok: false, error: "unauthorized" } });
-  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("signedOut");
-  expect($("[data-save-status]")!.textContent).toBe("Salvestamata — logi uuesti sisse. Tekst on selles seadmes alles.");
+  expect(kind()).toBe("signedOut");
+  expect(shownText()).toBe("Salvestamata — logi uuesti sisse"); // (SaveStatus' words; the send's line keeps "Tekst on selles seadmes alles.")
   expect(($("[data-note='0']") as HTMLTextAreaElement).value).toBe("Esimene.");
   await wait(120_000);
   expect(read).toHaveBeenCalledTimes(1);
@@ -318,7 +410,7 @@ test("a read that fails is tried again after 2, 5 and 10 s, and at once when the
   await renderOnly(view);
   expect(read).toHaveBeenCalledTimes(1);
   await answered(null); // no connection
-  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("checking");
+  expect(kind()).toBe("checking");
   await wait(1_999);
   expect(read).toHaveBeenCalledTimes(1);
   await wait(1);
@@ -332,19 +424,19 @@ test("a read that fails is tried again after 2, 5 and 10 s, and at once when the
   await act(async () => void window.dispatchEvent(new Event("online"))); // the network is back: at once, without the 10 s
   expect(read).toHaveBeenCalledTimes(4);
   await answered(answer(view.students));
-  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("saved");
+  expect(kind()).toBe("saved");
   await act(async () => void window.dispatchEvent(new Event("online"))); // read: nothing to ask
   await wait(60_000);
   expect(read).toHaveBeenCalledTimes(4);
   await act(async () => void window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: false })));
   expect(read).toHaveBeenCalledTimes(4);
   await act(async () => void window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }))); // from the browser's cache: unread again
-  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("checking");
+  expect(kind()).toBe("checking");
   expect(read).toHaveBeenCalledTimes(5);
   await answered({ status: 401, body: { ok: false, error: "unauthorized" } }); // signed out: trying again changes nothing
   await wait(120_000);
   expect(read).toHaveBeenCalledTimes(5);
-  expect($("[data-save-status]")!.getAttribute("data-save-status")).toBe("signedOut");
+  expect(kind()).toBe("signedOut");
 });
 
 test("the screen being left: an answer that comes after is not applied, and nothing is asked again", async () => {

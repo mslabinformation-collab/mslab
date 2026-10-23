@@ -60,7 +60,7 @@ describe("what a protocol holds", () => {
     expect(overLimit(["ok", long, long], long)).toEqual([1, 2, "general"]);
   });
 
-  test("'Lukusta ja saada kõik' takes what has text and is not sent as it is", () => {
+  test("'Saada kõigile' takes what has text and is not sent as it is", () => {
     expect(newToSend("draft", true)).toBe(true);
     expect(newToSend("none", true)).toBe(true); // typed, its first save not answered yet
     expect(newToSend("changed", true)).toBe(true);

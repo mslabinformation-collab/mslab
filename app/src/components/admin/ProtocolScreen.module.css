@@ -167,13 +167,20 @@
   overflow-wrap: anywhere;
 }
 
+/* „Taasta minu tekst“ (B13) and „Selge“ */
+.conflictActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 @media (max-width: 640px) {
   .editor {
     padding: 20px 16px;
   }
 }
 
-/* the sends (ProtocolSend.tsx): "Lukusta ja saada kõik" above the screen with its confirmation; a student's buttons under her protocol */
+/* the sends (ProtocolSend.tsx): „Saada kõigile ({n})“ above the screen, its ConfirmPanel in its place; a student's buttons under her protocol */
 .sendAll {
   --gap: 12px;
   display: flex;
@@ -187,21 +194,9 @@
   margin: 0;
 }
 
+/* the question's place: as wide as its lines need, never wider than the screen */
 .confirm {
-  display: grid;
-  justify-items: start;
-  gap: 8px;
-  margin: 0;
-}
-
-.confirm p:focus {
-  outline: none;
-}
-
-.answers {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  max-width: 100%;
 }
 
 /* the summary's place is on the screen from the start (a screen reader announces what comes into a live region that is already there): empty, it takes no room (its negative margin takes back the gap before it; a flex column

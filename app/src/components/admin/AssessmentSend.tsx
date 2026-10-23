@@ -263,7 +263,7 @@ export function AssessmentSend({
   }
 
   const waiting = !notesOnly && assessment.status === "open";
-  const label = notesOnly ? (statusOf(entry) === "changed" ? t.resend : t.send) : assessment.locked ? t.resend : s.send;
+  const label = notesOnly ? (statusOf(entry) === "changed" ? s.sendAgain : s.sendNotes) : assessment.locked ? s.sendAgain : s.send;
   return (
     <div className={screen.sendBar} data-send-bar="">
       {locked ? (

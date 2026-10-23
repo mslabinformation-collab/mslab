@@ -16,7 +16,7 @@ import { requireAdmin } from "@/server/auth";
 
 export const dynamic = "force-dynamic";
 /**
- * "Lukusta ja saada kõik" is a server action of this page (sendProtocolsAction), so its mails run under this page's limit: they go out after the
+ * „Saada kõigile“ is a server action of this page (sendProtocolsAction), so its mails run under this page's limit: they go out after the
  * answer as ONE task, one after another about 0.8 s apart (server/protocols.ts mailProtocols), up to 100 of them (about 80 s). 300 s is the longest
  * a function may run on Vercel Hobby; a task cut short would lose the mails of the students not reached, and a mail cannot be sent again.
  * (tests/unit/protocol-page.test.ts pins it.)
@@ -39,7 +39,8 @@ function viewOf(screen: ScreenData, source: ScreenView["source"]): ScreenView {
  * first, and the open individual registrations, each with its „Ava“. A parameter that is there but is not a number, or names nothing, is still the
  * "not found" below, not the index. ?sessioon=<id>: every listed registration of one session (from Kalender
  * and the overview's "Täna"); ?registreering=<id>: one registration (from Registreerimised: an individual course, or one group student). The
- * header names the course, the day and the place, with the way back; the screen is ProtocolScreen (its autosave runs in the browser).
+ * header names the course, the day and the place, with the way back to the index („← Protokollid“, README A3; its not-found card too); the screen
+ * is ProtocolScreen (its autosave runs in the browser).
  * ?ligipaas=<id> (phase e-course completion, spec §5.3): one e-course access — Maria's assessment of the student's practical work (from
  * Hindamine, the student's drawer and Maria's notice): the header names the course and the student, the way back is Hindamine, an ended
  * access says Maria can still assess, and the screen is AssessmentScreen (its first line the round, which follows the screen's reads). The
@@ -90,8 +91,8 @@ export default async function ProtocolsPage({ searchParams }: Props) {
         </div>
         <section className={ui.card}>
           <p className={ui.empty}>{accessId !== null ? a.notFound : t.notFound}</p>
-          <Link className={ui.link} href={accessId !== null ? "/admin/hindamine" : "/admin/kalender"}>
-            {accessId !== null ? a.back : t.toCalendar}
+          <Link className={ui.link} href={accessId !== null ? "/admin/hindamine" : "/admin/protokollid"}>
+            {accessId !== null ? a.back : t.back}
           </Link>
         </section>
       </div>
@@ -126,7 +127,6 @@ export default async function ProtocolsPage({ searchParams }: Props) {
   }
 
   const s = screen.session;
-  const back = screen.kind === "session" && s ? { href: `/admin/kalender?id=${s.id}`, label: t.toCalendar } : { href: `/admin/registreerimised?id=${registrationId}`, label: t.toRegistration };
   const when = s ? `${formatWeekday(s.startsAt, "et")}, ${formatDate(s.startsAt, "et")} · ${formatTime(s.startsAt, "et")}` : t.individual;
   const place = s ? [s.city, s.venue].filter(Boolean).join(", ") : "";
 
@@ -143,8 +143,8 @@ export default async function ProtocolsPage({ searchParams }: Props) {
           </p>
           {s?.cancelled && <span className={`${ui.tag} ${ui.bad}`}>{t.sessionCancelled}</span>}
         </div>
-        <Link className={ui.link} href={back.href}>
-          {back.label}
+        <Link className={ui.link} href="/admin/protokollid">
+          {t.back}
         </Link>
       </div>
       {screen.hidden > 0 && (

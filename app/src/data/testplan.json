@@ -4314,13 +4314,15 @@
         "Enne kirjutamist on registreeringu juures nupp „Lisa protokoll“, sest protokolli veel pole.",
         "Lehel on koolituse nimi, kuupäev ja Proov 1 nimi.",
         "„Praktiline osa“ all on koolituse punktid ja nende all „Üldised märkused“.",
-        "Kirjutades näed „Salvestamata muudatused“, siis „Salvestatud …“ koos kellaajaga.",
+        "Kirjutades näed nime kõrval „Salvestamata muudatused“, siis „✓ Salvestatud …“ kellaajaga; püsti tahvlis „✓“ ja kellaaeg.",
         "Pärast uuesti laadimist on tekst alles.",
         "Paneelis on nüüd sama nupu nimi „Ava protokoll“."
       ],
       "why": "Maria kirjutab protokolli koolituspäeval tahvlis.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-protokoll-uhendus",
@@ -4338,12 +4340,14 @@
       ],
       "expect": [
         "Ilma internetita näed „Salvestamata — proovin uuesti“.",
-        "Kui internet on tagasi, näed „Salvestatud …“ uue kellaajaga.",
+        "Kui internet on tagasi, näed „✓ Salvestatud …“ uue kellaajaga; püsti tahvlis „✓“ ja kellaaeg.",
         "Pärast uuesti laadimist on sõna Proov alles."
       ],
       "why": "Koolituse ruumis võib Wi-Fi katkeda ja tekst ei tohi kaduda.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-protokoll-saada",
@@ -4354,18 +4358,21 @@
       "href": "/admin/protokollid",
       "steps": [
         "Ava Proov 1 protokoll.",
-        "Vajuta „Saada“.",
+        "Vajuta protokolli all „Saada protokoll Proovile“.",
         "Ava 30 minuti jooksul kiri „Sinu koolituse protokoll on valmis“ ja vajuta kirjas „Vaata protokolli“."
       ],
       "expect": [
+        "Nupul on õpilase eesnimi: „Saada protokoll Proovile“; vajutus saadab kohe, ilma küsimuseta.",
         "Protokolli kohal on „Saadetud … Õpilane näeb seda versiooni.“ koos kuupäeva ja kellaajaga.",
-        "Nupu „Saada“ asemel on nüüd „Muuda“.",
+        "Nupu „Saada protokoll Proovile“ asemel on nüüd „Muuda“.",
         "Proov 1 postkasti tuleb kiri „Sinu koolituse protokoll on valmis“.",
         "Kirja nupp avab lehe „Koolituse protokoll“."
       ],
       "why": "Protokoll on õpilase kirjalik tagasiside.",
       "risk": "high",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-protokoll-opilane",
@@ -4397,42 +4404,80 @@
       "steps": [
         "Ava Proov 1 protokoll ja vajuta „Muuda“.",
         "Lisa „Üldised märkused“ lõppu: Proov 1, muudetud.",
-        "Vajuta „Saada uuesti“.",
+        "Vajuta „Saada protokoll Proovile uuesti“.",
         "Ava 30 minuti jooksul kiri „Sinu koolituse protokolli on uuendatud“ ja vajuta kirjas „Vaata protokolli“."
       ],
       "expect": [
         "Pärast „Muuda“ näed „Muuda teksti — salvestan ise. Siis saad selle uuesti saata.“.",
-        "Pärast muutmist on all nupp „Saada uuesti“.",
+        "Pärast muutmist on all nupp „Saada protokoll Proovile uuesti“.",
         "Pärast saatmist on üleval jälle „Saadetud …“ uue kellaajaga.",
         "Proov 1 postkasti tuleb kiri „Sinu koolituse protokolli on uuendatud“.",
         "Kirja nupp avab protokolli koos muudetud tekstiga."
       ],
       "why": "Maria saab protokolli hiljem parandada.",
       "risk": "med",
-      "writes": true
+      "writes": true,
+      "mark": "reworded",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "kontakt-protokoll-taasta",
+      "area": "kontakt",
+      "who": "maria",
+      "device": "arvuti",
+      "title": "Protokoll kahes vahekaardis: „Taasta minu tekst“",
+      "href": "/admin/protokollid",
+      "steps": [
+        "Ava Proov 1 protokoll kahes brauseri vahekaardis ja vajuta mõlemas „Muuda“.",
+        "Lisa teises vahekaardis „Üldised märkused“ lõppu: teine aken. Oota „✓ Salvestatud …“.",
+        "Mine esimesse vahekaarti ja lisa „Üldised märkused“ lõppu: esimene aken.",
+        "Oota, kuni kasti kohale tuleb teade, ja vajuta selles „Taasta minu tekst“.",
+        "Laadi mõlemad vahekaardid uuesti."
+      ],
+      "expect": [
+        "Esimeses vahekaardis on teade, et protokolli muudeti teises seadmes või aknas, ja all sinu tekst.",
+        "Nime kõrval on „Muudeti teises aknas — vaata üle“ ja kastis on teise akna tekst.",
+        "Teates on nupud „Taasta minu tekst“ ja „Selge“.",
+        "Pärast „Taasta minu tekst“ on kastis „esimene aken“, teade kaob ja nime kõrval tuleb „✓ Salvestatud …“.",
+        "Pärast uuesti laadimist on mõlemas vahekaardis „esimene aken“ ja „teine aken“ on kadunud.",
+        "Proov 1 on nüüd „Muudetud“: järgmine kontroll saadab selle."
+      ],
+      "why": "Kui kaks akent või seadet muudavad sama protokolli, saab Maria oma teksti ühe vajutusega tagasi.",
+      "risk": "high",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-lukusta-koik",
       "area": "kontakt",
       "who": "maria",
       "device": "tahvel",
-      "title": "„Lukusta ja saada kõik“ kinnitus",
+      "title": "„Saada kõigile (…)“ küsimus ja saatmine",
       "href": "/admin/kalender",
       "steps": [
         "Ava „Kalender“ ja vajuta Proov 1 kuupäeva real.",
         "Vajuta paneelis „Protokollid“.",
-        "Vajuta „Lukusta ja saada kõik“.",
-        "Loe kinnitus läbi ja vajuta „Tagasi“, mitte „Saada“."
+        "Vajuta ülal nuppu „Saada kõigile (…)“.",
+        "Loe küsimus läbi ja vajuta „Katkesta“.",
+        "Vajuta uuesti „Saada kõigile (…)“ ja siis „Jah, saada … protokolli“.",
+        "Vajuta veel kord nuppu, mis näitab nüüd „Saada kõigile (0)“."
       ],
       "expect": [
         "Avaneb sama koolituspäeva kõigi õpilaste protokollide leht.",
-        "Kinnituses on rida „Juba saadetud, uut pole: Proov 1“ või „Pole midagi uut saata.“.",
-        "Tühja protokolliga õpilased on real „Jäävad vahele, sest protokoll on tühi: …“.",
-        "Pärast „Tagasi“ ei saadeta midagi."
+        "Sulgudes on saatmist ootavate protokollide arv; pärast eelmist kontrolli on see vähemalt 1.",
+        "Nupu asemele tuleb küsimus „Kas saadan … protokolli?“ nuppudega „Jah, saada … protokolli“ ja „Katkesta“.",
+        "Küsimuses on rida „Saavad protokolli: Proov 1“; tühja protokolliga õpilased on real „Jäävad vahele, …“.",
+        "Pärast „Katkesta“ on nupp tagasi ja midagi ei saadeta.",
+        "Pärast „Jah“ on nupu all „Saadetud: Proov 1.“ ja Proov 1 juures „Saadetud“.",
+        "Nupuga „Saada kõigile (0)“ küsimust ei tule: nupu all on „Pole midagi uut saata.“.",
+        "Proov 1 postkasti tuleb kiri „Sinu koolituse protokolli on uuendatud“."
       ],
       "why": "Koolituspäeva lõpus saadab Maria kõik protokollid korraga.",
       "risk": "med",
-      "writes": false
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-tagasiside-luba",
@@ -4825,14 +4870,14 @@
         "Vajuta ühe koolituspäeva real nuppu „Ava“.",
         "Mine brauseri tagasi-nupuga nimekirja tagasi ja keri lõppu.",
         "Ava roheline päev, kus Proov 1 protokoll on saadetud, vajuta „Muuda“, lisa märkus ja ava see leht uuesti kontrolli lingist.",
-        "Vajuta „Saada uuesti“ ja ava see leht uuesti kontrolli lingist."
+        "Vajuta „Saada protokoll Proovile uuesti“ ja ava see leht uuesti kontrolli lingist."
       ],
       "expect": [
         "Pealkirja „Protokollid“ all on „Täna ja viimased 14 päeva. Vanemad leiad Kalendrist.“.",
         "Iga koolituspäeva rida näitab kuupäeva, koolitust, kellaaega, kohta ja õpilaste arvu.",
         "Tänane päev on esimene ja kuupäeva asemel on „Täna“; vanemad on all, üle 14 päeva vanuseid ja tulevasi ei ole.",
         "Rea paremal on „… õpilast · … saadetud · … mustand“ või roheline „✓ Kõik … saadetud“.",
-        "Pärast muutmist roheline „✓ Kõik … saadetud“ kaob ja „mustand“ kasvab ühe võrra; pärast „Saada uuesti“ tuleb roheline tagasi.",
+        "Pärast muutmist roheline „✓ Kõik … saadetud“ kaob ja „mustand“ kasvab ühe võrra; pärast uuesti saatmist tuleb roheline tagasi.",
         "Nupp „Ava“ viib selle päeva protokollide lehele; tänase päeva nupp on tume.",
         "Allpool on pealkiri „INDIVIDUAALKOOLITUSED“ ja selle all individuaalkoolituse registreeringud, mille protokoll pole saadetud või on pärast saatmist muudetud.",
         "Kui viimase 14 päeva jooksul koolituspäevi polnud, on lehel „Viimase 14 päeva jooksul koolituspäevi polnud.“ ja link „← Kalender“."
@@ -4840,8 +4885,8 @@
       "why": "Maria leiab hiljutise koolituspäeva protokollid kahe vajutusega.",
       "risk": "med",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-22T05:51:47.206Z"
+      "mark": "reworded",
+      "markedAt": "deploy"
     },
     {
       "id": "kontakt-protokollid-tana-otse",

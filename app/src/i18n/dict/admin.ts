@@ -737,7 +737,8 @@ export const adminEt = {
   },
 
   // The course day's protocols (phase protocols, spec §4): /admin/protokollid?sessioon=<id> | ?registreering=<id> (ProtocolScreen.tsx and its
-  // autosave). The status marks are spec §3's. {time} is "HH:MM" in Tallinn, {n} a count, {max} the box's limit, {date} a day and a time.
+  // autosave). The status marks are spec §3's. {time} is "HH:MM" in Tallinn, {n} a count, {max} the box's limit, {date} a day and a time. The save's
+  // chip is SaveStatus (admin UX pass, README A3), in `autosave`'s words.
   protocols: {
     eyebrow: "Koolituspäev",
     title: "Protokollid",
@@ -745,8 +746,8 @@ export const adminEt = {
     open: "Protokollid",
     openOne: "Ava protokoll",
     notFound: "Seda toimumist või registreeringut ei leitud, või pole see kontaktkoolitus.",
-    toCalendar: "Kalendrisse",
-    toRegistration: "Registreeringu juurde",
+    // the way back from a session's or a registration's screen, and from its not-found card: the index (README A3, strings.md D3)
+    back: "← Protokollid",
     // the index (no address parameter; admin UX pass B8): today and the 14 days before it, then the open individual registrations
     index: {
       note: "Täna ja viimased 14 päeva. Vanemad leiad Kalendrist.",
@@ -775,32 +776,35 @@ export const adminEt = {
     practice: "Praktiline osa",
     general: "Üldised märkused",
     noStages: "Koolitusel pole protokolli punkte. Lisa need koolituse juures („Protokolli punktid“); seni on siin ainult üldised märkused.",
-    saved: "Salvestatud {time}",
-    pending: "Salvestamata muudatused",
-    saving: "Salvestan…",
-    // the screen shown from a page the browser kept (Back): what the server holds is read again before it says "Salvestatud" (wording approved by Dim 13.10.2026)
-    checking: "Kontrollin salvestatud teksti…",
-    retrying: "Salvestamata — proovin uuesti",
+    // the chip's „Seda {asja} enam ei ole …“ of a registration cancelled or moved meanwhile (piece2-texts P-10)
+    goneThing: "registreeringut",
+    // why a send did not go: a box over its limit, signed out (the chip says these in SaveStatus' words; the line under the send button in these)
     tooLongStatus: "Salvestamata — üks tekst on liiga pikk",
     signedOut: "Salvestamata — logi uuesti sisse. Tekst on selles seadmes alles.",
-    gone: "Seda registreeringut enam ei ole. Tekst on selles seadmes alles.",
     // the browser could not keep the unsaved text (its storage full or blocked): shown on that protocol until the server has the text
     notKept: "Seda teksti ei saa selles seadmes hoida (brauseri mälu on täis või suletud). Ära sulge lehte enne, kui see on salvestatud.",
     tooLong: "Liiga pikk: {n} / {max} märki. Lühenda, siis salvestan.",
     conflict: "Seda protokolli muudeti vahepeal teises seadmes või aknas. Näed nüüd salvestatud teksti; selle ekraani salvestamata tekst on allpool.",
     conflictLost: "Selle ekraani salvestamata tekst",
+    // B13 (README A3, strings.md A3-4): puts this screen's words back into their boxes and saves them over the other device's text
+    restore: "Taasta minu tekst",
     dismiss: "Selge",
     locked: "Saadetud {date}. Õpilane näeb seda versiooni.",
-    send: "Saada",
+    // the informed send, with no confirmation (README A3, strings.md A3-2): {name} is the student's first name with its ending, „Katile“,
+    // „Kristjanile“ (domain/names.ts allative, S5); after a sent protocol was changed, the same with „uuesti“ (piece2-texts P-5)
+    send: "Saada protokoll {name}",
     sending: "Saadan…",
     edit: "Muuda",
-    resend: "Saada uuesti",
-    sendAll: "Lukusta ja saada kõik",
-    // a sent protocol opened with "Muuda": the first saved edit makes it "Muudetud", which offers "Saada uuesti"
+    resend: "Saada protokoll {name} uuesti",
+    // the session screen's send of everyone with something new (README A3, strings.md A3-1): {n} is how many will get one
+    sendAll: "Saada kõigile ({n})",
+    // a sent protocol opened with "Muuda": the first saved edit makes it "Muudetud", which offers the send again
     editing: "Muuda teksti — salvestan ise. Siis saad selle uuesti saata.",
-    // the confirmation of "Lukusta ja saada kõik" (spec §4): who gets a protocol, who is skipped because hers is empty, who has hers already
+    // the ConfirmPanel of „Saada kõigile“ (spec §4; README A3): the question and its yes for {n} protocols, then the lines — who gets a protocol, who
+    // is skipped because hers is empty, who has hers already (its „Katkesta“ is common.cancel). With none to send there is no question: `nothing`
+    // and the other lines stand in the summary's place.
     confirm: {
-      title: "Lukustan ja saadan protokollid",
+      question: "Kas saadan {n} protokolli?",
       will: "Saavad protokolli: {names}",
       skipped: "Jäävad vahele, sest protokoll on tühi: {names}",
       already: "Juba saadetud, uut pole: {names}",
@@ -809,8 +813,7 @@ export const adminEt = {
       // a student whose text is another device's, with its notice still open: left out until Maria has looked at it and pressed „Selge“ (wording approved by Dim 13.10.2026)
       review: "Vaata enne üle ja vajuta „Selge“: {names}",
       nothing: "Pole midagi uut saata.",
-      yes: "Saada",
-      no: "Tagasi",
+      yes: "Jah, saada {n} protokolli",
     },
     // the summary after "Saada": who got one, and per reason (sendErrors' words) who did not
     result: {
@@ -849,6 +852,8 @@ export const adminEt = {
       notesOnly: "Protokoll",
       back: "Hindamisse",
       notFound: "Sellist e-kursuse ligipääsu ei leitud, või see on tühistatud.",
+      // the protocol chip's „Seda {asja} enam ei ole …“ on an access's screen (piece2-texts P-10)
+      goneThing: "ligipääsu",
       // the access has ended: Maria can still assess (spec §8); a "Paranda" round needs it extended
       expired: "Ligipääs lõppes {date}. Hinnata ja saata saad ikka; kui midagi tuleb parandada, pikenda enne ligipääsu (Õpilased).",
       status: { open: "Ootab õpilase tööd", review: "Ootab hindamist", fix: "Paranda", passed: "Kinnitatud" },
@@ -872,6 +877,10 @@ export const adminEt = {
       waiting: "Hinnangu nupud avanevad, kui õpilane on töö hindamiseks saatnud. Märkusi võid kirjutada juba enne.",
       lockedPassed: "Kõik punktid on kinnitatud: hinnangud on lukus. Märkusi saad muuta ja uuesti saata.",
       send: "Saada hinnang",
+      // the notes-only protocol's send, and a send again (of changed notes, or of a locked assessment's notes): this screen's own words until its
+      // send is rebuilt (README A4); the course day's protocol says „Saada protokoll {eesnimi}le“ since README A3
+      sendNotes: "Saada",
+      sendAgain: "Saada uuesti",
       // the one confirmation (spec §5.3)
       confirmTitle: "Saadan hinnangu õpilasele",
       confirmCounts: "Kinnitatud: {ok} · Paranda: {fix}",

@@ -99,6 +99,8 @@ const BROWSER_FILES = [
   "src/components/admin/FoldRow.tsx",
   "src/components/admin/TabPills.tsx",
   "src/components/admin/autosave/constants.ts",
+  // the A screens, Task 8: the protocol engine's states in SaveStatus' kinds (the protocol screen's chip; pure, it imports the admin dict)
+  "src/components/admin/protocol-status.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

@@ -55,7 +55,7 @@ export function overLimit(notes: readonly string[], generalNote: string): NotePl
 }
 
 /**
- * "Lukusta ja saada kõik" sends a protocol that has something new (spec §4): one with text that is not sent as it is — a draft (or one whose
+ * „Saada kõigile“ sends a protocol that has something new (spec §4): one with text that is not sent as it is — a draft (or one whose
  * first save is still on its way: "none" with text), or one changed after it was sent. One without text is skipped and named.
  */
 export const newToSend = (status: ProtocolStatus, written: boolean): boolean => written && status !== "sent";

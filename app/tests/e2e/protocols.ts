@@ -113,7 +113,7 @@ export async function insertSentProtocol(registrationId: number, notes: string[]
   );
 }
 
-/** A protocol Maria has written but not sent (a draft, version 1): the confirmation of "Lukusta ja saada kõik" lists its student. */
+/** A protocol Maria has written but not sent (a draft, version 1): the question of „Saada kõigile“ lists its student. */
 export async function insertDraftProtocol(registrationId: number, notes: string[], generalNote: string): Promise<void> {
   const stages: Stage[] = E2E_HEADINGS.map((title, i) => ({ title, note: notes[i] ?? "" }));
   await localDb((sql) => sql`insert into protocols (registration_id, stages, general_note, version) values (${registrationId}, ${sql.json(stages)}, ${generalNote}, 1)`);
@@ -183,9 +183,15 @@ export const editor = (page: Page, id: number) => page.locator(`[data-editor="${
 export const chip = (page: Page, id: number) => page.locator(`[data-student="${id}"]`);
 export const note = (page: Page, id: number, i: number) => editor(page, id).locator(`[data-note="${i}"]`);
 export const general = (page: Page, id: number) => editor(page, id).locator("[data-general]");
+/** The student's SaveStatus chip (admin UX pass, README A3): its state is `data-save-kind`. */
 export const saveStatus = (page: Page, id: number) => editor(page, id).locator("[data-save-status]");
+/** The chip's whole sentence, as its status region speaks it (the phone's chip shows the saved state short: „✓ 11:20“). */
+export const saveWords = (page: Page, id: number) => saveStatus(page, id).locator('[role="status"]');
 /** The autosave has confirmed this student's text (the debounce is 1.5 s; a retry can be 20 s away). */
-export const saved = (page: Page, id: number) => expect(saveStatus(page, id)).toHaveAttribute("data-save-status", "saved", { timeout: 40_000 });
+export const saved = (page: Page, id: number) => expect(saveStatus(page, id)).toHaveAttribute("data-save-kind", "saved", { timeout: 40_000 });
+/** „Saada kõigile ({n})“'s question (piece 1's ConfirmPanel in the button's place): its lines, and its „Jah, saada {n} protokolli“. */
+export const sendAllLines = (page: Page) => page.locator("[data-send-confirm] [data-confirm-panel] li");
+export const sendAllYes = (page: Page) => page.locator("[data-send-confirm] [data-confirm-panel] button").first();
 /**
  * Every key this browser keeps for ONE protocol (the copy, the texts sent without an answer, the notice: protocol-autosave.ts localKey / sentKey /
  * conflictKey): `<prefix>:<id>` or `<prefix>:<id>:<tab>`, so protocol 1 never matches 12.

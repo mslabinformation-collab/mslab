@@ -240,7 +240,7 @@ describe("sendProtocol", () => {
   });
 });
 
-describe("sendProtocols ('Lukusta ja saada kõik')", () => {
+describe("sendProtocols ('Saada kõigile')", () => {
   test("each one in its own transaction, in order; a refusal or a failure does not stop the others, and is reported by its id", async () => {
     const { course, session, mari } = await setup();
     const anu = await student(db, course, session, "Anu Aas");

@@ -390,11 +390,11 @@ async function mailProtocol(deps: SendDeps, job: ProtocolMailJob): Promise<boole
   return true;
 }
 
-/** One student's outcome of "Lukusta ja saada kõik". */
+/** One student's outcome of „Saada kõigile“. */
 export type BulkResult = { registrationId: number; result: SendOutcome };
 
 /**
- * "Lukusta ja saada kõik" (spec §4, §8): the protocols the confirmation listed, one after another, each in its own transaction (like
+ * „Saada kõigile“ (spec §4, §8): the protocols the confirmation listed, one after another, each in its own transaction (like
  * sendProtocol), so one that fails does not stop the others; a throw is "failed", logged by the registration's id. The mails of the ones
  * sent go out as one task after the last transaction, one after another (mailProtocols).
  */

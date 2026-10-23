@@ -3,15 +3,15 @@ import { clientEmail, mintLoginToken } from "./account";
 import { adminReady, signInAsAdmin } from "./admin-login";
 import {
   chip, E2E_HEADINGS, editor, emptyNotes, general, insertDraftProtocol, insertFeedbackAnswer, insertIndividualRegistration, insertReview, insertSentProtocol, keptKeys, note,
-  protocolRows, runName, saved, SAVE_ROUTE, saveStatus,
+  protocolRows, runName, saved, SAVE_ROUTE, saveStatus, saveWords, sendAllLines, sendAllYes,
   storedFeedback, storedProtocol, studentContext, studentPage,
 } from "./protocols";
 import { smallTargets } from "./targets";
 import { test, expect } from "./test";
 
 // Phase protocols (spec §10 "End to end"): Maria's course day — the headings in the course editor, two students written while switching between
-// them, a dropped connection and a reload that lose nothing, "Lukusta ja saada kõik", the student reading hers (from her card and from the
-// mail's button), "Muuda" and "Saada uuesti" — and the feedback form from its card to Maria's Tagasiside, "Ei soovi", and the pages at 390,
+// them, a dropped connection and a reload that lose nothing, „Saada kõigile ({n})“, the student reading hers (from her card and from the
+// mail's button), "Muuda" and „Saada protokoll {eesnimi}le uuesti“ — and the feedback form from its card to Maria's Tagasiside, "Ei soovi", and the pages at 390,
 // 834, 1194 and 1440 px. Every student is a sample address (`e2e-client-proto-…@example.test`, never mailed) on a course of the test's own;
 // all of it is removed after each test. Under `next dev` and the production build (E2E_PROD_BUILD=1); the admin signs in as Dim (admin-login.ts).
 // The autosave in a real browser (offline, Back, the server's refusals) is protocols-autosave.spec.ts; the locks on real Postgres are
@@ -60,6 +60,8 @@ test("the headings in the course editor; Kalender's 'Protokollid'; two students 
   await expect(page).toHaveURL(new RegExp(`/admin/protokollid\\?sessioon=${fx.session.id}$`));
   await adminReady(page);
   await expect(page.locator("[data-students] [data-student]")).toHaveCount(2);
+  // the way back is the index (admin UX pass, README A3)
+  await expect(page.getByRole("link", { name: "← Protokollid", exact: true })).toHaveAttribute("href", "/admin/protokollid");
   // Mari: her headings with a box each, then the general notes
   await chip(page, mari.id).click();
   await expect(editor(page, mari.id).locator("label")).toHaveText([...E2E_HEADINGS, "Üldised märkused"]);
@@ -94,8 +96,8 @@ test("answers lost on the way, then no network and a reload: nothing is lost, no
     await route.abort("connectionreset");
   });
   await note(page, mari.id, 0).fill("Esimene lause.");
-  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-status", "retrying", { timeout: 20_000 });
-  await expect(saveStatus(page, mari.id)).toHaveText("Salvestamata — proovin uuesti");
+  await expect(saveStatus(page, mari.id)).toHaveAttribute("data-save-kind", "retry", { timeout: 20_000 });
+  await expect(saveWords(page, mari.id)).toHaveText("Salvestamata — proovin uuesti");
   await expect.poll(async () => (await storedProtocol(mari.id))?.stages[0].note).toBe("Esimene lause."); // stored, unknown to the tablet
   await note(page, mari.id, 0).fill("Esimene lause. Teine lause.");
   // 2. no network at all, and the tablet reloads the page: the text comes back from this browser
@@ -114,7 +116,7 @@ test("answers lost on the way, then no network and a reload: nothing is lost, no
   expect(await keptKeys(page, mari.id)).toEqual([]); // the browser's copy is gone once confirmed
 });
 
-test("'Täna' (Ava protokollid →) opens the day's screen; 'Lukusta ja saada kõik' names who gets one and who is skipped, sends, and the student reads hers (§10 e2e 3)", async ({ page, context, visitorIp, browser }, info) => {
+test("'Täna' (Ava protokollid →) opens the day's screen; „Saada kõigile (1)“ asks, naming who gets one and who is skipped, sends, and the student reads hers (§10 e2e 3)", async ({ page, context, visitorIp, browser }, info) => {
   const fx = await fixtures("send", runName(info), ["Mari Maasikas", "Anu Aas"]);
   const [mari, anu] = fx.students;
   await signInAsAdmin(page, context, visitorIp, created); // lands on the overview
@@ -130,11 +132,13 @@ test("'Täna' (Ava protokollid →) opens the day's screen; 'Lukusta ja saada k�
   await general(page, mari.id).fill("Tubli töö!\nHarjuta veel värvimist.");
   await saved(page, mari.id);
   // Anu's is empty: skipped, and named
-  await page.locator("[data-send-all-open]").click();
+  await page.getByRole("button", { name: "Saada kõigile (1)", exact: true }).click();
   const confirm = page.locator("[data-send-confirm]");
-  await expect(confirm.locator("[data-confirm-will]")).toContainText("Mari Maasikas");
-  await expect(confirm.locator("[data-confirm-skipped]")).toContainText("Anu Aas");
-  await confirm.locator("[data-confirm-send]").click();
+  await expect(confirm).toContainText("Kas saadan 1 protokolli?");
+  await expect(sendAllLines(page)).toHaveText(["Saavad protokolli: Mari Maasikas", "Jäävad vahele, sest protokoll on tühi: Anu Aas"]);
+  await expect(page.locator("[data-send-all-open]")).toHaveCount(0); // (the question stands in the button's place)
+  await expect(sendAllYes(page)).toHaveText("Jah, saada 1 protokolli");
+  await sendAllYes(page).click();
   await expect(page.locator("[data-summary-sent]")).toContainText("Mari Maasikas");
   await expect(chip(page, mari.id)).toHaveAttribute("data-status", "sent");
   await expect(chip(page, anu.id)).toHaveAttribute("data-status", "none");
@@ -192,7 +196,7 @@ test("the protocol mail's button: /api/konto/verify?t=…&p=<registration> signs
   }
 });
 
-test("from the registration's drawer: 'Saada', 'Muuda', an edit, 'Saada uuesti'; the student reads the new text (§10 e2e 4)", async ({ page, context, visitorIp, browser }, info) => {
+test("from the registration's drawer: „Saada protokoll Marile“, 'Muuda', an edit, „… uuesti“; the student reads the new text (§10 e2e 4)", async ({ page, context, visitorIp, browser }, info) => {
   const fx = await fixtures("resend", runName(info), ["Mari Maasikas"]);
   const [mari] = fx.students;
   await signInAsAdmin(page, context, visitorIp, created);
@@ -201,9 +205,12 @@ test("from the registration's drawer: 'Saada', 'Muuda', an edit, 'Saada uuesti';
   await page.locator("[data-registration-protocol]").click();
   await expect(page).toHaveURL(new RegExp(`/admin/protokollid\\?registreering=${mari.id}$`));
   await adminReady(page);
+  await expect(page.getByRole("link", { name: "← Protokollid", exact: true })).toHaveAttribute("href", "/admin/protokollid");
   await note(page, mari.id, 0).fill("Esimene versioon.");
   await saved(page, mari.id);
-  await editor(page, mari.id).locator('[data-send="first"]').click(); // one registration's screen: "Saada" is its primary button
+  const send = editor(page, mari.id).locator('[data-send="first"]');
+  await expect(send).toHaveText("Saada protokoll Marile"); // her first name with S5's ending; no confirmation
+  await send.click(); // one registration's screen: the send is its primary button
   await expect(editor(page, mari.id).locator("[data-locked]")).toBeVisible();
   // "Muuda" only unlocks the screen: nothing changes until an edit is saved
   await editor(page, mari.id).locator("[data-edit]").click();
@@ -212,7 +219,7 @@ test("from the registration's drawer: 'Saada', 'Muuda', an edit, 'Saada uuesti';
   await note(page, mari.id, 0).fill("Teine versioon.");
   await saved(page, mari.id);
   const again = editor(page, mari.id).locator('[data-send="again"]');
-  await expect(again).toHaveText("Saada uuesti");
+  await expect(again).toHaveText("Saada protokoll Marile uuesti");
   expect(await storedProtocol(mari.id)).toMatchObject({ version: 2, sentVersion: 1, sent: { stages: [{ note: "Esimene versioon." }, ...emptyNotes(2)] } });
   // the student still reads the first version until it is sent again
   const student = await studentPage(browser, mari.email, visitorIp);
@@ -329,7 +336,7 @@ test("the screens at 390, 834, 1194 and 1440 px: no sideways scroll, every targe
     { page, url: `/admin/protokollid?sessioon=${fx.session.id}`, scope: "[data-protocol-screen]", admin: true },
     // … the index in front of it (today's session is there)
     { page, url: "/admin/protokollid", scope: "[data-protocol-index]", admin: true },
-    // … with "Lukusta ja saada kõik" asking (who gets one, who is skipped, who has hers already)
+    // … with „Saada kõigile (1)“ asking (who gets one, who is skipped, who has hers already)
     { page, url: `/admin/protokollid?sessioon=${fx.session.id}`, scope: "[data-protocol-screen]", admin: true, open: "[data-send-all-open]", shown: "[data-send-confirm]" },
     { page, url: "/admin/tagasiside", scope: "main", admin: true },
     // … one course's numbers (the average and every option's count), and one answer's drawer
