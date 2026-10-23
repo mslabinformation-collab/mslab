@@ -297,11 +297,11 @@ describe("„Võta tasumine tagasi“ of a receipt asks with a ConfirmPanel (S3-
     }
   });
 
-  test("a request Maria marked paid keeps today's words: it is unpaid again and the amount comes off „Laekunud summa“", async () => {
+  test("a request Maria marked paid asks its own question (W2) and keeps today's sentence as the first line: it is unpaid again and the amount comes off „Laekunud summa“", async () => {
     await show(MARKED);
     await choose("Võta tasumine tagasi");
-    expect(text($("[data-confirm-panel] p"))).toBe("Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha.");
-    expect(linesOf(panel()!)).toEqual([]);
+    expect(text($("[data-confirm-panel] p"))).toBe("Kas võtan arve MSL2026-002 tasumise tagasi?");
+    expect(linesOf(panel()!)).toEqual(["Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha."]);
     expect(buttonsOf(panel()!)).toEqual(["Jah, võta tasumine tagasi", "Katkesta"]);
   });
 

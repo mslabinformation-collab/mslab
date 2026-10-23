@@ -21,7 +21,7 @@ vi.mock("@/server/actions/admin-assessment", () => ({ sendAssessmentAction: vi.f
 
 const reopenTexts = { ...adminEt.assessment.reopen, saving: adminEt.common.saving, error: adminEt.common.saveError };
 
-type Row = { kind: "practical" | "test" | "triesUsed"; accessId: number };
+type Row = { kind: "practical" | "test" | "triesUsed"; accessId: number; name: string };
 const keyOf = (r: Row) => `${r.kind}-${r.accessId}`;
 /** The page as the server draws it: the heading, the status line, and one row per item (the rows' contract: data-queue-row, the first control of a row). */
 const page = (rows: Row[]): ReactNode =>
@@ -40,16 +40,16 @@ const page = (rows: Row[]): ReactNode =>
               "li",
               { key: keyOf(r), "data-queue-item": r.accessId, "data-queue-kind": r.kind, "data-queue-row": keyOf(r) },
               createElement("a", { href: `#${keyOf(r)}` }, r.kind === "practical" ? "Hinda" : r.kind === "test" ? "Vaata" : "Testi katsed"),
-              r.kind === "triesUsed" && createElement(ReopenTest, { accessId: r.accessId, course: "Kulmumeistri e-koolitus", used: true, t: reopenTexts }),
+              r.kind === "triesUsed" && createElement(ReopenTest, { accessId: r.accessId, course: "Kulmumeistri e-koolitus", student: r.name, used: true, t: reopenTexts }),
             ),
           ),
         ),
   );
 
-const A: Row = { kind: "triesUsed", accessId: 1 };
-const B: Row = { kind: "practical", accessId: 2 };
-const C: Row = { kind: "triesUsed", accessId: 3 };
-const D: Row = { kind: "test", accessId: 4 };
+const A: Row = { kind: "triesUsed", accessId: 1, name: "Kati Kask" };
+const B: Row = { kind: "practical", accessId: 2, name: "Mari Maasikas" };
+const C: Row = { kind: "triesUsed", accessId: 3, name: "Liis Lill" };
+const D: Row = { kind: "test", accessId: 4, name: "Tiina Tamm" };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -98,7 +98,7 @@ describe("the page's status line", () => {
     await show([A, B, C]);
     await reopenOf(A);
     expect(actions.reopen).toHaveBeenCalledWith({ accessId: 1 });
-    expect(status().textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
+    expect(status().textContent).toBe("Test uuesti avatud: Kati Kask, katseid jäänud 3.");
     expect($("[data-reopen-done]")).toBeNull();
     expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
   });
@@ -115,9 +115,9 @@ describe("the page's status line", () => {
     await show([A, B, C]);
     await reopenOf(A);
     await show([B, C]);
-    expect(status().textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
+    expect(status().textContent).toBe("Test uuesti avatud: Kati Kask, katseid jäänud 3.");
     await reopenOf(C);
-    expect(status().textContent).toBe("Test on uuesti avatud: katseid jäänud 2.");
+    expect(status().textContent).toBe("Test uuesti avatud: Liis Lill, katseid jäänud 2.");
   });
 });
 
@@ -155,7 +155,7 @@ describe("the focus after the row has left (ledger L99)", () => {
     await show([]);
     expect($("[data-queue-empty]")!.textContent).toBe("Hindamist ootavaid töid pole.");
     expect(document.activeElement).toBe($("[data-assessment-heading]"));
-    expect(status().textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
+    expect(status().textContent).toBe("Test uuesti avatud: Kati Kask, katseid jäänud 3.");
   });
 
   test("the page may come back before the answer does: the focus still goes to the row that followed", async () => {
@@ -166,7 +166,7 @@ describe("the focus after the row has left (ledger L99)", () => {
     await show([B]); // (the revalidated page arrives first)
     await act(async () => finish({ kind: "reopened", triesLeft: 3 }));
     await settle();
-    expect(status().textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
+    expect(status().textContent).toBe("Test uuesti avatud: Kati Kask, katseid jäänud 3.");
     expect(document.activeElement).toBe(row(B).querySelector("a"));
   });
 
@@ -176,7 +176,7 @@ describe("the focus after the row has left (ledger L99)", () => {
     await reopenOf(A);
     expect(row(A)).not.toBeNull();
     expect(document.activeElement).not.toBe(row(B).querySelector("a"));
-    expect(status().textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
+    expect(status().textContent).toBe("Test uuesti avatud: Kati Kask, katseid jäänud 3.");
     await show([B]);
     expect(document.activeElement).toBe(row(B).querySelector("a"));
   });

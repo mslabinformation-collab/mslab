@@ -349,7 +349,7 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
         {panel === "undo" && (
           <div data-invoice-panel="undo">
             <ConfirmPanel
-              question={receipt ? fill(t.undoPanel.receiptQuestion, { number: v.number }) : t.undoPanel.request}
+              question={fill(receipt ? t.undoPanel.receiptQuestion : t.undoPanel.requestQuestion, { number: v.number })}
               lines={
                 receipt
                   ? [
@@ -358,7 +358,7 @@ export function InvoiceRow({ invoice: v, today, showWho = false }: { invoice: In
                       ...(takeBackCents > 0 ? [fill(t.undoPanel.receiptSum, { x: bare(takeBackCents) })] : []),
                       ...(v.takeBack?.backToAwaiting ? [t.undoPanel.receiptBack] : []),
                     ]
-                  : undefined
+                  : [t.undoPanel.request]
               }
               yesLabel={t.undoPanel.confirm}
               tone="danger"

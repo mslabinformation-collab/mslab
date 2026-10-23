@@ -27,7 +27,7 @@ function Page() {
   return createElement("input", { id: "field", type: "text" });
 }
 const mount = () => act(async () => root.render(createElement(UndoProvider, null, createElement(Page))));
-const show = (text: string, undo: () => Promise<boolean> = async () => true) => act(async () => void api.show({ text, undo }));
+const show = (text: string, undo: () => Promise<boolean | string> = async () => true) => act(async () => void api.show({ text, undo }));
 const advance = (ms: number) => act(async () => void vi.advanceTimersByTime(ms));
 
 const bar = () => document.querySelector<HTMLElement>("[data-undo-bar]");
@@ -182,6 +182,30 @@ describe("UndoBar", () => {
     await advance(7999);
     expect(bar()).not.toBeNull();
     await advance(1);
+    expect(bar()).toBeNull();
+  });
+
+  it("when the undo answers a sentence the bar says that sentence instead of the generic error, closes 8 s later, and the button stays", async () => {
+    await mount();
+    const undo = vi.fn<() => Promise<boolean | string>>().mockResolvedValueOnce("Päringut muudeti vahepeal. Vaata see üle.").mockResolvedValueOnce(true);
+    await show("Märgitud tehtuks.", undo);
+    await click(button());
+    expect(text()).toBe("Päringut muudeti vahepeal. Vaata see üle.");
+    expect(button()?.getAttribute("aria-disabled")).toBeNull();
+    await advance(7999);
+    expect(bar()).not.toBeNull();
+    await advance(1);
+    expect(bar()).toBeNull();
+  });
+
+  it("a sentence is only that failure's: pressed again after it, a success closes the bar", async () => {
+    await mount();
+    const undo = vi.fn<() => Promise<boolean | string>>().mockResolvedValueOnce("Päringut muudeti vahepeal. Vaata see üle.").mockResolvedValueOnce(true);
+    await show("Märgitud tehtuks.", undo);
+    await click(button());
+    expect(text()).toBe("Päringut muudeti vahepeal. Vaata see üle.");
+    await click(button());
+    expect(undo).toHaveBeenCalledTimes(2);
     expect(bar()).toBeNull();
   });
 

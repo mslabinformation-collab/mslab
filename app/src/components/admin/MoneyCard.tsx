@@ -72,12 +72,12 @@ function resultOf(r: Extract<ManualPaymentResult, { ok: true }>, priceCents: num
   return { text: pick(d.plain, d.plainReceipt), full: false };
 }
 
-/** A refusal in Maria's words (S3-c, S3-e, the drawer's stale line, the existing invoice and registration texts). `left`: what the price leaves. */
+/** A refusal in Maria's words (S3-c, S3-e, W1's stale line, the existing invoice and registration texts). `left`: what the price leaves. */
 function refusalText(error: Refusal | "future", left: number): string {
   const t = adminEt.registrations.drawer;
   switch (error) {
     case "stale":
-      return t.stale;
+      return t.money.stale;
     case "overRemainder":
       return fill(t.money.overRemainder, { x: bare(Math.max(0, left)) });
     case "sellerMissing":

@@ -11,8 +11,11 @@ const LASTS_MS = 8000;
 export type UndoOffer = {
   /** What happened, as a sentence with its full stop: „Pilt eemaldatud.“ */
   text: string;
-  /** Takes it back. true: done. false (or a throw): it did not go through, and the bar says so. */
-  undo: () => Promise<boolean>;
+  /**
+   * Takes it back. true: done. false (or a throw): it did not go through, and the bar says `common.saveError`. A string: it did not go through, and
+   * the bar says that sentence instead (a refusal with words of its own, e.g. the thing changed meanwhile).
+   */
+  undo: () => Promise<boolean | string>;
 };
 
 type Api = { show(offer: UndoOffer): void };
@@ -25,7 +28,7 @@ export function useUndo(): Api {
   return useContext(Context);
 }
 
-type Bar = UndoOffer & { id: number; state: "ready" | "working" | "failed" };
+type Bar = UndoOffer & { id: number; state: "ready" | "working" | "failed"; failure?: string };
 
 /** The topmost open dialog (a drawer, the phone menu): while one is modal the rest of the page is inert, and a bar under it could not be pressed. */
 function openDialog(): HTMLElement | null {
@@ -40,8 +43,8 @@ function openDialog(): HTMLElement | null {
  * - One bar at a time: `show` again replaces it, and the 8 s start over.
  * - It never takes the focus (she is probably typing). Esc dismisses it while it is up, before anything else sees the key (a drawer under it stays
  *   open); with no bar up, Esc is left alone.
- * - „Võta tagasi“ runs `undo` once. true closes the bar; false (or a throw) shows `common.saveError` in it and it closes 8 s later; the button stays,
- *   so she can try again in that time.
+ * - „Võta tagasi“ runs `undo` once. true closes the bar; false (or a throw) shows `common.saveError` in it, a string its own sentence, and it closes
+ *   8 s later; the button stays, so she can try again in that time.
  * - The status region is in the page from the start (a region that arrives with its text is not reliably announced). While a modal dialog is open
  *   the bar is put inside it, where it can be pressed, and it comes back to the page when the dialog closes.
  *
@@ -115,25 +118,26 @@ export function UndoProvider({ children }: { children: React.ReactNode }) {
     // the 8 s do not run while the answer is on its way: the bar would close under it
     stop();
     put({ ...mine, state: "working" });
-    let ok = false;
+    let failure: string | null = null;
     try {
-      ok = (await mine.undo()) !== false;
+      const answer = await mine.undo();
+      failure = typeof answer === "string" ? answer : answer === false ? adminEt.common.saveError : null;
     } catch {
-      ok = false;
+      failure = adminEt.common.saveError;
     }
     // a newer bar (or Esc) came meanwhile: this answer is no longer for the screen
     if (now.current?.id !== mine.id) return;
-    if (ok) {
+    if (failure === null) {
       dismiss();
     } else {
-      put({ ...mine, state: "failed" });
+      put({ ...mine, state: "failed", failure });
       arm();
     }
   };
 
   const view = bar && (
     <div className={styles.bar} data-undo-bar="" data-fab-avoid="">
-      <p className={styles.text}>{bar.state === "failed" ? adminEt.common.saveError : bar.text}</p>
+      <p className={styles.text}>{bar.state === "failed" ? (bar.failure ?? adminEt.common.saveError) : bar.text}</p>
       <button type="button" className={styles.button} aria-disabled={bar.state === "working" || undefined} onClick={undo}>
         {adminEt.common.undo}
       </button>

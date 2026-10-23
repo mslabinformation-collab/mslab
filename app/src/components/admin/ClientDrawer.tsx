@@ -124,7 +124,7 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
           <ul className={styles.cards}>
             {items.map((i) =>
               i.access ? (
-                <AccessCard key={`a${i.id}`} clientId={c.id} a={i.access} now={now} extendMax={extendMax} />
+                <AccessCard key={`a${i.id}`} clientId={c.id} student={c.name || t.noName} a={i.access} now={now} extendMax={extendMax} />
               ) : (
                 <RegistrationCard key={`r${i.id}`} r={i.registration!} untitled={untitled} />
               ),
@@ -259,7 +259,7 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
 }
 
 /** One e-course access as a card (see ClientDetailView). */
-function AccessCard({ clientId, a, now, extendMax }: { clientId: number; a: ClientAccessRow; now: Date; extendMax: string }) {
+function AccessCard({ clientId, student, a, now, extendMax }: { clientId: number; student: string; a: ClientAccessRow; now: Date; extendMax: string }) {
   const t = adminEt.clients.drawer;
   const title = pick(a.title, "et");
   const reopen = { ...adminEt.assessment.reopen, saving: adminEt.common.saving, error: adminEt.common.saveError };
@@ -357,7 +357,7 @@ function AccessCard({ clientId, a, now, extendMax }: { clientId: number; a: Clie
         lesson={a.state === "active" && a.nextLocked ? { id: a.nextLocked.id, title: pick(a.nextLocked.title, "et") } : null}
         stateId={stateId}
       />
-      {live && a.steps.test && <ReopenTest accessId={a.id} course={title} used={a.steps.test.state === "used"} t={reopen} />}
+      {live && a.steps.test && <ReopenTest accessId={a.id} course={title} student={student} used={a.steps.test.state === "used"} t={reopen} />}
     </li>
   );
 }

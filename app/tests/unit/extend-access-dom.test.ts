@@ -114,24 +114,38 @@ describe("a pick applies at once", () => {
     expect(action).toHaveBeenLastCalledWith({ accessId: 41, expected: END, months: 6 });
   });
 
-  test("an undo the server refuses (the end moved meanwhile) shows the bar's own error and sends nothing more by itself", async () => {
+  test("an undo the server refuses because the end moved meanwhile says so in the bar (W6) and sends nothing more by itself", async () => {
     action.mockResolvedValueOnce({ ok: true, previous: END, until: PLUS_ONE });
     await draw();
     await click(trigger());
     await click(item("+1 kuu"));
     action.mockResolvedValueOnce({ ok: false, error: "stale" });
     await click(bar()!.querySelector("button"));
-    expect(barText()).toBe(adminEt.common.saveError);
+    expect(barText()).toBe("Ligipääsu lõpp muutus vahepeal. Vaata kuupäev üle.");
     expect(action).toHaveBeenCalledTimes(2);
   });
 
-  test("a pick the server refuses says so by the button and puts no bar up", async () => {
+  test("an undo refused for another reason keeps the generic error", async () => {
+    action.mockResolvedValueOnce({ ok: true, previous: END, until: PLUS_ONE });
+    await draw();
+    await click(trigger());
+    await click(item("+1 kuu"));
+    action.mockResolvedValueOnce({ ok: false, error: "server" });
+    await click(bar()!.querySelector("button"));
+    expect(barText()).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+  });
+
+  test("a pick the server refuses because the end moved says so by the button (W6) and puts no bar up; any other refusal is the generic error", async () => {
     action.mockResolvedValueOnce({ ok: false, error: "stale" });
     await draw();
     await click(trigger());
     await click(item("+1 kuu"));
-    expect($("[role=alert]")!.textContent).toBe(adminEt.common.saveError);
+    expect($("[role=alert]")!.textContent).toBe("Ligipääsu lõpp muutus vahepeal. Vaata kuupäev üle.");
     expect(bar()).toBeNull();
+    action.mockResolvedValueOnce({ ok: false, error: "revoked" });
+    await click(trigger());
+    await click(item("+1 kuu"));
+    expect($("[role=alert]")!.textContent).toBe(adminEt.common.saveError);
     // the next pick takes the line away
     action.mockResolvedValueOnce({ ok: true, previous: END, until: PLUS_ONE });
     await click(trigger());
@@ -222,6 +236,16 @@ describe("„Kuupäev…“", () => {
     expect($("[data-extend-form]")).toBeNull();
     expect(outer).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(trigger());
+  });
+
+  test("a stale day pick says W6 under the field, not the date line", async () => {
+    action.mockResolvedValueOnce({ ok: false, error: "stale" });
+    await draw();
+    await open();
+    await typeDate("2027-06-30");
+    await submit();
+    expect($("[data-extend-form] [role=alert]")!.textContent).toBe("Ligipääsu lõpp muutus vahepeal. Vaata kuupäev üle.");
+    expect($("[data-extend-form] [role=status]")!.textContent).toBe("");
   });
 
   test("a server failure (not a date refusal) shows the save error, not the date line", async () => {

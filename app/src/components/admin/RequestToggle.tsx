@@ -12,8 +12,9 @@ import ui from "./ui.module.css";
  * moves between the list and the fold.
  *
  * Every press says which state the card showed (`expected`), and „Võta tagasi“ also the version the marking left: the server writes only while the request is
- * still that, so an undo never overwrites a newer change (a request reopened elsewhere, or reopened and marked done again). A refusal at the button is the
- * generic „Salvestamine ei õnnestunud. Proovi uuesti.“, as is an undo's in the bar: no existing text names a request that changed meanwhile.
+ * still that, so an undo never overwrites a newer change (a request reopened elsewhere, or reopened and marked done again). A press or an undo refused for that
+ * reason (`stale`) says „Päringut muudeti vahepeal. Vaata see üle.“ (W7), at the button or in the bar; any other refusal is the generic „Salvestamine ei
+ * õnnestunud. Proovi uuesti.“.
  *
  * The pressed button goes with its card, which moves to the other list. So that the keyboard focus does not fall to the page, the press works out
  * where it goes next, from the page as it is (`planFocus`), and does it when this button is gone (the card's own toggle in its new place is another instance).
@@ -22,7 +23,8 @@ export function RequestToggle({ id, handled }: { id: number; handled: boolean })
   const t = adminEt.requests;
   const undo = useUndo();
   const [pending, start] = useTransition();
-  const [failed, setFailed] = useState(false);
+  /** What the last press was refused with, in words (null: nothing). */
+  const [failed, setFailed] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   /** Where the focus goes once this button is gone: set by a press that went through, done when the card (and with it this component) leaves the page. */
   const afterGone = useRef<(() => void) | null>(null);
@@ -37,7 +39,7 @@ export function RequestToggle({ id, handled }: { id: number; handled: boolean })
 
   const press = () => {
     if (pending) return;
-    setFailed(false);
+    setFailed(null);
     // (worked out now, while the card is where it is)
     const focusNext = planFocus(root.current, handled);
     start(async () => {
@@ -48,7 +50,7 @@ export function RequestToggle({ id, handled }: { id: number; handled: boolean })
         answer = { ok: false, error: "server" };
       }
       if (!answer.ok) {
-        setFailed(true);
+        setFailed(answer.error === "stale" ? t.stale : adminEt.common.saveError);
         return;
       }
       afterGone.current = focusNext;
@@ -57,7 +59,10 @@ export function RequestToggle({ id, handled }: { id: number; handled: boolean })
       undo.show({
         text: t.markedDone,
         // asks for the request as the marking left it: done, and that version
-        undo: async () => (await toggleRequestHandled({ id, handled: false, expected: true, version })).ok,
+        undo: async () => {
+          const r = await toggleRequestHandled({ id, handled: false, expected: true, version });
+          return r.ok || (r.error === "stale" ? t.stale : false);
+        },
       });
     });
   };
@@ -68,7 +73,7 @@ export function RequestToggle({ id, handled }: { id: number; handled: boolean })
         {pending ? adminEt.common.saving : handled ? t.markOpen : t.markDone}
       </button>
       <p role="status" className={ui.error}>
-        {failed ? adminEt.common.saveError : ""}
+        {failed ?? ""}
       </p>
     </div>
   );

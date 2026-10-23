@@ -2580,7 +2580,8 @@
         "Märgi arve uuesti tasutuks."
       ],
       "expect": [
-        "Kinnituses on „Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha.“.",
+        "Küsimus on „Kas võtan arve … tasumise tagasi?“.",
+        "Küsimuse all on rida „Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha.“.",
         "„Katkesta“ ei muuda midagi ja fookus läheb tagasi nupule „Veel ▾“.",
         "Pärast kinnitamist näed „Arve on jälle tasumata.“ ja arve on „Tasumata“.",
         "„Raha“ näitab nulli laekununa ja staatus on jälle „Ootab ettemaksu“.",
@@ -3890,7 +3891,7 @@
         "Küsimuse all on rida „Õpilane saab sama palju katseid juurde ja kirja.“.",
         "„Katkesta“ toob nupu „Ava test uuesti“ tagasi ja test jääb suletuks.",
         "Pärast avamist kaob Proov 1 rida ja menüüs „Hindamine“ näitab märk ühe võrra vähem.",
-        "Üleval lehel on „Test on uuesti avatud: katseid jäänud …“.",
+        "Üleval lehel on „Test uuesti avatud: Proov 1, katseid jäänud …“.",
         "Proov 1 postkasti tuleb kiri „Test on sinu jaoks uuesti avatud“.",
         "Õpilase testi lehel on jälle „Esita test“."
       ],

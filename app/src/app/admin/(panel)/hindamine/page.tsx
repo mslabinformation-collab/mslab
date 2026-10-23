@@ -87,7 +87,7 @@ export default async function AssessmentPage() {
                     <Link className={ui.link} href={`/admin/hindamine/test?ligipaas=${i.accessId}`}>
                       {t.attempts}
                     </Link>
-                    <ReopenTest accessId={i.accessId} course={i.course} used t={reopen} />
+                    <ReopenTest accessId={i.accessId} course={i.course} student={i.name} used t={reopen} />
                   </>
                 )}
               </li>

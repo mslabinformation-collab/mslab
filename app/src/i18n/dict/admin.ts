@@ -354,6 +354,9 @@ export const adminEt = {
         submitAlone: "Lisa {x} · registreering kinnitub",
         // S3-e: {x} is what is left, without the euro sign
         overRemainder: "Summa on suurem kui tasumata osa ({x} €).",
+        // the press was built on an old total (a second tab, a Montonio payment landing meanwhile): refused, the page refreshes (piece2-texts W1; the
+        // status pills keep `drawer.stale`)
+        stale: "Laekunud summa muutus vahepeal. Vaata summa üle ja lisa uuesti.",
         // the results (README, S3-a, S3-b, S3-d): „Receipt“ with the receipt's number; „confirmed“ the press confirmed the place, „under“ it is
         // still under 50 %, „plain“ it was confirmed before (or the course has no price), „full“ 50 % reached in a full session
         done: {
@@ -520,9 +523,10 @@ export const adminEt = {
       moreLabel: "Veel: {number}",
       // „Võta tasumine tagasi“ as a ConfirmPanel (piece2-texts S3-f): a receipt asks the question and lists its three lines ({number} the receipt's,
       // {x} what comes off „Laekunud summa“, as euros without the sign: "175" or "50,50"; the third line only when the sum then falls under 50 %);
-      // a request Maria marked paid keeps its words as they were (ruling R10), said as the panel's first line
+      // a request Maria marked paid keeps its words as they were (ruling R10), now the panel's first line under its own question (piece2-texts W2)
       undoPanel: {
         receiptQuestion: "Kas võtan kviitungi {number} tasumise tagasi?",
+        requestQuestion: "Kas võtan arve {number} tasumise tagasi?",
         receiptCancelled: "Kviitung tühistatakse (number jääb alles).",
         receiptSum: "Laekunud summa väheneb {x} €.",
         receiptBack: "Registreering läheb tagasi olekusse „Ootab ettemaksu“.",
@@ -1039,7 +1043,8 @@ export const adminEt = {
       question: "Kas avan testi „{course}“ uuesti?",
       line: "Õpilane saab sama palju katseid juurde ja kirja.",
       yes: "Jah, ava",
-      done: "Test on uuesti avatud: katseid jäänud {n}.",
+      // the status line, said with the student's name (piece2-texts W3): {name} as written, {n} the tries she has now
+      done: "Test uuesti avatud: {name}, katseid jäänud {n}.",
       notNeeded: "Test on juba avatud.",
     },
   },
@@ -1163,6 +1168,8 @@ export const adminEt = {
     markOpen: "Märgi tegemata",
     // the UndoBar after „Märgi tehtuks“ (the fold's „Märgi tegemata“ is its own reverse: no bar, piece2-texts P-14)
     markedDone: "Märgitud tehtuks.",
+    // „Märgi tehtuks“ / „Märgi tegemata“ or its undo refused because another device changed the request meanwhile; the page has refreshed (piece2-texts W7)
+    stale: "Päringut muudeti vahepeal. Vaata see üle.",
     // the fold at the bottom: „Tehtud ({n}) ▸“
     doneFold: "Tehtud",
     received: "Saabunud {date}",
@@ -1290,6 +1297,8 @@ export const adminEt = {
       submit: "Pikenda",
       date: "Vali kuupäev, mis on hilisem kui praegune lõpp.",
       done: "Ligipääs pikendatud kuni {date}.",
+      // a pick or its undo refused because the end moved meanwhile; the page has refreshed (piece2-texts W6)
+      stale: "Ligipääsu lõpp muutus vahepeal. Vaata kuupäev üle.",
     },
     // „Lõpeta ligipääs“ under „Veel ▾“ asks with a ConfirmPanel (P-13): the question, the consequence, „Jah, lõpeta“ and „Katkesta“
     revoke: {

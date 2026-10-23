@@ -16,7 +16,8 @@ import styles from "./ExtendAccess.module.css";
  * server counts the months from the later of the end the screen showed and today, and the UndoBar says „Ligipääs pikendatud kuni {date}.“ with „Võta
  * tagasi“, which puts the previous end back only while the end is still the one this pick set (the server refuses it otherwise, and the bar says so).
  * „Kuupäev…“ opens a field instead (S3-i): „Ligipääs kuni“, „Pikenda“, „Katkesta“; a day that is not later than the current end is refused with
- * „Vali kuupäev, mis on hilisem kui praegune lõpp.“. The page is refreshed by the action, so this card then shows the new end.
+ * „Vali kuupäev, mis on hilisem kui praegune lõpp.“. The page is refreshed by the action, so this card then shows the new end. A pick or an undo
+ * refused because the end moved meanwhile (`stale`) says „Ligipääsu lõpp muutus vahepeal. Vaata kuupäev üle.“ (W6); any other failure the generic error.
  *
  * `expiresAt` is the end the card shows (ISO): what every request is made against. `min` and `max` (yyyy-mm-dd) bound the day field: the first day the server takes
  * (domain/client-access.ts extendMinDay: the day after the end), and the grant form's 10 years. Not drawn for an access an admin ended: the „Ava ligipääs e-koolitusele“ row opens it again.
@@ -28,8 +29,8 @@ export function ExtendAccess({ accessId, course, expiresAt, expired, min, max }:
   const undo = useUndo();
   const [asking, setAsking] = useState(false);
   const [date, setDate] = useState("");
-  /** The answer the card is showing: the day was refused ("date": under the field), or the pick could not be made ("failed": by the button). */
-  const [refused, setRefused] = useState<"date" | "failed" | null>(null);
+  /** The answer the card is showing: the day was refused ("date": under the field), or the pick could not be made ("failed", or "stale": the end moved; by the button). */
+  const [refused, setRefused] = useState<"date" | "failed" | "stale" | null>(null);
   const [pending, start] = useTransition();
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -57,7 +58,7 @@ export function ExtendAccess({ accessId, course, expiresAt, expired, min, max }:
     start(async () => {
       const r = await extendAccessAction({ accessId, expected: expiresAt, ...body });
       if (!r.ok) {
-        setRefused(r.error === "date" && "date" in body ? "date" : "failed");
+        setRefused(r.error === "date" && "date" in body ? "date" : r.error === "stale" ? "stale" : "failed");
         return;
       }
       const { previous, until } = r;
@@ -67,7 +68,11 @@ export function ExtendAccess({ accessId, course, expiresAt, expired, min, max }:
       undo.show({
         text: fill(t.done, { date: formatDate(new Date(until), "et") }),
         // asks for the end this pick set: the server puts `previous` back only if the end is still that one
-        undo: async () => (await extendAccessAction({ accessId, expected: until, restore: previous })).ok,
+        // (a string is the bar's sentence for a refusal: the end moved again meanwhile)
+        undo: async () => {
+          const r = await extendAccessAction({ accessId, expected: until, restore: previous });
+          return r.ok || (r.error === "stale" ? t.stale : false);
+        },
       });
     });
   };
@@ -89,6 +94,7 @@ export function ExtendAccess({ accessId, course, expiresAt, expired, min, max }:
   };
 
   const dateError = refused === "date";
+  const failure = refused === "stale" ? t.stale : refused === "failed" ? adminEt.common.saveError : null;
   return (
     <div ref={box} className={styles.box} data-extend="">
       <MoreMenu
@@ -109,9 +115,9 @@ export function ExtendAccess({ accessId, course, expiresAt, expired, min, max }:
           },
         ]}
       />
-      {refused === "failed" && !asking && (
+      {failure && !asking && (
         <p role="alert" className={`${ui.error} ${styles.alert}`}>
-          {adminEt.common.saveError}
+          {failure}
         </p>
       )}
       {asking && (
@@ -146,9 +152,9 @@ export function ExtendAccess({ accessId, course, expiresAt, expired, min, max }:
           <p id={`${uid}-msg`} role="status" className={ui.error}>
             {dateError ? t.date : ""}
           </p>
-          {refused === "failed" && (
+          {failure && (
             <p role="alert" className={ui.error}>
-              {adminEt.common.saveError}
+              {failure}
             </p>
           )}
         </form>

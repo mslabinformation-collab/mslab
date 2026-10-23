@@ -122,6 +122,7 @@ test("a request to pay: made in two taps, marked paid (the registration confirms
 
   // „Võta tasumine tagasi“ of a request: it asks first (and „Katkesta“ changes nothing), then the amount comes off again
   await viaMenu(paid, "Võta tasumine tagasi");
+  await expect(paid.locator('[data-invoice-panel="undo"] [data-confirm-panel] > p')).toHaveText(`Kas võtan arve ${number} tasumise tagasi?`);
   await expect(paid.locator('[data-invoice-panel="undo"]')).toContainText("Arve muutub uuesti tasumata ja summa võetakse „Laekunud summa“ alt maha.");
   await paid.getByRole("button", { name: "Katkesta" }).click();
   await expect(paid.locator("[data-more-menu] > button")).toBeFocused(); // (the question is gone and the focus is back where it came from)

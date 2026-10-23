@@ -474,7 +474,7 @@ test("§9 e2e 6: out of tries — her page says so; Maria reopens the test from 
   // the admin is revalidated (admin UX pass, B6: Hindamine's badge and the overview count one less): the page comes back without her row; the page's
   // status line says what was done and the focus is on the row that followed, or the heading (ledger L99)
   await expect(item).toHaveCount(0);
-  await expect(page.locator("[data-queue-status]")).toHaveText("Test on uuesti avatud: katseid jäänud 2.");
+  await expect(page.locator("[data-queue-status]")).toHaveText("Test uuesti avatud: Kati Kask, katseid jäänud 2.");
   await expect(page.locator("[data-assessment-page] :focus")).toHaveCount(1);
   expect(await storedAccessRow(s.accessId)).toMatchObject({ extraTries: 2 });
   await expect(await hindamine(page, "triesUsed", s.accessId)).toHaveCount(0);

@@ -470,7 +470,7 @@ describe("TestReview", () => {
 
 describe("ReopenTest", () => {
   const showReopen = async (used: boolean) => {
-    await act(async () => root.render(createElement(ReopenTest, { accessId: 9, course: "Kulmumeistri e-koolitus", used, t: reopenTexts })));
+    await act(async () => root.render(createElement(ReopenTest, { accessId: 9, course: "Kulmumeistri e-koolitus", student: "Kati Kask", used, t: reopenTexts })));
     await settle();
   };
   const panel = () => $("[data-confirm-panel]");
@@ -505,12 +505,12 @@ describe("ReopenTest", () => {
     await click(trigger());
     await click(panelButton("Jah, ava"));
     expect(actions.reopen).toHaveBeenCalledWith({ accessId: 9 });
-    expect($("[data-reopen-done]")!.textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
+    expect($("[data-reopen-done]")!.textContent).toBe("Test uuesti avatud: Kati Kask, katseid jäänud 3.");
     expect(document.activeElement).toBe($("[data-reopen-done]"));
     await showReopen(false); // the page's refresh: the test is open now
     expect(trigger()).toBeNull();
     expect(panel()).toBeNull();
-    expect($("[data-reopen-done]")!.textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
+    expect($("[data-reopen-done]")!.textContent).toBe("Test uuesti avatud: Kati Kask, katseid jäänud 3.");
   });
 
   test("the page is not refreshed by the action, so the test still reads as used up: the line stays, the button does not come back; reopened elsewhere meanwhile is said the same way", async () => {
@@ -518,7 +518,7 @@ describe("ReopenTest", () => {
     await showReopen(true);
     await click(trigger());
     await click(panelButton("Jah, ava"));
-    expect($("[data-reopen-done]")!.textContent).toBe("Test on uuesti avatud: katseid jäänud 3.");
+    expect($("[data-reopen-done]")!.textContent).toBe("Test uuesti avatud: Kati Kask, katseid jäänud 3.");
     expect(trigger()).toBeNull(); // (`used` is still true here: nothing re-read the page)
     expect(panel()).toBeNull();
     expect(actions.reopen).toHaveBeenCalledTimes(1);

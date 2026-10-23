@@ -270,14 +270,38 @@ describe("„Märgi tehtuks“ (instant, with an UndoBar)", () => {
     expect(bar()).toBeNull();
   });
 
-  test("an undo the server refuses (changed meanwhile, elsewhere) shows the bar's own error, and the request is left as it is", async () => {
+  test("an undo the server refuses because the request changed meanwhile, elsewhere, says so in the bar (W7), and the request is left as it is", async () => {
     action.mockResolvedValueOnce({ ok: true, version: "812" });
     await draw(open);
     await click(button("Märgi tehtuks"));
     action.mockResolvedValueOnce({ ok: false, error: "stale" });
     await click(bar()!.querySelector("button"));
     expect(action).toHaveBeenCalledTimes(2);
+    expect(barText()).toBe("Päringut muudeti vahepeal. Vaata see üle.");
+  });
+
+  test("an undo refused for another reason keeps the generic error", async () => {
+    action.mockResolvedValueOnce({ ok: true, version: "812" });
+    await draw(open);
+    await click(button("Märgi tehtuks"));
+    action.mockResolvedValueOnce({ ok: false, error: "server" });
+    await click(bar()!.querySelector("button"));
     expect(barText()).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+  });
+
+  test("a „Märgi tehtuks“ built on an old state says W7 by the button, and no bar offers an undo of nothing", async () => {
+    action.mockResolvedValueOnce({ ok: false, error: "stale" });
+    await draw(open);
+    await click(button("Märgi tehtuks"));
+    expect(text($("[data-request-toggle] [role=status]"))).toBe("Päringut muudeti vahepeal. Vaata see üle.");
+    expect(bar()).toBeNull();
+  });
+
+  test("„Märgi tegemata“ built on an old state says W7 by the button too", async () => {
+    action.mockResolvedValueOnce({ ok: false, error: "stale" });
+    await draw(done);
+    await click(button("Märgi tegemata"));
+    expect(text($("[data-request-toggle] [role=status]"))).toBe("Päringut muudeti vahepeal. Vaata see üle.");
   });
 
   test("„Märgi tegemata“ in the fold is its own reverse: no bar", async () => {

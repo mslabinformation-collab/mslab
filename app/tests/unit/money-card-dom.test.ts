@@ -331,7 +331,7 @@ describe("a press: the form it sends, the result lines and the refusals", () => 
     };
     await show();
     await open();
-    expect(await refuse("stale")).toBe("Staatus muutus vahepeal (näed nüüd kehtivat). Vaata üle ja salvesta uuesti.");
+    expect(await refuse("stale")).toBe("Laekunud summa muutus vahepeal. Vaata summa üle ja lisa uuesti.");
     expect(await refuse("overRemainder")).toBe("Summa on suurem kui tasumata osa (290 €).");
     expect(await refuse("sellerMissing")).toBe("Täida enne Seaded → „Arve andmed“.");
     expect(await refuse("future")).toBe("Kontrolli andmeid. Kuupäev ei tohi olla tulevikus.");
