@@ -775,7 +775,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "avalik-kontaktivorm",
@@ -801,7 +801,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "avalik-ru-avaleht",
@@ -1809,7 +1809,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "haldus-loend-terve-rida",
@@ -1837,7 +1837,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "haldus-registreerimised-otsing",
@@ -1867,7 +1867,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "haldus-loend-tahvel",
@@ -1894,7 +1894,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "haldus-ulevaade-jarjekord",
@@ -1920,7 +1920,7 @@
       "risk": "low",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "haldus-kommentaar-nupp",
@@ -2139,7 +2139,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-maksed",
@@ -2170,7 +2170,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arveta-makse-paneelis",
@@ -2199,7 +2199,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arveta-maksed",
@@ -2228,7 +2228,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arved-loend",
@@ -2256,7 +2256,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arved-csv",
@@ -2282,7 +2282,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arve-tagastatud",
@@ -2311,7 +2311,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-kohad",
@@ -2409,7 +2409,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-pangaulekanne",
@@ -2436,7 +2436,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arve-maksmiseks",
@@ -2465,7 +2465,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arve-saaja",
@@ -2490,7 +2490,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arve-saada",
@@ -2564,7 +2564,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arve-tagasi",
@@ -2591,7 +2591,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arve-kviitung",
@@ -2617,7 +2617,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-kviitung-tagasi",
@@ -2644,7 +2644,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arve-tuhista",
@@ -2671,7 +2671,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arve-jalus",
@@ -2697,7 +2697,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-arve-laekunud",
@@ -2723,7 +2723,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-leping-plokk",
@@ -2753,7 +2753,7 @@
       "risk": "high",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-leping-kinnitamiseks",
@@ -2779,7 +2779,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-leping-koopia",
@@ -2802,7 +2802,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-individuaal",
@@ -2828,7 +2828,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-praktika",
@@ -2906,7 +2906,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-tuhista",
@@ -2934,7 +2934,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-jarelmaks-kinnitatud",
@@ -3000,7 +3000,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-jarelmaks-nupud",
@@ -3063,7 +3063,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "registreerimine-jarelmaks-hiline",
@@ -3096,7 +3096,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "haldus-maksed-jarelmaks",
@@ -3127,7 +3127,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "haldus-maksed-asendatud",
@@ -3159,7 +3159,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "konto-kood",
@@ -3300,7 +3300,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "konto-arve-maksa",
@@ -3332,7 +3332,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "konto-arve-pdf",
@@ -3647,7 +3647,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-ostukorv-leping",
@@ -3872,7 +3872,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-test-uuesti",
@@ -3899,7 +3899,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-test-oige",
@@ -3927,7 +3927,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-test-paranda",
@@ -3958,7 +3958,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-test-saada-uuesti",
@@ -4007,7 +4007,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-praktiline-saada",
@@ -4059,7 +4059,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-praktiline-paranda",
@@ -4083,7 +4083,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-lopeta",
@@ -4108,7 +4108,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-hinda-praktiline-telefon",
@@ -4132,7 +4132,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-lopetatud",
@@ -4289,7 +4289,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-tunnistused",
@@ -4313,7 +4313,7 @@
       "risk": "med",
       "writes": false,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-ligipaas-ava",
@@ -4341,7 +4341,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-ligipaas-pikenda",
@@ -4369,7 +4369,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "haldus-opilased-telefon",
@@ -4394,7 +4394,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-tingimused-leping",
@@ -4426,7 +4426,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-ava-jargmine",
@@ -4452,7 +4452,7 @@
       "risk": "low",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "ekursus-ligipaas-lopeta",
@@ -4477,7 +4477,7 @@
       "risk": "high",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kontakt-protokoll",
@@ -4507,7 +4507,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kontakt-protokoll-uhendus",
@@ -4532,7 +4532,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kontakt-protokoll-saada",
@@ -4557,7 +4557,7 @@
       "risk": "high",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kontakt-protokoll-opilane",
@@ -4603,7 +4603,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kontakt-protokoll-taasta",
@@ -4631,7 +4631,7 @@
       "risk": "high",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kontakt-lukusta-koik",
@@ -4662,7 +4662,7 @@
       "risk": "med",
       "writes": true,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kontakt-tagasiside-luba",
@@ -4752,7 +4752,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kontakt-arvustus-toend",
@@ -5040,7 +5040,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kontakt-protokollid-nimekiri",
@@ -5071,7 +5071,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kontakt-protokollid-tana-otse",
@@ -5191,7 +5191,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-23T16:29:13.353Z"
     },
     {
       "id": "kirjad-ootenimekiri",
