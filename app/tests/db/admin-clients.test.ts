@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, test } from "vitest";
 import { makeTestDb } from "./helpers";
 import type { Db } from "@/db/client";
@@ -562,6 +562,18 @@ describe("„Pikenda“ (B12): extendAccess and its undo", () => {
     const tonight = new Date("2026-10-04T20:59:59.999Z");
     expect(await extendAccess(db, { accessId: ranOut.id, until: tonight, expected: ranOut.expiresAt }, NOW)).toEqual({ ok: false, error: "date" });
     expect(await extendAccess(db, { accessId: ranOut.id, until: new Date("2026-10-05T20:59:59.999Z"), expected: ranOut.expiresAt }, NOW)).toMatchObject({ ok: true });
+  });
+
+  test("an end stored with more than a millisecond (written by SQL, as `now() + interval` leaves it) still is the end the screen showed: ISO strings carry milliseconds", async () => {
+    const kati = await client("kati@example.test");
+    const row = await access(kati.id);
+    await db.execute(sql`update course_access set expires_at = '2027-04-04T20:59:59.999999Z'::timestamptz where id = ${row.id}`);
+    const until = new Date("2027-07-04T20:59:59.999Z");
+    expect(await extendAccess(db, { accessId: row.id, until, expected: END }, NOW)).toEqual({ ok: true, previous: END, until });
+    expect((await stored(row.id)).expiresAt).toEqual(until);
+    // (the undo's `expected` is the end the extension set, exact to the millisecond)
+    expect(await undoExtendAccess(db, { accessId: row.id, previous: END, expected: until })).toMatchObject({ ok: true });
+    expect((await stored(row.id)).expiresAt).toEqual(END);
   });
 
   test("two presses on the same screen: the first wins, the second sees the end move and is stale", async () => {

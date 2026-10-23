@@ -447,7 +447,7 @@ export async function grantAccessForm(db: Db, formData: FormData, by: string, no
 export type ExtendResult = { ok: true; previous: Date; until: Date } | { ok: false; error: "notFound" | "revoked" | "stale" | "date" };
 
 /**
- * The one write of „Pikenda“ and of its undo: the end moves from `expected` to `to` only if it is `expected` still (a conditional UPDATE, so two
+ * The one write of „Pikenda“ and of its undo: the end moves from `expected` to `to` only if it is `expected` still, to the millisecond (a conditional UPDATE, so two
  * presses on one screen, or a second tab, cannot both win) and the access was not ended by an admin. Nothing else of the row changes: who granted
  * it and when (`grantAccess` would overwrite both and lift an end), the completion and the extra tries stay. A refused write says why by looking
  * at the row: gone, ended by an admin, or its end is not the one the screen showed.
@@ -456,7 +456,8 @@ async function moveEnd(db: Db, accessId: number, to: Date, expected: Date): Prom
   const [row] = await db
     .update(courseAccess)
     .set({ expiresAt: to })
-    .where(and(eq(courseAccess.id, accessId), eq(courseAccess.expiresAt, expected), isNull(courseAccess.revokedAt)))
+    // (to the millisecond: a JS Date, and so the end the screen sent back, has no more; an end written by SQL — `now() + interval` — has microseconds)
+    .where(and(eq(courseAccess.id, accessId), sql`date_trunc('milliseconds', ${courseAccess.expiresAt}) = ${expected.toISOString()}::timestamptz`, isNull(courseAccess.revokedAt)))
     .returning();
   if (row) return { ok: true, previous: expected, until: to };
   const [held] = await db.select({ revokedAt: courseAccess.revokedAt }).from(courseAccess).where(eq(courseAccess.id, accessId)).limit(1);
