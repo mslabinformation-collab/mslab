@@ -257,6 +257,18 @@ describe("what a press made, in words (piece2-texts S3-l)", () => {
     expect(resultLines(done({ made: ["MSL2026-001"], linked: 1 }))).toEqual(["Arve MSL2026-001 on valmis."]);
   });
 
+  test("M4: numbers that are no run — an online payment took one during the batch — are no range either: „Koostatud {n} arvet.“", () => {
+    // 004 and 006 were made; 005 went to a payment that landed in between
+    expect(resultLines(done({ made: ["MSL2026-004", "MSL2026-006"] }))).toEqual(["Koostatud 2 arvet."]);
+    expect(resultLines(done({ made: ["MSL2026-004", "MSL2026-005", "MSL2026-007"] }))).toEqual(["Koostatud 3 arvet."]);
+    // a series that begins again with the year, or a prefix that changed, is no run
+    expect(resultLines(done({ made: ["MSL2026-099", "MSL2027-001"] }))).toEqual(["Koostatud 2 arvet."]);
+    // a run across the width of the padding is still one (999 → 1000)
+    expect(resultLines(done({ made: ["MSL2026-999", "MSL2026-1000"] }))).toEqual(["Koostatud 2 arvet: MSL2026-999–MSL2026-1000."]);
+    // the other lines are as they were
+    expect(resultLines(done({ made: ["MSL2026-004", "MSL2026-006"], already: 1, failed: ["Mari Kask"] }))).toEqual(["Koostatud 2 arvet.", "Juba arvega: 1.", "Ei õnnestunud: Mari Kask. Proovi uuesti."]);
+  });
+
   test("billed meanwhile: „Juba arvega: {n}.“; failures: „Ei õnnestunud: {names}. Proovi uuesti.“; all of them, in that order", () => {
     expect(resultLines(done({ already: 2 }))).toEqual(["Juba arvega: 2."]);
     expect(resultLines(done({ failed: ["Mari Kask", "Liis Mets"] }))).toEqual(["Ei õnnestunud: Mari Kask, Liis Mets. Proovi uuesti."]);

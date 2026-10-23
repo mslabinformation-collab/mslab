@@ -13,16 +13,32 @@ import styles from "./UninvoicedStrip.module.css";
 export type BatchOutcome = { made: string[]; already: number; failed: string[]; sellerMissing: boolean; linked: number };
 
 /**
+ * Are these invoice numbers one run, each the next of the one before ("MSL2026-004", "MSL2026-005")? An online payment that takes a number while the
+ * batch walks (or a new year's series) breaks it: the first and the last then name an invoice, or a span, that the batch did not make.
+ */
+function inARow(numbers: string[]): boolean {
+  let before: { head: string; seq: number } | null = null;
+  for (const number of numbers) {
+    const m = /^(.*)-(\d+)$/.exec(number);
+    if (!m) return false;
+    const now = { head: m[1], seq: Number(m[2]) };
+    if (before && (now.head !== before.head || now.seq !== before.seq + 1)) return false;
+    before = now;
+  }
+  return true;
+}
+
+/**
  * What a press made, in words (piece2-texts S3-l), one line each: one made is „Arve {number} on valmis.“ (the row button's own words), two or more
  * „Koostatud {n} arvet: {first}–{last}.“ — without „: {first}–{last}“ when some of them were invoices already made (`linked`: their numbers are
- * not a range); some billed meanwhile „Juba arvega: {n}.“; the payers whose invoice failed „Ei õnnestunud: {names}.
+ * not a range) or when the numbers made are no run (a payment of the web took one meanwhile: `inARow`); some billed meanwhile „Juba arvega: {n}.“; the payers whose invoice failed „Ei õnnestunud: {names}.
  * Proovi uuesti.“; Seaded's seller card empty the line the button gives way to, „Täida Seaded → Arve andmed“.
  */
 export function resultLines(r: BatchOutcome): string[] {
   const t = adminEt.invoices.uninvoiced;
   const lines: string[] = [];
   if (r.made.length === 1) lines.push(fill(t.done, { number: r.made[0] }));
-  else if (r.made.length > 1) lines.push(fill(r.linked > 0 ? t.result.manyLinked : t.result.many, { n: r.made.length, first: r.made[0], last: r.made[r.made.length - 1] }));
+  else if (r.made.length > 1) lines.push(fill(r.linked > 0 || !inARow(r.made) ? t.result.manyLinked : t.result.many, { n: r.made.length, first: r.made[0], last: r.made[r.made.length - 1] }));
   if (r.already > 0) lines.push(fill(t.result.already, { n: r.already }));
   if (r.failed.length > 0) lines.push(fill(t.result.failed, { names: r.failed.join(", ") }));
   if (r.sellerMissing) lines.push(t.needSeller);

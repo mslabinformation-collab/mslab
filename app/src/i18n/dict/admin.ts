@@ -625,7 +625,7 @@ export const adminEt = {
       result: {
         // n ≥ 2 made ({n}, {first}–{last}); one made says `done` above
         many: "Koostatud {n} arvet: {first}–{last}.",
-        // some of them were invoices already made: no range
+        // some of them were invoices already made, or the numbers made are no run (an online payment took one meanwhile): no range
         manyLinked: "Koostatud {n} arvet.",
         // some had an invoice by now ({n})
         already: "Juba arvega: {n}.",
