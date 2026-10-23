@@ -13,8 +13,9 @@ const toneClass = (tone: Line["tone"]) => (tone === "error" ? ui.error : tone ==
 
 /**
  * „Koosta arve“ of one row of „Arveta maksed“ (invoices Task 5, spec §6.3, ruling R13): the paid payment gets its invoice — the unpaid one it
- * was started for, paid, or a new one born paid on the payment's day, not mailed. No bulk button: each one is a real number. The page is
- * refreshed by the action, so the row then leaves the list.
+ * was started for, paid, or a new one born paid on the payment's day, not mailed. The row's own button, inside the opened strip „Arveta maksed: {n}“
+ * (UninvoicedStrip), whose „Koosta {n} arvet“ does the same for all of them (B11: each is still its own transaction and its own number). The
+ * page is refreshed by the action, so the row then leaves the list.
  */
 export function InvoiceCatchUp({ paymentId }: { paymentId: number }) {
   const t = adminEt.invoices.uninvoiced;

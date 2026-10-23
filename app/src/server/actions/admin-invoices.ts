@@ -8,7 +8,7 @@ import { adminEt } from "@/i18n/dict/admin";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { adminAction } from "../auth";
 import { sendInvoice } from "../invoice-send";
-import { cancelInvoice, catchUpInvoice, createInvoice, invoiceCard, markInvoicePaid, saveInvoiceSettings, undoInvoicePaid, updateInvoiceBuyer } from "../invoices";
+import { cancelInvoice, catchUpInvoice, createInvoice, createInvoicesForUnbilled, invoiceCard, markInvoicePaid, saveInvoiceSettings, undoInvoicePaid, updateInvoiceBuyer } from "../invoices";
 import { logFailure } from "../log";
 import { revalidatePublic } from "../public-cache";
 import { adminSendDeps } from "../send-deps";
@@ -182,6 +182,30 @@ export const catchUpInvoiceAction = adminAction(async (_admin, input: { paymentI
     return { ok: true as const, number: result.invoice.number };
   } catch (e) {
     logFailure(`[invoices] payment ${paymentId}: the catch-up failed`, e);
+    return fail("server");
+  }
+});
+
+/** The most payments one press of „Koosta {n} arvet“ takes (the page sends the whole list of „Arveta maksed“; this only bounds what a request can ask for). */
+const BATCH_MAX = 500;
+const batchInput = z.object({ ids: z.array(rowId).min(1).max(BATCH_MAX) });
+
+/**
+ * „Arveta maksed“ → „Koosta {n} arvet“ (admin UX pass B11, piece2-texts S3-l): `{ ids }` — the payments the panel listed; each gets its invoice, one
+ * after the other, oldest first (server/invoices.ts createInvoicesForUnbilled). Answers what was done, as the work counted it: `{ ok: true, made,
+ * already, failed, sellerMissing }` (the numbers made, how many were billed meanwhile, the payers whose invoice failed, Seaded's seller card empty);
+ * the screen puts these in words. The page is refreshed when anything was made or was billed already, so „Arveta maksed“ and the list show the new state.
+ * A list that is none, too long or not ids is `notFound` in the payment's words; a throw is `server`, logged by the error's class only.
+ */
+export const createInvoicesForUnbilledAction = adminAction(async (_admin, input: { ids: number[] }) => {
+  const parsed = batchInput.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: "notFound" as const, text: adminEt.invoices.errors.notPayment };
+  try {
+    const result = await createInvoicesForUnbilled(getDb(), parsed.data.ids, new Date());
+    if (result.made.length > 0 || result.already > 0) refresh();
+    return { ok: true as const, ...result };
+  } catch (e) {
+    logFailure("[invoices] the batch of unbilled payments failed", e);
     return fail("server");
   }
 });

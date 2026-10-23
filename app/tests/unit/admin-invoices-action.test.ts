@@ -15,6 +15,7 @@ const work = vi.hoisted(() => ({
   cancelInvoice: vi.fn(),
   updateInvoiceBuyer: vi.fn(),
   catchUpInvoice: vi.fn(),
+  createInvoicesForUnbilled: vi.fn(),
   saveInvoiceSettings: vi.fn(),
   invoiceCard: vi.fn(),
 }));
@@ -261,6 +262,46 @@ describe("catchUpInvoiceAction: „Arveta maksed“ → „Koosta arve“", () =
     work.catchUpInvoice.mockRejectedValue(new TypeError("boom"));
     expect(await actions.catchUpInvoiceAction({ paymentId: 9 })).toEqual({ ok: false, error: "server", text: E.server });
     expect(logged()).toContain("[invoices] payment 9: the catch-up failed: TypeError");
+  });
+});
+
+describe("createInvoicesForUnbilledAction: „Arveta maksed“ → „Koosta {n} arvet“ (B11)", () => {
+  const DONE = { made: ["MSL2026-004", "MSL2026-005"], already: 1, failed: ["Mari Kask"], sellerMissing: false };
+
+  test("the list the panel showed goes on; what was made, what was already billed and what failed comes back as it is; the page refreshes", async () => {
+    work.createInvoicesForUnbilled.mockResolvedValue(DONE);
+    expect(await actions.createInvoicesForUnbilledAction({ ids: [4, 5, 6] })).toEqual({ ok: true, ...DONE });
+    const [db, ids, now] = work.createInvoicesForUnbilled.mock.calls[0];
+    expect([db, ids]).toEqual([{ marker: "db" }, [4, 5, 6]]);
+    expect(now).toBeInstanceOf(Date);
+    refreshed();
+    expect(pub.revalidatePublic).not.toHaveBeenCalled(); // (a payment's invoice moves no paid sum)
+  });
+
+  test("everything was billed meanwhile: the page still refreshes, it has moved; the seller card empty and nothing made: it has not", async () => {
+    work.createInvoicesForUnbilled.mockResolvedValue({ made: [], already: 3, failed: [], sellerMissing: false });
+    expect(await actions.createInvoicesForUnbilledAction({ ids: [4, 5, 6] })).toEqual({ ok: true, made: [], already: 3, failed: [], sellerMissing: false });
+    refreshed();
+    cache.refresh.mockClear();
+    work.createInvoicesForUnbilled.mockResolvedValue({ made: [], already: 0, failed: [], sellerMissing: true });
+    expect(await actions.createInvoicesForUnbilledAction({ ids: [4] })).toEqual({ ok: true, made: [], already: 0, failed: [], sellerMissing: true });
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+
+  test("a list the page never sends (none, a thousand, not ids) is notPayment in words, nothing read", async () => {
+    for (const bad of [{ ids: [] }, { ids: [0] }, { ids: [1.5] }, { ids: ["4"] }, { ids: 4 }, { ids: Array.from({ length: 501 }, (_, i) => i + 1) }, {}, null, undefined]) {
+      expect(await actions.createInvoicesForUnbilledAction(bad as never), JSON.stringify(bad)?.slice(0, 40)).toEqual({ ok: false, error: "notFound", text: E.notPayment });
+    }
+    expect(work.createInvoicesForUnbilled).not.toHaveBeenCalled();
+    expect(cache.refresh).not.toHaveBeenCalled();
+  });
+
+  test("a throw is `server`, logged by the class only", async () => {
+    work.createInvoicesForUnbilled.mockRejectedValue(new TypeError("boom: Kati Tamm"));
+    expect(await actions.createInvoicesForUnbilledAction({ ids: [4] })).toEqual({ ok: false, error: "server", text: E.server });
+    expect(logged()).toContain("[invoices] the batch of unbilled payments failed: TypeError");
+    expect(logged()).not.toContain("Kati");
+    expect(cache.refresh).not.toHaveBeenCalled();
   });
 });
 

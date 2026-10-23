@@ -16,7 +16,7 @@ import { addManualPayment } from "@/server/registration-money";
 import {
   cancelInvoice, catchUpInvoice, createInvoice, getInvoiceSettings, invoiceCard, invoiceForAdmin, invoiceForPaidPayment, invoiceForStudent, invoicePdf,
   invoicesCsv, invoicesOfClient, invoicesOfRegistration, listInvoices, markInvoicePaid, markLinkedInvoicePaid, saveInvoiceSettings, uninvoicedPayments,
-  undoInvoicePaid, updateInvoiceBuyer,
+  createInvoicesForUnbilled, undoInvoicePaid, unbilledPreview, updateInvoiceBuyer,
 } from "@/server/invoices";
 import { makeTestDb } from "./helpers";
 import { contactCourse, pendingPayment, registrationOn } from "./payments-fixtures";
@@ -812,6 +812,147 @@ describe("a paid payment's invoice: invoiceForPaidPayment, markLinkedInvoicePaid
     const own = await settle({ ...p, invoiceId: inv.id });
     expect(own).toMatchObject({ number: "MSL2026-002", status: "paid", paymentId: p.id, paidMethod: "montonio" });
     expect(await invoiceForAdmin(db, inv.id)).toMatchObject({ status: "cancelled" });
+  });
+});
+
+describe("B11: unbilledPreview and createInvoicesForUnbilled — „Koosta {n} arvet“ bills every unbilled payment (admin UX pass, piece 2, Task 14)", () => {
+  const PAYERS = [
+    { name: "Kati Tamm", email: "kati@example.com" },
+    { name: "Mari Kask", email: "mari@example.com" },
+    { name: "Liis Mets", email: "liis@example.com" },
+  ];
+  let course: Awaited<ReturnType<typeof contactCourse>>;
+  beforeEach(async () => {
+    course = await contactCourse(db, { capacity: 20 });
+  });
+
+  /**
+   * `n` payments paid while the seller card was empty (so none has an invoice), made newest first: the lowest id paid last, so "oldest first" is the
+   * paid day's order and not the id's. Returns them oldest paid first.
+   */
+  async function unbilled(n: number): Promise<Payment[]> {
+    const made: Payment[] = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const r = await registrationOn(db, course, PAYERS[i]);
+      const p = await pendingPayment(db, r);
+      expect(await settle(p, new Date(PAID_AT.getTime() + i * DAY))).toBeNull();
+      made.push(p);
+    }
+    return made.reverse();
+  }
+
+  test("no unbilled payment: no preview", async () => {
+    await ready();
+    expect(await unbilledPreview(db, NOW)).toBeNull();
+  });
+
+  test("three unbilled payments: the preview lists their ids oldest first and the numbers they will get; the press makes three invoices with exactly those consecutive numbers", async () => {
+    const [a, b, c] = await unbilled(3);
+    await ready();
+    const preview = await unbilledPreview(db, NOW);
+    expect(preview).toEqual({ ids: [a.id, b.id, c.id], first: "MSL2026-001", last: "MSL2026-003" });
+    const result = await createInvoicesForUnbilled(db, preview!.ids, NOW);
+    expect(result).toEqual({ made: ["MSL2026-001", "MSL2026-002", "MSL2026-003"], already: 0, failed: [], sellerMissing: false });
+    expect(result.made[0]).toBe(preview!.first);
+    expect(result.made[2]).toBe(preview!.last);
+    // each payment is invoiced by its own invoice, born paid on the payment's day, Montonio, not mailed; the money was added once, by the payment
+    expect((await allInvoices()).map((i) => [i.number, i.paymentId, i.status, i.paidMethod, i.paidAdds, i.sentAt])).toEqual([
+      ["MSL2026-001", a.id, "paid", "montonio", false, null],
+      ["MSL2026-002", b.id, "paid", "montonio", false, null],
+      ["MSL2026-003", c.id, "paid", "montonio", false, null],
+    ]);
+    expect((await allInvoices())[0].paidAt).toEqual(PAID_AT);
+    expect((await db.select({ paid: registrations.paidCents }).from(registrations)).map((r) => r.paid)).toEqual([17500, 17500, 17500]);
+    expect(await uninvoicedPayments(db)).toEqual([]);
+    expect(await unbilledPreview(db, NOW)).toBeNull();
+    expect(await stored()).toMatchObject({ nextSeq: 4 });
+  });
+
+  test("the preview's numbers continue the series: after an invoice that is already made they start at the next one", async () => {
+    await unbilled(2);
+    await ready();
+    await request(await registrationOn(db, course, { email: "other@example.com", name: "Teine Maksja" }));
+    expect(await unbilledPreview(db, NOW)).toMatchObject({ first: "MSL2026-002", last: "MSL2026-003" });
+  });
+
+  test("a payment billed between the preview and the press is `already`; the others get the next numbers, in order", async () => {
+    const [a, b, c] = await unbilled(3);
+    await ready();
+    const preview = await unbilledPreview(db, NOW);
+    expect(await catchUpInvoice(db, b.id, NOW)).toMatchObject({ ok: true, invoice: { number: "MSL2026-001" } });
+    const result = await createInvoicesForUnbilled(db, preview!.ids, NOW);
+    expect(result).toEqual({ made: ["MSL2026-002", "MSL2026-003"], already: 1, failed: [], sellerMissing: false });
+    expect((await allInvoices()).map((i) => [i.number, i.paymentId])).toEqual([["MSL2026-001", b.id], ["MSL2026-002", a.id], ["MSL2026-003", c.id]]);
+  });
+
+  test("a press again with the same list bills nothing: every payment is `already`", async () => {
+    await unbilled(2);
+    await ready();
+    const ids = (await unbilledPreview(db, NOW))!.ids;
+    await createInvoicesForUnbilled(db, ids, NOW);
+    expect(await createInvoicesForUnbilled(db, ids, NOW)).toEqual({ made: [], already: 2, failed: [], sellerMissing: false });
+    expect(await allInvoices()).toHaveLength(2);
+  });
+
+  test("the seller card empty: `sellerMissing`, no invoice is made, nothing is counted as failed", async () => {
+    const [a, b] = await unbilled(2);
+    const result = await createInvoicesForUnbilled(db, [a.id, b.id], NOW);
+    expect(result).toEqual({ made: [], already: 0, failed: [], sellerMissing: true });
+    expect(await allInvoices()).toEqual([]);
+    expect(await uninvoicedPayments(db)).toHaveLength(2);
+  });
+
+  test("the list is walked oldest paid first whatever order it arrives in, and a repeated id is billed once", async () => {
+    const [a, b, c] = await unbilled(3);
+    await ready();
+    const result = await createInvoicesForUnbilled(db, [c.id, a.id, b.id, a.id], NOW);
+    expect(result).toEqual({ made: ["MSL2026-001", "MSL2026-002", "MSL2026-003"], already: 0, failed: [], sellerMissing: false });
+    expect((await allInvoices()).map((i) => i.paymentId)).toEqual([a.id, b.id, c.id]);
+  });
+
+  test("a payment started for an unpaid invoice pays THAT invoice (its own number, none new for it); the preview names it in its place", async () => {
+    await ready();
+    const r1 = await registrationOn(db, course, PAYERS[0]);
+    const inv = await request(r1);
+    const p1 = await pendingPayment(db, r1);
+    // paid while its invoice step failed (settle's savepoint, ruling R13): paid, started for the unpaid invoice, and no invoice names it
+    await db.update(payments).set({ status: "paid", paidAt: PAID_AT, invoiceId: inv.id }).where(eq(payments.id, p1.id));
+    const r2 = await registrationOn(db, course, PAYERS[1]);
+    const p2 = await pendingPayment(db, r2);
+    await db.update(payments).set({ status: "paid", paidAt: new Date(PAID_AT.getTime() + DAY) }).where(eq(payments.id, p2.id));
+    const preview = await unbilledPreview(db, NOW);
+    expect(preview).toEqual({ ids: [p1.id, p2.id], first: "MSL2026-001", last: "MSL2026-002" });
+    const result = await createInvoicesForUnbilled(db, preview!.ids, NOW);
+    expect(result).toEqual({ made: ["MSL2026-001", "MSL2026-002"], already: 0, failed: [], sellerMissing: false });
+    expect(await invoiceForAdmin(db, inv.id)).toMatchObject({ status: "paid", paymentId: p1.id });
+    expect(await allInvoices()).toHaveLength(2);
+  });
+
+  test("a payment that is no longer paid (refunded meanwhile) is `failed`, by its payer's name; the others are still billed", async () => {
+    const [a, b, c] = await unbilled(3);
+    await ready();
+    await db.update(payments).set({ status: "pending", paidAt: null }).where(eq(payments.id, b.id));
+    const result = await createInvoicesForUnbilled(db, [a.id, b.id, c.id], NOW);
+    expect(result).toEqual({ made: ["MSL2026-001", "MSL2026-002"], already: 0, failed: ["Mari Kask"], sellerMissing: false });
+    expect((await allInvoices()).map((i) => i.paymentId)).toEqual([a.id, c.id]);
+  });
+
+  test("an error on one payment is `failed` too and the walk goes on; the log names ids, never a payer", async () => {
+    const [a, b, c] = await unbilled(3);
+    await ready();
+    vi.spyOn(db, "transaction").mockRejectedValueOnce(new Error("Kati Tamm kati@example.com 17500"));
+    const result = await createInvoicesForUnbilled(db, [a.id, b.id, c.id], NOW);
+    expect(result).toEqual({ made: ["MSL2026-001", "MSL2026-002"], already: 0, failed: ["Kati Tamm"], sellerMissing: false });
+    const logged = vi.mocked(console.error).mock.calls.flat().join("\n");
+    expect(logged).toContain(`payment ${a.id}`);
+    expect(logged).not.toMatch(/Kati|kati@|17500/);
+  });
+
+  test("an id that is no payment is left out, and no ids make nothing", async () => {
+    const [a] = await unbilled(1);
+    await ready();
+    expect(await createInvoicesForUnbilled(db, [], NOW)).toEqual({ made: [], already: 0, failed: [], sellerMissing: false });
+    expect(await createInvoicesForUnbilled(db, [999_999, a.id], NOW)).toEqual({ made: ["MSL2026-001"], already: 0, failed: [], sellerMissing: false });
   });
 });
 

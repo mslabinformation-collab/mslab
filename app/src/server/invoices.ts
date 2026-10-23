@@ -19,10 +19,11 @@ import { registrationPrice } from "@/domain/registration";
 import { prepaymentDraft, type PrepaymentDraft } from "@/domain/site-editor";
 import type { I18n } from "@/i18n/field";
 import { toStorable } from "@/lib/to-storable";
+import { logFailure } from "./log";
 
 // The invoices (invoices, Task 3; spec D2–D9, §6), without Next.js: the issue of a number in the setting's series, Maria's invoice on a
 // registration (a request to pay or a receipt), „Märgi tasutuks" and its undo, the cancel, the buyer's editor, a paid payment's invoice (born
-// paid, or the unpaid one it was started for paid) and the catch-up of a payment paid without one, the student's and Maria's reads, the list,
+// paid, or the unpaid one it was started for paid) and the catch-up of a payment paid without one (one by one, or all at once: B11), the student's and Maria's reads, the list,
 // the month's CSV, Seaded → Arve andmed (the settings key `invoice`) and the PDF.
 //
 // The locks, always in this order (the plan's Global Constraints), so no two writes ever wait for each other the other way round:
@@ -626,6 +627,69 @@ export async function catchUpInvoice(db: Db, paymentId: number, now: Date): Prom
     return made === "sellerMissing" ? { ok: false, error: "sellerMissing" } : { ok: true, invoice: made };
   });
   if (result.ok) console.info(`[invoices] payment ${paymentId}: ${result.invoice.id === known.invoiceId ? "paid" : "issued"} ${result.invoice.number} (invoice ${result.invoice.id})`);
+  return result;
+}
+
+/** What „Koosta {n} arvet“ does, as its panel says it before it is pressed (B11): the payments it will walk, oldest first, and the numbers of the first and last invoice. */
+export type UnbilledPreview = { ids: number[]; first: string; last: string };
+
+/** What a press of „Koosta {n} arvet“ did (B11): the numbers made, how many were billed meanwhile, the payers whose invoice failed, and whether Seaded's seller was empty. */
+export type BatchResult = { made: string[]; already: number; failed: string[]; sellerMissing: boolean };
+
+/**
+ * The panel of „Koosta {n} arvet“ (B11): the ids of „Arveta maksed“ oldest paid first — the list the batch walks — and the number the first and the
+ * last of them will take. The numbers are the ones the walk will give, in its order: a payment started for an invoice that is still unpaid pays THAT
+ * invoice (uninvoicedPaymentRows' `pays`, once per invoice) and keeps its number; every other payment takes the series' next, one after the other
+ * (invoiceCard: this Tallinn year, never at or below the prefix-year's highest). null when nothing is unbilled. `rows` is the page's own read of
+ * uninvoicedPaymentRows, so that the list on the screen and this one are one read.
+ */
+export async function unbilledPreview(db: Db, now: Date, rows?: UninvoicedRow[]): Promise<UnbilledPreview | null> {
+  const list = rows ?? (await uninvoicedPaymentRows(db));
+  if (list.length === 0) return null;
+  const card = await invoiceCard(db, now);
+  let seq = card.nextSeq;
+  const paid = new Set<string>();
+  const numbers = list.map(({ pays }) => {
+    if (pays !== null && !paid.has(pays)) {
+      paid.add(pays);
+      return pays;
+    }
+    return formatInvoiceNumber(card.prefix, card.nextYear, seq++);
+  });
+  return { ids: list.map((r) => r.payment.id), first: numbers[0], last: numbers[numbers.length - 1] };
+}
+
+/**
+ * „Koosta {n} arvet“ (admin UX pass B11; piece2-texts S3-l): the invoice of every payment in `ids` — the list the panel showed — one catchUpInvoice
+ * each, so each is its own transaction and takes its own number (a payment is never held up by another's failure), walked oldest paid first
+ * whatever order `ids` come in (a repeated id once), which is the order the panel's preview numbered them in. Nothing is mailed.
+ * - `made`: the numbers, in the order made (a payment that paid its linked invoice gives that invoice's number);
+ * - `already`: payments an invoice names by now (billed meanwhile, by the row's own button, the registration's, or another press);
+ * - `failed`: the payers' names whose invoice was not made — the payment is no longer paid, or an error (logged by id and the error's class only);
+ *   the walk goes on with the rest;
+ * - `sellerMissing`: Seaded's seller card is empty: the walk stops there (the same for every payment) with what was made until then.
+ * An id that is no payment is left out. Logs one `[invoices] batch:` line of counts.
+ */
+export async function createInvoicesForUnbilled(db: Db, ids: number[], now: Date): Promise<BatchResult> {
+  const result: BatchResult = { made: [], already: 0, failed: [], sellerMissing: false };
+  const wanted = [...new Set(ids)];
+  if (wanted.length === 0) return result;
+  const walk = await db.select({ id: payments.id, name: payments.name }).from(payments).where(inArray(payments.id, wanted)).orderBy(asc(payments.paidAt), asc(payments.id));
+  for (const p of walk) {
+    try {
+      const r = await catchUpInvoice(db, p.id, now);
+      if (r.ok) result.made.push(r.invoice.number);
+      else if (r.error === "already") result.already++;
+      else if (r.error === "sellerMissing") {
+        result.sellerMissing = true;
+        break;
+      } else result.failed.push(p.name);
+    } catch (e) {
+      logFailure(`[invoices] payment ${p.id}: the batch invoice failed`, e);
+      result.failed.push(p.name);
+    }
+  }
+  console.info(`[invoices] batch: ${result.made.length} made, ${result.already} already, ${result.failed.length} failed${result.sellerMissing ? ", seller missing" : ""}`);
   return result;
 }
 
