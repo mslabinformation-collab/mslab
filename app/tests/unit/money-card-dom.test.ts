@@ -38,7 +38,7 @@ const settle = () =>
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
   });
 const show = async (over: Partial<Props> = {}) => {
-  await act(async () => root.render(createElement(MoneyCard, { registration: reg(), session: SESSION, sellerReady: true, paymentLines: null, today: TODAY, ...over })));
+  await act(async () => root.render(createElement(MoneyCard, { registration: reg(), session: SESSION, takesSeat: false, sellerReady: true, paymentLines: null, today: TODAY, ...over })));
   await settle();
 };
 const click = async (el: Element | null) => {
@@ -158,6 +158,28 @@ describe("the panel's amount pills (P-2) and the submit", () => {
     await click(amount("Muu summa"));
     await type($<HTMLInputElement>("[data-other-amount]"), "100");
     expect(text(submit())).toBe("Lisa 100 €");
+  });
+
+  test("M3: „· koht kinnitub“ only when the place can be confirmed: a full session where the registration holds no seat says plain „Lisa {summa}“; if it holds its seat, or a seat is free, it says so", async () => {
+    // full (4 of 4), and the registration's hold ran out: the money is taken, the place is not (S3-b's „Koolitus on vahepeal täis“)
+    await show({ session: { taken: 4, capacity: 4 }, takesSeat: false });
+    await open();
+    expect(text(submit())).toBe("Lisa 145 €");
+    await click(amount("290 € · kogu summa"));
+    expect(text(submit())).toBe("Lisa 290 €");
+    // the same full session, the registration's own seat among the four: it keeps it, so the place is confirmed
+    await show({ session: { taken: 4, capacity: 4 }, takesSeat: true });
+    expect(text(submit())).toBe("Lisa 290 € · koht kinnitub");
+    await click(amount("145 € · ettemaks"));
+    expect(text(submit())).toBe("Lisa 145 € · koht kinnitub");
+    // one seat free: the place can be confirmed whether or not it holds one
+    await show({ session: { taken: 3, capacity: 4 }, takesSeat: false });
+    expect(text(submit())).toBe("Lisa 145 € · koht kinnitub");
+    // more taken than the capacity (Maria confirmed past it): the others alone fill the session, as the server counts (it leaves hers out)
+    await show({ session: { taken: 5, capacity: 4 }, takesSeat: true });
+    expect(text(submit())).toBe("Lisa 145 €");
+    // the seat line above is as it was
+    expect(text($("[data-money-seat]"))).toBe("Koht kinnitub 145 € juures · vabu kohti 0 / 4");
   });
 
   test("100 € paid: „45 € · ettemaks“ (chosen) and „190 € · ülejäänud summa“", async () => {

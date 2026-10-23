@@ -20,7 +20,7 @@ import styles from "./MoneyCard.module.css";
 // the receipt). The panel opens in place of its button: the amount pills (P-2: what is missing up to 50 %, preselected; the remainder; „Muu summa“,
 // refused in the field above what is left, S3-e), the day (today, never later), the way (Pangaülekanne by default), „Koosta kviitung“ (ticked when
 // Seaded → Arve andmed has a seller; else the S3-c line in its place), the submit „Lisa {summa}“ (+ „· koht kinnitub“ when this amount reaches 50 %
-// and the place is not confirmed yet; S3-d's words without a session) and „Katkesta“. The press sends the paid total the card was drawn with: the
+// and the place is not confirmed yet and a seat is free for it or it holds one; S3-d's words without a session) and „Katkesta“. The press sends the paid total the card was drawn with: the
 // server refuses one built on an old total (`stale`) and refreshes the page. Hidden on a cancelled registration. This file runs on old iPads: no
 // regular expression with a lookbehind here or in what it imports (tests/unit/old-safari.test.ts).
 
@@ -97,6 +97,7 @@ function refusalText(error: Refusal | "future", left: number): string {
 export function MoneyCard({
   registration,
   session,
+  takesSeat,
   sellerReady,
   paymentLines,
   today,
@@ -105,6 +106,8 @@ export function MoneyCard({
   registration: Registration;
   /** The session's seats now (taken by anyone, its capacity), or null: an individual or an e-learning registration, which has none. */
   session: { taken: number; capacity: number } | null;
+  /** The registration holds a seat of that session now (domain/sessions.ts holdsSeat: confirmed, or awaiting with a live hold): `taken` counts it. */
+  takesSeat: boolean;
   /** Seaded → Arve andmed has a seller (domain/invoice.ts sellerReady): a receipt can be made. */
   sellerReady: boolean;
   /**
@@ -147,7 +150,10 @@ export function MoneyCard({
   /** The amount the press would send, or null while „Muu summa“ holds no amount. */
   const cents = chosen === "other" ? (typed !== null && typed > 0 ? typed : null) : offer.cents;
   const reaches = priceCents !== null && status === "awaiting_prepayment" && cents !== null && (paidCents + cents) * 2 >= priceCents;
-  const submitLabel = cents === null ? m.add : fill(reaches ? (session ? m.submitSeat : m.submitAlone) : m.submit, { x: eur(cents) });
+  // the place is confirmed only where a seat is free for it, the others' counted and its own not (the server's hasFreeSeat, which leaves the registration
+  // out): on a full session where it holds none the money is taken and the place is not (S3-b's „Koolitus on vahepeal täis“), so the button does not promise it
+  const seatFree = session === null || session.taken - (takesSeat ? 1 : 0) < session.capacity;
+  const submitLabel = cents === null ? m.add : fill(reaches && seatFree ? (session ? m.submitSeat : m.submitAlone) : m.submit, { x: eur(cents) });
 
   useEffect(() => {
     const next = focusNext.current;

@@ -426,6 +426,7 @@ function RegistrationDetail({
         <MoneyCard
           registration={{ id: r.id, paidCents: r.paidCents, priceCents: total, status: r.status, cancelled: r.status === "cancelled", choice: r.paymentChoice }}
           session={session}
+          takesSeat={takesSeat}
           sellerReady={seller}
           paymentLines={payments.length > 0 ? <PaymentLines rows={payments} /> : null}
           today={today}
