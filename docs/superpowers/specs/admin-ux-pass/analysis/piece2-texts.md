@@ -227,3 +227,17 @@ Piece 4 (C screens):
 - PublishBar words for the home, trainer, news, popup and practice editors.
 
 Already done in piece 1: the 8 texts above, SaveStatus/ConfirmPanel/UndoBar fallbacks (ledger T8 ruling), the Protokollid index.
+
+## 6. Texts approved during the build (Dim 23.10.2026, "OK")
+
+| # | Where | Approved text |
+|---|---|---|
+| W1 | „Lisa laekumine“ refused because the paid total changed meanwhile (`stale`) | „Laekunud summa muutus vahepeal. Vaata summa üle ja lisa uuesti.“ |
+| W2 | Undoing a payment request that was marked paid: the ConfirmPanel question | „Kas võtan arve {nr} tasumise tagasi?“ |
+| W3 | Status line after „Ava test uuesti“ | „Test uuesti avatud: {nimi}, katseid jäänud {n}.“ |
+| W4 | Practical work, a new round arrived while open (`newRound`) | „Õpilane saatis vahepeal uue korra. Vaata see üle.“ (kept) |
+| W5 | Leave-guard label for a test-review answer | „Hinnang vastusele {n}“ (kept) |
+| W6 | „Pikenda“ or its undo refused because the end changed meanwhile | „Ligipääsu lõpp muutus vahepeal. Vaata kuupäev üle.“ |
+| W7 | Päringud: „Märgi tehtuks“ / its undo refused because another device changed it | „Päringut muudeti vahepeal. Vaata see üle.“ |
+| W8a | Maria's mail „Makse vajab kontrolli“ (`stuckPaymentSummary`): the instruction | „lisa makse registreeringu juures nupuga „Lisa laekumine“, kviitungiga“ (replaces „märgi makse registreeringu juures käsitsi“) |
+| W8b | The follow-up mail „Makse on nüüd kirja pandud“ | „Kui lisasid selle juba nupuga „Lisa laekumine“, võta selle kviitungi tasumine tagasi, et makset ei loetaks kaks korda.“ (replaces „Kui märkisid selle juba käsitsi … eemalda oma käsitsi lisatud summa …“) |
