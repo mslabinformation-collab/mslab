@@ -530,6 +530,12 @@ export const et = {
         codeHere: "Kui nupp ei tööta, sisesta kood siin:",
         codeLink: "Ava sisselogimine",
       },
+      // Maria's „Vasta e-kirjaga ↗“ in Päringud opens her mail program with this subject (domain/requests.ts replySubject, piece 2 texts S3-k), in the
+      // language the request was sent in. {title} is the course or the practice package; `brand` stands in when the request names none (a plain message).
+      reply: {
+        subject: "Vastus sinu päringule — {title}",
+        brand: "MS LAB",
+      },
     },
     // The e-mail that confirms an account deletion (account-mail.ts deletionMail): the greeting and signature are `mail`'s.
     deleted: {

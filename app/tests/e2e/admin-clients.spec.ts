@@ -1,6 +1,6 @@
 import type { Browser, Locator, Page } from "@playwright/test";
 import { addMonths, defaultExpiryDate, endOfDayTallinn, extendByMonths, tallinnToday } from "../../src/domain/client-access";
-import { formatDate, formatTime } from "../../src/i18n/format";
+import { formatDate } from "../../src/i18n/format";
 import { clientEmail, insertAccountFixtures, setPrepayment, signInAsClient, takeTerms, TEST_PREPAYMENT, type AccountCardKind } from "./account";
 import { ADMIN, adminReady, seadedSave, signInAsAdmin, type CreatedRows } from "./admin-login";
 import { accountCourseSlug, holdLocalLock, insertStoredPayment, LOCK_WAIT_MS, onLocalDb, removeAdminRows, removeClientRows, snapshotRows } from "./fixtures";
@@ -361,6 +361,18 @@ test("the list: search as she types, Kõik / E-õpe / Kontaktõpe with their cou
   await expect(page).toHaveURL(new RegExp(`/admin/registreerimised\\?id=${k.registrations.confirmed}$`));
   await expect(page.locator(`[data-registration-detail="${k.registrations.confirmed}"]`)).toBeVisible();
   expect(await noOverflow(page)).toBe(true);
+
+  // „Vaata päringutes“ (the fold „Päringud“) takes her request's own card in Päringud: its tab, and the card itself (#p-{id}), which is marked for a moment
+  const again = await openStudent(page, kStudent);
+  const link = (await openFold(again, "Päringud")).getByRole("link", { name: "Vaata päringutes" });
+  await expect(link).toHaveAttribute("href", /^\/admin\/paringud\?liik=kontakt#p-\d+$/);
+  await link.click();
+  await expect(page).toHaveURL(/\/admin\/paringud\?liik=kontakt#p-\d+$/);
+  const card = page.locator(`#${new URL(page.url()).hash.slice(1)}`);
+  await expect(card).toBeVisible();
+  await expect(card.locator("[data-request-tag]")).toHaveText("E-õppe huvi");
+  await expect(card.locator("[data-request-message]")).toHaveText("Huvi: Kulmumeistri e-koolitus");
+  await expect(card).toHaveAttribute("data-flash", "");
 });
 
 test("the whole row is the link: at 1360 px Õpilased stays a table and a click anywhere on a row opens its drawer; in a narrow card the rows are blocks and it works there too", async ({ page, context, visitorIp }, info) => {
@@ -862,7 +874,7 @@ test("the phone drawer (375 × 812) with „Hinda“ on the card: „Hinda“ an
   expect(await smallTargets(row)).toEqual([]);
 });
 
-test("a change request in Päringud: the course and its date as the heading, the wish in words, a link that opens the registration", async ({ page, context, visitorIp }, info) => {
+test("a change request in Päringud: the registration's name as the heading, the wish and the course with its day in the facts line, a link that opens the registration", async ({ page, context, visitorIp }, info) => {
   const email = await fresh("change", info.project.name);
   const f = await insertAccountFixtures(email, { name: "Mari Maasikas", cards: ["confirmed", "awaiting"] });
   const [cancel] = await onLocalDb(
@@ -880,24 +892,31 @@ test("a change request in Päringud: the course and its date as the heading, the
   await adminReady(page);
 
   const start = f.session.startsAt;
-  const heading = `Kulmude lamineerimine — ${formatDate(start, "et")} · ${formatTime(start, "et")}`;
+  const facts = (wish: string) => `${wish} · Kulmude lamineerimine, ${formatDate(start, "et")} Pärnu`;
   const first = page.locator(`[data-request="${cancel.id}"]`);
-  await expect(first.getByRole("heading", { level: 3 })).toHaveText(heading);
-  // in words, no raw payload keys (registrationId, kind)
-  await expect(first.locator("dt")).toHaveText(["Soov", "Toimumine", "Nimi", "E-post", "Sõnum"]);
-  await expect(first.locator("dd")).toHaveText(["Soovib tühistada", "Pärnu, MS LAB stuudio", "Mari Maasikas", email, "Jään haigeks."]);
-  await expect(first.locator("dl").getByRole("link", { name: email })).toHaveAttribute("href", `mailto:${email}`);
+  // her name on the registration is the heading (a request has no name of its own); under it the date, her language (the registration's) and her address
+  await expect(first.getByRole("heading", { level: 3 })).toHaveText("Mari Maasikas");
+  await expect(first.locator("[data-request-meta]")).toHaveText(new RegExp(`^\\d{2}\\.\\d{2}\\.\\d{4} \\d{2}:\\d{2} · ET · ${email}$`));
+  await expect(first.locator("[data-request-tag]")).toHaveText("Muutmine");
+  // the wish in words and the course with its day, no raw payload keys (registrationId, kind)
+  await expect(first.locator("[data-request-message]")).toHaveText("Jään haigeks.");
+  await expect(first.locator("[data-request-facts]")).toHaveText(facts("Soovib tühistada"));
+  await expect(first).not.toContainText("registrationId");
   const second = page.locator(`[data-request="${change.id}"]`);
-  await expect(second.getByRole("heading", { level: 3 })).toHaveText(heading);
-  await expect(second.locator("dt")).toHaveText(["Soov", "Toimumine", "Nimi", "E-post"]); // no message: no row
-  await expect(second.locator("dd").first()).toHaveText("Soovib muuta aega");
+  await expect(second.getByRole("heading", { level: 3 })).toHaveText("Mari Maasikas");
+  await expect(second.locator("[data-request-facts]")).toHaveText(facts("Soovib muuta aega"));
+  await expect(second.locator("[data-request-message]")).toHaveCount(0); // no message: no line
+  // „Vasta e-kirjaga ↗“ writes to the address she sent the request from, under the registration's course
+  expect(decodeURIComponent((await first.locator("[data-request-reply]").getAttribute("href"))!)).toBe(`mailto:${email}?subject=Vastus sinu päringule — Kulmude lamineerimine`);
 
-  // handled / not handled as every request
+  // done as every request: at once, with the bar, and the card is in the fold
   await first.getByRole("button", { name: "Märgi tehtuks" }).click();
-  await expect(first.locator("[data-request-state]")).toHaveText("Tehtud");
+  await expect(page.locator("[data-undo-bar]")).toContainText("Märgitud tehtuks.");
+  await expect(first).toBeHidden();
+  await expect(page.locator("details[data-fold] summary")).toContainText("Tehtud (1)");
 
   // the link opens that registration's own drawer
-  await second.getByRole("link", { name: "Ava registreerimine" }).click();
+  await second.getByRole("link", { name: "Ava registreering →" }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/registreerimised\\?id=${f.registrations.awaiting}$`));
   const reg = page.locator(`[data-registration-detail="${f.registrations.awaiting}"]`);
   await expect(reg).toBeVisible();

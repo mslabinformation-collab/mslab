@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
-import { cancel, saveHandled, saveStatus, type AdminResult } from "../admin";
+import { cancel, saveHandled, saveStatus, type AdminResult, type HandledAnswer } from "../admin";
 import { adminAction } from "../auth";
 import { logFailure } from "../log";
 import { revalidatePublic, type PublicChange } from "../public-cache";
@@ -68,7 +68,18 @@ export const cancelRegistration = adminAction(async (_admin, _prev: AdminResult 
   run("cancel", { kind: "seats" }, (db) => cancel(db, formData)),
 );
 
-/** Request inbox, "Märgi tehtuks" / "Märgi tegemata": fields id, handled ("1" | "0"). */
-export const toggleRequestHandled = adminAction(async (_admin, _prev: AdminResult | null, formData: FormData) =>
-  run("request", null, (db) => saveHandled(db, formData)),
-);
+/**
+ * Request inbox, „Märgi tehtuks“ / „Märgi tegemata“ and the UndoBar's „Võta tagasi“: `{ id, handled, expected, version? }` (server/admin.ts saveHandled). The
+ * answer carries the version the write left, for the undo. The open page is refreshed when it went through, and also when the card was out of date (`stale`):
+ * it then shows the request as it is. A throw is `server`.
+ */
+export const toggleRequestHandled = adminAction(async (_admin, input: unknown): Promise<HandledAnswer> => {
+  try {
+    const result = await saveHandled(getDb(), input);
+    if (result.ok || result.error === "stale") refresh();
+    return result;
+  } catch (e) {
+    logFailure("[admin] request failed", e);
+    return { ok: false, error: "server" };
+  }
+});

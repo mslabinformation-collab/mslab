@@ -115,10 +115,11 @@ describe("requests", () => {
   test("setRequestHandled / saveHandled toggle both ways", async () => {
     const [q] = await db.insert(requests).values({ kind: "practice", payload: { name: "Liis", email: "liis@example.com" } }).returning();
     expect((await setRequestHandled(db, q.id, true))?.handled).toBe(true);
-    expect(await saveHandled(db, form({ id: String(q.id), handled: "0" }))).toEqual({ ok: true });
+    // (the form is the page's own: { id, handled, expected } — the card's button and the UndoBar's „Võta tagasi“; tests/db/admin-requests.test.ts)
+    expect(await saveHandled(db, { id: q.id, handled: false, expected: true })).toMatchObject({ ok: true });
     expect((await setRequestHandled(db, q.id, true))?.handled).toBe(true);
-    expect(await saveHandled(db, form({ id: String(q.id), handled: "yes" }))).toEqual({ ok: false, error: "invalid" });
-    expect(await saveHandled(db, form({ id: "9999", handled: "1" }))).toEqual({ ok: false, error: "notFound" });
+    expect(await saveHandled(db, { id: q.id, handled: "yes", expected: true })).toEqual({ ok: false, error: "invalid" });
+    expect(await saveHandled(db, { id: 9999, handled: true, expected: false })).toEqual({ ok: false, error: "notFound" });
     expect(await setRequestHandled(db, 9999, true)).toBeNull();
   });
 
@@ -159,7 +160,7 @@ describe("pages of 50 (?leht=)", () => {
     expect((await pageRegistrations(db, { status: "awaiting_prepayment" }, 1, 20)).pages).toBe(3);
   });
 
-  test("requests: open ones first across the page boundary, each group newest first; only the tab's kind", async () => {
+  test("requests: the open ones and the done ones are two lists, each newest first and paged by itself; only the tab's kind", async () => {
     const at = (h: number) => new Date(Date.UTC(2026, 9, 1, h));
     await db.insert(requests).values([
       { kind: "practice", payload: { name: "open-old" }, createdAt: at(1) },
@@ -169,12 +170,13 @@ describe("pages of 50 (?leht=)", () => {
       { kind: "practice", payload: { name: "open-mid" }, createdAt: at(3) },
       { kind: "contact", payload: { name: "other kind" }, createdAt: at(10) },
     ]);
-    const names = async (page: number) => (await pageRequests(db, "practice", page, 2)).rows.map((r) => r.payload.name);
-    expect(await names(1)).toEqual(["open-new", "open-mid"]);
-    expect(await names(2)).toEqual(["open-old", "done-new"]);
-    expect(await names(3)).toEqual(["done-old"]);
-    expect(await pageRequests(db, "practice", 3, 2)).toMatchObject({ page: 3, pages: 3, total: 5 });
-    expect(await names(4)).toEqual(["done-old"]); // clamped
+    const names = async (handled: boolean, page: number) => (await pageRequests(db, { kind: "practice", handled, page }, 2)).rows.map((r) => r.payload.name);
+    expect(await names(false, 1)).toEqual(["open-new", "open-mid"]);
+    expect(await names(false, 2)).toEqual(["open-old"]);
+    expect(await names(true, 1)).toEqual(["done-new", "done-old"]);
+    expect(await pageRequests(db, { kind: "practice", handled: false, page: 2 }, 2)).toMatchObject({ page: 2, pages: 2, total: 3 });
+    expect(await pageRequests(db, { kind: "practice", handled: true, page: 1 }, 2)).toMatchObject({ page: 1, pages: 1, total: 2 });
+    expect(await names(false, 4)).toEqual(["open-old"]); // clamped
     // the plain list keeps its newest-first order
     expect((await listRequests(db, "practice")).map((r) => r.payload.name)).toEqual(["done-new", "open-new", "open-mid", "done-old", "open-old"]);
   });

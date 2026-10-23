@@ -464,6 +464,10 @@ export const ru: Dict = {
         codeHere: "Если кнопка не работает, введите код здесь:",
         codeLink: "Открыть страницу входа",
       },
+      reply: {
+        subject: "Ответ на ваш запрос — {title}",
+        brand: "MS LAB",
+      },
     },
     deleted: {
       subject: "Личный кабинет MS LAB удалён",

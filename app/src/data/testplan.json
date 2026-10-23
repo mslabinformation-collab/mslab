@@ -2880,21 +2880,27 @@
       "href": "/admin/paringud",
       "steps": [
         "Ava „Päringud“.",
-        "Vaata läbi vahelehed „Kontakt“, „Individuaal“, „Praktika“ ja „Ootenimekiri“.",
-        "Vajuta ühel Proov 3 päringul „Märgi tehtuks“.",
-        "Ava „Ülevaade“."
+        "Vaata läbi kõik viis vahelehte: „Kontakt“, „Individuaal“, „Praktika“, „Ootenimekiri“ ja „Muutmine“.",
+        "Kirjuta vahelehel „Kontakt“ otsinguväljale Proov 3 praktikapäringu telefoninumber.",
+        "Tühjenda otsing. Vajuta ühel Proov 3 päringul „Märgi tehtuks“ ja kohe seejärel „Võta tagasi“.",
+        "Vajuta uuesti „Märgi tehtuks“, ava all rida „Tehtud“ ja vajuta seal „Märgi tegemata“.",
+        "Vajuta ühel Proov 3 päringul „Vasta e-kirjaga ↗“ ja sulge kiri saatmata.",
+        "Ava „Õpilased“, ava Proov 3 õpilane ja vajuta rea „Päringud“ all „Vaata päringutes“."
       ],
       "expect": [
-        "Vahelehtedel „Kontakt“, „Individuaal“ ja „Praktika“ on Proov 3 päring koos saabumise ajaga.",
-        "Kui ootenimekirja kontroll tehti, on Proov 3 ka vahelehel „Ootenimekiri“.",
-        "„Vasta e-kirjaga“ avab kirja Proov 3 aadressile.",
-        "Tehtud päring liigub loendi lõppu märkega „Tehtud“.",
-        "Ülevaate kaardi „Sinu järjekord“ rea „Päringut tegemata“ arv väheneb ühe võrra."
+        "Vahelehtedel on tegemata päringute arvud ja vahelehel „Kontakt“ on e-õppe huvi märkega „E-õppe huvi“.",
+        "Kaardil on nimi, saabumise aeg, keel, e-post, tüübimärge, sõnum ja hall faktirida; venekeelsel algab see sõnadega „Vastus vene keeles“.",
+        "Otsing leiab praktikapäringu ka vahelehelt „Kontakt“ ja tulemusel on märge „Praktika“.",
+        "„Märgi tehtuks“ viib kaardi kohe loendist ära ja all on „Märgitud tehtuks.“ ning „Võta tagasi“.",
+        "„Võta tagasi“ toob päringu loendisse tagasi; „Märgi tegemata“ ei näita sellist riba.",
+        "Ootenimekirja kaardil avab „Ava toimumine →“ toimumise ja muutmise kaardil „Ava registreering →“ registreeringu.",
+        "Kiri avaneb Proov 3 aadressile teemaga „Vastus sinu päringule — …“ (venekeelsele „Ответ на ваш запрос — …“).",
+        "„Vaata päringutes“ avab just selle kaardi, kerib selle nähtavale ja kaardi taust on kaks sekundit hele."
       ],
       "why": "Päringud on Maria postkast lehel.",
       "risk": "med",
       "writes": false,
-      "mark": "reworded",
+      "mark": "redo",
       "markedAt": "deploy"
     },
     {
@@ -5160,18 +5166,22 @@
         "Ava Gmailis telefonis kiri „Päring on vastu võetud — …“.",
         "Ava sama kiri Gmailis arvutis.",
         "Vajuta kirjas „Ava minu konto“.",
-        "Vajuta „Vasta“, vaata saajat ja ära saada."
+        "Vajuta „Vasta“, vaata saajat ja ära saada.",
+        "Ava halduses „Päringud“ ja vajuta sama päringu kaardil „Vasta e-kirjaga ↗“."
       ],
       "expect": [
         "Saatja on MS LAB.",
         "Kirjas on „Päring on saadetud. Maria vastab peagi.“.",
         "Kirjas on koolituse või paketi nimi.",
         "Nupp „Ava minu konto“ avab konto lehe.",
-        "Vastuse saaja on Maria aadress."
+        "Vastuse saaja on Maria aadress.",
+        "Halduse kiri on päringu tegija aadressile, teema „Vastus sinu päringule — …“ (venekeelsel „Ответ на ваш запрос — …“)."
       ],
       "why": "Õpilane teab, et päring jõudis kohale.",
       "risk": "med",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "kirjad-ootenimekiri",

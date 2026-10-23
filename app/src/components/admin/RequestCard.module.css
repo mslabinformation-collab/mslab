@@ -1,0 +1,143 @@
+/* RequestCard (admin UX pass, README A7, piece 2 Task 15; the Part 2 prototype's compact card): a white card of 22px radius, 20px 22px inside, the parts 10px
+   apart. The name is Jost 400 20px (ui .h3); the line under it 12px #716a6d; the tag a 22px pill of 10px/600 (#ebe8e9 with ink text, the e-learning interest
+   ink with white); the message 14px; the facts line 12px #716a6d; the buttons the 44px pills of ui .btn. */
+
+.card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: #fff;
+  scroll-margin-top: 20px;
+}
+
+/* a done request, in the fold „Tehtud ({n})“: one step quieter */
+.card[data-handled="1"] {
+  background: #fbfafa;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.who {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.who h3 {
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  margin: 0;
+  color: #716a6d;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.tag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 99px;
+  background: #ebe8e9;
+  color: var(--ink);
+  font: 600 10px/1 var(--font-body);
+  white-space: nowrap;
+}
+
+.tag[data-interest] {
+  background: #222;
+  color: #fff;
+}
+
+.message {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.facts {
+  margin: 0;
+  color: #716a6d;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+/* the link to the session or the registration: a text link beside the buttons, level with them */
+.go {
+  align-self: center;
+  margin-left: 6px;
+}
+
+/* the same thing in two lengths (the Õpilased drawer's Swap): the page holds the long text; on a phone the short one, from `data-short`, is drawn in its place */
+@media (max-width: 640px) {
+  .swap > .wide {
+    display: none;
+  }
+
+  .swap::after {
+    content: attr(data-short);
+  }
+
+  /* the phone card: the two buttons side by side, each half the card (the Part 2 phone frame), the link under them */
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .actions > * {
+    min-width: 0;
+  }
+
+  .actions button,
+  .actions a[data-request-reply] {
+    width: 100%;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .go {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-left: 0;
+  }
+}
+
+/* below 900 px the admin has the phone top bar (64 px, sticky): a card an address points at leaves a gap under it */
+@media (max-width: 899px) {
+  .card {
+    scroll-margin-top: 76px;
+  }
+}
+
+/* the deep link (RequestTarget): the card an address names is on #faf6f8 for 2 s; with reduced motion there is none */
+@media (prefers-reduced-motion: no-preference) {
+  .card {
+    transition: background-color 0.4s;
+  }
+
+  .card[data-flash] {
+    background: #faf6f8;
+  }
+}

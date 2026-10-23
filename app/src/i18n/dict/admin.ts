@@ -1148,37 +1148,47 @@ export const adminEt = {
     eyebrow: "Postkast",
     title: "Päringud",
     lead: "Kontaktivormi sõnumid, individuaalõppe soovid, praktikataotlused, ootenimekiri ja õpilaste tühistamise või ajamuutmise soovid. Tehtud päringud jäävad nimekirja lõppu.",
+    // the toolbar (README A7, B7): the search runs across every tab, so a result carries its tab's tag; the tabs are the toolbar's pill row, each
+    // with the number of requests still open (the same numbers as the menu badge)
+    searchPlaceholder: "Otsi nime, e-posti või telefoni järgi",
     tabsLabel: "Päringu liik",
     tabs: { kontakt: "Kontakt", individuaal: "Individuaal", praktika: "Praktika", ootenimekiri: "Ootenimekiri", muutmine: "Muutmine" },
-    tabCount: "{n} tegemata",
+    // what the list is of, in a sentence (ListEmpty: „Selle valikuga päringuid pole.“, „„{q}“ järgi päringuid ei leitud.“, piece2-texts P-9)
+    things: "päringuid",
     interest: "E-õppe huvi",
+    // the state words of the Õpilased drawer's „Päringud“ fold (the cards show their state by where they stand: in the list or in the fold)
     handled: "Tehtud",
     open: "Uus",
     markDone: "Märgi tehtuks",
     markOpen: "Märgi tegemata",
+    // the UndoBar after „Märgi tehtuks“ (the fold's „Märgi tegemata“ is its own reverse: no bar, piece2-texts P-14)
+    markedDone: "Märgitud tehtuks.",
+    // the fold at the bottom: „Tehtud ({n}) ▸“
+    doneFold: "Tehtud",
     received: "Saabunud {date}",
-    reply: "Vasta e-kirjaga",
-    empty: "Selles vaates päringuid pole.",
+    // „Vasta e-kirjaga ↗“ opens her mail with the subject filled in (account.mail.reply, an outgoing text); the phone card has the short words
+    reply: "Vasta e-kirjaga ↗",
+    replyShort: "Vasta ↗",
+    openSession: "Ava toimumine →",
+    openRegistration: "Ava registreering →",
+    // the card's message, for the cart's „let me know“ (a request with no message of its own): the course she looked at (Part 2 prototype)
+    interestMessage: "Huvi: {course}",
+    // the muted facts line under the message (piece2-texts S3-j): parts joined with " · "; a labelled part is „{label}: {value}“
+    fact: "{label}: {value}",
+    facts: { russian: "Vastus vene keeles", cart: "Ostu ei lõpetanud · ostukorvist" },
+    // the labels of the facts line
     fields: {
-      name: "Nimi",
-      email: "E-post",
-      phone: "Telefon",
-      message: "Sõnum",
-      course: "Koolitus",
       completedCourse: "Läbitud koolitus",
       package: "Pakett",
       times: "Sobivad ajad",
       period: "Soovitud periood",
       session: "Toimumine",
-      locale: "Keel",
       modelHelp: "Vajab abi modelli leidmisel",
       account: "Soovib kontot",
     },
     unknownSession: "toimumine #{id}",
-    // Muutmine: a student's wish from her account (the card's "Tühista või muuda aega"); the heading is the course and its date
-    wishLabel: "Soov",
+    // Muutmine: a student's wish from her account (the card's "Tühista või muuda aega"), the first part of the card's facts line
     wish: { cancel: "Soovib tühistada", change: "Soovib muuta aega" },
-    openRegistration: "Ava registreerimine",
     unknownRegistration: "Registreerimine #{id} (ei leitud)",
   },
 

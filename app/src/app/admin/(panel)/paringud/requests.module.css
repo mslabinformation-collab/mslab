@@ -1,90 +1,22 @@
-.list {
+/* Päringud (admin UX pass, README A7, piece 2 Task 15): the cards in a grid of two columns on a laptop (a column is at least 420 px, so a phone and a
+   narrow tablet have one), 16px apart; the card itself is components/admin/RequestCard.module.css. */
+
+.grid {
   display: grid;
-  gap: 18px;
-  margin: 0;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+  gap: 16px;
+  margin: 0 0 18px;
   padding: 0;
   list-style: none;
 }
 
-.request {
+/* a cell is a grid of its own, so that the card in it is as tall as its neighbour's */
+.grid > li {
   display: grid;
-  gap: 16px;
-}
-
-.request[data-handled="1"] {
-  background: #fbfafa;
-}
-
-.request[data-handled="1"] .dl {
-  opacity: 0.75;
-}
-
-.head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.title {
-  display: grid;
-  gap: 4px;
   min-width: 0;
 }
 
-.title h3 {
-  overflow-wrap: anywhere;
-}
-
-.tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.dl {
-  display: grid;
-  margin: 0;
-}
-
-.dl > div {
-  display: grid;
-  grid-template-columns: minmax(130px, 220px) minmax(0, 1fr);
-  gap: 16px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.dl > div:last-child {
-  border-bottom: 0;
-}
-
-.dl dt {
-  color: #716a6d;
-  font-size: 13px;
-}
-
-.dl dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-line;
-}
-
-.dl a {
-  color: inherit;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 18px;
-}
-
-@media (max-width: 640px) {
-  .dl > div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
-  }
+/* the fold „Tehtud ({n})“ sits at the bottom, with its own pager inside */
+.done {
+  margin-top: 6px;
 }

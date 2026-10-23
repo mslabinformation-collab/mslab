@@ -19,7 +19,7 @@ import { stepLine, stepLineShort } from "./step-line";
 import ui from "./ui.module.css";
 import styles from "./ClientDrawer.module.css";
 
-/** The Päringud tab of each request kind (/admin/paringud?liik=…). */
+/** The Päringud tab of each request kind (/admin/paringud?liik=…); the link adds `#p-{id}`, which takes Päringud to that card (A7). */
 const REQUEST_TAB = { contact: "kontakt", individual: "individuaal", practice: "praktika", waitlist: "ootenimekiri", change_request: "muutmine" } as const;
 
 const stamp = (d: Date) => `${formatDate(d, "et")} ${formatTime(d, "et")}`;
@@ -203,7 +203,7 @@ export function ClientDetailView({ detail, ecourses, now }: { detail: ClientDeta
                     </div>
                     {q.subject && <p className={styles.subject}>{q.subject}</p>}
                     <p className={styles.meta}>{fill(adminEt.requests.received, { date: stamp(q.createdAt) })}</p>
-                    <Link className={ui.link} href={`/admin/paringud?liik=${REQUEST_TAB[q.kind]}`}>
+                    <Link className={ui.link} href={`/admin/paringud?liik=${REQUEST_TAB[q.kind]}#p-${q.id}`} data-client-request-open="">
                       {t.openRequests}
                     </Link>
                   </li>

@@ -103,6 +103,12 @@ const BROWSER_FILES = [
   "src/components/admin/protocol-status.ts",
   // the A screens, Task 11: Maria's marks on a test attempt (the start, the counts and the draft layer's key), which the test review runs in the browser (pure; types of the schema only)
   "src/domain/test-review-marks.ts",
+  // the A screens, Task 15: Päringud's tabs, facts line and reply subject (pure; it pulls the admin dict, i18n/format.ts and the dictionaries), the request's card
+  // (plain markup with no "use client" line, drawn by the server page and the tests) and what it is made from, and the deep link to a card (a "use client" file, walked anyway)
+  "src/domain/requests.ts",
+  "src/components/admin/request-view.ts",
+  "src/components/admin/RequestCard.tsx",
+  "src/components/admin/RequestTarget.tsx",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

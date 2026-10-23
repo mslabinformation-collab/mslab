@@ -1,10 +1,13 @@
-import { and, asc, count, desc, eq, gte, ilike, inArray, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, gte, ilike, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Db, Q, Tx } from "../client";
+import type * as schema from "../schema";
 import { campaign, courseAccess, courseImages, courseModules, courseSessions, courses, courseTests, faq, galleryItems, heroSlides, lessons, pages, POPUP_ID, posts, practicePackages, payments, registrations, requests, reviews, settings, subscribers } from "../schema";
 import type { Campaign, Course, CourseImage, CourseSession, CourseTest, FaqItem, GalleryItem, HeroSlide, Page, PopupKind, Post, PracticePackage, Registration, Request as RequestRow, Subscriber, TestQuestion } from "../schema";
 import { startOfDayTallinn } from "@/domain/calendar";
 import { containsPattern, PAGE_SIZE, parseSearch } from "@/domain/paging";
 import { registrationPrice, registrationStatusAfterPayment, type RegStatus } from "@/domain/registration";
+import { REQUEST_TABS, TAB_KIND, type TabKey } from "@/domain/requests";
 import { phoneQuery } from "@/domain/search";
 import { pick, type I18n } from "@/i18n/field";
 import { ownFaultCount } from "@/server/testplan";
@@ -458,24 +461,66 @@ export async function addRegistrationPayment(tx: Tx, registrationId: number, cen
   return { registration: row, course, session, wasConfirmed, full };
 }
 
-/** Requests newest first, optionally of one kind. `openFirst`: not handled ones before handled ones (the inbox). */
-export async function listRequests(db: Db, kind?: RequestRow["kind"], opts: { openFirst?: boolean; range?: Range } = {}): Promise<RequestRow[]> {
+export type RequestKind = RequestRow["kind"];
+/** Which requests a list holds: one kind, the open or the done ones, the ones a search finds. Each part left out is not asked. */
+export type RequestFilter = { kind?: RequestKind; handled?: boolean; search?: string };
+
+/**
+ * The search of Päringud (README A7, B7): the name, the e-mail address or the message of the request holds the text (ILIKE, `%` `_` `\` escaped:
+ * containsPattern), or the digits of its phone hold the text's digits (domain/search.ts: from 3 digits, so „+372 5555 0103“ finds „5555-0103“). A change
+ * request (Muutmine) has only an address and a message of its own, and its card is named by the registration it is about: that registration's name,
+ * address and phone are searched too. (The registration is matched by the text of the stored id, so a payload whose registrationId is no plain number
+ * matches nothing instead of failing the query.)
+ */
+function requestSearch(db: Db, search: string | undefined): SQL | undefined {
+  const q = parseSearch(search);
+  if (!q) return undefined;
+  const text = containsPattern(q);
+  const phone = phoneQuery(q);
+  const digitsLike = (column: SQL | typeof registrations.phone) => sql`regexp_replace(${column}, '[^0-9]', '', 'g') like ${phone}`;
+  const registration = db
+    .select({ one: sql`1` })
+    .from(registrations)
+    .where(
+      and(
+        sql`${registrations.id}::text = ${requests.payload}->>'registrationId'`,
+        or(ilike(registrations.name, text), ilike(registrations.email, text), phone ? digitsLike(registrations.phone) : undefined),
+      ),
+    );
+  return or(
+    ilike(sql`${requests.payload}->>'name'`, text),
+    ilike(sql`${requests.payload}->>'email'`, text),
+    ilike(sql`${requests.payload}->>'message'`, text),
+    phone ? digitsLike(sql`${requests.payload}->>'phone'`) : undefined,
+    and(eq(requests.kind, "change_request"), exists(registration)),
+  );
+}
+
+const requestWhere = (db: Db, f: RequestFilter) =>
+  and(f.kind ? eq(requests.kind, f.kind) : undefined, f.handled === undefined ? undefined : eq(requests.handled, f.handled), requestSearch(db, f.search));
+
+/** Requests newest first, optionally of one kind, one state or the ones a search finds. */
+export async function listRequests(db: Db, kind?: RequestRow["kind"], opts: { handled?: boolean; search?: string; range?: Range } = {}): Promise<RequestRow[]> {
   const q = db
     .select()
     .from(requests)
-    .where(kind ? eq(requests.kind, kind) : undefined)
-    .orderBy(...(opts.openFirst ? [asc(requests.handled)] : []), desc(requests.createdAt), desc(requests.id));
+    .where(requestWhere(db, { kind, handled: opts.handled, search: opts.search }))
+    .orderBy(desc(requests.createdAt), desc(requests.id));
   return opts.range ? q.limit(opts.range.limit).offset(opts.range.offset) : q;
 }
 
-export async function countRequests(db: Db, kind?: RequestRow["kind"]): Promise<number> {
-  const [{ n }] = await db.select({ n: count() }).from(requests).where(kind ? eq(requests.kind, kind) : undefined);
+export async function countRequests(db: Db, filter: RequestFilter = {}): Promise<number> {
+  const [{ n }] = await db.select({ n: count() }).from(requests).where(requestWhere(db, filter));
   return Number(n);
 }
 
-/** One page of the request inbox of one kind: open requests first, each group newest first. */
-export async function pageRequests(db: Db, kind: RequestRow["kind"], page: number, size: number = PAGE_SIZE): Promise<Paged<RequestRow>> {
-  return paged(page, size, () => countRequests(db, kind), (range) => listRequests(db, kind, { openFirst: true, range }));
+/**
+ * One page of Päringud's open requests (`handled: false`, the cards) or done ones (`handled: true`, the fold „Tehtud ({n})“): newest first, 50 a page (`size`).
+ * With a `search`, `kind` is ignored: the search looks in every tab.
+ */
+export async function pageRequests(db: Db, filter: { kind?: RequestKind; search?: string; handled: boolean; page: number }, size: number = PAGE_SIZE): Promise<Paged<RequestRow>> {
+  const where: RequestFilter = { kind: parseSearch(filter.search) ? undefined : filter.kind, handled: filter.handled, search: filter.search };
+  return paged(filter.page, size, () => countRequests(db, where), (range) => listRequests(db, where.kind, { handled: where.handled, search: where.search, range }));
 }
 
 export async function markRequestHandled(db: Db, id: number): Promise<RequestRow | null> {
@@ -488,7 +533,31 @@ export async function setRequestHandled(db: Db, id: number, handled: boolean): P
   return row ?? null;
 }
 
-export type RequestKind = RequestRow["kind"];
+/**
+ * "Märgi tehtuks" / "Märgi tegemata" / "Võta tagasi" of Päringud: sets `handled` only while the request is still what the screen showed, in one
+ * UPDATE ... WHERE, so it cannot overwrite a change it did not see. `expected` is the `handled` the card showed. `version` (the UndoBar's undo) is the
+ * version the marking left: the row's xmin, the transaction that wrote it. An undo goes back only while that marking is still the last write: a request
+ * that another tab reopened and marked done again has the same `handled` and another version, and is a newer change. The answer carries the version this
+ * write left. `stale`: the request is not as the screen showed (nothing written); `notFound`: it is gone.
+ */
+export async function changeRequestHandled(
+  db: Db,
+  id: number,
+  handled: boolean,
+  expected: boolean,
+  version?: string,
+): Promise<{ ok: true; version: string } | { ok: false; error: "stale" | "notFound" }> {
+  // (The cast: on the Db union, returning(fields) has no common overload.)
+  const [row] = await (db as unknown as PostgresJsDatabase<typeof schema>)
+    .update(requests)
+    .set({ handled })
+    .where(and(eq(requests.id, id), eq(requests.handled, expected), version === undefined ? undefined : sql`${requests}.xmin::text = ${version}`))
+    .returning({ version: sql<string>`${requests}.xmin::text` });
+  if (row) return { ok: true, version: row.version };
+  const [there] = await db.select({ id: requests.id }).from(requests).where(eq(requests.id, id)).limit(1);
+  return { ok: false, error: there ? "stale" : "notFound" };
+}
+
 export type AdminCounts = {
   /** Registrations still waiting for their prepayment (the new ones Maria has to look at). */
   awaitingPrepayment: number;
@@ -526,14 +595,28 @@ export function emptyCounts(): AdminCounts {
   };
 }
 
+/** Requests not marked handled, per kind: the menu badge's number and the tabs' of Päringud. */
+async function openRequestsByKind(db: Db): Promise<Record<RequestKind, number>> {
+  const byKind = await db.select({ kind: requests.kind, n: count() }).from(requests).where(eq(requests.handled, false)).groupBy(requests.kind);
+  const open = emptyCounts().openRequests;
+  for (const row of byKind) open[row.kind] = Number(row.n);
+  return open;
+}
+
+/** The open requests of each tab of Päringud (the e-learning interest is a Kontakt request): the numbers on the tabs, which are the menu badge's. */
+export async function requestCounts(db: Db): Promise<Record<TabKey, number>> {
+  const open = await openRequestsByKind(db);
+  return Object.fromEntries(REQUEST_TABS.map((tab) => [tab, open[TAB_KIND[tab]]])) as Record<TabKey, number>;
+}
+
 /**
  * The numbers of the menu badges (and Päringud's and Uudiskiri's counts), for the admin `email` at `now`: each count is one query, all read together. The test page's
  * answers are one settings row, read by server/testplan.ts ownFaultCount.
  */
 export async function adminCounts(db: Db, email: string, now: Date): Promise<AdminCounts> {
-  const [[awaiting], byKind, [subs], assessment, today, [waiting], [attention], ownFaults] = await Promise.all([
+  const [[awaiting], openRequests, [subs], assessment, today, [waiting], [attention], ownFaults] = await Promise.all([
     db.select({ n: count() }).from(registrations).where(eq(registrations.status, "awaiting_prepayment")),
-    db.select({ kind: requests.kind, n: count() }).from(requests).where(eq(requests.handled, false)).groupBy(requests.kind),
+    openRequestsByKind(db),
     db.select({ total: count(), confirmed: count(subscribers.confirmedAt) }).from(subscribers),
     assessmentCount(db),
     todaySessions(db, now),
@@ -543,8 +626,6 @@ export async function adminCounts(db: Db, email: string, now: Date): Promise<Adm
     db.select({ n: count() }).from(payments).where(NEEDS_ATTENTION),
     ownFaultCount(db, email),
   ]);
-  const openRequests = emptyCounts().openRequests;
-  for (const row of byKind) openRequests[row.kind] = Number(row.n);
   return {
     awaitingPrepayment: Number(awaiting.n),
     openRequests,

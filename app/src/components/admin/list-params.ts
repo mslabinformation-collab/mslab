@@ -4,6 +4,11 @@
 
 /** The parameter of the drawer that is open over a list: it belongs to the drawer, not to the list. */
 const DRAWER_PARAM = "id";
+/**
+ * The parameters that say which page of a list is shown: `leht`, and Päringud's `tehtud` (the page of its fold „Tehtud ({n})“, a second list on the same
+ * screen). A new search or filter starts every one of them at page 1.
+ */
+const PAGE_PARAMS = ["leht", "tehtud"];
 
 /** `href` split into its path, its own query and its hash. */
 function parts(href: string): { path: string; query: URLSearchParams; hash: string } {
@@ -36,11 +41,11 @@ export function withListParams(href: string, sp: URLSearchParams): string {
 
 /**
  * The list's address with some parameters changed (the toolbar's search and scope): a value sets the parameter, `null` or "" takes it away. The
- * page (`leht`) always goes: a new search or filter starts at page 1. Everything else, the drawer's `id` too, is as it was.
+ * page (`leht`, and Päringud's `tehtud`) always goes: a new search or filter starts at page 1. Everything else, the drawer's `id` too, is as it was.
  */
 export function listHref(pathname: string, sp: URLSearchParams, change: Record<string, string | null>): string {
   const query = new URLSearchParams(sp.toString());
-  query.delete("leht");
+  for (const key of PAGE_PARAMS) query.delete(key);
   for (const key of Object.keys(change)) {
     const value = change[key];
     if (value === null || value === "") query.delete(key);

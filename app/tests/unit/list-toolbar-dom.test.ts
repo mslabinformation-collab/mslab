@@ -81,6 +81,13 @@ describe("ListToolbar: search", () => {
     expect(router.replace).toHaveBeenCalledWith("/admin/registreerimised?staatus=ootab&otsi=kas", { scroll: false });
   });
 
+  it("Päringud has two lists on a page (the open ones, and the fold „Tehtud“): a new search starts both at page 1 (leht and tehtud go)", async () => {
+    await show("/admin/paringud?liik=praktika&leht=3&tehtud=2");
+    await type("liis");
+    await wait(300);
+    expect(router.replace).toHaveBeenCalledWith("/admin/paringud?liik=praktika&otsi=liis", { scroll: false });
+  });
+
   it("each keystroke starts the 300 ms again: one replace, with the last text", async () => {
     await show("/admin/registreerimised");
     await type("k");

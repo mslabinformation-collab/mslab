@@ -877,51 +877,272 @@ test.describe("signed in", () => {
     await expect(page.locator("[data-registration-payments]")).toHaveCount(0);
   });
 
-  test("requests: tabs Kontakt / Individuaal / Praktika / Ootenimekiri / Muutmine, the practice request, 'Märgi tehtuks'", async ({ page, context, visitorIp }, info) => {
+  /** The subject a card's „Vasta e-kirjaga ↗“ fills in, read from its `mailto:` address. */
+  const subjectOf = async (reply: Locator) => {
+    const href = (await reply.getAttribute("href"))!;
+    expect(href.startsWith("mailto:"), href).toBe(true);
+    return decodeURIComponent(href.split("?subject=")[1]);
+  };
+
+  test("requests: five tabs with their open counts; a card is compact — name, date · language · e-mail, type tag, message, a facts line — and „Vasta e-kirjaga ↗“ fills the subject", async ({ page, context, visitorIp, isMobile }, info) => {
     const f = await fixtures(info.project.name);
     await signIn(page, context, visitorIp);
     await page.goto("/admin/paringud");
-    const tabs = page.locator("[data-request-tabs]");
+    await adminReady(page);
+    const tabs = page.getByRole("navigation", { name: "Päringu liik" });
     await expect(tabs.getByRole("link")).toHaveText([/^Kontakt/, /^Individuaal/, /^Praktika/, /^Ootenimekiri/, /^Muutmine/]);
-    await expect(tabs.locator('[data-tab="kontakt"]')).toHaveAttribute("aria-current", "page");
-
-    // Kontakt: the message and the e-learning purchase interest (tagged)
-    const contact = page.locator(`[data-request="${f.contact.id}"]`);
-    await expect(contact).toContainText(f.contact.name);
-    await expect(contact).toContainText("Kas jaanuaris on veel kohti?");
-    const interest = page.locator(`[data-request="${f.interest.id}"]`);
-    await expect(interest).toContainText("E-õppe huvi");
-    await expect(interest).toContainText("Kulmumeistri e-koolitus");
-    await expect(interest).toContainText("RU");
-    await expect(contact).not.toContainText("E-õppe huvi");
+    await expect(tabs.getByRole("link", { name: /^Kontakt/ })).toHaveAttribute("aria-current", "true");
+    // each tab shows the number of requests still open (this test's own rows are among them; other tests' come and go)
+    const count = async (name: RegExp) => Number(await tabs.getByRole("link", { name }).locator("span").textContent());
+    expect(await count(/^Kontakt/)).toBeGreaterThanOrEqual(2); // the message and the e-learning interest
+    for (const name of [/^Individuaal/, /^Praktika/, /^Ootenimekiri/]) expect(await count(name)).toBeGreaterThanOrEqual(1);
     expect(await noOverflow(page)).toBe(true);
-
-    // Praktika
     await tabs.getByRole("link", { name: /^Praktika/ }).click();
     await expect(page).toHaveURL(/\?liik=praktika$/);
-    const practice = page.locator(`[data-request="${f.practice.id}"]`);
-    await expect(practice).toContainText(f.practice.name);
-    await expect(practice).toContainText("MINI");
-    await expect(practice).toContainText("Tööpäeviti pärast kella 17");
-    await expect(practice).toContainText("Kulmumeistri baaskoolitus");
-    await expect(practice.locator("[data-request-state]")).toHaveText("Uus");
-    await practice.getByRole("button", { name: "Märgi tehtuks" }).click();
-    await expect(practice.locator("[data-request-state]")).toHaveText("Tehtud");
-    await expect.poll(() => requestHandled(f.practice.id)).toBe(true);
-    await practice.getByRole("button", { name: "Märgi tegemata" }).click();
-    await expect(practice.locator("[data-request-state]")).toHaveText("Uus");
-    await expect.poll(() => requestHandled(f.practice.id)).toBe(false);
+    await expect(tabs.getByRole("link", { name: /^Praktika/ })).toHaveAttribute("aria-current", "true");
+    await expect(tabs.getByRole("link", { name: /^Kontakt/ })).not.toHaveAttribute("aria-current", "true");
 
-    // Individuaal and Ootenimekiri: course names (and the session) instead of slugs and ids
-    await tabs.getByRole("link", { name: /^Individuaal/ }).click();
-    const individual = page.locator(`[data-request="${f.individual.id}"]`);
-    await expect(individual).toContainText(f.course.title);
-    await expect(individual).toContainText("Jaanuari teine pool");
-    await tabs.getByRole("link", { name: /^Ootenimekiri/ }).click();
-    const waitlist = page.locator(`[data-request="${f.waitlist.id}"]`);
-    await expect(waitlist).toContainText(f.waitlist.name);
-    await expect(waitlist).toContainText(f.course.title);
-    await expect(waitlist).toContainText(/\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}, Pärnu/);
+    // this test's five requests, all kinds at once (the search looks in every tab; the tag says which tab a card is from)
+    await page.goto(`/admin/paringud?otsi=${f.tag}`);
+    const card = (id: number) => page.locator(`[data-request="${id}"]`);
+    const WHEN = /^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}/;
+
+    // Kontakt: the message; no facts line for a plain Estonian one; "MS LAB" in the subject, as it names no course
+    const contact = card(f.contact.id);
+    await expect(contact).toBeVisible();
+    await expect(contact.getByRole("heading", { level: 3 })).toHaveText(f.contact.name);
+    await expect(contact.locator("[data-request-meta]")).toHaveText(new RegExp(`${WHEN.source} · ET · e2e-admin-contact-.+@example\\.com$`));
+    await expect(contact.locator("[data-request-tag]")).toHaveText("Kontakt");
+    await expect(contact.locator("[data-request-message]")).toHaveText("Tere! Kas jaanuaris on veel kohti?");
+    await expect(contact.locator("[data-request-facts]")).toHaveCount(0);
+    expect(await subjectOf(contact.locator("[data-request-reply]"))).toBe("Vastus sinu päringule — MS LAB");
+
+    // the e-learning interest is a Kontakt request, tagged „E-õppe huvi“: named by its address, the course as the message, Russian, left in the cart
+    const interest = card(f.interest.id);
+    await expect(interest.getByRole("heading", { level: 3 })).toHaveText(f.interest.email);
+    await expect(interest.locator("[data-request-tag]")).toHaveText("E-õppe huvi");
+    await expect(interest.locator("[data-request-meta]")).toHaveText(new RegExp(`${WHEN.source} · RU$`));
+    await expect(interest.locator("[data-request-message]")).toHaveText("Huvi: Kulmumeistri e-koolitus");
+    await expect(interest.locator("[data-request-facts]")).toHaveText("Vastus vene keeles · Ostu ei lõpetanud · ostukorvist");
+    expect(await subjectOf(interest.locator("[data-request-reply]"))).toMatch(/^Ответ на ваш запрос — .+/);
+    await expect(contact.locator("[data-request-tag]")).not.toHaveText("E-õppe huvi");
+
+    // Individuaal: the phone, the course and the wishes ticked, in the facts line; her course in the subject
+    const individual = card(f.individual.id);
+    await expect(individual.locator("[data-request-tag]")).toHaveText("Individuaal");
+    await expect(individual.locator("[data-request-message]")).toHaveCount(0); // (she wrote none)
+    await expect(individual.locator("[data-request-facts]")).toHaveText(`+372 5555 0102 · ${f.course.title} · Soovitud periood: Jaanuari teine pool · Soovib kontot`);
+    expect(await subjectOf(individual.locator("[data-request-reply]"))).toBe(`Vastus sinu päringule — ${f.course.title}`);
+
+    // Praktika
+    const practice = card(f.practice.id);
+    await expect(practice.locator("[data-request-tag]")).toHaveText("Praktika");
+    await expect(practice.locator("[data-request-facts]")).toHaveText(
+      "+372 5555 0103 · Pakett: MINI · Läbitud koolitus: Kulmumeistri baaskoolitus · Sobivad ajad: Tööpäeviti pärast kella 17",
+    );
+    expect(await subjectOf(practice.locator("[data-request-reply]"))).toBe("Vastus sinu päringule — MINI");
+
+    // Ootenimekiri: the course and the day, and a link to that session in Kalender
+    const waitlist = card(f.waitlist.id);
+    await expect(waitlist.locator("[data-request-tag]")).toHaveText("Ootenimekiri");
+    await expect(waitlist.locator("[data-request-facts]")).toHaveText(new RegExp(`^${f.course.title} · Toimumine: \\d{2}\\.\\d{2}\\.\\d{4} \\d{2}:\\d{2}, Pärnu$`));
+    const go = waitlist.getByRole("link", { name: "Ava toimumine →" });
+    await expect(go).toHaveAttribute("href", `/admin/kalender?id=${f.session.id}`);
+    for (const other of [contact, individual, practice]) await expect(other.getByRole("link", { name: /^Ava (toimumine|registreering) →/ })).toHaveCount(0);
+
+    // the cards are in a grid of two columns on a laptop (one on a phone): the first two lie side by side, equally wide
+    const boxes = await Promise.all((await page.locator("article[data-request]").all()).slice(0, 2).map((c) => c.boundingBox()));
+    if (isMobile) expect(boxes[1]!.y).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height - 1);
+    else {
+      expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThan(2);
+      expect(boxes[1]!.x).toBeGreaterThan(boxes[0]!.x + boxes[0]!.width - 1);
+      expect(Math.abs(boxes[0]!.width - boxes[1]!.width)).toBeLessThan(2);
+    }
+    expect(await noOverflow(page)).toBe(true);
+
+    // the link goes to that session's own drawer
+    await go.click();
+    await expect(page).toHaveURL(new RegExp(`/admin/kalender\\?id=${f.session.id}$`));
+  });
+
+  test("requests: „Märgi tehtuks“ is instant with an UndoBar and the card moves to the fold „Tehtud ({n})“; „Võta tagasi“ brings it back; „Märgi tegemata“ shows no bar; an undo after the request changed elsewhere is refused", async ({ page, context, visitorIp }, info) => {
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/paringud?otsi=${f.tag}`);
+    await adminReady(page);
+    const bar = page.locator("[data-undo-bar]");
+    const fold = page.locator("details[data-fold]");
+    const practice = page.locator(`[data-request="${f.practice.id}"]`);
+    await expect(practice).toBeVisible();
+    await expect(fold).toHaveCount(0); // nothing is done yet: no fold
+
+    // „Märgi tehtuks“ at once: the bar says so; the card leaves the list for the fold, which is shut and says how many it holds
+    await practice.getByRole("button", { name: "Märgi tehtuks" }).click();
+    await expect(bar).toContainText("Märgitud tehtuks.");
+    await expect(bar.getByRole("button", { name: "Võta tagasi" })).toBeVisible();
+    await expect.poll(() => requestHandled(f.practice.id)).toBe(true);
+    await expect(fold.locator("summary")).toContainText("Tehtud (1)");
+    await expect(practice).toBeHidden();
+    await expect(fold).not.toHaveAttribute("open", "");
+    // the fold opens on a tap: the same card, now with „Märgi tegemata“
+    await fold.locator("summary").click();
+    await expect(practice).toBeVisible();
+    await expect(practice).toHaveAttribute("data-handled", "1");
+    await expect(practice.getByRole("button", { name: "Märgi tegemata" })).toBeVisible();
+
+    // „Võta tagasi“: open again, back in the list (out of the fold), the fold gone with its last card
+    await bar.getByRole("button", { name: "Võta tagasi" }).click();
+    await expect.poll(() => requestHandled(f.practice.id)).toBe(false);
+    await expect(practice).toHaveAttribute("data-handled", "0");
+    await expect(fold).toHaveCount(0);
+    await expect(bar).toHaveCount(0);
+
+    // „Märgi tegemata“ is its own reverse: no bar
+    await practice.getByRole("button", { name: "Märgi tehtuks" }).click();
+    await expect.poll(() => requestHandled(f.practice.id)).toBe(true);
+    await expect(fold.locator("summary")).toContainText("Tehtud (1)");
+    await expect(bar).toContainText("Märgitud tehtuks.");
+    await page.keyboard.press("Escape"); // (the bar of that marking goes: Esc dismisses it)
+    await expect(bar).toHaveCount(0);
+    if (!(await fold.evaluate((el) => (el as HTMLDetailsElement).open))) await fold.locator("summary").click();
+    await practice.getByRole("button", { name: "Märgi tegemata" }).click();
+    await expect.poll(() => requestHandled(f.practice.id)).toBe(false);
+    await expect(practice).toHaveAttribute("data-handled", "0");
+    await expect(bar).toHaveCount(0);
+
+    // an undo never overwrites a newer change: marked done, then (in another tab) reopened and marked done again, the bar's undo is refused
+    await practice.getByRole("button", { name: "Märgi tehtuks" }).click();
+    await expect(bar).toContainText("Märgitud tehtuks.");
+    await storeRequestHandled(f.practice.id, false);
+    await storeRequestHandled(f.practice.id, true);
+    await bar.getByRole("button", { name: "Võta tagasi" }).click();
+    await expect(bar).toContainText("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect(await requestHandled(f.practice.id)).toBe(true);
+  });
+
+  test("requests: the search looks in every tab and finds a phone by its digits; a result carries its tab's tag; nothing found says so, and the button returns", async ({ page, context, visitorIp }, info) => {
+    const f = await fixtures(info.project.name);
+    await signIn(page, context, visitorIp);
+    await page.goto("/admin/paringud?liik=kontakt");
+    await adminReady(page);
+    const search = page.getByRole("searchbox", { name: "Otsi nime, e-posti või telefoni järgi" });
+    // from the Kontakt tab, the Praktika request is found by the digits of its phone, typed with other spaces and dashes than it was stored with (other tests' rows have the
+    // same numbers, so this one is looked for among the results)
+    await search.fill("5555-0103");
+    await expect(page).toHaveURL(/\?liik=kontakt&otsi=5555-0103$/);
+    const practice = page.locator(`[data-request="${f.practice.id}"]`);
+    await expect(practice).toBeVisible();
+    await expect(practice.locator("[data-request-tag]")).toHaveText("Praktika");
+    await expect(page.locator(`[data-request="${f.individual.id}"]`)).toHaveCount(0); // (5555 0102)
+    // while a search is on, no tab is the current one: it looks in all of them
+    const tabs = page.getByRole("navigation", { name: "Päringu liik" });
+    await expect(tabs.locator("[aria-current]")).toHaveCount(0);
+    // its name, in other case; the message
+    await search.fill(f.practice.name.toUpperCase());
+    await expect(practice).toBeVisible();
+    await expect(page.locator("article[data-request]")).toHaveCount(1);
+    await search.fill("jaanuaris on veel kohti");
+    await expect(page.locator(`[data-request="${f.contact.id}"]`)).toBeVisible();
+
+    // „%“ is a letter: nothing contains it, and the empty state names the search and offers the way back to the tab she came from
+    await search.fill("ei-ole-sellist-%");
+    await expect(page.getByText("„ei-ole-sellist-%“ järgi päringuid ei leitud.")).toBeVisible();
+    await page.getByRole("link", { name: "Tühjenda otsing ja filtrid" }).click();
+    await expect(page).toHaveURL(/\/admin\/paringud\?liik=kontakt$/);
+    await expect(search).toHaveValue("");
+    await expect(tabs.getByRole("link", { name: /^Kontakt/ })).toHaveAttribute("aria-current", "true");
+  });
+
+  test("requests: an address ending #p-{id} scrolls to the card and marks it for 2 s (none with reduced motion); a card in the shut fold opens it", async ({ page, context, visitorIp }, info) => {
+    const f = await fixtures(info.project.name);
+    await storeRequestHandled(f.individual.id, true);
+    await signIn(page, context, visitorIp);
+    const open = page.locator(`#p-${f.practice.id}`);
+    const done = page.locator(`#p-${f.individual.id}`);
+    const flash = "rgb(250, 246, 248)"; // #faf6f8
+
+    await page.goto(`/admin/paringud?otsi=${f.tag}#p-${f.practice.id}`);
+    await adminReady(page);
+    await expect(open).toHaveAttribute("data-flash", "");
+    await expect(open).toHaveCSS("background-color", flash);
+    await expect(open).not.toHaveAttribute("data-flash", "", { timeout: 6000 }); // (2 s)
+    await expect(open).not.toHaveCSS("background-color", flash);
+    expect(
+      await open.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= window.innerHeight;
+      }),
+    ).toBe(true);
+
+    // a done request is in the fold, which the address opens
+    await page.goto(`/admin/paringud?otsi=${f.tag}#p-${f.individual.id}`);
+    await adminReady(page);
+    await expect(page.locator("details[data-fold]")).toHaveAttribute("open", "");
+    await expect(done).toBeVisible();
+    await expect(done).toHaveAttribute("data-flash", "");
+
+    // reduced motion: reached, not marked
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`/admin/paringud?otsi=${f.tag}#p-${f.practice.id}`);
+    await adminReady(page);
+    await expect(open).toBeVisible();
+    await page.waitForTimeout(300);
+    await expect(open).not.toHaveAttribute("data-flash", "");
+    await expect(open).not.toHaveCSS("background-color", flash);
+  });
+
+  test("requests: the Päringud page at 375 × 812 — one column, the two buttons side by side with the short „Vasta ↗“ and the short date line, every target 44 px, nothing past the screen", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.skip(!isMobile, "the phone project only");
+    const f = await fixtures(info.project.name);
+    await storeRequestHandled(f.individual.id, true);
+    await signIn(page, context, visitorIp);
+    await page.setViewportSize({ width: 375, height: 812 });
+    // a name with no place to break, and a long message: the worst card
+    const long = "Pneumonoultramicroscopicsilicovolcanoconiosis";
+    await onLocalDb(
+      (sql) => sql`update requests set payload = jsonb_set(jsonb_set(payload, '{name}', to_jsonb(${long}::text)), '{message}', to_jsonb(${`${long} ${long} ${long}`}::text)) where id = ${f.contact.id}`,
+      { marksPages: false },
+    );
+    await page.goto(`/admin/paringud?otsi=${f.tag}`);
+    await adminReady(page);
+    const cards = page.locator("article[data-request]");
+    await expect(cards.first()).toBeVisible();
+    await page.locator("details[data-fold] summary").click();
+    await expect(cards).toHaveCount(5);
+
+    // one column: every card is as wide as the first, one above the other, all inside the 375 px screen
+    const sized = (await Promise.all((await cards.all()).map((c) => c.boundingBox()))).map((b) => b!);
+    for (const b of sized) {
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.width).toBeLessThanOrEqual(375.5);
+      expect(Math.abs(b.width - sized[0].width)).toBeLessThan(1);
+    }
+    const byTop = [...sized].sort((a, b) => a.y - b.y);
+    for (let i = 1; i < byTop.length; i++) expect(byTop[i].y).toBeGreaterThan(byTop[i - 1].y + byTop[i - 1].height - 1);
+    const outside = () =>
+      page.evaluate(() =>
+        Array.from(document.querySelectorAll("article[data-request] *"))
+          .map((e) => ({ e, r: e.getBoundingClientRect() }))
+          .filter(({ r }) => r.width > 0 && (r.left < -0.5 || r.right > window.innerWidth + 0.5))
+          .map(({ e }) => e.outerHTML.slice(0, 100)),
+      );
+    expect(await outside()).toEqual([]);
+    expect(await noOverflow(page)).toBe(true);
+    expect(await smallTargets(page.locator("main"))).toEqual([]);
+
+    // the card's two buttons share its width; the reply says „Vasta ↗“ and the date line is „dd.mm · ET“ (the stylesheet puts the short words in; the page holds the long ones)
+    const contact = page.locator(`[data-request="${f.contact.id}"]`);
+    const toggle = (await contact.getByRole("button", { name: "Märgi tehtuks" }).boundingBox())!;
+    const reply = (await contact.locator("[data-request-reply]").boundingBox())!;
+    const box = (await contact.boundingBox())!;
+    expect(Math.abs(toggle.y - reply.y)).toBeLessThan(2);
+    expect(reply.x).toBeGreaterThan(toggle.x + toggle.width - 1);
+    expect(Math.abs(toggle.width - reply.width)).toBeLessThan(2);
+    expect(reply.x + reply.width).toBeLessThanOrEqual(box.x + box.width);
+    const after = (selector: string) => contact.locator(selector).evaluate((el) => getComputedStyle(el, "::after").content);
+    expect(await after("[data-request-reply] [data-swap]")).toBe('"Vasta ↗"');
+    expect(await after("[data-request-meta] [data-swap]")).toMatch(/^"\d{2}\.\d{2} · ET"$/);
+    await expect(contact.locator("[data-request-reply] [data-swap] > span")).toBeHidden(); // (the long words)
   });
 
   test("e-mail and phone links are 44 px touch targets: the registrations list's phone, the drawer, requests (item 12)", async ({ page, context, visitorIp, isMobile }, info) => {
@@ -976,8 +1197,11 @@ test.describe("signed in", () => {
     // the header's phone and e-mail, and — in „Registreerimise andmed“, a folded row, opened here — the same two again
     await openRow(drawer, "Registreerimise andmed");
     await targets(drawer, 4);
-    await page.goto("/admin/paringud?liik=individuaal");
-    await targets(page.locator(`[data-request="${f.individual.id}"]`), 2);
+    // a request's card (A7): its e-mail and phone are text now (the header's line and the facts line); what is pressed is „Vasta e-kirjaga ↗“ (on a phone „Vasta ↗“)
+    await page.goto(`/admin/paringud?liik=individuaal&otsi=${f.tag}`);
+    const card = page.locator(`[data-request="${f.individual.id}"]`);
+    await targets(card, 1);
+    expect(await smallTargets(card)).toEqual([]);
     expect(await noOverflow(page)).toBe(true);
   });
 
@@ -1004,6 +1228,7 @@ test.describe("signed in", () => {
         .toBe(true);
     const practice = page.locator(`[data-request="${f.practice.id}"]`);
     await expect(practice).toBeVisible();
+    await adminReady(page);
     expect(await shown()).toBeGreaterThanOrEqual(5);
     await practice.getByRole("button", { name: "Märgi tehtuks" }).click(); // (the page is refreshed by its action)
     await expect.poll(() => requestHandled(f.practice.id)).toBe(true);
@@ -1037,9 +1262,11 @@ test.describe("signed in", () => {
     await page.goto("/admin/paringud?liik=praktika");
     const practice = page.locator(`[data-request="${f.practice.id}"]`);
     await expect(practice).toBeVisible();
+    await adminReady(page);
     await deleteStoredRequest(f.practice.id); // gone behind the open page
     await practice.getByRole("button", { name: "Märgi tehtuks" }).click();
     await expect(practice.getByRole("status")).toHaveText("Salvestamine ei õnnestunud. Proovi uuesti.");
+    await expect(page.locator("[data-undo-bar]")).toHaveCount(0); // (nothing was marked: no undo of nothing)
   });
 
   test("newsletter: 50 subscribers a page, Järgmine / Eelmine, an out-of-range ?leht= shows the last page", async ({ page, context, visitorIp }, info) => {

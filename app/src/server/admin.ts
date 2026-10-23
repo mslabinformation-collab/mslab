@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Db } from "@/db/client";
 import type { Subscriber } from "@/db/schema";
-import { getRegistration, setRegistrationStatus, setRequestHandled } from "@/db/queries/admin";
+import { changeRequestHandled, getRegistration, setRegistrationStatus } from "@/db/queries/admin";
 import { adminEt } from "@/i18n/dict/admin";
 import { formatStamp } from "@/i18n/format";
 import { toCsv } from "./csv";
@@ -53,12 +53,25 @@ export async function cancel(db: Db, formData: FormData): Promise<AdminResult> {
   return (await setRegistrationStatus(db, reg.data, "cancelled")) ? OK : fail("notFound");
 }
 
-/** Fields: id, handled ("1" = done, "0" = not done). */
-export async function saveHandled(db: Db, formData: FormData): Promise<AdminResult> {
-  const req = id.safeParse(field(formData, "id"));
-  const handled = field(formData, "handled");
-  if (!req.success || (handled !== "1" && handled !== "0")) return fail("invalid");
-  return (await setRequestHandled(db, req.data, handled === "1")) ? OK : fail("notFound");
+/**
+ * What „Märgi tehtuks“ / „Märgi tegemata“ gets back. `version` is the request as this write left it (db/queries/admin.ts changeRequestHandled): the UndoBar's
+ * „Võta tagasi“ sends it back, so that an undo never overwrites a newer change. `error`: invalid (not a request id, not a state), notFound, stale (the request
+ * is not what the card showed: nothing saved, the page is refreshed to show it), server (a throw, server/actions/admin.ts).
+ */
+export type HandledAnswer = { ok: true; version: string } | { ok: false; error: "invalid" | "notFound" | "stale" | "server" };
+
+/** `handled`: the state asked for; `expected`: the state the card showed (the other one, for a press; for an undo the one the marking left); `version`: an undo's. */
+const handledInput = z.object({ id, handled: z.boolean(), expected: z.boolean(), version: z.string().regex(/^\d{1,10}$/).optional() });
+
+/**
+ * Päringud's „Märgi tehtuks“ / „Märgi tegemata“ and the UndoBar's „Võta tagasi“: `{ id, handled, expected, version? }`. It is saved only while the request is
+ * still as the card showed (`expected`, and for an undo `version`): a request that was changed meanwhile, elsewhere, is `stale` and keeps its newer state.
+ */
+export async function saveHandled(db: Db, input: unknown): Promise<HandledAnswer> {
+  const parsed = handledInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "invalid" };
+  const { id: request, handled, expected, version } = parsed.data;
+  return changeRequestHandled(db, request, handled, expected, version);
 }
 
 /** The subscriber export: e-mail, locale, consent time, confirmed yes/no, confirmation time (Estonian time). */
