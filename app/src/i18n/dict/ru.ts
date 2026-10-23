@@ -290,6 +290,7 @@ export const ru: Dict = {
     payFinancing: "Рассрочка (Inbank)",
     payFinancingContract: "Стоимость обучения оплачивается полностью: в рассрочку (Inbank) или банковским платежом.",
     payFinancingRange: "Рассрочка возможна для обучения стоимостью 100–5000 €.",
+    payFinancingOff: "Рассрочка сейчас недоступна. Можно оплатить через интернет-банк.",
     preferredPeriod: "Желаемый период или дата",
     preferredPeriodPlaceholder: "Например, вторая половина декабря или 12.12",
     optional: "необязательно",
@@ -377,7 +378,7 @@ export const ru: Dict = {
     total: "Итого",
     // the purchase's box is the e-course contract (contracts Task 4): Draft for Dim's wording sheet
     contractTerms: "Ознакомлен(а) с\u00a0условиями договора и принимаю их.",
-    payBank: "Банковская ссылка",
+    payBank: "Интернет-банк",
   },
 
   // Online payments (phase 2b, spec 9); drafts for the native-speaker check (docs/launch-checklist.md §10).
@@ -388,7 +389,7 @@ export const ru: Dict = {
     starting: "Открываем оплату…",
     cartDown: "Оплата не открылась. Оставьте свой e-mail, и мы сообщим.",
     alreadyPaid: "Оплата уже прошла — проверьте свою почту.",
-    payBank: "Оплатить через банк",
+    payBank: "Оплатить через интернет-банк",
     payFinancing: "Оплатить в рассрочку (Inbank)",
     page: {
       heading: "Оплата обучения",

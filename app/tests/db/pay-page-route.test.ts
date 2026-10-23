@@ -134,7 +134,7 @@ test("Järelmaks (Inbank) through the route: an allowed registration's page has 
   expect((await db.select().from(payments).orderBy(payments.id)).map((p) => p.method)).toEqual(["hirePurchase", "paymentInitiation"]);
 });
 
-test("a järelmaks press with the toggle off: 409 with the range sentence and the bank's button, through the route", async () => {
+test("a järelmaks press with the toggle off: 409 with the switched-off sentence (not the range) and the bank's button, through the route", async () => {
   stubMontonio();
   const r = await registrationOn(db, await contactCourse(db), { paymentChoice: "financing" });
   const res = await route.POST(
@@ -143,7 +143,8 @@ test("a järelmaks press with the toggle off: 409 with the range sentence and th
   );
   const html = await res.text();
   expect(res.status).toBe(409);
-  expect(html).toContain("Järelmaks on võimalik 100–5000 € hinnaga koolitusele.");
+  expect(html).toContain("Järelmaks pole praegu saadaval. Saad maksta pangalingiga.");
+  expect(html).not.toContain("Järelmaks on võimalik 100–5000 € hinnaga koolitusele.");
   expect(html).toContain("Maksa 350 €");
   expect(html).not.toContain("hirePurchase");
   expect(await db.select().from(payments)).toEqual([]);

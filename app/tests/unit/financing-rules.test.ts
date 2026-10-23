@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FINANCING_ATTEMPT_MS, FINANCING_KEY, FINANCING_MAX_CENTS, FINANCING_MIN_CENTS, attemptWindowMs, billingAddressOf, estonianPhone, financingAllowed,
-  financingOffered, isHirePurchase, readFinancingSettings,
+  financingOffered, financingRefusal, isHirePurchase, readFinancingSettings,
 } from "@/domain/financing";
 import { prepaymentDue } from "@/domain/registration";
 
@@ -49,6 +49,47 @@ describe("when the choice is offered and allowed", () => {
     expect(financingAllowed({ enabled: true, paymentsOn: false, priceCents: 29_000, ...unpaid })).toBe(false);
     expect(financingAllowed({ enabled: true, paymentsOn: true, priceCents: 600_000, paidCents: 0, dueCents: 600_000 })).toBe(false);
     expect(financingAllowed({ enabled: true, paymentsOn: true, priceCents: null, paidCents: 0, dueCents: 0 })).toBe(false);
+  });
+});
+
+describe("why a järelmaks is refused (which sentence she is told)", () => {
+  const unpaid = { paidCents: 0, dueCents: 29_000 };
+  it("none while it is allowed", () => {
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 29_000, ...unpaid })).toBeNull();
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 10_000, paidCents: 0, dueCents: 10_000 })).toBeNull();
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 500_000, paidCents: 0, dueCents: 500_000 })).toBeNull();
+  });
+  it("'off' when the price is within 100–5000 € but Maria's toggle is off, or Montonio payments are", () => {
+    expect(financingRefusal({ enabled: false, paymentsOn: true, priceCents: 29_000, ...unpaid })).toBe("off");
+    expect(financingRefusal({ enabled: true, paymentsOn: false, priceCents: 29_000, ...unpaid })).toBe("off");
+    expect(financingRefusal({ enabled: false, paymentsOn: false, priceCents: 10_000, paidCents: 0, dueCents: 10_000 })).toBe("off");
+    expect(financingRefusal({ enabled: false, paymentsOn: true, priceCents: 500_000, paidCents: 0, dueCents: 500_000 })).toBe("off");
+  });
+  it("'range' when the price is outside 100–5000 € (or there is none), whatever the toggle says", () => {
+    for (const enabled of [true, false]) {
+      for (const priceCents of [9_999, 500_001, 0, null]) expect(financingRefusal({ enabled, paymentsOn: true, priceCents, paidCents: 0, dueCents: priceCents ?? 0 }), `${enabled} ${priceCents}`).toBe("range");
+    }
+    expect(financingRefusal({ enabled: true, paymentsOn: false, priceCents: 600_000, paidCents: 0, dueCents: 600_000 })).toBe("range");
+  });
+  it("'range' when both apply: the price is the permanent fact", () => {
+    expect(financingRefusal({ enabled: false, paymentsOn: false, priceCents: 9_999, paidCents: 0, dueCents: 9_999 })).toBe("range");
+  });
+  it("every refusal of a price within the range is 'off', the toggle on or off: a part paid, only a part due; only a price outside the range is 'range'", () => {
+    for (const enabled of [true, false]) {
+      expect(financingRefusal({ enabled, paymentsOn: true, priceCents: 29_000, paidCents: 1_000, dueCents: 28_000 }), `part paid ${enabled}`).toBe("off");
+      expect(financingRefusal({ enabled, paymentsOn: true, priceCents: 29_000, paidCents: 0, dueCents: 14_500 }), `part due ${enabled}`).toBe("off");
+    }
+    // the edges of the range are in it; the price outside it stays the range whatever else is wrong
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 10_000, paidCents: 1_000, dueCents: 9_000 })).toBe("off");
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 500_000, paidCents: 0, dueCents: 250_000 })).toBe("off");
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 9_999, paidCents: 1_000, dueCents: 8_999 })).toBe("range");
+    expect(financingRefusal({ enabled: true, paymentsOn: true, priceCents: 500_001, paidCents: 0, dueCents: 250_000 })).toBe("range");
+  });
+  it("is null exactly when financingAllowed says yes", () => {
+    for (const enabled of [true, false]) for (const paymentsOn of [true, false]) for (const priceCents of [null, 9_999, 10_000, 29_000, 500_000, 500_001]) for (const paidCents of [0, 1_000]) {
+      const o = { enabled, paymentsOn, priceCents, paidCents, dueCents: (priceCents ?? 0) - paidCents };
+      expect(financingRefusal(o) === null, JSON.stringify(o)).toBe(financingAllowed(o));
+    }
   });
 });
 

@@ -1921,6 +1921,33 @@
       "markedAt": "deploy"
     },
     {
+      "id": "haldus-kommentaar-nupp",
+      "area": "haldus",
+      "who": "dim",
+      "device": "any",
+      "title": "Kommentaari nupp halduse lehtedel",
+      "href": "/admin/seaded",
+      "steps": [
+        "Ava halduses leht „Seaded“ ja vaata paremat alanurka.",
+        "Vajuta tumedat nuppu „Kommentaar“ (telefonis on ainult ring) ja kirjuta kommentaariks: Proov 1.",
+        "Vajuta „Saada“ ja ava Telegram.",
+        "Ava kommentaaride leht /guide/tagasiside/ oma võtmega ja leia see kommentaar.",
+        "Keri lehel „Seaded“ lõppu ja vaata nuppu „Salvesta“."
+      ],
+      "expect": [
+        "Nupp „Kommentaar“ on igal halduse lehel, millele oled sisse logitud.",
+        "Pärast „Saada“ ütleb paneel „Aitäh! Kommentaar on saadetud ✓“.",
+        "Telegramis on uus kommentaar, kus on „Haldus“ ja tekst Proov 1.",
+        "Kommentaaride lehel on see kommentaar sildiga „Haldus“ ja lingiga „Näita kohta“, mis avab sama halduse lehe.",
+        "Nupp „Kommentaar“ ei kata sellel lehel ühtegi nuppu ja „Salvesta“ on täielikult näha."
+      ],
+      "why": "Kommentaar halduse lehe kohta peab jõudma Dimini samamoodi nagu kommentaar kodulehe kohta.",
+      "risk": "low",
+      "writes": true,
+      "mark": "new",
+      "markedAt": "2026-10-22T17:47:15.802Z"
+    },
+    {
       "id": "registreerimine-vorm-vead",
       "area": "registreerimine",
       "who": "maria",
@@ -2971,7 +2998,7 @@
         "Lehel „Koolituse eest tasumine“ on summa ja kaks nuppu: „Maksa järelmaksuga (Inbank)“ ja „Maksa pangalingiga“.",
         "Telefonis mahuvad nupud ekraanile, on kerged vajutada ja leht ei kerigi küljele.",
         "Kaardil „Minu koolitused“ on samad kaks nuppu.",
-        "Pärast väljalülitamist ütleb vajutus „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“.",
+        "Pärast väljalülitamist ütleb vajutus „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“.",
         "Pärast seda on lehel üks nupp „Maksa …“ ja Inbanki nuppu enam pole.",
         "Kirja lingi uuesti avamisel on üks nupp „Maksa …“ ja lauset pole.",
         "Pärast uuesti sisselülitamist on lehel jälle kaks nuppu."
@@ -2979,8 +3006,8 @@
       "why": "Õpilane valib ise, kuidas maksta, ja väljalülitatud järelmaks ei jäta teda ummikusse.",
       "risk": "high",
       "writes": true,
-      "mark": "new",
-      "markedAt": "2026-10-22T14:38:10.188Z"
+      "mark": "redo",
+      "markedAt": "2026-10-22T16:23:51.666Z"
     },
     {
       "id": "registreerimine-jarelmaks-vahepeal-valja",
@@ -3000,10 +3027,10 @@
         "Lülita „Järelmaks (Inbank)“ Seadetes uuesti sisse ja salvesta."
       ],
       "expect": [
-        "Ostukorvis on valikute juures „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“ ja valitud on „Pangalink“.",
+        "Ostukorvis on valikute juures „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“ ja valitud on „Pangalink“.",
         "Esimene vajutus ei ava Montonio lehte ega alga makset.",
         "Teine vajutus avab testpanga koolituse hinnaga.",
-        "Registreerimisel näed lauset „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“ ja teadet „Registreerimine on vastu võetud. …“.",
+        "Registreerimisel näed lauset „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“ ja teadet „Registreerimine on vastu võetud. …“.",
         "Montonio lehte ei avane ja leht jääb samaks.",
         "Halduses on Proov 13 registreering „Ootab ettemaksu“, valik „Järelmaks (Inbank)“ ja makseid selle juures pole."
       ],
@@ -5740,17 +5767,23 @@
         "Ava Telegram.",
         "Kirjuta selle kontrolli märkusesse: Proov.",
         "Oota paar sekundit ja ava Telegram uuesti.",
-        "Vajuta selle kontrolli juures „OK“."
+        "Vajuta selle kontrolli juures „OK“ ja ava Telegram uuesti.",
+        "Kustuta märkus, kirjuta selle asemele: Teine proov.",
+        "Oota paar sekundit ja ava Telegram uuesti."
       ],
       "expect": [
         "Telegramis on „Testimine — Viga: Testimise lehe Telegrami teade (Dim)“ ja „(märkust veel pole)“.",
-        "Pärast märkust tuleb teine teade „Testimine — Märkus: …“ tekstiga Proov.",
+        "Pärast märkust tuleb teine teade „Testimine — Märkus: … · Viga“ tekstiga Proov.",
         "Teate link avab selle kontrolli testimise lehel.",
-        "Pärast „OK“ uusi teateid ei tule."
+        "Pärast „OK“ uut teadet ei tule, kuni märkust ei muuda.",
+        "Pärast uut märkust tuleb teade „Testimine — Märkus: … · OK“ tekstiga Teine proov.",
+        "Sama vastuse järgmised märkuse muudatused teateid ei saada."
       ],
-      "why": "Iga Viga peab Dimini jõudma samal päeval.",
+      "why": "Iga Viga ja iga vastuse esimene märkus peab Dimini jõudma samal päeval.",
       "risk": "med",
-      "writes": true
+      "writes": true,
+      "mark": "redo",
+      "markedAt": "2026-10-22T17:47:15.802Z"
     },
     {
       "id": "koristamine-aadressid",

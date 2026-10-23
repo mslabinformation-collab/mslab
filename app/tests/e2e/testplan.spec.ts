@@ -8,7 +8,7 @@ import { smallTargets } from "./targets";
 import { expect, submitsForms, test } from "./test";
 
 // The test page (phase 4, piece 1, Task 3), followed through in a browser against the local database: three checks answered (OK, Viga with a
-// note, Jäta vahele), kept over a reload and counted on Avaleht; a second admin session answering one of them, which the first reads after
+// note, Jäta vahele with a note: the note box is open under every answer, Dim 22.10), kept over a reload and counted on Avaleht; a second admin session answering one of them, which the first reads after
 // "Värskenda"; a press made offline, kept and sent when the connection is back; two saves at once of different checks, both of which land
 // (the row lock and the merge, on a real Postgres); a link to a check; and the layout at 390, 834, 1194 and 1440 px. Nothing is mocked on the
 // server: Telegram is not configured locally, so the Viga's message is logged and skipped.
@@ -140,7 +140,7 @@ test("guard: the page and its API need an admin session", async ({ request }) =>
   }
 });
 
-test("answers persist: OK, Viga with a note and Jäta vahele are saved, kept over a reload, and the Avaleht card counts what is left", async ({ page, context, visitorIp }, info) => {
+test("answers persist: OK, Viga and Jäta vahele are saved with their note boxes open, kept over a reload, and the Avaleht card counts what is left", async ({ page, context, visitorIp }, info) => {
   test.skip(!desktop(info), "writes answers: the desktop project only");
   await signInAsAdmin(page, context, visitorIp, created);
   const { area, ids } = await pickChecks(page);
@@ -154,13 +154,25 @@ test("answers persist: OK, Viga with a note and Jäta vahele are saved, kept ove
   await openArea(page, area);
 
   const [first, second, third] = ids.map((id) => check(page, id));
+  await expect(first.locator("[data-check-note]")).toHaveCount(0); // (no answer, no box)
   await first.locator('[data-answer="ok"]').click();
+  // Dim 22.10: the note box is open under every answer (no tap on „Märkus“), asking „Märkus“ under an OK and a Jäta vahele, „Mis läks valesti?“ under a Viga
+  const firstNote = first.locator("[data-check-note]");
+  await expect(firstNote).toBeVisible();
+  await expect(firstNote).toHaveAttribute("placeholder", "Märkus");
+  await expect(firstNote).not.toBeFocused();
+  await expect(first.locator("[data-note-toggle]")).toHaveCount(0);
   await second.locator('[data-answer="bad"]').click();
   const note = second.locator("[data-check-note]");
   await expect(note).toBeFocused();
   await expect(note).toHaveAttribute("placeholder", "Mis läks valesti?");
   await note.fill("E2E: nupp ei tööta");
   await third.locator('[data-answer="skip"]').click();
+  const thirdNote = third.locator("[data-check-note]");
+  await expect(thirdNote).toBeVisible();
+  await expect(thirdNote).toHaveAttribute("placeholder", "Märkus");
+  await thirdNote.fill("E2E: hiljem");
+  await thirdNote.blur();
   await expect(status(page)).toHaveText("Salvestatud");
   await expect(first).toHaveAttribute("data-check-state", "done");
   await expect(second).toHaveAttribute("data-check-state", "failed");
@@ -170,6 +182,7 @@ test("answers persist: OK, Viga with a note and Jäta vahele are saved, kept ove
   const api = await readApi(page);
   expect(ids.map((id) => api.answers[id]?.status)).toEqual(["ok", "bad", "skip"]);
   expect(api.answers[ids[1]].note).toBe("E2E: nupp ei tööta");
+  expect(api.answers[ids[2]].note).toBe("E2E: hiljem");
   expect(api.answers[ids[0]].byName).toBe("Dim");
 
   // a reload shows all three, each with its last answer; the note is in its field; the choice of "Kes" is still "Kõik"
@@ -186,6 +199,8 @@ test("answers persist: OK, Viga with a note and Jäta vahele are saved, kept ove
   await expect(pressed(page, ids[1])).toHaveAttribute("data-answer", "bad");
   await expect(pressed(page, ids[2])).toHaveAttribute("data-answer", "skip");
   await expect(check(page, ids[1]).locator("[data-check-note]")).toHaveValue("E2E: nupp ei tööta");
+  await expect(check(page, ids[2]).locator("[data-check-note]")).toHaveValue("E2E: hiljem");
+  await expect(check(page, ids[0]).locator("[data-check-note]")).toHaveValue(""); // (open over a reload too, empty)
 
   // with the answers and a note open, at a phone's width and a tablet's
   await openEveryArea(page);

@@ -43,6 +43,7 @@ const t: ContactRegisterTexts = {
   payHalf: "50% registreerimisel + 50% koolituspäeval",
   payFinancing: "Järelmaks (Inbank)",
   financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.",
+  financingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.",
   financingLine: "Võimalik tasuda ka järelmaksuga (Inbank).",
   modelHelp: "Vajan abi modellide leidmisel",
   createAccount: "Loo mulle konto",
@@ -204,6 +205,21 @@ describe("Järelmaks (Inbank) on the registration form", () => {
     // the form is gone (a second press would register her twice): the range first, then what she was told of every registration
     expect($("[data-register-form]")).toBeNull();
     expect([...sent.querySelectorAll("p")].map((p) => p.textContent)).toEqual(["Järelmaks on võimalik 100–5000 € hinnaga koolitusele.", "Aitäh! Registreerimine on vastu võetud."]);
+    expect(sent.querySelector("[data-financing-refused]")).not.toBeNull();
+    expect(document.activeElement).toBe(sent);
+  });
+
+  test("a järelmaks refused because it was switched off ({ ok: true, financing: \"off\" }): the registration stands and she is told it is not available now and that the bank is open — not the range", async () => {
+    mocks.registerContact.mockResolvedValue({ ok: true, financing: "off" });
+    await act(async () => root.render(createElement(ContactRegister, offered)));
+    await fillIn();
+    await act(async () => choices()[2].click());
+    await submit();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    const sent = $("[data-register-sent]")!;
+    expect($("[data-register-form]")).toBeNull();
+    expect([...sent.querySelectorAll("p")].map((p) => p.textContent)).toEqual(["Järelmaks pole praegu saadaval. Saad maksta pangalingiga.", "Aitäh! Registreerimine on vastu võetud."]);
+    expect(sent.textContent).not.toContain("100–5000");
     expect(sent.querySelector("[data-financing-refused]")).not.toBeNull();
     expect(document.activeElement).toBe(sent);
   });

@@ -715,14 +715,39 @@ describe("the instalments checks (instalments, Task 8)", () => {
 
   // B22 (admin UX pass, piece 2: one open order per registration) changed what four of them see: they are to be run again (below)
   const REDONE_BY_B22 = new Set(["registreerimine-jarelmaks-keeldus", "registreerimine-jarelmaks-vahepeal-valja", "registreerimine-jarelmaks-hiline", "haldus-maksed-jarelmaks"]);
+  // the two that say what a student sees when the toggle is switched off meanwhile: reworded in the follow-up (financing texts, 22.10) after the first
+  // deploy, from the range sentence to the switched-off one. What they expect changed, so they are redo since that deploy.
+  const REDONE = ["registreerimine-jarelmaks-nupud", "registreerimine-jarelmaks-vahepeal-valja"];
 
   test("each is a new check marked since the deploy, in its area, run by whom the sandbox or the toggle needs", () => {
     for (const [id, want] of Object.entries(NEW)) {
+      if (REDONE.includes(id)) continue;
       expect(item(id), id).toMatchObject({ ...want, mark: REDONE_BY_B22.has(id) ? "redo" : "new" });
       expect(markedSince(item(id).markedAt), id).toBe(true); // "deploy" on the branch, the push instant once stamped
       // a new check never reopens an answer
       if (!REDONE_BY_B22.has(id)) expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z"), id).toBeNull();
     }
+  });
+
+  test("the checks that switch the toggle off meanwhile are redo since the follow-up's deploy, in their area, run by whom they were", () => {
+    for (const id of REDONE) {
+      expect(item(id), id).toMatchObject({ ...NEW[id], mark: "redo" });
+      // "deploy" until the stamp, then the deploy instant (section 15 item 3)
+      const markedAt = item(id).markedAt;
+      expect(markedSince(markedAt), id).toBe(true);
+      // an answer given before the follow-up's deploy no longer stands: it was given for the old sentence
+      const deployAt = "2026-10-25T00:00:00.000Z";
+      expect(appliesAt(item(id) as unknown as TestItem, plan as unknown as TestPlan, deployAt), id).toBe(markedAt === "deploy" ? deployAt : markedAt);
+    }
+  });
+
+  test("a student whose järelmaks was switched off meanwhile is told it is not available now: the checks say that sentence, never the range", () => {
+    for (const id of REDONE) {
+      expect(text(id), id).toContain(`„${et.forms.payFinancingOff}“`);
+      expect(text(id), id).not.toContain(et.forms.payFinancingRange);
+    }
+    // (the range sentence is for a price outside 100–5000 €, which no check edits a price to see)
+    expect(plan.items.flatMap((c) => [...c.steps, ...c.expect]).filter((l) => l.includes(et.forms.payFinancingRange))).toEqual([]);
   });
 
   test("Seaded's toggle comes before every check that needs it on; the course-page check, which comes first, switches it on itself", () => {
@@ -795,7 +820,7 @@ describe("the instalments checks (instalments, Task 8)", () => {
     expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.forms.payHalf}“`);
     expect(text("avalik-kursus-jarelmaks-rida")).toContain(`„${et.course.payNow}“`);
     for (const id of ["registreerimine-jarelmaks-kinnitatud", "registreerimine-jarelmaks-nupud", "ekursus-jarelmaks"]) expect(text(id), id).toContain(`„${et.forms.payFinancing}“`);
-    for (const id of ["registreerimine-jarelmaks-nupud", "registreerimine-jarelmaks-vahepeal-valja"]) expect(text(id), id).toContain(`„${et.forms.payFinancingRange}“`);
+    for (const id of ["registreerimine-jarelmaks-nupud", "registreerimine-jarelmaks-vahepeal-valja"]) expect(text(id), id).toContain(`„${et.forms.payFinancingOff}“`);
     expect(text("registreerimine-jarelmaks-kinnitatud")).toContain(`„${et.forms.payFinancingContract}“`);
     expect(text("registreerimine-jarelmaks-keeldus")).toContain(`„${et.payment.result.pendingFinancing}“`);
     for (const id of ["registreerimine-jarelmaks-keeldus", "registreerimine-jarelmaks-nupud"]) expect(text(id), id).toContain(`„${et.payment.payBank}“`);
@@ -882,13 +907,52 @@ describe("B22: one open order per registration (admin UX pass, piece 2, Task 2)"
   });
 
   test("the checks whose rows B22 changed are to be run again, with the words they now see", () => {
-    for (const id of ["registreerimine-jarelmaks-keeldus", "registreerimine-jarelmaks-vahepeal-valja", "registreerimine-jarelmaks-hiline", "haldus-maksed-jarelmaks"])
-      expect(item(id), id).toMatchObject({ mark: "redo", markedAt: "deploy" });
+    for (const id of ["registreerimine-jarelmaks-keeldus", "registreerimine-jarelmaks-vahepeal-valja", "registreerimine-jarelmaks-hiline", "haldus-maksed-jarelmaks"]) {
+      expect(item(id), id).toMatchObject({ mark: "redo" });
+      expect(markedSince(item(id).markedAt), id).toBe(true); // "deploy" until the stamp, then the deploy instant
+    }
     // Proov 10's loan, declined and then paid by bank, is „Asendatud“: no check expects it under „Pooleli“ any more
     expect(text("registreerimine-jarelmaks-keeldus")).toContain(`„Järelmaks (Inbank)“ staatusega „${replaced}“`);
     expect(text("haldus-maksed-jarelmaks")).toContain(`Vajuta filtril „Kõik“ ja vaata Proov 10 järelmaksu rida, mis on „${replaced}“.`);
     expect(text("haldus-maksed-jarelmaks")).not.toContain("Pooleli järelmaksu real");
     // the late loan is held with its reason
     expect(text("registreerimine-jarelmaks-hiline")).toContain(`„${adminEt.payments.reason.double}“`);
+  });
+});
+
+// Dim 22.10: every answer on the test page has a note box and its first note pings Telegram; the comment bubble is on every admin page.
+describe("the review tools' checks (22.10)", () => {
+  const find = (id: string) => {
+    const found = plan.items.find((c) => c.id === id);
+    expect(found, id).toBeDefined();
+    return found!;
+  };
+  const whole = (id: string) => [find(id).title, ...find(id).steps, ...find(id).expect].join("\n");
+
+  test("the test page's Telegram check is redo, and says the first note of an OK pings too, with the answer at the end", () => {
+    const check = find("kirjad-testimine-telegram");
+    expect(check.mark).toBe("redo");
+    expect(markedSince(check.markedAt)).toBe(true); // "deploy" on the branch, the push instant once stamped
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).not.toBeNull();
+    const expectText = check.expect.join("\n");
+    expect(expectText).toContain("„Testimine — Märkus: … · Viga“");
+    expect(expectText).toContain("„Testimine — Märkus: … · OK“");
+    expect(expectText).toContain("Teine proov");
+  });
+
+  test("a new check walks the comment bubble: on a Seaded page, sent, in Telegram, on the list as „Haldus“, clear of „Salvesta“", () => {
+    const check = find("haldus-kommentaar-nupp");
+    expect(check).toMatchObject({ area: "haldus", who: "dim", device: "any", writes: true, mark: "new" });
+    expect(markedSince(check.markedAt)).toBe(true);
+    expect(appliesAt(check as unknown as TestItem, plan as unknown as TestPlan, "2026-10-25T00:00:00.000Z")).toBeNull(); // a new check reopens nothing
+    const text = whole("haldus-kommentaar-nupp");
+    for (const word of ["Kommentaar", "Saada", "Haldus", "Näita kohta", "Salvesta", "Telegram", "/guide/tagasiside/", "Proov 1"]) expect(text, word).toContain(word);
+    // the words the bubble itself shows (public/feedback.js)
+    expect(text).toContain("Aitäh! Kommentaar on saadetud ✓");
+    // fix round 1: the wording, and the claim about covered buttons is about the page the check opens; the login page has no bubble (signed out)
+    expect(text).toContain("kirjuta kommentaariks: Proov 1.");
+    expect(text).not.toContain("kirjuta kommentaari:");
+    expect(text).toContain("ei kata sellel lehel ühtegi nuppu");
+    expect(text).not.toContain("sisselogimise lehel");
   });
 });

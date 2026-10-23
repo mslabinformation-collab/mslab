@@ -136,6 +136,7 @@ export async function Cart({ locale, slug }: { locale: Locale; slug: string }) {
                 payBank: d.cart.payBank,
                 payFinancing: d.forms.payFinancing,
                 financingRange: d.forms.payFinancingRange,
+                financingOff: d.forms.payFinancingOff,
                 submit: fill(d.payment.pay, { amount: price }),
                 starting: d.payment.starting,
                 alreadyPaid: d.payment.alreadyPaid,

@@ -37,6 +37,7 @@ Every phase after this one changes behaviour that some checks describe. So the p
   - **A "Viga" on a check that was reopened by a `redo`** is a new failure: the answer before it was given before the check's `markedAt`. It sends its own messages. This tells Dim that a fix did not work.
   - The answer records `pinged` (the instant of the first message) and `notePinged` (true after the second), so the server knows what it has sent.
   - A failed send never fails the save.
+  - **Dim 22.10: every answer has a note box, and the first note on any answer pings.** The note box opens under OK and Jäta vahele as it does under Viga (below, §4), and the first non-empty note on an OK or a Jäta vahele sends one message, in the format of the second message above with the answer shown: "Testimine — Märkus: {title} ({name}) · OK" (or "· Jäta vahele"; the second message of a Viga now ends "· Viga"). It uses the same path and the same `notePinged` record, once per answer: a note carried along when the answer changes is not a new note, and a `redo`-overtaken answer starts again. An answer with no note sends nothing.
 - **D7. Test data is labelled** (Dim, 16.10: as recommended). Every check that creates something (`writes: true`) tells the tester exactly what to type:
   - the name "Proov" plus a number;
   - for a student, an e-mail with `+proov` added to the tester's own address (for example `nimi+proov1@…`), which Gmail delivers to the tester's own inbox.
@@ -136,7 +137,7 @@ Phone-first, in the admin's look. Top to bottom:
   - the steps as a numbered list, then "Mida näed" with the expect lines as a list;
   - "Miks" folded under the steps;
   - three buttons: „OK“, „Viga“, „Jäta vahele“;
-  - a note field "Märkus", which opens by itself when "Viga" is pressed;
+  - a note field, open under every answer as soon as one is chosen (Dim 22.10, as on Rempire's test page; before, only "Viga" opened it, and the "Märkus" pill did the rest): it asks "Mis läks valesti?" under "Viga" and "Märkus" under "OK" and "Jäta vahele"; a check with no answer has none; only "Viga" takes the focus into it;
   - under the buttons, the last answer: "Maria · 16.10 14:05 · Viga".
 - **States of a check:**
   - **open:** no answer, or a `redo` answered before its `markedAt` (fallback `marked`). The old answer stays visible under it as "Varasem vastus (enne muudatust): OK", so nothing is thrown away;
@@ -206,12 +207,12 @@ Phone-first, in the admin's look. Top to bottom:
   - the open/done/failed rules (redo before and after `markedAt`, fallback to `marked`, `"deploy"` read as the build time);
   - `tools/testplan-stamp.mjs` replaces every `"deploy"` and nothing else;
   - the session-to-tester match by `ADMIN_NAMES` (D10);
-  - the Telegram messages (D6): the first on a new failure, the second on its first note, none after, and a new failure after a `redo`.
+  - the Telegram messages (D6): the first on a new failure, the second on its first note, none after, and a new failure after a `redo`; the first note on an OK or a Jäta vahele (Dim 22.10).
 - **DB:**
   - two concurrent saves of different checks both survive;
   - the same check twice: the newer `at` wins;
   - the Avaleht counts.
-- **DOM:** a check's buttons, the note opening on "Viga", the states and the old answer under a redo, the filters.
+- **DOM:** a check's buttons, the note box under every answer (its prompt by answer), the states and the old answer under a redo, the filters.
 - **e2e:**
   - an admin answers three checks, reloads and sees them;
   - a second admin session answers one more and the first sees both after "Värskenda";

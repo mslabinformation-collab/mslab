@@ -431,7 +431,7 @@ export function CourseEditor({ initial, others, next, publicHref, created, typeL
         </aside>
       </div>
 
-      <div className={styles.saveBar} data-save-bar="">
+      <div className={styles.saveBar} data-save-bar="" data-fab-avoid="">
         <p role="status" className={status.tone === "error" ? ui.error : status.tone === "success" ? ui.success : ui.hint} data-save-status="">
           {status.text}
           {state && !state.ok && state.error === "stale" && (

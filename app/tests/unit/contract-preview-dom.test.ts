@@ -48,7 +48,7 @@ const t: ContactRegisterTexts = {
   payFull: "100% kohe",
   payHalf: "50% registreerimisel + 50% koolituspäeval",
   payFinancing: "Järelmaks (Inbank)",
-  financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.",
+  financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.", financingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.",
   financingLine: "Võimalik tasuda ka järelmaksuga (Inbank).",
   modelHelp: "Soovin koolituskeskuse abi modellide leidmisel",
   createAccount: "Loo mulle kohe konto MS LAB keskkonda",
@@ -189,7 +189,7 @@ describe("the cart: the e-course contract in the same way", () => {
     paymentLabel: "Tasumine",
     payBank: "Pangalink",
     payFinancing: "Järelmaks (Inbank)",
-    financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.",
+    financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.", financingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.",
     submit: "Maksa 190 €",
     starting: "Avan makse…",
     alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
@@ -261,7 +261,7 @@ describe("a text that changed since the page was loaded (ruling R6): the form sa
     const et: EcoursePurchaseTexts = {
       name: "Nimi", email: "E-post", contractTerms: "Olen tutvunud lepingu tingimustega ja nõustun nendega.", readContract: "Loe lepingut", contractChanged: MESSAGE,
       newsletterConsent: "Soovin MS LABi uudiseid ja pakkumisi", paymentLabel: "Tasumine", payBank: "Pangalink", payFinancing: "Järelmaks (Inbank)",
-      financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.", submit: "Maksa 190 €", starting: "Avan makse…", alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
+      financingRange: "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.", financingOff: "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.", submit: "Maksa 190 €", starting: "Avan makse…", alreadyPaid: "Makse on juba tehtud — vaata oma e-posti.",
       errorRequired: "See väli on kohustuslik.", errorEmail: "Sisesta korrektne e-posti aadress.", errorTooMany: "Liiga palju katseid.", errorGeneric: "Midagi läks valesti.",
     };
     const contract: FormContract = { version: V1, title: "E-koolituse tingimused", body: "Tere {nimi}.", locale: "et", course: "Kulmumeistri e-koolitus", priceCents: 19000 };

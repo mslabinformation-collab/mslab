@@ -407,11 +407,12 @@ describe("what the page may and may not do (phase 2b, the review's list)", () =>
 // ---------- Järelmaks (Inbank) on the page (instalments §4 „Maksa“ for a järelmaks registration, Task 7) ----------
 // An unpaid registration booked with „Järelmaks (Inbank)“ has two buttons while a järelmaks may go to Inbank (Seaded's toggle on, payments on, the
 // price 100–5000 €, nothing paid, the whole price due): „Maksa järelmaksuga (Inbank)“ and „Maksa pangalingiga“, each its own form posting `method`.
-// In every other case there is the one „Maksa {summa}“ of before. A järelmaks press the start refuses (the toggle went off, the price moved) is a
-// 409 with the range sentence and the bank's button.
+// In every other case there is the one „Maksa {summa}“ of before. A järelmaks press the start refuses is a 409 with the bank's button and a sentence:
+// the switched-off one when the toggle went off (the price within the range), the range one when the price moved out of 100–5000 € (also when both apply).
 
 describe("Järelmaks (Inbank) on the pay page", () => {
   const RANGE = "Järelmaks on võimalik 100–5000 € hinnaga koolitusele.";
+  const OFF = "Järelmaks pole praegu saadaval. Saad maksta pangalingiga.";
   const on = () => db.insert(settings).values({ key: "financing", value: { enabled: true } });
   const loan = async (over: Partial<typeof registrations.$inferInsert> = {}, c?: Awaited<ReturnType<typeof contactCourse>>) =>
     registrationOn(db, c ?? (await contactCourse(db)), { paymentChoice: "financing", ...over });
@@ -507,7 +508,7 @@ describe("Järelmaks (Inbank) on the pay page", () => {
   test("Russian for a Russian registration", async () => {
     await on();
     const r = await loan({ locale: "ru" });
-    expect(buttons(await page(r.payToken))).toEqual([["hirePurchase", "Оплатить в рассрочку (Inbank)"], ["paymentInitiation", "Оплатить через банк"]]);
+    expect(buttons(await page(r.payToken))).toEqual([["hirePurchase", "Оплатить в рассрочку (Inbank)"], ["paymentInitiation", "Оплатить через интернет-банк"]]);
   });
 
   test("each button starts its method: järelmaks is a hirePurchase row of the whole price with the 60-minute hold, the bank a paymentInitiation row with 30", async () => {
@@ -545,22 +546,30 @@ describe("Järelmaks (Inbank) on the pay page", () => {
     expect(done).not.toContain("<form");
   });
 
-  test("a järelmaks press the start refuses (the toggle is off, or the price left 100–5000 €): 409, the range sentence and the bank's one button — nothing started", async () => {
+  test("a järelmaks press the start refuses: 409 and the bank's one button — the switched-off sentence when the toggle is off (the price within the range), the range sentence when the price left 100–5000 € — nothing started", async () => {
     const m = stubMontonio();
     const r = await loan();
-    // the toggle off (a „Proovi uuesti“ of a loan after Maria switched it off)
+    // the toggle off (a „Proovi uuesti“ of a loan after Maria switched it off): its own sentence, not the range
     const off = await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio));
     const html = await text(off);
     expect(off.status).toBe(409);
-    expect(html).toContain(`<p class="notice" role="alert" data-pay-notice="financing">${RANGE}</p>`);
+    expect(html).toContain(`<p class="notice" role="alert" data-pay-notice="financingOff">${OFF}</p>`);
+    expect(html).not.toContain(RANGE);
     expect(buttons(html)).toEqual(ONE("350 €"));
     expect(html).not.toContain("hirePurchase");
-    // the toggle on, the price out of range after the page was opened
+    // the toggle on, the price out of range after the page was opened: the range
     await on();
     await priced(600_000);
     const range = await text(await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio)));
-    expect(range).toContain(RANGE);
+    expect(range).toContain(`<p class="notice" role="alert" data-pay-notice="financing">${RANGE}</p>`);
+    expect(range).not.toContain(OFF);
     expect(buttons(range)).toEqual(ONE("6 000 €"));
+    // the toggle off as well: the price is the permanent fact, so still the range
+    await db.update(settings).set({ value: { enabled: false } }).where(eq(settings.key, "financing"));
+    const both = await text(await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio)));
+    expect(both).toContain(`data-pay-notice="financing">${RANGE}</p>`);
+    expect(both).not.toContain(OFF);
+    await db.update(settings).set({ value: { enabled: true } }).where(eq(settings.key, "financing"));
     expect(await db.select().from(payments)).toEqual([]);
     expect(m.state.orders).toEqual([]);
     // the bank's button on that page works
@@ -568,14 +577,29 @@ describe("Järelmaks (Inbank) on the pay page", () => {
     expect((await handlePayPage(posted(r.payToken, "method=paymentInitiation"), r.payToken, deps(m.montonio))).status).toBe(303);
   });
 
+  test("a järelmaks press for a registration that cannot take one though the choice is on and the price is within the range (a part paid): 409 and the same \"not available now\" sentence, not the range", async () => {
+    await on();
+    const m = stubMontonio();
+    const r = await loan({ paidCents: 5000 });
+    const res = await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio));
+    const html = await text(res);
+    expect(res.status).toBe(409);
+    expect(html).toContain(`<p class="notice" role="alert" data-pay-notice="financingOff">${OFF}</p>`);
+    expect(html).not.toContain(RANGE);
+    expect(await db.select().from(payments)).toEqual([]);
+    expect(m.state.orders).toEqual([]);
+  });
+
   test("the sentence is said only after a refusal: a plain GET and a rate limit do not carry it", async () => {
     await on();
     const r = await loan();
     expect(await page(r.payToken)).not.toContain(RANGE);
+    expect(await page(r.payToken)).not.toContain(OFF);
     const m = stubMontonio();
     const limited = await text(await handlePayPage(posted(r.payToken, "method=hirePurchase"), r.payToken, deps(m.montonio, { kv: fakeKv({ "rl:pay:203.0.113.9": "5" }) })));
     expect(limited).toContain("Liiga palju katseid. Proovi mõne minuti pärast.");
     expect(limited).not.toContain(RANGE);
+    expect(limited).not.toContain(OFF);
   });
 
   test("payPage: two forms only with `financing` and online payments; the notice of a refusal", () => {
@@ -587,5 +611,12 @@ describe("Järelmaks (Inbank) on the pay page", () => {
     const refused = payPage({ ...view, financing: false }, { online: true, notice: "financing" });
     expect(refused).toContain(`data-pay-notice="financing">${RANGE}</p>`);
     expect(refused).toContain("Maksa 350 €");
+    const switchedOff = payPage({ ...view, financing: false }, { online: true, notice: "financingOff" });
+    expect(switchedOff).toContain(`data-pay-notice="financingOff">${OFF}</p>`);
+    expect(switchedOff).not.toContain(RANGE);
+    expect(switchedOff).toContain("Maksa 350 €");
+    // in Russian, the sentence in her language
+    expect(payPage({ ...view, locale: "ru", financing: false }, { online: true, notice: "financingOff" })).toContain('data-pay-notice="financingOff">Рассрочка сейчас недоступна. Можно оплатить через интернет-банк.</p>');
+    expect(payPage({ ...view, locale: "ru", financing: false }, { online: true, notice: "financing" })).toContain('data-pay-notice="financing">Рассрочка возможна для обучения стоимостью 100–5000 €.</p>');
   });
 });

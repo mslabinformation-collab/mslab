@@ -57,10 +57,10 @@ export type LessonTexts = Dict["account"]["lesson"] & { resume: string; lockedHi
 /**
  * The cards' pay button (phase 2b): "Maksa {amount}", "Maksa ülejäänud {amount}", the transfer line, the button while it opens, and why a start was refused.
  * Instalments §4: the two buttons of a järelmaks registration, "Maksa järelmaksuga (Inbank)" (`payFinancing`) and "Maksa pangalingiga" (`payBank`), and the
- * sentence of a loan the server refused (`financing`: the range, forms.payFinancingRange).
+ * sentences of a loan the server refused (`financing`: the range, forms.payFinancingRange; `financingOff`: switched off, forms.payFinancingOff).
  */
 export type PayTexts = {
-  pay: string; payRest: string; payFinancing: string; payBank: string; transfer: string; starting: string; full: string; nothing: string; financing: string; rate: string; failed: string;
+  pay: string; payRest: string; payFinancing: string; payBank: string; transfer: string; starting: string; full: string; nothing: string; financing: string; financingOff: string; rate: string; failed: string;
 };
 
 export const payTexts = (d: Dict): PayTexts => ({
@@ -73,6 +73,7 @@ export const payTexts = (d: Dict): PayTexts => ({
   full: d.payment.page.full,
   nothing: d.payment.page.nothing,
   financing: d.forms.payFinancingRange,
+  financingOff: d.forms.payFinancingOff,
   rate: d.forms.errorTooMany,
   failed: d.forms.errorGeneric,
 });

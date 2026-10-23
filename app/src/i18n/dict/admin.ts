@@ -2128,7 +2128,8 @@ export const adminEt = {
     adminsLead: "Need aadressid saavad haldusesse sisse logida. Nimekirja muudab arendaja.",
   },
   // The test page (phase 4, piece 1): /admin/testimine, the checks Maria and Dim answer. `tg` is the Telegram text of a Viga and of its first note
-  // (server/testplan.ts pingText). `last` is "{name} · dd.mm HH:MM · {status}" (Tallinn time, the status in the button's words).
+  // (server/testplan.ts pingText); since Dim 22.10 the first note of any answer (an OK's and a Jäta vahele's too) is a `tg.note`, which shows the answer
+  // ({status}, in the button's words). `last` is "{name} · dd.mm HH:MM · {status}" (Tallinn time, the status in the button's words).
   testplan: {
     title: "Testimine",
     progress: "{done} / {total} tehtud · {bad} viga · {redo} uuesti testida",
@@ -2158,7 +2159,7 @@ export const adminEt = {
     tg: {
       bad: "Testimine — Viga: {title} ({name})\n{note}\n{url}",
       noNote: "(märkust veel pole)",
-      note: "Testimine — Märkus: {title} ({name})\n{note}\n{url}",
+      note: "Testimine — Märkus: {title} ({name}) · {status}\n{note}\n{url}",
     },
   },
 };

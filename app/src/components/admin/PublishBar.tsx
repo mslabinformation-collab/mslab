@@ -77,7 +77,7 @@ export function PublishBar({
 
   return (
     <div className={styles.wrap}>
-      <div role="region" aria-labelledby={countId} aria-busy={busy || undefined} className={styles.bar} data-publish-bar="">
+      <div role="region" aria-labelledby={countId} aria-busy={busy || undefined} className={styles.bar} data-publish-bar="" data-fab-avoid="">
         <p className={styles.summary}>
           <span className={styles.wide}>
             <b id={countId} data-publish-count="">

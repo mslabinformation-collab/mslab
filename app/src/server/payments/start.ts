@@ -6,7 +6,7 @@ import { hasFreeSeat, lockForPayment } from "@/db/queries/seats";
 import { courses, courseSessions, payments, registrations, type Payment } from "@/db/schema";
 import type { ContractSnapshot } from "@/domain/contract";
 import { normalizeEmail } from "@/domain/email";
-import { attemptWindowMs, billingAddressOf, FINANCING_KEY, financingAllowed, isHirePurchase, readFinancingSettings, type BillingAddress } from "@/domain/financing";
+import { attemptWindowMs, billingAddressOf, FINANCING_KEY, financingRefusal, isHirePurchase, readFinancingSettings, type BillingAddress, type FinancingRefusal } from "@/domain/financing";
 import { payableDue } from "@/domain/payments";
 import { registrationPrice } from "@/domain/registration";
 import { holdUntil } from "@/domain/sessions";
@@ -59,7 +59,9 @@ export type StartDeps = {
  * (paid enough, cancelled, past, no price). full: an unconfirmed registration's session has no free seat (D2). rate: STARTS_PER_HOUR starts
  * of this registration in the last hour. notFound: no such registration (or not this client's). financing: a järelmaks start that is not
  * allowed now (instalments, §4: Seaded's toggle is off, the price is out of 100–5000 €, something is paid or a part is due, or the
- * registration was booked with another choice): nothing started, she is told to pick another way („Järelmaks on võimalik 100–5000 € …“).
+ * registration was booked with another choice): nothing started, she is told to pick another way. `reason` is the sentence she is told
+ * (domain/financing.ts financingRefusal): "range" („Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“) when the price is outside the range,
+ * else "off" („Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“): switched off, a part paid or due, another choice. It changes the sentence only.
  */
 export type StartResult =
   | { kind: "started"; paymentUrl: string }
@@ -69,7 +71,7 @@ export type StartResult =
   | { kind: "full" }
   | { kind: "rate" }
   | { kind: "notFound" }
-  | { kind: "financing" };
+  | { kind: "financing"; reason: FinancingRefusal };
 
 /** How a start pays: Montonio's method, the bank link ("paymentInitiation") by default, or Järelmaks (Inbank) ("hirePurchase"). */
 export type StartOptions = { method?: OrderMethod };
@@ -77,11 +79,12 @@ export type StartOptions = { method?: OrderMethod };
 /**
  * May a järelmaks start now (instalments, §4 "Which amount may go to Inbank")? Seaded's toggle as stored right now — read in the start's own
  * transaction, so a toggle switched off a moment ago refuses new loans (an open order finishes as it is) — and financingAllowed's rules on
- * the price, what is paid and what is due. Payments are on: the start has Montonio.
+ * the price, what is paid and what is due. Payments are on: the start has Montonio. null: it may start; else why not (financingRefusal), which
+ * decides the sentence she is told and nothing else.
  */
-async function financingStarts(q: Q, o: { priceCents: number | null; paidCents: number; dueCents: number }): Promise<boolean> {
+async function financingRefusedNow(q: Q, o: { priceCents: number | null; paidCents: number; dueCents: number }): Promise<FinancingRefusal | null> {
   const { enabled } = readFinancingSettings(await readSetting(q, FINANCING_KEY));
-  return financingAllowed({ enabled, paymentsOn: true, ...o });
+  return financingRefusal({ enabled, paymentsOn: true, ...o });
 }
 
 /** The method a stored row is sent with: the järelmaks for a `hirePurchase` row, else the bank (a row from before the methods too). */
@@ -204,7 +207,7 @@ async function order(deps: StartDeps & { montonio: Montonio }, payment: Payment,
  * in STARTS_PER_HOUR); a new attempt marks the registration's older open ones „Asendatud“ (B22: replaceOlderOrders, in this transaction).
  * `target`: the registration (with `clientId`: only when it is that client's) or its "Maksa" token.
  * `opts.method`: the bank link by default; "hirePurchase" (Järelmaks (Inbank), instalments §4) only for a registration booked with that
- * choice and while financingStarts allows it, else `financing` — the bank stays open to every registration, a järelmaks one included (she
+ * choice and while financingRefusedNow allows it, else `financing` — the bank stays open to every registration, a järelmaks one included (she
  * pays the whole price by bank). A järelmaks order carries her name, e-mail and (an Estonian) phone for Inbank's form (billingAddressOf, D8).
  */
 export async function startRegistrationPayment(
@@ -244,7 +247,11 @@ export async function startRegistrationPayment(
     if (due.kind === "none") return { kind: "nothing" };
     // a järelmaks only for a registration booked with that choice, and only while it is allowed now: the toggle, the price, nothing paid and
     // the whole price due (an invoice of a part, or a part recorded by hand, is paid by bank)
-    if (method === "hirePurchase" && (r.paymentChoice !== "financing" || !(await financingStarts(tx, { priceCents, paidCents: r.paidCents, dueCents: due.cents })))) return { kind: "financing" };
+    if (method === "hirePurchase") {
+      const refusal = await financingRefusedNow(tx, { priceCents, paidCents: r.paidCents, dueCents: due.cents });
+      // (a registration booked with another choice, with the rules otherwise met: the price is necessarily within the range, so "not available now")
+      if (r.paymentChoice !== "financing" || refusal !== null) return { kind: "financing", reason: refusal ?? "off" };
+    }
     // the invoice this payment pays, when payableDue charged one
     const invoiceId = "invoiceId" in due ? due.invoiceId : null;
     // the open attempt of this amount (and invoice) and method is sent again, not doubled; it is no new attempt, so it is not counted here
@@ -352,7 +359,7 @@ async function paidRecently(q: Q, courseId: number, email: string, now: Date): P
  * no row and no call to Montonio. It tells her only that, never an amount or a name.
  * `contract` (contracts, §4) is the contract the cart showed, filled (submit.ts handleEcoursePurchase): the row keeps it (`contract_snapshot`), a
  * re-send keeps this press's, and settle freezes it when the payment is paid. None (a caller without a cart): the terms gate asks her later.
- * `method` (instalments, §4): the bank link by default; "hirePurchase" (Järelmaks (Inbank)) only while financingStarts allows it for this
+ * `method` (instalments, §4): the bank link by default; "hirePurchase" (Järelmaks (Inbank)) only while financingRefusedNow allows it for this
  * price, else `financing` (no row, no order), after the alreadyPaid check. Its re-send window is the järelmaks' 60 minutes, a press of the
  * other method is another purchase (liveAttempt), and its order carries her name and e-mail for Inbank's form (the cart asks for no phone, D8).
  */
@@ -364,11 +371,14 @@ export async function startEcoursePayment(
   if (!montonio) return { kind: "off" };
   const method: OrderMethod = input.method ?? "paymentInitiation";
   const email = normalizeEmail(input.email);
-  const ready = await deps.db.transaction(async (tx): Promise<{ payment: Payment; again: boolean } | { alreadyPaid: true } | { financing: true }> => {
+  const ready = await deps.db.transaction(async (tx): Promise<{ payment: Payment; again: boolean } | { alreadyPaid: true } | { financing: FinancingRefusal }> => {
     await lockEcoursePurchase(tx, input.courseId, email);
     if (await paidRecently(tx, input.courseId, email, deps.now)) return { alreadyPaid: true };
     // a järelmaks only while it is allowed for this price (nothing of it is paid: a purchase is paid whole or not at all)
-    if (method === "hirePurchase" && !(await financingStarts(tx, { priceCents: input.amountCents, paidCents: 0, dueCents: input.amountCents }))) return { financing: true };
+    if (method === "hirePurchase") {
+      const refusal = await financingRefusedNow(tx, { priceCents: input.amountCents, paidCents: 0, dueCents: input.amountCents });
+      if (refusal !== null) return { financing: refusal };
+    }
     const live = await liveAttempt(tx, { courseId: input.courseId, email }, input.amountCents, method, deps.now);
     if (live) {
       // its window starts again now, and what she typed this time replaces what she typed before (the contract this press showed too)
@@ -385,7 +395,7 @@ export async function startEcoursePayment(
     return { payment, again: false };
   });
   if ("alreadyPaid" in ready) return { kind: "alreadyPaid" };
-  if ("financing" in ready) return { kind: "financing" };
+  if ("financing" in ready) return { kind: "financing", reason: ready.financing };
   // her details for Inbank's form (D8), as she typed them this time: a järelmaks order's only
   const billing = method === "hirePurchase" ? billingAddressOf({ name: input.name, email }) : null;
   return order({ ...deps, montonio }, ready.payment, ready.again, billing);

@@ -328,6 +328,19 @@ describe("gateDecision", () => {
     for (const method of METHODS) for (const path of GATED) expect(await kind(path, ON, cookie, method), `${method} ${path}`).toBe("pass");
   });
 
+  // Dim 22.10: the comment bubble is on every admin page, and /api/feedback is gated (it is not an always-through address). The bubble's fetch is
+  // same-origin, so the browser sends the admin's mslab_preview cookie (Path=/, SameSite=Lax) with it: it passes; a visitor's is the 404 JSON.
+  test("the comment bubble's calls from an admin page pass with the preview cookie; without it they are the 404 JSON", async () => {
+    const cookie = await signPreview(SECRET, NOW);
+    const fromAdminPage = (path: string, method: string, withCookie: boolean) =>
+      gateDecision({ path, method, cookie: withCookie ? cookie : undefined, fetchMode: "same-origin", accept: "*/*" }, ON, NOW);
+    for (const [path, method] of [["/api/feedback", "POST"], ["/api/feedback/abc123def456gh", "GET"]] as const) {
+      expect(await fromAdminPage(path, method, true), `${method} ${path}`).toEqual({ kind: "pass" });
+      expect(await fromAdminPage(path, method, false), `${method} ${path} without the cookie`).toEqual({ kind: "gate", page: "/tulekul/et", json: true });
+    }
+    expect(alwaysThrough("/api/feedback")).toBe(false); // (so it is the cookie that lets it through, not a hole in the gate)
+  });
+
   test("an expired, tampered, foreign or malformed cookie is no pass", async () => {
     const good = await signPreview(SECRET, NOW);
     const [exp, sig] = good.split(".");

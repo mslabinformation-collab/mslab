@@ -3,6 +3,7 @@ import {
   commentPlace,
   createComment,
   FEEDBACK_RATE_LIMIT,
+  isAdminPath,
   isSitePath,
   listComments,
   MAX_BYTES,
@@ -114,6 +115,46 @@ describe("POST /api/feedback", () => {
     expect(site.filter((r) => r.text !== "a").map((r) => r.route)).toEqual(new Array(7).fill(undefined));
   });
 
+  // Dim 22.10: the comment bubble is on the admin's pages too, and its comments say "admin"
+  test("an admin comment keeps its /admin page path; anything that is not an /admin path is dropped", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const k = kv();
+    await post(env(k), { dir: "admin", route: "/admin/koolitused/3", text: "a" });
+    await post(env(k), { dir: "admin", route: "/admin", text: "b" });
+    for (const route of ["/koolitused", "/administrator", "//admin", "/admin?x=1", "/admin/a b", "https://evil.example/admin", "#/admin", "/\\admin"])
+      await post(env(k), { dir: "admin", route, text: route });
+    const all = records(k);
+    expect(all.find((r) => r.text === "a")).toMatchObject({ dir: "admin", route: "/admin/koolitused/3" });
+    expect(all.find((r) => r.text === "b")).toMatchObject({ dir: "admin", route: "/admin" });
+    const dropped = all.filter((r) => r.text !== "a" && r.text !== "b");
+    expect(dropped).toHaveLength(8);
+    for (const r of dropped) {
+      expect(r.dir, r.text).toBe("admin");
+      expect(r.route, r.text).toBeUndefined();
+    }
+  });
+
+  // fix round 1: the admin's pages show students' names, e-mail addresses and phone numbers; a comment keeps where the place is, never its words
+  test("an admin comment keeps the place's selector and position and drops its label and snippet, whatever the body says; a site comment keeps them", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const f = stubFetch(() => Response.json({ ok: true }));
+    const k = kv();
+    const el = { label: "Maria Tamm", snippet: "Maria Tamm maria.tamm@example.test +372 5555 0000", sel: "main > section:nth-of-type(2)", y: 640, h: 88 };
+    const admin = await post(env(k, { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHAT_ID: "42" }), { dir: "admin", route: "/admin/opilased", text: "Rida", el });
+    await post(env(k), { dir: "site", route: "/koolitused", text: "Pealkiri", el });
+    const adminRec = records(k).find((r) => r.dir === "admin")!;
+    const siteRec = records(k).find((r) => r.dir === "site")!;
+    expect(adminRec.el).toEqual({ sel: "main > section:nth-of-type(2)", y: 640, h: 88 });
+    expect(JSON.stringify(adminRec)).not.toMatch(/Maria Tamm|maria\.tamm|5555/);
+    expect(siteRec.el).toEqual(el);
+    // nothing of it in the Telegram text either, and the place endpoint (open to whoever has the id) never had the snippet
+    expect(f.calls).toHaveLength(1);
+    const msg = (f.calls[0].body as { text: string }).text;
+    expect(msg).not.toMatch(/Maria Tamm|maria\.tamm|5555|Koht:/);
+    expect(msg).toContain(`Näita kohta: ${ORIGIN}/admin/opilased?fb=${admin.body.id}`);
+    expect(JSON.stringify((await commentPlace(k, admin.body.id as string)).body)).not.toMatch(/Maria Tamm|maria\.tamm|5555/);
+  });
+
   test("unknown direction, device and mood fall back as before; long fields are cut", async () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     const k = kv();
@@ -181,6 +222,24 @@ describe("POST /api/feedback", () => {
     );
   });
 
+  test("Telegram names an admin page's comment 'Haldus' and links to that admin page", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const f = stubFetch(() => Response.json({ ok: true }));
+    const r = await post(env(kv(), { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHAT_ID: "42" }), {
+      dir: "admin",
+      route: "/admin/koolitused",
+      title: "Koolitused",
+      device: "desk",
+      width: 1280,
+      name: "Maria",
+      text: "Nupp võiks olla suurem",
+    });
+    expect(r.body).toMatchObject({ ok: true, stored: true, telegram: true });
+    expect((f.calls[0].body as { text: string }).text).toBe(
+      "💬 Maria — kommentaar\nHaldus · Koolitused\nSeade: arvuti 1280px\n\nNupp võiks olla suurem\n\n" + `Näita kohta: ${ORIGIN}/admin/koolitused?fb=${r.body.id}`,
+    );
+  });
+
   test("storage failing but Telegram working → 200 stored:false; both failing → 502; the log has no comment data", async () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -207,6 +266,19 @@ describe("links ('Näita kohta')", () => {
     expect(placeLink(ORIGIN, { id: "abc123", dir: "site", route: "/ru/koolitused" })).toBe(`${ORIGIN}/ru/koolitused?fb=abc123`);
     expect(placeLink(ORIGIN, { id: "abc123", dir: "site" })).toBe(`${ORIGIN}/?fb=abc123`);
     expect(placeLink(ORIGIN, { id: "abc123", dir: "site", route: "//evil.example" })).toBe(`${ORIGIN}/?fb=abc123`);
+  });
+
+  test("admin comments link to the admin page itself, and never leave /admin", () => {
+    expect(placeLink(ORIGIN, { id: "abc123", dir: "admin", route: "/admin/koolitused/3" })).toBe(`${ORIGIN}/admin/koolitused/3?fb=abc123`);
+    expect(placeLink(ORIGIN, { id: "abc123", dir: "admin", route: "/admin" })).toBe(`${ORIGIN}/admin?fb=abc123`);
+    expect(placeLink(ORIGIN, { id: "abc123", dir: "admin" })).toBe(`${ORIGIN}/admin?fb=abc123`);
+    for (const route of ["//evil.example", "/koolitused", "https://evil.example/admin", "#/koolitused"])
+      expect(placeLink(ORIGIN, { id: "abc123", dir: "admin", route }), route).toBe(`${ORIGIN}/admin?fb=abc123`);
+  });
+
+  test("isAdminPath", () => {
+    for (const p of ["/admin", "/admin/", "/admin/koolitused", "/admin/koolitused/3", "/admin/login"]) expect(isAdminPath(p), p).toBe(true);
+    for (const p of ["", "admin", "/", "/koolitused", "/administrator", "/admin.php", "/ru/admin", "//admin", "/admin?x", "/admin#x", "/admin/a b", undefined, 1]) expect(isAdminPath(p), String(p)).toBe(false);
   });
 
   test("isSitePath", () => {

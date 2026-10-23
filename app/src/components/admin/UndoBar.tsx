@@ -132,7 +132,7 @@ export function UndoProvider({ children }: { children: React.ReactNode }) {
   };
 
   const view = bar && (
-    <div className={styles.bar} data-undo-bar="">
+    <div className={styles.bar} data-undo-bar="" data-fab-avoid="">
       <p className={styles.text}>{bar.state === "failed" ? adminEt.common.saveError : bar.text}</p>
       <button type="button" className={styles.button} aria-disabled={bar.state === "working" || undefined} onClick={undo}>
         {adminEt.common.undo}

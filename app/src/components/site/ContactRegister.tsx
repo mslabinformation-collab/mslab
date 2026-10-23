@@ -51,8 +51,10 @@ export type ContactRegisterTexts = {
   payHalf: string;
   /** „Järelmaks (Inbank)“: the third choice, while it is offered (instalments D2, D4). */
   payFinancing: string;
-  /** „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“: said when the server refused a järelmaks after all (§4). */
+  /** „Järelmaks on võimalik 100–5000 € hinnaga koolitusele.“: said when the server refused a järelmaks after all because of the price (§4). */
   financingRange: string;
+  /** „Järelmaks pole praegu saadaval. Saad maksta pangalingiga.“: said when the server refused it because it was switched off since the page was loaded (§4). */
+  financingOff: string;
   /** „Võimalik tasuda ka järelmaksuga (Inbank).“: the quiet line next to the prices while the choice is offered (D4). */
   financingLine: string;
   modelHelp: string;
@@ -91,11 +93,12 @@ type Errors = Partial<Record<Field, string>>;
  * `rejected`: the date the server turned down (filled up or cancelled meanwhile); its error stays while it is picked.
  * `paymentUrl` (sent, group): the prepayment's page at Montonio, where the browser goes once this state is on the page (see the effect below).
  * `financingRefused` (sent, group): the registration is stored, but its Järelmaks (Inbank) was not allowed any more (the toggle was switched off, or the
- * price left 100–5000 €, since the page was loaded); there is no payment page, and the answer says what Järelmaks needs.
+ * price left 100–5000 €, since the page was loaded); there is no payment page, and the answer says why: "refused" (the price outside the range) what
+ * Järelmaks needs, the range; "off" (any other refusal, the price within the range) that it is not available now and the bank is open.
  */
 type State =
   | { status: "idle" }
-  | { status: "sent"; kind: Kind; paymentUrl?: string; financingRefused?: boolean }
+  | { status: "sent"; kind: Kind; paymentUrl?: string; financingRefused?: "refused" | "off" }
   | { status: "error"; kind: Kind; errors: Errors; rejected?: number };
 
 /** Where focus goes after a failed submit: the first of these with an error, in page order. */
@@ -108,7 +111,7 @@ const FIELD_ORDER: Field[] = ["session", "name", "email", "phone", "period", "me
  *   payment 100% now, 50% + 50% (P14) or, while `financing` says it is offered (the course page: the toggle on, Montonio payments on, the group price
  *   within 100–5000 €; instalments D4), „Järelmaks (Inbank)“ — a third choice, and the quiet line „Võimalik tasuda ka järelmaksuga (Inbank).“ next to the
  *   prices; never a disabled placeholder. A järelmaks the server refuses after all (the page is a few minutes old) keeps the registration: the answer
- *   says so (`financing: "refused"`), the form gives way to the confirmation, and `financingRange` is said first. The form never confirms a place: it is confirmed after at least 50% prepayment
+ *   says so (`financing: "refused"`, or "off" when it was switched off), the form gives way to the confirmation, and `financingRange` (`financingOff`) is said first. The form never confirms a place: it is confirmed after at least 50% prepayment
  *   (P15), said under the button. With online payments the browser goes on to the prepayment's page (phase 2b). With no
  *   session to pick, the form is replaced by "new dates soon" and, when the course has an individual price, a way to ask
  *   for the individual course instead.
@@ -175,7 +178,7 @@ export function ContactRegister({
         // phase 2b (spec 6.1): the prepayment's page at Montonio (the bank or the card is chosen there); the answer shows meanwhile. The
         // browser leaves from the effect below, not here: the action's answer carries the revalidated course page (the seats changed), which
         // Next streams after this result, and leaving at once cut it off mid-stream ("The destination stream closed early" in the server's log).
-        return { status: "sent", kind: k, paymentUrl: k === "group" && result.paymentUrl ? result.paymentUrl : undefined, financingRefused: k === "group" && result.financing === "refused" };
+        return { status: "sent", kind: k, paymentUrl: k === "group" && result.paymentUrl ? result.paymentUrl : undefined, financingRefused: k === "group" ? result.financing : undefined };
       }
       const errors: Errors = {};
       let rejected: number | undefined;
@@ -237,7 +240,7 @@ export function ContactRegister({
         </span>
         {state.kind === "group" && state.financingRefused ? (
           <div className={styles.sentText}>
-            <p data-financing-refused="">{t.financingRange}</p>
+            <p data-financing-refused="">{state.financingRefused === "off" ? t.financingOff : t.financingRange}</p>
             <p>{t.registerSuccess}</p>
           </div>
         ) : (
