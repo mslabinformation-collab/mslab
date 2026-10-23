@@ -458,7 +458,7 @@ describe("one payment that cannot be settled does not stop the check", () => {
     }
     const stuck = m.mails().filter((x) => x.subject.startsWith(STUCK));
     expect(stuck.map((x) => [x.to, x.subject])).toEqual([["maria@example.test", "Makse vajab kontrolli: Mari Mürk"]]);
-    expect(stuck[0].text).toContain(`Montonio järgi on 175 € makstud (viide ${bad.reference}), aga seda ei õnnestunud kirja panna. Kontrolli Montonios ja märgi makse registreeringu juures käsitsi.`);
+    expect(stuck[0].text).toContain(`Montonio järgi on 175 € makstud (viide ${bad.reference}), aga seda ei õnnestunud kirja panna. Kontrolli Montonios ja lisa makse registreeringu juures nupuga „Lisa laekumine“, kviitungiga.`);
     expect(m.pings().filter((t) => t.startsWith(STUCK))).toHaveLength(1);
     expect(kv.ttl.get(`pay:stuck:${bad.id}`)).toBe(30 * 86_400);
     expect(await status(bad.id)).toBe("pending");
@@ -527,7 +527,7 @@ describe("one payment that cannot be settled does not stop the check", () => {
       ["maria@example.test", "Uus makse: Mari Mürk, Kulmumeistri baaskoolitus, 14.11.2026, 175 €"],
       ["maria@example.test", "Makse on nüüd kirja pandud: Mari Mürk"],
     ]);
-    expect(m.mails()[3].text).toContain("Kui märkisid selle juba käsitsi registreeringu juures, eemalda oma käsitsi lisatud summa, et makset ei loetaks kaks korda.");
+    expect(m.mails()[3].text).toContain("Kui lisasid selle juba nupuga „Lisa laekumine“, võta selle kviitungi tasumine tagasi, et makset ei loetaks kaks korda.");
     expect(m.pings().filter((t) => t.startsWith(RECORDED))).toHaveLength(1);
     expect(kv.store.has(`pay:stuck:${bad.id}`)).toBe(false);
     expect(logged().join("\n")).not.toMatch(/giftig|Mürk|@|MSLAB-M/);

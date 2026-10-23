@@ -233,19 +233,19 @@ describe("'Makse vajab kontrolli' and its follow-up 'Makse on nüüd kirja pandu
   const ECOURSE: StuckPayment = { ...STUCK, kind: "ecourse", course: "Kulmumeistri e-koolitus", startsAt: null, amountCents: 19000 };
   const stuck = (s: StuckPayment) => stuckPaymentSummary({ ...s, paidCents: s.amountCents, currency: "EUR" }, ADMIN);
 
-  test("a registration's payment is recorded by hand at the registration; an e-course's has none: its course is opened by hand under Õpilased", () => {
-    expect(stuck(STUCK).text).toContain("Montonio järgi on 175 € makstud (viide MSLAB-M7), aga seda ei õnnestunud kirja panna. Kontrolli Montonios ja märgi makse registreeringu juures käsitsi.");
+  test("a registration's payment is added with „Lisa laekumine“ and a receipt at the registration; an e-course's has none: its course is opened by hand under Õpilased", () => {
+    expect(stuck(STUCK).text).toContain("Montonio järgi on 175 € makstud (viide MSLAB-M7), aga seda ei õnnestunud kirja panna. Kontrolli Montonios ja lisa makse registreeringu juures nupuga „Lisa laekumine“, kviitungiga.");
     expect(stuck(ECOURSE).subject).toBe("Makse vajab kontrolli: Kati Tamm");
     expect(stuck(ECOURSE).text).toContain("Montonio järgi on 190 € makstud (viide MSLAB-M7), aga seda ei õnnestunud kirja panna. Kontrolli Montonios ja ava vajadusel e-koolitus käsitsi Õpilaste all.");
     expect(stuck(ECOURSE).text).not.toMatch(/registree/i);
   });
 
-  test("the follow-up: the payment is recorded now, and a registration's own entry by hand is to be removed so it is not counted twice", () => {
+  test("the follow-up: the payment is recorded now, and a registration's „Lisa laekumine“ receipt is to be taken back so it is not counted twice", () => {
     const s = recordedAfterAlertSummary(STUCK, ADMIN);
     expect(s.subject).toBe("Makse on nüüd kirja pandud: Kati Tamm");
     expect(s.short).toBe(s.subject);
     expect(s.text).toContain(
-      'Makse, mille kohta tuli teade "Makse vajab kontrolli", on nüüd automaatselt kirja pandud (viide MSLAB-M7). Kui märkisid selle juba käsitsi registreeringu juures, eemalda oma käsitsi lisatud summa, et makset ei loetaks kaks korda.',
+      'Makse, mille kohta tuli teade "Makse vajab kontrolli", on nüüd automaatselt kirja pandud (viide MSLAB-M7). Kui lisasid selle juba nupuga „Lisa laekumine“, võta selle kviitungi tasumine tagasi, et makset ei loetaks kaks korda.',
     );
     for (const line of ["Makse: Ettemaks", "Summa: 175 €", "Koolitus: Kulmumeistri baaskoolitus, 14.11.2026", "Maksja: Kati Tamm", "E-post: kati@example.test", "Viide: MSLAB-M7", "Montonio: uuid-7", "Admin: https://mslab.example/admin"])
       expect(s.text).toContain(line);

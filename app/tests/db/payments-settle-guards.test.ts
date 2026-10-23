@@ -471,7 +471,7 @@ describe("a late järelmaks after a paid bank payment (instalments §4, Review F
       expect([(await registration(r.id)).status, (await registration(r.id)).paidCents]).toEqual(["confirmed", 70000]);
       expect(m.mails().map((x) => x.subject.split(":")[0])).toEqual(["Uus makse", "Ülemakse", "Makse on nüüd kirja pandud"]);
       expect(m.mails().filter((x) => x.subject.startsWith("Topeltmakse"))).toEqual([]);
-      expect(m.mails()[2].text).toContain("eemalda oma käsitsi lisatud summa");
+      expect(m.mails()[2].text).toContain("võta selle kviitungi tasumine tagasi");
       expect([...kv.store.keys()].filter((k) => k.startsWith("pay:double:") || k.startsWith("pay:stuck:"))).toEqual([]);
     });
 
