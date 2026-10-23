@@ -1,12 +1,12 @@
 import { z } from "zod";
-import type { Db } from "@/db/client";
+import type { Db, Q } from "@/db/client";
 import { courses, type TestQuestion } from "@/db/schema";
 import { inArray } from "drizzle-orm";
 import { courseUsage, typeLocked, deleteUnusedSession, getCourseForEdit, getSession, isSlugTaken, moveCourseTo, saveCourseWithImages, upsertSession, type CourseFields } from "@/db/queries/admin";
 import { tallinnInstant } from "@/domain/calendar";
 import { CERT_LIMITS } from "@/domain/certificate";
 import { checkQuestions, checkSettings, PASS_RANGE, readQuestions, TRIES_RANGE, type QuestionProblem } from "@/domain/completion";
-import { BADGE_MAX, badgeOf, COURSE_LANGUAGES, emptyTestDraft, LIMITS, swatchOf, type CourseDraft } from "@/domain/course-editor";
+import { BADGE_MAX, badgeOf, COURSE_LANGUAGES, emptyTestDraft, LIMITS, swatchOf, type CourseDraft, type CourseType, type DraftImage, type TestDraft } from "@/domain/course-editor";
 import { checkStages } from "@/domain/protocols";
 import type { I18n } from "@/i18n/field";
 import { isSlug, SLUG_MAX, slugify } from "@/lib/slug";
@@ -37,6 +37,9 @@ const TEST_ERRORS: Record<Exclude<QuestionProblem["error"], "duplicateId">, Fiel
 
 /** Where a question problem is, for the editor (EditResult.at): the question (-1: the list as a whole), and the option when it names one. */
 const placeOf = (p: QuestionProblem): FieldPlace => ("option" in p && p.option !== undefined ? { index: p.index, option: p.option } : { index: p.index });
+
+/** A pasted one-line text Postgres can store: control characters and broken surrogates go (toStorable), Word's line or page break is a space. */
+const heading = (s: string) => toStorable(s).replace(/[\r\n]+/g, " ");
 
 const i18n = z.object({ et: z.string().max(20_000), ru: z.string().max(20_000).optional() });
 const draftSchema = z.object({
@@ -75,13 +78,162 @@ const draftSchema = z.object({
   isSample: z.boolean(),
 }) satisfies z.ZodType<CourseDraft>;
 
+// ---------- the course's checks, one per part (admin UX pass piece 3a: the old editor's save runs them all, a part's autosave and its publish
+// run its own; server/course-parts.ts). Each takes the editor's values (CourseDraft's fields: text as typed), collects its field errors in `c`
+// and returns the values to store; `type` is the type the values will be stored with. ----------
+
+/** "Põhiinfo" with the type (course part `basics`). */
+export type BasicsInput = Pick<CourseDraft, "type" | "level" | "slug" | "language" | "title" | "summary" | "body">;
+export type BasicsFields = Pick<CourseFields, "type" | "level" | "slug" | "language" | "title" | "summary" | "body">;
+
+/**
+ * The basics: a title (required), the summary and the long text, and the slug: typed, or made from the Estonian title; never one another course
+ * has. A course with sessions or registrations keeps its type: an e-learning course with dated sessions would put them in the public calendar
+ * (K1/K2), and the sessions could no longer be edited under a contact course. An e-course with lessons or anyone's access keeps its type too: its
+ * lessons and its students' access belong to an e-course (db/queries/admin.ts typeLocked). `id`: the course's (null: a new one). Null when the title
+ * is refused.
+ */
+export async function checkCourseBasics(q: Q, c: Check, d: BasicsInput, id: number | null): Promise<BasicsFields | null> {
+  if (id != null) {
+    const usage = await courseUsage(q, id);
+    if (usage && usage.type !== d.type && typeLocked(usage)) c.fail("type", "typeLocked");
+  }
+  const title = c.text("title", d.title, LIMITS.title, { required: true });
+  const summary = c.text("summary", d.summary, LIMITS.summary) ?? { et: "" };
+  const body = c.text("body", d.body, LIMITS.body) ?? { et: "" };
+  const typed = d.slug.trim().toLowerCase();
+  const slug = typed || slugify(d.title.et.trim()).slice(0, SLUG_MAX).replace(/-+$/, "");
+  if (!isSlug(slug)) c.fail("slug", typed || d.title.et.trim() ? "slugFormat" : "required");
+  else if (await isSlugTaken(q, slug, id ?? undefined)) c.fail("slug", "slugTaken");
+  return title ? { type: d.type, level: d.level, language: d.language, slug, title, summary, body } : null;
+}
+
+/** "Õppevorm ja hind" without the type (course part `price`). */
+export type PriceInput = Pick<CourseDraft, "price" | "accessMonths" | "videoCount" | "nextDiscount" | "priceGroup" | "priceIndividual" | "durationLabel">;
+export type PriceFields = Pick<CourseFields, "price" | "accessMonths" | "videoCount" | "nextDiscount" | "priceGroup" | "priceIndividual" | "durationLabel">;
+
+/** The type's own price fields; the other type's are null (stored empty). */
+export function checkCoursePrice(c: Check, d: PriceInput, type: CourseType): PriceFields {
+  const online = type === "e_learning";
+  return {
+    price: online ? c.amount("price", d.price) : null,
+    accessMonths: online ? c.whole("accessMonths", d.accessMonths, 1, LIMITS.accessMonths) : null,
+    videoCount: online ? c.whole("videoCount", d.videoCount, 0, LIMITS.videoCount) : null,
+    nextDiscount: online ? c.text("nextDiscount", d.nextDiscount, LIMITS.discount) : null,
+    priceGroup: online ? null : c.amount("priceGroup", d.priceGroup),
+    priceIndividual: online ? null : c.amount("priceIndividual", d.priceIndividual),
+    durationLabel: online ? null : c.text("durationLabel", d.durationLabel, LIMITS.duration),
+  };
+}
+
+/** A published course must be buyable / bookable: an e-course its price, a contact course a group or an individual price (a field's own error first). */
+export function checkCoursePriceRequired(c: Check, p: Pick<PriceFields, "price" | "priceGroup" | "priceIndividual">, type: CourseType): void {
+  if (type === "e_learning") {
+    if (p.price == null && !c.errors.price) c.fail("price", "priceRequired");
+  } else if (p.priceGroup == null && p.priceIndividual == null && !c.errors.priceGroup && !c.errors.priceIndividual) c.fail("priceGroup", "priceRequired");
+}
+
+/** „Koolitus sisaldab“: a contact course's (an e-course stores none). */
+export const checkCourseIncludes = (c: Check, includes: I18n[], type: CourseType): I18n[] => (type === "e_learning" ? [] : c.list("includes", includes));
+
+/**
+ * "Protokolli punktid": a contact course's headings (phase protocols), an e-course's practical points (e-course completion, spec §5.1); trimmed,
+ * no blank rows, at most 30 of at most 120 characters. A pasted heading is cleaned first (toStorable: control characters and broken surrogates go):
+ * Postgres refuses NUL in jsonb, and checkStages does not look; a heading is one line (its field is an input, which would drop a line break), so
+ * Word's line or page break in it is a space between the words.
+ */
+export function checkCourseStages(c: Check, protocolStages: string[]): string[] {
+  const stages = checkStages(protocolStages.map(heading));
+  if (stages.ok) return stages.stages;
+  c.fail("protocolStages", stages.error);
+  return [];
+}
+
+/**
+ * "Teadmiste test" (e-course completion, spec §3.1, §5.1, R1): an e-course's questions, pass mark and tries (a contact course has none: null). A
+ * pasted question is cleaned as a heading is; its text may keep its lines (a text box), an option is one line (an input). A problem names the
+ * question (and the option) it is in (`at`), so the editor shows it there. The pass mark is 1–100 and the tries 1–10, whole numbers, never blank.
+ * "duplicateId": an id twice, never from the editor (newItemId): not a draft it made.
+ */
+export function checkCourseTest(c: Check, d: TestDraft, type: CourseType): { test: CourseFields["test"]; at?: FieldPlace } | "duplicateId" {
+  if (type !== "e_learning") return { test: null };
+  let test: CourseFields["test"] = null;
+  let at: FieldPlace | undefined;
+  const clean = (q: TestQuestion): TestQuestion =>
+    q.kind === "open" ? { ...q, text: toStorable(q.text) } : { ...q, text: toStorable(q.text), options: q.options.map((o) => ({ ...o, text: heading(o.text) })) };
+  const checked = checkQuestions(readQuestions(d.questions).map(clean));
+  if (!checked.ok) {
+    const { error } = checked.problem;
+    if (error === "duplicateId") return "duplicateId";
+    c.fail("test", TEST_ERRORS[error]);
+    at = placeOf(checked.problem);
+  }
+  const passPercent = c.whole("testPassPercent", d.passPercent, PASS_RANGE.min, PASS_RANGE.max) ?? c.fail("testPassPercent", "whole");
+  const tries = c.whole("testTries", d.tries, TRIES_RANGE.min, TRIES_RANGE.max) ?? c.fail("testTries", "whole");
+  if (passPercent !== null && tries !== null) {
+    const settings = checkSettings(passPercent, tries);
+    if (!settings.ok) c.fail(settings.error === "pass" ? "testPassPercent" : "testTries", "whole");
+    else if (checked.ok) test = { questions: checked.questions, passPercent, tries };
+  }
+  return { test, at };
+}
+
+/**
+ * "Tunnistus" (phase 3d, spec §6): an e-course's certificate lines and volume, each cleaned as a heading is (one line), trimmed, blank lines
+ * dropped; at most 16 lines of at most 120 characters, the volume at most 80. A contact course has no certificate: it stores none.
+ */
+export function checkCourseCertificate(
+  c: Check,
+  d: Pick<CourseDraft, "certificateSkills" | "certificateVolume">,
+  type: CourseType,
+): Pick<CourseFields, "certificateSkills" | "certificateVolume"> {
+  if (type !== "e_learning") return { certificateSkills: [], certificateVolume: "" };
+  let certificateSkills: string[] = [];
+  const lines = d.certificateSkills.map((s) => heading(s).trim()).filter(Boolean);
+  if (lines.length > CERT_LIMITS.skills) c.fail("certificateSkills", "tooMany");
+  else if (lines.some((s) => s.length > CERT_LIMITS.skill)) c.fail("certificateSkills", "tooLong");
+  else certificateSkills = lines;
+  return { certificateSkills, certificateVolume: c.plain("certificateVolume", heading(d.certificateVolume), CERT_LIMITS.volume) };
+}
+
+/** The badge: one of D's swatches and at most 18 characters (each language), or none; the Russian text is optional. */
+export function checkCourseBadge(c: Check, d: CourseDraft["badge"]): CourseFields["badge"] {
+  if (!d || !d.label.et.trim()) return null;
+  const swatch = swatchOf(d);
+  if (!swatch) return c.fail("badge", "badge");
+  if (d.label.et.trim().length > BADGE_MAX || (d.label.ru ?? "").trim().length > BADGE_MAX) return c.fail("badge", "tooLong");
+  return badgeOf(d.label, swatch);
+}
+
+/** The gallery: uploads (img/<uuid>.<ext>) and the seed's static photos only, never an outside address. */
+export function checkCourseGallery(c: Check, d: DraftImage[]): { key: string; alt: I18n | null }[] {
+  const images: { key: string; alt: I18n | null }[] = [];
+  if (d.length > LIMITS.images) c.fail("images", "tooMany");
+  for (const img of d.slice(0, LIMITS.images)) {
+    if (!isStorableImageKey(img.key)) {
+      c.fail("images", "image");
+      break;
+    }
+    images.push({ key: img.key, alt: c.text("images", img.alt, LIMITS.alt) });
+  }
+  return images;
+}
+
+/** The recommendations: other existing courses, each once, at most 3, in the chosen order (`self`: the course's own id, never recommended). */
+export async function checkCourseRecommendations(q: Q, c: Check, ids: number[], self: number | null): Promise<number[]> {
+  const wanted = [...new Set(ids)].filter((x) => x !== self);
+  if (wanted.length > LIMITS.recommendations) c.fail("recommendationIds", "tooMany");
+  const existing = wanted.length ? new Set((await q.select({ id: courses.id }).from(courses).where(inArray(courses.id, wanted))).map((r) => r.id)) : new Set<number>();
+  return wanted.filter((x) => existing.has(x)).slice(0, LIMITS.recommendations);
+}
+
 /**
  * The course editor's save. Field `data`: the editor's draft as JSON (CourseDraft). Only the chosen type's own fields
  * are stored; the other type's are emptied (a course is e-learning or contact, never both). "Protokolli punktid" are
  * both types': a contact course's protocol headings, an e-course's practical points. "Teadmiste test" is an e-course's
  * (course_tests, R1); a contact course's row is deleted. So is "Tunnistus" (phase 3d): a contact course stores no lines and no
  * volume. A new course (id null) is created after the others; an existing one is refused as `stale` when it was saved elsewhere
- * since `version`.
+ * since `version`. The checks are the parts' above, all of them.
  */
 export async function saveCourseForm(db: Db, formData: FormData): Promise<EditResult> {
   const raw = field(formData, "data");
@@ -99,132 +251,33 @@ export async function saveCourseForm(db: Db, formData: FormData): Promise<EditRe
   if (d.id != null && (!expected || Number.isNaN(expected.getTime()))) return { ok: false, error: "invalid" };
 
   const c = new Check();
-  // A course with sessions or registrations keeps its type: an e-learning course with dated sessions would put them in
-  // the public calendar (K1/K2), and the sessions could no longer be edited under a contact course. An e-course with lessons
-  // or anyone's access keeps its type too: its lessons and its students' access belong to an e-course (db/queries/admin.ts typeLocked).
-  if (d.id != null) {
-    const usage = await courseUsage(db, d.id);
-    if (usage && usage.type !== d.type && typeLocked(usage)) c.fail("type", "typeLocked");
-  }
-  const title = c.text("title", d.title, LIMITS.title, { required: true });
-  const summary = c.text("summary", d.summary, LIMITS.summary) ?? { et: "" };
-  const body = c.text("body", d.body, LIMITS.body) ?? { et: "" };
+  const basics = await checkCourseBasics(db, c, d, d.id);
   const outcomes = c.list("outcomes", d.outcomes);
-  const online = d.type === "e_learning";
+  const price = checkCoursePrice(c, d, d.type);
+  const includes = checkCourseIncludes(c, d.includes, d.type);
+  const protocolStages = checkCourseStages(c, d.protocolStages);
+  const test = checkCourseTest(c, d.test, d.type);
+  if (test === "duplicateId") return { ok: false, error: "invalid" };
+  const certificate = checkCourseCertificate(c, d, d.type);
+  if (d.published) checkCoursePriceRequired(c, price, d.type);
+  const badge = checkCourseBadge(c, d.badge);
+  const images = checkCourseGallery(c, d.images);
+  const recommendationIds = await checkCourseRecommendations(db, c, d.recommendationIds, d.id);
 
-  // the slug: typed, or made from the Estonian title
-  const typed = d.slug.trim().toLowerCase();
-  const slug = typed || slugify(d.title.et.trim()).slice(0, SLUG_MAX).replace(/-+$/, "");
-  if (!isSlug(slug)) c.fail("slug", typed || d.title.et.trim() ? "slugFormat" : "required");
-  else if (await isSlugTaken(db, slug, d.id ?? undefined)) c.fail("slug", "slugTaken");
-
-  // the type's own fields
-  const price = online ? c.amount("price", d.price) : null;
-  const accessMonths = online ? c.whole("accessMonths", d.accessMonths, 1, LIMITS.accessMonths) : null;
-  const videoCount = online ? c.whole("videoCount", d.videoCount, 0, LIMITS.videoCount) : null;
-  const nextDiscount = online ? c.text("nextDiscount", d.nextDiscount, LIMITS.discount) : null;
-  const priceGroup = online ? null : c.amount("priceGroup", d.priceGroup);
-  const priceIndividual = online ? null : c.amount("priceIndividual", d.priceIndividual);
-  const durationLabel = online ? null : c.text("durationLabel", d.durationLabel, LIMITS.duration);
-  const includes = online ? [] : c.list("includes", d.includes);
-  // "Protokolli punktid": a contact course's headings (phase protocols), an e-course's practical points (e-course completion, spec §5.1); trimmed,
-  // no blank rows, at most 30 of at most 120 characters. A pasted heading is cleaned first (toStorable: control characters and broken surrogates go):
-  // Postgres refuses NUL in jsonb, and checkStages does not look; a heading is one line (its field is an input, which would drop a line break), so
-  // Word's line or page break in it is a space between the words
-  const heading = (s: string) => toStorable(s).replace(/[\r\n]+/g, " ");
-  const stages = checkStages(d.protocolStages.map(heading));
-  if (!stages.ok) c.fail("protocolStages", stages.error);
-  // "Teadmiste test" (e-course completion, spec §3.1, §5.1, R1): an e-course's questions, pass mark and tries. A pasted question is cleaned as a
-  // heading is; its text may keep its lines (a text box), an option is one line (an input). A problem names the question (and the option) it is
-  // in, so the editor shows it there. The pass mark is 1–100 and the tries 1–10, whole numbers, never blank.
-  let test: CourseFields["test"] = null;
-  let testAt: FieldPlace | undefined;
-  if (online) {
-    const clean = (q: TestQuestion): TestQuestion =>
-      q.kind === "open" ? { ...q, text: toStorable(q.text) } : { ...q, text: toStorable(q.text), options: q.options.map((o) => ({ ...o, text: heading(o.text) })) };
-    const checked = checkQuestions(readQuestions(d.test.questions).map(clean));
-    if (!checked.ok) {
-      const { error } = checked.problem;
-      if (error === "duplicateId") return { ok: false, error: "invalid" }; // never from the editor (newItemId): not a draft it made
-      c.fail("test", TEST_ERRORS[error]);
-      testAt = placeOf(checked.problem);
-    }
-    const passPercent = c.whole("testPassPercent", d.test.passPercent, PASS_RANGE.min, PASS_RANGE.max) ?? c.fail("testPassPercent", "whole");
-    const tries = c.whole("testTries", d.test.tries, TRIES_RANGE.min, TRIES_RANGE.max) ?? c.fail("testTries", "whole");
-    if (passPercent !== null && tries !== null) {
-      const settings = checkSettings(passPercent, tries);
-      if (!settings.ok) c.fail(settings.error === "pass" ? "testPassPercent" : "testTries", "whole");
-      else if (checked.ok) test = { questions: checked.questions, passPercent, tries };
-    }
-  }
-  // "Tunnistus" (phase 3d, spec §6): an e-course's certificate lines and volume, each cleaned as a heading is (one line), trimmed, blank lines
-  // dropped; at most 16 lines of at most 120 characters, the volume at most 80. A contact course has no certificate: it stores none.
-  let certificateSkills: string[] = [];
-  let certificateVolume = "";
-  if (online) {
-    const lines = d.certificateSkills.map((s) => heading(s).trim()).filter(Boolean);
-    if (lines.length > CERT_LIMITS.skills) c.fail("certificateSkills", "tooMany");
-    else if (lines.some((s) => s.length > CERT_LIMITS.skill)) c.fail("certificateSkills", "tooLong");
-    else certificateSkills = lines;
-    certificateVolume = c.plain("certificateVolume", heading(d.certificateVolume), CERT_LIMITS.volume);
-  }
-  // a published course must be buyable / bookable
-  if (d.published && online && price == null && !c.errors.price) c.fail("price", "priceRequired");
-  if (d.published && !online && priceGroup == null && priceIndividual == null && !c.errors.priceGroup && !c.errors.priceIndividual) c.fail("priceGroup", "priceRequired");
-
-  // badge: one of D's swatches and at most 18 characters (each language), or none; the Russian text is optional
-  let badge: CourseFields["badge"] = null;
-  if (d.badge && d.badge.label.et.trim()) {
-    const swatch = swatchOf(d.badge);
-    if (!swatch) c.fail("badge", "badge");
-    else if (d.badge.label.et.trim().length > BADGE_MAX || (d.badge.label.ru ?? "").trim().length > BADGE_MAX) c.fail("badge", "tooLong");
-    else badge = badgeOf(d.badge.label, swatch);
-  }
-
-  // gallery: uploads (img/<uuid>.<ext>) and the seed's static photos only, never an outside address
-  const images: { key: string; alt: I18n | null }[] = [];
-  if (d.images.length > LIMITS.images) c.fail("images", "tooMany");
-  for (const img of d.images.slice(0, LIMITS.images)) {
-    if (!isStorableImageKey(img.key)) {
-      c.fail("images", "image");
-      break;
-    }
-    images.push({ key: img.key, alt: c.text("images", img.alt, LIMITS.alt) });
-  }
-
-  // recommendations: other existing courses, each once, at most 3, in the chosen order
-  const wanted = [...new Set(d.recommendationIds)].filter((x) => x !== d.id);
-  if (wanted.length > LIMITS.recommendations) c.fail("recommendationIds", "tooMany");
-  const existing = wanted.length ? new Set((await db.select({ id: courses.id }).from(courses).where(inArray(courses.id, wanted))).map((r) => r.id)) : new Set<number>();
-  const recommendationIds = wanted.filter((x) => existing.has(x)).slice(0, LIMITS.recommendations);
-
-  if (!c.ok || !title) return invalid(c.errors, testAt);
+  if (!c.ok || !basics) return invalid(c.errors, test.at);
 
   const fields: CourseFields = {
-    slug,
-    type: d.type,
-    level: d.level,
-    language: d.language,
-    title,
-    summary,
-    body,
+    ...basics,
     outcomes,
     includes,
-    protocolStages: stages.ok ? stages.stages : [],
-    price,
-    priceGroup,
-    priceIndividual,
-    accessMonths,
-    videoCount,
-    durationLabel,
-    nextDiscount,
+    protocolStages,
+    ...price,
     badge,
     recommendationIds,
     published: d.published,
     isSample: d.isSample,
-    test,
-    certificateSkills,
-    certificateVolume,
+    test: test.test,
+    ...certificate,
   };
   const saved = await saveCourseWithImages(db, { id: d.id, expected: expected ?? undefined }, fields, images);
   if (saved === "notFound" || saved === "stale") return { ok: false, error: saved };

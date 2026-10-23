@@ -110,8 +110,8 @@ export async function getCourseForEdit(db: Db, id: number): Promise<EditCourse |
   return course ? { ...course, test: test ?? null } : null;
 }
 
-/** Is `slug` used by a course other than `exceptId`? */
-export async function isSlugTaken(db: Db, slug: string, exceptId?: number): Promise<boolean> {
+/** Is `slug` used by a course other than `exceptId`? (Also inside a caller's transaction.) */
+export async function isSlugTaken(db: Q, slug: string, exceptId?: number): Promise<boolean> {
   const [row] = await db
     .select({ id: courses.id })
     .from(courses)
@@ -123,7 +123,7 @@ export async function isSlugTaken(db: Db, slug: string, exceptId?: number): Prom
 /** A stored course's type and how many sessions and registrations point to it (a type change is refused then). */
 export type CourseUsage = { type: Course["type"]; sessions: number; registrations: number; lessons: number; access: number };
 
-export async function courseUsage(db: Db, id: number): Promise<CourseUsage | null> {
+export async function courseUsage(db: Q, id: number): Promise<CourseUsage | null> {
   const [[course], [sessions], [regs], [lessonRows], [accessRows]] = await Promise.all([
     db.select({ type: courses.type }).from(courses).where(eq(courses.id, id)),
     db.select({ n: count() }).from(courseSessions).where(eq(courseSessions.courseId, id)),
@@ -198,6 +198,55 @@ export async function saveCourseWithImages(
       : [];
     return { ...course, images: saved };
   });
+}
+
+// ---------- one course part at a time (admin UX pass piece 3a: server/course-parts.ts) ----------
+
+/**
+ * The course row's lock (`SELECT … FROM courses WHERE id = $1 FOR UPDATE`), and the row as it is under it; null when there is no such course. Every
+ * write of a course part, its publish, its discard and the „Avaldatud“ switch take it first, before they touch the course's drafts in
+ * `content_drafts`: one lock order, so a publish and a discard of the same course never wait for each other the other way round (ledger T11, 40P01),
+ * and a part's live value read after it stays what it is until the writes (the old editor's save locks the row by its own UPDATE, first too).
+ */
+export async function lockCourse(tx: Tx, id: number): Promise<Course | null> {
+  const [row] = await tx.select().from(courses).where(eq(courses.id, id)).for("update");
+  return row ?? null;
+}
+
+/** The course columns a part writes (never id, sort or updatedAt: updatedAt is `now`, so the old editor's stale guard sees every part's write). */
+export type CourseColumns = Partial<Omit<CourseInput, "id" | "sort">>;
+
+/** A course part's columns, under the course's lock. */
+export async function updateCourseColumns(tx: Tx, id: number, values: CourseColumns, now: Date): Promise<void> {
+  await tx.update(courses).set({ ...values, updatedAt: now }).where(eq(courses.id, id));
+}
+
+/** The gallery part: the course's whole image list replaced, in this order. */
+export async function writeCourseImages(tx: Tx, id: number, images: ImageInput[], now: Date): Promise<void> {
+  await tx.delete(courseImages).where(eq(courseImages.courseId, id));
+  if (images.length) await tx.insert(courseImages).values(images.map((img, i) => ({ courseId: id, key: img.key, alt: img.alt ?? null, sort: i })));
+  await updateCourseColumns(tx, id, {}, now);
+}
+
+/** The test part: the course_tests row upserted, or deleted (null: no test, a contact course). The answer key stays in its own table. */
+export async function writeCourseTest(tx: Tx, id: number, test: CourseTestFields | null, now: Date): Promise<void> {
+  if (test) await tx.insert(courseTests).values({ courseId: id, ...test, updatedAt: now }).onConflictDoUpdate({ target: courseTests.courseId, set: { ...test, updatedAt: now } });
+  else await tx.delete(courseTests).where(eq(courseTests.courseId, id));
+  await updateCourseColumns(tx, id, {}, now);
+}
+
+/**
+ * A course whose type became `type`: the other type's fields are emptied, as the old editor's save stores only the chosen type's (a course is
+ * e-learning or contact, never both). An e-course has no group or individual price, duration or „Koolitus sisaldab“; a contact course no price,
+ * access, video count, discount, certificate lines or test (its course_tests row goes). „Protokolli punktid“ and the outcomes are both types'.
+ */
+export async function clearOtherCourseType(tx: Tx, id: number, type: Course["type"], now: Date): Promise<void> {
+  if (type === "e_learning") {
+    await updateCourseColumns(tx, id, { priceGroup: null, priceIndividual: null, durationLabel: null, includes: [] }, now);
+    return;
+  }
+  await updateCourseColumns(tx, id, { price: null, accessMonths: null, videoCount: null, nextDiscount: null, certificateSkills: [], certificateVolume: "" }, now);
+  await tx.delete(courseTests).where(eq(courseTests.courseId, id));
 }
 
 /**

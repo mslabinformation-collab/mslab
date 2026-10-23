@@ -111,6 +111,8 @@ const BROWSER_FILES = [
   "src/components/admin/RequestTarget.tsx",
   // the B screens, Task 1: the two spellings of an amount (pure; it pulls domain/money.ts), which the Raha card, the invoice row and the cancel form run in the browser
   "src/domain/money-text.ts",
+  // the B screens, Task 4: a course's parts, their fields and the PublishBar's labels, which the course editor's cards run in the browser (pure; it pulls the admin dict and lib/version.ts)
+  "src/domain/course-parts.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

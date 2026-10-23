@@ -129,7 +129,11 @@ describe("admin guards are inherited by every admin entry point", () => {
   test("every route under app/api/admin and app/admin is wrapped (the CSV export, and the future ones)", () => {
     const routes = files().filter((f) => /^app\/(api\/)?admin\/(.*\/)?route\.tsx?$/.test(f.path));
     expect(routes.map((r) => r.path)).toEqual(
-      expect.arrayContaining(["app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts", "app/api/admin/foto/[id]/route.ts", "app/api/admin/hinnang/route.ts", "app/api/admin/tunnistus/[id]/route.ts"]),
+      expect.arrayContaining([
+        "app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts", "app/api/admin/foto/[id]/route.ts", "app/api/admin/hinnang/route.ts", "app/api/admin/tunnistus/[id]/route.ts",
+        // admin UX pass piece 3a, Task 4: a course part's autosave, „Avalda muudatused“ and „Loobu muudatustest“
+        "app/api/admin/koolitus/[id]/osa/[part]/route.ts", "app/api/admin/koolitus/[id]/avalda/route.ts", "app/api/admin/koolitus/[id]/loobu/route.ts",
+      ]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);
   });
@@ -144,7 +148,8 @@ describe("admin guards are inherited by every admin entry point", () => {
     expect(violations(actions.path, actions.source)).toEqual([]);
     const content = files().find((f) => f.path === "server/actions/admin-content.ts")!;
     const contentExports = [...strip(content.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);
-    expect(contentExports).toEqual(["saveCourse", "moveCourseToAction", "saveSession", "deleteSession"]);
+    // admin UX pass piece 3a, Task 4: the editor's instant switches „Avaldatud“ (R-d) and „Näidissisu“
+    expect(contentExports).toEqual(["saveCourse", "moveCourseToAction", "setCoursePublished", "setCourseSample", "saveSession", "deleteSession"]);
     expect(violations(content.path, content.source)).toEqual([]);
     const site = files().find((f) => f.path === "server/actions/admin-site.ts")!;
     const siteExports = [...strip(site.source).matchAll(/export\s+const\s+(\w+)\s*=\s*adminAction\(/g)].map((m) => m[1]);

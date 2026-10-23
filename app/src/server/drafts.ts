@@ -19,6 +19,10 @@ import { logFailure } from "./log";
 //   and a publish copies the part only while live still has it: a part changed live meanwhile (another way of saving it, another publish) is
 //   blocked, never overwritten, and its draft stays.
 // - The draft layer never changes live by itself: only publishDrafts writes there, through the entity's own writer.
+// - One lock order for an entity row (ledger T11, 40P01): the entity's own row first (its `Publisher.lock`, e.g. a course's `FOR UPDATE`), then
+//   its drafts. A save, a discard and a publish of the same row each take the row's lock before they touch `content_drafts`, so two of them never
+//   wait for each other the other way round. An entity whose saves run in a transaction of their own takes the lock there and passes the
+//   transaction in (every function here takes a Db or an open transaction).
 
 /** One part's draft as the editor and the preview read it. */
 export type DraftPart = { part: string; value: unknown; baseVersion: string; version: number; updatedAt: Date };
@@ -27,21 +31,28 @@ export type DraftPart = { part: string; value: unknown; baseVersion: string; ver
 export type DraftSaveResult = { ok: true; version: number } | { ok: false; error: "conflict"; version: number; value: unknown };
 
 /**
- * How an entity's parts go live (one per entity kind, made by its screen's code). Both methods run inside the publish's transaction:
- * - `liveVersion`: the live part's version now, comparable with the `baseVersion` its drafts were saved with. It should read under the lock its
- *   writer takes (`FOR UPDATE` of the live row), so that nothing changes live between the check and the write;
+ * How an entity's parts go live (one per entity kind, made by its screen's code). Its methods run inside the publish's transaction:
+ * - `liveVersion`: the live part's version now, comparable with the `baseVersion` its drafts were saved with. It must read under the lock its
+ *   writer takes (`lock` below, the `FOR UPDATE` of the live row), so that nothing changes live between the check and the write;
  * - `write`: stores the draft's value as the live part, through the entity's existing writer (with its checks). A throw rolls the whole publish back;
  * - `revalidate`: marks the public pages that show the entity stale (server/public-cache.ts revalidatePublic); called once, after the commit,
- *   and only when a part was published.
+ *   and only when a part was published;
+ * - `lock` (optional): takes the entity row's lock, first thing in the transaction, before the drafts are read (the lock order above). The live
+ *   versions read after it cannot change before the writes: the entity's other writers take the same lock;
+ * - `hold` (optional): the entity's own rules at publish, which a part's check at its save cannot make (a published course needs a price, and a
+ *   price may wait in a draft). Asked once, after every live version and before any write, with the parts whose base still matches and their
+ *   drafts' values; the parts it names are not written and keep their drafts (blocked, like a part changed meanwhile).
  */
 export type Publisher = {
   liveVersion(tx: Tx, part: string): Promise<string>;
   write(tx: Tx, part: string, value: unknown): Promise<void>;
   revalidate(): void;
+  lock?(tx: Tx): Promise<void>;
+  hold?(tx: Tx, parts: { part: string; value: unknown }[]): Promise<string[]>;
 };
 
-/** The cast of db/queries/payments.ts releaseHold: on the Db union, returning(fields) has no common overload. */
-const pg = (db: Db) => db as unknown as PostgresJsDatabase<typeof schema>;
+/** The cast of db/queries/payments.ts releaseHold: on the Db union (and an open transaction of it), returning(fields) has no common overload. */
+const pg = (db: Q) => db as unknown as PostgresJsDatabase<typeof schema>;
 
 const ofRow = (entity: string, entityId: number) => and(eq(contentDrafts.entity, entity), eq(contentDrafts.entityId, entityId));
 const ofPart = (entity: string, entityId: number, part: string) => and(ofRow(entity, entityId), eq(contentDrafts.part, part));
@@ -56,7 +67,7 @@ export async function readDrafts(q: Q, entity: string, entityId: number): Promis
 }
 
 /** The stored draft of a part as a conflict answer; version 0 and value null when there is none. */
-async function storedConflict(db: Db, entity: string, entityId: number, part: string): Promise<DraftSaveResult & { ok: false }> {
+async function storedConflict(db: Q, entity: string, entityId: number, part: string): Promise<DraftSaveResult & { ok: false }> {
   const [row] = await db.select({ version: contentDrafts.version, value: contentDrafts.value }).from(contentDrafts).where(ofPart(entity, entityId, part));
   return row ? { ok: false, error: "conflict", version: row.version, value: row.value } : { ok: false, error: "conflict", version: 0, value: null };
 }
@@ -69,10 +80,10 @@ async function storedConflict(db: Db, entity: string, entityId: number, part: st
  *   draft was made from the live version it has). A draft at another version is a conflict with what is stored; a draft that is gone (published
  *   or discarded meanwhile) is a conflict with version 0 and value null: the screen then reads live again and starts a new draft from there.
  * The write is one statement either way: the unique index and the version's compare-and-set settle two saves at once (no lock is held across
- * calls); only a refused one reads the stored draft afterwards.
+ * calls); only a refused one reads the stored draft afterwards. Inside a caller's transaction (`db` an open one) it is one statement of it.
  */
 export async function saveDraftPart(
-  db: Db,
+  db: Q,
   d: { entity: string; entityId: number; part: string; value: unknown; baseVersion: string; version: number | null; by: string },
 ): Promise<DraftSaveResult> {
   if (d.version === null) {
@@ -91,43 +102,66 @@ export async function saveDraftPart(
   return saved ? { ok: true, version: saved.version } : storedConflict(db, d.entity, d.entityId, d.part);
 }
 
-/** „Loobu muudatustest“: deletes every draft of the entity row (live stays as it is). The number of parts deleted. */
-export async function discardDrafts(db: Db, entity: string, entityId: number): Promise<number> {
+/**
+ * Deletes one part's draft: the entity's save found it typed back to the live value, so no change is left to publish (the part is live's again).
+ * Inside the entity's transaction, after its lock; true when there was a draft.
+ */
+export async function dropDraftPart(db: Q, entity: string, entityId: number, part: string): Promise<boolean> {
+  return (await pg(db).delete(contentDrafts).where(ofPart(entity, entityId, part)).returning({ id: contentDrafts.id })).length > 0;
+}
+
+/**
+ * „Loobu muudatustest“: deletes every draft of the entity row (live stays as it is). The number of parts deleted. An entity with a row lock calls it
+ * inside its own transaction, after the lock (the lock order above).
+ */
+export async function discardDrafts(db: Q, entity: string, entityId: number): Promise<number> {
   return (await pg(db).delete(contentDrafts).where(ofRow(entity, entityId)).returning({ id: contentDrafts.id })).length;
 }
 
 /**
- * „Avalda muudatused“ for one entity row, in ONE transaction:
+ * The work of „Avalda muudatused“ inside a caller's transaction `tx` (publishDrafts below is it in a transaction of its own, then revalidates):
+ * 0. `p.lock` (if any): the entity row's lock, before its drafts;
  * 1. its drafts are locked (`FOR UPDATE`: a save or a second publish of the same row waits; a publish that waited finds the published drafts gone);
  * 2. each part's live version is compared with its draft's base, every part before the first write (so a write cannot change another part's check);
- * 3. the parts whose base still matches are written live through `p.write` and their drafts deleted; the others are left as they are (blocked).
- * A throw anywhere rolls everything back: live is as it was and every draft stays. After the commit, `p.revalidate()` once if a part was published (a
- * failure there is logged: the publish stands, and the pages catch up with their own `revalidate`). The answer lists the parts by name, in the order
- * they were first saved.
+ *    then `p.hold` (if any) is asked about the parts whose base still matches;
+ * 3. the parts whose base still matches and that are not held are written live through `p.write` and their drafts deleted; the others are left as
+ *    they are (blocked).
+ * It never revalidates: the caller does, after its commit (a caller that refuses afterwards throws, and its transaction takes everything back).
+ */
+export async function publishDraftsIn(tx: Tx, entity: string, entityId: number, p: Publisher): Promise<{ published: string[]; blocked: string[] }> {
+  if (p.lock) await p.lock(tx);
+  const drafts = await tx
+    .select({ id: contentDrafts.id, part: contentDrafts.part, value: contentDrafts.value, baseVersion: contentDrafts.baseVersion })
+    .from(contentDrafts)
+    .where(ofRow(entity, entityId))
+    .orderBy(asc(contentDrafts.id))
+    .for("update");
+  const current: boolean[] = [];
+  for (const d of drafts) current.push((await p.liveVersion(tx, d.part)) === d.baseVersion);
+  const candidates = drafts.filter((_, i) => current[i]);
+  const held = new Set(p.hold && candidates.length > 0 ? await p.hold(tx, candidates.map((d) => ({ part: d.part, value: d.value }))) : []);
+  const published: string[] = [];
+  const blocked: string[] = [];
+  for (const [i, d] of drafts.entries()) {
+    if (!current[i] || held.has(d.part)) {
+      blocked.push(d.part);
+      continue;
+    }
+    await p.write(tx, d.part, d.value);
+    await tx.delete(contentDrafts).where(eq(contentDrafts.id, d.id));
+    published.push(d.part);
+  }
+  return { published, blocked };
+}
+
+/**
+ * „Avalda muudatused“ for one entity row, in ONE transaction (publishDraftsIn: the row's lock, its drafts locked, every part's live version
+ * compared, the entity's rules asked, then the writes). A throw anywhere rolls everything back: live is as it was and every draft stays. After the
+ * commit, `p.revalidate()` once if a part was published (a failure there is logged: the publish stands, and the pages catch up with their own
+ * `revalidate`). The answer lists the parts by name, in the order they were first saved.
  */
 export async function publishDrafts(db: Db, entity: string, entityId: number, p: Publisher): Promise<{ published: string[]; blocked: string[] }> {
-  const result = await db.transaction(async (tx) => {
-    const drafts = await tx
-      .select({ id: contentDrafts.id, part: contentDrafts.part, value: contentDrafts.value, baseVersion: contentDrafts.baseVersion })
-      .from(contentDrafts)
-      .where(ofRow(entity, entityId))
-      .orderBy(asc(contentDrafts.id))
-      .for("update");
-    const current: boolean[] = [];
-    for (const d of drafts) current.push((await p.liveVersion(tx, d.part)) === d.baseVersion);
-    const published: string[] = [];
-    const blocked: string[] = [];
-    for (const [i, d] of drafts.entries()) {
-      if (!current[i]) {
-        blocked.push(d.part);
-        continue;
-      }
-      await p.write(tx, d.part, d.value);
-      await tx.delete(contentDrafts).where(eq(contentDrafts.id, d.id));
-      published.push(d.part);
-    }
-    return { published, blocked };
-  });
+  const result = await db.transaction((tx) => publishDraftsIn(tx, entity, entityId, p));
   if (result.published.length > 0) {
     try {
       p.revalidate();

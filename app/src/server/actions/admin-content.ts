@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
 import { deleteSessionForm, moveCourseRequest, saveCourseForm, saveSessionForm, type EditResult } from "../admin-content";
 import { adminAction } from "../auth";
+import { parseSwitch, switchCoursePublished, switchCourseSample, type SwitchResult } from "../course-parts";
 import { logFailure } from "../log";
 import { revalidatePublic, type PublicChange } from "../public-cache";
 
@@ -41,6 +42,29 @@ export const saveCourse = adminAction(async (_admin, _prev: EditResult | null, f
  * is refreshed with the answer.
  */
 export const moveCourseToAction = adminAction(async (_admin, input: unknown) => run("course move", { kind: "courses" }, (db) => moveCourseRequest(db, input)));
+
+/** A course editor switch `{ id, on }`: the work revalidates what it changed itself (server/course-parts.ts); the open page is refreshed. */
+async function runSwitch(what: string, input: unknown, work: (db: Db, id: number, on: boolean, now: Date) => Promise<SwitchResult>): Promise<SwitchResult> {
+  const request = parseSwitch(input);
+  if (!request) return { ok: false, error: "invalid" };
+  try {
+    const result = await work(getDb(), request.id, request.on, new Date());
+    if (result.ok) refresh();
+    return result;
+  } catch (e) {
+    logFailure(`[admin] ${what} failed`, e);
+    return { ok: false, error: "server" };
+  }
+}
+
+/**
+ * The course editor's „Avaldatud“, instant (admin UX pass piece 3a, R-d): `{ id, on }`. On: refused without a price (the field's error). Off with
+ * unpublished changes: they are published first, in the same transaction; a part that cannot be is listed (`blocked`) and nothing changes.
+ */
+export const setCoursePublished = adminAction(async (_admin, input: unknown) => runSwitch("course published switch", input, switchCoursePublished));
+
+/** The course editor's „Näidissisu“, instant: `{ id, on }` (admin only: no public page shows it). */
+export const setCourseSample = adminAction(async (_admin, input: unknown) => runSwitch("course sample switch", input, switchCourseSample));
 
 /** Calendar drawer "Salvesta" / "Lisa toimumine". A new session closes the drawer and is highlighted in the list. */
 export const saveSession = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => {

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db, Tx } from "@/db/client";
 import { contentDrafts, settings } from "@/db/schema";
 import { contentVersion } from "@/lib/version";
-import { discardDrafts, publishDrafts, readDrafts, saveDraftPart, type Publisher } from "@/server/drafts";
+import { discardDrafts, dropDraftPart, publishDrafts, publishDraftsIn, readDrafts, saveDraftPart, type Publisher } from "@/server/drafts";
 import { makeTestDb } from "./helpers";
 
 // The draft layer's store (admin UX pass, README §1.8, behaviours.md B2; server/drafts.ts): an unpublished change of a published thing is kept per
@@ -191,6 +191,74 @@ describe("publishDrafts", () => {
     } finally {
       error.mockRestore();
     }
+  });
+});
+
+describe("publishDrafts with the entity's lock and its rules at publish (admin UX pass piece 3a, Task 4; ledger T11)", () => {
+  it("lock runs first; hold is asked after every live version and before any write, with the current parts; a held part is blocked and keeps its draft", async () => {
+    const summaryBase = await setLive("course", 7, "summary", { et: "Vana" });
+    const priceBase = await setLive("course", 7, "price", { cents: 25000 });
+    const badgeBase = await setLive("course", 7, "badge", { label: "Uus" });
+    await saveDraftPart(db, { entity: "course", entityId: 7, part: "summary", value: { et: "Uus" }, baseVersion: summaryBase, version: null, by: MARIA });
+    await saveDraftPart(db, { entity: "course", entityId: 7, part: "price", value: { cents: null }, baseVersion: priceBase, version: null, by: MARIA });
+    await saveDraftPart(db, { entity: "course", entityId: 7, part: "badge", value: { label: "Soodus" }, baseVersion: badgeBase, version: null, by: MARIA });
+    await setLive("course", 7, "badge", { label: "Populaarne" }); // changed meanwhile: blocked before hold is asked
+    const { publisher, log } = settingsPublisher("course", 7);
+    publisher.lock = async () => void log.push("lock");
+    publisher.hold = async (_tx, parts) => {
+      log.push(`hold:${parts.map((p) => `${p.part}=${JSON.stringify(p.value)}`).join(" ")}`);
+      return ["price"]; // e.g. a published course needs a price
+    };
+    expect(await publishDrafts(db, "course", 7, publisher)).toEqual({ published: ["summary"], blocked: ["price", "badge"] });
+    expect(log).toEqual(["lock", "live:summary", "live:price", "live:badge", 'hold:summary={"et":"Uus"} price={"cents":null}', "write:summary", "revalidate"]);
+    expect(await live("course", 7, "price")).toEqual({ cents: 25000 });
+    expect((await readDrafts(db, "course", 7)).map((d) => d.part)).toEqual(["price", "badge"]);
+  });
+
+  it("no current part: hold is not asked; no drafts: lock still runs (the order is the same for every publish)", async () => {
+    const { publisher, log } = settingsPublisher("course", 7);
+    publisher.lock = async () => void log.push("lock");
+    publisher.hold = async () => {
+      log.push("hold");
+      return [];
+    };
+    expect(await publishDrafts(db, "course", 7, publisher)).toEqual({ published: [], blocked: [] });
+    expect(log).toEqual(["lock"]);
+  });
+
+  it("publishDraftsIn runs inside the caller's transaction: no revalidation of its own, and the caller's later throw takes its writes back", async () => {
+    const base = await setLive("course", 7, "summary", { et: "Vana" });
+    await saveDraftPart(db, { entity: "course", entityId: 7, part: "summary", value: { et: "Uus" }, baseVersion: base, version: null, by: MARIA });
+    const { publisher, log } = settingsPublisher("course", 7);
+    await expect(
+      db.transaction(async (tx) => {
+        expect(await publishDraftsIn(tx, "course", 7, publisher)).toEqual({ published: ["summary"], blocked: [] });
+        throw new Error("the caller refuses");
+      }),
+    ).rejects.toThrow("the caller refuses");
+    expect(log).toEqual(["live:summary", "write:summary"]);
+    expect(await live("course", 7, "summary")).toEqual({ et: "Vana" });
+    expect((await readDrafts(db, "course", 7)).map((d) => d.value)).toEqual([{ et: "Uus" }]);
+  });
+
+  it("saveDraftPart and discardDrafts run inside a caller's transaction too", async () => {
+    await db.transaction(async (tx) => {
+      expect(await saveDraftPart(tx, { entity: "course", entityId: 7, part: "summary", value: { a: 1 }, baseVersion: "b", version: null, by: MARIA })).toEqual({ ok: true, version: 1 });
+      expect(await saveDraftPart(tx, { entity: "course", entityId: 7, part: "summary", value: { a: 2 }, baseVersion: "b", version: 1, by: MARIA })).toEqual({ ok: true, version: 2 });
+      expect(await saveDraftPart(tx, { entity: "course", entityId: 7, part: "summary", value: { a: 3 }, baseVersion: "b", version: 1, by: MARIA })).toEqual({ ok: false, error: "conflict", version: 2, value: { a: 2 } });
+    });
+    expect(await db.transaction((tx) => discardDrafts(tx, "course", 7))).toBe(1);
+  });
+
+  it("dropDraftPart deletes one part's draft only (a part typed back to what is live)", async () => {
+    const save = (entityId: number, part: string) => saveDraftPart(db, { entity: "course", entityId, part, value: { part }, baseVersion: "b", version: null, by: MARIA });
+    await save(7, "summary");
+    await save(7, "price");
+    await save(8, "summary");
+    expect(await db.transaction((tx) => dropDraftPart(tx, "course", 7, "summary"))).toBe(true);
+    expect((await readDrafts(db, "course", 7)).map((d) => d.part)).toEqual(["price"]);
+    expect((await readDrafts(db, "course", 8)).map((d) => d.part)).toEqual(["summary"]);
+    expect(await dropDraftPart(db, "course", 7, "summary")).toBe(false);
   });
 });
 
