@@ -4,6 +4,7 @@ import { attemptForReview, type ReviewAttempt } from "@/db/queries/assessment";
 import type { SaveAnswer } from "@/domain/autosave";
 import { TEST_LIMITS } from "@/domain/completion";
 import { MARKS_ENTITY, MARKS_PART, startMarks, type Marks } from "@/domain/test-review-marks";
+import { toStorable } from "@/lib/to-storable";
 import { readDrafts, saveDraftPart, type DraftPart } from "./drafts";
 
 // Maria's marks on a test attempt's open answers, saved as she works (admin UX pass, piece 2, Task 11; README A4 "Test review", B15; behaviours.md
@@ -14,13 +15,18 @@ import { readDrafts, saveDraftPart, type DraftPart } from "./drafts";
 //   „Saada“ (reviewAttempt) sends them and deletes the draft in the same transaction;
 // - a mark is one field of the form: its name is the question's id, its value `{ verdict, comment }`; a save names the marks that changed and the
 //   rest of the draft stays;
-// - the part's version is the draft's counter as text (the draft layer counts 1, 2, …; the editors' engine compares texts): "0" while there is
-//   no draft (to read) for these answers;
+// - the part's version is the answers' time and the draft's counter as text, "<ms of submittedAt>.<counter>" (the draft layer counts 1, 2, …; the
+//   editors' engine compares texts): counter 0 while there is no draft (to read) for these answers. A save made on a page for other answers (the
+//   student rewrote since) carries the other time and is refused, never written onto the new answers;
 // - the draft belongs to the answers it was written for: one with another `submittedAt` (the student rewrote her answers since) is not read,
 //   and the next save replaces it, so a mark is never put onto answers Maria has not seen.
 // Without Next.js: tests/db/test-review-route.test.ts runs the route on a real (PGlite) database. Logs never carry a comment's text.
 
-/** One save's patch: marks by question id; each a verdict (or none) and a comment of at most TEST_LIMITS.comment characters, without a NUL (jsonb holds none). */
+/**
+ * One save's patch: marks by question id; each a verdict (or none) and a comment of at most TEST_LIMITS.comment characters that Postgres can store
+ * (code `text`: no NUL and no lone surrogate, which jsonb refuses; that comment is held back by the screen and the others still save, instead of a
+ * 500 that is tried again for good).
+ */
 export const marksPatch = z.record(
   z.string().max(64),
   z.object({
@@ -28,7 +34,7 @@ export const marksPatch = z.record(
     comment: z
       .string()
       .max(TEST_LIMITS.comment, "tooLong")
-      .refine((v) => !v.includes("\u0000"), "text"),
+      .refine((v) => toStorable(v) === v, "text"),
   }),
 );
 export type MarksPatch = z.infer<typeof marksPatch>;
@@ -37,7 +43,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 
 /** What the draft layer holds for these answers, and the part as the form reads it. */
 export type MarksPart = {
-  /** The part's version as the editors' engine sees it: the live draft's counter, "0" without one. */
+  /** The part's version as the editors' engine sees it: the answers' time and the live draft's counter (0 without one). */
   version: string;
   /** Every open answer's mark: the form's start, the saved marks over it. */
   value: Marks;
@@ -46,6 +52,9 @@ export type MarksPart = {
   /** The stored row, a draft for older answers included (a save over it goes by its counter). */
   row: DraftPart | null;
 };
+
+/** The part's version for these answers and a draft counter (0: none): a save for other answers has another time in front. */
+const marksVersion = (a: Pick<ReviewAttempt, "submittedAt">, counter: number): string => `${a.submittedAt.getTime()}.${counter}`;
 
 /** The saved marks of a draft's value, defensively (jsonb holds anything): open answers only, and only if it was written for these answers. */
 function savedMarks(a: Pick<ReviewAttempt, "questions" | "submittedAt">, value: unknown): Marks | null {
@@ -63,7 +72,7 @@ function savedMarks(a: Pick<ReviewAttempt, "questions" | "submittedAt">, value: 
 export function marksFrom(a: Pick<ReviewAttempt, "questions" | "review" | "submittedAt">, drafts: readonly DraftPart[]): MarksPart {
   const row = drafts.find((d) => d.part === MARKS_PART) ?? null;
   const saved = row ? savedMarks(a, row.value) : null;
-  return { version: saved && row ? String(row.version) : "0", value: { ...startMarks(a.questions, a.review), ...saved }, saved, row };
+  return { version: marksVersion(a, saved && row ? row.version : 0), value: { ...startMarks(a.questions, a.review), ...saved }, saved, row };
 }
 
 /** The marks part of an attempt the page has read (the review page reads it for Maria's form). */
@@ -81,7 +90,8 @@ export async function readMarks(db: Db, attemptId: number): Promise<{ version: s
 
 /**
  * Stores `patch` over the marks a save was made on (`version`). Another version is a conflict, answered with the stored marks (the screen shows its
- * notice and „Taasta minu tekst“ saves over them); the write itself is the draft layer's compare-and-set (a save from another tab between the read
+ * notice and „Taasta minu tekst“ saves over them); a version of other answers (the student rewrote since the page was read) is a conflict with no
+ * marks, so a page that shows the old answers is never offered to save over the new ones; the write itself is the draft layer's compare-and-set (a save from another tab between the read
  * and the write is a conflict too, never overwritten). An attempt that is not waiting for her any more (she sent the review on another device) is a
  * conflict with no marks (and no draft is made). A mark for a question that is no open question of this attempt is refused at that field. A patch
  * with no mark changes nothing and answers the current version.
@@ -93,6 +103,8 @@ export async function writeMarks(db: Db, attemptId: number, patch: MarksPatch, v
   const conflict = (m: MarksPart): SaveAnswer => ({ ok: false, error: "conflict", version: m.version, value: m.value });
   const current = await read();
   if (a.status !== "review") return { ok: false, error: "conflict", version: current.version, value: null };
+  // (a version of any other format, an older page's "0" among them, is of other answers too)
+  if (!version.startsWith(`${a.submittedAt.getTime()}.`)) return { ok: false, error: "conflict", version: current.version, value: null };
   if (version !== current.version) return conflict(current);
   const open = new Set(a.questions.filter((q) => q.kind === "open").map((q) => q.id));
   const unknown = Object.keys(patch).filter((id) => !open.has(id));
@@ -109,6 +121,6 @@ export async function writeMarks(db: Db, attemptId: number, patch: MarksPatch, v
     version: current.row ? current.row.version : null,
     by,
   });
-  if (saved.ok) return { ok: true, version: String(saved.version), savedAt: now.toISOString() };
+  if (saved.ok) return { ok: true, version: marksVersion(a, saved.version), savedAt: now.toISOString() };
   return conflict(await read());
 }

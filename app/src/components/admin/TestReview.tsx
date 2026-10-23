@@ -4,8 +4,9 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition
 import type { AttemptStatus, OpenReview, TestAnswers, TestQuestion, Verdict } from "@/db/schema";
 import { grade, TEST_LIMITS } from "@/domain/completion";
 import { markCounts, NO_MARK, startMarks, type Mark, type Marks } from "@/domain/test-review-marks";
-import type { AdminDict } from "@/i18n/dict/admin";
+import { adminEt, type AdminDict } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
+import { toStorable } from "@/lib/to-storable";
 import { reviewAttemptAction } from "@/server/actions/admin-assessment";
 import { patchSender } from "./autosave/engine";
 import { useAutosave } from "./autosave/useAutosave";
@@ -154,6 +155,15 @@ function ReviewForm({
     if (error) errorLine.current?.focus();
   }, [error]);
 
+  // the marks used to be kept in this browser alone (`mslab-review:<attempt>`); the server has them now, so an old copy is not read and not left behind
+  useEffect(() => {
+    try {
+      localStorage.removeItem(`mslab-review:${attempt.id}`);
+    } catch {
+      // blocked storage kept nothing
+    }
+  }, [attempt.id]);
+
   const settle = (id: string) => {
     if (problems[id]) setProblems(Object.fromEntries(Object.entries(problems).filter(([key]) => key !== id)));
     setError("");
@@ -166,13 +176,21 @@ function ReviewForm({
     void auto.flush();
     settle(id);
   };
+  /** What Postgres cannot store (a lone surrogate, a control character from a paste) is taken out as it comes in: the server refuses it, and the save would be held back. */
   const onComment = (id: string, text: string) => {
-    auto.setField(id, { verdict: markOf(id).verdict, comment: text });
+    auto.setField(id, { verdict: markOf(id).verdict, comment: toStorable(text) });
     settle(id);
   };
 
   const send = () => {
     if (pending) return;
+    // marks changed on another device meanwhile: this screen's marks are not the latest, and a wrong „Kinnitatud“ is mailed to the student. Held, as the
+    // protocol's and the practical work's sends are, until „Taasta minu tekst“ (an explicit overwrite). With no marks stored there (`value` null: reviewed
+    // elsewhere) the server's `stale` is the better answer.
+    if (auto.conflict && auto.conflict.value !== null) {
+      setError(adminEt.autosave.conflict);
+      return;
+    }
     const found = problemsOf(attempt.questions, marks);
     if (Object.keys(found).length > 0) {
       setProblems(found);
@@ -219,7 +237,13 @@ function ReviewForm({
         {/* marks changed on another device meanwhile (README §1.3, B13); with no marks stored there (reviewed elsewhere) there is nothing to restore over */}
         {auto.conflict && auto.conflict.value !== null && (
           <div>
-            <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => void auto.restore()} data-review-restore="">
+            <button type="button" className={`${ui.btn} ${ui.secondary} ${ui.smallBtn}`} onClick={() => {
+                // (the sentence that held the send goes with the conflict)
+                if (error === adminEt.autosave.conflict) setError("");
+                void auto.restore();
+              }}
+              data-review-restore=""
+            >
               {t.restore}
             </button>
           </div>

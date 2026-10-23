@@ -4,8 +4,8 @@ import { courseCardData } from "@/components/site/course-card-data";
 import type { Db, Q } from "@/db/client";
 import { listPublishedCourses, listUpcomingSessions, readSetting } from "@/db/queries/public";
 import {
-  certificates, clientFavourites, clientLoginTokens, clients, contracts, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols, registrations,
-  requests, subscribers, termsAcceptances, type Contract,
+  certificates, clientFavourites, clientLoginTokens, clients, contentDrafts, contracts, courseAccess, courseFeedback, courses, courseSessions, pages, practicePackages, protocols,
+  registrations, requests, subscribers, termsAcceptances, testAttempts, type Contract,
 } from "@/db/schema";
 import {
   PREPAYMENT_KEY, parsePrepayment, resumeSlug, sortCards, type AccountCard, type CardContract, type CardInvoice, type EcourseCard, type FeedbackPrompt, type OpenInvoice, type PrepaymentInfo, type ReviewRef,
@@ -19,6 +19,7 @@ import { nextSessionByCourse } from "@/domain/home";
 import type { CourseProgress } from "@/domain/lessons";
 import { feedbackOpenFor } from "@/domain/protocols";
 import { registrationPrice } from "@/domain/registration";
+import { MARKS_ENTITY } from "@/domain/test-review-marks";
 import { normalizeEmail } from "@/domain/email";
 import type { I18n } from "@/i18n/field";
 import { href } from "@/i18n/href";
@@ -885,7 +886,8 @@ export async function createChangeRequest(
  * (client_id null). Takes the address lock the logins take, so a login in flight finishes before this runs or finds nothing after it.
  * Then her registrations, FOR UPDATE, before their protocols and feedback: the order a send takes (the address, the registration, the protocol), so a send or a
  * feedback answer on one of them finishes first, or finds it no longer hers after.
- * Her e-course work (e-course completion, spec §3.5): the access rows, the attempts, the access protocols and their photo rows go by cascade.
+ * Her e-course work (e-course completion, spec §3.5): the access rows, the attempts, the access protocols and their photo rows go by cascade; the marks
+ * Maria autosaved on her attempts (B15, the draft layer's "test_review" drafts) are deleted with them.
  * Her access rows are locked first (the order a photo upload takes: the access, then its protocol), then her photo files are listed: an
  * upload in flight is either in the list or, after this commit, finds the access gone and removes its own files. The caller removes the
  * listed files from the store after the commit (account-api.ts deleteAccount).
@@ -912,6 +914,10 @@ export async function deleteClient(db: Db, clientId: number): Promise<{ email: s
     const ecourseReviews = await reviewCourseSlugs(tx, { registrationIds: [], accessIds });
     const reviewCourses = [...new Set([...contactReviews, ...ecourseReviews])].sort();
     const photoKeys = await practicalKeys(tx as unknown as Db, clientId);
+    // Maria's autosaved marks on her test attempts (B15: drafts of a review that was never sent): the attempts go by cascade, the drafts have no foreign
+    // key to them, so they go here (a course is never deleted by the app; the e2e fixtures remove their own)
+    const attemptIds = (await tx.select({ id: testAttempts.id }).from(testAttempts).where(eq(testAttempts.clientId, clientId))).map((a) => a.id);
+    if (attemptIds.length > 0) await tx.delete(contentDrafts).where(and(eq(contentDrafts.entity, MARKS_ENTITY), inArray(contentDrafts.entityId, attemptIds)));
     const [row] = await tx.delete(clients).where(eq(clients.id, clientId)).returning(); // (returning(fields) has no common overload on the Db union)
     if (!row) return null;
     await tx.delete(clientLoginTokens).where(eq(clientLoginTokens.email, address));

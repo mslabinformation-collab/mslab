@@ -283,6 +283,48 @@ describe("TestReview", () => {
     expect(pressed("qavatud1", "ok")).toBe("true");
   });
 
+  test("I2: „Saada“ is held while a conflict with other marks is open (as the protocol and the practical work hold theirs): the conflict's sentence at the button, nothing sent; „Taasta minu tekst“ takes it away", async () => {
+    actions.review.mockResolvedValue({ kind: "reviewed", status: "passed", completed: false });
+    await show();
+    await click(verdict("qavatud1", "ok"));
+    remote.version = 5;
+    remote.marks = { qavatud1: { verdict: "fix", comment: "Teisest seadmest." }, qavatud2: NONE };
+    await click(verdict("qavatud2", "ok"));
+    expect(chip()).toBe("conflict");
+    // (the form is complete: only the conflict stops the send; and it is said first, before a missing mark would be)
+    await send();
+    expect(actions.review).not.toHaveBeenCalled();
+    expect($("[data-review-error]")!.textContent).toBe(adminEt.autosave.conflict);
+    expect(document.activeElement).toBe($("[data-review-error]"));
+    expect(pressed("qavatud1", "ok")).toBe("true"); // (what she sees is what she keeps)
+    await click(restore());
+    expect(chip()).toBe("saved");
+    expect($("[data-review-error]")!.textContent).toBe(""); // „Taasta minu tekst“ clears it
+    await send();
+    expect(actions.review).toHaveBeenCalledTimes(1);
+    expect(actions.review.mock.calls[0][0].review).toEqual({ qavatud1: { verdict: "ok", comment: "" }, qavatud2: { verdict: "ok", comment: "" } });
+  });
+
+  test("M1: what Postgres cannot store (a control character from a paste; a lone surrogate goes the same way, see the route test) is taken out of a comment as it is typed, so no save is refused for it; an emoji stays", async () => {
+    await show();
+    await click(verdict("qavatud2", "fix"));
+    await type(comment("qavatud2"), "a\u0007b\u000cc \u{1F600}");
+    // (Word's page break becomes a line break, the bell goes)
+    expect(comment("qavatud2")!.value).toBe("ab\nc \u{1F600}");
+    await leave(comment("qavatud2"));
+    expect(chip()).toBe("saved");
+    expect(remote.marks.qavatud2).toEqual({ verdict: "fix", comment: "ab\nc \u{1F600}" });
+  });
+
+  test("M4: the old local-only copy of the marks (mslab-review:<attempt>) is removed when the form opens, so it does not linger; another attempt's stays", async () => {
+    localStorage.setItem("mslab-review:41", JSON.stringify({ marks: { qavatud1: { verdict: "ok", comment: "" } }, at: 1, submittedAt: SUBMITTED }));
+    localStorage.setItem("mslab-review:42", "{}");
+    await show();
+    expect(localStorage.getItem("mslab-review:41")).toBeNull();
+    expect(localStorage.getItem("mslab-review:42")).toBe("{}");
+    expect(pressed("qavatud1", "ok")).toBe("false"); // (it is not put onto the form: the server's marks are the form's)
+  });
+
   test("B15: the attempt was sent from her other device meanwhile: the chip says it changed, there is nothing to restore over; „Saada“ then says it is stale", async () => {
     actions.review.mockResolvedValue({ kind: "stale" });
     await show();

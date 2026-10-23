@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { contentDrafts, courseAccess, testAttempts, type OpenReview, type TestAnswers, type TestQuestion } from "@/db/schema";
 import { createSession } from "@/server/auth";
+import { deleteClient } from "@/server/client-data";
 import { saveDraftPart } from "@/server/drafts";
 import { readMarks } from "@/server/test-review-marks";
 import { ecourseAccess } from "./assessment-fixtures";
@@ -12,8 +13,8 @@ import { makeTestDb } from "./helpers";
 // are autosaved to the server through POST /api/admin/testi-hinnang/<attempt> with `{ version, patch: { <question id>: { verdict, comment } } }`
 // (server/autosave-route.ts autosaveHandler, inside withAdmin). They are a draft of the review in the draft layer (server/drafts.ts: entity
 // "test_review", the attempt's id, part "marks"; value `{ submittedAt, marks }`), never in `test_attempts.review`, which is what the student is
-// shown. The part's version is the draft's counter as text ("0": there is none), and a draft written for other answers (the student rewrote since:
-// another `submittedAt`) is not read. On PGlite, with the admin's session cookie faked (as registration-note-route.test.ts does).
+// shown. The part's version is the answers' time and the draft's counter as text ("<ms of submittedAt>.<counter>", counter 0: there is none), so a
+// save made on a page for other answers (the student rewrote since) is refused, and a draft written for other answers is not read. On PGlite, with the admin's session cookie faked (as registration-note-route.test.ts does).
 
 const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined }));
 vi.mock("next/headers", () => ({
@@ -32,6 +33,9 @@ const CHOICE: TestQuestion = { id: "qvalik01", kind: "choice", text: "Mitu korda
 const OPEN_A: TestQuestion = { id: "qavatud1", kind: "open", text: "Kirjelda oma tööde järjekorda." };
 const OPEN_B: TestQuestion = { id: "qavatud2", kind: "open", text: "Mida teed allergia korral?" };
 const ANSWERS: TestAnswers = { qvalik01: ["o1oige01"], qavatud1: "Puhastan, siis mõõdan.", qavatud2: "Jätkan tööd." };
+
+/** The part's version for answers sent at `at` and a draft counter of `n` (server/test-review-marks.ts marksVersion). */
+const v = (n: number, at: Date = SUBMITTED) => `${at.getTime()}.${n}`;
 
 let db: Db;
 let attemptId: number;
@@ -73,16 +77,16 @@ const NONE = { verdict: null, comment: "" };
 
 describe("POST /api/admin/testi-hinnang/<attempt>", () => {
   test("without an admin's session: 401, nothing stored; from another site: 403", async () => {
-    expect(await answerOf(await save(attemptId, { version: "0", patch: { qavatud1: { verdict: "ok", comment: "" } } }))).toMatchObject({ status: 401, body: { ok: false, error: "unauthorized" } });
+    expect(await answerOf(await save(attemptId, { version: v(0), patch: { qavatud1: { verdict: "ok", comment: "" } } }))).toMatchObject({ status: 401, body: { ok: false, error: "unauthorized" } });
     await signIn();
-    expect((await save(attemptId, { version: "0", patch: { qavatud1: { verdict: "ok", comment: "" } } }, { origin: "https://evil.example" })).status).toBe(403);
+    expect((await save(attemptId, { version: v(0), patch: { qavatud1: { verdict: "ok", comment: "" } } }, { origin: "https://evil.example" })).status).toBe(403);
     expect(await drafts()).toEqual([]);
   });
 
-  test("ok: the first save makes the draft (version \"1\"), the next goes on from it; the marks are the draft of the review, apart from `review`", async () => {
+  test("ok: the first save makes the draft (version \"<time>.1\"), the next goes on from it; the marks are the draft of the review, apart from `review`", async () => {
     await signIn();
-    const first = await answerOf(await save(attemptId, { version: "0", patch: { qavatud1: { verdict: "ok", comment: "" } } }));
-    expect(first).toMatchObject({ status: 200, cache: "no-store", body: { ok: true, version: "1", savedAt: expect.any(String) } });
+    const first = await answerOf(await save(attemptId, { version: v(0), patch: { qavatud1: { verdict: "ok", comment: "" } } }));
+    expect(first).toMatchObject({ status: 200, cache: "no-store", body: { ok: true, version: v(1), savedAt: expect.any(String) } });
     expect(Number.isNaN(Date.parse(first.body.savedAt))).toBe(false);
     expect(await drafts()).toMatchObject([
       {
@@ -98,32 +102,32 @@ describe("POST /api/admin/testi-hinnang/<attempt>", () => {
     // the student is shown `review`: a draft is never written there
     expect((await db.select().from(testAttempts).where(eq(testAttempts.id, attemptId)))[0]).toMatchObject({ status: "review", review: null, reviewedAt: null });
     // the next save names only what changed: the earlier marks stay in the draft
-    const second = await answerOf(await save(attemptId, { version: "1", patch: { qavatud2: { verdict: "fix", comment: "Lisa allergiatest." } } }));
-    expect(second).toMatchObject({ status: 200, body: { ok: true, version: "2" } });
+    const second = await answerOf(await save(attemptId, { version: v(1), patch: { qavatud2: { verdict: "fix", comment: "Lisa allergiatest." } } }));
+    expect(second).toMatchObject({ status: 200, body: { ok: true, version: v(2) } });
     expect((await drafts())[0]).toMatchObject({
       version: 2,
       value: { submittedAt: SUBMITTED.toISOString(), marks: { qavatud1: { verdict: "ok", comment: "" }, qavatud2: { verdict: "fix", comment: "Lisa allergiatest." } } },
     });
     // a mark cleared by a re-tap is a mark of no verdict, kept as it is
-    expect((await save(attemptId, { version: "2", patch: { qavatud1: { verdict: null, comment: "" } } })).status).toBe(200);
+    expect((await save(attemptId, { version: v(2), patch: { qavatud1: { verdict: null, comment: "" } } })).status).toBe(200);
     expect((await drafts())[0].value).toMatchObject({ marks: { qavatud1: NONE, qavatud2: { verdict: "fix" } } });
   });
 
   test("a version that is not the draft's is a conflict: 409 with the stored marks and their version, nothing stored; a first save when a draft is there already is one too", async () => {
     await signIn();
-    expect((await save(attemptId, { version: "0", patch: { qavatud1: { verdict: "ok", comment: "Hea." } } })).status).toBe(200);
-    const stale = await answerOf(await save(attemptId, { version: "0", patch: { qavatud2: { verdict: "fix", comment: "Minu." } } }));
+    expect((await save(attemptId, { version: v(0), patch: { qavatud1: { verdict: "ok", comment: "Hea." } } })).status).toBe(200);
+    const stale = await answerOf(await save(attemptId, { version: v(0), patch: { qavatud2: { verdict: "fix", comment: "Minu." } } }));
     expect(stale).toEqual({
       status: 409,
       cache: "no-store",
       // the stored marks of every open answer: what the draft holds, the others as the form starts (no verdict)
-      body: { ok: false, error: "conflict", version: "1", value: { qavatud1: { verdict: "ok", comment: "Hea." }, qavatud2: NONE } },
+      body: { ok: false, error: "conflict", version: v(1), value: { qavatud1: { verdict: "ok", comment: "Hea." }, qavatud2: NONE } },
     });
-    expect(await answerOf(await save(attemptId, { version: "7", patch: { qavatud2: { verdict: "fix", comment: "Minu." } } }))).toMatchObject({ status: 409, body: { version: "1" } });
+    expect(await answerOf(await save(attemptId, { version: v(7), patch: { qavatud2: { verdict: "fix", comment: "Minu." } } }))).toMatchObject({ status: 409, body: { version: v(1) } });
     expect((await drafts())[0]).toMatchObject({ version: 1, value: { marks: { qavatud1: { verdict: "ok", comment: "Hea." } } } });
   });
 
-  test("a draft written for other answers (the student rewrote since) is not read: version \"0\", the form's start; a save replaces it, nothing of it carries over", async () => {
+  test("a draft written for other answers (the student rewrote since) is not read: counter 0, the form's start; a save replaces it, nothing of it carries over", async () => {
     await signIn();
     await saveDraftPart(db, {
       entity: "test_review",
@@ -134,47 +138,74 @@ describe("POST /api/admin/testi-hinnang/<attempt>", () => {
       version: null,
       by: "admin@example.test",
     });
-    expect(await readMarks(db, attemptId)).toEqual({ version: "0", value: { qavatud1: NONE, qavatud2: NONE } });
+    expect(await readMarks(db, attemptId)).toEqual({ version: v(0), value: { qavatud1: NONE, qavatud2: NONE } });
     // her first save of the new answers (from version "0"): the old draft is replaced, not conflicted with
-    const res = await answerOf(await save(attemptId, { version: "0", patch: { qavatud2: { verdict: "ok", comment: "" } } }));
-    expect(res).toMatchObject({ status: 200, body: { ok: true, version: "2" } });
+    const res = await answerOf(await save(attemptId, { version: v(0), patch: { qavatud2: { verdict: "ok", comment: "" } } }));
+    expect(res).toMatchObject({ status: 200, body: { ok: true, version: v(2) } });
     const [row, ...rest] = await drafts();
     expect(rest).toEqual([]);
     expect(row.value).toEqual({ submittedAt: SUBMITTED.toISOString(), marks: { qavatud2: { verdict: "ok", comment: "" } } });
-    expect(await readMarks(db, attemptId)).toEqual({ version: "2", value: { qavatud1: NONE, qavatud2: { verdict: "ok", comment: "" } } });
+    expect(await readMarks(db, attemptId)).toEqual({ version: v(2), value: { qavatud1: NONE, qavatud2: { verdict: "ok", comment: "" } } });
     // the answers rewritten once more: the draft belongs to the earlier ones now
     await db.update(testAttempts).set({ submittedAt: REWRITTEN }).where(eq(testAttempts.id, attemptId));
-    expect(await readMarks(db, attemptId)).toEqual({ version: "0", value: { qavatud1: NONE, qavatud2: NONE } });
+    expect(await readMarks(db, attemptId)).toEqual({ version: v(0, REWRITTEN), value: { qavatud1: NONE, qavatud2: NONE } });
+  });
+
+  test("I1: a save made on a page for older answers is refused, whether it had a draft or not: a conflict with no marks to restore, nothing stored, and the new answers' form is not marked", async () => {
+    await signIn();
+    // the page that was opened on the first answers, with no marks yet (version "<time>.0"); it saves once, then the draft goes with her send elsewhere
+    const old = v(0);
+    expect((await save(attemptId, { version: old, patch: { qavatud1: { verdict: "ok", comment: "" } } })).status).toBe(200);
+    await db.delete(contentDrafts);
+    // the student rewrote: the attempt is back in review with a new time
+    await db.update(testAttempts).set({ submittedAt: REWRITTEN }).where(eq(testAttempts.id, attemptId));
+    for (const version of [old, v(1), "0", "1", String(REWRITTEN.getTime()), ""]) {
+      const res = await answerOf(await save(attemptId, { version, patch: { qavatud2: { verdict: "fix", comment: "Vana lehe märge." } } }));
+      // (nothing to restore over: the screen shows other answers; the version is the new answers' own)
+      expect(res, JSON.stringify(version)).toEqual({ status: 409, cache: "no-store", body: { ok: false, error: "conflict", version: v(0, REWRITTEN), value: null } });
+    }
+    expect(await drafts()).toEqual([]);
+    expect(await readMarks(db, attemptId)).toEqual({ version: v(0, REWRITTEN), value: { qavatud1: NONE, qavatud2: NONE } });
+    // a page for the new answers saves as usual, and the old page still cannot go on from its version
+    expect((await save(attemptId, { version: v(0, REWRITTEN), patch: { qavatud2: { verdict: "ok", comment: "" } } })).status).toBe(200);
+    expect(await answerOf(await save(attemptId, { version: old, patch: { qavatud1: { verdict: "fix", comment: "Vana." } } }))).toMatchObject({
+      status: 409,
+      body: { version: v(1, REWRITTEN), value: null },
+    });
+    expect((await drafts()).map((d) => d.value)).toEqual([{ submittedAt: REWRITTEN.toISOString(), marks: { qavatud2: { verdict: "ok", comment: "" } } }]);
   });
 
   test("an answer she accepted before (a rewrite brings the attempt back) starts as accepted; a draft's mark over it wins, a cleared one too", async () => {
     await signIn();
     const review: OpenReview = { qavatud1: { verdict: "ok", comment: "Hea." }, qavatud2: { verdict: "fix", comment: "Lisa allergiatest." } };
     await db.update(testAttempts).set({ review }).where(eq(testAttempts.id, attemptId));
-    expect(await readMarks(db, attemptId)).toEqual({ version: "0", value: { qavatud1: { verdict: "ok", comment: "Hea." }, qavatud2: NONE } });
-    expect((await save(attemptId, { version: "0", patch: { qavatud1: { verdict: null, comment: "" } } })).status).toBe(200);
-    expect(await readMarks(db, attemptId)).toEqual({ version: "1", value: { qavatud1: NONE, qavatud2: NONE } });
+    expect(await readMarks(db, attemptId)).toEqual({ version: v(0), value: { qavatud1: { verdict: "ok", comment: "Hea." }, qavatud2: NONE } });
+    expect((await save(attemptId, { version: v(0), patch: { qavatud1: { verdict: null, comment: "" } } })).status).toBe(200);
+    expect(await readMarks(db, attemptId)).toEqual({ version: v(1), value: { qavatud1: NONE, qavatud2: NONE } });
   });
 
   test("an attempt that is not waiting for her any more (reviewed on her other device): a conflict with no marks, no draft made", async () => {
     await signIn();
     await db.update(testAttempts).set({ status: "fix", review: { qavatud1: { verdict: "ok", comment: "" }, qavatud2: { verdict: "fix", comment: "Lisa." } } }).where(eq(testAttempts.id, attemptId));
-    expect(await answerOf(await save(attemptId, { version: "0", patch: { qavatud1: { verdict: "ok", comment: "" } } }))).toEqual({
+    expect(await answerOf(await save(attemptId, { version: v(0), patch: { qavatud1: { verdict: "ok", comment: "" } } }))).toEqual({
       status: 409,
       cache: "no-store",
-      body: { ok: false, error: "conflict", version: "0", value: null },
+      body: { ok: false, error: "conflict", version: v(0), value: null },
     });
     expect(await drafts()).toEqual([]);
   });
 
   test("a save that is no mark is refused at its field: a verdict that is none of the two, a comment over 2000 or with a NUL character, an answer that is no open question of this attempt; nothing stored", async () => {
     await signIn();
-    const refuse = async (patch: unknown) => answerOf(await save(attemptId, { version: "0", patch }));
+    const refuse = async (patch: unknown) => answerOf(await save(attemptId, { version: v(0), patch }));
     expect(await refuse({ qavatud1: { verdict: "maybe", comment: "" } })).toMatchObject({ status: 400, cache: "no-store", body: { ok: false, error: "invalid", fields: { qavatud1: expect.any(String) } } });
     expect(await refuse({ qavatud1: { verdict: "ok" } })).toMatchObject({ status: 400, body: { error: "invalid", fields: { qavatud1: expect.any(String) } } });
     expect(await refuse({ qavatud1: { verdict: "ok", comment: 5 } })).toMatchObject({ status: 400, body: { error: "invalid", fields: { qavatud1: expect.any(String) } } });
     expect(await refuse({ qavatud1: { verdict: "fix", comment: "x".repeat(2001) } })).toEqual({ status: 400, cache: "no-store", body: { ok: false, error: "invalid", fields: { qavatud1: "tooLong" } } });
     expect(await refuse({ qavatud1: { verdict: "fix", comment: "a\u0000b" } })).toEqual({ status: 400, cache: "no-store", body: { ok: false, error: "invalid", fields: { qavatud1: "text" } } });
+    // M1: a lone surrogate (a broken paste) is not valid JSON for Postgres: refused at its field, not a 500 that the screen would retry for good
+    expect(await refuse({ qavatud1: { verdict: "fix", comment: "a\ud800b" } })).toEqual({ status: 400, cache: "no-store", body: { ok: false, error: "invalid", fields: { qavatud1: "text" } } });
+    expect(await refuse({ qavatud1: { verdict: "fix", comment: "b\udc00" } })).toMatchObject({ status: 400, body: { fields: { qavatud1: "text" } } });
     // a choice question has no mark, and a question of another test none at all; the refusal names them all, the good one beside them is not stored either
     expect(await refuse({ qvalik01: { verdict: "ok", comment: "" }, qmuu00001: { verdict: "ok", comment: "" }, qavatud2: { verdict: "ok", comment: "" } })).toEqual({
       status: 400,
@@ -182,19 +213,37 @@ describe("POST /api/admin/testi-hinnang/<attempt>", () => {
       body: { ok: false, error: "invalid", fields: { qvalik01: "unknown", qmuu00001: "unknown" } },
     });
     expect(await drafts()).toEqual([]);
-    // 2000 characters are fine
-    expect((await save(attemptId, { version: "0", patch: { qavatud1: { verdict: "fix", comment: "x".repeat(2000) } } })).status).toBe(200);
+    // 2000 characters are fine, and so is a pair of surrogates (an emoji), which is kept as it is
+    const full = "x".repeat(1998) + "\u{1F600}";
+    expect((await save(attemptId, { version: v(0), patch: { qavatud1: { verdict: "fix", comment: full } } })).status).toBe(200);
+    expect((await readMarks(db, attemptId))!.value.qavatud1.comment).toBe(full);
     // an empty save changes nothing and answers the version it is on
-    expect(await answerOf(await save(attemptId, { version: "1", patch: {} }))).toMatchObject({ status: 200, body: { ok: true, version: "1" } });
+    expect(await answerOf(await save(attemptId, { version: v(1), patch: {} }))).toMatchObject({ status: 200, body: { ok: true, version: v(1) } });
+  });
+
+  test("M3: deleting a student's account deletes the marks drafts of her attempts with them; another student's, and other kinds of draft with the same number, stay", async () => {
+    const other = await ecourseAccess(db, { slug: "muu-kursus", email: "muu@example.test" });
+    const otherAttempt = await attempt(other.client.id, other.course.id);
+    const draft = (entity: string, entityId: number) =>
+      saveDraftPart(db, { entity, entityId, part: "marks", value: { submittedAt: SUBMITTED.toISOString(), marks: {} }, baseVersion: "x", version: null, by: "admin@example.test" });
+    await draft("test_review", attemptId);
+    await draft("test_review", otherAttempt);
+    await draft("course", attemptId); // (another kind of draft whose row has the same number: not touched)
+    const [mine] = await db.select({ clientId: testAttempts.clientId }).from(testAttempts).where(eq(testAttempts.id, attemptId));
+    expect(await deleteClient(db, mine.clientId)).not.toBeNull();
+    expect((await db.select().from(contentDrafts)).map((d) => [d.entity, d.entityId]).sort()).toEqual([
+      ["course", attemptId],
+      ["test_review", otherAttempt],
+    ]);
   });
 
   test("an id that is no attempt, or whose access an admin ended: 404 notFound; a body that is no save: 400", async () => {
     await signIn();
     const patch = { qavatud1: { verdict: "ok", comment: "" } };
-    for (const target of ["999999", "abc", "0"]) expect(await answerOf(await save(target, { version: "0", patch })), target).toMatchObject({ status: 404, body: { ok: false, error: "notFound" } });
+    for (const target of ["999999", "abc", "0"]) expect(await answerOf(await save(target, { version: v(0), patch })), target).toMatchObject({ status: 404, body: { ok: false, error: "notFound" } });
     expect(await answerOf(await save(attemptId, { patch }))).toMatchObject({ status: 400, body: { ok: false, error: "body" } });
     await db.update(courseAccess).set({ revokedAt: new Date() }).where(eq(courseAccess.id, accessId));
-    expect(await answerOf(await save(attemptId, { version: "0", patch }))).toMatchObject({ status: 404, body: { ok: false, error: "notFound" } });
+    expect(await answerOf(await save(attemptId, { version: v(0), patch }))).toMatchObject({ status: 404, body: { ok: false, error: "notFound" } });
     expect(await readMarks(db, attemptId)).toBeNull();
     expect(await drafts()).toEqual([]);
   });
