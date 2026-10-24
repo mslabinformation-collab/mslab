@@ -75,6 +75,20 @@ test.describe("practice packages (A8, R3)", () => {
     await editLang(page, "ru");
     await rows.nth(count).locator("[data-lang-field]").fill("E2E пункт");
     expect(await noOverflow(page)).toBe(true);
+    // × takes the row out at once with the UndoBar; while it shows, „Salvesta“ is in sight and takes a click (the bar stands above the sticky
+    // save bar, Task 8 review M-2); „Võta tagasi“ brings the row back with its texts
+    await items.getByRole("button", { name: `Eemalda rida ${count + 1}` }).click();
+    await expect(rows).toHaveCount(count);
+    const undoBar = page.locator("[data-undo-bar]");
+    await expect(undoBar).toContainText("Rida eemaldatud.");
+    const saveButton = page.locator("[data-save-bar] button");
+    await expect(saveButton).toBeVisible();
+    await saveButton.click({ trial: true, timeout: 2000 });
+    const [a, b] = [(await undoBar.boundingBox())!, (await saveButton.boundingBox())!];
+    expect(a.y + a.height <= b.y || b.y + b.height <= a.y || a.x + a.width <= b.x || b.x + b.width <= a.x, "the UndoBar is clear of „Salvesta“").toBe(true);
+    await undoBar.getByRole("button", { name: "Võta tagasi" }).click();
+    await expect(rows).toHaveCount(count + 1);
+    await expect(rows.nth(count).locator("[data-lang-field]")).toHaveValue("E2E пункт");
     await save(page);
     const stored = await one((sql) => sql<{ duration: { et: string }; items: { et: string; ru?: string }[] }[]>`select duration_label as duration, items from practice_packages where code = ${pkg.code}`);
     expect(stored.duration).toEqual({ et: pkg.after, ru: pkg.ru }); // the Russian text is Maria's to update

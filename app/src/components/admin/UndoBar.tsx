@@ -18,12 +18,13 @@ export type UndoOffer = {
   undo: () => Promise<boolean | string>;
 };
 
-type Api = { show(offer: UndoOffer): void };
+/** `show` gives back a way to take that bar away again (it does nothing once another bar has replaced it): an editor that goes takes its offer with it. */
+type Api = { show(offer: UndoOffer): () => void };
 
 // Without a provider (a component rendered alone, in a test) there is nobody to show the bar: show does nothing.
-const Context = createContext<Api>({ show: () => {} });
+const Context = createContext<Api>({ show: () => () => {} });
 
-/** `show` puts the bar up: one at a time, and a new one replaces the one on screen. */
+/** `show` puts the bar up: one at a time, and a new one replaces the one on screen. What it gives back takes that bar away (and only that one). */
 export function useUndo(): Api {
   return useContext(Context);
 }
@@ -78,11 +79,15 @@ export function UndoProvider({ children }: { children: React.ReactNode }) {
 
   const show = useCallback(
     (offer: UndoOffer) => {
-      put({ ...offer, id: ++ids.current, state: "ready" });
+      const id = ++ids.current;
+      put({ ...offer, id, state: "ready" });
       setDialog(openDialog());
       arm();
+      return () => {
+        if (now.current?.id === id) dismiss();
+      };
     },
-    [put, arm],
+    [put, arm, dismiss],
   );
   const api = useMemo<Api>(() => ({ show }), [show]);
 

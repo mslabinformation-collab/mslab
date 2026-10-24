@@ -28,6 +28,12 @@ function Page() {
 }
 const mount = () => act(async () => root.render(createElement(UndoProvider, null, createElement(Page))));
 const show = (text: string, undo: () => Promise<boolean | string> = async () => true) => act(async () => void api.show({ text, undo }));
+/** `show`, keeping what it gives back: the way to take that bar away again. */
+const offer = async (text: string) => {
+  let withdraw!: () => void;
+  await act(async () => void (withdraw = api.show({ text, undo: async () => true })));
+  return withdraw;
+};
 const advance = (ms: number) => act(async () => void vi.advanceTimersByTime(ms));
 
 const bar = () => document.querySelector<HTMLElement>("[data-undo-bar]");
@@ -294,5 +300,18 @@ describe("UndoBar", () => {
     await act(async () => root.unmount());
     expect(vi.getTimerCount()).toBe(0);
     root = createRoot(container);
+  });
+});
+
+describe("UndoBar: an offer taken back (review M-6: an editor that goes takes its bar with it)", () => {
+  it("`show` gives back a way to take that bar away; it takes away only its own bar, never a newer one", async () => {
+    await mount();
+    const first = await offer("Rida eemaldatud.");
+    await act(async () => first());
+    expect(bar()).toBeNull();
+    const second = await offer("Rida eemaldatud.");
+    await show("Pilt eemaldatud.");
+    await act(async () => second());
+    expect(text()).toBe("Pilt eemaldatud.");
   });
 });

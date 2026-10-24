@@ -45,15 +45,17 @@ type Over = {
   /** The page's own trigger in each row (the phone's „↕“ menu): a button marked data-drag-tool="menu", or a wrapper with a button in it. It moves its row to `menuTo`. */
   menu?: "button" | "wrapper";
   menuTo?: number;
+  arrowNames?: (n: number) => { up: string; down: string };
 };
 
 /** A parent that keeps the order, as the editors do. */
-function Harness({ items: initial = ITEMS, label = (item) => item.name, disabled, before, reorder = true, defer, className, rowClassName, onMove, seen, menu, menuTo = 0 }: Over) {
+function Harness({ items: initial = ITEMS, label = (item) => item.name, disabled, before, reorder = true, defer, className, rowClassName, onMove, seen, menu, menuTo = 0, arrowNames }: Over) {
   const [items, setItems] = useState(initial);
   return createElement(DragList<Item>, {
     items,
     keyOf: (item) => item.id,
     label,
+    arrowNames,
     disabled,
     className,
     rowClassName,
@@ -151,6 +153,15 @@ describe("DragList: the handle and the arrows", () => {
     expect(tool("b", "handle").getAttribute("aria-label")).toBe("Lohista rida 2");
     expect(tool("b", "up").getAttribute("aria-label")).toBe("Liiguta rida 2 üles");
     expect(tool("b", "down").getAttribute("aria-label")).toBe("Liiguta rida 2 alla");
+  });
+
+  it("`arrowNames` gives the arrows a list's own words (the gallery's „Liiguta pilt {n} ettepoole“); the handle and the announcement keep the row forms", async () => {
+    await draw({ label: () => "", arrowNames: (n) => ({ up: `Liiguta pilt ${n} ettepoole`, down: `Liiguta pilt ${n} tahapoole` }) });
+    expect(tool("b", "up").getAttribute("aria-label")).toBe("Liiguta pilt 2 ettepoole");
+    expect(tool("b", "down").getAttribute("aria-label")).toBe("Liiguta pilt 2 tahapoole");
+    expect(tool("b", "handle").getAttribute("aria-label")).toBe("Lohista rida 2");
+    await click(tool("b", "up"));
+    expect(text(live())).toBe("Rida 2 on nüüd 1. kohal.");
   });
 
   it("the label is asked for each row with its current index", async () => {

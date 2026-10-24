@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useFootBar } from "./foot-bar";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { ConfirmPanel } from "./ConfirmPanel";
@@ -49,6 +50,8 @@ export function PublishBar({
   const running = useRef(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
+  // on a phone the bar is fixed at the foot: the UndoBar stands above it (foot-bar.ts)
+  const foot = useFootBar();
 
   // the question closed: the focus goes back to „Loobu muudatustest“ (ConfirmPanel's rule for „Katkesta“)
   useEffect(() => {
@@ -86,7 +89,7 @@ export function PublishBar({
 
   return (
     <div className={styles.wrap}>
-      <div role="region" aria-labelledby={countId} aria-busy={busy || undefined} className={styles.bar} data-publish-bar="" data-fab-avoid="">
+      <div ref={foot} role="region" aria-labelledby={countId} aria-busy={busy || undefined} className={styles.bar} data-publish-bar="" data-fab-avoid="">
         <p className={styles.summary}>
           <span className={styles.wide} data-publish-words="">
             <b id={countId} data-publish-count="">

@@ -33,7 +33,8 @@ let current: DraftImage[] = [];
 const updates = vi.fn();
 let restoreRect: () => void;
 
-function Harness({ initial }: { initial: DraftImage[] }) {
+/** `twist`: each update lands on a list whose descriptions changed meanwhile (the form on screen after the cards started over, say). */
+function Harness({ initial, twist }: { initial: DraftImage[]; twist?: boolean }) {
   const [images, setImages] = useState(initial);
   useEffect(() => {
     current = images; // (not during the render: react-hooks/globals; act() flushes the effect)
@@ -42,11 +43,11 @@ function Harness({ initial }: { initial: DraftImage[] }) {
     images,
     onChange: (fn: (list: DraftImage[]) => DraftImage[]) => {
       updates();
-      setImages((list) => fn(list));
+      setImages((list) => fn(twist ? list.map((x) => ({ ...x, alt: { et: `${x.alt.et}!` } })) : list));
     },
   });
 }
-const render = (initial: DraftImage[] = IMAGES) => act(async () => root.render(createElement(UndoProvider, null, createElement(Harness, { initial }))));
+const render = (initial: DraftImage[] = IMAGES, twist = false) => act(async () => root.render(createElement(UndoProvider, null, createElement(Harness, { initial, twist }))));
 const $ = <T extends Element = HTMLElement>(selector: string) => container.querySelector<T>(selector);
 const $$ = (selector: string) => [...container.querySelectorAll<HTMLElement>(selector)];
 const text = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -87,7 +88,9 @@ describe("GalleryEditor: drag and arrows", () => {
     expect(handleOf(2).getAttribute("aria-label")).toBe("Lohista rida 3");
     expect(handleOf(2).getAttribute("aria-roledescription")).toBe("lohistatav");
     const third = $$("[data-gallery-item]")[2];
-    expect(third.querySelector('[data-drag-tool="up"]')!.getAttribute("aria-label")).toBe("Liiguta rida 3 üles");
+    // the arrows keep the pictures' own words (review M-1)
+    expect(third.querySelector('[data-drag-tool="up"]')!.getAttribute("aria-label")).toBe("Liiguta pilt 3 ettepoole");
+    expect($$("[data-gallery-item]")[0].querySelector('[data-drag-tool="down"]')!.getAttribute("aria-label")).toBe("Liiguta pilt 1 tahapoole");
     expect(third.querySelector('[data-drag-tool="down"]')!.getAttribute("aria-disabled")).toBe("true");
     expect(third.querySelector('[data-tool="remove"]')!.getAttribute("aria-label")).toBe("Eemalda pilt 3");
     expect(container.querySelector("[draggable='true']")).toBeNull();
@@ -139,5 +142,13 @@ describe("GalleryEditor: removal with the UndoBar („Pilt eemaldatud.“)", () 
     await click(bar()!.querySelector("button"));
     expect(order()).toEqual(["img/a.jpg", "img/c.jpg", "img/b.jpg"]);
     expect(current[0]).toEqual(IMAGES[0]);
+  });
+});
+
+describe("GalleryEditor: a picture is known by its key (review M-5)", () => {
+  it("the removal lands on a list whose descriptions changed meanwhile: the picture is taken out all the same, by its key", async () => {
+    await render(IMAGES, true);
+    await click($('[aria-label="Eemalda pilt 2"]'));
+    expect(current.map((x) => x.key)).toEqual(["img/a.jpg", "img/c.jpg"]);
   });
 });

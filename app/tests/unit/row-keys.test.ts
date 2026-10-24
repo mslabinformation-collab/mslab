@@ -5,11 +5,15 @@ import { expectKeys, followKeys, insertAt, removeAt, startKeys } from "@/compone
 // each one a key and follows the rows through every change of the list — its own (told as it makes it) and any other (worked out from the rows'
 // contents) — and a row that comes back after its removal gets its old key.
 
-const counter = () => {
-  let n = 0;
-  return () => `k${++n}`;
-};
-const start = (items: string[]) => startKeys(items, counter());
+/** The first keys come from a seed by the row's place (the editor's useId: the server's and the browser's are the same, review I-1). */
+const start = (items: string[]) => startKeys(items, (i) => `k${i + 1}`);
+
+describe("startKeys", () => {
+  it("seeds each row's key from its place: the same list gives the same keys again (a server render and its hydration)", () => {
+    expect(startKeys(["a", "b"], (i) => `«r1»r${i}`).keys).toEqual(["«r1»r0", "«r1»r1"]);
+    expect(startKeys(["a", "b"], (i) => `«r1»r${i}`).keys).toEqual(startKeys(["a", "b"], (i) => `«r1»r${i}`).keys);
+  });
+});
 
 describe("followKeys", () => {
   it("the editor's own change: the keys it said", () => {
@@ -74,5 +78,10 @@ describe("insertAt and removeAt", () => {
     expect(removeAt(["b", "a", "c"], 1, "b")).toEqual(["a", "c"]);
     expect(removeAt(["x", "b", "y", "b"], 3, "b")).toEqual(["x", "b", "y"]);
     expect(removeAt(["a", "c"], 1, "b")).toEqual(["a", "c"]);
+  });
+
+  it("removeAt can know the row by its id instead of its whole content (a picture by its key, review M-5)", () => {
+    const list = [{ key: "a", alt: "x" }, { key: "b", alt: "changed" }, { key: "c", alt: "z" }];
+    expect(removeAt(list, 1, { key: "b", alt: "y" }, (x) => x.key === "b").map((x) => x.key)).toEqual(["a", "c"]);
   });
 });

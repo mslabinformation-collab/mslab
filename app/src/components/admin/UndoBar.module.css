@@ -1,13 +1,15 @@
 /* UndoBar (admin UX pass, README §1.7): bottom left, bg #222, radius 14, min-height 52; the button #3a3338, 44px. Full width on a phone.
    The metrics are the prototype's UndoBar (handoff "MS LAB Admin UX Pass.dc.html" §3.3, and the same bar in Parts 2 and 4): padding 0 6px 0 16px,
    gap 14, text 13px regular, the button a pill (radius 99, padding 0 14px, 600); on a phone the bar is absolute left 12 / right 12 / bottom 16.
-   The region is fixed to the screen and takes no room (and no clicks) of its own; only the bar takes them. */
+   The region is fixed to the screen and takes no room (and no clicks) of its own; only the bar takes them.
+   A bar at the foot of the screen (the phone's PublishBar, a site editor's sticky SaveBar) sets --admin-foot to its height while it stands there
+   (foot-bar.ts; Task 8 review M-2): the region is then 16px above that bar, so its button is never covered. With none, the safe area as before. */
 
 .region {
   position: fixed;
   left: 16px;
   bottom: 16px;
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(16px + var(--admin-foot, env(safe-area-inset-bottom, 0px)));
   z-index: 60;
   /* as wide as its words (the prototype's bar is align-self: flex-start), not wider than a comfortable line */
   max-width: min(480px, calc(100vw - 32px));

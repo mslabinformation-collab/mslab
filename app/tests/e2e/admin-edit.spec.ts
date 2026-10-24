@@ -91,6 +91,19 @@ async function publish(page: Page): Promise<void> {
   await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
 }
 
+/**
+ * While the UndoBar shows, `button` (the PublishBar's „Avalda muudatused“, the phone's „Avalda“) is in sight and takes a click: nothing stands over it
+ * (Playwright's trial click checks that the button itself receives it), and on a phone the bar stands above the bottom bar (Task 8 review M-2).
+ */
+async function notCovered(page: Page, button: Locator): Promise<void> {
+  const undo = page.locator("[data-undo-bar]");
+  await expect(undo).toBeVisible();
+  await expect(button).toBeVisible();
+  await button.click({ trial: true, timeout: 2000 });
+  const [a, b] = [(await undo.boundingBox())!, (await button.boundingBox())!];
+  expect(a.y + a.height <= b.y || b.y + b.height <= a.y || a.x + a.width <= b.x || b.x + b.width <= a.x, "the UndoBar is clear of the button").toBe(true);
+}
+
 /** The course's card in the public catalogue. */
 const publicCard = (page: Page, slug: string, prefix = ""): Locator => page.locator(`[data-course-card][href="${prefix}/koolitused/${slug}"]`);
 
@@ -542,14 +555,17 @@ test.describe("course editor", () => {
     const count = await rows.count();
     const first = await rows.nth(0).locator("[data-lang-field]").inputValue();
     const second = await rows.nth(1).locator("[data-lang-field]").inputValue();
-    // ↑ is aria-disabled on the first row, ↓ on the last; the focus stays on the moved row's button; a move saves at once
+    // ↑ is aria-disabled on the first row, ↓ on the last; a move saves at once
     await expect(outcomes.getByRole("button", { name: "Liiguta rida 1 üles" })).toHaveAttribute("aria-disabled", "true");
     await expect(outcomes.getByRole("button", { name: `Liiguta rida ${count} alla` })).toHaveAttribute("aria-disabled", "true");
     const moved = partSaved(page, "outcomes");
-    await outcomes.getByRole("button", { name: "Liiguta rida 2 üles" }).click();
+    await outcomes.getByRole("button", { name: "Liiguta rida 1 alla" }).click();
     await moved;
     await expect(rows.nth(0).locator("[data-lang-field]")).toHaveValue(second);
     await expect(rows.nth(1).locator("[data-lang-field]")).toHaveValue(first);
+    // the focus stays on the moved row's ↓: the row was put back into the page, and DragList finds it by its key (the server's and the browser's
+    // the same, review I-1)
+    await expect(outcomes.getByRole("button", { name: "Liiguta rida 2 alla" })).toBeFocused();
     await outcomes.getByRole("button", { name: "Lisa rida" }).click();
     await expect(rows).toHaveCount(count + 1);
     await expect(rows.nth(count).locator("[data-lang-field]")).toBeFocused();
@@ -565,15 +581,15 @@ test.describe("course editor", () => {
     await expect(rows).toHaveCount(count);
     const undoBar = page.locator("[data-undo-bar]");
     await expect(undoBar).toContainText("Rida eemaldatud.");
+    await notCovered(page, page.locator("[data-publish-go]"));
     await undoBar.getByRole("button", { name: "Võta tagasi" }).click();
     await expect(rows).toHaveCount(count + 1);
     await expect(rows.nth(2).locator("[data-lang-field]")).toHaveValue(third);
     await expect(undoBar).toHaveCount(0);
     await outcomes.getByRole("button", { name: "Eemalda rida 3" }).click();
     await expect(rows).toHaveCount(count);
-    // (Esc dismisses the bar: on a phone it stands over the PublishBar's „Avalda“ for its 8 s, PublishBar.module.css)
-    await page.keyboard.press("Escape");
-    await expect(undoBar).toHaveCount(0);
+    // (no Esc: a phone has none; the bar is up while „Avalda muudatused“ is pressed)
+    await notCovered(page, page.locator("[data-publish-go]"));
     await expect(barWords(page)).toHaveText(draftWords("Õpiväljundid"));
     await publish(page);
 
@@ -633,10 +649,10 @@ test.describe("course editor", () => {
     expect((await page.request.get(`/media/${jpgKey.replace(".jpg", ".svg")}`)).status()).toBe(404);
     expect((await page.request.get("/media/img/../secret")).status()).toBe(404);
 
-    // the new JPEG becomes the main picture: its handle dragged with a mouse, ↑ on a phone (DragList: „Liiguta rida {n} üles“, S3-P3-m)
+    // the new JPEG becomes the main picture: its handle dragged with a mouse, ↑ on a phone (the pictures' own words, review M-1)
     const last = items.nth(before);
     if (isMobile) {
-      for (let n = before + 1; n > 1; n--) await gallery.getByRole("button", { name: `Liiguta rida ${n} üles` }).click();
+      for (let n = before + 1; n > 1; n--) await gallery.getByRole("button", { name: `Liiguta pilt ${n} ettepoole` }).click();
     } else {
       // both pictures on screen: a drag cannot scroll the page on its way
       const size = page.viewportSize()!;
@@ -655,14 +671,15 @@ test.describe("course editor", () => {
     await expect(items).toHaveCount(before + 1);
     const undoBar = page.locator("[data-undo-bar]");
     await expect(undoBar).toContainText("Pilt eemaldatud.");
+    await notCovered(page, page.locator("[data-publish-go]"));
     await undoBar.getByRole("button", { name: "Võta tagasi" }).click();
     await expect(items).toHaveCount(before + 2);
     await expect(items.nth(pngIndex)).toHaveAttribute("data-gallery-item", pngKey);
     expect((await page.request.get(`/media/${pngKey}`)).status()).toBe(200);
     await gallery.getByRole("button", { name: `Eemalda pilt ${pngIndex + 1}` }).click();
     await expect(items).toHaveCount(before + 1);
-    await page.keyboard.press("Escape"); // (the bar off the phone's „Avalda“)
-    await expect(undoBar).toHaveCount(0);
+    // (no Esc: the bar is up while „Avalda muudatused“ is pressed)
+    await notCovered(page, page.locator("[data-publish-go]"));
     await publish(page);
     const stored = await storedCourse(c.slug);
     expect(stored.images[0]).toBe(jpgKey);
@@ -765,6 +782,11 @@ test.describe("course editor", () => {
   });
 
   test("'Lisa koolitus' (S3-P3-g): the header says what is missing, then to press it; leaving asks; the press creates an unpublished course whose cards autosave", async ({ page, context, visitorIp }, info) => {
+    // the new course stands in the catalogue's order (a row of the list): it takes turns with the order tests, and it goes before the lock is let go
+    // (a list that loses a row under the phone's finger drag scrolls; Task 8 review round 1)
+    info.setTimeout(info.timeout + LOCK_WAIT_MS);
+    await takeOrder();
+    undo.push(async () => void (await removeEditRows(info.project.name)));
     await signIn(page, context, visitorIp);
     await page.goto("/admin/koolitused");
     await adminReady(page);

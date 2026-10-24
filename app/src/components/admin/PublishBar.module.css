@@ -119,7 +119,7 @@
 }
 
 /* Below 900px (the admin's phone width, Shell.module.css / Sidebar.tsx WIDE): the phone's bar at the bottom of the screen. Shell's main keeps 80–100px
-   free at its foot, so the bar never covers the page's last line. The UndoBar (z-index 60) stands above it. */
+   free at its foot, so the bar never covers the page's last line. The UndoBar stands above it: the bar sets --admin-foot (foot-bar.ts). */
 @media (max-width: 899.98px) {
   /* only the blocked list stays in the page's flow */
   .wrap {

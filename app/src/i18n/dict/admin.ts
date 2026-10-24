@@ -1670,8 +1670,11 @@ export const adminEt = {
       testOptionRemove: "Eemalda küsimuse {q} vastusevariant {n}",
       testAdd: "Lisa küsimus",
       testFull: "Rohkem kui 50 küsimust ei saa lisada.",
+      // the questions' ↑ / ↓ (DragList's arrowNames: the handle and the announcement are DragList's row forms, S3-P3-m)
+      testUp: "Liiguta küsimus {n} üles",
+      testDown: "Liiguta küsimus {n} alla",
       testRemove: "Eemalda küsimus {n}",
-      // the UndoBar's line after × on a question or an answer option (S3-P3-d; ↑ / ↓ are DragList's, drag.upRow / drag.downRow)
+      // the UndoBar's line after × on a question or an answer option (S3-P3-d)
       testRemoved: "Küsimus eemaldatud.",
       testOptionRemoved: "Vastusevariant eemaldatud.",
       // "Tunnistus" (phase 3d, spec §6): an e-course certificate's lines and volume (the list is ProtocolStagesEditor's kind "skills")
@@ -1686,12 +1689,15 @@ export const adminEt = {
       certificateSkillsFull: "Rohkem kui 16 rida ei saa lisada.",
       certificateVolume: "Maht",
       certificateVolumeHint: "nt 10 akadeemilist tundi. Tühjaks jättes tunnistusel ei näidata.",
-      galleryHint: "Esimene pilt on põhipilt (kaardil ja galerii alguses). Muuda järjekorda nooltega või lohista pilti.",
+      galleryHint: "Esimene pilt on põhipilt (kaardil ja galerii alguses). Muuda järjekorda nooltega.",
       main: "Põhipilt",
       image: "Pilt {n}",
       alt: "Pildi kirjeldus",
+      // the pictures' ↑ / ↓ (DragList's arrowNames; the handle and the announcement are DragList's row forms, S3-P3-m)
+      imageUp: "Liiguta pilt {n} ettepoole",
+      imageDown: "Liiguta pilt {n} tahapoole",
       imageRemove: "Eemalda pilt {n}",
-      // the UndoBar's line after × on a picture (drawn, P1:356; S3-P3-d); ↑ / ↓ are DragList's
+      // the UndoBar's line after × on a picture (drawn, P1:356; S3-P3-d)
       imageRemoved: "Pilt eemaldatud.",
       noImages: "Pilte veel pole.",
       recommendationsHint: "Vali kuni 3 koolitust, mida näidata selle koolituse lehe lõpus. Ülejäänud kohad täidetakse sarnaste koolitustega.",
@@ -2154,7 +2160,7 @@ export const adminEt = {
     bio: "Tutvustus",
     bioHint: "Tühi rida alustab uut lõiku. Esimene lõik on ka avalehe koolitaja plokis.",
     works: "Koolitaja tööd",
-    worksHint: "Pildid koolitaja lehel portree all, selles järjekorras. Muuda järjekorda nooltega või lohista pilti.",
+    worksHint: "Pildid koolitaja lehel portree all, selles järjekorras. Muuda järjekorda nooltega.",
     story: "Koolituskeskuse lugu",
     journey: "Koolitaja teekond",
     storyTitle: "Pealkiri",

@@ -814,10 +814,16 @@ async function readSnapshot(sql: postgres.Sql, slug: string): Promise<CourseSnap
   return { id: row.id as number, row: Object.fromEntries([...JSON_COLUMNS, ...PLAIN_COLUMNS].map((c) => [c, row[c]])), images: [...images], test: test ?? null };
 }
 
-async function writeBack(sql: postgres.Sql, s: CourseSnapshot): Promise<void> {
+/**
+ * The course row put back. `sort` (its place in the catalogue) only when no test runs (`withSort`, the leftovers of an interrupted run): during a
+ * run the order is the order tests' own, which take turns under a lock and put it back themselves (snapshotOrder). Put back by a content test that
+ * ends while the other project's order test has just moved a course past this one, it would flip the order under that test (the phone's course
+ * order flaked so, Task 8 review round 1).
+ */
+async function writeBack(sql: postgres.Sql, s: CourseSnapshot, withSort = false): Promise<void> {
   await sql.begin(async (tx) => {
     const values: Record<string, unknown> = {};
-    for (const c of PLAIN_COLUMNS) values[c] = c === "updated_at" ? new Date(s.row[c] as string) : s.row[c];
+    for (const c of PLAIN_COLUMNS) if (c !== "sort" || withSort) values[c] = c === "updated_at" ? new Date(s.row[c] as string) : s.row[c];
     // tx.json: a JSON string cast to jsonb would be stored as one jsonb *string* (see insertAdminFixtures)
     for (const c of JSON_COLUMNS) values[c] = s.row[c] === null ? null : tx.json(s.row[c] as postgres.JSONValue);
     await tx`update courses set ${tx(values as Record<string, postgres.ParameterOrJSON<never>>)} where id = ${s.id}`;
@@ -847,13 +853,13 @@ export async function snapshotCourse(slug: string): Promise<number> {
   }
 }
 
-/** Puts a snapshotted course back exactly as it was and deletes its snapshot file. */
-export async function restoreCourse(id: number): Promise<void> {
+/** Puts a snapshotted course back as it was (its place in the catalogue only with `withSort`: see writeBack) and deletes its snapshot file. */
+export async function restoreCourse(id: number, withSort = false): Promise<void> {
   const file = snapshotFile(id);
   if (!existsSync(file)) return;
   const sql = connect();
   try {
-    await writeBack(sql, JSON.parse(readFileSync(file, "utf8")) as CourseSnapshot);
+    await writeBack(sql, JSON.parse(readFileSync(file, "utf8")) as CourseSnapshot, withSort);
     rmSync(file);
   } finally {
     await sql.end();
@@ -864,7 +870,7 @@ export async function restoreCourse(id: number): Promise<void> {
 export async function restoreLeftoverCourses(): Promise<number> {
   if (!existsSync(SNAPSHOT_DIR)) return 0;
   const files = readdirSync(SNAPSHOT_DIR).filter((f) => /^course-\d+\.json$/.test(f));
-  for (const f of files) await restoreCourse(Number(f.match(/\d+/)![0]));
+  for (const f of files) await restoreCourse(Number(f.match(/\d+/)![0]), true);
   return files.length;
 }
 

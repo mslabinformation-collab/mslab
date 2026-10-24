@@ -48,6 +48,11 @@ export type DragListProps<T> = {
   keyOf: (item: T) => string;
   /** The item's name for the handle, the arrows and the announcement („Lohista: {nimi}“). An empty string: it has none, and its number says which row it is („Lohista rida {n}“). */
   label: (item: T, index: number) => string;
+  /**
+   * The arrows' names in a list's own words, by the row's number (`n`, from 1): the gallery's „Liiguta pilt {n} ettepoole“, the test's „Liiguta
+   * küsimus {n} üles“ (Task 8 review M-1). The handle and the announcement keep `label`'s forms.
+   */
+  arrowNames?: (n: number) => { up: string; down: string };
   /** Called once per move, with the place the item is taken from and the place it goes to (an item dropped where it was is no move). The page puts the list in the new order. */
   onMove: (fromIndex: number, toIndex: number) => void;
   /** The row's content. `handle` and `arrows` are what the page puts where its layout wants them; they are null while the list is `disabled`. `tools`: see DragRowTools. */
@@ -108,7 +113,7 @@ function Row<T>({
  * node moves; it is given back as soon as the page's list has the new order, unless the reader has put it elsewhere meanwhile (it is given back only when it
  * is on the page's body or still in the moved row). A page that waits for the server before it reorders gets the same, for a few seconds.
  */
-export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, className, rowClassName }: DragListProps<T>) {
+export function DragList<T>({ items, keyOf, label, arrowNames, onMove, renderRow, disabled, className, rowClassName }: DragListProps<T>) {
   const t = adminEt.drag;
   const list = useRef<HTMLOListElement>(null);
   const session = useRef<Session | null>(null);
@@ -290,13 +295,14 @@ export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, 
               <span aria-hidden="true">⋮⋮</span>
             </button>
           );
+          const own = arrowNames?.(i + 1);
           const arrows = disabled ? null : (
             <span className={styles.arrows}>
               <button
                 type="button"
                 className={styles.arrow}
                 data-drag-tool="up"
-                aria-label={name ? fill(t.up, { name }) : fill(t.upRow, { n: i + 1 })}
+                aria-label={own ? own.up : name ? fill(t.up, { name }) : fill(t.upRow, { n: i + 1 })}
                 aria-disabled={i === 0 || undefined}
                 onClick={() => step(i, -1, "up")}
               >
@@ -306,7 +312,7 @@ export function DragList<T>({ items, keyOf, label, onMove, renderRow, disabled, 
                 type="button"
                 className={styles.arrow}
                 data-drag-tool="down"
-                aria-label={name ? fill(t.down, { name }) : fill(t.downRow, { n: i + 1 })}
+                aria-label={own ? own.down : name ? fill(t.down, { name }) : fill(t.downRow, { n: i + 1 })}
                 aria-disabled={last || undefined}
                 onClick={() => step(i, 1, "down")}
               >

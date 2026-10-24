@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { moveItem } from "@/domain/course-editor";
 import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
@@ -8,8 +8,8 @@ import { fill } from "@/i18n/format";
 import { DragList } from "./DragList";
 import { I18nInput } from "./I18nInput";
 import { insertAt, newRowKey, removeAt, useRowKeys } from "./row-keys";
-import { useUndo } from "./UndoBar";
 import { UnpublishedTag } from "./UnpublishedTag";
+import { focusFell, useListRows } from "./useListRows";
 import ui from "./ui.module.css";
 import styles from "./editor.module.css";
 
@@ -49,17 +49,12 @@ type Focus = { index: number } | { key: string } | "add" | null;
 export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, error, multiline, maxLength, name, unpublished }: Props) {
   const t = adminEt.list;
   const uid = useId();
-  const undo = useUndo();
   const rows = useRowKeys(items);
   const keys = rows.keys;
+  const { change, offer } = useListRows({ owner: name, items, onChange, onUpdate });
   const focus = useRef<Focus>(null);
   const root = useRef<HTMLDivElement>(null);
   const addBtn = useRef<HTMLButtonElement>(null);
-  // the newest render's list and callbacks: an undo pressed later works on the list as it is then
-  const live = useRef({ items, onChange, onUpdate });
-  useLayoutEffect(() => {
-    live.current = { items, onChange, onUpdate };
-  });
 
   useEffect(() => {
     const target = focus.current;
@@ -67,18 +62,9 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
     focus.current = null;
     if (target === "add") return addBtn.current?.focus();
     if ("index" in target) return root.current?.querySelector<HTMLElement>(`[data-row="${target.index}"] [data-lang-field]`)?.focus();
-    // after an undo: only where the focus fell (the bar's button is gone) or is still on the bar
-    const now = document.activeElement;
-    if (now && now !== document.body && !now.closest("[data-undo-bar]")) return;
-    root.current?.querySelector<HTMLElement>(`[data-drag-row="${CSS.escape(target.key)}"] [data-lang-field]`)?.focus();
+    if (focusFell()) root.current?.querySelector<HTMLElement>(`[data-drag-row="${CSS.escape(target.key)}"] [data-lang-field]`)?.focus();
   });
 
-  /** A change of the rows, to the list as it is when it lands. */
-  const change = (fn: (list: I18n[]) => I18n[]) => {
-    const now = live.current;
-    if (now.onUpdate) now.onUpdate(fn);
-    else now.onChange(fn(now.items));
-  };
   const add = () => {
     rows.expect([...items, { et: "" }], [...keys, newRowKey()]);
     change((list) => [...list, { et: "" }]);
@@ -93,14 +79,11 @@ export function ListEditor({ title, itemLabel, items, onChange, onUpdate, hint, 
     );
     change((list) => removeAt(list, i, item));
     focus.current = items.length > 1 ? { index: Math.min(i, items.length - 2) } : "add";
-    undo.show({
-      text: t.removed,
-      undo: async () => {
-        focus.current = { key };
-        change((list) => insertAt(list, i, item));
-        return true;
-      },
-    });
+    offer(
+      t.removed,
+      (list) => insertAt(list, i, item),
+      () => void (focus.current = { key }),
+    );
   };
   const move = (from: number, to: number) => {
     rows.expect(moveItem(items, from, to), moveItem(keys, from, to));

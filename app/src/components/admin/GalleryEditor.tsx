@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { LIMITS, moveItem, type DraftImage } from "@/domain/course-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
@@ -9,7 +9,7 @@ import { DragList } from "./DragList";
 import { I18nInput } from "./I18nInput";
 import { ImageUpload } from "./ImageUpload";
 import { insertAt, removeAt } from "./row-keys";
-import { useUndo } from "./UndoBar";
+import { useListRows } from "./useListRows";
 import ui from "./ui.module.css";
 import styles from "./editor.module.css";
 
@@ -49,16 +49,12 @@ export function GalleryEditor({
   errorOf?: (index: number) => string | undefined;
 }) {
   const t = adminEt.courseEditor.fields;
-  const undo = useUndo();
+  // every change is an update function already: the list as it is when it lands
+  const { change, offer } = useListRows({ owner: "gallery", items: images, onUpdate: onChange });
   // the button that gets the focus after the next render (the next image's × after a removal)
   const focus = useRef<{ key: string; tool: "remove" } | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const keys = rowKeys(images);
-  // the newest render's onChange: an undo pressed later goes to the list as it is then
-  const live = useRef(onChange);
-  useLayoutEffect(() => {
-    live.current = onChange;
-  });
 
   useEffect(() => {
     const target = focus.current;
@@ -67,21 +63,16 @@ export function GalleryEditor({
     root.current?.querySelector<HTMLElement>(`[data-gallery-item="${CSS.escape(target.key)}"] [data-tool="${target.tool}"]`)?.focus();
   });
 
-  const move = (from: number, to: number) => live.current((list) => moveItem(list, from, to));
+  const move = (from: number, to: number) => change((list) => moveItem(list, from, to));
   const remove = (i: number) => {
     const img = images[i];
     const rest = images.filter((_, j) => j !== i);
-    live.current((list) => removeAt(list, i, img));
+    // the picture is known by its key (its description may be another by the time the change lands: the fresh form after a restart; review M-5)
+    change((list) => removeAt(list, i, img, (x) => x.key === img.key));
     const nextKey = rowKeys(rest)[Math.min(i, rest.length - 1)];
     if (nextKey) focus.current = { key: nextKey, tool: "remove" };
-    undo.show({
-      text: t.imageRemoved,
-      // back at its place, unless the picture is in the list again already (it would be there twice)
-      undo: async () => {
-        live.current((list) => (list.some((x) => x.key === img.key) ? list : insertAt(list, i, img)));
-        return true;
-      },
-    });
+    // back at its place, unless the picture is in the list again already (it would be there twice)
+    offer(t.imageRemoved, (list) => (list.some((x) => x.key === img.key) ? list : insertAt(list, i, img)));
   };
 
   return (
@@ -94,6 +85,7 @@ export function GalleryEditor({
           items={images.map((img, i) => ({ img, key: keys[i] }))}
           keyOf={(row) => row.key}
           label={() => ""}
+          arrowNames={(n) => ({ up: fill(t.imageUp, { n }), down: fill(t.imageDown, { n }) })}
           onMove={move}
           className={styles.gallery}
           renderRow={({ img, key }, i, handle, arrows) => {
@@ -108,7 +100,7 @@ export function GalleryEditor({
                     {fill(t.image, { n })}
                     {showMain && i === 0 && <span className={`${ui.tag} ${ui.dark}`}>{t.main}</span>}
                   </span>
-                  <I18nInput label={t.alt} value={img.alt} onChange={(alt) => live.current((list) => list.map((x, j) => (j === i ? { ...x, alt } : x)))} maxLength={LIMITS.alt} error={errorOf?.(i)} name={`image-${i}`} />
+                  <I18nInput label={t.alt} value={img.alt} onChange={(alt) => onChange((list) => list.map((x, j) => (j === i ? { ...x, alt } : x)))} maxLength={LIMITS.alt} error={errorOf?.(i)} name={`image-${i}`} />
                 </div>
                 <span className={styles.shotTools}>
                   {arrows}

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, useEffect, useState } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ListEditor } from "@/components/admin/ListEditor";
 import { UndoProvider } from "@/components/admin/UndoBar";
@@ -230,5 +231,59 @@ describe("ListEditor: „· avaldamata“ (README §1.8)", () => {
     await render(ITEMS);
     expect($("[data-unpublished-tag]")).toBeNull();
     expect($("[data-list-editor='outcomes']")!.getAttribute("aria-describedby")).toBeNull();
+  });
+});
+
+describe("ListEditor: rendered on the server, then hydrated (review I-1)", () => {
+  it("the rows' keys are the same on the server and in the browser; after hydration ↓ keeps the focus on the moved row", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const recoverable = vi.fn();
+    const page = () => createElement(UndoProvider, null, createElement(Harness, { initial: ITEMS }));
+    // (other lists rendered by the server before this one: its count of rows is not where a new browser's starts)
+    renderToString(createElement(Harness, { initial: ITEMS }));
+    const html = renderToString(page());
+    const box = document.createElement("div");
+    document.body.append(box);
+    box.innerHTML = html;
+    const keysOf = () => [...box.querySelectorAll<HTMLElement>("[data-drag-row]")].map((li) => li.getAttribute("data-drag-row"));
+    const served = keysOf();
+    const hydrated = await act(async () => hydrateRoot(box, page(), { onRecoverableError: recoverable }));
+    try {
+      expect(recoverable).not.toHaveBeenCalled();
+      expect(logged.mock.calls.map((c) => String(c[0])).filter((m) => /hydrat|did(n't| not) match/i.test(m))).toEqual([]);
+      expect(keysOf()).toEqual(served);
+      // ↓ re-inserts the focused row: the focus comes back to its ↓, found by the row's key
+      const down = box.querySelector<HTMLElement>('[data-row="0"] [data-drag-tool="down"]')!;
+      down.focus();
+      await act(async () => down.click());
+      expect(current.map((x) => x.et)).toEqual(["Oskab värvida", "Oskab mõõta", "Oskab hooldada"]);
+      expect(keysOf()).toEqual([served[1], served[0], served[2]]);
+      expect(document.activeElement).toBe(box.querySelector('[data-row="1"] [data-drag-tool="down"]'));
+    } finally {
+      await act(async () => hydrated.unmount());
+      box.remove();
+      logged.mockRestore();
+    }
+  });
+});
+
+describe("ListEditor: the bar and the editor that offered it (review M-6)", () => {
+  const tick = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+
+  it("the editor goes (the page is left) and no other of its list takes its place: the bar goes with it", async () => {
+    await render();
+    await click(button("Eemalda rida 2"));
+    expect(bar()).not.toBeNull();
+    await act(async () => root.render(createElement(UndoProvider, null, createElement("p", null, "Mujal"))));
+    await tick();
+    expect(bar()).toBeNull();
+  });
+
+  it("the same list's editor takes its place at once (the course editor starting over): the bar stays", async () => {
+    await render();
+    await click(button("Eemalda rida 2"));
+    await render(current); // (a new editor of the same list, in the same commit)
+    await tick();
+    expect(text(bar()!.querySelector("p"))).toBe("Rida eemaldatud.");
   });
 });

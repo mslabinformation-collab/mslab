@@ -19,6 +19,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let container: HTMLDivElement;
 let root: Root;
 let current: TestDraft;
+/** The page changes the questions itself (another tab's text read again, the cards started over): set from outside the editor. */
+let fromOutside: (fn: (v: TestDraft) => TestDraft) => void = () => {};
 let mounts = 0;
 /** The question list's changes asked for through `onUpdate` (a question added, moved or removed, an option removed, an undo). */
 const updates = vi.fn();
@@ -26,6 +28,7 @@ function Harness({ initial, errors, unpublished }: { initial: TestDraft; errors:
   const [value, setValue] = useState(initial);
   useEffect(() => {
     current = value; // (not during the render: react-hooks/globals; act() flushes the effect)
+    fromOutside = setValue;
   }, [value]);
   const onUpdate = (fn: (questions: TestQuestion[]) => TestQuestion[]) => {
     updates();
@@ -132,10 +135,11 @@ test("questions move ↑ / ↓ (off at the ends) and go with ×, the focus kept;
   const a = choice("q0000001", "Esimene", [["A", true], ["B", false]]);
   const b: TestQuestion = { id: "q0000002", kind: "open", text: "Teine" };
   await render(draft([a, b]));
-  // the list editors' order control (DragList, Task 8): the handle „Lohista rida {n}“ and the arrows by the row's number (S3-P3-m)
+  // the list editors' order control (DragList, Task 8): the handle „Lohista rida {n}“ (S3-P3-m); the arrows keep the questions' own words (review M-1)
   expect($('[data-question="0"] [data-drag-tool="up"]')!.getAttribute("aria-disabled")).toBe("true");
   expect($('[data-question="1"] [data-drag-tool="down"]')!.getAttribute("aria-disabled")).toBe("true");
-  expect($('[data-question="1"] [data-drag-tool="up"]')!.getAttribute("aria-label")).toBe("Liiguta rida 2 üles");
+  expect($('[data-question="1"] [data-drag-tool="up"]')!.getAttribute("aria-label")).toBe("Liiguta küsimus 2 üles");
+  expect($('[data-question="0"] [data-drag-tool="down"]')!.getAttribute("aria-label")).toBe("Liiguta küsimus 1 alla");
   expect($('[data-question="1"] [data-drag-tool="handle"]')!.getAttribute("aria-label")).toBe("Lohista rida 2");
   await click($('[data-question="1"] [data-drag-tool="up"]'));
   expect(current.questions.map((q) => q.id)).toEqual(["q0000002", "q0000001"]);
@@ -263,4 +267,19 @@ test("„· avaldamata“ after „Teadmiste test“ while the questions wait fo
   expect(group.getAttribute("aria-describedby")!.split(" ")).toContain(tag.id);
   await render(draft([]));
   expect($("h3 [data-unpublished-tag]")).toBeNull();
+});
+
+test("the undo's focus goes to the question that came back, by its id, also when the list changed meanwhile (review M-7)", async () => {
+  const a: TestQuestion = { id: "q0000001", kind: "open", text: "Esimene" };
+  const b: TestQuestion = { id: "q0000002", kind: "open", text: "Teine" };
+  const c: TestQuestion = { id: "q0000003", kind: "open", text: "Kolmas" };
+  await render(draft([a, b, c]));
+  await click($('[data-question="2"] [data-question-remove]'));
+  // the page reads the questions again meanwhile: one fewer (the place 3 is no longer there)
+  await act(async () => fromOutside((v) => ({ ...v, questions: [a] })));
+  const undo = bar()!.querySelector<HTMLElement>("button")!;
+  undo.focus();
+  await click(undo);
+  expect(current.questions.map((q) => q.id)).toEqual(["q0000001", "q0000003"]);
+  expect(document.activeElement).toBe($('[data-question="1"] [data-question-text]'));
 });

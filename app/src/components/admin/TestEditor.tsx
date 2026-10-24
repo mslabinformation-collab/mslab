@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { ChoiceOption, TestQuestion } from "@/db/schema";
 import { newItemId, TEST_LIMITS } from "@/domain/completion";
 import { moveItem, type TestDraft } from "@/domain/course-editor";
@@ -9,8 +9,8 @@ import { fill } from "@/i18n/format";
 import { Choice } from "./Choice";
 import { DragList } from "./DragList";
 import { insertAt } from "./row-keys";
-import { useUndo } from "./UndoBar";
 import { UnpublishedTag } from "./UnpublishedTag";
+import { focusFell, useListRows } from "./useListRows";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import styles from "./TestEditor.module.css";
@@ -25,8 +25,8 @@ const newOption = (): ChoiceOption => ({ id: newItemId(), text: "", correct: fal
 /** A new question: a choice question with two empty options. */
 const newQuestion = (): TestQuestion => ({ id: newItemId(), kind: "choice", text: "", options: [newOption(), newOption()] });
 
-/** Where the focus goes after the next render: a question's text, an option's field, or "Lisa küsimus"; `back`: after an undo, only where the focus fell. */
-type Focus = { question: number; option?: number; back?: boolean } | "add" | null;
+/** Where the focus goes after the next render: a question's text or an option's field (by place), "Lisa küsimus", or after an undo the question that came back (by its id). */
+type Focus = { question: number; option?: number } | { back: string } | "add" | null;
 
 /**
  * "Teadmiste test" (e-course completion, spec §3.1, §5.1): an e-course's pass mark, tries and questions, saved with the course's card (autosave).
@@ -60,16 +60,11 @@ export function TestEditor({
   const t = adminEt.courseEditor;
   const f = t.fields;
   const uid = useId();
-  const undo = useUndo();
   const root = useRef<HTMLDivElement>(null);
   const addBtn = useRef<HTMLButtonElement>(null);
   const focus = useRef<Focus>(null);
   const kept = useRef(new Map<string, ChoiceOption[]>());
-  // the newest render's value and callbacks: an undo pressed later works on the questions as they are then
-  const live = useRef({ value, onChange, onUpdate });
-  useLayoutEffect(() => {
-    live.current = { value, onChange, onUpdate };
-  });
+  const { change, offer } = useListRows({ owner: "test", items: value.questions, onChange: (questions) => onChange({ ...value, questions }), onUpdate });
 
   useEffect(() => {
     const target = focus.current;
@@ -79,10 +74,9 @@ export function TestEditor({
       addBtn.current?.focus();
       return;
     }
-    if (target.back) {
-      // after an undo: only where the focus fell (the bar's button is gone) or is still on the bar
-      const now = document.activeElement;
-      if (now && now !== document.body && !now.closest("[data-undo-bar]")) return;
+    if ("back" in target) {
+      if (focusFell()) root.current?.querySelector<HTMLElement>(`[data-drag-row="${CSS.escape(target.back)}"] [data-question-text]`)?.focus();
+      return;
     }
     const card = root.current?.querySelector(`[data-question="${target.question}"]`);
     const field =
@@ -95,12 +89,6 @@ export function TestEditor({
   const { questions } = value;
   const setQuestions = (list: TestQuestion[]) => onChange({ ...value, questions: list });
   const update = (i: number, q: TestQuestion) => setQuestions(questions.map((x, j) => (j === i ? q : x)));
-  /** A change of the rows, to the questions as they are when it lands. */
-  const change = (fn: (list: TestQuestion[]) => TestQuestion[]) => {
-    const now = live.current;
-    if (now.onUpdate) now.onUpdate(fn);
-    else now.onChange({ ...now.value, questions: fn(now.value.questions) });
-  };
   const full = questions.length >= TEST_LIMITS.questions;
 
   const add = () => {
@@ -113,15 +101,12 @@ export function TestEditor({
     const q = questions[i];
     change((list) => list.filter((x) => x.id !== q.id));
     focus.current = questions.length > 1 ? { question: Math.min(i, questions.length - 2) } : "add";
-    undo.show({
-      text: f.testRemoved,
-      // back at its place with its id and its options (never twice: the id is the question's for good)
-      undo: async () => {
-        focus.current = { question: i, back: true };
-        change((list) => (list.some((x) => x.id === q.id) || list.length >= TEST_LIMITS.questions ? list : insertAt(list, i, q)));
-        return true;
-      },
-    });
+    // back at its place with its id and its options (never twice: the id is the question's for good); the focus on it, found by its id
+    offer(
+      f.testRemoved,
+      (list) => (list.some((x) => x.id === q.id) || list.length >= TEST_LIMITS.questions ? list : insertAt(list, i, q)),
+      () => void (focus.current = { back: q.id }),
+    );
   };
   const move = (from: number, to: number) => change((list) => moveItem(list, from, to));
   const setKind = (i: number, kind: TestQuestion["kind"]) => {
@@ -151,13 +136,11 @@ export function TestEditor({
     const o = q.options[j];
     changeOptions(q.id, (options) => (options.length <= TEST_LIMITS.minOptions ? options : options.filter((x) => x.id !== o.id)));
     focus.current = { question: i, option: Math.min(j, q.options.length - 2) };
-    undo.show({
-      text: f.testOptionRemoved,
-      undo: async () => {
-        changeOptions(q.id, (options) => (options.some((x) => x.id === o.id) || options.length >= TEST_LIMITS.maxOptions ? options : insertAt(options, j, o)));
-        return true;
-      },
-    });
+    offer(f.testOptionRemoved, (list) =>
+      list.map((x) =>
+        x.id === q.id && x.kind === "choice" && !x.options.some((y) => y.id === o.id) && x.options.length < TEST_LIMITS.maxOptions ? { ...x, options: insertAt(x.options, j, o) } : x,
+      ),
+    );
   };
 
   // the save's refusal: in the card of the question it names (by its id), or for the list as a whole
@@ -236,6 +219,7 @@ export function TestEditor({
           items={questions}
           keyOf={(q) => q.id}
           label={() => ""}
+          arrowNames={(n) => ({ up: fill(f.testUp, { n }), down: fill(f.testDown, { n }) })}
           onMove={move}
           className={ed.rows}
           renderRow={(q, i, handle, arrows) => {
