@@ -115,6 +115,8 @@ const BROWSER_FILES = [
   "src/domain/course-parts.ts",
   // the B screens, Task 7: the course editor's pure rules — its cards per type, the section map, the PublishBar's labels, the one chip (pure; it pulls domain/course-parts.ts)
   "src/components/admin/course/course-view.ts",
+  // the B screens, Task 7 review round 2: the course editor's copies in this browser, which the public preview bar drops too (pure, imports nothing)
+  "src/lib/course-copies.ts",
 ];
 
 const LOOKBEHIND = new RegExp(["\\(\\?<", "="].join("") + "|" + ["\\(\\?<", "!"].join(""));

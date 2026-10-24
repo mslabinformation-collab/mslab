@@ -164,6 +164,32 @@ describe("PreviewBar", () => {
     expect(assign).toHaveBeenCalledExactlyOnceWith(EXIT);
   });
 
+  it("a discard that goes through drops this browser's course-editor copies of this course, and only those; one that fails keeps them", async () => {
+    localStorage.clear();
+    const keep = [
+      "mslab-draft:koolitus:70-basics:t1", // another course (7 is not 70)
+      "mslab-draft:koolitus:uus", // the new-course page's
+      "mslab-draft:registreering:7:t1", // another owner's
+      "mslab-edit-lang",
+    ];
+    const mine = ["mslab-draft:koolitus:7-basics:t1", "mslab-draft:koolitus:7-price:t2"];
+    for (const key of [...keep, ...mine]) localStorage.setItem(key, "{}");
+    const f = fakeFetch();
+    await show();
+    await ask();
+    await click(panelButtons()[0]);
+    await f.answer(Response.json({ ok: false, error: "server" }, { status: 500 }));
+    expect(Object.keys(localStorage).sort()).toEqual([...keep, ...mine].sort());
+    await click(panelButtons()[0]);
+    await f.answer(ok());
+    expect(Object.keys(localStorage).sort()).toEqual([...keep].sort());
+    expect(assign).toHaveBeenCalledExactlyOnceWith(EXIT);
+    // (the bar loads no admin dictionary or engine: its copy rule is lib/course-copies.ts)
+    const source = readFileSync(join(process.cwd(), "src/components/site/PreviewBar.tsx"), "utf8");
+    expect(source).not.toMatch(/i18n\/dict\/admin|autosave\/engine|components\/admin\/(?!ConfirmPanel)/);
+    localStorage.clear();
+  });
+
   it("the bar's stylesheet: stuck to the bottom of the page, 44px targets, the ring, no motion under prefers-reduced-motion", () => {
     const css = readFileSync(join(process.cwd(), "src/components/site/PreviewBar.module.css"), "utf8");
     expect(css).toMatch(/\.bar\s*\{[^}]*position:\s*sticky;[^}]*bottom:\s*0/);

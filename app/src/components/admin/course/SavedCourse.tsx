@@ -25,12 +25,15 @@ import type { CourseEditorData, CourseParts, OtherCourse } from "./types";
 // The engines start from the versions the page read and keep their own afterwards. After anything that moves versions the engines do not hold — a
 // publish, a discard, the „Avalikul lehel“ switch (R-d publishes the drafts first), and on an unpublished course a type change, which empties the
 // other type's parts on the server (Task 4) — the page is read again (router.refresh) and the editor starts once more from it (a new `generation`):
-// its cards from the new versions and values, the focus back on the control it was on if nothing else has it. Until the new read arrives the cards
-// are inert and aria-busy and take nothing typed (review I-2: a text typed then would be a copy on a version the server has moved on, a false
-// „Muudeti teises aknas“ after the restart); on an unpublished course from the moment the type is chosen. After a discard the parts' copies in this
-// browser go first (engine discardCopy, review I-1), so the fields show the live text and nothing is sent again. A read that never comes is given up
-// after REREAD_WAIT_MS (review M-4). What is not the engines' (the published flag, the modules and their labels) follows every new read of the page,
-// and so does what the bar and the switches have to say (kept here, above the restart).
+// its cards from the new versions and values, the focus back on the control it was on if nothing else has it. From the press of „Avalda
+// muudatused“, „Jah, loobu“ or „Avalikul lehel“ through its request and until the new read arrives, the cards are inert and aria-busy and take nothing
+// typed (review I-2 and round 2: a text typed then would be a copy on a version the server has moved on, a false „Muudeti teises aknas“ after the
+// restart); on an unpublished course also from the type's choice until its save is answered. A picture whose upload ends meanwhile is not lost: it
+// waits and goes into the gallery card that is there once the cards take typing again. After a discard the parts' copies in this browser go first
+// (engine discardCopy, review I-1), so the fields show the live text and nothing is sent again; the discarded cards must start over, so a read that
+// does not come is asked for again until it does (round 2 N-1). Any other read that never comes is given up after REREAD_WAIT_MS (review M-4). What
+// is not the engines' (the published flag, the modules and their labels) follows every new read of the page, and so does what the bar and the
+// switches have to say (kept here, above the restart).
 
 const t = adminEt.courseEditor;
 
@@ -101,14 +104,33 @@ type Said = {
 };
 const QUIET: Said = { blocked: null, barError: null, switchError: null, priceRefused: false, asked: {}, publishedAt: null };
 
+/** A change worked out from a field when it lands (a gallery upload's) that came while the cards waited: it goes in once they take typing again. */
+type Late = { part: EditorPart; name: string; fn: (current: unknown) => unknown };
+/** A part's `update`, whatever the part (the late changes are its own). */
+type LooseUpdate = (name: string, fn: (current: unknown) => unknown) => void;
+
 export function SavedCourse(props: Shared) {
   const { data } = props;
   const router = useRouter();
   const [seen, setSeen] = useState(data);
   const [seeds, setSeeds] = useState(data.parts);
   const [generation, setGeneration] = useState(0);
+  /** The page's new read was asked for: the cards start over from it. */
   const [awaiting, setAwaiting] = useState(false);
+  /** A publish, a discard or the „Avalikul lehel“ switch is on its way: the cards wait. */
+  const [posting, setPosting] = useState(false);
+  /** After a discard: the cards (their engines muted) must start over from the next read, however long it takes. */
+  const [mustRestart, setMustRestart] = useState(false);
+  const [asks, setAsks] = useState(0);
   const [said, setSaid] = useState<Said>(QUIET);
+  // the late changes (an upload that ended while the cards waited), and a tick that tells the cards there is one
+  const late = useRef<Late[]>([]);
+  const [lateTick, setLateTick] = useState(0);
+  const enqueue = useCallback((change: Late) => {
+    late.current.push(change);
+    setLateTick((n) => n + 1);
+  }, []);
+  const takeLate = useCallback(() => late.current.splice(0), []);
   // the control of the editor the focus was last on (kept above the restart): a restart puts it back there — the control she pressed, or the one she
   // moved to while the cards waited, never one she has left (inert cards drop the focus to <body>, which is no control)
   const lastFocus = useRef<string | null>(null);
@@ -119,26 +141,37 @@ export function SavedCourse(props: Shared) {
     document.addEventListener("focusin", onFocus);
     return () => document.removeEventListener("focusin", onFocus);
   }, []);
-  // a read that never comes (router.refresh failed): given up, so that a later, unrelated read (a lesson's action) does not restart the cards
+  // a read that never comes (router.refresh failed): given up, so that a later, unrelated read (a lesson's action) does not restart the cards — but
+  // after a discard it is asked for again (the discarded cards cannot take typing until they start over)
   useEffect(() => {
     if (!awaiting) return;
-    const timer = setTimeout(() => setAwaiting(false), REREAD_WAIT_MS);
+    const timer = setTimeout(() => {
+      if (!mustRestart) return setAwaiting(false);
+      setAsks((n) => n + 1);
+      startTransition(() => router.refresh());
+    }, REREAD_WAIT_MS);
     return () => clearTimeout(timer);
-  }, [awaiting]);
+  }, [awaiting, mustRestart, asks, router]);
   if (data !== seen) {
     setSeen(data);
     setSaid((s) => ({ ...s, asked: {} }));
-    if (awaiting) {
+    if (awaiting || mustRestart) {
       setSeeds(data.parts);
       setGeneration((g) => g + 1);
       setAwaiting(false);
+      setMustRestart(false);
     }
   }
-  /** Reads the page again and starts the editor over from it. */
-  const reload = useCallback(() => {
-    setAwaiting(true);
-    startTransition(() => router.refresh());
-  }, [router]);
+  /** Reads the page again and starts the editor over from it; `restart`: whatever the wait (after a discard). */
+  const reload = useCallback(
+    (restart = false) => {
+      setPosting(false);
+      if (restart) setMustRestart(true);
+      setAwaiting(true);
+      startTransition(() => router.refresh());
+    },
+    [router],
+  );
   /** The started-over editor's focus: the control she was last on, when it is there again, else the H1 (its bar's button is gone after a publish). */
   const refocus = useCallback(() => {
     const active = document.activeElement;
@@ -152,7 +185,9 @@ export function SavedCourse(props: Shared) {
       {...props}
       seeds={seeds}
       generation={generation}
-      waiting={awaiting}
+      waiting={awaiting || posting || mustRestart}
+      hold={setPosting}
+      late={{ enqueue, take: takeLate, tick: lateTick }}
       refocus={generation > 0 ? refocus : null}
       reload={reload}
       said={said}
@@ -170,6 +205,8 @@ function SavedForm({
   seeds,
   generation,
   waiting,
+  hold,
+  late,
   refocus,
   reload,
   said,
@@ -177,11 +214,15 @@ function SavedForm({
 }: Shared & {
   seeds: EditorParts;
   generation: number;
-  /** The page's new read is on its way: the cards wait for it. */
+  /** A publish, a discard or the switch, or the page's new read, is on its way: the cards wait for it. */
   waiting: boolean;
+  /** The cards wait from the press of a publish, a discard or the switch through its request (until reload or a failure lets go). */
+  hold: (on: boolean) => void;
+  /** The late changes that came while the cards waited (kept above the restart). */
+  late: { enqueue: (change: Late) => void; take: () => Late[]; tick: number };
   /** The editor started over: puts the focus back (only while nothing has it). */
   refocus: (() => void) | null;
-  reload: () => void;
+  reload: (restart?: boolean) => void;
   said: Said;
   setSaid: (update: (s: Said) => Said) => void;
 }) {
@@ -201,16 +242,41 @@ function SavedForm({
   };
   const order = Object.keys(hooks) as EditorPart[];
   const type = hooks.basics.api.fields.type;
-  // an unpublished course's type chosen: its save empties the other type's parts on the server (new versions), so the cards wait from its save until
-  // the page is read again (a save that is refused or cannot go lets them go again; so does a read that never comes)
-  const typeMoving = !published && type !== seeds.basics.value.type;
-  const frozen = waiting || (typeMoving && (hooks.basics.status.kind === "dirty" || hooks.basics.status.kind === "saving"));
+  // An unpublished course's type chosen (its commit, here): its save empties the other type's parts on the server (new versions). The cards wait
+  // from the choice until that save is answered — any answer, so a refusal, an error or no connection lets them go (round 2 N-2) — and once the
+  // server has confirmed the new type, the page is read again.
+  const [typeAsk, setTypeAsk] = useState<{ type: string; answered: number } | null>(null);
+  const typeWaiting = !published && typeAsk !== null && typeAsk.type !== seeds.basics.value.type && (hooks.basics.answeredFor.type ?? 0) === typeAsk.answered;
+  const typeConfirmed = !published && typeAsk !== null && typeAsk.type !== seeds.basics.value.type && hooks.basics.confirmed.type === typeAsk.type;
+  const frozen = waiting || typeWaiting;
   const parts = Object.fromEntries(
     order.map((part) => {
-      const api = hooks[part].api;
-      return [part, frozen ? { ...api, set: () => {}, commit: () => {}, update: () => {} } : api];
+      const api = hooks[part].api as CourseParts[EditorPart];
+      if (frozen) {
+        // nothing typed is taken while the cards wait; a picture's upload that ends meanwhile waits for them (round 2 N-3)
+        const update = ((name: string, fn: (current: unknown) => unknown) => late.enqueue({ part, name, fn })) as unknown as typeof api.update;
+        return [part, { ...api, set: () => {}, commit: () => {}, update }];
+      }
+      if (part !== "basics" || published) return [part, api];
+      const basics = api as CourseParts["basics"];
+      const commit: typeof basics.commit = (name, value) => {
+        if (name === "type") setTypeAsk({ type: value as string, answered: hooks.basics.answeredFor.type ?? 0 });
+        basics.commit(name, value);
+      };
+      return [part, { ...basics, commit }];
     }),
   ) as CourseParts;
+
+  // the late changes go in once the cards take typing again (after the restart, or a request that failed)
+  const applyLate = useRef<() => void>(() => {});
+  useLayoutEffect(() => {
+    applyLate.current = () => {
+      for (const change of late.take()) (hooks[change.part].api.update as unknown as LooseUpdate)(change.name, change.fn);
+    };
+  });
+  useEffect(() => {
+    if (!frozen) applyLate.current();
+  }, [frozen, late.tick]);
   const phone = usePhoneChip();
   const { asked } = said;
   // the parts the publish held, until each one's next save
@@ -224,23 +290,26 @@ function SavedForm({
   // the editor started over (after a publish, a discard, a switch, a type change): the focus back on the control she was last on, or the H1
   useLayoutEffect(() => refocus?.(), [refocus]);
 
-  // an unpublished course's type saved: the server emptied the other type's parts (new versions, Task 4): the page is read again
-  const typeSaved = typeMoving && hooks.basics.status.kind === "saved";
-  const reread = useRef(false);
+  // an unpublished course's new type confirmed by the server, which emptied the other type's parts (new versions, Task 4): the page is read again
+  const reread = useRef<object | null>(null);
   useEffect(() => {
-    if (!typeSaved || reread.current) return;
-    reread.current = true;
+    if (!typeConfirmed || reread.current === typeAsk) return;
+    reread.current = typeAsk;
     reload();
-  }, [typeSaved, reload]);
+  }, [typeConfirmed, typeAsk, reload]);
 
   /** Every card's waiting save, sent now and waited for: a publish, a discard or the switch work on what is saved. */
   const flushAll = () => Promise.all(order.map((part) => hooks[part].flushNow()));
 
   const publish = async () => {
     setSaid((s) => ({ ...s, barError: null }));
+    hold(true);
     await flushAll();
     const answer = await post(`/api/admin/koolitus/${id}/avalda`);
-    if (!answer.ok) return setSaid((s) => ({ ...s, barError: failedLine(answer.signedOut) }));
+    if (!answer.ok) {
+      hold(false);
+      return setSaid((s) => ({ ...s, barError: failedLine(answer.signedOut) }));
+    }
     const result = answer.body as PublishResult | null;
     const held = Array.isArray(result?.blocked) && result.blocked.length > 0 ? result.blocked : null;
     const done = Array.isArray(result?.published) && result.published.length > 0;
@@ -248,25 +317,30 @@ function SavedForm({
     // something went live, or nothing was there to go (another tab published or threw it away meanwhile, or an answer that cannot be read): the
     // page is read again (review M-2)
     if (done || !held) reload();
+    else hold(false);
   };
 
   const discard = async () => {
     setSaid((s) => ({ ...s, barError: null }));
+    hold(true);
     await flushAll();
     const answer = await post(`/api/admin/koolitus/${id}/loobu`);
     if (!answer.ok) {
+      hold(false);
       setSaid((s) => ({ ...s, barError: failedLine(answer.signedOut) }));
       throw new Error("discard failed"); // (the question stays open)
     }
-    // what was thrown away must not come back: every part's copy in this browser goes before the cards start over (review I-1)
+    // what was thrown away must not come back: every part's copy in this browser goes before the cards start over (review I-1); muted, they must
+    // start over whatever the wait (round 2 N-1)
     for (const part of order) hooks[part].discardCopy();
     setSaid((s) => ({ ...s, blocked: null }));
-    reload();
+    reload(true);
   };
 
   const switchPublished = async (on: boolean) => {
     if (asked.published !== undefined || asked.sample !== undefined) return;
     setSaid((s) => ({ ...s, switchError: null, asked: { published: on } }));
+    hold(true);
     // switched off, the drafts are published first (R-d): they get what is typed
     if (!on) await flushAll();
     let result: SwitchResult;
@@ -280,6 +354,7 @@ function SavedForm({
       return reload();
     }
     const refused = result;
+    hold(false);
     setSaid((s) => {
       const quiet = { ...s, asked: {} };
       if (refused.error === "blocked") return { ...quiet, blocked: { parts: refused.blocked, generation, saves: savesNow() } };

@@ -1,6 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { dropCourseCopies } from "@/lib/course-copies";
 import styles from "./PreviewBar.module.css";
 
 // The admin's ConfirmPanel (its words, its stylesheet and the admin's dictionary) is loaded when the question is first asked, never with the page: the
@@ -54,6 +55,9 @@ export function PreviewBar({ courseId, count, exitHref, t }: { courseId: number;
       done = false; // no connection: the question stays, and she can press again
     }
     if (done) {
+      // what was thrown away must not come back: the course editor's copies of this course in this browser go too (lib/course-copies.ts), so its next
+      // visit does not resume them (Task 7 review round 2)
+      dropCourseCopies(courseId);
       // the preview ends with the drafts: the page comes back as a visitor sees it (the bar stays busy until it does)
       window.location.assign(exitHref);
       return;

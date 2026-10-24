@@ -5,6 +5,7 @@ import { patchSender, type Fields, type SendPatch } from "@/components/admin/aut
 import { useAutosave } from "@/components/admin/autosave/useAutosave";
 import type { EditorPart, PartSeed } from "@/domain/course-parts";
 import { adminEt } from "@/i18n/dict/admin";
+import { COURSE_COPY_OWNER, courseCopyKey } from "@/lib/course-copies";
 import { stableJson } from "@/lib/version";
 import { CARD_ID, fieldLabel, listChange } from "./course-view";
 import type { PartApi } from "./types";
@@ -43,8 +44,12 @@ export function useCoursePart<P extends EditorPart>(o: {
 }) {
   const { courseId, part, seed, published, liveType } = o;
   const [codes, setCodes] = useState<Record<string, string>>({});
-  /** How many saves the server took since the card started: a part held back at the publish is listed until its next save (review M-3). */
-  const [saves, setSaves] = useState(0);
+  /**
+   * What the card heard since it started: `saves`, the saves the server took (a part held back at the publish is listed until its next one, review
+   * M-3); `answeredFor`, per field, the saves that sent it and have ended, whatever their end (no answer included); `confirmed`, each field's value
+   * as the last save the server took sent it (the type's choice answered and confirmed, review round 2 N-2).
+   */
+  const [heard, setHeard] = useState<{ saves: number; answeredFor: Record<string, number>; confirmed: Record<string, unknown> }>({ saves: 0, answeredFor: {}, confirmed: {} });
   const send = useMemo<SendPatch>(() => {
     const base = patchSender(`/api/admin/koolitus/${courseId}/osa/${part}`);
     return async (body, opts) => {
@@ -53,17 +58,22 @@ export function useCoursePart<P extends EditorPart>(o: {
       if (answer?.status === 400 && reply?.error === "invalid" && isRecord(reply.fields)) {
         const named = Object.fromEntries(Object.entries(reply.fields).filter(([name, code]) => name in body.patch && typeof code === "string")) as Record<string, string>;
         setCodes((c) => ({ ...c, ...named }));
-      } else if (answer?.status === 200) {
+      } else if (answer?.status === 200 && reply?.ok === true) {
         setCodes((c) => Object.fromEntries(Object.entries(c).filter(([name]) => !(name in body.patch))));
-        setSaves((n) => n + 1);
       }
+      const took = answer?.status === 200 && reply?.ok === true;
+      setHeard((h) => ({
+        saves: h.saves + (took ? 1 : 0),
+        answeredFor: { ...h.answeredFor, ...Object.fromEntries(Object.keys(body.patch).map((name) => [name, (h.answeredFor[name] ?? 0) + 1])) },
+        confirmed: took ? { ...h.confirmed, ...body.patch } : h.confirmed,
+      }));
       return answer;
     };
   }, [courseId, part]);
   const label = useCallback((field: string) => fieldLabel(part, field), [part]);
   const auto = useAutosave({
-    owner: "koolitus",
-    key: `${courseId}-${part}`,
+    owner: COURSE_COPY_OWNER,
+    key: courseCopyKey(courseId, part),
     version: seed.version,
     fields: seed.value as Fields,
     save: send,
@@ -108,5 +118,14 @@ export function useCoursePart<P extends EditorPart>(o: {
       attention: auto.status.kind === "invalid" || auto.status.kind === "conflict" || auto.status.kind === "gone",
     };
   }, [fields, setField, flush, restore, conflict, codes, part, liveType, published, live, auto.status.kind]);
-  return { api, status: auto.status, saves, flushNow: auto.flush, unconfirmed: auto.unconfirmed, discardCopy: auto.discardCopy };
+  return {
+    api,
+    status: auto.status,
+    saves: heard.saves,
+    answeredFor: heard.answeredFor,
+    confirmed: heard.confirmed,
+    flushNow: auto.flush,
+    unconfirmed: auto.unconfirmed,
+    discardCopy: auto.discardCopy,
+  };
 }
