@@ -1153,3 +1153,41 @@ export async function removeLeftoverReviewFixtures(): Promise<number> {
     await sql.end();
   }
 }
+
+// ---------- the draft preview (admin-eelvaade.spec.ts) ----------
+// A draft of a published seed course's title in `content_drafts` (the draft layer, admin UX pass piece 3a, Task 6), written straight to the LOCAL database.
+// Only the signed-in admin's preview (api/admin/eelvaade) shows it and no public page does, so no page is marked stale. Every row carries
+// PREVIEW_DRAFT_NOTE as its editor (`updated_by`): a test deletes its own (removePreviewDrafts), and global-setup / global-teardown delete any an
+// interrupted run left.
+
+export const PREVIEW_DRAFT_NOTE = "e2e-fixture:preview";
+
+/** Drafts the title of the published course `slug` (its `basics` part, as the course editor saves it); returns the Estonian title it has live. */
+export async function insertPreviewDraft(slug: string, title: string): Promise<string> {
+  const sql = connect(false);
+  try {
+    const [course] = await sql<{ title: string }[]>`select title->>'et' as title from courses where slug = ${slug} and published`;
+    if (!course) throw new Error(`e2e: no published course ${slug} to draft`);
+    await sql`
+      insert into content_drafts (entity, entity_id, part, value, base_version, version, updated_by)
+      select 'course', id, 'basics',
+        jsonb_build_object('title', jsonb_build_object('et', ${title}::text), 'slug', slug, 'level', level::text, 'language', language, 'summary', summary, 'body', body, 'type', type::text),
+        'e2e', 1, ${PREVIEW_DRAFT_NOTE}
+      from courses where slug = ${slug}`;
+    return course.title;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Deletes every preview draft fixture; returns how many are left (0 when clean). */
+export async function removePreviewDrafts(): Promise<number> {
+  const sql = connect(false);
+  try {
+    await sql`delete from content_drafts where updated_by = ${PREVIEW_DRAFT_NOTE}`;
+    const [{ n }] = await sql<{ n: number }[]>`select count(*)::int as n from content_drafts where updated_by = ${PREVIEW_DRAFT_NOTE}`;
+    return n;
+  } finally {
+    await sql.end();
+  }
+}

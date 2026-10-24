@@ -30,14 +30,22 @@ const HOME_POSTS_LIMIT = 8;
 
 const imageOrder = [asc(courseImages.sort), asc(courseImages.id)];
 
-/** The published courses in the catalogue's order; `only.slugs` keeps just those courses (the account's favourites). */
-export async function listPublishedCourses(db: Db, only?: { slugs: string[] }): Promise<CourseWithImages[]> {
+/**
+ * The published courses in the catalogue's order; `only.slugs` keeps just those courses (the account's favourites).
+ * `opts.drafts`: the signed-in admin's preview (admin UX pass piece 3a, ruling R-h): each course's unpublished changes are laid over its live data
+ * (server/course-parts.ts withCourseDrafts), the order unchanged. Only a caller that has asked server/preview.ts previewActive passes it; the draft
+ * layer is loaded only then, so every other reader (and the static pages) never touch it.
+ */
+export async function listPublishedCourses(db: Db, only?: { slugs: string[] }, opts: { drafts?: boolean } = {}): Promise<CourseWithImages[]> {
   if (only && only.slugs.length === 0) return [];
-  return db.query.courses.findMany({
+  const list = await db.query.courses.findMany({
     where: only ? and(eq(courses.published, true), inArray(courses.slug, only.slugs)) : eq(courses.published, true),
     orderBy: [asc(courses.sort), asc(courses.id)],
     with: { images: { orderBy: imageOrder } },
   });
+  if (!opts.drafts) return list;
+  const { withCourseDrafts } = await import("@/server/course-parts");
+  return Promise.all(list.map((c) => withCourseDrafts(db, c)));
 }
 
 /**
@@ -54,13 +62,18 @@ export async function listModuleTitles(db: Db, courseId: number): Promise<I18n[]
 }
 
 /**
- * A course page. Drafts are hidden unless `includeUnpublished` is set (admin preview).
+ * A course page. Unpublished courses are hidden unless `includeUnpublished` is set (admin preview).
  * Sessions are ordered by start; pass `sessionsFrom` to drop sessions that started before that date.
+ * `drafts`: the signed-in admin's draft preview (admin UX pass piece 3a, ruling R-h; README §1.8 „Eelvaade ↗“): the course's unpublished changes are laid
+ * over its live data (server/course-parts.ts withCourseDrafts, the test's answer key never among them), and the module titles are the working order's,
+ * with the modules made on the published course and not published yet (server/course-parts.ts previewModuleTitles), as „Avalda muudatused“ would make
+ * them. Only a caller that has asked server/preview.ts previewActive passes it (the course page); the draft layer is loaded only then. Without it
+ * the module titles are the students' (listModuleTitles): the admin's contact-course read (includeUnpublished) lists no unpublished module either.
  */
 export async function getCourseBySlug(
   db: Db,
   slug: string,
-  opts: { includeUnpublished?: boolean; sessionsFrom?: Date } = {},
+  opts: { includeUnpublished?: boolean; sessionsFrom?: Date; drafts?: boolean } = {},
 ): Promise<CourseDetail | null> {
   const course = await db.query.courses.findFirst({
     where: opts.includeUnpublished ? eq(courses.slug, slug) : and(eq(courses.slug, slug), eq(courses.published, true)),
@@ -73,8 +86,13 @@ export async function getCourseBySlug(
     },
   });
   if (!course) return null;
-  const [counts, moduleTitles] = await Promise.all([seatsTaken(db, course.sessions.map((s) => s.id)), listModuleTitles(db, course.id)]);
-  return { ...course, moduleTitles, sessions: course.sessions.map((s) => ({ ...s, taken: counts.get(s.id) ?? 0 })) };
+  const preview = opts.drafts ? await import("@/server/course-parts") : null;
+  const [counts, moduleTitles] = await Promise.all([
+    seatsTaken(db, course.sessions.map((s) => s.id)),
+    preview ? preview.previewModuleTitles(db, course) : listModuleTitles(db, course.id),
+  ]);
+  const detail = { ...course, moduleTitles, sessions: course.sessions.map((s) => ({ ...s, taken: counts.get(s.id) ?? 0 })) };
+  return preview ? preview.withCourseDrafts(db, detail) : detail;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { applySeatFixtures, ensureCourseTermsPage, LOCAL_FIXTURES, scheduleSampleSessions, removeAdminFixtures, removeAdminRows, removeClientRows, removeEditRows, removeFormRows, removeLeftoverReviewFixtures, removePostRows, restoreLeftoverCourses, restoreLeftoverRows } from "./fixtures";
+import { applySeatFixtures, ensureCourseTermsPage, LOCAL_FIXTURES, scheduleSampleSessions, removeAdminFixtures, removeAdminRows, removeClientRows, removeEditRows, removeFormRows, removeLeftoverReviewFixtures, removePostRows, removePreviewDrafts, restoreLeftoverCourses, restoreLeftoverRows } from "./fixtures";
 import { E2E_MAIL_OUTBOX, forbiddenSettingError, SERVER_ENV_FILES } from "../local-secrets";
 import { assertLocalDatabases } from "./local-db";
 import { removeLeftoverComments } from "./local-kv";
@@ -29,6 +29,7 @@ export default async function globalSetup(): Promise<void> {
   await removePostRows(); // and the posts the site editor tests made
   await removeEditRows(); // its "E2E …" sessions and "e2e-uus-…" course
   await removeLeftoverReviewFixtures(); // the reviews the public pages' tests made (student reviews)
+  await removePreviewDrafts(); // the draft the preview test made (a seed course's title)
   await removeLeftoverComments(); // review comments (dev server's local KV) of an interrupted feedback test
   await ensureCourseTermsPage(); // the e-course terms page (phase 2a), in a database seeded before it existed
   await scheduleSampleSessions(); // the sample sessions on today's schedule: the calendar never runs out of dates

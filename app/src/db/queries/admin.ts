@@ -242,17 +242,20 @@ export async function writeCourseTest(tx: Tx, id: number, test: CourseTestFields
 }
 
 /**
- * A course whose type became `type`: the other type's fields are emptied, as the old editor's save stores only the chosen type's (a course is
- * e-learning or contact, never both). An e-course has no group or individual price, duration or „Koolitus sisaldab“; a contact course no price,
- * access, video count, discount, certificate lines or test (its course_tests row goes). „Protokolli punktid“ and the outcomes are both types'.
+ * What a course of each type does not have, emptied when the course becomes that type, as the old editor's save stores only the chosen type's (a course
+ * is e-learning or contact, never both). An e-course has no group or individual price, duration or „Koolitus sisaldab“; a contact course no price,
+ * access, video count, discount or certificate lines (and no test: its course_tests row goes, clearOtherCourseType). „Protokolli punktid“ and the
+ * outcomes are both types'. The draft preview (server/course-parts.ts withCourseDrafts) shows a drafted type change the same way.
  */
+export const EMPTIED_FOR_TYPE = {
+  e_learning: { priceGroup: null, priceIndividual: null, durationLabel: null, includes: [] },
+  contact: { price: null, accessMonths: null, videoCount: null, nextDiscount: null, certificateSkills: [], certificateVolume: "" },
+} satisfies Record<Course["type"], CourseColumns>;
+
+/** A course whose type became `type`: the other type's fields are emptied (EMPTIED_FOR_TYPE), and a contact course's test goes. */
 export async function clearOtherCourseType(tx: Tx, id: number, type: Course["type"], now: Date): Promise<void> {
-  if (type === "e_learning") {
-    await updateCourseColumns(tx, id, { priceGroup: null, priceIndividual: null, durationLabel: null, includes: [] }, now);
-    return;
-  }
-  await updateCourseColumns(tx, id, { price: null, accessMonths: null, videoCount: null, nextDiscount: null, certificateSkills: [], certificateVolume: "" }, now);
-  await tx.delete(courseTests).where(eq(courseTests.courseId, id));
+  await updateCourseColumns(tx, id, EMPTIED_FOR_TYPE[type], now);
+  if (type === "contact") await tx.delete(courseTests).where(eq(courseTests.courseId, id));
 }
 
 /**

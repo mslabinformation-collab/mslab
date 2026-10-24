@@ -24,6 +24,10 @@ vi.mock("next/navigation", async (original) => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+// (the course page asks whether the request is the admin's draft preview, server/preview.ts previewActive: draft mode is read outside a request here, and a
+// visitor's request has it off)
+vi.mock("next/headers", async (original) => ({ ...(await original<typeof import("next/headers")>()), draftMode: async () => ({ isEnabled: false }) }));
+
 import CoursePage from "@/app/[locale]/(site)/koolitused/[slug]/page";
 import HomePage from "@/app/[locale]/(site)/page";
 

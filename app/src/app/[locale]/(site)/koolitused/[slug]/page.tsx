@@ -36,6 +36,7 @@ import { mediaUrl } from "@/lib/media";
 import styles from "./course.module.css";
 import { upcomingFrom } from "@/domain/calendar";
 import { contractTemplate } from "@/server/contracts";
+import { previewActive } from "@/server/preview";
 import { courseReviews } from "@/server/reviews";
 import { shareMetadata } from "@/server/share-meta";
 import { financingShown, getSiteSettings } from "@/server/site-data";
@@ -60,8 +61,10 @@ export function generateStaticParams(): { slug: string }[] {
   return [];
 }
 
-// One course query per request, shared by generateMetadata and the page. Sessions that have begun are left out.
-const loadCourse = cache((slug: string) => getCourseBySlug(getDb(), slug, { sessionsFrom: upcomingFrom(new Date()) }));
+// One course query per request, shared by generateMetadata and the page. Sessions that have begun are left out. The signed-in admin's draft preview
+// (api/admin/eelvaade; admin UX pass piece 3a, R-h) lays the course's unpublished changes over it: `previewActive()` is true only with draft mode on AND a
+// live admin session, and it reads no cookie otherwise, so for every visitor and for the static render this stays the page cached by revalidation.
+const loadCourse = cache(async (slug: string) => getCourseBySlug(getDb(), slug, { sessionsFrom: upcomingFrom(new Date()), drafts: await previewActive() }));
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;

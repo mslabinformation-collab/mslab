@@ -12,6 +12,7 @@ import { href } from "@/i18n/href";
 import { getDict, isLocale } from "@/i18n/locales";
 import styles from "./catalogue.module.css";
 import { upcomingFrom } from "@/domain/calendar";
+import { previewActive } from "@/server/preview";
 
 type Props = { params: Promise<{ locale: string }> };
 
@@ -40,7 +41,10 @@ export default async function CataloguePage({ params }: Props) {
   const d = getDict(locale);
   const to = (path: string) => href(locale, path);
   const db = getDb();
-  const [list, sessions] = await Promise.all([listPublishedCourses(db), listUpcomingSessions(db, upcomingFrom(new Date()))]);
+  // the signed-in admin's draft preview shows each course's unpublished changes (api/admin/eelvaade; R-h): previewActive() is false, with no cookie read,
+  // for every visitor and for the static render, so the page stays the one cached by revalidation
+  const drafts = await previewActive();
+  const [list, sessions] = await Promise.all([listPublishedCourses(db, undefined, { drafts }), listUpcomingSessions(db, upcomingFrom(new Date()))]);
 
   const next = nextSessionByCourse(sessions);
   const courses: CatalogueCourse[] = list.map((c) => ({

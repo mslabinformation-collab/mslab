@@ -1,6 +1,8 @@
+import { draftMode } from "next/headers";
 import type { NextResponse } from "next/server";
 import { PREVIEW_COOKIE, PREVIEW_SECRET_MIN, PREVIEW_TTL_S, previewCookieOptions, previewKey, signPreview } from "@/lib/preview-cookie";
 import { gateOn } from "@/lib/site-gate";
+import { currentAdminEmail } from "./auth";
 import { serverEnv } from "./env";
 import { logFailure, logNote } from "./log";
 
@@ -31,6 +33,24 @@ export async function setPreviewCookie(res: NextResponse): Promise<void> {
   } catch (e) {
     logFailure("[gate] the preview cookie was not set", e);
   }
+}
+
+/**
+ * Is this request the signed-in admin's draft preview (admin UX pass piece 3a, ruling R-h; README §1.8)? True only with Next's draft mode on (the
+ * cookie api/admin/eelvaade sets) AND a live admin session on the request. The public pages that show drafts (the course page, the catalogue) call it
+ * to decide whether to lay the drafts over live data: draft mode alone is not enough, because it outlives logout (the cookie lasts until the browser
+ * closes) and anyone can carry one (the cookie is only a random value Next checks, not an identity).
+ *
+ * The order matters for the static pages: the draft-mode flag is read first, and the session (the cookie, which makes a render dynamic) only when it is
+ * on. A static render and every visitor's request see draft mode off and return false without reading a cookie, so the pages stay in the static cache
+ * (incremental static regeneration) for everyone; only a request with the draft-mode cookie is rendered for itself.
+ *
+ * A session lookup that fails is thrown (server/auth.ts currentAdminEmail): the preview is then a 500, never a quiet fall back to live data that
+ * would look like lost drafts.
+ */
+export async function previewActive(): Promise<boolean> {
+  if (!(await draftMode()).isEnabled) return false;
+  return (await currentAdminEmail()) !== null;
 }
 
 /** The longest `tee` the draft preview follows (a page's path with its query); a longer one goes to the home page. */

@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { PREVIEW_COOKIE, PREVIEW_TTL_S, verifyPreview } from "@/lib/preview-cookie";
-import { createSession } from "@/server/auth";
-import { previewPath } from "@/server/preview";
+import { createSession, deleteSession } from "@/server/auth";
+import { previewActive, previewPath } from "@/server/preview";
 import { makeTestDb } from "./helpers";
 
 // GET /api/admin/eelvaade (admin UX pass, spec C3; README §1.8 „Eelvaade ↗“): the draft layer's preview. A signed-in admin gets Next's draft mode
@@ -140,6 +140,22 @@ describe("GET /api/admin/eelvaade", () => {
       vi.doUnmock("@/server/preview");
       vi.resetModules();
     }
+  });
+
+  test("R-h: the draft mode it turns on is the preview only while the admin's session is live (draft mode outlives logout)", async () => {
+    state.cookie = await createSession(db, ME);
+    expect(await previewActive()).toBe(false); // signed in, not in her preview
+    await call("?tee=%2Fkoolitused%2Fkulmud");
+    expect(await previewActive()).toBe(true);
+    // she signs out (or the session ends): Next's draft-mode cookie stays until the browser closes, but the public pages read live data again
+    await deleteSession(db, state.cookie);
+    expect(state.draft.enabled).toBe(true);
+    expect(await previewActive()).toBe(false);
+    // a new session in the same browser is her preview again; „Lõpeta eelvaade“ (?lopeta=1) ends it
+    state.cookie = await createSession(db, ME);
+    expect(await previewActive()).toBe(true);
+    await call("?lopeta=1&tee=%2Fkoolitused%2Fkulmud");
+    expect(await previewActive()).toBe(false);
   });
 
   test("?lopeta=1 leaves draft mode and goes to `tee` (or the home page); it gives no new preview cookie", async () => {

@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/admin/eelvaade?tee=<path> — the draft layer's „Eelvaade ↗“ (admin UX pass, spec C3; README §1.8): a signed-in admin's preview of the
  * unpublished changes on the public page itself. It turns on Next's draft mode (its own cookie, `__prerender_bypass`, for this browser session),
- * in which the public pages read the drafts over live data and are rendered for her alone, never cached; it gives her the coming-soon gate's
+ * in which the public pages are rendered for her alone, never cached. The course page and the catalogue then read a course's drafts over its live data
+ * (db/queries/public.ts `drafts`), but only while server/preview.ts previewActive says so: draft mode on AND a live admin session on the request (R-h:
+ * the draft-mode cookie outlives logout and carries no identity, so it alone shows nothing). It gives her the coming-soon gate's
  * preview cookie too (as api/admin/preview does), and sends her (303) to `tee`. A `tee` that is not a path of this site goes to the home page
  * (server/preview.ts previewPath): the link can never lead to another site.
  *

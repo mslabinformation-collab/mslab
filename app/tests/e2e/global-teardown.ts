@@ -1,4 +1,4 @@
-import { LOCAL_FIXTURES, removeAdminFixtures, removeAdminRows, removeCampaignRows, removeClientRows, removeEditRows, removeFormRows, removeLeftoverReviewFixtures, removePostRows, removeSeatFixtures, restoreLeftoverCourses, restoreLeftoverRows } from "./fixtures";
+import { LOCAL_FIXTURES, removeAdminFixtures, removeAdminRows, removeCampaignRows, removeClientRows, removeEditRows, removeFormRows, removeLeftoverReviewFixtures, removePostRows, removePreviewDrafts, removeSeatFixtures, restoreLeftoverCourses, restoreLeftoverRows } from "./fixtures";
 import { assertLocalDatabases } from "./local-db";
 import { removeLeftoverComments, removeRateLimitRows } from "./local-kv";
 
@@ -21,7 +21,8 @@ export default async function globalTeardown(): Promise<void> {
     (await restoreLeftoverRows()) +
     (await removePostRows()) +
     (await removeClientRows()) +
-    (await removeLeftoverReviewFixtures());
+    (await removeLeftoverReviewFixtures()) +
+    (await removePreviewDrafts());
   await removeSeatFixtures();
   if (left !== 0) throw new Error(`e2e: ${left} rows of the form / sign-in / account / admin inbox / review / content tests were left in the database`);
   // review comments the feedback tests posted to the dev server's local KV (each test deletes its own)

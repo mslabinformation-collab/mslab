@@ -1,12 +1,13 @@
 import { and, asc, eq, inArray, notExists, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, Q, Tx } from "@/db/client";
-import { clearOtherCourseType, lockCourse, updateCourseColumns, writeCourseImages, writeCourseTest } from "@/db/queries/admin";
+import { clearOtherCourseType, EMPTIED_FOR_TYPE, lockCourse, updateCourseColumns, writeCourseImages, writeCourseTest } from "@/db/queries/admin";
 import { courseImages, courseModules, courses, courseTests, lessonFiles, lessons, type Course, type CourseImage, type CourseTest } from "@/db/schema";
 import type { SaveAnswer } from "@/domain/autosave";
 import { COURSE_LANGUAGES, draftFromCourse, type CourseType } from "@/domain/course-editor";
 import { changedFields, COURSE_PARTS, isCoursePart, PART_FIELDS, partLabels, partTitle, partValue, PRICE_MISSING, TYPE_PRICE_FIELDS, type CoursePart, type PartValues } from "@/domain/course-parts";
 import { adminEt } from "@/i18n/dict/admin";
+import type { I18n } from "@/i18n/field";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { toStorable } from "@/lib/to-storable";
 import { contentVersion, stableJson } from "@/lib/version";
@@ -16,7 +17,7 @@ import {
 } from "./admin-content";
 import type { LessonCleanup } from "./admin-lessons";
 import { fieldCodes } from "./autosave-route";
-import { checkOutline, liveOutline, OUTLINE_SCHEMA, outlineFromDraft, outlineLabels, outlineRows, publishOutline, type OutlineRows } from "./course-outline";
+import { checkOutline, liveOutline, OUTLINE_SCHEMA, outlineFromDraft, outlineLabels, outlineRows, publishOutline, readLayout, type OutlineRows } from "./course-outline";
 import { discardDrafts, dropDraftPart, publishDraftsIn, readDrafts, saveDraftPart, type DraftPart, type Publisher } from "./drafts";
 import { Check, type FieldError } from "./edit-check";
 import { logFailure } from "./log";
@@ -583,4 +584,58 @@ export async function switchCourseSample(db: Db, courseId: number, on: boolean, 
 export async function courseExists(db: Q, id: number): Promise<boolean> {
   const [row] = await db.select({ id: courses.id }).from(courses).where(eq(courses.id, id));
   return row !== undefined;
+}
+
+// ---------- the admin's preview (Task 6, R-h) ----------
+
+/**
+ * A published course with its drafts laid over it, as the signed-in admin's preview shows the public page (admin UX pass piece 3a, Task 6; README §1.8
+ * „Eelvaade ↗“): the object `course` (a public reader's, db/queries/public.ts) with each drafted part's values as „Avalda muudatused“ would store them. Only
+ * for a request that is the admin's preview (server/preview.ts previewActive); every other reader reads live.
+ * - Each part goes through its own check, as at the publish (`PARTS[part].check`: prices in cents, texts trimmed, the type's own fields), with the type
+ *   the preview ends with. A part the check refuses now (a slug taken meanwhile) is left out, as the publish would hold it.
+ * - A drafted type change shows the course as the other type, its fields emptied as the publish writes it (EMPTIED_FOR_TYPE).
+ * - The slug stays the live one: the page is found, linked, favourited and bought by the address it has until the publish.
+ * - The gallery's images get no row ids of their own (negative placeholders): nobody keys on them.
+ * - The modules and lessons are not here: previewModuleTitles gives the public page's list of module titles.
+ * - The test is never laid over, and its row is not even read: a public course has no test, and the answer key stays in course_tests and its draft
+ *   (the admin's editor). `live` below carries `test: null` for that reason.
+ * An unpublished course has no drafts in effect (spec §10), and a course without drafts comes back as it was, after one small read.
+ */
+export async function withCourseDrafts<C extends Course & { images: CourseImage[] }>(db: Q, course: C): Promise<C> {
+  if (!course.published) return course;
+  const drafts = (await readDrafts(db, ENTITY, course.id)).filter((d) => isCoursePart(d.part) && d.part !== "outline" && d.part !== "test");
+  if (drafts.length === 0) return course;
+  const live: LiveCourse = { course, images: course.images, test: null, outline: { modules: [], lessons: [] } };
+  const columns: Record<string, unknown> = {};
+  let images: CourseImage[] = course.images;
+  let type = effectiveType(live, drafts);
+  for (const part of COURSE_PARTS) {
+    const draft = drafts.find((d) => d.part === part);
+    if (!draft) continue;
+    const value = draftValueOf(live, part, draft.value);
+    const c = new Check();
+    const checked = await PARTS[part].check({ q: db, course, type: part === "basics" ? (value as PartValues["basics"]).type : type }, c, value as never);
+    if (!c.ok || checked === null) {
+      // (the basics held back: the other parts go on with the type the course has)
+      if (part === "basics") type = course.type;
+      continue;
+    }
+    if (part === "gallery") {
+      images = (checked as { key: string; alt: I18n | null }[]).map((img, i) => ({ id: -(i + 1), courseId: course.id, key: img.key, alt: img.alt, sort: i }));
+    } else {
+      if (part === "basics" && (checked as { type: CourseType }).type !== course.type) Object.assign(columns, EMPTIED_FOR_TYPE[(checked as { type: CourseType }).type]);
+      Object.assign(columns, checked);
+    }
+  }
+  return { ...course, ...columns, slug: course.slug, images };
+}
+
+/**
+ * The titles of the course's modules as the admin's preview shows the public page's list (the e-course page's „Moodulid“, a contact course's programme):
+ * the working order (server/course-outline.ts readLayout), that is the outline draft's order and names with the new modules, flagged `unpublished`, at
+ * their places, as „Avalda muudatused“ would make them. The students' list is db/queries/public.ts listModuleTitles.
+ */
+export async function previewModuleTitles(db: Q, course: Pick<Course, "id" | "published">): Promise<I18n[]> {
+  return (await readLayout(db, course)).layout.map((m) => m.title);
 }

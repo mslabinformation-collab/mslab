@@ -12,8 +12,9 @@ import { readLayout } from "./course-outline";
 // "Visible" leaves out a hidden lesson and, on a published course being edited (admin UX pass piece 3a, R-e), every `unpublished` module and
 // lesson — a lesson of an unpublished module too, whatever its own flag: they are neither listed, nor counted, nor in the order, so the completion
 // counts, "view as student" and the lesson order all see the course as the students have it until „Avalda muudatused“.
-// Only the admin's preview (`preview`, Task 6: never a student's read) lays the course's draft over it: the outline draft's order and names and the
-// flagged rows, as „Avalda muudatused“ would make them (server/course-outline.ts).
+// Only the admin's preview (`preview`: never a student's read) lays the course's draft over it: the outline draft's order and names and the
+// flagged rows, as „Avalda muudatused“ would make them (server/course-outline.ts). Nothing calls it yet: the draft preview of the public pages (Task 6)
+// needs only the module titles of the working order (server/course-parts.ts previewModuleTitles), as no public page lists lessons.
 
 export type OutlineLesson = { id: number; moduleId: number; title: I18n; state: LessonState };
 export type OutlineModule = { id: number; title: I18n; lessons: OutlineLesson[] };
