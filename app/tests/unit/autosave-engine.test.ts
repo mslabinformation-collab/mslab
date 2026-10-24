@@ -209,6 +209,52 @@ describe("the browser's copy", () => {
     expect(stored()?.fields.title).toBe("Minu");
   });
 
+  test("discardCopy() (a draft thrown away, „Loobu muudatustest“): every copy of the part goes, nothing more is sent or kept, nothing is unconfirmed", async () => {
+    const s = server();
+    const e = make(s.send);
+    // a field the server refused, held back: uncertain, so this tab keeps a copy; and another tab's copy of the same part
+    e.setField("title", "");
+    await tick(DEBOUNCE_MS);
+    s.calls[0].answer({ status: 400, body: { ok: false, error: "invalid", fields: { title: "required" } } });
+    await tick();
+    expect(e.snapshot().status.kind).toBe("invalid");
+    localStorage.setItem("mslab-draft:course:12:other", JSON.stringify({ version: "v1", fields: { title: "Teine", body: "Tekst" }, sent: [], at: 1 }));
+    localStorage.setItem("mslab-draft:course:120:t9", "{}"); // (another part's copy stays)
+    expect(stored()).not.toBeNull();
+    e.discardCopy();
+    expect(Object.keys(localStorage).sort()).toEqual(["mslab-draft:course:120:t9"]);
+    expect(e.unconfirmed()).toBeNull();
+    // typed into, flushed, back online: nothing goes and no copy comes back
+    e.setField("body", "Veel");
+    await tick(DEBOUNCE_MS);
+    expect(await e.flush()).toBe(false);
+    window.dispatchEvent(new Event("online"));
+    await tick(RETRY_MS[RETRY_MS.length - 1]);
+    expect(s.calls).toHaveLength(1);
+    expect(stored()).toBeNull();
+    // the next visit has nothing to resume
+    e.stop();
+    const next = new AutosaveEngine({ owner: "course", key: "12", version: "l:live", fields: { ...FIELDS }, send: s.send, tab: "t2" });
+    engine = next;
+    next.start(localStorage);
+    await tick();
+    expect(s.calls).toHaveLength(1);
+    expect(next.snapshot().fields).toEqual(FIELDS);
+  });
+
+  test("discardCopy() while a save is on its way: its answer leaves no copy behind", async () => {
+    const s = server();
+    const e = make(s.send);
+    e.setField("title", "Uus");
+    await tick(DEBOUNCE_MS);
+    expect(stored()).not.toBeNull();
+    e.discardCopy();
+    s.calls[0].answer(null);
+    await tick(RETRY_MS[0] * 2);
+    expect(s.calls).toHaveLength(1);
+    expect(stored()).toBeNull();
+  });
+
   test("a browser that cannot keep a copy still saves", async () => {
     const s = server();
     const e = make(s.send, { storage: null });

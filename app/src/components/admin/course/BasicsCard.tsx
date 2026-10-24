@@ -8,6 +8,7 @@ import { Choice } from "../Choice";
 import { I18nInput } from "../I18nInput";
 import ui from "../ui.module.css";
 import ed from "../editor.module.css";
+import { UnpublishedTag } from "../UnpublishedTag";
 import { Card } from "./Card";
 import { CARD_ID } from "./course-view";
 import { PlainField } from "./PlainField";
@@ -41,19 +42,31 @@ export function BasicsCard({ api }: { api: PartApi<"basics"> }) {
             unpublished={api.unpublished("slug")}
           />
         </div>
-        <fieldset className={ed.fieldset}>
-          <legend className={ui.legend}>{f.level}</legend>
+        <fieldset className={ed.fieldset} aria-describedby={api.unpublished("level") ? `${uid}-level-unpublished` : undefined}>
+          <legend className={ui.legend}>
+            {f.level}
+            {api.unpublished("level") && (
+              <>
+                {" "}
+                <UnpublishedTag id={`${uid}-level-unpublished`} hidden />
+              </>
+            )}
+          </legend>
           <div className={ed.choices}>
             {(["basic", "advanced"] as CourseLevel[]).map((l) => (
               <Choice key={l} className={ed.choice} label={adminEt.courses.level[l]} type="radio" name={`${uid}-level`} value={l} checked={v.level === l} onChange={() => api.commit("level", l)} />
             ))}
           </div>
         </fieldset>
-        <div className={ui.field}>
-          <label htmlFor={`${uid}-language`}>{f.language}</label>
+        <div className={`${ui.field} ${ed.i18n}`} data-unpublished={api.unpublished("language") ? "" : undefined}>
+          <div className={ed.i18nHead}>
+            <label htmlFor={`${uid}-language`}>{f.language}</label>
+            {api.unpublished("language") && <UnpublishedTag id={`${uid}-language-unpublished`} />}
+          </div>
           <select
             id={`${uid}-language`}
             className={`${ui.input} ${ed.select}`}
+            aria-describedby={api.unpublished("language") ? `${uid}-language-unpublished` : undefined}
             value={v.language}
             onChange={(e) => api.commit("language", e.target.value as CourseLanguage)}
             data-field="language"

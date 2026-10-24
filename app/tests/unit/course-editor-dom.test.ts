@@ -253,6 +253,40 @@ describe("a published course: the cards save to its draft, the PublishBar names 
     expect(router.refresh).not.toHaveBeenCalled();
     // S3-P3-a stays on the bar
     expect(text($("[data-publish-words]"))).toBe("Avaldamata muudatused: 1 · Hind. Avalikul lehel on näha eelmine versioon.");
+    // the price typed in and saved again: the line goes with the field's words (review M-3)
+    await type(field("price"), "95,5");
+    await leave(field("price"));
+    expect($("[data-publish-blocked]")).toBeNull();
+    expect(field("price")!.closest("[data-plain-field]")!.querySelector("[data-field-error]")).toBeNull();
+  });
+
+  it("a held part typed back to live: no bar at all, never „Avaldamata muudatused: 0“ (review M-3)", async () => {
+    remote.avalda = () => Response.json({ published: [], blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] });
+    await show();
+    await type(field("price"), "");
+    await leave(field("price"));
+    await click($("[data-publish-go]"));
+    expect(text($("[data-publish-blocked]"))).toBe("Puudub: hind");
+    await type(field("price"), "95");
+    expect(bar()).toBeNull();
+    expect($("[data-publish-blocked]")).toBeNull();
+  });
+
+  it("a publish that publishes nothing and holds nothing (another tab published meanwhile), or an answer that cannot be read: the page is read again (review M-2)", async () => {
+    remote.avalda = () => Response.json({ published: [], blocked: [] });
+    await show();
+    await type(field("summary"), "Uus.");
+    await leave(field("summary"));
+    await click($("[data-publish-go]"));
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    remote.avalda = () => new Response("<html>", { status: 200 });
+    resetRemote();
+    remote.avalda = () => new Response("<html>", { status: 200 });
+    await show({ course: data() });
+    await type(field("summary"), "Veel.");
+    await leave(field("summary"));
+    await click($("[data-publish-go]"));
+    expect(router.refresh).toHaveBeenCalledTimes(2);
   });
 
   it("a part changed meanwhile in another tab: „Neid välju ei avaldatud, sest neid muudeti vahepeal teises aknas. Vaata need üle.“ and its labels", async () => {
@@ -315,11 +349,47 @@ describe("a published course: the cards save to its draft, the PublishBar names 
     expect($("[data-publish-error]")).toBeNull();
   });
 
-  it("„Avaldatud“ is instant (R-d): off asks the server once; a blocked part is listed and the switch stays on; done, the page is read again", async () => {
+  it("„Loobu muudatustest“ with a field held back: the copy goes too — after the read the field shows live and nothing is sent again (review I-1)", async () => {
+    remote.refuse = { part: "price", fields: { price: "amount" } };
+    await show();
+    await type(field("summary"), "Uus.");
+    await leave(field("summary"));
+    await type(field("price"), "abc");
+    await leave(field("price"));
+    expect(field("price")!.getAttribute("aria-invalid")).toBe("true");
+    expect(Object.keys(localStorage).filter((k) => k.startsWith(`mslab-draft:koolitus:${ID}-price:`))).toHaveLength(1);
+    await click($("[data-publish-discard]"));
+    await click(button("Jah, loobu"));
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    expect(Object.keys(localStorage).filter((k) => k.startsWith(`mslab-draft:koolitus:${ID}-`))).toEqual([]);
+    // the server's state after the discard: live, no drafts
+    const sent = fetched.calls.length;
+    resetRemote();
+    await show({ course: data() });
+    await settle();
+    expect(field("price")!.value).toBe("95");
+    expect(field("summary")!.value).toBe("Lühike tekst.");
+    expect(field("price")!.getAttribute("aria-invalid")).toBeNull();
+    expect(bar()).toBeNull();
+    expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
+    expect(fetched.calls).toHaveLength(sent);
+  });
+
+  it("„Avalikul lehel“ is an instant switch (R-d): off asks the server once; a blocked part is listed and the switch stays on; done, the page is read again", async () => {
     actions.published.mockResolvedValue({ ok: false, error: "blocked", blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] });
     await show();
     const published = () => $<HTMLInputElement>("[data-field='published']")!;
+    // the drawn switches (Part 3 L111): „Avalikul lehel“ and „Näidissisu“, role switch, no hints
+    const card = $("[data-publish-card]")!;
+    expect($$("[data-publish-card] input").map((i) => [i.getAttribute("role"), i.getAttribute("type"), text(i.closest("label"))])).toEqual([
+      ["switch", "checkbox", "Avalikul lehel"],
+      ["switch", "checkbox", "Näidissisu"],
+    ]);
+    expect(card.textContent).toBe("AvaldamineAvalikul lehelNäidissisu"); // (the title and the two labels: no hints)
     expect(published().checked).toBe(true);
+    // a price emptied in the draft: switched off, R-d publishes first, and the server holds it
+    await type(field("price"), "");
+    await leave(field("price"));
     await click(published());
     expect(actions.published).toHaveBeenCalledWith({ id: ID, on: false });
     expect(published().checked).toBe(true);
@@ -379,6 +449,67 @@ describe("an unpublished course: its cards save to the record", () => {
     await type(field("priceGroup"), "350");
     await leave(field("priceGroup"));
     expect(remote.log.at(-1)).toEqual({ part: "price", version: "l:price-emptied", patch: { priceGroup: "350" } });
+  });
+
+  it("from the type's choice until the new read the cards wait (inert, aria-busy, nothing typed taken); after it no conflict, the focus back on the radio (review I-2)", async () => {
+    resetRemote(DRAFT);
+    await show({ course: data({}, DRAFT) });
+    const radio = $<HTMLInputElement>("[data-type-switch] input[value='contact']")!;
+    await act(async () => radio.focus());
+    await click(radio);
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    const layout = $("[data-cards-waiting]")!;
+    expect(layout.hasAttribute("inert")).toBe(true);
+    expect(layout.getAttribute("aria-busy")).toBe("true");
+    // she goes straight on to the contact course's price: nothing lands, nothing is kept on the price's old version, nothing is sent
+    await type(field("priceGroup"), "350");
+    await leave(field("priceGroup"));
+    expect(field("priceGroup")!.value).toBe("");
+    expect(Object.keys(localStorage).filter((k) => k.startsWith(`mslab-draft:koolitus:${ID}-price:`))).toEqual([]);
+    expect(remote.log.map((r) => r.part)).toEqual(["basics"]);
+    // the new read: the cards take typing again, no false conflict, the focus where it was
+    const contact: CourseDraft = { ...DRAFT, type: "contact", price: "", accessMonths: "" };
+    resetRemote(contact, false);
+    remote.parts.price.version = "l:price-emptied";
+    await show({ course: data({ liveType: "contact", parts: partsOf(contact, { price: { version: "l:price-emptied" } }) }, contact) });
+    expect($("[data-cards-waiting]")).toBeNull();
+    expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
+    expect(document.activeElement).toBe($("[data-type-switch] input[value='contact']"));
+    await type(field("priceGroup"), "350");
+    await leave(field("priceGroup"));
+    expect(remote.log.at(-1)).toEqual({ part: "price", version: "l:price-emptied", patch: { priceGroup: "350" } });
+    expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
+  });
+
+  it("the restart puts the focus on the control she moved to meanwhile, never back on the one she left", async () => {
+    resetRemote(DRAFT);
+    await show({ course: data({}, DRAFT) });
+    await click($<HTMLInputElement>("[data-type-switch] input[value='contact']"));
+    // she has gone to the header's language switch (outside the waiting cards)
+    const ru = $<HTMLButtonElement>("[data-edit-lang='ru']")!;
+    await act(async () => ru.focus());
+    const contact: CourseDraft = { ...DRAFT, type: "contact", price: "", accessMonths: "" };
+    resetRemote(contact, false);
+    await show({ course: data({ liveType: "contact", parts: partsOf(contact) }, contact) });
+    expect(document.activeElement).toBe($("[data-edit-lang='ru']"));
+  });
+
+  it("a read that never comes is given up after a while: the cards take typing again (review M-4)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    try {
+      resetRemote(DRAFT);
+      await show({ course: data({}, DRAFT) });
+      await click($<HTMLInputElement>("[data-type-switch] input[value='contact']"));
+      await act(async () => void (await vi.advanceTimersByTimeAsync(100)));
+      expect($("[data-cards-waiting]")).not.toBeNull();
+      await act(async () => void (await vi.advanceTimersByTimeAsync(15_000)));
+      expect($("[data-cards-waiting]")).toBeNull();
+      // a later read of the page (a lesson's action) is not a restart: the cards keep what they hold
+      await show({ course: data({ outline: [] }, DRAFT) });
+      expect($<HTMLInputElement>("[data-type-switch] input[value='contact']")!.checked).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a field the server refuses is marked with its error and held back; the rest still saves", async () => {

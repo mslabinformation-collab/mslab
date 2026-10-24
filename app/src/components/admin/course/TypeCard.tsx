@@ -8,6 +8,7 @@ import { I18nInput } from "../I18nInput";
 import ui from "../ui.module.css";
 import ed from "../editor.module.css";
 import styles from "../CourseEditor.module.css";
+import { UnpublishedTag } from "../UnpublishedTag";
 import { Card } from "./Card";
 import { CARD_ID } from "./course-view";
 import { PlainField } from "./PlainField";
@@ -60,16 +61,28 @@ export function TypeCard({
         price.flush();
         basics.flush();
       }}
-      conflict={price.conflict}
-      onRestore={price.restore}
+      // the type is the basics part's: its conflict is offered here too, where the radio is (review M-5)
+      conflict={price.conflict || basics.conflict}
+      onRestore={() => {
+        if (price.conflict) price.restore();
+        if (basics.conflict) basics.restore();
+      }}
       data-type-section={type}
     >
       <fieldset
         className={`${ed.fieldset} ${styles.typeSwitch}`}
-        aria-describedby={typeError ? `${uid}-type-hint ${uid}-type-error` : `${uid}-type-hint`}
+        aria-describedby={[basics.unpublished("type") ? `${uid}-type-unpublished` : "", `${uid}-type-hint`, typeError ? `${uid}-type-error` : ""].filter(Boolean).join(" ")}
         data-invalid={typeError ? "" : undefined}
       >
-        <legend className={ui.legend}>{f.type}</legend>
+        <legend className={ui.legend}>
+          {f.type}
+          {basics.unpublished("type") && (
+            <>
+              {" "}
+              <UnpublishedTag id={`${uid}-type-unpublished`} hidden />
+            </>
+          )}
+        </legend>
         <div className={ed.choices} data-type-switch="">
           {(["e_learning", "contact"] as CourseType[]).map((ty) => (
             <Choice

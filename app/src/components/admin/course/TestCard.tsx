@@ -42,6 +42,7 @@ export function TestCard({ api }: { api: PartApi<"test"> }) {
           if (next.tries !== v.tries) api.set("tries", next.tries);
         }}
         errors={{ test: questionsError, testPassPercent: api.error("passPercent"), testTries: api.error("tries"), at: questionsError ? placeOf(v.questions) : undefined }}
+        unpublished={{ passPercent: api.unpublished("passPercent"), tries: api.unpublished("tries") }}
       />
     </Card>
   );

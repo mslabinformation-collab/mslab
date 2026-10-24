@@ -7,7 +7,7 @@ import type { EditorPart, PartSeed } from "@/domain/course-parts";
 import { adminEt } from "@/i18n/dict/admin";
 import { stableJson } from "@/lib/version";
 import { CARD_ID, fieldLabel, listChange } from "./course-view";
-import type { PartApi, PartField } from "./types";
+import type { PartApi } from "./types";
 
 // One card's autosave on a saved course (admin UX pass piece 3a, Task 7; README B2, §1.3): the shared engine (autosave/useAutosave.ts, used as it is)
 // on POST /api/admin/koolitus/<id>/osa/<part> (Task 4: a published course's save is its draft, an unpublished one's goes to the record), from the
@@ -43,6 +43,8 @@ export function useCoursePart<P extends EditorPart>(o: {
 }) {
   const { courseId, part, seed, published, liveType } = o;
   const [codes, setCodes] = useState<Record<string, string>>({});
+  /** How many saves the server took since the card started: a part held back at the publish is listed until its next save (review M-3). */
+  const [saves, setSaves] = useState(0);
   const send = useMemo<SendPatch>(() => {
     const base = patchSender(`/api/admin/koolitus/${courseId}/osa/${part}`);
     return async (body, opts) => {
@@ -53,6 +55,7 @@ export function useCoursePart<P extends EditorPart>(o: {
         setCodes((c) => ({ ...c, ...named }));
       } else if (answer?.status === 200) {
         setCodes((c) => Object.fromEntries(Object.entries(c).filter(([name]) => !(name in body.patch))));
+        setSaves((n) => n + 1);
       }
       return answer;
     };
@@ -77,24 +80,24 @@ export function useCoursePart<P extends EditorPart>(o: {
 
   const { setField, flush, restore, conflict } = auto;
   const live = seed.live as Record<string, unknown>;
-  const api = useMemo<PartApi<P>>(
-    () => ({
+  const api = useMemo<PartApi<P>>(() => {
+    /** A field typed in: its refusal's words go, and the engine has it. */
+    const take = (name: string, value: unknown) => {
+      setCodes((c) => (name in c ? Object.fromEntries(Object.entries(c).filter(([n]) => n !== name)) : c));
+      setField(name, value);
+    };
+    return {
       fields,
-      set: <K extends PartField<P>>(name: K, value: PartApi<P>["fields"][K]) => {
-        setCodes((c) => (name in c ? Object.fromEntries(Object.entries(c).filter(([n]) => n !== name)) : c));
-        setField(name, value);
-      },
-      commit: <K extends PartField<P>>(name: K, value: PartApi<P>["fields"][K]) => {
-        setCodes((c) => (name in c ? Object.fromEntries(Object.entries(c).filter(([n]) => n !== name)) : c));
-        setField(name, value);
+      set: (name, value) => take(name, value),
+      commit: (name, value) => {
+        take(name, value);
         void flush();
       },
-      update: <K extends PartField<P>>(name: K, fn: (current: PartApi<P>["fields"][K]) => PartApi<P>["fields"][K]) => {
+      update: (name, fn) => {
         const before = latest.current[name];
         const after = fn(before);
         latest.current = { ...latest.current, [name]: after };
-        setCodes((c) => (name in c ? Object.fromEntries(Object.entries(c).filter(([n]) => n !== name)) : c));
-        setField(name, after);
+        take(name, after);
         if (Array.isArray(before) && Array.isArray(after) && listChange(before, after) === "instant") void flush();
       },
       flush: () => void flush(),
@@ -103,8 +106,7 @@ export function useCoursePart<P extends EditorPart>(o: {
       conflict: conflict !== null,
       restore: () => void restore(),
       attention: auto.status.kind === "invalid" || auto.status.kind === "conflict" || auto.status.kind === "gone",
-    }),
-    [fields, setField, flush, restore, conflict, codes, part, liveType, published, live, auto.status.kind],
-  );
-  return { api, status: auto.status, flushNow: auto.flush, unconfirmed: auto.unconfirmed };
+    };
+  }, [fields, setField, flush, restore, conflict, codes, part, liveType, published, live, auto.status.kind]);
+  return { api, status: auto.status, saves, flushNow: auto.flush, unconfirmed: auto.unconfirmed, discardCopy: auto.discardCopy };
 }

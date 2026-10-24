@@ -5,6 +5,7 @@ import type { I18n } from "@/i18n/field";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { useEditLang, type Lang } from "./EditLang";
+import { UnpublishedTag } from "./UnpublishedTag";
 import ui from "./ui.module.css";
 import styles from "./editor.module.css";
 
@@ -107,11 +108,7 @@ export function I18nInput({ label, value, onChange, multiline, rows = 4, maxLeng
           {label}
           <span className={ui.sr}> ({t.langName[lang]})</span>
         </label>
-        {unpublished && (
-          <span id={`${uid}-unpublished`} className={styles.unpublished} data-unpublished-tag="">
-            · {adminEt.publish.fieldTag}
-          </span>
-        )}
+        {unpublished && <UnpublishedTag id={`${uid}-unpublished`} />}
         {pending && (
           <span className={styles.missing} data-ru-pending="">
             {t.missing}

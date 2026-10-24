@@ -75,6 +75,7 @@ export function CourseView({
   liveType,
   priceMissing,
   blocked,
+  frozen,
   switches,
 }: {
   title: string;
@@ -94,6 +95,8 @@ export function CourseView({
   priceMissing: boolean;
   /** The parts the last publish could not publish: their map entries say „Kontrolli“. */
   blocked: readonly string[];
+  /** The editor waits for the page's new read (it starts over from it): the cards are inert and aria-busy meanwhile. */
+  frozen?: boolean;
   switches: PublishSwitches;
 }) {
   const type = parts.basics.fields.type;
@@ -107,7 +110,8 @@ export function CourseView({
     type,
     Object.fromEntries(Object.entries(parts).map(([part, api]) => [part, { value: api.fields, attention: api.attention }])) as { [P in EditorPart]: MapPart<P> },
     modules.length,
-    blocked,
+    // the type card holds the basics' type: its refusal or the basics' conflict is that card's look too (review M-5)
+    parts.basics.conflict || parts.basics.error("type") ? [...blocked, "price"] : blocked,
   );
 
   const cards: Record<string, ReactNode> = {
@@ -128,7 +132,7 @@ export function CourseView({
       <CourseHeader title={title} published={published} sample={sample} type={type} status={status} publicHref={publicHref} />
       {notice}
       {bar}
-      <div className={styles.layout}>
+      <div className={styles.layout} inert={frozen || undefined} aria-busy={frozen || undefined} data-cards-waiting={frozen ? "" : undefined}>
         <SectionMap sections={sections} />
         <div className={styles.main}>
           {cardsOf(type).map((part) => (

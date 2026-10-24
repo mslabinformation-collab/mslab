@@ -28,7 +28,8 @@
 }
 
 .i18n[data-unpublished] input,
-.i18n[data-unpublished] textarea {
+.i18n[data-unpublished] textarea,
+.i18n[data-unpublished] select {
   border-color: var(--rose);
 }
 

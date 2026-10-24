@@ -1691,10 +1691,9 @@ export const adminEt = {
       recommendationsHint: "Vali kuni 3 koolitust, mida näidata selle koolituse lehe lõpus. Ülejäänud kohad täidetakse sarnaste koolitustega.",
       recommendationsCount: "Valitud {n} / 3",
       recommendationsMax: "Valida saab kuni 3 koolitust. Eemalda enne üks valik.",
-      published: "Avaldatud",
-      publishedHint: "Avaldatud koolitus on avalikul lehel nähtav. Mustandit näed ainult siin.",
+      // „Avaldamine“'s two switches, as drawn (the Part 3 frame "B2 Course editor" L111, Part 4 L61; strings.md B2): no hints under them
+      published: "Avalikul lehel",
       sample: "Näidissisu",
-      sampleHint: "Prototüübi näidis. Eemalda märge, kui tekstid ja fotod on päris.",
     },
     // (the lesson drawer's status, until Task 10 gives it SaveStatus)
     dirty: "Salvestamata muudatused",

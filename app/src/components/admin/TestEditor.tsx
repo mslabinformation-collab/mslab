@@ -7,6 +7,7 @@ import { moveItem, type TestDraft } from "@/domain/course-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { Choice } from "./Choice";
+import { UnpublishedTag } from "./UnpublishedTag";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import styles from "./TestEditor.module.css";
@@ -29,7 +30,18 @@ type Focus = { question: number; option?: number } | "add" | null;
  * to a question by its id. A choice question switched to "Vaba vastusega" keeps its options in memory, so switching back brings them back. The
  * save's refusal shows in the card of the question it names (its option marked), or under the list for the list as a whole.
  */
-export function TestEditor({ value, onChange, errors }: { value: TestDraft; onChange: (v: TestDraft) => void; errors: TestErrors }) {
+export function TestEditor({
+  value,
+  onChange,
+  errors,
+  unpublished,
+}: {
+  value: TestDraft;
+  onChange: (v: TestDraft) => void;
+  errors: TestErrors;
+  /** A published course's pass mark or tries waits for „Avalda muudatused“: „· avaldamata“ after its label (README §1.8). */
+  unpublished?: { passPercent?: boolean; tries?: boolean };
+}) {
   const t = adminEt.courseEditor;
   const f = t.fields;
   const uid = useId();
@@ -105,9 +117,13 @@ export function TestEditor({ value, onChange, errors }: { value: TestDraft; onCh
   /** The pass mark or the tries: a short field of digits, as typed (the server parses it). */
   const setting = (key: "passPercent" | "tries", label: string, hint: string, error: string | undefined, maxLength: number) => {
     const id = `${uid}-${key}`;
+    const waits = unpublished?.[key] === true;
     return (
-      <div className={ui.field}>
-        <label htmlFor={id}>{label}</label>
+      <div className={`${ui.field} ${ed.i18n}`} data-unpublished={waits ? "" : undefined}>
+        <div className={ed.i18nHead}>
+          <label htmlFor={id}>{label}</label>
+          {waits && <UnpublishedTag id={`${id}-unpublished`} />}
+        </div>
         <input
           id={id}
           className={ui.input}
@@ -118,7 +134,7 @@ export function TestEditor({ value, onChange, errors }: { value: TestDraft; onCh
           value={value[key]}
           onChange={(e) => onChange({ ...value, [key]: e.target.value })}
           aria-invalid={error ? true : undefined}
-          aria-describedby={error ? `${id}-hint ${id}-error` : `${id}-hint`}
+          aria-describedby={[waits ? `${id}-unpublished` : "", `${id}-hint`, error ? `${id}-error` : ""].filter(Boolean).join(" ")}
           data-test-pass={key === "passPercent" ? "" : undefined}
           data-test-tries={key === "tries" ? "" : undefined}
         />

@@ -952,10 +952,10 @@
         "Vajuta uuesti „Lisa küsimus“ ja vali „Vaba vastusega“.",
         "Kirjuta teine küsimus.",
         "Vaata üle „Läbimise piir (%)“ ja „Katseid“.",
-        "Klõpsa väljast välja ja oota, kuni päises on „Salvestatud“ koos kellaajaga."
+        "Klõpsa väljast välja; kui koolitus on avaldatud, vajuta pealkirja all ka „Avalda muudatused“."
       ],
       "expect": [
-        "Päises on „Salvestatud“ koos kellaajaga.",
+        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga.",
         "Pärast lehe uuesti laadimist on mõlemad küsimused alles.",
         "Valikküsimusel on õige vastus märgitud."
       ],
@@ -976,11 +976,11 @@
         "Ava sama e-koolitus ja keri plokini „Protokolli punktid“.",
         "Vajuta „Lisa punkt“ ja kirjuta esimese punkti nimi.",
         "Vajuta uuesti „Lisa punkt“ ja kirjuta teise punkti nimi.",
-        "Klõpsa väljast välja ja oota, kuni päises on „Salvestatud“ koos kellaajaga."
+        "Klõpsa väljast välja; kui koolitus on avaldatud, vajuta pealkirja all ka „Avalda muudatused“."
       ],
       "expect": [
         "Ploki juures on selgitus, et e-kursusel on need praktilise töö punktid.",
-        "Päises on „Salvestatud“ koos kellaajaga.",
+        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga.",
         "Mõlemad punktid jäävad alles, kui lehe uuesti laadid."
       ],
       "why": "Õpilane lisab iga punkti juurde fotod ja sina hindad neid.",
@@ -1000,11 +1000,11 @@
         "Ava sama e-koolitus ja keri plokini „Tunnistus“.",
         "Lisa „Oskused tunnistusel“ alla read nupuga „Lisa rida“ või jäta tühjaks.",
         "Kirjuta „Maht“, näiteks 10 akadeemilist tundi.",
-        "Klõpsa väljast välja ja oota, kuni päises on „Salvestatud“ koos kellaajaga."
+        "Klõpsa väljast välja; kui koolitus on avaldatud, vajuta pealkirja all ka „Avalda muudatused“."
       ],
       "expect": [
         "Tühja loendi korral on kirjas, et tunnistusel on „Õpiväljundid“ read.",
-        "Päises on „Salvestatud“ koos kellaajaga."
+        "Päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga."
       ],
       "why": "Need read trükitakse õpilase tunnistusele.",
       "risk": "med",
@@ -1021,12 +1021,12 @@
       "href": "/admin/koolitused",
       "steps": [
         "Ava sama e-koolitus ja keri plokini „Avaldamine“.",
-        "Märgi „Avaldatud“: see salvestub kohe, nuppu pole vaja.",
+        "Lülita sisse „Avalikul lehel“: see salvestub kohe, nuppu pole vaja.",
         "Lae leht uuesti.",
         "Vajuta üleval „Vaata lehel ↗“."
       ],
       "expect": [
-        "Pärast uuesti laadimist on „Avaldatud“ märgitud ja päises silt „Avaldatud“.",
+        "Pärast uuesti laadimist on „Avalikul lehel“ sees ja päises silt „Avaldatud“.",
         "Koolituste loendis on e-koolituse staatus „Avaldatud“.",
         "Avalikul lehel on koolitus koos hinnaga.",
         "Lehe moodulite loendis on sinu moodul.",

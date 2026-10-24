@@ -84,6 +84,8 @@ export function useAutosave(o: {
       flush: () => engine.flush(),
       restore: () => engine.restore(),
       unconfirmed: () => engine.unconfirmed(),
+      /** The part's text was thrown away on the server: its copies in this browser go, nothing more is sent (engine.ts discardCopy). */
+      discardCopy: () => engine.discardCopy(),
       /** The conflict as it is now (`conflict` is the one of the last render): for an async handler that has awaited a flush, which may have met one. */
       conflictNow: () => engine.snapshot().conflict,
     }),

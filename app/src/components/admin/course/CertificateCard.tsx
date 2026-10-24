@@ -38,6 +38,7 @@ export function CertificateCard({ api, outcomes }: { api: PartApi<"certificate">
           hint={f.certificateVolumeHint}
           error={api.error("certificateVolume")}
           maxLength={CERT_LIMITS.volume}
+          unpublished={api.unpublished("certificateVolume")}
         />
       </div>
     </Card>

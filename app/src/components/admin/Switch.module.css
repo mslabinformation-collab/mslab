@@ -1,0 +1,82 @@
+/* Switch (the Part 3 frame "B2 Course editor" L111, Part 4 L61): a row at least 44px tall, the label 14px at the left, at the right a 48×28 pill
+   (radius 99) with a 22px white knob 3px from its edge — on: the admin's green #2f5d46 (--ok), the knob at the right; off: #d5d0d3 (--heather), the
+   knob at the left. The checkbox lies over the pill, invisible, and carries the tap and the focus; the ring is drawn round the pill. */
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 14px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.label {
+  min-width: 0;
+}
+
+.control {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 28px;
+}
+
+.input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.track {
+  position: absolute;
+  inset: 0;
+  border-radius: 99px;
+  background: var(--heather);
+}
+
+.knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(34, 34, 34, 0.18);
+}
+
+.input:checked + .track {
+  background: var(--ok);
+}
+
+.input:checked + .track .knob {
+  transform: translateX(20px);
+}
+
+.input:focus-visible + .track {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+.input:disabled,
+.input:disabled + .track {
+  cursor: default;
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .track,
+  .knob {
+    transition:
+      background-color 0.15s ease,
+      transform 0.15s ease;
+  }
+}

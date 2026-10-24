@@ -1,9 +1,9 @@
 "use client";
 
 import { useId } from "react";
-import { adminEt } from "@/i18n/dict/admin";
 import ui from "../ui.module.css";
 import ed from "../editor.module.css";
+import { UnpublishedTag } from "../UnpublishedTag";
 
 /**
  * A one-language text field of a course card (the address, the prices, the counts, the certificate's volume) with its label, hint and error, the
@@ -37,11 +37,7 @@ export function PlainField({
     <div className={`${ui.field} ${ed.i18n}`} data-plain-field="" data-unpublished={unpublished ? "" : undefined}>
       <div className={ed.i18nHead}>
         <label htmlFor={id}>{label}</label>
-        {unpublished && (
-          <span id={`${id}-unpublished`} className={ed.unpublished} data-unpublished-tag="">
-            · {adminEt.publish.fieldTag}
-          </span>
-        )}
+        {unpublished && <UnpublishedTag id={`${id}-unpublished`} />}
       </div>
       <input
         id={id}

@@ -20,7 +20,9 @@ import { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_C
 //   was lost (protocol-autosave.ts:1134-1138) is not a conflict: it is confirmed, and newer text goes on from there; any other text is another
 //   tab's or device's: the status is `conflict`, the form's text stays as it is (and in the copy), nothing is sent over the other text by itself,
 //   and restore() („Taasta minu tekst“, B13) saves the form's text over the server's version: an explicit overwrite;
-// - the row deleted meanwhile (404) is `gone`: the text stays in this browser, nothing is tried again.
+// - the row deleted meanwhile (404) is `gone`: the text stays in this browser, nothing is tried again;
+// - discardCopy(): the screen threw the part's unpublished text away („Loobu muudatustest“, piece 3a): every copy of the part in this browser goes,
+//   and this engine sends and keeps nothing more (the screen starts a new one from what is stored).
 // Old iPads run it: no regex lookbehind, no crypto.randomUUID (tests/unit/old-safari.test.ts). The server's side is server/autosave-route.ts.
 
 export { DEBOUNCE_MS, KEEPALIVE_MAX_BYTES, RETRY_MS, SAVE_TIMEOUT_MS, SENT_MAX_CHARS };
@@ -157,6 +159,8 @@ export class AutosaveEngine {
   private savedAt: Date | null = null;
   private conflict: Conflict | null = null;
   private gone = false;
+  /** discardCopy(): nothing more is sent or kept. */
+  private discarded = false;
   private signedOut = false;
   /** Why the last save failed (null: it did not): no answer, or an answer that was not a save. */
   private lastFailure: "offline" | "error" | null = null;
@@ -256,6 +260,21 @@ export class AutosaveEngine {
     return this.queue(false);
   }
 
+  /**
+   * The part's text was thrown away on the server („Loobu muudatustest“): every copy of the part in this browser goes (this tab's, the ones it
+   * resumed, any other tab's), no save waits or is tried again, and nothing is sent or kept from now on — a field held back or in conflict would
+   * otherwise come back with the next visit and be sent again. The screen starts a new engine from what is stored.
+   */
+  discardCopy(): void {
+    this.discarded = true;
+    this.clearDebounce();
+    this.clearRetry();
+    const storage = this.storage;
+    if (storage) for (const key of copyKeys(storage, draftKey(this.owner, this.key, ""))) removeKey(storage, key);
+    this.taken = [];
+    this.refresh();
+  }
+
   /** For useSyncExternalStore: told after every change. */
   readonly subscribe = (fn: () => void): (() => void) => {
     this.listeners.add(fn);
@@ -270,7 +289,7 @@ export class AutosaveEngine {
 
   /** Null when the server holds the form's text; else the first field concerned and why (the leave guard asks before the text is left). */
   unconfirmed(): Unconfirmed | null {
-    if (!this.uncertain()) return null;
+    if (this.discarded || !this.uncertain()) return null;
     const reason = this.reason();
     const changed = Object.keys(this.fields).find((n) => !same(this.fields[n], this.confirmed[n])) ?? null;
     return { field: reason === "invalid" ? (this.held()[0] ?? changed) : changed, reason };
@@ -318,7 +337,7 @@ export class AutosaveEngine {
   }
 
   private blocked(): boolean {
-    return this.conflict !== null || this.gone;
+    return this.conflict !== null || this.gone || this.discarded;
   }
 
   private sendable(): boolean {
@@ -489,7 +508,7 @@ export class AutosaveEngine {
     const wait = RETRY_MS[Math.min(this.attempts, RETRY_MS.length - 1)];
     this.attempts++;
     this.clearRetry();
-    if (this.running)
+    if (this.running && !this.discarded)
       this.retry = setTimeout(() => {
         this.retry = null;
         void this.queue(false);
@@ -579,7 +598,7 @@ export class AutosaveEngine {
    */
   private keep(): void {
     const storage = this.storage;
-    if (!storage) return;
+    if (!storage || this.discarded) return;
     const key = this.copyKey();
     if (!this.running && getRaw(storage, key) === null) return;
     const sent = this.flying ? remember(this.unanswered, this.flying) : this.unanswered;

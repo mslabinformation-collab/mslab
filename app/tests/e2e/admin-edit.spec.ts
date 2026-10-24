@@ -263,7 +263,8 @@ test.describe("course editor", () => {
     expect(await draftOf()).toBe("E2E tab A");
     // „Taasta minu tekst“ (B13): B's text over A's, explicitly
     const restored = partSaved(other, "basics");
-    await other.locator("[data-part-restore]").click();
+    // (the type card offers the basics' restore too, for its radio: the one in „Põhiinfo“ here)
+    await other.locator("#course-basics [data-part-restore]").click();
     await restored;
     await expect(chip(other)).toHaveAttribute("data-save-kind", "saved");
     expect(await draftOf()).toBe("E2E tab B");
@@ -515,9 +516,15 @@ test.describe("course editor", () => {
     // names from the visible text, never the input's value ("on")
     const tree = await page.locator("[data-course-editor]").ariaSnapshot();
     expect(tree).not.toMatch(/(radio|checkbox) "on"/);
-    for (const name of ['radio "Baaskoolitus"', 'radio "Täiendkoolitus"', 'radio "E-õpe"', 'radio "Kontaktõpe"', 'checkbox "Avaldatud"', 'checkbox "Näidissisu"', 'checkbox "Lash Lift BOTOX baaskoolitus"'])
+    for (const name of ['radio "Baaskoolitus"', 'radio "Täiendkoolitus"', 'radio "E-õpe"', 'radio "Kontaktõpe"', 'switch "Avalikul lehel"', 'switch "Näidissisu"', 'checkbox "Lash Lift BOTOX baaskoolitus"'])
       expect(tree, name).toContain(name);
-    await expect(page.getByRole("checkbox", { name: "Avaldatud", exact: true })).toHaveAccessibleDescription(/Avaldatud koolitus on avalikul lehel nähtav/);
+    // „Avaldamine“ as drawn (Part 3 L111): two switches (this seed course is published and a sample), each row 44 px or more, the track 48 × 28
+    const card = page.locator("[data-publish-card]");
+    await expect(card.getByRole("switch", { name: "Avalikul lehel", exact: true })).toBeChecked();
+    await expect(card.getByRole("switch", { name: "Näidissisu", exact: true })).toBeChecked({ checked: (await page.locator("[data-course-editor] [data-sample]").count()) > 0 });
+    for (const row of await card.locator("[data-switch-row]").all()) expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    const track = (await card.getByRole("switch", { name: "Avalikul lehel", exact: true }).boundingBox())!;
+    expect([Math.round(track.width), Math.round(track.height)]).toEqual([48, 28]);
     // the badge's presets and swatches are named buttons
     for (const name of ["Puudub", "Uus", "Tint", "Orhidee", "Tuhkroos", "Ploom", "Hele"])
       await expect(page.locator("[data-badge-editor]").getByRole("button", { name, exact: true })).toHaveCount(1);
@@ -791,6 +798,19 @@ test.describe("course editor", () => {
     await expect(spoken(page)).toHaveText(/^Salvestatud \d\d:\d\d$/);
     await expect(publishBar(page)).toHaveCount(0);
     expect(await onLocalDb((sql) => sql`select price_individual from courses where slug = ${slug}`)).toEqual([{ price_individual: 25000 }]);
+    // an unpublished course's type changed: the server empties the contact fields (new versions), so the cards wait (inert) until the page is read
+    // again; then the e-course's price saves from its new version — no false „Muudeti teises aknas“ — and the focus is back on the radio
+    const toOnline = partSaved(page, "basics");
+    await page.locator("[data-type-switch]").getByRole("radio", { name: "E-õpe" }).check();
+    await toOnline;
+    await expect(page.locator("[data-cards-waiting]")).toHaveCount(0);
+    await expect(page.locator("[data-type-switch]").getByRole("radio", { name: "E-õpe" })).toBeFocused();
+    const priced = partSaved(page, "price");
+    await page.getByLabel("Hind (€)").fill("120");
+    await page.getByLabel("Hind (€)").blur();
+    await priced;
+    await expect(chip(page)).toHaveAttribute("data-save-kind", "saved");
+    expect(await onLocalDb((sql) => sql`select type, price, price_group from courses where slug = ${slug}`)).toEqual([{ type: "e_learning", price: 12000, price_group: null }]);
     await page.goto("/admin/koolitused");
     await adminReady(page);
     await expect(page.locator(`[data-course-row="${slug}"] [data-course-state]`)).toHaveText("Mustand");
@@ -931,7 +951,10 @@ test.describe("course editor", () => {
     // the stored order is what a reload shows
     await page.reload();
     await adminReady(page);
-    await expect(page.locator("[data-course-row]").nth(order.length - 1)).toHaveAttribute("data-course-row", c.slug);
+    // (the seed courses' rows: the other project's new course may stand among them meanwhile, at the end of the list)
+    const seedRows = async () =>
+      (await page.locator("[data-course-row]").evaluateAll((els) => els.map((e) => e.getAttribute("data-course-row") ?? ""))).filter((s) => !s.startsWith(NEW_COURSE_SLUG_PREFIX));
+    await expect.poll(async () => (await seedRows()).at(-1)).toBe(c.slug);
 
     // a finger on the handle drags it one place up: the page does not scroll with it, one move is stored, no row doubled or lost
     const handle = handleOf(page, c.title);
