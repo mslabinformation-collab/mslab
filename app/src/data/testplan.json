@@ -968,9 +968,9 @@
         "Üleslaadimise ajal näed „Laen üles…“ koos protsentidega ja riba.",
         "✕ küsib paneeli ülaosas „Muudatust „Video“ ei saanud veel salvestada.“ ja „Üleslaadimine käib.“.",
         "„Jää siia“ jätab paneeli lahti ja üleslaadimine jätkub.",
-        "Seejärel näed „Töötlemisel…“ või „Töötlemisel“ koos protsentidega ja rida „Võid lehelt lahkuda — töötlemine jätkub.“.",
+        "Seejärel näed „Töötlemisel 40%“ (või „Töötlemisel…“, kui protsenti pole) ja rida „Võid lehelt lahkuda — töötlemine jätkub.“.",
         "Mõne minuti pärast näed „Valmis“ koos video pikkusega.",
-        "Õppetunni real on töötlemise ajal märge „Töötlemisel“ ja hiljem „Valmis“."
+        "Õppetunni real on töötlemise ajal märge „Töötlemisel 40%“ (või „Töötlemisel“, kui protsenti pole) ja hiljem „Valmis“."
       ],
       "why": "Videotund on e-koolituse põhiosa.",
       "risk": "high",

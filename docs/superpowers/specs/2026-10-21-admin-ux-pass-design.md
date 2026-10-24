@@ -139,7 +139,7 @@ The README names three mechanisms that the code does differently, with the same 
 - **`removed_at`** on the tables whose rows get an UndoBar removal (B5): lesson files and manual reviews. Rows are purged after 10 s, plus the daily sweep. Each table gets its column in the piece that adds its UndoBar.
 - **On `payments`:** status `replaced` (B22) and `check_reason`, which holds „Topeltmakse — tagasta".
 
-**Numbering:** they take the next free numbers when built. The instalments spec reserved 0017, but that work waited on Montonio, so the pass's drafts table took 0017 (`content_drafts`, piece 1) and the instalments 0018 (`financing`). Piece 2 built the `payments` part as **0019** (`0019_payments_replaced`: the status `replaced` and `check_reason`; `docs/deploy.md` section 22). The "not yet published" flag and `removed_at` are still to come and take the next free numbers (0020 and later) in the pieces that add them. Each migration is applied on Railway before the push (`docs/deploy.md`).
+**Numbering:** they take the next free numbers when built. The instalments spec reserved 0017, but that work waited on Montonio, so the pass's drafts table took 0017 (`content_drafts`, piece 1) and the instalments 0018 (`financing`). Piece 2 built the `payments` part as **0019** (`0019_payments_replaced`: the status `replaced` and `check_reason`; `docs/deploy.md` section 22). Piece 3a built the "not yet published" flag and `removed_at` on lesson files as **0020** (`0020_course_drafts`: `course_modules.unpublished`, `lessons.unpublished` and `lesson_files.removed_at`, plus `lessons.video_progress` for S6's „Töötlemisel {n}%“, which this list did not name; `docs/deploy.md` section 23). `removed_at` on reviews is still to come and takes the next free number (0021 or later) in the piece that adds it (piece 4). Piece 3b needs no migration. Each migration is applied on Railway before the push (`docs/deploy.md`).
 
 ## 8. Delivery
 
@@ -155,7 +155,9 @@ The design's order is global components first, then the A screens, then B, then 
 
    Migration: the drafts table.
 2. **The A screens (§2):** A1–A7, with B4, B7, B10, B11, B12, B14, B15 and B22. Migration: `payments`.
-3. **The B screens (§3):** B1–B5, with B9, B17, B18 and B21. Migrations: the module and lesson flag, and `removed_at` on lesson files.
+3. **The B screens (§3):** B1–B5, with B9, B17, B18 and B21. Migrations: the module and lesson flag, and `removed_at` on lesson files. **Split into 3a and 3b on 23.10**, each with its own plan, build, review and deploy:
+   - **3a:** B1 Koolitused, B2 the course editor and the lesson drawer, with B18 (plan `docs/superpowers/plans/2026-10-23-admin-ux-courses.md`). It carries the whole of this item's migration (0020, §7) and the draft-mode preview of the course page and the catalogue (C3). Deploy notes: `docs/deploy.md` section 23.
+   - **3b:** B3 Kalender, B4 Seaded and B5 Uudiskiri, with B9, B17 and B21's Seaded side (plan `docs/superpowers/plans/2026-10-23-admin-ux-calendar-settings-newsletter.md`). No migration.
 4. **The C screens (§4):** C1–C8, with B19 and B20. Migration: `removed_at` on reviews.
 
 **B21 goes first. Dim (21.10): "Yes, first."** Invoice numbers per year belong to the Seaded screen in piece 3. But the server part must be live before 1 December 2026, because today a December invoice silently erases a next-year number preset. So B21 is the opening commit of piece 1, and the rest of the Seaded screen comes with piece 3.

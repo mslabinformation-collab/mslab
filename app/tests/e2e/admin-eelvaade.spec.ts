@@ -26,7 +26,11 @@ const BAR = "[data-preview-bar]";
 
 const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
 
-test.afterEach(async () => {
+test.afterEach(async ({ isMobile }) => {
+  // The phone project's tests are skipped above, yet their hooks run: with both edit projects loaded (the full run, and `next dev` has no edit lock)
+  // the phone worker's cleanup deleted the desktop test's fixture draft while that test was running (Task 12: a live title in the preview, a draft
+  // that was gone after „Lõpeta eelvaade“). Only the project that runs these tests cleans up after them.
+  if (isMobile) return;
   expect(await removePreviewDrafts()).toBe(0);
   await removeAdminRows(created).catch(() => {});
   created.tokens.clear();
@@ -91,7 +95,8 @@ test("a visitor gets the live page; the admin's „Eelvaade“ shows the draft a
 
   // the admin's „Eelvaade ↗“: draft mode on and the draft over the live title (the answer is rendered for her alone: no-store), with the bar
   const preview = await openPreview(page, context, visitorIp);
-  expect(preview.headers()["cache-control"]).toMatch(/no-store/);
+  // (the production build answers no-store; `next dev` sends every page "no-cache, must-revalidate", so there the page is only not cacheable)
+  expect(preview.headers()["cache-control"]).toMatch(PROD_BUILD ? /no-store/ : /no-store|no-cache/);
   await expect(page.locator("[data-preview-count]")).toHaveText("Avaldamata 1");
   await expect(page.locator("[data-preview-discard]")).toHaveText("Loobu muudatustest");
   await expect(page.locator("[data-preview-exit]")).toHaveAttribute("href", `/api/admin/eelvaade?lopeta=1&tee=${encodeURIComponent(COURSE)}`);

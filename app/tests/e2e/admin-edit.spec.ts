@@ -109,6 +109,7 @@ const publicCard = (page: Page, slug: string, prefix = ""): Locator => page.loca
 
 test.describe("course editor", () => {
   test("a published course's ET title: autosaved into its draft (the bar names it, the public page keeps the old one) until „Avalda muudatused“; RU the same way", async ({ page, context, visitorIp }, info) => {
+    test.slow(); // one long flow: under the whole suite's load on `next dev` it needs more than the default 30 s (about 15 s alone, 24 to 31 s in the full run)
     const c = mine(info);
     const id = await changing(c.slug);
     // the seed has a Russian title now (round 2): this test starts from a course without one (put back afterwards)
@@ -196,6 +197,7 @@ test.describe("course editor", () => {
   });
 
   test("„Eelvaade ↗“ shows the draft on the course's live address with the preview bar; „Loobu muudatustest“ asks, then the cards show live again", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.slow(); // one long flow: under the whole suite's load on `next dev` it needs more than the default 30 s (about 15 s alone, 24 to 31 s in the full run)
     test.skip(isMobile, "„Loobu muudatustest“ is on the desktop bar (on a phone, behind „Eelvaade“): the desktop project");
     const c = mine(info);
     const id = await changing(c.slug);
@@ -250,6 +252,7 @@ test.describe("course editor", () => {
   });
 
   test("the modules card on a published course (Task 9; README B2, B18): a name and a move wait in the draft — the bar names them, the rows say „avaldamata“, another card keeps its field; „Loobu muudatustest“ brings live back; „Avalda muudatused“ clears the tags", async ({ page, context, visitorIp, isMobile }, info) => {
+    test.slow(); // one long flow: under the whole suite's load on `next dev` it needs more than the default 30 s (about 15 s alone, 24 to 31 s in the full run)
     const c = mine(info);
     const id = await changing(c.slug); // (the snapshot holds its modules and lessons too: put back after the test, also what „Avalda“ wrote)
     /** The course's modules as stored (live), in order. */
@@ -493,6 +496,7 @@ test.describe("course editor", () => {
   });
 
   test("badge 'Uus' in Orhidee (D badge editor): the live card preview, then the public card after „Avalda muudatused“; 'Puudub' takes it off", async ({ page, context, visitorIp }, info) => {
+    test.slow(); // one long flow: under the whole suite's load on `next dev` it needs more than the default 30 s (about 15 s alone, 24 to 31 s in the full run)
     const c = mine(info);
     const id = await changing(c.slug);
     await signIn(page, context, visitorIp);
