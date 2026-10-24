@@ -6,6 +6,7 @@ import { courseImages, courseModules, courses, courseTests, lessonFiles, lessons
 import type { SaveAnswer } from "@/domain/autosave";
 import { COURSE_LANGUAGES, draftFromCourse, type CourseType } from "@/domain/course-editor";
 import { changedFields, COURSE_PARTS, isCoursePart, PART_FIELDS, partLabels, partTitle, partValue, PRICE_MISSING, TYPE_PRICE_FIELDS, type CoursePart, type PartValues } from "@/domain/course-parts";
+import { adminEt } from "@/i18n/dict/admin";
 import { ROW_ID_MAX } from "@/lib/row-id";
 import { toStorable } from "@/lib/to-storable";
 import { contentVersion, stableJson } from "@/lib/version";
@@ -15,8 +16,10 @@ import {
 } from "./admin-content";
 import type { LessonCleanup } from "./admin-lessons";
 import { fieldCodes } from "./autosave-route";
-import { discardDrafts, dropDraftPart, publishDrafts, publishDraftsIn, readDrafts, saveDraftPart, type DraftPart, type Publisher } from "./drafts";
+import { checkOutline, liveOutline, OUTLINE_SCHEMA, outlineFromDraft, outlineLabels, outlineRows, publishOutline, type OutlineRows } from "./course-outline";
+import { discardDrafts, dropDraftPart, publishDraftsIn, readDrafts, saveDraftPart, type DraftPart, type Publisher } from "./drafts";
 import { Check, type FieldError } from "./edit-check";
+import { logFailure } from "./log";
 import { revalidatePublic } from "./public-cache";
 
 // A course's parts on the draft layer (admin UX pass piece 3a, Task 4; rulings R-a…R-e; README B2, §1.8; spec §10, §12): the course editor's
@@ -39,6 +42,9 @@ import { revalidatePublic } from "./public-cache";
 //   course the type is the drafted one while the basics have a draft (the cards follow it; R-a), and the publish writes every part with the type it
 //   ends with; a type change empties the other type's fields (db/queries/admin.ts clearOtherCourseType), as the old editor's save does.
 // - The test's answer key lives in course_tests and in its draft only; neither rides on a public course object (db/queries/public.ts).
+// - The modules and lessons (B18, R-e, Task 5) are the part `outline`: the order and the texts of the rows students see (server/course-outline.ts).
+//   A published course's new rows are real rows flagged `unpublished`; the publish writes the outline and clears every flag of the course, also
+//   when the outline has no draft (review M-5); the discard deletes the flagged rows and returns their media.
 // No Next.js here but the public pages' revalidation (server/public-cache.ts, mocked in the tests): tests/db/course-parts.test.ts runs it on PGlite.
 
 export { COURSE_PARTS, isCoursePart, partLabels, type CoursePart } from "@/domain/course-parts";
@@ -75,6 +81,7 @@ const SCHEMAS = {
   gallery: z.object({ images: z.array(z.object({ key: z.string().max(300, "tooLong"), alt: i18n })).max(200, "tooMany") }).strict(),
   recommendations: z.object({ recommendationIds: z.array(z.number().int().positive().max(ROW_ID_MAX)).max(200, "tooMany") }).strict(),
   badge: z.object({ badge: z.object({ label: z.object({ et: text(200), ru: text(200).optional() }), bg: z.string().max(20), fg: z.string().max(20) }).nullable() }).strict(),
+  outline: OUTLINE_SCHEMA,
 } satisfies { [P in CoursePart]: z.ZodType<PartValues[P]> };
 
 const PATCHES = Object.fromEntries(COURSE_PARTS.map((part) => [part, SCHEMAS[part].partial().strict()])) as unknown as { [P in CoursePart]: z.ZodType<Partial<PartValues[P]>> };
@@ -84,27 +91,34 @@ export const coursePartPatch = <P extends CoursePart>(part: P): z.ZodType<Partia
 
 // ---------- the live course and the drafts over it ----------
 
-/** The live course as the parts read it: the row (read under its lock where it is written), its images and its test row. */
-type LiveCourse = { course: Course; images: CourseImage[]; test: CourseTest | null };
+/** The live course as the parts read it: the row (read under its lock where it is written), its images, its test row, its modules and lessons. */
+type LiveCourse = { course: Course; images: CourseImage[]; test: CourseTest | null; outline: OutlineRows };
 
 async function liveOf(q: Q, course: Course): Promise<LiveCourse> {
   const images = await q.select().from(courseImages).where(eq(courseImages.courseId, course.id)).orderBy(asc(courseImages.sort), asc(courseImages.id));
   const [test] = await q.select().from(courseTests).where(eq(courseTests.courseId, course.id)).limit(1);
-  return { course, images, test: test ?? null };
+  return { course, images, test: test ?? null, outline: await outlineRows(q, course.id) };
 }
 
-/** A part's live value: the editor's fields of the stored course (domain/course-editor.ts draftFromCourse). */
-const liveValue = <P extends CoursePart>(l: LiveCourse, part: P): PartValues[P] => partValue(part, draftFromCourse({ ...l.course, images: l.images, test: l.test }));
+/** A part's live value: the editor's fields of the stored course (domain/course-editor.ts draftFromCourse); the outline's, its rows students see. */
+const liveValue = <P extends CoursePart>(l: LiveCourse, part: P): PartValues[P] =>
+  (part === "outline" ? liveOutline(l.outline) : partValue(part as Exclude<P, "outline">, draftFromCourse({ ...l.course, images: l.images, test: l.test }))) as PartValues[P];
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const same = (a: unknown, b: unknown): boolean => stableJson(a) === stableJson(b);
 
-/** A stored draft's value read defensively (jsonb holds anything): its part's fields over the live ones, through the part's schema; live when it does not pass. */
-function draftValueOf<P extends CoursePart>(part: P, raw: unknown, live: PartValues[P]): PartValues[P] {
+/**
+ * A stored draft's value read defensively (jsonb holds anything): its part's fields over the live ones, through the part's schema; live when it does
+ * not pass. The outline's is held to the rows as they are now (rows deleted since are left out, a flagged module keeps its row's name).
+ */
+function draftValueOf<P extends CoursePart>(l: LiveCourse, part: P, raw: unknown): PartValues[P] {
+  const live = liveValue(l, part);
   const fields: readonly string[] = PART_FIELDS[part];
   const own = isRecord(raw) ? Object.fromEntries(Object.entries(raw).filter(([k]) => fields.includes(k))) : {};
   const parsed = SCHEMAS[part].safeParse({ ...live, ...own });
-  return parsed.success ? (parsed.data as PartValues[P]) : live;
+  if (!parsed.success) return live;
+  if (part === "outline") return (outlineFromDraft(l.outline, parsed.data) ?? live) as PartValues[P];
+  return parsed.data as PartValues[P];
 }
 
 /** The course's live values and drafts as its editor works on them: drafts only while it is published (an unpublished course saves straight to the record). */
@@ -113,7 +127,7 @@ type CourseState = { live: LiveCourse; drafts: DraftPart[]; type: CourseType };
 /** The type the cards follow: the drafted one while the basics have a draft (R-a), else the course's. */
 function effectiveType(live: LiveCourse, drafts: DraftPart[]): CourseType {
   const basics = drafts.find((d) => d.part === "basics");
-  return basics ? draftValueOf("basics", basics.value, liveValue(live, "basics")).type : live.course.type;
+  return basics ? draftValueOf(live, "basics", basics.value).type : live.course.type;
 }
 
 async function stateOf(q: Q, course: Course): Promise<CourseState> {
@@ -132,7 +146,7 @@ async function partStateOf(s: CourseState, part: CoursePart): Promise<PartState>
   const liveHash = await contentVersion(live);
   const draft = s.drafts.find((d) => d.part === part) ?? null;
   if (!draft) return { liveValue: live, liveHash, draft: null, version: `l:${liveHash}`, value: live };
-  return { liveValue: live, liveHash, draft, version: draftVersion(draft.id, draft.version), value: draftValueOf(part, draft.value, live as never) as Record<string, unknown> };
+  return { liveValue: live, liveHash, draft, version: draftVersion(draft.id, draft.version), value: draftValueOf(s.live, part, draft.value) as Record<string, unknown> };
 }
 
 /** A part as its card reads it (the autosave route's `read`): the version (R-b) and the value; null when there is no such course (404). */
@@ -184,6 +198,12 @@ const PARTS: { [P in CoursePart]: PartDef<P, unknown> } = {
     write: columns,
   }),
   badge: def({ check: (_ctx, c, v: PartValues["badge"]) => ({ badge: checkCourseBadge(c, v.badge) }), write: columns }),
+  // the modules and lessons (B18): the course's own rows once each, their names and texts as the card's forms check them; written to the rows, and
+  // (a publish, R-e) no row of the course flagged any more
+  outline: def({
+    check: (ctx, c, v: PartValues["outline"]) => checkOutline(ctx.q, ctx.course.id, c, v),
+    write: async (tx, course, checked) => void (await publishOutline(tx, course.id, checked)),
+  }),
 };
 
 /**
@@ -260,30 +280,42 @@ export async function writeCoursePart(
 
 // ---------- what is unpublished ----------
 
-/** A part's changes as the PublishBar names them: the changed fields' labels (P-3), the price's of the type it is stored with; its card's title when none differs. */
-function labelsOf(part: CoursePart, value: unknown, live: unknown, type: CourseType): string[] {
-  let changed = changedFields(part, value, live);
-  if (part === "price") {
-    const own: readonly string[] = TYPE_PRICE_FIELDS[type];
-    changed = Object.fromEntries(Object.entries(changed).filter(([f]) => own.includes(f)));
+/**
+ * A part's changes as the PublishBar names them: the changed fields' labels (P-3), the price's of the type it is stored with; the outline's modules
+ * (course-outline.ts outlineLabels: `Moodul {nn}`, `Moodulite järjekord`, a contact course's `Programm`); its card's title when none differs.
+ * `value`: the part's draft value (null for the outline: no draft, only flagged rows).
+ */
+function labelsOf(l: LiveCourse, part: CoursePart, value: unknown, type: CourseType): string[] {
+  let labels: string[];
+  if (part === "outline") labels = outlineLabels(l.outline, value as PartValues["outline"] | null, type === "contact");
+  else {
+    let changed = changedFields(part, value, liveValue(l, part));
+    if (part === "price") {
+      const own: readonly string[] = TYPE_PRICE_FIELDS[type];
+      changed = Object.fromEntries(Object.entries(changed).filter(([f]) => own.includes(f)));
+    }
+    labels = partLabels(part, changed);
   }
-  const labels = partLabels(part, changed);
-  return labels.length > 0 ? labels : [partTitle(part)];
+  return labels.length > 0 ? labels : [type === "contact" && part === "outline" ? adminEt.courseEditor.sections.modulesC : partTitle(part)];
 }
 
 function changesOf(live: LiveCourse, drafts: DraftPart[]): { part: CoursePart; labels: string[] }[] {
   const type = effectiveType(live, drafts);
   return COURSE_PARTS.flatMap((part) => {
     const draft = drafts.find((d) => d.part === part);
+    // the modules and lessons also wait with no draft: a flagged row is a change to publish (R-e, review M-5)
+    if (part === "outline" && !draft) {
+      const labels = outlineLabels(live.outline, null, type === "contact");
+      return labels.length > 0 ? [{ part, labels }] : [];
+    }
     if (!draft) return [];
-    const lv = liveValue(live, part);
-    return [{ part, labels: labelsOf(part, draftValueOf(part, draft.value, lv), lv, type) }];
+    return [{ part, labels: labelsOf(live, part, draftValueOf(live, part, draft.value), type) }];
   });
 }
 
 /**
- * The PublishBar's list (`changed`: the labels, flattened): each drafted part with its changed fields' labels, in screen order. None for an unpublished
- * course (it has no drafts: its saves are live).
+ * The PublishBar's list (`changed`: the labels, flattened): each drafted part with its changed fields' labels, in screen order, and the outline also
+ * while only flagged rows wait (R-e). None for an unpublished course (it has no drafts: its saves are live).
  */
 export async function courseChanges(db: Q, courseId: number): Promise<{ part: string; labels: string[] }[]> {
   const [course] = await db.select().from(courses).where(eq(courses.id, courseId));
@@ -340,7 +372,7 @@ function makeCoursePublisher(courseId: number, o: { now: Date; priceRule: "publi
     async hold(tx, parts) {
       const l = known();
       const set = new Map<CoursePart, unknown>();
-      for (const p of parts) if (isCoursePart(p.part)) set.set(p.part, draftValueOf(p.part, p.value, liveValue(l, p.part)));
+      for (const p of parts) if (isCoursePart(p.part)) set.set(p.part, draftValueOf(l, p.part, p.value));
       const priceRule = o.priceRule === "published" && l.course.published;
       for (;;) {
         const basics = set.get("basics") as PartValues["basics"] | undefined;
@@ -356,7 +388,7 @@ function makeCoursePublisher(courseId: number, o: { now: Date; priceRule: "publi
           checked.set(part, n);
         }
         if (failed) {
-          held.set(failed, { reason: "changed", fields: labelsOf(failed, set.get(failed), liveValue(l, failed), type) });
+          held.set(failed, { reason: "changed", fields: labelsOf(l, failed, set.get(failed), type) });
           set.delete(failed);
           continue;
         }
@@ -386,7 +418,10 @@ function makeCoursePublisher(courseId: number, o: { now: Date; priceRule: "publi
   return { publisher, held };
 }
 
-/** The course's Publisher (R-c) for the draft layer's publishDrafts: lockCourse first, the parts' checks at publish, `{ kind: "courses" }` revalidated after the commit. */
+/**
+ * The course's Publisher (R-c) for the draft layer's publishDrafts: lockCourse first, the parts' checks at publish, `{ kind: "courses" }` revalidated
+ * after the commit. It publishes the drafts only: the flagged rows of a course whose outline has no draft are publishCourse's (publishIn).
+ */
 export const coursePublisher = (courseId: number): Publisher => makeCoursePublisher(courseId, { now: new Date(), priceRule: "published" }).publisher;
 
 /** The blocked parts with their reasons: the held ones as decided, the others changed meanwhile, with their changes' labels (read after the publish). */
@@ -398,18 +433,39 @@ async function blockedOf(db: Q, courseId: number, names: string[], held: Map<str
 }
 
 /**
- * „Avalda muudatused“ (R-c): the course's drafts through publishDrafts with its Publisher, in one transaction: the course row's lock, the drafts', every
- * part's live version against its draft's base, the parts' checks, then the writes; `{ kind: "courses" }` revalidated once after the commit when a part
- * was published. The parts it could not publish stay drafts and are listed with why. `now`: the course's updatedAt.
+ * The publish's work inside a caller's transaction (publishDraftsIn with the course's Publisher), and then the modules and lessons flagged
+ * `unpublished` (R-e): when the outline had no draft (none published, none blocked), the flags are cleared in live's own order with the flagged rows
+ * at their places (review M-5: also with no draft at all), and the outline counts as published. A blocked outline keeps its rows flagged: the
+ * draft's order is what places them.
+ */
+async function publishIn(tx: Tx, courseId: number, publisher: Publisher): Promise<{ published: string[]; blocked: string[] }> {
+  const result = await publishDraftsIn(tx, ENTITY, courseId, publisher);
+  const outline: CoursePart = "outline";
+  if (!result.published.includes(outline) && !result.blocked.includes(outline) && (await publishOutline(tx, courseId, null))) result.published.push(outline);
+  return result;
+}
+
+/**
+ * „Avalda muudatused“ (R-c): the course's drafts with its Publisher, in one transaction (publishIn): the course row's lock, the drafts', every part's
+ * live version against its draft's base, the parts' checks, the writes, then the flagged rows (R-e); `{ kind: "courses" }` revalidated once after the
+ * commit when anything was published (a failure there is logged: the publish stands). The parts it could not publish stay drafts and are listed
+ * with why. `now`: the course's updatedAt.
  */
 export async function publishCourse(db: Db, courseId: number, now: Date): Promise<PublishResult> {
   const { publisher, held } = makeCoursePublisher(courseId, { now, priceRule: "published" });
   let result: { published: string[]; blocked: string[] };
   try {
-    result = await publishDrafts(db, ENTITY, courseId, publisher);
+    result = await db.transaction((tx) => publishIn(tx, courseId, publisher));
   } catch (e) {
     if (e instanceof CourseGone) return { published: [], blocked: [] };
     throw e;
+  }
+  if (result.published.length > 0) {
+    try {
+      publisher.revalidate();
+    } catch (e) {
+      logFailure(`[course-parts] course ${courseId}: revalidating after the publish failed`, e);
+    }
   }
   return { published: result.published, blocked: await blockedOf(db, courseId, result.blocked, held) };
 }
@@ -419,22 +475,25 @@ export async function publishCourse(db: Db, courseId: number, now: Date): Promis
 const NO_CLEANUP: LessonCleanup = { videoIds: [], fileKeys: [] };
 
 /**
- * „Loobu muudatustest“: the course's drafts deleted and, R-e, its modules and lessons flagged `unpublished` (made on the published course and not
- * published yet) with their files; live stays as it is. Under the course's lock first (the lock order). A flagged module goes only once it holds no
- * lesson (a published lesson is never deleted with it). `onCleanup` is handed their Bunny videos and stored files after the commit, when there are any
- * (the route removes them in `after()`). The number of drafts and rows deleted.
+ * „Loobu muudatustest“: the course's drafts deleted (the outline's too) and, R-e, its modules and lessons flagged `unpublished` (made on the published
+ * course and not published yet) with their files; live stays as it is. Under the course's lock first (the lock order). A flagged module goes only
+ * once it holds no lesson (a published lesson is never deleted with it). The number of drafts and rows deleted, and the deleted lessons' Bunny videos
+ * and stored files (their removed ones too) for the cleanup after the commit (the route removes them in `after()`).
  */
-export async function discardCourse(db: Db, courseId: number, onCleanup?: (cleanup: LessonCleanup) => void): Promise<number> {
-  const { discarded, cleanup } = await db.transaction(async (tx) => {
+export async function discardCourse(db: Db, courseId: number): Promise<{ discarded: number; cleanup: LessonCleanup }> {
+  return db.transaction(async (tx) => {
     if (!(await lockCourse(tx, courseId))) return { discarded: 0, cleanup: NO_CLEANUP };
     const parts = await discardDrafts(tx, ENTITY, courseId);
     const flagged = await tx
       .select({ id: lessons.id, videoId: lessons.videoId, replacedVideoId: lessons.replacedVideoId })
       .from(lessons)
       .innerJoin(courseModules, eq(lessons.moduleId, courseModules.id))
-      .where(and(eq(courseModules.courseId, courseId), eq(lessons.unpublished, true)));
+      .where(and(eq(courseModules.courseId, courseId), eq(lessons.unpublished, true)))
+      .orderBy(asc(lessons.id));
     const ids = flagged.map((l) => l.id);
-    const files = ids.length ? await tx.select({ key: lessonFiles.r2Key }).from(lessonFiles).where(inArray(lessonFiles.lessonId, ids)) : [];
+    const files = ids.length
+      ? await tx.select({ key: lessonFiles.r2Key }).from(lessonFiles).where(inArray(lessonFiles.lessonId, ids)).orderBy(asc(lessonFiles.lessonId), asc(lessonFiles.position), asc(lessonFiles.id))
+      : [];
     if (ids.length) await tx.delete(lessons).where(inArray(lessons.id, ids));
     const modules = await tx
       .delete(courseModules)
@@ -443,8 +502,6 @@ export async function discardCourse(db: Db, courseId: number, onCleanup?: (clean
     const videoIds = flagged.flatMap((l) => [l.videoId, l.replacedVideoId]).filter((v): v is string => v !== null);
     return { discarded: parts + ids.length + modules.length, cleanup: { videoIds, fileKeys: files.map((f) => f.key) } };
   });
-  if (onCleanup && (cleanup.videoIds.length > 0 || cleanup.fileKeys.length > 0)) onCleanup(cleanup);
-  return discarded;
 }
 
 // ---------- the instant switches „Avaldatud“ (R-d) and „Näidissisu“ ----------
@@ -464,9 +521,10 @@ export function parseSwitch(input: unknown): { id: number; on: boolean } | null 
 
 /**
  * „Avaldatud“, instant (R-d). Switched ON: today's price rule (an e-course needs its price, a contact course a group or an individual price; the field's
- * error otherwise). Switched OFF with drafts: they are published first, in the same transaction (as „Avalda muudatused“, under the course's lock;
- * an unpublished course needs no price, so a price cleared in its draft goes too), then `published` is false; if any part is blocked, the switch is
- * refused with them and nothing is published or unpublished. `{ kind: "courses" }` is revalidated once after a change.
+ * error otherwise); a module or lesson still flagged (left by an earlier way of unpublishing) is shown with the course. Switched OFF with drafts or
+ * flagged rows: they are published first, in the same transaction (as „Avalda muudatused“, under the course's lock; an unpublished course needs no
+ * price, so a price cleared in its draft goes too), then `published` is false; if any part is blocked, the switch is refused with them and nothing is
+ * published or unpublished. `{ kind: "courses" }` is revalidated once after a change.
  */
 export async function switchCoursePublished(db: Db, courseId: number, on: boolean, now: Date): Promise<SwitchResult> {
   if (on) {
@@ -477,6 +535,7 @@ export async function switchCoursePublished(db: Db, courseId: number, on: boolea
       const c = new Check();
       checkCoursePriceRequired(c, course, course.type);
       if (!c.ok) return { ok: false, error: "invalid", fields: c.errors };
+      await publishOutline(tx, courseId, null);
       await updateCourseColumns(tx, courseId, { published: true }, now);
       return "changed";
     });
@@ -490,7 +549,7 @@ export async function switchCoursePublished(db: Db, courseId: number, on: boolea
       const course = await lockCourse(tx, courseId);
       if (!course) return "notFound";
       if (!course.published) return "same";
-      const { blocked } = await publishDraftsIn(tx, ENTITY, courseId, publisher);
+      const { blocked } = await publishIn(tx, courseId, publisher);
       if (blocked.length > 0) throw new SwitchRefused(blocked); // the transaction takes the published parts back
       await updateCourseColumns(tx, courseId, { published: false }, now);
       return "changed";

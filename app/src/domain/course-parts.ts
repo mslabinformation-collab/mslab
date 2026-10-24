@@ -1,5 +1,6 @@
 import type { CourseDraft, TestDraft } from "./course-editor";
 import { adminEt } from "@/i18n/dict/admin";
+import type { I18n } from "@/i18n/field";
 import { stableJson } from "@/lib/version";
 
 // A course's parts on the draft layer (admin UX pass piece 3a, ruling R-a; README B2, §1.8): what the course editor's cards save one at a time,
@@ -11,10 +12,13 @@ import { stableJson } from "@/lib/version";
 
 /**
  * The parts (R-a), in the order the editor draws its cards (the PublishBar lists the changed fields in screen order). The modules' and lessons'
- * order and texts are a part too, `outline` (Task 5): it joins this list after "outcomes", where the section map draws „Moodulid ja õppetunnid“.
+ * order and texts are a part too, `outline` (B18, Task 5), after "outcomes", where the section map draws „Moodulid ja õppetunnid“ (a contact
+ * course's „Programm“).
  */
-export const COURSE_PARTS = ["basics", "price", "outcomes", "includes", "protocolStages", "test", "certificate", "gallery", "recommendations", "badge"] as const;
+export const COURSE_PARTS = ["basics", "price", "outcomes", "outline", "includes", "protocolStages", "test", "certificate", "gallery", "recommendations", "badge"] as const;
 export type CoursePart = (typeof COURSE_PARTS)[number];
+/** The parts made of the course editor's own fields (CourseDraft): every one but the outline, which is the modules' and lessons' rows. */
+export type EditorPart = Exclude<CoursePart, "outline">;
 
 export const isCoursePart = (part: string): part is CoursePart => (COURSE_PARTS as readonly string[]).includes(part);
 
@@ -22,6 +26,7 @@ export const isCoursePart = (part: string): part is CoursePart => (COURSE_PARTS 
  * Each part's fields, as the autosave saves them (a patch names some of them), in screen order:
  * - basics: „Põhiinfo“ and the type („Õppevorm“: in the type card, but it decides which of the other cards there are);
  * - price: the rest of „Õppevorm ja hind“, both types' fields (only the course's type's are stored; the other type's are emptied);
+ * - outline: „Moodulid ja õppetunnid“ / „Programm“, the order and the texts of the modules and lessons students see (OutlineValue);
  * - test: „Teadmiste test“, the e-course's questions with their answer key, the pass mark and the tries (course_tests, never on a public course);
  * - certificate: „Tunnistus“, the e-course's certificate lines and volume;
  * - the lists and cards: their one field.
@@ -30,6 +35,7 @@ export const PART_FIELDS = {
   basics: ["title", "slug", "level", "language", "summary", "body", "type"],
   price: ["price", "accessMonths", "videoCount", "nextDiscount", "priceGroup", "priceIndividual", "durationLabel"],
   outcomes: ["outcomes"],
+  outline: ["modules"],
   includes: ["includes"],
   protocolStages: ["protocolStages"],
   test: ["questions", "passPercent", "tries"],
@@ -39,11 +45,19 @@ export const PART_FIELDS = {
   badge: ["badge"],
 } as const satisfies Record<CoursePart, readonly string[]>;
 
+/**
+ * The outline part's value (B18, R-e): the modules and lessons students see (the rows not flagged `unpublished`), in order, with their texts (a
+ * lesson's short text is `{ et: "" }` when it has none). A flagged module is listed only while a live lesson is placed in it (moved there in the
+ * draft), under its own row's name: a flagged row itself is never drafted (server/course-outline.ts).
+ */
+export type OutlineValue = { modules: { id: number; title: I18n; lessons: { id: number; title: I18n; body: I18n }[] }[] };
+
 /** The value of each part. */
 export type PartValues = {
   basics: Pick<CourseDraft, "title" | "slug" | "level" | "language" | "summary" | "body" | "type">;
   price: Pick<CourseDraft, "price" | "accessMonths" | "videoCount" | "nextDiscount" | "priceGroup" | "priceIndividual" | "durationLabel">;
   outcomes: Pick<CourseDraft, "outcomes">;
+  outline: OutlineValue;
   includes: Pick<CourseDraft, "includes">;
   protocolStages: Pick<CourseDraft, "protocolStages">;
   test: TestDraft;
@@ -53,8 +67,8 @@ export type PartValues = {
   badge: Pick<CourseDraft, "badge">;
 };
 
-/** A part's value out of the editor's whole draft (the test part is the draft's `test`). */
-export function partValue<P extends CoursePart>(part: P, draft: CourseDraft): PartValues[P] {
+/** A part's value out of the editor's whole draft (the test part is the draft's `test`; the outline is no field of it). */
+export function partValue<P extends EditorPart>(part: P, draft: CourseDraft): PartValues[P] {
   if (part === "test") return { ...draft.test } as PartValues[P];
   const source = draft as unknown as Record<string, unknown>;
   return Object.fromEntries(PART_FIELDS[part].map((f) => [f, source[f]])) as PartValues[P];
@@ -95,6 +109,7 @@ const CARD_TITLES: Record<CoursePart, string> = {
   basics: cardText.basics,
   price: cardText.type,
   outcomes: cardText.outcomes,
+  outline: adminEt.lessons.title,
   includes: cardText.includes,
   protocolStages: cardText.protocolStages,
   test: cardText.test,

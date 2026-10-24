@@ -21,7 +21,10 @@ import { revalidatePublic } from "../public-cache";
 
 // "Moodulid ja õppetunnid" server actions: every export is wrapped in adminAction (tests/unit/admin-guards.test.ts). The work is in
 // ../admin-lessons.ts. Module titles show on the public course page, so their changes revalidate the course pages; lessons are
-// only in the account (its JSON is never cached), so they refresh the open admin page only.
+// only in the account (its JSON is never cached), so they refresh the open admin page only. On a published course (B18, R-e) a new
+// module, a rename and a move wait for „Avalda muudatused“ (its route revalidates once then); the revalidation here is then needless but
+// harmless, and a module's delete is live at once. The changes that may write the course's outline draft are handed the admin (the
+// draft's updated_by).
 
 async function run(what: string, publicChange: boolean, work: (db: Db) => Promise<EditResult>): Promise<EditResult> {
   try {
@@ -58,9 +61,9 @@ const media = () => {
 };
 
 export const addModule = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("module add", true, (db) => addModuleForm(db, formData)));
-export const renameModule = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("module rename", true, (db) => renameModuleForm(db, formData)));
-export const moveModuleInList = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("module move", true, (db) => moveModuleForm(db, formData)));
-export const deleteModule = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("module delete", true, (db) => deleteModuleForm(db, formData)));
+export const renameModule = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => run("module rename", true, (db) => renameModuleForm(db, formData, admin)));
+export const moveModuleInList = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => run("module move", true, (db) => moveModuleForm(db, formData, admin)));
+export const deleteModule = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => run("module delete", true, (db) => deleteModuleForm(db, formData, admin)));
 
 /**
  * "Lisa õppetund": the new lesson opens in the drawer (fields moduleId, titleEt). The address is the lesson's own course (read
@@ -77,8 +80,8 @@ export const addLesson = adminAction(async (_admin, _prev: EditResult | null, fo
   return result;
 });
 
-export const saveLesson = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("lesson save", false, (db) => saveLessonForm(db, formData)));
-export const moveLessonInList = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("lesson move", false, (db) => moveLessonForm(db, formData)));
+export const saveLesson = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => run("lesson save", false, (db) => saveLessonForm(db, formData, admin)));
+export const moveLessonInList = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => run("lesson move", false, (db) => moveLessonForm(db, formData, admin)));
 export const setLessonHidden = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("lesson visibility", false, (db) => setLessonHiddenForm(db, formData)));
 
 /** "Õppetunni liik" (to Tekst after "Video kustutatakse. Jätkan?"): fields id, kind. The videos it drops are deleted from Bunny. */
@@ -102,13 +105,13 @@ export const setLessonKind = adminAction(async (_admin, _prev: EditResult | null
  * "Kustuta õppetund" (after its confirmation): field id. The row, then (after the answer) its videos and files; back to the
  * lesson's own course (read before the row goes) with the drawer closed.
  */
-export const deleteLesson = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => {
+export const deleteLesson = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => {
   let cleanup: LessonCleanup = { videoIds: [], fileKeys: [] };
   let course: number | null = null;
   const result = await run("lesson delete", false, async (db) => {
     const id = parseRowId(String(formData.get("id") ?? ""));
     course = id === null ? null : await courseOfLesson(db, id);
-    const done = await deleteLessonForm(db, formData);
+    const done = await deleteLessonForm(db, formData, admin);
     cleanup = done.cleanup;
     return done.result;
   });

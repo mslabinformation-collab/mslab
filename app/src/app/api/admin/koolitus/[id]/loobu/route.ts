@@ -29,7 +29,8 @@ export const POST = withAdmin<Ctx>(async (_request, ctx) => {
   try {
     const db = getDb();
     if (!(await courseExists(db, id))) return json({ ok: false, error: "notFound" }, 404);
-    const discarded = await discardCourse(db, id, (cleanup) =>
+    const { discarded, cleanup } = await discardCourse(db, id);
+    if (cleanup.videoIds.length > 0 || cleanup.fileKeys.length > 0)
       after(async () => {
         try {
           const config = bunnyConfig();
@@ -37,8 +38,7 @@ export const POST = withAdmin<Ctx>(async (_request, ctx) => {
         } catch (e) {
           logFailure(`[admin] course ${id}: the discarded lessons' cleanup failed`, e);
         }
-      }),
-    );
+      });
     return json({ discarded }, 200);
   } catch (e) {
     logFailure(`[admin] course ${id}: the discard failed`, e);

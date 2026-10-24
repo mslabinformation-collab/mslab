@@ -86,16 +86,22 @@ export type CourseListRow = AdminCourse & { changes: boolean };
 const imageOrder = [asc(courseImages.sort), asc(courseImages.id)];
 
 /**
- * Every course, drafts included, in the public order (sort, then id), with its images and whether the draft layer (`content_drafts`, entity "course")
- * holds a draft of it.
+ * Every course, drafts included, in the public order (sort, then id), with its images and whether it has an unpublished change: the draft layer
+ * (`content_drafts`, entity "course") holds a draft of it, or a module or lesson of it is flagged `unpublished` (B18, R-e: made on the published
+ * course and waiting for „Avalda muudatused“).
  */
 export async function listAllCourses(db: Db): Promise<CourseListRow[]> {
-  const [rows, drafted] = await Promise.all([
+  const [rows, drafted, flagged] = await Promise.all([
     db.query.courses.findMany({ orderBy: [asc(courses.sort), asc(courses.id)], with: { images: { orderBy: imageOrder } } }),
     db.selectDistinct({ id: contentDrafts.entityId }).from(contentDrafts).where(eq(contentDrafts.entity, "course")),
+    db
+      .selectDistinct({ id: courseModules.courseId })
+      .from(courseModules)
+      .leftJoin(lessons, eq(lessons.moduleId, courseModules.id))
+      .where(or(eq(courseModules.unpublished, true), eq(lessons.unpublished, true))),
   ]);
-  const withDraft = new Set(drafted.map((d) => d.id));
-  return rows.map((c) => ({ ...c, changes: withDraft.has(c.id) }));
+  const withChange = new Set([...drafted, ...flagged].map((d) => d.id));
+  return rows.map((c) => ({ ...c, changes: withChange.has(c.id) }));
 }
 
 /** The course editor's course: the course with its images and its "Teadmiste test" row (null without one; e-course completion, R1). */

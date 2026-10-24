@@ -72,7 +72,7 @@ const FIRST = /^d:[1-9][0-9]*.1$/;
 
 describe("the parts (R-a) and their versions (R-b)", () => {
   test("the parts of R-a, in screen order; each part's live version is l: and the hash of its live value", async () => {
-    expect([...COURSE_PARTS]).toEqual(["basics", "price", "outcomes", "includes", "protocolStages", "test", "certificate", "gallery", "recommendations", "badge"]);
+    expect([...COURSE_PARTS]).toEqual(["basics", "price", "outcomes", "outline", "includes", "protocolStages", "test", "certificate", "gallery", "recommendations", "badge"]);
     const basics = await read(online.id, "basics");
     expect(basics.value).toEqual({ title: { et: "E-kulm" }, slug: "e-kulm", level: "basic", language: "ET", summary: { et: "" }, body: { et: "" }, type: "e_learning" });
     expect(basics.version).toBe(`l:${await contentVersion(basics.value)}`);
@@ -269,15 +269,15 @@ describe("a published course: the parts save to drafts and go live with „Avald
     await write(online.id, "basics", { title: { et: "Uus" } }, (await read(online.id, "basics")).version);
     await write(online.id, "price", { price: "120" }, (await read(online.id, "price")).version);
     const live = await row(online.id);
-    expect(await discardCourse(db, online.id)).toBe(2);
+    expect((await discardCourse(db, online.id)).discarded).toBe(2);
     expect(await drafts(online.id)).toEqual([]);
     expect(await row(online.id)).toEqual(live);
     expect((await read(online.id, "basics")).version).toMatch(/^l:[0-9a-f]{32}$/);
-    expect(await discardCourse(db, online.id)).toBe(0);
+    expect((await discardCourse(db, online.id)).discarded).toBe(0);
     expect(pub.revalidatePublic).not.toHaveBeenCalled();
   });
 
-  test("discard also deletes the rows flagged unpublished (R-e) and hands their videos and files over for the cleanup", async () => {
+  test("discard also deletes the rows flagged unpublished (R-e) and returns their videos and files for the cleanup", async () => {
     const [mod, flaggedMod] = await db
       .insert(courseModules)
       .values([
@@ -297,15 +297,12 @@ describe("a published course: the parts save to drafts and go live with „Avald
       { lessonId: kept.id, r2Key: "lessons/kept.pdf", name: "kept.pdf", size: 1, contentType: "application/pdf", position: 1 },
       { lessonId: inNewModule.id, r2Key: "lessons/new.pdf", name: "new.pdf", size: 1, contentType: "application/pdf", position: 1 },
     ]);
-    const cleanups: unknown[] = [];
-    expect(await discardCourse(db, online.id, (c) => cleanups.push(c))).toBe(3);
+    expect(await discardCourse(db, online.id)).toEqual({ discarded: 3, cleanup: { videoIds: expect.arrayContaining(["v-new", "v-old"]), fileKeys: ["lessons/new.pdf"] } });
     expect((await db.select({ id: lessons.id }).from(lessons).orderBy(asc(lessons.id))).map((l) => l.id)).toEqual([kept.id]);
     expect((await db.select({ id: courseModules.id }).from(courseModules)).map((m) => m.id)).toEqual([mod.id]);
-    expect(cleanups).toEqual([{ videoIds: expect.arrayContaining(["v-new", "v-old"]), fileKeys: ["lessons/new.pdf"] }]);
     expect(newLesson.id).toBeGreaterThan(0);
     // nothing flagged and no draft: nothing to clean
-    expect(await discardCourse(db, online.id, (c) => cleanups.push(c))).toBe(0);
-    expect(cleanups).toHaveLength(1);
+    expect(await discardCourse(db, online.id)).toEqual({ discarded: 0, cleanup: { videoIds: [], fileKeys: [] } });
   });
 
   test("courseChanges: the changed fields' labels per part, in screen order", async () => {

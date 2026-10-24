@@ -119,6 +119,26 @@ describe("what a change revalidates", () => {
     expect(mocks.refresh).toHaveBeenCalledTimes(5);
   });
 
+  test("B18: the changes that may write a published course's outline draft are handed the admin (the draft's updated_by); an add is not", async () => {
+    const admin = { email: "admin@example.test" };
+    const fd = form({ id: 7 });
+    for (const [run, name] of [
+      [actions.renameModule, "renameModuleForm"],
+      [actions.moveModuleInList, "moveModuleForm"],
+      [actions.deleteModule, "deleteModuleForm"],
+      [actions.saveLesson, "saveLessonForm"],
+      [actions.moveLessonInList, "moveLessonForm"],
+    ] as const) {
+      await run(null, fd);
+      expect(mocks.forms[name], name).toHaveBeenCalledExactlyOnceWith("the-db", fd, admin);
+    }
+    mocks.forms.deleteLessonForm.mockResolvedValue({ result: { ok: false, error: "inUse" }, cleanup: { videoIds: [], fileKeys: [] } });
+    await actions.deleteLesson(null, fd);
+    expect(mocks.forms.deleteLessonForm).toHaveBeenCalledExactlyOnceWith("the-db", fd, admin);
+    await actions.addModule(null, fd);
+    expect(mocks.forms.addModuleForm).toHaveBeenCalledExactlyOnceWith("the-db", fd);
+  });
+
   test("a refused change revalidates and refreshes nothing; a thrown one is `server`, logged without its message", async () => {
     mocks.forms.renameModuleForm.mockResolvedValue({ ok: false, error: "notFound" });
     expect(await actions.renameModule(null, form({ id: 7 }))).toEqual({ ok: false, error: "notFound" });

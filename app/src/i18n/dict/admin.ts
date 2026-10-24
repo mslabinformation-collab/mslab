@@ -1685,6 +1685,10 @@ export const adminEt = {
     reload: "Laadi uuesti",
     // an e-course with lessons or students keeps its type (errors.typeLocked says it for a contact course)
     typeLockedOnline: "Sellel e-koolitusel on õppetunde või õpilasi, seega õppevormi muuta ei saa. Vajadusel loo uus koolitus.",
+    // the PublishBar's names of the modules' and lessons' changes (piece 3 texts P-3; drawn „Lühikirjeldus, Hind, Moodul 03“): a change inside a
+    // module (its name, its lessons, a new lesson, the lessons' order) by the module's place {nn} (01, 02, …); the modules moved; a contact course's
+    // programme is named by its card title (sections.modulesC)
+    outlineChanges: { module: "Moodul {nn}", moduleOrder: "Moodulite järjekord" },
     errors: fieldErrors,
   },
 

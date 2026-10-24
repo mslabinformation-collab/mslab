@@ -19,6 +19,8 @@ const idOf = (r: EditResult) => {
   if (!r.ok) throw new Error(JSON.stringify(r));
   return r.id;
 };
+/** Who made a change: a published course's drafts name her (content_drafts.updated_by). */
+const ADMIN = { email: "admin@example.test" };
 
 let db: Db;
 let courseId: number;
@@ -33,14 +35,14 @@ describe("modules", () => {
     const a = idOf(await addModuleForm(db, form({ courseId, titleEt: " Sissejuhatus ", titleRu: "" })));
     const b = idOf(await addModuleForm(db, form({ courseId, titleEt: "Praktika", titleRu: "Практика" })));
     expect(await titles()).toEqual([["Sissejuhatus", []], ["Praktika", []]]);
-    expect(await renameModuleForm(db, form({ id: a, titleEt: "Algus", titleRu: "Начало" }))).toEqual({ ok: true, id: a });
-    expect(await moveModuleForm(db, form({ id: b, dir: "up" }))).toEqual({ ok: true, id: b });
+    expect(await renameModuleForm(db, form({ id: a, titleEt: "Algus", titleRu: "Начало" }), ADMIN)).toEqual({ ok: true, id: a });
+    expect(await moveModuleForm(db, form({ id: b, dir: "up" }), ADMIN)).toEqual({ ok: true, id: b });
     expect(await titles()).toEqual([["Praktika", []], ["Algus", []]]);
     expect((await listCourseLessons(db, courseId))[1].title).toEqual({ et: "Algus", ru: "Начало" });
-    expect(await moveModuleForm(db, form({ id: b, dir: "up" }))).toEqual({ ok: true, id: b }); // already first: nothing moves
+    expect(await moveModuleForm(db, form({ id: b, dir: "up" }), ADMIN)).toEqual({ ok: true, id: b }); // already first: nothing moves
     idOf(await addLessonForm(db, form({ moduleId: b, titleEt: "Esimene" })));
-    expect(await deleteModuleForm(db, form({ id: b }))).toEqual({ ok: false, error: "inUse" });
-    expect(await deleteModuleForm(db, form({ id: a }))).toEqual({ ok: true, id: a, deleted: true });
+    expect(await deleteModuleForm(db, form({ id: b }), ADMIN)).toEqual({ ok: false, error: "inUse" });
+    expect(await deleteModuleForm(db, form({ id: a }), ADMIN)).toEqual({ ok: true, id: a, deleted: true });
     expect(await titles()).toEqual([["Praktika", ["Esimene"]]]);
   });
 
@@ -49,7 +51,7 @@ describe("modules", () => {
     expect(await addModuleForm(db, form({ courseId, titleEt: "x".repeat(121) }))).toEqual({ ok: false, error: "invalid", fields: { title: "tooLong" } });
     expect(await addModuleForm(db, form({ courseId: 999999, titleEt: "X" }))).toEqual({ ok: false, error: "notFound" });
     expect(await addModuleForm(db, form({ courseId: "x", titleEt: "X" }))).toEqual({ ok: false, error: "invalid" });
-    expect(await renameModuleForm(db, form({ id: 999999, titleEt: "X" }))).toEqual({ ok: false, error: "notFound" });
+    expect(await renameModuleForm(db, form({ id: 999999, titleEt: "X" }), ADMIN)).toEqual({ ok: false, error: "notFound" });
   });
 });
 
@@ -64,15 +66,15 @@ describe("lessons", () => {
   test("added last in its module; the title and the short text are saved (a blank text is none)", async () => {
     const w = await twoModules();
     expect(await titles()).toEqual([["A", ["Üks", "Kaks"]], ["B", ["Kolm"]]]);
-    expect(await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", titleRu: "Первый", bodyEt: "Loe.\n\nVaata.", bodyRu: "" }))).toEqual({ ok: true, id: w.l1 });
+    expect(await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", titleRu: "Первый", bodyEt: "Loe.\n\nVaata.", bodyRu: "" }), ADMIN)).toEqual({ ok: true, id: w.l1 });
     const [l] = await db.select().from(lessons).where(eq(lessons.id, w.l1));
     expect([l.title, l.body]).toEqual([{ et: "Esimene", ru: "Первый" }, { et: "Loe.\n\nVaata." }]);
     // a browser's form sends line breaks as CR LF: stored as LF
-    await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", bodyEt: "Loe.\r\n\r\nVaata.\rNüüd.", bodyRu: "Читай.\r\n" }));
+    await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", bodyEt: "Loe.\r\n\r\nVaata.\rNüüd.", bodyRu: "Читай.\r\n" }), ADMIN);
     expect((await db.select().from(lessons).where(eq(lessons.id, w.l1)))[0].body).toEqual({ et: "Loe.\n\nVaata.\nNüüd.", ru: "Читай." });
-    await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", bodyEt: "  " }));
+    await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", bodyEt: "  " }), ADMIN);
     expect((await db.select().from(lessons).where(eq(lessons.id, w.l1)))[0].body).toBeNull();
-    expect(await saveLessonForm(db, form({ id: w.l1, titleEt: "", bodyEt: "x".repeat(5001) }))).toEqual({ ok: false, error: "invalid", fields: { title: "required", body: "tooLong" } });
+    expect(await saveLessonForm(db, form({ id: w.l1, titleEt: "", bodyEt: "x".repeat(5001) }), ADMIN)).toEqual({ ok: false, error: "invalid", fields: { title: "required", body: "tooLong" } });
     expect(await addLessonForm(db, form({ moduleId: 999999, titleEt: "X" }))).toEqual({ ok: false, error: "notFound" });
   });
 
@@ -88,13 +90,13 @@ describe("lessons", () => {
 
   test("↑ ↓ within a module and across modules; the very first stays", async () => {
     const w = await twoModules();
-    await moveLessonForm(db, form({ id: w.l2, dir: "down" }));
+    await moveLessonForm(db, form({ id: w.l2, dir: "down" }), ADMIN);
     expect(await titles()).toEqual([["A", ["Üks"]], ["B", ["Kaks", "Kolm"]]]);
-    await moveLessonForm(db, form({ id: w.l3, dir: "up" }));
+    await moveLessonForm(db, form({ id: w.l3, dir: "up" }), ADMIN);
     expect(await titles()).toEqual([["A", ["Üks"]], ["B", ["Kolm", "Kaks"]]]);
-    await moveLessonForm(db, form({ id: w.l3, dir: "up" }));
+    await moveLessonForm(db, form({ id: w.l3, dir: "up" }), ADMIN);
     expect(await titles()).toEqual([["A", ["Üks", "Kolm"]], ["B", ["Kaks"]]]);
-    expect(await moveLessonForm(db, form({ id: w.l1, dir: "up" }))).toEqual({ ok: true, id: w.l1 });
+    expect(await moveLessonForm(db, form({ id: w.l1, dir: "up" }), ADMIN)).toEqual({ ok: true, id: w.l1 });
     expect(await titles()).toEqual([["A", ["Üks", "Kolm"]], ["B", ["Kaks"]]]);
   });
 
@@ -108,19 +110,19 @@ describe("lessons", () => {
     await db.update(lessons).set({ videoId: "new", videoStatus: "uploading", replacedVideoId: "old" }).where(eq(lessons.id, w.l2));
     await db.insert(lessonFiles).values({ lessonId: w.l2, position: 1, name: "a.pdf", r2Key: "lessons/a.pdf", size: 1, contentType: "application/pdf" });
     expect((await listCourseLessons(db, courseId))[0].lessons[1]).toMatchObject({ replacing: true, files: [{ name: "a.pdf", size: 1, contentType: "application/pdf" }] });
-    expect(await deleteLessonForm(db, form({ id: w.l2 }))).toEqual({ result: { ok: true, id: w.l2, deleted: true }, cleanup: { videoIds: ["new", "old"], fileKeys: ["lessons/a.pdf"] } });
+    expect(await deleteLessonForm(db, form({ id: w.l2 }), ADMIN)).toEqual({ result: { ok: true, id: w.l2, deleted: true }, cleanup: { videoIds: ["new", "old"], fileKeys: ["lessons/a.pdf"] } });
     expect(await db.select().from(lessonFiles)).toHaveLength(0);
 
     const [c] = await db.insert(clients).values({ email: "kati@example.test" }).returning();
     await db.insert(lessonProgress).values({ clientId: c.id, lessonId: w.l3, watchedSec: 5 });
     expect((await listCourseLessons(db, courseId))[1].lessons[0].inUse).toBe(true);
-    expect(await deleteLessonForm(db, form({ id: w.l3 }))).toEqual({ result: { ok: false, error: "inUse" }, cleanup: { videoIds: [], fileKeys: [] } });
-    expect((await deleteLessonForm(db, form({ id: 999999 }))).result).toEqual({ ok: false, error: "notFound" });
+    expect(await deleteLessonForm(db, form({ id: w.l3 }), ADMIN)).toEqual({ result: { ok: false, error: "inUse" }, cleanup: { videoIds: [], fileKeys: [] } });
+    expect((await deleteLessonForm(db, form({ id: 999999 }), ADMIN)).result).toEqual({ ok: false, error: "notFound" });
 
     // a row with only the progress clock (phase 2c: she opened the lesson and watched nothing) is no progress: the lesson can still go
     await db.insert(lessonProgress).values({ clientId: c.id, lessonId: w.l1, clockAt: new Date() });
     expect((await listCourseLessons(db, courseId))[0].lessons[0].inUse).toBe(false);
-    expect((await deleteLessonForm(db, form({ id: w.l1 }))).result).toEqual({ ok: true, id: w.l1, deleted: true });
+    expect((await deleteLessonForm(db, form({ id: w.l1 }), ADMIN)).result).toEqual({ ok: true, id: w.l1, deleted: true });
     expect(await db.select().from(lessonProgress).where(eq(lessonProgress.lessonId, w.l1))).toEqual([]); // its row went with it
   });
 
@@ -133,7 +135,7 @@ describe("lessons", () => {
     ]);
     const inUse = async () => (await listCourseLessons(db, courseId)).flatMap((m) => m.lessons.map((l) => [l.id, l.inUse]));
     expect(await inUse()).toEqual([[w.l1, true], [w.l2, true], [w.l3, false]]);
-    for (const id of [w.l1, w.l2]) expect((await deleteLessonForm(db, form({ id }))).result, String(id)).toEqual({ ok: false, error: "inUse" });
+    for (const id of [w.l1, w.l2]) expect((await deleteLessonForm(db, form({ id }), ADMIN)).result, String(id)).toEqual({ ok: false, error: "inUse" });
   });
 
   test("a file row is removed and its key comes back for the store", async () => {
@@ -164,13 +166,34 @@ describe("lessons", () => {
     expect((await courseUsage(db, courseId))?.lessons).toBe(4);
     expect(typeLocked(await courseUsage(db, courseId))).toBe(true);
     // an unpublished module has lessons all the same: it cannot be deleted from under them
-    expect(await deleteModuleForm(db, form({ id: um.id }))).toEqual({ ok: false, error: "inUse" });
+    expect(await deleteModuleForm(db, form({ id: um.id }), ADMIN)).toEqual({ ok: false, error: "inUse" });
     // deleting the lesson takes its removed file with it, and that file's store key is in the cleanup: nothing is left behind in R2
-    expect(await deleteLessonForm(db, form({ id: w.l1 }))).toEqual({
+    expect(await deleteLessonForm(db, form({ id: w.l1 }), ADMIN)).toEqual({
       result: { ok: true, id: w.l1, deleted: true },
       cleanup: { videoIds: [], fileKeys: ["lessons/a.pdf", "lessons/gone.pdf", "lessons/b.pdf"] },
     });
     expect(await db.select().from(lessonFiles)).toHaveLength(0);
+  });
+
+  test("piece 3a, R-e: on a published course a new row is flagged, a live row's name, text and place wait in the outline draft; the admin reads the draft", async () => {
+    const w = await twoModules();
+    await db.update(courses).set({ published: true }).where(eq(courses.id, courseId));
+    const added = idOf(await addLessonForm(db, form({ moduleId: w.a, titleEt: "Neli" })));
+    const newModule = idOf(await addModuleForm(db, form({ courseId, titleEt: "C" })));
+    await renameModuleForm(db, form({ id: w.a, titleEt: "Algus" }), ADMIN);
+    await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", bodyEt: "Loe." }), ADMIN);
+    await moveLessonForm(db, form({ id: w.l3, dir: "up" }), ADMIN);
+    expect(await titles()).toEqual([["Algus", ["Esimene", "Kaks", "Neli", "Kolm"]], ["B", []], ["C", []]]);
+    expect((await listCourseLessons(db, courseId)).map((m) => [m.id, m.unpublished, m.lessons.map((l) => [l.id, l.unpublished])])).toEqual([
+      [w.a, false, [[w.l1, false], [w.l2, false], [added, true], [w.l3, false]]],
+      [w.b, false, []],
+      [newModule, true, []],
+    ]);
+    // live is as it was: the rows' names, texts and places
+    const rows = await db.select({ id: lessons.id, moduleId: lessons.moduleId, title: lessons.title, body: lessons.body }).from(lessons).where(eq(lessons.id, w.l3));
+    expect(rows).toEqual([{ id: w.l3, moduleId: w.b, title: { et: "Kolm" }, body: null }]);
+    expect((await db.select().from(courseModules).where(eq(courseModules.id, w.a)))[0].title).toEqual({ et: "A" });
+    expect((await db.select().from(lessons).where(eq(lessons.id, w.l1)))[0]).toMatchObject({ title: { et: "Üks" }, body: null });
   });
 
   test("“Õppetunni liik”: a new lesson is a video lesson; to Tekst drops its videos (obsolete for Bunny); back to Video has none", async () => {

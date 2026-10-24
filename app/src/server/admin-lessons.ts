@@ -1,9 +1,12 @@
-import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { Db } from "@/db/client";
-import { courseModules, courses, lessonFiles, lessonProgress, lessons, type LessonKind, type VideoStatus } from "@/db/schema";
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
+import type { Db, Tx } from "@/db/client";
+import { lockCourse } from "@/db/queries/admin";
+import { courseModules, courses, lessonFiles, lessonProgress, lessons, type Course, type LessonKind, type VideoStatus } from "@/db/schema";
 import { dropVideo, moveLesson, type ModuleLayout } from "@/domain/lessons";
 import type { I18n } from "@/i18n/field";
 import { parseRowId } from "@/lib/row-id";
+import { LESSON_LIMITS, layoutFor, readLayout, storeLayout, storedBody, type Layout, type OutlineRows } from "./course-outline";
+import { readDrafts } from "./drafts";
 import { Check, field, invalid, type EditResult } from "./edit-check";
 
 // "Moodulid ja õppetunnid" (spec 3a section 4): a course's modules (a contact course's programme too) and an e-course's lessons
@@ -11,8 +14,14 @@ import { Check, field, invalid, type EditResult } from "./edit-check";
 // (server/actions/admin-lessons.ts wraps each in adminAction). Nothing the browser sends is trusted. Positions are 1…n within their
 // list (modules per course, lessons per module), and every list is read by position, then id. Writes return the whole row
 // (`returning()`): on the Db union, returning(fields) has no common overload.
+//
+// B18 (admin UX pass piece 3a, R-e; server/course-outline.ts): on a PUBLISHED course a new module or lesson is a row flagged `unpublished` (students
+// and the public page see it at „Avalda muudatused“), and the name, the short text and the place of a row students see wait in the course's
+// `outline` draft; a flagged row is renamed and moved on the row itself. The deletes, „Peida“, the lesson's kind, its video and files stay instant.
+// On an unpublished course everything is written to the rows. Every change of the modules and lessons takes the course's lock first (the lock
+// order of server/drafts.ts: a change, a publish and a discard of one course queue on its row) and works on the course's working order.
 
-export const LESSON_LIMITS = { title: 120, body: 5000 } as const;
+export { LESSON_LIMITS };
 
 /** A progress row that is progress: watched, done, or opened by an admin ("Ava järgmine õppetund"). A row with only the progress clock (phase 2c: the lesson GET writes it) is none. */
 const HAS_PROGRESS = sql`(${lessonProgress.watchedSec} > 0 or ${lessonProgress.doneAt} is not null or ${lessonProgress.unlockedBy} is not null)`;
@@ -23,7 +32,11 @@ const idOf = (value: string | null): number | null => (value === null ? null : p
 const lf = (v: string | null) => (v ?? "").replace(/\r\n?/g, "\n");
 const i18nOf = (fd: FormData, prefix: string): I18n => ({ et: lf(field(fd, `${prefix}Et`)), ru: lf(field(fd, `${prefix}Ru`)) });
 
+/** Who made a change (a published course's outline draft names her: content_drafts.updated_by). */
+type Who = { email: string };
+
 export type AdminLessonFile = { id: number; name: string; size: number; contentType: string };
+/** A lesson as the admin's card shows it: on a published course, in its draft's module and place, with its draft's name and text (B18). */
 export type AdminLesson = {
   id: number;
   moduleId: number;
@@ -54,15 +67,22 @@ export type AdminModule = {
 
 /**
  * The course's modules, each with its lessons (hidden and unpublished ones too, with the flag) and their files (those removed with „Eemalda“ and
- * waiting for the UndoBar to run out are not listed), in order: three small queries.
+ * waiting for the UndoBar to run out are not listed), in order: five small queries. A published course's are in its working order, with the outline
+ * draft's names and texts (B18: what „Avalda muudatused“ makes live; server/course-outline.ts); an unpublished course's are its rows.
  */
 export async function listCourseLessons(db: Db, courseId: number): Promise<AdminModule[]> {
-  const [mods, rows, files] = await Promise.all([
-    db.select({ id: courseModules.id, title: courseModules.title, unpublished: courseModules.unpublished }).from(courseModules).where(eq(courseModules.courseId, courseId)).orderBy(asc(courseModules.position), asc(courseModules.id)),
+  const [[course], mods, rows, files, drafts] = await Promise.all([
+    db.select({ id: courses.id, published: courses.published }).from(courses).where(eq(courses.id, courseId)),
+    db
+      .select({ id: courseModules.id, position: courseModules.position, title: courseModules.title, unpublished: courseModules.unpublished })
+      .from(courseModules)
+      .where(eq(courseModules.courseId, courseId))
+      .orderBy(asc(courseModules.position), asc(courseModules.id)),
     db
       .select({
         id: lessons.id,
         moduleId: lessons.moduleId,
+        position: lessons.position,
         title: lessons.title,
         body: lessons.body,
         kind: lessons.kind,
@@ -85,98 +105,155 @@ export async function listCourseLessons(db: Db, courseId: number): Promise<Admin
       .innerJoin(courseModules, eq(lessons.moduleId, courseModules.id))
       .where(and(eq(courseModules.courseId, courseId), isNull(lessonFiles.removedAt)))
       .orderBy(asc(lessonFiles.position), asc(lessonFiles.id)),
+    readDrafts(db, "course", courseId),
   ]);
-  return mods.map((m) => ({
+  if (!course) return [];
+  const layout = layoutFor(course, { modules: mods, lessons: rows }, drafts);
+  const row = new Map(rows.map((r) => [r.id, r]));
+  return layout.map((m) => ({
     id: m.id,
     title: m.title,
-    unpublished: m.unpublished,
-    lessons: rows
-      .filter((r) => r.moduleId === m.id)
-      .map(({ replacedVideoId, ...r }) => ({
-        ...r,
+    unpublished: m.flagged,
+    lessons: m.lessons.map((l) => {
+      const r = row.get(l.id)!;
+      return {
+        id: r.id,
+        moduleId: m.id,
+        title: l.title,
+        body: storedBody(l.body),
+        kind: r.kind,
+        hidden: r.hidden,
+        unpublished: r.unpublished,
+        videoStatus: r.videoStatus,
+        videoProgress: r.videoProgress,
+        durationSec: r.durationSec,
+        replacing: r.replacedVideoId !== null,
         inUse: Boolean(r.inUse),
-        replacing: replacedVideoId !== null,
         files: files.filter((f) => f.lessonId === r.id).map((f) => ({ id: f.id, name: f.name, size: f.size, contentType: f.contentType })),
-      })),
+      };
+    }),
   }));
 }
 
-/** "Lisa moodul" / "Lisa punkt": fields courseId, titleEt, titleRu. The new module goes last. */
+const notFound = (): EditResult => ({ ok: false, error: "notFound" });
+
+/** The course a module belongs to, or null when there is no such module. */
+async function courseOfModule(db: Db, moduleId: number): Promise<number | null> {
+  const [row] = await db.select({ courseId: courseModules.courseId }).from(courseModules).where(eq(courseModules.id, moduleId));
+  return row?.courseId ?? null;
+}
+
+type Work = { tx: Tx; course: Course; rows: OutlineRows; layout: Layout };
+
+/**
+ * A change of a course's modules and lessons in one transaction: the course's lock first (db/queries/admin.ts lockCourse; the lock order of
+ * server/drafts.ts), then its rows and working order as they are under it (server/course-outline.ts readLayout). `gone` when there is no such course
+ * (`courseId` null: the module or lesson was not found).
+ */
+async function underCourse<T>(db: Db, courseId: number | null, gone: () => T, work: (w: Work) => Promise<T>): Promise<T> {
+  if (courseId === null) return gone();
+  return db.transaction(async (tx): Promise<T> => {
+    const course = await lockCourse(tx, courseId);
+    if (!course) return gone();
+    const { rows, layout } = await readLayout(tx, course);
+    return work({ tx, course, rows, layout });
+  });
+}
+
+/** The highest place in a list of rows (0 for none). */
+const lastPlace = (rows: { position: number }[]): number => rows.reduce((n, r) => Math.max(n, r.position), 0);
+
+/**
+ * "Lisa moodul" / "Lisa punkt": fields courseId, titleEt, titleRu. The new module goes last. On a published course it is flagged `unpublished` (R-e):
+ * its place is the last of the working order, and it is shown at „Avalda muudatused“.
+ */
 export async function addModuleForm(db: Db, fd: FormData): Promise<EditResult> {
   const courseId = idOf(field(fd, "courseId"));
   if (courseId === null) return { ok: false, error: "invalid" };
   const c = new Check();
   const title = c.text("title", i18nOf(fd, "title"), LESSON_LIMITS.title, { required: true });
   if (!c.ok || !title) return invalid(c.errors);
-  return db.transaction(async (tx): Promise<EditResult> => {
-    const [course] = await tx.select({ id: courses.id }).from(courses).where(eq(courses.id, courseId)).for("update");
-    if (!course) return { ok: false, error: "notFound" };
-    const [{ last }] = await tx.select({ last: sql<number | null>`max(${courseModules.position})` }).from(courseModules).where(eq(courseModules.courseId, courseId));
-    const [row] = await tx.insert(courseModules).values({ courseId, position: (last ?? 0) + 1, title }).returning();
+  return underCourse(db, courseId, notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
+    const position = course.published ? layout.length + 1 : lastPlace(rows.modules) + 1;
+    const [row] = await tx.insert(courseModules).values({ courseId, position, title, unpublished: course.published }).returning();
     return { ok: true, id: row.id, created: true };
   });
 }
 
-/** A module's "Salvesta": fields id, titleEt, titleRu. */
-export async function renameModuleForm(db: Db, fd: FormData): Promise<EditResult> {
+/**
+ * A module's "Salvesta": fields id, titleEt, titleRu. A published course's live module is renamed in the outline draft (the students and the public
+ * page keep the old name until „Avalda muudatused“); a flagged module, and every module of an unpublished course, on its row.
+ */
+export async function renameModuleForm(db: Db, fd: FormData, admin: Who): Promise<EditResult> {
   const id = idOf(field(fd, "id"));
   if (id === null) return { ok: false, error: "invalid" };
   const c = new Check();
   const title = c.text("title", i18nOf(fd, "title"), LESSON_LIMITS.title, { required: true });
   if (!c.ok || !title) return invalid(c.errors);
-  const rows = await db.update(courseModules).set({ title }).where(eq(courseModules.id, id)).returning();
-  return rows.length ? { ok: true, id } : { ok: false, error: "notFound" };
-}
-
-/** A module's ↑ / ↓: fields id, dir. The course's modules are numbered 1…n again. One that cannot move stays (ok). */
-export async function moveModuleForm(db: Db, fd: FormData): Promise<EditResult> {
-  const id = idOf(field(fd, "id"));
-  const dir = field(fd, "dir");
-  if (id === null || (dir !== "up" && dir !== "down")) return { ok: false, error: "invalid" };
-  return db.transaction(async (tx): Promise<EditResult> => {
-    const [own] = await tx.select({ courseId: courseModules.courseId }).from(courseModules).where(eq(courseModules.id, id));
-    if (!own) return { ok: false, error: "notFound" };
-    const list = await tx.select({ id: courseModules.id }).from(courseModules).where(eq(courseModules.courseId, own.courseId)).orderBy(asc(courseModules.position), asc(courseModules.id)).for("update");
-    const i = list.findIndex((m) => m.id === id);
-    const j = i + (dir === "up" ? -1 : 1);
-    if (j < 0 || j >= list.length) return { ok: true, id };
-    [list[i], list[j]] = [list[j], list[i]];
-    for (const [n, m] of list.entries()) await tx.update(courseModules).set({ position: n + 1 }).where(eq(courseModules.id, m.id));
+  return underCourse(db, await courseOfModule(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
+    const m = layout.find((x) => x.id === id);
+    if (!m) return notFound();
+    if (!course.published || m.flagged) await tx.update(courseModules).set({ title }).where(eq(courseModules.id, id));
+    else {
+      m.title = title;
+      await storeLayout(tx, course, rows, layout, admin.email);
+    }
     return { ok: true, id };
   });
 }
 
-/** "Kustuta moodul": field id. Refused (inUse) while it has lessons. */
-export async function deleteModuleForm(db: Db, fd: FormData): Promise<EditResult> {
+/**
+ * A module's ↑ / ↓: fields id, dir. One that cannot move stays (ok). An unpublished course's modules are numbered 1…n again; a published course's
+ * new order is the outline draft's (a flagged module's own place is on its row).
+ */
+export async function moveModuleForm(db: Db, fd: FormData, admin: Who): Promise<EditResult> {
+  const id = idOf(field(fd, "id"));
+  const dir = field(fd, "dir");
+  if (id === null || (dir !== "up" && dir !== "down")) return { ok: false, error: "invalid" };
+  return underCourse(db, await courseOfModule(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
+    const i = layout.findIndex((m) => m.id === id);
+    if (i < 0) return notFound();
+    const j = i + (dir === "up" ? -1 : 1);
+    if (j < 0 || j >= layout.length) return { ok: true, id };
+    [layout[i], layout[j]] = [layout[j], layout[i]];
+    await storeLayout(tx, course, rows, layout, admin.email);
+    return { ok: true, id };
+  });
+}
+
+/**
+ * "Kustuta moodul": field id. Refused (inUse) while it has lessons: rows of its own, or (a published course) a lesson the draft moved into it. At
+ * once on a published course too (R-e: nothing depends on an empty module); a waiting outline draft goes on from the new live.
+ */
+export async function deleteModuleForm(db: Db, fd: FormData, admin: Who): Promise<EditResult> {
   const id = idOf(field(fd, "id"));
   if (id === null) return { ok: false, error: "invalid" };
-  return db.transaction(async (tx): Promise<EditResult> => {
-    const [mod] = await tx.select({ id: courseModules.id }).from(courseModules).where(eq(courseModules.id, id)).for("update");
-    if (!mod) return { ok: false, error: "notFound" };
-    const [{ n }] = await tx.select({ n: count() }).from(lessons).where(eq(lessons.moduleId, id));
-    if (Number(n) > 0) return { ok: false, error: "inUse" };
+  return underCourse(db, await courseOfModule(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
+    const at = layout.findIndex((m) => m.id === id);
+    if (at < 0) return notFound();
+    if (rows.lessons.some((l) => l.moduleId === id) || layout[at].lessons.length > 0) return { ok: false, error: "inUse" };
     await tx.delete(courseModules).where(eq(courseModules.id, id));
+    layout.splice(at, 1);
+    await storeLayout(tx, course, { modules: rows.modules.filter((m) => m.id !== id), lessons: rows.lessons }, layout, admin.email, { rebase: true });
     return { ok: true, id, deleted: true };
   });
 }
 
-/** "Lisa õppetund": fields moduleId, titleEt, titleRu. Last in its module; no video, no text, visible. Only an e-course has lessons: a module of a contact course is notFound. */
+/**
+ * "Lisa õppetund": fields moduleId, titleEt, titleRu. Last in its module; no video, no text, visible. Only an e-course has lessons: a module of a
+ * contact course is notFound. On a published course it is flagged `unpublished` (R-e), last of its module in the working order.
+ */
 export async function addLessonForm(db: Db, fd: FormData): Promise<EditResult> {
   const moduleId = idOf(field(fd, "moduleId"));
   if (moduleId === null) return { ok: false, error: "invalid" };
   const c = new Check();
   const title = c.text("title", i18nOf(fd, "title"), LESSON_LIMITS.title, { required: true });
   if (!c.ok || !title) return invalid(c.errors);
-  return db.transaction(async (tx): Promise<EditResult> => {
-    const [mod] = await tx
-      .select({ id: courseModules.id, type: courses.type })
-      .from(courseModules)
-      .innerJoin(courses, eq(courseModules.courseId, courses.id))
-      .where(eq(courseModules.id, moduleId))
-      .for("update", { of: courseModules });
-    if (!mod || mod.type !== "e_learning") return { ok: false, error: "notFound" };
-    const [{ last }] = await tx.select({ last: sql<number | null>`max(${lessons.position})` }).from(lessons).where(eq(lessons.moduleId, moduleId));
-    const [row] = await tx.insert(lessons).values({ moduleId, position: (last ?? 0) + 1, title }).returning();
+  return underCourse(db, await courseOfModule(db, moduleId), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
+    const m = layout.find((x) => x.id === moduleId);
+    if (!m || course.type !== "e_learning") return notFound();
+    const position = course.published ? m.lessons.length + 1 : lastPlace(rows.lessons.filter((l) => l.moduleId === moduleId)) + 1;
+    const [row] = await tx.insert(lessons).values({ moduleId, position, title, unpublished: course.published }).returning();
     return { ok: true, id: row.id, created: true };
   });
 }
@@ -191,41 +268,48 @@ export async function courseOfLesson(db: Db, lessonId: number): Promise<number |
   return row?.courseId ?? null;
 }
 
-/** The lesson drawer's "Salvesta": fields id, titleEt, titleRu, bodyEt, bodyRu (the short text; blank is none). */
-export async function saveLessonForm(db: Db, fd: FormData): Promise<EditResult> {
+/**
+ * The lesson drawer's "Salvesta": fields id, titleEt, titleRu, bodyEt, bodyRu (the short text; blank is none). A published course's live lesson
+ * keeps its name and text for the students until „Avalda muudatused“ (the outline draft has the new ones); a flagged lesson, and every lesson of
+ * an unpublished course, is written on its row.
+ */
+export async function saveLessonForm(db: Db, fd: FormData, admin: Who): Promise<EditResult> {
   const id = idOf(field(fd, "id"));
   if (id === null) return { ok: false, error: "invalid" };
   const c = new Check();
   const title = c.text("title", i18nOf(fd, "title"), LESSON_LIMITS.title, { required: true });
   const body = c.text("body", i18nOf(fd, "body"), LESSON_LIMITS.body);
   if (!c.ok || !title) return invalid(c.errors);
-  const rows = await db.update(lessons).set({ title, body }).where(eq(lessons.id, id)).returning();
-  return rows.length ? { ok: true, id } : { ok: false, error: "notFound" };
+  return underCourse(db, await courseOfLesson(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
+    const l = layout.flatMap((m) => m.lessons).find((x) => x.id === id);
+    if (!l) return notFound();
+    if (!course.published || l.flagged) await tx.update(lessons).set({ title, body }).where(eq(lessons.id, id));
+    else {
+      l.title = title;
+      l.body = body ?? { et: "" };
+      await storeLayout(tx, course, rows, layout, admin.email);
+    }
+    return { ok: true, id };
+  });
 }
 
-/** A lesson's ↑ / ↓ (domain/lessons.ts moveLesson: across modules at a module's edge): fields id, dir. Only moved rows are written. */
-export async function moveLessonForm(db: Db, fd: FormData): Promise<EditResult> {
+/**
+ * A lesson's ↑ / ↓ (domain/lessons.ts moveLesson: across modules at a module's edge, an empty or a flagged one too): fields id, dir. An unpublished
+ * course's moved rows are written; a published course's new order is the outline draft's (a live lesson moved into a flagged module stays in its
+ * live module until „Avalda muudatused“, Task 2 review), and a flagged lesson's own place is on its row.
+ */
+export async function moveLessonForm(db: Db, fd: FormData, admin: Who): Promise<EditResult> {
   const id = idOf(field(fd, "id"));
   const dir = field(fd, "dir");
   if (id === null || (dir !== "up" && dir !== "down")) return { ok: false, error: "invalid" };
-  return db.transaction(async (tx): Promise<EditResult> => {
-    const [own] = await tx.select({ courseId: courseModules.courseId }).from(lessons).innerJoin(courseModules, eq(lessons.moduleId, courseModules.id)).where(eq(lessons.id, id));
-    if (!own) return { ok: false, error: "notFound" };
-    const mods = await tx.select({ id: courseModules.id }).from(courseModules).where(eq(courseModules.courseId, own.courseId)).orderBy(asc(courseModules.position), asc(courseModules.id)).for("update");
-    const rows = await tx
-      .select({ id: lessons.id, moduleId: lessons.moduleId, position: lessons.position })
-      .from(lessons)
-      .where(inArray(lessons.moduleId, mods.map((m) => m.id)))
-      .orderBy(asc(lessons.position), asc(lessons.id));
-    const layout: ModuleLayout[] = mods.map((m) => ({ moduleId: m.id, lessonIds: rows.filter((r) => r.moduleId === m.id).map((r) => r.id) }));
-    const moved = moveLesson(layout, id, dir === "up" ? -1 : 1);
+  return underCourse(db, await courseOfLesson(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
+    const plan: ModuleLayout[] = layout.map((m) => ({ moduleId: m.id, lessonIds: m.lessons.map((l) => l.id) }));
+    if (!plan.some((m) => m.lessonIds.includes(id))) return notFound();
+    const moved = moveLesson(plan, id, dir === "up" ? -1 : 1);
     if (!moved) return { ok: true, id };
-    const before = new Map(rows.map((r) => [r.id, r]));
-    for (const m of moved)
-      for (const [i, lessonId] of m.lessonIds.entries()) {
-        const was = before.get(lessonId)!;
-        if (was.moduleId !== m.moduleId || was.position !== i + 1) await tx.update(lessons).set({ moduleId: m.moduleId, position: i + 1 }).where(eq(lessons.id, lessonId));
-      }
+    const lesson = new Map(layout.flatMap((m) => m.lessons).map((l) => [l.id, l]));
+    const next: Layout = layout.map((m, i) => ({ ...m, lessons: moved[i].lessonIds.map((x) => lesson.get(x)!) }));
+    await storeLayout(tx, course, rows, next, admin.email);
     return { ok: true, id };
   });
 }
@@ -279,19 +363,24 @@ const NOTHING: LessonCleanup = { videoIds: [], fileKeys: [] };
 /**
  * "Kustuta õppetund": field id. Refused (inUse) once any student has progress on it (watched, done or opened by an admin; a row with
  * only the progress clock is none) — then it can only be hidden, so the counts stay honest (spec 7). The lesson and its file rows go
- * (cascade); `cleanup` names its videos and files for removeLessonMedia.
+ * (cascade); `cleanup` names its videos and files for removeLessonMedia. At once on a published course too (R-e: nothing depends on a lesson
+ * without progress); a waiting outline draft goes on from the new live, without the lesson.
  */
-export async function deleteLessonForm(db: Db, fd: FormData): Promise<{ result: EditResult; cleanup: LessonCleanup }> {
+export async function deleteLessonForm(db: Db, fd: FormData, admin: Who): Promise<{ result: EditResult; cleanup: LessonCleanup }> {
   const id = idOf(field(fd, "id"));
   if (id === null) return { result: { ok: false, error: "invalid" }, cleanup: NOTHING };
-  return db.transaction(async (tx): Promise<{ result: EditResult; cleanup: LessonCleanup }> => {
+  const gone = () => ({ result: notFound(), cleanup: NOTHING });
+  return underCourse(db, await courseOfLesson(db, id), gone, async ({ tx, course, rows, layout }): Promise<{ result: EditResult; cleanup: LessonCleanup }> => {
+    // (the row's lock as well: a student's first progress row on it waits, so none is written between the check and the delete)
     const [row] = await tx.select({ videoId: lessons.videoId, replacedVideoId: lessons.replacedVideoId }).from(lessons).where(eq(lessons.id, id)).for("update");
-    if (!row) return { result: { ok: false, error: "notFound" }, cleanup: NOTHING };
+    if (!row) return gone();
     const [{ n }] = await tx.select({ n: count() }).from(lessonProgress).where(and(eq(lessonProgress.lessonId, id), HAS_PROGRESS));
     if (Number(n) > 0) return { result: { ok: false, error: "inUse" }, cleanup: NOTHING };
     // (every file row, the removed ones too — piece 3a, R-f: they still hold an R2 object until they are purged, and the cascade takes the rows)
     const files = await tx.select({ key: lessonFiles.r2Key }).from(lessonFiles).where(eq(lessonFiles.lessonId, id)).orderBy(asc(lessonFiles.position), asc(lessonFiles.id));
     await tx.delete(lessons).where(eq(lessons.id, id));
+    const next: Layout = layout.map((m) => ({ ...m, lessons: m.lessons.filter((l) => l.id !== id) }));
+    await storeLayout(tx, course, { modules: rows.modules, lessons: rows.lessons.filter((l) => l.id !== id) }, next, admin.email, { rebase: true });
     const videoIds = [row.videoId, row.replacedVideoId].filter((v): v is string => v !== null);
     return { result: { ok: true, id, deleted: true }, cleanup: { videoIds, fileKeys: files.map((f) => f.key) } };
   });

@@ -76,7 +76,9 @@ describe("POST /api/admin/koolitus/<id>/osa/<part>", () => {
     // a field of another part, or no field at all: refused by the part's schema
     expect(await answerOf(await save(course.id, "basics", { version: draft, patch: { price: "10" } }))).toMatchObject({ status: 400, body: { ok: false, error: "invalid", fields: { price: expect.any(String) } } });
     expect((await save(course.id, "basics", { version: draft })).status).toBe(400);
-    for (const [id, part] of [[999_999, "basics"], [course.id, "outline"], [course.id, "nimi"], ["abc", "basics"]] as const) expect((await save(id, part, { version: "d:1", patch: {} })).status, `${id} ${part}`).toBe(404);
+    for (const [id, part] of [[999_999, "basics"], [course.id, "nimi"], ["abc", "basics"]] as const) expect((await save(id, part, { version: "d:1", patch: {} })).status, `${id} ${part}`).toBe(404);
+    // Task 5: the modules' and lessons' order and texts are a part too (a course without modules: an empty outline)
+    expect(await answerOf(await save(course.id, "outline", { version: "d:1", patch: {} }))).toMatchObject({ status: 409, body: { ok: false, error: "conflict", version: expect.stringMatching(/^l:/), value: { modules: [] } } });
     expect((await db.select().from(courses).where(eq(courses.id, course.id)))[0].title).toEqual({ et: "E-kulm" });
   });
 });

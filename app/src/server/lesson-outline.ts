@@ -1,9 +1,10 @@
-import { and, asc, eq, max, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
-import { courseModules, lessonProgress, lessons } from "@/db/schema";
+import { courseModules, courses, lessonProgress, lessons } from "@/db/schema";
 import type { EcourseProgress } from "@/domain/account-cards";
 import { courseProgress, lessonStates, type CourseProgress, type LessonState, type OrderedLesson } from "@/domain/lessons";
 import type { I18n } from "@/i18n/field";
+import { readLayout } from "./course-outline";
 
 // One student's view of a course's lessons: the modules in order (empty ones too), the visible lessons in course order with their
 // state (domain/lessons.ts: done, current, locked), and the counts. Read by the e-course page (client-data.ts loadEcourse), the lesson
@@ -11,12 +12,39 @@ import type { I18n } from "@/i18n/field";
 // "Visible" leaves out a hidden lesson and, on a published course being edited (admin UX pass piece 3a, R-e), every `unpublished` module and
 // lesson — a lesson of an unpublished module too, whatever its own flag: they are neither listed, nor counted, nor in the order, so the completion
 // counts, "view as student" and the lesson order all see the course as the students have it until „Avalda muudatused“.
+// Only the admin's preview (`preview`, Task 6: never a student's read) lays the course's draft over it: the outline draft's order and names and the
+// flagged rows, as „Avalda muudatused“ would make them (server/course-outline.ts).
 
 export type OutlineLesson = { id: number; moduleId: number; title: I18n; state: LessonState };
 export type OutlineModule = { id: number; title: I18n; lessons: OutlineLesson[] };
 export type CourseOutline = { modules: OutlineModule[]; lessons: OutlineLesson[]; progress: CourseProgress };
 
-export async function courseOutline(db: Db, courseId: number, clientId: number): Promise<CourseOutline> {
+/** The admin's preview of `courseOutline`: the course's working order (its draft and its flagged rows), the hidden lessons left out, her progress. */
+async function previewOutline(db: Db, courseId: number, clientId: number): Promise<CourseOutline> {
+  const [course] = await db.select({ id: courses.id, published: courses.published }).from(courses).where(eq(courses.id, courseId));
+  if (!course) return { modules: [], lessons: [], progress: courseProgress([]) };
+  const { rows, layout } = await readLayout(db, course);
+  const hidden = new Set(rows.lessons.filter((l) => l.hidden).map((l) => l.id));
+  const shown = layout.flatMap((m) => m.lessons.filter((l) => !hidden.has(l.id)).map((l) => ({ id: l.id, moduleId: m.id, title: l.title })));
+  const progress = shown.length
+    ? await db
+        .select({ lessonId: lessonProgress.lessonId, done: sql<boolean>`${lessonProgress.doneAt} is not null`, unlocked: sql<boolean>`${lessonProgress.unlockedBy} is not null` })
+        .from(lessonProgress)
+        .where(and(eq(lessonProgress.clientId, clientId), inArray(lessonProgress.lessonId, shown.map((l) => l.id))))
+    : [];
+  const mine = new Map(progress.map((p) => [p.lessonId, p]));
+  const ordered: OrderedLesson[] = shown.map((l) => ({ id: l.id, done: Boolean(mine.get(l.id)?.done), unlockedByAdmin: Boolean(mine.get(l.id)?.unlocked) }));
+  const states = lessonStates(ordered);
+  const list: OutlineLesson[] = shown.map((l, i) => ({ ...l, state: states[i] }));
+  return {
+    modules: layout.map((m) => ({ id: m.id, title: m.title, lessons: list.filter((l) => l.moduleId === m.id) })),
+    lessons: list,
+    progress: courseProgress(ordered),
+  };
+}
+
+export async function courseOutline(db: Db, courseId: number, clientId: number, opts: { preview?: boolean } = {}): Promise<CourseOutline> {
+  if (opts.preview) return previewOutline(db, courseId, clientId);
   const [mods, rows] = await Promise.all([
     db
       .select({ id: courseModules.id, title: courseModules.title })
