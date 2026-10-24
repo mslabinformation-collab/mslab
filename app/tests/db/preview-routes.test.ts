@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { PREVIEW_COOKIE, PREVIEW_TTL_S, verifyPreview } from "@/lib/preview-cookie";
-import { createLoginToken, createSession, SESSION_COOKIE } from "@/server/auth";
+import { createLoginToken, createSession, getSessionEmail, SESSION_COOKIE } from "@/server/auth";
 import { makeTestDb } from "./helpers";
 
 // The admins' preview cookie of the coming-soon gate (lib/preview-cookie.ts): set next to the session at sign-in
@@ -13,8 +13,8 @@ const state = vi.hoisted(() => ({
   db: null as unknown,
   cookie: undefined as string | undefined,
   preview: undefined as string | undefined,
-  /** Next's draft mode of the request: on when the browser carries its cookie; `disable` counts the calls that clear it. */
-  draft: { enabled: false, disable: 0 },
+  /** Next's draft mode of the request: on when the browser carries its cookie; `disable` counts the calls that clear it; `fails`: it throws. */
+  draft: { enabled: false, disable: 0, fails: false },
 }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
@@ -29,6 +29,7 @@ vi.mock("next/headers", () => ({
     },
     disable() {
       state.draft.disable++;
+      if (state.draft.fails) throw new Error("draft mode could not be ended");
       state.draft.enabled = false;
     },
   }),
@@ -50,7 +51,7 @@ beforeEach(() => {
   state.db = db;
   state.cookie = undefined;
   state.preview = undefined;
-  state.draft = { enabled: false, disable: 0 };
+  state.draft = { enabled: false, disable: 0, fails: false };
   vi.stubEnv("ADMIN_EMAILS", "admin@example.test,second.admin@example.com");
   vi.stubEnv("PREVIEW_SECRET", SECRET);
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -162,14 +163,14 @@ describe("GET /api/admin/preview ('Vaata kodulehte')", () => {
     state.cookie = await createSession(db, "admin@example.test");
     state.draft.enabled = true;
     expect((await call()).status).toBe(303);
-    expect(state.draft).toEqual({ enabled: false, disable: 1 });
+    expect(state.draft).toEqual({ enabled: false, disable: 1, fails: false });
     expect((await call()).status).toBe(303);
     expect(state.draft.disable).toBe(1);
     // refused (no session): draft mode is left as it is
     state.cookie = undefined;
-    state.draft = { enabled: true, disable: 0 };
+    state.draft = { enabled: true, disable: 0, fails: false };
     expect((await call()).status).toBe(401);
-    expect(state.draft).toEqual({ enabled: true, disable: 0 });
+    expect(state.draft).toEqual({ enabled: true, disable: 0, fails: false });
   });
 
   test("a link from another site (a top-level GET with the Lax session cookie) only gives the admin the pass: no Origin check on GET", async () => {
@@ -276,36 +277,58 @@ describe("POST /api/auth/logout", () => {
   test("draft mode ends with the session, whichever way it ended: signed in, an expired or unknown session cookie, or none at all", async () => {
     // signed in
     state.cookie = await createSession(db, "admin@example.test");
-    state.draft = { enabled: true, disable: 0 };
+    state.draft = { enabled: true, disable: 0, fails: false };
     expect((await call({ origin: ORIGIN })).status).toBe(303);
-    expect(state.draft).toEqual({ enabled: false, disable: 1 });
+    expect(state.draft).toEqual({ enabled: false, disable: 1, fails: false });
     // the session expired meanwhile (its row is gone or too old): the early return of "no session" does not skip it
     state.cookie = await createSession(db, "admin@example.test", new Date("2020-01-01T00:00:00Z"));
-    state.draft = { enabled: true, disable: 0 };
+    state.draft = { enabled: true, disable: 0, fails: false };
     expect((await call()).status).toBe(303);
-    expect(state.draft).toEqual({ enabled: false, disable: 1 });
+    expect(state.draft).toEqual({ enabled: false, disable: 1, fails: false });
     state.cookie = "A".repeat(43);
-    state.draft = { enabled: true, disable: 0 };
+    state.draft = { enabled: true, disable: 0, fails: false };
     await call();
     expect(state.draft.disable).toBe(1);
     // no cookie at all, only the draft-mode cookie
     state.cookie = undefined;
-    state.draft = { enabled: true, disable: 0 };
+    state.draft = { enabled: true, disable: 0, fails: false };
     expect((await call()).status).toBe(303);
-    expect(state.draft).toEqual({ enabled: false, disable: 1 });
+    expect(state.draft).toEqual({ enabled: false, disable: 1, fails: false });
     // not in draft mode: nothing to clear, so nothing is set
-    state.draft = { enabled: false, disable: 0 };
+    state.draft = { enabled: false, disable: 0, fails: false };
     await call();
     expect(state.draft.disable).toBe(0);
+  });
+
+  test("draft mode that cannot be ended never keeps the session alive: the session row and its cookie go first, the failure is logged (final review P6-1)", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    // signed in, with draft mode on: ending it throws
+    state.cookie = await createSession(db, "admin@example.test");
+    state.preview = "1.x";
+    state.draft = { enabled: true, disable: 0, fails: true };
+    const res = await call({ origin: ORIGIN });
+    expect(res.status).toBe(303);
+    expect(where(res)).toBe("/admin/login");
+    expect(await getSessionEmail(db, state.cookie)).toBeNull();
+    const cookies = setCookies(res);
+    expect(cookies[SESSION_COOKIE]).toMatchObject({ value: "" });
+    expect(cookies[PREVIEW_COOKIE]).toMatchObject({ value: "" });
+    expect(state.draft.disable).toBe(1);
+    expect(errors.mock.calls.map((c) => String(c[0]))).toEqual([expect.stringMatching(/^\[auth\] logout failed to end the draft preview: /)]);
+    // an expired session, or none: the redirect all the same
+    state.cookie = undefined;
+    state.draft = { enabled: true, disable: 0, fails: true };
+    expect((await call()).status).toBe(303);
+    expect(state.draft.disable).toBe(1);
   });
 
   test("from another site: 403, nothing cleared", async () => {
     state.cookie = await createSession(db, "admin@example.test");
     state.preview = "1.x";
-    state.draft = { enabled: true, disable: 0 };
+    state.draft = { enabled: true, disable: 0, fails: false };
     const res = await call({ origin: "https://evil.example" });
     expect(res.status).toBe(403);
     expect(res.headers.getSetCookie()).toEqual([]);
-    expect(state.draft).toEqual({ enabled: true, disable: 0 });
+    expect(state.draft).toEqual({ enabled: true, disable: 0, fails: false });
   });
 });

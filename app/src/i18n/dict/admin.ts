@@ -236,6 +236,9 @@ export const adminEt = {
     // session says „Logi uuesti sisse.“ (leave.reasons.signedOut)
     publishFailed: "Avaldamine ei õnnestunud. Proovi uuesti.",
     discardFailed: "Muudatustest loobumine ei õnnestunud. Proovi uuesti.",
+    // Dim 24.10 (D-1, D-4): the way out of the public preview, on the course page's bar and the catalogue's (server/preview-bar.ts; the catalogue's
+    // bar is named with phonePreview, „Eelvaade“)
+    previewExit: "Lõpeta eelvaade",
   },
 
   // The overview (admin UX pass piece 2, A1; README A1, Part 2 prototype, P-1): „Täna“ cards, „Sinu järjekord“, „Tulevased koolitused“

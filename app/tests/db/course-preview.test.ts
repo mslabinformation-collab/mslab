@@ -408,6 +408,15 @@ describe("the preview bar on the course page (Task 6 review: spec C3, Part 4)", 
     expect(exitHref).toBe("/api/admin/eelvaade?lopeta=1&tee=%2Fru%2Fkoolitused%2Fe-kulm");
   });
 
+  test("the bars' words are the admin dictionary's (every admin string in adminEt; final review P7-2): none is written out in the module", async () => {
+    const { adminEt } = await import("@/i18n/dict/admin");
+    const { catalogueBarProps, previewBarProps } = await import("@/server/preview-bar");
+    expect((await previewBarProps(db, online.id, "/koolitused/e-kulm")).t.exit).toBe(adminEt.publish.previewExit);
+    expect(catalogueBarProps("/koolitused").t).toEqual({ label: adminEt.publish.phonePreview, exit: adminEt.publish.previewExit });
+    expect(adminEt.publish).toMatchObject({ phonePreview: "Eelvaade", previewExit: "Lõpeta eelvaade" });
+    expect(readFileSync("src/server/preview-bar.ts", "utf8")).not.toMatch(/["'`](Lõpeta eelvaade|Eelvaade)["'`]/);
+  });
+
   test("in the preview with nothing unpublished: the way out only", async () => {
     await asAdmin();
     const page = await html("et");
