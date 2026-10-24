@@ -173,6 +173,10 @@ House style (as in P2T): result lines end with a full stop, labels and buttons d
 - **D-2 Failure lines, per action.** A failed „Avalda muudatused“: `Avaldamine ei õnnestunud. Proovi uuesti.` A failed „Loobu muudatustest“: `Muudatustest loobumine ei õnnestunud. Proovi uuesti.` On the editor's PublishBar and on the preview bar. An expired session still says `Logi uuesti sisse.`
 - **D-3 Switch label.** The „Avaldamine“ card's switches are `Avalikul lehel` and `Näidissisu`, as drawn (Part 3, Part 4), with no hints.
 - **D-4 Catalogue in the preview.** `/koolitused` gets a slim bar in the admin's preview only: `Eelvaade` · `Lõpeta eelvaade`, no discard (discarding stays per course). Visitors keep the static page.
+- **D-5 Programme point delete.** On a contact course a programme point's delete button reads `Kustuta punkt`; an e-course module keeps `Kustuta moodul`.
+- **D-6 Programme count.** The programme card shows `{n} punkti` (one: `1 punkt`) where the e-course shows `{n} moodulit · {m} õppetundi`; none: the existing empty-list line.
+- **D-7 Undeletable module.** In place of the delete button: `Moodulit saab kustutada, kui selles pole õppetunde.` (also for a module emptied only in the draft).
+- **D-8 Lesson order.** Lesson rows keep ↑/↓ (the frame draws none; without them lessons could not be reordered).
 
 ---
 
