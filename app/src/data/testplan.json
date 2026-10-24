@@ -968,9 +968,11 @@
         "Üleslaadimise ajal näed „Laen üles…“ koos protsentidega ja riba.",
         "✕ küsib paneeli ülaosas „Muudatust „Video“ ei saanud veel salvestada.“ ja „Üleslaadimine käib.“.",
         "„Jää siia“ jätab paneeli lahti ja üleslaadimine jätkub.",
-        "Seejärel näed „Töötlemisel 40%“ (või „Töötlemisel…“, kui protsenti pole) ja rida „Võid lehelt lahkuda — töötlemine jätkub.“.",
+        "Seejärel näed „Töötlemisel“ koos protsendiga, näiteks „Töötlemisel 40%“, või „Töötlemisel…“, kui protsenti veel pole.",
+        "Paneelis on ka rida „Võid lehelt lahkuda — töötlemine jätkub.“.",
         "Mõne minuti pärast näed „Valmis“ koos video pikkusega.",
-        "Õppetunni real on töötlemise ajal märge „Töötlemisel 40%“ (või „Töötlemisel“, kui protsenti pole) ja hiljem „Valmis“."
+        "Õppetunni real on töötlemise ajal „Töötlemisel“ koos protsendiga, näiteks „Töötlemisel 40%“, või ilma protsendita, ja hiljem „Valmis“.",
+        "Rea protsent on lehe viimase laadimise seisuga ja uueneb lehe järgmisel laadimisel."
       ],
       "why": "Videotund on e-koolituse põhiosa.",
       "risk": "high",
@@ -991,6 +993,7 @@
         "Vajuta faili real „Eemalda“ ja siis allservas „Võta tagasi“.",
         "Vajuta uuesti „Eemalda“, oota, kuni allserva riba kaob, ja lae leht uuesti.",
         "Vajuta „vali fail“ ja sulge failivalik ilma faili valimata.",
+        "Arvutis lohista PDF paneelil kasti „Lohista fail siia või vali fail“ kõrvale ja lase lahti.",
         "Lülita „Õpilastele nähtav“ välja ja vajuta allservas „Võta tagasi“."
       ],
       "expect": [
@@ -998,6 +1001,7 @@
         "„Võta tagasi“ toob faili samale kohale tagasi ja paneel jääb lahti.",
         "Pärast riba kadumist ja lehe laadimist faili enam pole.",
         "Failivaliku sulgemine jätab paneeli lahti ja midagi ei muutu.",
+        "Kasti kõrvale lastud fail ei avane brauseris ja paneel jääb lahti.",
         "Väljalülitamisel on allservas „Õppetund peidetud.“ ja „Võta tagasi“ lülitab õppetunni jälle nähtavaks."
       ],
       "why": "Eemaldamine ja peitmine käivad ilma küsimuseta, sest need saab kohe tagasi võtta.",
@@ -1556,15 +1560,24 @@
         "Ava „Praktika“.",
         "Lisa paketi MINI „Lühitekst“ lõppu sõna Proov.",
         "Vajuta „Salvesta“ ja ava avalik praktika leht.",
+        "Lohista paketi MINI plokis „Paketi punktid“ teise punkti käepide ⋮⋮ sõrmega esimeseks ja lase lahti.",
+        "Vajuta sama punkti juures noolt alla, nii et see on jälle teine.",
+        "Eemalda viimane punkt × nupuga ja vajuta allservas „Võta tagasi“.",
         "Eemalda sõna Proov ja salvesta."
       ],
       "expect": [
         "Praktika lehel ja avalehe praktikaplokis on sõna Proov.",
-        "Pärast eemaldamist on tekst nagu enne."
+        "Punkt liigub lohistades ja noolega kohe uude kohta.",
+        "× võtab punkti kohe ära ja allservas on „Rida eemaldatud.“ ja nupp „Võta tagasi“.",
+        "„Võta tagasi“ paneb punkti samale kohale tagasi koos tekstiga.",
+        "Riba ajal on „Salvesta“ näha ja seda saab vajutada, ka telefonis.",
+        "Pärast sõna Proov eemaldamist on tekst nagu enne."
       ],
       "why": "Paketid on praktika lehel ja avalehel.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-koolitaja",
