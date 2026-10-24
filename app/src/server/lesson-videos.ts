@@ -18,7 +18,11 @@ import { logFailure } from "./log";
 // video. An answer that changes nothing (a repeated webhook, the next poll) writes nothing.
 
 export type UploadTicket = { videoId: string; libraryId: string; expires: number; signature: string; endpoint: string; title: string };
-export type AdminVideo = { status: VideoStatus; durationSec: number | null; replacing: boolean };
+/**
+ * A lesson's video as the admin's drawer shows it. `progress`: Bunny's encode progress in percent (0…100) while the video is "processing" (R-g, S6),
+ * null when Bunny gave none and in every other state; the screens read null and 0 alike („Töötlemisel“ without a number, S3-P3-e).
+ */
+export type AdminVideo = { status: VideoStatus; durationSec: number | null; replacing: boolean; progress: number | null };
 export type VideoTicketResult = { ok: true; ticket: UploadTicket } | { ok: false; error: "setup" | "notFound" | "server" };
 export type VideoCheckResult = { ok: true; video: AdminVideo } | { ok: false; error: "setup" | "notFound" | "server" };
 
@@ -37,8 +41,16 @@ const VIDEO_COLUMNS = {
   durationSec: lessons.durationSec,
   videoWidth: lessons.videoWidth,
   videoHeight: lessons.videoHeight,
+  videoProgress: lessons.videoProgress,
 };
-const adminVideo = (v: VideoFields): AdminVideo => ({ status: v.videoStatus, durationSec: v.durationSec, replacing: v.replacedVideoId !== null });
+/** The video columns as read, with the figure (lessons.video_progress: Bunny's encode progress, written only while it processes). */
+type VideoState = VideoFields & { videoProgress: number | null };
+const adminVideo = (v: VideoState): AdminVideo => ({
+  status: v.videoStatus,
+  durationSec: v.durationSec,
+  replacing: v.replacedVideoId !== null,
+  progress: v.videoStatus === "processing" ? v.videoProgress : null, // (a figure left in any other state is none)
+});
 const sameVideo = (a: VideoFields, b: VideoFields) =>
   a.videoId === b.videoId &&
   a.videoStatus === b.videoStatus &&
@@ -74,7 +86,8 @@ export async function startLessonVideo(db: Db, api: BunnyApi, config: BunnyConfi
       const [current] = await tx.select(VIDEO_COLUMNS).from(lessons).where(and(eq(lessons.id, lessonId), eq(lessons.kind, "video"))).for("update");
       if (!current) return null;
       const change = startUpload(current, videoId);
-      const written = await tx.update(lessons).set({ ...change.next, videoStartedAt: now }).where(unchangedSince(lessonId, current)).returning();
+      // (the figure of an encode before this upload is none of the new one's: cleared, whatever `change.next` carried over from the row)
+      const written = await tx.update(lessons).set({ ...change.next, videoStartedAt: now, videoProgress: null }).where(unchangedSince(lessonId, current)).returning();
       return written.length ? change.obsolete : null;
     });
   } catch (e) {
@@ -90,23 +103,29 @@ export async function startLessonVideo(db: Db, api: BunnyApi, config: BunnyConfi
   return { videoId, libraryId: config.libraryId, expires, signature: await tusSignature(config.libraryId, config.apiKey, expires, videoId), endpoint: config.tusEndpoint, title };
 }
 
-type VideoRow = VideoFields & { id: number };
+type VideoRow = VideoState & { id: number };
 
 /**
  * Stores Bunny's answer about the row's current upload (null: Bunny does not know the video, which counts as failed), by
  * compare-and-set against `row` as it was read before Bunny was asked. Ready or failed ends the upload (its start time is cleared); ready
  * also stores the video's picture size (the two columns are in the same write, so a stale write cannot change them either).
+ * The encode progress (R-g, S6) is Bunny's `encodeProgress` while the video is "processing" and null in every other state: ready and failed
+ * clear it in the same write that ends the upload. A new figure for a video that is processing already is a write of its own (the poll and the
+ * webhook both bring it); the same figure again writes nothing. The compare names the video columns only, not the figure: a status that ends
+ * the upload must not lose to a write that merely moved the figure, and a stale figure that wins the race is put right by the next read.
  * The lesson's video as it is now: the new state, the row unchanged, or (another write came first) the row read again; `wrote` says
  * whether this call's write is the one that changed the row.
  */
 async function applyAnswer(db: Db, api: BunnyApi, row: VideoRow, videoId: string, bunny: BunnyVideo | null): Promise<{ video: AdminVideo | null; wrote: boolean }> {
   const status = bunny ? lessonVideoStatus(bunny.status) : "failed";
   const settled = settleVideo(row, videoId, status, bunny?.length ?? 0, bunny && { width: bunny.width, height: bunny.height });
-  if (!settled || sameVideo(settled.next, row)) return { video: adminVideo(row), wrote: false }; // nothing new (a stale or repeated answer): no write
+  if (!settled) return { video: adminVideo(row), wrote: false }; // nothing new (not the current upload, a stale or downgrading answer): no write
+  const videoProgress = settled.next.videoStatus === "processing" ? (bunny?.encodeProgress ?? null) : null;
+  if (sameVideo(settled.next, row) && videoProgress === row.videoProgress) return { video: adminVideo(row), wrote: false }; // a repeated answer: no write
   const done = settled.next.videoStatus === "ready" || settled.next.videoStatus === "failed";
   const written = await db
     .update(lessons)
-    .set({ ...settled.next, ...(done ? { videoStartedAt: null } : {}) })
+    .set({ ...settled.next, videoProgress, ...(done ? { videoStartedAt: null } : {}) })
     .where(unchangedSince(row.id, row))
     .returning();
   if (!written.length) {
@@ -115,7 +134,7 @@ async function applyAnswer(db: Db, api: BunnyApi, row: VideoRow, videoId: string
     return { video: now ? adminVideo(now) : null, wrote: false };
   }
   await deleteBunnyVideos(api, settled.obsolete);
-  return { video: adminVideo(settled.next), wrote: true };
+  return { video: adminVideo({ ...settled.next, videoProgress }), wrote: true };
 }
 
 const storeAnswer = async (db: Db, api: BunnyApi, row: VideoRow, videoId: string, bunny: BunnyVideo | null) => (await applyAnswer(db, api, row, videoId, bunny)).video;
@@ -173,7 +192,7 @@ async function uploadsPass(db: Db, api: BunnyApi, now: Date, { limit = SWEEP_BAT
       const { next, obsolete } = abandonUpload(row);
       const reset = await db
         .update(lessons)
-        .set({ ...next, videoStartedAt: null })
+        .set({ ...next, videoStartedAt: null, videoProgress: null })
         .where(unchangedSince(row.id, row))
         .returning();
       if (!reset.length) continue;

@@ -206,9 +206,9 @@ describe("lessons", () => {
   test("“Õppetunni liik”: a new lesson is a video lesson; to Tekst drops its videos (obsolete for Bunny); back to Video has none", async () => {
     const w = await twoModules();
     expect((await db.select().from(lessons).where(eq(lessons.id, w.l1)))[0].kind).toBe("video");
-    await db.update(lessons).set({ videoId: "new", videoStatus: "processing", replacedVideoId: "old", durationSec: 300, videoWidth: 1080, videoHeight: 1920, videoStartedAt: new Date() }).where(eq(lessons.id, w.l1));
+    await db.update(lessons).set({ videoId: "new", videoStatus: "processing", replacedVideoId: "old", durationSec: 300, videoWidth: 1080, videoHeight: 1920, videoProgress: 42, videoStartedAt: new Date() }).where(eq(lessons.id, w.l1));
     expect(await setLessonKindForm(db, form({ id: w.l1, kind: "text" }))).toEqual({ result: { ok: true, id: w.l1 }, obsolete: ["new", "old"] });
-    expect((await db.select().from(lessons).where(eq(lessons.id, w.l1)))[0]).toMatchObject({ kind: "text", videoId: null, videoStatus: "none", replacedVideoId: null, durationSec: null, videoWidth: null, videoHeight: null, videoStartedAt: null });
+    expect((await db.select().from(lessons).where(eq(lessons.id, w.l1)))[0]).toMatchObject({ kind: "text", videoId: null, videoStatus: "none", replacedVideoId: null, durationSec: null, videoWidth: null, videoHeight: null, videoProgress: null, videoStartedAt: null });
     expect((await listCourseLessons(db, courseId))[0].lessons[0].kind).toBe("text");
     expect(await setLessonKindForm(db, form({ id: w.l1, kind: "video" }))).toEqual({ result: { ok: true, id: w.l1 }, obsolete: [] });
     expect((await db.select().from(lessons).where(eq(lessons.id, w.l1)))[0]).toMatchObject({ kind: "video", videoStatus: "none" });

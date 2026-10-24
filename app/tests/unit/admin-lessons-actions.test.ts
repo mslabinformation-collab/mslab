@@ -298,10 +298,10 @@ describe("the video field's two actions (createLessonVideo, checkLessonVideo)", 
 
   test("the ticket and the state pass through; nothing is revalidated or refreshed (the field refreshes on a status change)", async () => {
     mocks.startLessonVideo.mockResolvedValue(TICKET);
-    mocks.refreshLessonVideo.mockResolvedValue({ status: "processing", durationSec: null, replacing: false });
+    mocks.refreshLessonVideo.mockResolvedValue({ status: "processing", durationSec: null, replacing: false, progress: 40 });
     expect(await actions.createLessonVideo(7)).toEqual({ ok: true, ticket: TICKET });
     expect(mocks.startLessonVideo).toHaveBeenCalledWith("the-db", expect.anything(), mocks.config, 7, expect.any(Date));
-    expect(await actions.checkLessonVideo(7)).toEqual({ ok: true, video: { status: "processing", durationSec: null, replacing: false } });
+    expect(await actions.checkLessonVideo(7)).toEqual({ ok: true, video: { status: "processing", durationSec: null, replacing: false, progress: 40 } });
     expect(mocks.refreshLessonVideo).toHaveBeenCalledWith("the-db", expect.anything(), { lessonId: 7 });
     expect(mocks.revalidatePublic).not.toHaveBeenCalled();
     expect(mocks.refresh).not.toHaveBeenCalled();

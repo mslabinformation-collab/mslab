@@ -6,7 +6,7 @@ import { E2E_BUNNY } from "./bunny-values";
 // server/bunny.ts). It speaks what the app uses, with the checks Bunny makes:
 // - the API: POST/GET/DELETE /library/<id>/videos[/<guid>] with the AccessKey;
 // - tus: POST /tusupload (AuthorizationSignature = sha256(library + key + expiry + video), not expired), HEAD and PATCH
-//   /tusupload/<id>, with CORS for the admin page. A finished upload reads as status 3 (transcoding) once, then 4 (ready, 125 s,
+//   /tusupload/<id>, with CORS for the admin page. A finished upload reads as status 3 (transcoding, `encodeProgress` 40) once, then 4 (ready, `encodeProgress` 100, 125 s,
 //   1920 × 1080: the picture size `width` × `height` is in the answer only from status 4 on, 0 before, as Bunny's is not known
 //   until the file is processed; `rotation` is null, as Bunny's is without rotation metadata);
 // - the player: GET /embed/<library>/<video>?token&expires[&t] (token = sha256(token key + video + expiry), not expired), a page that
@@ -21,7 +21,7 @@ import { E2E_BUNNY } from "./bunny-values";
 // It never redirects: the app's Bunny client refuses redirects (server/bunny.ts).
 
 type Shape = { width: number; height: number; rotation: number | null };
-type Video = { guid: string; status: number; length: number } & Shape;
+type Video = { guid: string; status: number; length: number; encodeProgress: number } & Shape;
 const videos = new Map<string, Video>();
 /** What a video's size will be once it is finished (a test said so), else the usual 16:9. */
 const planned = new Map<string, Shape>();
@@ -29,6 +29,8 @@ const LANDSCAPE: Shape = { width: 1920, height: 1080, rotation: null };
 const deleted: string[] = [];
 const uploads = new Map<string, { videoId: string; length: number; offset: number }>();
 const LENGTH = 125;
+/** The `encodeProgress` of a video that is transcoding (status 3): Bunny gives 0…100, 100 once it is finished (video_getvideo). */
+const ENCODING_PROGRESS = 40;
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 // X-Forwarded-For: the e2e browser context adds it to every request (tests/e2e/test.ts, visitorIp), the tus requests too.
 const CORS: Record<string, string> = {
@@ -119,7 +121,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const shape = readShape(readJson(await read(req)));
     if (!shape) return send(res, 400, "width and height");
     const guid = randomUUID();
-    videos.set(guid, { guid, status: 4, length: LENGTH, ...shape });
+    videos.set(guid, { guid, status: 4, length: LENGTH, encodeProgress: 100, ...shape });
     return send(res, 200, { guid });
   }
   if (path === "/_fake/shape" && req.method === "POST") {
@@ -138,8 +140,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (req.headers["accesskey"] !== E2E_BUNNY.apiKey) return send(res, 401, { message: "key" });
     if (req.method === "POST" && !api[2]) {
       const guid = randomUUID();
-      videos.set(guid, { guid, status: 0, length: 0, width: 0, height: 0, rotation: null });
-      return send(res, 200, { guid, videoLibraryId: Number(E2E_BUNNY.libraryId), status: 0, length: 0, width: 0, height: 0 });
+      videos.set(guid, { guid, status: 0, length: 0, encodeProgress: 0, width: 0, height: 0, rotation: null });
+      return send(res, 200, { guid, videoLibraryId: Number(E2E_BUNNY.libraryId), status: 0, length: 0, encodeProgress: 0, width: 0, height: 0 });
     }
     const video = api[2] ? videos.get(api[2]) : undefined;
     if (!video) return send(res, 404, { message: "video" });
@@ -149,9 +151,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return send(res, 200, { success: true });
     }
     if (req.method === "GET") {
-      if (video.status === 1) video.status = 3; // uploaded → transcoding (one read)
-      else if (video.status === 3) Object.assign(video, { status: 4, length: LENGTH }, planned.get(video.guid) ?? LANDSCAPE); // → finished, with its size
-      return send(res, 200, { guid: video.guid, status: video.status, length: video.length, width: video.width, height: video.height, rotation: video.rotation });
+      if (video.status === 1) Object.assign(video, { status: 3, encodeProgress: ENCODING_PROGRESS }); // uploaded → transcoding (one read, at 40 %)
+      else if (video.status === 3) Object.assign(video, { status: 4, length: LENGTH, encodeProgress: 100 }, planned.get(video.guid) ?? LANDSCAPE); // → finished, with its size
+      return send(res, 200, { guid: video.guid, status: video.status, length: video.length, encodeProgress: video.encodeProgress, width: video.width, height: video.height, rotation: video.rotation });
     }
   }
 

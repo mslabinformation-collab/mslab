@@ -21,7 +21,7 @@ import styles from "./LessonsEditor.module.css";
 // so the tag in the list behind the drawer follows.
 //
 // Admin UX pass piece 3a, Task 10 (README B2 lesson drawer; piece3-texts S3-P3-e; the Part 4 frame „B2 Lesson drawer“):
-// - the progress line: the upload's „Laen üles… {n} %“, then „Töötlemisel {n}%“ with Bunny's figure (the lesson's `progress`, R-g; Task 11 reads it)
+// - the progress line: the upload's „Laen üles… {n} %“, then „Töötlemisel {n}%“ with Bunny's figure (`video.progress`, R-g, Task 11: the page's figure at first, then each poll's)
 //   or „Töötlemisel…“ without one, over a bar (at the figure, or one that only moves), and „Võid lehelt lahkuda — töötlemine jätkub.“ while it
 //   processes; the file's name beside it while this page knows it (it picked it);
 // - when the file input goes (the pick starts the upload, or a read shows it processing) while it had the focus, the focus goes to that line instead
@@ -45,20 +45,21 @@ const stepOf = (percent: number) => Math.floor(Math.min(100, Math.max(0, percent
 type Phase = { kind: "idle" } | { kind: "starting" } | { kind: "uploading"; percent: number } | { kind: "error"; text: string };
 const IDLE: Phase = { kind: "idle" };
 
-const sameVideo = (a: AdminVideo, b: AdminVideo) => a.status === b.status && a.durationSec === b.durationSec && a.replacing === b.replacing;
+const sameVideo = (a: AdminVideo, b: AdminVideo) => a.status === b.status && a.durationSec === b.durationSec && a.replacing === b.replacing && a.progress === b.progress;
 const inProgress = (status: AdminVideo["status"]) => status === "uploading" || status === "processing";
 
 type Props = {
   lessonId: number;
   /** Bunny is configured on the server (bunnyConfig() !== null): else only "Video seadistamata". */
   bunnyReady: boolean;
-  /** The lesson's video as the page was rendered. */
+  /**
+   * The lesson's video as the page was rendered. `progress` is Bunny's encode progress in percent while it processes (AdminLesson.videoProgress,
+   * R-g; null, or 0, when Bunny gave none); the poll brings a fresher one with each answer.
+   */
   video: AdminVideo;
-  /** Bunny's encode progress in percent while it processes (AdminLesson.videoProgress, R-g): null (or 0) when Bunny gave none. */
-  progress: number | null;
 };
 
-export function LessonVideoField({ lessonId, bunnyReady, video: given, progress }: Props) {
+export function LessonVideoField({ lessonId, bunnyReady, video: given }: Props) {
   const uid = useId();
   const router = useRouter();
   const [video, setVideo] = useState(given);
@@ -208,7 +209,8 @@ export function LessonVideoField({ lessonId, bunnyReady, video: given, progress 
     const ticket = answer.ticket;
     // the lesson is "uploading" on the server now; a ready video stays as the one students watch
     const before = current.current;
-    const uploading: AdminVideo = { status: "uploading", durationSec: before.durationSec, replacing: before.status === "ready" || before.replacing };
+    // (no figure: the server cleared the encode before this upload's)
+    const uploading: AdminVideo = { status: "uploading", durationSec: before.durationSec, replacing: before.status === "ready" || before.replacing, progress: null };
     current.current = uploading;
     setVideo(uploading);
     let Upload: typeof import("tus-js-client").Upload;
@@ -239,7 +241,7 @@ export function LessonVideoField({ lessonId, bunnyReady, video: given, progress 
         if (!alive.current) return;
         setPhase(IDLE);
         setSent(true);
-        const processing: AdminVideo = { ...current.current, status: "processing" };
+        const processing: AdminVideo = { ...current.current, status: "processing", progress: null };
         current.current = processing;
         setVideo(processing);
         void check();
@@ -284,7 +286,7 @@ export function LessonVideoField({ lessonId, bunnyReady, video: given, progress 
 
   const percent = phase.kind === "uploading" ? phase.percent : 0;
   /** Bunny's figure while it processes (none, or 0: „Töötlemisel…“ and a bar that only moves). */
-  const figure = shown === "processing" && !busy && progress !== null && progress > 0 ? Math.min(100, Math.round(progress)) : null;
+  const figure = shown === "processing" && !busy && video.progress !== null && video.progress > 0 ? Math.min(100, Math.round(video.progress)) : null;
   const statusText = busy
     ? fill(t.uploading, { percent })
     : shown === "processing"

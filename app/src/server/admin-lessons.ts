@@ -439,7 +439,7 @@ export async function setLessonKindForm(db: Db, fd: FormData): Promise<{ result:
       return { result: { ok: true, id }, obsolete: [] };
     }
     const { next, obsolete } = dropVideo(row);
-    await tx.update(lessons).set({ kind, ...next, videoStartedAt: null }).where(eq(lessons.id, id));
+    await tx.update(lessons).set({ kind, ...next, videoStartedAt: null, videoProgress: null }).where(eq(lessons.id, id));
     return { result: { ok: true, id }, obsolete };
   });
 }

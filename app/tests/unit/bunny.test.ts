@@ -102,7 +102,7 @@ describe("the API client", () => {
   test("getVideo: status, length and picture size; null for an unknown video (404)", async () => {
     const f = fakeFetch((url) => (url.endsWith(VIDEO) ? Response.json({ guid: VIDEO, status: 4, length: 754, width: 1920, height: 1080, title: "x" }) : new Response("", { status: 404 })));
     const api = bunnyApi(CONFIG, f.fetch);
-    expect(await api.getVideo(VIDEO)).toEqual({ status: 4, length: 754, width: 1920, height: 1080 });
+    expect(await api.getVideo(VIDEO)).toEqual({ status: 4, length: 754, width: 1920, height: 1080, encodeProgress: null });
     expect(await api.getVideo("00000000-0000-0000-0000-000000000000")).toBeNull();
     expect(f.calls[0]).toMatchObject({ url: `https://video.bunnycdn.com/library/12345/videos/${VIDEO}`, method: "GET" });
   });
@@ -141,29 +141,45 @@ describe("the API client", () => {
       expect(err).toMatchObject({ op: "get", status: 200 });
     }
     // a missing length is not an error (a video still uploading has none yet): 0
-    expect(await bunnyApi(CONFIG, fakeFetch(() => Response.json({ guid: VIDEO, status: 0 })).fetch).getVideo(VIDEO)).toEqual({ status: 0, length: 0, width: 0, height: 0 });
+    expect(await bunnyApi(CONFIG, fakeFetch(() => Response.json({ guid: VIDEO, status: 0 })).fetch).getVideo(VIDEO)).toEqual({ status: 0, length: 0, width: 0, height: 0, encodeProgress: null });
   });
   test("getVideo: the picture size is read as numbers; a missing or unusable one is 0 and never an error (older or still processing videos)", async () => {
     const read = (body: Record<string, unknown>) => bunnyApi(CONFIG, fakeFetch(() => Response.json({ guid: VIDEO, status: 4, length: 60, ...body })).fetch).getVideo(VIDEO);
-    expect(await read({ width: 1080, height: 1920 })).toEqual({ status: 4, length: 60, width: 1080, height: 1920 });
-    expect(await read({})).toEqual({ status: 4, length: 60, width: 0, height: 0 }); // no size in the answer
-    expect(await read({ width: 1080 })).toEqual({ status: 4, length: 60, width: 1080, height: 0 }); // one side only
-    expect(await read({ width: 0, height: 0 })).toEqual({ status: 4, length: 60, width: 0, height: 0 }); // not known yet
+    expect(await read({ width: 1080, height: 1920 })).toEqual({ status: 4, length: 60, width: 1080, height: 1920, encodeProgress: null });
+    expect(await read({})).toEqual({ status: 4, length: 60, width: 0, height: 0, encodeProgress: null }); // no size in the answer
+    expect(await read({ width: 1080 })).toEqual({ status: 4, length: 60, width: 1080, height: 0, encodeProgress: null }); // one side only
+    expect(await read({ width: 0, height: 0 })).toEqual({ status: 4, length: 60, width: 0, height: 0, encodeProgress: null }); // not known yet
     // not numbers (strings, null, objects, a list): 0 for that side
-    expect(await read({ width: "1080", height: null })).toEqual({ status: 4, length: 60, width: 0, height: 0 });
-    expect(await read({ width: {}, height: [1920] })).toEqual({ status: 4, length: 60, width: 0, height: 0 });
+    expect(await read({ width: "1080", height: null })).toEqual({ status: 4, length: 60, width: 0, height: 0, encodeProgress: null });
+    expect(await read({ width: {}, height: [1920] })).toEqual({ status: 4, length: 60, width: 0, height: 0, encodeProgress: null });
     // JSON cannot carry NaN or Infinity (they travel as null); a huge number is still a number: the domain decides what is a shape
-    expect(await read({ width: 1e999, height: 1080 })).toEqual({ status: 4, length: 60, width: 0, height: 1080 });
-    expect(await read({ width: 1e9, height: 1080 })).toEqual({ status: 4, length: 60, width: 1e9, height: 1080 });
+    expect(await read({ width: 1e999, height: 1080 })).toEqual({ status: 4, length: 60, width: 0, height: 1080, encodeProgress: null });
+    expect(await read({ width: 1e9, height: 1080 })).toEqual({ status: 4, length: 60, width: 1e9, height: 1080, encodeProgress: null });
   });
   test("getVideo: a quarter turn in the file's metadata (a phone held upright: 1920 × 1080, rotation 90) is the picture the student sees, upright", async () => {
     const read = (body: Record<string, unknown>) => bunnyApi(CONFIG, fakeFetch(() => Response.json({ guid: VIDEO, status: 4, length: 60, ...body })).fetch).getVideo(VIDEO);
     for (const rotation of [90, -90, 270, -270])
-      expect(await read({ width: 1920, height: 1080, rotation }), String(rotation)).toEqual({ status: 4, length: 60, width: 1080, height: 1920 });
+      expect(await read({ width: 1920, height: 1080, rotation }), String(rotation)).toEqual({ status: 4, length: 60, width: 1080, height: 1920, encodeProgress: null });
     // no turn, a half turn, no metadata (null) or a value that is no angle: the sides as they are
     for (const rotation of [0, 180, -180, 45, null, "90", undefined])
-      expect(await read({ width: 1920, height: 1080, rotation }), String(rotation)).toEqual({ status: 4, length: 60, width: 1920, height: 1080 });
-    expect(await read({ width: 1080, height: 1920, rotation: 90 })).toEqual({ status: 4, length: 60, width: 1920, height: 1080 }); // a quarter turn swaps whatever the file stored
+      expect(await read({ width: 1920, height: 1080, rotation }), String(rotation)).toEqual({ status: 4, length: 60, width: 1920, height: 1080, encodeProgress: null });
+    expect(await read({ width: 1080, height: 1920, rotation: 90 })).toEqual({ status: 4, length: 60, width: 1920, height: 1080, encodeProgress: null }); // a quarter turn swaps whatever the file stored
+  });
+  test("getVideo: encodeProgress (Bunny's encode percent, 0–100; video_getvideo checked 24.10.2026) is read as a whole number; a missing or unusable one is null", async () => {
+    const read = (body: Record<string, unknown>) => bunnyApi(CONFIG, fakeFetch(() => Response.json({ guid: VIDEO, status: 3, length: 0, ...body })).fetch).getVideo(VIDEO);
+    expect(await read({ encodeProgress: 40 })).toEqual({ status: 3, length: 0, width: 0, height: 0, encodeProgress: 40 });
+    expect((await read({ encodeProgress: 0 }))?.encodeProgress).toBe(0); // a figure of 0 is a figure (the screens decide how it reads)
+    expect((await read({ encodeProgress: 100 }))?.encodeProgress).toBe(100);
+    expect((await read({}))?.encodeProgress).toBeNull(); // the field absent
+    // a fraction is rounded, a value outside 0…100 is held to it
+    expect((await read({ encodeProgress: 40.6 }))?.encodeProgress).toBe(41);
+    expect((await read({ encodeProgress: 150 }))?.encodeProgress).toBe(100);
+    expect((await read({ encodeProgress: -3 }))?.encodeProgress).toBe(0);
+    // not a number: null, never an error and never 0
+    for (const encodeProgress of ["40", null, {}, [40], true]) expect((await read({ encodeProgress }))?.encodeProgress, JSON.stringify(encodeProgress)).toBeNull();
+    // (JSON.stringify turns Infinity into null, so the raw body: 1e999 parses as Infinity)
+    const raw = bunnyApi(CONFIG, fakeFetch(() => new Response('{"status":3,"length":0,"encodeProgress":1e999}')).fetch);
+    expect((await raw.getVideo(VIDEO))?.encodeProgress).toBeNull();
   });
   test("every request refuses redirects, so the AccessKey is never sent on to another address", async () => {
     const f = fakeFetch(() => Response.json({ guid: VIDEO, status: 4, length: 1 }));

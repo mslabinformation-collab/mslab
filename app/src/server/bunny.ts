@@ -78,15 +78,19 @@ export async function signedEmbedUrl(config: BunnyConfig, videoId: string, expir
 }
 
 /**
- * What the app reads of Bunny's video object: its status, its length (s) and the picture size in pixels as it is SHOWN (`width` ×
- * `height`; 0 when Bunny gives none: an older video, or one still being processed). A missing size never fails the read.
+ * What the app reads of Bunny's video object: its status, its length (s), the picture size in pixels as it is SHOWN (`width` ×
+ * `height`; 0 when Bunny gives none: an older video, or one still being processed) and its encode progress. A missing size or
+ * progress never fails the read.
+ *
+ * `encodeProgress`: Bunny's `encodeProgress` ("Encoding progress as a percentage from 0 to 100; reaches 100 when transcoding
+ * finishes", integer; video_getvideo, checked 24.10.2026), as a whole number held to 0…100; null when the field is absent or no number.
  */
-export type BunnyVideo = { status: number; length: number; width: number; height: number };
+export type BunnyVideo = { status: number; length: number; width: number; height: number; encodeProgress: number | null };
 
 export type BunnyApi = {
   /** A new, empty video titled `title`; its guid. */
   createVideo(title: string): Promise<string>;
-  /** Its status, length (s) and picture size, or null when Bunny does not know it (404). */
+  /** Its status, length (s), picture size and encode progress, or null when Bunny does not know it (404). */
   getVideo(videoId: string): Promise<BunnyVideo | null>;
   /** Deletes it; a video that is gone already (404) is fine. */
   deleteVideo(videoId: string): Promise<void>;
@@ -167,11 +171,11 @@ export function bunnyApi(config: BunnyConfig, fetchImpl: typeof fetch = (input, 
           discard(res);
           throw new BunnyError("get", res.status);
         }
-        const json = (await res.json().catch(() => null)) as { status?: unknown; length?: unknown; width?: unknown; height?: unknown; rotation?: unknown } | null;
+        const json = (await res.json().catch(() => null)) as { status?: unknown; length?: unknown; width?: unknown; height?: unknown; rotation?: unknown; encodeProgress?: unknown } | null;
         // An answer without a numeric status is not an answer: it must not pass for "still processing".
         if (typeof json?.status !== "number") throw new BunnyError("get", res.status);
         const size = shownSize(json.width, json.height, json.rotation);
-        return { status: json.status, length: typeof json.length === "number" ? json.length : 0, ...size };
+        return { status: json.status, length: typeof json.length === "number" ? json.length : 0, ...size, encodeProgress: percentOrNull(json.encodeProgress) };
       }),
     deleteVideo: (videoId) =>
       call(`${videos}/${encodeURIComponent(videoId)}`, "DELETE", undefined, async (res) => {
@@ -179,6 +183,11 @@ export function bunnyApi(config: BunnyConfig, fetchImpl: typeof fetch = (input, 
         if (!res.ok && res.status !== 404) throw new BunnyError("delete", res.status);
       }),
   };
+}
+
+/** A percent Bunny sent as a whole number from 0 to 100 (a fraction is rounded, a value outside is held to the range), or null (missing, not a number, not finite). */
+function percentOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : null;
 }
 
 /** A number Bunny sent, or 0 (missing, not a number, not finite). */

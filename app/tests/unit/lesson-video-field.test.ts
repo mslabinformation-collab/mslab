@@ -40,7 +40,7 @@ import { LessonVideoField } from "@/components/admin/LessonVideoField";
 
 const WAITING = "Õpilased näevad „Video lisandub peagi“ ja järgmine õppetund jääb lukku, kuni video on valmis.";
 const TICKET = { videoId: "v", libraryId: "424242", expires: 99, signature: "sig", endpoint: "https://tus.example/tusupload", title: "K · L" };
-const video = (status: AdminVideo["status"], over: Partial<AdminVideo> = {}): AdminVideo => ({ status, durationSec: null, replacing: false, ...over });
+const video = (status: AdminVideo["status"], over: Partial<AdminVideo> = {}): AdminVideo => ({ status, durationSec: null, replacing: false, progress: null, ...over });
 
 let container: HTMLDivElement;
 let root: Root;
@@ -55,12 +55,12 @@ const settle = () =>
   act(async () => {
     for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
   });
-const mount = async (v: AdminVideo, bunnyReady = true, progress: number | null = null) => {
-  await act(async () => root.render(createElement(LessonVideoField, { lessonId: 7, bunnyReady, video: v, progress })));
+const mount = async (v: AdminVideo, bunnyReady = true) => {
+  await act(async () => root.render(createElement(LessonVideoField, { lessonId: 7, bunnyReady, video: v })));
 };
 /** The same inside the leave guard's provider, as the (panel) layout has it. */
 const mountGuarded = async (v: AdminVideo) => {
-  await act(async () => root.render(createElement(LeaveGuardProvider, null, createElement(LessonVideoField, { lessonId: 7, bunnyReady: true, video: v, progress: null }))));
+  await act(async () => root.render(createElement(LeaveGuardProvider, null, createElement(LessonVideoField, { lessonId: 7, bunnyReady: true, video: v }))));
 };
 /** What a screen reader is told: the field's status region (not the line she sees). */
 const spoken = () => $("[data-lesson-video] [role='status']")?.textContent ?? null;
@@ -550,8 +550,8 @@ describe("an upload", () => {
 
 describe("processing (S3-P3-e, R-g)", () => {
   test("with Bunny's figure: „Töötlemisel 40%“, a bar at 40, „Võid lehelt lahkuda — töötlemine jätkub.“; announced at its 25 % step", async () => {
-    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing") });
-    await mount(video("processing"), true, 40);
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing", { progress: 40 }) });
+    await mount(video("processing", { progress: 40 }));
     await settle();
     expect(line()?.textContent).toBe("Töötlemisel 40%");
     const bar = $("[data-lesson-video] progress") as HTMLProgressElement;
@@ -561,11 +561,11 @@ describe("processing (S3-P3-e, R-g)", () => {
   });
 
   test("without a figure (or 0): „Töötlemisel…“, a bar that only moves (no value), and the same line", async () => {
-    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing") });
     for (const progress of [null, 0]) {
+      actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing", { progress }) });
       await act(async () => root.unmount());
       root = createRoot(container);
-      await mount(video("processing"), true, progress);
+      await mount(video("processing", { progress }));
       await settle();
       expect(line()?.textContent, String(progress)).toBe("Töötlemisel…");
       expect(($("[data-lesson-video] progress") as HTMLProgressElement).hasAttribute("value"), String(progress)).toBe(false);
@@ -586,11 +586,48 @@ describe("processing (S3-P3-e, R-g)", () => {
   });
 
   test("the page's newer figure (a refresh) shows: 40 → 80", async () => {
-    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing") });
-    await mount(video("processing"), true, 40);
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing", { progress: 40 }) });
+    await mount(video("processing", { progress: 40 }));
     await settle();
-    await mount(video("processing"), true, 80);
+    await mount(video("processing", { progress: 80 }));
     expect(line()?.textContent).toBe("Töötlemisel 80%");
     expect(spoken()).toBe("Töötlemisel 75%");
+  });
+
+  test("the poll brings the figure (Task 11): none → 40 → 80 on the line and the bar, with no page refresh while the status is the same; ready ends it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing") });
+    await mount(video("processing"));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(line()?.textContent).toBe("Töötlemisel…");
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing", { progress: 40 }) });
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(line()?.textContent).toBe("Töötlemisel 40%");
+    expect(($("[data-lesson-video] progress") as HTMLProgressElement).getAttribute("value")).toBe("40");
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing", { progress: 80 }) });
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(line()?.textContent).toBe("Töötlemisel 80%");
+    expect(($("[data-lesson-video] progress") as HTMLProgressElement).getAttribute("value")).toBe("80");
+    expect(refresh).not.toHaveBeenCalled();
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("ready", { durationSec: 125 }) });
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(line()?.textContent).toBe("Valmis · 2:05");
+    expect($("[data-lesson-video] progress")).toBeNull();
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  test("a replacement shows its own figure only: the upload line, then „Töötlemisel…“ (none of the encode before), then the new figure", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    actions.createLessonVideo.mockResolvedValue({ ok: true, ticket: TICKET });
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("uploading", { durationSec: 300, replacing: true }) });
+    await mount(video("ready", { durationSec: 300 }));
+    await pick(mp4());
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    await act(async () => (uploads[0].options.onSuccess as () => void)());
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(line()?.textContent).toBe("Töötlemisel…");
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing", { durationSec: 300, replacing: true, progress: 12 }) });
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(line()?.textContent).toBe("Töötlemisel 12%");
   });
 });

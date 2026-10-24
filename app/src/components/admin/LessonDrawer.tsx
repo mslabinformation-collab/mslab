@@ -178,8 +178,7 @@ export function LessonDrawer({ courseId, published, lesson, place, bunnyReady }:
         <LessonVideoField
           lessonId={lesson.id}
           bunnyReady={bunnyReady}
-          video={{ status: lesson.videoStatus, durationSec: lesson.durationSec, replacing: lesson.replacing }}
-          progress={lesson.videoProgress}
+          video={{ status: lesson.videoStatus, durationSec: lesson.durationSec, replacing: lesson.replacing, progress: lesson.videoProgress }}
         />
       )}
       <LessonFiles lessonId={lesson.id} files={lesson.files} />
