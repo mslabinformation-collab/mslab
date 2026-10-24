@@ -23,6 +23,8 @@ export type CourseEditorData = {
   parts: EditorParts;
   /** The PublishBar's labels of the modules' and lessons' changes (their own card's; courseChanges). */
   outline: string[];
+  /** The read's stamp (server/read-stamp.ts: the database's clock before the page read anything): which read reflects a press (SavedCourse.tsx). */
+  stamp: number;
 };
 
 export type PartField<P extends EditorPart> = keyof PartValues[P] & string;

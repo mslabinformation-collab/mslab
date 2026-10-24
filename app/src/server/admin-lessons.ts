@@ -26,7 +26,7 @@ import { Check, field, invalid, type EditResult } from "./edit-check";
 // On an unpublished course everything is written to the rows. Every change of the modules and lessons takes the course's lock first (the lock
 // order of server/drafts.ts: a change, a publish and a discard of one course queue on its row) and works on the course's working order.
 // The card (components/admin/LessonsEditor.tsx, Task 9): a module's drag and ↑ / ↓ are one `moveModuleToRequest`; its name autosaves on its own
-// route (writeOutlineText, R-b2), from the „t:“ version listCourseLessons gives with it; „Lisa õppetund“ follows the drafted type (server/course-parts.ts
+// route (writeOutlineText, R-b2: no form renames a module), from the „t:“ version listCourseLessons gives with it; „Lisa õppetund“ follows the drafted type (server/course-parts.ts
 // draftedType, the cards' rule). Nothing here revalidates the public pages (course-parts.ts is imported for that read only).
 
 export { LESSON_LIMITS };
@@ -209,64 +209,27 @@ export async function addModuleForm(db: Db, fd: FormData): Promise<EditResult> {
   });
 }
 
-/**
- * A module's "Salvesta": fields id, titleEt, titleRu. A published course's live module is renamed in the outline draft (the students and the public
- * page keep the old name until „Avalda muudatused“); a flagged module, and every module of an unpublished course, on its row.
- */
-export async function renameModuleForm(db: Db, fd: FormData, admin: Who): Promise<EditResult> {
-  const id = idOf(field(fd, "id"));
-  if (id === null) return { ok: false, error: "invalid" };
-  const c = new Check();
-  const title = c.text("title", i18nOf(fd, "title"), LESSON_LIMITS.title, { required: true });
-  if (!c.ok || !title) return invalid(c.errors);
-  return underCourse(db, await courseOfModule(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
-    const m = layout.find((x) => x.id === id);
-    if (!m) return notFound();
-    if (!course.published || m.flagged) await tx.update(courseModules).set({ title }).where(eq(courseModules.id, id));
-    else {
-      m.title = title;
-      await storeLayout(tx, course, rows, layout, admin.email);
-    }
-    return { ok: true, id };
-  });
-}
-
-/**
- * Module `id` to the place `to(i, n)` gives (its place now, the modules' count; outside 0…n-1, or its own place: it stays, ok). An unpublished course's
- * modules are numbered 1…n again; a published course's new order is the outline draft's (a flagged module's own place is on its row).
- */
-async function moveModule(db: Db, id: number, to: (i: number, n: number) => number, admin: Who): Promise<EditResult> {
-  return underCourse(db, await courseOfModule(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
-    const i = layout.findIndex((m) => m.id === id);
-    if (i < 0) return notFound();
-    const j = to(i, layout.length);
-    if (j === i || j < 0 || j >= layout.length) return { ok: true, id };
-    layout.splice(j, 0, ...layout.splice(i, 1));
-    await storeLayout(tx, course, rows, layout, admin.email);
-    return { ok: true, id };
-  });
-}
-
-/** A module's ↑ / ↓ as a form: fields id, dir. One that cannot move stays (ok). See moveModule. */
-export async function moveModuleForm(db: Db, fd: FormData, admin: Who): Promise<EditResult> {
-  const id = idOf(field(fd, "id"));
-  const dir = field(fd, "dir");
-  if (id === null || (dir !== "up" && dir !== "down")) return { ok: false, error: "invalid" };
-  return moveModule(db, id, (i) => i + (dir === "up" ? -1 : 1), admin);
-}
-
 /** The card's move of a module: `{ id, index }`, the module and the place it goes to (0 is the first). */
 const moveToRequest = z.object({ id: z.number().int().positive().max(ROW_ID_MAX), index: z.number().int().min(0).max(ROW_ID_MAX) }).strict();
 
 /**
  * A module's drag, ↑ or ↓ (README B2 „Module rows: drag + ↑/↓“; components/admin/DragList.tsx calls one `onMove(from, to)` for each): `{ id, index }`.
- * Nothing the browser sends is trusted: another shape is invalid, an index past the end puts it last, its own place moves nothing. See moveModule.
+ * Nothing the browser sends is trusted: another shape is invalid, an index past the end puts it last, its own place moves nothing. An unpublished
+ * course's modules are numbered 1…n again; a published course's new order is the outline draft's (a flagged module's own place is on its row).
  */
 export async function moveModuleToRequest(db: Db, input: unknown, admin: Who): Promise<EditResult> {
   const request = moveToRequest.safeParse(input);
   if (!request.success) return { ok: false, error: "invalid" };
   const { id, index } = request.data;
-  return moveModule(db, id, (_, n) => Math.min(index, n - 1), admin);
+  return underCourse(db, await courseOfModule(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
+    const i = layout.findIndex((m) => m.id === id);
+    if (i < 0) return notFound();
+    const j = Math.min(index, layout.length - 1);
+    if (j === i) return { ok: true, id };
+    layout.splice(j, 0, ...layout.splice(i, 1));
+    await storeLayout(tx, course, rows, layout, admin.email);
+    return { ok: true, id };
+  });
 }
 
 /**

@@ -91,6 +91,11 @@
   margin: 0;
 }
 
+/* „Moodulit saab kustutada, kui selles pole õppetunde.“ where „Kustuta moodul“ would be (Dim 24.10 D-7) */
+.blocked {
+  margin: 0;
+}
+
 .rowError {
   flex-basis: 100%;
   margin: 0;

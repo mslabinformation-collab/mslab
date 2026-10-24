@@ -4,8 +4,8 @@ import type { Db } from "@/db/client";
 import { courseUsage, typeLocked } from "@/db/queries/admin";
 import { clients, courseModules, courses, lessonFiles, lessonProgress, lessons } from "@/db/schema";
 import {
-  addLessonForm, addModuleForm, courseOfLesson, deleteLessonFileForm, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleForm, renameModuleForm,
-  saveLessonForm, setLessonHiddenForm, setLessonKindForm,
+  addLessonForm, addModuleForm, courseOfLesson, deleteLessonFileForm, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleToRequest,
+  readOutlineText, saveLessonForm, setLessonHiddenForm, setLessonKindForm, writeOutlineText,
 } from "@/server/admin-lessons";
 import type { EditResult } from "@/server/edit-check";
 import { makeTestDb } from "./helpers";
@@ -29,17 +29,26 @@ beforeEach(async () => {
   [{ id: courseId }] = await db.insert(courses).values({ slug: "veeb", type: "e_learning", level: "basic", title: { et: "Veeb" }, summary: { et: "" }, body: { et: "" } }).returning();
 });
 const titles = async () => (await listCourseLessons(db, courseId)).map((m) => [m.title.et, m.lessons.map((l) => l.title.et)]);
+const NOW = new Date("2026-10-24T09:00:00Z");
+/** A module's name saved as the card saves it (R-b2: its route's writeOutlineText from the row's „t:“ version; no form renames a module, review M-6). */
+const rename = async (id: number, title: { et: string; ru?: string }, admin = ADMIN) =>
+  writeOutlineText(db, "module", id, { title }, (await readOutlineText(db, "module", id))?.version ?? "", admin, NOW);
+/** A module one place up or down, as the card's ↑ / ↓ moves it (moveModuleToRequest to the neighbour's place). */
+async function moveModule(id: number, dir: "up" | "down", admin = ADMIN) {
+  const at = (await listCourseLessons(db, courseId)).findIndex((m) => m.id === id);
+  return moveModuleToRequest(db, { id, index: Math.max(0, at + (dir === "up" ? -1 : 1)) }, admin);
+}
 
 describe("modules", () => {
   test("add (last), rename ET/RU, ↑ ↓, delete only when it has no lessons", async () => {
     const a = idOf(await addModuleForm(db, form({ courseId, titleEt: " Sissejuhatus ", titleRu: "" })));
     const b = idOf(await addModuleForm(db, form({ courseId, titleEt: "Praktika", titleRu: "Практика" })));
     expect(await titles()).toEqual([["Sissejuhatus", []], ["Praktika", []]]);
-    expect(await renameModuleForm(db, form({ id: a, titleEt: "Algus", titleRu: "Начало" }), ADMIN)).toEqual({ ok: true, id: a });
-    expect(await moveModuleForm(db, form({ id: b, dir: "up" }), ADMIN)).toEqual({ ok: true, id: b });
+    expect(await rename(a, { et: "Algus", ru: "Начало" })).toMatchObject({ ok: true });
+    expect(await moveModule(b, "up", ADMIN)).toEqual({ ok: true, id: b });
     expect(await titles()).toEqual([["Praktika", []], ["Algus", []]]);
     expect((await listCourseLessons(db, courseId))[1].title).toEqual({ et: "Algus", ru: "Начало" });
-    expect(await moveModuleForm(db, form({ id: b, dir: "up" }), ADMIN)).toEqual({ ok: true, id: b }); // already first: nothing moves
+    expect(await moveModule(b, "up", ADMIN)).toEqual({ ok: true, id: b }); // already first: nothing moves
     idOf(await addLessonForm(db, form({ moduleId: b, titleEt: "Esimene" })));
     expect(await deleteModuleForm(db, form({ id: b }), ADMIN)).toEqual({ ok: false, error: "inUse" });
     expect(await deleteModuleForm(db, form({ id: a }), ADMIN)).toEqual({ ok: true, id: a, deleted: true });
@@ -51,7 +60,9 @@ describe("modules", () => {
     expect(await addModuleForm(db, form({ courseId, titleEt: "x".repeat(121) }))).toEqual({ ok: false, error: "invalid", fields: { title: "tooLong" } });
     expect(await addModuleForm(db, form({ courseId: 999999, titleEt: "X" }))).toEqual({ ok: false, error: "notFound" });
     expect(await addModuleForm(db, form({ courseId: "x", titleEt: "X" }))).toEqual({ ok: false, error: "invalid" });
-    expect(await renameModuleForm(db, form({ id: 999999, titleEt: "X" }), ADMIN)).toEqual({ ok: false, error: "notFound" });
+    // (a module's name: its route answers 404 for a module that is not there — readOutlineText — and a save of it is answered as gone)
+    expect(await readOutlineText(db, "module", 999999)).toBeNull();
+    expect(await writeOutlineText(db, "module", 999999, { title: { et: "X" } }, "t:x", ADMIN, NOW)).toEqual({ ok: false, error: "conflict", version: "", value: null });
   });
 });
 
@@ -180,7 +191,7 @@ describe("lessons", () => {
     await db.update(courses).set({ published: true }).where(eq(courses.id, courseId));
     const added = idOf(await addLessonForm(db, form({ moduleId: w.a, titleEt: "Neli" })));
     const newModule = idOf(await addModuleForm(db, form({ courseId, titleEt: "C" })));
-    await renameModuleForm(db, form({ id: w.a, titleEt: "Algus" }), ADMIN);
+    await rename(w.a, { et: "Algus" }, ADMIN);
     await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", bodyEt: "Loe." }), ADMIN);
     await moveLessonForm(db, form({ id: w.l3, dir: "up" }), ADMIN);
     expect(await titles()).toEqual([["Algus", ["Esimene", "Kaks", "Neli", "Kolm"]], ["B", []], ["C", []]]);

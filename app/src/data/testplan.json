@@ -899,7 +899,7 @@
       "steps": [
         "Ava „Koolitused“ ja vajuta oma päris e-koolituse nimele.",
         "Keri plokini „Moodulid ja õppetunnid“.",
-        "Kirjuta „Uue mooduli nimi“ ja vajuta „Lisa moodul“.",
+        "Kirjuta „Uue mooduli nimi“ ja vajuta „+ Lisa moodul“.",
         "Muuda uue mooduli nimes üht sõna ja klõpsa väljast välja.",
         "Kirjuta mooduli all „Uue õppetunni nimi“ ja vajuta „Lisa õppetund“.",
         "Vali avanenud paneelis „Õppetunni liik“ all „Tekst“.",
@@ -930,18 +930,18 @@
       "steps": [
         "Ava oma päris e-koolitus ja keri plokini „Moodulid ja õppetunnid“.",
         "Lohista teise mooduli käepide ⋮⋮ sõrmega esimeseks ja lase lahti.",
-        "Vajuta sama mooduli juures noolt alla.",
+        "Lae leht uuesti ja vajuta siis sama mooduli juures noolt alla.",
         "Lisa tühi moodul nimega Proov ja vajuta selle juures „Kustuta moodul“.",
         "Vajuta „Katkesta“, siis uuesti „Kustuta moodul“ ja „Jah, kustuta“.",
-        "Ava mõni kontaktkoolitus, lisa plokki „Programm“ punkt Proov ja vajuta selle juures „Kustuta moodul“.",
+        "Ava mõni kontaktkoolitus, lisa plokki „Programm“ punkt Proov ja vajuta selle juures „Kustuta punkt“.",
         "Vajuta „Jah, kustuta“."
       ],
       "expect": [
         "Moodul liigub kohe uude kohta ja on seal ka pärast lehe uuesti laadimist.",
         "Avaldatud koolitusel on pealkirja all „Moodulite järjekord“, kuni vajutad „Avalda muudatused“.",
         "Nupu asemel küsitakse „Kas kustutan mooduli „Proov“?“ ja „Katkesta“ jätab mooduli alles.",
-        "Kontaktkoolitusel küsitakse „Kas kustutan punkti „Proov“?“.",
-        "„Kustuta moodul“ on ainult moodulil, milles pole õppetunde."
+        "Kontaktkoolitusel küsitakse „Kas kustutan punkti „Proov“?“ ja ploki pealkirja kõrval on punktide arv.",
+        "Õppetundidega moodulil on nupu asemel „Moodulit saab kustutada, kui selles pole õppetunde.“."
       ],
       "why": "Maria seab mooduleid tahvlis sõrmega ja kustutamine küsib enne üle.",
       "risk": "med",
@@ -972,7 +972,7 @@
       "why": "Videotund on e-koolituse põhiosa.",
       "risk": "high",
       "writes": false,
-      "mark": "reworded",
+      "mark": "redo",
       "markedAt": "deploy"
     },
     {

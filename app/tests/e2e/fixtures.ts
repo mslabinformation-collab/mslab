@@ -804,6 +804,12 @@ type CourseSnapshot = {
   images: { key: string; alt: unknown; sort: number }[];
   /** Its "Teadmiste test" row (e-course completion, R1); absent in a snapshot written before course_tests existed: the course had none. */
   test?: { questions: unknown; pass_percent: number; tries: number } | null;
+  /**
+   * Its modules and lessons (admin UX pass piece 3a, Task 9 review I-1: the modules card renames, moves and adds them, and „Avalda muudatused“ writes
+   * them); absent in a snapshot written before: they are left as they are.
+   */
+  modules?: { id: number; position: number; title: unknown; unpublished: boolean }[];
+  lessons?: { id: number; module_id: number; position: number; title: unknown; body: unknown; unpublished: boolean; hidden: boolean }[];
 };
 
 async function readSnapshot(sql: postgres.Sql, slug: string): Promise<CourseSnapshot> {
@@ -811,7 +817,18 @@ async function readSnapshot(sql: postgres.Sql, slug: string): Promise<CourseSnap
   if (!row) throw new Error(`e2e: course ${slug} not found — is the local DB seeded?`);
   const images = await sql<{ key: string; alt: unknown; sort: number }[]>`select key, alt, sort from course_images where course_id = ${row.id} order by sort, id`;
   const [test] = await sql<{ questions: unknown; pass_percent: number; tries: number }[]>`select questions, pass_percent, tries from course_tests where course_id = ${row.id}`;
-  return { id: row.id as number, row: Object.fromEntries([...JSON_COLUMNS, ...PLAIN_COLUMNS].map((c) => [c, row[c]])), images: [...images], test: test ?? null };
+  const modules = await sql<NonNullable<CourseSnapshot["modules"]>>`select id, position, title, unpublished from course_modules where course_id = ${row.id} order by position, id`;
+  const lessons = await sql<NonNullable<CourseSnapshot["lessons"]>>`
+    select l.id, l.module_id, l.position, l.title, l.body, l.unpublished, l.hidden from lessons l join course_modules m on m.id = l.module_id
+    where m.course_id = ${row.id} order by l.module_id, l.position, l.id`;
+  return {
+    id: row.id as number,
+    row: Object.fromEntries([...JSON_COLUMNS, ...PLAIN_COLUMNS].map((c) => [c, row[c]])),
+    images: [...images],
+    test: test ?? null,
+    modules: [...modules],
+    lessons: [...lessons],
+  };
 }
 
 /**
@@ -835,6 +852,19 @@ async function writeBack(sql: postgres.Sql, s: CourseSnapshot, withSort = false)
       await tx`insert into course_tests (course_id, questions, pass_percent, tries) values (${s.id}, ${tx.json(s.test.questions as postgres.JSONValue)}, ${s.test.pass_percent}, ${s.test.tries})`;
     // the course editor's drafts of it (admin UX pass piece 3a: a published course's cards autosave into content_drafts until „Avalda muudatused“)
     await tx`delete from content_drafts where entity = 'course' and entity_id = ${s.id}`;
+    // its modules and lessons as they were (Task 9 review I-1): the lessons back in their modules and places first, then what a test added goes (a
+    // module's lessons with it), then the modules' places, names and flags
+    if (s.modules && s.lessons) {
+      for (const l of s.lessons)
+        await tx`update lessons set module_id = ${l.module_id}, position = ${l.position}, title = ${tx.json(l.title as postgres.JSONValue)},
+          body = ${l.body === null ? null : tx.json(l.body as postgres.JSONValue)}, unpublished = ${l.unpublished}, hidden = ${l.hidden} where id = ${l.id}`;
+      const keepLessons = s.lessons.map((l) => l.id);
+      await tx`delete from lessons where module_id in (select id from course_modules where course_id = ${s.id}) ${keepLessons.length ? tx`and id not in ${tx(keepLessons)}` : tx``}`;
+      const keepModules = s.modules.map((m) => m.id);
+      await tx`delete from course_modules where course_id = ${s.id} ${keepModules.length ? tx`and id not in ${tx(keepModules)}` : tx``}`;
+      for (const m of s.modules)
+        await tx`update course_modules set position = ${m.position}, title = ${tx.json(m.title as postgres.JSONValue)}, unpublished = ${m.unpublished} where id = ${m.id}`;
+    }
   });
 }
 

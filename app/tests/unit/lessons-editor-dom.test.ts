@@ -205,16 +205,37 @@ describe("the module rows: drag and ↑ / ↓ (README B2, S3-P3-m)", () => {
     await act(async () => answer({ ok: true, id: 2 }));
   });
 
-  it("↑ on module 2 is the same move, named „Liiguta üles: {nimi}“; a refused move snaps back and says why under the row", async () => {
+  it("↑ on module 2 is the same move, named „Liiguta üles: {nimi}“; a refused move snaps back and says the list's words (P-1) under the row until the next read", async () => {
     actions.moveModuleTo.mockResolvedValue({ ok: false, error: "server" });
-    await show();
+    const modules = [moduleOf(1, "Alustame"), moduleOf(2, "Kujud")];
+    await show({ modules });
     const up = $<HTMLButtonElement>('[data-drag-row="2"] [data-drag-tool="up"]')!;
     expect(up.getAttribute("aria-label")).toBe("Liiguta üles: Kujud");
     await click(up);
     await settle();
     expect(actions.moveModuleTo).toHaveBeenCalledExactlyOnceWith({ id: 2, index: 0 });
     expect(moduleRows().map((r) => r.dataset.dragRow)).toEqual(["1", "2"]);
-    expect(text($('[data-module="2"] [data-module-error]'))).toBe("Salvestamine ei õnnestunud. Proovi uuesti.");
+    expect(text($('[data-module="2"] [data-module-error]'))).toBe("Järjekorra muutmine ei õnnestunud. Proovi uuesti.");
+    // the same read again changes nothing; the page's next read (another change came) takes the line away (review M-9)
+    await show({ modules });
+    expect(text($('[data-module="2"] [data-module-error]'))).toBe("Järjekorra muutmine ei õnnestunud. Proovi uuesti.");
+    await show({ modules: [...modules] });
+    expect($('[data-module="2"] [data-module-error]')).toBeNull();
+  });
+
+  it("a name typed in its field names the row at once: the handle, the arrows, the move's announcement and the delete question (review M-5)", async () => {
+    await show();
+    await type(titleField(2), "Kujud ja vormid");
+    expect(handleOf(2).getAttribute("aria-label")).toBe("Lohista: Kujud ja vormid");
+    expect($('[data-drag-row="2"] [data-drag-tool="up"]')!.getAttribute("aria-label")).toBe("Liiguta üles: Kujud ja vormid");
+    await click($('[data-drag-row="2"] [data-drag-tool="up"]'));
+    expect(text($("[data-drag-list] ~ [role=status]"))).toBe("„Kujud ja vormid“ on nüüd 1. kohal.");
+    await settle();
+    await click($('[data-module="2"] [data-delete-module]'));
+    expect(text($('[data-module="2"] [data-confirm-panel] p'))).toBe("Kas kustutan mooduli „Kujud ja vormid“?");
+    // a name typed away is no name: the stored one stays
+    await type(titleField(1), "  ");
+    expect(handleOf(1).getAttribute("aria-label")).toBe("Lohista: Alustame");
   });
 });
 
@@ -279,9 +300,10 @@ describe("the module's name edits in its row (README B2: autosave, no „Salvest
 });
 
 describe("deleting (README B2, §1.6)", () => {
-  it("a contact course's programme point asks „Kas kustutan punkti „{title}“?“ / „Jah, kustuta“ / „Katkesta“ in place of its button", async () => {
+  it("a contact course's programme point: „Kustuta punkt“ (Dim 24.10 D-5) asks „Kas kustutan punkti „{title}“?“ / „Jah, kustuta“ / „Katkesta“ in place of its button", async () => {
     await show({ online: false });
     const trigger = $<HTMLButtonElement>('[data-module="1"] [data-delete-module]')!;
+    expect(text(trigger)).toBe("Kustuta punkt");
     await click(trigger);
     const panel = $('[data-module="1"] [data-confirm-panel]')!;
     expect(text(panel.querySelector("p"))).toBe("Kas kustutan punkti „Alustame“?");
@@ -301,22 +323,26 @@ describe("deleting (README B2, §1.6)", () => {
     expect((actions.deleteModule.mock.calls[0][1] as FormData).get("id")).toBe("1");
   });
 
-  it("an e-course's module asks today's question „Kas kustutan mooduli „{title}“?“", async () => {
+  it("an e-course's module: „Kustuta moodul“ asks today's question „Kas kustutan mooduli „{title}“?“", async () => {
     await show();
+    expect(text($('[data-module="2"] [data-delete-module]'))).toBe("Kustuta moodul");
     await click($('[data-module="2"] [data-delete-module]'));
     expect(text($('[data-module="2"] [data-confirm-panel] p'))).toBe("Kas kustutan mooduli „Kujud“?");
   });
 
-  it("„Kustuta moodul“ only where the module can go (AdminModule.deletable): not with lessons, not while the draft holds one in it", async () => {
+  it("„Kustuta moodul“ only where the module can go (AdminModule.deletable); else, in its place, why not (Dim 24.10 D-7) — also for one the draft only looks empty in", async () => {
     await show({ modules: [moduleOf(1, "Alustame", [lesson(11, 1)]), moduleOf(2, "Tühi", [], { deletable: false }), moduleOf(3, "Kustutatav")] });
-    expect($('[data-module="1"] [data-delete-module]')).toBeNull();
-    expect($('[data-module="2"] [data-delete-module]')).toBeNull();
+    for (const id of [1, 2]) {
+      expect($(`[data-module="${id}"] [data-delete-module]`)).toBeNull();
+      expect(text($(`[data-module="${id}"] [data-delete-blocked]`))).toBe("Moodulit saab kustutada, kui selles pole õppetunde.");
+    }
     expect(text($('[data-module="3"] [data-delete-module]'))).toBe("Kustuta moodul");
+    expect($('[data-module="3"] [data-delete-blocked]')).toBeNull();
   });
 });
 
 describe("the card's summary and the „avaldamata“ tags (P-4, P-8, P-3; README §1.8)", () => {
-  it("„{n} moodulit · {m} õppetundi“, „1 moodul · 1 õppetund“, and none: „Mooduleid veel pole.“ in its place", async () => {
+  it("„{n} moodulit · {m} õppetundi“, „1 moodul · 1 õppetund“, a programme's „{n} punkti“ / „1 punkt“, and none: „Mooduleid veel pole.“ in its place", async () => {
     await show({ modules: [moduleOf(1, "A", [lesson(11, 1), lesson(12, 1)]), moduleOf(2, "B", [lesson(21, 2)])] });
     expect(text($("[data-modules-summary]"))).toBe("2 moodulit · 3 õppetundi");
     await show({ modules: [moduleOf(1, "A", [lesson(11, 1)])] });
@@ -325,9 +351,11 @@ describe("the card's summary and the „avaldamata“ tags (P-4, P-8, P-3; READM
     expect(text($("[data-modules-summary]"))).toBe("2 moodulit · 0 õppetundi");
     await show({ modules: [] });
     expect(text($("[data-modules-summary]"))).toBe("Mooduleid veel pole.");
-    // a contact course's programme has no lessons to count: the summary only when there is nothing yet
+    // a contact course's programme counts its points (Dim 24.10 D-6)
     await show({ online: false, modules: [moduleOf(1, "A")] });
-    expect($("[data-modules-summary]")).toBeNull();
+    expect(text($("[data-modules-summary]"))).toBe("1 punkt");
+    await show({ online: false, modules: [moduleOf(1, "A"), moduleOf(2, "B"), moduleOf(3, "C")] });
+    expect(text($("[data-modules-summary]"))).toBe("3 punkti");
     await show({ online: false, modules: [] });
     expect(text($("[data-modules-summary]"))).toBe("Mooduleid veel pole.");
   });

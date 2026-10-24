@@ -89,6 +89,8 @@ const data = (over: Partial<CourseEditorData> = {}, d: CourseDraft = STORED): Co
   liveType: d.type,
   parts: partsOf(d),
   outline: [],
+  // (the read's stamp, server/read-stamp.ts: the tests' reads are older than any press's answer that carries one, unless a test says otherwise)
+  stamp: 1,
   ...over,
 });
 
@@ -1231,31 +1233,105 @@ describe("the modules card in the editor (Task 9; README B2, B18; R-b2)", () => 
     expect(text($('[data-module="2"] [data-module-restore]'))).toBe("Taasta minu tekst");
   });
 
-  it("a read for the labels still on its way at the press of „Avalda muudatused“ starts no card over (it may be from before the press); the read after it does", async () => {
-    await show({ course: data({ outline: ["Moodul 01"] }) });
-    await type(moduleName(1), "Alustame uuesti");
-    await leave(moduleName(1));
-    expect(router.refresh).toHaveBeenCalledTimes(1); // the labels' read, not come yet
-    await type(field("summary"), "Avaldatav.");
-    await leave(field("summary"));
-    await click($("[data-publish-go]"));
-    expect(router.refresh).toHaveBeenCalledTimes(2); // the publish's own
-    // the labels' read comes first (the router runs one read after another), from before the press: the cards keep waiting
-    await show({ course: data({ outline: ["Moodul 01"] }) });
-    expect($("[data-cards-waiting]")).not.toBeNull();
-    // the publish's read: the cards start over from it
+  // Which read starts the cards over (review M-1): the press's answer carries the database's stamp after its commit (server/read-stamp.ts), every page
+  // read its own; only a read at or past the answer's starts them over. The router may land reads in any order and at any time.
+  const publishedAfter = () => {
     const after = { ...STORED, summary: { et: "Avaldatav.", ru: "Коротко." } };
     resetRemote(after);
     remote.parts.basics.version = "l:basics-live";
-    await show({
-      course: data({ parts: partsOf(after, { basics: { version: "l:basics-live" } }) }),
-      modules: [{ ...MODULES[0], title: { et: "Alustame uuesti" }, version: "t:m1-1" }, MODULES[1]],
-    });
+    remote.avalda = () => Response.json({ published: ["basics"], blocked: [], stamp: 100 });
+    return data({ parts: partsOf(after, { basics: { version: "l:basics-live" } }) });
+  };
+
+  it("a module action's read lands while a labels read is on its way, then „Avalda muudatused“: the reads from before the press start nothing, the publish's own does, and the bar is the fresh one", async () => {
+    await show({ course: data({ outline: ["Moodul 01"], stamp: 10 }) });
+    await type(moduleName(1), "Alustame uuesti");
+    await leave(moduleName(1));
+    expect(router.refresh).toHaveBeenCalledTimes(1); // the labels' read, on its way
+    // a module's move: the action's read lands first (its stamp after the rename's, before the press)
+    await click($('[data-lessons-editor] [data-drag-row="2"] [data-drag-tool="up"]'));
+    await show({ course: data({ outline: ["Moodulite järjekord", "Moodul 02"], stamp: 20 }), modules: [MODULES[1], MODULES[0]] });
+    await type(field("summary"), "Avaldatav.");
+    await leave(field("summary"));
+    remote.avalda = () => Response.json({ published: ["basics", "outline"], blocked: [], stamp: 100 });
+    await click($("[data-publish-go]"));
+    expect(router.refresh).toHaveBeenCalledTimes(2); // the publish's own
+    // the labels' read lands now, from before the press: the cards keep waiting, nothing starts over
+    await show({ course: data({ outline: ["Moodul 02"], stamp: 30 }), modules: [MODULES[1], MODULES[0]] });
+    expect($("[data-cards-waiting]")).not.toBeNull();
+    // the publish's read: the cards start over from it, and the bar is gone (live is what was published)
+    const fresh = publishedAfter();
+    remote.avalda = () => Response.json({ published: [], blocked: [] });
+    await show({ course: { ...fresh, stamp: 120 }, modules: [{ ...MODULES[1] }, { ...MODULES[0], title: { et: "Alustame uuesti" }, version: "t:m1-1" }] });
     expect($("[data-cards-waiting]")).toBeNull();
     expect(bar()).toBeNull();
     await type(field("summary"), "Veel üks.");
     await leave(field("summary"));
     expect(remote.log.at(-1)).toMatchObject({ part: "basics", version: "l:basics-live" });
+  });
+
+  it("„Loobu muudatustest“: a read from before its answer starts nothing; one at the answer's stamp starts the cards over from live", async () => {
+    remote.loobu = () => Response.json({ discarded: 1, stamp: 200 });
+    await show({ course: data({ outline: ["Moodul 01"], stamp: 10 }) });
+    await type(field("summary"), "Ära.");
+    await leave(field("summary"));
+    await click($("[data-publish-discard]"));
+    await click(button("Jah, loobu"));
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    // a read asked before the press lands after it: still the draft's version; nothing starts over
+    await show({ course: data({ outline: ["Moodul 01"], stamp: 150, parts: partsOf(STORED, { basics: { version: "d:1.1", value: { ...partValue("basics", STORED), summary: { et: "Ära." } } } }) }) });
+    expect($("[data-cards-waiting]")).not.toBeNull();
+    // the read at the answer's stamp (at, not only past it): live, and the cards start from it
+    resetRemote();
+    await show({ course: data({ stamp: 200 }) });
+    expect($("[data-cards-waiting]")).toBeNull();
+    expect(field("summary")!.value).toBe("Lühike tekst.");
+    expect(bar()).toBeNull();
+  });
+
+  it("two of the router's reads in one render (only the later one seen): it is past the answer, the cards start over — nothing waits for a read already seen", async () => {
+    await show({ course: data({ stamp: 10 }) });
+    await type(field("summary"), "Avaldatav.");
+    await leave(field("summary"));
+    remote.avalda = () => Response.json({ published: ["basics"], blocked: [], stamp: 100 });
+    await click($("[data-publish-go]"));
+    expect($("[data-cards-waiting]")).not.toBeNull();
+    const fresh = publishedAfter();
+    await show({ course: { ...fresh, stamp: 180 } });
+    expect($("[data-cards-waiting]")).toBeNull();
+    expect(bar()).toBeNull();
+  });
+
+  it("„Näidissisu“: a read that lands before the switch's answer leaves the box as asked; the answer's stamp decides — its own read may come first, or after", async () => {
+    let answer: (v: unknown) => void = () => {};
+    actions.sample.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    await show({ course: data({ stamp: 10 }) });
+    const sample = () => $<HTMLInputElement>("[data-field='isSample']")!;
+    await click(sample());
+    expect(sample().checked).toBe(true);
+    // a read asked before the press (a labels read) lands: the stored state is still the old one, the box stays as asked
+    await show({ course: data({ stamp: 20 }) });
+    expect(sample().checked).toBe(true);
+    // the answer, then an older read: still as asked; the action's own read: the stored state
+    await act(async () => answer({ ok: true, stamp: 50 }));
+    await settle();
+    expect(sample().checked).toBe(true);
+    await show({ course: data({ stamp: 30 }) });
+    expect(sample().checked).toBe(true);
+    await show({ course: data({ isSample: true, stamp: 60 }) });
+    expect(sample().checked).toBe(true);
+    // the other way round: the action's read before its answer — once the answer says its stamp, the box shows the stored state at once
+    actions.sample.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    await click(sample());
+    expect(sample().checked).toBe(false);
+    await show({ course: data({ isSample: false, stamp: 90 }) });
+    await act(async () => answer({ ok: true, stamp: 80 }));
+    await settle();
+    expect(sample().checked).toBe(false);
+    // and then a later click is taken (nothing asked any more)
+    actions.sample.mockResolvedValue({ ok: true, stamp: 95 });
+    await click(sample());
+    expect(actions.sample).toHaveBeenLastCalledWith({ id: ID, on: true });
   });
 
   it("a contact course whose draft makes it an e-course: the card follows the drafted „Õppevorm“ (lessons and „Lisa õppetund“)", async () => {

@@ -48,8 +48,14 @@ import type { CourseEditorData, CourseParts, OtherCourse } from "./types";
 // The modules card (Task 9) is one more card: its adds, moves and deletes are server actions whose answer brings the page's new read, which the
 // cards take as any other read — no restart, so a field typed and not yet saved stays as it is — and a module's name autosaves on its own route
 // (R-b2) as one of the editor's autosaves (course/OutlineTexts.ts): saved before a publish, a discard or the switch, its copy dropped with a
-// discard, its status in the chip and „Kontrolli“ on the map; once a name is stored the page is read again for the bar's labels, unless a press is
-// on its way (its own read follows, and a read asked before it must not be the one that starts the cards over).
+// discard, its status in the chip and „Kontrolli“ on the map; once a name is stored the page is read again for the bar's labels.
+//
+// Which read starts the cards over (Task 9 review M-1): reads overlap — a read for the labels, a module action's own, one asked before a press can
+// land after it. Every read of the page carries its stamp (`data.stamp`, server/read-stamp.ts: the database's clock before the page read anything),
+// and „Avalda muudatused“, „Jah, loobu“ and „Avalikul lehel“ answer with the stamp taken after their commit. The cards start over only from a read
+// whose stamp is at or past their press's answer: an older read may be from before the press, so it starts nothing, and the read the press asked
+// for comes after it. A switch's box shows what was asked until such a read arrives (or one came already). Without a stamp (a type's save, the
+// wait's bound: the outcome unknown) the next read starts them over, as before; Task 7's one bound still ends every wait.
 
 const t = adminEt.courseEditor;
 
@@ -154,10 +160,16 @@ type Said = {
   priceRefused: boolean;
   /** The switches' boxes show what was asked until the server's new state arrives, the switch is refused, or SAVE_TIMEOUT_MS has gone by. */
   asked: { published?: boolean; sample?: boolean };
+  /** The stamp a read must reach to show the switch's stored state: its answer's (-Infinity: an answer without one, the next read); null: no answer yet. */
+  askedFrom: number | null;
   /** When „Avalda muudatused“ last went through: the chip's „Salvestatud {HH:MM}“ after it (piece3-texts §4), the cards having started over. */
   publishedAt: Date | null;
 };
-const QUIET: Said = { blocked: null, barError: null, switchError: null, priceRefused: false, asked: {}, publishedAt: null };
+const QUIET: Said = { blocked: null, barError: null, switchError: null, priceRefused: false, asked: {}, askedFrom: null, publishedAt: null };
+
+const isAnswer = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+/** The stamp an answer of a press carries (server/read-stamp.ts), or null without one. */
+const stampOf = (body: unknown): number | null => (isAnswer(body) && typeof body.stamp === "number" && Number.isFinite(body.stamp) ? body.stamp : null);
 
 /** A part's change worked out from the field when it lands (a gallery upload's): `route` takes it to the form on screen, or keeps it while the cards wait. */
 type Change = { part: EditorPart; name: string; fn: (current: unknown) => unknown };
@@ -174,8 +186,13 @@ type Waits = {
   hold: () => AbortSignal;
   /** A refusal or a failure: the cards take typing again, nothing is read. */
   release: () => void;
-  /** The page is read again and the cards start over from it, waiting meanwhile; `live`: after a discard, the seeds to start over from at the bound. */
-  reload: (live?: EditorParts) => void;
+  /**
+   * The page is read again and the cards start over from it, waiting meanwhile; `live`: after a discard, the seeds to start over from at the bound;
+   * `from`: the press's answer's stamp, which the read must reach (null: the next read).
+   */
+  reload: (live?: EditorParts, from?: number | null) => void;
+  /** The stamp of the read on screen. */
+  stampSeen: () => number;
   /** The page is read again and the cards start over from it; nothing waits meanwhile (an outcome unknown after the bound). */
   reread: () => void;
   /** The page is read again for what only the server says (the modules' labels), starting no card over; nothing while a press or a switch is on its way. */
@@ -194,8 +211,8 @@ export function SavedCourse(props: Shared) {
   const [seen, setSeen] = useState(data);
   const [seeds, setSeeds] = useState(data.parts);
   const [generation, setGeneration] = useState(0);
-  /** The page's new read was asked for: the next one starts the cards over. */
-  const [awaiting, setAwaiting] = useState(false);
+  /** The page's new read was asked for: the next one whose stamp is at or past `from` (null: any) starts the cards over. */
+  const [awaiting, setAwaiting] = useState<{ from: number | null } | null>(null);
   /** The cards wait (a press through its request and the read). */
   const [hold, setHold] = useState<Hold | null>(null);
   const [said, setSaid] = useState<Said>(QUIET);
@@ -227,19 +244,17 @@ export function SavedCourse(props: Shared) {
   useLayoutEffect(() => {
     switching.current = said.asked.published !== undefined || said.asked.sample !== undefined;
   });
-  // the reads for the labels asked and not come yet: a wait that begins meanwhile lets those pass (they may be from before the press; the router runs
-  // one read after another, so the wait's own comes after them) and starts the cards over from the one after them
-  const [labelsAsked, setLabelsAsked] = useState(0);
-  const labelsOnTheWay = useRef(0);
-  useLayoutEffect(() => {
-    labelsOnTheWay.current = labelsAsked;
-  });
-  const [passReads, setPassReads] = useState(0);
+  // (no read for the labels while a press or a switch is on its way: its own read follows; a read that lands then starts nothing, see the stamps)
   const readLabels = useCallback(() => {
     if (holding.current || switching.current) return;
-    setLabelsAsked((n) => n + 1);
     startTransition(() => router.refresh());
   }, [router]);
+  // the stamp of the read on screen, for a switch's answer that comes after its read
+  const seenStamp = useRef(data.stamp);
+  useLayoutEffect(() => {
+    seenStamp.current = seen.stamp;
+  });
+  const stampSeen = useCallback(() => seenStamp.current, []);
   // the control of the editor the focus was last on (kept above the restart): a restart or a release puts it back there — the control she pressed,
   // or the one she moved to while the cards waited, never one she has left (inert cards drop the focus to <body>, which is no control)
   const lastFocus = useRef<string | null>(null);
@@ -252,13 +267,13 @@ export function SavedCourse(props: Shared) {
   }, []);
   if (data !== seen) {
     setSeen(data);
-    setSaid((s) => ({ ...s, asked: {} }));
-    if (labelsAsked > 0) setLabelsAsked(labelsAsked - 1);
-    if (awaiting && passReads > 0) setPassReads(passReads - 1);
-    else if (awaiting) {
+    // a read that shows what a switch's answer said: the boxes show the stored state again
+    if (said.askedFrom !== null && data.stamp >= said.askedFrom) setSaid((s) => ({ ...s, asked: {}, askedFrom: null }));
+    // the read a press asked for, or a later one: the cards start over from it (an older read may be from before the press, it starts nothing)
+    if (awaiting && (awaiting.from === null || data.stamp >= awaiting.from)) {
       setSeeds(data.parts);
       setGeneration((g) => g + 1);
-      setAwaiting(false);
+      setAwaiting(null);
       setHold(null);
     }
   }
@@ -272,16 +287,18 @@ export function SavedCourse(props: Shared) {
     holding.current = null;
     setHold(null);
   }, []);
-  const reread = useCallback(() => {
-    setPassReads(labelsOnTheWay.current);
-    setAwaiting(true);
-    startTransition(() => router.refresh());
-  }, [router]);
+  const reread = useCallback(
+    (from: number | null = null) => {
+      setAwaiting({ from });
+      startTransition(() => router.refresh());
+    },
+    [router],
+  );
   const reload = useCallback(
-    (live?: EditorParts) => {
+    (live?: EditorParts, from: number | null = null) => {
       beginHold();
       if (live) discarded.current = live;
-      reread();
+      reread(from);
     },
     [beginHold, reread],
   );
@@ -298,7 +315,7 @@ export function SavedCourse(props: Shared) {
         if (holding.current !== hold) return; // a read came meanwhile
         holding.current = null;
         setHold(null);
-        setSaid((s) => ({ ...s, asked: {} }));
+        setSaid((s) => ({ ...s, asked: {}, askedFrom: null }));
         if (restart) {
           setSeeds(restart);
           setGeneration((g) => g + 1);
@@ -313,7 +330,7 @@ export function SavedCourse(props: Shared) {
   useEffect(() => {
     if (!asking || hold) return;
     const timer = setTimeout(() => {
-      setSaid((s) => ({ ...s, asked: {} }));
+      setSaid((s) => ({ ...s, asked: {}, askedFrom: null }));
       startTransition(() => router.refresh());
     }, SAVE_TIMEOUT_MS);
     return () => clearTimeout(timer);
@@ -332,7 +349,7 @@ export function SavedCourse(props: Shared) {
       seeds={seeds}
       generation={generation}
       waiting={hold !== null}
-      waits={{ hold: beginHold, release, reload, reread, readLabels, route, onScreen, late: { take: takeLate, tick: lateTick } }}
+      waits={{ hold: beginHold, release, reload, stampSeen, reread, readLabels, route, onScreen, late: { take: takeLate, tick: lateTick } }}
       refocus={refocus}
       said={said}
       setSaid={setSaid}
@@ -365,7 +382,7 @@ function SavedForm({
   setSaid: (update: (s: Said) => Said) => void;
 }) {
   const { id, published, liveType } = data;
-  const { hold, release, reload, reread, readLabels, route, onScreen, late } = waits;
+  const { hold, release, reload, stampSeen, reread, readLabels, route, onScreen, late } = waits;
   const common = { courseId: id, published, liveType };
   // an unpublished course's „Põhiinfo“ saves are heard (its type)
   const ear = useRef<SaveEar | null>(null);
@@ -513,8 +530,8 @@ function SavedForm({
     const done = Array.isArray(result?.published) && result.published.length > 0;
     setSaid((s) => ({ ...s, blocked: held ? { parts: held, generation, saves: savesNow() } : null, publishedAt: done ? new Date() : s.publishedAt }));
     // something went live, or nothing was there to go (another tab published or threw it away meanwhile, or an answer that cannot be read): the
-    // page is read again (review M-2)
-    if (done || !held) reload();
+    // page is read again (review M-2), and the cards start over from a read at or past the answer's stamp
+    if (done || !held) reload(undefined, stampOf(answer.body));
     else release();
   };
 
@@ -534,12 +551,12 @@ function SavedForm({
     for (const part of order) hooks[part].discardCopy();
     for (const row of textRows.current) row.discardCopy();
     setSaid((s) => ({ ...s, blocked: null }));
-    reload(seeds);
+    reload(seeds, stampOf(answer.body));
   };
 
   const switchPublished = async (on: boolean) => {
     if (asked.published !== undefined || asked.sample !== undefined) return;
-    setSaid((s) => ({ ...s, switchError: null, asked: { published: on } }));
+    setSaid((s) => ({ ...s, switchError: null, asked: { published: on }, askedFrom: null }));
     const signal = hold();
     // switched off, the drafts are published first (R-d): they get what is typed
     if (!on && (await orLate(flushAll(), signal)) === LATE) return;
@@ -553,12 +570,13 @@ function SavedForm({
     const result = await orLate(action, signal);
     if (result === LATE) return;
     if (result.ok) {
-      setSaid((s) => ({ ...s, blocked: null, priceRefused: false }));
-      return reload();
+      const stamp = stampOf(result);
+      setSaid((s) => ({ ...s, blocked: null, priceRefused: false, askedFrom: stamp ?? Number.NEGATIVE_INFINITY }));
+      return reload(undefined, stamp);
     }
     release();
     setSaid((s) => {
-      const quiet = { ...s, asked: {} };
+      const quiet = { ...s, asked: {}, askedFrom: null };
       if (result.error === "blocked") return { ...quiet, blocked: { parts: result.blocked, generation, saves: savesNow() } };
       if (result.error === "invalid" && Object.values(result.fields ?? {}).includes("priceRequired")) return { ...quiet, priceRefused: true, switchError: t.errors.priceRequired };
       return { ...quiet, switchError: adminEt.common.saveError };
@@ -567,15 +585,20 @@ function SavedForm({
 
   const switchSample = async (on: boolean) => {
     if (asked.published !== undefined || asked.sample !== undefined) return;
-    setSaid((s) => ({ ...s, switchError: null, asked: { sample: on } }));
+    setSaid((s) => ({ ...s, switchError: null, asked: { sample: on }, askedFrom: null }));
     let result: SwitchResult;
     try {
       result = await setCourseSample({ id, on });
     } catch {
       result = { ok: false, error: "server" };
     }
-    // done: the action has the page read again (its refresh), and the box shows the stored state then; refused, unless the bound came first
-    if (!result.ok) setSaid((s) => (s.asked.sample === on ? { ...s, asked: {}, switchError: adminEt.common.saveError } : s));
+    // done: the action has the page read again (its refresh), and the box shows the stored state from a read at or past the answer's stamp — the
+    // action's own read may have come already; refused, unless the bound came first
+    if (result.ok) {
+      const stamp = stampOf(result);
+      const shown = stamp !== null && stampSeen() >= stamp;
+      setSaid((s) => (s.asked.sample !== on ? s : shown ? { ...s, asked: {}, askedFrom: null } : { ...s, askedFrom: stamp ?? Number.NEGATIVE_INFINITY }));
+    } else setSaid((s) => (s.asked.sample === on ? { ...s, asked: {}, askedFrom: null, switchError: adminEt.common.saveError } : s));
   };
 
   // the price a published course must have: missing at the publish (S3-P3-b), or the switch on refused for it; gone once a price is typed

@@ -50,7 +50,7 @@ vi.mock("next/navigation", async (original) => ({
 import CoursePage from "@/app/[locale]/(site)/koolitused/[slug]/page";
 import CataloguePage from "@/app/[locale]/(site)/koolitused/page";
 
-import { addLessonForm, addModuleForm, moveModuleForm, renameModuleForm } from "@/server/admin-lessons";
+import { addLessonForm, addModuleForm, listCourseLessons, moveModuleToRequest, readOutlineText, writeOutlineText } from "@/server/admin-lessons";
 import { readCoursePart, writeCoursePart } from "@/server/course-parts";
 import { previewActive } from "@/server/preview";
 
@@ -103,6 +103,16 @@ const form = (fields: Record<string, string | number>) => {
   for (const [k, v] of Object.entries(fields)) fd.set(k, String(v));
   return fd;
 };
+/** A module's name saved as the card saves it (R-b2: its route's writeOutlineText from the row's „t:“ version; no form renames a module). */
+async function rename(id: number, title: { et: string }) {
+  const answer = await writeOutlineText(db, "module", id, { title }, (await readOutlineText(db, "module", id))?.version ?? "", MARIA, NOW);
+  if (!answer.ok) throw new Error(JSON.stringify(answer));
+}
+/** A module one place up, as the card's ↑ moves it (moveModuleToRequest to the place before). */
+async function moveUp(courseId: number, id: number) {
+  const at = (await listCourseLessons(db, courseId)).findIndex((m) => m.id === id);
+  return moveModuleToRequest(db, { id, index: Math.max(0, at - 1) }, MARIA);
+}
 const idOf = (r: { ok: boolean; id?: number }) => {
   if (!r.ok || r.id === undefined) throw new Error(JSON.stringify(r));
   return r.id;
@@ -287,16 +297,16 @@ describe("the course page's data (getCourseBySlug with the preview's drafts)", (
   });
 
   test("the modules: a rename and a move wait in the outline draft, a new module shows where it will be; students' list (draft mode off) is live's", async () => {
-    idOf(await renameModuleForm(db, form({ id: m1, titleEt: "Sissejuhatus" }), MARIA));
+    await rename(m1, { et: "Sissejuhatus" });
     const m3 = idOf(await addModuleForm(db, form({ courseId: online.id, titleEt: "Kordamine" })));
     await asAdmin();
     expect(titles(await pageCourse("e-kulm"))).toEqual(["Sissejuhatus", "Moodul 2", "Kordamine"]);
     // a move of a live module is a draft move too (Task 5): „Moodul 2“ goes before the renamed first one; the new module keeps its place at the end
-    idOf(await moveModuleForm(db, form({ id: m2, dir: "up" }), MARIA));
+    idOf(await moveUp(online.id, m2));
     expect(titles(await pageCourse("e-kulm"))).toEqual(["Moodul 2", "Sissejuhatus", "Kordamine"]);
     // and the new module moves directly, to the front
-    idOf(await moveModuleForm(db, form({ id: m3, dir: "up" }), MARIA));
-    idOf(await moveModuleForm(db, form({ id: m3, dir: "up" }), MARIA));
+    idOf(await moveUp(online.id, m3));
+    idOf(await moveUp(online.id, m3));
     expect(titles(await pageCourse("e-kulm"))).toEqual(["Kordamine", "Moodul 2", "Sissejuhatus"]);
     state.draftOn = false;
     expect(titles(await pageCourse("e-kulm"))).toEqual(["Moodul 1", "Moodul 2"]);

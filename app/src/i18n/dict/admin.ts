@@ -1740,16 +1740,22 @@ export const adminEt = {
     moveDown: "Liiguta alla: {title}",
     deleteModule: "Kustuta moodul",
     deleteModuleConfirm: "Kas kustutan mooduli „{title}“?",
-    // a contact course's programme point is a „punkt“ in its question (README B2; strings.md B2-3)
+    // a contact course's programme point is a „punkt“ in its delete (README B2, strings.md B2-3: the question; Dim 24.10 D-5: the button)
+    deletePoint: "Kustuta punkt",
     deletePointConfirm: "Kas kustutan punkti „{title}“?",
+    // in place of the button where a module cannot go: lessons in it, live or placed there by the draft (Dim 24.10 D-7)
+    deleteModuleBlocked: "Moodulit saab kustutada, kui selles pole õppetunde.",
     deleteYes: "Jah, kustuta",
     deleteNo: "Ei",
-    // the card's summary beside its title (piece3-texts P-4, drawn „6 moodulit · 3 õppetundi“; P-8 the forms of 1); none: `empty` in its place
+    // the card's summary beside its title (piece3-texts P-4, drawn „6 moodulit · 3 õppetundi“; P-8 the forms of 1; a programme's: Dim 24.10 D-6);
+    // none: `empty` in its place
     summary: "{modules} · {lessons}",
     modulesN: "{n} moodulit",
     modulesOne: "1 moodul",
     lessonsN: "{n} õppetundi",
     lessonsOne: "1 õppetund",
+    pointsN: "{n} punkti",
+    pointsOne: "1 punkt",
     noLessons: "Selles moodulis pole veel õppetunde.",
     newLesson: "Uue õppetunni nimi",
     addLesson: "Lisa õppetund",

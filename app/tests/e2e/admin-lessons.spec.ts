@@ -344,6 +344,7 @@ test("Moodulid ja õppetunnid: modules, a lesson in the drawer (text, kind, file
   // 8. "Kustuta moodul" only on the empty one; a ConfirmPanel in its place (README §1.6): „Katkesta“ gives the button back with the focus;
   // deleted after „Jah, kustuta“, the focus on the new module's field
   await expect(introRow.locator("[data-delete-module]")).toHaveCount(0);
+  await expect(introRow.locator("[data-delete-blocked]")).toHaveText("Moodulit saab kustutada, kui selles pole õppetunde."); // Dim 24.10 D-7
   await practiceRow.locator("[data-delete-module]").click();
   const question = practiceRow.locator("[data-confirm-panel]");
   await expect(question).toBeFocused();
@@ -367,12 +368,14 @@ test("Moodulid ja õppetunnid: modules, a lesson in the drawer (text, kind, file
   await expect(editor.getByRole("button", { name: "Lisa õppetund" })).toHaveCount(0);
   await expect(editor.locator("[data-add-module]").getByLabel("Uus programmi punkt")).toBeVisible();
   await expect(editor.locator("[data-add-module] button")).toHaveText("+ Lisa punkt");
-  await expect(editor.locator("[data-modules-summary]")).toHaveCount(0); // a programme has no lessons to count
+  await expect(editor.locator("[data-modules-summary]")).toHaveText("1 punkt"); // a programme counts its points (Dim 24.10 D-6)
   // a programme point's delete asks „Kas kustutan punkti „{title}“?“ (README B2)
   await editor.locator("[data-add-module]").getByLabel("Uus programmi punkt").fill("Lõpuarutelu");
   await editor.locator("[data-add-module]").getByRole("button", { name: "Lisa punkt" }).click();
   await expect(editor.locator("[data-module]")).toHaveCount(2);
+  await expect(editor.locator("[data-modules-summary]")).toHaveText("2 punkti");
   const point = editor.locator(`[data-module="${await moduleId(courseId, "Lõpuarutelu")}"]`);
+  await expect(point.locator("[data-delete-module]")).toHaveText("Kustuta punkt"); // Dim 24.10 D-5
   await point.locator("[data-delete-module]").click();
   await expect(point.locator("[data-confirm-panel] p")).toHaveText("Kas kustutan punkti „Lõpuarutelu“?");
   await point.getByRole("button", { name: "Jah, kustuta" }).click();

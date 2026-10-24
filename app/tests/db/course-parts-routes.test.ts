@@ -3,11 +3,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { contentDrafts, courseModules, courses, lessons } from "@/db/schema";
 import { createSession } from "@/server/auth";
+import { readStamp, stampOrNull } from "@/server/read-stamp";
 import { makeTestDb } from "./helpers";
 
 // The course parts' routes (admin UX pass piece 3a, Task 4): POST /api/admin/koolitus/<id>/osa/<part> (a part's autosave, server/autosave-route.ts'
-// contract), /avalda („Avalda muudatused“: `{ published, blocked }`) and /loobu („Loobu muudatustest“: `{ discarded }`, the flagged rows' media
-// removed after the answer). On PGlite, with the admin's session cookie faked (as tests/db/registration-note-route.test.ts does).
+// contract), /avalda („Avalda muudatused“: `{ published, blocked, stamp }`) and /loobu („Loobu muudatustest“: `{ discarded, stamp }`, the flagged rows'
+// media removed after the answer); `stamp` is the database's clock after the commit (server/read-stamp.ts, Task 9 review M-1). On PGlite, with the admin's session cookie faked (as tests/db/registration-note-route.test.ts does).
 
 const state = vi.hoisted(() => ({ db: null as unknown, cookie: undefined as string | undefined, after: [] as (() => Promise<void>)[] }));
 vi.mock("next/headers", () => ({
@@ -85,16 +86,25 @@ describe("POST /api/admin/koolitus/<id>/osa/<part>", () => {
 });
 
 describe("POST /api/admin/koolitus/<id>/avalda and /loobu", () => {
-  test("publish answers { published, blocked } and revalidates once; discard answers { discarded }", async () => {
+  test("publish answers { published, blocked, stamp } and revalidates once; discard answers { discarded, stamp }", async () => {
     await signIn();
     expect((await publish(post(`/api/admin/koolitus/${course.id}/avalda`), { params: Promise.resolve({ id: String(course.id) }) })).status).toBe(200);
     await save(course.id, "basics", { version: await versionOf("basics"), patch: { title: { et: "Uus nimi" } } });
     await save(course.id, "price", { version: await versionOf("price"), patch: { price: "" } });
+    // (a page read before the press: its stamp is older than the answer's; one after it is at or past it)
+    const before = await readStamp(db);
     const published = await answerOf(await publish(post(`/api/admin/koolitus/${course.id}/avalda`), { params: Promise.resolve({ id: String(course.id) }) }));
-    expect(published).toEqual({ status: 200, cache: "no-store", body: { published: ["basics"], blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] } });
+    expect(published).toEqual({ status: 200, cache: "no-store", body: { published: ["basics"], blocked: [{ part: "price", reason: "missing", fields: ["hind"] }], stamp: expect.any(Number) } });
+    const publishedAt = (published.body as { stamp: number }).stamp;
+    expect(publishedAt).toBeGreaterThan(before);
+    expect(await readStamp(db)).toBeGreaterThanOrEqual(publishedAt);
     expect(pub.revalidatePublic.mock.calls).toEqual([[{ kind: "courses" }]]);
     const discarded = await answerOf(await discard(post(`/api/admin/koolitus/${course.id}/loobu`), { params: Promise.resolve({ id: String(course.id) }) }));
-    expect(discarded).toEqual({ status: 200, cache: "no-store", body: { discarded: 1 } });
+    expect(discarded).toEqual({ status: 200, cache: "no-store", body: { discarded: 1, stamp: expect.any(Number) } });
+    expect((discarded.body as { stamp: number }).stamp).toBeGreaterThan(publishedAt);
+    expect(Number.isSafeInteger((discarded.body as { stamp: number }).stamp)).toBe(true);
+    // a stamp that cannot be read is no failure of the answer: null (the editor then takes the next read)
+    expect(await stampOrNull({} as Db)).toBeNull();
     expect(await db.select().from(contentDrafts)).toEqual([]);
     expect(state.after).toEqual([]); // nothing flagged: no cleanup
   });

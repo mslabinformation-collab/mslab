@@ -535,7 +535,8 @@ export async function discardCourse(db: Db, courseId: number): Promise<{ discard
 
 /** A switch's answer: done (also when it was in that state already), refused with the fields (no price) or the parts that could not be published. */
 export type SwitchResult =
-  | { ok: true }
+  /** `stamp`: the database's clock after the commit (server/read-stamp.ts; the action adds it), null when it could not be read. */
+  | { ok: true; stamp?: number | null }
   | { ok: false; error: "notFound" | "server" }
   | { ok: false; error: "invalid"; fields?: Record<string, FieldError> }
   | { ok: false; error: "blocked"; blocked: BlockedPart[] };

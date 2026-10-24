@@ -249,6 +249,109 @@ test.describe("course editor", () => {
     expect(await onLocalDb((sql) => sql`select part from content_drafts where entity = 'course' and entity_id = ${id}`)).toHaveLength(0);
   });
 
+  test("the modules card on a published course (Task 9; README B2, B18): a name and a move wait in the draft — the bar names them, the rows say „avaldamata“, another card keeps its field; „Loobu muudatustest“ brings live back; „Avalda muudatused“ clears the tags", async ({ page, context, visitorIp, isMobile }, info) => {
+    const c = mine(info);
+    const id = await changing(c.slug); // (the snapshot holds its modules and lessons too: put back after the test, also what „Avalda“ wrote)
+    /** The course's modules as stored (live), in order. */
+    const storedModules = () =>
+      onLocalDb((sql) => sql<{ id: number; title: string; unpublished: boolean }[]>`
+        select id, title->>'et' as title, unpublished from course_modules where course_id = ${id} order by position, id`);
+    const live = await storedModules();
+    expect(live.length).toBeGreaterThanOrEqual(3);
+    await signIn(page, context, visitorIp);
+    await page.goto(`/admin/koolitused/${id}`);
+    await adminReady(page);
+    const card = page.locator("[data-lessons-editor]");
+    const shownIds = () => card.locator("[data-drag-row]").evaluateAll((els) => els.map((e) => Number(e.getAttribute("data-drag-row"))));
+    const shownNames = () => card.locator("[data-module] [data-i18n^='module-']").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+    await expect.poll(shownNames).toEqual(live.map((m) => m.title));
+    await expect(publishBar(page)).toHaveCount(0);
+    // another card's field, the same node through the names, the move and the new module (no card starts over: only a press does that)
+    const summary = page.getByRole("textbox", { name: "Lühikirjeldus (eesti keeles)" });
+    await summary.evaluate((el) => ((el as HTMLElement & { e2eMark?: string }).e2eMark = "same"));
+    const sameSummary = () => summary.evaluate((el) => (el as HTMLElement & { e2eMark?: string }).e2eMark ?? "");
+    const labels = async (words: string, n: number) => {
+      if (isMobile) await expect(page.locator("[data-publish-phone]")).toHaveText(`Avaldamata ${n} · Eelvaade`);
+      else await expect(barWords(page)).toHaveText(draftWords(words));
+    };
+
+    // 1. the second module's name, autosaved on its own route into the draft: the bar names „Moodul 02“, the row says „avaldamata“, live is as it was
+    const second = card.locator(`[data-module="${live[1].id}"]`);
+    const name = second.getByRole("textbox", { name: "Mooduli nimi" });
+    const renamed = page.waitForResponse((r) => r.url().endsWith(`/api/admin/moodul/${live[1].id}`) && r.request().method() === "POST" && r.status() === 200);
+    await name.fill(`${live[1].title} E2E`);
+    await name.blur();
+    await renamed;
+    await labels("Moodul 02", 1);
+    await expect(second.locator("[data-module-tag]")).toHaveText("avaldamata");
+    await expect(card.locator("[data-module-tag]")).toHaveCount(1);
+    expect((await storedModules()).map((m) => m.title)).toEqual(live.map((m) => m.title));
+    expect(await sameSummary()).toBe("same");
+
+    // 2. the last module one place up with its handle (a finger on a phone, the mouse on a desktop): the order waits in the draft too
+    const last = live[live.length - 1];
+    const before = live[live.length - 2];
+    await card.locator(`[data-drag-row="${before.id}"]`).evaluate((el) => el.scrollIntoView({ block: "center" }));
+    const from = (await card.locator(`[data-drag-row="${last.id}"] [data-drag-tool="handle"]`).boundingBox())!;
+    const over = (await card.locator(`[data-drag-row="${before.id}"]`).boundingBox())!;
+    const start = { x: from.x + from.width / 2, y: from.y + from.height / 2 };
+    const to = { x: start.x, y: over.y + 8 };
+    if (isMobile) await dragWithFinger(page, start, to, 20);
+    else {
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 20 });
+      await page.mouse.up();
+    }
+    const moved = [...live.slice(0, -2).map((m) => m.id), last.id, before.id];
+    await expect.poll(shownIds).toEqual(moved);
+    // (the renamed module is the second still on a phone's four modules; on the desktop's three it is now the third)
+    const renamedAt = String(moved.indexOf(live[1].id) + 1).padStart(2, "0");
+    await labels(`Moodulite järjekord, Moodul ${renamedAt}`, 2);
+    expect((await storedModules()).map((m) => m.id)).toEqual(live.map((m) => m.id));
+    expect(await sameSummary()).toBe("same");
+
+    // 3. a new module: a real row flagged unpublished (R-e), „avaldamata“ in its row, nowhere for students
+    const add = card.locator("[data-add-module]");
+    await add.getByLabel("Uue mooduli nimi").fill("E2E uus moodul");
+    await add.getByRole("button", { name: "Lisa moodul" }).click();
+    await expect.poll(async () => (await storedModules()).find((m) => m.title === "E2E uus moodul")?.unpublished).toBe(true);
+    const added = (await storedModules()).find((m) => m.title === "E2E uus moodul")!;
+    await expect(card.locator(`[data-module="${added.id}"] [data-module-tag]`)).toHaveText("avaldamata");
+    expect(await sameSummary()).toBe("same");
+
+    if (!isMobile) {
+      // 4. „Loobu muudatustest“ (the desktop's bar; a phone has it on the preview page, spec C3): live's order and name back, the new module gone
+      const discarded = page.waitForResponse((r) => r.url().endsWith(`/api/admin/koolitus/${id}/loobu`) && r.status() === 200);
+      await page.locator("[data-publish-discard]").click();
+      await page.locator("[data-publish-bar] [data-confirm-panel]").getByRole("button", { name: "Jah, loobu" }).click();
+      await discarded;
+      await expect(publishBar(page)).toHaveCount(0);
+      await expect.poll(shownNames).toEqual(live.map((m) => m.title));
+      await expect.poll(shownIds).toEqual(live.map((m) => m.id));
+      await expect(card.locator("[data-module-tag]")).toHaveCount(0);
+      expect((await storedModules()).map((m) => m.id)).toEqual(live.map((m) => m.id));
+      expect(await onLocalDb((sql) => sql`select part from content_drafts where entity = 'course' and entity_id = ${id}`)).toHaveLength(0);
+      // and once more a name, for the publish below
+      const again = card.locator(`[data-module="${live[1].id}"]`).getByRole("textbox", { name: "Mooduli nimi" });
+      const saved = page.waitForResponse((r) => r.url().endsWith(`/api/admin/moodul/${live[1].id}`) && r.request().method() === "POST" && r.status() === 200);
+      await again.fill(`${live[1].title} E2E`);
+      await again.blur();
+      await saved;
+      await labels("Moodul 02", 1);
+    }
+
+    // 5. „Avalda muudatused“: what waited is live, and no row says „avaldamata“ any more
+    await publish(page);
+    await expect(card.locator("[data-module-tag]")).toHaveCount(0);
+    const now = await storedModules();
+    expect(now.find((m) => m.id === live[1].id)?.title).toBe(`${live[1].title} E2E`);
+    expect(now.every((m) => !m.unpublished)).toBe(true);
+    if (isMobile) expect(now.map((m) => m.id)).toEqual([...moved, added.id]);
+    else expect(now.map((m) => m.id)).toEqual(live.map((m) => m.id));
+    await expect.poll(shownNames).toEqual(now.map((m) => m.title));
+  });
+
   test("two tabs on one published course: the second tab's save of the same card is a conflict, never an overwrite; „Taasta minu tekst“ saves it over", async ({ page, context, visitorIp, isMobile }, info) => {
     test.skip(isMobile, "two windows side by side: the desktop project");
     const c = mine(info);
@@ -511,7 +614,8 @@ test.describe("course editor", () => {
     await expect(barWords(page)).toHaveText(draftWords("Hind"));
     const answer = page.waitForResponse((r) => r.url().endsWith(`/api/admin/koolitus/${id}/avalda`));
     await page.locator("[data-publish-go]").click();
-    expect(await (await answer).json()).toEqual({ published: [], blocked: [{ part: "price", reason: "missing", fields: ["hind"] }] });
+    // (`stamp`: the database's clock after the commit, Task 9 review M-1)
+    expect(await (await answer).json()).toEqual({ published: [], blocked: [{ part: "price", reason: "missing", fields: ["hind"] }], stamp: expect.any(Number) });
     await expect(page.locator("[data-publish-blocked]")).toHaveText("Puudub: hind");
     await expect(page.locator("[data-plain-field]", { has: page.getByLabel("Hind (€)") }).locator("[data-field-error]")).toHaveText("Avaldatud koolitusel peab olema hind.");
     const after = await storedCourse(c.slug);

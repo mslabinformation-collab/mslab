@@ -32,8 +32,9 @@ import styles from "./LessonsEditor.module.css";
 // - an e-course module's lessons: the name (read-only here: the drawer edits it), „avaldamata“, „Peidetud“, the video tag („Valmis“, „Töötlemisel
 //   {n}%“ or „Töötlemisel“ without a figure, „Video puudub“, „Tekst“; the undrawn „Video üleslaadimisel“ and „Video viga“), ↑ / ↓ (across modules at an
 //   edge, as before) and › to its drawer (?oppetund=<id>, LessonDrawer.tsx); then „Lisa õppetund“;
-// - „Kustuta moodul“ only where it can go (AdminModule.deletable; else hidden, as before when it had lessons): a ConfirmPanel in its place, „Kas
-//   kustutan punkti „{title}“?“ for a programme point, „Kas kustutan mooduli „{title}“?“ for a module; then „+ Lisa moodul“ / „+ Lisa punkt“.
+// - „Kustuta moodul“ („Kustuta punkt“ for a programme point, Dim 24.10 D-5) only where it can go (AdminModule.deletable; else „Moodulit saab
+//   kustutada, kui selles pole õppetunde.“ in its place, D-7): a ConfirmPanel in its place, „Kas kustutan punkti „{title}“?“ for a programme point,
+//   „Kas kustutan mooduli „{title}“?“ for a module — with the name as it is in its field; then „+ Lisa moodul“ / „+ Lisa punkt“.
 // The adds, moves and deletes are server actions whose answer brings the page's new read (the course editor takes it without starting its cards
 // over, course/SavedCourse.tsx). Inside the editor a name's autosave is one of the editor's (course/OutlineTexts.ts). While an action is on its way
 // its button is aria-disabled (a disabled button would drop the focus) and a second press does nothing.
@@ -60,10 +61,10 @@ export function lessonError(r: EditResult | null, inUse: string = t.errors.inUse
   return t.errors.server;
 }
 
-/** The card's summary beside its title (P-4, P-8): an e-course's „{n} moodulit · {m} õppetundi“, none yet „Mooduleid veel pole.“; a programme only the latter. */
-function summaryOf(modules: readonly AdminModule[], online: boolean): string | null {
+/** The card's summary beside its title (P-4, P-8): an e-course's „{n} moodulit · {m} õppetundi“, a programme's „{n} punkti“ (D-6), none yet „Mooduleid veel pole.“. */
+function summaryOf(modules: readonly AdminModule[], online: boolean): string {
   if (modules.length === 0) return t.empty;
-  if (!online) return null;
+  if (!online) return modules.length === 1 ? t.pointsOne : fill(t.pointsN, { n: modules.length });
   const lessons = modules.reduce((n, m) => n + m.lessons.length, 0);
   return fill(t.summary, {
     modules: modules.length === 1 ? t.modulesOne : fill(t.modulesN, { n: modules.length }),
@@ -93,7 +94,16 @@ export function LessonsEditor({ courseId, online, modules }: Props) {
   const addField = useRef<HTMLInputElement>(null);
   // a move shows at once (in the same tick as the drop or the press), and the page's new read brings the stored order; refused, the order goes back
   const [items, moveOptimistic] = useOptimistic(modules, (list: AdminModule[], m: { from: number; to: number }) => reorder(list, m.from, m.to));
-  const [moveFailed, setMoveFailed] = useState<{ id: number; error: string } | null>(null);
+  /** The module whose move was refused: „Järjekorra muutmine ei õnnestunud. Proovi uuesti.“ under it, until the next move or the page's next read. */
+  const [moveFailed, setMoveFailed] = useState<number | null>(null);
+  const [readOf, setReadOf] = useState(modules);
+  if (readOf !== modules) {
+    setReadOf(modules);
+    if (moveFailed !== null) setMoveFailed(null);
+  }
+  /** Each module's name as its field has it now (typed, not yet read back): the handle's and arrows' names and the announcement (review M-5). */
+  const [names, setNames] = useState<Record<number, string>>({});
+  const nameOf = useCallback((id: number, name: string) => setNames((all) => (all[id] === name ? all : { ...all, [id]: name })), []);
   // a lesson's ↑ / ↓ and „Kustuta moodul“ live here, not in the rows: a moved lesson can land in another module's list (a new row), a deleted
   // module's row is gone. The answer comes with the page's new state, so the effects below run once the rows are in place.
   const [lessonMove, moveLessonAction, lessonMoving] = useActionState<EditResult | null, FormData>(moveLessonInList, null);
@@ -121,13 +131,14 @@ export function LessonsEditor({ courseId, online, modules }: Props) {
     setMoveFailed(null);
     startTransition(async () => {
       moveOptimistic({ from, to });
-      let result: EditResult;
+      let ok = false;
       try {
-        result = await moveModuleTo({ id, index: to });
+        ok = (await moveModuleTo({ id, index: to })).ok;
       } catch {
-        result = { ok: false, error: "server" };
+        ok = false;
       }
-      if (!result.ok) setMoveFailed({ id, error: lessonError(result) ?? t.errors.server });
+      // (the list's words for a refused move, as the course list says them: piece3-texts P-1)
+      if (!ok) setMoveFailed(id);
     });
   };
   const moveLessonTo = (l: AdminLesson, dir: "up" | "down") => {
@@ -138,6 +149,7 @@ export function LessonsEditor({ courseId, online, modules }: Props) {
   };
 
   const summary = courseId === null ? null : summaryOf(items, online);
+  const nameIn = (m: AdminModule) => names[m.id] ?? m.title.et.trim();
 
   return (
     <section className={`${ui.card} ${styles.editor}`} aria-labelledby={`${uid}-title`} data-lessons-editor="">
@@ -163,7 +175,7 @@ export function LessonsEditor({ courseId, online, modules }: Props) {
             <DragList<AdminModule>
               items={items}
               keyOf={(m) => String(m.id)}
-              label={(m) => m.title.et.trim()}
+              label={nameIn}
               onMove={moveModule}
               className={styles.modules}
               rowClassName={styles.module}
@@ -175,7 +187,8 @@ export function LessonsEditor({ courseId, online, modules }: Props) {
                   online={online}
                   handle={handle}
                   arrows={arrows}
-                  moveError={moveFailed?.id === m.id ? moveFailed.error : null}
+                  onName={nameOf}
+                  moveError={moveFailed === m.id ? adminEt.courses.moveError : null}
                   deleteError={target.moduleDelete === m.id ? lessonError(moduleDelete) : null}
                   deleting={deleting && target.moduleDelete === m.id}
                   onDelete={() => {
@@ -289,6 +302,8 @@ type ModuleRowProps = {
   online: boolean;
   handle: ReactNode;
   arrows: ReactNode;
+  /** Tells the list the name as the field has it now. */
+  onName: (id: number, name: string) => void;
   moveError: string | null;
   deleteError: string | null;
   deleting: boolean;
@@ -296,8 +311,8 @@ type ModuleRowProps = {
   children: ReactNode;
 };
 
-/** One module (the Part 3 frame's box): ⋮⋮, its number, its name, „avaldamata“, ↑ ↓; its lessons; „Kustuta moodul“ where it can go. */
-function ModuleRow({ module: m, n, courseId, online, handle, arrows, moveError, deleteError, deleting, onDelete, children }: ModuleRowProps) {
+/** One module (the Part 3 frame's box): ⋮⋮, its number, its name, „avaldamata“, ↑ ↓; its lessons; „Kustuta moodul“ where it can go, else why not. */
+function ModuleRow({ module: m, n, courseId, online, handle, arrows, onName, moveError, deleteError, deleting, onDelete, children }: ModuleRowProps) {
   const uid = useId();
   const label = online ? t.moduleName : adminEt.courseEditor.fields.modulesC;
   const title = useModuleTitle(courseId, m, label);
@@ -310,7 +325,9 @@ function ModuleRow({ module: m, n, courseId, online, handle, arrows, moveError, 
     refocus.current = false;
     opener.current?.focus();
   }, [asking]);
-  const name = m.title.et;
+  // the name as its field has it (a name typed and not yet read back is the one she sees; a field typed away keeps the stored one)
+  const name = title.value.et.trim() || m.title.et.trim();
+  useEffect(() => onName(m.id, name), [onName, m.id, name]);
   const error = moveError ?? deleteError;
 
   return (
@@ -350,26 +367,29 @@ function ModuleRow({ module: m, n, courseId, online, handle, arrows, moveError, 
 
       {children}
 
-      {m.deletable &&
-        (asking ? (
-          <ConfirmPanel
-            question={fill(online ? t.deleteModuleConfirm : t.deletePointConfirm, { title: name })}
-            yesLabel={t.deleteYes}
-            tone="danger"
-            busy={deleting}
-            onYes={onDelete}
-            onCancel={() => {
-              refocus.current = true;
-              setAsking(false);
-            }}
-          />
-        ) : (
-          <div className={forms.actions}>
-            <button ref={opener} type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => setAsking(true)} data-delete-module="">
-              {t.deleteModule}
-            </button>
-          </div>
-        ))}
+      {!m.deletable ? (
+        <p className={`${ui.muted} ${ui.small} ${styles.blocked}`} data-delete-blocked="">
+          {t.deleteModuleBlocked}
+        </p>
+      ) : asking ? (
+        <ConfirmPanel
+          question={fill(online ? t.deleteModuleConfirm : t.deletePointConfirm, { title: name })}
+          yesLabel={t.deleteYes}
+          tone="danger"
+          busy={deleting}
+          onYes={onDelete}
+          onCancel={() => {
+            refocus.current = true;
+            setAsking(false);
+          }}
+        />
+      ) : (
+        <div className={forms.actions}>
+          <button ref={opener} type="button" className={`${ui.btn} ${ui.danger} ${ui.smallBtn}`} onClick={() => setAsking(true)} data-delete-module="">
+            {online ? t.deleteModule : t.deletePoint}
+          </button>
+        </div>
+      )}
 
       {error && (
         <p role="alert" className={`${ui.error} ${styles.rowError}`} data-module-error="">

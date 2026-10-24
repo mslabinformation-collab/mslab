@@ -9,6 +9,7 @@ import { adminAction } from "../auth";
 import { parseSwitch, switchCoursePublished, switchCourseSample, type SwitchResult } from "../course-parts";
 import { logFailure } from "../log";
 import { revalidatePublic, type PublicChange } from "../public-cache";
+import { stampOrNull } from "../read-stamp";
 
 // The content editors' server actions (courses, calendar): every export is wrapped in adminAction (signed-in admin or a
 // redirect to /admin/login; tests/unit/admin-guards.test.ts fails otherwise). The work is in ../admin-content.ts.
@@ -51,9 +52,12 @@ async function runSwitch(what: string, input: unknown, work: (db: Db, id: number
   const request = parseSwitch(input);
   if (!request) return { ok: false, error: "invalid" };
   try {
-    const result = await work(getDb(), request.id, request.on, new Date());
-    if (result.ok) refresh();
-    return result;
+    const db = getDb();
+    const result = await work(db, request.id, request.on, new Date());
+    if (!result.ok) return result;
+    refresh();
+    // (the database's clock after the commit: the editor shows the switch's stored state from a page read at or past it, Task 9 review M-1)
+    return { ...result, stamp: await stampOrNull(db) };
   } catch (e) {
     logFailure(`[admin] ${what} failed`, e);
     return { ok: false, error: "server" };

@@ -16,6 +16,7 @@ import { listCourseLessons } from "@/server/admin-lessons";
 import { requireAdmin } from "@/server/auth";
 import { bunnyConfig } from "@/server/bunny";
 import { readCourseEditor } from "@/server/course-parts";
+import { readStamp } from "@/server/read-stamp";
 import { upcomingFrom } from "@/domain/calendar";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,8 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
   const [{ id: raw }, sp] = await Promise.all([params, searchParams]);
   const id = parseId(raw);
   const db = getDb();
+  // the read's stamp, before anything is read: a read at or past a press's answer shows what it did (server/read-stamp.ts; SavedCourse.tsx)
+  const stamp = typeof id === "number" ? await readStamp(db) : 0;
   const [course, all, usage, modules, editor] = await Promise.all([
     typeof id === "number" ? getCourseForEdit(db, id) : null,
     listAllCourses(db),
@@ -81,7 +84,17 @@ export default async function CourseEditPage({ params, searchParams }: Props) {
   // a saved course: its cards' parts (the draft's values on a published course, with live's beside them), its live address and state
   const data: CourseEditorData | null =
     course && editor
-      ? { id: course.id, slug: course.slug, published: course.published, isSample: course.isSample, typeLocked: typeLocked(usage), liveType: course.type, parts: editor.parts, outline: editor.outline }
+      ? {
+          id: course.id,
+          slug: course.slug,
+          published: course.published,
+          isSample: course.isSample,
+          typeLocked: typeLocked(usage),
+          liveType: course.type,
+          parts: editor.parts,
+          outline: editor.outline,
+          stamp,
+        }
       : null;
 
   return (
