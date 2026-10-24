@@ -630,4 +630,25 @@ describe("processing (S3-P3-e, R-g)", () => {
     await act(async () => vi.advanceTimersByTimeAsync(5000));
     expect(line()?.textContent).toBe("Töötlemisel 12%");
   });
+
+  test("Bunny's figure is announced only at its 25 % steps; below the first step „Töötlemisel…“ is said, never a number from 1 to 24 (Task 10 review M2); the line she sees follows every percent", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing") });
+    await mount(video("processing"));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    const said: string[] = [];
+    const note = () => {
+      const now = spoken() ?? "";
+      if (said[said.length - 1] !== now) said.push(now);
+    };
+    note();
+    for (const percent of [1, 10, 12, 24, 25, 26, 49, 50, 51, 74, 75, 76, 99, 100]) {
+      actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing", { progress: percent }) });
+      await act(async () => vi.advanceTimersByTimeAsync(5000));
+      expect(line()?.textContent, String(percent)).toBe(`Töötlemisel ${percent}%`);
+      note();
+    }
+    expect(said).toEqual(["Töötlemisel…", "Töötlemisel 25%", "Töötlemisel 50%", "Töötlemisel 75%", "Töötlemisel 100%"]);
+    expect(said.some((x) => /\b([1-9]|1\d|2[0-4])%/.test(x))).toBe(false);
+  });
 });

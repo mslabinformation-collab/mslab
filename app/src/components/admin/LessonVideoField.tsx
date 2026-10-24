@@ -26,7 +26,7 @@ import styles from "./LessonsEditor.module.css";
 //   processes; the file's name beside it while this page knows it (it picked it);
 // - when the file input goes (the pick starts the upload, or a read shows it processing) while it had the focus, the focus goes to that line instead
 //   of being lost to the page;
-// - a screen reader is told the upload's progress only at 25 % steps (0, 25, 50, 75, 100), and Bunny's figure the same way: the line she sees
+// - a screen reader is told the upload's progress only at 25 % steps (0, 25, 50, 75, 100), and Bunny's figure the same way (below its first step, 1…24 %, "Töötlemisel…" is said, no number): the line she sees
 //   follows every percent, the status region under it says the step;
 // - a running upload is a leave-guard source (reason `upload`, „Üleslaadimine käib.“): ✕, Back or a menu link ask in the guard's notice, and the
 //   guard's beforeunload covers closing the tab (the field has none of its own any more).
@@ -300,11 +300,15 @@ export function LessonVideoField({ lessonId, bunnyReady, video: given }: Props) 
           : shown === "failed"
             ? t.failed
             : "";
-  // what a screen reader is told: a percent only at its 25 % step (Bunny's figure from its first step), every other state as it reads
+  // what a screen reader is told: a percent only at its 25 % step, every other state as it reads. Bunny's figure is said from its first step (25 %) on; below it
+  // (1…24 %) the same words as with no figure at all („Töötlemisel…“), never the figure itself: the line she sees follows every percent (S3-P3-e), this
+  // region does not (Task 10 review M2). The upload's own steps start at 0 %.
   const spoken = busy
     ? fill(t.uploading, { percent: stepOf(percent) })
-    : figure !== null && stepOf(figure) > 0
-      ? fill(adminEt.lessons.videoProgress, { n: stepOf(figure) })
+    : figure !== null
+      ? stepOf(figure) > 0
+        ? fill(adminEt.lessons.videoProgress, { n: stepOf(figure) })
+        : t.processing
       : statusText;
   // "Üleslaadimine katkes" (an upload that stopped, with its retry button) is an error state like "Töötlemine ebaõnnestus"
   const statusTone = shown === "ready" && !busy ? ui.success : (shown === "failed" || shown === "uploading") && !busy ? ui.error : ui.hint;

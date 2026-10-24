@@ -266,6 +266,40 @@ describe("GET /api/cron/sweep: the removed lesson files (piece 3a, R-f)", () => 
     expect(await (await call(`Bearer ${SECRET}`)).json()).toMatchObject({ files: 0 });
   });
 
+  /** `n` lesson files removed a minute ago or more (the oldest marks first), their objects in the store. */
+  async function backlog(n: number) {
+    const [c] = await db.insert(courses).values({ slug: "veeb", type: "e_learning", level: "basic", title: { et: "V" }, summary: { et: "" }, body: { et: "" } }).returning();
+    const [m] = await db.insert(courseModules).values({ courseId: c.id, position: 1, title: { et: "M" } }).returning();
+    const [l] = await db.insert(lessons).values({ moduleId: m.id, position: 1, title: { et: "L" } }).returning();
+    const rows = Array.from({ length: n }, (_, i) => ({ lessonId: l.id, position: i + 1, name: `f${i}.pdf`, r2Key: `lessons/f${i}.pdf`, size: 1, contentType: "application/pdf", removedAt: ago(10_000 - i) }));
+    await db.insert(lessonFiles).values(rows);
+    for (const r of rows) await store.put(r.r2Key, new Uint8Array([1]).buffer, "application/pdf");
+  }
+
+  test("a backlog of more than one batch (20) is drained in the one run: 45 files go, and nothing waits for the next day (Task 10 review M3)", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    await backlog(45);
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toEqual({ ok: true, deleted: 1, logins: 0, sessions: 0, mailDays: 0, ...NO_VIDEOS, files: 45, ...NO_PAYMENTS });
+    expect(await names()).toEqual([]);
+    expect(store.deleted).toHaveLength(45);
+    expect(info.mock.calls.map(String).slice(1)).toEqual(["[cron] sweep: 45 removed lesson files purged"]); // (no „left for the next run“ line: it ran out of due files)
+  });
+
+  test("the drain is bounded: 25 batches (500 files) a run, the rest is said to be left in the log and goes with the next run", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    await backlog(507);
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toMatchObject({ ok: true, files: 500 });
+    expect(await names()).toHaveLength(7);
+    expect(store.deleted).toHaveLength(500);
+    expect(info.mock.calls.map(String).slice(1)).toEqual(["[cron] sweep: 500 removed lesson files purged", "[cron] sweep: more removed lesson files are due than one run takes; the rest goes with the next run"]);
+    info.mockClear();
+    expect(await (await call(`Bearer ${SECRET}`)).json()).toMatchObject({ ok: true, files: 7 });
+    expect(await names()).toEqual([]);
+    expect(info.mock.calls.map(String).slice(1)).toEqual(["[cron] sweep: 7 removed lesson files purged"]);
+  });
+
   test("without R2 (no store) the rows are still purged and counted; nothing is asked of a store", async () => {
     vi.stubEnv("CRON_SECRET", SECRET);
     vi.spyOn(console, "info").mockImplementation(() => {});

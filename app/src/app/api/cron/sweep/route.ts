@@ -4,7 +4,7 @@ import { bunnyApi, bunnyConfig, type BunnyConfig } from "@/server/bunny";
 import { sweepClientRows } from "@/server/client-auth";
 import { serverEnv } from "@/server/env";
 import { serverKv, sweepExpired } from "@/server/kv";
-import { purgeRemovedLessonFiles } from "@/server/lesson-file-purge";
+import { drainRemovedLessonFiles } from "@/server/lesson-file-purge";
 import { sweepStuckVideos, type VideoSweep } from "@/server/lesson-videos";
 import { logFailure } from "@/server/log";
 import { mediaStore } from "@/server/media-store";
@@ -63,8 +63,10 @@ async function sweepPayments(db: Db, now: Date, until: number): Promise<PaymentS
  *   payment that cannot be settled is counted and logged and does not stop the others (only three connection errors in a row stop that
  *   loop), and one Montonio says is paid but that cannot be recorded alerts Maria once ("Makse vajab kontrolli");
  * - the lesson files an admin removed („Eemalda“ only marks them, so the UndoBar can bring them back): those marked 10 s ago or more
- *   are deleted, the row first and then the R2 object (server/lesson-file-purge.ts; `files` counts rows). The action that follows a
- *   removal purges them too, so this is the backstop for the last removal of a session. Never fails the sweep: it logs and counts 0.
+ *   are deleted, the row first and then the R2 object (server/lesson-file-purge.ts; `files` counts rows), in batches of 20 one after the other until
+ *   none is due: at most 25 batches (500 files) and no new batch after SWEEP_DEADLINE_MS, so a backlog cannot build (what a bound leaves goes with the
+ *   next run, and a log line says so). The action that follows a removal purges them too, so this is the backstop for the last removal of a session.
+ *   Never fails the sweep: it logs and counts 0.
  * Vercel sends `Authorization: Bearer <CRON_SECRET>` when the project has the CRON_SECRET variable; anything else, and every
  * request while CRON_SECRET is not set, is a 401.
  * 200 `{ ok: true, deleted, logins, sessions, mailDays, uploads, processingReady, processingFailed, videosLeft, files, paymentsChecked,
@@ -79,19 +81,22 @@ export async function GET(request: Request): Promise<Response> {
     const db = getDb();
     const now = new Date();
     const until = now.getTime() + SWEEP_DEADLINE_MS;
-    const [deleted, accounts, videos, checked, files] = await Promise.all([
+    const [deleted, accounts, videos, checked, purge] = await Promise.all([
       sweepExpired(db, now),
       sweepClientRows(db, now),
       sweepVideos(db, bunnyConfig(), now, until),
       sweepPayments(db, now, until),
-      purgeRemovedLessonFiles(db, mediaStore(), now),
+      drainRemovedLessonFiles(db, mediaStore(), now, { until }),
     ]);
+    const files = purge.purged;
     console.info(
       `[cron] sweep: ${deleted} expired kv entries, ${accounts.logins} login codes, ${accounts.sessions} sessions, ${accounts.mailDays} mail counters, ${videos.uploads} stuck video uploads deleted, ${videos.processingReady} stuck processing videos found ready, ${videos.processingFailed} marked failed, ${videos.left} video rows left for the next run`,
     );
     if (videos.outOfTime) console.info(`[cron] sweep: no new video row started after ${SWEEP_DEADLINE_MS / 1000} s`);
     // the lesson files' line only when there was something to purge (tests/db/cron-sweep.test.ts counts the log lines of a sweep that had nothing)
     if (files > 0) console.info(`[cron] sweep: ${files} removed lesson files purged`);
+    // a bound ended the drain (25 batches, or the deadline) while files may still be due: said once, so that a backlog is seen and not guessed at
+    if (purge.stopped) console.info("[cron] sweep: more removed lesson files are due than one run takes; the rest goes with the next run");
     // the payments' line only with online payments set up: without them the existing log lines are all there is (tests/db/cron-sweep.test.ts
     // counts them: toHaveBeenCalledTimes(1), the exact list of two), and the answer's payment counts are zeros
     if (checked) {
