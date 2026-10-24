@@ -1278,7 +1278,11 @@ test.describe("signed in", () => {
       await expect(page).not.toHaveURL(/[?&]id=/);
     }
     await expect(async () => {
-      const box = (await row.locator('[data-label="Koolitus ja toimumine"] span').first().boundingBox())!;
+      // (scrolled into view first: a mouse click at coordinates goes to the viewport, and with other runs' rows above this one on a phone's tall cards
+      // the row is below the fold: Task 12 saw it never open in 3 of 12 parallel runs)
+      const cell = row.locator('[data-label="Koolitus ja toimumine"] span').first();
+      await cell.scrollIntoViewIfNeeded();
+      const box = (await cell.boundingBox())!;
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await expect(page).toHaveURL(new RegExp(`[?&]id=${f.registration.id}$`), { timeout: 1500 });
     }).toPass({ timeout: 15_000 });
