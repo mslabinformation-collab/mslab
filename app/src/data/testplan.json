@@ -918,7 +918,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-ekursus-moodulite-jarjekord",
@@ -947,7 +947,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-ekursus-video",
@@ -978,7 +978,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-oppetund-fail-eemalda",
@@ -1008,7 +1008,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-ekursus-test",
@@ -1035,7 +1035,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-ekursus-punktid",
@@ -1059,7 +1059,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-ekursus-tunnistus",
@@ -1082,7 +1082,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-ekursus-avalda",
@@ -1108,7 +1108,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-kontakt-punktid",
@@ -1132,7 +1132,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-koolitus-tekst",
@@ -1160,7 +1160,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-koolitus-hind",
@@ -1191,7 +1191,7 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-ru-tekst",
@@ -1273,7 +1273,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-koolitus-pildid",
@@ -1301,7 +1301,7 @@
       "risk": "med",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-koolitus-loendid",
@@ -1329,7 +1329,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-koolitus-mustand-eelvaade",
@@ -1362,7 +1362,7 @@
       "risk": "high",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-koolitus-loobu",
@@ -1390,7 +1390,7 @@
       "risk": "med",
       "writes": false,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-koolitus-uus",
@@ -1418,7 +1418,7 @@
       "risk": "med",
       "writes": true,
       "mark": "new",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-koolitus-jarjekord",
@@ -1448,7 +1448,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-kalender-toimumine",
@@ -1577,7 +1577,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-koolitaja",
@@ -1603,7 +1603,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-hupikaken",
@@ -2045,7 +2045,7 @@
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-loend-terve-rida",
@@ -2075,7 +2075,7 @@
       "risk": "low",
       "writes": false,
       "mark": "redo",
-      "markedAt": "deploy"
+      "markedAt": "2026-10-24T22:46:48.501Z"
     },
     {
       "id": "haldus-registreerimised-otsing",
