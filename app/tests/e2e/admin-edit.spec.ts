@@ -531,7 +531,7 @@ test.describe("course editor", () => {
       await expect(page.locator("[data-badge-editor]").getByRole("button", { name, exact: true })).toHaveCount(1);
   });
 
-  test("lists (ET/RU rows, ↑ ↓, add, remove) autosave in their order and go live with „Avalda muudatused“", async ({ page, context, visitorIp }, info) => {
+  test("lists (ET/RU rows, ↑ ↓, add, remove with „Võta tagasi“) autosave in their order and go live with „Avalda muudatused“", async ({ page, context, visitorIp }, info) => {
     const c = mine(info);
     const id = await changing(c.slug);
     await signIn(page, context, visitorIp);
@@ -557,8 +557,23 @@ test.describe("course editor", () => {
     await editLang(page, "ru");
     await rows.nth(count).locator("[data-lang-field]").fill("E2E результат");
     await editLang(page, "et");
+    // each row has its handle (DragList, S3-P3-m)
+    await expect(rows.nth(2).locator('[data-drag-tool="handle"]')).toHaveAttribute("aria-label", "Lohista rida 3");
+    // × takes the row out at once, with the UndoBar (S3-P3-d); „Võta tagasi“ puts it back at its place
+    const third = await rows.nth(2).locator("[data-lang-field]").inputValue();
     await outcomes.getByRole("button", { name: "Eemalda rida 3" }).click();
     await expect(rows).toHaveCount(count);
+    const undoBar = page.locator("[data-undo-bar]");
+    await expect(undoBar).toContainText("Rida eemaldatud.");
+    await undoBar.getByRole("button", { name: "Võta tagasi" }).click();
+    await expect(rows).toHaveCount(count + 1);
+    await expect(rows.nth(2).locator("[data-lang-field]")).toHaveValue(third);
+    await expect(undoBar).toHaveCount(0);
+    await outcomes.getByRole("button", { name: "Eemalda rida 3" }).click();
+    await expect(rows).toHaveCount(count);
+    // (Esc dismisses the bar: on a phone it stands over the PublishBar's „Avalda“ for its 8 s, PublishBar.module.css)
+    await page.keyboard.press("Escape");
+    await expect(undoBar).toHaveCount(0);
     await expect(barWords(page)).toHaveText(draftWords("Õpiväljundid"));
     await publish(page);
 
@@ -618,25 +633,36 @@ test.describe("course editor", () => {
     expect((await page.request.get(`/media/${jpgKey.replace(".jpg", ".svg")}`)).status()).toBe(404);
     expect((await page.request.get("/media/img/../secret")).status()).toBe(404);
 
-    // the new JPEG becomes the main picture: dragged with a mouse, ↑ on a phone
+    // the new JPEG becomes the main picture: its handle dragged with a mouse, ↑ on a phone (DragList: „Liiguta rida {n} üles“, S3-P3-m)
     const last = items.nth(before);
     if (isMobile) {
-      for (let n = before + 1; n > 1; n--) await gallery.getByRole("button", { name: `Liiguta pilt ${n} ettepoole` }).click();
+      for (let n = before + 1; n > 1; n--) await gallery.getByRole("button", { name: `Liiguta rida ${n} üles` }).click();
     } else {
       // both pictures on screen: a drag cannot scroll the page on its way
       const size = page.viewportSize()!;
       await page.setViewportSize({ width: size.width, height: 2400 });
       await items.nth(0).scrollIntoViewIfNeeded();
-      await last.locator("img").dragTo(items.nth(0).locator("img"));
+      await last.locator('[data-drag-tool="handle"]').dragTo(items.nth(0).locator('[data-drag-tool="handle"]'));
       await page.setViewportSize(size);
     }
     await expect(items.nth(0)).toHaveAttribute("data-gallery-item", jpgKey);
     await expect(items.nth(0)).toContainText("Põhipilt");
     await items.nth(0).getByRole("textbox", { name: "Pildi kirjeldus (eesti keeles)" }).fill("E2E õppematerjal");
-    // the PNG goes again
+    // the PNG goes again: at once, with the UndoBar „Pilt eemaldatud.“ (S3-P3-d); „Võta tagasi“ puts it back at its place, its stored file untouched
+    // (a removal never deletes the file, so nothing an undo brings back is lost)
     const pngIndex = (await items.evaluateAll((els) => els.map((e) => e.getAttribute("data-gallery-item")))).indexOf(pngKey);
     await gallery.getByRole("button", { name: `Eemalda pilt ${pngIndex + 1}` }).click();
     await expect(items).toHaveCount(before + 1);
+    const undoBar = page.locator("[data-undo-bar]");
+    await expect(undoBar).toContainText("Pilt eemaldatud.");
+    await undoBar.getByRole("button", { name: "Võta tagasi" }).click();
+    await expect(items).toHaveCount(before + 2);
+    await expect(items.nth(pngIndex)).toHaveAttribute("data-gallery-item", pngKey);
+    expect((await page.request.get(`/media/${pngKey}`)).status()).toBe(200);
+    await gallery.getByRole("button", { name: `Eemalda pilt ${pngIndex + 1}` }).click();
+    await expect(items).toHaveCount(before + 1);
+    await page.keyboard.press("Escape"); // (the bar off the phone's „Avalda“)
+    await expect(undoBar).toHaveCount(0);
     await publish(page);
     const stored = await storedCourse(c.slug);
     expect(stored.images[0]).toBe(jpgKey);

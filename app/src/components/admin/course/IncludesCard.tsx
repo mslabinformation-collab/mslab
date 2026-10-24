@@ -7,7 +7,7 @@ import { Card } from "./Card";
 import { CARD_ID, listChange } from "./course-view";
 import type { PartApi } from "./types";
 
-/** „Koolitus sisaldab“ (a contact course's card, README B2): ListEditor, as it is until Task 8. Rows added, removed or moved save now. */
+/** „Koolitus sisaldab“ (a contact course's card, README B2): ListEditor. Rows added, moved, removed or brought back save now, through the part's update. */
 export function IncludesCard({ api }: { api: PartApi<"includes"> }) {
   const t = adminEt.courseEditor;
   const items = api.fields.includes;
@@ -19,6 +19,8 @@ export function IncludesCard({ api }: { api: PartApi<"includes"> }) {
         hint={t.fields.includesHint}
         items={items}
         onChange={(v) => (listChange(items, v) === "instant" ? api.commit("includes", v) : api.set("includes", v))}
+        onUpdate={(fn) => api.update("includes", fn)}
+        unpublished={api.unpublished("includes")}
         error={api.error("includes")}
         maxLength={LIMITS.item}
         multiline

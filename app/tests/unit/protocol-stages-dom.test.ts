@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { act, createElement, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ProtocolStagesEditor } from "@/components/admin/ProtocolStagesEditor";
+import { UndoProvider } from "@/components/admin/UndoBar";
 
 // "Protokolli punktid" in the course editor (phase protocols, spec §3): one plain field per heading, in order, with ↑ / ↓ / ×, "Lisa punkt",
 // at most 30 (the button says so then), each field at most 120 characters. And the same editor for the e-course certificate's lines (phase
@@ -13,21 +14,29 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-type Opts = { kind?: "stages" | "skills"; hint?: string; empty?: string; outcomes?: { et: string }[] };
+type Opts = { kind?: "stages" | "skills"; hint?: string; empty?: string; outcomes?: { et: string }[]; unpublished?: boolean };
 
 let container: HTMLDivElement;
 let root: Root;
 let current: string[] = [];
-function Harness({ initial, kind, hint, empty, outcomes }: { initial: string[] } & Opts) {
+/** The row changes asked for through `onUpdate` (add, move, remove, undo): each one a save of the card. */
+const updates = vi.fn();
+function Harness({ initial, kind, hint, empty, outcomes, unpublished }: { initial: string[] } & Opts) {
   const [items, setItems] = useState(initial);
   useEffect(() => {
     current = items; // (not during the render: react-hooks/globals; act() flushes the effect)
   }, [items]);
-  return createElement(ProtocolStagesEditor, { items, onChange: setItems, kind, hint, empty, outcomes });
+  const onUpdate = (fn: (list: string[]) => string[]) => {
+    updates();
+    setItems((list) => fn(list));
+  };
+  return createElement(ProtocolStagesEditor, { items, onChange: setItems, onUpdate, kind, hint, empty, outcomes, unpublished });
 }
 // a new key for each list: a new editor, as the course editor's reload gives one
 const render = async (initial: string[], opts: Opts = {}) =>
-  act(async () => root.render(createElement(Harness, { key: `${opts.kind ?? "stages"}:${initial.join("|")}`, initial, ...opts })));
+  act(async () =>
+    root.render(createElement(UndoProvider, null, createElement(Harness, { key: `${opts.kind ?? "stages"}:${initial.join("|")}:${opts.unpublished ?? ""}`, initial, ...opts }))),
+  );
 const fields = (hook = "data-protocol-stage") => [...container.querySelectorAll<HTMLInputElement>(`[${hook}]`)];
 const click = async (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const type = async (el: HTMLInputElement, value: string) =>
@@ -37,6 +46,7 @@ const type = async (el: HTMLInputElement, value: string) =>
   });
 
 beforeEach(() => {
+  updates.mockClear();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -135,4 +145,53 @@ test("M-4: no line of its own, so the certificate prints the course's outcomes, 
   // the protocol's list never warns about it
   await render([], { outcomes: [long] });
   expect(warning()).toBeNull();
+});
+
+// Task 8 (admin UX pass piece 3a; README B2, S3-P3-d, S3-P3-m): drag and ↑ / ↓ (DragList), × at once with the UndoBar „Rida eemaldatud.“, keys per row
+
+const keys = () => [...container.querySelectorAll<HTMLElement>("[data-drag-row]")].map((li) => li.getAttribute("data-drag-row"));
+const bar = () => document.querySelector<HTMLElement>("[data-undo-bar]");
+
+test("each heading has its handle „Lohista rida {n}“ and ↑ / ↓; a move is one update and every row keeps its key", async () => {
+  await render(["Ettevalmistus", "Analüüs", "Värvimine"]);
+  expect(container.querySelector('[data-row="2"] [data-drag-tool="handle"]')!.getAttribute("aria-label")).toBe("Lohista rida 3");
+  const before = keys();
+  await click(container.querySelector('[data-row="2"] [data-drag-tool="up"]'));
+  expect(updates).toHaveBeenCalledTimes(1);
+  expect(current).toEqual(["Ettevalmistus", "Värvimine", "Analüüs"]);
+  expect(keys()).toEqual([before[0], before[2], before[1]]);
+});
+
+test("removing a heading shows „Rida eemaldatud.“; „Võta tagasi“ puts it back at its place with its key, and the list saves again", async () => {
+  await render(["Ettevalmistus", "Analüüs", "Värvimine"]);
+  const before = keys();
+  await click(container.querySelector('[aria-label="Eemalda rida 2"]'));
+  expect(current).toEqual(["Ettevalmistus", "Värvimine"]);
+  expect(bar()!.querySelector("p")!.textContent).toBe("Rida eemaldatud.");
+  expect(document.activeElement).toBe(fields()[1]);
+  await click(bar()!.querySelector("button"));
+  expect(current).toEqual(["Ettevalmistus", "Analüüs", "Värvimine"]);
+  expect(keys()).toEqual(before);
+  expect(updates).toHaveBeenCalledTimes(2);
+});
+
+test("a certificate line (kind 'skills') removed: the same bar and undo", async () => {
+  await render(["Kulmude kuju", "Värvi valik"], { kind: "skills" });
+  await click(container.querySelector('[aria-label="Eemalda rida 1"]'));
+  expect(current).toEqual(["Värvi valik"]);
+  expect(bar()!.querySelector("p")!.textContent).toBe("Rida eemaldatud.");
+  await click(bar()!.querySelector("button"));
+  expect(current).toEqual(["Kulmude kuju", "Värvi valik"]);
+});
+
+test("„· avaldamata“ after the list's title while its part waits for „Avalda muudatused“ (README §1.8)", async () => {
+  await render(["Ettevalmistus"], { unpublished: true });
+  const group = container.querySelector("[data-protocol-stages]")!;
+  const tag = group.querySelector<HTMLElement>("h3 [data-unpublished-tag]")!;
+  expect(tag.textContent).toBe("· avaldamata");
+  expect(group.getAttribute("aria-describedby")!.split(" ")).toContain(tag.id);
+  await render(["Ettevalmistus"], { kind: "skills", unpublished: true });
+  expect(container.querySelector("[data-certificate-skills] h3 [data-unpublished-tag]")).not.toBeNull();
+  await render(["Ettevalmistus"]);
+  expect(container.querySelector("[data-unpublished-tag]")).toBeNull();
 });

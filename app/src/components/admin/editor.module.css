@@ -313,6 +313,23 @@
   justify-self: start;
 }
 
+/* A list editor's row with its order control (DragList, README B2): the handle „⋮⋮“ | the number | the field(s) | ↑ ↓ ×. On top of .item (its frame);
+   narrow (a phone, the course editor's narrow card column) the handle and the number stand above the field and the buttons under it, in the order
+   the focus goes. While the row is dragged it is lifted with the row highlight. */
+.dragRow {
+  grid-template-columns: 44px 30px minmax(0, 1fr) auto;
+  padding-left: 6px;
+}
+
+.rowMain {
+  min-width: 0;
+}
+
+[data-dragging] > .dragRow,
+[data-dragging] > .dragShot {
+  background: var(--row-highlight);
+}
+
 /* ---------- gallery ---------- */
 
 .gallery {
@@ -335,17 +352,16 @@
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.shot[draggable="true"] {
-  cursor: grab;
+/* a picture's row with its handle: ⋮⋮ | the thumbnail | its name and description | ↑ ↓ × */
+.dragShot {
+  grid-template-columns: 44px 96px minmax(0, 1fr) auto;
+  padding-left: 6px;
 }
 
-.shot[data-dragging] {
-  opacity: 0.5;
-}
-
-.shot[data-over] {
-  border-color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--ink);
+/* (DragList's two arrows come as one group, then ×) */
+.dragShot > .shotTools {
+  display: flex;
+  gap: 4px;
 }
 
 .thumb {
@@ -558,6 +574,44 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 18px;
   }
+
+  .dragRow {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .dragRow > .num {
+    align-self: center;
+    padding-top: 0;
+  }
+
+  .dragRow > .rowMain,
+  .dragRow > .tools {
+    grid-column: 1 / -1;
+  }
+
+  .dragRow > .tools {
+    justify-content: flex-end;
+  }
+
+  .dragShot {
+    grid-template-columns: 44px 72px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .dragShot > .thumb {
+    width: 72px;
+    height: 72px;
+  }
+
+  .dragShot > .shotBody,
+  .dragShot > .shotTools {
+    grid-column: 1 / -1;
+  }
+
+  .dragShot > .shotTools {
+    justify-content: end;
+  }
 }
 
 @media (max-width: 640px) {
@@ -592,6 +646,27 @@
   .shotTools {
     grid-column: 1 / -1;
     justify-content: end;
+  }
+
+  .dragRow {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .dragRow > .num {
+    align-self: center;
+  }
+
+  .dragRow > .rowMain,
+  .dragRow > .tools {
+    grid-column: 1 / -1;
+  }
+
+  .dragShot {
+    grid-template-columns: 44px 72px minmax(0, 1fr);
+  }
+
+  .dragShot > .shotBody {
+    grid-column: 1 / -1;
   }
 
   .preview {

@@ -13,7 +13,7 @@ import type { PartApi } from "./types";
 
 /**
  * „Tunnistus“ (an e-course's card; phase 3d, spec §6): the certificate's lines (none: its „Õpiväljundid“ are printed, `outcomes`) and its volume.
- * Lines added, removed or moved save now; the volume when typing stops or the card is left.
+ * Lines added, moved, removed or brought back save now (the part's update); the volume when typing stops or the card is left.
  */
 export function CertificateCard({ api, outcomes }: { api: PartApi<"certificate">; outcomes: readonly I18n[] }) {
   const t = adminEt.courseEditor;
@@ -27,6 +27,8 @@ export function CertificateCard({ api, outcomes }: { api: PartApi<"certificate">
           kind="skills"
           items={items}
           onChange={(v) => (listChange(items, v) === "instant" ? api.commit("certificateSkills", v) : api.set("certificateSkills", v))}
+          onUpdate={(fn) => api.update("certificateSkills", fn)}
+          unpublished={api.unpublished("certificateSkills")}
           error={api.error("certificateSkills")}
           outcomes={outcomes}
         />

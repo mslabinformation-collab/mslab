@@ -1213,20 +1213,50 @@
       "steps": [
         "Ava mõni avaldatud koolitus ja keri plokini „Galerii“.",
         "Vajuta „Lisa pilte“ ja vali tahvlist üks pilt.",
-        "Liiguta uus pilt noolega esimeseks.",
+        "Lohista uue pildi käepide ⋮⋮ sõrmega esimeseks või vajuta noolt üles.",
         "Vajuta pealkirja all „Avalda muudatused“ ja ava koolitus avalikul lehel.",
-        "Eemalda uus pilt ✕ nupuga ja vajuta uuesti „Avalda muudatused“."
+        "Eemalda uus pilt ✕ nupuga ja vajuta allservas „Võta tagasi“.",
+        "Eemalda uus pilt uuesti ja vajuta „Avalda muudatused“."
       ],
       "expect": [
         "Pilt laaditakse üles ja ilmub galeriisse.",
         "Esimese pildi juures on „Põhipilt“.",
         "Avalikul lehel ja kaardil on uus pilt esimene.",
+        "Eemaldamisel on allservas „Pilt eemaldatud.“ ja „Võta tagasi“ toob pildi samale kohale tagasi.",
         "Pärast eemaldamist on galerii nagu enne."
       ],
       "why": "Maria lisab pildid otse tahvlist.",
       "risk": "med",
       "writes": false,
       "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-koolitus-loendid",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Koolituse loendid: lohistamine, nooled ja „Võta tagasi“",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava mõni avaldatud e-koolitus ja keri plokini „Õpiväljundid“.",
+        "Lohista teise rea käepide ⋮⋮ sõrmega esimeseks ja lase lahti.",
+        "Vajuta sama rea juures noolt alla.",
+        "Eemalda kolmas rida ✕ nupuga ja vajuta allservas „Võta tagasi“.",
+        "Eemalda plokis „Teadmiste test“ üks küsimus ✕ nupuga ja vajuta „Võta tagasi“.",
+        "Vajuta pealkirja all „Avalda muudatused“ ja ava koolitus avalikul lehel."
+      ],
+      "expect": [
+        "Rida liigub kohe uude kohta ja päises on „Mustand salvestatud“ koos kellaajaga.",
+        "Eemaldamisel on allservas „Rida eemaldatud.“ või „Küsimus eemaldatud.“ ja nupp „Võta tagasi“.",
+        "„Võta tagasi“ paneb rea või küsimuse samale kohale tagasi koos tekstiga.",
+        "Kuni avaldad, on ploki pealkirja järel „· avaldamata“.",
+        "Avalikul lehel on õpiväljundid uues järjekorras."
+      ],
+      "why": "Maria seab loendeid tahvlis sõrmega ja kogemata eemaldatud rida peab tagasi tulema.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
       "markedAt": "deploy"
     },
     {
@@ -1485,11 +1515,14 @@
       "expect": [
         "Koolitaja lehel on uus pilt „Koolitaja tööd“ all.",
         "Avalehe koolitaja plokis on sama nimi ja tutvustus.",
+        "Eemaldamisel on allservas „Pilt eemaldatud.“ ja nupp „Võta tagasi“.",
         "Pärast eemaldamist on pilt kadunud."
       ],
       "why": "Koolitaja leht näitab Maria tööd.",
       "risk": "low",
-      "writes": false
+      "writes": false,
+      "mark": "redo",
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-hupikaken",

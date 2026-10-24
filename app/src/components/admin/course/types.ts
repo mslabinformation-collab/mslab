@@ -43,6 +43,11 @@ export type PartApi<P extends EditorPart> = {
   flush: () => void;
   /** The words of a field's refusal (its check), or undefined. */
   error: (name: string) => string | undefined;
+  /**
+   * The value the field's refusal was for: what the refused save sent (undefined: no refusal, or none known). A list's refusal is placed on its rows as
+   * they were then, by their ids, so the words stay on the row they are about wherever it has moved since (README B2 "errors keyed by row id").
+   */
+  refusedValue: (name: string) => unknown;
   /** The field's value waits for „Avalda muudatused“: a published course's draft differs from live there (README §1.8, „· avaldamata“). */
   unpublished: (name: string) => boolean;
   /** Another tab or device saved this part meanwhile: „Taasta minu tekst“ (`restore`) saves this card's text over it (README §1.3, B13). */

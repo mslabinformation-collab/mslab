@@ -1471,11 +1471,12 @@ export const adminEt = {
     missingHint: "Venekeelne tekst puudub: vene lehel on seni näha eestikeelne.",
   },
 
+  // ListEditor and ProtocolStagesEditor (outcomes, „Koolitus sisaldab“, protocol points, certificate lines, Praktika's items): the row's ↑ / ↓ are
+  // DragList's (drag.upRow, drag.downRow); `removed` is the UndoBar's line after × (piece 3 texts S3-P3-d)
   list: {
     add: "Lisa rida",
     remove: "Eemalda rida {n}",
-    up: "Liiguta rida {n} üles",
-    down: "Liiguta rida {n} alla",
+    removed: "Rida eemaldatud.",
     empty: "Ridu veel pole.",
   },
 
@@ -1669,9 +1670,10 @@ export const adminEt = {
       testOptionRemove: "Eemalda küsimuse {q} vastusevariant {n}",
       testAdd: "Lisa küsimus",
       testFull: "Rohkem kui 50 küsimust ei saa lisada.",
-      testUp: "Liiguta küsimus {n} üles",
-      testDown: "Liiguta küsimus {n} alla",
       testRemove: "Eemalda küsimus {n}",
+      // the UndoBar's line after × on a question or an answer option (S3-P3-d; ↑ / ↓ are DragList's, drag.upRow / drag.downRow)
+      testRemoved: "Küsimus eemaldatud.",
+      testOptionRemoved: "Vastusevariant eemaldatud.",
       // "Tunnistus" (phase 3d, spec §6): an e-course certificate's lines and volume (the list is ProtocolStagesEditor's kind "skills")
       certificateLead: "E-kursuse tunnistuse tekst. Juba väljastatud tunnistused jäävad selliseks, nagu need väljastati.",
       certificateSkills: "Oskused tunnistusel",
@@ -1688,9 +1690,9 @@ export const adminEt = {
       main: "Põhipilt",
       image: "Pilt {n}",
       alt: "Pildi kirjeldus",
-      imageUp: "Liiguta pilt {n} ettepoole",
-      imageDown: "Liiguta pilt {n} tahapoole",
       imageRemove: "Eemalda pilt {n}",
+      // the UndoBar's line after × on a picture (drawn, P1:356; S3-P3-d); ↑ / ↓ are DragList's
+      imageRemoved: "Pilt eemaldatud.",
       noImages: "Pilte veel pole.",
       recommendationsHint: "Vali kuni 3 koolitust, mida näidata selle koolituse lehe lõpus. Ülejäänud kohad täidetakse sarnaste koolitustega.",
       recommendationsCount: "Valitud {n} / 3",

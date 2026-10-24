@@ -19,8 +19,15 @@ function withField(d: CourseDraft, part: EditorPart, name: string, value: unknow
   return { ...d, [name]: value };
 }
 
-export function useLocalParts(o: { draft: CourseDraft; setDraft: Dispatch<SetStateAction<CourseDraft>>; refused: Record<string, string>; clear: (name: string) => void }): CourseParts {
-  const { draft, setDraft, refused, clear } = o;
+export function useLocalParts(o: {
+  draft: CourseDraft;
+  setDraft: Dispatch<SetStateAction<CourseDraft>>;
+  refused: Record<string, string>;
+  /** The draft the refused create sent (its lists' rows as they were then). */
+  sent: CourseDraft | null;
+  clear: (name: string) => void;
+}): CourseParts {
+  const { draft, setDraft, refused, sent, clear } = o;
   return useMemo(() => {
     const parts: Record<string, unknown> = {};
     for (const part of COURSE_PARTS) {
@@ -48,6 +55,7 @@ export function useLocalParts(o: { draft: CourseDraft; setDraft: Dispatch<SetSta
           const code = refused[CREATE_NAME[name] ?? name];
           return code ? refusalText(code, part, name, draft.type) : undefined;
         },
+        refusedValue: (name) => (sent && (CREATE_NAME[name] ?? name) in refused ? (partValue(part, sent) as Record<string, unknown>)[name] : undefined),
         unpublished: () => false,
         conflict: false,
         restore: () => {},
@@ -56,5 +64,5 @@ export function useLocalParts(o: { draft: CourseDraft; setDraft: Dispatch<SetSta
       parts[part] = api;
     }
     return parts as CourseParts;
-  }, [draft, setDraft, refused, clear]);
+  }, [draft, setDraft, refused, sent, clear]);
 }

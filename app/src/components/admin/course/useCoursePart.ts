@@ -12,10 +12,11 @@ import type { PartApi } from "./types";
 
 // One card's autosave on a saved course (admin UX pass piece 3a, Task 7; README B2, §1.3): the shared engine (autosave/useAutosave.ts, used as it is)
 // on POST /api/admin/koolitus/<id>/osa/<part> (Task 4: a published course's save is its draft, an unpublished one's goes to the record), from the
-// part's version the page read (R-b). The sender is the engine's patchSender, with an ear on its answers: a 400's field codes are kept, so the card
-// can say at the field what its check refused (the engine holds those fields back and saves the rest), and a field typed in again or saved loses its
-// words; and the screen's `ear` hears each save as it goes and as it ends (an unpublished course's type, SavedCourse.tsx). A save's end is never
-// waited for beyond SAVE_TIMEOUT_MS, whatever the request does: the sender's own bound, set before the request's, says `late` then (its outcome
+// part's version the page read (R-b). The sender is the engine's patchSender, with an ear on its answers: a 400's field codes are kept, with the
+// value each refused field was sent with, so the card can say at the field what its check refused (the engine holds those fields back and saves the
+// rest) and a list can place the words on the row they are about (Task 8: by the row's id in what was sent), and a field typed in again or saved
+// loses its words; and the screen's `ear` hears each save as it goes and as it ends (an unpublished course's type, SavedCourse.tsx). A save's end
+// is never waited for beyond SAVE_TIMEOUT_MS, whatever the request does: the sender's own bound, set before the request's, says `late` then (its outcome
 // unknown), so nothing the screen holds for a save's end can wait for good (review round 3). The copy in this browser is
 // `mslab-draft:koolitus:<id>-<part>:<tab>`.
 
@@ -56,7 +57,8 @@ export function useCoursePart<P extends EditorPart>(o: {
   ear?: { readonly current: SaveEar | null };
 }) {
   const { courseId, part, seed, published, liveType, ear } = o;
-  const [codes, setCodes] = useState<Record<string, string>>({});
+  /** Each refused field's code and the value the refused save sent. */
+  const [codes, setCodes] = useState<Record<string, { code: string; sent: unknown }>>({});
   /** The saves the server took since the card started: a part held back at the publish is listed until its next one (review M-3). */
   const [saves, setSaves] = useState(0);
   const send = useMemo<SendPatch>(() => {
@@ -71,7 +73,11 @@ export function useCoursePart<P extends EditorPart>(o: {
       const answer = result === "late" ? null : result;
       const reply = answer && isRecord(answer.body) ? answer.body : null;
       if (answer?.status === 400 && reply?.error === "invalid" && isRecord(reply.fields)) {
-        const named = Object.fromEntries(Object.entries(reply.fields).filter(([name, code]) => name in body.patch && typeof code === "string")) as Record<string, string>;
+        const named = Object.fromEntries(
+          Object.entries(reply.fields)
+            .filter(([name, code]) => name in body.patch && typeof code === "string")
+            .map(([name, code]) => [name, { code: code as string, sent: body.patch[name] }]),
+        );
         setCodes((c) => ({ ...c, ...named }));
       } else if (answer?.status === 200 && reply?.ok === true) {
         setCodes((c) => Object.fromEntries(Object.entries(c).filter(([name]) => !(name in body.patch))));
@@ -122,7 +128,8 @@ export function useCoursePart<P extends EditorPart>(o: {
         if (Array.isArray(before) && Array.isArray(after) && listChange(before, after) === "instant") void flush();
       },
       flush: () => void flush(),
-      error: (name: string) => (codes[name] ? refusalText(codes[name], part, name, liveType) : undefined),
+      error: (name: string) => (codes[name] ? refusalText(codes[name].code, part, name, liveType) : undefined),
+      refusedValue: (name: string) => codes[name]?.sent,
       unpublished: (name: string) => published && stableJson((fields as Record<string, unknown>)[name]) !== stableJson(live[name]),
       conflict: conflict !== null,
       restore: () => void restore(),

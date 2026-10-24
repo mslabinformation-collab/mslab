@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { act, createElement, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { TestEditor, type TestErrors } from "@/components/admin/TestEditor";
+import { UndoProvider } from "@/components/admin/UndoBar";
 import type { TestQuestion } from "@/db/schema";
 import { emptyTestDraft, type TestDraft } from "@/domain/course-editor";
 
@@ -19,15 +20,22 @@ let container: HTMLDivElement;
 let root: Root;
 let current: TestDraft;
 let mounts = 0;
-function Harness({ initial, errors }: { initial: TestDraft; errors: TestErrors }) {
+/** The question list's changes asked for through `onUpdate` (a question added, moved or removed, an option removed, an undo). */
+const updates = vi.fn();
+function Harness({ initial, errors, unpublished }: { initial: TestDraft; errors: TestErrors; unpublished?: { questions?: boolean } }) {
   const [value, setValue] = useState(initial);
   useEffect(() => {
     current = value; // (not during the render: react-hooks/globals; act() flushes the effect)
   }, [value]);
-  return createElement(TestEditor, { value, onChange: setValue, errors });
+  const onUpdate = (fn: (questions: TestQuestion[]) => TestQuestion[]) => {
+    updates();
+    setValue((v) => ({ ...v, questions: fn(v.questions) }));
+  };
+  return createElement(TestEditor, { value, onChange: setValue, onUpdate, errors, unpublished });
 }
 // a new key each time: a new editor, as the course editor's reload gives one
-const render = async (initial: TestDraft, errors: TestErrors = {}) => act(async () => root.render(createElement(Harness, { key: ++mounts, initial, errors })));
+const render = async (initial: TestDraft, errors: TestErrors = {}, unpublished?: { questions?: boolean }) =>
+  act(async () => root.render(createElement(UndoProvider, null, createElement(Harness, { key: ++mounts, initial, errors, unpublished }))));
 const $ = <T extends Element = HTMLElement>(selector: string) => container.querySelector<T>(selector);
 const $$ = (selector: string) => [...container.querySelectorAll<HTMLElement>(selector)];
 const click = async (el: Element | null) => act(async () => (el as HTMLElement).click());
@@ -47,6 +55,7 @@ const choice = (id: string, text: string, options: [string, boolean][]): TestQue
 const draft = (questions: TestQuestion[]): TestDraft => ({ ...emptyTestDraft(), questions });
 
 beforeEach(() => {
+  updates.mockClear();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -123,11 +132,14 @@ test("questions move ↑ / ↓ (off at the ends) and go with ×, the focus kept;
   const a = choice("q0000001", "Esimene", [["A", true], ["B", false]]);
   const b: TestQuestion = { id: "q0000002", kind: "open", text: "Teine" };
   await render(draft([a, b]));
-  expect($('[data-question="0"] [data-question-up]')!.getAttribute("aria-disabled")).toBe("true");
-  expect($('[data-question="1"] [data-question-down]')!.getAttribute("aria-disabled")).toBe("true");
-  expect($('[data-question="1"] [data-question-up]')!.getAttribute("aria-label")).toBe("Liiguta küsimus 2 üles");
-  await click($('[data-question="1"] [data-question-up]'));
+  // the list editors' order control (DragList, Task 8): the handle „Lohista rida {n}“ and the arrows by the row's number (S3-P3-m)
+  expect($('[data-question="0"] [data-drag-tool="up"]')!.getAttribute("aria-disabled")).toBe("true");
+  expect($('[data-question="1"] [data-drag-tool="down"]')!.getAttribute("aria-disabled")).toBe("true");
+  expect($('[data-question="1"] [data-drag-tool="up"]')!.getAttribute("aria-label")).toBe("Liiguta rida 2 üles");
+  expect($('[data-question="1"] [data-drag-tool="handle"]')!.getAttribute("aria-label")).toBe("Lohista rida 2");
+  await click($('[data-question="1"] [data-drag-tool="up"]'));
   expect(current.questions.map((q) => q.id)).toEqual(["q0000002", "q0000001"]);
+  expect(document.activeElement).toBe($('[data-question="0"] [data-drag-tool="up"]'));
   expect($('[data-question="0"] [data-question-remove]')!.getAttribute("aria-label")).toBe("Eemalda küsimus 1");
   await click($('[data-question="0"] [data-question-remove]'));
   expect(current.questions.map((q) => q.id)).toEqual(["q0000001"]);
@@ -162,18 +174,93 @@ test("the pass mark and the tries are typed into the draft as text; their refusa
 
 test("the save's refusal is shown where it is: in the question's card (its option marked), or under the list", async () => {
   const qs = [choice("q0000001", "Esimene", [["A", true], ["B", false]]), choice("q0000002", "Teine", [["A", false], ["B", false]])];
-  await render(draft(qs), { test: "Märgi vähemalt üks vastus õigeks.", at: { index: 1 } });
+  // (keyed by the question's and the option's id, not by their places: README B2 "errors keyed by row id")
+  await render(draft(qs), { test: "Märgi vähemalt üks vastus õigeks.", at: { question: "q0000002" } });
   expect($('[data-question="1"]')!.hasAttribute("data-invalid")).toBe(true);
   expect($('[data-question="1"]')!.textContent).toContain("Märgi vähemalt üks vastus õigeks.");
   expect($('[data-question="0"]')!.hasAttribute("data-invalid")).toBe(false);
   expect($("[data-test-editor]")!.hasAttribute("data-invalid")).toBe(false);
 
-  await render(draft(qs), { test: "Täida küsimuse tekst ja iga vastusevariant.", at: { index: 0, option: 1 } });
+  await render(draft(qs), { test: "Täida küsimuse tekst ja iga vastusevariant.", at: { question: "q0000001", option: "o0000001" } });
   expect($('[data-question="0"] [data-option="1"] [data-option-text]')!.getAttribute("aria-invalid")).toBe("true");
   expect($('[data-question="0"] [data-option="0"] [data-option-text]')!.hasAttribute("aria-invalid")).toBe(false);
 
-  await render(draft(qs), { test: "Testis saab olla kuni 50 küsimust.", at: { index: -1 } });
-  expect($("[data-test-editor]")!.hasAttribute("data-invalid")).toBe(true);
-  expect($$("[data-question][data-invalid]")).toHaveLength(0);
-  expect($("[data-test-editor]")!.textContent).toContain("Testis saab olla kuni 50 küsimust.");
+  // the whole list, or a question that is no longer there: under the list
+  for (const at of [undefined, { question: "q0000009" }]) {
+    await render(draft(qs), { test: "Testis saab olla kuni 50 küsimust.", at });
+    expect($("[data-test-editor]")!.hasAttribute("data-invalid")).toBe(true);
+    expect($$("[data-question][data-invalid]")).toHaveLength(0);
+    expect($("[data-test-editor]")!.textContent).toContain("Testis saab olla kuni 50 küsimust.");
+  }
+});
+
+// Task 8 (admin UX pass piece 3a; README B2, BEH B5, S3-P3-d): × at once with the UndoBar, the question or the option back with its id
+
+const bar = () => document.querySelector<HTMLElement>("[data-undo-bar]");
+const undoIt = () => click(bar()!.querySelector("button"));
+
+test("a removed test question comes back at its place with its original question id, and its options keep theirs („Küsimus eemaldatud.“)", async () => {
+  const a = choice("q0000001", "Esimene", [["A", true], ["B", false]]);
+  const b = choice("q0000002", "Teine", [["C", false], ["D", true], ["E", false]]);
+  const c: TestQuestion = { id: "q0000003", kind: "open", text: "Kolmas" };
+  await render(draft([a, b, c]));
+  await click($('[data-question="1"] [data-question-remove]'));
+  expect(current.questions.map((q) => q.id)).toEqual(["q0000001", "q0000003"]);
+  expect(bar()!.querySelector("p")!.textContent).toBe("Küsimus eemaldatud.");
+  expect(document.activeElement).toBe($('[data-question="1"] [data-question-text]'));
+  await undoIt();
+  expect(current.questions).toEqual([a, b, c]);
+  expect(updates).toHaveBeenCalledTimes(2);
+  // the row is the question's own again (its key is its id), with its three options
+  expect($$('[data-question="1"] [data-option]')).toHaveLength(3);
+  expect($('[data-question="1"]')!.closest("[data-drag-row]")!.getAttribute("data-drag-row")).toBe("q0000002");
+});
+
+test("an answer option removed says „Vastusevariant eemaldatud.“; the undo puts it back at its place with its id", async () => {
+  const q = choice("q0000001", "Mis?", [["A", true], ["B", false], ["C", false]]);
+  await render(draft([q]));
+  await click($('[data-question="0"] [data-option="1"] [data-option-remove]'));
+  const after = current.questions[0];
+  expect(after.kind === "choice" ? after.options.map((o) => o.text) : []).toEqual(["A", "C"]);
+  expect(bar()!.querySelector("p")!.textContent).toBe("Vastusevariant eemaldatud.");
+  await undoIt();
+  expect(current.questions).toEqual([q]);
+});
+
+test("the undo goes into the list as it is then: a question typed in meanwhile keeps its text, a question added meanwhile stays", async () => {
+  const a = choice("q0000001", "Esimene", [["A", true], ["B", false]]);
+  const b: TestQuestion = { id: "q0000002", kind: "open", text: "Teine" };
+  await render(draft([a, b]));
+  await click($('[data-question="0"] [data-question-remove]'));
+  await type($('[data-question="0"] [data-question-text]'), "Teine, parandatud");
+  await click($("[data-question-add]"));
+  await undoIt();
+  expect(current.questions).toHaveLength(3);
+  expect(current.questions[0]).toEqual(a);
+  expect(current.questions[1]).toEqual({ ...b, text: "Teine, parandatud" });
+  expect(current.questions[2].id).not.toBe("q0000001");
+});
+
+test("an error on question X stays on X after a move (keyed by its id, not its place)", async () => {
+  const a = choice("q0000001", "Esimene", [["A", true], ["B", false]]);
+  const b = choice("q0000002", "Teine", [["A", false], ["B", false]]);
+  await render(draft([a, b]), { test: "Märgi vähemalt üks vastus õigeks.", at: { question: "q0000002" } });
+  expect($('[data-question="1"]')!.hasAttribute("data-invalid")).toBe(true);
+  await click($('[data-question="1"] [data-drag-tool="up"]'));
+  expect(current.questions.map((q) => q.id)).toEqual(["q0000002", "q0000001"]);
+  // the words moved with the question
+  expect($('[data-question="0"]')!.hasAttribute("data-invalid")).toBe(true);
+  expect($('[data-question="0"]')!.textContent).toContain("Märgi vähemalt üks vastus õigeks.");
+  expect($('[data-question="1"]')!.hasAttribute("data-invalid")).toBe(false);
+  expect($('[data-question="1"]')!.textContent).not.toContain("Märgi vähemalt üks vastus õigeks.");
+});
+
+test("„· avaldamata“ after „Teadmiste test“ while the questions wait for „Avalda muudatused“", async () => {
+  await render(draft([choice("q0000001", "Esimene", [["A", true], ["B", false]])]), {}, { questions: true });
+  const group = $("[data-test-editor]")!;
+  const tag = group.querySelector<HTMLElement>("h3 [data-unpublished-tag]")!;
+  expect(tag.textContent).toBe("· avaldamata");
+  expect(group.getAttribute("aria-describedby")!.split(" ")).toContain(tag.id);
+  await render(draft([]));
+  expect($("h3 [data-unpublished-tag]")).toBeNull();
 });

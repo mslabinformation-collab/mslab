@@ -1,54 +1,75 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import type { ChoiceOption, TestQuestion } from "@/db/schema";
 import { newItemId, TEST_LIMITS } from "@/domain/completion";
 import { moveItem, type TestDraft } from "@/domain/course-editor";
 import { adminEt } from "@/i18n/dict/admin";
 import { fill } from "@/i18n/format";
 import { Choice } from "./Choice";
+import { DragList } from "./DragList";
+import { insertAt } from "./row-keys";
+import { useUndo } from "./UndoBar";
 import { UnpublishedTag } from "./UnpublishedTag";
 import ui from "./ui.module.css";
 import ed from "./editor.module.css";
 import styles from "./TestEditor.module.css";
 
-/** The save's refusals as the editor shows them: the three fields' texts, and where in the list the `test` one is (EditResult.at). */
-export type TestErrors = { test?: string; testPassPercent?: string; testTries?: string; at?: { index: number; option?: number } };
+/**
+ * The save's refusals as the editor shows them: the three fields' texts, and which question (and option) the `test` one is about, by their ids (README
+ * B2 "errors keyed by row id": a question moved after the answer keeps its words); none, or a question no longer in the list: the list as a whole.
+ */
+export type TestErrors = { test?: string; testPassPercent?: string; testTries?: string; at?: { question: string; option?: string } };
 
 const newOption = (): ChoiceOption => ({ id: newItemId(), text: "", correct: false });
 /** A new question: a choice question with two empty options. */
 const newQuestion = (): TestQuestion => ({ id: newItemId(), kind: "choice", text: "", options: [newOption(), newOption()] });
 
-/** Where the focus goes after the next render: a question's text, an option's field, or "Lisa küsimus". */
-type Focus = { question: number; option?: number } | "add" | null;
+/** Where the focus goes after the next render: a question's text, an option's field, or "Lisa küsimus"; `back`: after an undo, only where the focus fell. */
+type Focus = { question: number; option?: number; back?: boolean } | "add" | null;
 
 /**
- * "Teadmiste test" (e-course completion, spec §3.1, §5.1): an e-course's pass mark, tries and questions, saved with the course ("Salvesta").
+ * "Teadmiste test" (e-course completion, spec §3.1, §5.1): an e-course's pass mark, tries and questions, saved with the course's card (autosave).
  * A card per question: its kind ("Valikvastustega" / "Vaba vastusega"), its text, and for a choice question its 2–6 options, each with "Õige" (one
- * or more: more than one gives the student checkboxes); ↑ / ↓ / × as the other list editors (aria-disabled at the ends, the focus kept). Plain
- * text in the course's language, never translated. A question's and an option's id is made here (newItemId) and never reused: an attempt refers
- * to a question by its id. A choice question switched to "Vaba vastusega" keeps its options in memory, so switching back brings them back. The
- * save's refusal shows in the card of the question it names (its option marked), or under the list for the list as a whole.
+ * or more: more than one gives the student checkboxes). As the other list editors (Task 8, README B2): the handle „⋮⋮“ and ↑ / ↓ (DragList), and ×
+ * at once with the UndoBar („Küsimus eemaldatud.“, an option's „Vastusevariant eemaldatud.“), whose „Võta tagasi“ puts the question or the option
+ * back at its place with its id (BEH B5). Plain text in the course's language, never translated. A question's and an option's id is made here
+ * (newItemId) and never reused: an attempt refers to a question by its id, and so does the editor (its row's key). A choice question switched to
+ * "Vaba vastusega" keeps its options in memory, so switching back brings them back. The save's refusal shows in the card of the question it names
+ * by id (its option marked), or under the list for the list as a whole.
  */
 export function TestEditor({
   value,
   onChange,
+  onUpdate,
   errors,
   unpublished,
 }: {
   value: TestDraft;
+  /** Typed: a text, a mark, a number, a question's kind, an option's „Õige“. */
   onChange: (v: TestDraft) => void;
+  /**
+   * The questions' rows changed (a question added, moved, removed or brought back, an option removed or brought back): worked out from the list as it
+   * is when it lands (the card's update, which goes to the form on screen then). Without it the change goes to `onChange`, from the value last seen.
+   */
+  onUpdate?: (fn: (questions: TestQuestion[]) => TestQuestion[]) => void;
   errors: TestErrors;
-  /** A published course's pass mark or tries waits for „Avalda muudatused“: „· avaldamata“ after its label (README §1.8). */
-  unpublished?: { passPercent?: boolean; tries?: boolean };
+  /** A published course's pass mark, tries or questions wait for „Avalda muudatused“: „· avaldamata“ after its label (README §1.8). */
+  unpublished?: { passPercent?: boolean; tries?: boolean; questions?: boolean };
 }) {
   const t = adminEt.courseEditor;
   const f = t.fields;
   const uid = useId();
+  const undo = useUndo();
   const root = useRef<HTMLDivElement>(null);
   const addBtn = useRef<HTMLButtonElement>(null);
   const focus = useRef<Focus>(null);
   const kept = useRef(new Map<string, ChoiceOption[]>());
+  // the newest render's value and callbacks: an undo pressed later works on the questions as they are then
+  const live = useRef({ value, onChange, onUpdate });
+  useLayoutEffect(() => {
+    live.current = { value, onChange, onUpdate };
+  });
 
   useEffect(() => {
     const target = focus.current;
@@ -57,6 +78,11 @@ export function TestEditor({
     if (target === "add") {
       addBtn.current?.focus();
       return;
+    }
+    if (target.back) {
+      // after an undo: only where the focus fell (the bar's button is gone) or is still on the bar
+      const now = document.activeElement;
+      if (now && now !== document.body && !now.closest("[data-undo-bar]")) return;
     }
     const card = root.current?.querySelector(`[data-question="${target.question}"]`);
     const field =
@@ -69,22 +95,35 @@ export function TestEditor({
   const { questions } = value;
   const setQuestions = (list: TestQuestion[]) => onChange({ ...value, questions: list });
   const update = (i: number, q: TestQuestion) => setQuestions(questions.map((x, j) => (j === i ? q : x)));
+  /** A change of the rows, to the questions as they are when it lands. */
+  const change = (fn: (list: TestQuestion[]) => TestQuestion[]) => {
+    const now = live.current;
+    if (now.onUpdate) now.onUpdate(fn);
+    else now.onChange({ ...now.value, questions: fn(now.value.questions) });
+  };
   const full = questions.length >= TEST_LIMITS.questions;
 
   const add = () => {
     if (full) return;
-    setQuestions([...questions, newQuestion()]);
+    const q = newQuestion();
+    change((list) => (list.length >= TEST_LIMITS.questions ? list : [...list, q]));
     focus.current = { question: questions.length };
   };
   const remove = (i: number) => {
-    setQuestions(questions.filter((_, j) => j !== i));
+    const q = questions[i];
+    change((list) => list.filter((x) => x.id !== q.id));
     focus.current = questions.length > 1 ? { question: Math.min(i, questions.length - 2) } : "add";
+    undo.show({
+      text: f.testRemoved,
+      // back at its place with its id and its options (never twice: the id is the question's for good)
+      undo: async () => {
+        focus.current = { question: i, back: true };
+        change((list) => (list.some((x) => x.id === q.id) || list.length >= TEST_LIMITS.questions ? list : insertAt(list, i, q)));
+        return true;
+      },
+    });
   };
-  const move = (i: number, dir: -1 | 1) => {
-    const j = i + dir;
-    if (j < 0 || j >= questions.length) return;
-    setQuestions(moveItem(questions, i, j));
-  };
+  const move = (from: number, to: number) => change((list) => moveItem(list, from, to));
   const setKind = (i: number, kind: TestQuestion["kind"]) => {
     const q = questions[i];
     if (q.kind === kind) return;
@@ -103,16 +142,27 @@ export function TestEditor({
     setOptions(i, [...q.options, newOption()]);
     focus.current = { question: i, option: q.options.length };
   };
+  /** The options of the question `id` as they are when the change lands (none: the question is not there, or not a choice question). */
+  const changeOptions = (id: string, fn: (options: ChoiceOption[]) => ChoiceOption[]) =>
+    change((list) => list.map((x) => (x.id === id && x.kind === "choice" ? { ...x, options: fn(x.options) } : x)));
   const removeOption = (i: number, j: number) => {
     const q = questions[i];
     if (q.kind !== "choice" || q.options.length <= TEST_LIMITS.minOptions) return;
-    setOptions(i, q.options.filter((_, k) => k !== j));
+    const o = q.options[j];
+    changeOptions(q.id, (options) => (options.length <= TEST_LIMITS.minOptions ? options : options.filter((x) => x.id !== o.id)));
     focus.current = { question: i, option: Math.min(j, q.options.length - 2) };
+    undo.show({
+      text: f.testOptionRemoved,
+      undo: async () => {
+        changeOptions(q.id, (options) => (options.some((x) => x.id === o.id) || options.length >= TEST_LIMITS.maxOptions ? options : insertAt(options, j, o)));
+        return true;
+      },
+    });
   };
 
-  // the save's refusal: in the card of the question it names, or for the list as a whole
+  // the save's refusal: in the card of the question it names (by its id), or for the list as a whole
   const at = errors.test ? errors.at : undefined;
-  const listError = errors.test && (!at || at.index < 0 || at.index >= questions.length) ? errors.test : undefined;
+  const listError = errors.test && (!at || !questions.some((q) => q.id === at.question)) ? errors.test : undefined;
 
   /** The pass mark or the tries: a short field of digits, as typed (the server parses it). */
   const setting = (key: "passPercent" | "tries", label: string, hint: string, error: string | undefined, maxLength: number) => {
@@ -157,13 +207,19 @@ export function TestEditor({
       data-test-editor=""
       role="group"
       aria-labelledby={`${uid}-title`}
-      aria-describedby={listError ? `${uid}-hint ${uid}-error` : `${uid}-hint`}
+      aria-describedby={[unpublished?.questions ? `${uid}-unpublished` : "", `${uid}-hint`, listError ? `${uid}-error` : ""].filter(Boolean).join(" ")}
       data-invalid={listError ? "" : undefined}
       tabIndex={listError ? -1 : undefined}
     >
       <div className={ed.listHead}>
         <h3 id={`${uid}-title`} className={ui.h3}>
           {t.sections.test}
+          {unpublished?.questions && (
+            <>
+              {" "}
+              <UnpublishedTag id={`${uid}-unpublished`} hidden />
+            </>
+          )}
         </h3>
       </div>
       <p id={`${uid}-hint`} className={ui.hint}>
@@ -176,17 +232,23 @@ export function TestEditor({
       {questions.length === 0 ? (
         <p className={`${ui.muted} ${ui.small}`}>{f.testEmpty}</p>
       ) : (
-        <ol className={ed.rows}>
-          {questions.map((q, i) => {
+        <DragList
+          items={questions}
+          keyOf={(q) => q.id}
+          label={() => ""}
+          onMove={move}
+          className={ed.rows}
+          renderRow={(q, i, handle, arrows) => {
             const n = i + 1;
             const id = `${uid}-q${i}`;
-            const error = errors.test && at && at.index === i ? errors.test : undefined;
+            const error = errors.test && at && at.question === q.id ? errors.test : undefined;
             return (
-              <li key={q.id} className={ed.item} data-question={i} data-invalid={error ? "" : undefined} tabIndex={error ? -1 : undefined}>
+              <div className={`${ed.item} ${ed.dragRow}`} data-question={i} data-invalid={error ? "" : undefined} tabIndex={error ? -1 : undefined}>
+                {handle}
                 <span className={ed.num} aria-hidden="true">
                   {String(n).padStart(2, "0")}
                 </span>
-                <div className={styles.body}>
+                <div className={`${styles.body} ${ed.rowMain}`}>
                   <fieldset className={ed.fieldset}>
                     <legend className={ui.sr}>{fill(f.testKind, { n })}</legend>
                     <div className={ed.choices}>
@@ -230,7 +292,7 @@ export function TestEditor({
                         {q.options.map((o, j) => {
                           const m = j + 1;
                           const oid = `${id}-o${j}`;
-                          const marked = error !== undefined && at?.option === j;
+                          const marked = error !== undefined && at?.option === o.id;
                           return (
                             <li key={o.id} className={styles.option} data-option={j}>
                               <label htmlFor={oid} className={ui.sr}>
@@ -291,27 +353,15 @@ export function TestEditor({
                   )}
                 </div>
                 <span className={ed.tools}>
-                  <button type="button" className={ed.iconBtn} aria-label={fill(f.testUp, { n })} aria-disabled={i === 0 || undefined} onClick={() => move(i, -1)} data-question-up="">
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    className={ed.iconBtn}
-                    aria-label={fill(f.testDown, { n })}
-                    aria-disabled={i === questions.length - 1 || undefined}
-                    onClick={() => move(i, 1)}
-                    data-question-down=""
-                  >
-                    ↓
-                  </button>
+                  {arrows}
                   <button type="button" className={ed.iconBtn} aria-label={fill(f.testRemove, { n })} onClick={() => remove(i)} data-question-remove="">
                     ×
                   </button>
                 </span>
-              </li>
+              </div>
             );
-          })}
-        </ol>
+          }}
+        />
       )}
       {listError && (
         <p id={`${uid}-error`} className={ui.error}>

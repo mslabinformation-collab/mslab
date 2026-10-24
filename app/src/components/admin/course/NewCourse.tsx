@@ -77,6 +77,8 @@ export function NewCourse({ others, next, modules }: { others: OtherCourse[]; ne
   const uid = useId();
   const [draft, setDraft] = useState<CourseDraft>(EMPTY);
   const [state, action, pending] = useActionState<EditResult | null, FormData>(createCourse, null);
+  /** The draft the last press sent: a refusal of a list is placed on its rows as they were then. */
+  const [sent, setSent] = useState<CourseDraft | null>(null);
   // the fields typed again since the refusal: their words go
   const [retyped, setRetyped] = useState<{ of: EditResult | null; names: string[] }>({ of: null, names: [] });
   const refused = useMemo(() => {
@@ -85,7 +87,7 @@ export function NewCourse({ others, next, modules }: { others: OtherCourse[]; ne
     return Object.fromEntries(Object.entries(state.fields ?? {}).filter(([name]) => !names.includes(name))) as Record<string, string>;
   }, [state, retyped]);
   const clear = useCallback((name: string) => setRetyped((r) => ({ of: state, names: r.of === state ? [...r.names, name] : [name] })), [state]);
-  const parts = useLocalParts({ draft, setDraft, refused, clear });
+  const parts = useLocalParts({ draft, setDraft, refused, sent, clear });
 
   // the copy an earlier visit kept comes back (after the first render: the server knows no browser storage); from then on it follows the draft
   const restored = useRef(false);
@@ -121,6 +123,7 @@ export function NewCourse({ others, next, modules }: { others: OtherCourse[]; ne
     if (pending) return;
     const fd = new FormData();
     fd.set("data", JSON.stringify(draft));
+    setSent(draft);
     startTransition(() => action(fd));
   };
   const failed = state && !state.ok ? (state.error === "invalid" ? t.invalid : adminEt.common.saveError) : null;

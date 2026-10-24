@@ -4,9 +4,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CourseEditor, type CourseEditorData } from "@/components/admin/CourseEditor";
 import { LeaveGuardProvider } from "@/components/admin/LeaveGuard";
+import { UndoProvider } from "@/components/admin/UndoBar";
 import { RETRY_MS, SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
 import { COURSE_PARTS, partValue, type EditorPart, type EditorParts } from "@/domain/course-parts";
-import { newCourseDraft, type CourseDraft } from "@/domain/course-editor";
+import { newCourseDraft, type CourseDraft, type DraftImage } from "@/domain/course-editor";
+import type { TestQuestion } from "@/db/schema";
 import { adminEt } from "@/i18n/dict/admin";
 import { contentVersion } from "@/lib/version";
 import type { AdminModule } from "@/server/admin-lessons";
@@ -114,6 +116,8 @@ const remote = {
   fail: null as null | { part: string; status: number | null },
   /** A part whose save is stored but its answer lost: the request hangs until the browser gives it up (its abort). */
   lose: null as null | string,
+  /** A part whose saves are answered only when the test lets each one go, in order (`waiting.shift()()`): a save still on its way. */
+  hold: null as null | { part: string; waiting: Array<() => void> },
   /** /api/admin/upload: a picture's upload. */
   upload: (): Response | Promise<Response> => Response.json({ ok: true, key: "img/uus.jpg" }),
   avalda: (): Response | Promise<Response> => Response.json({ published: ["basics"], blocked: [] }),
@@ -127,12 +131,18 @@ function resetRemote(d: CourseDraft = STORED, published = d.published) {
   remote.refuse = null;
   remote.fail = null;
   remote.lose = null;
+  remote.hold = null;
   remote.upload = () => Response.json({ ok: true, key: "img/uus.jpg" });
   remote.avalda = () => Response.json({ published: ["basics"], blocked: [] });
   remote.loobu = () => Response.json({ discarded: 1 });
   remote.log = [];
 }
 const route = (url: string, init: RequestInit | undefined): Response | Promise<Response> => {
+  const held = remote.hold;
+  if (held && url.endsWith(`/osa/${held.part}`)) return new Promise<Response>((resolve) => held.waiting.push(() => resolve(respond(url, init))));
+  return respond(url, init);
+};
+const respond = (url: string, init: RequestInit | undefined): Response | Promise<Response> => {
   const publish = url.match(/\/api\/admin\/koolitus\/\d+\/(avalda|loobu)$/);
   if (publish) return publish[1] === "avalda" ? remote.avalda() : remote.loobu();
   if (url === "/api/admin/upload") return remote.upload();
@@ -172,7 +182,8 @@ type Props = Parameters<typeof CourseEditor>[0];
 const props = (over: Partial<Props> = {}): Props => ({ course: data(), others: OTHERS, next: null, created: false, modules: MODULES, ...over });
 const show = async (over: Partial<Props> = {}, guard = false) => {
   const editor = createElement(CourseEditor, props(over));
-  await act(async () => root.render(guard ? createElement(LeaveGuardProvider, null, editor) : editor));
+  // (the (panel) layout's UndoBar: the list editors' removals offer „Võta tagasi“ in it)
+  await act(async () => root.render(createElement(UndoProvider, null, guard ? createElement(LeaveGuardProvider, null, editor) : editor)));
   await settle();
 };
 
@@ -874,6 +885,147 @@ describe("an unpublished course: its cards save to the record", () => {
     expect(field("price")!.getAttribute("aria-invalid")).toBe("true");
     expect(text(field("price")!.closest("[data-plain-field]")!.querySelector("[data-field-error]"))).toBe("Sisesta summa eurodes, näiteks 290 või 290,50.");
     expect(chip()!.getAttribute("data-save-kind")).toBe("invalid");
+  });
+});
+
+describe("the list editors (Task 8): drag and arrows, removal with the UndoBar, errors by row id", () => {
+  const undoBar = () => document.querySelector<HTMLElement>("[data-undo-bar]");
+  const undoIt = () => click(undoBar()!.querySelector("button"));
+  const outcomeTexts = () => $$<HTMLInputElement>("[data-list-editor='outcomes'] [data-lang-field]").map((f) => f.value);
+  const IMAGES: DraftImage[] = [
+    { key: "img/a.jpg", alt: { et: "Esimene", ru: "Первый" } },
+    { key: "img/b.jpg", alt: { et: "Teine" } },
+    { key: "img/c.jpg", alt: { et: "Kolmas" } },
+  ];
+  const THREE: CourseDraft = { ...STORED, images: IMAGES };
+
+  it.each([
+    ["after the cards have started over", "restart"],
+    ["while the cards wait for the publish", "waiting"],
+  ])("a row removed, then „Avalda muudatused“ starts the cards over; „Võta tagasi“ pressed %s: the row is back on the fresh form, saved once on its new version", async (_when, when) => {
+    let answer!: (r: Response) => void;
+    remote.avalda = () => new Promise<Response>((resolve) => (answer = resolve));
+    await show();
+    await click($('[data-list-editor="outcomes"] [aria-label="Eemalda rida 2"]'));
+    // the removal saved at once (an instant change), and the bar offers it back
+    expect(remote.log).toEqual([{ part: "outcomes", version: "l:outcomes", patch: { outcomes: [STORED.outcomes[0]] } }]);
+    expect(text(undoBar()!.querySelector("p"))).toBe("Rida eemaldatud.");
+    await click($("[data-publish-go]"));
+    if (when === "waiting") {
+      expect($("[data-cards-waiting]")).not.toBeNull();
+      await undoIt();
+      // it waits with the cards: nothing goes onto the version the publish is moving
+      expect(remote.log.filter((x) => x.part === "outcomes")).toHaveLength(1);
+    }
+    await act(async () => answer(Response.json({ published: ["outcomes"], blocked: [] })));
+    await settle();
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    // the server's new state arrives: the removal is live now, on a new version
+    const live = { ...STORED, outcomes: [STORED.outcomes[0]] };
+    resetRemote(live);
+    remote.parts.outcomes.version = "l:outcomes-live";
+    await show({ course: data({ parts: partsOf(live, { outcomes: { version: "l:outcomes-live" } }) }) });
+    if (when === "restart") {
+      expect(outcomeTexts()).toEqual(["Oskab mõõta"]);
+      await undoIt();
+    }
+    await settle();
+    expect(outcomeTexts()).toEqual(["Oskab mõõta", "Oskab värvida"]);
+    expect(remote.log).toEqual([{ part: "outcomes", version: "l:outcomes-live", patch: { outcomes: STORED.outcomes } }]);
+    expect($("[data-part-restore]")).toBeNull();
+    expect(chip()!.getAttribute("data-save-kind")).toBe("saved");
+  });
+
+  it("a list that waits for „Avalda muudatused“ says „· avaldamata“ after its title (outcomes, protocol points, test, certificate lines, gallery); back as live, the tag goes", async () => {
+    await show();
+    const tagIn = (selector: string) => $(selector)?.querySelector("[data-unpublished-tag]") ?? null;
+    expect($$("[data-unpublished-tag]")).toHaveLength(0);
+    await click($('[data-list-editor="outcomes"] [aria-label="Eemalda rida 2"]'));
+    expect(text(tagIn("[data-list-editor='outcomes'] h3"))).toBe("· avaldamata");
+    await click($("[data-add-stage]"));
+    expect(text(tagIn("[data-protocol-stages] h3"))).toBe("· avaldamata");
+    await click($('[data-question="0"] [data-question-remove]'));
+    expect(text(tagIn("[data-test-editor] h3"))).toBe("· avaldamata");
+    await click($("[data-add-skill]"));
+    expect(text(tagIn("[data-certificate-skills] h3"))).toBe("· avaldamata");
+    await click($('#course-gallery [aria-label="Eemalda pilt 1"]'));
+    expect(text(tagIn("#course-gallery h2"))).toBe("· avaldamata");
+    // the picture comes back: the gallery is live again
+    await undoIt();
+    expect(tagIn("#course-gallery h2")).toBeNull();
+    expect(text(tagIn("[data-list-editor='outcomes'] h3"))).toBe("· avaldamata");
+  });
+
+  it("an unpublished course's lists save to the record: no „· avaldamata“", async () => {
+    const draft: CourseDraft = { ...STORED, published: false };
+    resetRemote(draft);
+    await show({ course: data({}, draft) });
+    await click($('[data-list-editor="outcomes"] [aria-label="Eemalda rida 2"]'));
+    expect($$("[data-unpublished-tag]")).toHaveLength(0);
+  });
+
+  it("a picture removed and brought back: the gallery saves the list without it, then with it at its place again; nothing else is asked of the server (no stored file is deleted)", async () => {
+    resetRemote(THREE);
+    await show({ course: data({}, THREE) });
+    const before = fetched.calls.length;
+    await click($('#course-gallery [aria-label="Eemalda pilt 2"]'));
+    expect(text(undoBar()!.querySelector("p"))).toBe("Pilt eemaldatud.");
+    await undoIt();
+    expect($$("[data-gallery-item]").map((el) => el.getAttribute("data-gallery-item"))).toEqual(["img/a.jpg", "img/b.jpg", "img/c.jpg"]);
+    expect(remote.log).toEqual([
+      { part: "gallery", version: "l:gallery", patch: { images: [IMAGES[0], IMAGES[2]] } },
+      { part: "gallery", version: "d:1.1", patch: { images: IMAGES } },
+    ]);
+    expect(fetched.calls.slice(before).map((c) => `${c.method} ${c.url}`)).toEqual([`POST /api/admin/koolitus/${ID}/osa/gallery`, `POST /api/admin/koolitus/${ID}/osa/gallery`]);
+  });
+
+  it("dragging picture 3 to the top with a finger on its handle saves the new order once", async () => {
+    const ROW = 120;
+    const original = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      if (!this.hasAttribute("data-drag-row")) return original.call(this);
+      const top = Array.prototype.indexOf.call(this.parentElement!.children, this) * ROW;
+      return { top, bottom: top + ROW, left: 0, right: 600, width: 600, height: ROW, x: 0, y: top, toJSON: () => ({}) };
+    };
+    try {
+      resetRemote(THREE);
+      await show({ course: data({}, THREE) });
+      const handle = $$("#course-gallery [data-gallery-item]")[2].querySelector<HTMLElement>('[data-drag-tool="handle"]')!;
+      const pointer = (type: string, clientY: number) =>
+        act(async () => void handle.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, pointerType: "touch", button: 0, isPrimary: true, clientY })));
+      await pointer("pointerdown", 2 * ROW + 20);
+      await pointer("pointermove", 10);
+      await pointer("pointerup", 10);
+      await settle();
+      expect(remote.log).toEqual([{ part: "gallery", version: "l:gallery", patch: { images: [IMAGES[2], IMAGES[0], IMAGES[1]] } }]);
+      expect($$("[data-gallery-item]").map((el) => el.getAttribute("data-gallery-item"))).toEqual(["img/c.jpg", "img/a.jpg", "img/b.jpg"]);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = original;
+    }
+  });
+
+  it("a refusal of the questions is placed by what that save sent, on the question's id: moved before the answer came, the words stay on the question they are about", async () => {
+    // both questions fail the check: as sent, A (no right answer) is the first problem; after the move B (no text) would be
+    const A: TestQuestion = { id: "qa", kind: "choice", text: "Mis värv?", options: [{ id: "oa1", text: "Pruun", correct: false }, { id: "oa2", text: "Must", correct: false }] };
+    const B: TestQuestion = { id: "qb", kind: "open", text: "" };
+    const withTest: CourseDraft = { ...STORED, test: { ...STORED.test, questions: [A, B] } };
+    resetRemote(withTest);
+    remote.refuse = { part: "test", fields: { questions: "testNoCorrect" } };
+    remote.hold = { part: "test", waiting: [] };
+    await show({ course: data({}, withTest) });
+    const cardOf = (id: string) => $(`[data-drag-row="${id}"] [data-question]`)!;
+    await type(cardOf("qa").querySelector("[data-question-text]"), "Mis värvi?");
+    await leave(cardOf("qa").querySelector("[data-question-text]"));
+    expect(remote.hold.waiting).toHaveLength(1); // the save of [A, B] is on its way
+    await click(cardOf("qb").querySelector('[data-drag-tool="up"]'));
+    expect($$("[data-question] [data-question-text]").map((el) => (el as HTMLTextAreaElement).value)).toEqual(["", "Mis värvi?"]);
+    // its answer comes: „Märgi vähemalt üks vastus õigeks.“ is about A, which is second now
+    await act(async () => remote.hold!.waiting.shift()!());
+    await settle();
+    expect(cardOf("qa").hasAttribute("data-invalid")).toBe(true);
+    expect(text(cardOf("qa"))).toContain("Märgi vähemalt üks vastus õigeks.");
+    expect(cardOf("qb").hasAttribute("data-invalid")).toBe(false);
+    expect(text(cardOf("qb"))).not.toContain("Märgi vähemalt üks vastus õigeks.");
   });
 });
 
