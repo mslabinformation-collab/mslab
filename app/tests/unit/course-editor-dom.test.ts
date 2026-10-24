@@ -1222,6 +1222,20 @@ describe("the modules card in the editor (Task 9; README B2, B18; R-b2)", () => 
     expect(sent).toBeGreaterThan(0);
   });
 
+  it("„Loobu muudatustest“ also drops a closed lesson drawer's copy of its name and short text (Task 10: „Sulge, tekst jääb seadmesse“ kept it), and no other course's", async () => {
+    const mine = `mslab-draft:koolitus:${ID}-oppetund23:tab1`;
+    const other = `mslab-draft:koolitus:${ID + 1}-oppetund23:tab1`;
+    localStorage.setItem(mine, JSON.stringify({ version: "t:l23", fields: { body: { et: "Ei salvestunud" } }, sent: [], at: 1 }));
+    localStorage.setItem(other, JSON.stringify({ version: "t:l23", fields: { body: { et: "Teine" } }, sent: [], at: 1 }));
+    await show();
+    await type(field("summary"), "Uus.");
+    await leave(field("summary"));
+    await click($("[data-publish-discard]"));
+    await click(button("Jah, loobu"));
+    expect(localStorage.getItem(mine)).toBeNull();
+    expect(localStorage.getItem(other)).not.toBeNull();
+  });
+
   it("a module's name is in the editor's one chip and its map entry: typed, „Salvestamata muudatused“; another tab's name, „Kontrolli“ and „Taasta minu tekst“", async () => {
     await show();
     await type(moduleName(2), "Kujud ja");

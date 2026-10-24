@@ -4,8 +4,8 @@ import type { Db } from "@/db/client";
 import { courseUsage, typeLocked } from "@/db/queries/admin";
 import { clients, courseModules, courses, lessonFiles, lessonProgress, lessons } from "@/db/schema";
 import {
-  addLessonForm, addModuleForm, courseOfLesson, deleteLessonFileForm, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleToRequest,
-  readOutlineText, saveLessonForm, setLessonHiddenForm, setLessonKindForm, writeOutlineText,
+  addLessonForm, addModuleForm, courseOfLesson, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleToRequest, readOutlineText,
+  setLessonHiddenForm, setLessonKindForm, writeOutlineText,
 } from "@/server/admin-lessons";
 import type { EditResult } from "@/server/edit-check";
 import { makeTestDb } from "./helpers";
@@ -33,6 +33,9 @@ const NOW = new Date("2026-10-24T09:00:00Z");
 /** A module's name saved as the card saves it (R-b2: its route's writeOutlineText from the row's „t:“ version; no form renames a module, review M-6). */
 const rename = async (id: number, title: { et: string; ru?: string }, admin = ADMIN) =>
   writeOutlineText(db, "module", id, { title }, (await readOutlineText(db, "module", id))?.version ?? "", admin, NOW);
+/** A lesson's name and short text saved as the drawer saves them (R-b2: its route's writeOutlineText from the row's „t:“ version; no form saves a lesson, Task 10). */
+const saveLesson = async (id: number, patch: { title?: { et: string; ru?: string }; body?: { et: string; ru?: string } }, admin = ADMIN) =>
+  writeOutlineText(db, "lesson", id, patch, (await readOutlineText(db, "lesson", id))?.version ?? "", admin, NOW);
 /** A module one place up or down, as the card's ↑ / ↓ moves it (moveModuleToRequest to the neighbour's place). */
 async function moveModule(id: number, dir: "up" | "down", admin = ADMIN) {
   const at = (await listCourseLessons(db, courseId)).findIndex((m) => m.id === id);
@@ -77,15 +80,13 @@ describe("lessons", () => {
   test("added last in its module; the title and the short text are saved (a blank text is none)", async () => {
     const w = await twoModules();
     expect(await titles()).toEqual([["A", ["Üks", "Kaks"]], ["B", ["Kolm"]]]);
-    expect(await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", titleRu: "Первый", bodyEt: "Loe.\n\nVaata.", bodyRu: "" }), ADMIN)).toEqual({ ok: true, id: w.l1 });
+    // (the drawer's autosave: an unpublished course's lesson is written on its row, trimmed as the forms stored it)
+    expect(await saveLesson(w.l1, { title: { et: "Esimene", ru: "Первый" }, body: { et: "Loe.\n\nVaata.", ru: "" } })).toMatchObject({ ok: true });
     const [l] = await db.select().from(lessons).where(eq(lessons.id, w.l1));
     expect([l.title, l.body]).toEqual([{ et: "Esimene", ru: "Первый" }, { et: "Loe.\n\nVaata." }]);
-    // a browser's form sends line breaks as CR LF: stored as LF
-    await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", bodyEt: "Loe.\r\n\r\nVaata.\rNüüd.", bodyRu: "Читай.\r\n" }), ADMIN);
-    expect((await db.select().from(lessons).where(eq(lessons.id, w.l1)))[0].body).toEqual({ et: "Loe.\n\nVaata.\nNüüd.", ru: "Читай." });
-    await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", bodyEt: "  " }), ADMIN);
+    await saveLesson(w.l1, { body: { et: "  " } });
     expect((await db.select().from(lessons).where(eq(lessons.id, w.l1)))[0].body).toBeNull();
-    expect(await saveLessonForm(db, form({ id: w.l1, titleEt: "", bodyEt: "x".repeat(5001) }), ADMIN)).toEqual({ ok: false, error: "invalid", fields: { title: "required", body: "tooLong" } });
+    expect(await saveLesson(w.l1, { title: { et: "" }, body: { et: "x".repeat(5001) } })).toEqual({ ok: false, error: "invalid", fields: { title: "required", body: "tooLong" } });
     expect(await addLessonForm(db, form({ moduleId: 999999, titleEt: "X" }))).toEqual({ ok: false, error: "notFound" });
   });
 
@@ -149,12 +150,7 @@ describe("lessons", () => {
     for (const id of [w.l1, w.l2]) expect((await deleteLessonForm(db, form({ id }), ADMIN)).result, String(id)).toEqual({ ok: false, error: "inUse" });
   });
 
-  test("a file row is removed and its key comes back for the store", async () => {
-    const w = await twoModules();
-    const [f] = await db.insert(lessonFiles).values({ lessonId: w.l1, position: 1, name: "a.pdf", r2Key: "lessons/a.pdf", size: 1, contentType: "application/pdf" }).returning();
-    expect(await deleteLessonFileForm(db, form({ id: f.id }))).toEqual({ result: { ok: true, id: f.id, deleted: true }, key: "lessons/a.pdf" });
-    expect(await deleteLessonFileForm(db, form({ id: f.id }))).toEqual({ result: { ok: false, error: "notFound" }, key: null });
-  });
+  // (a file's „Eemalda“ and „Võta tagasi“: tests/db/lesson-files.test.ts, Task 10)
 
   test("piece 3a: the admin reads unpublished modules and lessons with the flag and the encode progress, leaves removed files out, and a removed file still goes with its lesson", async () => {
     const w = await twoModules();
@@ -192,7 +188,7 @@ describe("lessons", () => {
     const added = idOf(await addLessonForm(db, form({ moduleId: w.a, titleEt: "Neli" })));
     const newModule = idOf(await addModuleForm(db, form({ courseId, titleEt: "C" })));
     await rename(w.a, { et: "Algus" }, ADMIN);
-    await saveLessonForm(db, form({ id: w.l1, titleEt: "Esimene", bodyEt: "Loe." }), ADMIN);
+    await saveLesson(w.l1, { title: { et: "Esimene" }, body: { et: "Loe." } });
     await moveLessonForm(db, form({ id: w.l3, dir: "up" }), ADMIN);
     expect(await titles()).toEqual([["Algus", ["Esimene", "Kaks", "Neli", "Kolm"]], ["B", []], ["C", []]]);
     expect((await listCourseLessons(db, courseId)).map((m) => [m.id, m.unpublished, m.lessons.map((l) => [l.id, l.unpublished])])).toEqual([

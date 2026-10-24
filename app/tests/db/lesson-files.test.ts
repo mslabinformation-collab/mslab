@@ -1,17 +1,21 @@
 import { eq, sql } from "drizzle-orm";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { courseModules, courses, lessonFiles, lessons } from "@/db/schema";
-import { addLessonFile } from "@/server/lesson-files";
+import { listCourseLessons } from "@/server/admin-lessons";
+import { purgeRemovedLessonFiles } from "@/server/lesson-file-purge";
+import { addLessonFile, removeLessonFile, restoreLessonFile } from "@/server/lesson-files";
 import { MAX_IMAGE_BYTES, UploadError } from "@/server/media";
 import { fakeMediaStore } from "../fakes";
 import { makeTestDb } from "./helpers";
 
 let db: Db;
+let courseId: number;
 let lessonId: number;
 beforeEach(async () => {
   db = await makeTestDb();
   const [c] = await db.insert(courses).values({ slug: "veeb", type: "e_learning", level: "basic", title: { et: "V" }, summary: { et: "" }, body: { et: "" } }).returning();
+  courseId = c.id;
   const [m] = await db.insert(courseModules).values({ courseId: c.id, position: 1, title: { et: "M" } }).returning();
   [{ id: lessonId }] = await db.insert(lessons).values({ moduleId: m.id, position: 1, title: { et: "L" } }).returning();
 });
@@ -79,6 +83,86 @@ test("a removed file (removed_at set, waiting for the UndoBar to run out) does n
   await addLessonFile(db, store, lessonId, pdf(20, "Kolm.pdf"));
   const rows = await db.select().from(lessonFiles).orderBy(lessonFiles.position, lessonFiles.id);
   expect(rows.map((r) => [r.name, r.position, r.removedAt !== null])).toEqual([["Üks.pdf", 1, false], ["Kaks.pdf", 2, true], ["Kolm.pdf", 2, false]]);
+});
+
+// „Eemalda“ and „Võta tagasi“ (admin UX pass piece 3a, Task 10; README B2 „Eemalda is instant with UndoBar“, §1.7, R-f): the removal only marks the
+// row (removed_at), so the undo can clear the mark; the purge (server/lesson-file-purge.ts) takes the row and its R2 object once the mark is 10 s old,
+// and after that the undo is refused (the bar then says the ADM:162 line). A file brought back is at its place again, its position unique.
+describe("„Eemalda“ and „Võta tagasi“ (piece 3a, Task 10, R-f)", () => {
+  const T0 = new Date("2026-10-24T10:00:00Z");
+  const at = (sec: number) => new Date(T0.getTime() + sec * 1000);
+  /** The lesson's files as the admin's drawer lists them (listCourseLessons: removed ones are left out), by name in order. */
+  const listed = async () => (await listCourseLessons(db, courseId)).flatMap((m) => m.lessons.flatMap((l) => l.files.map((f) => f.name)));
+  const stored = async () => (await db.select().from(lessonFiles).orderBy(lessonFiles.position, lessonFiles.id)).map((r) => [r.name, r.position, r.removedAt !== null]);
+
+  test("„Eemalda“ marks the file: nobody lists it, its object stays; „Võta tagasi“ clears the mark and it is listed again where it was", async () => {
+    const store = fakeMediaStore();
+    const a = await addLessonFile(db, store, lessonId, pdf(20, "Üks.pdf"));
+    const b = await addLessonFile(db, store, lessonId, pdf(20, "Kaks.pdf"));
+    if (a === "notFound" || b === "notFound") throw new Error("no lesson");
+    expect(await removeLessonFile(db, a.id, at(0))).toEqual({ ok: true, id: a.id });
+    expect(await listed()).toEqual(["Kaks.pdf"]);
+    const [row] = await db.select().from(lessonFiles).where(eq(lessonFiles.id, a.id));
+    expect(row.removedAt?.toISOString()).toBe(T0.toISOString());
+    expect(store.deleted).toEqual([]); // the object waits for the purge
+    // removed already: a second press finds nothing to remove
+    expect(await removeLessonFile(db, a.id, at(1))).toEqual({ ok: false, error: "notFound" });
+    expect(await restoreLessonFile(db, a.id)).toEqual({ ok: true, id: a.id });
+    expect(await listed()).toEqual(["Üks.pdf", "Kaks.pdf"]);
+    expect(await stored()).toEqual([["Üks.pdf", 1, false], ["Kaks.pdf", 2, false]]);
+    // a file that is not removed has nothing to bring back; no such file is notFound both ways
+    expect(await restoreLessonFile(db, a.id)).toEqual({ ok: false, error: "notFound" });
+    expect(await removeLessonFile(db, 999999, at(2))).toEqual({ ok: false, error: "notFound" });
+    expect(await restoreLessonFile(db, 999999)).toEqual({ ok: false, error: "notFound" });
+  });
+
+  test("removed, then purged 10 s later: the row and its R2 object are gone, and the undo is refused", async () => {
+    const store = fakeMediaStore();
+    const a = await addLessonFile(db, store, lessonId, pdf(20, "Üks.pdf"));
+    if (a === "notFound") throw new Error("no lesson");
+    const [{ r2Key: key }] = await db.select().from(lessonFiles).where(eq(lessonFiles.id, a.id));
+    await removeLessonFile(db, a.id, at(0));
+    expect(await purgeRemovedLessonFiles(db, store, at(9))).toBe(0); // the UndoBar (8 s) may still be up
+    expect(await restoreLessonFile(db, a.id)).toEqual({ ok: true, id: a.id }); // so the undo still works
+    await removeLessonFile(db, a.id, at(20));
+    expect(await purgeRemovedLessonFiles(db, store, at(30))).toBe(1);
+    expect(await db.select().from(lessonFiles)).toEqual([]);
+    expect(store.deleted).toEqual([key]);
+    expect(store.objects.has(key)).toBe(false);
+    expect(await restoreLessonFile(db, a.id)).toEqual({ ok: false, error: "notFound" });
+  });
+
+  test("a file brought back after another took its place (Task 2 note): its place again, every position unique, the others after it", async () => {
+    const store = fakeMediaStore();
+    await addLessonFile(db, store, lessonId, pdf(20, "Üks.pdf"));
+    const b = await addLessonFile(db, store, lessonId, pdf(20, "Kaks.pdf"));
+    if (b === "notFound") throw new Error("no lesson");
+    await removeLessonFile(db, b.id, at(0));
+    await addLessonFile(db, store, lessonId, pdf(20, "Kolm.pdf")); // place 2: the removed one's place is free
+    expect(await stored()).toEqual([["Üks.pdf", 1, false], ["Kaks.pdf", 2, true], ["Kolm.pdf", 2, false]]);
+    expect(await restoreLessonFile(db, b.id)).toEqual({ ok: true, id: b.id });
+    expect(await stored()).toEqual([["Üks.pdf", 1, false], ["Kaks.pdf", 2, false], ["Kolm.pdf", 3, false]]);
+    expect(await listed()).toEqual(["Üks.pdf", "Kaks.pdf", "Kolm.pdf"]);
+    // and the next file goes last after them
+    await addLessonFile(db, store, lessonId, pdf(20, "Neli.pdf"));
+    const live = (await db.select().from(lessonFiles)).map((r) => r.position);
+    expect(new Set(live).size).toBe(live.length);
+    expect(await listed()).toEqual(["Üks.pdf", "Kaks.pdf", "Kolm.pdf", "Neli.pdf"]);
+  });
+
+  test("another lesson's files are not moved by a file brought back", async () => {
+    const store = fakeMediaStore();
+    const [m] = await db.select().from(courseModules);
+    const [other] = await db.insert(lessons).values({ moduleId: m.id, position: 2, title: { et: "L2" } }).returning();
+    const a = await addLessonFile(db, store, lessonId, pdf(20, "Üks.pdf"));
+    await addLessonFile(db, store, other.id, pdf(20, "Teine.pdf"));
+    if (a === "notFound") throw new Error("no lesson");
+    await removeLessonFile(db, a.id, at(0));
+    await addLessonFile(db, store, lessonId, pdf(20, "Uus.pdf"));
+    await restoreLessonFile(db, a.id);
+    const rows = await db.select().from(lessonFiles).orderBy(lessonFiles.lessonId, lessonFiles.position);
+    expect(rows.map((r) => [r.name, r.position])).toEqual([["Üks.pdf", 1], ["Uus.pdf", 2], ["Teine.pdf", 1]]);
+  });
 });
 
 // The object is put first, the row follows. A row that cannot be made must not leave the private object behind in storage.

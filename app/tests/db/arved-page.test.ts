@@ -27,7 +27,7 @@ vi.mock("next/navigation", async (original) => ({
 }));
 vi.mock("@/components/admin/Drawer", async () => {
   const { createElement } = await import("react");
-  return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children), useUnsavedInDrawer: () => {} };
+  return { Drawer: ({ children }: { children: React.ReactNode }) => createElement("div", { "data-drawer-stand-in": "" }, children) };
 });
 vi.mock("@/server/actions/admin", () => ({ cancelRegistration: vi.fn(), addManualPaymentAction: vi.fn(), saveRegistrationStatus: vi.fn() }));
 vi.mock("@/server/actions/admin-invoices", () => ({

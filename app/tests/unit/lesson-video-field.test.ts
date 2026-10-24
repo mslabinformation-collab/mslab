@@ -6,6 +6,9 @@ import type { AdminVideo } from "@/server/lesson-videos";
 
 // The lesson drawer's video field (LessonVideoField.tsx) in a browser-like document: every state's words and buttons, the poll every
 // 5 s while Bunny processes (paused while the tab is hidden, every 30 s after 10 minutes), and an upload through tus-js-client (replaced here by FakeUpload, which records what it was given).
+// Admin UX pass piece 3a, Task 10 (README B2, S3-P3-e): the progress line takes the focus when the file input goes, the upload is announced only at
+// 25 % steps, processing says „Töötlemisel {n}%“ with Bunny's figure (else „Töötlemisel…“ and a bar that only moves) and „Võid lehelt lahkuda —
+// töötlemine jätkub.“, and a running upload is a leave-guard source (reason `upload`) instead of a beforeunload of its own.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -17,7 +20,11 @@ const refresh = vi.hoisted(() => vi.fn());
 const uploads = vi.hoisted(() => [] as { file: File; options: Record<string, unknown> & { [k: string]: unknown }; start: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn> }[]);
 
 vi.mock("@/server/actions/admin-lessons", () => actions);
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh, push: vi.fn(), replace: vi.fn(), back: vi.fn(), forward: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => window.location.pathname,
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
 vi.mock("tus-js-client", () => ({
   Upload: class FakeUpload {
     start = vi.fn();
@@ -28,6 +35,7 @@ vi.mock("tus-js-client", () => ({
   },
 }));
 
+import { LeaveGuardProvider } from "@/components/admin/LeaveGuard";
 import { LessonVideoField } from "@/components/admin/LessonVideoField";
 
 const WAITING = "Õpilased näevad „Video lisandub peagi“ ja järgmine õppetund jääb lukku, kuni video on valmis.";
@@ -47,9 +55,16 @@ const settle = () =>
   act(async () => {
     for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
   });
-const mount = async (v: AdminVideo, bunnyReady = true) => {
-  await act(async () => root.render(createElement(LessonVideoField, { lessonId: 7, bunnyReady, video: v })));
+const mount = async (v: AdminVideo, bunnyReady = true, progress: number | null = null) => {
+  await act(async () => root.render(createElement(LessonVideoField, { lessonId: 7, bunnyReady, video: v, progress })));
 };
+/** The same inside the leave guard's provider, as the (panel) layout has it. */
+const mountGuarded = async (v: AdminVideo) => {
+  await act(async () => root.render(createElement(LeaveGuardProvider, null, createElement(LessonVideoField, { lessonId: 7, bunnyReady: true, video: v, progress: null }))));
+};
+/** What a screen reader is told: the field's status region (not the line she sees). */
+const spoken = () => $("[data-lesson-video] [role='status']")?.textContent ?? null;
+const line = () => $("[data-lesson-video] [data-video-status]") as HTMLElement | null;
 /** Picks `file` in the field's file input, as a browser does (the change event). */
 const pick = async (file: File) => {
   const el = input();
@@ -372,7 +387,9 @@ describe("an upload", () => {
     await act(async () => (u.options.onSuccess as () => void)());
     await settle();
     expect($("[data-lesson-video] [role='status']")?.textContent).toBe("Töötlemisel…");
-    expect($("[data-lesson-video] progress")).toBeNull();
+    // (S3-P3-e: while Bunny encodes without a figure, a bar that only moves, and the line about leaving)
+    expect(($("[data-lesson-video] progress") as HTMLProgressElement).hasAttribute("value")).toBe(false);
+    expect($("[data-video-leave]")?.textContent).toBe("Võid lehelt lahkuda — töötlemine jätkub.");
     expect(actions.checkLessonVideo).toHaveBeenCalledWith(7);
   });
 
@@ -447,9 +464,9 @@ describe("an upload", () => {
     expect(input()).toBeNull();
   });
 
-  test("while it uploads, leaving the page is warned about, and closing the field stops the upload", async () => {
+  test("while it uploads, leaving the page is warned about (the leave guard: the upload is its source), and closing the field stops the upload", async () => {
     actions.createLessonVideo.mockResolvedValue({ ok: true, ticket: TICKET });
-    await mount(video("none"));
+    await mountGuarded(video("none"));
     await pick(mp4());
     await settle();
     const leave = new Event("beforeunload", { cancelable: true });
@@ -461,5 +478,119 @@ describe("an upload", () => {
     const later = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(later);
     expect(later.defaultPrevented).toBe(false);
+  });
+
+  test("the field has no beforeunload of its own any more (README §1.5: the guard's is the only one); without the guard nothing asks", async () => {
+    actions.createLessonVideo.mockResolvedValue({ ok: true, ticket: TICKET });
+    await mount(video("none"));
+    await pick(mp4());
+    await settle();
+    const leave = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leave);
+    expect(leave.defaultPrevented).toBe(false);
+  });
+
+  test("the upload is announced only at 25 % steps (0, 25, 50, 75, 100); the line she sees follows every percent", async () => {
+    actions.createLessonVideo.mockResolvedValue({ ok: true, ticket: TICKET });
+    await mount(video("none"));
+    await pick(mp4());
+    await settle();
+    const said: string[] = [];
+    const note = () => {
+      const now = spoken() ?? "";
+      if (said[said.length - 1] !== now) said.push(now);
+    };
+    note();
+    for (const percent of [1, 10, 24, 25, 26, 49, 50, 51, 74, 75, 76, 99, 100]) {
+      await act(async () => (uploads[0].options.onProgress as (a: number, b: number) => void)(percent, 100));
+      note();
+      expect(line()?.textContent).toBe(`Laen üles… ${percent} %`);
+    }
+    expect(said).toEqual(["Laen üles… 0 %", "Laen üles… 25 %", "Laen üles… 50 %", "Laen üles… 75 %", "Laen üles… 100 %"]);
+    // the bar is the line's picture, not a second thing to announce
+    expect(($("[data-lesson-video] progress") as HTMLProgressElement).getAttribute("aria-hidden")).toBe("true");
+  });
+
+  test("the focus moves to the progress line when the file input goes with the pick (README B2: it was lost to the page)", async () => {
+    actions.createLessonVideo.mockResolvedValue({ ok: true, ticket: TICKET });
+    await mount(video("none"));
+    await act(async () => input()!.focus());
+    expect(document.activeElement).toBe(input());
+    await pick(mp4());
+    await settle();
+    expect(input()).toBeNull();
+    expect(document.activeElement).toBe(line());
+    expect(line()?.textContent).toBe("Laen üles… 0 %");
+  });
+
+  test("the input going for another reason (the poll reads it processing) moves the focus only when the input had it", async () => {
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing") });
+    // the focus elsewhere: it stays there
+    const other = document.createElement("button");
+    document.body.append(other);
+    other.focus();
+    await mount(video("uploading"));
+    await settle();
+    expect(input()).toBeNull();
+    expect(document.activeElement).toBe(other);
+    other.remove();
+    // the focus on the input: it goes to the line
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    let answer: (v: unknown) => void = () => {};
+    actions.checkLessonVideo.mockReset().mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    await mount(video("uploading"));
+    await act(async () => input()!.focus());
+    await act(async () => answer({ ok: true, video: video("processing") }));
+    await settle();
+    expect(input()).toBeNull();
+    expect(document.activeElement).toBe(line());
+  });
+});
+
+describe("processing (S3-P3-e, R-g)", () => {
+  test("with Bunny's figure: „Töötlemisel 40%“, a bar at 40, „Võid lehelt lahkuda — töötlemine jätkub.“; announced at its 25 % step", async () => {
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing") });
+    await mount(video("processing"), true, 40);
+    await settle();
+    expect(line()?.textContent).toBe("Töötlemisel 40%");
+    const bar = $("[data-lesson-video] progress") as HTMLProgressElement;
+    expect(bar.getAttribute("value")).toBe("40");
+    expect($("[data-video-leave]")?.textContent).toBe("Võid lehelt lahkuda — töötlemine jätkub.");
+    expect(spoken()).toBe("Töötlemisel 25%");
+  });
+
+  test("without a figure (or 0): „Töötlemisel…“, a bar that only moves (no value), and the same line", async () => {
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing") });
+    for (const progress of [null, 0]) {
+      await act(async () => root.unmount());
+      root = createRoot(container);
+      await mount(video("processing"), true, progress);
+      await settle();
+      expect(line()?.textContent, String(progress)).toBe("Töötlemisel…");
+      expect(($("[data-lesson-video] progress") as HTMLProgressElement).hasAttribute("value"), String(progress)).toBe(false);
+      expect($("[data-video-leave]")?.textContent).toBe("Võid lehelt lahkuda — töötlemine jätkub.");
+      expect(spoken()).toBe("Töötlemisel…");
+    }
+  });
+
+  test("ready, none or failed: no bar and no line about leaving", async () => {
+    for (const v of [video("ready", { durationSec: 754 }), video("none"), video("failed")]) {
+      await act(async () => root.unmount());
+      root = createRoot(container);
+      await mount(v);
+      await settle();
+      expect($("[data-lesson-video] progress"), v.status).toBeNull();
+      expect($("[data-video-leave]"), v.status).toBeNull();
+    }
+  });
+
+  test("the page's newer figure (a refresh) shows: 40 → 80", async () => {
+    actions.checkLessonVideo.mockResolvedValue({ ok: true, video: video("processing") });
+    await mount(video("processing"), true, 40);
+    await settle();
+    await mount(video("processing"), true, 80);
+    expect(line()?.textContent).toBe("Töötlemisel 80%");
+    expect(spoken()).toBe("Töötlemisel 75%");
   });
 });

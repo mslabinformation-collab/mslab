@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import type { Db } from "@/db/client";
 import { courseModules, courses, lessonFiles, lessons } from "@/db/schema";
-import { purgeRemovedLessonFiles } from "@/server/lesson-file-purge";
+import { PURGE_BATCH, purgeRemovedLessonFiles } from "@/server/lesson-file-purge";
 import { fakeMediaStore } from "../fakes";
 import { makeTestDb } from "./helpers";
 
@@ -55,6 +55,30 @@ test("10 s is the minimum: a file removed 9.9 s ago stays, one removed exactly 1
     await db.insert(lessonFiles).values({ lessonId, position: i + 1, name: `f${i}.pdf`, r2Key: `lessons/f${i}.pdf`, size: 1, contentType: "application/pdf", removedAt: new Date(NOW.getTime() - ms) });
   expect(await purgeRemovedLessonFiles(db, store, NOW)).toBe(1);
   expect(await names()).toEqual(["f0.pdf"]);
+});
+
+test("one run takes at most PURGE_BATCH (20) files, the oldest marks first; the next run takes the rest (Task 2 review: R2 deletes were unbounded)", async () => {
+  expect(PURGE_BATCH).toBe(20);
+  const store = fakeMediaStore();
+  // 25 due files, each removed one second before the next (f00 the oldest), plus one still within its 10 s
+  for (let i = 0; i < 25; i++) {
+    const key = `lessons/f${String(i).padStart(2, "0")}.pdf`;
+    await db.insert(lessonFiles).values({ lessonId, position: i + 1, name: `f${String(i).padStart(2, "0")}.pdf`, r2Key: key, size: 1, contentType: "application/pdf", removedAt: ago(100 - i) });
+    await store.put(key, new Uint8Array([1]).buffer, "application/pdf");
+  }
+  await db.insert(lessonFiles).values({ lessonId, position: 26, name: "fresh.pdf", r2Key: "lessons/fresh.pdf", size: 1, contentType: "application/pdf", removedAt: ago(3) });
+  expect(await purgeRemovedLessonFiles(db, store, NOW)).toBe(20);
+  expect(store.deleted).toHaveLength(20);
+  expect(store.deleted.sort()).toEqual(Array.from({ length: 20 }, (_, i) => `lessons/f${String(i).padStart(2, "0")}.pdf`));
+  expect(await names()).toEqual(["f20.pdf", "f21.pdf", "f22.pdf", "f23.pdf", "f24.pdf", "fresh.pdf"]);
+  // the next run: the five left (never more than were due), the fresh one stays
+  expect(await purgeRemovedLessonFiles(db, store, NOW)).toBe(5);
+  expect(store.deleted).toHaveLength(25);
+  expect(await names()).toEqual(["fresh.pdf"]);
+  // a caller may ask for a smaller batch
+  for (let i = 0; i < 3; i++) await db.insert(lessonFiles).values({ lessonId, position: 30 + i, name: `g${i}.pdf`, r2Key: `lessons/g${i}.pdf`, size: 1, contentType: "application/pdf", removedAt: ago(60) });
+  expect(await purgeRemovedLessonFiles(db, store, NOW, 2)).toBe(2);
+  expect(await purgeRemovedLessonFiles(db, store, NOW, 2)).toBe(1);
 });
 
 test("without a store (R2 not set up) the rows still go and nothing is asked of a store", async () => {

@@ -21,8 +21,8 @@ const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
 vi.mock("@/server/public-cache", () => pub);
 
 import {
-  addLessonForm, addModuleForm, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleToRequest, readOutlineText, saveLessonForm,
-  setLessonHiddenForm, writeOutlineText,
+  addLessonForm, addModuleForm, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleToRequest, readOutlineText, setLessonHiddenForm,
+  writeOutlineText,
 } from "@/server/admin-lessons";
 import { courseChanges, discardCourse, publishCourse, readCoursePart, switchCoursePublished, writeCoursePart } from "@/server/course-parts";
 import { saveDraftPart } from "@/server/drafts";
@@ -98,6 +98,8 @@ const saveText = (kind: "module" | "lesson", id: number, patch: Record<string, u
 const TEXT_VERSION = /^t:[0-9a-f]{32}$/;
 /** A module's name saved as the card saves it (R-b2: its route's writeOutlineText from the row's „t:“ version; no form renames a module, review M-6). */
 const rename = async (id: number, title: { et: string; ru?: string }, admin = MARIA) => saveText("module", id, { title }, (await readOutlineText(db, "module", id))?.version ?? "", admin);
+/** A lesson's name and short text saved as the drawer saves them (R-b2: its route's writeOutlineText from the row's „t:“ version; no form saves a lesson, Task 10). */
+const saveLesson = async (id: number, patch: Record<string, unknown>, admin = MARIA) => saveText("lesson", id, patch, (await readOutlineText(db, "lesson", id))?.version ?? "", admin);
 /** A module one place up or down, as the card's ↑ / ↓ moves it (moveModuleToRequest to the neighbour's place). */
 async function moveModule(id: number, dir: "up" | "down", admin = MARIA) {
   const [row] = await db.select({ courseId: courseModules.courseId }).from(courseModules).where(eq(courseModules.id, id));
@@ -136,7 +138,7 @@ describe("a published course: new rows are flagged and wait for „Avalda muudat
     expect([(await moduleRow(m3)).unpublished, (await lessonRow(n)).unpublished]).toEqual([true, true]);
     // flagged rows are edited and moved directly
     expect(await rename(m3, { et: "Kordamine" }, MARIA)).toMatchObject({ ok: true });
-    expect(await saveLessonForm(db, form({ id: n, titleEt: "Kordamise tund", bodyEt: "Vaata uuesti." }), MARIA)).toEqual({ ok: true, id: n });
+    expect(await saveLesson(n, { title: { et: "Kordamise tund" }, body: { et: "Vaata uuesti." } })).toMatchObject({ ok: true });
     expect(await moveModule(m3, "up", MARIA)).toEqual({ ok: true, id: m3 });
     expect([(await moduleRow(m3)).title, (await lessonRow(n)).title, (await lessonRow(n)).body]).toEqual([{ et: "Kordamine" }, { et: "Kordamise tund" }, { et: "Vaata uuesti." }]);
     expect(await readDrafts(db, "course", course)).toEqual([]);
@@ -190,12 +192,12 @@ describe("a published course: the order and the texts of live rows are the outli
   });
 
   test("a lesson's name and short text wait in the draft too", async () => {
-    expect(await saveLessonForm(db, form({ id: a, titleEt: "Alustame", bodyEt: "Loe ja vaata.\r\n\r\nSiis tee." }), MARIA)).toEqual({ ok: true, id: a });
+    expect(await saveLesson(a, { title: { et: "Alustame" }, body: { et: "Loe ja vaata.\n\nSiis tee." } })).toMatchObject({ ok: true });
     expect([(await lessonRow(a)).title, (await lessonRow(a)).body]).toEqual([{ et: "Esimene" }, { et: "Loe." }]);
     expect(await studentSees()).toEqual([["Moodul 1", ["Esimene", "Teine"]], ["Moodul 2", ["Kolmas"]]]);
     expect((await listCourseLessons(db, course))[0].lessons[0]).toMatchObject({ title: { et: "Alustame" }, body: { et: "Loe ja vaata.\n\nSiis tee." } });
     // a blank short text is none, in the draft as live
-    await saveLessonForm(db, form({ id: b, titleEt: "Teine", bodyEt: "  " }), MARIA);
+    await saveLesson(b, { body: { et: "  " } });
     expect((await listCourseLessons(db, course))[0].lessons[1].body).toBeNull();
     await publishCourse(db, course, NOW);
     expect([(await lessonRow(a)).title, (await lessonRow(a)).body, (await lessonRow(b)).body]).toEqual([{ et: "Alustame" }, { et: "Loe ja vaata.\n\nSiis tee." }, null]);
@@ -403,7 +405,7 @@ describe("a row's text autosave (review I-1; R-b amended: t:<hash of the row's w
     expect(await text("module", m1)).toEqual({ version: expect.stringMatching(TEXT_VERSION), value: { title: { et: "Moodul 1" } } });
     expect(await text("lesson", a)).toEqual({ version: expect.stringMatching(TEXT_VERSION), value: { title: { et: "Esimene" }, body: { et: "Loe." } } });
     expect((await text("lesson", n)).value).toEqual({ title: { et: "Uus" }, body: { et: "" } });
-    await saveLessonForm(db, form({ id: a, titleEt: "Alustame", bodyEt: "Loe." }), MARIA);
+    await saveLesson(a, { title: { et: "Alustame" } });
     expect((await text("lesson", a)).value).toEqual({ title: { et: "Alustame" }, body: { et: "Loe." } });
     expect(await readOutlineText(db, "lesson", 999_999)).toBeNull();
     expect(await readOutlineText(db, "module", 999_999)).toBeNull();
@@ -508,7 +510,7 @@ describe("an unpublished course: everything is direct", () => {
     const n = idOf(await addLessonForm(db, form({ moduleId: m1, titleEt: "Uus" })));
     expect([(await moduleRow(m3)).unpublished, (await lessonRow(n)).unpublished]).toEqual([false, false]);
     await rename(m1, { et: "Sissejuhatus" }, MARIA);
-    await saveLessonForm(db, form({ id: a, titleEt: "Alustame", bodyEt: "Tere." }), MARIA);
+    await saveLesson(a, { title: { et: "Alustame" }, body: { et: "Tere." } });
     await moveModule(m2, "up", MARIA);
     await moveLessonForm(db, form({ id: b, dir: "up" }), MARIA);
     expect((await moduleRow(m1)).title).toEqual({ et: "Sissejuhatus" });
@@ -573,9 +575,10 @@ describe("the lock order (ledger T11, 40P01): the course row first, then content
     const draftsTouched = () => log.findIndex((q) => /"content_drafts"/.test(q));
     // (a module's name: its version is read first, as the card has it from the page; then the save itself is what is logged)
     const named = (await text("module", m1)).version;
+    const lessonNamed = (await text("lesson", a)).version;
     const runs: [string, () => Promise<unknown>][] = [
       ["rename", () => saveText("module", m1, { title: { et: "Uus nimi" } }, named)],
-      ["text", () => saveLessonForm(db, form({ id: a, titleEt: "Uus tund" }), MARIA)],
+      ["text", () => saveText("lesson", a, { title: { et: "Uus tund" } }, lessonNamed)],
       ["move module to", () => moveModuleToRequest(db, { id: m2, index: 0 }, MARIA)],
       ["move module back", () => moveModuleToRequest(db, { id: m2, index: 1 }, MARIA)],
       ["add lesson", () => addLessonForm(db, form({ moduleId: m1, titleEt: "Uus tund" }))],
@@ -671,6 +674,22 @@ describe("the modules card (Task 9): a drag's move, the drafted type, the rows' 
     const [first] = await listCourseLessons(db, course);
     expect(first.title).toEqual({ et: "Uus nimi" });
     expect(first.version).toBe((await text("module", m1)).version);
+  });
+
+  test("each lesson comes with its name and short text's „t:“ version, the one its route compares (Task 10: the drawer starts from it)", async () => {
+    const n = idOf(await addLessonForm(db, form({ moduleId: m1, titleEt: "Uus" }))); // flagged: its text is the row's
+    for (const l of (await listCourseLessons(db, course)).flatMap((m) => m.lessons)) {
+      expect(l.version).toMatch(TEXT_VERSION);
+      expect(l.version, String(l.id)).toBe((await text("lesson", l.id)).version);
+    }
+    // a live lesson's text in the draft, and a flagged one's on its row: the version follows each
+    await saveText("lesson", a, { body: { et: "Uus tekst" } }, (await text("lesson", a)).version);
+    await saveText("lesson", n, { title: { et: "Uus tund" } }, (await text("lesson", n)).version);
+    const all = (await listCourseLessons(db, course)).flatMap((m) => m.lessons);
+    for (const id of [a, n]) expect(all.find((l) => l.id === id)!.version).toBe((await text("lesson", id)).version);
+    // a save from the version the list gave is taken
+    const bVersion = all.find((l) => l.id === b)!.version;
+    expect(await saveText("lesson", b, { title: { et: "Teine tund" } }, bVersion)).toMatchObject({ ok: true });
   });
 
   test("„avaldamata“: a module renamed, holding a new or changed lesson, or new, and such a lesson; a move alone is the order's label; an unpublished course has none", async () => {

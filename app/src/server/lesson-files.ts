@@ -1,7 +1,8 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { lessonFiles, lessons } from "@/db/schema";
 import { storable } from "@/lib/storable";
+import type { EditResult } from "./edit-check";
 import { logFailure } from "./log";
 import { hasImageSignature, MAX_IMAGE_BYTES, UploadError, type FileStore, type ImageType } from "./media";
 
@@ -116,4 +117,50 @@ export async function addLessonFile(db: Db, store: FileStore, lessonId: number, 
     }
     throw e;
   }
+}
+
+/**
+ * A file's „Eemalda“ (admin UX pass piece 3a, Task 10; README B2 „instant with UndoBar“, §1.7; R-f): the row is only marked (`removed_at = now`), so
+ * every reader leaves it out and „Võta tagasi“ can bring it back; the row and its R2 object are purged once the mark is 10 s old
+ * (lesson-file-purge.ts). notFound when there is no such file, or it is marked already.
+ */
+export async function removeLessonFile(db: Db, id: number, now: Date): Promise<EditResult> {
+  const rows = await db
+    .update(lessonFiles)
+    .set({ removedAt: now })
+    .where(and(eq(lessonFiles.id, id), isNull(lessonFiles.removedAt)))
+    .returning();
+  return rows.length ? { ok: true, id } : { ok: false, error: "notFound" };
+}
+
+/**
+ * The UndoBar's „Võta tagasi“ of a removed file: the mark is cleared while the row is still there (after the purge it is not: notFound, and the bar
+ * says the ADM:162 line). The file comes back at its place among the lesson's files: a file added since may have taken that position (the
+ * position of a new file ignores the marked ones), so the lesson's files at that place and after it move one on — every position stays unique and
+ * the order is what it was. Under the lesson row's lock, so two undos (or an undo and a lesson delete) of one lesson queue.
+ */
+export async function restoreLessonFile(db: Db, id: number): Promise<EditResult> {
+  return db.transaction(async (tx): Promise<EditResult> => {
+    const [file] = await tx
+      .select({ lessonId: lessonFiles.lessonId, position: lessonFiles.position })
+      .from(lessonFiles)
+      .where(and(eq(lessonFiles.id, id), isNotNull(lessonFiles.removedAt)));
+    if (!file) return { ok: false, error: "notFound" };
+    const [lesson] = await tx.select({ id: lessons.id }).from(lessons).where(eq(lessons.id, file.lessonId)).for("update");
+    if (!lesson) return { ok: false, error: "notFound" };
+    // (read again under the lock: a purge or another undo may have come first)
+    const [still] = await tx.select({ id: lessonFiles.id }).from(lessonFiles).where(and(eq(lessonFiles.id, id), isNotNull(lessonFiles.removedAt))).for("update");
+    if (!still) return { ok: false, error: "notFound" };
+    const [{ taken }] = await tx
+      .select({ taken: sql<number>`count(*)::int` })
+      .from(lessonFiles)
+      .where(and(eq(lessonFiles.lessonId, file.lessonId), isNull(lessonFiles.removedAt), eq(lessonFiles.position, file.position)));
+    if (Number(taken) > 0)
+      await tx
+        .update(lessonFiles)
+        .set({ position: sql`${lessonFiles.position} + 1` })
+        .where(and(eq(lessonFiles.lessonId, file.lessonId), isNull(lessonFiles.removedAt), gte(lessonFiles.position, file.position)));
+    await tx.update(lessonFiles).set({ removedAt: null }).where(eq(lessonFiles.id, id));
+    return { ok: true, id };
+  });
 }

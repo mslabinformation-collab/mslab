@@ -9,7 +9,9 @@ import { submitsForms, test, expect } from "./test";
 // Phase 3a Task 6: a lesson's video in the admin drawer, against the fake Bunny Stream (fake-bunny.ts; Playwright starts it next
 // to the dev server, which the local settings point at it). Picked, the file goes by tus straight to the fake; "Töötlemisel…"
 // until the editor's poll reads it ready ("Valmis · 2:05", the fake's 125 s). "Asenda video" deletes the old one once the new one
-// is ready; "Tekst" deletes the video; the webhook is checked for its secret. The test's own unpublished e-course (slug
+// is ready; "Tekst" deletes the video (after its ConfirmPanel); the webhook is checked for its secret. Admin UX pass piece 3a, Task 10 (README B2): when
+// the file input goes with the pick, the focus is on the progress line; ✕ during the upload asks through the leave guard („Üleslaadimine käib.“);
+// while Bunny encodes, „Võid lehelt lahkuda — töötlemine jätkub.“ under a bar. The test's own unpublished e-course (slug
 // e2e-konto-vid-<project>) is removed after the test with its module and lesson (removeClientRows). Admin e2e runs under `next dev`.
 
 const created: CreatedRows = { tokens: new Set(), sessions: new Set() };
@@ -71,9 +73,34 @@ test("a lesson's video: chosen, sent to Bunny with tus, processed, replaced, dro
     expect(await drawer.evaluate((d) => d.scrollWidth <= d.clientWidth)).toBe(true);
   }
 
-  // 2. a file: straight to the fake Bunny with tus, then "Töötlemisel…" until the poll reads it ready
-  await field.locator("input[type=file]").setInputFiles(video(1));
+  // 2. a file: straight to the fake Bunny with tus (held back here at first), then "Töötlemisel…" until the poll reads it ready. The input goes with
+  // the pick: the focus is on the progress line, not lost to the page. ✕ meanwhile asks through the leave guard; „Jää siia“ keeps the upload going.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(`${E2E_BUNNY.url}/tusupload**`, async (route) => {
+    await held;
+    await route.continue();
+  });
+  const input = field.locator("input[type=file]");
+  await input.focus();
+  await input.setInputFiles(video(1));
+  await expect(field.locator("[data-video-status]")).toHaveText(/^Laen üles… \d+ %$/);
+  await expect(field.locator("input[type=file]")).toHaveCount(0);
+  await expect(field.locator("[data-video-status]")).toBeFocused();
+  await drawer.getByRole("button", { name: "Sulge" }).click();
+  const notice = drawer.locator("[data-leave-notice='drawer']");
+  await expect(notice.locator("[data-leave-title]")).toHaveText("Muudatust „Video“ ei saanud veel salvestada.");
+  await expect(notice.locator("[data-leave-reason]")).toHaveText("Üleslaadimine käib.");
+  await notice.getByRole("button", { name: "Jää siia" }).click();
+  await expect(notice).toHaveCount(0);
+  await expect(field.locator("[data-video-status]")).toBeFocused();
+  expect(page.url()).toMatch(new RegExp(`\\?oppetund=${lessonId}$`));
+  release();
   await expect(field.locator("[data-video-status]")).toHaveText("Töötlemisel…");
+  // while Bunny encodes (no figure yet): a bar that only moves, and the line from the phone frame (S3-P3-e)
+  await expect(field.locator("[data-video-leave]")).toHaveText("Võid lehelt lahkuda — töötlemine jätkub.");
+  await expect(field.locator("progress")).toHaveCount(1);
+  await page.unroute(`${E2E_BUNNY.url}/tusupload**`);
   await expect(field.locator("[data-video-status]")).toHaveText("Valmis · 2:05", { timeout: 20_000 });
   await expect(field.locator("[data-video-waiting]")).toHaveCount(0);
   await expect(field.locator("[data-video-pick]")).toHaveText("Asenda video");
@@ -99,17 +126,18 @@ test("a lesson's video: chosen, sent to Bunny with tus, processed, replaced, dro
   await expect.poll(async () => (await fakeState()).deleted).toContain(first.videoId);
   expect((await fakeState()).videos.map((v) => v.guid)).toContain(second.videoId);
 
-  // 4. "Tekst" asks first; "Ei" changes nothing; "Jah, jätka" drops the video (deleted from Bunny) and the field goes
+  // 4. "Tekst" asks first in a ConfirmPanel (README B2); „Katkesta“ changes nothing; „Jah, vaheta“ drops the video (deleted from Bunny) and the field goes
   const kind = drawer.locator("[data-lesson-kind]");
   await kind.getByRole("radio", { name: "Tekst" }).check();
-  const confirm = kind.locator("[data-kind-confirm]");
-  await expect(confirm).toContainText("Video kustutatakse. Jätkan?");
-  await confirm.getByRole("button", { name: "Ei" }).click();
+  const confirm = kind.locator("[data-confirm-panel]");
+  await expect(confirm.locator("p")).toHaveText("Kas vahetan liigi?");
+  await expect(confirm.locator("li")).toHaveText(["Video kustutatakse."]);
+  await confirm.getByRole("button", { name: "Katkesta" }).click();
   await expect(kind.getByRole("radio", { name: "Video" })).toBeChecked();
   expect(await lessonRow(lessonId)).toEqual(second);
   await kind.getByRole("radio", { name: "Tekst" }).check();
-  await confirm.getByRole("button", { name: "Jah, jätka" }).click();
-  await expect(kind.locator("[data-kind-status]")).toHaveText("Salvestatud.");
+  await confirm.getByRole("button", { name: "Jah, vaheta" }).click();
+  await expect(confirm).toHaveCount(0);
   await expect(field).toHaveCount(0);
   expect(await lessonRow(lessonId)).toMatchObject({ kind: "text", videoStatus: "none", videoId: null, replacedVideoId: null, durationSec: null, videoWidth: null, videoHeight: null });
   await expect.poll(async () => (await fakeState()).deleted).toContain(second.videoId); // after the answer (after())

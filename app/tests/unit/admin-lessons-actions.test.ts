@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi, type MockInstance } from "vitest";
 import { BunnyError } from "@/server/bunny";
 import type { EditResult } from "@/server/edit-check";
@@ -16,8 +18,8 @@ class Redirect extends Error {
 
 const mocks = vi.hoisted(() => ({
   names: [
-    "addModuleForm", "moveModuleToRequest", "deleteModuleForm", "addLessonForm", "saveLessonForm", "moveLessonForm", "setLessonHiddenForm",
-    "setLessonKindForm", "deleteLessonForm", "deleteLessonFileForm", "courseOfLesson",
+    "addModuleForm", "moveModuleToRequest", "deleteModuleForm", "addLessonForm", "moveLessonForm", "setLessonHiddenForm", "setLessonKindForm",
+    "deleteLessonForm", "courseOfLesson",
   ],
   /** The callbacks given to after(): they run once the answer has gone. */
   scheduled: [] as (() => unknown)[],
@@ -30,6 +32,9 @@ const mocks = vi.hoisted(() => ({
   revalidatePublic: vi.fn(),
   startLessonVideo: vi.fn(),
   refreshLessonVideo: vi.fn(),
+  removeLessonFile: vi.fn(),
+  restoreLessonFile: vi.fn(),
+  purge: vi.fn(),
 }));
 vi.mock("@/server/admin-lessons", () => Object.fromEntries(mocks.names.map((name) => [name, (...args: unknown[]) => mocks.forms[name](...args)])));
 vi.mock("@/server/auth", () => ({ adminAction: (fn: (admin: { email: string }, ...args: unknown[]) => unknown) => (...args: unknown[]) => fn({ email: "admin@example.test" }, ...args) }));
@@ -53,6 +58,8 @@ vi.mock("@/server/bunny", async (original) => ({
 }));
 
 vi.mock("@/server/lesson-videos", () => ({ startLessonVideo: mocks.startLessonVideo, refreshLessonVideo: mocks.refreshLessonVideo }));
+vi.mock("@/server/lesson-files", () => ({ removeLessonFile: mocks.removeLessonFile, restoreLessonFile: mocks.restoreLessonFile }));
+vi.mock("@/server/lesson-file-purge", () => ({ purgeRemovedLessonFiles: mocks.purge }));
 
 import * as actions from "@/server/actions/admin-lessons";
 
@@ -90,6 +97,9 @@ beforeEach(() => {
   mocks.revalidatePublic.mockReset();
   mocks.startLessonVideo.mockReset();
   mocks.refreshLessonVideo.mockReset();
+  mocks.removeLessonFile.mockReset().mockResolvedValue(OK);
+  mocks.restoreLessonFile.mockReset().mockResolvedValue(OK);
+  mocks.purge.mockReset().mockResolvedValue(0);
   log = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => {
@@ -120,13 +130,13 @@ describe("what a change revalidates", () => {
   });
 
   test("a lesson change (only in the account's JSON) refreshes the admin page and revalidates nothing", async () => {
-    for (const run of [actions.saveLesson, actions.moveLessonInList, actions.setLessonHidden]) {
+    for (const run of [actions.moveLessonInList, actions.setLessonHidden]) {
       expect(await run(null, form({ id: 7 }))).toEqual(OK);
     }
     mocks.forms.setLessonKindForm.mockResolvedValue({ result: OK, obsolete: [] });
-    mocks.forms.deleteLessonFileForm.mockResolvedValue({ result: OK, key: null });
     expect(await actions.setLessonKind(null, form({ id: 7, kind: "video" }))).toEqual(OK);
-    expect(await actions.deleteLessonFile(null, form({ id: 7 }))).toEqual(OK);
+    expect(await actions.removeLessonFile(7)).toEqual(OK);
+    expect(await actions.undoRemoveLessonFile(7)).toEqual(OK);
     expect(mocks.revalidatePublic).not.toHaveBeenCalled();
     expect(mocks.refresh).toHaveBeenCalledTimes(5);
   });
@@ -136,7 +146,6 @@ describe("what a change revalidates", () => {
     const fd = form({ id: 7 });
     for (const [run, name] of [
       [actions.deleteModule, "deleteModuleForm"],
-      [actions.saveLesson, "saveLessonForm"],
       [actions.moveLessonInList, "moveLessonForm"],
     ] as const) {
       await run(null, fd);
@@ -205,14 +214,42 @@ describe("where an action goes next", () => {
     expect(mocks.deleteVideo).not.toHaveBeenCalled();
   });
 
-  test("Eemalda: the file's stored object is deleted", async () => {
+  test("Eemalda (Task 10, R-f): the file is only marked, nothing leaves the store; the purge of files marked 10 s ago and more runs after the answer", async () => {
     const store = fakeMediaStore({ "lessons/b.pdf": { bytes: [1] } });
     mocks.store = store;
-    mocks.forms.deleteLessonFileForm.mockResolvedValue({ result: { ok: true, id: 4, deleted: true }, key: "lessons/b.pdf" });
-    expect(await actions.deleteLessonFile(null, form({ id: 4 }))).toEqual({ ok: true, id: 4, deleted: true });
+    expect(await actions.removeLessonFile(4)).toEqual(OK);
+    expect(mocks.removeLessonFile).toHaveBeenCalledExactlyOnceWith("the-db", 4, expect.any(Date));
+    expect(mocks.refresh).toHaveBeenCalledOnce();
     expect(store.deleted).toEqual([]);
+    expect(mocks.purge).not.toHaveBeenCalled(); // the answer does not wait for R2
     await runScheduled();
-    expect(store.deleted).toEqual(["lessons/b.pdf"]);
+    expect(mocks.purge).toHaveBeenCalledExactlyOnceWith("the-db", store, expect.any(Date));
+    expect(store.deleted).toEqual([]); // (the purge is the one that deletes: a file marked now is not due)
+  });
+
+  test("„Võta tagasi“ of a file: the mark is cleared first, the purge comes after it (it can never take the file it brings back)", async () => {
+    expect(await actions.undoRemoveLessonFile(4)).toEqual(OK);
+    expect(mocks.restoreLessonFile).toHaveBeenCalledExactlyOnceWith("the-db", 4);
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(mocks.purge).not.toHaveBeenCalled();
+    await runScheduled();
+    expect(mocks.purge).toHaveBeenCalledOnce();
+    expect(mocks.restoreLessonFile.mock.invocationCallOrder[0]).toBeLessThan(mocks.purge.mock.invocationCallOrder[0]);
+  });
+
+  test("a file's removal or undo with no row id is invalid and asks nothing; a refusal (purged meanwhile) refreshes nothing", async () => {
+    for (const bad of ["4", 0, -1, 1.5, 2 ** 31, null, { id: 4 }]) {
+      expect(await actions.removeLessonFile(bad), String(bad)).toEqual({ ok: false, error: "invalid" });
+      expect(await actions.undoRemoveLessonFile(bad), String(bad)).toEqual({ ok: false, error: "invalid" });
+    }
+    expect(mocks.removeLessonFile).not.toHaveBeenCalled();
+    expect(mocks.restoreLessonFile).not.toHaveBeenCalled();
+    mocks.restoreLessonFile.mockResolvedValue({ ok: false, error: "notFound" });
+    expect(await actions.undoRemoveLessonFile(4)).toEqual({ ok: false, error: "notFound" });
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    mocks.removeLessonFile.mockRejectedValue(new Error("update lesson_files … lessons/secret.pdf"));
+    expect(await actions.removeLessonFile(4)).toEqual({ ok: false, error: "server" });
+    expect(log).toHaveBeenCalledWith("[admin] lesson file remove failed: Error");
   });
 });
 
@@ -300,5 +337,14 @@ describe("the video field's two actions (createLessonVideo, checkLessonVideo)", 
     expect(await actions.createLessonVideo(7)).toEqual({ ok: false, error: "server" });
     expect(await actions.checkLessonVideo(7)).toEqual({ ok: false, error: "server" });
     expect(log.mock.calls.map((c) => c[0])).toEqual(["[admin] video create failed: BunnyError (status 401)", expect.stringMatching(/^\[admin\] video check failed: TimeoutError\b/)]);
+  });
+});
+
+describe("the course editor's read purges too (R-f; Task 2 carry)", () => {
+  test("the page hands purgeRemovedLessonFiles to after(): files marked 10 s ago and more go with a read, and the page never waits for R2", () => {
+    // (a server page the unit tests do not render: its source is pinned)
+    const page = readFileSync(join(process.cwd(), "src", "app", "admin", "(panel)", "koolitused", "[id]", "page.tsx"), "utf8");
+    expect(page).toMatch(/import \{ after \} from "next\/server";/);
+    expect(page).toMatch(/after\(\(\) => purgeRemovedLessonFiles\(db, mediaStore\(\), new Date\(\)\)\)/);
   });
 });

@@ -1707,8 +1707,6 @@ export const adminEt = {
       published: "Avalikul lehel",
       sample: "Näidissisu",
     },
-    // (the lesson drawer's status, until Task 10 gives it SaveStatus)
-    dirty: "Salvestamata muudatused",
     // a refused create (the new-course page) and the calendar drawer's save
     invalid: "Kontrolli märgitud välju.",
     // an e-course with lessons or students keeps its type (errors.typeLocked says it for a contact course)
@@ -1734,8 +1732,6 @@ export const adminEt = {
     newItem: "Uus programmi punkt",
     addModule: "Lisa moodul",
     addItem: "Lisa punkt",
-    // (the lesson drawer's „Salvesta“ until its fields autosave, Task 10; the module rows have none, README B2)
-    save: "Salvesta",
     moveUp: "Liiguta üles: {title}",
     moveDown: "Liiguta alla: {title}",
     deleteModule: "Kustuta moodul",
@@ -1746,7 +1742,6 @@ export const adminEt = {
     // in place of the button where a module cannot go: lessons in it, live or placed there by the draft (Dim 24.10 D-7)
     deleteModuleBlocked: "Moodulit saab kustutada, kui selles pole õppetunde.",
     deleteYes: "Jah, kustuta",
-    deleteNo: "Ei",
     // the card's summary beside its title (piece3-texts P-4, drawn „6 moodulit · 3 õppetundi“; P-8 the forms of 1; a programme's: Dim 24.10 D-6);
     // none: `empty` in its place
     summary: "{modules} · {lessons}",
@@ -1773,28 +1768,33 @@ export const adminEt = {
       notFound: "Seda ei leitud. Laadi leht uuesti.",
       server: "Salvestamine ei õnnestunud. Proovi uuesti.",
     },
+    // the lesson drawer (admin UX pass piece 3a, Task 10; README B2): its name and short text autosave (api/admin/oppetund/<id>), closing asks only
+    // through the leave guard (leave.*), „Eemalda“ and the switch off have the UndoBar (piece3-texts S3-P3-c)
     drawer: {
       label: "Õppetund: {title}",
+      // the header's first line (README B2 „Moodul {nn} · Õppetund {n.n}“, drawn „Moodul 01 · Õppetund 1.1“): {nn} the module's place in two digits,
+      // {m} the same without them, {n} the lesson's place in its module
+      place: "Moodul {nn} · Õppetund {m}.{n}",
+      // SaveStatus „gone“ (piece3-texts P-2): „Seda õppetundi enam ei ole. Tekst on selles seadmes alles.“
+      thing: "õppetundi",
       name: "Õppetunni nimi",
       body: "Lühike tekst",
       bodyHint: "Näidatakse õppetunni lehel. Tühi rida alustab uut lõiku.",
-      saved: "Salvestatud.",
-      // closing (Esc, "Sulge", a click beside the drawer) while the name or the text is not saved: asked first
-      closeQuestion: "Salvestamata muudatused lähevad kaotsi. Sulgen?",
-      closeYes: "Jah, sulge",
-      closeNo: "Ei",
-      // "Õppetunni liik": a video lesson is done at 90 % of its video; a text lesson with "Märgi tehtuks"
+      // "Õppetunni liik": a video lesson is done at 90 % of its video; a text lesson with "Märgi tehtuks". Video → Tekst with a video asks in a
+      // ConfirmPanel (README B2 „Kas vahetan liigi? Video kustutatakse.“ / „Jah, vaheta“ / „Katkesta“: the question, then its line, as the
+      // panel's house style splits them; „Katkesta“ is the panel's own)
       kind: {
         label: "Õppetunni liik",
         video: "Video",
         text: "Tekst",
-        confirm: "Video kustutatakse. Jätkan?",
-        yes: "Jah, jätka",
-        no: "Ei",
+        confirm: "Kas vahetan liigi?",
+        confirmLine: "Video kustutatakse.",
+        yes: "Jah, vaheta",
       },
-      visibility: "Nähtavus",
-      hide: "Peida",
-      show: "Näita õpilastele",
+      // the switch (README B2; the Part 3 frame „Õpilastele nähtav / Peidetud“), its hint for a lesson with progress is `inUse`; off, the UndoBar
+      // says `hidden` (S3-P3-c); on again, no bar
+      visible: "Õpilastele nähtav",
+      hidden: "Õppetund peidetud.",
       hiddenNote: "Peidetud: õpilased seda ei näe ja see ei loe edenemises.",
       delete: "Kustuta õppetund",
       deleteConfirm: "Kas kustutan õppetunni „{title}“ koos video ja failidega?",
@@ -1802,13 +1802,17 @@ export const adminEt = {
     },
     files: {
       title: "Failid",
-      none: "Faile pole.",
-      add: "Lisa fail",
-      hint: "PDF, Word (.docx) või pilt (JPEG, PNG, WebP), kuni 4 MB.",
+      // the drop zone (README B2, the Part 3 frame: „Lohista fail siia või vali fail · PDF, Word, pilt, kuni 4 MB“, {pick} the underlined picker's
+      // words); a phone's „Vali fail“ (the Part 4 frame: the file picker replaces drag and drop)
+      drop: "Lohista fail siia või {pick} · PDF, Word, pilt, kuni 4 MB",
+      pick: "vali fail",
+      pickPhone: "Vali fail",
       uploading: "Laen faili üles…",
       added: "Fail lisatud.",
       remove: "Eemalda",
       removeLabel: "Eemalda fail: {name}",
+      // the UndoBar after „Eemalda“ (piece3-texts S3-P3-c); a refused undo says the bar's own common.saveError (ADM:162)
+      removed: "Fail eemaldatud.",
       type: "Seda faili ei saa kasutada. Vali PDF, Word (.docx) või pilt.",
       size: "Fail on liiga suur (kuni 4 MB).",
       empty: "Fail on tühi.",
@@ -1825,7 +1829,10 @@ export const adminEt = {
       // shown while a video lesson has no video students can watch (none, uploading, processing, failed, and no old one playing)
       waitingHint: "Õpilased näevad „Video lisandub peagi“ ja järgmine õppetund jääb lukku, kuni video on valmis.",
       uploading: "Laen üles… {percent} %",
+      // with no figure from Bunny (S3-P3-e); with one, lessons.videoProgress „Töötlemisel {n}%“
       processing: "Töötlemisel…",
+      // under the bar while Bunny encodes (the Part 4 frame P4:76; S3-P3-e: with a figure or without)
+      leave: "Võid lehelt lahkuda — töötlemine jätkub.",
       ready: "Valmis · {duration}",
       replace: "Asenda video",
       replaceHint: "Vana video jääb õpilastele nähtavaks, kuni uus on valmis.",

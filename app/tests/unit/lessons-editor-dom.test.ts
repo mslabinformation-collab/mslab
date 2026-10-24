@@ -39,6 +39,7 @@ const lesson = (id: number, moduleId: number, over: Partial<AdminLesson> = {}): 
   moduleId,
   title: { et: `Tund ${id}` },
   body: null,
+  version: `t:l${id}`,
   kind: "video",
   hidden: false,
   unpublished: false,

@@ -7,12 +7,14 @@ import { getDb } from "@/db/client";
 import type { Db } from "@/db/client";
 import { parseRowId, ROW_ID_MAX } from "@/lib/row-id";
 import {
-  addLessonForm, addModuleForm, courseOfLesson, deleteLessonFileForm, deleteLessonForm, deleteModuleForm, moveLessonForm, moveModuleToRequest, saveLessonForm,
-  setLessonHiddenForm, setLessonKindForm, type LessonCleanup,
+  addLessonForm, addModuleForm, courseOfLesson, deleteLessonForm, deleteModuleForm, moveLessonForm, moveModuleToRequest, setLessonHiddenForm, setLessonKindForm,
+  type LessonCleanup,
 } from "../admin-lessons";
 import { adminAction } from "../auth";
 import { bunnyApi, bunnyConfig } from "../bunny";
 import type { EditResult } from "../edit-check";
+import { purgeRemovedLessonFiles } from "../lesson-file-purge";
+import { removeLessonFile as markRemoved, restoreLessonFile } from "../lesson-files";
 import { deleteBunnyVideos, removeLessonMedia } from "../lesson-media";
 import { refreshLessonVideo, startLessonVideo, type VideoCheckResult, type VideoTicketResult } from "../lesson-videos";
 import { logFailure } from "../log";
@@ -24,7 +26,8 @@ import { revalidatePublic } from "../public-cache";
 // only in the account (its JSON is never cached), so they refresh the open admin page only. On a published course (B18, R-e) a new
 // module, a rename and a move wait for „Avalda muudatused“ (its route revalidates once then); the revalidation here is then needless but
 // harmless, and a module's delete is live at once. The changes that may write the course's outline draft are handed the admin (the
-// draft's updated_by). A module's name is no action: it autosaves on its own route (api/admin/moodul/<id>, R-b2; the card, Task 9).
+// draft's updated_by). A module's name is no action: it autosaves on its own route (api/admin/moodul/<id>, R-b2; the card, Task 9); nor are a
+// lesson's name and short text (api/admin/oppetund/<id>; the drawer, Task 10).
 
 async function run(what: string, publicChange: boolean, work: (db: Db) => Promise<EditResult>): Promise<EditResult> {
   try {
@@ -80,7 +83,6 @@ export const addLesson = adminAction(async (_admin, _prev: EditResult | null, fo
   return result;
 });
 
-export const saveLesson = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => run("lesson save", false, (db) => saveLessonForm(db, formData, admin)));
 export const moveLessonInList = adminAction(async (admin, _prev: EditResult | null, formData: FormData) => run("lesson move", false, (db) => moveLessonForm(db, formData, admin)));
 export const setLessonHidden = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => run("lesson visibility", false, (db) => setLessonHiddenForm(db, formData)));
 
@@ -121,21 +123,38 @@ export const deleteLesson = adminAction(async (admin, _prev: EditResult | null, 
   return result;
 });
 
-/** A file's "Eemalda": the row, then (after the answer) the stored object. */
-export const deleteLessonFile = adminAction(async (_admin, _prev: EditResult | null, formData: FormData) => {
-  let key: string | null = null;
-  const result = await run("lesson file delete", false, async (db) => {
-    const done = await deleteLessonFileForm(db, formData);
-    key = done.key;
-    return done.result;
-  });
-  const stored = key;
-  if (result.ok && stored) afterwards("lesson file delete", () => removeLessonMedia({ videoIds: [], fileKeys: [stored] }, { bunny: null, files: mediaStore() }));
+/** A row id as the drawer sends it (a number; the browser may send anything). */
+const isRowId = (id: unknown): id is number => Number.isInteger(id) && (id as number) > 0 && (id as number) <= ROW_ID_MAX;
+
+/** The purge of the files marked 10 s ago and more (server/lesson-file-purge.ts, R-f), after the answer: the drawer never waits for R2. */
+const purgeAfter = () => afterwards("lesson file purge", async () => void (await purgeRemovedLessonFiles(getDb(), mediaStore(), new Date())));
+
+/**
+ * A file's „Eemalda“ (Task 10; README B2 „instant with UndoBar“): the file id. The row is only marked (server/lesson-files.ts removeLessonFile): the
+ * drawer puts up „Fail eemaldatud.“ with „Võta tagasi“, and the R2 object goes with the row once the mark is 10 s old. Each removal also purges what
+ * is due by then (after the answer).
+ */
+export const removeLessonFile = adminAction(async (_admin, id: unknown): Promise<EditResult> => {
+  if (!isRowId(id)) return { ok: false, error: "invalid" };
+  const result = await run("lesson file remove", false, (db) => markRemoved(db, id, new Date()));
+  purgeAfter();
   return result;
 });
 
-/** A lesson id as the video field sends it (a number; the browser may send anything): a row id, or the answer is notFound. */
-const isLessonId = (id: unknown): id is number => Number.isInteger(id) && (id as number) > 0 && (id as number) <= ROW_ID_MAX;
+/**
+ * The UndoBar's „Võta tagasi“ of a removed file: the file id. The mark is cleared while the row is there (server/lesson-files.ts restoreLessonFile:
+ * at its place again); purged already, notFound (the bar says ADM:162). The purge of what is due runs after it, never before: it cannot take the file
+ * it brings back.
+ */
+export const undoRemoveLessonFile = adminAction(async (_admin, id: unknown): Promise<EditResult> => {
+  if (!isRowId(id)) return { ok: false, error: "invalid" };
+  const result = await run("lesson file undo", false, (db) => restoreLessonFile(db, id));
+  purgeAfter();
+  return result;
+});
+
+/** A lesson id as the video field sends it: a row id, or the answer is notFound. */
+const isLessonId = isRowId;
 
 /**
  * "Vali video" / "Asenda video" / "Proovi uuesti" / "Lae uuesti üles": a new Bunny video for the lesson and the signed tus upload

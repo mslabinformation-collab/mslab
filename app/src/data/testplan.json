@@ -903,14 +903,14 @@
         "Muuda uue mooduli nimes üht sõna ja klõpsa väljast välja.",
         "Kirjuta mooduli all „Uue õppetunni nimi“ ja vajuta „Lisa õppetund“.",
         "Vali avanenud paneelis „Õppetunni liik“ all „Tekst“.",
-        "Kirjuta „Lühike tekst“ ja vajuta „Salvesta“.",
+        "Kirjuta „Lühike tekst“ ja klõpsa väljast välja.",
         "Kui koolitus on avaldatud, vajuta pealkirja all „Avalda muudatused“."
       ],
       "expect": [
         "Moodul ilmub loendisse oma numbriga, näiteks 01, ja ploki pealkirja kõrval on moodulite ja õppetundide arv.",
         "Mooduli nime juures pole nuppu „Salvesta“: päises on „Salvestatud“ või „Mustand salvestatud“ koos kellaajaga.",
         "Õppetund ilmub mooduli alla ja selle paneel avaneb ise.",
-        "Paneelis näed pärast salvestamist „Salvestatud.“.",
+        "Paneeli päises on „Salvestatud“ või avaldatud koolitusel „Mustand salvestatud“ koos kellaajaga; nuppu „Salvesta“ pole.",
         "Õppetunni real on märge „Tekst“.",
         "Avaldatud koolitusel on uue mooduli ja õppetunni real „avaldamata“, kuni vajutad „Avalda muudatused“."
       ],
@@ -961,11 +961,14 @@
         "Lisa moodulisse teine õppetund nupuga „Lisa õppetund“.",
         "Jäta avanenud paneelis liigiks „Video“.",
         "Vajuta „Vali video“ ja vali lühike video.",
+        "Vajuta üleslaadimise ajal paneeli ✕ ja siis „Jää siia“.",
         "Hoia leht lahti, kuni üleslaadimine lõpeb."
       ],
       "expect": [
-        "Üleslaadimise ajal näed „Laen üles…“ koos protsentidega.",
-        "Seejärel näed „Töötlemisel…“.",
+        "Üleslaadimise ajal näed „Laen üles…“ koos protsentidega ja riba.",
+        "✕ küsib paneeli ülaosas „Muudatust „Video“ ei saanud veel salvestada.“ ja „Üleslaadimine käib.“.",
+        "„Jää siia“ jätab paneeli lahti ja üleslaadimine jätkub.",
+        "Seejärel näed „Töötlemisel…“ või „Töötlemisel“ koos protsentidega ja rida „Võid lehelt lahkuda — töötlemine jätkub.“.",
         "Mõne minuti pärast näed „Valmis“ koos video pikkusega.",
         "Õppetunni real on töötlemise ajal märge „Töötlemisel“ ja hiljem „Valmis“."
       ],
@@ -973,6 +976,34 @@
       "risk": "high",
       "writes": false,
       "mark": "redo",
+      "markedAt": "deploy"
+    },
+    {
+      "id": "haldus-oppetund-fail-eemalda",
+      "area": "haldus",
+      "who": "maria",
+      "device": "tahvel",
+      "title": "Õppetunni fail ja nähtavus: „Eemalda“ ja „Võta tagasi“",
+      "href": "/admin/koolitused",
+      "steps": [
+        "Ava sama e-koolituse mõne õppetunni paneel ja keri plokini „Failid“.",
+        "Vajuta „vali fail“, vali lühike PDF ja oota rida „Fail lisatud.“.",
+        "Vajuta faili real „Eemalda“ ja siis allservas „Võta tagasi“.",
+        "Vajuta uuesti „Eemalda“, oota, kuni allserva riba kaob, ja lae leht uuesti.",
+        "Vajuta „vali fail“ ja sulge failivalik ilma faili valimata.",
+        "Lülita „Õpilastele nähtav“ välja ja vajuta allservas „Võta tagasi“."
+      ],
+      "expect": [
+        "„Eemalda“ võtab faili kohe loendist ja allservas on „Fail eemaldatud.“ koos nupuga „Võta tagasi“.",
+        "„Võta tagasi“ toob faili samale kohale tagasi ja paneel jääb lahti.",
+        "Pärast riba kadumist ja lehe laadimist faili enam pole.",
+        "Failivaliku sulgemine jätab paneeli lahti ja midagi ei muutu.",
+        "Väljalülitamisel on allservas „Õppetund peidetud.“ ja „Võta tagasi“ lülitab õppetunni jälle nähtavaks."
+      ],
+      "why": "Eemaldamine ja peitmine käivad ilma küsimuseta, sest need saab kohe tagasi võtta.",
+      "risk": "med",
+      "writes": false,
+      "mark": "new",
       "markedAt": "deploy"
     },
     {
@@ -1984,8 +2015,8 @@
         "Vajuta ✕, siis brauseri nuppu Tagasi, siis menüüs „Ülevaade“; iga küsimuse järel vajuta „Jää siia“.",
         "Vali Network all „No throttling“, oota päises „Salvestatud“ ja sulge paneel ✕-ga.",
         "Ava „Koolitused“, oma e-koolitus ja mõne õppetunni paneel.",
-        "Kirjuta „Lühike tekst“ väljale midagi ja vajuta ✕.",
-        "Vasta küsimusele „Ei“, siis vajuta uuesti ✕ ja vasta „Jah, sulge“."
+        "Vali Network all „Offline“, kirjuta „Lühike tekst“ väljale Proov ja vajuta ✕.",
+        "Vajuta „Jää siia“, vali Network all „No throttling“ ja vajuta uuesti ✕."
       ],
       "expect": [
         "Iga paneel sulgub kohe ✕, Esc ja kõrvale klõpsuga, ilma küsimuseta.",
@@ -1993,15 +2024,15 @@
         "Ühenduseta küsivad ✕, Tagasi ja menüü kõik paneeli ülaosas: „Muudatust „Märkus“ ei saanud veel salvestada.“.",
         "„Jää siia“ jätab paneeli lahti, teksti alles ja kursori väljale „Märkus“.",
         "Ühenduse tagasi tulles näitab paneeli päis „Salvestatud“ ja ✕ sulgeb paneeli kohe.",
-        "Õppetunni paneel küsib „Salvestamata muudatused lähevad kaotsi. Sulgen?“ ja jääb lahti.",
-        "Pärast „Ei“ on kirjutatud tekst alles ja kursor on väljal „Lühike tekst“.",
-        "Pärast „Jah, sulge“ paneel sulgub."
+        "Ühenduseta küsib õppetunni paneel ülaosas „Muudatust „Lühike tekst“ ei saanud veel salvestada.“ ja jääb lahti.",
+        "Pärast „Jää siia“ on kirjutatud tekst alles ja kursor on väljal „Lühike tekst“.",
+        "Ühendusega salvestab ✕ teksti ja sulgeb paneeli ilma küsimuseta."
       ],
       "why": "Paneeli sulgemine käib nüüd läbi kontrolli, mis hoiab salvestamata teksti alles.",
       "risk": "med",
       "writes": true,
       "mark": "reworded",
-      "markedAt": "2026-10-23T16:29:13.353Z"
+      "markedAt": "deploy"
     },
     {
       "id": "haldus-loend-terve-rida",

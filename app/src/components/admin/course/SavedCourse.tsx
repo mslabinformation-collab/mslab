@@ -6,6 +6,7 @@ import { SAVE_TIMEOUT_MS } from "@/components/admin/autosave/constants";
 import type { AutosaveStatus } from "@/domain/autosave";
 import { type EditorPart, type EditorParts, type PartValues } from "@/domain/course-parts";
 import { adminEt } from "@/i18n/dict/admin";
+import { dropCourseCopies } from "@/lib/course-copies";
 import { contentVersion } from "@/lib/version";
 import { setCoursePublished, setCourseSample } from "@/server/actions/admin-content";
 import type { AdminModule } from "@/server/admin-lessons";
@@ -550,6 +551,8 @@ function SavedForm({
     // over from the read, or at the bound from the live values the discard left (round 2 N-1, round 3)
     for (const part of order) hooks[part].discardCopy();
     for (const row of textRows.current) row.discardCopy();
+    // and every other copy of the course in this browser: a closed lesson drawer kept its name and short text („Sulge, tekst jääb seadmesse“, Task 10)
+    dropCourseCopies(id);
     setSaid((s) => ({ ...s, blocked: null }));
     reload(seeds, stampOf(answer.body));
   };

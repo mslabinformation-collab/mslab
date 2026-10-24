@@ -6,14 +6,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Fields, type SendPatch } from "@/components/admin/autosave/engine";
 import { useAutosave } from "@/components/admin/autosave/useAutosave";
-import { Drawer, useUnsavedInDrawer } from "@/components/admin/Drawer";
+import { Drawer } from "@/components/admin/Drawer";
 import { LeaveGuardProvider } from "@/components/admin/LeaveGuard";
 import { adminEt } from "@/i18n/dict/admin";
 
 // Drawer.tsx and the leave guard (admin UX pass, README §1.5, screens §2.4): ✕ („Sulge“ on every drawer), Esc and the backdrop close at once
 // when everything is saved, the address back to closeHref and the focus to the row; only the drawer's own sources are asked about (the page's
-// text stays on the page); the lesson drawer's own question (confirmClose, deprecated until piece 3) runs as today and the guard does not ask
-// too; a close the browser forces past a held Esc opens the drawer again.
+// text stays on the page); a close the browser forces past a held Esc opens the drawer again. The lesson drawer's own question (confirmClose,
+// deprecated since piece 1) is gone with piece 3a Task 10: the lesson drawer autosaves, and every drawer asks only through the guard.
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -42,11 +42,6 @@ function Editor({ owner, field }: { owner: string; field: string }) {
     editors[owner] = a;
   });
   return createElement("input", { name: field, value: String(a.fields[field] ?? ""), onChange: (e: { target: { value: string } }) => a.setField(field, e.target.value) });
-}
-/** A part with its own "Salvesta" (the lesson drawer's): unsaved while `dirty`. */
-function OldPart({ dirty }: { dirty: boolean }) {
-  useUnsavedInDrawer(dirty, () => document.querySelector<HTMLElement>("#old")?.focus());
-  return createElement("textarea", { id: "old" });
 }
 
 let container: HTMLDivElement;
@@ -130,59 +125,54 @@ describe("Drawer", () => {
     expect(dialog().querySelector("[data-leave-notice]")?.textContent).toContain("Muudatust „Kohti“ ei saanud veel salvestada.");
   });
 
-  it("the lesson drawer's own question (confirmClose) runs as today, and the guard does not ask too", async () => {
-    const q = { question: adminEt.lessons.drawer.closeQuestion, yes: adminEt.lessons.drawer.closeYes, no: adminEt.lessons.drawer.closeNo };
-    await render(page(drawer([createElement(OldPart, { key: "old", dirty: true }), createElement(Editor, { key: "e", owner: "lesson", field: "seats" })], { confirmClose: q })));
-    await act(async () => editors.lesson.setField("seats", "12"));
-    for (const close of [() => click(x()), esc, () => click(dialog())]) {
-      await close();
-      const ask = dialog().querySelector("[data-drawer-confirm]");
-      expect(ask?.textContent).toContain("Salvestamata muudatused lähevad kaotsi. Sulgen?");
-      expect(document.querySelector("[data-leave-notice]")).toBeNull();
-      expect(s.calls).toHaveLength(0);
-      await click([...ask!.querySelectorAll("button")].find((b) => b.textContent === "Ei")!);
-      await act(async () => void (await vi.advanceTimersByTimeAsync(0)));
-    }
-    await click(x());
-    await click([...dialog().querySelectorAll("[data-drawer-confirm] button")].find((b) => b.textContent === "Jah, sulge")!);
-    expect(dialog().open).toBe(false);
-    expect(router.replace).toHaveBeenCalledWith("/admin/kalender", { scroll: false });
-    expect(document.querySelector("[data-leave-notice]")).toBeNull();
-  });
-
-  it.each([
-    ["without confirmClose", false],
-    ["with confirmClose and unsaved text", true],
-  ])("a file picker dismissed inside the drawer (its bubbling cancel) does not close it nor ask, %s", async (_how, withConfirm) => {
-    const q = { question: adminEt.lessons.drawer.closeQuestion, yes: adminEt.lessons.drawer.closeYes, no: adminEt.lessons.drawer.closeNo };
-    const parts = [createElement("input", { key: "pick", type: "file", id: "pick" }), withConfirm && createElement(OldPart, { key: "old", dirty: true })];
-    await render(page(drawer(parts, withConfirm ? { confirmClose: q } : {})));
+  it("a file picker dismissed inside the drawer (its bubbling cancel) does not close it nor ask; the drawer's own Esc still closes it", async () => {
+    await render(page(drawer(createElement("input", { type: "file", id: "pick" }))));
     // the browser's cancel of a dismissed picker: at the input, bubbling (Chrome 113+, Firefox 91+, Safari 16.4+); never cancelable
     const e = new Event("cancel", { bubbles: true, cancelable: false });
     await act(async () => void document.getElementById("pick")!.dispatchEvent(e));
     expect(dialog().open).toBe(true);
     expect(router.replace).not.toHaveBeenCalled();
-    expect(dialog().querySelector("[data-drawer-confirm]")).toBeNull();
     expect(document.querySelector("[data-leave-notice]")).toBeNull();
-    // the drawer's own Esc still closes (and asks, with confirmClose)
     await esc();
-    if (withConfirm) expect(dialog().querySelector("[data-drawer-confirm]")).not.toBeNull();
-    else expect(router.replace).toHaveBeenCalledWith("/admin/kalender", { scroll: false });
+    expect(router.replace).toHaveBeenCalledWith("/admin/kalender", { scroll: false });
   });
 
-  it.each([
-    ["without confirmClose", false],
-    ["with confirmClose and unsaved text", true],
-  ])("a close event of something inside the drawer (a dialog in it) is not the drawer's close, %s", async (_how, withConfirm) => {
-    const q = { question: adminEt.lessons.drawer.closeQuestion, yes: adminEt.lessons.drawer.closeYes, no: adminEt.lessons.drawer.closeNo };
-    const parts = [createElement("dialog", { key: "inner", id: "inner" }, "Sees"), withConfirm && createElement(OldPart, { key: "old", dirty: true })];
-    await render(page(drawer(parts, withConfirm ? { confirmClose: q } : {})));
+  it("a file picker dismissed while the drawer's text is not saved: the drawer stays open and nothing is asked or sent", async () => {
+    await render(page(drawer([createElement("input", { key: "pick", type: "file", id: "pick" }), createElement(Editor, { key: "e", owner: "lesson", field: "seats" })])));
+    await act(async () => editors.lesson.setField("seats", "12"));
+    await act(async () => void document.getElementById("pick")!.dispatchEvent(new Event("cancel", { bubbles: true, cancelable: false })));
+    expect(dialog().open).toBe(true);
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-leave-notice]")).toBeNull();
+    expect(s.calls).toHaveLength(0);
+  });
+
+  it("a close event of something inside the drawer (a dialog in it) is not the drawer's close", async () => {
+    await render(page(drawer(createElement("dialog", { id: "inner" }, "Sees"))));
     const inner = document.getElementById("inner") as HTMLDialogElement;
     // as React hands it on: a close that bubbles from the inner element up to the drawer's dialog
     await act(async () => void inner.dispatchEvent(new Event("close", { bubbles: true })));
     expect(dialog().open).toBe(true);
     expect(router.replace).not.toHaveBeenCalled();
-    expect(dialog().querySelector("[data-drawer-confirm]")).toBeNull();
+  });
+
+  it("the deprecated close question is gone (Task 10): no confirmClose, CloseQuestion or useUnsavedInDrawer in the app, no lesson close words", () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (/\.(ts|tsx)$/.test(p)) files.push(p);
+      }
+    };
+    walk(join(process.cwd(), "src"));
+    walk(join(process.cwd(), "tests"));
+    const self = join("tests", "unit", "drawer-dom.test.ts");
+    for (const f of files) {
+      if (f.endsWith(self)) continue;
+      expect(readFileSync(f, "utf8"), f).not.toMatch(/confirmClose|CloseQuestion|useUnsavedInDrawer|data-drawer-confirm/);
+    }
+    for (const key of ["closeQuestion", "closeYes", "closeNo"]) expect(Object.keys(adminEt.lessons.drawer)).not.toContain(key);
   });
 
   it("every admin drawer names its ✕ „Sulge“ (adminEt.common.close); the pages' own close words are gone", () => {

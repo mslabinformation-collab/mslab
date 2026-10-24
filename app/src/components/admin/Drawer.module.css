@@ -54,28 +54,6 @@
   cursor: pointer;
 }
 
-/* "Salvestamata muudatused lähevad kaotsi. Sulgen?": the confirming step in place, at the top (clear of the close button) */
-.ask {
-  display: grid;
-  gap: 10px;
-  margin: 0 56px 22px 0;
-}
-
-.question {
-  margin: 0;
-}
-
-.question:focus {
-  outline: 2px solid var(--rose);
-  outline-offset: 2px;
-}
-
-.answers {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
 .close:hover {
   background: var(--canvas);
 }

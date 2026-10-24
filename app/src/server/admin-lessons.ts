@@ -50,6 +50,11 @@ export type AdminLesson = {
   moduleId: number;
   title: I18n;
   body: I18n | null;
+  /**
+   * The version its name and short text autosave from (R-b2; the drawer, Task 10): "t:" and the hash of its working text, the one
+   * api/admin/oppetund/<id> compares.
+   */
+  version: string;
   /** "Õppetunni liik": a video lesson (the default) or a text lesson (no video field). */
   kind: LessonKind;
   hidden: boolean;
@@ -134,6 +139,7 @@ export async function listCourseLessons(db: Db, courseId: number): Promise<Admin
   const layout = layoutFor(course, outline, drafts);
   const changed = course.published ? changedRows(outline, layout) : { modules: new Set<number>(), lessons: new Set<number>() };
   const versions = await Promise.all(layout.map((m) => textVersion({ title: m.title })));
+  const lessonVersions = new Map(await Promise.all(layout.flatMap((m) => m.lessons.map(async (l) => [l.id, await textVersion({ title: l.title, body: l.body })] as const))));
   const row = new Map(rows.map((r) => [r.id, r]));
   return layout.map((m, i) => ({
     id: m.id,
@@ -149,6 +155,7 @@ export async function listCourseLessons(db: Db, courseId: number): Promise<Admin
         moduleId: m.id,
         title: l.title,
         body: storedBody(l.body),
+        version: lessonVersions.get(l.id)!,
         kind: r.kind,
         hidden: r.hidden,
         unpublished: r.unpublished,
@@ -278,31 +285,6 @@ export async function courseOfLesson(db: Db, lessonId: number): Promise<number |
     .innerJoin(courseModules, eq(lessons.moduleId, courseModules.id))
     .where(eq(lessons.id, lessonId));
   return row?.courseId ?? null;
-}
-
-/**
- * The lesson drawer's "Salvesta": fields id, titleEt, titleRu, bodyEt, bodyRu (the short text; blank is none). A published course's live lesson
- * keeps its name and text for the students until „Avalda muudatused“ (the outline draft has the new ones); a flagged lesson, and every lesson of
- * an unpublished course, is written on its row.
- */
-export async function saveLessonForm(db: Db, fd: FormData, admin: Who): Promise<EditResult> {
-  const id = idOf(field(fd, "id"));
-  if (id === null) return { ok: false, error: "invalid" };
-  const c = new Check();
-  const title = c.text("title", i18nOf(fd, "title"), LESSON_LIMITS.title, { required: true });
-  const body = c.text("body", i18nOf(fd, "body"), LESSON_LIMITS.body);
-  if (!c.ok || !title) return invalid(c.errors);
-  return underCourse(db, await courseOfLesson(db, id), notFound, async ({ tx, course, rows, layout }): Promise<EditResult> => {
-    const l = layout.flatMap((m) => m.lessons).find((x) => x.id === id);
-    if (!l) return notFound();
-    if (!course.published || l.flagged) await tx.update(lessons).set({ title, body }).where(eq(lessons.id, id));
-    else {
-      l.title = title;
-      l.body = body ?? { et: "" };
-      await storeLayout(tx, course, rows, layout, admin.email);
-    }
-    return { ok: true, id };
-  });
 }
 
 /**
@@ -490,12 +472,4 @@ export async function deleteLessonForm(db: Db, fd: FormData, admin: Who): Promis
     const videoIds = [row.videoId, row.replacedVideoId].filter((v): v is string => v !== null);
     return { result: { ok: true, id, deleted: true }, cleanup: { videoIds, fileKeys: files.map((f) => f.key) } };
   });
-}
-
-/** A file's "Eemalda": field id. The row goes; `key` is the store key to delete (null when there was no such file). */
-export async function deleteLessonFileForm(db: Db, fd: FormData): Promise<{ result: EditResult; key: string | null }> {
-  const id = idOf(field(fd, "id"));
-  if (id === null) return { result: { ok: false, error: "invalid" }, key: null };
-  const [row] = await db.delete(lessonFiles).where(eq(lessonFiles.id, id)).returning();
-  return row ? { result: { ok: true, id, deleted: true }, key: row.r2Key } : { result: { ok: false, error: "notFound" }, key: null };
 }
