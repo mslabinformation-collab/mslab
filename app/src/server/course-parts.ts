@@ -198,8 +198,9 @@ const PARTS: { [P in CoursePart]: PartDef<P, unknown> } = {
     write: columns,
   }),
   badge: def({ check: (_ctx, c, v: PartValues["badge"]) => ({ badge: checkCourseBadge(c, v.badge) }), write: columns }),
-  // the modules and lessons (B18): the course's own rows once each, their names and texts as the card's forms check them; written to the rows, and
-  // (a publish, R-e) no row of the course flagged any more
+  // the modules and lessons (B18): the course's own rows once each, their names and texts as the card's forms check them; written to the rows at
+  // the publish, and (R-e) no row of the course flagged any more. Never saved whole (writeCoursePart): its draft is the rows' changes'
+  // (server/course-outline.ts storeLayout)
   outline: def({
     check: (ctx, c, v: PartValues["outline"]) => checkOutline(ctx.q, ctx.course.id, c, v),
     write: async (tx, course, checked) => void (await publishOutline(tx, course.id, checked)),
@@ -227,7 +228,8 @@ function refusedFields(part: CoursePart, errors: Record<string, string>, patch: 
  * the course's lock. The answers (server/autosave-route.ts): ok with the part's version after it; a conflict with the stored version and value (another
  * tab, a publish or a discard meanwhile; a course deleted meanwhile: version "", value null); invalid with the part's field codes (the old editor's
  * checks, per part). A published course's save is its draft (the price may wait in it: the rule of a published course's price is checked at publish);
- * an unpublished course's is written live at once. A save that changes nothing answers the current version and writes nothing.
+ * an unpublished course's is written live at once. A save that changes nothing answers the current version and writes nothing. The outline is
+ * never saved whole: invalid `modules`, always (Task 5 review I-1).
  */
 export async function writeCoursePart(
   db: Db,
@@ -238,6 +240,9 @@ export async function writeCoursePart(
   admin: { email: string },
   now: Date,
 ): Promise<SaveAnswer> {
+  // the outline is published and discarded as a part, but no editor saves it whole (Task 5 review I-1, M-2): a row's text has its own autosave
+  // (server/admin-lessons.ts writeOutlineText, its "t:" version), and the moves and deletes are the card's actions
+  if (part === "outline") return { ok: false, error: "invalid", fields: { modules: "invalid" } };
   const savedAt = now.toISOString();
   return db.transaction(async (tx): Promise<SaveAnswer> => {
     const course = await lockCourse(tx, courseId);

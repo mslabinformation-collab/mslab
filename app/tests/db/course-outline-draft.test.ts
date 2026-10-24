@@ -21,9 +21,11 @@ const pub = vi.hoisted(() => ({ revalidatePublic: vi.fn() }));
 vi.mock("@/server/public-cache", () => pub);
 
 import {
-  addLessonForm, addModuleForm, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleForm, renameModuleForm, saveLessonForm, setLessonHiddenForm,
+  addLessonForm, addModuleForm, deleteLessonForm, deleteModuleForm, listCourseLessons, moveLessonForm, moveModuleForm, readOutlineText, renameModuleForm, saveLessonForm,
+  setLessonHiddenForm, writeOutlineText,
 } from "@/server/admin-lessons";
 import { courseChanges, discardCourse, publishCourse, readCoursePart, switchCoursePublished, writeCoursePart } from "@/server/course-parts";
+import { saveDraftPart } from "@/server/drafts";
 import { courseOutline } from "@/server/lesson-outline";
 
 const MARIA = { email: "maria@example.test" };
@@ -87,9 +89,14 @@ const adminSees = async (id = course) =>
 const lessonRow = async (id: number) => (await db.select().from(lessons).where(eq(lessons.id, id)))[0];
 const moduleRow = async (id: number) => (await db.select().from(courseModules).where(eq(courseModules.id, id)))[0];
 const outlineDraft = async (id = course) => (await readDrafts(db, "course", id)).find((d) => d.part === "outline") ?? null;
-const read = async () => (await readCoursePart(db, course, "outline" as never))!;
-const write = (patch: Record<string, unknown>, version: string, admin = MARIA) => writeCoursePart(db, course, "outline" as never, patch, version, admin, NOW);
+const read = async () => (await readCoursePart(db, course, "outline"))!;
 const revalidated = () => pub.revalidatePublic.mock.calls.map((x) => x[0]);
+/** A row's text as its autosave reads it (review I-1, R-b's `t:` version): `{ title }` of a module, `{ title, body }` of a lesson. */
+const text = async (kind: "module" | "lesson", id: number) => (await readOutlineText(db, kind, id))!;
+const saveText = (kind: "module" | "lesson", id: number, patch: Record<string, unknown>, version: string, admin = MARIA, live?: () => void) =>
+  writeOutlineText(db, kind, id, patch, version, admin, NOW, { live });
+const TEXT_VERSION = /^t:[0-9a-f]{32}$/;
+const deletable = async (id: number) => (await listCourseLessons(db, course)).find((m) => m.id === id)?.deletable;
 
 describe("a published course: new rows are flagged and wait for „Avalda muudatused“", () => {
   test("a new lesson is flagged and absent from the student's outline; after the publish it is visible, in the order the draft put it (M-5: no draft at all)", async () => {
@@ -217,7 +224,8 @@ describe("a published course: the order and the texts of live rows are the outli
     expect(await adminSees()).toEqual([["Moodul 1", ["Esimene", "Teine"]], ["Moodul 2", []], ["Moodul 3*", ["Kolmas"]]]);
     expect(await lessonRow(c)).toMatchObject({ moduleId: m2, unpublished: false });
     expect(await studentSees()).toEqual([["Moodul 1", ["Esimene", "Teine"]], ["Moodul 2", ["Kolmas"]]]);
-    // the flagged module holds it in the draft: it cannot be deleted from under it, and its own move stays direct
+    // the flagged module holds it in the draft: it cannot be deleted from under it (the card is told: review M-1), and its own move stays direct
+    expect(await deletable(m3)).toBe(false);
     expect(await deleteModuleForm(db, form({ id: m3 }), MARIA)).toEqual({ ok: false, error: "inUse" });
     expect((await read()).value).toEqual({
       modules: [
@@ -253,6 +261,17 @@ describe("„Loobu muudatustest“ and the deletes (R-e)", () => {
     expect(revalidated()).toEqual([]);
   });
 
+  test("review M-5: discard with a live lesson drafted into a flagged module: the module goes, the lesson stays where students have it", async () => {
+    const m3 = idOf(await addModuleForm(db, form({ courseId: course, titleEt: "Moodul 3" })));
+    await moveLessonForm(db, form({ id: c, dir: "down" }), MARIA);
+    expect(await adminSees()).toEqual([["Moodul 1", ["Esimene", "Teine"]], ["Moodul 2", []], ["Moodul 3*", ["Kolmas"]]]);
+    expect(await discardCourse(db, course)).toEqual({ discarded: 2, cleanup: { videoIds: [], fileKeys: [] } });
+    expect(await db.select().from(courseModules).where(eq(courseModules.id, m3))).toEqual([]);
+    expect(await lessonRow(c)).toMatchObject({ moduleId: m2, unpublished: false });
+    expect(await adminSees()).toEqual([["Moodul 1", ["Esimene", "Teine"]], ["Moodul 2", ["Kolmas"]]]);
+    expect(await studentSees()).toEqual([["Moodul 1", ["Esimene", "Teine"]], ["Moodul 2", ["Kolmas"]]]);
+  });
+
   test("a lesson with progress cannot be deleted on a published course either (the rule is unchanged)", async () => {
     await db.insert(lessonProgress).values({ clientId: student, lessonId: a, watchedSec: 5 });
     expect(await deleteLessonForm(db, form({ id: a }), MARIA)).toEqual({ result: { ok: false, error: "inUse" }, cleanup: { videoIds: [], fileKeys: [] } });
@@ -262,15 +281,16 @@ describe("„Loobu muudatustest“ and the deletes (R-e)", () => {
   test("deleting a lesson without progress is instant; an outline draft waiting meanwhile stays publishable (made again on the new live)", async () => {
     await renameModuleForm(db, form({ id: m2, titleEt: "Praktika" }), MARIA);
     const before = (await read()).version;
+    const kolmas = (await text("lesson", c)).version;
     expect(await deleteLessonForm(db, form({ id: b }), MARIA)).toEqual({ result: { ok: true, id: b, deleted: true }, cleanup: { videoIds: [], fileKeys: [] } });
     expect(await studentSees()).toEqual([["Moodul 1", ["Esimene"]], ["Moodul 2", ["Kolmas"]]]);
     expect(await adminSees()).toEqual([["Moodul 1", ["Esimene"]], ["Praktika", ["Kolmas"]]]);
-    // the draft no longer holds the deleted lesson, and a tab still on the old version is told so (a conflict, never a write)
-    const now = await read();
-    expect(now.version).not.toBe(before);
-    expect(await write({ modules: [] }, before)).toEqual({ ok: false, error: "conflict", version: now.version, value: now.value });
+    // the draft no longer holds the deleted lesson (made again: a new version), and another lesson's text version stays valid
+    expect((await read()).version).not.toBe(before);
+    expect(await saveText("lesson", c, { title: { et: "Kolmas osa" } }, kolmas)).toMatchObject({ ok: true });
+    expect(await studentSees()).toEqual([["Moodul 1", ["Esimene"]], ["Moodul 2", ["Kolmas"]]]);
     expect(await publishCourse(db, course, NOW)).toEqual({ published: ["outline"], blocked: [] });
-    expect(await studentSees()).toEqual([["Moodul 1", ["Esimene"]], ["Praktika", ["Kolmas"]]]);
+    expect(await studentSees()).toEqual([["Moodul 1", ["Esimene"]], ["Praktika", ["Kolmas osa"]]]);
     // an empty live module goes at once too, also from under a draft
     await renameModuleForm(db, form({ id: m2, titleEt: "Praktika 2" }), MARIA);
     await deleteLessonForm(db, form({ id: a }), MARIA);
@@ -280,12 +300,32 @@ describe("„Loobu muudatustest“ and the deletes (R-e)", () => {
     expect((await listModuleTitles(db, course)).map((t) => t.et)).toEqual(["Praktika 2"]);
   });
 
-  test("a live module whose lessons the draft moved away still holds them live: it cannot be deleted before the publish", async () => {
+  test("a live module whose lessons the draft moved away still holds them live: it cannot be deleted before the publish (and the card is told, M-1)", async () => {
+    const empty = idOf(await addModuleForm(db, form({ courseId: course, titleEt: "Tühi" })));
+    expect([await deletable(m1), await deletable(m2), await deletable(empty)]).toEqual([false, false, true]);
     await moveLessonForm(db, form({ id: c, dir: "up" }), MARIA);
-    expect(await adminSees()).toEqual([["Moodul 1", ["Esimene", "Teine", "Kolmas"]], ["Moodul 2", []]]);
+    expect(await adminSees()).toEqual([["Moodul 1", ["Esimene", "Teine", "Kolmas"]], ["Moodul 2", []], ["Tühi*", []]]);
+    expect(await deletable(m2)).toBe(false);
     expect(await deleteModuleForm(db, form({ id: m2 }), MARIA)).toEqual({ ok: false, error: "inUse" });
     await publishCourse(db, course, NOW);
+    expect(await deletable(m2)).toBe(true);
     expect(await deleteModuleForm(db, form({ id: m2 }), MARIA)).toEqual({ ok: true, id: m2, deleted: true });
+  });
+
+  test("review M-3: an instant delete under a draft whose base was stale already (a live write outside the editor) never absorbs it: the outline stays blocked, its new rows stay flagged", async () => {
+    await renameModuleForm(db, form({ id: m1, titleEt: "Sissejuhatus" }), MARIA);
+    const n = idOf(await addLessonForm(db, form({ moduleId: m2, titleEt: "Uus" })));
+    // a live name written by another way (db/ru-fill.ts writes module titles straight to the rows)
+    await db.update(courseModules).set({ title: { et: "Moodul 2", ru: "Модуль 2" } }).where(eq(courseModules.id, m2));
+    const base = (await outlineDraft())!.baseVersion;
+    expect((await deleteLessonForm(db, form({ id: b }), MARIA)).result).toMatchObject({ ok: true });
+    expect((await outlineDraft())!.baseVersion).toBe(base);
+    expect(await publishCourse(db, course, NOW)).toEqual({ published: [], blocked: [{ part: "outline", reason: "changed", fields: ["Moodul 01", "Moodul 02"] }] });
+    // review M-5: a blocked outline keeps its rows flagged (the draft's order places them), live stays as it is
+    expect(await lessonRow(n)).toMatchObject({ unpublished: true });
+    expect([(await moduleRow(m1)).title, (await moduleRow(m2)).title]).toEqual([{ et: "Moodul 1" }, { et: "Moodul 2", ru: "Модуль 2" }]);
+    expect(await studentSees()).toEqual([["Moodul 1", ["Esimene"]], ["Moodul 2", ["Kolmas"]]]);
+    expect(revalidated()).toEqual([]);
   });
 
   test("„Õpilastele nähtav“ stays instant on a published course (it is no part of the draft)", async () => {
@@ -295,8 +335,8 @@ describe("„Loobu muudatustest“ and the deletes (R-e)", () => {
   });
 });
 
-describe("the outline part (R-a, R-b): its value, its versions, two tabs", () => {
-  test("its value is the live rows' order and texts (flagged rows left out); l: while no draft is there, d:<id>.<n> after a save", async () => {
+describe("the outline part (R-a, R-b): its value and versions; never written whole (review I-1)", () => {
+  test("its value is the live rows' order and texts (flagged rows left out); l: while no draft is there, d:<id>.<n> once a change drafted it", async () => {
     await addLessonForm(db, form({ moduleId: m1, titleEt: "Uus" }));
     const live = await read();
     expect(live.value).toEqual({
@@ -306,33 +346,33 @@ describe("the outline part (R-a, R-b): its value, its versions, two tabs", () =>
       ],
     });
     expect(live.version).toMatch(/^l:[0-9a-f]{32}$/);
-    const value = live.value as { modules: { id: number; title: { et: string }; lessons: unknown[] }[] };
-    // a save of the whole outline: the modules swapped and one renamed
-    const next = { modules: [{ ...value.modules[1], title: { et: "Praktika" } }, value.modules[0]] };
-    const saved = await write(next, live.version);
-    expect(saved).toMatchObject({ ok: true, version: expect.stringMatching(/^d:[1-9][0-9]*\.1$/) });
-    expect(await read()).toEqual({ version: saved.ok && saved.version, value: next });
-    expect(await adminSees()).toEqual([["Praktika", ["Kolmas"]], ["Moodul 1", ["Esimene", "Teine", "Uus*"]]]);
-    expect(await studentSees()).toEqual([["Moodul 1", ["Esimene", "Teine"]], ["Moodul 2", ["Kolmas"]]]);
-    // back to the live value: no draft is left
-    expect(await write(live.value as Record<string, unknown>, saved.ok ? saved.version : "")).toEqual({ ok: true, version: live.version, savedAt: NOW.toISOString() });
+    await moveModuleForm(db, form({ id: m2, dir: "up" }), MARIA);
+    expect((await read()).version).toMatch(/^d:[1-9][0-9]*\.1$/);
+    // back to the live order: no draft is left
+    await moveModuleForm(db, form({ id: m2, dir: "down" }), MARIA);
+    expect(await read()).toEqual(live);
     expect(await outlineDraft()).toBeNull();
   });
 
-  test("a save must hold every live row once and no other; a name is needed", async () => {
+  test("a save of the whole outline through the part is refused (400 modules), on a published and an unpublished course: no editor holds its version", async () => {
     const live = await read();
-    const value = live.value as { modules: { id: number; title: { et: string }; lessons: { id: number; title: { et: string }; body: { et: string } }[] }[] };
-    const n = idOf(await addLessonForm(db, form({ moduleId: m2, titleEt: "Uus" })));
-    const bad = [
-      { modules: [value.modules[0]] }, // a module left out
-      { modules: [value.modules[0], { ...value.modules[1], lessons: [] }] }, // a lesson left out
-      { modules: [value.modules[0], { ...value.modules[1], lessons: [...value.modules[1].lessons, value.modules[0].lessons[0]] }] }, // a lesson twice
-      { modules: [...value.modules, { id: 999_999, title: { et: "X" }, lessons: [] }] }, // no such module
-      { modules: [value.modules[0], { ...value.modules[1], lessons: [...value.modules[1].lessons, { id: n, title: { et: "Uus" }, body: { et: "" } }] }] }, // a flagged lesson
-    ];
-    for (const [i, v] of bad.entries()) expect(await write(v, live.version), String(i)).toEqual({ ok: false, error: "invalid", fields: { modules: "invalid" } });
-    expect(await write({ modules: [{ ...value.modules[0], title: { et: " " } }, value.modules[1]] }, live.version)).toEqual({ ok: false, error: "invalid", fields: { modules: "required" } });
+    const value = live.value as { modules: { id: number; title: { et: string } }[] };
+    const swapped = { modules: [value.modules[1], value.modules[0]] };
+    for (const patch of [swapped, live.value as Record<string, unknown>, {}]) expect(await writeCoursePart(db, course, "outline", patch, live.version, MARIA, NOW)).toEqual({ ok: false, error: "invalid", fields: { modules: "invalid" } });
+    await db.update(courses).set({ published: false }).where(eq(courses.id, course));
+    expect(await writeCoursePart(db, course, "outline", swapped, (await read()).version, MARIA, NOW)).toEqual({ ok: false, error: "invalid", fields: { modules: "invalid" } });
     expect(await outlineDraft()).toBeNull();
+    expect(await adminSees()).toEqual([["Moodul 1", ["Esimene", "Teine"]], ["Moodul 2", ["Kolmas"]]]);
+  });
+
+  test("the publish checks the outline again: a draft whose name is blank (no form makes one) is blocked, and the new rows stay flagged", async () => {
+    const n = idOf(await addLessonForm(db, form({ moduleId: m1, titleEt: "Uus" })));
+    const live = await read();
+    const value = live.value as { modules: { id: number; title: { et: string } }[] };
+    await saveDraftPart(db, { entity: "course", entityId: course, part: "outline", value: { modules: [{ ...value.modules[0], title: { et: " " } }, value.modules[1]] }, baseVersion: live.version.slice(2), version: null, by: MARIA.email });
+    expect(await publishCourse(db, course, NOW)).toEqual({ published: [], blocked: [{ part: "outline", reason: "changed", fields: ["Moodul 01"] }] });
+    expect(await lessonRow(n)).toMatchObject({ unpublished: true });
+    expect((await moduleRow(m1)).title).toEqual({ et: "Moodul 1" });
   });
 
   test("a flagged row's own move or delete leaves the outline draft and its version as they are (an open editor is not put in conflict)", async () => {
@@ -347,20 +387,105 @@ describe("the outline part (R-a, R-b): its value, its versions, two tabs", () =>
     expect(await read()).toEqual(before);
   });
 
-  test("two tabs changing the outline get a conflict, never a silent overwrite", async () => {
-    const tabA = await read();
+});
+
+describe("a row's text autosave (review I-1; R-b amended: t:<hash of the row's working text>)", () => {
+  test("a module's and a lesson's text with its t: version: the draft's on a published course, the row's for a flagged row", async () => {
+    const n = idOf(await addLessonForm(db, form({ moduleId: m1, titleEt: "Uus" })));
+    expect(await text("module", m1)).toEqual({ version: expect.stringMatching(TEXT_VERSION), value: { title: { et: "Moodul 1" } } });
+    expect(await text("lesson", a)).toEqual({ version: expect.stringMatching(TEXT_VERSION), value: { title: { et: "Esimene" }, body: { et: "Loe." } } });
+    expect((await text("lesson", n)).value).toEqual({ title: { et: "Uus" }, body: { et: "" } });
+    await saveLessonForm(db, form({ id: a, titleEt: "Alustame", bodyEt: "Loe." }), MARIA);
+    expect((await text("lesson", a)).value).toEqual({ title: { et: "Alustame" }, body: { et: "Loe." } });
+    expect(await readOutlineText(db, "lesson", 999_999)).toBeNull();
+    expect(await readOutlineText(db, "module", 999_999)).toBeNull();
+  });
+
+  test("a live row's save on a published course goes into the outline draft; the students keep the old text until the publish", async () => {
+    const before = await text("lesson", a);
+    const saved = await saveText("lesson", a, { body: { et: "Loe ja vaata." } }, before.version);
+    expect(saved).toEqual({ ok: true, version: expect.stringMatching(TEXT_VERSION), savedAt: NOW.toISOString() });
+    expect(await text("lesson", a)).toEqual({ version: saved.ok && saved.version, value: { title: { et: "Esimene" }, body: { et: "Loe ja vaata." } } });
+    expect((await lessonRow(a)).body).toEqual({ et: "Loe." });
+    expect((await outlineDraft())!.updatedAt).toBeDefined();
+    expect((await db.select({ by: contentDrafts.updatedBy }).from(contentDrafts))[0].by).toBe(MARIA.email);
+    expect(await courseChanges(db, course)).toEqual([{ part: "outline", labels: ["Moodul 01"] }]);
+    // typed back to the live text: the draft goes (nothing is left to publish), the version is the live text's
+    expect(await saveText("lesson", a, { body: { et: "Loe." } }, saved.ok ? saved.version : "")).toEqual({ ok: true, version: before.version, savedAt: NOW.toISOString() });
+    expect(await outlineDraft()).toBeNull();
+    // the module's name, published
+    await saveText("module", m2, { title: { et: "Praktika" } }, (await text("module", m2)).version);
+    expect((await listModuleTitles(db, course)).map((t) => t.et)).toEqual(["Moodul 1", "Moodul 2"]);
+    await publishCourse(db, course, NOW);
+    expect((await listModuleTitles(db, course)).map((t) => t.et)).toEqual(["Moodul 1", "Praktika"]);
+    expect(revalidated()).toEqual([{ kind: "courses" }]);
+  });
+
+  test("a flagged row's save is written on the row (nobody sees it): no draft", async () => {
+    const m3 = idOf(await addModuleForm(db, form({ courseId: course, titleEt: "Moodul 3" })));
+    const n = idOf(await addLessonForm(db, form({ moduleId: m3, titleEt: "Uus" })));
+    const live = vi.fn();
+    expect(await saveText("module", m3, { title: { et: "  Kordamine " } }, (await text("module", m3)).version, MARIA, live)).toMatchObject({ ok: true });
+    expect(await saveText("lesson", n, { title: { et: "Kordus" }, body: { et: "Vaata." } }, (await text("lesson", n)).version, MARIA, live)).toMatchObject({ ok: true });
+    expect([(await moduleRow(m3)).title, (await lessonRow(n)).title, (await lessonRow(n)).body]).toEqual([{ et: "Kordamine" }, { et: "Kordus" }, { et: "Vaata." }]);
+    expect(await readDrafts(db, "course", course)).toEqual([]);
+    expect(live).not.toHaveBeenCalled();
+  });
+
+  test("two tabs on one lesson: the second save on the old version is a conflict with the stored text, never a write", async () => {
+    const tabA = await text("lesson", b);
     const tabB = tabA.version;
-    const value = tabA.value as { modules: { id: number; title: { et: string } }[] };
-    const mine = { modules: [{ ...value.modules[0], title: { et: "Tab A" } }, value.modules[1]] };
-    expect(await write(mine, tabA.version)).toMatchObject({ ok: true });
-    const stored = await read();
-    expect(await write({ modules: [value.modules[0], { ...value.modules[1], title: { et: "Tab B" } }] }, tabB, DIM)).toEqual({ ok: false, error: "conflict", version: stored.version, value: mine });
-    // a move in one tab moves the draft on: the other tab's save on the version before it is a conflict too
-    await moveModuleForm(db, form({ id: m2, dir: "up" }), DIM);
-    const moved = await read();
-    expect(moved.version).not.toBe(stored.version);
-    expect(await write(mine, stored.version)).toEqual({ ok: false, error: "conflict", version: moved.version, value: moved.value });
-    expect(await adminSees()).toEqual([["Moodul 2", ["Kolmas"]], ["Tab A", ["Esimene", "Teine"]]]);
+    expect(await saveText("lesson", b, { title: { et: "Tab A" } }, tabA.version)).toMatchObject({ ok: true });
+    const stored = await text("lesson", b);
+    expect(await saveText("lesson", b, { title: { et: "Tab B" } }, tabB, DIM)).toEqual({ ok: false, error: "conflict", version: stored.version, value: { title: { et: "Tab A" }, body: { et: "" } } });
+    expect((await text("lesson", b)).value).toEqual({ title: { et: "Tab A" }, body: { et: "" } });
+    // anything that is not the row's version is a conflict too
+    for (const junk of ["", "t:x", "l:abc", "d:1.1"]) expect((await saveText("lesson", b, { title: { et: "X" } }, junk)).ok, junk).toBe(false);
+  });
+
+  test("a module's name, a lesson's text and a move in one page: no conflict between them (a move changes no row's text)", async () => {
+    let mod = (await text("module", m1)).version;
+    let les = (await text("lesson", a)).version;
+    const other = (await text("lesson", c)).version;
+    for (const [i, name] of ["Algus", "Algus ja ülevaade"].entries()) {
+      const savedModule = await saveText("module", m1, { title: { et: name } }, mod);
+      expect(savedModule, `module ${i}`).toMatchObject({ ok: true });
+      mod = savedModule.ok ? savedModule.version : "";
+      const savedLesson = await saveText("lesson", a, { body: { et: `Tekst ${i}` } }, les);
+      expect(savedLesson, `lesson ${i}`).toMatchObject({ ok: true });
+      les = savedLesson.ok ? savedLesson.version : "";
+      await moveLessonForm(db, form({ id: a, dir: i === 0 ? "down" : "up" }), MARIA);
+      await moveModuleForm(db, form({ id: m2, dir: i === 0 ? "up" : "down" }), MARIA);
+    }
+    expect(await saveText("lesson", c, { title: { et: "Kolmas osa" } }, other)).toMatchObject({ ok: true });
+    expect(await adminSees()).toEqual([["Algus ja ülevaade", ["Esimene", "Teine"]], ["Moodul 2", ["Kolmas osa"]]]);
+    expect((await text("lesson", a)).value).toEqual({ title: { et: "Esimene" }, body: { et: "Tekst 1" } });
+  });
+
+  test("a deleted lesson: no text to read (the route's 404, gone), and a save from a tab still open is answered as gone", async () => {
+    const open = (await text("lesson", b)).version;
+    await deleteLessonForm(db, form({ id: b }), MARIA);
+    expect(await readOutlineText(db, "lesson", b)).toBeNull();
+    expect(await saveText("lesson", b, { title: { et: "X" } }, open)).toEqual({ ok: false, error: "conflict", version: "", value: null });
+  });
+
+  test("a refusal names the field: a name is needed, at most 120 characters; a short text at most 5000", async () => {
+    const v = (await text("lesson", a)).version;
+    expect(await saveText("lesson", a, { title: { et: " " } }, v)).toEqual({ ok: false, error: "invalid", fields: { title: "required" } });
+    expect(await saveText("lesson", a, { title: { et: "x".repeat(121) }, body: { et: "y".repeat(5001) } }, v)).toEqual({ ok: false, error: "invalid", fields: { title: "tooLong", body: "tooLong" } });
+    expect(await saveText("module", m1, { title: { et: "" } }, (await text("module", m1)).version)).toEqual({ ok: false, error: "invalid", fields: { title: "required" } });
+    expect(await outlineDraft()).toBeNull();
+    // a save that changes nothing answers the version it came from and writes nothing
+    expect(await saveText("lesson", a, { title: { et: "Esimene" } }, v)).toEqual({ ok: true, version: v, savedAt: NOW.toISOString() });
+  });
+
+  test("a lesson's save at its limits stays under 20 KB (a page put away sends it as keepalive; the whole outline would not fit)", async () => {
+    const et = "Õppetunni tekst. ".repeat(300).slice(0, 5000);
+    const ru = "Текст урока. ".repeat(400).slice(0, 5000);
+    const patch = { title: { et: "Õ".repeat(120), ru: "Ж".repeat(120) }, body: { et, ru } };
+    const v = (await text("lesson", a)).version;
+    expect(new TextEncoder().encode(JSON.stringify({ version: v, patch })).length).toBeLessThan(20_000);
+    expect(await saveText("lesson", a, patch, v)).toMatchObject({ ok: true });
   });
 });
 
@@ -383,11 +508,18 @@ describe("an unpublished course: everything is direct", () => {
     expect(await studentSees()).toEqual([["Moodul 2", ["Kolmas"]], ["Sissejuhatus", ["Teine", "Alustame", "Uus"]], ["Moodul 3", []]]);
     expect(await db.select().from(contentDrafts)).toEqual([]);
     expect(await courseChanges(db, course)).toEqual([]);
-    // the outline part writes the rows too (spec §10: its students see it)
-    const live = await read();
-    const value = live.value as { modules: { id: number; title: { et: string } }[] };
-    expect(await write({ modules: [...value.modules].reverse() }, live.version)).toMatchObject({ ok: true, version: expect.stringMatching(/^l:/) });
-    expect(await studentSees()).toEqual([["Moodul 3", []], ["Sissejuhatus", ["Teine", "Alustame", "Uus"]], ["Moodul 2", ["Kolmas"]]]);
+    // a row's text autosave writes the rows too (spec §10: its students see it); a module's name is on the public page, so it is told to revalidate
+    const live = vi.fn();
+    expect(await saveText("module", m2, { title: { et: " Praktika " } }, (await text("module", m2)).version, MARIA, live)).toEqual({
+      ok: true,
+      version: (await text("module", m2)).version,
+      savedAt: NOW.toISOString(),
+    });
+    expect(live).toHaveBeenCalledOnce();
+    expect(await saveText("lesson", c, { body: { et: "Harjuta." } }, (await text("lesson", c)).version, MARIA, live)).toMatchObject({ ok: true });
+    expect(live).toHaveBeenCalledOnce(); // a lesson is on no public page
+    expect([(await moduleRow(m2)).title, (await lessonRow(c)).body]).toEqual([{ et: "Praktika" }, { et: "Harjuta." }]);
+    expect(await studentSees()).toEqual([["Praktika", ["Kolmas"]], ["Sissejuhatus", ["Teine", "Alustame", "Uus"]], ["Moodul 3", []]]);
     expect(await db.select().from(contentDrafts)).toEqual([]);
   });
 });
@@ -400,6 +532,16 @@ describe("R-d: switching „Avaldatud“ off publishes the outline and the flagg
     expect((await db.select().from(courses).where(eq(courses.id, course)))[0].published).toBe(false);
     expect([(await moduleRow(m1)).title, (await lessonRow(n)).unpublished]).toEqual([{ et: "Sissejuhatus" }, false]);
     expect(await studentSees()).toEqual([["Sissejuhatus", ["Esimene", "Teine"]], ["Moodul 2", ["Kolmas", "Uus"]]]);
+    expect(await readDrafts(db, "course", course)).toEqual([]);
+  });
+
+  test("review M-5: a live lesson drafted into a flagged module goes there, and the module is shown, before the course is unpublished", async () => {
+    const m3 = idOf(await addModuleForm(db, form({ courseId: course, titleEt: "Moodul 3" })));
+    await moveLessonForm(db, form({ id: c, dir: "down" }), MARIA);
+    expect(await switchCoursePublished(db, course, false, NOW)).toEqual({ ok: true });
+    expect(await lessonRow(c)).toMatchObject({ moduleId: m3, unpublished: false });
+    expect((await moduleRow(m3)).unpublished).toBe(false);
+    expect(await studentSees()).toEqual([["Moodul 1", ["Esimene", "Teine"]], ["Moodul 2", []], ["Moodul 3", ["Kolmas"]]]);
     expect(await readDrafts(db, "course", course)).toEqual([]);
   });
 
@@ -454,5 +596,11 @@ describe("the lock order (ledger T11, 40P01): the course row first, then content
       if (draftsTouched() >= 0) expect(draftsTouched(), name).toBeGreaterThan(courseLock());
     }
     expect(await db.select().from(contentDrafts).where(and(eq(contentDrafts.entity, "course"), eq(contentDrafts.entityId, course)))).toEqual([]);
+    // a row's text autosave too (review I-1)
+    const v = (await text("lesson", a)).version;
+    log.length = 0;
+    expect(await saveText("lesson", a, { body: { et: "Uus tekst" } }, v)).toMatchObject({ ok: true });
+    expect(courseLock(), "text").toBeGreaterThanOrEqual(0);
+    expect(draftsTouched(), "text").toBeGreaterThan(courseLock());
   });
 });

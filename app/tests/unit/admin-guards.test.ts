@@ -133,6 +133,8 @@ describe("admin guards are inherited by every admin entry point", () => {
         "app/api/admin/subscribers.csv/route.ts", "app/api/admin/upload/route.ts", "app/api/admin/lesson-file/route.ts", "app/api/admin/protokoll/route.ts", "app/api/admin/foto/[id]/route.ts", "app/api/admin/hinnang/route.ts", "app/api/admin/tunnistus/[id]/route.ts",
         // admin UX pass piece 3a, Task 4: a course part's autosave, „Avalda muudatused“ and „Loobu muudatustest“
         "app/api/admin/koolitus/[id]/osa/[part]/route.ts", "app/api/admin/koolitus/[id]/avalda/route.ts", "app/api/admin/koolitus/[id]/loobu/route.ts",
+        // Task 5 review I-1: a module's name and a lesson's name and short text, autosaved row by row
+        "app/api/admin/moodul/[id]/route.ts", "app/api/admin/oppetund/[id]/route.ts",
       ]),
     );
     for (const r of routes) expect(violations(r.path, r.source), r.path).toEqual([]);

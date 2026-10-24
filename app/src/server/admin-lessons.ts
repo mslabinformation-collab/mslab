@@ -2,10 +2,13 @@ import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import type { Db, Tx } from "@/db/client";
 import { lockCourse } from "@/db/queries/admin";
 import { courseModules, courses, lessonFiles, lessonProgress, lessons, type Course, type LessonKind, type VideoStatus } from "@/db/schema";
+import type { SaveAnswer } from "@/domain/autosave";
 import { dropVideo, moveLesson, type ModuleLayout } from "@/domain/lessons";
 import type { I18n } from "@/i18n/field";
 import { parseRowId } from "@/lib/row-id";
-import { LESSON_LIMITS, layoutFor, readLayout, storeLayout, storedBody, type Layout, type OutlineRows } from "./course-outline";
+import { contentVersion, stableJson } from "@/lib/version";
+import { fieldCodes } from "./autosave-route";
+import { LESSON_LIMITS, layoutFor, OUTLINE_TEXT_PATCHES, readLayout, storeLayout, storedBody, type Layout, type OutlineRows } from "./course-outline";
 import { readDrafts } from "./drafts";
 import { Check, field, invalid, type EditResult } from "./edit-check";
 
@@ -62,6 +65,11 @@ export type AdminModule = {
   title: I18n;
   /** As AdminLesson.unpublished: a module made on a published course and not published yet. */
   unpublished: boolean;
+  /**
+   * „Kustuta moodul“ can delete it: no lesson is in it, live or in the draft. A published course's live module whose lessons the draft moved
+   * elsewhere shows no lesson, but still holds them until „Avalda muudatused“ (review M-1).
+   */
+  deletable: boolean;
   lessons: AdminLesson[];
 };
 
@@ -114,6 +122,7 @@ export async function listCourseLessons(db: Db, courseId: number): Promise<Admin
     id: m.id,
     title: m.title,
     unpublished: m.flagged,
+    deletable: m.lessons.length === 0 && !rows.some((r) => r.moduleId === m.id),
     lessons: m.lessons.map((l) => {
       const r = row.get(l.id)!;
       return {
@@ -234,7 +243,7 @@ export async function deleteModuleForm(db: Db, fd: FormData, admin: Who): Promis
     if (rows.lessons.some((l) => l.moduleId === id) || layout[at].lessons.length > 0) return { ok: false, error: "inUse" };
     await tx.delete(courseModules).where(eq(courseModules.id, id));
     layout.splice(at, 1);
-    await storeLayout(tx, course, { modules: rows.modules.filter((m) => m.id !== id), lessons: rows.lessons }, layout, admin.email, { rebase: true });
+    await storeLayout(tx, course, { modules: rows.modules.filter((m) => m.id !== id), lessons: rows.lessons }, layout, admin.email, { deletedFrom: rows });
     return { ok: true, id, deleted: true };
   });
 }
@@ -314,6 +323,100 @@ export async function moveLessonForm(db: Db, fd: FormData, admin: Who): Promise<
   });
 }
 
+// ---------- a row's text autosave (Task 5 review I-1; R-b amended: the "t:" version) ----------
+
+/** The rows whose text the editor autosaves on its own: a module (its name) and a lesson (its name and short text). */
+export type OutlineTextKind = "module" | "lesson";
+/** A row's working text: a module's `{ title }`, a lesson's `{ title, body }` (a short text of none: `{ et: "" }`). */
+type RowText = { title: I18n; body?: I18n };
+
+const TEXT_FIELDS: Record<OutlineTextKind, readonly string[]> = { module: ["title"], lesson: ["title", "body"] };
+
+/** A row in the working order: its text (the outline draft's on a published course, the row's otherwise) and whether it is flagged; null: none. */
+function rowTextIn(layout: Layout, kind: OutlineTextKind, id: number): { text: RowText; flagged: boolean; set(t: RowText): void } | null {
+  if (kind === "module") {
+    const m = layout.find((x) => x.id === id);
+    return m ? { text: { title: m.title }, flagged: m.flagged, set: (t) => void (m.title = t.title) } : null;
+  }
+  const l = layout.flatMap((m) => m.lessons).find((x) => x.id === id);
+  return l ? { text: { title: l.title, body: l.body }, flagged: l.flagged, set: (t) => void Object.assign(l, { title: t.title, body: t.body ?? { et: "" } }) } : null;
+}
+
+/** A row's text version (R-b, amended after the Task 5 review): "t:" and lib/version.ts contentVersion of its working text. A move changes none. */
+const textVersion = async (t: RowText): Promise<string> => `t:${await contentVersion(t)}`;
+
+const courseOfRow = (db: Db, kind: OutlineTextKind, id: number) => (kind === "module" ? courseOfModule(db, id) : courseOfLesson(db, id));
+
+/** Is there such a module or lesson (the text routes' 404)? */
+export async function outlineTextExists(db: Db, kind: OutlineTextKind, id: number): Promise<boolean> {
+  return (await courseOfRow(db, kind, id)) !== null;
+}
+
+/**
+ * A row's text as its autosave reads it (the editor's version and value): a published course's live row with its outline draft's text, a flagged
+ * row and an unpublished course's with the row's own. Null when there is no such module or lesson.
+ */
+export async function readOutlineText(db: Db, kind: OutlineTextKind, id: number): Promise<{ version: string; value: RowText } | null> {
+  const courseId = await courseOfRow(db, kind, id);
+  if (courseId === null) return null;
+  const [course] = await db.select({ id: courses.id, published: courses.published }).from(courses).where(eq(courses.id, courseId));
+  if (!course) return null;
+  const found = rowTextIn((await readLayout(db, course)).layout, kind, id);
+  return found ? { version: await textVersion(found.text), value: found.text } : null;
+}
+
+/**
+ * A row's text save (the routes api/admin/moodul/<id> and api/admin/oppetund/<id>, server/autosave-route.ts' contract): `patch` (some of the row's
+ * fields: `title`, a lesson's `body` too) over its working text at `version` ("t:<hash>"), under the course's lock. The answers:
+ * - ok with the row's version after it (a save that changes nothing: the version it came from, nothing written);
+ * - a conflict with the row's version and text when `version` is not the row's (another tab saved it first); the row deleted meanwhile: version
+ *   "", value null;
+ * - invalid with `title` / `body` and the forms' codes (a name needed, at most 120 characters; a short text at most 5000).
+ * A published course's live row: into the outline draft, as typed (students keep the old text until „Avalda muudatused“; its labels and the
+ * publish's check are the outline's). A flagged row, and every row of an unpublished course: on the row itself, trimmed as the forms store it.
+ * `o.live` is called after the commit when a module's name went live on its row (an unpublished course's module: the public pages show module
+ * names; a flagged row and a lesson are on none). Moves and deletes are no text: they stay the card's actions, and change no row's version.
+ */
+export async function writeOutlineText(
+  db: Db,
+  kind: OutlineTextKind,
+  id: number,
+  patch: Record<string, unknown>,
+  version: string,
+  admin: Who,
+  now: Date,
+  o: { live?: () => void } = {},
+): Promise<SaveAnswer> {
+  const savedAt = now.toISOString();
+  const gone = (): { answer: SaveAnswer; live: boolean } => ({ answer: { ok: false, error: "conflict", version: "", value: null }, live: false });
+  const parsed = OUTLINE_TEXT_PATCHES[kind].safeParse(Object.fromEntries(Object.entries(patch).filter(([k]) => TEXT_FIELDS[kind].includes(k))));
+  if (!parsed.success) return { ok: false, error: "invalid", fields: fieldCodes(parsed.error.issues) ?? Object.fromEntries(TEXT_FIELDS[kind].map((f) => [f, "invalid"])) };
+  const own: Partial<RowText> = parsed.data;
+  const { answer, live } = await underCourse(db, await courseOfRow(db, kind, id), gone, async ({ tx, course, rows, layout }): Promise<{ answer: SaveAnswer; live: boolean }> => {
+    const found = rowTextIn(layout, kind, id);
+    if (!found) return gone();
+    const current = await textVersion(found.text);
+    if (version !== current) return { answer: { ok: false, error: "conflict", version: current, value: found.text }, live: false };
+    const next: RowText = { ...found.text, ...own };
+    if (stableJson(next) === stableJson(found.text)) return { answer: { ok: true, version: current, savedAt }, live: false };
+    const c = new Check();
+    const title = c.text("title", next.title, LESSON_LIMITS.title, { required: true });
+    const body = next.body ? c.text("body", next.body, LESSON_LIMITS.body) : null;
+    if (!c.ok || !title) return { answer: { ok: false, error: "invalid", fields: c.errors }, live: false };
+    if (course.published && !found.flagged) {
+      found.set(next);
+      await storeLayout(tx, course, rows, layout, admin.email);
+      return { answer: { ok: true, version: await textVersion(next), savedAt }, live: false };
+    }
+    if (kind === "module") await tx.update(courseModules).set({ title }).where(eq(courseModules.id, id));
+    else await tx.update(lessons).set({ title, body }).where(eq(lessons.id, id));
+    const stored: RowText = kind === "module" ? { title } : { title, body: body ?? { et: "" } };
+    return { answer: { ok: true, version: await textVersion(stored), savedAt }, live: kind === "module" && !course.published && !found.flagged };
+  });
+  if (live) o.live?.();
+  return answer;
+}
+
 /** "Peida" / "Näita õpilastele": fields id, hidden ("1" | "0"). A hidden lesson is not shown, counted or in the order (spec 3). */
 export async function setLessonHiddenForm(db: Db, fd: FormData): Promise<EditResult> {
   const id = idOf(field(fd, "id"));
@@ -380,7 +483,7 @@ export async function deleteLessonForm(db: Db, fd: FormData, admin: Who): Promis
     const files = await tx.select({ key: lessonFiles.r2Key }).from(lessonFiles).where(eq(lessonFiles.lessonId, id)).orderBy(asc(lessonFiles.position), asc(lessonFiles.id));
     await tx.delete(lessons).where(eq(lessons.id, id));
     const next: Layout = layout.map((m) => ({ ...m, lessons: m.lessons.filter((l) => l.id !== id) }));
-    await storeLayout(tx, course, { modules: rows.modules, lessons: rows.lessons.filter((l) => l.id !== id) }, next, admin.email, { rebase: true });
+    await storeLayout(tx, course, { modules: rows.modules, lessons: rows.lessons.filter((l) => l.id !== id) }, next, admin.email, { deletedFrom: rows });
     const videoIds = [row.videoId, row.replacedVideoId].filter((v): v is string => v !== null);
     return { result: { ok: true, id, deleted: true }, cleanup: { videoIds, fileKeys: files.map((f) => f.key) } };
   });

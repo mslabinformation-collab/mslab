@@ -34,7 +34,9 @@ const notFound = () => Response.json({ ok: false, error: "notFound" }, { status:
  * POST /api/admin/koolitus/<id>/osa/<part> — a course editor card's autosave (admin UX pass piece 3a, Task 4; README B2): a save of
  * `{ version, patch }` from the part's version (R-b: "l:<hash>", or "d:<draft row id>.<n>" for a draft), answered by autosaveHandler (server/autosave-route.ts: 200 the new
  * version, 409 what is stored, 400 the field codes, 404 for an id that is no course or a name that is no part). A published course's save is its
- * draft, an unpublished one's goes live (server/course-parts.ts). Signed-in admins only, a cross-site POST is 403 (withAdmin).
+ * draft, an unpublished one's goes live (server/course-parts.ts). The `outline` (the modules' and lessons' order and texts) is a part, but is never
+ * saved whole here: 400 `modules` (Task 5 review I-1; a row's text saves at api/admin/moodul/<id> and api/admin/oppetund/<id>). Signed-in admins
+ * only, a cross-site POST is 403 (withAdmin).
  */
 export const POST = withAdmin<Ctx>(async (request, ctx, admin) => {
   const { id: rawId, part } = await ctx.params;

@@ -55,6 +55,15 @@ export const OUTLINE_SCHEMA = z
   })
   .strict();
 
+/**
+ * A row's text autosave's patches (review I-1; server/admin-lessons.ts writeOutlineText): a module's name, a lesson's name and short text, as typed
+ * (some of the fields, no other); their limits are the forms' (LESSON_LIMITS, checked by the write).
+ */
+export const OUTLINE_TEXT_PATCHES = {
+  module: z.object({ title: i18n }).partial().strict(),
+  lesson: z.object({ title: i18n, body: i18n }).partial().strict(),
+};
+
 // ---------- the rows ----------
 
 type ModuleRow = { id: number; position: number; title: I18n; unpublished: boolean };
@@ -245,10 +254,12 @@ async function writeFlaggedPlaces(tx: Tx, rows: OutlineRows, layout: Layout): Pr
 /**
  * Stores a changed working order, under the course's lock (`rows`: the rows as they are now, after a delete too). An unpublished course: written
  * to the rows. A published one: the flagged rows' places on their rows, the rest as the outline draft: made from live (its base: live's version)
- * when there is none, saved over when there is; dropped when the outline is live's again (nothing is left to publish). `rebase`: live itself
- * changed in this transaction (a row deleted at once, R-e), so a draft is made again on the new live, with what it held, and stays publishable.
+ * when there is none, saved over when there is; dropped when the outline is live's again (nothing is left to publish). `deletedFrom`: live itself
+ * changed in this transaction (a row deleted at once, R-e; the rows before the delete), so a draft made on live as it was is made again on the new
+ * live, with what it held, and stays publishable; a draft whose base was stale already (live changed by another way) keeps its base and stays
+ * blocked at the publish, never absorbed (review M-3).
  */
-export async function storeLayout(tx: Tx, course: Course, rows: OutlineRows, layout: Layout, by: string, o: { rebase?: boolean } = {}): Promise<void> {
+export async function storeLayout(tx: Tx, course: Course, rows: OutlineRows, layout: Layout, by: string, o: { deletedFrom?: OutlineRows } = {}): Promise<void> {
   if (!course.published) return writeRows(tx, rows, layout, false);
   await writeFlaggedPlaces(tx, rows, layout);
   const live = liveOutline(rows);
@@ -259,7 +270,7 @@ export async function storeLayout(tx: Tx, course: Course, rows: OutlineRows, lay
     return;
   }
   const liveHash = await contentVersion(live);
-  if (draft && o.rebase && draft.baseVersion !== liveHash) {
+  if (draft && o.deletedFrom && draft.baseVersion !== liveHash && draft.baseVersion === (await contentVersion(liveOutline(o.deletedFrom)))) {
     await dropDraftPart(tx, ENTITY, course.id, OUTLINE_PART);
     draft = null;
   }
